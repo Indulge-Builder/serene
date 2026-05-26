@@ -1,0 +1,44 @@
+@import "../styles/design-tokens.css";
+@import "tailwindcss";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--theme-canvas);
+  color: var(--theme-canvas-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Base input style — used by form fields across the app */
+.eia-input {
+  width:            100%;
+  background-color: var(--theme-paper-subtle);
+  border:           1px solid var(--theme-paper-border);
+  border-radius:    var(--radius-sm);
+  padding:          var(--space-3) var(--space-4);
+  font-family:      var(--font-sans);
+  font-size:        var(--text-sm);
+  color:            var(--theme-text-primary);
+  outline:          none;
+  transition:       var(--transition-focus), border-color var(--duration-fast) var(--ease-in-out);
+}
+
+.eia-input::placeholder {
+  color: var(--theme-text-tertiary);
+}
+
+.eia-input:focus-visible {
+  border-color: var(--theme-accent);
+  box-shadow:   var(--shadow-focus);
+}

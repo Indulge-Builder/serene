@@ -1,0 +1,721 @@
+/* ================================================================
+   EIA — DESIGN TOKENS
+   src/styles/design-tokens.css
+
+   This file is the working implementation of the design system.
+   Every CSS variable used anywhere in Eia is defined here.
+   The source of truth for values is docs/design-dna.md.
+   This file is what the browser reads.
+
+   Structure:
+   1.  :root — Earth theme (default fallback)
+   2.  [data-theme="earth"]
+   3.  [data-theme="air"]
+   4.  [data-theme="water"]
+   5.  [data-theme="fire"]
+   6.  [data-theme="cosmos"]
+   7.  Semantic colour overrides per theme
+   8.  Global tokens (typography, spacing, radius, shadow, motion)
+   9.  Z-index scale
+   10. Animations
+   ================================================================ */
+
+
+/* ================================================================
+   1. ROOT — Earth as default (no data-theme attribute)
+   ================================================================ */
+
+:root {
+  /* Canvas */
+  --theme-canvas:            #0a0a0a;
+  --theme-canvas-glow:       rgba(212, 175, 55, 0.08);
+  --theme-canvas-text:       rgba(255, 255, 255, 0.85);
+
+  /* Paper */
+  --theme-paper:             #ffffff;
+  --theme-paper-subtle:      #f9f9f6;
+  --theme-paper-border:      #e5e4df;
+
+  /* Accent */
+  --theme-accent:            #d4af37;
+  --theme-accent-hover:      #a88b25;
+  --theme-accent-muted:      #7a6b5d;
+  --theme-accent-surface:    rgba(212, 175, 55, 0.10);
+  --theme-accent-fg:         #0a0a0a;
+
+  /* Text */
+  --theme-text-primary:      #1a1a1a;
+  --theme-text-secondary:    #6b6b6b;
+  --theme-text-tertiary:     #b5a99a;
+  --theme-text-inverse:      #ffffff;
+
+  /* Sidebar */
+  --theme-sidebar-bg:              #0a0a0a;
+  --theme-sidebar-border:          #2a2a2a;
+  --theme-sidebar-text:            rgba(255, 255, 255, 0.55);
+  --theme-sidebar-active:          #d4af37;
+  --theme-sidebar-hover-bg:        #1a1a1a;
+  --theme-sidebar-active-bg:       #1e1a0a;
+  --theme-sidebar-active-pill:     #d4af37;
+
+  /* Shadow colour primitive — warm black for Earth */
+  --shadow-color: 10 8 2;
+}
+
+
+/* ================================================================
+   2. EARTH THEME
+   ================================================================ */
+
+[data-theme="earth"] {
+  --theme-canvas:            #0a0a0a;
+  --theme-canvas-glow:       rgba(212, 175, 55, 0.08);
+  --theme-canvas-text:       rgba(255, 255, 255, 0.85);
+
+  --theme-paper:             #ffffff;
+  --theme-paper-subtle:      #f9f9f6;
+  --theme-paper-border:      #e5e4df;
+
+  --theme-accent:            #d4af37;
+  --theme-accent-hover:      #a88b25;
+  --theme-accent-muted:      #7a6b5d;
+  --theme-accent-surface:    rgba(212, 175, 55, 0.10);
+  --theme-accent-fg:         #0a0a0a;
+
+  --theme-text-primary:      #1a1a1a;
+  --theme-text-secondary:    #6b6b6b;
+  --theme-text-tertiary:     #b5a99a;
+  --theme-text-inverse:      #ffffff;
+
+  --theme-sidebar-bg:              #0a0a0a;
+  --theme-sidebar-border:          #2a2a2a;
+  --theme-sidebar-text:            rgba(255, 255, 255, 0.55);
+  --theme-sidebar-active:          #d4af37;
+  --theme-sidebar-hover-bg:        #1a1a1a;
+  --theme-sidebar-active-bg:       #1e1a0a;
+  --theme-sidebar-active-pill:     #d4af37;
+
+  --shadow-color: 10 8 2;
+}
+
+
+/* ================================================================
+   3. AIR THEME
+   ================================================================ */
+
+[data-theme="air"] {
+  --theme-canvas:            #07090f;
+  --theme-canvas-glow:       rgba(148, 174, 214, 0.07);
+  --theme-canvas-text:       rgba(255, 255, 255, 0.82);
+
+  --theme-paper:             #f7f8fc;
+  --theme-paper-subtle:      #eef0f6;
+  --theme-paper-border:      #dde0ea;
+
+  --theme-accent:            #7b9fc4;
+  --theme-accent-hover:      #5a80a8;
+  --theme-accent-muted:      #a4bcd4;
+  --theme-accent-surface:    rgba(123, 159, 196, 0.10);
+  --theme-accent-fg:         #ffffff;
+
+  --theme-text-primary:      #111827;
+  --theme-text-secondary:    #64748b;
+  --theme-text-tertiary:     #a8b4c4;
+  --theme-text-inverse:      #f7f8fc;
+
+  --theme-sidebar-bg:              #07090f;
+  --theme-sidebar-border:          #181d28;
+  --theme-sidebar-text:            rgba(255, 255, 255, 0.48);
+  --theme-sidebar-active:          #94aed6;
+  --theme-sidebar-hover-bg:        rgba(255, 255, 255, 0.05);
+  --theme-sidebar-active-bg:       rgba(123, 159, 196, 0.12);
+  --theme-sidebar-active-pill:     #7b9fc4;
+
+  --shadow-color: 8 12 20;
+}
+
+
+/* ================================================================
+   4. WATER THEME
+   ================================================================ */
+
+[data-theme="water"] {
+  --theme-canvas:            #060d0f;
+  --theme-canvas-glow:       rgba(56, 178, 172, 0.07);
+  --theme-canvas-text:       rgba(255, 255, 255, 0.83);
+
+  --theme-paper:             #f4fafa;
+  --theme-paper-subtle:      #e8f4f4;
+  --theme-paper-border:      #cde4e4;
+
+  --theme-accent:            #2a9d8f;
+  --theme-accent-hover:      #1f7a6e;
+  --theme-accent-muted:      #6abfb8;
+  --theme-accent-surface:    rgba(42, 157, 143, 0.10);
+  --theme-accent-fg:         #ffffff;
+
+  --theme-text-primary:      #0d1f1e;
+  --theme-text-secondary:    #4a7a78;
+  --theme-text-tertiary:     #8ab8b5;
+  --theme-text-inverse:      #f4fafa;
+
+  --theme-sidebar-bg:              #060d0f;
+  --theme-sidebar-border:          #0f2020;
+  --theme-sidebar-text:            rgba(255, 255, 255, 0.46);
+  --theme-sidebar-active:          #4dbdb5;
+  --theme-sidebar-hover-bg:        rgba(255, 255, 255, 0.05);
+  --theme-sidebar-active-bg:       rgba(42, 157, 143, 0.12);
+  --theme-sidebar-active-pill:     #2a9d8f;
+
+  --shadow-color: 4 18 18;
+}
+
+
+/* ================================================================
+   5. FIRE THEME
+   ================================================================ */
+
+[data-theme="fire"] {
+  --theme-canvas:            #0c0905;
+  --theme-canvas-glow:       rgba(224, 107, 28, 0.10);
+  --theme-canvas-text:       rgba(255, 255, 255, 0.87);
+
+  --theme-paper:             #fdf8f3;
+  --theme-paper-subtle:      #f5ede2;
+  --theme-paper-border:      #e8d5bf;
+
+  --theme-accent:            #e05c1a;
+  --theme-accent-hover:      #c04510;
+  --theme-accent-muted:      #d4875a;
+  --theme-accent-surface:    rgba(224, 92, 26, 0.10);
+  --theme-accent-fg:         #ffffff;
+
+  --theme-text-primary:      #1a0f08;
+  --theme-text-secondary:    #7a5540;
+  --theme-text-tertiary:     #b89880;
+  --theme-text-inverse:      #fdf8f3;
+
+  --theme-sidebar-bg:              #0c0905;
+  --theme-sidebar-border:          #261408;
+  --theme-sidebar-text:            rgba(255, 235, 210, 0.45);
+  --theme-sidebar-active:          #f07840;
+  --theme-sidebar-hover-bg:        rgba(255, 200, 150, 0.06);
+  --theme-sidebar-active-bg:       rgba(224, 92, 26, 0.13);
+  --theme-sidebar-active-pill:     #e05c1a;
+
+  --shadow-color: 18 8 2;
+}
+
+
+/* ================================================================
+   6. COSMOS THEME
+   ================================================================ */
+
+[data-theme="cosmos"] {
+  --theme-canvas:            #07060f;
+  --theme-canvas-glow:       rgba(139, 92, 246, 0.09);
+  --theme-canvas-text:       rgba(255, 255, 255, 0.88);
+
+  --theme-paper:             #f8f7fe;
+  --theme-paper-subtle:      #f0eefb;
+  --theme-paper-border:      #dddaf4;
+
+  --theme-accent:            #8b6fd4;
+  --theme-accent-hover:      #6d50b8;
+  --theme-accent-muted:      #b09ee0;
+  --theme-accent-surface:    rgba(139, 111, 212, 0.10);
+  --theme-accent-fg:         #ffffff;
+
+  --theme-text-primary:      #0f0d1a;
+  --theme-text-secondary:    #6b6485;
+  --theme-text-tertiary:     #a89ec0;
+  --theme-text-inverse:      #f8f7fe;
+
+  --theme-sidebar-bg:              #07060f;
+  --theme-sidebar-border:          #14102a;
+  --theme-sidebar-text:            rgba(220, 215, 255, 0.42);
+  --theme-sidebar-active:          #a98fe8;
+  --theme-sidebar-hover-bg:        rgba(139, 111, 212, 0.07);
+  --theme-sidebar-active-bg:       rgba(139, 111, 212, 0.14);
+  --theme-sidebar-active-pill:     #8b6fd4;
+
+  --shadow-color: 8 6 18;
+}
+
+
+/* ================================================================
+   7. SEMANTIC COLOUR TOKENS — BASE + PER-THEME OVERRIDES
+   ================================================================ */
+
+:root {
+  /* Success */
+  --color-success:            #3a7d52;
+  --color-success-light:      #eaf5ee;
+  --color-success-text:       #2a6040;
+
+  /* Warning */
+  --color-warning:            #b87a10;
+  --color-warning-light:      #fef5dc;
+  --color-warning-text:       #8a5c08;
+
+  /* Danger */
+  --color-danger:             #b83a28;
+  --color-danger-light:       #faecea;
+  --color-danger-text:        #8a2c1c;
+
+  /* Info */
+  --color-info:               #2860a0;
+  --color-info-light:         #e8f0fa;
+  --color-info-text:          #1c4880;
+
+  /* Neutral */
+  --color-neutral:            #6b6560;
+  --color-neutral-light:      #f0eeea;
+  --color-neutral-text:       #4a4540;
+
+  /* Dark surface semantic variants */
+  --color-success-dark-text:  #6ee09e;
+  --color-success-dark-fill:  rgba(58, 125, 82, 0.18);
+  --color-success-dark-border:rgba(58, 125, 82, 0.30);
+
+  --color-warning-dark-text:  #fbbf5a;
+  --color-warning-dark-fill:  rgba(184, 122, 16, 0.18);
+  --color-warning-dark-border:rgba(184, 122, 16, 0.30);
+
+  --color-danger-dark-text:   #f87272;
+  --color-danger-dark-fill:   rgba(184, 58, 40, 0.18);
+  --color-danger-dark-border: rgba(184, 58, 40, 0.30);
+
+  --color-info-dark-text:     #60a5fa;
+  --color-info-dark-fill:     rgba(40, 96, 160, 0.18);
+  --color-info-dark-border:   rgba(40, 96, 160, 0.30);
+
+  --color-neutral-dark-text:  rgba(255, 255, 255, 0.55);
+  --color-neutral-dark-fill:  rgba(255, 255, 255, 0.06);
+  --color-neutral-dark-border:rgba(255, 255, 255, 0.12);
+
+  /* Focus and selection */
+  --color-focus-ring:     color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  --color-selection-bg:   color-mix(in srgb, var(--theme-accent) 18%, transparent);
+  --color-selection-text: var(--theme-text-primary);
+}
+
+/* Air semantic overrides */
+[data-theme="air"] {
+  --color-success-light:  #e8f5f0;
+  --color-warning-light:  #faf4e8;
+  --color-info-light:     #e4eef8;
+  --color-neutral-light:  #edf0f5;
+  --color-neutral:        #64748b;
+  --color-neutral-text:   #475569;
+}
+
+/* Water semantic overrides */
+[data-theme="water"] {
+  --color-success-light:  #e4f5f0;
+  --color-success:        #2a9070;
+  --color-info-light:     #e0f0f4;
+  --color-neutral-light:  #e8f2f2;
+  --color-neutral:        #4a7a78;
+  --color-neutral-text:   #2e5a58;
+}
+
+/* Fire semantic overrides */
+[data-theme="fire"] {
+  --color-warning-light:  #fdf0dc;
+  --color-warning:        #c07818;
+  --color-info-light:     #edeaf8;
+  --color-info:           #4a6890;
+  --color-neutral-light:  #f2e8e0;
+  --color-neutral:        #7a5540;
+  --color-neutral-text:   #5a3a28;
+}
+
+/* Cosmos semantic overrides */
+[data-theme="cosmos"] {
+  --color-success-light:  #e8f0f4;
+  --color-success:        #3a7a6a;
+  --color-danger-light:   #f4eaf2;
+  --color-info-light:     #ece8fb;
+  --color-info:           #6858b8;
+  --color-info-text:      #4a3a9a;
+  --color-neutral-light:  #eeecf8;
+  --color-neutral:        #6b6485;
+  --color-neutral-text:   #4a4268;
+}
+
+
+/* ================================================================
+   8. GLOBAL TOKENS — TYPOGRAPHY
+   ================================================================ */
+
+:root {
+  /* Font families */
+  --font-sans:  var(--font-geist-sans), "Geist Sans", system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-playfair), "Playfair Display", Georgia, serif;
+  --font-mono:  var(--font-geist-mono), "Geist Mono", "Fira Code", monospace;
+
+  /* Type scale */
+  --text-2xs:     0.625rem;   /* 10px */
+  --text-xs:      0.75rem;    /* 12px */
+  --text-sm:      0.875rem;   /* 14px */
+  --text-base:    1rem;       /* 16px */
+  --text-md:      1.125rem;   /* 18px */
+  --text-lg:      1.25rem;    /* 20px */
+  --text-xl:      1.5rem;     /* 24px */
+  --text-2xl:     1.875rem;   /* 30px */
+  --text-3xl:     2.25rem;    /* 36px */
+  --text-display: 3rem;       /* 48px */
+  --text-giant:   4rem;       /* 64px */
+
+  /* Line height */
+  --leading-none:    1;
+  --leading-tight:   1.2;
+  --leading-snug:    1.35;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.65;
+  --leading-loose:   1.8;
+
+  /* Letter spacing */
+  --tracking-tighter: -0.03em;
+  --tracking-tight:   -0.01em;
+  --tracking-normal:   0em;
+  --tracking-wide:     0.04em;
+  --tracking-wider:    0.08em;
+  --tracking-widest:   0.14em;
+
+  /* Font weight */
+  --weight-light:    300;
+  --weight-normal:   400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+}
+
+
+/* ================================================================
+   9. GLOBAL TOKENS — SPACING
+   ================================================================ */
+
+:root {
+  --space-px:  1px;
+  --space-0:   0rem;
+  --space-1:   0.25rem;   /*  4px */
+  --space-2:   0.5rem;    /*  8px */
+  --space-3:   0.75rem;   /* 12px */
+  --space-4:   1rem;      /* 16px */
+  --space-5:   1.25rem;   /* 20px */
+  --space-6:   1.5rem;    /* 24px */
+  --space-7:   1.75rem;   /* 28px */
+  --space-8:   2rem;      /* 32px */
+  --space-10:  2.5rem;    /* 40px */
+  --space-12:  3rem;      /* 48px */
+  --space-14:  3.5rem;    /* 56px */
+  --space-16:  4rem;      /* 64px */
+  --space-20:  5rem;      /* 80px */
+  --space-24:  6rem;      /* 96px */
+}
+
+
+/* ================================================================
+   10. GLOBAL TOKENS — BORDER RADIUS
+   ================================================================ */
+
+:root {
+  --radius-none: 0;
+  --radius-xs:   0.25rem;   /*  4px */
+  --radius-sm:   0.5rem;    /*  8px */
+  --radius-md:   0.75rem;   /* 12px */
+  --radius-lg:   1rem;      /* 16px */
+  --radius-xl:   1.5rem;    /* 24px */
+  --radius-2xl:  2rem;      /* 32px */
+  --radius-full: 9999px;
+}
+
+
+/* ================================================================
+   11. GLOBAL TOKENS — ELEVATION & SHADOW
+   ================================================================ */
+
+:root {
+  /* Elevation scale */
+  --shadow-0: none;
+
+  --shadow-1:
+    0 1px 2px 0   rgb(var(--shadow-color) / 0.04),
+    0 1px 4px 0   rgb(var(--shadow-color) / 0.06);
+
+  --shadow-2:
+    0 2px 4px -1px  rgb(var(--shadow-color) / 0.06),
+    0 4px 16px -2px rgb(var(--shadow-color) / 0.10),
+    0 1px 0 0       rgb(var(--shadow-color) / 0.04);
+
+  --shadow-3:
+    0 2px 4px -2px   rgb(var(--shadow-color) / 0.08),
+    0 8px 24px -4px  rgb(var(--shadow-color) / 0.14),
+    0 24px 48px -8px rgb(var(--shadow-color) / 0.12);
+
+  --shadow-4:
+    0 2px 8px -2px   rgb(var(--shadow-color) / 0.10),
+    0 12px 32px -4px rgb(var(--shadow-color) / 0.16),
+    0 32px 64px -8px rgb(var(--shadow-color) / 0.14),
+    inset 0 1px 0    rgb(255 255 255 / 0.06);
+
+  /* Special surfaces */
+  --shadow-paper:
+    inset 0 1px 0    rgb(255 255 255 / 0.055),
+    0 0 0 1px        rgb(var(--shadow-color) / 0.18),
+    0 4px 24px 0     rgb(var(--shadow-color) / 0.28),
+    0 24px 80px 0    rgb(var(--shadow-color) / 0.42);
+
+  --shadow-sidebar:
+    1px 0 0 0        rgb(var(--shadow-color) / 0.12),
+    4px 0 24px -4px  rgb(var(--shadow-color) / 0.14);
+
+  --shadow-inset:
+    inset 0 1px 3px  rgb(var(--shadow-color) / 0.10),
+    inset 0 1px 1px  rgb(var(--shadow-color) / 0.06);
+
+  /* Accent shadows — theme-aware via color-mix */
+  --shadow-focus:
+    0 0 0 2px var(--theme-paper),
+    0 0 0 4px color-mix(in srgb, var(--theme-accent) 55%, transparent);
+
+  --shadow-accent-ring:
+    0 0 0 1px color-mix(in srgb, var(--theme-accent) 22%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--theme-accent) 08%, transparent);
+
+  --shadow-accent-glow:
+    0 0 0 1px   color-mix(in srgb, var(--theme-accent) 30%, transparent),
+    0 2px 8px   color-mix(in srgb, var(--theme-accent) 20%, transparent),
+    0 4px 20px  color-mix(in srgb, var(--theme-accent) 10%, transparent);
+
+  --shadow-accent-lift:
+    0 0 0 1px   color-mix(in srgb, var(--theme-accent) 35%, transparent),
+    0 4px 12px  color-mix(in srgb, var(--theme-accent) 25%, transparent),
+    0 8px 32px  color-mix(in srgb, var(--theme-accent) 12%, transparent);
+}
+
+/* Earth-only gold shimmer — activated under earth theme */
+[data-theme="earth"],
+:root {
+  --shadow-gold-shimmer:
+    inset 0 1px 0 rgba(212, 175, 55, 0.12),
+    0 0 0 1px     rgba(212, 175, 55, 0.06);
+}
+
+
+/* ================================================================
+   12. GLOBAL TOKENS — BREAKPOINTS
+   ================================================================ */
+
+:root {
+  --bp-xs:  480px;
+  --bp-sm:  640px;
+  --bp-md:  768px;
+  --bp-lg:  1024px;
+  --bp-xl:  1280px;
+  --bp-2xl: 1536px;
+  --bp-3xl: 1920px;
+}
+
+
+/* ================================================================
+   13. GLOBAL TOKENS — MOTION & TRANSITIONS
+   ================================================================ */
+
+:root {
+  /* Easing curves */
+  --ease-out-expo:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-expo:   cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-spring:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out:    cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out-soft:  cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+  /* Duration steps */
+  --duration-instant: 100ms;
+  --duration-fast:    150ms;
+  --duration-base:    200ms;
+  --duration-slow:    350ms;
+  --duration-enter:   400ms;
+  --duration-exit:    250ms;
+  --duration-page:    500ms;
+
+  /* Named transition compositions */
+  --transition-hover:
+    background-color var(--duration-fast) var(--ease-in-out),
+    color            var(--duration-fast) var(--ease-in-out),
+    border-color     var(--duration-fast) var(--ease-in-out);
+
+  --transition-focus:
+    box-shadow var(--duration-fast) var(--ease-in-out),
+    outline    var(--duration-fast) var(--ease-in-out);
+
+  --transition-interactive:
+    background-color var(--duration-fast)    var(--ease-spring),
+    color            var(--duration-fast)    var(--ease-spring),
+    box-shadow       var(--duration-base)    var(--ease-in-out),
+    transform        var(--duration-instant) var(--ease-spring);
+
+  --transition-enter:
+    transform var(--duration-enter) var(--ease-out-expo),
+    opacity   var(--duration-enter) var(--ease-out-expo);
+
+  --transition-exit:
+    transform var(--duration-exit) var(--ease-in-expo),
+    opacity   var(--duration-exit) var(--ease-in-expo);
+
+  --transition-layout:
+    width   var(--duration-slow) var(--ease-out-soft),
+    height  var(--duration-slow) var(--ease-out-soft),
+    padding var(--duration-slow) var(--ease-out-soft),
+    margin  var(--duration-slow) var(--ease-out-soft);
+
+  --transition-theme:
+    background-color var(--duration-slow) var(--ease-in-out),
+    color            var(--duration-slow) var(--ease-in-out),
+    border-color     var(--duration-slow) var(--ease-in-out),
+    box-shadow       var(--duration-slow) var(--ease-in-out);
+
+  --transition-fade:
+    opacity var(--duration-base) var(--ease-in-out);
+}
+
+
+/* ================================================================
+   14. Z-INDEX SCALE
+   ================================================================ */
+
+:root {
+  --z-base:     0;
+  --z-raised:   10;
+  --z-dropdown: 20;
+  --z-sticky:   30;
+  --z-sidebar:  40;
+  --z-overlay:  50;
+  --z-modal:    60;
+  --z-toast:    70;
+  --z-cursor:   80;
+}
+
+
+/* ================================================================
+   15. ANIMATIONS
+   ================================================================ */
+
+/* Skeleton pulse — theme-aware via --theme-paper-subtle */
+@keyframes eia-skeleton-pulse {
+  0%, 100% { opacity: 1;   }
+  50%       { opacity: 0.4; }
+}
+
+/* Toast bar breath — fires once on arrival */
+@keyframes eia-toast-bar-breathe {
+  0%   { opacity: 0.3; }
+  40%  { opacity: 1;   }
+  100% { opacity: 0.85; }
+}
+
+/* Lia breathe — always running when Lia is present */
+@keyframes eia-lia-breathe {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 0.85; }
+}
+
+/* Lia typing cursor — hard blink, not a fade */
+@keyframes eia-lia-cursor {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* Loader spin */
+@keyframes eia-spin {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}
+
+/* Utility animation classes */
+.skeleton {
+  background:  var(--theme-paper-subtle);
+  border-radius: var(--radius-xs);
+  animation: eia-skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+.animate-spin {
+  animation: eia-spin 1s linear infinite;
+}
+
+.lia-breathe {
+  animation: eia-lia-breathe 3s ease-in-out infinite;
+}
+
+.lia-cursor {
+  animation: eia-lia-cursor 500ms steps(1) infinite;
+}
+
+
+/* ================================================================
+   16. GLOBAL UTILITY CLASSES
+   ================================================================ */
+
+/* Micro label — used on form labels, table headers, section dividers */
+.label-micro {
+  font-family:    var(--font-sans);
+  font-size:      var(--text-2xs);
+  font-weight:    var(--weight-semibold);
+  letter-spacing: var(--tracking-widest);
+  line-height:    var(--leading-none);
+  text-transform: uppercase;
+  color:          var(--theme-text-tertiary);
+}
+
+/* Scrollable container — custom scrollbar + momentum */
+.scrollable {
+  overflow-y:                  auto;
+  overscroll-behavior:         contain;
+  -webkit-overflow-scrolling:  touch;
+  scrollbar-width:             thin;
+  scrollbar-color:             var(--theme-paper-border) transparent;
+}
+
+.scrollable::-webkit-scrollbar       { width: 4px; }
+.scrollable::-webkit-scrollbar-track { background: transparent; }
+.scrollable::-webkit-scrollbar-thumb {
+  background:    var(--theme-paper-border);
+  border-radius: var(--radius-full);
+}
+.scrollable::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-accent-muted);
+}
+
+/* Sidebar scrollable — dark surface variant */
+.sidebar-scrollable {
+  overflow-y:                  auto;
+  overscroll-behavior:         contain;
+  -webkit-overflow-scrolling:  touch;
+  scrollbar-width:             thin;
+  scrollbar-color:             rgba(255,255,255,0.12) transparent;
+}
+.sidebar-scrollable::-webkit-scrollbar       { width: 4px; }
+.sidebar-scrollable::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scrollable::-webkit-scrollbar-thumb {
+  background:    rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-full);
+}
+.sidebar-scrollable::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* Text selection — theme-aware */
+::selection {
+  background: var(--color-selection-bg);
+  color:      var(--color-selection-text);
+}
+
+/* Scroll anchoring */
+* {
+  overflow-anchor: auto;
+}
+.message-list {
+  overflow-anchor: none;
+}
