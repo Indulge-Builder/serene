@@ -1,5 +1,4 @@
 import { getCurrentProfile } from "@/lib/services/profiles-service";
-import { TopBar } from "@/components/layout/TopBar";
 import { DOMAIN_LABELS } from "@/lib/constants/domains";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 
@@ -8,7 +7,6 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <TopBar profile={profile} title="Dashboard" />
       <main
         style={{
           flex:    1,

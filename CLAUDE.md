@@ -316,6 +316,44 @@ Gia module: lead ingestion, assignment, and lead list page.
 
 ---
 
+**Phase 4 — Complete (2026-05-27)**
+
+Lead dossier + lifecycle fully operational.
+
+- `src/app/(dashboard)/leads/[id]/page.tsx` — server component dossier page; fetches lead, notes, activities, assignee in parallel; access-gates at page level (mirrors action-level logic)
+- `src/components/leads/LeadInfoCard.tsx` — contact fields, UTM params, domain/platform/intent display
+- `src/components/leads/StatusActionPanel.tsx` — Called/Won/Nurturing/Lost/Junk action buttons; owns CalledModal + ConfirmModal + ReasonModal; fires `updateLeadStatus` and `addLeadCallNote` via server actions; router.refresh() on success
+- `src/components/leads/CalledModal.tsx` — call outcome dropdown + required note textarea; submits `addLeadCallNote`; auto-advances new → touched
+- `src/components/leads/DynamicFormResponses.tsx` — renders `leads.form_data` JSONB as key/value pairs
+- `src/components/leads/AgentScratchpad.tsx` — debounced auto-save (1s) to `updateScratchpad`; canEdit prop enforced at page level; visible to assigned agent + admin + founder
+- `src/components/leads/LeadNotesSection.tsx` — chronological timeline with author names + call outcome badges; Playfair italic empty state
+- `src/components/leads/LeadJourneyTimeline.tsx` — visual 4-stage path (new → touched → in_discussion → won); dwell times calculated from `lead_activities` timestamps; resolution status badge when not on journey path
+- `src/components/leads/LeadDossierTasksAsync.tsx` — async server component showing next pending task; overdue state highlighted
+- `src/lib/services/leads-service.ts` — added `getLeadNotesFull()`, `getLeadActivitiesFull()`, `getNextLeadTask()`; added `LeadNoteWithAuthor` and `LeadActivityWithActor` types
+
+Won side-effect: client row creation deferred to Phase 5 (no `clients` table yet). Status update + activity log works.
+
+---
+
+**Phase 5 — Complete (2026-05-27)**
+
+Profile page + theme system fully operational.
+
+- `src/app/(dashboard)/profile/page.tsx` — server component; fetches own profile; 6 Card sections
+- `src/components/profile/ProfileAvatarSection.tsx` — xl avatar with click-to-upload; Supabase Storage `avatars` bucket; hover overlay + spinner; initials fallback; role/domain badges; mono member-since timestamp
+- `src/components/profile/ProfileDetailsForm.tsx` — 2-column grid (name/phone, job-title/username); read-only email; uses existing `updateProfile` action
+- `src/components/profile/ThemeSelector.tsx` — 5 swatches via `data-theme` trick (preview tokens resolve without any hardcoded hex); instant DOM switch then async DB persist via `useTransition`
+- `src/components/profile/PasswordChangeForm.tsx` — re-authenticates via `signInWithPassword` before `updateUser`; live 4-step strength bar; show/hide toggle; browser Supabase client only
+- `src/components/profile/NotificationPreferences.tsx` — stubbed disabled toggles; "Coming soon" copy
+- `src/lib/validations/profile-schema.ts` — `updateProfileAvatarSchema` added
+- `src/lib/actions/profiles.ts` — `updateProfileAvatar` server action added
+- `src/app/(dashboard)/layout.tsx` — inline `<script>` sets `data-theme` synchronously before paint; no flash
+- `src/components/layout/Sidebar.tsx` — footer user block converted to `<Link href="/profile">` with active-state styling
+
+Avatar upload requires: Supabase Storage bucket `avatars`, public read, authenticated write, RLS path `{user_id}`.
+
+---
+
 ## When in Doubt
 
 1. Check `docs/design-dna.md` for the full spec on any section.

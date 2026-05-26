@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -9,6 +10,7 @@ import {
   updateAuthorizationSchema,
   toggleUserActiveSchema,
   inviteUserSchema,
+  updateProfileAvatarSchema,
 } from "@/lib/validations/profile-schema";
 import { formErrors } from "@/lib/validations/form-errors";
 import {
@@ -112,14 +114,18 @@ export async function updateProfile(
   _prevState: ActionResult<Profile>,
   formData: FormData,
 ): Promise<ActionResult<Profile>> {
+  // formData.get() returns null for absent keys; Zod .optional() only accepts
+  // undefined (not null). ?? undefined normalises absent fields so Zod treats
+  // them as optional, which lets ThemeSelector send only {id, theme} without
+  // the other fields failing validation.
   const parsed = updateProfileSchema.safeParse({
-    id:        formData.get("id"),
-    full_name: formData.get("full_name"),
-    username:  formData.get("username"),
-    job_title: formData.get("job_title"),
-    phone:     formData.get("phone"),
-    theme:     formData.get("theme"),
-    timezone:  formData.get("timezone"),
+    id:        formData.get("id")        ?? undefined,
+    full_name: formData.get("full_name") ?? undefined,
+    username:  formData.get("username")  ?? undefined,
+    job_title: formData.get("job_title") ?? undefined,
+    phone:     formData.get("phone")     ?? undefined,
+    theme:     formData.get("theme")     ?? undefined,
+    timezone:  formData.get("timezone")  ?? undefined,
   });
 
   if (!parsed.success) {
@@ -164,8 +170,12 @@ export async function updateProfile(
 
   const result = await updateProfileFields(id, fields);
 
-  if (result.error) return { data: null, error: formErrors.generic };
+  if (result.error) {
+    console.error("[updateProfile] DB error:", result.error);
+    return { data: null, error: formErrors.generic };
+  }
 
+  revalidatePath("/profile");
   revalidatePath("/admin/users");
   revalidatePath(`/admin/users/${id}`);
   return { data: result.data, error: null };
@@ -292,6 +302,54 @@ export async function inviteUser(
 
   revalidatePath("/admin/users");
   return { data: { id: inviteData.user.id }, error: null };
+}
+
+// ─────────────────────────────────────────────────────────
+// updateProfileAvatar
+// Updates the avatar_url on the caller's own profile.
+// The actual file upload happens client-side via Supabase Storage;
+// this action only persists the resulting public URL to the DB.
+// ─────────────────────────────────────────────────────────
+export async function updateProfileAvatar(
+  _prevState: ActionResult<Profile>,
+  formData: FormData,
+): Promise<ActionResult<Profile>> {
+  const parsed = updateProfileAvatarSchema.safeParse({
+    id:         formData.get("id"),
+    avatar_url: formData.get("avatar_url"),
+  });
+
+  if (!parsed.success) {
+    return { data: null, error: formErrors.generic };
+  }
+
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const isOwnProfile = caller.id === parsed.data.id;
+  const isPrivileged = ["admin", "founder"].includes(caller.role);
+  if (!isOwnProfile && !isPrivileged) {
+    return { data: null, error: formErrors.unauthorized };
+  }
+
+  const result = await updateProfileFields(parsed.data.id, {
+    avatar_url: parsed.data.avatar_url,
+  });
+
+  if (result.error) return { data: null, error: formErrors.generic };
+
+  revalidatePath("/profile");
+  return { data: result.data, error: null };
+}
+
+// ─────────────────────────────────────────────────────────
+// signOutUser
+// Signs the current user out and redirects to /login.
+// ─────────────────────────────────────────────────────────
+export async function signOutUser(): Promise<void> {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/login");
 }
 
 // ─────────────────────────────────────────────────────────

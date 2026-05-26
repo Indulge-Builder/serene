@@ -123,3 +123,8 @@ export const inviteUserSchema = z.object({
 });
 
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
+
+export const updateProfileAvatarSchema = z.object({
+  id:         z.string().uuid("id_invalid"),
+  avatar_url: z.string().url("avatar_url_invalid"),
+});

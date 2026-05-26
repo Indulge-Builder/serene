@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
-import { TopBar } from "@/components/layout/TopBar";
 import { CreateUserForm } from "@/components/admin/CreateUserForm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
@@ -14,7 +13,6 @@ export default async function NewUserPage() {
 
   return (
     <>
-      <TopBar profile={profile} title="Add Team Member" />
       <main style={{ flex: 1, padding: "var(--space-8)" }}>
         {/* Back link */}
         <Link

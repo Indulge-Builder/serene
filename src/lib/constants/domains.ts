@@ -23,3 +23,16 @@ export const DOMAIN_LABELS: Record<AppDomain, string> = {
   house:      'Indulge House',
   legacy:     'Legacy',
 };
+
+/** The module name shown in the sidebar for each domain. */
+export const DOMAIN_MODULE_NAMES: Record<AppDomain, string> = {
+  concierge:  'Sia',
+  onboarding: 'Gia',
+  finance:    'Fia',
+  marketing:  'Mia',
+  tech:       'Tia',
+  shop:       'Via',
+  b2b:        'Bia',
+  house:      'Hia',
+  legacy:     'Era',
+};

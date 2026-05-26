@@ -3,7 +3,6 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { getCurrentProfile, getProfileById } from "@/lib/services/profiles-service";
 import { getAgentRoutingConfig } from "@/lib/services/agent-routing-service";
-import { TopBar } from "@/components/layout/TopBar";
 import { EditProfileForm } from "@/components/admin/EditProfileForm";
 import { EditAuthorizationForm } from "@/components/admin/EditAuthorizationForm";
 import { UserStatusControls } from "@/components/admin/UserStatusControls";
@@ -38,7 +37,6 @@ export default async function UserDetailPage({ params }: Props) {
 
   return (
     <>
-      <TopBar profile={caller} title={user.full_name} />
       <main style={{ flex: 1, padding: "var(--space-8)" }}>
         {/* Back link */}
         <Link

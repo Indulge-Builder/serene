@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { ThemeInitializer } from "@/components/layout/ThemeInitializer";
 
 export default async function DashboardLayout({
   children,
@@ -16,7 +17,14 @@ export default async function DashboardLayout({
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
 
+  const safeTheme = ["earth", "air", "water", "fire", "cosmos"].includes(profile.theme)
+    ? profile.theme
+    : "earth";
+
   return (
+    <>
+      {/* Sets data-theme on <html> before the browser paints — no flash. */}
+      <ThemeInitializer theme={safeTheme} />
     <div
       style={{
         display:         "flex",
@@ -31,7 +39,7 @@ export default async function DashboardLayout({
         gap:              "var(--space-3)",
       }}
     >
-      <Sidebar />
+      <Sidebar profile={profile} />
 
       {/* Paper card — the floating content surface */}
       <div
@@ -51,5 +59,6 @@ export default async function DashboardLayout({
         {children}
       </div>
     </div>
+    </>
   );
 }

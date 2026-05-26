@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Plus } from "lucide-react";
 import { getCurrentProfile, getAllProfiles } from "@/lib/services/profiles-service";
-import { TopBar } from "@/components/layout/TopBar";
 import { UsersTable } from "@/components/admin/UsersTable";
 
 export default async function AdminUsersPage() {
@@ -16,7 +15,6 @@ export default async function AdminUsersPage() {
 
   return (
     <>
-      <TopBar profile={profile} title="User Management" />
       <main style={{ flex: 1, padding: "var(--space-8)" }}>
         <div
           style={{

@@ -1,5 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
-import type { Lead, LeadActivity, LeadNote, UserRole, AppDomain } from '@/lib/types/database';
+import type { Lead, LeadActivity, LeadNote, Task, UserRole, AppDomain } from '@/lib/types/database';
+
+export type LeadNoteWithAuthor = LeadNote & { author_name: string };
+export type LeadActivityWithActor = LeadActivity & { actor_name: string | null };
+export type LeadTaskForDossier = Task & { task_type: Task['task_type'] };
 
 // ─────────────────────────────────────────────
 // Query: single lead by ID
@@ -105,6 +109,98 @@ export async function getLeadNotes(leadId: string): Promise<LeadNote[]> {
 
   if (error || !data) return [];
   return data as LeadNote[];
+}
+
+// ─────────────────────────────────────────────
+// Helper: fetch profile name map by IDs
+// ─────────────────────────────────────────────
+async function getProfileNameMap(ids: string[]): Promise<Record<string, string>> {
+  if (ids.length === 0) return {};
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', ids);
+
+  const map: Record<string, string> = {};
+  for (const p of data ?? []) map[p.id] = p.full_name;
+  return map;
+}
+
+// ─────────────────────────────────────────────
+// Query: lead notes with author names
+// ─────────────────────────────────────────────
+export async function getLeadNotesFull(leadId: string): Promise<LeadNoteWithAuthor[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('lead_notes')
+    .select('*')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: true });
+
+  if (error || !data) return [];
+  const notes = data as LeadNote[];
+
+  const authorIds = [...new Set(notes.map((n) => n.author_id))];
+  const nameMap = await getProfileNameMap(authorIds);
+
+  return notes.map((n) => ({
+    ...n,
+    author_name: nameMap[n.author_id] ?? 'Unknown',
+  }));
+}
+
+// ─────────────────────────────────────────────
+// Query: lead activities with actor names
+// ─────────────────────────────────────────────
+export async function getLeadActivitiesFull(leadId: string): Promise<LeadActivityWithActor[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('lead_activities')
+    .select('*')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: true });
+
+  if (error || !data) return [];
+  const activities = data as LeadActivity[];
+
+  const actorIds = [...new Set(
+    activities.map((a) => a.actor_id).filter((id): id is string => id !== null),
+  )];
+  const nameMap = await getProfileNameMap(actorIds);
+
+  return activities.map((a) => ({
+    ...a,
+    actor_name: a.actor_id ? (nameMap[a.actor_id] ?? 'Unknown') : null,
+  }));
+}
+
+// ─────────────────────────────────────────────
+// Query: next pending task for a lead (Gia module)
+// ─────────────────────────────────────────────
+export async function getNextLeadTask(leadId: string): Promise<Task | null> {
+  const supabase = await createClient();
+
+  const { data: metaRows } = await supabase
+    .from('task_gia_meta')
+    .select('task_id')
+    .eq('lead_id', leadId);
+
+  if (!metaRows || metaRows.length === 0) return null;
+
+  const taskIds = metaRows.map((m) => m.task_id);
+
+  const { data: tasks } = await supabase
+    .from('tasks')
+    .select('*')
+    .in('id', taskIds)
+    .eq('status', 'pending')
+    .not('due_at', 'is', null)
+    .order('due_at', { ascending: true })
+    .limit(1);
+
+  if (!tasks || tasks.length === 0) return null;
+  return tasks[0] as Task;
 }
 
 // ─────────────────────────────────────────────

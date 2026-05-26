@@ -2,7 +2,6 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getLeadsByRole } from '@/lib/services/leads-service';
-import { TopBar } from '@/components/layout/TopBar';
 import { LeadsTable } from '@/components/leads/LeadsTable';
 import { LeadsTableSkeleton } from '@/components/leads/LeadsTableSkeleton';
 
@@ -18,7 +17,6 @@ export default async function LeadsPage() {
 
   return (
     <>
-      <TopBar profile={profile} title="Leads" />
       <main style={{ flex: 1, padding: 'var(--space-8)' }}>
         {/* Page header */}
         <div style={{ marginBottom: 'var(--space-6)' }}>

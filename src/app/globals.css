@@ -20,6 +20,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Back-link hover — dossier page breadcrumb */
+.back-link:hover {
+  color: var(--theme-accent) !important;
+}
+
 /* Base input style — used by form fields across the app */
 .eia-input {
   width:            100%;
