@@ -11,29 +11,21 @@ export const metadata: Metadata = {
 export default async function UpdatePasswordPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    code?:              string;
-    error?:             string;
-    error_description?: string;
-  }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const params = await searchParams;
 
-  // Supabase redirected back with an explicit error (e.g. link expired server-side)
+  // Callback route set this when the code was missing or already used
   if (params.error) {
     return <InvalidLinkCard expired />;
   }
 
-  // No code in the URL — direct visit or link was mangled
-  if (!params.code) {
-    return <InvalidLinkCard />;
-  }
-
+  // Session must have been established by /api/auth/callback
   const supabase = await createClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(params.code);
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (error) {
-    return <InvalidLinkCard expired />;
+  if (!user) {
+    return <InvalidLinkCard />;
   }
 
   return <UpdatePasswordForm />;

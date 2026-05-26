@@ -60,7 +60,7 @@ export async function requestPasswordResetAction(
 
   // Always return success — never reveal whether the email exists (Rule S-09)
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${siteUrl}/update-password`,
+    redirectTo: `${siteUrl}/api/auth/callback?next=/update-password`,
   });
 
   return { success: true, error: null };
