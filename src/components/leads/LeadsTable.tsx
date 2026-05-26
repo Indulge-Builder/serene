@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Search, ChevronRight } from 'lucide-react';
 import type { Lead } from '@/lib/types/database';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
@@ -189,20 +189,13 @@ export function LeadsTable({ leads }: LeadsTableProps) {
                   {col}
                 </th>
               ))}
-              <th
-                style={{
-                  padding:      'var(--space-3) var(--space-4)',
-                  borderBottom: '1px solid var(--theme-paper-border)',
-                  width:        '2.5rem',
-                }}
-              />
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={6}
                   style={{
                     padding:   'var(--space-16) var(--space-4)',
                     textAlign: 'center',
@@ -250,12 +243,18 @@ export function LeadsTable({ leads }: LeadsTableProps) {
 // Single table row
 // ─────────────────────────────────────────────
 function LeadRow({ lead }: { lead: Lead }) {
+  const router = useRouter();
   const badgeVariant = LEAD_STATUS_BADGE[lead.status];
   const fullName = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
 
   return (
     <tr
-      style={{ borderBottom: '1px solid var(--theme-paper-border)', transition: 'background var(--duration-fast) var(--ease-in-out)' }}
+      onClick={() => router.push(`/leads/${lead.id}`)}
+      style={{
+        borderBottom: '1px solid var(--theme-paper-border)',
+        transition:   'background var(--duration-fast) var(--ease-in-out)',
+        cursor:       'pointer',
+      }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = 'var(--theme-paper-subtle)'; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = ''; }}
     >
@@ -332,28 +331,6 @@ function LeadRow({ lead }: { lead: Lead }) {
           : '—'}
       </td>
 
-      {/* Arrow */}
-      <td style={{ padding: 'var(--space-3) var(--space-2)', textAlign: 'right' }}>
-        <Link
-          href={`/leads/${lead.id}`}
-          style={{
-            display:        'inline-flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            width:          '1.75rem',
-            height:         '1.75rem',
-            borderRadius:   'var(--radius-xs)',
-            color:          'var(--theme-text-tertiary)',
-            transition:     'var(--transition-hover)',
-            textDecoration: 'none',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--theme-accent)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--theme-text-tertiary)'; }}
-          aria-label={`View lead ${fullName}`}
-        >
-          <ChevronRight style={{ width: '1rem', height: '1rem' }} />
-        </Link>
-      </td>
     </tr>
   );
 }
