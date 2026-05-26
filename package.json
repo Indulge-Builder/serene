@@ -14,7 +14,6 @@
     "date-fns": "^4.3.0",
     "date-fns-tz": "^3.2.0",
     "framer-motion": "^12.40.0",
-    "isomorphic-dompurify": "^3.14.0",
     "libphonenumber-js": "^1.13.3",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",

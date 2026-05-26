@@ -16,7 +16,16 @@ export const LeadWebhookSchema = z.object({
     .email()
     .optional()
     .transform((v) => v || null),
-  phone: z.string().min(1, 'Phone is required').transform((v) => normalizeToE164(v, 'IN')),
+  phone: z.string().min(1, 'Phone is required').transform((v) => {
+    try {
+      return normalizeToE164(v, 'IN');
+    } catch {
+      // Store raw phone rather than rejecting the lead — Pabbly formats vary.
+      // Logged at warn level so we can identify and fix the source format.
+      console.warn(`[lead-schema] Phone not E.164-normalizable, storing raw: "${v}"`);
+      return v;
+    }
+  }),
   campaign_id: z
     .string()
     .optional()

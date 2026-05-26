@@ -18,6 +18,7 @@ export async function ingestLead(rawPayload: unknown): Promise<IngestionResult> 
   // 1. Validate and sanitize
   const parsed = LeadWebhookSchema.safeParse(rawPayload);
   if (!parsed.success) {
+    console.error('[lead-ingestion] Validation failed:', JSON.stringify(parsed.error.issues));
     return { success: false, error: 'Invalid payload', status: 422 };
   }
 
