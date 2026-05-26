@@ -54,7 +54,22 @@ export const LeadWebhookSchema = z.object({
     .string()
     .optional()
     .transform((v) => v || null),
-  form_data: z.record(z.string(), z.unknown()).optional().default({}),
+  form_data: z
+    .unknown()
+    .optional()
+    .transform((v): Record<string, unknown> => {
+      if (!v) return {};
+      if (Array.isArray(v)) {
+        // Pabbly sends form fields as [{name: "field", value: "val"}, ...]
+        return Object.fromEntries(
+          (v as Array<{ name?: string; value?: unknown }>)
+            .filter((item) => typeof item.name === 'string')
+            .map((item) => [item.name as string, item.value ?? null])
+        );
+      }
+      if (typeof v === 'object') return v as Record<string, unknown>;
+      return {};
+    }),
 });
 
 export type LeadWebhookInput = z.infer<typeof LeadWebhookSchema>;
