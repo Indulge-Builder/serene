@@ -11,6 +11,11 @@ export const formErrors = {
   generic:              "Something went wrong. Please try again.",
   rateLimited:          "Too many attempts. Please wait a moment before trying again.",
 
+  // Password reset
+  passwordMismatch:         "Passwords do not match.",
+  resetLinkInvalid:         "This reset link is invalid or has already been used.",
+  resetLinkExpired:         "This reset link has expired. Please request a new one.",
+
   // Profile / user creation
   fullNameRequired:     "Full name is required.",
   fullNameTooLong:      "Full name must be 100 characters or fewer.",

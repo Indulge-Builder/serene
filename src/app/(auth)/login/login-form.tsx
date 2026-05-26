@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import { LiaGlyph } from "@/components/ui/lia-glyph";
+import Image from "next/image";
 import { loginAction } from "@/lib/actions/auth";
 
 export function LoginForm() {
@@ -15,39 +15,38 @@ export function LoginForm() {
     >
       {/* Floating paper card */}
       <div
+        className="eia-paper-surface"
         style={{
-          backgroundColor:  "var(--theme-paper)",
-          borderRadius:     "var(--radius-xl)",
-          padding:          "var(--space-10) var(--space-8)",
-          boxShadow:        "var(--shadow-paper)",
+          borderRadius: "var(--radius-xl)",
+          padding:      "var(--space-10) var(--space-8)",
+          boxShadow:    "var(--shadow-paper)",
         }}
       >
-        {/* Lia + wordmark */}
+        {/* Logo + wordmark */}
         <div className="flex flex-col items-center gap-3 mb-10">
-          <LiaGlyph
-            size={36}
-            style={{ color: "var(--theme-accent)" }}
+          <Image
+            src="/logo.webp"
+            alt="Indulge OS"
+            width={48}
+            height={48}
+            style={{
+              borderRadius: "var(--radius-sm)",
+              filter:       "drop-shadow(0 0 12px color-mix(in srgb, var(--theme-accent) 28%, transparent))",
+            }}
+            priority
           />
-          <div className="text-center">
-            <h1
-              style={{
-                fontFamily:    "var(--font-serif)",
-                fontSize:      "var(--text-2xl)",
-                fontWeight:    "var(--weight-semibold)",
-                letterSpacing: "var(--tracking-tight)",
-                lineHeight:    "var(--leading-tight)",
-                color:         "var(--theme-text-primary)",
-              }}
-            >
-              Eia
-            </h1>
-            <p
-              className="label-micro mt-1"
-              style={{ color: "var(--theme-text-tertiary)" }}
-            >
-              Indulge Internal
-            </p>
-          </div>
+          <h1
+            style={{
+              fontFamily:    "var(--font-serif)",
+              fontSize:      "var(--text-2xl)",
+              fontWeight:    "var(--weight-semibold)",
+              letterSpacing: "var(--tracking-tight)",
+              lineHeight:    "var(--leading-tight)",
+              color:         "var(--theme-text-primary)",
+            }}
+          >
+            Indulge OS
+          </h1>
         </div>
 
         {/* Form */}

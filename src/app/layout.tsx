@@ -15,8 +15,12 @@ const playfairDisplay = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Eia — Indulge OS",
+  title: "Indulge OS",
   description: "Internal operating system for Indulge team members.",
+  icons: {
+    icon: "/logo.webp",
+    apple: "/logo.webp",
+  },
 };
 
 export default function RootLayout({
