@@ -28,17 +28,24 @@ export default async function DashboardLayout({
         `,
         backgroundRepeat: "repeat",
         backgroundSize:   "auto, 256px 256px",
+        gap:              "var(--space-3)",
       }}
     >
       <Sidebar />
 
-      {/* Main content area */}
+      {/* Paper card — the floating content surface */}
       <div
         style={{
           flex:          1,
           display:       "flex",
           flexDirection: "column",
-          minHeight:     "100dvh",
+          height:        "calc(100dvh - 24px)",
+          margin:        "12px 12px 12px 0",
+          background:    "var(--theme-paper)",
+          borderRadius:  "var(--radius-xl)",
+          boxShadow:     "var(--shadow-paper)",
+          overflowY:     "auto",
+          overflowX:     "hidden",
         }}
       >
         {children}

@@ -1,22 +1,45 @@
+import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { LeadWebhookSchema } from '@/lib/validations/lead-schema';
+import { selectAdapter } from '@/lib/leads/adapters';
 import { resolveDomainFromCampaign, DEFAULT_LEAD_DOMAIN } from '@/lib/constants/campaign-domain-map';
 import { getNextRoundRobinAgent } from '@/lib/services/leads-service';
 import type { Database } from '@/lib/types/database';
 
 type LeadInsert = Database['public']['Tables']['leads']['Insert'];
 
-
 export type IngestionResult =
   | { success: true; leadId: string }
   | { success: false; error: string; status: 400 | 401 | 422 | 500 };
 
 // ─────────────────────────────────────────────
+// Normalized payload schema — all fields optional; passthrough preserves extras.
+// Adapters guarantee field presence; this schema is a safety net.
+// ─────────────────────────────────────────────
+const leadPayloadSchema = z.object({
+  first_name:   z.string().default('Unknown'),
+  last_name:    z.string().nullable().optional(),
+  email:        z.string().nullable().optional(),
+  phone:        z.string().default(''),
+  platform:     z.enum(['meta', 'google', 'website', 'whatsapp']).optional(),
+  campaign_id:  z.string().nullable().optional(),
+  ad_name:      z.string().nullable().optional(),
+  domain:       z.string().nullable().optional(),
+  utm_source:   z.string().nullable().optional(),
+  utm_medium:   z.string().nullable().optional(),
+  utm_campaign: z.string().nullable().optional(),
+  utm_content:  z.string().nullable().optional(),
+  form_data:    z.record(z.string(), z.unknown()).default({}),
+}).passthrough();
+
+// ─────────────────────────────────────────────
 // Main ingestion entry point — called by webhook route
 // ─────────────────────────────────────────────
-export async function ingestLead(rawPayload: unknown): Promise<IngestionResult> {
-  // 1. Validate and sanitize
-  const parsed = LeadWebhookSchema.safeParse(rawPayload);
+export async function ingestLead(rawPayload: unknown, source: string): Promise<IngestionResult> {
+  // 1. Normalize via source adapter
+  const normalized = selectAdapter(source)(rawPayload);
+
+  // 2. Validate
+  const parsed = leadPayloadSchema.safeParse(normalized);
   if (!parsed.success) {
     console.error('[lead-ingestion] Validation failed:', JSON.stringify(parsed.error.issues));
     return { success: false, error: 'Invalid payload', status: 422 };
@@ -24,19 +47,9 @@ export async function ingestLead(rawPayload: unknown): Promise<IngestionResult> 
 
   const data = parsed.data;
 
-  // 2. Full name split: "Priya Sharma" with no last_name → split on first space
-  let firstName = data.first_name;
-  let lastName = data.last_name;
-  if (!lastName && firstName.includes(' ')) {
-    const spaceIdx = firstName.indexOf(' ');
-    lastName = firstName.slice(spaceIdx + 1);
-    firstName = firstName.slice(0, spaceIdx);
-  }
+  // 3. Domain: explicit payload value takes precedence over campaign mapping
+  const domain = data.domain ?? resolveDomainFromCampaign(data.utm_campaign ?? null);
 
-  // 3. Domain resolution from campaign prefix
-  const domain = resolveDomainFromCampaign(data.utm_campaign ?? null);
-
-  // Log unmatched campaigns (warn — not throw)
   if (domain === DEFAULT_LEAD_DOMAIN && data.utm_campaign) {
     console.warn(`[lead-ingestion] Unknown campaign prefix: ${data.utm_campaign}`);
   }
@@ -48,8 +61,8 @@ export async function ingestLead(rawPayload: unknown): Promise<IngestionResult> 
   const supabase = createAdminClient();
 
   const leadInsert: LeadInsert = {
-    first_name:         firstName,
-    last_name:          lastName ?? null,
+    first_name:         data.first_name,
+    last_name:          data.last_name ?? null,
     email:              data.email ?? null,
     phone:              data.phone,
     domain,
@@ -64,7 +77,7 @@ export async function ingestLead(rawPayload: unknown): Promise<IngestionResult> 
     utm_medium:         data.utm_medium ?? null,
     utm_campaign:       data.utm_campaign ?? null,
     utm_content:        data.utm_content ?? null,
-    form_data:          data.form_data as Record<string, unknown>,
+    form_data:          data.form_data,
     last_call_outcome:  null,
     private_scratchpad: null,
     archived_at:        null,
@@ -89,7 +102,7 @@ export async function ingestLead(rawPayload: unknown): Promise<IngestionResult> 
     actor_id:    null,
     action_type: 'lead_created',
     details: {
-      source:   data.platform ?? 'unknown',
+      source,
       campaign: data.utm_campaign ?? null,
       domain,
     },

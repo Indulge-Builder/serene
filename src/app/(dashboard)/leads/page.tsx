@@ -22,18 +22,6 @@ export default async function LeadsPage() {
       <main style={{ flex: 1, padding: 'var(--space-8)' }}>
         {/* Page header */}
         <div style={{ marginBottom: 'var(--space-6)' }}>
-          <p
-            style={{
-              fontSize:      'var(--text-2xs)',
-              fontWeight:    'var(--weight-semibold)',
-              letterSpacing: 'var(--tracking-widest)',
-              textTransform: 'uppercase',
-              color:         'var(--theme-text-tertiary)',
-              marginBottom:  'var(--space-1)',
-            }}
-          >
-            Gia
-          </p>
           <h1
             style={{
               fontFamily:    'var(--font-serif)',
@@ -45,21 +33,12 @@ export default async function LeadsPage() {
               margin:        0,
             }}
           >
-            Leads
-          </h1>
-          <p
-            style={{
-              fontSize:   'var(--text-sm)',
-              color:      'var(--theme-text-secondary)',
-              marginTop:  'var(--space-1)',
-            }}
-          >
             {profile.role === 'agent'
-              ? 'Your assigned leads'
+              ? 'Your Assignments'
               : profile.role === 'manager'
-                ? `All leads in your domain`
+                ? 'All leads in your domain'
                 : 'All leads across all domains'}
-          </p>
+          </h1>
         </div>
 
         {/* Table */}

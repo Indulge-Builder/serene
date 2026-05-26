@@ -45,15 +45,6 @@ export function TopBar({ profile, title }: TopBarProps) {
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
         {profile && (
           <>
-            <span
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize:   "var(--text-sm)",
-                color:      "var(--theme-text-secondary)",
-              }}
-            >
-              {profile.full_name}
-            </span>
             <div
               style={{
                 width:          "32px",
