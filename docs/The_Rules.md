@@ -1,5 +1,6 @@
 # The Rules
-### Eia — Non-Negotiable Codebase Laws
+
+## Eia — Non-Negotiable Codebase Laws
 
 > These rules cannot be broken under any circumstances.
 > Not for speed. Not for deadlines. Not because it seems harmless.
@@ -11,7 +12,7 @@
 ## Section 1 — Architecture
 
 | # | Rule |
-|---|---|
+| --- | --- |
 | A-01 | Authorization reads **only** from `public.profiles`. JWT claims are never trusted for permission decisions. |
 | A-02 | Server Actions are the **only** path from components to DB mutations. No direct Supabase writes from client components. |
 | A-03 | All DB queries go through service functions in `lib/services/`. No raw Supabase calls in components or actions. |
@@ -32,7 +33,7 @@
 ## Section 2 — Security
 
 | # | Rule |
-|---|---|
+| --- | --- |
 | S-01 | Every Server Action validates input with a Zod schema **before** touching the DB. First line. No exceptions. |
 | S-02 | All user-supplied text passes through `sanitizeText()` before any DB write. Lives in `lib/utils/sanitize.ts`. |
 | S-03 | All phone numbers stored as E.164. `normalizeToE164()` called on every phone field before any DB write. Lives in `lib/utils/phone.ts`. |
@@ -56,7 +57,7 @@
 ## Section 3 — Data & Privacy
 
 | # | Rule |
-|---|---|
+| --- | --- |
 | D-01 | No raw PII ever reaches Claude, Gemini, or any external AI model. Data is pseudonymized before leaving the vault. Pseudonymization is reversible only by a vault function — never client-side. |
 | D-02 | No hard deletes on leads, profiles, notes, or activity logs. Soft-delete with `archived_at` or `deleted_at` timestamps. |
 | D-03 | Every lead status change, assignment, reassignment, note addition, domain/role change, and failed authentication attempt is logged to the relevant `*_activities` table. |
@@ -69,7 +70,7 @@
 ## Section 4 — Performance
 
 | # | Rule |
-|---|---|
+| --- | --- |
 | P-01 | No `useEffect` for data fetching. Use Server Components or React Query. |
 | P-02 | No API routes except `/api/webhooks/`. All data mutations go through Server Actions. |
 | P-03 | Any list that can exceed 100 items uses virtual rendering. Never render the full DOM. |
@@ -83,7 +84,7 @@
 ## Section 5 — Design
 
 | # | Rule |
-|---|---|
+| --- | --- |
 | V-01 | Every colour is a CSS variable from `src/styles/design-tokens.css`. No hardcoded hex values in components. `text-gray-500` is a violation. `bg-white` is a violation. |
 | V-02 | `--theme-accent-fg` on buttons and accent fills — never `--theme-text-inverse`. They are different tokens for different surfaces. |
 | V-03 | No animation over 500ms except `liaBreathe` (3s, ambient). |
@@ -100,19 +101,22 @@
 ## Section 6 — Code Quality
 
 | # | Rule |
-|---|---|
+| --- | --- |
 | Q-01 | No `any` type anywhere. TypeScript strict mode is non-negotiable. |
 | Q-02 | No magic strings. Domain names, role names, and status values live in `lib/constants/` as typed enums. |
 | Q-03 | Server Actions return `{ data, error }`. Never throw. Never return void. Components handle both branches explicitly. |
 | Q-04 | Error messages shown to users come from `lib/validations/form-errors.ts`. Never raw Zod messages. Never "Invalid input." |
-| Q-05 | No npm package added without justification documented in `docs/The_Changelog.md`. |
+| Q-05 | No npm package added without justification documented in `docs/changelog.md`. |
+| Q-06a | Every meaningful change — feature, fix, migration, new package, refactor — must have an entry in `docs/changelog.md` before or alongside the code that implements it. `The_Changelog.md` has been deleted; `docs/changelog.md` is the single source of truth. |
 | Q-06 | No production deployment without the security checklist passing. |
+| Q-07 | **Drag-to-reorder always uses `@dnd-kit`.** It is the established library. Do not reach for `react-beautiful-dnd`, `dnd-kit` forks, or hand-rolled pointer listeners. This applies to task lists, priority ordering, dashboard widget arrangement, and any future sortable surface. |
+| Q-08 | **Column preference hooks follow the `useLeadColumnPreferences` pattern exactly.** If any other table gets a column picker (tasks, clients, finance), replicate the same hook signature and localStorage key convention: `eia:[module]:columns:${userId}:v1`. Do not invent a different shape or key format. Consistency is what makes the behaviour predictable and the codebase searchable. |
 
 ---
 
 ## Section 7 — File & Naming Conventions
 
-```
+```text
 Components:   PascalCase.tsx        → TaskCard.tsx, LeadDetail.tsx
 Actions:      kebab-case.ts         → personal-tasks.ts, leads.ts
 Services:     kebab-case.ts         → leads-service.ts, tasks-service.ts
@@ -130,7 +134,7 @@ Layouts:      layout.tsx            → Next.js convention, always
 
 These patterns do not exist in this codebase. Not under pressure, not temporarily, not "just for now."
 
-```
+```text
 NEVER  hardcode a colour value in a component
 NEVER  use text-gray-* or bg-gray-* or bg-white — use tokens
 NEVER  write useEffect for data fetching
@@ -155,7 +159,10 @@ NEVER  animate layout properties (width, height, padding, margin)
 NEVER  use backdrop-blur outside the three sanctioned surfaces
 NEVER  use font-bold (700) — semibold (600) is the ceiling
 NEVER  show a skeleton for less than 150ms
-NEVER  add a package without a changelog entry
+NEVER  add a package without a changelog entry in docs/changelog.md
+NEVER  merge a meaningful change without a docs/changelog.md entry
+NEVER  use anything other than @dnd-kit for drag-to-reorder (Q-07)
+NEVER  invent a different localStorage key format for column preferences — always eia:[module]:columns:${userId}:v1 (Q-08)
 ```
 
 ---
@@ -165,6 +172,6 @@ NEVER  add a package without a changelog entry
 When a rule must change or an exception must be granted, it is logged here.
 A rule changed without a log entry is not a rule change. It is a violation.
 
-| Date | Rule | Old | New | Why | Who |
-|---|---|---|---|---|---|
-| 2026-05-26 | — | — | Initial rules established | Foundation build | — |
+| Date       | Rule | Old | New                       | Why              | Who |
+| ---------- | ---- | --- | ------------------------- | ---------------- | --- |
+| 2026-05-26 | —    | —   | Initial rules established | Foundation build | —   |

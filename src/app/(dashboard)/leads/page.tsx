@@ -1,47 +1,103 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
+import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { getLeadsByRole } from '@/lib/services/leads-service';
-import { LeadsTable } from '@/components/leads/LeadsTable';
+import { getLeadFilterOptions, getAgentsForDomain } from '@/lib/services/leads-service';
+import type { LeadFilters, LeadStatus, CallOutcome } from '@/lib/types/database';
+import { LeadsFilters } from '@/components/leads/LeadsFilters';
+import { LeadsTableAsync } from '@/components/leads/LeadsTableAsync';
 import { LeadsTableSkeleton } from '@/components/leads/LeadsTableSkeleton';
+import { AddLeadButton } from '@/components/leads/AddLeadButton';
 
-export default async function LeadsPage() {
+// ─────────────────────────────────────────────
+// Parse raw searchParams into a typed LeadFilters object
+// ─────────────────────────────────────────────
+function parseFilters(searchParams: Awaited<SearchParams>): LeadFilters {
+  function getString(key: string): string | null {
+    const val = searchParams[key];
+    if (!val) return null;
+    return typeof val === 'string' ? val : Array.isArray(val) ? (val[0] ?? null) : null;
+  }
+
+  function getMulti<T extends string>(key: string): T[] | null {
+    const raw = getString(key);
+    if (!raw) return null;
+    const parts = raw.split(',').map((s) => s.trim()).filter(Boolean) as T[];
+    return parts.length > 0 ? parts : null;
+  }
+
+  const page     = Math.max(1, parseInt(getString('page') ?? '1', 10) || 1);
+  const pageSize = 50;
+
+  return {
+    status:            getMulti<LeadStatus>('status'),
+    last_call_outcome: getMulti<CallOutcome>('outcome'),
+    agent_id:          getString('agent_id'),
+    source:            getString('source'),
+    campaign:          getString('campaign'),
+    date_from:         getString('date_from'),
+    date_to:           getString('date_to'),
+    search:            getString('search'),
+    page,
+    pageSize,
+  };
+}
+
+// ─────────────────────────────────────────────
+// Page — thin orchestrator
+// ─────────────────────────────────────────────
+export default async function LeadsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   const profile = await getCurrentProfile();
 
   if (!profile) redirect('/login');
-
-  // Guests have no access to leads
   if (profile.role === 'guest') redirect('/dashboard');
 
-  const leads = await getLeadsByRole(profile.role, profile.id, profile.domain);
+  const [filterOptions, initialAgents] = await Promise.all([
+    getLeadFilterOptions(profile.role, profile.domain),
+    getAgentsForDomain(profile.domain),
+  ]);
+
+  const resolvedParams = await searchParams;
+  const filters = parseFilters(resolvedParams);
+
+  const showAgentFilter = profile.role !== 'agent';
 
   return (
     <>
-      <main style={{ flex: 1, padding: 'var(--space-8)' }}>
-        {/* Page header */}
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          <h1
-            style={{
-              fontFamily:    'var(--font-serif)',
-              fontSize:      'var(--text-2xl)',
-              fontWeight:    'var(--weight-semibold)',
-              letterSpacing: 'var(--tracking-tighter)',
-              lineHeight:    'var(--leading-tight)',
-              color:         'var(--theme-text-primary)',
-              margin:        0,
+      <main className="flex-1 p-8">
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <h1 className="type-page-title m-0">Leads</h1>
+
+          <AddLeadButton
+            callerProfile={{
+              id:        profile.id,
+              role:      profile.role,
+              domain:    profile.domain,
+              full_name: profile.full_name,
             }}
-          >
-            {profile.role === 'agent'
-              ? 'Your Assignments'
-              : profile.role === 'manager'
-                ? 'All leads in your domain'
-                : 'All leads across all domains'}
-          </h1>
+            initialAgents={initialAgents}
+          />
         </div>
 
-        {/* Table */}
+        <div className="px-5 py-4 mb-4 rounded-md border border-[var(--theme-paper-border)] bg-[var(--theme-paper)] shadow-[var(--shadow-1)]">
+          <LeadsFilters
+            role={profile.role}
+            options={filterOptions}
+            showAgentFilter={showAgentFilter}
+          />
+        </div>
+
         <Suspense fallback={<LeadsTableSkeleton />}>
-          <LeadsTable leads={leads} />
+          <LeadsTableAsync
+            role={profile.role}
+            userId={profile.id}
+            domain={profile.domain}
+            filters={filters}
+          />
         </Suspense>
       </main>
     </>

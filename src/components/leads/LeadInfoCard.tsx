@@ -1,6 +1,18 @@
-import { User, Phone, Mail, Globe, Tag, Flame, Snowflake, Calendar } from 'lucide-react';
+import {
+  User,
+  Phone,
+  Mail,
+  Layers,
+  Megaphone,
+  UserCheck,
+  PhoneCall,
+  Calendar,
+  Flame,
+  Snowflake,
+  Route,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { Lead } from '@/lib/types/database';
-import { CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
 import { formatDate } from '@/lib/utils/dates';
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -98,189 +110,322 @@ export function LeadInfoCard({ lead, assigneeName }: Props) {
         )}
       </div>
 
-      {/* Card body */}
+      {/* Card body — contact fields */}
       <div style={{ padding: 'var(--space-5)' }}>
         <div
           style={{
             display:             'grid',
             gridTemplateColumns: '1fr 1fr',
-            gap:                 'var(--space-4)',
+            columnGap:           'var(--space-6)',
+            rowGap:              'var(--space-5)',
           }}
         >
-          <Field label="Full Name" value={fullName} />
+          <DatumRow icon={User} label="Full Name" value={fullName} colSpan2 />
 
-          <Field
-            label="Phone"
-            value={lead.phone}
-            mono
-            icon={<Phone style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5 }} />}
-          />
+          <DatumRow icon={Phone} label="Phone" value={lead.phone} mono />
 
-          <Field
-            label="Email"
-            value={lead.email}
-            icon={<Mail style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5 }} />}
-          />
+          <DatumRow icon={Mail} label="Email" value={lead.email} />
 
-          <Field
+          <ContactFieldsDivider />
+
+          <DatumRow
+            icon={Layers}
             label="Domain"
             value={DOMAIN_LABELS[lead.domain] ?? lead.domain}
-            icon={<Tag style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5 }} />}
           />
 
-          <Field
+          <DatumRow
+            icon={Megaphone}
             label="Platform"
-            value={lead.platform ? PLATFORM_LABELS[lead.platform] ?? lead.platform : null}
-            icon={<Globe style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5 }} />}
+            value={
+              lead.platform
+                ? PLATFORM_LABELS[lead.platform] ?? lead.platform
+                : null
+            }
           />
 
-          <Field
-            label="Campaign"
-            value={lead.utm_campaign}
-          />
+          <DatumRow icon={UserCheck} label="Assigned to">
+            {assigneeName ? (
+              <DatumValue>{assigneeName}</DatumValue>
+            ) : (
+              <NeutralBadge label="Unassigned" />
+            )}
+          </DatumRow>
 
-          <Field label="Assigned to" value={assigneeName ?? 'Unassigned'} />
+          <DatumRow icon={PhoneCall} label="Call count">
+            {lead.call_count > 0 ? (
+              <DatumValue mono>{String(lead.call_count)}</DatumValue>
+            ) : (
+              <DatumValue muted>—</DatumValue>
+            )}
+          </DatumRow>
 
-          <Field
-            label="Call count"
-            value={lead.call_count > 0 ? `${lead.call_count} call${lead.call_count !== 1 ? 's' : ''}` : 'Not called'}
-          />
-
-          {lead.last_call_outcome && (
-            <Field
-              label="Last outcome"
-              value={CALL_OUTCOME_LABELS[lead.last_call_outcome]}
-            />
-          )}
-
-          <Field
+          <DatumRow
+            icon={Calendar}
             label="Received"
             value={formatDate(lead.created_at, 'dd MMM yyyy, hh:mm a')}
-            icon={<Calendar style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5 }} />}
+            mono
           />
         </div>
 
-        {/* UTM row — only if any UTM data */}
-        {(lead.utm_source || lead.utm_medium || lead.utm_content) && (
-          <div
-            style={{
-              marginTop:    'var(--space-4)',
-              padding:      'var(--space-3) var(--space-4)',
-              background:   'var(--theme-paper-subtle)',
-              borderRadius: 'var(--radius-sm)',
-              border:       '1px solid var(--theme-paper-border)',
-            }}
-          >
-            <p
-              style={{
-                fontSize:      'var(--text-2xs)',
-                fontWeight:    'var(--weight-semibold)',
-                letterSpacing: 'var(--tracking-widest)',
-                textTransform: 'uppercase',
-                color:         'var(--theme-text-tertiary)',
-                marginBottom:  'var(--space-2)',
-              }}
-            >
-              UTM Parameters
-            </p>
-            <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
-              {lead.utm_source && <UtmChip label="source" value={lead.utm_source} />}
-              {lead.utm_medium && <UtmChip label="medium" value={lead.utm_medium} />}
-              {lead.utm_content && <UtmChip label="content" value={lead.utm_content} />}
-            </div>
-          </div>
-        )}
+        <AttributionStrip
+          source={lead.utm_source}
+          medium={lead.utm_medium}
+          campaign={lead.utm_campaign}
+          content={lead.utm_content}
+        />
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────
-// Field row
+// Labelled datum row — read-only detail field pattern
 // ─────────────────────────────────────────────
-function Field({
+const DATUM_ICON_STYLE = {
+  width:       '1rem',
+  height:      '1rem',
+  color:       'var(--theme-text-tertiary)',
+  strokeWidth: 1.5,
+  flexShrink:  0,
+} as const;
+
+function ContactFieldsDivider() {
+  return (
+    <div
+      style={{
+        gridColumn: '1 / -1',
+        height:     '1px',
+        background: 'var(--theme-paper-border)',
+      }}
+      aria-hidden
+    />
+  );
+}
+
+function DatumRow({
+  icon: Icon,
   label,
   value,
   mono = false,
-  icon,
+  colSpan2 = false,
+  children,
 }: {
-  label: string;
-  value: string | null | undefined;
-  mono?: boolean;
-  icon?: React.ReactNode;
+  icon:      LucideIcon;
+  label:     string;
+  value?:    string | null;
+  mono?:     boolean;
+  colSpan2?: boolean;
+  children?: React.ReactNode;
 }) {
+  const displayValue = value?.trim() ? value : null;
+
   return (
-    <div>
-      <p
+    <div
+      style={{
+        display:    'flex',
+        alignItems: 'center',
+        gap:        'var(--space-3)',
+        gridColumn: colSpan2 ? '1 / -1' : undefined,
+      }}
+    >
+      <Icon style={DATUM_ICON_STYLE} aria-hidden />
+      <div
         style={{
-          fontSize:      'var(--text-2xs)',
-          fontWeight:    'var(--weight-semibold)',
-          letterSpacing: 'var(--tracking-widest)',
-          textTransform: 'uppercase',
-          color:         'var(--theme-text-tertiary)',
-          marginBottom:  'var(--space-1)',
+          display:       'flex',
+          flexDirection: 'column',
+          gap:           '0.125rem',
+          minWidth:      0,
         }}
       >
-        {label}
-      </p>
-      <p
-        style={{
-          display:    'flex',
-          alignItems: 'center',
-          gap:        'var(--space-1)',
-          fontFamily: mono ? 'var(--font-mono)' : 'var(--font-sans)',
-          fontSize:   'var(--text-sm)',
-          color:      value ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
-          margin:     0,
-        }}
-      >
-        {icon && (
-          <span style={{ color: 'var(--theme-text-tertiary)', flexShrink: 0 }}>
-            {icon}
-          </span>
+        <span
+          style={{
+            fontFamily:    'var(--font-sans)',
+            fontSize:      'var(--text-2xs)',
+            fontWeight:    'var(--weight-semibold)',
+            letterSpacing: 'var(--tracking-widest)',
+            textTransform: 'uppercase',
+            color:         'var(--theme-text-tertiary)',
+            lineHeight:    'var(--leading-none)',
+          }}
+        >
+          {label}
+        </span>
+        {children ?? (
+          <DatumValue mono={mono} muted={!displayValue}>
+            {displayValue ?? '—'}
+          </DatumValue>
         )}
-        {value ?? '—'}
-      </p>
+      </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────
-// UTM chip
-// ─────────────────────────────────────────────
-function UtmChip({ label, value }: { label: string; value: string }) {
+function DatumValue({
+  children,
+  mono = false,
+  muted = false,
+}: {
+  children: React.ReactNode;
+  mono?:    boolean;
+  muted?:   boolean;
+}) {
   return (
-    <div
+    <span
+      style={{
+        fontFamily: mono ? 'var(--font-mono)' : 'var(--font-sans)',
+        fontSize:   'var(--text-sm)',
+        fontWeight: 'var(--weight-normal)',
+        color:      muted
+          ? 'var(--theme-text-tertiary)'
+          : 'var(--theme-text-primary)',
+        lineHeight: 'var(--leading-normal)',
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function NeutralBadge({ label }: { label: string }) {
+  return (
+    <span
       style={{
         display:      'inline-flex',
         alignItems:   'center',
-        gap:          'var(--space-1)',
-        padding:      '0.125rem var(--space-2)',
-        borderRadius: 'var(--radius-xs)',
-        background:   'var(--theme-paper)',
-        border:       '1px solid var(--theme-paper-border)',
+        padding:      '0.125rem 0.625rem',
+        borderRadius: 'var(--radius-full)',
+        border:       '1px solid var(--color-neutral-light)',
+        background:   'var(--color-neutral-light)',
+        color:        'var(--color-neutral-text)',
+        fontSize:     'var(--text-xs)',
+        fontWeight:   'var(--weight-medium)',
       }}
     >
-      <span
+      {label}
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Attribution strip (UTM)
+// ─────────────────────────────────────────────
+type AttributionStripProps = {
+  source:   string | null;
+  medium:   string | null;
+  campaign: string | null;
+  content:  string | null;
+};
+
+const ATTRIBUTION_FIELDS = [
+  { key: 'source',   label: 'Source',   prop: 'source'   as const, accentValue: true },
+  { key: 'medium',   label: 'Medium',   prop: 'medium'   as const, accentValue: false },
+  { key: 'campaign', label: 'Campaign', prop: 'campaign' as const, accentValue: false },
+  { key: 'content',  label: 'Content',  prop: 'content'  as const, accentValue: false },
+] as const;
+
+function AttributionStrip({ source, medium, campaign, content }: AttributionStripProps) {
+  const values = { source, medium, campaign, content };
+  const present = ATTRIBUTION_FIELDS.filter((f) => values[f.prop] != null);
+
+  if (present.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        marginTop:    'var(--space-4)',
+        padding:      'var(--space-3) var(--space-4)',
+        background:   'var(--theme-accent-surface)',
+        borderRadius: 'var(--radius-md)',
+        border:       '1px solid color-mix(in srgb, var(--theme-accent) 30%, transparent)',
+      }}
+    >
+      <div
         style={{
-          fontSize:      'var(--text-2xs)',
-          fontWeight:    'var(--weight-semibold)',
-          letterSpacing: 'var(--tracking-widest)',
-          textTransform: 'uppercase',
-          color:         'var(--theme-text-tertiary)',
+          display:      'flex',
+          alignItems:   'center',
+          gap:          'var(--space-2)',
+          marginBottom: 'var(--space-3)',
         }}
       >
-        {label}
-      </span>
-      <span
-        style={{
-          fontSize:   'var(--text-xs)',
-          fontFamily: 'var(--font-mono)',
-          color:      'var(--theme-text-primary)',
-        }}
-      >
-        {value}
-      </span>
+        <Route
+          style={{
+            width:       '0.875rem',
+            height:      '0.875rem',
+            color:       'var(--theme-accent)',
+            strokeWidth: 1.5,
+            flexShrink:  0,
+          }}
+        />
+        <span
+          style={{
+            fontSize:      'var(--text-2xs)',
+            fontWeight:    'var(--weight-semibold)',
+            letterSpacing: 'var(--tracking-widest)',
+            textTransform: 'uppercase',
+            color:         'var(--theme-text-tertiary)',
+          }}
+        >
+          Attribution
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap', alignItems: 'stretch' }}>
+        {present.map((field, index) => {
+          const value = values[field.prop]!;
+          return (
+            <div key={field.key} style={{ display: 'contents' }}>
+              {index > 0 && (
+                <div
+                  style={{
+                    width:      '1px',
+                    alignSelf:  'center',
+                    height:     '2rem',
+                    background: 'var(--theme-paper-border)',
+                    flexShrink: 0,
+                  }}
+                  aria-hidden
+                />
+              )}
+              <div
+                style={{
+                  display:       'flex',
+                  flexDirection: 'column',
+                  paddingTop:    'var(--space-1)',
+                  paddingBottom: 'var(--space-1)',
+                  paddingLeft:   index === 0 ? 0 : 'var(--space-4)',
+                  paddingRight:  'var(--space-4)',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize:      'var(--text-2xs)',
+                    fontWeight:    'var(--weight-semibold)',
+                    letterSpacing: 'var(--tracking-wider)',
+                    textTransform: 'uppercase',
+                    color:         'var(--theme-text-tertiary)',
+                    marginBottom:  'var(--space-1)',
+                  }}
+                >
+                  {field.label}
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize:   'var(--text-sm)',
+                    fontWeight: 'var(--weight-medium)',
+                    color:      field.accentValue
+                      ? 'var(--theme-accent)'
+                      : 'var(--theme-text-primary)',
+                  }}
+                >
+                  {value}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

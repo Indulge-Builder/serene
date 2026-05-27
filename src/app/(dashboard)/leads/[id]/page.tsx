@@ -14,6 +14,7 @@ import { LeadJourneyTimeline } from '@/components/leads/LeadJourneyTimeline';
 import { LeadNotesSection } from '@/components/leads/LeadNotesSection';
 import { LeadDossierTasksAsync } from '@/components/leads/LeadDossierTasksAsync';
 import { LeadActivityLog } from '@/components/leads/LeadActivityLog';
+import { PersonalDetailsCard } from '@/components/leads/PersonalDetailsCard';
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -46,6 +47,12 @@ export default async function LeadDossierPage({ params }: Props) {
 
   const canEditScratchpad =
     (profile.role === 'agent' && lead.assigned_to === profile.id) ||
+    profile.role === 'admin' ||
+    profile.role === 'founder';
+
+  const canEditPersonalDetails =
+    (profile.role === 'agent' && lead.assigned_to === profile.id) ||
+    (profile.role === 'manager' && lead.domain === profile.domain) ||
     profile.role === 'admin' ||
     profile.role === 'founder';
 
@@ -124,6 +131,7 @@ export default async function LeadDossierPage({ params }: Props) {
           {/* Left column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
             <LeadInfoCard lead={lead} assigneeName={assigneeProfile?.full_name ?? null} />
+            <PersonalDetailsCard lead={lead} canEdit={canEditPersonalDetails} />
             {lead.form_data && Object.keys(lead.form_data).length > 0 && (
               <DynamicFormResponses formData={lead.form_data} />
             )}

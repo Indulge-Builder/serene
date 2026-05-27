@@ -38,6 +38,9 @@ function describeActivity(act: LeadActivityWithActor): string {
     case 'agent_assigned': {
       return 'Agent assigned';
     }
+    default: {
+      return '';
+    }
   }
 }
 
@@ -245,7 +248,7 @@ export function LeadActivityLog({ activities }: Props) {
                       {formatTimestamp(act.created_at)}
                     </span>
 
-                    {act.actor_name && (
+                    {act.actor?.full_name && (
                       <>
                         <span style={{ color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-2xs)' }}>·</span>
                         <span
@@ -255,7 +258,7 @@ export function LeadActivityLog({ activities }: Props) {
                             color:      'var(--theme-text-secondary)',
                           }}
                         >
-                          {act.actor_name}
+                          {act.actor.full_name}
                         </span>
                       </>
                     )}

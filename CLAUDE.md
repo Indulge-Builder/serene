@@ -1,6 +1,6 @@
 # Eia — CLAUDE.md
 
-## Read this before writing a single line of code.
+## Read this before writing a single line of code
 
 This file is the command layer. It tells you the non-negotiables,
 where everything lives, and what to never do.
@@ -42,7 +42,7 @@ They are different tokens for different surfaces.
 
 ## File Locations — Find Before You Build
 
-```
+```text
 src/lib/supabase/client.ts          ← browser Supabase client (only place)
 src/lib/supabase/server.ts          ← server Supabase client (only place)
 src/lib/supabase/middleware.ts      ← session refresh helper (only place)
@@ -61,13 +61,14 @@ src/components/ui/                  ← shadcn primitives, zero feature imports
 src/components/ui/lia-glyph.tsx     ← Lia's custom SVG mark (always breathing)
 src/styles/design-tokens.css        ← ALL CSS variables, all themes
 docs/design-dna.md                  ← full design reference
+docs/changelog.md                   ← SINGLE SOURCE OF TRUTH for all changes (mandatory)
 ```
 
 ---
 
 ## The 12 Rules (Non-Negotiable)
 
-```
+```text
 01  Every colour is a CSS variable. No hex values in components. Ever.
 
 02  Every Server Action begins with Zod validation. First line. No exceptions.
@@ -95,13 +96,17 @@ docs/design-dna.md                  ← full design reference
 11  Async work over 3 seconds or needing retry → Trigger.dev.
     Never in route handlers.
 
+12  Every meaningful change — feature, fix, migration, new package, refactor —
+    gets an entry in docs/changelog.md before or alongside the code.
+    docs/changelog.md is the single source of truth. The_Changelog.md is deleted.
+
 ```
 
 ---
 
 ## The Never-Do List
 
-```
+```text
 NEVER  hardcode a colour value in a component
 NEVER  use text-gray-* or bg-gray-* or bg-white — use tokens
 NEVER  use z-index values not in the --z-* scale
@@ -117,6 +122,8 @@ NEVER  use "No data available" as empty state copy
 NEVER  use more than 3 colours in a single chart
 NEVER  show a skeleton for less than 150ms
 NEVER  add backdrop-blur outside the three sanctioned surfaces
+NEVER  add a package or meaningful change without a docs/changelog.md entry
+NEVER  write to The_Changelog.md — it has been deleted; docs/changelog.md is the only changelog
 ```
 
 ---
@@ -146,7 +153,7 @@ Never raw Zod messages. Never "Invalid input."
 
 ## Lia Quick Reference
 
-```
+```text
 Lia is not a chatbot. She is a presence.
 Her glyph ALWAYS breathes when she is present (liaBreathe animation).
 A static glyph = Lia is not present.
@@ -165,7 +172,7 @@ Lia never silently crosses domain boundaries.
 
 ## Theme Quick Reference
 
-```
+```text
 data-theme="earth"   → gold accent (#D4AF37), warm black canvas
 data-theme="air"     → steel blue accent (#7b9fc4), blue-black canvas
 data-theme="water"   → teal accent (#2a9d8f), teal-black canvas
@@ -182,7 +189,7 @@ Theme attribute goes on the <html> element.
 
 ## Folder Structure
 
-```
+```text
 eia/
 ├── CLAUDE.md                        ← this file
 ├── .cursorrules                     ← identical to this file
@@ -192,7 +199,8 @@ eia/
 ├── docs/
 │   ├── The_Blueprint.md             ← project spec, phases, RBAC, decision log
 │   ├── design-dna.md                ← full design reference
-│   └── The_Rules.md                 ← 50+ coded rules across 8 sections
+│   ├── The_Rules.md                 ← 50+ coded rules across 8 sections
+│   └── changelog.md                 ← ALL changes logged here (single source of truth)
 │
 ├── src/
 │   ├── app/
@@ -234,6 +242,9 @@ eia/
 │   │       ├── database.ts          ← auto-generated from Supabase
 │   │       └── index.ts             ← shared types
 │   │
+│   ├── hooks/
+│   │   └── useLeadColumnPreferences.ts  ← column pref hook (pattern for all future table pickers)
+│   │
 │   ├── styles/
 │   │   └── design-tokens.css        ← ALL CSS variables, all five themes
 │   │
@@ -249,11 +260,11 @@ eia/
 
 ## Phase Status
 
-**Phase 0 — Complete (2026-05-26)**
+### Phase 0 — Complete (2026-05-26)
 
 Foundation scaffolded. All 14 items from the Phase 0 checklist are in place.
 
-**Phase 1 — Complete (2026-05-26)**
+### Phase 1 — Complete (2026-05-26)
 
 Profiles system built. User creation flow live.
 
@@ -271,7 +282,7 @@ Profiles system built. User creation flow live.
 - Admin user list: `GET /admin/users`
 - Create user form: `GET /admin/users/new`
 
-**Phase 2 — Complete (2026-05-27)**
+### Phase 2 — Complete (2026-05-27)
 
 User management fully operational. Agent routing config wired.
 
@@ -289,12 +300,13 @@ User management fully operational. Agent routing config wired.
 - `src/app/(dashboard)/admin/users/[id]/page.tsx` — user detail page
 
 Font variables in use:
+
 - `--font-geist-sans` → mapped from `Inter` via `next/font/google` with `variable: "--font-geist-sans"`
 - `--font-playfair` → mapped from `Playfair_Display` via `next/font/google` with `variable: "--font-playfair"`
 
 These are set on the `<html>` element as className and consumed by `--font-sans` and `--font-serif` in `design-tokens.css`.
 
-**Phase 3 — Complete (2026-05-27)**
+### Phase 3 — Complete (2026-05-27)
 
 Gia module: lead ingestion, assignment, and lead list page.
 
@@ -316,7 +328,7 @@ Gia module: lead ingestion, assignment, and lead list page.
 
 ---
 
-**Phase 4 — Complete (2026-05-27)**
+### Phase 4 — Complete (2026-05-27)
 
 Lead dossier + lifecycle fully operational.
 
@@ -333,7 +345,7 @@ Lead dossier + lifecycle fully operational.
 
 Won side-effect: client row creation deferred to Phase 5 (no `clients` table yet). Status update + activity log works.
 
-**Raw payload logging added (2026-05-27)**
+### Raw payload logging added (2026-05-27)
 
 - Migration 0004: `lead_raw_payloads` table — immutable JSONB log of every inbound webhook payload; `lead_id` FK backfilled after insert; admin/founder SELECT only; no UPDATE/DELETE ever
 - `src/lib/services/lead-ingestion.ts` — logs raw payload as step 1 before any extraction; `lead_id` backfilled after lead insert; `raw_payload_id` threaded into `lead_created` activity details; logging failure is non-fatal (never blocks a lead)
@@ -341,7 +353,7 @@ Won side-effect: client row creation deferred to Phase 5 (no `clients` table yet
 
 ---
 
-**Phase 5 — Complete (2026-05-27)**
+### Phase 5 — Complete (2026-05-27)
 
 Profile page + theme system fully operational.
 
@@ -357,6 +369,113 @@ Profile page + theme system fully operational.
 - `src/components/layout/Sidebar.tsx` — footer user block converted to `<Link href="/profile">` with active-state styling
 
 Avatar upload requires: Supabase Storage bucket `avatars`, public read, authenticated write, RLS path `{user_id}`.
+
+---
+
+### Post-Phase 5 hardening (2026-05-27)
+
+Atomic round-robin, lead deduplication, activity log improvements, and personal details enrichment.
+
+- Migration 0007: `get_next_round_robin_agent()` DB function — atomic `SELECT FOR UPDATE SKIP LOCKED`; O(agents) not O(leads); `idx_leads_assigned_to_assigned_at` partial index
+- Migration 0008: lead dedup by phone — `previous_lead_id` FK; `get_active_lead_by_phone()` function; `duplicate_submission` action type; `idx_leads_phone_active` partial index
+- Migration 0009: `personal_details JSONB` column on `leads` — agent-collected enrichment; existing RLS covers it
+- `src/lib/types/database.ts` — `Lead.previous_lead_id`, `duplicate_submission` action type, `Lead.personal_details` added
+- `src/lib/validations/lead-schema.ts` — `UpdatePersonalDetailsSchema` added (company, occupation, interests, city, notes; all sanitized)
+- `src/lib/actions/leads.ts` — `updatePersonalDetails` action: Zod → auth → access check → JSONB merge (preserves prior keys, strips empty strings)
+- `src/lib/services/lead-ingestion.ts` — dedup check wired; `IngestionResult` union extended with `duplicate` flag
+- `src/lib/services/leads-service.ts` — `LeadActivityWithActor` extended with `assignee_name`; `getLeadActivitiesFull` batch-resolves assignee UUIDs in single profile query
+- `src/components/leads/LeadActivityLog.tsx` — `lead_created` → "Lead entered the system"; `agent_assigned` → "Assigned to [Name]"
+- `src/components/leads/PersonalDetailsCard.tsx` — inline card in left column; dormant until clicked; 2-col grid (Company, Occupation, Interests, City) + full-width Details textarea; Save + Cancel footer appears only when active; editable by assigned agent, manager, admin, founder
+
+---
+
+### Error log + missing exports (2026-05-27)
+
+Resolved all build errors left by the post-Phase 5 hardening session.
+
+- `src/lib/services/leads-service.ts` — `getErroredPayloads()` added: queries `lead_raw_payloads` where `ingestion_error IS NOT NULL`, returns `LeadRawPayload[]`; `LeadRawPayload` import added
+- `src/lib/types/database.ts` — `Lead.personal_details: Record<string, string> | null` confirmed present
+- `src/lib/validations/lead-schema.ts` — `UpdatePersonalDetailsSchema` uses `z.record(z.string(), z.string())` (Zod v4 requires both key + value schema); `UpdatePersonalDetailsInput` type exported
+- `src/lib/actions/leads.ts` — `updatePersonalDetails` action added; `sanitizeText` imported; merges into existing JSONB, strips empty strings
+- `src/lib/services/lead-ingestion.ts` — `personal_details: null` added to lead insert object
+
+---
+
+### Phase 6 — Complete (2026-05-27)
+
+`ui/Modal` primitive extracted. All existing modals refactored to consume it.
+
+- `src/components/ui/modal.tsx` — chrome-only Modal primitive: backdrop (`fixed inset-0`, `rgba(0,0,0,0.5)`, `backdrop-blur-sm`, `z-[--z-overlay]`), container (`bg var(--theme-paper)`, `radius-lg`, `shadow-3`, `z-[--z-modal]`), header, body slot, footer slot; Framer Motion `AnimatePresence` — enter `{ opacity:0, y:10, scale:0.98 }→{ opacity:1, y:0, scale:1 }` at 350ms `ease-out-expo`, exit `{ opacity:0, scale:0.97 }` at 150ms; Escape key listener; backdrop click → `onClose`; `role="dialog"` + `aria-modal="true"` + `aria-labelledby` via `useId()`; zero hardcoded colour values
+- `src/components/leads/CalledModal.tsx` — refactored to compose `Modal`; own chrome deleted; all business logic preserved
+- `src/components/leads/StatusActionPanel.tsx` — `ConfirmModal` and `ReasonModal` refactored to compose `Modal`; own chrome deleted; hardcoded `#fff`/`#ffffff` violations replaced with `var(--color-success-text)` and `var(--theme-text-inverse)`
+- `src/components/CLAUDE.md` — Modal props contract documented; rule established: every future modal composes `ui/modal.tsx`, never reimplements chrome
+
+Props: `open: boolean`, `onClose: () => void`, `title: string`, `children: React.ReactNode`, `footer: React.ReactNode`, `maxWidth?: string` (default `max-w-lg`)
+
+---
+
+### Leads table — column visibility + drag-to-reorder (2026-05-28)
+
+- `src/lib/constants/lead-columns.ts` — column registry: 11 columns (`status`, `name`, `phone`, `email`, `campaign`, `source`, `assigned_to`, `created_at`, `last_call_outcome`, `call_count`, `domain`); each entry has `id` (stable localStorage key — never rename), `label`, `defaultVisible`, `locked`; `status` and `name` are locked visible
+- `src/hooks/useLeadColumnPreferences.ts` — `useLeadColumnPreferences(userId)` hook; reads/writes `localStorage` at key `eia:leads:columns:${userId}:v1`; validates stored ids against registry on load (unrecognised ids silently dropped); hydrates after mount to avoid SSR mismatch; locked columns always forced into `visibleColumns`; returns `{ visibleColumns, columnOrder, toggleColumn, reorderColumns, resetToDefaults }`
+- `src/components/leads/LeadColumnPicker.tsx` — popover panel (not a modal); `@dnd-kit/sortable` drag-to-reorder for visible columns; locked rows show `Lock` icon, not a checkbox; hidden columns appear below a divider in a disabled non-draggable state; "Reset to defaults" footer link; 200ms `opacity/y` entrance animation matching dropdown spec
+- `src/components/leads/LeadsTable.tsx` — now accepts `userId` prop; "Columns" ghost button (`Columns` lucide icon) opens picker; table renders only `orderedVisible` columns in stored order; `LeadCell` switch covers all 11 column ids; no Supabase re-query on toggle — purely presentational
+- `src/app/(dashboard)/leads/page.tsx` — passes `profile.id` as `userId` to `LeadsTable`
+- `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` added to `package.json`
+
+**Conventions established (see Q-07, Q-08 in The_Rules.md):**
+- `@dnd-kit` is the canonical drag library for all of Eia. Use it everywhere drag-to-reorder is needed. Never add an alternative.
+- The `useLeadColumnPreferences` hook is the canonical pattern for per-user table column preferences. Replicate its signature and key format (`eia:[module]:columns:${userId}:v1`) for any future table that gains a column picker.
+
+---
+
+### Leads — server-side search + pagination (2026-05-28)
+
+- Migration 0011: `idx_leads_phone_text` — `text_pattern_ops` partial index on `leads(phone)` for ILIKE substring matching without sequential scan
+- `src/lib/types/database.ts` — `LeadFilters.search: string | null` added
+- `src/lib/services/leads-service.ts` — `getLeadsByRole` now returns `LeadsResult = { leads, totalCount }`; single query with `{ count: 'exact', head: false }` — one round trip, never two queries; search applied via `.or(first_name.ilike,last_name.ilike,phone.ilike,email.ilike)` after role constraints, before `.range()`; term trimmed/lowercased in service
+- `src/components/leads/LeadsFilters.tsx` — search input added (Section 5.10 spec: `pl-9`, Search icon, clear X, `caret-color: var(--theme-accent)`); 500ms debounce via `useEffect`+`setTimeout`; search changes push `page=1` via `buildParams`; `search` counted in `activeCount` badge; `clearAll` resets search local state + URL together
+- `src/components/leads/LeadsTable.tsx` — client-side search state and `useMemo` filter removed entirely; table receives pre-filtered rows from server; `filtered` variable removed; empty state uses `hasActiveFilters` only
+- `src/components/leads/LeadsPagination.tsx` — new `'use client'` component; "Showing X–Y of Z leads" + Prev/Next buttons; `useTransition` on navigation; `pointer-events: none` on disabled buttons (not just visual); absent when `totalCount <= pageSize`
+- `src/components/leads/LeadsTableAsync.tsx` — destructures `{ leads, totalCount }` from `getLeadsByRole`; renders `LeadsTable` + conditional `LeadsPagination`; `search` counted in `hasActiveFilters`
+- `src/components/leads/LeadsTableSkeleton.tsx` — 50 rows (matches `pageSize`) to prevent layout jump between skeleton and content on pagination
+- `src/app/(dashboard)/leads/page.tsx` — `parseFilters` now includes `search` field
+- `src/app/(dashboard)/leads/CLAUDE.md` — updated with search, count shape, pagination, debounce, and page-reset rules
+
+**Four invariants that must never be violated (full spec in `src/app/(dashboard)/leads/CLAUDE.md`):**
+- `getLeadsByRole` returns `{ leads: Lead[], totalCount: number }` — never `Lead[]` alone. Every call site destructures both fields.
+- `totalCount` comes from `{ count: 'exact', head: false }` on the same query builder that has all role constraints, filters, and search applied. A second `SELECT COUNT(*)` is a bug — it returns the wrong number when any filter is active.
+- Every URL param push that changes a filter or search must delete the `page` param. This is enforced in `buildParams()`. Never bypass it with a hand-built `router.push` string.
+- Search lives in `LeadsFilters.tsx` (debounced 500ms, URL param). `LeadsTable.tsx` contains zero filtering, searching, or sorting logic — it renders what the server returns.
+
+---
+
+### Leads table — Suspense-split architecture + server-side filters (2026-05-28)
+
+- Migration 0010: `idx_leads_utm_source`, `idx_leads_utm_campaign`, `idx_leads_last_call_outcome` — three partial indexes (`WHERE archived_at IS NULL`)
+- `src/lib/types/database.ts` — `LeadFilters` type: status[], last_call_outcome[], agent_id, source, campaign, date_from, date_to, page, pageSize
+- `src/lib/services/leads-service.ts` — `getLeadsByRole` extended: single chained Supabase query, all filters applied conditionally, `.range()` always applied (page 1 default = 50 rows, never full table), agent role constraint applied before `LeadFilters.agent_id`, `date_to` transformed to `T23:59:59.999Z` in service; `getLeadFilterOptions(role, domain)` added — returns `{ campaigns, agents }`, called once at page level
+- `src/lib/constants/lead-sources.ts` — `LEAD_SOURCES`, `LEAD_SOURCE_LABELS` constants
+- `src/components/leads/LeadsFilters.tsx` — `'use client'` filter bar; URL read/write only; `useTransition` on all navigations; Status (multi), Outcome (multi), Source (single), Campaign (single), Agent (single, absent from DOM for agent role), Date range; active filter count badge
+- `src/components/leads/LeadsTableAsync.tsx` — async server component; direct child of `Suspense`; calls `getLeadsByRole` with filters; renders `LeadsTable`
+- `src/components/leads/LeadsTableSkeleton.tsx` — rebuilt: 5 rows (§11.3), staggered pulse 0/80/160/240/320ms (§11.4)
+- `src/components/leads/LeadsTable.tsx` — `hasActiveFilters` prop; Framer Motion entrance (opacity 0→1, y 4→0, 250ms, 100ms delay, ease-out-expo, §11.5); empty state "Nothing matches these filters." (§8.6); internal status filter removed
+- `src/app/(dashboard)/leads/page.tsx` — thin orchestrator: fetches `filterOptions` once, parses `searchParams` into `LeadFilters`, renders `<LeadsFilters>` + `<Suspense><LeadsTableAsync /></Suspense>`
+- `src/app/(dashboard)/leads/CLAUDE.md` — created
+
+---
+
+### Manual lead creation — Add Lead modal (2026-05-28)
+
+- `src/lib/services/leads-service.ts` — `getAgentsForDomain(domain)` added: queries `profiles` where `role='agent' AND domain=$domain AND is_active=true`, returns `{ id, full_name }[]`
+- `src/lib/validations/lead-schema.ts` — `CreateManualLeadSchema` + `CreateManualLeadInput` added: validates first_name, last_name?, phone (→ E.164), email?, lead_intent?, domain (APP_DOMAINS enum), assigned_to? (uuid)
+- `src/lib/actions/leads.ts` — `createManualLead` action: Zod → auth → domain enforcement (agent locked to own domain) → assignee domain verification → duplicate check via `get_active_lead_by_phone()` → INSERT leads + activities; returns `{ duplicate: true, leadId }` on dup, `{ leadId }` on success
+- `src/lib/actions/leads.ts` — `listAgentsForDomain` read action: thin wrapper over `getAgentsForDomain`; called by `AddLeadModal` when domain select changes
+- `src/components/leads/AddLeadModal.tsx` — `'use client'` modal composing `ui/modal.tsx`; RHF + zodResolver; fields: first name, last name, phone, email, source (optional select: WhatsApp / Website / Meta / Google / Referral / YPO / Events, stored in `form_data.manual_source`), domain select (manager+), agent assignee select (manager+) with domain-change refetch; agent read-only chip (agent role); inline duplicate warning banner with dossier link; `router.refresh()` on success; `lead_intent` always null on manual leads
+- `src/components/leads/AddLeadButton.tsx` — thin `'use client'` wrapper holding `useState` for modal open; renders `+ Add Lead` primary button
+- `src/app/(dashboard)/leads/page.tsx` — `AddLeadButton` wired into page header; `initialAgents` fetched at page level via `getAgentsForDomain`
+
+**Domain enforcement:** `createManualLead` always overwrites `domain = caller.domain` when caller role is `agent`. This is enforced server-side — form payload is never trusted.
 
 ---
 

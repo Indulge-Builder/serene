@@ -1,0 +1,306 @@
+# Leads Page — CLAUDE.md
+
+## Architecture: Three-Component Split
+
+The leads page is split into three responsibilities to enable Suspense-based streaming.
+When a filter changes, only `LeadsTableAsync` re-renders. The filter bar stays stable.
+
+```
+leads/page.tsx                  ← Server component (thin orchestrator)
+  │  reads searchParams
+  │  calls getLeadFilterOptions() ONCE — not on every filter change
+  │  resolves caller role + profile
+  │
+  ├── <LeadsFilters />           ← Client component — never re-fetches
+  │     receives: options (campaigns[], agents[]), role, showAgentFilter
+  │     owns: URL param read/write via useRouter + useSearchParams
+  │
+  └── <Suspense fallback={<LeadsTableSkeleton />}>
+        <LeadsTableAsync />      ← Async server component — re-renders on filter change
+              receives: role, userId, domain, filters (LeadFilters)
+              calls: getLeadsByRole() with filters applied
+              renders: <LeadsTable leads={...} userId={...} hasActiveFilters={...} />
+```
+
+**Critical:** `LeadsTableAsync` MUST be the direct child of `<Suspense>`.
+If it is a sibling of the skeleton, the boundary does nothing.
+
+---
+
+## LeadFilters Type
+
+Defined in: `src/lib/types/database.ts` (not a separate types file — this is the established pattern).
+
+```typescript
+export type LeadFilters = {
+  status:            LeadStatus[] | null;
+  last_call_outcome: CallOutcome[] | null;
+  agent_id:          string | null;
+  source:            string | null;
+  campaign:          string | null;
+  date_from:         string | null;
+  date_to:           string | null;
+  search:            string | null;   // server-side ilike across name/phone/email
+  page:              number;          // default 1
+  pageSize:          number;          // default 50, fixed — not user-configurable
+};
+```
+
+`.range()` is always applied in `getLeadsByRole` regardless of filter presence.
+An unfiltered first load fetches exactly `pageSize` rows — never the full table.
+
+URL param key for search: `search`. Trimmed in the service before query — never trust raw input.
+
+---
+
+## Server-Side Search
+
+`getLeadsByRole` applies search via a single `.or()` call chained onto the existing query builder:
+
+```typescript
+query = query.or(
+  `first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`
+);
+```
+
+- Applied after role constraints, before `.range()`.
+- `term` is trimmed and lowercased in the service — never trust raw client input.
+- Searches across ALL pages — not just the current page.
+- Supported by `idx_leads_phone_text` partial index (`text_pattern_ops`) on phone.
+
+---
+
+## Search Placement Rule
+
+Search lives in **`LeadsFilters.tsx`** only. It is debounced 500ms and stored as the `search` URL param.
+
+**`LeadsTable.tsx` contains zero filtering, searching, or sorting logic.** It receives pre-filtered rows from the server via props and renders them directly. There is no `useState` for search, no `useMemo` filter, no `.filter()`, no `.sort()` on the `leads` array inside `LeadsTable`. The component is display-only.
+
+If you find yourself adding a filter or search inside `LeadsTable.tsx`, stop. That logic belongs in the service layer (`getLeadsByRole`) surfaced through `LeadsFilters` and URL params.
+
+---
+
+## getLeadsByRole Return Shape
+
+`getLeadsByRole` returns `Promise<LeadsResult>` — **never `Lead[]` alone**:
+
+```typescript
+export type LeadsResult = {
+  leads:      Lead[];
+  totalCount: number;
+};
+```
+
+**Every call site destructures both fields:**
+
+```typescript
+const { leads, totalCount } = await getLeadsByRole(role, userId, domain, filters);
+```
+
+Never destructure only `leads` and discard `totalCount`. If you don't need pagination at a call site, pass `totalCount` through anyway — it may be needed by a child component.
+
+---
+
+## Single-Query Count Rule
+
+`totalCount` is obtained via `{ count: 'exact', head: false }` on the **same query builder** that has all role constraints, filters, and search applied — in one round trip:
+
+```typescript
+let query = supabase
+  .from('leads')
+  .select('*', { count: 'exact', head: false })
+  // ... role constraints, filters, search, .range() applied to this same query
+  ;
+
+const { data, error, count } = await query;
+// count === filtered result count, not the full table
+```
+
+**A separate `SELECT COUNT(*)` is a bug** — it will return the wrong number when any filter is active, because it runs against a different query scope.
+
+If you see two Supabase calls for leads in the same `getLeadsByRole` execution, that is a violation. One query. Always.
+
+---
+
+## LeadsPagination Render Condition
+
+`LeadsPagination` is rendered inside `LeadsTableAsync`, below `LeadsTable`:
+
+```typescript
+{totalCount > pageSize && (
+  <LeadsPagination page={page} pageSize={pageSize} totalCount={totalCount} />
+)}
+```
+
+When `totalCount <= 50`, pagination is **absent from the DOM entirely**. One page of results needs no controls.
+
+`pageSize` is fixed at 50. There is no page size selector. Do not add one.
+
+---
+
+## Debounce Rule
+
+Search input in `LeadsFilters` debounces **500ms** before pushing to URL params.
+Implementation: `useEffect` + `setTimeout`/`clearTimeout`. No library.
+
+```typescript
+useEffect(() => {
+  const timer = setTimeout(() => { ... push to URL ... }, 500);
+  return () => clearTimeout(timer);
+}, [searchInput]);
+```
+
+- When search changes, `buildParams` deletes `page` → resets to page 1 automatically.
+- When clear X is clicked, `search=null` and `page` deletion happen in the same `router.push`.
+
+**Never push search on every keystroke** — every push triggers a `LeadsTableAsync` re-render.
+
+---
+
+## Page Reset Rule
+
+Every URL param push that changes a filter or search value must include deletion of the `page` param. This is enforced in `buildParams`:
+
+```typescript
+function buildParams(current, updates) {
+  ...
+  next.delete('page');  // resets to page 1 on every filter/search change
+  return next;
+}
+```
+
+`clearAll()` calls `router.push(pathname)` with no params — implicitly page 1.
+
+**Never push filter changes that bypass `buildParams`.** All filter and search navigation goes through `push(updates)` → `buildParams()`. If a future filter calls `router.push` directly with a hand-built URL string, it will skip the page reset and leave the user on whatever page they were on — which may return zero rows silently.
+
+The only exception is `clearAll()`, which pushes `pathname` with no params at all — that also resets page to 1.
+
+---
+
+## showAgentFilter Prop Contract
+
+`LeadsFilters` receives `showAgentFilter: boolean`.
+
+- `true`  → agent dropdown is rendered (manager / admin / founder)
+- `false` → agent dropdown is **absent from the DOM entirely** — not hidden with CSS, not rendered at all
+
+This is enforced in `page.tsx`:
+```typescript
+const showAgentFilter = profile.role !== 'agent';
+```
+
+Never set `showAgentFilter={true}` for agent-role users.
+
+---
+
+## date_to End-of-Day Rule
+
+When `filters.date_to` is present, the service transforms it to end-of-day **before querying**:
+
+```typescript
+const endOfDay = filters.date_to.replace(/T.*$/, 'T23:59:59.999Z');
+query = query.lte('created_at', endOfDay);
+```
+
+This means selecting May 28 as `date_to` includes leads created at 23:59 on May 28.
+This transform happens in `leads-service.ts` — never in a component.
+
+---
+
+## getLeadFilterOptions Call Location
+
+`getLeadFilterOptions(role, domain)` is called **once** in `leads/page.tsx`.
+It returns `{ campaigns: string[], agents: Profile[] }`.
+
+These are passed as stable props to `<LeadsFilters options={filterOptions} />`.
+
+**Never call `getLeadFilterOptions` inside `LeadsTableAsync` or any filter component.**
+If you do, campaigns and agents re-fetch on every filter interaction.
+
+---
+
+## Agent Filter Security
+
+`getLeadsByRole` enforces `assigned_to = auth.uid()` for the `agent` role
+**before** applying `LeadFilters.agent_id`. A crafted URL with `?agent_id=<other-uuid>`
+returns no other agent's leads — the role constraint wins unconditionally.
+
+This is the service's responsibility, not the component's.
+
+---
+
+## URL Param Keys
+
+| Filter          | URL param   | Type                    |
+|-----------------|-------------|-------------------------|
+| search          | `search`    | string (debounced 500ms)|
+| status          | `status`    | comma-separated values  |
+| outcome         | `outcome`   | comma-separated values  |
+| source          | `source`    | single string           |
+| campaign        | `campaign`  | single string           |
+| agent           | `agent_id`  | UUID string             |
+| date from       | `date_from` | ISO date string         |
+| date to         | `date_to`   | ISO date string         |
+| page            | `page`      | integer (default 1)     |
+
+---
+
+## Migration
+
+`supabase/migrations/20260528000010_lead_filter_indexes.sql`
+
+Three partial indexes on `leads` (all `WHERE archived_at IS NULL`):
+- `idx_leads_utm_source`
+- `idx_leads_utm_campaign`
+- `idx_leads_last_call_outcome`
+
+---
+
+## Lead Dossier — FK Joins + Relationship Types (2026-05-28)
+
+`database.ts` `Relationships` arrays are now populated for all four dossier tables:
+- `lead_notes` — `lead_notes_author_id_fkey` → profiles, `lead_notes_lead_id_fkey` → leads
+- `lead_activities` — `lead_activities_actor_id_fkey` → profiles, `lead_activities_lead_id_fkey` → leads
+- `tasks` — `tasks_assigned_to_fkey` → profiles, `tasks_created_by_fkey` → profiles
+- `task_gia_meta` — `task_gia_meta_lead_id_fkey` → leads, `task_gia_meta_task_id_fkey` → tasks (isOneToOne: true)
+
+**Join pattern:** always use the FK constraint name as the disambiguator in `.select()`:
+```
+'*, author:profiles!lead_notes_author_id_fkey(full_name)'
+'*, actor:profiles!lead_activities_actor_id_fkey(full_name)'
+'task_id, task:tasks!task_gia_meta_task_id_fkey(*)'
+```
+
+**Type shapes after the refactor:**
+- `LeadNoteWithAuthor` — `author: { full_name: string }` (was `author_name: string`)
+- `LeadActivityWithActor` — `actor: { full_name: string } | null` (was `actor_name: string | null`)
+
+**`getProfileNameMap` has been deleted** — it was dead code after the join refactor.
+
+**Round trip count:**
+- `getLeadNotesFull` — 1 query (was 2)
+- `getLeadActivitiesFull` — 1 query (was 2)
+- `getNextLeadTask` — 1 query (was 2)
+
+**`getNextLeadTask` join direction:** starts from `tasks` (not `task_gia_meta`), uses `!inner` on `task_gia_meta` to filter by `lead_id`. This is intentional — PostgREST / Supabase JS client silently drops dot-notation filters on joined tables (e.g. `.eq('tasks.status', ...)` when starting from `task_gia_meta`). Always filter on native columns of the root table. Use `!inner` when the join must be non-optional.
+
+---
+
+## AddLeadModal — Agent Fetch Guard
+
+`AddLeadModal` receives `initialDomain: AppDomain` (always `callerProfile.domain`, passed from `AddLeadButton`).
+
+The `watchedDomain` effect guards against redundant refetches:
+
+```typescript
+if (watchedDomain === initialDomain) {
+  setAgents(initialAgents);
+  return;
+}
+```
+
+**Invariants:**
+- `listAgentsForDomain` is only called when the selected domain differs from `initialDomain`.
+- When the user changes domain back to `initialDomain`, the guard fires and restores `initialAgents` without a network call.
+- `initialDomain` and `initialAgents` are never added to the `useEffect` dependency array — they are stable props for the lifetime of the modal.
+- Agent role: effect still returns immediately on `canChangeDomain === false` (checked first, before the guard).

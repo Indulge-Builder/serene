@@ -1,36 +1,257 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Eia
 
-## Getting Started
+Internal operating system for Indulge Global. Private repository — not public documentation.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 1. What This Is
+
+Eia is the internal operating system for Indulge Global — a production foundation, not a prototype — built to serve India's premier luxury concierge brand. Every team member logs into Eia as the single entry point to their work. The architecture is modular: the base layer (Eia) does not change when a new domain module is added. Domain modules load on top for the right people; cross-cutting AI presence (Lia) and CRM (Gia) attach to the OS without rewriting the shell.
+
+---
+
+## 2. The Name System
+
+| Name    | What It Is                                                |
+| ------- | --------------------------------------------------------- |
+| **Eia** | The OS — the platform every Indulge team member logs into |
+| **Lia** | The agentic AI model that lives inside Eia                |
+| **Gia** | The CRM module — loads for the Onboarding domain          |
+| **Sia** | The Concierge module — loads for the Concierge domain     |
+
+---
+
+## 3. Tech Stack
+
+| Layer           | Tool                  | Version / Notes           |
+| --------------- | --------------------- | ------------------------- |
+| Framework       | Next.js App Router    | 16                        |
+| Language        | TypeScript            | 5 — strict mode, no `any` |
+| Styling         | Tailwind CSS          | v4                        |
+| UI primitives   | shadcn/ui             | latest                    |
+| Database        | Supabase (PostgreSQL) | 17                        |
+| Auth            | Supabase Auth         | —                         |
+| Realtime        | Supabase Realtime     | —                         |
+| Animation       | Framer Motion         | 11                        |
+| Forms           | React Hook Form + Zod | —                         |
+| Async jobs      | Trigger.dev           | —                         |
+| Deployment      | Vercel                | —                         |
+| Package manager | pnpm                  | —                         |
+
+---
+
+## 4. RBAC — Roles & Domains
+
+### Roles
+
+Stored in the database. Used in all authorization logic. Never derived from JWT claims.
+
+| Role      | Description                                                                             |
+| --------- | --------------------------------------------------------------------------------------- |
+| `agent`   | Base-level employee — works tasks, leads, and tickets                                   |
+| `manager` | Oversees team, approves actions, reviews performance                                    |
+| `founder` | Full visibility and editability across all domains                                      |
+| `admin`   | User management, system configuration, root-level edit access on every module and field |
+| `guest`   | Limited read access                                                                     |
+
+### Domains
+
+| Domain       | Module | Data Scope       |
+| ------------ | ------ | ---------------- |
+| `concierge`  | Sia    | Concierge data   |
+| `onboarding` | Gia    | Onboarding data  |
+| `finance`    | —      | Finance data     |
+| `marketing`  | —      | Marketing data   |
+| `tech`       | —      | Tech data        |
+| `shop`       | —      | Shop data        |
+| `b2b`        | —      | Indulge B2B data |
+| `house`      | —      | House data       |
+| `legacy`     | —      | Legacy data      |
+
+### Grants
+
+Roles are domain-scoped. A user has one role inside one domain; `founder` and `admin` are the only roles with multi-domain access (`domain_id = *`). When someone needs data outside their domain, a **grant** is issued — not a role change. Grants are explicit, expiring, and auditable: every cross-domain access has a grantor, a permission, and an `expires_at`. No global roles for regular users.
+
+---
+
+## 5. Phase Status
+
+Source of truth: `docs/changelog.md`. Only work listed there as shipped is marked complete below.
+
+### Phase 0 — Foundation (2026-05-26)
+
+- Next.js 16 App Router scaffolded; Supabase connected; Tailwind v4; shadcn/ui
+- `design-tokens.css` — all CSS variables; five themes (Earth, Air, Water, Fire, Cosmos)
+- Supabase client files: `client.ts`, `server.ts`, `middleware.ts`
+- Auth pages: login, forgot-password, update-password
+- Shared utilities: `sanitize.ts`, `phone.ts`, `dates.ts`, `numbers.ts`, `chart-tokens.ts`, `scroll.ts`
+
+### Phase 1 — Profiles system + user creation (2026-05-26)
+
+- Migrations: `user_role` / `app_domain` enums; `profiles` table, RLS, role/domain helpers, `on_auth_user_created` trigger, `profile_audit_log`
+- Server actions: `createUser`, `updateProfile`, `updateUserAuthorization`, `toggleUserActive`
+- Dashboard layout; Sidebar; TopBar
+- `GET /admin/users`, `GET /admin/users/new`
+
+### Phase 2 — User management + agent routing (2026-05-27)
+
+- `agent_routing_config` table; auto-created on `role=agent` via trigger
+- `toggleAgentRouting` server action (manager/admin/founder)
+- `inviteUser` — magic-link invite via `inviteUserByEmail`
+- `UsersTable` with client-side filters; `EditProfileForm`, `EditAuthorizationForm`, `UserStatusControls`
+- `GET /admin/users/[id]` — user detail page
+
+### Phase 3 — Gia: lead ingestion, assignment, lead list (2026-05-27)
+
+- Migration 0003: `leads`, `lead_activities`, `lead_notes`, `tasks`, `task_gia_meta` with full RLS
+- Webhook `POST /api/webhooks/leads` — Bearer auth + in-memory rate limiting
+- `ingestLead()` — validate → sanitize → resolve domain → round-robin assign → insert → log activities
+- `LeadsTable` — role-aware list; Sidebar Leads nav link
+
+### Phase 4 — Lead dossier + full lifecycle (2026-05-27)
+
+- `GET /leads/[id]` — parallel fetches; page-level access gate
+- `LeadInfoCard`, `StatusActionPanel`, `CalledModal`, `AgentScratchpad`
+- `LeadNotesSection`, `LeadJourneyTimeline`, `LeadActivityLog`, `LeadDossierTasksAsync`
+
+### Raw payload logging + error log (2026-05-27)
+
+- Migration 0004: `lead_raw_payloads` — immutable JSONB log; admin/founder SELECT only
+- Migration 0005: `ingestion_error` column for failed ingestions
+- `adaptMeta` — three payload shapes (Meta native, Pabbly, flat keys)
+- `GET /error-log` — admin/founder errored payloads page
+
+### Phase 5 — Profile page + theme system (2026-05-27)
+
+- `GET /profile` — avatar, details, theme, password, notifications
+- `ThemeSelector` — five swatches; synchronous `data-theme` before paint (no flash)
+- `PasswordChangeForm` with re-auth; `NotificationPreferences` stubbed
+- Sidebar footer → profile link with active state
+
+### Post-Phase 5 hardening (2026-05-27)
+
+- Atomic round-robin via `get_next_round_robin_agent()` (Migration 0007)
+- Lead deduplication by phone; `duplicate_submission` activity (Migration 0008)
+- `personal_details` JSONB on `leads`; `PersonalDetailsCard` on dossier (Migration 0009)
+- Activity log assignee name resolution; improved copy for `lead_created` / `agent_assigned`
+
+### Phase 6 — Modal primitive (2026-05-27)
+
+- `src/components/ui/modal.tsx` — shared chrome, Framer Motion enter/exit, a11y
+- `CalledModal`, `ConfirmModal`, `ReasonModal` refactored to compose `Modal`
+
+---
+
+## 6. What Is Planned (Not Built)
+
+- **WhatsApp page** — full in-app messaging interface (`/whatsapp`); conversation list + chat window; see `docs/The_Gia.md` Section 14.3
+- **WhatsApp AI chatbot** — Claude-powered RAG bot for automatic lead engagement until the agent takes over; see `docs/The_Gia.md` Section 14.6
+- **Sia (Concierge module)** — planned; not started
+- **Additional domain modules** — Finance, Marketing, Shop, B2B, House, Legacy — planned; not started
+
+---
+
+## 7. Folder Structure
+
+```text
+eia/
+├── CLAUDE.md                        ← this file
+├── .cursorrules                     ← identical to this file
+├── .env.local                       ← never committed
+├── .env.example                     ← always committed
+│
+├── docs/
+│   ├── The_Blueprint.md             ← project spec, phases, RBAC, decision log
+│   ├── design-dna.md                ← full design reference
+│   ├── The_Rules.md                 ← 50+ coded rules across 8 sections
+│   └── changelog.md                 ← ALL changes logged here (single source of truth)
+│
+├── src/
+│   ├── app/
+│   │   ├── CLAUDE.md                ← App Router rules. Routes, pages, auth gate.
+│   │   ├── (auth)/
+│   │   │   ├── login/
+│   │   │   ├── forgot-password/
+│   │   │   └── update-password/
+│   │   ├── (dashboard)/             ← all authenticated pages
+│   │   ├── api/
+│   │   │   └── webhooks/            ← inbound webhooks only. No other API routes.
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   └── page.tsx                 ← redirects to /login or /dashboard
+│   │
+│   ├── components/
+│   │   ├── CLAUDE.md                ← component rules. display-only. token usage.
+│   │   ├── ui/                      ← shadcn primitives. zero feature imports.
+│   │   └── layout/                  ← Sidebar, TopBar
+│   │
+│   ├── lib/
+│   │   ├── CLAUDE.md                ← action patterns. util rules. type conventions.
+│   │   ├── supabase/
+│   │   │   ├── client.ts            ← browser client (only place)
+│   │   │   ├── server.ts            ← server client (only place)
+│   │   │   └── middleware.ts        ← session refresh (only place)
+│   │   ├── actions/                 ← all server actions
+│   │   ├── services/                ← all DB queries
+│   │   ├── validations/             ← all Zod schemas + form-errors.ts
+│   │   ├── constants/               ← typed enums: domains, roles, statuses
+│   │   ├── utils/
+│   │   │   ├── sanitize.ts          ← sanitizeText()
+│   │   │   ├── phone.ts             ← normalizeToE164()
+│   │   │   ├── dates.ts             ← formatDate(), toUTC()
+│   │   │   ├── numbers.ts           ← formatCount(), formatCurrency()
+│   │   │   ├── scroll.ts            ← scrollToBottom(), lockBodyScroll()
+│   │   │   └── chart-tokens.ts      ← getChartTokens() — Recharts bridge
+│   │   └── types/
+│   │       ├── database.ts          ← auto-generated from Supabase
+│   │       └── index.ts             ← shared types
+│   │
+│   ├── styles/
+│   │   └── design-tokens.css        ← ALL CSS variables, all five themes
+│   │
+│   └── middleware.ts
+│
+└── supabase/
+    ├── migrations/
+    │   └── CLAUDE.md                ← migration rules. RLS checklist. never edit after run.
+    └── config.toml
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 8. Local Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+pnpm install
+cp .env.example .env.local
+# Fill in Supabase keys
+pnpm dev
+```
 
-## Learn More
+Never commit `.env.local`. Required environment variables are documented in `.env.example`.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 9. Authority Files
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| File | Path | Contents |
+| ---- | ---- | -------- |
+| The Blueprint | `docs/The_Blueprint.md` | Project spec, tech stack, RBAC model, phase plan, decision log |
+| Design DNA | `docs/DESIGN-DNA.md` | Full visual and interaction design reference for the OS |
+| The Rules | `docs/The_Rules.md` | Coded non-negotiable rules across architecture, data, UI, and security |
+| Changelog | `docs/changelog.md` | Single source of truth for what shipped and when |
+| The Gia | `docs/The_Gia.md` | Onboarding CRM module: ingestion, lifecycle, dossier, WhatsApp (planned) |
 
-## Deploy on Vercel
+Command-layer rules for day-to-day development live in `/CLAUDE.md` and `/.cursorrules` (identical).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 10. Key Rules (Short Version)
+
+- No `any` in TypeScript; strict mode is enforced
+- No hardcoded colours — every value is a CSS token from `src/styles/design-tokens.css`
+- Supabase client instantiated in exactly three places: `src/lib/supabase/client.ts`, `src/lib/supabase/server.ts`, `src/lib/supabase/middleware.ts`
+- All DB queries in `src/lib/services/`, all mutations in `src/lib/actions/`
+- RLS is enabled on every table — no exceptions
+
+For the full rule set, see `docs/The_Rules.md` and `/CLAUDE.md`.

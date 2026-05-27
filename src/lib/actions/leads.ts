@@ -7,8 +7,12 @@ import {
   UpdateLeadStatusSchema,
   AssignLeadSchema,
   UpdateScratchpadSchema,
+  UpdatePersonalDetailsSchema,
+  CreateManualLeadSchema,
 } from '@/lib/validations/lead-schema';
 import { formErrors } from '@/lib/validations/form-errors';
+import { sanitizeText } from '@/lib/utils/sanitize';
+import { getAgentsForDomain } from '@/lib/services/leads-service';
 import type { ActionResult } from '@/lib/types/index';
 import type { LeadStatus } from '@/lib/types/database';
 
@@ -22,7 +26,7 @@ async function getCallerProfile() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, role, domain')
+    .select('id, role, domain, full_name')
     .eq('id', user.id)
     .single();
 
@@ -283,4 +287,197 @@ export async function updateScratchpad(
   await admin.from('leads').update({ private_scratchpad: content }).eq('id', leadId);
 
   return { data: null, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: updatePersonalDetails (agent-collected enrichment)
+// ─────────────────────────────────────────────
+export async function updatePersonalDetails(
+  input: unknown,
+): Promise<ActionResult<null>> {
+  // 1. Validate
+  const parsed = UpdatePersonalDetailsSchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  const { leadId, details } = parsed.data;
+
+  // 2. Auth — assigned agent, manager, admin, founder
+  const caller = await getCallerProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const supabase = await createClient();
+
+  const { data: lead } = await supabase
+    .from('leads')
+    .select('assigned_to, domain, personal_details')
+    .eq('id', leadId)
+    .single();
+
+  if (!lead) return { data: null, error: 'Lead not found.' };
+
+  const hasAccess =
+    (caller.role === 'agent' && lead.assigned_to === caller.id) ||
+    (caller.role === 'manager' && lead.domain === (caller.domain as string)) ||
+    caller.role === 'admin' ||
+    caller.role === 'founder';
+
+  if (!hasAccess) return { data: null, error: formErrors.unauthorized };
+
+  // 3. Merge into existing JSONB — sanitize, strip empty strings, preserve prior keys
+  const existing = (lead.personal_details ?? {}) as Record<string, string>;
+  const merged: Record<string, string> = { ...existing };
+  for (const [k, rawV] of Object.entries(details)) {
+    const v = sanitizeText(String(rawV));
+    if (v === '') {
+      delete merged[k];
+    } else {
+      merged[k] = v;
+    }
+  }
+
+  const admin = createAdminClient();
+  await admin.from('leads').update({ personal_details: merged }).eq('id', leadId);
+
+  return { data: null, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: createManualLead
+// ─────────────────────────────────────────────
+export async function createManualLead(
+  input: unknown,
+): Promise<ActionResult<{ leadId: string; duplicate?: boolean }>> {
+  // 1. Zod validate — first line, always (Rule S-01)
+  const parsed = CreateManualLeadSchema.safeParse(input);
+  if (!parsed.success) {
+    const phoneIssue = parsed.error.issues.find((i) => i.path[0] === 'phone');
+    if (phoneIssue) return { data: null, error: formErrors.phoneInvalid };
+    return { data: null, error: formErrors.generic };
+  }
+
+  const fields = parsed.data;
+
+  // 2. Auth check (Rule A-01)
+  const caller = await getCallerProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  // 3. Domain enforcement: agents cannot submit to any domain other than their own (Rule S-06, S-14)
+  const resolvedDomain =
+    caller.role === 'agent' ? caller.domain : fields.domain;
+
+  // 4. Resolve assigned_to — defaults to caller; verify cross-domain if explicitly provided
+  const admin = createAdminClient();
+  let assignedTo: string | null = fields.assigned_to ?? caller.id;
+
+  if (fields.assigned_to && fields.assigned_to !== caller.id) {
+    // Only manager/admin/founder can assign to another agent
+    if (caller.role === 'agent') {
+      return { data: null, error: formErrors.unauthorized };
+    }
+    // Verify the target agent exists in the resolved domain
+    const { data: targetAgent } = await admin
+      .from('profiles')
+      .select('id, domain, role, is_active')
+      .eq('id', fields.assigned_to)
+      .single();
+
+    if (
+      !targetAgent ||
+      targetAgent.role !== 'agent' ||
+      targetAgent.domain !== resolvedDomain ||
+      !targetAgent.is_active
+    ) {
+      return { data: null, error: 'The selected agent is not available in this domain.' };
+    }
+    assignedTo = fields.assigned_to;
+  }
+
+  // 5. sanitizeText on text fields (already done by Zod transforms in schema)
+  //    normalizeToE164 on phone (already done by Zod transform in schema)
+  const { first_name, last_name, phone, email, manual_source } = fields;
+
+  // 6. Duplicate check via get_active_lead_by_phone (Rule S-09 / dedup spec)
+  //    Uses admin client — function is SECURITY DEFINER, service role only
+  //    Cast through unknown: RPC function not yet in generated DB types
+  const { data: existingLeads } = await (admin as unknown as { rpc: (fn: string, args: Record<string, string>) => Promise<{ data: { id: string }[] | null }> })
+    .rpc('get_active_lead_by_phone', { p_phone: phone });
+
+  if (existingLeads && existingLeads.length > 0) {
+    return { data: { leadId: existingLeads[0].id, duplicate: true }, error: null };
+  }
+
+  // 7. INSERT lead — platform = 'manual', source = null, form_data = {}, status = 'new'
+  const now = new Date().toISOString();
+  const { data: inserted, error: insertError } = await admin
+    .from('leads')
+    .insert({
+      first_name,
+      last_name:          last_name ?? null,
+      email:              email ?? null,
+      phone,
+      domain:             resolvedDomain,
+      assigned_to:        assignedTo,
+      assigned_at:        assignedTo ? now : null,
+      status:             'new',
+      lead_intent:        null,
+      platform:           null,
+      campaign_id:        null,
+      ad_name:            null,
+      utm_source:         null,
+      utm_medium:         null,
+      utm_campaign:       null,
+      utm_content:        null,
+      form_data:          manual_source ? { manual_source } : {},
+      last_call_outcome:  null,
+      private_scratchpad: null,
+      personal_details:   null,
+      archived_at:        null,
+    })
+    .select('id')
+    .single();
+
+  if (insertError || !inserted) {
+    return { data: null, error: formErrors.generic };
+  }
+
+  const leadId = inserted.id as string;
+
+  // 8. INSERT lead_created activity
+  await admin.from('lead_activities').insert({
+    lead_id:     leadId,
+    actor_id:    caller.id,
+    action_type: 'lead_created',
+    details:     {
+      source:        'manual',
+      manual_source: manual_source ?? null,
+      domain:        resolvedDomain,
+    },
+  });
+
+  // 9. INSERT agent_assigned activity if assigned_to is set
+  if (assignedTo) {
+    await admin.from('lead_activities').insert({
+      lead_id:     leadId,
+      actor_id:    caller.id,
+      action_type: 'agent_assigned',
+      details:     { assigned_to: assignedTo, method: 'manual' },
+    });
+  }
+
+  // 10. Return success
+  return { data: { leadId }, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Read action: list active agents for a domain
+// Called by AddLeadModal when domain select changes (manager/admin/founder)
+// ─────────────────────────────────────────────
+export async function listAgentsForDomain(
+  domain: string,
+): Promise<ActionResult<{ id: string; full_name: string }[]>> {
+  const caller = await getCallerProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const agents = await getAgentsForDomain(domain);
+  return { data: agents, error: null };
 }

@@ -166,7 +166,7 @@ export function LeadNotesSection({ notes }: Props) {
                           color:      'var(--theme-text-secondary)',
                         }}
                       >
-                        {note.author_name}
+                        {note.author.full_name}
                       </span>
 
                       {outcomeBadge && note.call_outcome && (

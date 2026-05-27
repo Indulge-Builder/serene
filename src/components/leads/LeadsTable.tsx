@@ -1,56 +1,65 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ChevronRight } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Columns } from 'lucide-react';
 import type { Lead } from '@/lib/types/database';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
 import { CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
 import { formatDate } from '@/lib/utils/dates';
+import { LEAD_COLUMN_MAP, type LeadColumnId } from '@/lib/constants/lead-columns';
+import { useLeadColumnPreferences } from '@/hooks/useLeadColumnPreferences';
+import { LeadColumnPicker } from '@/components/leads/LeadColumnPicker';
 
 type LeadsTableProps = {
-  leads: Lead[];
+  leads:            Lead[];
+  userId:           string;
+  hasActiveFilters?: boolean;
 };
 
-type StatusFilter = 'all' | Lead['status'];
+export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTableProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerAnchorRef             = useRef<HTMLDivElement>(null);
 
-export function LeadsTable({ leads }: LeadsTableProps) {
-  const [search, setSearch]             = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const { visibleColumns, columnOrder, toggleColumn, reorderColumns, resetToDefaults } =
+    useLeadColumnPreferences(userId);
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    return leads.filter((l) => {
-      if (statusFilter !== 'all' && l.status !== statusFilter) return false;
-      if (q) {
-        const haystack = [
-          l.first_name,
-          l.last_name ?? '',
-          l.phone ?? '',
-          l.email ?? '',
-          l.utm_campaign ?? '',
-        ]
-          .join(' ')
-          .toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [leads, search, statusFilter]);
+  // Ordered visible column ids — the table renders exactly these in this order
+  const orderedVisible: LeadColumnId[] = useMemo(
+    () => columnOrder.filter((id) => visibleColumns.includes(id)),
+    [columnOrder, visibleColumns],
+  );
 
-  const statusOptions: { value: StatusFilter; label: string }[] = [
-    { value: 'all',           label: 'All statuses' },
-    { value: 'new',           label: 'New' },
-    { value: 'touched',       label: 'Touched' },
-    { value: 'in_discussion', label: 'In Discussion' },
-    { value: 'won',           label: 'Won' },
-    { value: 'nurturing',     label: 'Nurturing' },
-    { value: 'lost',          label: 'Lost' },
-    { value: 'junk',          label: 'Junk' },
-  ];
+  const statusCounts = useMemo(
+    () => ({
+      new:    leads.filter((l) => l.status === 'new').length,
+      active: leads.filter((l) =>
+        (['touched', 'in_discussion', 'nurturing'] as const).includes(
+          l.status as 'touched' | 'in_discussion' | 'nurturing',
+        ),
+      ).length,
+      won:  leads.filter((l) => l.status === 'won').length,
+      lost: leads.filter((l) =>
+        (['lost', 'junk'] as const).includes(l.status as 'lost' | 'junk'),
+      ).length,
+    }),
+    [leads],
+  );
 
+  const hasStatusPills =
+    statusCounts.new > 0 ||
+    statusCounts.active > 0 ||
+    statusCounts.won > 0 ||
+    statusCounts.lost > 0;
+
+  // Section 11.5: content enters opacity 0→1 + y 4px→0 at 250ms ease-out-expo
+  // with 100ms delay (overlap with skeleton exit at 150ms ease-in)
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
       style={{
         border:       '1px solid var(--theme-paper-border)',
         borderRadius: 'var(--radius-md)',
@@ -58,7 +67,7 @@ export function LeadsTable({ leads }: LeadsTableProps) {
         boxShadow:    'var(--shadow-1)',
       }}
     >
-      {/* Filter bar */}
+      {/* Table toolbar — status pills | column picker + row count */}
       <div
         style={{
           display:      'flex',
@@ -67,102 +76,77 @@ export function LeadsTable({ leads }: LeadsTableProps) {
           padding:      'var(--space-4) var(--space-5)',
           borderBottom: '1px solid var(--theme-paper-border)',
           background:   'var(--theme-paper-subtle)',
-          flexWrap:     'wrap',
+          flexWrap:     'nowrap',
         }}
       >
-        {/* Search */}
-        <div style={{ position: 'relative', flex: '1 1 220px', minWidth: '180px' }}>
-          <Search
+        {hasStatusPills && (
+          <div
+            className="hidden md:flex items-center gap-2 flex-shrink-0"
+            aria-label="Lead status summary"
+          >
+            {statusCounts.new > 0 && (
+              <StatusSummaryPill label="New" count={statusCounts.new} variant="neutral" />
+            )}
+            {statusCounts.active > 0 && (
+              <StatusSummaryPill label="Active" count={statusCounts.active} variant="accent" />
+            )}
+            {statusCounts.won > 0 && (
+              <StatusSummaryPill label="Won" count={statusCounts.won} variant="success" />
+            )}
+            {statusCounts.lost > 0 && (
+              <StatusSummaryPill label="Lost" count={statusCounts.lost} variant="danger" />
+            )}
+          </div>
+        )}
+
+        <div style={{ flex: 1, minWidth: 0 }} aria-hidden="true" />
+
+        {/* Column picker trigger */}
+        <div ref={pickerAnchorRef} style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            onClick={() => setPickerOpen((v) => !v)}
+            aria-pressed={pickerOpen}
+            aria-label="Toggle column visibility"
             style={{
-              position:  'absolute',
-              left:      'var(--space-3)',
-              top:       '50%',
-              transform: 'translateY(-50%)',
-              width:     '1rem',
-              height:    '1rem',
-              color:     'var(--theme-text-tertiary)',
-              pointerEvents: 'none',
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Search name, phone, email…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{
-              width:        '100%',
+              display:      'inline-flex',
+              alignItems:   'center',
+              gap:          'var(--space-1)',
               height:       '2.25rem',
-              paddingLeft:  'calc(var(--space-3) + 1rem + var(--space-2))',
-              paddingRight: 'var(--space-3)',
+              padding:      '0 var(--space-3)',
               border:       '1px solid var(--theme-paper-border)',
               borderRadius: 'var(--radius-sm)',
-              background:   'var(--theme-paper)',
+              background:   pickerOpen ? 'var(--theme-accent-surface)' : 'transparent',
+              color:        pickerOpen ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
               fontSize:     'var(--text-sm)',
-              color:        'var(--theme-text-primary)',
-              outline:      'none',
-              transition:   'var(--transition-hover)',
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = 'var(--theme-accent)';
-              e.currentTarget.style.boxShadow   = 'var(--shadow-focus)';
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = 'var(--theme-paper-border)';
-              e.currentTarget.style.boxShadow   = 'none';
-            }}
-          />
-        </div>
-
-        {/* Status filter */}
-        <div style={{ position: 'relative' }}>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            style={{
-              height:          '2.25rem',
-              paddingLeft:     'var(--space-3)',
-              paddingRight:    'var(--space-6)',
-              border:          '1px solid var(--theme-paper-border)',
-              borderRadius:    'var(--radius-sm)',
-              background:      'var(--theme-paper-subtle)',
-              fontSize:        'var(--text-sm)',
-              color:           'var(--theme-text-primary)',
-              appearance:      'none',
-              cursor:          'pointer',
-              outline:         'none',
-              transition:      'var(--transition-hover)',
+              cursor:       'pointer',
+              transition:   'background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
             }}
           >
-            {statusOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <ChevronRight
-            style={{
-              position:      'absolute',
-              right:         'var(--space-2)',
-              top:           '50%',
-              transform:     'translateY(-50%) rotate(90deg)',
-              width:         '0.875rem',
-              height:        '0.875rem',
-              color:         'var(--theme-text-tertiary)',
-              pointerEvents: 'none',
-            }}
+            <Columns style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} />
+            <span>Columns</span>
+          </button>
+
+          <LeadColumnPicker
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            visibleColumns={visibleColumns}
+            columnOrder={columnOrder}
+            toggleColumn={toggleColumn}
+            reorderColumns={reorderColumns}
+            resetToDefaults={resetToDefaults}
           />
         </div>
 
-        {/* Count */}
+        {/* Row count — reflects server-filtered page */}
         <span
           style={{
-            marginLeft: 'auto',
             fontSize:   'var(--text-xs)',
             color:      'var(--theme-text-tertiary)',
             whiteSpace: 'nowrap',
+            flexShrink: 0,
           }}
         >
-          {filtered.length} lead{filtered.length !== 1 ? 's' : ''}
+          {leads.length} lead{leads.length !== 1 ? 's' : ''} this page
         </span>
       </div>
 
@@ -171,9 +155,9 @@ export function LeadsTable({ leads }: LeadsTableProps) {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: 'var(--theme-paper-subtle)' }}>
-              {['Status', 'Name', 'Phone', 'Campaign', 'Created', 'Last outcome'].map((col) => (
+              {orderedVisible.map((colId) => (
                 <th
-                  key={col}
+                  key={colId}
                   style={{
                     padding:       'var(--space-3) var(--space-4)',
                     textAlign:     'left',
@@ -186,16 +170,16 @@ export function LeadsTable({ leads }: LeadsTableProps) {
                     whiteSpace:    'nowrap',
                   }}
                 >
-                  {col}
+                  {LEAD_COLUMN_MAP[colId].label}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {leads.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={orderedVisible.length}
                   style={{
                     padding:   'var(--space-16) var(--space-4)',
                     textAlign: 'center',
@@ -203,15 +187,15 @@ export function LeadsTable({ leads }: LeadsTableProps) {
                 >
                   <p
                     style={{
-                      fontFamily:  'var(--font-serif)',
-                      fontSize:    'var(--text-lg)',
-                      fontStyle:   'italic',
-                      color:       'var(--theme-text-tertiary)',
-                      fontWeight:  'var(--weight-normal)',
+                      fontFamily: 'var(--font-serif)',
+                      fontSize:   'var(--text-lg)',
+                      fontStyle:  'italic',
+                      color:      'var(--theme-text-tertiary)',
+                      fontWeight: 'var(--weight-normal)',
                     }}
                   >
-                    {search || statusFilter !== 'all'
-                      ? 'No leads match your filters.'
+                    {hasActiveFilters
+                      ? 'Nothing matches these filters.'
                       : 'No leads yet.'}
                   </p>
                   <p
@@ -221,31 +205,41 @@ export function LeadsTable({ leads }: LeadsTableProps) {
                       color:     'var(--theme-text-tertiary)',
                     }}
                   >
-                    {search || statusFilter !== 'all'
-                      ? 'Try adjusting your search or filter.'
+                    {hasActiveFilters
+                      ? 'Try adjusting or clearing your filters.'
                       : 'Leads will appear here once the webhook receives its first submission.'}
                   </p>
                 </td>
               </tr>
             ) : (
-              filtered.map((lead) => (
-                <LeadRow key={lead.id} lead={lead} />
+              leads.map((lead) => (
+                <LeadRow
+                  key={lead.id}
+                  lead={lead}
+                  visibleColumns={orderedVisible}
+                />
               ))
             )}
           </tbody>
         </table>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 // ─────────────────────────────────────────────
-// Single table row
+// Single table row — renders only visible cells in the stored order
 // ─────────────────────────────────────────────
-function LeadRow({ lead }: { lead: Lead }) {
-  const router = useRouter();
+function LeadRow({
+  lead,
+  visibleColumns,
+}: {
+  lead: Lead;
+  visibleColumns: LeadColumnId[];
+}) {
+  const router      = useRouter();
   const badgeVariant = LEAD_STATUS_BADGE[lead.status];
-  const fullName = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
+  const fullName    = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
 
   return (
     <tr
@@ -258,88 +252,143 @@ function LeadRow({ lead }: { lead: Lead }) {
       onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = 'var(--theme-paper-subtle)'; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = ''; }}
     >
-      {/* Status */}
-      <td style={{ padding: 'var(--space-3) var(--space-4)', whiteSpace: 'nowrap' }}>
-        <StatusBadge variant={badgeVariant} label={LEAD_STATUS_LABELS[lead.status]} />
-      </td>
-
-      {/* Name */}
-      <td
-        style={{
-          padding:    'var(--space-3) var(--space-4)',
-          fontSize:   'var(--text-sm)',
-          fontWeight: 'var(--weight-medium)',
-          color:      'var(--theme-text-primary)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {fullName}
-      </td>
-
-      {/* Phone */}
-      <td
-        style={{
-          padding:    'var(--space-3) var(--space-4)',
-          fontSize:   'var(--text-sm)',
-          fontFamily: 'var(--font-mono)',
-          color:      'var(--theme-text-secondary)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {lead.phone ?? '—'}
-      </td>
-
-      {/* Campaign */}
-      <td
-        style={{
-          padding:  'var(--space-3) var(--space-4)',
-          fontSize: 'var(--text-xs)',
-          color:    'var(--theme-text-tertiary)',
-          maxWidth: '12rem',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace:   'nowrap',
-        }}
-      >
-        {lead.utm_campaign ?? '—'}
-      </td>
-
-      {/* Created */}
-      <td
-        style={{
-          padding:    'var(--space-3) var(--space-4)',
-          fontSize:   'var(--text-xs)',
-          fontFamily: 'var(--font-mono)',
-          color:      'var(--theme-text-tertiary)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {formatDate(lead.created_at)}
-      </td>
-
-      {/* Last outcome */}
-      <td
-        style={{
-          padding:  'var(--space-3) var(--space-4)',
-          fontSize: 'var(--text-xs)',
-          color:    'var(--theme-text-secondary)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {lead.last_call_outcome
-          ? CALL_OUTCOME_LABELS[lead.last_call_outcome]
-          : '—'}
-      </td>
-
+      {visibleColumns.map((colId) => (
+        <LeadCell key={colId} colId={colId} lead={lead} fullName={fullName} badgeVariant={badgeVariant} />
+      ))}
     </tr>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Individual cell renderer — exhaustive switch keeps column logic co-located
+// ─────────────────────────────────────────────
+type BadgeVariant = 'neutral' | 'info' | 'warning' | 'success' | 'accent' | 'danger';
+
+function LeadCell({
+  colId,
+  lead,
+  fullName,
+  badgeVariant,
+}: {
+  colId:        LeadColumnId;
+  lead:         Lead;
+  fullName:     string;
+  badgeVariant: BadgeVariant;
+}) {
+  const baseCell: React.CSSProperties = {
+    padding:    'var(--space-3) var(--space-4)',
+    whiteSpace: 'nowrap',
+  };
+
+  switch (colId) {
+    case 'status':
+      return (
+        <td style={baseCell}>
+          <StatusBadge variant={badgeVariant} label={LEAD_STATUS_LABELS[lead.status]} />
+        </td>
+      );
+
+    case 'name':
+      return (
+        <td style={{ ...baseCell, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--theme-text-primary)' }}>
+          {fullName}
+        </td>
+      );
+
+    case 'phone':
+      return (
+        <td style={{ ...baseCell, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', color: 'var(--theme-text-secondary)' }}>
+          {lead.phone ?? '—'}
+        </td>
+      );
+
+    case 'email':
+      return (
+        <td style={{ ...baseCell, fontSize: 'var(--text-sm)', color: 'var(--theme-text-secondary)' }}>
+          {lead.email ?? '—'}
+        </td>
+      );
+
+    case 'campaign':
+      return (
+        <td style={{ ...baseCell, fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', maxWidth: '12rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {lead.utm_campaign ?? '—'}
+        </td>
+      );
+
+    case 'source':
+      return (
+        <td style={{ ...baseCell, fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
+          {lead.utm_source ?? lead.platform ?? '—'}
+        </td>
+      );
+
+    case 'assigned_to':
+      return (
+        <td style={{ ...baseCell, fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>
+          {lead.assigned_to ?? '—'}
+        </td>
+      );
+
+    case 'created_at':
+      return (
+        <td style={{ ...baseCell, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--theme-text-tertiary)' }}>
+          {formatDate(lead.created_at, 'dd MMM, hh:mm a')}
+        </td>
+      );
+
+    case 'last_call_outcome':
+      return (
+        <td style={{ ...baseCell, fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>
+          {lead.last_call_outcome ? CALL_OUTCOME_LABELS[lead.last_call_outcome] : '—'}
+        </td>
+      );
+
+    case 'call_count':
+      return (
+        <td style={{ ...baseCell, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--theme-text-secondary)', textAlign: 'right' }}>
+          {lead.call_count}
+        </td>
+      );
+
+    case 'domain':
+      return (
+        <td style={{ ...baseCell, fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', textTransform: 'capitalize' }}>
+          {lead.domain}
+        </td>
+      );
+
+    default:
+      return null;
+  }
+}
+
+// ─────────────────────────────────────────────
+// Toolbar status summary pills (current page rows)
+// ─────────────────────────────────────────────
+type SummaryPillVariant = 'neutral' | 'accent' | 'success' | 'danger';
+
+function StatusSummaryPill({
+  label,
+  count,
+  variant,
+}: {
+  label:   string;
+  count:   number;
+  variant: SummaryPillVariant;
+}) {
+  return (
+    <span className={`status-pill status-pill--${variant}`}>
+      {label}
+      <span aria-hidden="true">·</span>
+      {count}
+    </span>
   );
 }
 
 // ─────────────────────────────────────────────
 // Status badge
 // ─────────────────────────────────────────────
-type BadgeVariant = 'neutral' | 'info' | 'warning' | 'success' | 'accent' | 'danger';
-
 const BADGE_STYLES: Record<BadgeVariant, { bg: string; text: string; border: string }> = {
   neutral: {
     bg:     'var(--color-neutral-light)',
@@ -378,17 +427,17 @@ function StatusBadge({ variant, label }: { variant: BadgeVariant; label: string 
   return (
     <span
       style={{
-        display:        'inline-flex',
-        alignItems:     'center',
-        padding:        '0.125rem 0.625rem',
-        borderRadius:   'var(--radius-full)',
-        border:         `1px solid ${styles.border}`,
-        background:     styles.bg,
-        color:          styles.text,
-        fontSize:       'var(--text-xs)',
-        fontWeight:     'var(--weight-medium)',
-        whiteSpace:     'nowrap',
-        boxShadow:      'var(--shadow-1)',
+        display:      'inline-flex',
+        alignItems:   'center',
+        padding:      '0.125rem 0.625rem',
+        borderRadius: 'var(--radius-full)',
+        border:       `1px solid ${styles.border}`,
+        background:   styles.bg,
+        color:        styles.text,
+        fontSize:     'var(--text-xs)',
+        fontWeight:   'var(--weight-medium)',
+        whiteSpace:   'nowrap',
+        boxShadow:    'var(--shadow-1)',
       }}
     >
       {label}

@@ -1,9 +1,10 @@
+import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import type { Lead, LeadActivity, LeadNote, Task, UserRole, AppDomain } from '@/lib/types/database';
+import type { Lead, LeadActivity, LeadNote, LeadRawPayload, Task, UserRole, AppDomain, LeadFilters, Profile } from '@/lib/types/database';
 
-export type LeadNoteWithAuthor = LeadNote & { author_name: string };
-export type LeadActivityWithActor = LeadActivity & { actor_name: string | null };
+export type LeadNoteWithAuthor = LeadNote & { author: { full_name: string } };
+export type LeadActivityWithActor = LeadActivity & { actor: { full_name: string } | null };
 export type LeadTaskForDossier = Task & { task_type: Task['task_type'] };
 
 // ─────────────────────────────────────────────
@@ -70,16 +71,168 @@ export async function getAllLeads(): Promise<Lead[]> {
 }
 
 // ─────────────────────────────────────────────
-// Query: role-aware lead list (dispatches to correct fn)
+// Query: role-aware lead list with server-side filters + pagination
+//
+// Security contract:
+//   - agent role: assigned_to = auth.uid() is enforced unconditionally.
+//     LeadFilters.agent_id is silently ignored for agents — their role
+//     constraint cannot be overridden by a URL param.
+//   - manager role: domain constraint applied before any filters.
+//   - admin / founder: no pre-constraint.
+//
+// Pagination: .range() is always applied, regardless of filter presence.
+//   Default page=1, pageSize=50. An unfiltered first load fetches exactly
+//   50 rows — never the full table.
+//
+// Count: returned in the same round trip via { count: 'exact', head: false }.
+//   Never two separate queries.
 // ─────────────────────────────────────────────
+export type LeadsResult = {
+  leads:      Lead[];
+  totalCount: number;
+};
+
 export async function getLeadsByRole(
   role: UserRole,
   userId: string,
   domain: AppDomain,
-): Promise<Lead[]> {
-  if (role === 'agent') return getLeadsForAgent(userId);
-  if (role === 'manager') return getLeadsForDomain(domain);
-  return getAllLeads();
+  filters: LeadFilters = {
+    status:            null,
+    last_call_outcome: null,
+    agent_id:          null,
+    source:            null,
+    campaign:          null,
+    date_from:         null,
+    date_to:           null,
+    search:            null,
+    page:              1,
+    pageSize:          50,
+  },
+): Promise<LeadsResult> {
+  const supabase = await createClient();
+
+  const page     = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.max(1, Math.min(200, filters.pageSize ?? 50));
+  const offset   = (page - 1) * pageSize;
+
+  // Use count: 'exact' to get total matching rows in the same round trip
+  let query = supabase
+    .from('leads')
+    .select('*', { count: 'exact', head: false })
+    .is('archived_at', null)
+    .order('created_at', { ascending: false });
+
+  // Role-level constraints — applied before any filter, cannot be overridden
+  if (role === 'agent') {
+    query = query.eq('assigned_to', userId);
+    // agent_id filter intentionally NOT applied here — role constraint wins
+  } else if (role === 'manager') {
+    query = query.eq('domain', domain);
+    if (filters.agent_id) {
+      query = query.eq('assigned_to', filters.agent_id);
+    }
+  } else {
+    // admin / founder — no pre-constraint; agent_id filter is honoured
+    if (filters.agent_id) {
+      query = query.eq('assigned_to', filters.agent_id);
+    }
+  }
+
+  // Optional filters
+  if (filters.status && filters.status.length > 0) {
+    query = query.in('status', filters.status);
+  }
+
+  if (filters.last_call_outcome && filters.last_call_outcome.length > 0) {
+    query = query.in('last_call_outcome', filters.last_call_outcome);
+  }
+
+  if (filters.source) {
+    query = query.eq('utm_source', filters.source);
+  }
+
+  if (filters.campaign) {
+    query = query.eq('utm_campaign', filters.campaign);
+  }
+
+  if (filters.date_from) {
+    query = query.gte('created_at', filters.date_from);
+  }
+
+  if (filters.date_to) {
+    // End-of-day transform: include all leads up to 23:59:59.999 on date_to
+    const endOfDay = filters.date_to.replace(/T.*$/, 'T23:59:59.999Z');
+    query = query.lte('created_at', endOfDay);
+  }
+
+  if (filters.search) {
+    // Trim and lowercase in the service — never trust raw client input
+    const term = filters.search.trim().toLowerCase();
+    if (term) {
+      query = query.or(
+        `first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`,
+      );
+    }
+  }
+
+  // Pagination — always applied, never conditional
+  query = query.range(offset, offset + pageSize - 1);
+
+  const { data, error, count } = await query;
+  if (error || !data) return { leads: [], totalCount: 0 };
+  return { leads: data as Lead[], totalCount: count ?? 0 };
+}
+
+/** Deduped per-request — safe to call from page header and LeadsTableAsync. */
+export const getLeadsByRoleCached = cache(getLeadsByRole);
+
+// ─────────────────────────────────────────────
+// Query: filter option lists for the LeadsFilters component
+// Called ONCE at page level — never inside filter components.
+// ─────────────────────────────────────────────
+export type LeadFilterOptions = {
+  campaigns: string[];
+  agents:    Pick<Profile, 'id' | 'full_name'>[];
+};
+
+export async function getLeadFilterOptions(
+  role: UserRole,
+  domain: AppDomain,
+): Promise<LeadFilterOptions> {
+  const supabase = await createClient();
+
+  // Distinct campaign names — uses idx_leads_utm_campaign partial index
+  const { data: campaignRows } = await supabase
+    .from('leads')
+    .select('utm_campaign')
+    .is('archived_at', null)
+    .not('utm_campaign', 'is', null)
+    .order('utm_campaign', { ascending: true });
+
+  const campaigns = [
+    ...new Set(
+      (campaignRows ?? [])
+        .map((r) => r.utm_campaign)
+        .filter((c): c is string => c !== null && c.trim() !== ''),
+    ),
+  ];
+
+  // Agents — scoped to domain for manager; all domains for admin/founder
+  let agentsQuery = supabase
+    .from('profiles')
+    .select('id, full_name')
+    .eq('role', 'agent')
+    .eq('is_active', true)
+    .order('full_name', { ascending: true });
+
+  if (role === 'manager') {
+    agentsQuery = agentsQuery.eq('domain', domain);
+  }
+
+  const { data: agentRows } = await agentsQuery;
+  const agents = (agentRows ?? []) as Pick<Profile, 'id' | 'full_name'>[];
+
+  return { campaigns, agents };
 }
 
 // ─────────────────────────────────────────────
@@ -113,95 +266,91 @@ export async function getLeadNotes(leadId: string): Promise<LeadNote[]> {
 }
 
 // ─────────────────────────────────────────────
-// Helper: fetch profile name map by IDs
-// ─────────────────────────────────────────────
-async function getProfileNameMap(ids: string[]): Promise<Record<string, string>> {
-  if (ids.length === 0) return {};
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('profiles')
-    .select('id, full_name')
-    .in('id', ids);
-
-  const map: Record<string, string> = {};
-  for (const p of data ?? []) map[p.id] = p.full_name;
-  return map;
-}
-
-// ─────────────────────────────────────────────
-// Query: lead notes with author names
+// Query: lead notes with author names — single joined query
 // ─────────────────────────────────────────────
 export async function getLeadNotesFull(leadId: string): Promise<LeadNoteWithAuthor[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('lead_notes')
-    .select('*')
+    .select('*, author:profiles!lead_notes_author_id_fkey(full_name)')
     .eq('lead_id', leadId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false });
 
   if (error || !data) return [];
-  const notes = data as LeadNote[];
-
-  const authorIds = [...new Set(notes.map((n) => n.author_id))];
-  const nameMap = await getProfileNameMap(authorIds);
-
-  return notes.map((n) => ({
-    ...n,
-    author_name: nameMap[n.author_id] ?? 'Unknown',
-  }));
+  return data as LeadNoteWithAuthor[];
 }
 
 // ─────────────────────────────────────────────
-// Query: lead activities with actor names
+// Query: lead activities with actor names — single joined query
 // ─────────────────────────────────────────────
 export async function getLeadActivitiesFull(leadId: string): Promise<LeadActivityWithActor[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('lead_activities')
-    .select('*')
+    .select('*, actor:profiles!lead_activities_actor_id_fkey(full_name)')
     .eq('lead_id', leadId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false });
 
   if (error || !data) return [];
-  const activities = data as LeadActivity[];
-
-  const actorIds = [...new Set(
-    activities.map((a) => a.actor_id).filter((id): id is string => id !== null),
-  )];
-  const nameMap = await getProfileNameMap(actorIds);
-
-  return activities.map((a) => ({
-    ...a,
-    actor_name: a.actor_id ? (nameMap[a.actor_id] ?? 'Unknown') : null,
-  }));
+  return data as LeadActivityWithActor[];
 }
 
 // ─────────────────────────────────────────────
-// Query: next pending task for a lead (Gia module)
+// Query: next pending task for a lead (Gia module) — single joined query
+//
+// Starts from `tasks` (native column filters: status, due_at), joins inward
+// to `task_gia_meta` with !inner to filter by lead_id. This is required
+// because PostgREST / Supabase JS client silently drops dot-notation filters
+// on joined tables (e.g. `.eq('tasks.status', ...)` when starting from
+// task_gia_meta) — they never reach the WHERE clause.
 // ─────────────────────────────────────────────
 export async function getNextLeadTask(leadId: string): Promise<Task | null> {
   const supabase = await createClient();
 
-  const { data: metaRows } = await supabase
-    .from('task_gia_meta')
-    .select('task_id')
-    .eq('lead_id', leadId);
-
-  if (!metaRows || metaRows.length === 0) return null;
-
-  const taskIds = metaRows.map((m) => m.task_id);
-
-  const { data: tasks } = await supabase
+  const { data, error } = await supabase
     .from('tasks')
-    .select('*')
-    .in('id', taskIds)
+    .select('*, task_gia_meta!inner(lead_id)')
+    .eq('task_gia_meta.lead_id', leadId)
     .eq('status', 'pending')
-    .not('due_at', 'is', null)
     .order('due_at', { ascending: true })
     .limit(1);
 
-  if (!tasks || tasks.length === 0) return null;
-  return tasks[0] as Task;
+  if (error || !data || data.length === 0) return null;
+  return data[0] as Task;
+}
+
+// ─────────────────────────────────────────────
+// Query: errored raw payloads (admin / founder)
+// ─────────────────────────────────────────────
+export async function getErroredPayloads(): Promise<LeadRawPayload[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('lead_raw_payloads')
+    .select('*')
+    .not('ingestion_error', 'is', null)
+    .order('received_at', { ascending: false });
+
+  if (error || !data) return [];
+  return data as LeadRawPayload[];
+}
+
+// ─────────────────────────────────────────────
+// Query: active agents in a domain (for assignment dropdown)
+// ─────────────────────────────────────────────
+export async function getAgentsForDomain(
+  domain: string,
+): Promise<{ id: string; full_name: string }[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .eq('role', 'agent')
+    .eq('domain', domain as AppDomain)
+    .eq('is_active', true)
+    .order('full_name', { ascending: true });
+
+  if (error || !data) return [];
+  return data as { id: string; full_name: string }[];
 }
 
 // ─────────────────────────────────────────────

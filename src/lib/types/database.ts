@@ -97,6 +97,7 @@ export type Lead = {
   call_count: number;
   last_call_outcome: CallOutcome | null;
   private_scratchpad: string | null;
+  personal_details: Record<string, string> | null;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -148,6 +149,22 @@ export type LeadRawPayload = {
   received_at: string;
 };
 
+// ─────────────────────────────────────────────
+// Lead filter params — used by getLeadsByRole + LeadsTableAsync + LeadsFilters
+// ─────────────────────────────────────────────
+export type LeadFilters = {
+  status:            LeadStatus[] | null;
+  last_call_outcome: CallOutcome[] | null;
+  agent_id:          string | null;
+  source:            string | null;
+  campaign:          string | null;
+  date_from:         string | null;
+  date_to:           string | null;
+  search:            string | null;
+  page:              number;
+  pageSize:          number;
+};
+
 export type Database = {
   public: {
     Views: Record<string, never>;
@@ -192,13 +209,43 @@ export type Database = {
         Row: LeadActivity;
         Insert: Omit<LeadActivity, 'id' | 'created_at'> & { id?: string; created_at?: string };
         Update: Partial<LeadActivity>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "lead_activities_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       lead_notes: {
         Row: LeadNote;
         Insert: Omit<LeadNote, 'id' | 'created_at'> & { id?: string; created_at?: string };
         Update: Partial<LeadNote>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "lead_notes_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lead_notes_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       tasks: {
         Row: Task;
@@ -209,13 +256,43 @@ export type Database = {
           completed_at?: string | null;
         };
         Update: Partial<Omit<Task, 'id' | 'created_by' | 'module'>>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "tasks_assigned_to_fkey";
+            columns: ["assigned_to"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "tasks_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       task_gia_meta: {
         Row: TaskGiaMeta;
         Insert: TaskGiaMeta;
         Update: Partial<Pick<TaskGiaMeta, 'call_outcome'>>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "task_gia_meta_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "task_gia_meta_task_id_fkey";
+            columns: ["task_id"];
+            isOneToOne: true;
+            referencedRelation: "tasks";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       lead_raw_payloads: {
         Row: LeadRawPayload;

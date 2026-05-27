@@ -2,6 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { Database } from "@/lib/types/database";
 
+// Uses createServerClient from @supabase/ssr — cookie-based session. All
+// service functions call this. One client per request context; never
+// instantiate Supabase outside this file in server contexts.
 export async function createClient() {
   const cookieStore = await cookies();
   return createServerClient<Database>(

@@ -130,6 +130,7 @@ export async function ingestLead(
     form_data:          data.form_data,
     last_call_outcome:  null,
     private_scratchpad: null,
+    personal_details:   null,
     archived_at:        null,
   };
 
