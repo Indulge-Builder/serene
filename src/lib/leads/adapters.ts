@@ -86,9 +86,17 @@ function parseFieldData(raw: unknown): Array<{ name: string; values: string[] }>
 }
 
 export function adaptMeta(raw: unknown): NormalizedLeadPayload {
-  const r = (raw ?? {}) as Record<string, unknown>;
+  const top = (raw ?? {}) as Record<string, unknown>;
 
-  // Unwrap Pabbly envelope if present
+  // Pabbly sometimes wraps the full envelope in a "raw_data" key.
+  // Unwrap it so the rest of the adapter sees res1/res3/res4 at the top level.
+  const r = (
+    top.raw_data && typeof top.raw_data === 'object' && !Array.isArray(top.raw_data)
+      ? top.raw_data
+      : top
+  ) as Record<string, unknown>;
+
+  // Unwrap Pabbly envelope keys
   const res3 = (r.res3 ?? {}) as Record<string, unknown>;
   const res4 = (r.res4 ?? {}) as Record<string, unknown>;
   // res2 intentionally ignored — contains access_token, never touched
