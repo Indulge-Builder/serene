@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import type { Lead, LeadActivity, LeadNote, Task, UserRole, AppDomain } from '@/lib/types/database';
 
 export type LeadNoteWithAuthor = LeadNote & { author_name: string };
@@ -207,42 +208,23 @@ export async function getNextLeadTask(leadId: string): Promise<Task | null> {
 // Round-robin: next eligible agent in a domain
 // ─────────────────────────────────────────────
 export async function getNextRoundRobinAgent(domain: string): Promise<string | null> {
-  const supabase = await createClient();
+  // Must use admin client — this runs inside the webhook handler which has no
+  // authenticated session. RLS would block all three queries with auth.uid() = null.
+  const supabase = createAdminClient();
 
-  // Fetch all active agents in this domain, ordered by when they were last assigned a lead
+  // Fetch all active agents in this domain
   const { data: agents, error } = await supabase
     .from('profiles')
     .select('id')
-    .eq('domain', domain as import('@/lib/types/database').AppDomain)
+    .eq('domain', domain as AppDomain)
     .eq('role', 'agent')
     .eq('is_active', true);
 
   if (error || !agents || agents.length === 0) return null;
 
-  // For each agent, find their most recent lead assignment
   const agentIds = agents.map((a) => a.id);
 
-  const { data: recentLeads } = await supabase
-    .from('leads')
-    .select('assigned_to, assigned_at')
-    .in('assigned_to', agentIds)
-    .is('archived_at', null)
-    .order('assigned_at', { ascending: false });
-
-  // Build a map: agentId → most recent assigned_at
-  const lastAssigned: Record<string, Date | null> = {};
-  for (const agentId of agentIds) {
-    lastAssigned[agentId] = null;
-  }
-  if (recentLeads) {
-    for (const lead of recentLeads) {
-      if (lead.assigned_to && lead.assigned_at && !lastAssigned[lead.assigned_to]) {
-        lastAssigned[lead.assigned_to] = new Date(lead.assigned_at);
-      }
-    }
-  }
-
-  // Check which agents have an active routing config
+  // Check which agents have an active routing config (holiday switch)
   const { data: routingConfigs } = await supabase
     .from('agent_routing_config')
     .select('agent_id')
@@ -253,6 +235,27 @@ export async function getNextRoundRobinAgent(domain: string): Promise<string | n
 
   const eligibleAgents = agentIds.filter((id) => activeAgentIds.has(id));
   if (eligibleAgents.length === 0) return null;
+
+  // For each eligible agent, find their most recent lead assignment timestamp
+  const { data: recentLeads } = await supabase
+    .from('leads')
+    .select('assigned_to, assigned_at')
+    .in('assigned_to', eligibleAgents)
+    .is('archived_at', null)
+    .order('assigned_at', { ascending: false });
+
+  // Build a map: agentId → most recent assigned_at
+  const lastAssigned: Record<string, Date | null> = {};
+  for (const agentId of eligibleAgents) {
+    lastAssigned[agentId] = null;
+  }
+  if (recentLeads) {
+    for (const lead of recentLeads) {
+      if (lead.assigned_to && lead.assigned_at && lastAssigned[lead.assigned_to] === null) {
+        lastAssigned[lead.assigned_to] = new Date(lead.assigned_at);
+      }
+    }
+  }
 
   // Sort: agents with no previous assignment first (null), then by oldest assignment
   eligibleAgents.sort((a, b) => {
