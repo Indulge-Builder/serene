@@ -139,6 +139,15 @@ export type TaskGiaMeta = {
   call_outcome: CallOutcome | null;
 };
 
+export type LeadRawPayload = {
+  id: string;
+  lead_id: string | null;
+  source: string;
+  payload: Record<string, unknown>;
+  ingestion_error: string | null;
+  received_at: string;
+};
+
 export type Database = {
   public: {
     Views: Record<string, never>;
@@ -206,6 +215,15 @@ export type Database = {
         Row: TaskGiaMeta;
         Insert: TaskGiaMeta;
         Update: Partial<Pick<TaskGiaMeta, 'call_outcome'>>;
+        Relationships: [];
+      };
+      lead_raw_payloads: {
+        Row: LeadRawPayload;
+        Insert: Omit<LeadRawPayload, 'id' | 'received_at'> & {
+          id?: string;
+          received_at?: string;
+        };
+        Update: Partial<Pick<LeadRawPayload, 'lead_id' | 'ingestion_error'>>;
         Relationships: [];
       };
     };

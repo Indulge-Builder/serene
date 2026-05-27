@@ -7,6 +7,19 @@ import type { Database } from '@/lib/types/database';
 
 type LeadInsert = Database['public']['Tables']['leads']['Insert'];
 
+// Keys inside Pabbly multi-step envelopes that must never be persisted.
+// res2 from Meta payloads contains a live Facebook page access token.
+const SENSITIVE_ENVELOPE_KEYS: ReadonlySet<string> = new Set(['res2']);
+
+export function sanitizeRawPayload(payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const cleaned = { ...(payload as Record<string, unknown>) };
+  for (const key of SENSITIVE_ENVELOPE_KEYS) {
+    if (key in cleaned) delete cleaned[key];
+  }
+  return cleaned;
+}
+
 export type IngestionResult =
   | { success: true; leadId: string; rawPayloadId: string }
   | { success: false; error: string; status: 400 | 401 | 422 | 500 };
@@ -32,37 +45,43 @@ const leadPayloadSchema = z.object({
 }).passthrough();
 
 // ─────────────────────────────────────────────
-// Main ingestion entry point — called by webhook route
+// Mark a raw payload log row as failed.
+// Called whenever ingestion errors after the row was already inserted.
+// Non-throwing — a logging update failure must never mask the real error.
 // ─────────────────────────────────────────────
-export async function ingestLead(rawPayload: unknown, source: string): Promise<IngestionResult> {
+async function markIngestionError(rawPayloadId: string | null, reason: string): Promise<void> {
+  if (!rawPayloadId) return;
+  try {
+    const supabase = createAdminClient();
+    await supabase
+      .from('lead_raw_payloads')
+      .update({ ingestion_error: reason })
+      .eq('id', rawPayloadId);
+  } catch {
+    console.error('[lead-ingestion] Failed to mark ingestion_error:', reason);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Main ingestion entry point — called by webhook route.
+// rawPayloadId is the id of the already-logged lead_raw_payloads row.
+// The webhook route is responsible for logging before calling this.
+// ─────────────────────────────────────────────
+export async function ingestLead(
+  rawPayload: unknown,
+  source: string,
+  rawPayloadId: string | null,
+): Promise<IngestionResult> {
   const supabase = createAdminClient();
 
-  // 1. Log the raw payload verbatim — before any extraction or validation.
-  //    lead_id is null here; we backfill it after the lead row is created.
-  const { data: rawLog, error: rawLogError } = await supabase
-    .from('lead_raw_payloads')
-    .insert({
-      source,
-      payload: rawPayload as Record<string, unknown>,
-      lead_id: null,
-    })
-    .select('id')
-    .single();
-
-  if (rawLogError || !rawLog) {
-    console.error('[lead-ingestion] Failed to log raw payload:', rawLogError?.message);
-    // Non-fatal: we still attempt ingestion. Logging failure should never block a lead.
-  }
-
-  const rawPayloadId = rawLog?.id ?? null;
-
-  // 2. Normalize via source adapter
+  // 1. Normalize via source adapter
   const normalized = selectAdapter(source)(rawPayload);
 
   // 2. Validate
   const parsed = leadPayloadSchema.safeParse(normalized);
   if (!parsed.success) {
     console.error('[lead-ingestion] Validation failed:', JSON.stringify(parsed.error.issues));
+    await markIngestionError(rawPayloadId, 'validation_failed');
     return { success: false, error: 'Invalid payload', status: 422 };
   }
 
@@ -110,6 +129,7 @@ export async function ingestLead(rawPayload: unknown, source: string): Promise<I
 
   if (insertError || !inserted) {
     console.error('[lead-ingestion] Insert failed:', insertError?.message);
+    await markIngestionError(rawPayloadId, `db_insert_failed: ${insertError?.message ?? 'unknown'}`);
     return { success: false, error: 'Failed to create lead', status: 500 };
   }
 
@@ -123,7 +143,7 @@ export async function ingestLead(rawPayload: unknown, source: string): Promise<I
       .eq('id', rawPayloadId);
   }
 
-  // 8. Log lead_created activity
+  // 7. Log lead_created activity
   await supabase.from('lead_activities').insert({
     lead_id:     leadId,
     actor_id:    null,
@@ -136,7 +156,7 @@ export async function ingestLead(rawPayload: unknown, source: string): Promise<I
     },
   });
 
-  // 9. Log agent_assigned activity if an agent was found
+  // 8. Log agent_assigned activity if an agent was found
   if (assignedTo) {
     await supabase.from('lead_activities').insert({
       lead_id:     leadId,

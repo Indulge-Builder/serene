@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ingestLead } from '@/lib/services/lead-ingestion';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { ingestLead, sanitizeRawPayload } from '@/lib/services/lead-ingestion';
 
 // ─────────────────────────────────────────────
 // Rate limiting state (in-memory, per worker)
@@ -19,6 +20,37 @@ function isRateLimited(ip: string): boolean {
   return entry.count > RATE_LIMIT_MAX;
 }
 
+// Logs the raw payload immediately, before any auth or processing.
+// Returns the raw log row id so ingestLead can backfill lead_id or mark an error.
+// Never throws — logging must never block the request.
+async function logRawPayload(
+  payload: unknown,
+  source: string,
+): Promise<string | null> {
+  try {
+    const supabase = createAdminClient();
+    const { data, error } = await supabase
+      .from('lead_raw_payloads')
+      .insert({
+        source,
+        payload: sanitizeRawPayload(payload) as Record<string, unknown>,
+        lead_id: null,
+        ingestion_error: null,
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      console.error('[webhook/leads] Failed to log raw payload:', error?.message);
+      return null;
+    }
+    return data.id;
+  } catch (err) {
+    console.error('[webhook/leads] Unexpected error logging raw payload:', err);
+    return null;
+  }
+}
+
 // ─────────────────────────────────────────────
 // GET /api/webhooks/leads — health probe
 // ─────────────────────────────────────────────
@@ -28,17 +60,33 @@ export async function GET(): Promise<NextResponse> {
 
 // ─────────────────────────────────────────────
 // POST /api/webhooks/leads?source=meta|google|website
-// Rule S-12: validate Bearer token before reading payload
-// Rule S-17: rate limiting applied
+//
+// Order of operations:
+//   1. Rate limit check (no body read yet)
+//   2. Parse body — log raw payload immediately on success
+//   3. Bearer token validation (after logging so auth failures are still recorded)
+//   4. Ingest — on failure, mark ingestion_error on the raw log row
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  // 1. Rate limiting
+  const source = request.nextUrl.searchParams.get('source') ?? 'website';
+
+  // 1. Rate limit — drop before reading body to avoid amplification
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   if (isRateLimited(ip)) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
   }
 
-  // 2. Bearer token validation — BEFORE reading the body (Rule S-12)
+  // 2. Parse body — log immediately so no payload is ever lost, even on auth failure
+  let rawPayload: unknown;
+  try {
+    rawPayload = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const rawPayloadId = await logRawPayload(rawPayload, source);
+
+  // 3. Bearer token validation
   const webhookSecret = process.env.PABBLY_WEBHOOK_SECRET;
   if (!webhookSecret) {
     return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
@@ -47,22 +95,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get('authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!token || token !== webhookSecret) {
+    // Payload is already logged — mark it so it's distinguishable from a success
+    if (rawPayloadId) {
+      const supabase = createAdminClient();
+      await supabase
+        .from('lead_raw_payloads')
+        .update({ ingestion_error: 'unauthorized' })
+        .eq('id', rawPayloadId);
+    }
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // 3. Parse body
-  let rawPayload: unknown;
-  try {
-    rawPayload = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
-
-  // 4. Resolve source adapter (defaults to website)
-  const source = request.nextUrl.searchParams.get('source') ?? 'website';
-
-  // 5. Ingest
-  const result = await ingestLead(rawPayload, source);
+  // 4. Ingest — pass rawPayloadId so ingestLead can backfill lead_id without re-logging
+  const result = await ingestLead(rawPayload, source, rawPayloadId);
 
   if (!result.success) {
     return NextResponse.json({ error: result.error }, { status: result.status });
