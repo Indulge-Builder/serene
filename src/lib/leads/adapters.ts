@@ -39,20 +39,47 @@ function splitName(full: string): [string, string | null] {
 
 // ─────────────────────────────────────────────
 // Meta adapter — source=meta
+//
+// Handles three payload shapes in priority order:
+//   1. Meta native webhook: field_data as [{name, values}]
+//      (direct Meta Lead Ads webhook, no middleware)
+//   2. Pabbly flattened: raw_meta_fields as [{name, values}]
+//      (legacy Pabbly passthrough)
+//   3. Flat top-level keys: first_name, phone, email, etc.
+//      (custom integrations, manual sends)
+//
+// All non-standard fields are preserved verbatim in form_data.
 // ─────────────────────────────────────────────
 export function adaptMeta(raw: unknown): NormalizedLeadPayload {
   const r = (raw ?? {}) as Record<string, unknown>;
 
-  // Legacy: raw_meta_fields as [{name, values}]
-  const legacy: Record<string, string> = {};
-  if (Array.isArray(r.raw_meta_fields)) {
-    for (const item of r.raw_meta_fields as Array<{ name?: string; values?: string[] }>) {
-      if (typeof item.name === 'string') legacy[item.name] = item.values?.[0] ?? '';
+  // Build a flat map from whichever array structure is present.
+  // Priority: field_data (native Meta) → raw_meta_fields (Pabbly legacy)
+  const fields: Record<string, string> = {};
+
+  const fieldArray =
+    (Array.isArray(r.field_data) ? r.field_data : null) ??
+    (Array.isArray(r.raw_meta_fields) ? r.raw_meta_fields : null);
+
+  if (fieldArray) {
+    for (const item of fieldArray as Array<{ name?: string; values?: string[] }>) {
+      if (typeof item.name === 'string') {
+        fields[item.name] = item.values?.[0] ?? '';
+      }
     }
   }
 
-  const get = (k: string) => str(r[k]) || legacy[k] || '';
+  // Resolve a value: flat map first (from field_data/raw_meta_fields),
+  // then top-level key, so direct-send payloads also work.
+  const get = (...keys: string[]): string => {
+    for (const k of keys) {
+      const v = fields[k] || str(r[k]);
+      if (v) return v;
+    }
+    return '';
+  };
 
+  // Name extraction — Meta sends full_name as one field in most forms
   let firstName = get('first_name');
   let lastName: string | null = get('last_name') || null;
   if (!firstName) {
@@ -61,18 +88,45 @@ export function adaptMeta(raw: unknown): NormalizedLeadPayload {
     lastName = lastName ?? ln;
   }
 
-  const message = get('message');
+  // Collect every non-standard key into form_data for full audit trail
+  const KNOWN_KEYS = new Set([
+    'first_name', 'last_name', 'full_name', 'email', 'email_address',
+    'phone', 'phone_number', 'mobile_number',
+    'campaign_id', 'ad_id', 'ad_name', 'adset_id', 'adset_name',
+    'form_id', 'leadgen_id', 'page_id', 'created_time',
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content',
+    'domain', 'message',
+  ]);
+
   const formData: Record<string, unknown> = {};
+
+  // Capture everything from the field array that isn't a known structural key
+  for (const [key, value] of Object.entries(fields)) {
+    if (!KNOWN_KEYS.has(key)) formData[key] = value;
+  }
+
+  // Capture top-level keys that aren't structural Meta envelope fields
+  const META_ENVELOPE_KEYS = new Set([
+    'field_data', 'raw_meta_fields', 'form_id', 'leadgen_id',
+    'page_id', 'created_time', 'ad_id', 'adset_id',
+  ]);
+  for (const [key, value] of Object.entries(r)) {
+    if (!KNOWN_KEYS.has(key) && !META_ENVELOPE_KEYS.has(key)) {
+      formData[key] = value;
+    }
+  }
+
+  const message = get('message');
   if (message) formData.message = message;
 
   return {
     first_name:   sanitizeText(firstName) || 'Unknown',
     last_name:    lastName ? sanitizeText(lastName) : null,
-    email:        get('email') || null,
-    phone:        normalizePhone(get('phone')),
+    email:        get('email', 'email_address') || null,
+    phone:        normalizePhone(get('phone', 'phone_number', 'mobile_number')),
     platform:     'meta',
-    campaign_id:  get('campaign_id') || null,
-    ad_name:      get('ad_name') ? sanitizeText(get('ad_name')) : null,
+    campaign_id:  get('campaign_id', 'ad_id') || null,
+    ad_name:      get('ad_name', 'adset_name') ? sanitizeText(get('ad_name', 'adset_name')) : null,
     domain:       get('domain') || null,
     utm_source:   get('utm_source') || 'meta',
     utm_medium:   get('utm_medium') || null,

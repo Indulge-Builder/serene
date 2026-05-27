@@ -8,7 +8,7 @@ import type { Database } from '@/lib/types/database';
 type LeadInsert = Database['public']['Tables']['leads']['Insert'];
 
 export type IngestionResult =
-  | { success: true; leadId: string }
+  | { success: true; leadId: string; rawPayloadId: string }
   | { success: false; error: string; status: 400 | 401 | 422 | 500 };
 
 // ─────────────────────────────────────────────
@@ -35,7 +35,28 @@ const leadPayloadSchema = z.object({
 // Main ingestion entry point — called by webhook route
 // ─────────────────────────────────────────────
 export async function ingestLead(rawPayload: unknown, source: string): Promise<IngestionResult> {
-  // 1. Normalize via source adapter
+  const supabase = createAdminClient();
+
+  // 1. Log the raw payload verbatim — before any extraction or validation.
+  //    lead_id is null here; we backfill it after the lead row is created.
+  const { data: rawLog, error: rawLogError } = await supabase
+    .from('lead_raw_payloads')
+    .insert({
+      source,
+      payload: rawPayload as Record<string, unknown>,
+      lead_id: null,
+    })
+    .select('id')
+    .single();
+
+  if (rawLogError || !rawLog) {
+    console.error('[lead-ingestion] Failed to log raw payload:', rawLogError?.message);
+    // Non-fatal: we still attempt ingestion. Logging failure should never block a lead.
+  }
+
+  const rawPayloadId = rawLog?.id ?? null;
+
+  // 2. Normalize via source adapter
   const normalized = selectAdapter(source)(rawPayload);
 
   // 2. Validate
@@ -58,8 +79,6 @@ export async function ingestLead(rawPayload: unknown, source: string): Promise<I
   const assignedTo = await getNextRoundRobinAgent(domain);
 
   // 5. Insert lead via admin (service role — bypasses RLS)
-  const supabase = createAdminClient();
-
   const leadInsert: LeadInsert = {
     first_name:         data.first_name,
     last_name:          data.last_name ?? null,
@@ -96,19 +115,28 @@ export async function ingestLead(rawPayload: unknown, source: string): Promise<I
 
   const leadId = inserted.id;
 
-  // 6. Log lead_created activity
+  // 6. Backfill lead_id on the raw payload log now that the lead row exists
+  if (rawPayloadId) {
+    await supabase
+      .from('lead_raw_payloads')
+      .update({ lead_id: leadId })
+      .eq('id', rawPayloadId);
+  }
+
+  // 8. Log lead_created activity
   await supabase.from('lead_activities').insert({
     lead_id:     leadId,
     actor_id:    null,
     action_type: 'lead_created',
     details: {
       source,
-      campaign: data.utm_campaign ?? null,
+      campaign:       data.utm_campaign ?? null,
       domain,
+      raw_payload_id: rawPayloadId,
     },
   });
 
-  // 7. Log agent_assigned activity if an agent was found
+  // 9. Log agent_assigned activity if an agent was found
   if (assignedTo) {
     await supabase.from('lead_activities').insert({
       lead_id:     leadId,
@@ -121,5 +149,5 @@ export async function ingestLead(rawPayload: unknown, source: string): Promise<I
     });
   }
 
-  return { success: true, leadId };
+  return { success: true, leadId, rawPayloadId: rawPayloadId ?? '' };
 }

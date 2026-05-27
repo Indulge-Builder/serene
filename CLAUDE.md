@@ -333,6 +333,12 @@ Lead dossier + lifecycle fully operational.
 
 Won side-effect: client row creation deferred to Phase 5 (no `clients` table yet). Status update + activity log works.
 
+**Raw payload logging added (2026-05-27)**
+
+- Migration 0004: `lead_raw_payloads` table — immutable JSONB log of every inbound webhook payload; `lead_id` FK backfilled after insert; admin/founder SELECT only; no UPDATE/DELETE ever
+- `src/lib/services/lead-ingestion.ts` — logs raw payload as step 1 before any extraction; `lead_id` backfilled after lead insert; `raw_payload_id` threaded into `lead_created` activity details; logging failure is non-fatal (never blocks a lead)
+- `src/lib/leads/adapters.ts` — `adaptMeta` rewritten to handle three payload shapes in priority order: (1) Meta native `field_data: [{name, values}]`, (2) Pabbly `raw_meta_fields: [{name, values}]`, (3) flat top-level keys; multi-key fallback for phone/email/ad fields; all non-standard keys captured into `form_data`
+
 ---
 
 **Phase 5 — Complete (2026-05-27)**
