@@ -15,12 +15,12 @@ export function sanitizeRawPayload(payload: unknown): unknown {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
   const cleaned = { ...(payload as Record<string, unknown>) };
 
-  // Strip sensitive keys at the top level
+  // Strip at top level
   for (const key of SENSITIVE_ENVELOPE_KEYS) {
     if (key in cleaned) delete cleaned[key];
   }
 
-  // Also strip if Pabbly nested everything under raw_data
+  // Strip inside raw_data (Pabbly wraps the full Meta envelope here)
   if (cleaned.raw_data && typeof cleaned.raw_data === 'object' && !Array.isArray(cleaned.raw_data)) {
     const inner = { ...(cleaned.raw_data as Record<string, unknown>) };
     for (const key of SENSITIVE_ENVELOPE_KEYS) {

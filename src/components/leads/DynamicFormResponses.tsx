@@ -127,16 +127,31 @@ function FormRow({ label, value, isLast }: { label: string; value: string; isLas
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
+
+// Converts any key format into a readable label.
+// Handles: snake_case, camelCase, dot-separated slugs,
+// and the long URL-encoded question strings Meta sends.
 function formatKey(key: string): string {
   return key
-    .replace(/_/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\?_?$/, '')           // strip trailing ?_ or ? (Meta question slugs)
+    .replace(/[_\-.]+/g, ' ')       // underscores, hyphens, dots → space
+    .replace(/([a-z])([A-Z])/g, '$1 $2')  // camelCase split
+    .replace(/\s{2,}/g, ' ')        // collapse multiple spaces
+    .trim()
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Converts answer values into readable strings.
+// Underscore-joined answers (Meta's format) are split into words.
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'object') return JSON.stringify(value, null, 2);
-  return String(value);
+  const s = String(value);
+  // Meta encodes answer values with underscores: "i_want_to_learn_more" → "i want to learn more"
+  // Only apply if the string looks like a slug (no spaces, has underscores)
+  if (!s.includes(' ') && s.includes('_')) {
+    return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return s;
 }

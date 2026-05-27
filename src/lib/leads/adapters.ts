@@ -40,46 +40,32 @@ function splitName(full: string): [string, string | null] {
 // ─────────────────────────────────────────────
 // Meta adapter — source=meta
 //
-// Pabbly wraps the Meta Lead Ads payload in a multi-step envelope:
-//   res4 → flattened form fields (full_name, email, phone_number, custom Q&A)
-//   res3 → Meta lead envelope (field_data JSON string, campaign_id, ad_name,
-//           campaign_name, adset_id, adset_name, created_time, form_id, ad_id)
-//   res2 → page access token  ← NEVER stored; stripped before any persistence
-//   res1 → lead gen metadata (leadgen_id, page_id, form_id, entry_id)
+// Pabbly sends the full Meta Lead Ads payload wrapped in raw_data:
+//   raw_data.res3.field_data  — JSON string containing all form answers
+//   raw_data.res3             — campaign envelope: campaign_id, ad_name, campaign_name
+//   raw_data.res2             — page access token: STRIPPED, never stored
+//   raw_data.res1, res4, __multistep_http_codes — ignored
 //
-// Field resolution priority (first non-empty value wins):
-//   1. res3.field_data parsed array   — Meta's canonical field values
-//   2. res4 flat keys                 — Pabbly's convenience flattening (same data)
-//   3. top-level keys                 — direct/manual sends without Pabbly wrapper
-//
-// All non-structural answer fields go into form_data (custom Q&A, city, etc.)
-// res2 (access_token) is silently dropped — never logged, never stored.
+// Standard fields (full_name, phone_number, email) are extracted into typed columns.
+// Every other question in field_data goes into form_data automatically.
+// No config needed per campaign — new forms just work.
 // ─────────────────────────────────────────────
 
-// Keys that are extracted into typed columns — not repeated in form_data
-const META_KNOWN_KEYS = new Set([
-  'first_name', 'last_name', 'full_name', 'email', 'email_address',
+// These field_data names map to typed columns — not repeated in form_data
+const META_COLUMN_KEYS = new Set([
+  'first_name', 'last_name', 'full_name',
+  'email', 'email_address',
   'phone', 'phone_number', 'mobile_number',
-  'campaign_id', 'ad_id', 'ad_name', 'adset_id', 'adset_name',
-  'form_id', 'leadgen_id', 'page_id', 'created_time',
-  'utm_source', 'utm_medium', 'utm_campaign', 'utm_content',
-  'campaign_name', 'domain', 'message',
 ]);
 
-// Top-level Pabbly envelope keys — never go into form_data
-const PABBLY_ENVELOPE_KEYS = new Set([
-  'res1', 'res2', 'res3', 'res4', '__multistep_http_codes',
-]);
-
-function parseFieldData(raw: unknown): Array<{ name: string; values: string[] }> {
-  // field_data arrives as a JSON string from Pabbly, or as a real array from direct Meta webhooks
+function parseFieldDataString(raw: unknown): Array<{ name: string; values: string[] }> {
   if (Array.isArray(raw)) return raw as Array<{ name: string; values: string[] }>;
-  if (typeof raw === 'string') {
+  if (typeof raw === 'string' && raw.trim().startsWith('[')) {
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed as Array<{ name: string; values: string[] }>;
     } catch {
-      console.warn('[adaptMeta] field_data is not valid JSON:', raw.slice(0, 80));
+      console.warn('[adaptMeta] field_data JSON parse failed');
     }
   }
   return [];
@@ -88,46 +74,37 @@ function parseFieldData(raw: unknown): Array<{ name: string; values: string[] }>
 export function adaptMeta(raw: unknown): NormalizedLeadPayload {
   const top = (raw ?? {}) as Record<string, unknown>;
 
-  // Pabbly sometimes wraps the full envelope in a "raw_data" key.
-  // Unwrap it so the rest of the adapter sees res1/res3/res4 at the top level.
-  const r = (
+  // Unwrap raw_data if Pabbly wrapped the envelope (which it does)
+  const envelope = (
     top.raw_data && typeof top.raw_data === 'object' && !Array.isArray(top.raw_data)
       ? top.raw_data
       : top
   ) as Record<string, unknown>;
 
-  // Unwrap Pabbly envelope keys
-  const res3 = (r.res3 ?? {}) as Record<string, unknown>;
-  const res4 = (r.res4 ?? {}) as Record<string, unknown>;
-  // res2 intentionally ignored — contains access_token, never touched
+  const res3 = (envelope.res3 && typeof envelope.res3 === 'object'
+    ? envelope.res3
+    : {}) as Record<string, unknown>;
 
-  // Build a flat field map from res3.field_data (canonical Meta values)
+  // Parse field_data — this is where all form answers live
+  const fieldItems = parseFieldDataString(res3.field_data);
+
+  // Flatten field_data into a map: { name → first value }
   const fields: Record<string, string> = {};
-  for (const item of parseFieldData(res3.field_data)) {
+  for (const item of fieldItems) {
     if (typeof item.name === 'string') {
-      fields[item.name] = item.values?.[0] ?? '';
+      fields[item.name] = str(item.values?.[0]);
     }
   }
 
-  // Resolve a value — field_data first, then res4 flat keys, then top-level
+  // Resolve standard contact fields from the fields map
   const get = (...keys: string[]): string => {
     for (const k of keys) {
-      const v = fields[k] || str(res4[k]) || str(r[k]);
-      if (v) return v;
+      if (fields[k]) return fields[k];
     }
     return '';
   };
 
-  // Meta envelope convenience getters (res3 top-level, not inside field_data)
-  const meta = (...keys: string[]): string => {
-    for (const k of keys) {
-      const v = str(res3[k]);
-      if (v) return v;
-    }
-    return '';
-  };
-
-  // Name — Meta forms use full_name as a single field
+  // Name
   let firstName = get('first_name');
   let lastName: string | null = get('last_name') || null;
   if (!firstName) {
@@ -136,23 +113,14 @@ export function adaptMeta(raw: unknown): NormalizedLeadPayload {
     lastName = lastName ?? ln;
   }
 
-  // form_data: every field answer that isn't a structural key
-  // This captures all custom Q&A (city, budget, intent questions, etc.)
+  // form_data: every field_data answer that isn't a standard column key
+  // This is where all custom campaign questions land automatically
   const formData: Record<string, unknown> = {};
-
   for (const [key, value] of Object.entries(fields)) {
-    if (!META_KNOWN_KEYS.has(key)) formData[key] = value;
-  }
-
-  // Also capture any extra res4 keys not already in fields and not structural
-  for (const [key, value] of Object.entries(res4)) {
-    if (!META_KNOWN_KEYS.has(key) && !(key in formData)) {
+    if (!META_COLUMN_KEYS.has(key) && value) {
       formData[key] = value;
     }
   }
-
-  // campaign_name lives in res3, not field_data — use it as utm_campaign fallback
-  const campaignName = meta('campaign_name');
 
   return {
     first_name:   sanitizeText(firstName) || 'Unknown',
@@ -160,32 +128,25 @@ export function adaptMeta(raw: unknown): NormalizedLeadPayload {
     email:        get('email', 'email_address') || null,
     phone:        normalizePhone(get('phone', 'phone_number', 'mobile_number')),
     platform:     'meta',
-    campaign_id:  meta('campaign_id', 'ad_id') || null,
-    ad_name:      meta('ad_name') ? sanitizeText(meta('ad_name')) : null,
-    domain:       get('domain') || null,
-    utm_source:   get('utm_source') || 'meta',
-    utm_medium:   get('utm_medium') || null,
-    utm_campaign: get('utm_campaign') || campaignName || null,
-    utm_content:  get('utm_content') || null,
+    campaign_id:  str(res3.campaign_id) || null,
+    ad_name:      str(res3.ad_name) ? sanitizeText(str(res3.ad_name)) : null,
+    domain:       null,  // resolved from utm_campaign in ingestion
+    utm_source:   'meta',
+    utm_medium:   null,
+    utm_campaign: str(res3.campaign_name) || null,
+    utm_content:  null,
     form_data:    formData,
   };
 }
 
 // ─────────────────────────────────────────────
 // Google adapter — source=google
+// Expects flat key-value payload from Pabbly.
 // ─────────────────────────────────────────────
 export function adaptGoogle(raw: unknown): NormalizedLeadPayload {
   const r = (raw ?? {}) as Record<string, unknown>;
 
-  // Legacy: raw_google_fields as [{column_id, string_value}]
-  const legacy: Record<string, string> = {};
-  if (Array.isArray(r.raw_google_fields)) {
-    for (const item of r.raw_google_fields as Array<{ column_id?: string; string_value?: string }>) {
-      if (typeof item.column_id === 'string') legacy[item.column_id] = item.string_value ?? '';
-    }
-  }
-
-  const get = (k: string) => str(r[k]) || legacy[k] || '';
+  const get = (k: string) => str(r[k]);
 
   let firstName = get('first_name');
   let lastName: string | null = get('last_name') || null;
@@ -216,7 +177,7 @@ export function adaptGoogle(raw: unknown): NormalizedLeadPayload {
 // Website adapter — source=website
 // Accepts camelCase aliases; any non-standard key → form_data.
 // ─────────────────────────────────────────────
-const STANDARD_KEYS = new Set([
+const WEBSITE_STANDARD_KEYS = new Set([
   'first_name', 'firstName', 'last_name', 'lastName',
   'full_name', 'fullName', 'email', 'mail',
   'phone', 'phoneNumber', 'campaign_id', 'ad_name', 'domain',
@@ -244,7 +205,7 @@ export function adaptWebsite(raw: unknown): NormalizedLeadPayload {
 
   const formData: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(r)) {
-    if (!STANDARD_KEYS.has(key)) formData[key] = value;
+    if (!WEBSITE_STANDARD_KEYS.has(key)) formData[key] = value;
   }
 
   return {
