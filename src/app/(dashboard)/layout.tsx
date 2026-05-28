@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { getNotifications } from "@/lib/services/notifications-service";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ThemeInitializer } from "@/components/layout/ThemeInitializer";
+import { ToastProvider } from "@/components/ui/toast-provider";
 
 export default async function DashboardLayout({
   children,
@@ -16,6 +18,8 @@ export default async function DashboardLayout({
 
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
+
+  const initialNotifications = await getNotifications(profile.id);
 
   const safeTheme = ["earth", "air", "water", "fire", "cosmos"].includes(profile.theme)
     ? profile.theme
@@ -39,7 +43,10 @@ export default async function DashboardLayout({
         gap:              "var(--space-3)",
       }}
     >
-      <Sidebar profile={profile} />
+      <Sidebar profile={profile} initialNotifications={initialNotifications} />
+
+      {/* Toast stack — portal-like, sits at root of dashboard shell, outside scroll */}
+      <ToastProvider />
 
       {/* Paper card — the floating content surface */}
       <div

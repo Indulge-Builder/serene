@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import {
   User,
   Phone,
@@ -12,8 +15,9 @@ import {
   Route,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { Lead } from '@/lib/types/database';
+import type { Lead, AdCreative } from '@/lib/types/database';
 import { formatDate } from '@/lib/utils/dates';
+import { CampaignVideoModal } from '@/components/leads/CampaignVideoModal';
 
 const PLATFORM_LABELS: Record<string, string> = {
   meta:      'Meta Ads',
@@ -31,11 +35,13 @@ const DOMAIN_LABELS: Record<string, string> = {
 };
 
 type Props = {
-  lead: Lead;
-  assigneeName: string | null;
+  lead:          Lead;
+  assigneeName:  string | null;
+  adCreative?:   AdCreative | null;
 };
 
-export function LeadInfoCard({ lead, assigneeName }: Props) {
+export function LeadInfoCard({ lead, assigneeName, adCreative = null }: Props) {
+  const [videoModalOpen, setVideoModalOpen] = useState(false);
   const fullName = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
 
   return (
@@ -172,9 +178,21 @@ export function LeadInfoCard({ lead, assigneeName }: Props) {
           source={lead.utm_source}
           medium={lead.utm_medium}
           campaign={lead.utm_campaign}
+          adName={lead.ad_name}
           content={lead.utm_content}
+          adCreative={adCreative}
+          onOpenVideoModal={() => setVideoModalOpen(true)}
         />
       </div>
+
+      {adCreative && lead.utm_campaign && (
+        <CampaignVideoModal
+          isOpen={videoModalOpen}
+          onClose={() => setVideoModalOpen(false)}
+          campaignName={lead.utm_campaign}
+          adCreative={adCreative}
+        />
+      )}
     </div>
   );
 }
@@ -311,10 +329,13 @@ function NeutralBadge({ label }: { label: string }) {
 // Attribution strip (UTM)
 // ─────────────────────────────────────────────
 type AttributionStripProps = {
-  source:   string | null;
-  medium:   string | null;
-  campaign: string | null;
-  content:  string | null;
+  source:           string | null;
+  medium:           string | null;
+  campaign:         string | null;
+  adName:           string | null;
+  content:          string | null;
+  adCreative:       AdCreative | null;
+  onOpenVideoModal: () => void;
 };
 
 const ATTRIBUTION_FIELDS = [
@@ -324,7 +345,15 @@ const ATTRIBUTION_FIELDS = [
   { key: 'content',  label: 'Content',  prop: 'content'  as const, accentValue: false },
 ] as const;
 
-function AttributionStrip({ source, medium, campaign, content }: AttributionStripProps) {
+function AttributionStrip({
+  source,
+  medium,
+  campaign,
+  adName,
+  content,
+  adCreative,
+  onOpenVideoModal,
+}: AttributionStripProps) {
   const values = { source, medium, campaign, content };
   const present = ATTRIBUTION_FIELDS.filter((f) => values[f.prop] != null);
 
@@ -373,6 +402,9 @@ function AttributionStrip({ source, medium, campaign, content }: AttributionStri
       <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap', alignItems: 'stretch' }}>
         {present.map((field, index) => {
           const value = values[field.prop]!;
+          // Campaign field becomes an interactive trigger when an ad creative is available.
+          const isCampaignTrigger = field.key === 'campaign' && adCreative !== null;
+
           return (
             <div key={field.key} style={{ display: 'contents' }}>
               {index > 0 && (
@@ -409,23 +441,88 @@ function AttributionStrip({ source, medium, campaign, content }: AttributionStri
                 >
                   {field.label}
                 </span>
-                <span
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize:   'var(--text-sm)',
-                    fontWeight: 'var(--weight-medium)',
-                    color:      field.accentValue
-                      ? 'var(--theme-accent)'
-                      : 'var(--theme-text-primary)',
-                  }}
-                >
-                  {value}
-                </span>
+
+                {isCampaignTrigger ? (
+                  <AttributionTrigger value={value} onClick={onOpenVideoModal} />
+                ) : (
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize:   'var(--text-sm)',
+                      fontWeight: 'var(--weight-medium)',
+                      color:      field.accentValue
+                        ? 'var(--theme-accent)'
+                        : 'var(--theme-text-primary)',
+                    }}
+                  >
+                    {value}
+                  </span>
+                )}
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Ad name row — rendered only when lead.ad_name matches the creative's ad_name */}
+      {adName && adCreative && adCreative.ad_name === adName && (
+        <div style={{ marginTop: 'var(--space-3)' }}>
+          <span
+            style={{
+              display:       'block',
+              fontSize:      'var(--text-2xs)',
+              fontWeight:    'var(--weight-semibold)',
+              letterSpacing: 'var(--tracking-wider)',
+              textTransform: 'uppercase',
+              color:         'var(--theme-text-tertiary)',
+              marginBottom:  'var(--space-1)',
+            }}
+          >
+            Ad name
+          </span>
+          <AttributionTrigger value={adName} onClick={onOpenVideoModal} />
+        </div>
+      )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Inline text trigger for clickable attribution fields
+// ─────────────────────────────────────────────
+function AttributionTrigger({ value, onClick }: { value: string; onClick: () => void }) {
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      style={{
+        fontFamily:          'var(--font-mono)',
+        fontSize:            'var(--text-sm)',
+        fontWeight:          'var(--weight-medium)',
+        color:               'var(--theme-text-primary)',
+        cursor:              'pointer',
+        textDecoration:      'underline',
+        textDecorationColor: 'transparent',
+        transition:          `color var(--duration-fast) var(--ease-in-out), text-decoration-color var(--duration-fast) var(--ease-in-out)`,
+        outline:             'none',
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)';
+        (e.currentTarget as HTMLElement).style.textDecorationColor = 'var(--theme-accent)';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-primary)';
+        (e.currentTarget as HTMLElement).style.textDecorationColor = 'transparent';
+      }}
+    >
+      {value}
+    </span>
   );
 }

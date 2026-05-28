@@ -587,15 +587,17 @@
    ================================================================ */
 
 :root {
-  --z-base:     0;
-  --z-raised:   10;
-  --z-dropdown: 20;
-  --z-sticky:   30;
-  --z-sidebar:  40;
-  --z-overlay:  50;
-  --z-modal:    60;
-  --z-toast:    70;
-  --z-cursor:   80;
+  --z-base:          0;
+  --z-raised:        10;
+  --z-dropdown:      20;
+  --z-sticky:        30;
+  --z-sidebar:       40;
+  --z-overlay:       50;
+  --z-modal:         60;
+  --z-modal-overlay: 61; /* backdrop of a nested modal stacked above --z-modal */
+  --z-modal-nested:  62; /* nested modal panel stacked above its own backdrop */
+  --z-toast:         70;
+  --z-cursor:        80;
 }
 
 
@@ -626,6 +628,12 @@
 @keyframes eia-lia-cursor {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }
+}
+
+/* Warning toast depletion bar — linear timing is intentional (maps time to real time) */
+@keyframes toast-deplete {
+  from { width: 100%; }
+  to   { width: 0%; }
 }
 
 /* Loader spin */

@@ -7,12 +7,15 @@ import {
   UserRound,
   Shield,
   ChevronRight,
-  Bell,
   LogOut,
+  BarChart2,
+  TrendingUp,
+  CheckSquare,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
-import type { Profile } from "@/lib/types/database";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
+import type { Profile, Notification } from "@/lib/types/database";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -25,8 +28,15 @@ type NavItem = {
 // ─── Nav configuration ────────────────────────────────────
 
 const MAIN_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/leads",     label: "Leads",     icon: UserRound },
+  { href: "/dashboard",   label: "Dashboard",   icon: LayoutDashboard },
+  { href: "/leads",       label: "Leads",       icon: UserRound       },
+  { href: "/tasks",       label: "Tasks",       icon: CheckSquare     },
+  { href: "/performance", label: "Performance", icon: BarChart2       },
+];
+
+// Visible to manager, admin, founder — not agent or guest
+const MANAGER_NAV: NavItem[] = [
+  { href: "/campaigns", label: "Campaigns", icon: TrendingUp },
 ];
 
 const ADMIN_NAV: NavItem[] = [
@@ -148,12 +158,14 @@ function NavSection({ label }: { label: string }) {
 // ─── Sidebar ──────────────────────────────────────────────
 
 type SidebarProps = {
-  profile: Profile;
+  profile:               Profile;
+  initialNotifications?: Notification[];
 };
 
-export function Sidebar({ profile }: SidebarProps) {
-  const pathname    = usePathname();
+export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
+  const pathname     = usePathname();
   const isPrivileged = profile.role === "admin" || profile.role === "founder";
+  const isManager    = profile.role === "manager" || isPrivileged;
   const isOnProfile  = pathname === "/profile";
 
   const initials  = getInitials(profile.full_name);
@@ -229,6 +241,21 @@ export function Sidebar({ profile }: SidebarProps) {
           />
         ))}
 
+        {isManager && (
+          <>
+            <NavSection label="Analytics" />
+            {MANAGER_NAV.map(({ href, label, icon }) => (
+              <NavLink
+                key={href}
+                href={href}
+                label={label}
+                icon={icon}
+                isActive={pathname === href || pathname.startsWith(href + "/")}
+              />
+            ))}
+          </>
+        )}
+
         {isPrivileged && (
           <>
             <NavSection label="Admin" />
@@ -258,34 +285,11 @@ export function Sidebar({ profile }: SidebarProps) {
 
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
           {/* Notification bell */}
-          <button
-            type="button"
-            aria-label="Notifications"
-            style={{
-              display:         "flex",
-              alignItems:      "center",
-              justifyContent:  "center",
-              width:           "32px",
-              height:          "32px",
-              borderRadius:    "var(--radius-md)",
-              border:          "none",
-              background:      "transparent",
-              color:           "var(--theme-sidebar-text)",
-              cursor:          "pointer",
-              flexShrink:      0,
-              transition:      "background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--theme-sidebar-hover-bg)";
-              e.currentTarget.style.color      = "var(--theme-canvas-text)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color      = "var(--theme-sidebar-text)";
-            }}
-          >
-            <Bell style={{ width: "14px", height: "14px", strokeWidth: 1.5 }} />
-          </button>
+          <NotificationBell
+            userId={profile.id}
+            initialData={initialNotifications}
+            variant="sidebar"
+          />
 
           {/* User info — links to profile settings */}
           <Link

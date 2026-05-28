@@ -73,7 +73,9 @@ export type LeadIntent = 'hot' | 'cold';
 
 export type TaskModule = 'gia' | 'concierge' | 'finance' | 'marketing' | 'tech';
 export type TaskType = 'call' | 'whatsapp_message' | 'email' | 'general_follow_up';
-export type TaskStatus = 'pending' | 'done' | 'cancelled';
+export type TaskStatus = 'to_do' | 'in_progress' | 'in_review' | 'completed' | 'error' | 'cancelled';
+export type TaskPriority = 'urgent' | 'high' | 'normal';
+export type TaskCategory = 'personal' | 'group_subtask' | 'gia_followup';
 
 export type Lead = {
   id: string;
@@ -127,11 +129,50 @@ export type Task = {
   created_by: string;
   module: TaskModule;
   task_type: TaskType;
+  title: string;
+  description: string | null;
   status: TaskStatus;
+  priority: TaskPriority;
+  task_category: TaskCategory;
+  group_id: string | null;
   due_at: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type TaskGroup = {
+  id: string;
+  title: string;
+  description: string | null;
+  priority: TaskPriority;
+  status: TaskStatus;
+  due_at: string | null;
+  created_by: string;
+  domain: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskMessage = {
+  id: string;
+  task_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+  is_suppressed: boolean;
+  suppressed_by: string | null;
+  suppressed_at: string | null;
+};
+
+export type TaskAuditLog = {
+  id: string;
+  task_id: string;
+  changed_by: string;
+  field_name: string;
+  old_value: string | null;
+  new_value: string | null;
+  changed_at: string;
 };
 
 export type TaskGiaMeta = {
@@ -147,6 +188,66 @@ export type LeadRawPayload = {
   payload: Record<string, unknown>;
   ingestion_error: string | null;
   received_at: string;
+};
+
+export type AdCreative = {
+  id: string;
+  campaign_key: string;
+  ad_name: string | null;
+  video_url: string;
+  thumbnail_url: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NotificationType = 'lead_assigned' | 'lead_won' | 'task_due' | 'task_assigned' | 'mention' | 'system';
+
+export type Notification = {
+  id:           string;
+  recipient_id: string;
+  type:         NotificationType;
+  title:        string;
+  body:         string | null;
+  action_url:   string | null;   // relative path only, never absolute
+  read_at:      string | null;   // null = unread
+  created_at:   string;
+};
+
+// ─────────────────────────────────────────────
+// Campaign analytics — returned by get_campaign_metrics RPC
+// ─────────────────────────────────────────────
+export type CampaignMetrics = {
+  campaign_name:        string;
+  domain:               AppDomain;
+  total_leads:          number;
+  new:                  number;
+  touched:              number;
+  in_discussion:        number;
+  won:                  number;
+  nurturing:            number;
+  lost:                 number;
+  junk:                 number;
+  rnr:                  number;
+  switched_off:         number;
+  converted:            number;
+};
+
+export type CampaignFilters = {
+  date_from: string | null;
+  date_to:   string | null;
+  domain:    AppDomain | null; // only populated for admin / founder
+};
+
+// Extends CampaignMetrics with avg_hours_to_first_touch — returned by get_campaign_detail_metrics RPC
+export type CampaignDetailMetrics = CampaignMetrics & {
+  avg_hours_to_first_touch: number | null;
+};
+
+export type AgentDistributionRow = {
+  agent_id:   string;
+  full_name:  string;
+  lead_count: number;
 };
 
 // ─────────────────────────────────────────────
@@ -257,11 +358,16 @@ export type Database = {
       };
       tasks: {
         Row: Task;
-        Insert: Omit<Task, 'id' | 'created_at' | 'updated_at' | 'completed_at'> & {
+        Insert: Omit<Task, 'id' | 'created_at' | 'updated_at' | 'completed_at' | 'title' | 'description' | 'priority' | 'task_category' | 'group_id'> & {
           id?: string;
           created_at?: string;
           updated_at?: string;
           completed_at?: string | null;
+          title?: string;
+          description?: string | null;
+          priority?: TaskPriority;
+          task_category?: TaskCategory;
+          group_id?: string | null;
         };
         Update: Partial<Omit<Task, 'id' | 'created_by' | 'module'>>;
         Relationships: [
@@ -310,6 +416,100 @@ export type Database = {
         };
         Update: Partial<Pick<LeadRawPayload, 'lead_id' | 'ingestion_error'>>;
         Relationships: [];
+      };
+      ad_creatives: {
+        Row: AdCreative;
+        Insert: Omit<AdCreative, 'id' | 'created_at' | 'updated_at'> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<AdCreative, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      notifications: {
+        Row: Notification;
+        Insert: Omit<Notification, 'id' | 'created_at' | 'read_at'> & {
+          id?: string;
+          created_at?: string;
+          read_at?: string | null;
+        };
+        Update: Partial<Pick<Notification, 'read_at'>>;
+        Relationships: [
+          {
+            foreignKeyName: "notifications_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      task_groups: {
+        Row: TaskGroup;
+        Insert: Omit<TaskGroup, 'id' | 'created_at' | 'updated_at'> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<TaskGroup, 'id' | 'created_by' | 'domain'>>;
+        Relationships: [
+          {
+            foreignKeyName: "task_groups_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      task_audit_log: {
+        Row: TaskAuditLog;
+        Insert: never;  // written by trigger only — no app-layer inserts
+        Update: never;  // append-only — no updates ever
+        Relationships: [
+          {
+            foreignKeyName: "task_audit_log_task_id_fkey";
+            columns: ["task_id"];
+            isOneToOne: false;
+            referencedRelation: "tasks";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "task_audit_log_changed_by_fkey";
+            columns: ["changed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      task_messages: {
+        Row: TaskMessage;
+        Insert: Omit<TaskMessage, 'id' | 'created_at' | 'is_suppressed' | 'suppressed_by' | 'suppressed_at'> & {
+          id?: string;
+          created_at?: string;
+          is_suppressed?: boolean;
+          suppressed_by?: string | null;
+          suppressed_at?: string | null;
+        };
+        Update: Pick<TaskMessage, 'is_suppressed' | 'suppressed_by' | 'suppressed_at'>;  // only suppression columns — enforced at action layer
+        Relationships: [
+          {
+            foreignKeyName: "task_messages_task_id_fkey";
+            columns: ["task_id"];
+            isOneToOne: false;
+            referencedRelation: "tasks";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "task_messages_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Functions: {

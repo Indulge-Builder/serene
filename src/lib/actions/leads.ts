@@ -13,11 +13,16 @@ import {
 import { formErrors } from '@/lib/validations/form-errors';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { getAgentsForDomain } from '@/lib/services/leads-service';
+import { createNotification } from '@/lib/services/notifications-service';
 import type { ActionResult } from '@/lib/types/index';
-import type { LeadStatus } from '@/lib/types/database';
+import type { LeadStatus, AppDomain } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
 // Auth helper — get current user's profile
+// TD-001: this is a duplicate of getCurrentProfile() in profiles-service.ts
+// (Rule A-03 / Rule 04 violation). Replace with:
+//   import { getCurrentProfile } from '@/lib/services/profiles-service';
+// and remove this function when leads.ts is next touched. See docs/tech-debt.md.
 // ─────────────────────────────────────────────
 async function getCallerProfile() {
   const supabase = await createClient();
@@ -148,7 +153,7 @@ export async function updateLeadStatus(
   // 3. Fetch lead for access check + old status
   const { data: lead } = await supabase
     .from('leads')
-    .select('id, status, assigned_to, domain')
+    .select('id, status, assigned_to, domain, first_name, last_name')
     .eq('id', leadId)
     .single();
 
@@ -178,7 +183,36 @@ export async function updateLeadStatus(
     details:     { old_status: oldStatus, new_status: status, ...(reason ? { reason } : {}) },
   });
 
-  // 6. Side effects — nurturing: auto-create follow-up task in 3 months
+  // 6. Side effects — won: notify managers in the lead's domain
+  if (status === 'won') {
+    const firstName   = (lead.first_name as string | null) ?? 'A lead';
+    const lastName    = lead.last_name as string | null;
+    const displayName = lastName ? `${firstName} ${lastName}` : firstName;
+
+    // Fetch all managers in this domain to notify
+    const { data: managers } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('domain', lead.domain as AppDomain)
+      .in('role', ['manager', 'admin', 'founder'])
+      .eq('is_active', true);
+
+    if (managers && managers.length > 0) {
+      await Promise.all(
+        managers.map((m: { id: string }) =>
+          createNotification({
+            recipient_id: m.id,
+            type:         'lead_won',
+            title:        `Lead won — ${displayName}`,
+            body:         `Marked won by ${caller.full_name}`,
+            action_url:   `/leads/${leadId}`,
+          }),
+        ),
+      );
+    }
+  }
+
+  // 7. Side effects — nurturing: auto-create follow-up task in 3 months
   if (status === 'nurturing') {
     const dueAt = new Date();
     dueAt.setMonth(dueAt.getMonth() + 3);
@@ -190,7 +224,7 @@ export async function updateLeadStatus(
         created_by:  caller.id,
         module:      'gia',
         task_type:   'general_follow_up',
-        status:      'pending',
+        status:      'to_do',
         due_at:      dueAt.toISOString(),
       })
       .select('id')
@@ -246,6 +280,15 @@ export async function assignLead(
     action_type: 'agent_assigned',
     details:     { assigned_to: agentId, method: 'manual' },
   });
+
+  // 5. Notify the receiving agent — fire-and-forget, non-fatal
+  createNotification({
+    recipient_id: agentId,
+    type:         'lead_assigned',
+    title:        'New lead assigned to you',
+    body:         `Assigned by ${caller.full_name}`,
+    action_url:   `/leads/${leadId}`,
+  }).catch(() => {});
 
   return { data: { leadId }, error: null };
 }
@@ -462,6 +505,17 @@ export async function createManualLead(
       action_type: 'agent_assigned',
       details:     { assigned_to: assignedTo, method: 'manual' },
     });
+
+    // Notify the assigned agent (only when it differs from the caller)
+    if (assignedTo !== caller.id) {
+      createNotification({
+        recipient_id: assignedTo,
+        type:         'lead_assigned',
+        title:        'New lead assigned to you',
+        body:         `Manually added by ${caller.full_name}`,
+        action_url:   `/leads/${leadId}`,
+      }).catch(() => {});
+    }
   }
 
   // 10. Return success

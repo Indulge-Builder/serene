@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import type { Lead, LeadActivity, LeadNote, LeadRawPayload, Task, UserRole, AppDomain, LeadFilters, Profile } from '@/lib/types/database';
+import type { Lead, LeadActivity, LeadNote, LeadRawPayload, Task, UserRole, AppDomain, LeadFilters, CampaignFilters, CampaignMetrics, CampaignDetailMetrics, AgentDistributionRow, Profile } from '@/lib/types/database';
 
 export type LeadNoteWithAuthor = LeadNote & { author: { full_name: string } };
 export type LeadActivityWithActor = LeadActivity & { actor: { full_name: string } | null };
@@ -312,7 +312,7 @@ export async function getNextLeadTask(leadId: string): Promise<Task | null> {
     .from('tasks')
     .select('*, task_gia_meta!inner(lead_id)')
     .eq('task_gia_meta.lead_id', leadId)
-    .eq('status', 'pending')
+    .eq('status', 'to_do')
     .order('due_at', { ascending: true })
     .limit(1);
 
@@ -352,6 +352,179 @@ export async function getAgentsForDomain(
 
   if (error || !data) return [];
   return data as { id: string; full_name: string }[];
+}
+
+// ─────────────────────────────────────────────
+// Query: campaign analytics — single RPC call, one round trip
+//
+// Security contract (mirrors getLeadsByRole):
+//   - manager: caller MUST pass their own domain as filters.domain before
+//     calling — never pass null for a manager. Enforced in service, not RPC.
+//   - admin / founder: filters.domain === null → all domains returned.
+// ─────────────────────────────────────────────
+export async function getCampaignMetrics(
+  role: UserRole,
+  callerDomain: AppDomain,
+  filters: CampaignFilters,
+): Promise<CampaignMetrics[]> {
+  const supabase = await createClient();
+
+  // Manager constraint: always scope to their domain, regardless of what filters.domain says
+  const effectiveDomain: string | null =
+    role === 'manager'
+      ? callerDomain
+      : (filters.domain ?? null);
+
+  // date_to end-of-day transform — same rule as getLeadsByRole
+  const dateTo = filters.date_to
+    ? filters.date_to.replace(/T.*$/, 'T23:59:59.999Z')
+    : null;
+
+  type CampaignRpcRow = {
+    campaign_name:        string;
+    domain:               string;
+    total_leads:          number;
+    status_new:           number;
+    status_touched:       number;
+    status_in_discussion: number;
+    status_won:           number;
+    status_nurturing:     number;
+    status_lost:          number;
+    status_junk:          number;
+    outcome_rnr:          number;
+    outcome_switched_off: number;
+    outcome_converted:    number;
+  };
+
+  // The Database type does not include custom RPC functions; cast through unknown.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as unknown as any).rpc('get_campaign_metrics', {
+    p_domain:    effectiveDomain,
+    p_date_from: filters.date_from ?? null,
+    p_date_to:   dateTo,
+  });
+
+  if (error || !data) return [];
+
+  return (data as CampaignRpcRow[]).map((row) => ({
+    campaign_name: row.campaign_name,
+    domain:        row.domain as AppDomain,
+    total_leads:   Number(row.total_leads),
+    new:           Number(row.status_new),
+    touched:       Number(row.status_touched),
+    in_discussion: Number(row.status_in_discussion),
+    won:           Number(row.status_won),
+    nurturing:     Number(row.status_nurturing),
+    lost:          Number(row.status_lost),
+    junk:          Number(row.status_junk),
+    rnr:           Number(row.outcome_rnr),
+    switched_off:  Number(row.outcome_switched_off),
+    converted:     Number(row.outcome_converted),
+  }));
+}
+
+// ─────────────────────────────────────────────
+// Query: campaign detail metrics — single RPC, single campaign
+//
+// Called only from the [id] detail page. Never from the list page.
+// Returns null when the campaign has no matching leads.
+// ─────────────────────────────────────────────
+export async function getCampaignDetailMetrics(
+  campaignName: string,
+  filters: Pick<CampaignFilters, 'date_from' | 'date_to'>,
+): Promise<CampaignDetailMetrics | null> {
+  const supabase = await createClient();
+
+  const dateTo = filters.date_to
+    ? filters.date_to.replace(/T.*$/, 'T23:59:59.999Z')
+    : null;
+
+  type DetailRpcRow = {
+    campaign_name:           string;
+    total_leads:             number;
+    status_new:              number;
+    status_touched:          number;
+    status_in_discussion:    number;
+    status_won:              number;
+    status_nurturing:        number;
+    status_lost:             number;
+    status_junk:             number;
+    outcome_rnr:             number;
+    outcome_switched_off:    number;
+    outcome_converted:       number;
+    avg_hours_to_first_touch: number | null;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as unknown as any).rpc(
+    'get_campaign_detail_metrics',
+    {
+      p_campaign:  campaignName,
+      p_date_from: filters.date_from ?? null,
+      p_date_to:   dateTo,
+    },
+  );
+
+  if (error || !data || !Array.isArray(data) || data.length === 0) return null;
+
+  const row = data[0] as DetailRpcRow;
+  return {
+    campaign_name: row.campaign_name,
+    // domain not returned by this RPC — not needed on the detail page
+    domain:        '' as AppDomain,
+    total_leads:   Number(row.total_leads),
+    new:           Number(row.status_new),
+    touched:       Number(row.status_touched),
+    in_discussion: Number(row.status_in_discussion),
+    won:           Number(row.status_won),
+    nurturing:     Number(row.status_nurturing),
+    lost:          Number(row.status_lost),
+    junk:          Number(row.status_junk),
+    rnr:           Number(row.outcome_rnr),
+    switched_off:  Number(row.outcome_switched_off),
+    converted:     Number(row.outcome_converted),
+    avg_hours_to_first_touch:
+      row.avg_hours_to_first_touch !== null
+        ? Number(row.avg_hours_to_first_touch)
+        : null,
+  };
+}
+
+// ─────────────────────────────────────────────
+// Query: campaign agent distribution — single GROUP BY, never N+1
+//
+// Returns one row per assigned agent. Unassigned leads are excluded.
+// Called only from the [id] detail page alongside getCampaignDetailMetrics.
+// ─────────────────────────────────────────────
+export async function getCampaignAgentDistribution(
+  campaignName: string,
+  filters: Pick<CampaignFilters, 'date_from' | 'date_to'>,
+): Promise<AgentDistributionRow[]> {
+  const supabase = await createClient();
+
+  const dateTo = filters.date_to
+    ? filters.date_to.replace(/T.*$/, 'T23:59:59.999Z')
+    : null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as unknown as any).rpc(
+    'get_campaign_agent_distribution',
+    {
+      p_campaign:  campaignName,
+      p_date_from: filters.date_from ?? null,
+      p_date_to:   dateTo,
+    },
+  );
+
+  if (error || !data) return [];
+
+  return (data as Array<{ agent_id: string; full_name: string; lead_count: number }>).map(
+    (row) => ({
+      agent_id:   row.agent_id,
+      full_name:  row.full_name,
+      lead_count: Number(row.lead_count),
+    }),
+  );
 }
 
 // ─────────────────────────────────────────────

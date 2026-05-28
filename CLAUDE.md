@@ -57,6 +57,11 @@ src/lib/utils/dates.ts              ← formatDate() — the only date formatter
 src/lib/utils/numbers.ts            ← formatCount(), formatCurrency() etc.
 src/lib/utils/chart-tokens.ts       ← getChartTokens() — Recharts bridge
 src/lib/utils/scroll.ts             ← scrollToBottom(), lockBodyScroll() etc.
+src/lib/services/dashboard-service.ts ← ALL dashboard widget queries (never extend leads-service.ts)
+src/lib/actions/dashboard.ts         ← ALL dashboard server actions (widget data refresh)
+src/lib/constants/dashboard-widgets.ts ← widget registry (pure data, no component refs)
+src/hooks/useDashboardLayout.ts       ← localStorage layout hook (key: eia:dashboard:layout:${userId}:v1)
+src/components/dashboard/            ← DashboardCanvas, DashboardWidgetSlot, WidgetSkeleton, widgets/
 src/components/ui/                  ← shadcn primitives, zero feature imports
 src/components/ui/lia-glyph.tsx     ← Lia's custom SVG mark (always breathing)
 src/styles/design-tokens.css        ← ALL CSS variables, all themes
@@ -465,6 +470,61 @@ Props: `open: boolean`, `onClose: () => void`, `title: string`, `children: React
 
 ---
 
+### Campaign ad video preview modal (2026-05-28)
+
+- Migration 0012: `ad_creatives` table — `campaign_key` (UNIQUE, normalised, CHECK constraint), `video_url`, `thumbnail_url`, `ad_name`, `notes`; RLS: SELECT all authenticated, INSERT/UPDATE/DELETE admin/founder; `idx_ad_creatives_campaign_key` index
+- `src/lib/types/database.ts` — `AdCreative` type + `ad_creatives` Database table entry
+- `src/lib/services/ad-creatives-service.ts` — `getAdCreativeForCampaign(campaignName)`: normalises (toLowerCase + trim), returns `AdCreative | null`, never throws
+- `src/components/leads/CampaignVideoModal.tsx` — modal composing `ui/modal.tsx`; `max-w-2xl`; native `<video>` autoPlay muted; `video.play()` via ref with silent catch
+- `src/components/leads/LeadInfoCard.tsx` — converted to `'use client'`; `adCreative?: AdCreative | null` prop; campaign field → interactive `<span role="button">` when creative present; ad_name also interactive when matched
+- `src/app/(dashboard)/leads/[id]/page.tsx` — `getAdCreativeForCampaign` in existing `Promise.all`; skipped when utm_campaign is null
+- `src/components/leads/CLAUDE.md` — created: component inventory for all leads components
+
+---
+
+### Phase 7 — Complete (2026-05-28)
+
+Dashboard widget system: canvas, registry, hook, and 5 Gia widgets.
+
+- `src/lib/constants/dashboard-widgets.ts` — widget registry (pure data); 5 widgets: `agent-tasks`, `agent-activity`, `manager-lead-status`, `manager-lead-volume`, `manager-campaigns`; `DEFAULT_LAYOUT_BY_ROLE` per role; `WIDGET_MAP`, `isValidWidgetId`
+- `src/hooks/useDashboardLayout.ts` — `useDashboardLayout(userId, role)` hook; localStorage key `eia:dashboard:layout:${userId}:v1`; validates stored ids against registry on load; hydrates after mount; returns `{ layout, isHydrated, addWidget, removeWidget, moveWidget, resizeWidget, reorderWidgets, resetToDefaults }`
+- `src/components/dashboard/WidgetSkeleton.tsx` — shimmer skeleton sized by `WidgetSize` prop; respects V-08 (≥150ms)
+- `src/components/dashboard/DashboardWidgetSlot.tsx` — `'use client'`; Suspense boundary wrapping `React.lazy`-loaded widgets; static import map (never dynamic string); edit mode overlay (dashed accent border + remove ×); `MinSkeletonBoundary` enforces 150ms minimum
+- `src/components/dashboard/DashboardCanvas.tsx` — `'use client'`; 2-column CSS grid (full-canvas skeleton before hydration); `@dnd-kit/sortable` drag-to-reorder; edit mode toggle; reset layout button
+- `src/lib/services/dashboard-service.ts` — dedicated dashboard queries: `getAgentTasksSummary`, `getAgentRecentActivity`, `getLeadStatusSummary`, `getLeadVolumeByPeriod`, `getLeadsByCampaign`; no dashboard queries added to `leads-service.ts`
+- `src/lib/actions/dashboard.ts` — server actions: `getAgentTasksSummaryAction`, `getAgentRecentActivityAction`, `getLeadStatusSummaryAction`, `getLeadsByCampaignAction`, `getLeadVolumeByPeriodAction`; all re-verify via `getCurrentProfile()`; role guards on manager actions
+- `src/components/dashboard/widgets/AgentTasksWidget.tsx` — `'use client'`; overdue + today tasks; new leads count; server action refresh button
+- `src/components/dashboard/widgets/AgentActivityWidget.tsx` — `'use client'`; Supabase Realtime subscription filtered by `actor_id=eq.${userId}`; initial load via server action; 200ms `y: -8→0, opacity: 0→1` Framer Motion animation on new items; subscription cleaned up on unmount
+- `src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx` — `'use client'`; stacked bar pipeline + per-agent breakdown; semantic status colours (design-dna.md §16.4)
+- `src/components/dashboard/widgets/ManagerLeadVolumeWidget.tsx` — `'use client'`; Recharts `LineChart`; period toggle Today/Week/Month/Quarter in local state; `useTransition` on toggle; all colours CSS vars — no hex
+- `src/components/dashboard/widgets/ManagerCampaignWidget.tsx` — `'use client'`; Recharts stacked `BarChart`; top-radius only per §16.4 bar rules; legend; empty state
+- `src/app/(dashboard)/dashboard/page.tsx` — replaced placeholder with `<DashboardCanvas>` server component wrapper
+- `src/app/(dashboard)/CLAUDE.md` — created: widget registry location, hook key format, dynamic import pattern, Phase B widget list, data access rules
+- `recharts@3.8.1` added to dependencies
+
+### Phase 7 — post-ship fix (2026-05-28)
+
+`startTransition` called during render — three widgets patched.
+
+- `src/components/dashboard/widgets/AgentTasksWidget.tsx` — initial fetch moved into `useEffect`; `cancelled` flag prevents stale state update on unmount
+- `src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx` — same fix
+- `src/components/dashboard/widgets/ManagerCampaignWidget.tsx` — same fix
+
+**Rule:** Initial data fetch in a widget must always live in `useEffect`, never as a render-phase guard. Pattern:
+
+```ts
+useEffect(() => {
+  let cancelled = false;
+  startTransition(async () => {
+    const result = await getSomeAction();
+    if (!cancelled && result.data) setState(result.data);
+  });
+  return () => { cancelled = true; };
+}, []);
+```
+
+**Limitation to know:** the `cancelled` flag only guards against `setState` on an unmounted component — it does not cancel the in-flight server action itself. This is acceptable for the current widgets, which are fast reads with no side effects. If a future widget triggers a slow or expensive action on mount, consider `AbortController` on the underlying fetch — but that requires the server action to accept a `signal`, which adds complexity. Do not pre-engineer this. Add it only when the specific widget warrants it.
+
 ### Manual lead creation — Add Lead modal (2026-05-28)
 
 - `src/lib/services/leads-service.ts` — `getAgentsForDomain(domain)` added: queries `profiles` where `role='agent' AND domain=$domain AND is_active=true`, returns `{ id, full_name }[]`
@@ -476,6 +536,75 @@ Props: `open: boolean`, `onClose: () => void`, `title: string`, `children: React
 - `src/app/(dashboard)/leads/page.tsx` — `AddLeadButton` wired into page header; `initialAgents` fetched at page level via `getAgentsForDomain`
 
 **Domain enforcement:** `createManualLead` always overwrites `domain = caller.domain` when caller role is `agent`. This is enforced server-side — form payload is never trusted.
+
+---
+
+### Phase 9 — Complete (2026-05-28)
+
+Team benchmarks layer on the performance page.
+
+- `src/lib/services/performance-service.ts` — `TeamBenchmarks` type; `getTeamBenchmarks(callerDomain, period)`; agentCount < 2 guard; 3 flat queries (never N); `leadsWon` excluded by design
+- `src/app/(dashboard)/performance/PerformanceAsync.tsx` — sixth Promise.all call; `domain` prop (server-verified)
+- `src/app/(dashboard)/performance/page.tsx` — `domain={profile.domain}` forwarded to PerformanceAsync
+- `src/components/performance/CoreFourGrid.tsx` — `benchmarks` prop; benchmark line (absent when null); accent pip for above-average; response time inverse comparison
+- `src/app/(dashboard)/performance/PerformanceSkeleton.tsx` — benchmark skeleton lines on 3 cards
+- `src/app/(dashboard)/performance/CLAUDE.md` — updated
+
+---
+
+### Phase 8 — Complete (2026-05-28)
+
+Performance page: agent self-view with Core Four metrics, effort layer, call outcome breakdown, and period selector.
+
+- Migration 0013: three partial indexes (`idx_lead_activities_actor_status`, `idx_lead_notes_author_outcome`, `idx_leads_assigned_status_created`)
+- `src/lib/services/performance-service.ts` — dedicated service; `PerformancePeriod` type; `getCoreFourMetrics`, `getEffortMetrics`, `getCallOutcomeBreakdown`, `getPreviousPeriodCoreMetrics`; IST-correct period boundaries; null contract for avgResponseTime + conversionRate
+- `src/lib/utils/dates.ts` — `formatDuration(minutes)` added: null → "—", < 60m → "48m", ≥ 60m → "2h 34m"
+- `src/app/(dashboard)/performance/page.tsx` — agent-only; non-agent → redirect `/dashboard`; `PerformanceMotivationalFooter` (Playfair italic, Lia's quiet voice)
+- `src/app/(dashboard)/performance/PerformanceAsync.tsx` — async server component; `Promise.all` over 5 service calls
+- `src/app/(dashboard)/performance/PerformanceSkeleton.tsx` — Tier 1/2/3 skeletons; stagger 0/80/160/240ms
+- `src/components/performance/PerformancePeriodSelector.tsx` — URL param; `useTransition`; tab-style ghost buttons
+- `src/components/performance/CoreFourGrid.tsx` — 2×2 grid; Playfair serif; unicode delta arrows; null → "—"
+- `src/components/performance/EffortGrid.tsx` — 4-col compact cards; live-state dots
+- `src/components/performance/CallOutcomeBar.tsx` — horizontal segmented bar; CSS var colours; Playfair italic empty state
+- `src/components/layout/Sidebar.tsx` — Performance nav item added (BarChart2, position: below Leads)
+- `src/app/(dashboard)/performance/CLAUDE.md` — created
+
+---
+
+### Campaign Analytics Command Center — Complete (2026-05-28)
+
+Campaign list + detail pages for manager / admin / founder.
+
+- Migration 0014: `idx_leads_campaign_domain`, `idx_leads_campaign_status` partial indexes; `get_campaign_metrics` RPC (conditional aggregates — one round trip)
+- `src/lib/types/database.ts` — `CampaignMetrics`, `CampaignFilters` types added
+- `src/lib/services/leads-service.ts` — `getCampaignMetrics(role, callerDomain, filters)` added; manager domain enforced before RPC call; never two queries
+- `src/components/campaigns/CampaignFilters.tsx` — domain filter (admin/founder only), date range, clear; `useTransition`
+- `src/components/campaigns/CampaignCard.tsx` — interactive card; 7 metric pills; staggered Framer Motion entrance
+- `src/components/campaigns/CampaignListSkeleton.tsx` — 5 skeleton rows, stagger §11.4
+- `src/components/campaigns/CampaignListAsync.tsx` — async server component, direct child of Suspense
+- `src/app/(dashboard)/campaigns/page.tsx` — thin orchestrator; agent/guest → redirect; manager domain pre-locked
+- `src/app/(dashboard)/campaigns/[id]/page.tsx` — detail page; `encodeURIComponent`/`decodeURIComponent` contract; reuses `LeadsTable`
+- `src/components/layout/Sidebar.tsx` — "Campaigns" nav item (`TrendingUp`, `/campaigns`); visible manager/admin/founder; "Analytics" section label
+- `src/app/(dashboard)/campaigns/CLAUDE.md` — created
+
+---
+
+### Migration 0017 — OS Tasks schema (2026-05-28)
+
+`task_groups`, `task_messages`, `tasks` core extended.
+
+- Migration 0017: `task_groups` table (priority, status, domain scope, RLS); `task_messages` table (append-only, Realtime); `tasks` extended with `title`, `description`, `priority`, `task_category`, `group_id`; status enum migrated (`pending`→`to_do`, `done`→`completed`); `notifications.type` CHECK expanded with `task_assigned`
+- `src/lib/types/database.ts` — `TaskStatus` updated (full 6-value enum); `TaskPriority`, `TaskCategory` types added; `Task` extended; `TaskGroup`, `TaskMessage` types added; `NotificationType` extended with `task_assigned`; `Database` table entries added for `task_groups`, `task_messages`
+- `src/components/notifications/NotificationItem.tsx` — `task_assigned` case added to exhaustive switch (Q-11 satisfied); maps to `CheckSquare` icon
+
+**tasks status vocabulary (post-0017):** `to_do | in_progress | in_review | completed | error | cancelled`
+Old values `pending` and `done` no longer exist. Any code referencing them fails at the DB constraint.
+
+**task_messages is append-only.** No UPDATE, no DELETE — enforced at RLS level. Never add those policies.
+
+**tasks_agent_select policy is correct for group_subtask.** An agent can only see subtasks assigned to themselves (`assigned_to = auth.uid()`). A subtask assigned to a colleague in the same group is invisible. The existing policy requires no change.
+
+**Task reminder pattern (Trigger.dev):** `scheduleTaskReminder` passes `idempotencyKey: 'task-reminder-${taskId}'` to `tasks.trigger()`. Trigger.dev v3 deduplicates by idempotency key for all non-terminal run states including DELAYED — a second `tasks.trigger()` with the same key while a DELAYED run exists returns the existing run handle (`isCached: true`), never creates a new run. This closes the concurrent-update race window without storing run IDs in the DB. Evidence is in the comment block at the top of `src/trigger/task-reminders.ts`. Do not add a `reminder_run_id` column to `tasks` — it is not needed.
 
 ---
 

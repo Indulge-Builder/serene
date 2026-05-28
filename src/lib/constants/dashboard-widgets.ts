@@ -1,0 +1,104 @@
+// Widget registry — pure data. No component references here.
+// IDs are stable localStorage keys — never rename after shipping.
+
+import type { UserRole, AppDomain } from '@/lib/types/database';
+
+export type WidgetSize = 'sm' | 'md' | 'lg' | 'xl';
+
+export type WidgetModule = 'gia' | 'finance' | 'ops' | 'marketing' | 'tech';
+
+export type WidgetDefinition = {
+  id:           string;
+  label:        string;
+  description:  string;
+  roles:        UserRole[];
+  domains:      AppDomain[] | '*';
+  defaultSize:  WidgetSize;
+  module:       WidgetModule;
+};
+
+export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
+  {
+    id:          'agent-tasks',
+    label:       'My Tasks',
+    description: 'Open tasks, follow-ups, and new leads assigned to you.',
+    roles:       ['agent', 'manager', 'admin', 'founder'],
+    domains:     '*',
+    defaultSize: 'md',
+    module:      'gia',
+  },
+  {
+    id:          'agent-activity',
+    label:       'Recent Activity',
+    description: 'A live whisper of your last 10 actions.',
+    roles:       ['agent', 'manager', 'admin', 'founder'],
+    domains:     '*',
+    defaultSize: 'md',
+    module:      'gia',
+  },
+  {
+    id:          'manager-lead-status',
+    label:       'Lead Pipeline',
+    description: 'Lead counts by status across your domain, broken down by agent.',
+    roles:       ['manager', 'admin', 'founder'],
+    domains:     '*',
+    defaultSize: 'lg',
+    module:      'gia',
+  },
+  {
+    id:          'manager-lead-volume',
+    label:       'Lead Volume',
+    description: 'Incoming leads over time — today, this week, this month, or this quarter.',
+    roles:       ['manager', 'admin', 'founder'],
+    domains:     '*',
+    defaultSize: 'lg',
+    module:      'gia',
+  },
+  {
+    id:          'manager-campaigns',
+    label:       'Campaign Performance',
+    description: 'Leads per campaign, broken down by status mix.',
+    roles:       ['manager', 'admin', 'founder'],
+    domains:     '*',
+    defaultSize: 'xl',
+    module:      'gia',
+  },
+];
+
+export const WIDGET_MAP: Record<string, WidgetDefinition> = Object.fromEntries(
+  DASHBOARD_WIDGETS.map((w) => [w.id, w]),
+);
+
+export function isValidWidgetId(id: string): id is string {
+  return id in WIDGET_MAP;
+}
+
+// Default layout per role — ordered list of widget ids
+export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
+  founder: [
+    'agent-tasks',
+    'agent-activity',
+    'manager-lead-status',
+    'manager-lead-volume',
+    'manager-campaigns',
+  ],
+  admin: [
+    'agent-tasks',
+    'agent-activity',
+    'manager-lead-status',
+    'manager-lead-volume',
+    'manager-campaigns',
+  ],
+  manager: [
+    'agent-tasks',
+    'agent-activity',
+    'manager-lead-status',
+    'manager-lead-volume',
+    'manager-campaigns',
+  ],
+  agent: [
+    'agent-tasks',
+    'agent-activity',
+  ],
+  guest: [],
+};

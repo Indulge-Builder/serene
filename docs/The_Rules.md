@@ -111,6 +111,9 @@
 | Q-06 | No production deployment without the security checklist passing. |
 | Q-07 | **Drag-to-reorder always uses `@dnd-kit`.** It is the established library. Do not reach for `react-beautiful-dnd`, `dnd-kit` forks, or hand-rolled pointer listeners. This applies to task lists, priority ordering, dashboard widget arrangement, and any future sortable surface. |
 | Q-08 | **Column preference hooks follow the `useLeadColumnPreferences` pattern exactly.** If any other table gets a column picker (tasks, clients, finance), replicate the same hook signature and localStorage key convention: `eia:[module]:columns:${userId}:v1`. Do not invent a different shape or key format. Consistency is what makes the behaviour predictable and the codebase searchable. |
+| Q-09 | **PostgreSQL `COUNT(*)` returns `bigint`. Always cast to `Number()` in the service layer before returning typed values.** If a number from an RPC ever reaches a component without being cast, and the cast in the service is later removed, `BigInt` serialisation silently breaks JSON (`TypeError: Do not know how to serialize a BigInt`). In the service, always do `Number(row.some_count)`. In components, format counts through `formatCompact()` or `formatCount()` from `lib/utils/numbers.ts` — never `.toString()` on a raw RPC field. |
+| Q-10 | **`decodeURIComponent` in route handlers must be wrapped in `try/catch → notFound()`.** A malformed percent-sequence (e.g. `/campaigns/%GG`) throws a `URIError` at the server boundary, producing a 500 instead of a 404. Every `[id]` segment that will be decoded must be guarded: `try { name = decodeURIComponent(id) } catch { notFound() }`. |
+| Q-11 | **Every `switch` over a union type must be exhaustive. No `default` branch.** Use `assertNever(x)` from `src/lib/utils/assert-never.ts` as the final return. TypeScript will error at build time if any case is unhandled. A `default` branch absorbs missing cases silently — it is a violation. Applies to: `NotificationType`, `LeadStatus`, `CallOutcome`, `TaskType`, `ToastType`, and any future union enum. |
 
 ---
 
@@ -163,6 +166,9 @@ NEVER  add a package without a changelog entry in docs/changelog.md
 NEVER  merge a meaningful change without a docs/changelog.md entry
 NEVER  use anything other than @dnd-kit for drag-to-reorder (Q-07)
 NEVER  invent a different localStorage key format for column preferences — always eia:[module]:columns:${userId}:v1 (Q-08)
+NEVER  use a raw RPC bigint field directly in a component — cast to Number() in the service, format with formatCompact()/formatCount() in the component (Q-09)
+NEVER  call decodeURIComponent in a route handler without a try/catch → notFound() guard (Q-10)
+NEVER  use a default branch in a switch over a union type — use assertNever() from lib/utils/assert-never.ts (Q-11)
 ```
 
 ---

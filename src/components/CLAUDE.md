@@ -106,3 +106,141 @@ Persists to `localStorage` under key `eia:leads:columns:${userId}:v1`.
 Validates stored ids against the registry on load — unrecognised ids are silently dropped.
 Locked columns are always in `visibleColumns` regardless of stored value.
 Never touches Supabase. Never debounces — localStorage writes are synchronous.
+
+## Toast System
+
+### ToastProvider
+
+`src/components/ui/toast-provider.tsx`
+
+Renders the toast stack. Mount it **once** in the dashboard layout, after the Sidebar, outside any scrollable div.
+Position: `fixed bottom-[--space-6] right-[--space-6]` desktop; `fixed bottom-[calc(80px+safe-area-inset-bottom)] left-[--space-4] right-[--space-4]` mobile.
+Maximum 3 toasts in DOM. 4th+ are queued. Stack stagger: scale 1.0/0.95/0.90, translateY 0/-8px/-14px.
+Uses `AnimatePresence` from Framer Motion. Zero Supabase dependency.
+
+### ToastItem
+
+`src/components/ui/toast-item.tsx`
+
+Single toast card. Implements Section 13.2 anatomy exactly.
+- Living 3px left bar uses `eia-toast-bar-breathe` CSS keyframe (fires once). `lia` type uses continuous `eia-lia-breathe`.
+- Warning type renders a depletion bar (`toast-deplete` keyframe, linear timing — intentional).
+- `loading` type has `Loader2` icon with `animate-spin` class.
+- `lia` type renders `<LiaGlyph size={18} />` with breathing active.
+- `danger` type never auto-dismisses — no timer. Verify: `duration = 0`.
+- `hover / focus` over any toast freezes its dismiss timer. Leaving resumes remaining time.
+- loading → resolved transition: icon crossfades via `AnimatePresence mode="wait"`, text crossfades, bar colour transitions.
+
+### useToast hook
+
+`src/hooks/useToast.ts` — re-exports `toast` from `src/lib/toast.ts`.
+
+```typescript
+import { useToast } from "@/hooks/useToast";
+const toast = useToast;   // toast is the singleton; hook re-exports it directly
+toast.success("Lead saved");
+toast.loading("Saving...");
+toast.resolve(id, "success", "Saved!");
+```
+
+## Task Components
+
+`src/components/tasks/` — TaskModal, TaskChatPanel, AssigneePickerModal.
+
+### TaskModal
+
+`src/components/tasks/TaskModal.tsx`
+
+Props:
+```
+open:            boolean
+onClose:         () => void
+task:            Task
+assignee:        Pick<Profile, "id" | "full_name" | "avatar_url"> | null
+initialMessages: TaskMessageWithAuthor[]
+currentUserId:   string
+currentUserName: string
+```
+
+Two-column layout (desktop): left 55% details, right 45% chat. Mobile: full-screen bottom sheet, details on top, chat below.
+
+**Inline editing:** Title and Description save on blur via `updateTaskAction`. 400ms debounce. Accent underline on focus signals editability. **Pending saves are flushed synchronously when the modal closes** — never lost.
+
+**Status segmented control:** 6 compact pills in a 3-column grid (2-column at ≤480px). Active pill uses status-specific colour tokens. Calls `updateTaskStatusAction`.
+
+**Priority pills:** 3 pills (Urgent/High/Normal). Uses `--color-danger`, `--color-warning`, `--theme-text-secondary` via `var()` — zero hex values.
+
+**No `<form>` tag.** All interactions via onClick/onChange handlers.
+
+**Does not fetch task data.** Receives `task` as a prop. Parent is responsible for data fetching.
+
+### TaskChatPanel
+
+`src/components/tasks/TaskChatPanel.tsx`
+
+Props:
+```
+taskId:          string
+currentUserId:   string
+currentUserName: string
+initialMessages: TaskMessageWithAuthor[]
+```
+
+Realtime: subscribes to `task_messages` filtered by `task_id` on mount. **Channel name: `task-messages-${taskId}`** — unique per task, prevents cross-task subscription bleed.
+
+Optimistic insert: message appears immediately at 0.6 opacity. Confirmed on Realtime echo (matched by content + author_id). If action errors: optimistic row removed, `toast.danger` fires.
+
+Auto-scrolls to bottom on new messages. Textarea grows to 3 lines max. Enter sends, Shift+Enter inserts newline.
+
+Export: `TaskMessageWithAuthor = TaskMessage & { author: Pick<Profile, "full_name" | "avatar_url"> | null }`.
+
+### AssigneePickerModal
+
+`src/components/tasks/AssigneePickerModal.tsx`
+
+Props:
+```
+open:          boolean
+onClose:       () => void
+onConfirm:     (userId: string, user: AssignableUser) => void
+users:         AssignableUser[]       — pre-fetched by parent, max 100
+initialDomain: AppDomain              — domain to pre-select
+```
+
+Opens as a nested modal. Backdrop: `--z-modal-overlay` (61). Panel: `--z-modal-nested` (62). Sits above `TaskModal` (`--z-modal` = 60).
+
+Domain tabs at top — only shows domains with at least one user. Search filters client-side (no server round-trip). Single select. Role badge per user row. Confirm disabled until selection made.
+
+Export: `AssignableUser = Pick<Profile, "id" | "full_name" | "avatar_url" | "role" | "domain">`.
+
+## Notification Components
+
+`src/components/notifications/` — bell, panel, item.
+
+### NotificationBell
+
+`src/components/notifications/NotificationBell.tsx`
+
+Client component. Currently mounted in the Sidebar footer (replacing the stub bell).
+Props: `userId: string`, `initialData: Notification[]`, `variant?: "sidebar" | "topbar"`.
+Renders bell icon + unread dot (single dot only — never a number badge).
+Owns `useState(open)` and wraps `NotificationPanel`.
+No Supabase calls — all state in `useNotifications` hook.
+
+### NotificationPanel
+
+`src/components/notifications/NotificationPanel.tsx`
+
+Dropdown panel. `w-[380px]` desktop. Mobile: position at bottom via CSS (future: bottom sheet).
+Entrance: `opacity 0→1, y -4→0, 150ms --ease-out-expo`. Matches Section 5.09 dropdown spec.
+Closes on outside click, Escape, item click with `action_url`.
+Empty state: italic Playfair "You're all caught up."
+Mark all read button visible when `unreadCount > 0`.
+
+### NotificationItem
+
+`src/components/notifications/NotificationItem.tsx`
+
+Single row. Left unread dot (always rendered, transparent when read — layout stable).
+On click: marks read, navigates to `action_url` if present (relative paths only — validated before `router.push`).
+`formatRelativeTime()` from `src/lib/utils/dates.ts` for timestamps.

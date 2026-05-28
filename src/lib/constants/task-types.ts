@@ -14,10 +14,13 @@ export const TASK_TYPE_LABELS: Record<TaskType, string> = {
   general_follow_up: 'General Follow-up',
 };
 
-export const TASK_STATUSES: TaskStatus[] = ['pending', 'done', 'cancelled'];
+export const TASK_STATUSES: TaskStatus[] = ['to_do', 'in_progress', 'in_review', 'completed', 'error', 'cancelled'];
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  pending:   'Pending',
-  done:      'Done',
-  cancelled: 'Cancelled',
+  to_do:       'To Do',
+  in_progress: 'In Progress',
+  in_review:   'In Review',
+  completed:   'Completed',
+  error:       'Error',
+  cancelled:   'Cancelled',
 };

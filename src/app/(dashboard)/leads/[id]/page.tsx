@@ -3,9 +3,9 @@ import { Suspense } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
-import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { getCurrentProfile, getProfileById } from '@/lib/services/profiles-service';
 import { getLeadById, getLeadNotesFull, getLeadActivitiesFull } from '@/lib/services/leads-service';
-import { getProfileById } from '@/lib/services/profiles-service';
+import { getAdCreativeForCampaign } from '@/lib/services/ad-creatives-service';
 import { LeadInfoCard } from '@/components/leads/LeadInfoCard';
 import { StatusActionPanel } from '@/components/leads/StatusActionPanel';
 import { DynamicFormResponses } from '@/components/leads/DynamicFormResponses';
@@ -39,10 +39,11 @@ export default async function LeadDossierPage({ params }: Props) {
   if (!hasAccess) redirect('/leads');
 
   // Fetch supporting data in parallel
-  const [notes, activities, assigneeProfile] = await Promise.all([
+  const [notes, activities, assigneeProfile, adCreative] = await Promise.all([
     getLeadNotesFull(id),
     getLeadActivitiesFull(id),
     lead.assigned_to ? getProfileById(lead.assigned_to) : Promise.resolve(null),
+    lead.utm_campaign ? getAdCreativeForCampaign(lead.utm_campaign) : Promise.resolve(null),
   ]);
 
   const canEditScratchpad =
@@ -130,7 +131,7 @@ export default async function LeadDossierPage({ params }: Props) {
         >
           {/* Left column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-            <LeadInfoCard lead={lead} assigneeName={assigneeProfile?.full_name ?? null} />
+            <LeadInfoCard lead={lead} assigneeName={assigneeProfile?.full_name ?? null} adCreative={adCreative} />
             <PersonalDetailsCard lead={lead} canEdit={canEditPersonalDetails} />
             {lead.form_data && Object.keys(lead.form_data).length > 0 && (
               <DynamicFormResponses formData={lead.form_data} />
