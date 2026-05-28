@@ -7,6 +7,24 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-28 — Gia — Won action restored on lead dossier (In Discussion)
+
+`StatusActionPanel` — Won button + confirm modal when status is `in_discussion`; calls existing `updateLeadStatus('won')`. Restores spec behaviour removed during the Level Up refactor.
+
+---
+
+## 2026-05-28 — Gia — Leads table Assigned To column shows agent name
+
+`getLeadsByRole` now joins `profiles!leads_assigned_to_fkey(full_name)` in the same query; `LeadWithAssignee` type added. `LeadsTable` Assigned To cell renders `assignee.full_name` instead of the raw UUID.
+
+---
+
+## 2026-05-28 — Layout — Sidebar logo: remove domain module label
+
+Removed the italic module name (Gia, Hia, Sia, etc.) below the sidebar logo. Deleted unused `DOMAIN_MODULE_NAMES` from `src/lib/constants/domains.ts`.
+
+---
+
 ## 2026-05-28 — Gia — Fix getNextLeadTask broken filter (Phase 6)
 
 Inverted join direction in `getNextLeadTask` — now starts from `tasks` with `!inner` on `task_gia_meta` to filter by `lead_id`. Previous version started from `task_gia_meta` and used dot-notation (`.eq('tasks.status', ...)`, `.order('tasks.due_at', ...)`) which PostgREST / Supabase JS client silently drops, causing the status filter and ordering to be no-ops and `.limit(1)` to return an arbitrary row. Native column filters (`status`, `due_at`) are now applied directly on the root `tasks` table. Return type `Task | null` and `LeadDossierTasksAsync` unchanged.

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Phone, TrendingUp, Leaf, XCircle, Trash2, Loader2, ChevronDown } from 'lucide-react';
+import { Phone, TrendingUp, Leaf, XCircle, Trash2, Loader2, ChevronDown, Trophy } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { updateLeadStatus } from '@/lib/actions/leads';
 import { CalledModal } from './CalledModal';
@@ -21,7 +21,7 @@ const STATUS_BADGE_STYLES: Record<BadgeVariant, { bg: string; text: string; bord
   danger:  { bg: 'var(--color-danger-light)',    text: 'var(--color-danger-text)',   border: 'var(--color-danger-light)'   },
 };
 
-type ActiveModal = 'called' | 'nurturing' | 'lost' | 'junk' | null;
+type ActiveModal = 'called' | 'won' | 'nurturing' | 'lost' | 'junk' | null;
 
 type Props = {
   lead: Lead;
@@ -146,6 +146,17 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
           />
         )}
 
+        {/* Won — only when in_discussion */}
+        {status === 'in_discussion' && (
+          <ActionButton
+            icon={<Trophy style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
+            label="Won"
+            variant="success"
+            disabled={isPending}
+            onClick={() => setActiveModal('won')}
+          />
+        )}
+
         {/* Nurture — only when in_discussion */}
         {status === 'in_discussion' && (
           <ActionButton
@@ -202,6 +213,19 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
       {/* Modals */}
       {activeModal === 'called' && (
         <CalledModal leadId={lead.id} onClose={closeModal} />
+      )}
+
+      {activeModal === 'won' && (
+        <ConfirmModal
+          title="Mark as Won"
+          description="This lead has converted. The journey will close at Won."
+          confirmLabel="Mark as Won"
+          confirmVariant="success"
+          isPending={isPending}
+          error={error}
+          onClose={closeModal}
+          onConfirm={() => fireStatusUpdate('won')}
+        />
       )}
 
       {activeModal === 'nurturing' && (

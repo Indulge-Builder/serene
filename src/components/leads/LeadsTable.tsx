@@ -4,7 +4,7 @@ import { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Columns } from 'lucide-react';
-import type { Lead } from '@/lib/types/database';
+import type { LeadWithAssignee } from '@/lib/services/leads-service';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
 import { CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
 import { formatDate } from '@/lib/utils/dates';
@@ -13,7 +13,7 @@ import { useLeadColumnPreferences } from '@/hooks/useLeadColumnPreferences';
 import { LeadColumnPicker } from '@/components/leads/LeadColumnPicker';
 
 type LeadsTableProps = {
-  leads:            Lead[];
+  leads:            LeadWithAssignee[];
   userId:           string;
   hasActiveFilters?: boolean;
 };
@@ -234,7 +234,7 @@ function LeadRow({
   lead,
   visibleColumns,
 }: {
-  lead: Lead;
+  lead: LeadWithAssignee;
   visibleColumns: LeadColumnId[];
 }) {
   const router      = useRouter();
@@ -271,7 +271,7 @@ function LeadCell({
   badgeVariant,
 }: {
   colId:        LeadColumnId;
-  lead:         Lead;
+  lead:         LeadWithAssignee;
   fullName:     string;
   badgeVariant: BadgeVariant;
 }) {
@@ -326,7 +326,7 @@ function LeadCell({
     case 'assigned_to':
       return (
         <td style={{ ...baseCell, fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>
-          {lead.assigned_to ?? '—'}
+          {lead.assignee?.full_name ?? '—'}
         </td>
       );
 

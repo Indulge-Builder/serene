@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
-import { DOMAIN_MODULE_NAMES } from "@/lib/constants/domains";
 import type { Profile } from "@/lib/types/database";
 
 // ─── Types ────────────────────────────────────────────────
@@ -157,9 +156,8 @@ export function Sidebar({ profile }: SidebarProps) {
   const isPrivileged = profile.role === "admin" || profile.role === "founder";
   const isOnProfile  = pathname === "/profile";
 
-  const initials   = getInitials(profile.full_name);
-  const roleLabel  = ROLE_LABELS[profile.role];
-  const moduleName = DOMAIN_MODULE_NAMES[profile.domain];
+  const initials  = getInitials(profile.full_name);
+  const roleLabel = ROLE_LABELS[profile.role];
 
   return (
     <aside
@@ -198,23 +196,10 @@ export function Sidebar({ profile }: SidebarProps) {
             `,
           }}
         />
-        <span
-          style={{
-            fontFamily:    "var(--font-serif)",
-            fontStyle:     "italic",
-            fontSize:      "var(--text-md)",
-            fontWeight:    "var(--weight-normal)",
-            letterSpacing: "var(--tracking-wide)",
-            color:         "color-mix(in srgb, var(--theme-sidebar-active) 60%, transparent)",
-            marginTop:     "var(--space-2)",
-          }}
-        >
-          {moduleName}
-        </span>
         <div
           aria-hidden="true"
           style={{
-            marginTop:  "var(--space-5)",
+            marginTop:  "var(--space-4)",
             width:      "100%",
             height:     "1px",
             background: "linear-gradient(to right, transparent, color-mix(in srgb, var(--theme-accent) 22%, transparent) 30%, color-mix(in srgb, var(--theme-accent) 22%, transparent) 70%, transparent)",

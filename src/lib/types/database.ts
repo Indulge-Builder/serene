@@ -203,7 +203,15 @@ export type Database = {
           call_count?: number;
         };
         Update: Partial<Omit<Lead, 'id' | 'form_data'>>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "leads_assigned_to_fkey";
+            columns: ["assigned_to"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       lead_activities: {
         Row: LeadActivity;

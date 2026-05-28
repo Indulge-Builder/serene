@@ -86,7 +86,7 @@ If you find yourself adding a filter or search inside `LeadsTable.tsx`, stop. Th
 
 ```typescript
 export type LeadsResult = {
-  leads:      Lead[];
+  leads:      LeadWithAssignee[];  // Lead + assignee: { full_name } from profiles join
   totalCount: number;
 };
 ```

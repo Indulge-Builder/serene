@@ -5,6 +5,7 @@ import type { Lead, LeadActivity, LeadNote, LeadRawPayload, Task, UserRole, AppD
 
 export type LeadNoteWithAuthor = LeadNote & { author: { full_name: string } };
 export type LeadActivityWithActor = LeadActivity & { actor: { full_name: string } | null };
+export type LeadWithAssignee = Lead & { assignee: { full_name: string } | null };
 export type LeadTaskForDossier = Task & { task_type: Task['task_type'] };
 
 // ─────────────────────────────────────────────
@@ -88,7 +89,7 @@ export async function getAllLeads(): Promise<Lead[]> {
 //   Never two separate queries.
 // ─────────────────────────────────────────────
 export type LeadsResult = {
-  leads:      Lead[];
+  leads:      LeadWithAssignee[];
   totalCount: number;
 };
 
@@ -118,7 +119,7 @@ export async function getLeadsByRole(
   // Use count: 'exact' to get total matching rows in the same round trip
   let query = supabase
     .from('leads')
-    .select('*', { count: 'exact', head: false })
+    .select('*, assignee:profiles!leads_assigned_to_fkey(full_name)', { count: 'exact', head: false })
     .is('archived_at', null)
     .order('created_at', { ascending: false });
 
@@ -180,7 +181,7 @@ export async function getLeadsByRole(
 
   const { data, error, count } = await query;
   if (error || !data) return { leads: [], totalCount: 0 };
-  return { leads: data as Lead[], totalCount: count ?? 0 };
+  return { leads: data as LeadWithAssignee[], totalCount: count ?? 0 };
 }
 
 /** Deduped per-request — safe to call from page header and LeadsTableAsync. */
