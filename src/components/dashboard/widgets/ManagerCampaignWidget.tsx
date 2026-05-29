@@ -2,15 +2,9 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { RefreshCcw } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from 'recharts';
+import { Button } from '@/components/ui/Button';
+import { BarChart } from '@/components/ui/charts/BarChart';
+import type { BarChartSeries } from '@/components/ui/charts/BarChart';
 import { getLeadsByCampaignAction } from '@/lib/actions/dashboard';
 import { formatCompact } from '@/lib/utils/numbers';
 import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
@@ -29,6 +23,12 @@ const STATUS_COLORS: Record<LeadStatus, string> = {
 };
 
 const STATUS_ORDER: LeadStatus[] = ['new', 'touched', 'in_discussion', 'nurturing', 'won', 'lost', 'junk'];
+
+// Series definition for the BarChart wrapper — keys match STATUS_ORDER and STATUS_COLORS
+const CHART_SERIES: BarChartSeries[] = STATUS_ORDER.map((s) => ({
+  key:   s,
+  label: LEAD_STATUS_LABELS[s],
+}));
 
 export function ManagerCampaignWidget({ role, domain }: WidgetProps) {
   const [campaigns, setCampaigns]    = useState<CampaignStatusMix[]>([]);
@@ -108,26 +108,15 @@ export function ManagerCampaignWidget({ role, domain }: WidgetProps) {
                 : `${campaigns.length} campaign${campaigns.length === 1 ? '' : 's'}`}
           </p>
         </div>
-        <button
+        <Button
+          variant="ghost"
           onClick={handleRefresh}
           disabled={isPending}
           title="Refresh"
-          style={{
-            background:     'transparent',
-            border:         '1px solid var(--theme-paper-border)',
-            borderRadius:   'var(--radius-sm)',
-            color:          'var(--theme-text-tertiary)',
-            cursor:         isPending ? 'wait' : 'pointer',
-            width:          '28px',
-            height:         '28px',
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            opacity:        isPending ? 0.5 : 1,
-          }}
-        >
-          <RefreshCcw size={12} strokeWidth={1.5} />
-        </button>
+          style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--theme-paper-border)', flexShrink: 0 }}
+          iconLeft={RefreshCcw}
+          size="xs"
+        />
       </div>
 
       {/* Chart */}
@@ -147,62 +136,39 @@ export function ManagerCampaignWidget({ role, domain }: WidgetProps) {
         </p>
       ) : loaded ? (
         <>
-          <div style={{ height: '260px', opacity: isPending ? 0.5 : 1, transition: 'opacity 200ms' }}>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart
-                data={chartData}
-                margin={{ top: 4, right: 4, bottom: 0, left: -24 }}
-                barCategoryGap="30%"
-              >
-                <CartesianGrid
-                  horizontal
-                  vertical={false}
-                  stroke="var(--theme-paper-border)"
-                  strokeDasharray="none"
-                />
-                <XAxis
-                  dataKey="campaign"
-                  tick={{ fontSize: 10, fill: 'var(--theme-text-tertiary)' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: 'var(--theme-text-tertiary)' }}
-                  axisLine={false}
-                  tickLine={false}
-                  allowDecimals={false}
-                  tickFormatter={(v) => formatCompact(v)}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background:   'var(--theme-paper)',
-                    border:       '1px solid var(--theme-paper-border)',
-                    borderRadius: 'var(--radius-sm)',
-                    boxShadow:    'var(--shadow-2)',
-                    fontSize:     'var(--text-xs)',
-                    color:        'var(--theme-text-primary)',
-                  }}
-                  cursor={{ fill: 'var(--theme-paper-subtle)' }}
-                />
-                {STATUS_ORDER.map((s) => (
-                  <Bar
-                    key={s}
-                    dataKey={s}
-                    name={LEAD_STATUS_LABELS[s]}
-                    stackId="status"
-                    fill={STATUS_COLORS[s]}
-                    radius={
-                      STATUS_ORDER.indexOf(s) === STATUS_ORDER.length - 1
-                        ? [4, 4, 0, 0]
-                        : [0, 0, 0, 0]
-                    }
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
+          <div style={{ opacity: isPending ? 0.5 : 1, transition: 'opacity 200ms' }}>
+            <BarChart
+              data={chartData}
+              series={CHART_SERIES}
+              xKey="campaign"
+              height={260}
+              stacked
+              colorMap={STATUS_COLORS}
+              margin={{ top: 4, right: 4, bottom: 0, left: -24 }}
+              barCategoryGap="30%"
+              gridProps={{ horizontal: true, vertical: false, strokeDasharray: 'none' }}
+              xAxisProps={{ tick: { fontSize: 10, fill: 'var(--theme-text-tertiary)' } }}
+              yAxisProps={{
+                allowDecimals:  false,
+                tickFormatter:  (v: number) => formatCompact(v),
+                tick:           { fontSize: 10, fill: 'var(--theme-text-tertiary)' },
+              }}
+              tooltipProps={{
+                contentStyle: {
+                  background:   'var(--theme-paper)',
+                  border:       '1px solid var(--theme-paper-border)',
+                  borderRadius: 'var(--radius-sm)',
+                  boxShadow:    'var(--shadow-2)',
+                  fontSize:     'var(--text-xs)',
+                  color:        'var(--theme-text-primary)',
+                },
+                cursor: { fill: 'var(--theme-paper-subtle)' },
+              }}
+              style={{ background: 'transparent', borderRadius: 0 }}
+            />
           </div>
 
-          {/* Legend */}
+          {/* Legend — reads from STATUS_COLORS, same source as colorMap */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
             {activeStatuses.map((s) => (
               <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>

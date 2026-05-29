@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { RefreshCcw, CheckSquare, AlertCircle, Users } from 'lucide-react';
 import { getAgentTasksSummaryAction } from '@/lib/actions/dashboard';
+import { Button } from '@/components/ui/Button';
 import { formatDate } from '@/lib/utils/dates';
 import { formatCompact } from '@/lib/utils/numbers';
 import type { AgentTask } from '@/lib/services/dashboard-service';
@@ -100,26 +101,15 @@ export function AgentTasksWidget({ userId }: WidgetProps) {
                 : `${formatCompact(tasks.length)} open task${tasks.length === 1 ? '' : 's'}`}
           </p>
         </div>
-        <button
+        <Button
+          variant="ghost"
           onClick={handleRefresh}
           disabled={isPending}
           title="Refresh"
-          style={{
-            background:     'transparent',
-            border:         '1px solid var(--theme-paper-border)',
-            borderRadius:   'var(--radius-sm)',
-            color:          'var(--theme-text-tertiary)',
-            cursor:         isPending ? 'wait' : 'pointer',
-            width:          '28px',
-            height:         '28px',
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            opacity:        isPending ? 0.5 : 1,
-          }}
-        >
-          <RefreshCcw size={12} strokeWidth={1.5} />
-        </button>
+          style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--theme-paper-border)', flexShrink: 0 }}
+          iconLeft={RefreshCcw}
+          size="xs"
+        />
       </div>
 
       {/* Overdue tasks */}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { getAgentRecentActivityAction } from '@/lib/actions/dashboard';
@@ -85,6 +85,7 @@ function ActivityItem({ activity }: { activity: AgentActivity }) {
 export function AgentActivityWidget({ userId }: WidgetProps) {
   const [activities, setActivities] = useState<AgentActivity[]>([]);
   const [loaded, setLoaded]         = useState(false);
+  const mountId    = useId();
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
 
   // Initial load via server action (satisfies P-01 — no useEffect for data fetching
@@ -106,8 +107,13 @@ export function AgentActivityWidget({ userId }: WidgetProps) {
   useEffect(() => {
     const supabase = createClient();
 
+    // useId-based suffix ensures channel name is unique per mount.
+    // React Strict Mode calls setup→teardown→setup; without the suffix a
+    // second .on() call would land on the already-subscribed channel.
+    const channelName = `agent-activity:${userId}:${mountId}`;
+
     const channel = supabase
-      .channel(`agent-activity:${userId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -142,12 +148,13 @@ export function AgentActivityWidget({ userId }: WidgetProps) {
 
     channelRef.current = channel;
 
-    // Cleanup on unmount — required by P-06 to prevent subscription leaks
+    // removeChannel fully deregisters from the client's internal channel list.
+    // channel.unsubscribe() alone only marks it closed — do not use it here.
     return () => {
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [userId]);
+  }, [userId, mountId]);
 
   return (
     <div

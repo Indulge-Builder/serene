@@ -4,7 +4,8 @@ import { useState, useTransition, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import { Loader2, ChevronDown, AlertTriangle } from 'lucide-react';
+import { ChevronDown, AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/modal';
 import { createManualLead, listAgentsForDomain } from '@/lib/actions/leads';
 import { CreateManualLeadSchema } from '@/lib/validations/lead-schema';
@@ -242,64 +243,19 @@ export function AddLeadModal({
       maxWidth="max-w-xl"
       footer={
         <>
-          <button
-            type="button"
-            onClick={handleClose}
-            disabled={isPending}
-            style={{
-              height:       '2.25rem',
-              paddingLeft:  'var(--space-4)',
-              paddingRight: 'var(--space-4)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-sm)',
-              background:   'transparent',
-              fontSize:     'var(--text-sm)',
-              fontWeight:   'var(--weight-medium)',
-              color:        'var(--theme-text-secondary)',
-              cursor:       isPending ? 'not-allowed' : 'pointer',
-              opacity:      isPending ? 0.6 : 1,
-              transition:   'var(--transition-interactive)',
-            }}
-          >
+          <Button variant="ghost" type="button" onClick={handleClose} disabled={isPending}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             type="submit"
             form="add-lead-form"
             disabled={isPending}
-            style={{
-              display:        'inline-flex',
-              alignItems:     'center',
-              justifyContent: 'center',
-              gap:            'var(--space-2)',
-              height:         '2.25rem',
-              minWidth:       '6.5rem',
-              paddingLeft:    'var(--space-4)',
-              paddingRight:   'var(--space-4)',
-              border:         'none',
-              borderRadius:   'var(--radius-sm)',
-              background:     'var(--theme-accent)',
-              fontSize:       'var(--text-sm)',
-              fontWeight:     'var(--weight-medium)',
-              color:          'var(--theme-accent-fg)',
-              cursor:         isPending ? 'not-allowed' : 'pointer',
-              opacity:        isPending ? 0.7 : 1,
-              transition:     'var(--transition-interactive)',
-              boxShadow:      'var(--shadow-accent-glow)',
-            }}
+            loading={isPending}
+            style={{ minWidth: '6.5rem', boxShadow: 'var(--shadow-accent-glow)' }}
           >
-            {isPending && (
-              <Loader2
-                style={{
-                  width:     '0.875rem',
-                  height:    '0.875rem',
-                  animation: 'eia-spin 1s linear infinite',
-                  flexShrink: 0,
-                }}
-              />
-            )}
             {isPending ? 'Adding…' : '+ Add Lead'}
-          </button>
+          </Button>
         </>
       }
     >

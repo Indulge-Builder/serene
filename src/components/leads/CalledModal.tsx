@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Loader2, Phone, ChevronDown } from 'lucide-react';
+import { Phone, ChevronDown } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
 import { addLeadCallNote } from '@/lib/actions/leads';
 import { CALL_OUTCOMES, CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
@@ -58,56 +59,19 @@ export function CalledModal({ leadId, onClose }: Props) {
       title="Log a call"
       footer={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            style={{
-              height:       '2.25rem',
-              paddingLeft:  'var(--space-4)',
-              paddingRight: 'var(--space-4)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-sm)',
-              background:   'var(--theme-paper-subtle)',
-              fontSize:     'var(--text-sm)',
-              fontWeight:   'var(--weight-medium)',
-              color:        'var(--theme-text-primary)',
-              cursor:       isPending ? 'not-allowed' : 'pointer',
-              opacity:      isPending ? 0.6 : 1,
-              transition:   'var(--transition-interactive)',
-            }}
-          >
+          <Button variant="secondary" type="button" onClick={onClose} disabled={isPending}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             type="submit"
             form="called-modal-form"
             disabled={isPending}
-            style={{
-              display:        'inline-flex',
-              alignItems:     'center',
-              justifyContent: 'center',
-              gap:            'var(--space-2)',
-              height:         '2.25rem',
-              paddingLeft:    'var(--space-4)',
-              paddingRight:   'var(--space-4)',
-              border:         'none',
-              borderRadius:   'var(--radius-sm)',
-              background:     'var(--theme-accent)',
-              fontSize:       'var(--text-sm)',
-              fontWeight:     'var(--weight-medium)',
-              color:          'var(--theme-accent-fg)',
-              cursor:         isPending ? 'not-allowed' : 'pointer',
-              opacity:        isPending ? 0.7 : 1,
-              transition:     'var(--transition-interactive)',
-              boxShadow:      'var(--shadow-accent-glow)',
-            }}
+            loading={isPending}
+            style={{ boxShadow: 'var(--shadow-accent-glow)' }}
           >
-            {isPending && (
-              <Loader2 style={{ width: '0.875rem', height: '0.875rem', animation: 'eia-spin 1s linear infinite' }} />
-            )}
             {isPending ? 'Saving…' : 'Save call'}
-          </button>
+          </Button>
         </>
       }
     >

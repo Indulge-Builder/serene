@@ -79,11 +79,20 @@ Pattern mirrors `useLeadColumnPreferences` exactly.
 }
 ```
 
-**Hydration rule:** `isHydrated` starts `false`. `DashboardCanvas` renders a full-canvas skeleton
-until `isHydrated` is `true`. This prevents layout shift between server render and client hydration.
-Never render stored layout values during SSR — they are only available post-mount.
+**Hydration rule:** The hook initialises `stored` synchronously with `DEFAULT_LAYOUT_BY_ROLE[role]`
+so widgets render immediately on first mount with the correct defaults. After mount, `useEffect`
+reads localStorage and calls `setStored` **only if the persisted layout differs** from the current
+state. This keeps the widget subtree alive across the hydration flip — no unmount/remount cycle.
+
+`isHydrated` is kept in the hook return value for consumers that need to know when the localStorage
+preference has settled, but `DashboardCanvas` no longer gates on it. Do not add that gate back.
 
 **On load:** validates each stored widgetId against the registry. Silently drops unrecognised ids.
+`sanitizeStored()` is a standalone module-level function called inside `readFromStorage()`, which is
+called inside the hydration `useEffect`. It was never gated behind `isHydrated` — the guard survived
+the hydration-gate removal intact and fires on every post-mount reconciliation. A stale stored ID
+(e.g. a renamed widget) is dropped before `setStored` is called, so widgets from deleted/renamed
+definitions can never appear in the rendered layout.
 
 ---
 
@@ -127,8 +136,18 @@ This keeps bundle splitting clean — a widget not visible to a role is never lo
 
 **File:** `src/app/(dashboard)/tasks/page.tsx` — thin Server Component orchestrator.
 
-Fetches `getPersonalTasks(profile.id)` and `getGroupTasks()` in `Promise.all` on page load. `getGroupTasks` takes no domain argument — domain scoping is enforced inside the RPC using `get_user_domain()` so the caller cannot supply an arbitrary domain.
-Passes results as props to `TasksShell`. Never re-fetches on tab switch.
+Reads `searchParams.tab` and fetches **only the active tab's data** on each page load.
+The inactive tab receives a zero-value sentinel (`{ tasks: [], hasMore: false, nextCursor: null }` or `[]`).
+When the user switches tabs, `router.push` changes the URL param and the server re-runs with the new active tab.
+`getGroupTasks` takes no domain argument — domain scoping is enforced inside the RPC using `get_user_domain()`.
+
+**No empty-state flash risk:** `TasksShell` renders only the active panel (`activeTab === 'personal' ? … : …`).
+The inactive tab component never mounts, so the zero-value sentinel is never visible to the user.
+
+**`GroupTasksTab` assumption:** its `if (initialRows.length === 0)` guard is a prop-time check, not state.
+This is safe as long as `TasksShell` is the only render site for `GroupTasksTab`. Do not render it directly
+with `initialRows = []` as the active view — that would flash the empty state before any client fetch fires.
+If a Suspense-on-tab-switch pattern is added later, replace this guard with an `isLoading` state instead.
 
 ### TasksShell
 
@@ -141,7 +160,7 @@ Uses `useSearchParams` + `useTransition` + `router.push`. Browser back/forward w
 `src/components/tasks/PersonalTasksTab.tsx` — `'use client'`.
 - Client-side filters: Status (multi-select pills), Priority (multi-select pills), due date range.
 - Quick-add inline row: title input + priority selector + due date + assignee picker. Enter=save, Esc=cancel.
-- Task list rows with 3px priority left border. Click row → `TaskModal`.
+- Task list rows with 3px priority left border. Click row → `SubTaskModal`.
 - Cursor pagination: "Load more" button. `PERSONAL_TASKS_PAGE_SIZE = 50`.
 - `AssigneePickerModal` portaled to `document.body` — never inline inside scroll container.
 
@@ -150,9 +169,26 @@ Uses `useSearchParams` + `useTransition` + `router.push`. Browser back/forward w
 `src/components/tasks/GroupTasksTab.tsx` — `'use client'`.
 - Accordion: only one group expanded at a time. `expandedGroupId: string | null`.
 - Group row: priority border, title, description, subtask count + progress%, due date, avatar stack (max 4), status pill.
-- Subtask rows: title + status pill + assignee avatar. Click → `TaskModal`.
+- **"Open" link** per group row: `Link href="/tasks/${group.id}"` — `e.stopPropagation()` on click/keydown prevents accordion expand.
+- Subtask rows: title + status pill + assignee avatar. Click → `SubTaskModal`.
 - "Add subtask" row at bottom. `AssigneePickerModal` portaled to `document.body`.
 - Subtask data loaded on first expand (`getGroupSubtasks`) — not on mount.
+
+### Group Task Workspace — `/tasks/[id]`
+
+**Page:** `src/app/(dashboard)/tasks/[id]/page.tsx` — Server Component.
+- Fetches `getTaskGroupById(id)` + `getGroupSubtasks(id)` in parallel.
+- Null group (RLS blocks access or not found) → `redirect('/tasks?tab=group')`. No 404.
+- Passes `group`, `initialSubtasks`, `currentUserId`, `currentUserName`, `callerRole`, `callerDomain` as props.
+
+**Client Component:** `src/components/tasks/GroupTaskWorkspace.tsx`
+- Two views: List (priority DESC + due_at ASC NULLS LAST) | Board (5 columns).
+- View persisted to `localStorage` at `eia:tasks:workspace-view:${groupId}`. Default `'list'` on SSR; `useEffect` reads after mount (no hydration mismatch).
+- Board has 5 columns: To Do · In Progress · In Review · Completed · Error/Cancelled. Error and Cancelled share one column; header shows sum of both counts; cards show actual status pill.
+- Click any row/card → `SubTaskModal`. Status changes via TaskModal → local state update on `handleModalClose` (re-fetches subtasks).
+- Realtime: subscribes to `tasks WHERE group_id = id`. Channel: `workspace-subtasks-${groupId}-${mountId}`.
+- Floating "+ Add subtask" FAB (bottom-right). Opens inline panel: title + assignee + priority + due date. `createSubtaskAction` → re-fetches on success.
+- No drag-and-drop. No inline complete for subtasks.
 
 ### getPersonalTasks contract (mandatory)
 
@@ -180,6 +216,8 @@ src/components/dashboard/
   widgets/
     AgentTasksWidget.tsx      ← 'use client'; tasks + new leads count; server action refresh
     AgentActivityWidget.tsx   ← 'use client'; Realtime subscription + initial server action load
+                                  Teardown: supabase.removeChannel(channel) — never channel.unsubscribe() alone
+                                  Channel name: `agent-activity:${userId}:${mountId}` — useId() mount suffix required
     ManagerLeadStatusWidget.tsx ← 'use client'; stacked bar pipeline + per-agent breakdown
     ManagerLeadVolumeWidget.tsx ← 'use client'; line chart with period toggle (Today/Week/Month/Quarter)
     ManagerCampaignWidget.tsx   ← 'use client'; stacked bar chart per utm_campaign

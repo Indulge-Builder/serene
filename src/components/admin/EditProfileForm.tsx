@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { updateProfile } from "@/lib/actions/profiles";
+import { Button } from "@/components/ui/Button";
 import type { Profile } from "@/lib/types/database";
 import type { ActionResult } from "@/lib/types";
 
@@ -111,26 +112,9 @@ export function EditProfileForm({ user }: Props) {
             borderTop:      "1px solid var(--theme-paper-border)",
           }}
         >
-          <button
-            type="submit"
-            disabled={isPending}
-            style={{
-              display:      "inline-flex",
-              alignItems:   "center",
-              padding:      "var(--space-2) var(--space-6)",
-              background:   isPending ? "var(--theme-accent-muted)" : "var(--theme-accent)",
-              color:        "var(--theme-accent-fg)",
-              border:       "none",
-              borderRadius: "var(--radius-sm)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-sm)",
-              fontWeight:   "var(--weight-semibold)",
-              cursor:       isPending ? "not-allowed" : "pointer",
-              transition:   "var(--transition-interactive)",
-            }}
-          >
-            {isPending ? "Saving…" : "Save Changes"}
-          </button>
+          <Button variant="primary" type="submit" disabled={isPending} loading={isPending}>
+            {isPending ? 'Saving…' : 'Save Changes'}
+          </Button>
         </div>
       </div>
     </form>

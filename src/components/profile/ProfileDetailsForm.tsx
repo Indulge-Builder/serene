@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { updateProfile }  from "@/lib/actions/profiles";
+import { Button } from "@/components/ui/Button";
 import type { Profile }   from "@/lib/types/database";
 import type { ActionResult } from "@/lib/types";
 
@@ -165,29 +166,15 @@ export function ProfileDetailsForm({ profile }: Props) {
             borderTop:      "1px solid var(--theme-paper-border)",
           }}
         >
-          <button
+          <Button
+            variant="primary"
             type="submit"
             disabled={isPending}
-            style={{
-              display:      "inline-flex",
-              alignItems:   "center",
-              gap:          "var(--space-2)",
-              padding:      "var(--space-2) var(--space-6)",
-              background:   isPending ? "var(--theme-accent-muted)" : "var(--theme-accent)",
-              color:        "var(--theme-accent-fg)",
-              border:       "none",
-              borderRadius: "var(--radius-sm)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-sm)",
-              fontWeight:   "var(--weight-semibold)",
-              letterSpacing:"var(--tracking-wide)",
-              cursor:       isPending ? "not-allowed" : "pointer",
-              transition:   "var(--transition-interactive)",
-              boxShadow:    isPending ? "none" : "var(--shadow-accent-glow)",
-            }}
+            loading={isPending}
+            style={{ boxShadow: isPending ? 'none' : 'var(--shadow-accent-glow)' }}
           >
-            {isPending ? "Saving…" : "Save Changes"}
-          </button>
+            {isPending ? 'Saving…' : 'Save Changes'}
+          </Button>
         </div>
       </div>
     </form>

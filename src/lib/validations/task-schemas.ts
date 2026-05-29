@@ -16,9 +16,24 @@ export const CreatePersonalTaskSchema = z.object({
   priority:    PriorityEnum.default('normal'),
   due_at:      z.string().datetime({ offset: true }).optional().nullable(),
   assigned_to: z.string().uuid('Invalid assignee ID').optional(),
+  tags:        z.array(
+    z.string().min(1).max(50).transform(sanitizeText),
+  ).max(10).default([]),
 });
 
 export type CreatePersonalTaskInput = z.infer<typeof CreatePersonalTaskSchema>;
+
+// ─────────────────────────────────────────────
+// Update task tags (standalone action — called from task detail/edit)
+// ─────────────────────────────────────────────
+export const UpdateTaskTagsSchema = z.object({
+  taskId: z.string().uuid('Invalid task ID'),
+  tags:   z.array(
+    z.string().min(1).max(50).transform(sanitizeText),
+  ).max(10),
+});
+
+export type UpdateTaskTagsInput = z.infer<typeof UpdateTaskTagsSchema>;
 
 // ─────────────────────────────────────────────
 // Create task group
@@ -73,14 +88,15 @@ export const UpdateTaskStatusSchema = z.object({
 export type UpdateTaskStatusInput = z.infer<typeof UpdateTaskStatusSchema>;
 
 // ─────────────────────────────────────────────
-// Add task message
+// Add task remark
 // ─────────────────────────────────────────────
-export const AddTaskMessageSchema = z.object({
-  taskId:  z.string().uuid('Invalid task ID'),
-  content: z.string().min(1, 'Message cannot be empty').transform(sanitizeText),
+export const AddTaskRemarkSchema = z.object({
+  taskId:       z.string().uuid('Invalid task ID'),
+  content:      z.string().min(1, 'Remark cannot be empty').max(2000, 'Remark cannot exceed 2000 characters').transform(sanitizeText),
+  statusChange: StatusEnum.optional(),
 });
 
-export type AddTaskMessageInput = z.infer<typeof AddTaskMessageSchema>;
+export type AddTaskRemarkInput = z.infer<typeof AddTaskRemarkSchema>;
 
 // ─────────────────────────────────────────────
 // Delete task (taskId only — authorization in action)
@@ -92,10 +108,26 @@ export const DeleteTaskSchema = z.object({
 export type DeleteTaskInput = z.infer<typeof DeleteTaskSchema>;
 
 // ─────────────────────────────────────────────
-// Suppress task message (admin/founder only)
+// Suppress task remark (admin/founder only)
 // ─────────────────────────────────────────────
-export const SuppressTaskMessageSchema = z.object({
-  messageId: z.string().uuid('Invalid message ID'),
+export const SuppressTaskRemarkSchema = z.object({
+  messageId: z.string().uuid('Invalid remark ID'),
 });
 
-export type SuppressTaskMessageInput = z.infer<typeof SuppressTaskMessageSchema>;
+export type SuppressTaskRemarkInput = z.infer<typeof SuppressTaskRemarkSchema>;
+
+// ─────────────────────────────────────────────
+// Update checklist (attachments column)
+// ─────────────────────────────────────────────
+const ChecklistItemSchema = z.object({
+  id:      z.string().min(1),
+  text:    z.string().min(1).max(500),
+  checked: z.boolean(),
+});
+
+export const UpdateChecklistSchema = z.object({
+  taskId: z.string().uuid('Invalid task ID'),
+  items:  z.array(ChecklistItemSchema),
+});
+
+export type UpdateChecklistInput = z.infer<typeof UpdateChecklistSchema>;

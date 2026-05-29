@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { UserCircle, Loader2, Check } from 'lucide-react';
+import { UserCircle, Check } from 'lucide-react';
+import { Spinner } from '@/components/ui/Spinner';
+import { Button } from '@/components/ui/Button';
 import { updatePersonalDetails } from '@/lib/actions/leads';
 import type { Lead } from '@/lib/types/database';
 
@@ -120,14 +122,7 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
         {/* Save indicator */}
         <span style={{ marginLeft: 'auto' }}>
           {saveState === 'saving' && (
-            <Loader2
-              style={{
-                width:     '0.75rem',
-                height:    '0.75rem',
-                color:     'var(--theme-text-tertiary)',
-                animation: 'eia-spin 1s linear infinite',
-              }}
-            />
+            <Spinner size="sm" />
           )}
           {saveState === 'saved' && (
             <Check
@@ -303,40 +298,16 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
               Cancel
             </button>
 
-            <button
+            <Button
+              variant="primary"
               type="submit"
+              size="sm"
               disabled={isPending}
-              style={{
-                display:        'inline-flex',
-                alignItems:     'center',
-                justifyContent: 'center',
-                gap:            'var(--space-2)',
-                height:         '2rem',
-                paddingLeft:    'var(--space-4)',
-                paddingRight:   'var(--space-4)',
-                border:         'none',
-                borderRadius:   'var(--radius-sm)',
-                background:     'var(--theme-accent)',
-                fontFamily:     'var(--font-sans)',
-                fontSize:       'var(--text-sm)',
-                fontWeight:     'var(--weight-medium)',
-                color:          'var(--theme-accent-fg)',
-                cursor:         isPending ? 'not-allowed' : 'pointer',
-                opacity:        isPending ? 0.7 : 1,
-                boxShadow:      'var(--shadow-accent-glow)',
-              }}
+              loading={isPending}
+              style={{ boxShadow: 'var(--shadow-accent-glow)' }}
             >
-              {isPending && (
-                <Loader2
-                  style={{
-                    width:     '0.875rem',
-                    height:    '0.875rem',
-                    animation: 'eia-spin 1s linear infinite',
-                  }}
-                />
-              )}
               {isPending ? 'Saving…' : 'Save'}
-            </button>
+            </Button>
           </div>
         )}
 

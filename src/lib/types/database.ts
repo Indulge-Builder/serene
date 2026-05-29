@@ -52,6 +52,21 @@ export type AgentRoutingConfig = {
   updated_at: string;
 };
 
+/** Joined row returned by getAgentRosterByDomain — profile + routing config. */
+export type AgentRosterRow = {
+  id: string;           // profiles.id = agent_routing_config.agent_id
+  full_name: string;
+  avatar_url: string | null;
+  job_title: string | null;
+  domain: AppDomain;
+  is_active: boolean;        // profiles.is_active (account active)
+  is_on_leave: boolean;      // profiles.is_on_leave
+  routing_is_active: boolean; // agent_routing_config.is_active (in pool)
+  routing_config_id: string; // agent_routing_config.id (for updates)
+  shift_start: string | null;
+  shift_end: string | null;
+};
+
 export type LeadStatus =
   | 'new'
   | 'touched'
@@ -77,6 +92,12 @@ export type TaskStatus = 'to_do' | 'in_progress' | 'in_review' | 'completed' | '
 export type TaskPriority = 'urgent' | 'high' | 'normal';
 export type TaskCategory = 'personal' | 'group_subtask' | 'gia_followup';
 
+export type ChecklistItem = {
+  id:      string;
+  text:    string;
+  checked: boolean;
+};
+
 export type Lead = {
   id: string;
   first_name: string;
@@ -100,6 +121,8 @@ export type Lead = {
   last_call_outcome: CallOutcome | null;
   private_scratchpad: string | null;
   personal_details: Record<string, string> | null;
+  status_changed_at: string | null;
+  last_activity_at:  string | null;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -137,6 +160,8 @@ export type Task = {
   group_id: string | null;
   due_at: string | null;
   completed_at: string | null;
+  attachments: ChecklistItem[];
+  tags: string[];
   created_at: string;
   updated_at: string;
 };
@@ -154,15 +179,16 @@ export type TaskGroup = {
   updated_at: string;
 };
 
-export type TaskMessage = {
+export type TaskRemark = {
   id: string;
   task_id: string;
   author_id: string;
   content: string;
-  created_at: string;
+  status_change: TaskStatus | null;
   is_suppressed: boolean;
   suppressed_by: string | null;
   suppressed_at: string | null;
+  created_at: string;
 };
 
 export type TaskAuditLog = {
@@ -201,7 +227,33 @@ export type AdCreative = {
   updated_at: string;
 };
 
-export type NotificationType = 'lead_assigned' | 'lead_won' | 'task_due' | 'task_assigned' | 'mention' | 'system';
+export type NotificationType =
+  | 'lead_assigned'
+  | 'lead_won'
+  | 'task_due'
+  | 'task_assigned'
+  | 'mention'
+  | 'system'
+  | 'sla_breach_agent'
+  | 'sla_breach_manager';
+
+// ─────────────────────────────────────────────
+// SLA timer types — Gia SLA Engine (Phase 9)
+// ─────────────────────────────────────────────
+
+export type SlaTimerStatus = 'pending' | 'fired' | 'cancelled';
+
+export type LeadSlaTimer = {
+  id:                 string;
+  lead_id:            string;
+  rule_code:          string;
+  scheduled_fire_at:  string;
+  trigger_run_id:     string | null;
+  status:             SlaTimerStatus;
+  fired_at:           string | null;
+  cancelled_at:       string | null;
+  created_at:         string;
+};
 
 export type Notification = {
   id:           string;
@@ -297,11 +349,13 @@ export type Database = {
       };
       leads: {
         Row: Lead;
-        Insert: Omit<Lead, 'id' | 'created_at' | 'updated_at' | 'call_count'> & {
+        Insert: Omit<Lead, 'id' | 'created_at' | 'updated_at' | 'call_count' | 'status_changed_at' | 'last_activity_at'> & {
           id?: string;
           created_at?: string;
           updated_at?: string;
           call_count?: number;
+          status_changed_at?: string | null;
+          last_activity_at?: string | null;
         };
         Update: Partial<Omit<Lead, 'id' | 'form_data'>>;
         Relationships: [
@@ -358,7 +412,7 @@ export type Database = {
       };
       tasks: {
         Row: Task;
-        Insert: Omit<Task, 'id' | 'created_at' | 'updated_at' | 'completed_at' | 'title' | 'description' | 'priority' | 'task_category' | 'group_id'> & {
+        Insert: Omit<Task, 'id' | 'created_at' | 'updated_at' | 'completed_at' | 'title' | 'description' | 'priority' | 'task_category' | 'group_id' | 'attachments' | 'tags'> & {
           id?: string;
           created_at?: string;
           updated_at?: string;
@@ -368,6 +422,8 @@ export type Database = {
           priority?: TaskPriority;
           task_category?: TaskCategory;
           group_id?: string | null;
+          attachments?: ChecklistItem[];
+          tags?: string[];
         };
         Update: Partial<Omit<Task, 'id' | 'created_by' | 'module'>>;
         Relationships: [
@@ -484,29 +540,51 @@ export type Database = {
           },
         ];
       };
-      task_messages: {
-        Row: TaskMessage;
-        Insert: Omit<TaskMessage, 'id' | 'created_at' | 'is_suppressed' | 'suppressed_by' | 'suppressed_at'> & {
+      task_remarks: {
+        Row: TaskRemark;
+        Insert: Omit<TaskRemark, 'id' | 'created_at' | 'is_suppressed' | 'suppressed_by' | 'suppressed_at' | 'status_change'> & {
           id?: string;
           created_at?: string;
+          status_change?: TaskStatus | null;
           is_suppressed?: boolean;
           suppressed_by?: string | null;
           suppressed_at?: string | null;
         };
-        Update: Pick<TaskMessage, 'is_suppressed' | 'suppressed_by' | 'suppressed_at'>;  // only suppression columns — enforced at action layer
+        Update: Pick<TaskRemark, 'is_suppressed' | 'suppressed_by' | 'suppressed_at'>;  // only suppression columns — enforced at action layer
         Relationships: [
           {
-            foreignKeyName: "task_messages_task_id_fkey";
+            foreignKeyName: "task_remarks_task_id_fkey";
             columns: ["task_id"];
             isOneToOne: false;
             referencedRelation: "tasks";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "task_messages_author_id_fkey";
+            foreignKeyName: "task_remarks_author_id_fkey";
             columns: ["author_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      lead_sla_timers: {
+        Row: LeadSlaTimer;
+        Insert: Omit<LeadSlaTimer, 'id' | 'created_at' | 'trigger_run_id' | 'status' | 'fired_at' | 'cancelled_at'> & {
+          id?: string;
+          created_at?: string;
+          trigger_run_id?: string | null;
+          status?: SlaTimerStatus;
+          fired_at?: string | null;
+          cancelled_at?: string | null;
+        };
+        Update: Partial<Pick<LeadSlaTimer, 'trigger_run_id' | 'status' | 'fired_at' | 'cancelled_at'>>;
+        Relationships: [
+          {
+            foreignKeyName: "lead_sla_timers_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
             referencedColumns: ["id"];
           },
         ];

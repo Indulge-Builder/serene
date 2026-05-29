@@ -97,9 +97,17 @@ export function useDashboardLayout(userId: string, role: UserRole): UseDashboard
   const [stored, setStored]         = useState<StoredLayout>(() => getDefaults(role));
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Hydrate from localStorage after mount — prevents SSR layout mismatch
+  // Hydrate from localStorage after mount — prevents SSR layout mismatch.
+  // Only calls setStored when the persisted layout actually differs from the
+  // default that was already initialised synchronously. This keeps the widget
+  // subtree alive (no unmount/remount) when the stored layout matches defaults.
   useEffect(() => {
-    setStored(readFromStorage(userId, role));
+    const persisted = readFromStorage(userId, role);
+    const persistedJson = JSON.stringify(persisted);
+    setStored((current) => {
+      const currentJson = JSON.stringify(current);
+      return persistedJson !== currentJson ? persisted : current;
+    });
     setIsHydrated(true);
   }, [userId, role]);
 

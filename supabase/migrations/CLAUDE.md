@@ -33,20 +33,30 @@
 | `20260528000019_task_messages_rls_creator.sql` | A-09 fix: `task_messages` SELECT and INSERT policies add `created_by = auth.uid()` (task creator was locked out of own chat) and domain-scope managers via `task_groups.domain` join |
 | `20260528000020_group_task_summaries_rpc.sql` | `get_group_task_summary` RPC |
 | `20260528000021_task_suppression_audit.sql` | `task_messages` suppression columns (`is_suppressed`, `suppressed_by`, `suppressed_at`) + UPDATE RLS for admin/founder; `task_audit_log` append-only table + `log_task_changes()` trigger (AFTER UPDATE on tasks, six fields: title/description/status/priority/due_at/assigned_to) |
+| `20260529000022_task_remarks.sql` | DROP TABLE task_messages CASCADE (pre-production, no data); CREATE TABLE `task_remarks` (replaces task_messages with added `status_change` nullable column, ASC index, same suppression + RLS pattern); Realtime enabled on `task_remarks` |
+| `20260529000023_task_attachments.sql` | ADD COLUMN `attachments jsonb NOT NULL DEFAULT '[]'` to `tasks`; CHECK constraint `tasks_attachments_is_array` validates JSON array; intentionally excluded from `log_task_changes()` trigger |
 
-## task_messages — append-only contract with suppression exception
+## task_remarks — append-only contract with suppression exception
 
-`task_messages` has SELECT, INSERT, and one narrow UPDATE policy (`task_messages_suppression_update`).
+`task_remarks` replaces `task_messages` (dropped in migration 0022, pre-production, no data loss).
+
+`task_remarks` has SELECT, INSERT, and one narrow UPDATE policy (`task_remarks_suppression_update`).
 There is no DELETE policy and no other UPDATE policy.
 
-The UPDATE policy permits admin/founder to update `task_messages` rows. PostgreSQL RLS does NOT
+The UPDATE policy permits admin/founder to update `task_remarks` rows. PostgreSQL RLS does NOT
 restrict which columns may be updated — only which rows are eligible. Column restriction (only
 `is_suppressed`, `suppressed_by`, `suppressed_at` may change) is enforced exclusively at the
 application layer in `suppressTaskMessageAction` (`src/lib/actions/tasks.ts`). Future engineers:
-do not assume SQL prevents changes to `content`, `author_id`, or `task_id`.
+do not assume SQL prevents changes to `content`, `author_id`, `task_id`, or `status_change`.
 
-**Suppressed messages** are never deleted. `is_suppressed = true` causes the UI to render
+**status_change column:** nullable text. Set when a remark accompanied a status transition.
+CHECK values mirror `tasks.status` CHECK exactly — they are coupled and must stay in sync.
+If `tasks.status` ever gains a new value, a new migration must extend `task_remarks.status_change` too.
+
+**Suppressed remarks** are never deleted. `is_suppressed = true` causes the UI to render
 "This message was removed." — original content is never shown for any role.
+
+**Index:** `idx_task_remarks_task_id` on `(task_id, created_at ASC)` — ASC because timeline reads oldest-first.
 
 ## task_audit_log — trigger contract
 

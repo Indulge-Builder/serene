@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import Link from "next/link";
 import { LiaGlyph } from "@/components/ui/lia-glyph";
 import { requestPasswordResetAction } from "@/lib/actions/auth";
+import { Button } from "@/components/ui/Button";
 
 export function ForgotPasswordForm() {
   const [state, action, isPending] = useActionState(
@@ -121,28 +122,15 @@ export function ForgotPasswordForm() {
               )}
 
               {/* Submit */}
-              <button
+              <Button
+                variant="primary"
                 type="submit"
                 disabled={isPending}
-                style={{
-                  marginTop:       "var(--space-2)",
-                  backgroundColor: isPending
-                    ? "var(--theme-accent-muted)"
-                    : "var(--theme-accent)",
-                  color:         "var(--theme-accent-fg)",
-                  borderRadius:  "var(--radius-sm)",
-                  padding:       "var(--space-3) var(--space-4)",
-                  fontSize:      "var(--text-sm)",
-                  fontWeight:    "var(--weight-semibold)",
-                  letterSpacing: "var(--tracking-wide)",
-                  width:         "100%",
-                  border:        "none",
-                  cursor:        isPending ? "not-allowed" : "pointer",
-                  transition:    "background-color var(--duration-fast) var(--ease-spring)",
-                }}
+                loading={isPending}
+                style={{ marginTop: 'var(--space-2)', width: '100%', boxShadow: 'var(--shadow-accent-glow)' }}
               >
-                {isPending ? "Sending…" : "Send Reset Link"}
-              </button>
+                {isPending ? 'Sending…' : 'Send Reset Link'}
+              </Button>
             </div>
           </form>
         )}

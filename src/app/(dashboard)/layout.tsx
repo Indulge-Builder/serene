@@ -30,17 +30,9 @@ export default async function DashboardLayout({
       {/* Sets data-theme on <html> before the browser paints — no flash. */}
       <ThemeInitializer theme={safeTheme} />
     <div
+      className="layout-canvas min-h-screen flex"
       style={{
-        display:         "flex",
-        minHeight:       "100dvh",
-        backgroundColor: "var(--theme-canvas)",
-        backgroundImage: `
-          radial-gradient(ellipse 80% 60% at 60% 40%, var(--theme-canvas-glow), transparent 70%),
-          url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E")
-        `,
-        backgroundRepeat: "repeat",
-        backgroundSize:   "auto, 256px 256px",
-        gap:              "var(--space-3)",
+        gap: "var(--space-3)",
       }}
     >
       <Sidebar profile={profile} initialNotifications={initialNotifications} />

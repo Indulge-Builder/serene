@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { formErrors } from "@/lib/validations/form-errors";
-import { getCurrentProfile } from "@/lib/services/profiles-service";
-import { setRoutingActive } from "@/lib/services/agent-routing-service";
+import { getCurrentProfile, getProfileById } from "@/lib/services/profiles-service";
+import { setRoutingActive, setAgentShift } from "@/lib/services/agent-routing-service";
+import { SetAgentShiftSchema } from "@/lib/validations/agent-routing-schema";
 import type { ActionResult, AgentRoutingConfig } from "@/lib/types";
 
 const toggleRoutingSchema = z.object({
@@ -41,5 +42,46 @@ export async function toggleAgentRouting(
 
   revalidatePath("/admin/users");
   revalidatePath(`/admin/users/${parsed.data.agent_id}`);
+  revalidatePath("/settings");
+  return { data: result.data, error: null };
+}
+
+// ─────────────────────────────────────────────────────────
+// setAgentShiftAction
+// Writes shift_start / shift_end for a single agent.
+// Allowed by: manager (own domain only), admin, founder.
+// ─────────────────────────────────────────────────────────
+export async function setAgentShiftAction(
+  input: unknown,
+): Promise<ActionResult<AgentRoutingConfig>> {
+  // Rule 02 — Zod validation first.
+  const parsed = SetAgentShiftSchema.safeParse(input);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0]?.message;
+    return { data: null, error: first ?? formErrors.generic };
+  }
+
+  // Rule 09 — authorization reads from public.profiles only.
+  const caller = await getCurrentProfile();
+  if (!caller || !["manager", "admin", "founder"].includes(caller.role)) {
+    return { data: null, error: formErrors.unauthorized };
+  }
+
+  // Rule S-06 — verify ownership/domain for manager.
+  if (caller.role === "manager") {
+    const agentProfile = await getProfileById(parsed.data.agentId);
+    if (!agentProfile || agentProfile.domain !== caller.domain) {
+      return { data: null, error: formErrors.unauthorized };
+    }
+  }
+
+  const result = await setAgentShift(
+    parsed.data.agentId,
+    parsed.data.shiftStart,
+    parsed.data.shiftEnd,
+  );
+  if (result.error) return { data: null, error: formErrors.generic };
+
+  revalidatePath("/settings");
   return { data: result.data, error: null };
 }

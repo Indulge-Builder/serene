@@ -130,16 +130,8 @@ export default async function PerformancePage({
         >
           {PERIOD_LABELS[period]}
         </p>
-        <h1
-          style={{
-            fontFamily: "var(--font-serif)",
-            fontSize:   "var(--text-2xl)",
-            fontWeight: "var(--weight-light)",
-            color:      "var(--theme-text-primary)",
-            margin:     0,
-          }}
-        >
-          Your Performance
+        <h1 className="type-page-title" style={{ margin: 0 }}>
+          Your Performance<span className="page-title-dot">.</span>
         </h1>
       </div>
 

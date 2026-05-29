@@ -1,19 +1,37 @@
 'use client';
 
 /**
- * PersonalTasksTab — personal task list with filter bar, quick-add row, and TaskModal.
+ * PersonalTasksTab — priority-section layout with completion circles and quick-add.
+ *
+ * Layout:
+ *   [Quick-add row]        ← always at top when open
+ *   [URGENT section]       ← collapsed/expanded; hidden when empty
+ *   [HIGH section]
+ *   [NORMAL section]
+ *   [COMPLETED section]    ← collapsed by default; last 20, ordered updated_at DESC
+ *
+ * Data: all non-completed tasks fetched in one call (limit 500) on mount.
+ *       Completed tasks fetched separately (limit 20, status=['completed']).
+ *       Both calls in parallel via Promise.all.
+ *
+ * Section collapse: tracked in useRef (not useState) so optimistic status
+ * changes do not trigger collapse animation re-renders.
+ *
+ * Optimistic complete: local optimisticStatus map keyed by taskId.
+ * On error: removed from map + toast.danger. On success: task moved to
+ * completed list on next server-side refresh.
  *
  * Pre-mortem addressed:
- * - AssigneePickerModal portals to document.body — avoids z-index clipping inside scroll.
- * - Quick-add row is inline at the top of the list — no separate page or full modal.
- * - Client-side filters only — no server round-trips on filter change.
- * - "Load more" cursor pagination via loadMoreAction — no unbounded SELECT.
+ * - useRef for section open/closed — no collapse re-render on optimistic update.
+ * - Fetch limit 500 — no unbounded SELECT.
+ * - Quick-add useTransition guard preserved exactly from Problem 7 fix.
+ * - Priority selector removed from quick-add (defaults to 'normal').
+ * - Filter bar removed entirely.
  */
 
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   useTransition,
@@ -21,28 +39,29 @@ import {
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plus,
-  CalendarDays,
   ChevronDown,
   UserCircle,
   X,
   CheckCircle2,
-  Clock,
-  PlayCircle,
-  RefreshCw,
-  AlertCircle,
-  XCircle,
-  Loader,
+  ArrowRight,
   User,
+  Circle,
 } from 'lucide-react';
-import { createPersonalTaskAction, getPersonalTasksAction } from '@/lib/actions/tasks';
-import { formatRelativeTime, formatDate } from '@/lib/utils/dates';
+import {
+  createPersonalTaskAction,
+  getPersonalTasksAction,
+  getPersonalTaskTagsAction,
+  updateTaskStatusAction,
+} from '@/lib/actions/tasks';
+import { formatRelativeTime } from '@/lib/utils/dates';
 import { toast } from '@/lib/toast';
-import { TaskModal } from '@/components/tasks/TaskModal';
+import { SubTaskModal } from '@/components/tasks/SubTaskModal';
 import { AssigneePickerModal, type AssignableUser } from '@/components/tasks/AssigneePickerModal';
-import type { PersonalTasksResult, PersonalTaskCursor } from '@/lib/services/tasks-service';
+import { CreatePersonalTaskModal } from '@/components/tasks/CreatePersonalTaskModal';
+import { type TaskRemarkWithAuthor } from '@/components/tasks/TaskRemarksPanel';
+import { Avatar } from '@/components/ui/Avatar';
+import type { PersonalTasksResult } from '@/lib/services/tasks-service';
 import type { Task, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
-import { TASK_STATUS_LABELS } from '@/lib/constants/task-types';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,65 +71,56 @@ interface PersonalTasksTabProps {
   currentUserName: string;
   callerRole:      UserRole;
   callerDomain:    AppDomain;
+  /** Increments each time the parent header button is clicked — triggers modal open */
+  createTrigger?:  number;
 }
 
 // ─── Priority config ───────────────────────────────────────────────────────────
 
-const PRIORITY_CONFIG: Record<TaskPriority, { label: string; borderColor: string; bg: string; text: string }> = {
+const PRIORITY_CONFIG: Record<
+  TaskPriority,
+  { label: string; dotColor: string; headerColor: string; headerBg: string; borderColor: string }
+> = {
   urgent: {
-    label:       'Urgent',
-    borderColor: 'var(--color-danger-text)',
-    bg:          'var(--color-danger)',
-    text:        'var(--color-danger-text)',
+    label:       'URGENT',
+    dotColor:    'var(--color-danger)',
+    headerColor: 'var(--color-danger-text)',
+    headerBg:    'var(--color-danger-light)',
+    borderColor: 'var(--color-danger)',
   },
   high: {
-    label:       'High',
-    borderColor: 'var(--color-warning-text)',
-    bg:          'var(--color-warning)',
-    text:        'var(--color-warning-text)',
+    label:       'HIGH',
+    dotColor:    'var(--color-warning)',
+    headerColor: 'var(--color-warning-text)',
+    headerBg:    'var(--color-warning-light)',
+    borderColor: 'var(--color-warning)',
   },
   normal: {
-    label:       'Normal',
+    label:       'NORMAL',
+    dotColor:    'var(--theme-text-tertiary)',
+    headerColor: 'var(--theme-text-secondary)',
+    headerBg:    'var(--theme-paper-subtle)',
     borderColor: 'var(--theme-paper-border)',
-    bg:          'var(--theme-paper-subtle)',
-    text:        'var(--theme-text-secondary)',
   },
 };
 
-const ALL_PRIORITIES: TaskPriority[] = ['urgent', 'high', 'normal'];
-
-// ─── Status config ─────────────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<TaskStatus, { bg: string; text: string }> = {
-  to_do:       { bg: 'var(--theme-paper-border)',    text: 'var(--theme-text-secondary)' },
-  in_progress: { bg: 'var(--theme-accent)',           text: 'var(--theme-accent-fg)' },
-  in_review:   { bg: 'var(--color-info)',             text: 'var(--color-info-text)' },
-  completed:   { bg: 'var(--color-success)',          text: 'var(--color-success-text)' },
-  error:       { bg: 'var(--color-danger)',           text: 'var(--color-danger-text)' },
-  cancelled:   { bg: 'var(--theme-text-tertiary)',    text: 'var(--theme-text-inverse)' },
-};
-
-const ALL_STATUSES: TaskStatus[] = ['to_do', 'in_progress', 'in_review', 'completed', 'error', 'cancelled'];
+const ACTIVE_PRIORITIES: TaskPriority[] = ['urgent', 'high', 'normal'];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-function StatusIcon({ status, size = 13 }: { status: TaskStatus; size?: number }) {
-  const style = { width: size, height: size, strokeWidth: 1.5, flexShrink: 0 as const };
-  switch (status) {
-    case 'to_do':       return <Clock        style={style} />;
-    case 'in_progress': return <PlayCircle   style={style} />;
-    case 'in_review':   return <RefreshCw    style={style} />;
-    case 'completed':   return <CheckCircle2 style={style} />;
-    case 'error':       return <AlertCircle  style={style} />;
-    case 'cancelled':   return <XCircle      style={style} />;
-    default:            return <Loader       style={style} />;
-  }
+function getDueDateColor(dueAt: string | null, status: TaskStatus): string {
+  if (!dueAt || status === 'completed' || status === 'cancelled') return 'var(--theme-text-tertiary)';
+  const now  = new Date();
+  const due  = new Date(dueAt);
+  const diff = due.getTime() - now.getTime();
+  if (diff < 0)                    return 'var(--color-danger-text)';
+  if (diff < 24 * 60 * 60 * 1000) return 'var(--color-warning-text)';
+  return 'var(--theme-text-tertiary)';
 }
 
-function getInitials(name: string): string {
-  const parts = name.trim().split(' ');
-  if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+function isOverdue(dueAt: string | null, status: TaskStatus): boolean {
+  if (!dueAt || status === 'completed' || status === 'cancelled') return false;
+  return new Date(dueAt) < new Date();
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -121,37 +131,85 @@ export function PersonalTasksTab({
   currentUserName,
   callerRole,
   callerDomain,
+  createTrigger = 0,
 }: PersonalTasksTabProps) {
-  const [tasks,        setTasks]        = useState<Task[]>(initialResult.tasks);
-  const [hasMore,      setHasMore]      = useState(initialResult.hasMore);
-  const [cursor,       setCursor]       = useState<PersonalTaskCursor | null>(initialResult.nextCursor);
-  // Cursor stack for Previous-page navigation: each entry is the cursor that
-  // was passed to fetch the current page, so popping it lets us re-fetch it.
-  const [cursorStack,  setCursorStack]  = useState<(PersonalTaskCursor | null)[]>([]);
-  const [isLoading,    setIsLoading]    = useState(false);
+  // ── Task data ─────────────────────────────────────────────────────────────
+  const [activeTasks,    setActiveTasks]    = useState<Task[]>(initialResult.tasks);
+  const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
+  const [isLoading,      setIsLoading]      = useState(false);
 
-  // ── Filters (client-side only) ───────────────────────────────────────────
-  const [filterStatuses,   setFilterStatuses]   = useState<TaskStatus[]>([]);
-  const [filterPriorities, setFilterPriorities] = useState<TaskPriority[]>([]);
-  const [filterDueFrom,    setFilterDueFrom]    = useState('');
-  const [filterDueTo,      setFilterDueTo]      = useState('');
+  // ── Optimistic status map — keyed by taskId ────────────────────────────────
+  // Tracks in-flight optimistic completions/reopens without causing section collapse.
+  const [optimisticStatus, setOptimisticStatus] = useState<Record<string, TaskStatus>>({});
+
+  // ── Section collapse — useRef, NOT useState — pre-mortem P-04 ─────────────
+  // Prevents optimistic status updates (which re-render) from collapsing sections.
+  const sectionOpenRef = useRef<Record<string, boolean>>({
+    urgent:    true,
+    high:      true,
+    normal:    true,
+    completed: false,
+  });
+  // Separate useState only to trigger a re-render when section is toggled by the user
+  const [sectionRenderKey, setSectionRenderKey] = useState(0);
+
+  const [isLoadingCompleted, setIsLoadingCompleted] = useState(false);
+
+  // Guards against double-fetch if the completed section header is clicked
+  // twice before the first response returns. Set BEFORE the action call fires.
+  const hasLoadedCompleted = useRef(false);
+
+  function isSectionOpen(key: string): boolean {
+    return sectionOpenRef.current[key] ?? true;
+  }
+
+  function toggleSection(key: string) {
+    sectionOpenRef.current[key] = !sectionOpenRef.current[key];
+    setSectionRenderKey((k) => k + 1);
+
+    // Lazy-load completed tasks on first expand of the completed section.
+    // hasLoadedCompleted.current is set BEFORE the action call fires — not after
+    // it resolves — so a double-click before the first response returns never
+    // triggers two network calls.
+    if (key === 'completed' && sectionOpenRef.current['completed'] && !hasLoadedCompleted.current) {
+      hasLoadedCompleted.current = true;
+      setIsLoadingCompleted(true);
+      getPersonalTasksAction({ status: ['completed'], limit: 20 })
+        .then((r) => {
+          if (r.data) setCompletedTasks(r.data.tasks);
+        })
+        .catch(() => {})
+        .finally(() => setIsLoadingCompleted(false));
+    }
+  }
+
+  // ── Tag filter ────────────────────────────────────────────────────────────
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [selectedTags,  setSelectedTags]  = useState<string[]>([]);
+
+  // ── Create task modal ─────────────────────────────────────────────────────
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+
+  // Open modal when parent header button fires (createTrigger increments)
+  useEffect(() => {
+    if (createTrigger > 0) setCreateModalOpen(true);
+  }, [createTrigger]);
 
   // ── Quick-add row state ──────────────────────────────────────────────────
-  const [showQuickAdd,      setShowQuickAdd]      = useState(false);
-  const [quickTitle,        setQuickTitle]        = useState('');
-  const [quickPriority,     setQuickPriority]     = useState<TaskPriority>('normal');
-  const [quickDueAt,        setQuickDueAt]        = useState('');
-  const [quickAssignee,     setQuickAssignee]     = useState<AssignableUser | null>(null);
+  const [showQuickAdd,       setShowQuickAdd]       = useState(false);
+  const [quickTitle,         setQuickTitle]         = useState('');
+  const [quickDueAt,         setQuickDueAt]         = useState('');
+  const [quickAssignee,      setQuickAssignee]      = useState<AssignableUser | null>(null);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
-  const [assignableUsers,   setAssignableUsers]   = useState<AssignableUser[]>([]);
+  const [assignableUsers,    setAssignableUsers]    = useState<AssignableUser[]>([]);
   const quickTitleRef = useRef<HTMLInputElement>(null);
 
   const [isPending, startTransition] = useTransition();
 
   // ── Task modal state ──────────────────────────────────────────────────────
-  const [selectedTask,         setSelectedTask]         = useState<Task | null>(null);
-  const [selectedTaskMessages, setSelectedTaskMessages] = useState<[]>([]);
-  const [taskModalOpen,        setTaskModalOpen]        = useState(false);
+  const [selectedTask,        setSelectedTask]        = useState<Task | null>(null);
+  const [selectedTaskRemarks, setSelectedTaskRemarks] = useState<TaskRemarkWithAuthor[]>([]);
+  const [taskModalOpen,       setTaskModalOpen]       = useState(false);
 
   // ── Focus quick-add title on show ─────────────────────────────────────────
   useEffect(() => {
@@ -159,6 +217,36 @@ export function PersonalTasksTab({
       setTimeout(() => quickTitleRef.current?.focus(), 50);
     }
   }, [showQuickAdd]);
+
+  // ── Initial data fetch — active + tags in parallel on mount ───────────────
+  // Completed tasks are NOT fetched here — they load lazily on first accordion expand.
+  // This is a perceived-performance win: active tasks render immediately.
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+
+    Promise.all([
+      // All non-completed tasks — limit 500, no cursor (fetch all)
+      getPersonalTasksAction({
+        status: ['to_do', 'in_progress', 'in_review', 'error', 'cancelled'],
+        limit:  500,
+      }),
+      // All distinct tags used by this user's active tasks
+      getPersonalTaskTagsAction(),
+    ]).then(([activeResult, tagsResult]) => {
+      if (cancelled) return;
+      if (activeResult.data) setActiveTasks(activeResult.data.tasks);
+      if (tagsResult.data)   setAvailableTags(tagsResult.data);
+    }).catch(() => {
+      // Non-fatal — UI shows initialResult
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  // Only run on mount — no deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Assignee picker: load users on mount (manager+ only) ─────────────────
   useEffect(() => {
@@ -181,106 +269,34 @@ export function PersonalTasksTab({
     });
   }, [callerRole, callerDomain]);
 
-  // ── Filtered tasks (client-side) ──────────────────────────────────────────
-  const filtered = useMemo(() => {
-    return tasks.filter((t) => {
-      if (filterStatuses.length > 0 && !filterStatuses.includes(t.status)) return false;
-      if (filterPriorities.length > 0 && !filterPriorities.includes(t.priority)) return false;
-      if (filterDueFrom && t.due_at && t.due_at < filterDueFrom) return false;
-      if (filterDueTo && t.due_at && t.due_at > filterDueTo + 'T23:59:59.999Z') return false;
-      return true;
-    });
-  }, [tasks, filterStatuses, filterPriorities, filterDueFrom, filterDueTo]);
+  // ── Optimistic complete / reopen ──────────────────────────────────────────
 
-  const hasActiveFilters =
-    filterStatuses.length > 0 ||
-    filterPriorities.length > 0 ||
-    !!filterDueFrom ||
-    !!filterDueTo;
+  function handleCircleClick(e: React.MouseEvent, task: Task) {
+    e.stopPropagation(); // don't open the modal
 
-  // ── Reset to page 1 when filters change while beyond page 1 ─────────────
-  // Client-side filters only search the current page's 50 rows; resetting
-  // ensures the filter applies across the full dataset from the first page.
-  useEffect(() => {
-    if (cursorStack.length === 0) return; // already on page 1, no-op
-    let cancelled = false;
-    setIsLoading(true);
-    getPersonalTasksAction().then((result) => {
-      if (cancelled) return;
-      if (result.data) {
-        setCursorStack([]);
-        setTasks(result.data.tasks);
-        setHasMore(result.data.hasMore);
-        setCursor(result.data.nextCursor);
+    const effectiveStatus = optimisticStatus[task.id] ?? task.status;
+    const newStatus: TaskStatus = effectiveStatus === 'completed' ? 'to_do' : 'completed';
+
+    // Optimistic update
+    setOptimisticStatus((prev) => ({ ...prev, [task.id]: newStatus }));
+
+    startTransition(async () => {
+      const result = await updateTaskStatusAction({ taskId: task.id, status: newStatus });
+      if (result.error) {
+        // Rollback
+        setOptimisticStatus((prev) => {
+          const next = { ...prev };
+          delete next[task.id];
+          return next;
+        });
+        toast.danger("Couldn't update task", { message: result.error });
       }
-      setIsLoading(false);
-    }).catch(() => {
-      if (!cancelled) setIsLoading(false);
+      // On success, keep optimistic state. The list will be refreshed next
+      // time the component mounts (or user triggers a refresh).
     });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatuses, filterPriorities, filterDueFrom, filterDueTo]);
-
-  // ── Toggle helpers ────────────────────────────────────────────────────────
-  function toggleStatus(s: TaskStatus) {
-    setFilterStatuses((prev) =>
-      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
-    );
   }
 
-  function togglePriority(p: TaskPriority) {
-    setFilterPriorities((prev) =>
-      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p],
-    );
-  }
-
-  function clearFilters() {
-    setFilterStatuses([]);
-    setFilterPriorities([]);
-    setFilterDueFrom('');
-    setFilterDueTo('');
-  }
-
-  // ── Page navigation (replace, never append — P-03: DOM ≤ 50 rows) ────────
-
-  async function handleNextPage() {
-    if (isLoading || !hasMore) return;
-    setIsLoading(true);
-    try {
-      const result = await getPersonalTasksAction({ cursor: cursor ?? undefined });
-      if (result.error || !result.data) throw new Error(result.error ?? 'Unknown error');
-      // Push the cursor that produced the *current* page so Previous can rewind.
-      setCursorStack((prev) => [...prev, cursor]);
-      setTasks(result.data.tasks);
-      setHasMore(result.data.hasMore);
-      setCursor(result.data.nextCursor);
-    } catch {
-      toast.danger('Failed to load next page');
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function handlePrevPage() {
-    if (isLoading || cursorStack.length === 0) return;
-    setIsLoading(true);
-    try {
-      const stack      = [...cursorStack];
-      const prevCursor = stack.pop() ?? null;
-      const result     = await getPersonalTasksAction({ cursor: prevCursor ?? undefined });
-      if (result.error || !result.data) throw new Error(result.error ?? 'Unknown error');
-      setCursorStack(stack);
-      setTasks(result.data.tasks);
-      setHasMore(result.data.hasMore);
-      setCursor(result.data.nextCursor);
-    } catch {
-      toast.danger('Failed to load previous page');
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  // ── Quick-add confirm ─────────────────────────────────────────────────────
+  // ── Quick-add confirm (Problem 7 fix preserved exactly) ───────────────────
   const handleQuickAddSave = useCallback(() => {
     if (isPending) return;
     if (!quickTitle.trim()) {
@@ -290,7 +306,7 @@ export function PersonalTasksTab({
     startTransition(async () => {
       const result = await createPersonalTaskAction({
         title:       quickTitle.trim(),
-        priority:    quickPriority,
+        priority:    'normal',      // always normal — user sets priority in TaskModal
         due_at:      quickDueAt ? new Date(quickDueAt).toISOString() : null,
         assigned_to: quickAssignee?.id ?? undefined,
       });
@@ -301,11 +317,18 @@ export function PersonalTasksTab({
       toast.success('Task created');
       setShowQuickAdd(false);
       setQuickTitle('');
-      setQuickPriority('normal');
       setQuickDueAt('');
       setQuickAssignee(null);
+
+      // Refresh the active list to include the new task
+      getPersonalTasksAction({
+        status: ['to_do', 'in_progress', 'in_review', 'error', 'cancelled'],
+        limit:  500,
+      }).then((r) => {
+        if (r.data) setActiveTasks(r.data.tasks);
+      }).catch(() => {});
     });
-  }, [isPending, quickTitle, quickPriority, quickDueAt, quickAssignee, startTransition]);
+  }, [isPending, quickTitle, quickDueAt, quickAssignee, startTransition]);
 
   function handleQuickAddKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter') handleQuickAddSave();
@@ -318,197 +341,629 @@ export function PersonalTasksTab({
   // ── Row click → open modal ────────────────────────────────────────────────
   function handleRowClick(task: Task) {
     setSelectedTask(task);
-    setSelectedTaskMessages([]);
+    setSelectedTaskRemarks([]);
     setTaskModalOpen(true);
+  }
+
+  // ── Group active tasks by priority (with optional tag filter) ────────────
+  const tasksByPriority: Record<TaskPriority, Task[]> = {
+    urgent: [],
+    high:   [],
+    normal: [],
+  };
+
+  for (const task of activeTasks) {
+    const effectiveStatus = optimisticStatus[task.id] ?? task.status;
+    if (effectiveStatus === 'completed') continue;
+    // Tag filter — task must contain ALL selected tags
+    if (selectedTags.length > 0 && !selectedTags.every((t) => task.tags.includes(t))) continue;
+    tasksByPriority[task.priority]?.push(task);
+  }
+
+  const totalActive = activeTasks.filter(
+    (t) => (optimisticStatus[t.id] ?? t.status) !== 'completed',
+  ).length;
+
+  // ─── Section render helper ────────────────────────────────────────────────
+
+  function renderSection(
+    key: string,
+    label: string,
+    tasks: Task[],
+    cfg: typeof PRIORITY_CONFIG[TaskPriority],
+    isCompleted: boolean,
+    defaultClosed = false,
+  ) {
+    if (tasks.length === 0) return null;
+
+    const open = isSectionOpen(key);
+
+    return (
+      <div
+        key={key}
+        style={{
+          border:       '1px solid var(--theme-paper-border)',
+          borderRadius: 'var(--radius-md)',
+          overflow:     'hidden',
+          boxShadow:    'var(--shadow-1)',
+        }}
+      >
+        {/* Section header */}
+        <button
+          type="button"
+          onClick={() => toggleSection(key)}
+          style={{
+            display:        'flex',
+            alignItems:     'center',
+            gap:            'var(--space-2)',
+            width:          '100%',
+            padding:        'var(--space-2) var(--space-4)',
+            background:     cfg.headerBg,
+            border:         'none',
+            borderBottom:   open ? '1px solid var(--theme-paper-border)' : 'none',
+            cursor:         'pointer',
+            transition:     'background var(--duration-fast) var(--ease-in-out)',
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.filter = 'brightness(0.97)';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.filter = '';
+          }}
+        >
+          <span
+            style={{
+              fontFamily:    'var(--font-sans)',
+              fontSize:      'var(--text-xs)',
+              fontWeight:    'var(--weight-semibold)',
+              letterSpacing: 'var(--tracking-wide)',
+              textTransform: 'uppercase',
+              color:         cfg.headerColor,
+              flex:          1,
+              textAlign:     'left',
+            }}
+          >
+            {label}
+          </span>
+          {/* Task count pill */}
+          <span
+            style={{
+              display:      'inline-flex',
+              alignItems:   'center',
+              padding:      'var(--space-px) var(--space-2)',
+              borderRadius: 'var(--radius-full)',
+              background:   isCompleted ? 'var(--color-success-light)' : `color-mix(in srgb, ${cfg.dotColor} 14%, transparent)`,
+              color:        isCompleted ? 'var(--color-success-text)' : cfg.headerColor,
+              fontFamily:   'var(--font-sans)',
+              fontSize:     'var(--text-2xs)',
+              fontWeight:   'var(--weight-semibold)',
+            }}
+          >
+            {tasks.length}
+          </span>
+          {/* Chevron */}
+          <ChevronDown
+            style={{
+              width:      14,
+              height:     14,
+              strokeWidth: 1.5,
+              color:      cfg.headerColor,
+              transform:  open ? 'rotate(0deg)' : 'rotate(-90deg)',
+              transition: 'transform var(--duration-base) var(--ease-out-expo)',
+              flexShrink: 0,
+            }}
+          />
+        </button>
+
+        {/* Rows */}
+        <AnimatePresence initial={false}>
+          {open && (
+            <motion.div
+              key={`${key}-rows`}
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              style={{ overflow: 'hidden' }}
+            >
+              {tasks.map((task, idx) => {
+                const effectiveStatus = optimisticStatus[task.id] ?? task.status;
+                const isComplete      = isCompleted || effectiveStatus === 'completed';
+                const isOwn           = task.assigned_to === currentUserId || task.assigned_to === null;
+                const canComplete     = isOwn;
+                const dueDateColor    = getDueDateColor(task.due_at, effectiveStatus);
+                const overdue         = isOverdue(task.due_at, effectiveStatus);
+
+                return (
+                  <div
+                    key={task.id}
+                    style={{
+                      display:      'flex',
+                      alignItems:   'center',
+                      gap:          'var(--space-3)',
+                      padding:      'var(--space-3) var(--space-4)',
+                      borderBottom: idx < tasks.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
+                      background:   'var(--theme-paper)',
+                      borderLeft:   `3px solid ${isComplete ? 'var(--color-success)' : cfg.borderColor}`,
+                      transition:   'background var(--duration-fast) var(--ease-in-out)',
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)';
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper)';
+                    }}
+                  >
+                    {/* Completion circle */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleCircleClick(e, task)}
+                      disabled={!canComplete}
+                      aria-label={isComplete ? 'Reopen task' : 'Complete task'}
+                      style={{
+                        width:          'var(--space-6)',
+                        height:         'var(--space-6)',
+                        borderRadius:   'var(--radius-full)',
+                        border:         canComplete
+                          ? (isComplete
+                              ? 'none'
+                              : '1.5px solid var(--theme-paper-border)')
+                          : '1.5px dashed var(--theme-paper-border)',
+                        background:     isComplete ? 'transparent' : 'transparent',
+                        display:        'flex',
+                        alignItems:     'center',
+                        justifyContent: 'center',
+                        cursor:         canComplete ? 'pointer' : 'default',
+                        flexShrink:     0,
+                        transition:     'border-color var(--duration-fast) var(--ease-in-out)',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!canComplete || isComplete) return;
+                        (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-accent)';
+                        (e.currentTarget as HTMLElement).style.background  = 'var(--theme-accent-surface)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!canComplete || isComplete) return;
+                        (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
+                        (e.currentTarget as HTMLElement).style.background  = 'transparent';
+                      }}
+                    >
+                      {isComplete ? (
+                        <CheckCircle2
+                          style={{
+                            width:       16,
+                            height:      16,
+                            strokeWidth: 1.5,
+                            color:       'var(--theme-accent)',
+                          }}
+                        />
+                      ) : !canComplete ? (
+                        <Circle
+                          style={{
+                            width:       10,
+                            height:      10,
+                            strokeWidth: 1.5,
+                            color:       'var(--theme-paper-border)',
+                          }}
+                        />
+                      ) : null}
+                    </button>
+
+                    {/* Title + assignee avatar (if assigned to someone else) */}
+                    <div
+                      style={{
+                        flex:     1,
+                        display:  'flex',
+                        alignItems: 'center',
+                        gap:      'var(--space-2)',
+                        minWidth: 0,
+                        cursor:   'pointer',
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleRowClick(task)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleRowClick(task); }}
+                    >
+                      <span
+                        style={{
+                          fontFamily:     'var(--font-sans)',
+                          fontSize:       'var(--text-sm)',
+                          fontWeight:     'var(--weight-medium)',
+                          color:          isComplete
+                            ? 'var(--theme-text-tertiary)'
+                            : 'var(--theme-text-primary)',
+                          textDecoration: isComplete ? 'line-through' : 'none',
+                          overflow:       'hidden',
+                          textOverflow:   'ellipsis',
+                          whiteSpace:     'nowrap',
+                          flex:           1,
+                          minWidth:       0,
+                        }}
+                      >
+                        {task.title}
+                      </span>
+                      {/* Assignee avatar — only when task is assigned to someone else */}
+                      {task.assigned_to && task.assigned_to !== currentUserId && (
+                        <div
+                          title="Assigned to someone else"
+                          style={{
+                            width:          'var(--space-5)',
+                            height:         'var(--space-5)',
+                            borderRadius:   'var(--radius-xs)',
+                            background:     'var(--theme-accent-surface)',
+                            border:         '1px solid var(--theme-paper-border)',
+                            display:        'flex',
+                            alignItems:     'center',
+                            justifyContent: 'center',
+                            flexShrink:     0,
+                          }}
+                        >
+                          <User
+                            style={{
+                              width:       10,
+                              height:      10,
+                              strokeWidth: 1.5,
+                              color:       'var(--theme-accent)',
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Due date chip */}
+                    {task.due_at && (
+                      <span
+                        style={{
+                          fontFamily:  'var(--font-mono)',
+                          fontSize:    'var(--text-xs)',
+                          color:       dueDateColor,
+                          fontWeight:  overdue ? 'var(--weight-semibold)' : 'var(--weight-normal)',
+                          flexShrink:  0,
+                          whiteSpace:  'nowrap',
+                        }}
+                      >
+                        {overdue ? 'Overdue' : formatRelativeTime(task.due_at)}
+                      </span>
+                    )}
+
+                    {/* Arrow → open TaskModal */}
+                    <button
+                      type="button"
+                      onClick={() => handleRowClick(task)}
+                      aria-label="Open task details"
+                      style={{
+                        display:        'flex',
+                        alignItems:     'center',
+                        justifyContent: 'center',
+                        width:          'var(--space-6)',
+                        height:         'var(--space-6)',
+                        borderRadius:   'var(--radius-xs)',
+                        border:         '1px solid var(--theme-paper-border)',
+                        background:     'transparent',
+                        color:          'var(--theme-text-tertiary)',
+                        cursor:         'pointer',
+                        flexShrink:     0,
+                        transition:     'var(--transition-hover)',
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)';
+                        (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-accent)';
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)';
+                        (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
+                      }}
+                    >
+                      <ArrowRight style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
+                    </button>
+                  </div>
+                );
+              })}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  return (
-    <div>
-      {/* Filter bar + New Task button */}
-      <div
-        style={{
-          display:        'flex',
-          alignItems:     'flex-start',
-          justifyContent: 'space-between',
-          gap:            'var(--space-4)',
-          marginBottom:   'var(--space-4)',
-          flexWrap:       'wrap',
-        }}
-      >
-        {/* Filters */}
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Status pills */}
-          <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
-            {ALL_STATUSES.map((s) => {
-              const active = filterStatuses.includes(s);
-              const cfg    = STATUS_CONFIG[s];
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => toggleStatus(s)}
-                  style={{
-                    display:        'inline-flex',
-                    alignItems:     'center',
-                    gap:            'var(--space-1)',
-                    padding:        '4px var(--space-3)',
-                    borderRadius:   'var(--radius-full)',
-                    border:         active
-                      ? `1px solid ${cfg.bg}`
-                      : '1px solid var(--theme-paper-border)',
-                    background:     active ? cfg.bg : 'transparent',
-                    color:          active ? cfg.text : 'var(--theme-text-secondary)',
-                    fontFamily:     'var(--font-sans)',
-                    fontSize:       'var(--text-xs)',
-                    fontWeight:     active ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                    cursor:         'pointer',
-                    transition:     'all var(--duration-fast) var(--ease-in-out)',
-                    whiteSpace:     'nowrap',
-                  }}
-                >
-                  <StatusIcon status={s} size={11} />
-                  {TASK_STATUS_LABELS[s]}
-                </button>
-              );
-            })}
-          </div>
+  const hasAnyActive = totalActive > 0;
 
-          {/* Priority pills */}
-          <div
-            aria-hidden="true"
-            style={{ width: '1px', height: '20px', background: 'var(--theme-paper-border)' }}
-          />
-          {ALL_PRIORITIES.map((p) => {
-            const active = filterPriorities.includes(p);
-            const cfg    = PRIORITY_CONFIG[p];
+  return (
+    // Key on sectionRenderKey forces header chevron re-render without collapsing body
+    <div key={`tab-${sectionRenderKey}`} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+
+      {/* Tag filter bar — only rendered when at least one tag exists */}
+      {availableTags.length > 0 && (
+        <div
+          style={{
+            display:    'flex',
+            alignItems: 'center',
+            gap:        'var(--space-2)',
+            flexWrap:   'wrap',
+          }}
+        >
+          <span
+            style={{
+              fontFamily:    'var(--font-sans)',
+              fontSize:      'var(--text-2xs)',
+              fontWeight:    'var(--weight-semibold)',
+              letterSpacing: 'var(--tracking-wide)',
+              textTransform: 'uppercase',
+              color:         'var(--theme-text-tertiary)',
+              flexShrink:    0,
+            }}
+          >
+            Filter by tag
+          </span>
+          {availableTags.map((tag) => {
+            const active = selectedTags.includes(tag);
             return (
               <button
-                key={p}
+                key={tag}
                 type="button"
-                onClick={() => togglePriority(p)}
+                onClick={() =>
+                  setSelectedTags((prev) =>
+                    active ? prev.filter((t) => t !== tag) : [...prev, tag],
+                  )
+                }
                 style={{
-                  padding:      '4px var(--space-3)',
+                  display:      'inline-flex',
+                  alignItems:   'center',
+                  padding:      '3px var(--space-3)',
                   borderRadius: 'var(--radius-full)',
                   border:       active
-                    ? `1px solid ${cfg.borderColor}`
+                    ? '1.5px solid var(--theme-accent)'
                     : '1px solid var(--theme-paper-border)',
-                  background:   active ? cfg.bg : 'transparent',
-                  color:        active ? cfg.text : 'var(--theme-text-secondary)',
+                  background:   active ? 'var(--theme-accent-surface)' : 'transparent',
+                  color:        active ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
                   fontFamily:   'var(--font-sans)',
                   fontSize:     'var(--text-xs)',
                   fontWeight:   active ? 'var(--weight-semibold)' : 'var(--weight-normal)',
                   cursor:       'pointer',
-                  transition:   'all var(--duration-fast) var(--ease-in-out)',
-                  whiteSpace:   'nowrap',
+                  transition:   'var(--transition-hover)',
                 }}
               >
-                {cfg.label}
+                {tag}
               </button>
             );
           })}
-
-          {/* Due date range */}
-          <div
-            aria-hidden="true"
-            style={{ width: '1px', height: '20px', background: 'var(--theme-paper-border)' }}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-            <CalendarDays style={{ width: 14, height: 14, strokeWidth: 1.5, color: 'var(--theme-text-tertiary)' }} />
-            <input
-              type="date"
-              value={filterDueFrom}
-              onChange={(e) => setFilterDueFrom(e.target.value)}
-              aria-label="Due from"
-              style={{
-                border:       '1px solid var(--theme-paper-border)',
-                borderRadius: 'var(--radius-sm)',
-                background:   'var(--theme-paper-subtle)',
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-xs)',
-                color:        'var(--theme-text-primary)',
-                padding:      '4px var(--space-2)',
-                outline:      'none',
-                caretColor:   'var(--theme-accent)',
-              }}
-            />
-            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>—</span>
-            <input
-              type="date"
-              value={filterDueTo}
-              onChange={(e) => setFilterDueTo(e.target.value)}
-              aria-label="Due to"
-              style={{
-                border:       '1px solid var(--theme-paper-border)',
-                borderRadius: 'var(--radius-sm)',
-                background:   'var(--theme-paper-subtle)',
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-xs)',
-                color:        'var(--theme-text-primary)',
-                padding:      '4px var(--space-2)',
-                outline:      'none',
-                caretColor:   'var(--theme-accent)',
-              }}
-            />
-          </div>
-
-          {/* Clear filters */}
-          {hasActiveFilters && (
+          {selectedTags.length > 0 && (
             <button
               type="button"
-              onClick={clearFilters}
+              onClick={() => setSelectedTags([])}
               style={{
-                display:     'inline-flex',
-                alignItems:  'center',
-                gap:         'var(--space-1)',
-                padding:     '4px var(--space-2)',
-                border:      'none',
-                background:  'transparent',
-                color:       'var(--theme-text-tertiary)',
-                fontFamily:  'var(--font-sans)',
-                fontSize:    'var(--text-xs)',
-                cursor:      'pointer',
-                transition:  'color var(--duration-fast) var(--ease-in-out)',
+                display:    'inline-flex',
+                alignItems: 'center',
+                gap:        'var(--space-1)',
+                background: 'none',
+                border:     'none',
+                padding:    0,
+                cursor:     'pointer',
+                fontFamily: 'var(--font-sans)',
+                fontSize:   'var(--text-xs)',
+                color:      'var(--theme-text-tertiary)',
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--theme-text-primary)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--theme-text-tertiary)'; }}
             >
-              <X style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
+              <X style={{ width: 10, height: 10, strokeWidth: 2 }} />
               Clear
             </button>
           )}
         </div>
+      )}
 
-        {/* New Task button */}
-        <button
-          type="button"
-          onClick={() => setShowQuickAdd(true)}
+      {/* Quick-add row */}
+      <AnimatePresence>
+        {showQuickAdd && (
+          <motion.div
+            key="quick-add"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div
+              style={{
+                display:      'flex',
+                alignItems:   'center',
+                gap:          'var(--space-3)',
+                padding:      'var(--space-3) var(--space-4)',
+                background:   'var(--theme-accent-surface)',
+                border:       '1px solid var(--theme-paper-border)',
+                borderLeft:   '3px solid var(--theme-accent)',
+                borderRadius: 'var(--radius-md)',
+              }}
+            >
+              {/* Title input */}
+              <input
+                ref={quickTitleRef}
+                type="text"
+                value={quickTitle}
+                onChange={(e) => setQuickTitle(e.target.value)}
+                onKeyDown={handleQuickAddKeyDown}
+                placeholder="Task title…"
+                disabled={isPending}
+                style={{
+                  flex:       1,
+                  border:     'none',
+                  outline:    'none',
+                  background: 'transparent',
+                  fontFamily: 'var(--font-sans)',
+                  fontSize:   'var(--text-sm)',
+                  color:      'var(--theme-text-primary)',
+                  caretColor: 'var(--theme-accent)',
+                  opacity:    isPending ? 0.6 : 1,
+                  cursor:     isPending ? 'not-allowed' : 'text',
+                  transition: 'opacity var(--duration-fast) var(--ease-in-out)',
+                }}
+              />
+
+              {/* Due date */}
+              <input
+                type="date"
+                value={quickDueAt}
+                onChange={(e) => setQuickDueAt(e.target.value)}
+                aria-label="Due date"
+                style={{
+                  border:       '1px solid var(--theme-paper-border)',
+                  borderRadius: 'var(--radius-sm)',
+                  background:   'var(--theme-paper)',
+                  fontFamily:   'var(--font-sans)',
+                  fontSize:     'var(--text-xs)',
+                  color:        'var(--theme-text-primary)',
+                  padding:      'var(--space-1) var(--space-2)',
+                  outline:      'none',
+                  caretColor:   'var(--theme-accent)',
+                  flexShrink:   0,
+                }}
+              />
+
+              {/* Assignee picker button (manager+ only) */}
+              {['manager', 'admin', 'founder'].includes(callerRole) && (
+                <button
+                  type="button"
+                  onClick={() => setShowAssigneePicker(true)}
+                  aria-label="Pick assignee"
+                  title={quickAssignee ? quickAssignee.full_name : 'Unassigned'}
+                  style={{
+                    display:        'flex',
+                    alignItems:     'center',
+                    justifyContent: 'center',
+                    width:          'var(--space-7)',
+                    height:         'var(--space-7)',
+                    borderRadius:   'var(--radius-sm)',
+                    border:         '1px solid var(--theme-paper-border)',
+                    background:     quickAssignee ? 'var(--theme-accent-surface)' : 'transparent',
+                    color:          quickAssignee ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
+                    cursor:         'pointer',
+                    transition:     'var(--transition-hover)',
+                    flexShrink:     0,
+                  }}
+                >
+                  {quickAssignee ? (
+                    <Avatar name={quickAssignee.full_name} size="xs" style={{ width: 18, height: 18, minWidth: 18 }} />
+                  ) : (
+                    <User style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
+                  )}
+                </button>
+              )}
+
+              {/* Save */}
+              <button
+                type="button"
+                onClick={handleQuickAddSave}
+                disabled={isPending || !quickTitle.trim()}
+                style={{
+                  padding:      'var(--space-1) var(--space-3)',
+                  borderRadius: 'var(--radius-sm)',
+                  border:       'none',
+                  background:   quickTitle.trim() ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
+                  color:        quickTitle.trim() ? 'var(--theme-accent-fg)' : 'var(--theme-text-tertiary)',
+                  fontFamily:   'var(--font-sans)',
+                  fontSize:     'var(--text-xs)',
+                  fontWeight:   'var(--weight-semibold)',
+                  cursor:       isPending || !quickTitle.trim() ? 'not-allowed' : 'pointer',
+                  opacity:      isPending ? 0.6 : 1,
+                  transition:   'var(--transition-interactive)',
+                  flexShrink:   0,
+                }}
+              >
+                {isPending ? 'Saving…' : 'Save'}
+              </button>
+
+              {/* Cancel */}
+              <button
+                type="button"
+                onClick={() => { setShowQuickAdd(false); setQuickTitle(''); }}
+                aria-label="Cancel"
+                style={{
+                  display:        'flex',
+                  alignItems:     'center',
+                  justifyContent: 'center',
+                  width:          'var(--space-6)',
+                  height:         'var(--space-6)',
+                  borderRadius:   'var(--radius-sm)',
+                  border:         'none',
+                  background:     'transparent',
+                  color:          'var(--theme-text-tertiary)',
+                  cursor:         'pointer',
+                  flexShrink:     0,
+                }}
+              >
+                <X style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Keyboard hint */}
+      {showQuickAdd && (
+        <p
           style={{
-            display:        'inline-flex',
-            alignItems:     'center',
-            gap:            'var(--space-2)',
-            padding:        'var(--space-2) var(--space-4)',
-            borderRadius:   'var(--radius-md)',
-            border:         'none',
-            background:     'var(--theme-accent)',
-            color:          'var(--theme-accent-fg)',
-            fontFamily:     'var(--font-sans)',
-            fontSize:       'var(--text-sm)',
-            fontWeight:     'var(--weight-semibold)',
-            cursor:         'pointer',
-            transition:     'opacity var(--duration-fast) var(--ease-in-out)',
-            flexShrink:     0,
+            fontFamily: 'var(--font-sans)',
+            fontSize:   'var(--text-xs)',
+            color:      'var(--theme-text-tertiary)',
+            margin:     0,
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
         >
-          <Plus style={{ width: 15, height: 15, strokeWidth: 1.5 }} />
-          New Task
-        </button>
-      </div>
+          <UserCircle style={{ display: 'inline', width: 12, height: 12, strokeWidth: 1.5, marginRight: 4 }} />
+          Press Enter to save · Esc to cancel
+        </p>
+      )}
 
-      {/* Task list container */}
+      {/* Priority sections — only rendered when tasks exist */}
+      {ACTIVE_PRIORITIES.map((priority) =>
+        renderSection(
+          priority,
+          PRIORITY_CONFIG[priority].label,
+          tasksByPriority[priority],
+          PRIORITY_CONFIG[priority],
+          false,
+        ),
+      )}
+
+      {/* Empty state — only shown when no active tasks and not loading */}
+      {!hasAnyActive && !isLoading && (
+        <div
+          style={{
+            border:       '1px solid var(--theme-paper-border)',
+            borderRadius: 'var(--radius-md)',
+            padding:      'var(--space-16) var(--space-8)',
+            textAlign:    'center',
+            boxShadow:    'var(--shadow-1)',
+          }}
+        >
+          <p
+            style={{
+              fontFamily: 'var(--font-serif)',
+              fontStyle:  'italic',
+              fontSize:   'var(--text-lg)',
+              color:      'var(--theme-text-tertiary)',
+              margin:     0,
+            }}
+          >
+            {selectedTags.length > 0 ? 'Nothing tagged that way.' : 'All clear for now.'}
+          </p>
+          <p
+            style={{
+              fontFamily:   'var(--font-sans)',
+              fontSize:     'var(--text-sm)',
+              color:        'var(--theme-text-tertiary)',
+              marginTop:    'var(--space-2)',
+              marginBottom: 0,
+            }}
+          >
+            {selectedTags.length > 0
+              ? 'No tasks match the selected tags.'
+              : 'Create your first task with the button above.'}
+          </p>
+        </div>
+      )}
+
+      {/* Completed section — collapsed by default; tasks load lazily on first expand */}
       <div
         style={{
           border:       '1px solid var(--theme-paper-border)',
@@ -517,394 +972,293 @@ export function PersonalTasksTab({
           boxShadow:    'var(--shadow-1)',
         }}
       >
-        {/* Quick-add row */}
-        <AnimatePresence>
-          {showQuickAdd && (
-            <motion.div
-              key="quick-add"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              style={{ overflow: 'hidden' }}
-            >
-              <div
-                style={{
-                  display:      'flex',
-                  alignItems:   'center',
-                  gap:          'var(--space-3)',
-                  padding:      'var(--space-3) var(--space-4)',
-                  background:   'var(--theme-accent-surface)',
-                  borderBottom: '1px solid var(--theme-paper-border)',
-                  borderLeft:   '3px solid var(--theme-accent)',
-                }}
-              >
-                {/* Priority selector */}
-                <div style={{ position: 'relative', flexShrink: 0 }}>
-                  <select
-                    value={quickPriority}
-                    onChange={(e) => setQuickPriority(e.target.value as TaskPriority)}
-                    aria-label="Priority"
-                    style={{
-                      appearance:   'none',
-                      padding:      '2px var(--space-3) 2px var(--space-2)',
-                      borderRadius: 'var(--radius-full)',
-                      border:       `1px solid ${PRIORITY_CONFIG[quickPriority].borderColor}`,
-                      background:   PRIORITY_CONFIG[quickPriority].bg,
-                      color:        PRIORITY_CONFIG[quickPriority].text,
-                      fontFamily:   'var(--font-sans)',
-                      fontSize:     'var(--text-xs)',
-                      fontWeight:   'var(--weight-semibold)',
-                      cursor:       'pointer',
-                      outline:      'none',
-                    }}
-                  >
-                    {ALL_PRIORITIES.map((p) => (
-                      <option key={p} value={p}>{PRIORITY_CONFIG[p].label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    style={{
-                      position:     'absolute',
-                      right:        4,
-                      top:          '50%',
-                      transform:    'translateY(-50%)',
-                      width:        10,
-                      height:       10,
-                      strokeWidth:  1.5,
-                      pointerEvents: 'none',
-                      color:        PRIORITY_CONFIG[quickPriority].text,
-                    }}
-                  />
-                </div>
-
-                {/* Title input */}
-                <input
-                  ref={quickTitleRef}
-                  type="text"
-                  value={quickTitle}
-                  onChange={(e) => setQuickTitle(e.target.value)}
-                  onKeyDown={handleQuickAddKeyDown}
-                  placeholder="Task title…"
-                  disabled={isPending}
-                  style={{
-                    flex:         1,
-                    border:       'none',
-                    outline:      'none',
-                    background:   'transparent',
-                    fontFamily:   'var(--font-sans)',
-                    fontSize:     'var(--text-sm)',
-                    color:        'var(--theme-text-primary)',
-                    caretColor:   'var(--theme-accent)',
-                    opacity:      isPending ? 0.6 : 1,
-                    cursor:       isPending ? 'not-allowed' : 'text',
-                    transition:   'opacity var(--duration-fast) var(--ease-in-out)',
-                  }}
-                />
-
-                {/* Due date */}
-                <input
-                  type="date"
-                  value={quickDueAt}
-                  onChange={(e) => setQuickDueAt(e.target.value)}
-                  aria-label="Due date"
-                  style={{
-                    border:       '1px solid var(--theme-paper-border)',
-                    borderRadius: 'var(--radius-sm)',
-                    background:   'var(--theme-paper)',
-                    fontFamily:   'var(--font-sans)',
-                    fontSize:     'var(--text-xs)',
-                    color:        'var(--theme-text-primary)',
-                    padding:      '3px var(--space-2)',
-                    outline:      'none',
-                    caretColor:   'var(--theme-accent)',
-                    flexShrink:   0,
-                  }}
-                />
-
-                {/* Assignee picker button (manager+ only) */}
-                {['manager', 'admin', 'founder'].includes(callerRole) && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAssigneePicker(true)}
-                    aria-label="Pick assignee"
-                    title={quickAssignee ? quickAssignee.full_name : 'Unassigned'}
-                    style={{
-                      display:        'flex',
-                      alignItems:     'center',
-                      justifyContent: 'center',
-                      width:          '28px',
-                      height:         '28px',
-                      borderRadius:   'var(--radius-sm)',
-                      border:         '1px solid var(--theme-paper-border)',
-                      background:     quickAssignee ? 'var(--theme-accent-surface)' : 'transparent',
-                      color:          quickAssignee ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
-                      cursor:         'pointer',
-                      transition:     'var(--transition-hover)',
-                      flexShrink:     0,
-                    }}
-                  >
-                    {quickAssignee ? (
-                      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '9px', fontWeight: 'var(--weight-semibold)', lineHeight: 1 }}>
-                        {getInitials(quickAssignee.full_name)}
-                      </span>
-                    ) : (
-                      <User style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
-                    )}
-                  </button>
-                )}
-
-                {/* Save */}
-                <button
-                  type="button"
-                  onClick={handleQuickAddSave}
-                  disabled={isPending || !quickTitle.trim()}
-                  style={{
-                    padding:      'var(--space-1) var(--space-3)',
-                    borderRadius: 'var(--radius-sm)',
-                    border:       'none',
-                    background:   quickTitle.trim() ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
-                    color:        quickTitle.trim() ? 'var(--theme-accent-fg)' : 'var(--theme-text-tertiary)',
-                    fontFamily:   'var(--font-sans)',
-                    fontSize:     'var(--text-xs)',
-                    fontWeight:   'var(--weight-semibold)',
-                    cursor:       isPending || !quickTitle.trim() ? 'not-allowed' : 'pointer',
-                    opacity:      isPending ? 0.6 : 1,
-                    transition:   'var(--transition-interactive)',
-                    flexShrink:   0,
-                  }}
-                >
-                  {isPending ? 'Saving…' : 'Save'}
-                </button>
-
-                {/* Cancel */}
-                <button
-                  type="button"
-                  onClick={() => { setShowQuickAdd(false); setQuickTitle(''); }}
-                  aria-label="Cancel"
-                  style={{
-                    display:        'flex',
-                    alignItems:     'center',
-                    justifyContent: 'center',
-                    width:          '24px',
-                    height:         '24px',
-                    borderRadius:   'var(--radius-sm)',
-                    border:         'none',
-                    background:     'transparent',
-                    color:          'var(--theme-text-tertiary)',
-                    cursor:         'pointer',
-                    flexShrink:     0,
-                  }}
-                >
-                  <X style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Task rows */}
-        {filtered.length === 0 ? (
-          <div
+        {/* Section header — always rendered so the accordion is always accessible */}
+        <button
+          type="button"
+          onClick={() => toggleSection('completed')}
+          style={{
+            display:        'flex',
+            alignItems:     'center',
+            gap:            'var(--space-2)',
+            width:          '100%',
+            padding:        'var(--space-2) var(--space-4)',
+            background:     isSectionOpen('completed') ? 'var(--color-success-light)' : 'var(--theme-paper-subtle)',
+            border:         'none',
+            borderBottom:   isSectionOpen('completed') ? '1px solid var(--theme-paper-border)' : 'none',
+            cursor:         'pointer',
+            transition:     'background var(--duration-fast) var(--ease-in-out)',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.filter = 'brightness(0.97)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.filter = ''; }}
+        >
+          <span
             style={{
-              padding:   'var(--space-16) var(--space-8)',
-              textAlign: 'center',
+              fontFamily:    'var(--font-sans)',
+              fontSize:      'var(--text-xs)',
+              fontWeight:    'var(--weight-semibold)',
+              letterSpacing: 'var(--tracking-wide)',
+              textTransform: 'uppercase',
+              color:         isSectionOpen('completed') ? 'var(--color-success-text)' : 'var(--theme-text-secondary)',
+              flex:          1,
+              textAlign:     'left',
             }}
           >
-            <p
-              style={{
-                fontFamily: 'var(--font-serif)',
-                fontStyle:  'italic',
-                fontSize:   'var(--text-lg)',
-                color:      'var(--theme-text-tertiary)',
-                margin:     0,
-              }}
-            >
-              {hasActiveFilters ? 'Nothing matches these filters.' : 'No tasks.'}
-            </p>
-            {!hasActiveFilters && (
-              <p
-                style={{
-                  fontFamily: 'var(--font-sans)',
-                  fontSize:   'var(--text-sm)',
-                  color:      'var(--theme-text-tertiary)',
-                  marginTop:  'var(--space-2)',
-                  marginBottom: 0,
-                }}
-              >
-                Create your first task with the button above.
-              </p>
-            )}
-          </div>
-        ) : (
-          filtered.map((task, idx) => {
-            const priorityCfg = PRIORITY_CONFIG[task.priority];
-            const statusCfg   = STATUS_CONFIG[task.status];
-            const isOverdue   = task.due_at && task.status !== 'completed' && task.status !== 'cancelled'
-              ? new Date(task.due_at) < new Date()
-              : false;
-
-            return (
-              <motion.div
-                key={task.id}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, delay: Math.min(idx * 0.04, 0.32), ease: [0.16, 1, 0.3, 1] }}
-                role="button"
-                tabIndex={0}
-                onClick={() => handleRowClick(task)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleRowClick(task); }}
-                style={{
-                  display:      'flex',
-                  alignItems:   'center',
-                  gap:          'var(--space-4)',
-                  padding:      'var(--space-3) var(--space-4)',
-                  borderBottom: idx < filtered.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
-                  background:   'var(--theme-paper)',
-                  borderLeft:   `3px solid ${priorityCfg.borderColor}`,
-                  cursor:       'pointer',
-                  transition:   `background var(--duration-fast) var(--ease-in-out)`,
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper)'; }}
-              >
-                {/* Title */}
-                <span
-                  style={{
-                    flex:         1,
-                    fontFamily:   'var(--font-sans)',
-                    fontSize:     'var(--text-sm)',
-                    fontWeight:   'var(--weight-medium)',
-                    color:        task.status === 'completed' || task.status === 'cancelled'
-                      ? 'var(--theme-text-tertiary)'
-                      : 'var(--theme-text-primary)',
-                    textDecoration: task.status === 'completed' ? 'line-through' : 'none',
-                    overflow:     'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace:   'nowrap',
-                    minWidth:     0,
-                  }}
-                >
-                  {task.title}
-                </span>
-
-                {/* Due date */}
-                {task.due_at && (
-                  <span
-                    style={{
-                      fontFamily:  'var(--font-mono)',
-                      fontSize:    'var(--text-xs)',
-                      color:       isOverdue ? 'var(--color-danger-text)' : 'var(--theme-text-tertiary)',
-                      flexShrink:  0,
-                      whiteSpace:  'nowrap',
-                    }}
-                  >
-                    {formatRelativeTime(task.due_at)}
-                  </span>
-                )}
-
-                {/* Status pill */}
-                <span
-                  style={{
-                    display:      'inline-flex',
-                    alignItems:   'center',
-                    gap:          '4px',
-                    padding:      '3px var(--space-2)',
-                    borderRadius: 'var(--radius-full)',
-                    background:   statusCfg.bg,
-                    color:        statusCfg.text,
-                    fontFamily:   'var(--font-sans)',
-                    fontSize:     '11px',
-                    fontWeight:   'var(--weight-semibold)',
-                    flexShrink:   0,
-                    whiteSpace:   'nowrap',
-                  }}
-                >
-                  <StatusIcon status={task.status} size={11} />
-                  {TASK_STATUS_LABELS[task.status]}
-                </span>
-              </motion.div>
-            );
-          })
-        )}
-
-        {/* Pagination — Previous / Next (replaces; DOM stays ≤ 50 rows, P-03) */}
-        {(cursorStack.length > 0 || hasMore) && filtered.length > 0 && (
-          <div
-            style={{
-              display:        'flex',
-              alignItems:     'center',
-              justifyContent: 'space-between',
-              padding:        'var(--space-3) var(--space-4)',
-              borderTop:      '1px solid var(--theme-paper-border)',
-              background:     'var(--theme-paper-subtle)',
-            }}
-          >
-            <button
-              type="button"
-              onClick={handlePrevPage}
-              disabled={isLoading || cursorStack.length === 0}
-              style={{
-                fontFamily:  'var(--font-sans)',
-                fontSize:    'var(--text-xs)',
-                color:       (isLoading || cursorStack.length === 0)
-                  ? 'var(--theme-text-tertiary)'
-                  : 'var(--theme-accent)',
-                background:  'transparent',
-                border:      'none',
-                cursor:      (isLoading || cursorStack.length === 0) ? 'default' : 'pointer',
-                opacity:     cursorStack.length === 0 ? 0.4 : 1,
-                transition:  'opacity var(--duration-fast) var(--ease-in-out)',
-              }}
-            >
-              ← Previous
-            </button>
-
+            COMPLETED
+          </span>
+          {/* Count pill — shows actual count when loaded, placeholder when not yet */}
+          {completedTasks.length > 0 && (
             <span
               style={{
-                fontFamily: 'var(--font-sans)',
-                fontSize:   'var(--text-xs)',
-                color:      'var(--theme-text-tertiary)',
+                display:      'inline-flex',
+                alignItems:   'center',
+                padding:      'var(--space-px) var(--space-2)',
+                borderRadius: 'var(--radius-full)',
+                background:   'var(--color-success-light)',
+                color:        'var(--color-success-text)',
+                fontFamily:   'var(--font-sans)',
+                fontSize:     'var(--text-2xs)',
+                fontWeight:   'var(--weight-semibold)',
               }}
             >
-              {isLoading ? 'Loading…' : `Page ${cursorStack.length + 1}`}
+              {completedTasks.length}
             </span>
+          )}
+          <ChevronDown
+            style={{
+              width:      14,
+              height:     14,
+              strokeWidth: 1.5,
+              color:      isSectionOpen('completed') ? 'var(--color-success-text)' : 'var(--theme-text-secondary)',
+              transform:  isSectionOpen('completed') ? 'rotate(0deg)' : 'rotate(-90deg)',
+              transition: 'transform var(--duration-base) var(--ease-out-expo)',
+              flexShrink: 0,
+            }}
+          />
+        </button>
 
-            <button
-              type="button"
-              onClick={handleNextPage}
-              disabled={isLoading || !hasMore}
+        {/* Body — only shown when expanded */}
+        {isSectionOpen('completed') && (
+          isLoadingCompleted ? (
+            /* Loading state — shown while completed tasks fetch resolves */
+            <div
               style={{
-                fontFamily:  'var(--font-sans)',
-                fontSize:    'var(--text-xs)',
-                color:       (isLoading || !hasMore)
-                  ? 'var(--theme-text-tertiary)'
-                  : 'var(--theme-accent)',
-                background:  'transparent',
-                border:      'none',
-                cursor:      (isLoading || !hasMore) ? 'default' : 'pointer',
-                opacity:     !hasMore ? 0.4 : 1,
-                transition:  'opacity var(--duration-fast) var(--ease-in-out)',
+                padding:    'var(--space-6)',
+                textAlign:  'center',
+                background: 'var(--theme-paper)',
               }}
             >
-              Next →
-            </button>
-          </div>
+              <p
+                style={{
+                  fontFamily: 'var(--font-serif)',
+                  fontStyle:  'italic',
+                  fontSize:   'var(--text-sm)',
+                  color:      'var(--theme-text-tertiary)',
+                  margin:     0,
+                }}
+              >
+                Loading completed tasks…
+              </p>
+            </div>
+          ) : completedTasks.length > 0 ? (
+            /* Completed task rows rendered via existing renderSection helper */
+            <div>
+              {completedTasks.map((task, idx) => {
+                const effectiveStatus = optimisticStatus[task.id] ?? task.status;
+                const isComplete      = true;
+                const isOwn           = task.assigned_to === currentUserId || task.assigned_to === null;
+                const canComplete     = isOwn;
+                const dueDateColor    = getDueDateColor(task.due_at, effectiveStatus);
+                const overdue         = false; // completed tasks are never overdue
+
+                return (
+                  <div
+                    key={task.id}
+                    style={{
+                      display:      'flex',
+                      alignItems:   'center',
+                      gap:          'var(--space-3)',
+                      padding:      'var(--space-3) var(--space-4)',
+                      borderBottom: idx < completedTasks.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
+                      background:   'var(--theme-paper)',
+                      borderLeft:   '3px solid var(--color-success)',
+                      transition:   'background var(--duration-fast) var(--ease-in-out)',
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)';
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper)';
+                    }}
+                  >
+                    {/* Completion circle */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleCircleClick(e, task)}
+                      disabled={!canComplete}
+                      aria-label="Reopen task"
+                      style={{
+                        width:          'var(--space-6)',
+                        height:         'var(--space-6)',
+                        borderRadius:   'var(--radius-full)',
+                        border:         'none',
+                        background:     'transparent',
+                        display:        'flex',
+                        alignItems:     'center',
+                        justifyContent: 'center',
+                        cursor:         canComplete ? 'pointer' : 'default',
+                        flexShrink:     0,
+                      }}
+                    >
+                      <CheckCircle2
+                        style={{
+                          width:       16,
+                          height:      16,
+                          strokeWidth: 1.5,
+                          color:       'var(--theme-accent)',
+                        }}
+                      />
+                    </button>
+
+                    {/* Title */}
+                    <div
+                      style={{
+                        flex:       1,
+                        display:    'flex',
+                        alignItems: 'center',
+                        gap:        'var(--space-2)',
+                        minWidth:   0,
+                        cursor:     'pointer',
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleRowClick(task)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleRowClick(task); }}
+                    >
+                      <span
+                        style={{
+                          fontFamily:     'var(--font-sans)',
+                          fontSize:       'var(--text-sm)',
+                          fontWeight:     'var(--weight-medium)',
+                          color:          'var(--theme-text-tertiary)',
+                          textDecoration: 'line-through',
+                          overflow:       'hidden',
+                          textOverflow:   'ellipsis',
+                          whiteSpace:     'nowrap',
+                          flex:           1,
+                          minWidth:       0,
+                        }}
+                      >
+                        {task.title}
+                      </span>
+                    </div>
+
+                    {/* Due date chip */}
+                    {task.due_at && (
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize:   'var(--text-xs)',
+                          color:      dueDateColor,
+                          flexShrink: 0,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {overdue ? 'Overdue' : formatRelativeTime(task.due_at)}
+                      </span>
+                    )}
+
+                    {/* Arrow */}
+                    <button
+                      type="button"
+                      onClick={() => handleRowClick(task)}
+                      aria-label="Open task details"
+                      style={{
+                        display:        'flex',
+                        alignItems:     'center',
+                        justifyContent: 'center',
+                        width:          'var(--space-6)',
+                        height:         'var(--space-6)',
+                        borderRadius:   'var(--radius-xs)',
+                        border:         '1px solid var(--theme-paper-border)',
+                        background:     'transparent',
+                        color:          'var(--theme-text-tertiary)',
+                        cursor:         'pointer',
+                        flexShrink:     0,
+                        transition:     'var(--transition-hover)',
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)';
+                        (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-accent)';
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)';
+                        (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
+                      }}
+                    >
+                      <ArrowRight style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : !hasLoadedCompleted.current ? (
+            /* Not yet triggered — accordion just opened but fetch hasn't fired yet (edge case) */
+            null
+          ) : (
+            /* Empty — no completed tasks */
+            <div
+              style={{
+                padding:    'var(--space-6)',
+                textAlign:  'center',
+                background: 'var(--theme-paper)',
+              }}
+            >
+              <p
+                style={{
+                  fontFamily: 'var(--font-serif)',
+                  fontStyle:  'italic',
+                  fontSize:   'var(--text-sm)',
+                  color:      'var(--theme-text-tertiary)',
+                  margin:     0,
+                }}
+              >
+                Nothing completed yet.
+              </p>
+            </div>
+          )
         )}
       </div>
 
+      {/* Create Personal Task Modal */}
+      <CreatePersonalTaskModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreated={(task) => {
+          // Prepend to the correct priority section in local state — no refetch needed.
+          setActiveTasks((prev) => [task, ...prev]);
+          setCreateModalOpen(false);
+          // Refresh available tags in case the new task introduced new ones
+          if (task.tags.length > 0) {
+            getPersonalTaskTagsAction().then((r) => {
+              if (r.data) setAvailableTags(r.data);
+            }).catch(() => {});
+          }
+        }}
+      />
+
       {/* Task Modal */}
-      {selectedTask && (
-        <TaskModal
-          open={taskModalOpen}
-          onClose={() => { setTaskModalOpen(false); setSelectedTask(null); }}
-          task={selectedTask}
-          assignee={null}
-          initialMessages={selectedTaskMessages}
-          currentUserId={currentUserId}
-          currentUserName={currentUserName}
-        />
-      )}
+      <AnimatePresence>
+        {selectedTask && taskModalOpen && (
+          <SubTaskModal
+            open={taskModalOpen}
+            onClose={() => { setTaskModalOpen(false); setSelectedTask(null); }}
+            task={selectedTask}
+            initialRemarks={selectedTaskRemarks}
+            callerProfile={{ id: currentUserId, role: callerRole, domain: callerDomain }}
+            currentUserName={currentUserName}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Assignee Picker — portaled to document.body to avoid z-index clipping */}
       {typeof window !== 'undefined' &&
@@ -912,7 +1266,7 @@ export function PersonalTasksTab({
           <AssigneePickerModal
             open={showAssigneePicker}
             onClose={() => setShowAssigneePicker(false)}
-            onConfirm={(userId, user) => {
+            onConfirm={(_userId, user) => {
               setQuickAssignee(user);
               setShowAssigneePicker(false);
             }}
@@ -921,21 +1275,6 @@ export function PersonalTasksTab({
           />,
           document.body,
         )}
-
-      {/* Assignee picker icon for sidebar hint row */}
-      {showQuickAdd && (
-        <p
-          style={{
-            fontFamily:  'var(--font-sans)',
-            fontSize:    'var(--text-xs)',
-            color:       'var(--theme-text-tertiary)',
-            marginTop:   'var(--space-2)',
-          }}
-        >
-          <UserCircle style={{ display: 'inline', width: 12, height: 12, strokeWidth: 1.5, marginRight: 4 }} />
-          Press Enter to save · Esc to cancel
-        </p>
-      )}
     </div>
   );
 }

@@ -1,0 +1,65 @@
+/**
+ * Group Task Workspace — /tasks/[id]
+ *
+ * Thin orchestrator. Reads params.id and the session only.
+ * Zero data-fetching calls — all data fetching lives in WorkspaceAsync.
+ *
+ * Suspense boundary:
+ *   WorkspaceSkeleton renders immediately on navigation to /tasks/[id].
+ *   WorkspaceAsync streams in behind it once the DB round-trips complete.
+ *
+ * Null-group redirect (RLS denied / group not found) happens inside
+ * WorkspaceAsync, not here — so it can still stream without blocking
+ * the page on the data fetch result.
+ */
+
+import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { WorkspaceAsync } from './WorkspaceAsync';
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+
+interface Props {
+  params: Promise<{ id: string }>;
+}
+
+export default async function GroupTaskWorkspacePage({ params }: Props) {
+  const { id } = await params;
+
+  const profile = await getCurrentProfile();
+  if (!profile) redirect('/login');
+  if (profile.role === 'guest') redirect('/dashboard');
+
+  return (
+    <main className="flex-1 p-8">
+      {/* Back link — rendered immediately in the page shell, outside Suspense */}
+      <div style={{ marginBottom: 'var(--space-5)' }}>
+        <Link
+          href="/tasks?tab=group"
+          style={{
+            display:        'inline-flex',
+            alignItems:     'center',
+            gap:            'var(--space-1)',
+            fontFamily:     'var(--font-sans)',
+            fontSize:       'var(--text-sm)',
+            color:          'var(--theme-text-secondary)',
+            textDecoration: 'none',
+          }}
+        >
+          ← Group Tasks
+        </Link>
+      </div>
+
+      <Suspense fallback={<WorkspaceSkeleton />}>
+        <WorkspaceAsync
+          groupId={id}
+          currentUserId={profile.id}
+          currentUserName={profile.full_name}
+          callerRole={profile.role}
+          callerDomain={profile.domain}
+        />
+      </Suspense>
+    </main>
+  );
+}

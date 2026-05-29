@@ -2,17 +2,20 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Search, Pencil, ChevronDown } from "lucide-react";
+import { Pencil, ChevronDown } from "lucide-react";
 import type { Profile } from "@/lib/types/database";
 import { ROLE_LABELS, USER_ROLES } from "@/lib/constants/roles";
 import { DOMAIN_LABELS, APP_DOMAINS } from "@/lib/constants/domains";
+import { SearchBar } from "@/components/ui/SearchBar";
+import { Avatar } from "@/components/ui/Avatar";
+import { Table, type TableColumn } from "@/components/ui/Table";
 
 type UsersTableProps = {
   users: Profile[];
 };
 
 export function UsersTable({ users }: UsersTableProps) {
-  const [search, setSearch]         = useState("");
+  const [search, setSearch]           = useState("");
   const [roleFilter, setRoleFilter]   = useState<string>("all");
   const [domainFilter, setDomainFilter] = useState<string>("all");
 
@@ -29,51 +32,154 @@ export function UsersTable({ users }: UsersTableProps) {
     });
   }, [users, search, roleFilter, domainFilter]);
 
+  const columns: TableColumn<Profile>[] = [
+    {
+      id:     "name",
+      header: "Name",
+      cell:   (user) => (
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+          <Avatar
+            src={user.avatar_url}
+            name={user.full_name}
+            size="sm"
+          />
+          <div>
+            <div style={{ fontWeight: "var(--weight-medium)", color: "var(--theme-text-primary)" }}>
+              {user.full_name}
+            </div>
+            {user.job_title && (
+              <div style={{ fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)", marginTop: "1px" }}>
+                {user.job_title}
+              </div>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id:     "email",
+      header: "Email",
+      cell:   (user) => (
+        <span style={{ color: "var(--theme-text-secondary)" }}>{user.email}</span>
+      ),
+    },
+    {
+      id:     "role",
+      header: "Role",
+      cell:   (user) => (
+        <span
+          style={{
+            display:      "inline-flex",
+            alignItems:   "center",
+            padding:      "2px var(--space-3)",
+            borderRadius: "var(--radius-full)",
+            fontSize:     "var(--text-xs)",
+            fontWeight:   "var(--weight-semibold)",
+            ...getRolePillStyle(user.role),
+          }}
+        >
+          {ROLE_LABELS[user.role]}
+        </span>
+      ),
+    },
+    {
+      id:     "domain",
+      header: "Domain",
+      cell:   (user) => (
+        <span style={{ color: "var(--theme-text-secondary)", fontSize: "var(--text-xs)", whiteSpace: "nowrap" }}>
+          {DOMAIN_LABELS[user.domain]}
+        </span>
+      ),
+    },
+    {
+      id:     "status",
+      header: "Status",
+      cell:   (user) => (
+        <span
+          style={{
+            display:    "inline-flex",
+            alignItems: "center",
+            gap:        "var(--space-1)",
+            fontSize:   "var(--text-xs)",
+            fontWeight: "var(--weight-medium)",
+            color:      user.is_active ? "var(--color-success-text)" : "var(--theme-text-tertiary)",
+          }}
+        >
+          <span
+            style={{
+              width:        "6px",
+              height:       "6px",
+              borderRadius: "var(--radius-full)",
+              background:   user.is_active ? "var(--color-success)" : "var(--theme-text-tertiary)",
+              flexShrink:   0,
+            }}
+          />
+          {user.is_active ? (user.is_on_leave ? "On leave" : "Active") : "Inactive"}
+        </span>
+      ),
+    },
+    {
+      id:     "edit",
+      header: "",
+      align:  "right",
+      cell:   (user) => (
+        <Link
+          href={`/admin/users/${user.id}`}
+          style={{
+            display:        "inline-flex",
+            alignItems:     "center",
+            gap:            "var(--space-1)",
+            padding:        "var(--space-1) var(--space-3)",
+            background:     "transparent",
+            border:         "1px solid var(--theme-paper-border)",
+            borderRadius:   "var(--radius-sm)",
+            fontFamily:     "var(--font-sans)",
+            fontSize:       "var(--text-xs)",
+            fontWeight:     "var(--weight-medium)",
+            color:          "var(--theme-text-secondary)",
+            textDecoration: "none",
+            cursor:         "pointer",
+            transition:     "var(--transition-interactive)",
+            whiteSpace:     "nowrap",
+          }}
+        >
+          <Pencil style={{ width: "12px", height: "12px", strokeWidth: 1.5 }} />
+          Edit
+        </Link>
+      ),
+    },
+  ];
+
+  const emptyState = (
+    <div style={{ padding: "var(--space-20) var(--space-8)", textAlign: "center" }}>
+      <p style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "var(--text-xl)", color: "var(--theme-text-secondary)", margin: "0 0 var(--space-2)" }}>
+        {users.length === 0 ? "No team members yet." : "No members match your filters."}
+      </p>
+      <p style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--theme-text-tertiary)", margin: 0 }}>
+        {users.length === 0 ? "Add the first member to get started." : "Try adjusting your search or filters."}
+      </p>
+    </div>
+  );
+
   return (
     <div>
       {/* Filter bar */}
       <div
         style={{
-          display:       "flex",
-          alignItems:    "center",
-          gap:           "var(--space-3)",
-          padding:       "var(--space-4) var(--space-6)",
-          borderBottom:  "1px solid var(--theme-paper-border)",
-          flexWrap:      "wrap",
+          display:      "flex",
+          alignItems:   "center",
+          gap:          "var(--space-3)",
+          padding:      "var(--space-4) var(--space-6)",
+          borderBottom: "1px solid var(--theme-paper-border)",
+          flexWrap:     "wrap",
         }}
       >
-        {/* Search */}
-        <div style={{ position: "relative", flex: "1 1 200px", minWidth: "160px" }}>
-          <Search
-            style={{
-              position:    "absolute",
-              left:        "var(--space-3)",
-              top:         "50%",
-              transform:   "translateY(-50%)",
-              width:       "14px",
-              height:      "14px",
-              strokeWidth: 1.5,
-              color:       "var(--theme-text-tertiary)",
-              pointerEvents: "none",
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Search by name or email…"
+        <div style={{ flex: "1 1 200px", minWidth: "160px" }}>
+          <SearchBar
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{
-              width:        "100%",
-              padding:      "var(--space-2) var(--space-3) var(--space-2) var(--space-8)",
-              background:   "var(--theme-paper-subtle)",
-              border:       "1px solid var(--theme-paper-border)",
-              borderRadius: "var(--radius-sm)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-sm)",
-              color:        "var(--theme-text-primary)",
-              outline:      "none",
-              boxSizing:    "border-box",
-            }}
+            onChange={setSearch}
+            placeholder="Search by name or email…"
+            size="sm"
           />
         </div>
 
@@ -107,7 +213,6 @@ export function UsersTable({ users }: UsersTableProps) {
           <ChevronDown style={chevronStyle} />
         </div>
 
-        {/* Result count */}
         <span
           style={{
             fontFamily: "var(--font-sans)",
@@ -121,233 +226,13 @@ export function UsersTable({ users }: UsersTableProps) {
         </span>
       </div>
 
-      {/* Table or empty state */}
-      {filtered.length === 0 ? (
-        <div
-          style={{
-            padding:   "var(--space-20) var(--space-8)",
-            textAlign: "center",
-          }}
-        >
-          <p
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontStyle:  "italic",
-              fontSize:   "var(--text-xl)",
-              color:      "var(--theme-text-secondary)",
-              margin:     "0 0 var(--space-2)",
-            }}
-          >
-            {users.length === 0
-              ? "No team members yet."
-              : "No members match your filters."}
-          </p>
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize:   "var(--text-sm)",
-              color:      "var(--theme-text-tertiary)",
-              margin:     0,
-            }}
-          >
-            {users.length === 0
-              ? "Add the first member to get started."
-              : "Try adjusting your search or filters."}
-          </p>
-        </div>
-      ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table
-            style={{
-              width:          "100%",
-              borderCollapse: "collapse",
-              fontFamily:     "var(--font-sans)",
-              fontSize:       "var(--text-sm)",
-            }}
-          >
-            <thead>
-              <tr>
-                {["Name", "Email", "Role", "Domain", "Status", ""].map((col, i) => (
-                  <th
-                    key={i}
-                    style={{
-                      padding:       "var(--space-3) var(--space-4)",
-                      textAlign:     col === "" ? "right" : "left",
-                      fontFamily:    "var(--font-sans)",
-                      fontSize:      "var(--text-2xs)",
-                      fontWeight:    "var(--weight-semibold)",
-                      letterSpacing: "var(--tracking-widest)",
-                      textTransform: "uppercase",
-                      color:         "var(--theme-text-tertiary)",
-                      borderBottom:  "1px solid var(--theme-paper-border)",
-                      background:    "var(--theme-paper-subtle)",
-                      whiteSpace:    "nowrap",
-                    }}
-                  >
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((user, idx) => (
-                <tr
-                  key={user.id}
-                  style={{
-                    background:   idx % 2 === 0 ? "var(--theme-paper)" : "var(--theme-paper-subtle)",
-                    borderBottom: "1px solid var(--theme-paper-border)",
-                  }}
-                >
-                  {/* Name + avatar */}
-                  <td style={{ padding: "var(--space-3) var(--space-4)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-                      <div
-                        style={{
-                          width:          "32px",
-                          height:         "32px",
-                          borderRadius:   "var(--radius-full)",
-                          background:     "var(--theme-accent-surface)",
-                          border:         "1px solid var(--theme-paper-border)",
-                          display:        "flex",
-                          alignItems:     "center",
-                          justifyContent: "center",
-                          fontSize:       "var(--text-xs)",
-                          fontWeight:     "var(--weight-semibold)",
-                          color:          "var(--theme-accent)",
-                          flexShrink:     0,
-                        }}
-                      >
-                        {user.full_name.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div
-                          style={{
-                            fontWeight: "var(--weight-medium)",
-                            color:      "var(--theme-text-primary)",
-                          }}
-                        >
-                          {user.full_name}
-                        </div>
-                        {user.job_title && (
-                          <div
-                            style={{
-                              fontSize:  "var(--text-xs)",
-                              color:     "var(--theme-text-tertiary)",
-                              marginTop: "1px",
-                            }}
-                          >
-                            {user.job_title}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* Email */}
-                  <td
-                    style={{
-                      padding: "var(--space-3) var(--space-4)",
-                      color:   "var(--theme-text-secondary)",
-                    }}
-                  >
-                    {user.email}
-                  </td>
-
-                  {/* Role badge */}
-                  <td style={{ padding: "var(--space-3) var(--space-4)" }}>
-                    <span
-                      style={{
-                        display:      "inline-flex",
-                        alignItems:   "center",
-                        padding:      "2px var(--space-3)",
-                        borderRadius: "var(--radius-full)",
-                        fontSize:     "var(--text-xs)",
-                        fontWeight:   "var(--weight-semibold)",
-                        ...getRolePillStyle(user.role),
-                      }}
-                    >
-                      {ROLE_LABELS[user.role]}
-                    </span>
-                  </td>
-
-                  {/* Domain */}
-                  <td
-                    style={{
-                      padding:    "var(--space-3) var(--space-4)",
-                      color:      "var(--theme-text-secondary)",
-                      fontSize:   "var(--text-xs)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {DOMAIN_LABELS[user.domain]}
-                  </td>
-
-                  {/* Status */}
-                  <td style={{ padding: "var(--space-3) var(--space-4)" }}>
-                    <span
-                      style={{
-                        display:    "inline-flex",
-                        alignItems: "center",
-                        gap:        "var(--space-1)",
-                        fontSize:   "var(--text-xs)",
-                        fontWeight: "var(--weight-medium)",
-                        color:      user.is_active
-                          ? "var(--color-success-text)"
-                          : "var(--theme-text-tertiary)",
-                      }}
-                    >
-                      <span
-                        style={{
-                          width:        "6px",
-                          height:       "6px",
-                          borderRadius: "var(--radius-full)",
-                          background:   user.is_active
-                            ? "var(--color-success)"
-                            : "var(--theme-text-tertiary)",
-                          flexShrink:   0,
-                        }}
-                      />
-                      {user.is_active ? (user.is_on_leave ? "On leave" : "Active") : "Inactive"}
-                    </span>
-                  </td>
-
-                  {/* Edit action */}
-                  <td
-                    style={{
-                      padding:   "var(--space-3) var(--space-4)",
-                      textAlign: "right",
-                    }}
-                  >
-                    <Link
-                      href={`/admin/users/${user.id}`}
-                      style={{
-                        display:        "inline-flex",
-                        alignItems:     "center",
-                        gap:            "var(--space-1)",
-                        padding:        "var(--space-1) var(--space-3)",
-                        background:     "transparent",
-                        border:         "1px solid var(--theme-paper-border)",
-                        borderRadius:   "var(--radius-sm)",
-                        fontFamily:     "var(--font-sans)",
-                        fontSize:       "var(--text-xs)",
-                        fontWeight:     "var(--weight-medium)",
-                        color:          "var(--theme-text-secondary)",
-                        textDecoration: "none",
-                        cursor:         "pointer",
-                        transition:     "var(--transition-interactive)",
-                        whiteSpace:     "nowrap",
-                      }}
-                    >
-                      <Pencil style={{ width: "12px", height: "12px", strokeWidth: 1.5 }} />
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <Table<Profile>
+        columns={columns}
+        rows={filtered}
+        rowKey={(u) => u.id}
+        emptyState={emptyState}
+        stickyHeader
+      />
     </div>
   );
 }

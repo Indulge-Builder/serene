@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import { Button } from '@/components/ui/Button';
 import { createClient } from "@/lib/supabase/client";
 
 type State =
@@ -226,34 +227,15 @@ export function PasswordChangeForm() {
             borderTop:      "1px solid var(--theme-paper-border)",
           }}
         >
-          <button
+          <Button
+            variant="primary"
             type="submit"
             disabled={isPending}
-            style={{
-              display:       "inline-flex",
-              alignItems:    "center",
-              gap:           "var(--space-2)",
-              padding:       "var(--space-2) var(--space-6)",
-              background:    isPending ? "var(--theme-accent-muted)" : "var(--theme-accent)",
-              color:         "var(--theme-accent-fg)",
-              border:        "none",
-              borderRadius:  "var(--radius-sm)",
-              fontFamily:    "var(--font-sans)",
-              fontSize:      "var(--text-sm)",
-              fontWeight:    "var(--weight-semibold)",
-              letterSpacing: "var(--tracking-wide)",
-              cursor:        isPending ? "not-allowed" : "pointer",
-              transition:    "var(--transition-interactive)",
-              boxShadow:     isPending ? "none" : "var(--shadow-accent-glow)",
-            }}
+            loading={isPending}
+            style={{ boxShadow: isPending ? 'none' : 'var(--shadow-accent-glow)' }}
           >
-            {isPending && (
-              <Loader2
-                style={{ width: "14px", height: "14px", strokeWidth: 1.5, animation: "eia-spin 1s linear infinite" }}
-              />
-            )}
             {isPending ? "Updating…" : "Update Password"}
-          </button>
+          </Button>
         </div>
       </div>
     </form>

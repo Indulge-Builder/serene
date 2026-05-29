@@ -27,9 +27,26 @@
 
 :root {
   /* Canvas */
-  --theme-canvas:            #0a0a0a;
+  --theme-canvas:            #0d0c0a;
   --theme-canvas-glow:       rgba(212, 175, 55, 0.08);
   --theme-canvas-text:       rgba(255, 255, 255, 0.85);
+  /* Earth-specific canvas texture — other themes define their own when enhanced */
+  --theme-canvas-grain-opacity: 0.055;
+  --theme-canvas-gradient-1: radial-gradient(
+    ellipse 70% 55% at 8% 8%,
+    rgba(130, 95, 52, 0.16) 0%,
+    transparent 60%
+  );
+  --theme-canvas-gradient-2: radial-gradient(
+    ellipse 55% 70% at 92% 92%,
+    rgba(72, 78, 56, 0.13) 0%,
+    transparent 60%
+  );
+  --theme-canvas-gradient-3: radial-gradient(
+    ellipse 18% 100% at 0% 50%,
+    rgba(95, 83, 72, 0.06) 0%,
+    transparent 100%
+  );
 
   /* Paper */
   --theme-paper:             #ffffff;
@@ -50,7 +67,7 @@
   --theme-text-inverse:      #ffffff;
 
   /* Sidebar */
-  --theme-sidebar-bg:              #0a0a0a;
+  --theme-sidebar-bg:              #0d0c0a;
   --theme-sidebar-border:          #2a2a2a;
   --theme-sidebar-text:            rgba(255, 255, 255, 0.55);
   --theme-sidebar-active:          #d4af37;
@@ -65,12 +82,32 @@
 
 /* ================================================================
    2. EARTH THEME
+   Canvas gradient tokens (--theme-canvas-gradient-*) are Earth-specific
+   warmth washes. Other themes should define their own when enhanced.
+   Grain SVG opacity is hardcoded in .layout-canvas (data URIs cannot
+   reference CSS variables) — one data URI per theme if intensities differ.
    ================================================================ */
 
 [data-theme="earth"] {
-  --theme-canvas:            #0a0a0a;
+  --theme-canvas:            #0d0c0a;
   --theme-canvas-glow:       rgba(212, 175, 55, 0.08);
   --theme-canvas-text:       rgba(255, 255, 255, 0.85);
+  --theme-canvas-grain-opacity: 0.055;
+  --theme-canvas-gradient-1: radial-gradient(
+    ellipse 70% 55% at 8% 8%,
+    rgba(130, 95, 52, 0.16) 0%,
+    transparent 60%
+  );
+  --theme-canvas-gradient-2: radial-gradient(
+    ellipse 55% 70% at 92% 92%,
+    rgba(72, 78, 56, 0.13) 0%,
+    transparent 60%
+  );
+  --theme-canvas-gradient-3: radial-gradient(
+    ellipse 18% 100% at 0% 50%,
+    rgba(95, 83, 72, 0.06) 0%,
+    transparent 100%
+  );
 
   --theme-paper:             #ffffff;
   --theme-paper-subtle:      #f9f9f6;
@@ -87,7 +124,7 @@
   --theme-text-tertiary:     #b5a99a;
   --theme-text-inverse:      #ffffff;
 
-  --theme-sidebar-bg:              #0a0a0a;
+  --theme-sidebar-bg:              #0d0c0a;
   --theme-sidebar-border:          #2a2a2a;
   --theme-sidebar-text:            rgba(255, 255, 255, 0.55);
   --theme-sidebar-active:          #d4af37;
@@ -636,6 +673,12 @@
   to   { width: 0%; }
 }
 
+/* Page title dot — slow accent blink on the trailing period */
+@keyframes eia-page-dot-blink {
+  0%, 100% { opacity: 1;   }
+  50%       { opacity: 0.2; }
+}
+
 /* Loader spin */
 @keyframes eia-spin {
   from { transform: rotate(0deg);   }
@@ -661,6 +704,12 @@
   animation: eia-lia-cursor 500ms steps(1) infinite;
 }
 
+/* Page title dot — accent period that slowly pulses on primary nav pages */
+.page-title-dot {
+  color:     var(--theme-accent);
+  animation: eia-page-dot-blink 2.4s ease-in-out infinite;
+}
+
 
 /* ================================================================
    16. GLOBAL UTILITY CLASSES
@@ -677,7 +726,7 @@
   color:          var(--theme-text-tertiary);
 }
 
-/* Page title — Playfair h1 on dashboard list pages */
+/* Page title — Playfair h1 on primary nav pages. Always ends with .page-title-dot */
 .type-page-title {
   font-family:    var(--font-serif);
   font-size:      var(--text-2xl);

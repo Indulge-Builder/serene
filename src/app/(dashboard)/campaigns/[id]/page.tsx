@@ -161,19 +161,8 @@ export default async function CampaignDetailPage({
 
       {/* Page title */}
       <div style={{ marginBottom: 'var(--space-6)' }}>
-        <h1
-          style={{
-            fontFamily:    'var(--font-serif)',
-            fontStyle:     'italic',
-            fontSize:      'var(--text-2xl)',
-            fontWeight:    'var(--weight-light)',
-            letterSpacing: 'var(--tracking-tighter)',
-            lineHeight:    'var(--leading-tight)',
-            color:         'var(--theme-text-primary)',
-            margin:        0,
-          }}
-        >
-          {campaignName}
+        <h1 className="type-page-title" style={{ margin: 0, fontStyle: 'italic' }}>
+          {campaignName}<span className="page-title-dot">.</span>
         </h1>
       </div>
 

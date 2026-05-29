@@ -14,9 +14,9 @@ import {
   Snowflake,
   Route,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import type { Lead, AdCreative } from '@/lib/types/database';
 import { formatDate } from '@/lib/utils/dates';
+import { InfoRow } from '@/components/ui/InfoRow';
 import { CampaignVideoModal } from '@/components/leads/CampaignVideoModal';
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -126,51 +126,67 @@ export function LeadInfoCard({ lead, assigneeName, adCreative = null }: Props) {
             rowGap:              'var(--space-5)',
           }}
         >
-          <DatumRow icon={User} label="Full Name" value={fullName} colSpan2 />
+          <InfoRow
+            icon={User}
+            label="Full Name"
+            value={trimmedOrUndefined(fullName)}
+            style={{ gridColumn: '1 / -1' }}
+          />
 
-          <DatumRow icon={Phone} label="Phone" value={lead.phone} mono />
+          <InfoRow
+            icon={Phone}
+            label="Phone"
+            value={lead.phone?.trim() ? monoValue(lead.phone.trim()) : undefined}
+          />
 
-          <DatumRow icon={Mail} label="Email" value={lead.email} />
+          <InfoRow
+            icon={Mail}
+            label="Email"
+            value={trimmedOrUndefined(lead.email)}
+          />
 
           <ContactFieldsDivider />
 
-          <DatumRow
+          <InfoRow
             icon={Layers}
             label="Domain"
             value={DOMAIN_LABELS[lead.domain] ?? lead.domain}
           />
 
-          <DatumRow
+          <InfoRow
             icon={Megaphone}
             label="Platform"
             value={
               lead.platform
                 ? PLATFORM_LABELS[lead.platform] ?? lead.platform
-                : null
+                : undefined
             }
           />
 
-          <DatumRow icon={UserCheck} label="Assigned to">
-            {assigneeName ? (
-              <DatumValue>{assigneeName}</DatumValue>
-            ) : (
-              <NeutralBadge label="Unassigned" />
-            )}
-          </DatumRow>
+          <InfoRow
+            icon={UserCheck}
+            label="Assigned to"
+            value={
+              assigneeName
+                ? assigneeName
+                : <NeutralBadge label="Unassigned" />
+            }
+          />
 
-          <DatumRow icon={PhoneCall} label="Call count">
-            {lead.call_count > 0 ? (
-              <DatumValue mono>{String(lead.call_count)}</DatumValue>
-            ) : (
-              <DatumValue muted>—</DatumValue>
-            )}
-          </DatumRow>
+          <InfoRow
+            icon={PhoneCall}
+            label="Call count"
+            value={
+              lead.call_count > 0
+                ? monoValue(String(lead.call_count))
+                : undefined
+            }
+          />
 
-          <DatumRow
+          <InfoRow
             icon={Calendar}
             label="Received"
-            value={formatDate(lead.created_at, 'dd MMM yyyy, hh:mm a')}
-            mono
+            value={monoValue(formatDate(lead.created_at, 'dd MMM yyyy, hh:mm a'))}
           />
         </div>
 
@@ -197,16 +213,14 @@ export function LeadInfoCard({ lead, assigneeName, adCreative = null }: Props) {
   );
 }
 
-// ─────────────────────────────────────────────
-// Labelled datum row — read-only detail field pattern
-// ─────────────────────────────────────────────
-const DATUM_ICON_STYLE = {
-  width:       '1rem',
-  height:      '1rem',
-  color:       'var(--theme-text-tertiary)',
-  strokeWidth: 1.5,
-  flexShrink:  0,
-} as const;
+function trimmedOrUndefined(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+function monoValue(text: string) {
+  return <span style={{ fontFamily: 'var(--font-mono)' }}>{text}</span>;
+}
 
 function ContactFieldsDivider() {
   return (
@@ -218,90 +232,6 @@ function ContactFieldsDivider() {
       }}
       aria-hidden
     />
-  );
-}
-
-function DatumRow({
-  icon: Icon,
-  label,
-  value,
-  mono = false,
-  colSpan2 = false,
-  children,
-}: {
-  icon:      LucideIcon;
-  label:     string;
-  value?:    string | null;
-  mono?:     boolean;
-  colSpan2?: boolean;
-  children?: React.ReactNode;
-}) {
-  const displayValue = value?.trim() ? value : null;
-
-  return (
-    <div
-      style={{
-        display:    'flex',
-        alignItems: 'center',
-        gap:        'var(--space-3)',
-        gridColumn: colSpan2 ? '1 / -1' : undefined,
-      }}
-    >
-      <Icon style={DATUM_ICON_STYLE} aria-hidden />
-      <div
-        style={{
-          display:       'flex',
-          flexDirection: 'column',
-          gap:           '0.125rem',
-          minWidth:      0,
-        }}
-      >
-        <span
-          style={{
-            fontFamily:    'var(--font-sans)',
-            fontSize:      'var(--text-2xs)',
-            fontWeight:    'var(--weight-semibold)',
-            letterSpacing: 'var(--tracking-widest)',
-            textTransform: 'uppercase',
-            color:         'var(--theme-text-tertiary)',
-            lineHeight:    'var(--leading-none)',
-          }}
-        >
-          {label}
-        </span>
-        {children ?? (
-          <DatumValue mono={mono} muted={!displayValue}>
-            {displayValue ?? '—'}
-          </DatumValue>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DatumValue({
-  children,
-  mono = false,
-  muted = false,
-}: {
-  children: React.ReactNode;
-  mono?:    boolean;
-  muted?:   boolean;
-}) {
-  return (
-    <span
-      style={{
-        fontFamily: mono ? 'var(--font-mono)' : 'var(--font-sans)',
-        fontSize:   'var(--text-sm)',
-        fontWeight: 'var(--weight-normal)',
-        color:      muted
-          ? 'var(--theme-text-tertiary)'
-          : 'var(--theme-text-primary)',
-        lineHeight: 'var(--leading-normal)',
-      }}
-    >
-      {children}
-    </span>
   );
 }
 

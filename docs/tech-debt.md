@@ -22,13 +22,15 @@ Format per entry:
 - **Fix:** Delete the inline `getCallerProfile` function from `leads.ts`. Add `import { getCurrentProfile } from '@/lib/services/profiles-service'`. Replace all `getCallerProfile()` call sites in the file with `getCurrentProfile()`. The return type widens from the slim 4-field object to the full `Profile` — verify no call site depends on the slim shape before removing (all current uses only read `.id`, `.role`, `.domain`, `.full_name` which are present on `Profile`).
 - **Logged:** 2026-05-28 (identified during tasks.ts hardening session; same fix already applied to tasks.ts in that session)
 
+
 ### TD-002 — `src/lib/services/tasks-service.ts` — Rule P-07 console.error
 
 - **File:** `src/lib/services/tasks-service.ts`
 - **Rule:** P-07 (no `console.log`, `console.error`, or `console.warn` in production — all error logging goes to Sentry only)
-- **What:** `console.error('[tasks-service] getGroupTasks RPC error:', error)` at line ~179 (inside `getGroupTasks`). Pre-existing in the original build; not introduced by the RPC refactor.
+- **What:** `console.error('[tasks-service] getGroupTasks RPC error:', error)` inside `getGroupTasks`. Pre-existing in the original build; not introduced by the RPC refactor.
 - **Fix:** Replace with `Sentry.captureException(error, { extra: { context: 'getGroupTasks RPC' } })` once Sentry is wired up. Import `* as Sentry from '@sentry/nextjs'` at the top of the file.
 - **Logged:** 2026-05-28
+- **History:** The `// TD-002` marker comment above the `console.error` call was wiped during the `getTaskGroupById` addition on 2026-05-29 and then explicitly re-added. **This file has a pattern of losing TD markers during rewrites.** When touching `tasks-service.ts` for any reason, grep for `TD-002` before committing to confirm the marker is still present.
 
 ---
 
@@ -52,10 +54,32 @@ Format per entry:
 **Reference implementations:**
 - `getGroupSubtasksAction` / `getPersonalTasksAction` in `src/lib/actions/tasks.ts`
 
+### PN-002 — `unstable_cache` key must always include domain for domain-scoped queries
+
+**Established:** 2026-05-29 (during task performance hardening; `getGroupTasks` cache introduced)
+
+**Rule:** Any service function wrapped in `unstable_cache` whose query is domain-scoped (i.e. RLS or application logic limits results by `caller.domain`) must include the domain as part of the cache key. A domain-agnostic cache key will serve one domain's data to another domain's users on a cache hit.
+
+**Pattern to follow:**
+```typescript
+const getGroupTasksCached = unstable_cache(
+  async (domain: string) => { /* query */ },
+  ['group-tasks', domain],  // ← domain in key, always
+  { tags: ['group-tasks'], revalidate: 60 }
+);
+```
+
+**Revalidation:** Every write action that mutates the cached data must call `revalidateTag('group-tasks', { expire: 0 })` immediately after a successful insert/update/delete. In Next.js 16 Server Actions, the `{ expire: 0 }` second argument is required for immediate invalidation.
+
+**Reference implementation:**
+- `getGroupTasks` in `src/lib/services/tasks-service.ts`
+- `createGroupTaskAction` and `createSubtaskAction` in `src/lib/actions/tasks.ts`
+
 ---
 
 ## Resolved items
 
 | ID | File | Resolved | Notes |
 |----|------|----------|-------|
+| TD-003 | `src/lib/services/tasks-service.ts` | 2026-05-29 | `get_personal_tasks` RPC extended with cursor params (migration 0026); PostgREST cursor path fully retired; priority sort now consistent on all pages |
 | — | `src/lib/actions/tasks.ts` | 2026-05-28 | Same `getCallerProfile` duplicate; fixed by switching to `getCurrentProfile` import |

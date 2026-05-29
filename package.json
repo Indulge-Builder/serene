@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "trigger:dev": "trigger dev"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -29,10 +30,12 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@trigger.dev/build": "4.4.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tailwindcss": "^4",
+    "trigger.dev": "^4.4.6",
     "typescript": "^5"
   }
 }

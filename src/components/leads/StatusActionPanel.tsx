@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Phone, TrendingUp, Leaf, XCircle, Trash2, Loader2, ChevronDown, Trophy } from 'lucide-react';
+import { Phone, TrendingUp, Leaf, XCircle, Trash2, ChevronDown, Trophy } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
 import { updateLeadStatus } from '@/lib/actions/leads';
 import { CalledModal } from './CalledModal';
@@ -386,49 +387,19 @@ function ConfirmModal({
       maxWidth="max-w-sm"
       footer={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            style={{
-              height:       '2.25rem',
-              paddingLeft:  'var(--space-4)',
-              paddingRight: 'var(--space-4)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-sm)',
-              background:   'var(--theme-paper-subtle)',
-              fontSize:     'var(--text-sm)',
-              fontWeight:   'var(--weight-medium)',
-              color:        'var(--theme-text-primary)',
-              cursor:       isPending ? 'not-allowed' : 'pointer',
-              opacity:      isPending ? 0.6 : 1,
-            }}
-          >
+          <Button variant="secondary" type="button" onClick={onClose} disabled={isPending}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             type="button"
             onClick={onConfirm}
             disabled={isPending}
-            style={{
-              display:        'inline-flex',
-              alignItems:     'center',
-              gap:            'var(--space-2)',
-              height:         '2.25rem',
-              paddingLeft:    'var(--space-4)',
-              paddingRight:   'var(--space-4)',
-              border:         'none',
-              borderRadius:   'var(--radius-sm)',
-              fontSize:       'var(--text-sm)',
-              fontWeight:     'var(--weight-medium)',
-              cursor:         isPending ? 'not-allowed' : 'pointer',
-              opacity:        isPending ? 0.7 : 1,
-              ...confirmStyle,
-            }}
+            loading={isPending}
+            style={confirmStyle}
           >
-            {isPending && <Loader2 style={{ width: '0.875rem', height: '0.875rem', animation: 'eia-spin 1s linear infinite' }} />}
             {isPending ? 'Saving…' : confirmLabel}
-          </button>
+          </Button>
         </>
       }
     >
@@ -496,50 +467,18 @@ function ReasonModal({
       maxWidth="max-w-md"
       footer={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            style={{
-              height:       '2.25rem',
-              paddingLeft:  'var(--space-4)',
-              paddingRight: 'var(--space-4)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-sm)',
-              background:   'var(--theme-paper-subtle)',
-              fontSize:     'var(--text-sm)',
-              fontWeight:   'var(--weight-medium)',
-              color:        'var(--theme-text-primary)',
-              cursor:       isPending ? 'not-allowed' : 'pointer',
-              opacity:      isPending ? 0.6 : 1,
-            }}
-          >
+          <Button variant="secondary" type="button" onClick={onClose} disabled={isPending}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="danger"
             type="submit"
             form="reason-modal-form"
             disabled={isPending}
-            style={{
-              display:        'inline-flex',
-              alignItems:     'center',
-              gap:            'var(--space-2)',
-              height:         '2.25rem',
-              paddingLeft:    'var(--space-4)',
-              paddingRight:   'var(--space-4)',
-              border:         'none',
-              borderRadius:   'var(--radius-sm)',
-              background:     'var(--color-danger)',
-              color:          'var(--theme-text-inverse)',
-              fontSize:       'var(--text-sm)',
-              fontWeight:     'var(--weight-medium)',
-              cursor:         isPending ? 'not-allowed' : 'pointer',
-              opacity:        isPending ? 0.7 : 1,
-            }}
+            loading={isPending}
           >
-            {isPending && <Loader2 style={{ width: '0.875rem', height: '0.875rem', animation: 'eia-spin 1s linear infinite' }} />}
             {isPending ? 'Saving…' : confirmLabel}
-          </button>
+          </Button>
         </>
       }
     >

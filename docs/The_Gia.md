@@ -1090,7 +1090,77 @@ components/
     └── BotStatusToggle.tsx      ← on/off switch in conversation header
 ```
 
-## 15. Decision Log
+## 15. SLA Engine
+
+The Gia SLA Engine enforces response-time commitments on live leads using event-driven Trigger.dev delayed jobs. No polling. No cron scanners.
+
+### Business Hours
+
+```
+Timezone:   Asia/Kolkata (IST, UTC+5:30)
+Start:      09:00 IST (inclusive)
+End:        19:00 IST (exclusive)
+Off days:   Sunday (0) — Saturday is a business day
+```
+
+Source of truth: `src/lib/constants/sla.ts` (`BUSINESS_HOURS` constant).
+
+### SLA Rules
+
+| Code    | Status Trigger | Threshold           | Recipient | Auto-task? |
+| ------- | -------------- | ------------------- | --------- | ---------- |
+| SLA-01A | `new`          | 15 business minutes | Agent     | Yes        |
+| SLA-01B | `new`          | 30 business minutes | Manager   | No         |
+| SLA-02A | `touched`      | 24 business hours   | Agent     | Yes        |
+| SLA-02B | `touched`      | 36 business hours   | Manager   | No         |
+| SLA-03A | `in_discussion`| 24 business hours   | Agent     | Yes        |
+| SLA-03B | `in_discussion`| 36 business hours   | Manager   | No         |
+| SLA-04A | `nurturing`    | 4 business days     | Agent     | Yes        |
+| SLA-04B | `nurturing`    | 4 business days     | Manager   | No         |
+
+"A" rules notify the assigned agent. "B" rules escalate to all active managers/admins/founders in the lead's domain.
+
+### Escalation Chain
+
+1. SLA-01A fires → agent notified + auto-task `'New lead untouched — follow up now'`
+2. SLA-01B fires (15 min later) → all domain managers notified
+3. Lead advances to `touched` → SLA-01 cancelled, SLA-02 timers start fresh
+4. On each call note (`addLeadCallNote`): SLA-02/03 timers reset; SLA-01 never reset by activity
+
+### DB Columns Added to `leads`
+
+| Column              | Type          | Purpose                                                        |
+| ------------------- | ------------- | -------------------------------------------------------------- |
+| `status_changed_at` | `timestamptz` | Set on every status transition. Backfilled from `created_at`.  |
+| `last_activity_at`  | `timestamptz` | Set on any meaningful activity (call, note). Backfilled.       |
+
+### `lead_sla_timers` Table
+
+Tracks Trigger.dev job state per (lead, rule). Not append-only — `status`, `fired_at`, `cancelled_at`, `trigger_run_id` are updated by the service-role Trigger.dev job. Regular users have SELECT only (scoped by their access level).
+
+### Auto-task Creation Guard
+
+When `fireSlaBreachHandler` runs for an agent rule, it calls `getOpenGiaFollowupTask(leadId, assignedTo)` before creating a task. If an open `gia_followup` task already exists for this lead + agent, no new task is created. This prevents duplicate tasks from stale-fire retries.
+
+Auto-task titles (from `SLA_AUTO_TASK_TITLES`):
+- `SLA-01A`: `'New lead untouched — follow up now'` (priority: urgent)
+- `SLA-02A`: `'No update in 24 hours — follow up on lead'` (priority: high)
+- `SLA-03A`: `'Discussion stalled — re-engage lead'` (priority: high)
+- `SLA-04A`: `'Less than 3 call attempts in 4 days'` (priority: high)
+
+### Stale-fire Guard
+
+The Trigger.dev job (`fireLeadSlaTask`) re-reads the lead from DB on every execution. If the lead status no longer matches the rule's `statusTrigger`, the job logs a `sla_breach` activity with `outcome: 'stale_fire'` and exits cleanly. The payload is the snapshot at scheduling time and is never trusted for status checks.
+
+### Double-scheduling Guard
+
+`scheduleLeadSlasTask` passes `idempotencyKey: 'lead-sla-${leadId}-${ruleCode}'`. Trigger.dev v3 deduplicates by key for all non-terminal run states including DELAYED — same guarantee as `task-reminders.ts`.
+
+### Terminal Statuses
+
+`won`, `lost`, `junk` → cancel all SLA timers, schedule none.
+
+## 16. Decision Log
 
 | Date | Decision                      | Chosen                                                                                                                                                                     | Why                                                                                                                                                                                                                          |
 | ---- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -51,6 +51,7 @@ src/lib/actions/                    ← ALL server actions live here
 src/lib/services/                   ← ALL DB queries live here
 src/lib/validations/                ← ALL Zod schemas live here
 src/lib/constants/                  ← domain names, role names, status enums
+src/lib/constants/motion.ts        ← shared Framer Motion constants (ENTER_DURATION, EASE_OUT_EXPO, etc.) — import here, never re-declare inline per component
 src/lib/utils/sanitize.ts           ← sanitizeText() — the only sanitizer
 src/lib/utils/phone.ts              ← normalizeToE164() — the only normalizer
 src/lib/utils/dates.ts              ← formatDate() — the only date formatter
@@ -65,6 +66,7 @@ src/components/dashboard/            ← DashboardCanvas, DashboardWidgetSlot, W
 src/components/ui/                  ← shadcn primitives, zero feature imports
 src/components/ui/lia-glyph.tsx     ← Lia's custom SVG mark (always breathing)
 src/styles/design-tokens.css        ← ALL CSS variables, all themes
+src/app/globals.css                 ← `.layout-canvas` dashboard shell (grain + gradient layers)
 docs/design-dna.md                  ← full design reference
 docs/changelog.md                   ← SINGLE SOURCE OF TRUTH for all changes (mandatory)
 ```
@@ -149,6 +151,12 @@ Table, Toggle, Dropdown/Select, Search Bar, Message Bar, Skeleton
 Default size: `w-4 h-4`, stroke: `1.5`.
 Sidebar nav: `w-[15px] h-[15px]` (intentional exception).
 
+**Page title dot:** Every primary navigation page `<h1>` ends with `<span className="page-title-dot">.</span>`.
+This produces a slow accent-coloured blink (2.4s ease-in-out, `eia-page-dot-blink` keyframe).
+Use `className="type-page-title"` on the `<h1>` and the dot class on the trailing span.
+The dot is **only** on primary nav pages (the top-level `<h1>` the user lands on from the sidebar).
+Detail pages (leads/[id], campaigns/[id], admin/users/[id]) are exempt — they show a back link instead.
+
 **Empty states:** Always Playfair italic heading. Never "No data available."
 
 **Form errors:** Always from `lib/validations/form-errors.ts`.
@@ -178,7 +186,7 @@ Lia never silently crosses domain boundaries.
 ## Theme Quick Reference
 
 ```text
-data-theme="earth"   → gold accent (#D4AF37), warm black canvas
+data-theme="earth"   → gold accent (#D4AF37), warm canvas (#0d0c0a) + grain + radial washes
 data-theme="air"     → steel blue accent (#7b9fc4), blue-black canvas
 data-theme="water"   → teal accent (#2a9d8f), teal-black canvas
 data-theme="fire"    → lava orange accent (#e05c1a), brown-black canvas
@@ -605,6 +613,137 @@ Old values `pending` and `done` no longer exist. Any code referencing them fails
 **tasks_agent_select policy is correct for group_subtask.** An agent can only see subtasks assigned to themselves (`assigned_to = auth.uid()`). A subtask assigned to a colleague in the same group is invisible. The existing policy requires no change.
 
 **Task reminder pattern (Trigger.dev):** `scheduleTaskReminder` passes `idempotencyKey: 'task-reminder-${taskId}'` to `tasks.trigger()`. Trigger.dev v3 deduplicates by idempotency key for all non-terminal run states including DELAYED — a second `tasks.trigger()` with the same key while a DELAYED run exists returns the existing run handle (`isCached: true`), never creates a new run. This closes the concurrent-update race window without storing run IDs in the DB. Evidence is in the comment block at the top of `src/trigger/task-reminders.ts`. Do not add a `reminder_run_id` column to `tasks` — it is not needed.
+
+### Migrations 0018–0021 — OS Tasks hardening (2026-05-28)
+
+RLS fixes, suppression, and audit log.
+
+- Migration 0018: `task_groups` SELECT and UPDATE policies tightened — manager role now enforces `get_user_domain() = domain`; admin/founder retain full access.
+- Migration 0019: `task_messages` SELECT and INSERT policies add `created_by = auth.uid()` (task creator was locked out of own chat); managers scoped via `task_groups.domain` join.
+- Migration 0020: `get_group_task_summary` RPC added — aggregate subtask counts per group.
+- Migration 0021: `task_messages` suppression columns (`is_suppressed`, `suppressed_by`, `suppressed_at`) + UPDATE RLS for admin/founder; `task_audit_log` append-only table + `log_task_changes()` trigger (AFTER UPDATE on `tasks`, watches exactly six fields: `title`, `description`, `status`, `priority`, `due_at`, `assigned_to` — all other columns intentionally excluded).
+
+**`task_audit_log` trigger contract:** `log_task_changes()` fires AFTER UPDATE on `tasks` FOR EACH ROW. It logs changes to exactly six fields. `attachments`, `task_category`, `group_id`, `created_at`, `updated_at`, `completed_at` are all intentionally excluded. Never add `attachments` to this trigger — checklist toggles would flood the log.
+
+### Migration 0022 — task_remarks (2026-05-29)
+
+`task_messages` replaced with `task_remarks`.
+
+- Migration 0022: `DROP TABLE task_messages CASCADE` (pre-production, no data loss); `CREATE TABLE task_remarks` with `status_change` nullable text column (CHECK values mirror `tasks.status` exactly — coupled, must stay in sync); ASC index on `(task_id, created_at)`; same suppression columns + UPDATE RLS pattern; Realtime enabled.
+- `src/lib/types/database.ts` — `TaskRemark` type added; `Database` table entry added for `task_remarks`.
+
+**`task_remarks` is append-only** with one narrow exception: the suppression UPDATE policy. No DELETE policy ever. `status_change` CHECK values are coupled to `tasks.status` CHECK — if `tasks.status` gains a new value, a new migration must extend `task_remarks.status_change` too.
+
+### Migration 0023 — task attachments / checklist (2026-05-29)
+
+Checklist stored as JSONB on `tasks`.
+
+- Migration 0023: `ADD COLUMN attachments jsonb NOT NULL DEFAULT '[]'` to `tasks`; CHECK constraint `tasks_attachments_is_array` validates `jsonb_typeof = 'array'`; no index (never queried as a filter); intentionally excluded from `log_task_changes()` trigger.
+- `src/lib/types/database.ts` — `ChecklistItem = { id: string; text: string; checked: boolean }` exported; `Task.attachments: ChecklistItem[]` added; `Database.tasks.Insert` updated to make `attachments` optional (has DB default).
+- `src/lib/validations/task-schemas.ts` — `UpdateChecklistSchema` + `UpdateChecklistInput` added.
+- `src/lib/actions/tasks.ts` — `updateChecklistAction` added: Zod → auth → `canMutateTask` → adminClient UPDATE on `attachments`; returns `ChecklistItem[]`; checklist updates do NOT trigger `log_task_changes`.
+
+**Checklist item shape:** `{ id: string, text: string, checked: boolean }`. Shape validation beyond array-type is enforced at the application layer only.
+
+### SubTaskModal — replaces TaskModal (2026-05-29)
+
+`TaskModal.tsx` deleted. `SubTaskModal.tsx` is the canonical task detail modal.
+
+- `src/components/tasks/SubTaskModal.tsx` — panel centering uses `left: 240px` (sidebar width) so the modal centers within the content area, not the full viewport. Panel background `var(--theme-paper)`. `currentUserName?: string` prop added and threaded to `TaskRemarksPanel`. Three bogus tokens fixed: `--theme-surface` → `--theme-paper`, `--theme-surface-secondary` → `--theme-paper-subtle`, `--theme-border` → `--theme-paper-border`. Backdrop `backdropFilter: blur` removed (not a sanctioned surface). Zone B background transparent + `position: relative` so ambient orbs clip to it.
+- `src/components/tasks/TaskRemarksPanel.tsx` — Zone B of `SubTaskModal`. No panel header, no status-change pill row. Messages rendered as individual floating `var(--theme-paper)` + `var(--shadow-1)` cards. Ambient background: two CSS `@keyframes` orbs (`trp-orb-a` 18s, `trp-orb-b` 24s) using `--theme-accent` at ~4% opacity; GPU-only (`transform + opacity + will-change`); `pointer-events: none; aria-hidden`. Composer: floating `var(--theme-paper)` + `var(--shadow-2)` card, no top border. Realtime dedup: `seenIds` ref (seeded from `initialRemarks.map(r => r.id)`) is checked before any `setRemarks` — same row ID never appended twice regardless of how many subscriptions Strict Mode creates. Echo detection: `incoming.author_id === currentUserId AND optimisticIds.size > 0` — replaces oldest pending optimistic row without content-matching (content-match broke when `sanitizeText` altered the string server-side).
+- `src/components/tasks/GroupTaskWorkspace.tsx` — `currentUserName` now passed to `SubTaskModal`.
+
+**`SubTaskModal` props:**
+```
+open:             boolean
+onClose:          () => void
+task:             Task
+group?:           TaskGroup          — present for group subtasks, absent for personal
+assignee?:        Pick<Profile, 'id' | 'full_name' | 'avatar_url'>
+initialRemarks:   TaskRemarkWithAuthor[]
+callerProfile:    Pick<Profile, 'id' | 'role' | 'domain'>
+currentUserName?: string             — caller's display name for optimistic remark author
+```
+
+**`AnimatePresence` at call site is mandatory.** The modal does not wrap its own `AnimatePresence` — if the call site omits it, the exit animation never plays.
+
+### Tasks page — contextual header button (2026-05-29)
+
+Single `+ My Task` / `+ Group Task` button top-right of the tasks page, changing label with the active tab.
+
+- `src/app/(dashboard)/tasks/TasksShell.tsx` — `createTrigger: number` state; header row `flex + space-between` with `TabSelector` left and accent button right; button label: `+ My Task` (personal tab) / `+ Group Task` (group tab); button hidden on group tab for agents (mirrors server-side auth guard); clicking increments `createTrigger` which is passed to the active tab.
+- `src/components/tasks/PersonalTasksTab.tsx` — toolbar div removed; `createTrigger?: number` prop; `useEffect` watches it and calls `setCreateModalOpen(true)` when `> 0`; `Plus` import removed (no longer rendered here).
+- `src/components/tasks/GroupTasksTab.tsx` — same pattern as `PersonalTasksTab`; toolbar div removed; `createTrigger?: number` prop + `useEffect`.
+
+### Task tags — DB persistence + tag filter (2026-05-29)
+
+Tags are stored in `tasks.tags text[]` and filterable client-side in My Tasks.
+
+- Migration 0024: `tags text[] NOT NULL DEFAULT '{}'` on `tasks`; GIN index `idx_tasks_tags_gin` (partial: `task_category = 'personal'`).
+- `src/lib/types/database.ts` — `Task.tags: string[]` added; `Insert` type updated.
+- `src/lib/validations/task-schemas.ts` — `CreatePersonalTaskSchema` includes `tags: z.array(...).max(10).default([])`; `UpdateTaskTagsSchema` + `UpdateTaskTagsInput` added.
+- `src/lib/services/tasks-service.ts` — `PersonalTaskFilters.tags?: string[]` added; `getPersonalTasks` applies `.contains('tags', filters.tags)` (GIN `@>` operator); `getPersonalTaskTags(userId)` returns sorted distinct tags.
+- `src/lib/actions/tasks.ts` — `createPersonalTaskAction` writes `tags`; `updateTaskTagsAction` (full replace, auth-gated via `canMutateTask`); `getPersonalTaskTagsAction` read wrapper.
+- `src/components/tasks/CreatePersonalTaskModal.tsx` — "Saved locally only (DB column pending)" removed; `tags` passed to action and included in `syntheticTask`.
+- `src/components/tasks/PersonalTasksTab.tsx` — `availableTags` + `selectedTags` state; tags loaded in parallel on mount; tag filter pill bar above task list; client-side filter applied in `tasksByPriority` grouping; empty state copy adapts to tag-filtered state.
+
+---
+
+### Earth canvas enhancement (2026-05-29)
+
+Dashboard shell canvas upgraded for Earth theme — warmer base, grain texture, three radial washes.
+
+- `src/styles/design-tokens.css` — `--theme-canvas` / `--theme-sidebar-bg` → `#0d0c0a`; Earth-only `--theme-canvas-grain-opacity` + `--theme-canvas-gradient-1/2/3` tokens (espresso top-left, olive bottom-right, umber left rail)
+- `src/app/globals.css` — `html`/`body` base `#0d0c0a` (no load flash); `.layout-canvas` class composes grain SVG + theme-scoped gradient vars
+- `src/app/(dashboard)/layout.tsx` — shell migrated from inline background to `layout-canvas min-h-screen`
+
+**`.layout-canvas` contract:** grain opacity is hardcoded in the SVG data URI (cannot reference CSS vars). Gradient layers use `--theme-canvas-gradient-*` — only Earth defines these today; other themes show flat canvas until enhanced. See `docs/design-dna.md` §3.5 and §6.6.
+
+---
+
+## Before Writing Any Code — Mandatory Sequence
+
+Every task, every time. No exceptions.
+
+```
+1. Read the relevant authority files for this task:
+   - CLAUDE.md (this file) and src/components/CLAUDE.md
+   - docs/design-dna.md for any visual/layout decision
+   - src/styles/design-tokens.css for token values
+   - The feature-area CLAUDE.md if one exists
+
+2. Search the codebase for existing implementations of every
+   named concept in this task. Search by behaviour, not filename:
+   "date picker" not just "DatePicker"
+   "format duration" not just "formatDuration"
+   "round robin" not just "getNextRoundRobinAgent"
+   Document what you find. Only build what does not already exist. (Q-12)
+
+3. Only then write code.
+```
+
+This sequence is not optional. Q-12 applies to components, hooks, utils,
+service functions, constants, and Zod schemas. A duplicate created without
+a prior search is a violation regardless of whether the names differ.
+
+---
+
+## Pattern Notes
+
+### `unstable_cache` — domain-scoped queries
+
+When wrapping a service function in `unstable_cache`, the cache key **must** include the caller's domain when the underlying query is domain-scoped. A manager in `concierge` must never receive a cached response intended for `finance`.
+
+```ts
+// ✅ Correct
+unstable_cache(() => queryFn(), ['tag', domain, JSON.stringify(filters)], { revalidate: 60, tags: ['tag'] })
+
+// ✗ Wrong — omits domain, cross-domain cache hit possible
+unstable_cache(() => queryFn(), ['tag'], { revalidate: 60, tags: ['tag'] })
+```
+
+Reference implementation: `getGroupTasks` in `src/lib/services/tasks-service.ts`.
+Revalidation in Server Actions uses `revalidateTag(tag, { expire: 0 })` (Next.js 16 requires second arg).
 
 ---
 

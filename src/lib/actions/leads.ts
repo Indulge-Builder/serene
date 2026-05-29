@@ -14,6 +14,7 @@ import { formErrors } from '@/lib/validations/form-errors';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { getAgentsForDomain } from '@/lib/services/leads-service';
 import { createNotification } from '@/lib/services/notifications-service';
+import { scheduleSlaTimersForLead, cancelSlaTimersForLead, refreshActivitySlaTimers } from '@/lib/actions/sla';
 import type { ActionResult } from '@/lib/types/index';
 import type { LeadStatus, AppDomain } from '@/lib/types/database';
 
@@ -129,6 +130,34 @@ export async function addLeadCallNote(
     });
   }
 
+  // 9. SLA: update last_activity_at on lead
+  const now = new Date().toISOString();
+  await admin.from('leads').update({ last_activity_at: now }).eq('id', leadId);
+
+  // 10. SLA: if auto-advanced new→touched, full SLA reset via scheduleSlaTimersForLead;
+  //     otherwise refresh only SLA-02/03 timers (SLA-01 not touched by activity).
+  const postStatus = shouldAutoAdvance ? 'touched' : (currentStatus as string);
+  const assignedTo = lead.assigned_to as string | null;
+
+  if (shouldAutoAdvance) {
+    // Status changed — full SLA reschedule (SLA-01 cancelled, SLA-02/03 scheduled)
+    scheduleSlaTimersForLead({
+      leadId,
+      status:     'touched',
+      assignedAt: now,
+      assignedTo: assignedTo ?? caller.id,
+      domain:     lead.domain as string,
+    }).catch(() => {}); // fire-and-forget, non-fatal
+  } else if (assignedTo && ['touched', 'in_discussion'].includes(postStatus)) {
+    // Activity on an existing non-new lead — refresh only SLA-02/03 timers
+    refreshActivitySlaTimers({
+      leadId,
+      status:     postStatus,
+      assignedTo,
+      domain:     lead.domain as string,
+    }).catch(() => {}); // fire-and-forget, non-fatal
+  }
+
   return { data: { noteId: note.id as string }, error: null };
 }
 
@@ -172,8 +201,9 @@ export async function updateLeadStatus(
 
   const admin = createAdminClient();
 
-  // 4. Update lead status
-  await admin.from('leads').update({ status }).eq('id', leadId);
+  // 4. Update lead status + status_changed_at
+  const statusChangedAt = new Date().toISOString();
+  await admin.from('leads').update({ status, status_changed_at: statusChangedAt }).eq('id', leadId);
 
   // 5. Log status_changed activity
   await admin.from('lead_activities').insert({
@@ -239,8 +269,27 @@ export async function updateLeadStatus(
     }
   }
 
+  // SLA: reschedule or cancel timers based on new status
+  const assignedAgentId = lead.assigned_to as string | null;
+  if (TERMINAL_SLA_STATUSES.has(status)) {
+    // Terminal → cancel all timers, schedule none
+    cancelSlaTimersForLead({ leadId }).catch(() => {});
+  } else if (assignedAgentId) {
+    // Non-terminal → full reschedule from now
+    scheduleSlaTimersForLead({
+      leadId,
+      status,
+      assignedAt: statusChangedAt,
+      assignedTo: assignedAgentId,
+      domain:     lead.domain as string,
+    }).catch(() => {});
+  }
+
   return { data: { leadId }, error: null };
 }
+
+// Terminal statuses for SLA purposes (no new timers)
+const TERMINAL_SLA_STATUSES = new Set<LeadStatus>(['won', 'lost', 'junk']);
 
 // ─────────────────────────────────────────────
 // Action: assignLead (manual reassign)
@@ -264,12 +313,15 @@ export async function assignLead(
   const admin = createAdminClient();
 
   // 3. Reassign + clear scratchpad (per spec: incoming agent starts blank)
+  const assignedAt = new Date().toISOString();
   await admin
     .from('leads')
     .update({
       assigned_to:        agentId,
-      assigned_at:        new Date().toISOString(),
+      assigned_at:        assignedAt,
       private_scratchpad: null,
+      status_changed_at:  assignedAt,
+      last_activity_at:   assignedAt,
     })
     .eq('id', leadId);
 
@@ -289,6 +341,23 @@ export async function assignLead(
     body:         `Assigned by ${caller.full_name}`,
     action_url:   `/leads/${leadId}`,
   }).catch(() => {});
+
+  // 6. SLA: fetch lead's current status + domain to schedule timers
+  const { data: assignedLead } = await admin
+    .from('leads')
+    .select('status, domain')
+    .eq('id', leadId)
+    .single();
+
+  if (assignedLead) {
+    scheduleSlaTimersForLead({
+      leadId,
+      status:     assignedLead.status as string,
+      assignedAt,
+      assignedTo: agentId,
+      domain:     assignedLead.domain as string,
+    }).catch(() => {}); // fire-and-forget, non-fatal
+  }
 
   return { data: { leadId }, error: null };
 }
@@ -462,6 +531,8 @@ export async function createManualLead(
       assigned_to:        assignedTo,
       assigned_at:        assignedTo ? now : null,
       status:             'new',
+      status_changed_at:  assignedTo ? now : null,
+      last_activity_at:   assignedTo ? now : null,
       lead_intent:        null,
       platform:           null,
       campaign_id:        null,
@@ -518,7 +589,18 @@ export async function createManualLead(
     }
   }
 
-  // 10. Return success
+  // 10. SLA: schedule timers for new lead if assigned
+  if (assignedTo) {
+    scheduleSlaTimersForLead({
+      leadId,
+      status:     'new',
+      assignedAt: now,
+      assignedTo,
+      domain:     resolvedDomain as string,
+    }).catch(() => {}); // fire-and-forget, non-fatal
+  }
+
+  // 11. Return success
   return { data: { leadId }, error: null };
 }
 

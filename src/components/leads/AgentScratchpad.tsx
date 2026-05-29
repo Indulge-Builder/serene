@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { PenLine, Check, Loader2 } from 'lucide-react';
+import { PenLine, Check } from 'lucide-react';
+import { Spinner } from '@/components/ui/Spinner';
 import { updateScratchpad } from '@/lib/actions/leads';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -83,14 +84,7 @@ export function AgentScratchpad({ leadId, initialContent, canEdit }: Props) {
         {/* Save indicator */}
         <span style={{ marginLeft: 'auto' }}>
           {saveState === 'saving' && (
-            <Loader2
-              style={{
-                width:       '0.75rem',
-                height:      '0.75rem',
-                color:       'var(--theme-text-tertiary)',
-                animation:   'eia-spin 1s linear infinite',
-              }}
-            />
+            <Spinner size="sm" />
           )}
           {saveState === 'saved' && (
             <Check

@@ -1,22 +1,27 @@
-'use client';
+"use client";
 
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useTransition } from 'react';
-import { PersonalTasksTab } from '@/components/tasks/PersonalTasksTab';
-import { GroupTasksTab } from '@/components/tasks/GroupTasksTab';
-import type { PersonalTasksResult, TaskGroupRow } from '@/lib/services/tasks-service';
-import type { UserRole, AppDomain } from '@/lib/types/database';
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useTransition } from "react";
+import { Plus } from "lucide-react";
+import { PersonalTasksTab } from "@/components/tasks/PersonalTasksTab";
+import { GroupTasksTab } from "@/components/tasks/GroupTasksTab";
+import { TabSelector, type TabItem } from "@/components/ui/TabSelector";
+import type {
+  PersonalTasksResult,
+  TaskGroupRow,
+} from "@/lib/services/tasks-service";
+import type { UserRole, AppDomain } from "@/lib/types/database";
 
-type Tab = 'personal' | 'group';
+type Tab = "personal" | "group";
 
 interface TasksShellProps {
-  initialTab:      Tab;
-  personalResult:  PersonalTasksResult;
-  groupRows:       TaskGroupRow[];
-  currentUserId:   string;
+  initialTab: Tab;
+  personalResult: PersonalTasksResult;
+  groupRows: TaskGroupRow[];
+  currentUserId: string;
   currentUserName: string;
-  callerRole:      UserRole;
-  callerDomain:    AppDomain;
+  callerRole: UserRole;
+  callerDomain: AppDomain;
 }
 
 export function TasksShell({
@@ -28,86 +33,97 @@ export function TasksShell({
   callerRole,
   callerDomain,
 }: TasksShellProps) {
-  const router       = useRouter();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
+  // createTrigger increments each time the header button is clicked.
+  // Each tab watches it in a useEffect and opens its own modal.
+  const [createTrigger, setCreateTrigger] = useState(0);
+
   const activeTab = initialTab;
+
+  // Only manager+ can create group tasks
+  const canCreateGroup = ["manager", "admin", "founder"].includes(callerRole);
+  // Button is hidden on group tab for agents
+  const showButton = activeTab === "personal" || canCreateGroup;
 
   function setTab(tab: Tab) {
     const params = new URLSearchParams(searchParams.toString());
-    params.set('tab', tab);
+    params.set("tab", tab);
     startTransition(() => {
       router.push(`/tasks?${params.toString()}`);
     });
   }
 
+  const TABS: TabItem[] = [
+    { id: "personal", label: "My Tasks" },
+    { id: "group", label: "Group Tasks" },
+  ];
+
+  const buttonLabel = activeTab === "personal" ? "My Task" : "Group Task";
+
   return (
     <div>
-      {/* Tab bar */}
+      {/* Header row: tabs left, contextual button right */}
       <div
         style={{
-          display:      'flex',
-          gap:          0,
-          marginBottom: 'var(--space-6)',
-          borderBottom: '1px solid var(--theme-paper-border)',
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "var(--space-6)",
         }}
-        role="tablist"
-        aria-label="Task views"
       >
-        {(['personal', 'group'] as Tab[]).map((tab) => {
-          const isActive = activeTab === tab;
-          return (
-            <button
-              key={tab}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setTab(tab)}
-              style={{
-                padding:       'var(--space-2) var(--space-5)',
-                borderRadius:  'var(--radius-sm) var(--radius-sm) 0 0',
-                border:        'none',
-                borderBottom:  isActive
-                  ? '2px solid var(--theme-accent)'
-                  : '2px solid transparent',
-                background:    isActive ? 'var(--theme-accent-surface)' : 'transparent',
-                color:         isActive ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
-                fontFamily:    'var(--font-sans)',
-                fontSize:      'var(--text-sm)',
-                fontWeight:    isActive ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                cursor:        'pointer',
-                transition:    'all var(--duration-fast) var(--ease-in-out)',
-                whiteSpace:    'nowrap',
-                marginBottom:  '-1px',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.color      = 'var(--theme-text-primary)';
-                  e.currentTarget.style.background = 'var(--theme-paper-subtle)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.color      = 'var(--theme-text-secondary)';
-                  e.currentTarget.style.background = 'transparent';
-                }
-              }}
-            >
-              {tab === 'personal' ? 'Personal' : 'Group'}
-            </button>
-          );
-        })}
+        <TabSelector
+          tabs={TABS}
+          activeTab={activeTab}
+          onChange={(id) => setTab(id as Tab)}
+          variant="pill"
+        />
+
+        {showButton && (
+          <button
+            type="button"
+            onClick={() => setCreateTrigger((n) => n + 1)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+              height: 36,
+              padding: "0 var(--space-4)",
+              borderRadius: "var(--radius-sm)",
+              border: "none",
+              background: "var(--theme-accent)",
+              color: "var(--theme-accent-fg)",
+              fontFamily: "var(--font-sans)",
+              fontSize: "var(--text-sm)",
+              fontWeight: "var(--weight-semibold)",
+              cursor: "pointer",
+              transition: "var(--transition-interactive)",
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--theme-accent-hover)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--theme-accent)";
+            }}
+          >
+            <Plus style={{ width: 15, height: 15, strokeWidth: 1.5 }} />
+            {buttonLabel}
+          </button>
+        )}
       </div>
 
       {/* Tab panels */}
-      {activeTab === 'personal' ? (
+      {activeTab === "personal" ? (
         <PersonalTasksTab
           initialResult={personalResult}
           currentUserId={currentUserId}
           currentUserName={currentUserName}
           callerRole={callerRole}
           callerDomain={callerDomain}
+          createTrigger={createTrigger}
         />
       ) : (
         <GroupTasksTab
@@ -116,6 +132,7 @@ export function TasksShell({
           currentUserName={currentUserName}
           callerRole={callerRole}
           callerDomain={callerDomain}
+          createTrigger={createTrigger}
         />
       )}
     </div>

@@ -52,18 +52,8 @@ export default async function ErrorLogPage() {
         </div>
 
         <div>
-          <h1
-            style={{
-              fontFamily:    'var(--font-serif)',
-              fontSize:      'var(--text-2xl)',
-              fontWeight:    'var(--weight-semibold)',
-              letterSpacing: 'var(--tracking-tighter)',
-              lineHeight:    'var(--leading-tight)',
-              color:         'var(--theme-text-primary)',
-              margin:        0,
-            }}
-          >
-            Error Log
+          <h1 className="type-page-title" style={{ margin: 0 }}>
+            Error Log<span className="page-title-dot">.</span>
           </h1>
           <p
             style={{

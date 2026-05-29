@@ -20,9 +20,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, LayoutDashboard, RotateCcw } from 'lucide-react';
 import { useDashboardLayout } from '@/hooks/useDashboardLayout';
-import { WIDGET_MAP, DEFAULT_LAYOUT_BY_ROLE } from '@/lib/constants/dashboard-widgets';
+import { WIDGET_MAP } from '@/lib/constants/dashboard-widgets';
 import { DashboardWidgetSlot, type WidgetProps } from './DashboardWidgetSlot';
-import { WidgetSkeleton } from './WidgetSkeleton';
 
 type SortableWidgetProps = WidgetProps & {
   widgetId: string;
@@ -88,7 +87,7 @@ function SortableWidget({ widgetId, editMode, onRemove, userId, role, domain }: 
 type DashboardCanvasProps = WidgetProps;
 
 export function DashboardCanvas({ userId, role, domain }: DashboardCanvasProps) {
-  const { layout, isHydrated, removeWidget, reorderWidgets, resetToDefaults } = useDashboardLayout(userId, role);
+  const { layout, removeWidget, reorderWidgets, resetToDefaults } = useDashboardLayout(userId, role);
   const [editMode, setEditMode] = useState(false);
 
   const sensors = useSensors(
@@ -113,24 +112,6 @@ export function DashboardCanvas({ userId, role, domain }: DashboardCanvasProps) 
     },
     [layout, reorderWidgets],
   );
-
-  // Render a full-canvas skeleton on first render to prevent layout shift
-  if (!isHydrated) {
-    const defaultIds = DEFAULT_LAYOUT_BY_ROLE[role] ?? [];
-    return (
-      <div
-        style={{
-          display:             'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
-          gap:                 'var(--space-4)',
-        }}
-      >
-        {defaultIds.map((id) => (
-          <WidgetSkeleton key={id} size={WIDGET_MAP[id]?.defaultSize ?? 'md'} />
-        ))}
-      </div>
-    );
-  }
 
   const widgetIds = layout.map((p) => p.widgetId);
 

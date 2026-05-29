@@ -70,7 +70,7 @@ export default async function LeadsPage({
     <>
       <main className="flex-1 p-8">
         <div className="flex items-center justify-between gap-4 mb-6">
-          <h1 className="type-page-title m-0">Leads</h1>
+          <h1 className="type-page-title m-0">Leads<span className="page-title-dot">.</span></h1>
 
           <AddLeadButton
             callerProfile={{

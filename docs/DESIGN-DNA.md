@@ -65,7 +65,7 @@ The default theme is **Earth**. Users choose their theme in profile settings.
 
 | Earth Token                   | Atlas Source                                 | Value                    |
 | ----------------------------- | -------------------------------------------- | ------------------------ |
-| `--theme-canvas`              | `--color-sidebar-bg`                         | `#0a0a0a`                |
+| `--theme-canvas`              | `--color-sidebar-bg`                         | `#0d0c0a`                |
 | `--theme-accent`              | `--color-brand-gold`                         | `#D4AF37`                |
 | `--theme-accent-hover`        | `--color-brand-gold-dark` (deep)             | `#a88b25`                |
 | `--theme-accent-muted`        | `--color-brand-gold-light`                   | `#7a6b5d`                |
@@ -89,9 +89,26 @@ The default theme is **Earth**. Users choose their theme in profile settings.
 
 [data-theme="earth"] {
   /* --- Canvas ------------------------------------------------ */
-  --theme-canvas: #0a0a0a;
+  --theme-canvas: #0d0c0a;
   --theme-canvas-glow: rgba(212, 175, 55, 0.08);
   --theme-canvas-text: rgba(255, 255, 255, 0.85);
+  /* Earth-specific canvas atmosphere — other themes define their own when enhanced */
+  --theme-canvas-grain-opacity: 0.055;
+  --theme-canvas-gradient-1: radial-gradient(
+    ellipse 70% 55% at 8% 8%,
+    rgba(130, 95, 52, 0.16) 0%,
+    transparent 60%
+  );
+  --theme-canvas-gradient-2: radial-gradient(
+    ellipse 55% 70% at 92% 92%,
+    rgba(72, 78, 56, 0.13) 0%,
+    transparent 60%
+  );
+  --theme-canvas-gradient-3: radial-gradient(
+    ellipse 18% 100% at 0% 50%,
+    rgba(95, 83, 72, 0.06) 0%,
+    transparent 100%
+  );
 
   /* --- Paper ------------------------------------------------- */
   --theme-paper: #ffffff;
@@ -112,7 +129,7 @@ The default theme is **Earth**. Users choose their theme in profile settings.
   --theme-text-inverse: #ffffff;
 
   /* --- Sidebar ---------------------------------------------- */
-  --theme-sidebar-bg: #0a0a0a;
+  --theme-sidebar-bg: #0d0c0a;
   --theme-sidebar-border: #2a2a2a;
   --theme-sidebar-text: rgba(255, 255, 255, 0.55);
   --theme-sidebar-active: #d4af37;
@@ -130,6 +147,7 @@ When implementing Earth theme:
 2. The default (no attribute) should also resolve to Earth — set it as the `:root` fallback
 3. `--theme-accent-fg` is `#0a0a0a` (dark) — all buttons and filled badges using `--theme-accent` as background must use this for text, not white
 4. The sidebar has its own explicit bg token `--theme-sidebar-bg` — do not use `--theme-canvas` for sidebar background, they happen to be the same value in Earth but will differ in other themes
+5. Canvas atmosphere is composed by `.layout-canvas` in `globals.css` — grain SVG (shared) + `--theme-canvas-gradient-*` tokens (Earth-only today). See Section 3.5.
 
 # Theme 02 — Air
 
@@ -1121,11 +1139,11 @@ The canvas is the earth, the sky, the ocean, the void — depending on which the
 The paper is where work happens. It floats. It has weight. It has shadow.
 Nothing else in the UI should compete with this hierarchy.
 ┌─────────────────────────────────────────────────────────────────┐
-│ .eia-canvas │
+│ .layout-canvas │
 │ background: var(--theme-canvas) │
-│ background-image: SVG noise at 4% opacity (texture, not grain) │
-│ radial-gradient: var(--theme-canvas-glow) at 60% 40% │
-│ — the glow is off-centre intentionally. Centred glows are TVs. │
+│ background-image: SVG grain at 0.055 opacity + theme gradients │
+│ Earth: espresso top-left, olive bottom-right, umber left rail │
+│ Other themes: grain only until --theme-canvas-gradient-* defined │
 │ │
 │ ┌──────────┐ ┌── gap-3 (12px) ─────────────────────────────┐ │
 │ │ │ │ │ │
@@ -1146,9 +1164,10 @@ Nothing else in the UI should compete with this hierarchy.
 
 **Two details that separate this from generic dashboard shells:**
 
-The canvas glow sits at `60% 40%` — not centre. A centred radial glow looks like
-a spotlight on a stage. An off-centre glow looks like light coming through a window.
-It implies a world outside the screen.
+Earth's three radial washes are placed at the corners and left rail — not centre.
+A centred radial glow looks like a spotlight on a stage. Corner and edge washes
+imply light entering from outside the frame. `--theme-canvas-glow` remains as a
+token but Earth canvas atmosphere is driven by `--theme-canvas-gradient-1/2/3`.
 
 The paper uses `min-height: calc(100dvh - 24px)` — `dvh` instead of `vh` because
 on mobile, `100vh` includes the browser chrome and causes a scroll jump when the
@@ -1257,32 +1276,40 @@ Inside the paper, below the TopBar:
 
 ---
 
-### 3.5 The Noise Texture
+### 3.5 The Canvas Texture
 
-Every theme's canvas carries a subtle SVG noise texture at 4% opacity.
-This is not decoration. It is the difference between a canvas that feels like
-a physical surface and one that feels like a filled rectangle.
+The dashboard shell uses `.layout-canvas` (`src/app/globals.css`), applied on the
+outer wrapper in `src/app/(dashboard)/layout.tsx`.
+
+Every theme's canvas carries a subtle SVG grain texture. Earth adds three radial
+warmth washes via CSS variables. Other themes omit the gradient tokens and render
+a flat canvas until their atmosphere is enhanced.
 
 ```css
-.eia-canvas {
+.layout-canvas {
   background-color: var(--theme-canvas);
   background-image:
-    radial-gradient(
-      ellipse 80% 60% at 60% 40%,
-      var(--theme-canvas-glow),
-      transparent 70%
-    ),
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size:
-    auto,
-    256px 256px;
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n' x='0' y='0'><feTurbulence type='fractalNoise' baseFrequency='0.68' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='0.055'/></svg>"),
+    var(--theme-canvas-gradient-1),
+    var(--theme-canvas-gradient-2),
+    var(--theme-canvas-gradient-3);
 }
 ```
 
-Noise frequency: `0.9` — fine grain, not coarse. It reads as surface texture,
-not as static. Below `0.6` it becomes visible pattern. Above `1.2` it disappears.
-`0.9` is the exact frequency where it exists only when you look for it.
+**Grain:** `baseFrequency='0.68'`, opacity `0.055` hardcoded in the SVG data URI
+(CSS variables cannot be referenced inside data URIs — one URI per theme if
+intensities differ). `--theme-canvas-grain-opacity` documents the intended value.
+
+**Earth gradients (defined in `:root` and `[data-theme="earth"]` only):**
+
+| Token | Placement | Character |
+| ----- | --------- | --------- |
+| `--theme-canvas-gradient-1` | top-left (8% 8%) | Espresso warmth |
+| `--theme-canvas-gradient-2` | bottom-right (92% 92%) | Olive wash |
+| `--theme-canvas-gradient-3` | left rail (0% 50%) | Umber edge glow |
+
+**Load flash prevention:** `html` and `body` in `globals.css` use `#0d0c0a` directly
+(Earth default) so the canvas colour is correct before the layout wrapper mounts.
 
 ---
 
@@ -2633,27 +2660,26 @@ and a surface that looks real.
 The canvas is the world. Every theme's canvas is a different world.
 The texture is what makes it a surface instead of a fill.
 
+Implementation: `.layout-canvas` in `src/app/globals.css` (see Section 3.5).
+
 ```css
-.eia-canvas {
+.layout-canvas {
   background-color: var(--theme-canvas);
   background-image:
-    /* Layer 1 — radial ambient glow, off-centre (see Section 3.5) */
-    radial-gradient(
-      ellipse 80% 60% at 60% 40%,
-      var(--theme-canvas-glow),
-      transparent 70%
-    ),
-    /* Layer 2 — SVG fractal noise */
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-  background-size:
-    auto,
-    256px 256px;
-  background-repeat: no-repeat, repeat;
+    /* Layer 1 — SVG fractal grain (opacity hardcoded in data URI) */
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n' x='0' y='0'><feTurbulence type='fractalNoise' baseFrequency='0.68' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='0.055'/></svg>"),
+    /* Layers 2–4 — theme-scoped radial washes (Earth only today) */
+    var(--theme-canvas-gradient-1),
+    var(--theme-canvas-gradient-2),
+    var(--theme-canvas-gradient-3);
 }
 ```
 
-**Noise frequency: `0.9`. Never change this. See Section 5.99 — Detail 10.**
-**Noise opacity: `0.04`. Maximum: `0.06`. Never above.**
+**Grain frequency: `0.68`. Noise opacity: `0.055`.**
+**Gradient tokens:** Earth defines `--theme-canvas-gradient-1/2/3`. Other themes
+omit them — layers resolve to `initial` and the canvas stays flat.
+When enhancing Air/Water/Fire/Cosmos, define theme-specific gradient tokens;
+`.layout-canvas` picks them up automatically.
 
 ### Paper Texture
 
@@ -6273,10 +6299,10 @@ Without this, switching from Earth to Cosmos leaves gold charts on violet canvas
 ## The Problem
 
 ```
---color-success: #3a7d52  on  --theme-canvas: #0a0a0a
+--color-success: #3a7d52  on  --theme-canvas: #0d0c0a
 → Dark green on near-black. Barely legible. Lacks presence.
 
---color-danger-light: #faecea  on  --theme-canvas: #0a0a0a
+--color-danger-light: #faecea  on  --theme-canvas: #0d0c0a
 → Pale pink on black. Completely wrong surface pairing.
 ```
 

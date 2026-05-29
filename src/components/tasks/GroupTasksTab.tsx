@@ -17,6 +17,7 @@ import {
   useState,
   useTransition,
 } from 'react';
+import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -31,15 +32,19 @@ import {
   AlertCircle,
   XCircle,
   Loader,
+  ExternalLink,
 } from 'lucide-react';
 import { createSubtaskAction, getGroupSubtasksAction } from '@/lib/actions/tasks';
 import { listAgentsForDomain } from '@/lib/actions/leads';
 import { formatRelativeTime } from '@/lib/utils/dates';
 import { toast } from '@/lib/toast';
-import { TaskModal } from '@/components/tasks/TaskModal';
+import { SubTaskModal } from '@/components/tasks/SubTaskModal';
 import { AssigneePickerModal, type AssignableUser } from '@/components/tasks/AssigneePickerModal';
+import { CreateGroupTaskModal } from '@/components/tasks/CreateGroupTaskModal';
 import type { TaskGroupRow, SubtaskWithAssignee } from '@/lib/services/tasks-service';
-import type { Task, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
+import { Avatar } from '@/components/ui/Avatar';
+import { AvatarStack } from '@/components/ui/AvatarStack';
+import type { Task, TaskGroup, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
 import { TASK_STATUS_LABELS } from '@/lib/constants/task-types';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -50,6 +55,8 @@ interface GroupTasksTabProps {
   currentUserName: string;
   callerRole:      UserRole;
   callerDomain:    AppDomain;
+  /** Increments each time the parent header button is clicked — triggers modal open */
+  createTrigger?:  number;
 }
 
 // ─── Priority config ───────────────────────────────────────────────────────────
@@ -86,68 +93,6 @@ function StatusIcon({ status, size = 13 }: { status: TaskStatus; size?: number }
   }
 }
 
-function getInitials(name: string): string {
-  const parts = name.trim().split(' ');
-  if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
-
-function AvatarStack({ previews, extra }: { previews: { id: string; full_name: string; avatar_url: string | null }[]; extra: number }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center' }}>
-      {previews.slice(0, 4).map((p, i) => (
-        <div
-          key={p.id}
-          title={p.full_name}
-          style={{
-            width:          '22px',
-            height:         '22px',
-            borderRadius:   'var(--radius-xs)',
-            background:     'var(--theme-accent-surface)',
-            border:         '2px solid var(--theme-paper)',
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            marginLeft:     i === 0 ? 0 : '-6px',
-            flexShrink:     0,
-            overflow:       'hidden',
-            zIndex:         previews.length - i,
-          }}
-        >
-          {p.avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={p.avatar_url} alt={p.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <span style={{ fontFamily: 'var(--font-sans)', fontSize: '8px', fontWeight: 'var(--weight-semibold)', color: 'var(--theme-accent)', lineHeight: 1 }}>
-              {getInitials(p.full_name)}
-            </span>
-          )}
-        </div>
-      ))}
-      {extra > 0 && (
-        <div
-          style={{
-            width:          '22px',
-            height:         '22px',
-            borderRadius:   'var(--radius-xs)',
-            background:     'var(--theme-paper-border)',
-            border:         '2px solid var(--theme-paper)',
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            marginLeft:     '-6px',
-            fontFamily:     'var(--font-sans)',
-            fontSize:       '8px',
-            fontWeight:     'var(--weight-semibold)',
-            color:          'var(--theme-text-secondary)',
-          }}
-        >
-          +{extra}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Group row ─────────────────────────────────────────────────────────────────
 
@@ -271,7 +216,6 @@ function GroupRow({
 
   const priorityBorder = PRIORITY_BORDER[group.priority];
   const statusCfg      = STATUS_CONFIG[group.status];
-  const avatarExtra    = Math.max(0, group.assignee_previews.length - 4);
   const progress       = group.subtask_count > 0
     ? Math.round((group.completed_count / group.subtask_count) * 100)
     : 0;
@@ -311,38 +255,64 @@ function GroupRow({
           <ChevronRight style={{ width: 16, height: 16, strokeWidth: 1.5 }} />
         </motion.div>
 
-        {/* Title + description */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <span
-            style={{
-              display:     'block',
-              fontFamily:  'var(--font-sans)',
-              fontSize:    'var(--text-sm)',
-              fontWeight:  'var(--weight-semibold)',
-              color:       'var(--theme-text-primary)',
-              overflow:    'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace:  'nowrap',
-            }}
-          >
-            {group.title}
-          </span>
-          {group.description && (
+        {/* Title + description + workspace link */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <span
               style={{
                 display:     'block',
                 fontFamily:  'var(--font-sans)',
-                fontSize:    'var(--text-xs)',
-                color:       'var(--theme-text-tertiary)',
+                fontSize:    'var(--text-sm)',
+                fontWeight:  'var(--weight-semibold)',
+                color:       'var(--theme-text-primary)',
                 overflow:    'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace:  'nowrap',
-                marginTop:   '2px',
               }}
             >
-              {group.description}
+              {group.title}
             </span>
-          )}
+            {group.description && (
+              <span
+                style={{
+                  display:     'block',
+                  fontFamily:  'var(--font-sans)',
+                  fontSize:    'var(--text-xs)',
+                  color:       'var(--theme-text-tertiary)',
+                  overflow:    'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace:  'nowrap',
+                  marginTop:   'var(--space-px)',
+                }}
+              >
+                {group.description}
+              </span>
+            )}
+          </div>
+
+          {/* Open workspace link — stopPropagation prevents accordion expand */}
+          <Link
+            href={`/tasks/${group.id}`}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+            style={{
+              display:        'inline-flex',
+              alignItems:     'center',
+              gap:            'var(--space-1)',
+              fontFamily:     'var(--font-sans)',
+              fontSize:       'var(--text-2xs)',
+              color:          'var(--theme-text-secondary)',
+              textDecoration: 'none',
+              whiteSpace:     'nowrap',
+              flexShrink:     0,
+              transition:     'color var(--duration-fast) var(--ease-in-out)',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-secondary)'; }}
+          >
+            <ExternalLink style={{ width: 10, height: 10, strokeWidth: 1.5 }} />
+            Open
+          </Link>
         </div>
 
         {/* Subtask count + progress */}
@@ -380,7 +350,12 @@ function GroupRow({
 
         {/* Assignee avatars */}
         {group.assignee_previews.length > 0 && (
-          <AvatarStack previews={group.assignee_previews} extra={avatarExtra} />
+          <AvatarStack
+            users={group.assignee_previews.map((p) => ({ id: p.id, name: p.full_name, imageUrl: p.avatar_url ?? undefined }))}
+            size="xs"
+            max={4}
+            overlap={6}
+          />
         )}
 
         {/* Status pill */}
@@ -388,16 +363,17 @@ function GroupRow({
           style={{
             display:      'inline-flex',
             alignItems:   'center',
-            gap:          '4px',
-            padding:      '3px var(--space-2)',
+            gap:          'var(--space-1)',
+            padding:      'var(--space-1) var(--space-2)',
             borderRadius: 'var(--radius-full)',
             background:   statusCfg.bg,
             color:        statusCfg.text,
             fontFamily:   'var(--font-sans)',
-            fontSize:     '11px',
+            fontSize:     'var(--text-xs)',
             fontWeight:   'var(--weight-semibold)',
             flexShrink:   0,
             whiteSpace:   'nowrap',
+            boxShadow:    '0 1px 3px 0 rgb(0 0 0 / 0.06)',
           }}
         >
           <StatusIcon status={group.status} size={11} />
@@ -503,16 +479,17 @@ function GroupRow({
                         style={{
                           display:      'inline-flex',
                           alignItems:   'center',
-                          gap:          '4px',
-                          padding:      '2px var(--space-2)',
+                          gap:          'var(--space-1)',
+                          padding:      'var(--space-px) var(--space-2)',
                           borderRadius: 'var(--radius-full)',
                           background:   subStatusCfg.bg,
                           color:        subStatusCfg.text,
                           fontFamily:   'var(--font-sans)',
-                          fontSize:     '11px',
+                          fontSize:     'var(--text-xs)',
                           fontWeight:   'var(--weight-semibold)',
                           flexShrink:   0,
                           whiteSpace:   'nowrap',
+                          boxShadow:    '0 1px 3px 0 rgb(0 0 0 / 0.06)',
                         }}
                       >
                         <StatusIcon status={subtask.status} size={10} />
@@ -521,30 +498,12 @@ function GroupRow({
 
                       {/* Assignee avatar */}
                       {subtask.assignee && (
-                        <div
-                          title={subtask.assignee.full_name}
-                          style={{
-                            width:          '20px',
-                            height:         '20px',
-                            borderRadius:   'var(--radius-xs)',
-                            background:     'var(--theme-accent-surface)',
-                            border:         '1px solid var(--theme-paper-border)',
-                            display:        'flex',
-                            alignItems:     'center',
-                            justifyContent: 'center',
-                            flexShrink:     0,
-                            overflow:       'hidden',
-                          }}
-                        >
-                          {subtask.assignee.avatar_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={subtask.assignee.avatar_url} alt={subtask.assignee.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            <span style={{ fontFamily: 'var(--font-sans)', fontSize: '7px', fontWeight: 'var(--weight-semibold)', color: 'var(--theme-accent)', lineHeight: 1 }}>
-                              {getInitials(subtask.assignee.full_name)}
-                            </span>
-                          )}
-                        </div>
+                        <Avatar
+                          src={subtask.assignee.avatar_url}
+                          name={subtask.assignee.full_name}
+                          size="xs"
+                          style={{ width: 'var(--space-5)', height: 'var(--space-5)', minWidth: 'var(--space-5)', borderRadius: 'var(--radius-xs)' }}
+                        />
                       )}
                     </div>
                   );
@@ -598,8 +557,8 @@ function GroupRow({
                         display:        'flex',
                         alignItems:     'center',
                         justifyContent: 'center',
-                        width:          '26px',
-                        height:         '26px',
+                        width:          'var(--space-7)',
+                        height:         'var(--space-7)',
                         borderRadius:   'var(--radius-sm)',
                         border:         '1px solid var(--theme-paper-border)',
                         background:     subtaskAssignee ? 'var(--theme-accent-surface)' : 'transparent',
@@ -609,9 +568,7 @@ function GroupRow({
                       }}
                     >
                       {subtaskAssignee ? (
-                        <span style={{ fontFamily: 'var(--font-sans)', fontSize: '8px', fontWeight: 'var(--weight-semibold)', lineHeight: 1 }}>
-                          {getInitials(subtaskAssignee.full_name)}
-                        </span>
+                        <Avatar name={subtaskAssignee.full_name} size="xs" style={{ width: 16, height: 16, minWidth: 16 }} />
                       ) : (
                         <User style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
                       )}
@@ -622,7 +579,7 @@ function GroupRow({
                       onClick={(e) => { e.stopPropagation(); handleAddSubtask(); }}
                       disabled={isSaving || !subtaskTitle.trim()}
                       style={{
-                        padding:      '2px var(--space-3)',
+                        padding:      'var(--space-1) var(--space-3)',
                         borderRadius: 'var(--radius-sm)',
                         border:       'none',
                         background:   subtaskTitle.trim() ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
@@ -688,18 +645,20 @@ function GroupRow({
               </AnimatePresence>
             </div>
 
-            {/* Subtask TaskModal */}
-            {selectedSubtask && (
-                  <TaskModal
-                open={modalOpen}
-                onClose={() => { setModalOpen(false); setSelectedSubtask(null); }}
-                task={selectedSubtask as Task}
-                assignee={selectedSubtask.assignee ?? null}
-                initialMessages={[]}
-                currentUserId={currentUserId}
-                currentUserName={currentUserName}
-              />
-            )}
+            {/* Subtask Modal */}
+            <AnimatePresence>
+              {selectedSubtask && modalOpen && (
+                <SubTaskModal
+                  open={modalOpen}
+                  onClose={() => { setModalOpen(false); setSelectedSubtask(null); }}
+                  task={selectedSubtask as Task}
+                  group={group as TaskGroup}
+                  assignee={selectedSubtask.assignee ?? undefined}
+                  initialRemarks={[]}
+                  callerProfile={{ id: currentUserId, role: callerRole, domain: callerDomain }}
+                />
+              )}
+            </AnimatePresence>
 
             {/* AssigneePickerModal — portaled to body */}
             {typeof window !== 'undefined' &&
@@ -731,64 +690,116 @@ export function GroupTasksTab({
   currentUserName,
   callerRole,
   callerDomain,
+  createTrigger = 0,
 }: GroupTasksTabProps) {
   // Accordion: only one group expanded at a time
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+
+  // Local group rows — prepend new groups without refetch
+  const [groupRows, setGroupRows] = useState<TaskGroupRow[]>(initialRows);
+
+  // Create group task modal
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+
+  // Open modal when parent header button fires (createTrigger increments)
+  useEffect(() => {
+    if (createTrigger > 0) setCreateModalOpen(true);
+  }, [createTrigger]);
 
   function toggleGroup(id: string) {
     setExpandedGroupId((prev) => (prev === id ? null : id));
   }
 
-  if (initialRows.length === 0) {
-    return (
-      <div
-        style={{
-          padding:   'var(--space-16) var(--space-8)',
-          textAlign: 'center',
-        }}
-      >
-        <p
-          style={{
-            fontFamily: 'var(--font-serif)',
-            fontStyle:  'italic',
-            fontSize:   'var(--text-lg)',
-            color:      'var(--theme-text-tertiary)',
-            margin:     0,
-          }}
-        >
-          No group tasks.
-        </p>
-      </div>
-    );
+  // onCreated: convert TaskGroup to TaskGroupRow and prepend
+  function handleGroupCreated(group: TaskGroup) {
+    const row: TaskGroupRow = {
+      ...group,
+      subtask_count:     0,
+      completed_count:   0,
+      assignee_previews: [],
+    };
+    setGroupRows((prev) => [row, ...prev]);
+    setCreateModalOpen(false);
   }
 
+  // Only manager+ can create group tasks (matches createGroupTaskAction auth guard)
+  const canCreate = ['manager', 'admin', 'founder'].includes(callerRole);
+
   return (
-    <div
-      style={{
-        border:       '1px solid var(--theme-paper-border)',
-        borderRadius: 'var(--radius-md)',
-        overflow:     'hidden',
-        boxShadow:    'var(--shadow-1)',
-      }}
-    >
-      {initialRows.map((group, idx) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+
+      {/* Group list or empty state */}
+      {groupRows.length === 0 ? (
         <div
-          key={group.id}
           style={{
-            borderBottom: idx < initialRows.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
+            border:       '1px solid var(--theme-paper-border)',
+            borderRadius: 'var(--radius-md)',
+            padding:      'var(--space-16) var(--space-8)',
+            textAlign:    'center',
+            boxShadow:    'var(--shadow-1)',
           }}
         >
-          <GroupRow
-            group={group}
-            isExpanded={expandedGroupId === group.id}
-            onToggle={() => toggleGroup(group.id)}
-            currentUserId={currentUserId}
-            currentUserName={currentUserName}
-            callerRole={callerRole}
-            callerDomain={callerDomain}
-          />
+          <p
+            style={{
+              fontFamily: 'var(--font-serif)',
+              fontStyle:  'italic',
+              fontSize:   'var(--text-lg)',
+              color:      'var(--theme-text-tertiary)',
+              margin:     0,
+            }}
+          >
+            No group tasks yet.
+          </p>
+          {canCreate && (
+            <p
+              style={{
+                fontFamily:   'var(--font-sans)',
+                fontSize:     'var(--text-sm)',
+                color:        'var(--theme-text-tertiary)',
+                marginTop:    'var(--space-2)',
+                marginBottom: 0,
+              }}
+            >
+              Use the button above to create one.
+            </p>
+          )}
         </div>
-      ))}
+      ) : (
+        <div
+          style={{
+            border:       '1px solid var(--theme-paper-border)',
+            borderRadius: 'var(--radius-md)',
+            overflow:     'hidden',
+            boxShadow:    'var(--shadow-1)',
+          }}
+        >
+          {groupRows.map((group, idx) => (
+            <div
+              key={group.id}
+              style={{
+                borderBottom: idx < groupRows.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
+              }}
+            >
+              <GroupRow
+                group={group}
+                isExpanded={expandedGroupId === group.id}
+                onToggle={() => toggleGroup(group.id)}
+                currentUserId={currentUserId}
+                currentUserName={currentUserName}
+                callerRole={callerRole}
+                callerDomain={callerDomain}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create Group Task Modal */}
+      <CreateGroupTaskModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreated={handleGroupCreated}
+      />
     </div>
   );
 }

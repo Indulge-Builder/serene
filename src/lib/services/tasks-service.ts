@@ -3,13 +3,29 @@
  * All DB queries for the OS Tasks module.
  * Uses the server Supabase client only — never instantiate elsewhere.
  * No raw SQL strings outside this file.
+ *
+ * Caching notes:
+ * - getGroupTasks: wrapped in unstable_cache with tag ['group-tasks', domain].
+ *   Domain is always in the cache key — a manager in 'concierge' must never
+ *   receive cached data from another domain. TTL: 60s.
+ *   Revalidation sites: createGroupTaskAction, createSubtaskAction (both call
+ *   revalidateTag('group-tasks') after a successful insert).
+ *
+ * Sort notes:
+ * - getPersonalTasks: fully backed by the get_personal_tasks RPC (migration 0026).
+ *   Both the no-cursor (page 1) and cursor (pages 2+) paths call the same RPC.
+ *   The RPC sorts at the DB level on every page:
+ *     due_at ASC NULLS LAST → priority CASE (urgent=1, high=2, normal=3) → id ASC.
+ *   The PostgREST cursor path has been fully retired (TD-003 resolved 2026-05-29).
+ *   No JavaScript sort. No PostgREST .order()/.or() chain. One code path only.
  */
 
+import { unstable_cache } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import type {
   Task,
   TaskGroup,
-  TaskMessage,
+  TaskRemark,
   TaskStatus,
   TaskPriority,
   Profile,
@@ -36,8 +52,10 @@ export type PersonalTaskCursor = {
 export type PersonalTaskFilters = {
   status?:     TaskStatus[];
   priority?:   TaskPriority[];
+  tags?:       string[];   // filter by tag — only tasks containing ALL specified tags
   due_before?: string; // ISO datetime string
   cursor?:     PersonalTaskCursor | null; // composite cursor for keyset pagination
+  limit?:      number; // override page size (default PERSONAL_TASKS_PAGE_SIZE); capped at 500
 };
 
 export type PersonalTasksResult = {
@@ -66,9 +84,14 @@ export type SubtaskWithAssignee = Task & {
   assignee: AssigneeSlim | null;
 };
 
-/** Full task detail — task + messages */
+/** TaskRemark with resolved author profile — canonical type for the chat panel */
+export type TaskRemarkWithAuthor = TaskRemark & {
+  author: Pick<Profile, 'id' | 'full_name' | 'avatar_url'> | null;
+};
+
+/** Full task detail — task + remarks */
 export type TaskWithMessages = Task & {
-  messages: (TaskMessage & { author: AssigneeSlim | null })[];
+  messages: TaskRemarkWithAuthor[];
 };
 
 // ─────────────────────────────────────────────
@@ -78,18 +101,17 @@ export type TaskWithMessages = Task & {
 /**
  * Returns tasks where task_category='personal' AND assigned_to=userId.
  * Supports status[], priority[], due_before, and composite cursor pagination (LIMIT 50).
- * Ordered by due_at ASC NULLS LAST, then id ASC as a stable tiebreaker.
+ *
+ * Sort order on every page: due_at ASC NULLS LAST → priority CASE (urgent=1, high=2,
+ * normal=3) → id ASC. Both the no-cursor and cursor paths call the get_personal_tasks
+ * RPC (migration 0026) — there is no split path. The PostgREST cursor path was retired
+ * when TD-003 was resolved on 2026-05-29.
  *
  * Composite cursor: { due_at: string | null, id: string } from the last row of the
- * previous page. A row qualifies for the next page when:
- *   (due_at > cursor.due_at)
- *   OR (due_at = cursor.due_at AND id > cursor.id)
- *   OR (due_at IS NULL AND cursor.due_at IS NOT NULL)   -- NULL rows always after dated rows
- *   OR (due_at IS NULL AND cursor.due_at IS NULL AND id > cursor.id)
- *
- * A single-column cursor on a nullable column (`.gt('due_at', cursor)`) fails because
- * PostgreSQL evaluates `NULL > any_value` as NULL (falsy), making NULL-due_at tasks
- * invisible on every page after the first.
+ * previous page. p_cursor_has_due_at disambiguates the null case:
+ *   - true  → cursor row had a deadline; RPC applies the 3-branch non-null cursor logic
+ *   - false → cursor row had no deadline; RPC restricts to due_at IS NULL AND id > cursor_id
+ *   - omitted / null → no cursor; RPC returns from the beginning (page 1)
  *
  * Always returns at most PERSONAL_TASKS_PAGE_SIZE rows.
  * hasMore=true means there is at least one more row beyond the current page.
@@ -99,73 +121,33 @@ export async function getPersonalTasks(
   filters: PersonalTaskFilters = {},
 ): Promise<PersonalTasksResult> {
   const supabase = await createClient();
+  const pageSize = Math.min(filters.limit ?? PERSONAL_TASKS_PAGE_SIZE, 500);
 
-  let query = supabase
-    .from('tasks')
-    .select('*')
-    .eq('task_category', 'personal')
-    .eq('assigned_to', userId);
+  const cursor = filters.cursor ?? null;
 
-  if (filters.status && filters.status.length > 0) {
-    query = query.in('status', filters.status);
-  }
-
-  if (filters.priority && filters.priority.length > 0) {
-    query = query.in('priority', filters.priority);
-  }
-
-  if (filters.due_before) {
-    query = query.lte('due_at', filters.due_before);
-  }
-
-  if (filters.cursor) {
-    const c = filters.cursor;
-    if (c.due_at !== null) {
-      // Cursor row had a deadline. Next page = rows that come after it in
-      // (due_at ASC NULLS LAST, id ASC) order:
-      //   same due_at but later id   → due_at.eq + id.gt
-      //   later due_at               → due_at.gt
-      //   no deadline (always last)  → due_at.is.null
-      query = query.or(
-        `due_at.gt.${c.due_at},` +
-        `and(due_at.eq.${c.due_at},id.gt.${c.id}),` +
-        `due_at.is.null`,
-      );
-    } else {
-      // Cursor row had no deadline (NULL). All rows with a deadline already
-      // appeared on a prior page. Only rows in the NULL group that come after
-      // the cursor id are needed.
-      query = query.or(
-        `and(due_at.is.null,id.gt.${c.id})`,
-      );
-    }
-  }
-
-  // Stable sort: due_at ASC NULLS LAST, then id ASC as tiebreaker.
-  // Supabase .order() calls chain — the first call is the primary sort key.
-  query = query
-    .order('due_at', { ascending: true, nullsFirst: false })
-    .order('id',     { ascending: true })
-    .limit(PERSONAL_TASKS_PAGE_SIZE + 1);
-
-  const { data, error } = await query;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc('get_personal_tasks', {
+    p_user_id:          userId,
+    p_status:           filters.status   && filters.status.length   > 0 ? filters.status   : null,
+    p_priority:         filters.priority && filters.priority.length > 0 ? filters.priority : null,
+    p_tags:             filters.tags     && filters.tags.length     > 0 ? filters.tags     : null,
+    p_due_before:       filters.due_before ?? null,
+    p_limit:            pageSize + 1,
+    // Cursor params — all null when no cursor (page 1 behaviour preserved).
+    p_cursor_id:        cursor?.id        ?? null,
+    p_cursor_due_at:    cursor?.due_at    ?? null,
+    p_cursor_has_due_at: cursor !== null ? cursor.due_at !== null : null,
+  });
 
   if (error) {
-    console.error('[tasks-service] getPersonalTasks error:', error);
+    // TD-002: replace with Sentry.captureException() when Sentry is wired up
+    console.error('[tasks-service] getPersonalTasks RPC error:', error);
     return { tasks: [], hasMore: false, nextCursor: null };
   }
 
   const rows = (data ?? []) as Task[];
-  const hasMore = rows.length > PERSONAL_TASKS_PAGE_SIZE;
-  const page    = hasMore ? rows.slice(0, PERSONAL_TASKS_PAGE_SIZE) : rows;
-
-  // Secondary sort by priority order (urgent → high → normal)
-  const priorityOrder: Record<string, number> = { urgent: 1, high: 2, normal: 3 };
-  page.sort((a, b) => {
-    const pa = priorityOrder[a.priority] ?? 99;
-    const pb = priorityOrder[b.priority] ?? 99;
-    return pa - pb;
-  });
+  const hasMore = rows.length > pageSize;
+  const page    = hasMore ? rows.slice(0, pageSize) : rows;
 
   const lastRow = page[page.length - 1] ?? null;
   const nextCursor: PersonalTaskCursor | null = hasMore && lastRow
@@ -201,12 +183,15 @@ type GroupTaskSummaryRaw = {
 };
 
 /**
+ * Core implementation — not exported directly.
+ * Exported via getGroupTasks (the cached wrapper below).
+ *
  * Returns task_groups for a domain with subtask counts and
  * up to 4 unique assignee avatars per group.
  * No subtask rows are returned — list view only.
  * Exactly 2 DB round-trips: one RPC + one profile batch fetch.
  */
-export async function getGroupTasks(
+async function getGroupTasksImpl(
   filters: GroupTaskFilters = {},
 ): Promise<TaskGroupRow[]> {
   const supabase = await createClient();
@@ -218,6 +203,7 @@ export async function getGroupTasks(
   });
 
   if (error || !rows || (rows as unknown[]).length === 0) {
+    // TD-002: Rule P-07 violation — replace with Sentry.captureException() when Sentry is wired up
     if (error) console.error('[tasks-service] getGroupTasks RPC error:', error);
     return [];
   }
@@ -276,6 +262,39 @@ export async function getGroupTasks(
       assignee_previews,
     };
   });
+}
+
+/**
+ * Cached wrapper for getGroupTasksImpl.
+ * TTL: 60s. Cache tag: 'group-tasks' + caller domain.
+ *
+ * Domain is always in the cache key — a manager in 'concierge' must never
+ * receive cached results from another domain. The RPC derives the caller
+ * domain from get_user_domain() internally (SECURITY DEFINER), but the
+ * cache key must also be domain-scoped so cached responses are not served
+ * cross-domain.
+ *
+ * Revalidation sites (must call revalidateTag('group-tasks') after mutation):
+ *   - createGroupTaskAction (new group_task row)
+ *   - createSubtaskAction   (new subtask changes aggregate counts)
+ *
+ * Note: unstable_cache key args must be JSON-serialisable. filters object
+ * is included so filtered and unfiltered views are cached independently.
+ */
+export function getGroupTasks(
+  filters: GroupTaskFilters = {},
+  callerDomain?: string,
+): Promise<TaskGroupRow[]> {
+  const domainKey = callerDomain ?? 'unknown';
+  const cachedFn = unstable_cache(
+    () => getGroupTasksImpl(filters),
+    ['group-tasks', domainKey, JSON.stringify(filters)],
+    {
+      revalidate: 60,
+      tags:       ['group-tasks'],
+    },
+  );
+  return cachedFn();
 }
 
 // ─────────────────────────────────────────────
@@ -351,42 +370,44 @@ export async function getTaskById(taskId: string): Promise<TaskWithMessages | nu
 
   if (taskError || !task) return null;
 
-  const messages = await getTaskMessages(taskId);
+  const messages = await getTaskRemarks(taskId);
 
   return { ...(task as Task), messages };
 }
 
 // ─────────────────────────────────────────────
-// Query: task messages ordered newest first
+// Query: task remarks ordered oldest first (timeline)
 // ─────────────────────────────────────────────
 
 /**
- * Returns task messages ordered DESC (newest first).
- * Used by the chat panel.
+ * Returns task_remarks ordered ASC (oldest first — newest appended at bottom).
+ * Batch-resolves author profiles in one query — no N+1.
+ * Server client only. Never call adminClient here.
  */
-export async function getTaskMessages(
+export async function getTaskRemarks(
   taskId: string,
-): Promise<(TaskMessage & { author: AssigneeSlim | null })[]> {
+): Promise<TaskRemarkWithAuthor[]> {
   const supabase = await createClient();
 
-  const { data: messages, error } = await supabase
-    .from('task_messages')
+  const { data: remarks, error } = await supabase
+    .from('task_remarks')
     .select('*')
     .eq('task_id', taskId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: true });
 
-  if (error || !messages) {
-    if (error) console.error('[tasks-service] getTaskMessages error:', error);
+  if (error || !remarks) {
+    if (error) console.error('[tasks-service] getTaskRemarks error:', error);
     return [];
   }
 
+  // Collect all unique author_ids first, then one batch profile fetch — no N+1.
   const authorIds = [
     ...new Set(
-      (messages as TaskMessage[]).map((m) => m.author_id).filter(Boolean),
+      (remarks as TaskRemark[]).map((m) => m.author_id).filter(Boolean),
     ),
   ];
 
-  let profileMap: Map<string, AssigneeSlim> = new Map();
+  const profileMap = new Map<string, Pick<Profile, 'id' | 'full_name' | 'avatar_url'>>();
 
   if (authorIds.length > 0) {
     const { data: profiles } = await supabase
@@ -403,8 +424,63 @@ export async function getTaskMessages(
     }
   }
 
-  return (messages as TaskMessage[]).map((msg) => ({
-    ...msg,
-    author: profileMap.get(msg.author_id) ?? null,
+  return (remarks as TaskRemark[]).map((remark) => ({
+    ...remark,
+    author: profileMap.get(remark.author_id) ?? null,
   }));
+}
+
+// ─────────────────────────────────────────────
+// Query: single task_group by id (workspace view)
+// ─────────────────────────────────────────────
+
+/**
+ * Returns a single task_groups row by id.
+ * Uses the server Supabase client — RLS enforces domain-scoped access.
+ * A manager from a different domain will receive null (RLS returns no rows).
+ * Caller must redirect to /tasks on null.
+ */
+export async function getTaskGroupById(groupId: string): Promise<TaskGroup | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('task_groups')
+    .select('*')
+    .eq('id', groupId)
+    .single();
+
+  if (error || !data) return null;
+  return data as TaskGroup;
+}
+
+// ─────────────────────────────────────────────
+// Query: all distinct tags used by a user's personal tasks
+// Used to populate the tag filter dropdown in PersonalTasksTab.
+// Returns a sorted deduplicated string array.
+// Uses the GIN-indexed tags column — does not require a sequential scan.
+// ─────────────────────────────────────────────
+
+export async function getPersonalTaskTags(userId: string): Promise<string[]> {
+  const supabase = await createClient();
+
+  // Scoped to active tasks only — completed/cancelled tasks grow unboundedly.
+  // Aligns with idx_tasks_tags_active partial index (task_category='personal'
+  // AND status NOT IN ('completed','cancelled','error')).
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('tags')
+    .eq('task_category', 'personal')
+    .eq('assigned_to', userId)
+    .not('status', 'in', '("completed","cancelled","error")');
+
+  if (error || !data) return [];
+
+  const tagSet = new Set<string>();
+  for (const row of data) {
+    for (const tag of (row.tags ?? [])) {
+      if (tag) tagSet.add(tag);
+    }
+  }
+
+  return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
 }

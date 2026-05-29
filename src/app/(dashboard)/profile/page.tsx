@@ -31,18 +31,8 @@ export default async function ProfilePage() {
         >
           Account
         </p>
-        <h1
-          style={{
-            fontFamily:    "var(--font-serif)",
-            fontSize:      "var(--text-2xl)",
-            fontWeight:    "var(--weight-light)",
-            letterSpacing: "var(--tracking-tighter)",
-            lineHeight:    "var(--leading-tight)",
-            color:         "var(--theme-text-primary)",
-            margin:        0,
-          }}
-        >
-          Profile Settings
+        <h1 className="type-page-title" style={{ margin: 0 }}>
+          Profile Settings<span className="page-title-dot">.</span>
         </h1>
       </div>
 

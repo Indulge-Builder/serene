@@ -11,6 +11,7 @@ import {
   BarChart2,
   TrendingUp,
   CheckSquare,
+  Settings,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
@@ -37,6 +38,11 @@ const MAIN_NAV: NavItem[] = [
 // Visible to manager, admin, founder — not agent or guest
 const MANAGER_NAV: NavItem[] = [
   { href: "/campaigns", label: "Campaigns", icon: TrendingUp },
+];
+
+// Visible to manager, admin, founder — lead assignment config
+const SETTINGS_NAV: NavItem[] = [
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 const ADMIN_NAV: NavItem[] = [
@@ -245,6 +251,21 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
           <>
             <NavSection label="Analytics" />
             {MANAGER_NAV.map(({ href, label, icon }) => (
+              <NavLink
+                key={href}
+                href={href}
+                label={label}
+                icon={icon}
+                isActive={pathname === href || pathname.startsWith(href + "/")}
+              />
+            ))}
+          </>
+        )}
+
+        {isManager && (
+          <>
+            <NavSection label="Configuration" />
+            {SETTINGS_NAV.map(({ href, label, icon }) => (
               <NavLink
                 key={href}
                 href={href}

@@ -12,6 +12,8 @@ import {
 } from 'recharts';
 import { getLeadVolumeByPeriodAction } from '@/lib/actions/dashboard';
 import { formatCompact } from '@/lib/utils/numbers';
+import { TabSelector, type TabItem } from '@/components/ui/TabSelector';
+import { useChartTokens } from '@/components/ui/charts/useChartTokens';
 import type { LeadVolumeSummary, VolumePeriod } from '@/lib/services/dashboard-service';
 import type { WidgetProps } from '../DashboardWidgetSlot';
 
@@ -27,6 +29,7 @@ export function ManagerLeadVolumeWidget({ role, domain }: WidgetProps) {
   const [data, setData]               = useState<LeadVolumeSummary | null>(null);
   const [loaded, setLoaded]           = useState(false);
   const [isPending, startTransition]  = useTransition();
+  const { series: chartColors }       = useChartTokens();
 
   useEffect(() => {
     let cancelled = false;
@@ -105,38 +108,13 @@ export function ManagerLeadVolumeWidget({ role, domain }: WidgetProps) {
         </div>
 
         {/* Period toggle */}
-        <div
-          style={{
-            display:      'flex',
-            gap:          '2px',
-            background:   'var(--theme-paper-subtle)',
-            borderRadius: 'var(--radius-sm)',
-            padding:      '2px',
-            flexShrink:   0,
-          }}
-        >
-          {PERIODS.map((p) => (
-            <button
-              key={p.value}
-              onClick={() => handlePeriodChange(p.value)}
-              disabled={isPending}
-              style={{
-                fontSize:     'var(--text-xs)',
-                fontWeight:   'var(--weight-medium)',
-                color:        period === p.value ? 'var(--theme-accent-fg)' : 'var(--theme-text-secondary)',
-                background:   period === p.value ? 'var(--theme-accent)' : 'transparent',
-                border:       'none',
-                borderRadius: 'var(--radius-xs)',
-                cursor:       isPending ? 'wait' : 'pointer',
-                padding:      '4px var(--space-2)',
-                whiteSpace:   'nowrap',
-                transition:   'background 150ms, color 150ms',
-              }}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <TabSelector
+          tabs={PERIODS.map((p): TabItem => ({ id: p.value, label: p.label }))}
+          activeTab={period}
+          onChange={(id) => handlePeriodChange(id as VolumePeriod)}
+          variant="pill"
+          style={{ flexShrink: 0, opacity: isPending ? 0.6 : 1, pointerEvents: isPending ? 'none' : undefined }}
+        />
       </div>
 
       {/* Chart */}
@@ -199,10 +177,10 @@ export function ManagerLeadVolumeWidget({ role, domain }: WidgetProps) {
               <Line
                 type="monotone"
                 dataKey="count"
-                stroke="var(--theme-accent)"
+                stroke={chartColors[0]}
                 strokeWidth={2}
                 dot={false}
-                activeDot={{ r: 4, fill: 'var(--theme-accent)', stroke: 'var(--theme-paper)', strokeWidth: 2 }}
+                activeDot={{ r: 4, fill: chartColors[0], stroke: 'var(--theme-paper)', strokeWidth: 2 }}
               />
             </LineChart>
           </ResponsiveContainer>

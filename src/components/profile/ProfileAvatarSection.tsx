@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Camera, Loader2 } from "lucide-react";
+import { Camera } from "lucide-react";
+import { Spinner } from '@/components/ui/Spinner';
 import { createClient }        from "@/lib/supabase/client";
 import { updateProfileAvatar } from "@/lib/actions/profiles";
 import { ROLE_LABELS }         from "@/lib/constants/roles";
@@ -160,7 +161,7 @@ export function ProfileAvatarSection({ profile }: Props) {
               pointerEvents:   "none",
             }}
           >
-            <Camera style={{ width: "22px", height: "22px", strokeWidth: 1.5, color: "white" }} />
+            <Camera style={{ width: "22px", height: "22px", strokeWidth: 1.5, color: "var(--theme-canvas-text)" }} />
           </div>
 
           {/* Upload spinner */}
@@ -176,15 +177,7 @@ export function ProfileAvatarSection({ profile }: Props) {
                 justifyContent:  "center",
               }}
             >
-              <Loader2
-                style={{
-                  width:     "22px",
-                  height:    "22px",
-                  strokeWidth: 1.5,
-                  color:     "white",
-                  animation: "eia-spin 1s linear infinite",
-                }}
-              />
+              <Spinner size="md" canvas />
             </div>
           )}
         </button>

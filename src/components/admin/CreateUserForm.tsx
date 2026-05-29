@@ -4,11 +4,18 @@ import { useState, useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { createUser, inviteUser } from "@/lib/actions/profiles";
+import { Button } from "@/components/ui/Button";
+import { TabSelector, type TabItem } from "@/components/ui/TabSelector";
 import { USER_ROLES, ROLE_LABELS } from "@/lib/constants/roles";
 import { APP_DOMAINS, DOMAIN_LABELS } from "@/lib/constants/domains";
 import type { ActionResult } from "@/lib/types";
 
 const initialState: ActionResult<{ id: string }> = { data: null, error: null };
+
+const MODE_TABS: TabItem[] = [
+  { id: 'password', label: 'Set password'    },
+  { id: 'invite',   label: 'Send invite link' },
+];
 
 export function CreateUserForm() {
   const router = useRouter();
@@ -29,38 +36,13 @@ export function CreateUserForm() {
   return (
     <div>
       {/* Mode switcher */}
-      <div
-        style={{
-          display:      "flex",
-          gap:          "2px",
-          padding:      "var(--space-5) var(--space-8) 0",
-        }}
-      >
-        {(["password", "invite"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setMode(m)}
-            style={{
-              padding:      "var(--space-2) var(--space-4)",
-              borderRadius: "var(--radius-sm) var(--radius-sm) 0 0",
-              border:       "1px solid var(--theme-paper-border)",
-              borderBottom: mode === m ? "1px solid var(--theme-paper)" : "1px solid var(--theme-paper-border)",
-              background:   mode === m ? "var(--theme-paper)" : "var(--theme-paper-subtle)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-sm)",
-              fontWeight:   mode === m ? "var(--weight-semibold)" : "var(--weight-normal)",
-              color:        mode === m ? "var(--theme-text-primary)" : "var(--theme-text-secondary)",
-              cursor:       "pointer",
-              marginBottom: mode === m ? "-1px" : "0",
-              position:     "relative",
-              zIndex:       mode === m ? "var(--z-raised)" : "var(--z-base)",
-              transition:   "var(--transition-interactive)",
-            }}
-          >
-            {m === "password" ? "Set password" : "Send invite link"}
-          </button>
-        ))}
+      <div style={{ padding: "var(--space-5) var(--space-8) 0" }}>
+        <TabSelector
+          tabs={MODE_TABS}
+          activeTab={mode}
+          onChange={(id) => setMode(id as "password" | "invite")}
+          variant="connected"
+        />
       </div>
 
       {mode === "password" ? (
@@ -270,26 +252,9 @@ function FormFooter({
         >
           Cancel
         </a>
-        <button
-          type="submit"
-          disabled={isPending}
-          style={{
-            display:      "inline-flex",
-            alignItems:   "center",
-            padding:      "var(--space-2) var(--space-6)",
-            background:   isPending ? "var(--theme-accent-muted)" : "var(--theme-accent)",
-            color:        "var(--theme-accent-fg)",
-            border:       "none",
-            borderRadius: "var(--radius-sm)",
-            fontFamily:   "var(--font-sans)",
-            fontSize:     "var(--text-sm)",
-            fontWeight:   "var(--weight-semibold)",
-            cursor:       isPending ? "not-allowed" : "pointer",
-            transition:   "var(--transition-interactive)",
-          }}
-        >
+        <Button variant="primary" type="submit" disabled={isPending} loading={isPending}>
           {isPending ? pendingLabel : submitLabel}
-        </button>
+        </Button>
       </div>
     </>
   );

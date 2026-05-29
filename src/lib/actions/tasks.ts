@@ -1,5 +1,6 @@
 'use server';
 
+import { revalidateTag } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
@@ -8,9 +9,11 @@ import {
   CreateSubtaskSchema,
   UpdateTaskSchema,
   UpdateTaskStatusSchema,
-  AddTaskMessageSchema,
+  AddTaskRemarkSchema,
   DeleteTaskSchema,
-  SuppressTaskMessageSchema,
+  SuppressTaskRemarkSchema,
+  UpdateChecklistSchema,
+  UpdateTaskTagsSchema,
 } from '@/lib/validations/task-schemas';
 import { formErrors } from '@/lib/validations/form-errors';
 import { sanitizeText } from '@/lib/utils/sanitize';
@@ -18,7 +21,7 @@ import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { createNotification } from '@/lib/services/notifications-service';
 import { scheduleTaskReminder, cancelTaskReminder } from '@/trigger/task-reminders';
 import type { ActionResult } from '@/lib/types/index';
-import type { TaskStatus, TaskPriority } from '@/lib/types/database';
+import type { TaskStatus, TaskPriority, TaskRemark, ChecklistItem } from '@/lib/types/database';
 
 // Terminal statuses — no reminders needed beyond these
 const TERMINAL_STATUSES: TaskStatus[] = ['completed', 'cancelled', 'error'];
@@ -109,6 +112,7 @@ export async function createPersonalTaskAction(
       status:        'to_do',
       due_at:        fields.due_at ?? null,
       group_id:      null,
+      tags:          fields.tags ?? [],
     })
     .select('id')
     .single();
@@ -179,6 +183,10 @@ export async function createGroupTaskAction(
 
   if (insertError || !group) return { data: null, error: formErrors.generic };
 
+  // Invalidate the group-tasks cache so the new group appears immediately.
+  // { expire: 0 } = immediate expiry (correct for Server Action mutations per Next.js 16 docs).
+  revalidateTag('group-tasks', { expire: 0 });
+
   return { data: { groupId: group.id as string }, error: null };
 }
 
@@ -243,6 +251,9 @@ export async function createSubtaskAction(
   if (insertError || !task) return { data: null, error: formErrors.generic };
 
   const taskId = task.id as string;
+
+  // Invalidate the group-tasks cache so the updated subtask counts appear immediately.
+  revalidateTag('group-tasks', { expire: 0 });
 
   // 6. Notify assignee — fire-and-forget, non-fatal (always notify for subtasks)
   if (fields.assigned_to !== caller.id) {
@@ -452,7 +463,7 @@ export async function deleteTaskAction(
     return { data: null, error: 'Could not cancel the scheduled reminder. Please try again.' };
   }
 
-  // 6. Delete task — cascade removes task_messages (ON DELETE CASCADE on task_messages.task_id)
+  // 6. Delete task — cascade removes task_remarks (ON DELETE CASCADE on task_remarks.task_id)
   const admin = createAdminClient();
   const { error: deleteError } = await admin
     .from('tasks')
@@ -465,6 +476,100 @@ export async function deleteTaskAction(
 }
 
 // ─────────────────────────────────────────────
+// Action: updateChecklistAction
+// Replaces tasks.attachments with a new checklist items array.
+// Checklist updates are intentionally excluded from log_task_changes —
+// the trigger only watches title/description/status/priority/due_at/assigned_to.
+// High-frequency checklist toggles must NOT flood task_audit_log.
+// ─────────────────────────────────────────────
+export async function updateChecklistAction(
+  input: unknown,
+): Promise<ActionResult<ChecklistItem[]>> {
+  // 1. Zod validation first (Rule S-01)
+  const parsed = UpdateChecklistSchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  const { taskId, items } = parsed.data;
+
+  // 2. Auth check
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const supabase = await createClient();
+
+  // 3. Fetch task via user client (RLS layer 1)
+  const { data: task } = await supabase
+    .from('tasks')
+    .select('id, assigned_to, created_by, group_id')
+    .eq('id', taskId)
+    .single();
+
+  if (!task) return { data: null, error: 'Task not found.' };
+
+  // 4. Application-layer authorization check (A-09 — layer 2)
+  const allowed = await canMutateTask(caller, task as TaskMutationTarget);
+  if (!allowed) return { data: null, error: formErrors.unauthorized };
+
+  // 5. Write new checklist — adminClient bypasses RLS UPDATE
+  //    (application-layer access check above provides the security equivalent)
+  const admin = createAdminClient();
+  const { error: updateError } = await admin
+    .from('tasks')
+    .update({ attachments: items })
+    .eq('id', taskId);
+
+  if (updateError) return { data: null, error: formErrors.generic };
+
+  return { data: items as ChecklistItem[], error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: updateTaskTagsAction
+// Replaces tasks.tags with a new tags array.
+// Supports up to 10 tags, each up to 50 chars.
+// Used by: personal task detail view, CreatePersonalTaskModal (on edit).
+// ─────────────────────────────────────────────
+export async function updateTaskTagsAction(
+  input: unknown,
+): Promise<ActionResult<{ taskId: string }>> {
+  // 1. Zod validation first (Rule S-01)
+  const parsed = UpdateTaskTagsSchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  const { taskId, tags } = parsed.data;
+
+  // 2. Auth check
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const supabase = await createClient();
+
+  // 3. Fetch task via user client (RLS layer 1)
+  const { data: task } = await supabase
+    .from('tasks')
+    .select('id, assigned_to, created_by, group_id')
+    .eq('id', taskId)
+    .single();
+
+  if (!task) return { data: null, error: 'Task not found.' };
+
+  // 4. Application-layer authorization check (A-09 — layer 2)
+  const allowed = await canMutateTask(caller, task as TaskMutationTarget);
+  if (!allowed) return { data: null, error: formErrors.unauthorized };
+
+  // 5. Write new tags array
+  const admin = createAdminClient();
+  const { error: updateError } = await admin
+    .from('tasks')
+    .update({ tags })
+    .eq('id', taskId);
+
+  if (updateError) return { data: null, error: formErrors.generic };
+
+  return { data: { taskId }, error: null };
+}
+
+// ─────────────────────────────────────────────
 // Read actions — service calls wrapped as server actions so that
 // client components never import from server-only service modules
 // (Rule A-03: all DB queries through lib/services; no server module
@@ -473,12 +578,15 @@ export async function deleteTaskAction(
 import {
   getGroupSubtasks,
   getPersonalTasks,
+  getPersonalTaskTags,
+  getTaskGroupById,
 } from '@/lib/services/tasks-service';
 import type {
   SubtaskWithAssignee,
   PersonalTaskFilters,
   PersonalTasksResult,
 } from '@/lib/services/tasks-service';
+import type { TaskGroup } from '@/lib/types/database';
 
 export async function getGroupSubtasksAction(
   groupId: string,
@@ -500,21 +608,46 @@ export async function getPersonalTasksAction(
   return { data: result, error: null };
 }
 
+export async function getPersonalTaskTagsAction(): Promise<ActionResult<string[]>> {
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: 'Unauthorized.' };
+
+  const tags = await getPersonalTaskTags(caller.id);
+  return { data: tags, error: null };
+}
+
+export async function getTaskGroupByIdAction(
+  groupId: string,
+): Promise<ActionResult<TaskGroup>> {
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: 'Unauthorized.' };
+
+  const group = await getTaskGroupById(groupId);
+  if (!group) return { data: null, error: 'Group not found.' };
+  return { data: group, error: null };
+}
+
 // ─────────────────────────────────────────────
-// Action: addTaskMessageAction
-// Validates caller has task access; sanitizes content; inserts.
-// task_messages is append-only — no update or delete (Rule A-11).
+// Action: addTaskRemarkAction
+// Inserts a task_remarks row. Optionally advances the task status first.
+//
+// statusChange flow:
+//   If provided, updateTaskStatusAction is called first — status logic is
+//   NOT duplicated here. The remark insert only runs if the status update
+//   succeeds (or is a no-op because the status is already that value).
+//
+// task_remarks is append-only — no update or delete (Rule A-11).
 // ─────────────────────────────────────────────
-export async function addTaskMessageAction(
+export async function addTaskRemarkAction(
   input: unknown,
-): Promise<ActionResult<{ messageId: string }>> {
-  // 1. Zod validation — content is sanitized by schema transform
-  const parsed = AddTaskMessageSchema.safeParse(input);
+): Promise<ActionResult<TaskRemark>> {
+  // 1. Zod validation first (Rule S-01) — content sanitized by schema transform
+  const parsed = AddTaskRemarkSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: formErrors.generic };
 
-  const { taskId, content } = parsed.data;
+  const { taskId, content, statusChange } = parsed.data;
 
-  // sanitizeText is called by the Zod transform; re-apply explicitly per Rule S-06
+  // sanitizeText is called by the Zod transform; re-apply explicitly (Rule S-06)
   const sanitizedContent = sanitizeText(content);
 
   // 2. Auth check
@@ -523,56 +656,71 @@ export async function addTaskMessageAction(
 
   const supabase = await createClient();
 
-  // 3. Verify caller has access to the task (RLS enforces the same, but belt-and-braces)
+  // 3. Verify task visibility — caller must be assigned_to OR created_by OR manager+
+  //    (mirrors RLS task_remarks_insert, belt-and-braces per A-09 two-layer rule)
   const { data: task } = await supabase
     .from('tasks')
-    .select('id, assigned_to')
+    .select('id, assigned_to, created_by, group_id')
     .eq('id', taskId)
     .single();
 
   if (!task) return { data: null, error: 'Task not found.' };
 
-  // 4. Insert message — admin client because RLS INSERT requires task access check
-  // (RLS "task_messages_insert" mirrors this check; admin bypasses it safely since
-  //  we've already verified access above in application code)
+  const hasAccess =
+    task.assigned_to === caller.id ||
+    task.created_by  === caller.id ||
+    ['manager', 'admin', 'founder'].includes(caller.role);
+
+  if (!hasAccess) return { data: null, error: formErrors.unauthorized };
+
+  // 4. If statusChange is provided, advance task status first.
+  //    Reuse updateTaskStatusAction — do NOT duplicate status logic here.
+  //    updateTaskStatusAction does NOT insert a remark (verified pre-mortem).
+  if (statusChange) {
+    const statusResult = await updateTaskStatusAction({ taskId, status: statusChange });
+    if (statusResult.error) return { data: null, error: statusResult.error };
+  }
+
+  // 5. Insert remark — adminClient bypasses RLS INSERT (application-layer
+  //    access check above provides the security equivalent)
   const admin = createAdminClient();
-  const { data: message, error: insertError } = await admin
-    .from('task_messages')
+  const { data: remark, error: insertError } = await admin
+    .from('task_remarks')
     .insert({
-      task_id:   taskId,
-      author_id: caller.id,
-      content:   sanitizedContent,
+      task_id:       taskId,
+      author_id:     caller.id,
+      content:       sanitizedContent,
+      status_change: statusChange ?? null,
     })
-    .select('id')
+    .select('*')
     .single();
 
-  if (insertError || !message) return { data: null, error: formErrors.generic };
+  if (insertError || !remark) return { data: null, error: formErrors.generic };
 
-  return { data: { messageId: message.id as string }, error: null };
+  return { data: remark as TaskRemark, error: null };
 }
 
 // ─────────────────────────────────────────────
-// Action: suppressTaskMessageAction
-// Soft-suppresses a task_messages row. The row is never deleted.
+// Action: suppressTaskRemarkAction
+// Soft-suppresses a task_remarks row. The row is never deleted.
 // Only admin and founder may call this action.
 //
-// Column restriction note: the RLS UPDATE policy ("task_messages_suppression_update")
-// permits admin/founder to update ANY column on task_messages. PostgreSQL RLS does
+// Column restriction note: the RLS UPDATE policy ("task_remarks_suppression_update")
+// permits admin/founder to update ANY column on task_remarks. PostgreSQL RLS does
 // not restrict which columns change — only which rows are eligible. This action
-// enforces the column restriction by writing ONLY the three suppression columns.
-// Do not remove this comment; it documents why we use adminClient here instead of
-// passing through the user client (which would also hit the RLS policy).
+// enforces the restriction by writing ONLY the three suppression columns.
+// Do not remove this comment; it documents why we use adminClient here.
 // ─────────────────────────────────────────────
-export async function suppressTaskMessageAction(
+export async function suppressTaskRemarkAction(
   input: unknown,
-): Promise<ActionResult<{ messageId: string }>> {
-  // 1. Zod validation — first, always (Rule S-01)
-  const parsed = SuppressTaskMessageSchema.safeParse(input);
+): Promise<ActionResult<{ remarkId: string }>> {
+  // 1. Zod validation first (Rule S-01)
+  const parsed = SuppressTaskRemarkSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: formErrors.generic };
 
-  const { messageId } = parsed.data;
+  const { messageId: remarkId } = parsed.data;
 
-  // 2. Auth check — only admin and founder may suppress messages
+  // 2. Auth — admin and founder only
   const caller = await getCurrentProfile();
   if (!caller) return { data: null, error: formErrors.unauthorized };
   if (!['admin', 'founder'].includes(caller.role)) {
@@ -581,30 +729,29 @@ export async function suppressTaskMessageAction(
 
   const admin = createAdminClient();
 
-  // 3. Verify the message exists before writing (Rule S-06 — never trust client IDs)
+  // 3. Verify remark exists (Rule S-06 — never trust client IDs)
   const { data: existing } = await admin
-    .from('task_messages')
+    .from('task_remarks')
     .select('id, is_suppressed')
-    .eq('id', messageId)
+    .eq('id', remarkId)
     .single();
 
-  if (!existing) return { data: null, error: 'Message not found.' };
+  if (!existing) return { data: null, error: 'Remark not found.' };
 
-  // No-op if already suppressed
-  if (existing.is_suppressed) return { data: { messageId }, error: null };
+  // Idempotent — no-op if already suppressed
+  if (existing.is_suppressed) return { data: { remarkId }, error: null };
 
-  // 4. Write suppression — only the three suppression columns (column restriction
-  //    is application-layer only; see comment above).
+  // 4. Write only the three suppression columns (column restriction at action layer)
   const { error: updateError } = await admin
-    .from('task_messages')
+    .from('task_remarks')
     .update({
       is_suppressed: true,
       suppressed_by: caller.id,
       suppressed_at: new Date().toISOString(),
     })
-    .eq('id', messageId);
+    .eq('id', remarkId);
 
   if (updateError) return { data: null, error: formErrors.generic };
 
-  return { data: { messageId }, error: null };
+  return { data: { remarkId }, error: null };
 }

@@ -7,17 +7,31 @@
   box-sizing: border-box;
 }
 
-html,
-body {
-  height: 100%;
+html {
+  background-color: #0d0c0a; /* match Earth canvas — prevents flash before layout mounts */
+  color-scheme: dark;
+  min-height: 100%;
 }
 
 body {
-  background-color: var(--theme-canvas);
-  color: var(--theme-canvas-text);
+  background-color: #0d0c0a;
+  color: rgb(255 255 255 / 0.9);
+  min-height: 100vh;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Dashboard shell canvas — grain + theme-scoped radial washes via CSS vars.
+   Grain SVG opacity (0.055) is hardcoded in the data URI; cannot use
+   --theme-canvas-grain-opacity. Other themes omit gradient tokens → flat canvas. */
+.layout-canvas {
+  background-color: var(--theme-canvas);
+  background-image:
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n' x='0' y='0'><feTurbulence type='fractalNoise' baseFrequency='0.68' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='0.055'/></svg>"),
+    var(--theme-canvas-gradient-1),
+    var(--theme-canvas-gradient-2),
+    var(--theme-canvas-gradient-3);
 }
 
 /* Back-link hover — dossier page breadcrumb */

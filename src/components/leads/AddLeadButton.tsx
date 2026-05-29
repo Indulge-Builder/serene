@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { AddLeadModal } from '@/components/leads/AddLeadModal';
+import { Button } from '@/components/ui/Button';
 import type { AppDomain, UserRole } from '@/lib/types/database';
 
 type CallerProfile = {
@@ -23,30 +24,14 @@ export function AddLeadButton({ callerProfile, initialAgents }: Props) {
 
   return (
     <>
-      <button
+      <Button
+        variant="primary"
         type="button"
         onClick={() => setOpen(true)}
-        style={{
-          display:        'inline-flex',
-          alignItems:     'center',
-          justifyContent: 'center',
-          height:         '2.25rem',
-          paddingLeft:    'var(--space-4)',
-          paddingRight:   'var(--space-4)',
-          border:         'none',
-          borderRadius:   'var(--radius-sm)',
-          background:     'var(--theme-accent)',
-          fontSize:       'var(--text-sm)',
-          fontWeight:     'var(--weight-medium)',
-          color:          'var(--theme-accent-fg)',
-          cursor:         'pointer',
-          transition:     'var(--transition-interactive)',
-          boxShadow:      'var(--shadow-accent-glow)',
-          whiteSpace:     'nowrap',
-        }}
+        style={{ boxShadow: 'var(--shadow-accent-glow)', whiteSpace: 'nowrap' }}
       >
         + Add Lead
-      </button>
+      </Button>
 
       <AddLeadModal
         open={open}
