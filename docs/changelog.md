@@ -7,6 +7,8 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-30 — WA webhook: replace void async IIFE with after() — fixes Vercel function termination before DB writes
+
 ## 2026-05-30 — WA: Gupshup v1 wired — x-gupshup-secret auth, dual-format inbound parser, Gupshup v1 outbound send
 
 - `src/app/api/webhooks/whatsapp/route.ts` — auth migrated from `Authorization` header to `x-gupshup-secret` checked with `timingSafeEqual`; dual-format POST handler: Gupshup v2 (`body.type === 'message'`) and dormant Meta v3 (`body.object === 'whatsapp_business_account'`) paths; `message-event` and `billing-event` acknowledged with 200 and no processing

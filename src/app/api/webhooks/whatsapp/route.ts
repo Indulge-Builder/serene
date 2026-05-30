@@ -3,7 +3,7 @@
 // POST — Dual-format: Gupshup v2 (active BSP) or Meta v3 (dormant, kept for future use).
 
 import { timingSafeEqual } from 'crypto';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { WEBHOOK_VERIFY_TOKEN, verifyMetaSignature } from '@/lib/services/whatsapp-api';
 import { parseWebhookPayload, processInboundMessage, processStatusUpdate } from '@/lib/services/whatsapp-ingestion';
 import type { MetaInboundMessage, MetaWebhookPayload } from '@/lib/types/whatsapp';
@@ -70,12 +70,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     if (body.type === 'message') {
-      const response = NextResponse.json({ status: 'ok' }, { status: 200 });
-
-      void (async () => {
+      after(async () => {
         try {
-          const payload  = body.payload as Record<string, unknown>;
-          const inner    = payload.payload as Record<string, unknown>;
+          const payload   = body.payload as Record<string, unknown>;
+          const inner     = payload.payload as Record<string, unknown>;
           const messageId = payload.id as string;
           const phone     = `+${payload.source as string}`;
           const waId      = payload.source as string;
@@ -92,9 +90,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         } catch (err) {
           console.error('[whatsapp/webhook] Gupshup processing error:', err);
         }
-      })();
+      });
 
-      return response;
+      return NextResponse.json({ status: 'ok' }, { status: 200 });
     }
 
     // Unknown Gupshup event type — acknowledge
@@ -114,10 +112,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  // Respond immediately — Meta requires a 200 within 5s
-  const response = NextResponse.json({ status: 'ok' }, { status: 200 });
-
-  void (async () => {
+  after(async () => {
     try {
       const events = parseWebhookPayload(body);
 
@@ -131,7 +126,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     } catch (err) {
       console.error('[whatsapp/webhook] Meta processing error:', err);
     }
-  })();
+  });
 
-  return response;
+  return NextResponse.json({ status: 'ok' }, { status: 200 });
 }
