@@ -24,7 +24,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return new NextResponse(challenge, { status: 200 });
   }
 
-  return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  return new NextResponse('OK', { status: 200 });
 }
 
 // ─────────────────────────────────────────────
