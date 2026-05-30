@@ -7,6 +7,8 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-30 — WA: SLA breach WhatsApp notifications wired; agent template 54d5dd55 (4 params: leadName, leadPhone, status, lastUpdatedAt), manager template 682fd320 (5 params: +agentName); fires alongside in-app notifications in fireSlaBreachHandler; agent assignment template updated to 3bcebeb0
+
 ## 2026-05-30 — WA: whatsapp_notification_logs table (migration 0038); every template notification attempt logged with status, delivery result, and 4-digit phone suffix
 
 ## 2026-05-30 — WA: founder lead notification wired (template d5828042); fires on assignLead, createManualLead, and lead ingestion webhook

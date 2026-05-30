@@ -37,6 +37,10 @@ import {
   getSlaTimerForLeadAndRule,
 } from '@/lib/services/sla-service';
 import { createNotification }                       from '@/lib/services/notifications-service';
+import {
+  sendSlaAgentNotification,
+  sendSlaManagerNotification,
+}                                                   from '@/lib/services/whatsapp-api';
 import type { LeadStatus, AppDomain } from '@/lib/types/database';
 import type { ActionResult } from '@/lib/types/index';
 
@@ -65,6 +69,20 @@ const RefreshActivitySlaSchema = z.object({
   assignedTo: z.string().uuid(),
   domain:     z.string(),
 });
+
+// ─── SLA timestamp formatter ──────────────────────────────────────────────────
+
+function formatSlaTimestamp(ts: string | null | undefined): string {
+  if (!ts) return 'unknown';
+  return new Date(ts).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day:      '2-digit',
+    month:    'short',
+    hour:     '2-digit',
+    minute:   '2-digit',
+    hour12:   true,
+  });
+}
 
 // ─── Terminal statuses — no new SLA timers after these ───────────────────────
 
@@ -276,7 +294,7 @@ export async function fireSlaBreachHandler(
   // ─ Step 1: Re-read lead — stale-fire guard ─────────────────────────────────
   const { data: lead, error: leadError } = await admin
     .from('leads')
-    .select('id, status, assigned_to, domain, call_count, first_name, last_name')
+    .select('id, status, assigned_to, domain, call_count, first_name, last_name, phone, last_activity_at, status_changed_at')
     .eq('id', leadId)
     .single();
 
@@ -318,6 +336,10 @@ export async function fireSlaBreachHandler(
   const leadFirstName = (lead.first_name as string | null) ?? 'A lead';
   const leadLastName  = lead.last_name as string | null;
   const leadName      = leadLastName ? `${leadFirstName} ${leadLastName}` : leadFirstName;
+  const leadPhone     = (lead.phone as string | null) ?? '';
+  const lastUpdatedAt = formatSlaTimestamp(
+    (lead.last_activity_at as string | null) ?? (lead.status_changed_at as string | null),
+  );
 
   const ruleDesc = getRuleDescription(ruleCode);
 
@@ -336,6 +358,14 @@ export async function fireSlaBreachHandler(
       body:         ruleDesc,
       action_url:   `/leads/${leadId}`,
     }).catch(() => {}); // fire-and-forget, non-fatal
+
+    void sendSlaAgentNotification(
+      assignedTo,
+      leadName,
+      leadPhone,
+      leadStatus,
+      lastUpdatedAt,
+    ).catch((err) => console.error('[sla] agent WA notification failed:', err));
 
     // ─ Step 5: Auto-task (agent rules only) ──────────────────────────────────
     const taskTitle = SLA_AUTO_TASK_TITLES[ruleCode as keyof typeof SLA_AUTO_TASK_TITLES];
@@ -399,6 +429,26 @@ export async function fireSlaBreachHandler(
         }),
       ),
     );
+
+    // Resolve agent name for WA template (one targeted fetch)
+    let agentName = 'Unassigned';
+    if (assignedTo) {
+      const { data: agentProfile } = await admin
+        .from('profiles')
+        .select('full_name')
+        .eq('id', assignedTo)
+        .single();
+      agentName = (agentProfile?.full_name as string | null) ?? 'Unassigned';
+    }
+
+    void sendSlaManagerNotification(
+      managerIds,
+      leadName,
+      leadPhone,
+      agentName,
+      leadStatus,
+      lastUpdatedAt,
+    ).catch((err) => console.error('[sla] manager WA notification failed:', err));
   }
 
   // ─ Step 6: Log sla_breach activity ────────────────────────────────────────

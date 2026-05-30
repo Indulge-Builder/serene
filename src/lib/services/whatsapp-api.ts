@@ -2,7 +2,13 @@
 // Reads secret env vars at module load. Throws at startup if required vars are missing.
 
 import { createHmac, timingSafeEqual } from 'crypto';
-import { WHATSAPP_API_BASE, GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID, GUPSHUP_FOUNDER_LEAD_NOTIFICATION_TEMPLATE_ID } from '@/lib/constants/whatsapp';
+import {
+  WHATSAPP_API_BASE,
+  GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID,
+  GUPSHUP_FOUNDER_LEAD_NOTIFICATION_TEMPLATE_ID,
+  GUPSHUP_SLA_AGENT_TEMPLATE_ID,
+  GUPSHUP_SLA_MANAGER_TEMPLATE_ID,
+} from '@/lib/constants/whatsapp';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MetaApiResponse, TemplateComponent } from '@/lib/types/whatsapp';
 
@@ -397,6 +403,158 @@ export async function sendFounderLeadNotification(
     }
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendFounderLeadNotification:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Send SLA breach notification to an agent via Gupshup template
+// Fire-and-forget safe — never throws to the caller
+// Params: [leadName, leadPhone, status, lastUpdatedAt]
+// ─────────────────────────────────────────────
+
+export async function sendSlaAgentNotification(
+  agentId:       string,
+  leadName:      string,
+  leadPhone:     string,
+  status:        string,
+  lastUpdatedAt: string,
+): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const { data: agent } = await admin
+      .from('profiles')
+      .select('phone')
+      .eq('id', agentId)
+      .single();
+
+    if (!agent?.phone) {
+      console.warn(`[whatsapp-api] Agent ${agentId} has no phone — skipping SLA agent notification`);
+      return;
+    }
+
+    const source      = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
+    const destination = agent.phone.replace(/^\+/, '');
+
+    const params = new URLSearchParams({
+      channel:    'whatsapp',
+      source,
+      destination,
+      'src.name': GUPSHUP_APP_NAME!,
+      template:   JSON.stringify({
+        id:     GUPSHUP_SLA_AGENT_TEMPLATE_ID,
+        params: [leadName, leadPhone || 'not provided', status, lastUpdatedAt],
+      }),
+    });
+
+    const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
+      method:  'POST',
+      headers: {
+        apikey:         GUPSHUP_API_KEY!,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+
+    const responseBody = await res.text();
+
+    if (res.ok) {
+      console.log(`[whatsapp-api] SLA agent notification sent to agent ${agentId} (...${destination.slice(-4)})`);
+    } else {
+      console.error(`[whatsapp-api] SLA agent notification failed: HTTP ${res.status} for agent ${agentId}`);
+    }
+
+    void logNotification({
+      type:           'agent_assignment',
+      recipientId:    agentId,
+      recipientPhone: destination,
+      leadName,
+      leadPhone,
+      gupshupStatus:  res.status,
+      gupshupBody:    responseBody,
+      delivered:      res.ok,
+    });
+  } catch (err) {
+    console.error('[whatsapp-api] Unexpected error in sendSlaAgentNotification:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Send SLA breach escalation to multiple managers via Gupshup template
+// Fire-and-forget safe — never throws to the caller
+// Params: [leadName, leadPhone, agentName, status, lastUpdatedAt]
+// ─────────────────────────────────────────────
+
+export async function sendSlaManagerNotification(
+  recipientIds:  string[],
+  leadName:      string,
+  leadPhone:     string,
+  agentName:     string,
+  status:        string,
+  lastUpdatedAt: string,
+): Promise<void> {
+  try {
+    if (recipientIds.length === 0) return;
+
+    const admin = createAdminClient();
+    const { data: recipients } = await admin
+      .from('profiles')
+      .select('id, phone')
+      .in('id', recipientIds);
+
+    if (!recipients || recipients.length === 0) return;
+
+    const source = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
+
+    for (const recipient of recipients) {
+      if (!recipient.phone) {
+        console.warn(`[whatsapp-api] Manager ${recipient.id} has no phone — skipping SLA manager notification`);
+        continue;
+      }
+
+      const destination = recipient.phone.replace(/^\+/, '');
+
+      const params = new URLSearchParams({
+        channel:    'whatsapp',
+        source,
+        destination,
+        'src.name': GUPSHUP_APP_NAME!,
+        template:   JSON.stringify({
+          id:     GUPSHUP_SLA_MANAGER_TEMPLATE_ID,
+          params: [leadName, leadPhone || 'not provided', agentName, status, lastUpdatedAt],
+        }),
+      });
+
+      const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
+        method:  'POST',
+        headers: {
+          apikey:         GUPSHUP_API_KEY!,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      const responseBody = await res.text();
+
+      if (res.ok) {
+        console.log(`[whatsapp-api] SLA manager notification sent to ${recipient.id} (...${destination.slice(-4)})`);
+      } else {
+        console.error(`[whatsapp-api] SLA manager notification failed: HTTP ${res.status} for recipient ${recipient.id}`);
+      }
+
+      void logNotification({
+        type:           'founder_alert',
+        recipientId:    recipient.id,
+        recipientPhone: destination,
+        agentName,
+        leadName,
+        leadPhone,
+        gupshupStatus:  res.status,
+        gupshupBody:    responseBody,
+        delivered:      res.ok,
+      });
+    }
+  } catch (err) {
+    console.error('[whatsapp-api] Unexpected error in sendSlaManagerNotification:', err);
   }
 }
 
