@@ -84,6 +84,8 @@ StatusIcon function defined twice: once in GroupTasksTab.tsx:83-94 lines 83–94
 STATUS_CONFIG / status→colour mappings defined independently in GroupTasksTab.tsx (line 72), TaskRemarksPanel.tsx (line 78), SubTaskModal.tsx (uses TASK_STATUS from constants — correct). The GroupTasksTab and TaskRemarksPanel each maintain their own status colour tables rather than using TASK_STATUS from src/lib/constants/task-constants.ts. 5. Component Structure Problems
 PersonalTasksTab (PersonalTasksTab.tsx)
 
+OKIE,
+
 Fetches its own data on mount (violation) despite receiving initialResult as a prop
 Contains tag filter logic, optimistic state management, section collapse logic, quick-add form, modal orchestration — violates single responsibility
 1,276 lines; the completed-task row markup (lines 1062–1200) is a near-duplicate of the active-task row markup (lines 476–658) with minor differences. Could be unified behind a shared TaskRow component.
