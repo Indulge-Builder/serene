@@ -5,6 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import {
   AddCallNoteSchema,
+  AddLeadNoteSchema,
+  UpdateLeadInfoSchema,
   UpdateLeadStatusSchema,
   AssignLeadSchema,
   UpdateScratchpadSchema,
@@ -587,6 +589,116 @@ export async function createManualLead(
 
   // 11. Return success
   return { data: { leadId }, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: updateLeadInfo
+// Updates contact fields: first_name, last_name, phone, email.
+// Access: same as scratchpad (assigned agent, manager, admin, founder).
+// ─────────────────────────────────────────────
+export async function updateLeadInfo(
+  input: unknown,
+): Promise<ActionResult<{ leadId: string }>> {
+  const parsed = UpdateLeadInfoSchema.safeParse(input);
+  if (!parsed.success) {
+    const phoneIssue = parsed.error.issues.find((i) => i.path[0] === 'phone');
+    const emailIssue = parsed.error.issues.find((i) => i.path[0] === 'email');
+    if (phoneIssue) return { data: null, error: phoneIssue.message };
+    if (emailIssue) return { data: null, error: emailIssue.message };
+    return { data: null, error: formErrors.generic };
+  }
+
+  const { leadId, first_name, last_name, phone, email } = parsed.data;
+
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const supabase = await createClient();
+
+  const { data: lead } = await supabase
+    .from('leads')
+    .select('id, assigned_to, domain')
+    .eq('id', leadId)
+    .single();
+
+  if (!lead) return { data: null, error: 'Lead not found.' };
+
+  const hasAccess =
+    (caller.role === 'agent' && lead.assigned_to === caller.id) ||
+    (caller.role === 'manager' && lead.domain === (caller.domain as string)) ||
+    caller.role === 'admin' ||
+    caller.role === 'founder';
+
+  if (!hasAccess) return { data: null, error: formErrors.unauthorized };
+
+  const admin = createAdminClient();
+
+  const { error: updateError } = await admin
+    .from('leads')
+    .update({ first_name, last_name, phone, email })
+    .eq('id', leadId);
+
+  if (updateError) return { data: null, error: formErrors.generic };
+
+  // Log the edit as an activity
+  await admin.from('lead_activities').insert({
+    lead_id:     leadId,
+    actor_id:    caller.id,
+    action_type: 'note_added',
+    details:     { type: 'contact_info_updated' },
+  });
+
+  return { data: { leadId }, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: addLeadNote
+// Inserts a plain note (no call outcome) visible to all team members.
+// Uses add_lead_plain_note RPC for atomicity (note + activity log).
+// ─────────────────────────────────────────────
+export async function addLeadNote(
+  input: unknown,
+): Promise<ActionResult<{ noteId: string }>> {
+  const parsed = AddLeadNoteSchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  const { leadId, content } = parsed.data;
+
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const supabase = await createClient();
+
+  const { data: lead } = await supabase
+    .from('leads')
+    .select('id, assigned_to, domain')
+    .eq('id', leadId)
+    .single();
+
+  if (!lead) return { data: null, error: 'Lead not found.' };
+
+  const hasAccess =
+    (caller.role === 'agent' && lead.assigned_to === caller.id) ||
+    (caller.role === 'manager' && lead.domain === (caller.domain as string)) ||
+    caller.role === 'admin' ||
+    caller.role === 'founder';
+
+  if (!hasAccess) return { data: null, error: formErrors.unauthorized };
+
+  const admin = createAdminClient();
+  const now   = new Date().toISOString();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: rpcResult, error: rpcError } = await (admin as any).rpc('add_lead_plain_note', {
+    p_lead_id:   leadId,
+    p_author_id: caller.id,
+    p_content:   content,
+    p_now:       now,
+  });
+
+  if (rpcError || !rpcResult) return { data: null, error: formErrors.generic };
+
+  return { data: { noteId: rpcResult.note_id }, error: null };
 }
 
 // ─────────────────────────────────────────────

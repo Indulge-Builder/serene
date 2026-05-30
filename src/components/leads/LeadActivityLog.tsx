@@ -68,10 +68,8 @@ function formatTimestamp(iso: string): string {
 }
 
 export function LeadActivityLog({ activities }: Props) {
-  // Newest first; skip note_added (duplicates call_logged)
-  const visible = [...activities]
-    .reverse()
-    .filter((a) => a.action_type !== 'note_added');
+  // Service returns newest first; skip note_added (duplicates call_logged)
+  const visible = activities.filter((a) => a.action_type !== 'note_added');
 
   return (
     <div

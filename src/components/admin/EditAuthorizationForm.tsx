@@ -19,7 +19,7 @@ export function EditAuthorizationForm({ user }: Props) {
   const succeeded = state.data !== null;
 
   return (
-    <form action={formAction} style={{ padding: "var(--space-6) var(--space-8)" }}>
+    <form action={formAction}>
       <input type="hidden" name="id" value={user.id} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
@@ -127,8 +127,7 @@ export function EditAuthorizationForm({ user }: Props) {
           style={{
             display:        "flex",
             justifyContent: "flex-end",
-            paddingTop:     "var(--space-3)",
-            borderTop:      "1px solid var(--theme-paper-border)",
+            paddingTop:     "var(--space-2)",
           }}
         >
           <Button variant="primary" type="submit" disabled={isPending} loading={isPending}>

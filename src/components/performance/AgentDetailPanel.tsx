@@ -164,17 +164,25 @@ function PipelineBar({ breakdown }: { breakdown: { status: string; count: number
 // ─────────────────────────────────────────────
 
 type Props = {
-  agent:  AgentRosterRow;
-  domain: AppDomain;
-  period: PerformancePeriod;
+  agent:          AgentRosterRow;
+  domain:         AppDomain;
+  period:         PerformancePeriod;
+  initialData?:   AgentDetailMetrics;
+  initialAgentId?: string;
 };
 
-export function AgentDetailPanel({ agent, domain, period }: Props) {
-  const [metrics, setMetrics]   = useState<AgentDetailMetrics | null>(null);
+export function AgentDetailPanel({ agent, domain, period, initialData, initialAgentId }: Props) {
+  const [metrics, setMetrics]   = useState<AgentDetailMetrics | null>(initialData ?? null);
   const [error, setError]       = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
+    // Seed skip: if this is the pre-fetched agent and we already have server data, skip the fetch.
+    // This is the same pattern as the Dashboard RSC consolidation (perf-01).
+    if (agent.id === initialAgentId && initialData) {
+      return;
+    }
+
     let cancelled = false;
     setMetrics(null);
     setError(null);
@@ -188,7 +196,7 @@ export function AgentDetailPanel({ agent, domain, period }: Props) {
       }
     });
     return () => { cancelled = true; };
-  }, [agent.id, domain, period]);
+  }, [agent.id, domain, period]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div

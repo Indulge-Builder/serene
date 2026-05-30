@@ -10,7 +10,7 @@ import { SPRING_CONFIG, BASE_DURATION, EASE_OUT_EXPO } from '@/lib/constants/mot
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type TabSelectorVariant = 'pill' | 'border-bottom' | 'connected';
+export type TabSelectorVariant = 'pill' | 'connected';
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -113,6 +113,9 @@ export function TabsList({ children, className, style }: TabsListProps) {
     display: 'flex',
     alignItems: 'center',
     position: 'relative',
+    // ✓ spec — pill tray: paper-subtle bg + paper-border. Radius is --radius-xl
+    // (intentional drift from --radius-md spec — current dark-canvas chip pattern
+    // reads better with a more rounded tray; documented in components/CLAUDE.md).
     ...(variant === 'pill' && {
       background: 'var(--theme-paper-subtle)',
       border: '1px solid var(--theme-paper-border)',
@@ -120,12 +123,8 @@ export function TabsList({ children, className, style }: TabsListProps) {
       padding: 'var(--space-1)',
       gap: 'var(--space-1)',
     }),
-    ...(variant === 'border-bottom' && {
-      background: 'transparent',
-      borderBottom: '1px solid var(--theme-paper-border)',
-      borderRadius: 0,
-      gap: 0,
-    }),
+    // ✓ spec — connected tray: paper-subtle bg + paper-border + --radius-md.
+    // Padding is --space-1 (4px) vs spec p-[2px] — token-system fidelity preferred.
     ...(variant === 'connected' && {
       background: 'var(--theme-paper-subtle)',
       border: '1px solid var(--theme-paper-border)',
@@ -163,7 +162,6 @@ export function TabsTrigger({
   const { value: activeValue, onValueChange, layoutId, variant } = useTabsContext();
   const isActive = value === activeValue;
   const isConnected = variant === 'connected';
-  const isBorderBottom = variant === 'border-bottom';
 
   // Pill variant: active text sits on a dark canvas chip — use canvas-text.
   // Other variants retain their existing colour logic.
@@ -190,13 +188,13 @@ export function TabsTrigger({
     color: isPill ? 'transparent' : (isActive ? activeTextColor : 'var(--theme-text-secondary)'),
     background: 'transparent',
     border: 'none',
-    borderRadius: isBorderBottom ? 0 : (isConnected ? 'var(--radius-sm)' : 'var(--radius-lg)'),
+    borderRadius: isConnected ? 'var(--radius-sm)' : 'var(--radius-lg)',
     cursor: disabled ? 'default' : 'pointer',
     transition: 'var(--transition-hover)',
     whiteSpace: 'nowrap',
     outline: 'none',
     zIndex: 1,
-    marginBottom: isBorderBottom ? -1 : 0,
+    marginBottom: 0,
     flex: isConnected ? 1 : undefined,
     justifyContent: isConnected ? 'center' : undefined,
     opacity: disabled ? 0.5 : 1,
@@ -219,7 +217,8 @@ export function TabsTrigger({
         e.currentTarget.removeAttribute('data-focus-visible');
       }}
     >
-      {/* Pill variant spring indicator — dark canvas chip */}
+      {/* ✓ spec — pill active chip: --theme-canvas bg + --theme-sidebar-border + --shadow-2.
+          SPRING_CONFIG (no hardcoded stiffness/damping). z-index:-1 sits below content span. */}
       {isPill && isActive && (
         <motion.span
           layoutId={layoutId}
@@ -236,7 +235,7 @@ export function TabsTrigger({
         />
       )}
 
-      {/* Connected variant spring indicator */}
+      {/* ✓ spec — connected active chip: --theme-paper bg + --shadow-1. SPRING_CONFIG. */}
       {isConnected && isActive && (
         <motion.span
           layoutId={`${layoutId}-connected`}
@@ -252,24 +251,6 @@ export function TabsTrigger({
         />
       )}
 
-      {/* Border-bottom variant underline indicator */}
-      {isBorderBottom && isActive && (
-        <motion.span
-          layoutId={`${layoutId}-underline`}
-          style={{
-            position: 'absolute',
-            bottom: -1,
-            left: 0,
-            right: 0,
-            width: '100%',
-            height: 2,
-            background: 'var(--theme-accent)',
-            borderRadius: 'var(--radius-full)',
-          }}
-          transition={SPRING_CONFIG}
-        />
-      )}
-
       {/*
         Content span — sits above the pill via position:relative + z-index:1.
         For the pill variant, text colour lives here (not on the button root)
@@ -277,6 +258,10 @@ export function TabsTrigger({
         The button root is colour:transparent for pill to avoid colouring the
         absolute-positioned pill child.
       */}
+      {/* ✓ spec — pill label sits on inner span with z-index:1; colour transition lives
+          here only (not on the button root, which is colour:transparent for pill so it
+          can't inherit-paint the absolute chip child). Active → --theme-canvas-text,
+          inactive → --theme-text-secondary. */}
       {isPill ? (
         <span
           style={{
@@ -354,6 +339,10 @@ export function TabsContent({
 }
 
 /** Internal badge with explicit isActive — used by TabSelector wrapper */
+// ✓ spec — count badge: bg --theme-accent-surface (active), color --theme-accent (active),
+// --radius-full, min-h 18px, text --text-2xs (= 10px in token system). Horizontal padding
+// is var(--space-1) (4px) vs spec px-1.5 (6px) — token-system fidelity preferred.
+// Inactive state uses paper-subtle + text-tertiary so the badge stays present but recedes.
 function _CountBadge({
   children,
   isActive,

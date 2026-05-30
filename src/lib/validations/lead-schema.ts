@@ -92,3 +92,43 @@ export const CreateManualLeadSchema = z.object({
 });
 
 export type CreateManualLeadInput = z.infer<typeof CreateManualLeadSchema>;
+
+// ─────────────────────────────────────────────
+// Update lead contact info (LeadInfoCard inline edit)
+// ─────────────────────────────────────────────
+export const UpdateLeadInfoSchema = z.object({
+  leadId:     z.string().uuid('Invalid lead ID'),
+  first_name: z.string().min(1, 'First name is required').transform(sanitizeText),
+  last_name:  z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? sanitizeText(v) : null)),
+  phone: z.string().min(1, 'Phone is required').transform((v) => {
+    try {
+      return normalizeToE164(v, 'IN');
+    } catch {
+      throw new z.ZodError([{
+        code:    'custom',
+        message: 'Please enter a valid phone number.',
+        path:    ['phone'],
+      }]);
+    }
+  }),
+  email: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim().toLowerCase() : null))
+    .pipe(z.string().email('Please enter a valid email address.').nullable()),
+});
+
+export type UpdateLeadInfoInput = z.infer<typeof UpdateLeadInfoSchema>;
+
+// ─────────────────────────────────────────────
+// Add plain lead note (LeadNotesInput — visible to all team members)
+// ─────────────────────────────────────────────
+export const AddLeadNoteSchema = z.object({
+  leadId:  z.string().uuid('Invalid lead ID'),
+  content: z.string().min(1, 'Note content is required').max(2000).transform(sanitizeText),
+});
+
+export type AddLeadNoteInput = z.infer<typeof AddLeadNoteSchema>;

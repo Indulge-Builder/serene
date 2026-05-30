@@ -1,15 +1,15 @@
 import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
+import { BackButton } from '@/components/ui/BackButton';
 
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { getLeadById, getLeadNotesFull, getLeadActivitiesFull } from '@/lib/services/leads-service';
+import { getLeadBySlug, getLeadById, getLeadNotesFull, getLeadActivitiesFull, getAgentsForDomain } from '@/lib/services/leads-service';
 import { getAdCreativeForCampaign } from '@/lib/services/ad-creatives-service';
 import { LeadInfoCard } from '@/components/leads/LeadInfoCard';
 import { StatusActionPanel } from '@/components/leads/StatusActionPanel';
 import { DynamicFormResponses } from '@/components/leads/DynamicFormResponses';
 import { AgentScratchpad } from '@/components/leads/AgentScratchpad';
+import { LeadNotesInput } from '@/components/leads/LeadNotesInput';
 import { LeadJourneyTimeline } from '@/components/leads/LeadJourneyTimeline';
 import { LeadNotesSection } from '@/components/leads/LeadNotesSection';
 import { LeadDossierTasksAsync } from '@/components/leads/LeadDossierTasksAsync';
@@ -21,9 +21,10 @@ type Props = { params: Promise<{ id: string }> };
 export default async function LeadDossierPage({ params }: Props) {
   const { id } = await params;
 
+  // Try slug first; fall back to UUID for any un-slugged rows (backfill window)
   const [profile, lead] = await Promise.all([
     getCurrentProfile(),
-    getLeadById(id),
+    getLeadBySlug(id).then((r) => r ?? getLeadById(id)),
   ]);
 
   if (!profile) redirect('/login');
@@ -38,11 +39,17 @@ export default async function LeadDossierPage({ params }: Props) {
 
   if (!hasAccess) redirect('/leads');
 
+  const canReassign =
+    profile.role === 'manager' ||
+    profile.role === 'admin' ||
+    profile.role === 'founder';
+
   // Fetch supporting data in parallel
-  const [notes, activities, adCreative] = await Promise.all([
+  const [notes, activities, adCreative, agents] = await Promise.all([
     getLeadNotesFull(id),
     getLeadActivitiesFull(id),
     lead.utm_campaign ? getAdCreativeForCampaign(lead.utm_campaign) : Promise.resolve(null),
+    canReassign ? getAgentsForDomain(lead.domain) : Promise.resolve([]),
   ]);
 
   const canEditScratchpad =
@@ -61,59 +68,37 @@ export default async function LeadDossierPage({ params }: Props) {
   return (
     <>
       <main style={{ flex: 1, padding: 'var(--space-8)', maxWidth: '1280px' }}>
-        {/* Back link + title row */}
+        {/* Page header — back button + Playfair title */}
         <div
           style={{
-            display:        'flex',
-            alignItems:     'center',
-            gap:            'var(--space-4)',
-            marginBottom:   'var(--space-6)',
+            display:      'flex',
+            alignItems:   'center',
+            gap:          'var(--space-4)',
+            marginBottom: 'var(--space-6)',
           }}
         >
-          <Link
-            href="/leads"
-            className="back-link"
-            style={{
-              display:        'inline-flex',
-              alignItems:     'center',
-              gap:            'var(--space-1)',
-              fontSize:       'var(--text-xs)',
-              color:          'var(--theme-text-tertiary)',
-              textDecoration: 'none',
-            }}
-          >
-            <ArrowLeft style={{ width: '0.75rem', height: '0.75rem' }} />
-            All leads
-          </Link>
-        </div>
+          <BackButton href="/leads" label="Back to Leads" />
 
-        {/* Page heading */}
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          <h1
-            style={{
-              fontFamily:    'var(--font-serif)',
-              fontSize:      'var(--text-2xl)',
-              fontWeight:    'var(--weight-semibold)',
-              letterSpacing: 'var(--tracking-tighter)',
-              lineHeight:    'var(--leading-tight)',
-              color:         'var(--theme-text-primary)',
-              margin:        0,
-            }}
-          >
-            {fullName}
-          </h1>
-          {lead.phone && (
-            <p
-              style={{
-                marginTop:  'var(--space-1)',
-                fontFamily: 'var(--font-mono)',
-                fontSize:   'var(--text-sm)',
-                color:      'var(--theme-text-secondary)',
-              }}
+          <div style={{ minWidth: 0 }}>
+            <h1
+              className="type-page-title"
+              style={{ margin: 0 }}
             >
-              {lead.phone}
-            </p>
-          )}
+              {fullName}<span className="page-title-dot">.</span>
+            </h1>
+            {lead.phone && (
+              <p
+                style={{
+                  marginTop:  'var(--space-1)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize:   'var(--text-sm)',
+                  color:      'var(--theme-text-secondary)',
+                }}
+              >
+                {lead.phone}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Status action panel */}
@@ -130,15 +115,19 @@ export default async function LeadDossierPage({ params }: Props) {
         >
           {/* Left column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-            <LeadInfoCard lead={lead} assigneeName={lead.assignee?.full_name ?? null} adCreative={adCreative} />
+            <LeadInfoCard lead={lead} assigneeName={lead.assignee?.full_name ?? null} adCreative={adCreative} canEdit={canEditScratchpad} canReassign={canReassign} agents={agents} />
             <PersonalDetailsCard lead={lead} canEdit={canEditPersonalDetails} />
             {lead.form_data && Object.keys(lead.form_data).length > 0 && (
               <DynamicFormResponses formData={lead.form_data} />
             )}
           </div>
 
-          {/* Right column — scratchpad */}
-          <div>
+          {/* Right column — stretches to match left column height */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', alignSelf: 'stretch' }}>
+            <LeadNotesInput
+              leadId={lead.id}
+              canAdd={canEditPersonalDetails}
+            />
             <AgentScratchpad
               leadId={lead.id}
               initialContent={lead.private_scratchpad ?? ''}

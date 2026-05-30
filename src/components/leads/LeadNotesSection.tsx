@@ -56,7 +56,7 @@ export function LeadNotesSection({ notes }: Props) {
             color:         'var(--theme-text-tertiary)',
           }}
         >
-          Call Notes
+          Notes
         </span>
         <span
           style={{
@@ -114,7 +114,7 @@ export function LeadNotesSection({ notes }: Props) {
             />
 
             {/* Notes */}
-            {[...notes].reverse().map((note, idx) => {
+            {notes.map((note, idx) => {
               const outcomeBadge = note.call_outcome ? OUTCOME_BADGE[note.call_outcome] : null;
               return (
                 <div

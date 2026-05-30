@@ -26,7 +26,7 @@ const SIZE_STYLES: Record<SearchBarSize, { height: string; fontSize: string; ico
 export function SearchBar({
   value,
   onChange,
-  placeholder = 'Search…',
+  placeholder = 'Search',
   size = 'md',
   disabled = false,
   className,
@@ -36,6 +36,7 @@ export function SearchBar({
 }: SearchBarProps) {
   const { height, fontSize, iconSize, pl } = SIZE_STYLES[size];
   const [focused, setFocused] = React.useState(false);
+  const [clearHovered, setClearHovered] = React.useState(false);
 
   return (
     <div
@@ -66,6 +67,7 @@ export function SearchBar({
 
       <input
         type="text"
+        className="eia-input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -99,6 +101,8 @@ export function SearchBar({
         <button
           type="button"
           onClick={() => onChange('')}
+          onMouseEnter={() => setClearHovered(true)}
+          onMouseLeave={() => setClearHovered(false)}
           aria-label="Clear search"
           style={{
             position:       'absolute',
@@ -114,7 +118,8 @@ export function SearchBar({
             border:         'none',
             borderRadius:   'var(--radius-full)',
             cursor:         'pointer',
-            color:          'var(--theme-text-tertiary)',
+            color:          clearHovered ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
+            transition:     'var(--transition-hover)',
             padding:        0,
           }}
         >

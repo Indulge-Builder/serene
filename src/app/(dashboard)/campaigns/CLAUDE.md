@@ -27,12 +27,24 @@ campaigns/[id]/page.tsx              ← Server component
 
 ## Campaign ID Encoding Contract
 
-`utm_campaign` values may contain spaces, slashes, and special characters.
+`utm_campaign` values may contain spaces but **never** a literal `+` character.
 
-- **List page → detail page:** `router.push(\`/campaigns/${encodeURIComponent(campaign.campaign_name)}\`)`
-- **Detail page → leads query:** `decodeURIComponent(params.id)` → passed as `filters.campaign`
-- Never manually encode or decode — always use `encodeURIComponent` / `decodeURIComponent`.
-- If `decodeURIComponent` throws, the detail page calls `notFound()`.
+- **List page → detail page:** `campaign.campaign_name.replace(/\s+/g, '+')` — spaces become `+`, nothing else is encoded.
+- **Detail page → leads query:** `params.id.replace(/\+/g, ' ')` — exact inverse, `+` decoded back to spaces.
+- **Never** use `encodeURIComponent` / `decodeURIComponent` for campaign names. The `+` convention keeps the address bar readable (`TG_House_Meta+Leads_Goa+Resort` vs `TG_House_Meta%20Leads_Goa%20Resort`).
+- **`+` must never appear in a utm_campaign name.** If it does, the `+` decodes as a space, the DB lookup finds the wrong campaign, and the leads list is empty with no error. Verify all real campaign keys contain no `+` before adding new ones.
+- **Defensive `%2B` decode.** `campaigns/[id]/page.tsx` strips `%2B` (case-insensitive) before the `+→space` swap. This handles double-encoded links from address-bar pastes or external referrers. Without this, the heading would render `%2B` literally.
+
+---
+
+## Detail Page Title — Beautification Rule
+
+`campaigns/[id]/page.tsx` renders **two** derived values from `params.id`:
+
+- `campaignName` — the un-beautified key used for **all** DB lookups. Spaces only; `+` and `%2B` decoded to spaces. Never modified beyond that.
+- `campaignTitle` — display-only. Built by `campaignName.split(/[_\s]+/).filter(Boolean).join(' · ')`. Used only in the H1.
+
+**Rule:** never pass `campaignTitle` to a service function or RPC. The DB stores raw `utm_campaign` keys (with underscores) and the lookup must match exactly. If a future feature needs the beautified form anywhere other than the H1, derive it locally — do not thread it through service-layer arguments.
 
 ---
 

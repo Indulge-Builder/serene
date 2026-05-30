@@ -32,6 +32,14 @@ Format per entry:
 - **Logged:** 2026-05-28
 - **History:** The `// TD-002` marker comment above the `console.error` call was wiped during the `getTaskGroupById` addition on 2026-05-29 and then explicitly re-added. **This file has a pattern of losing TD markers during rewrites.** When touching `tasks-service.ts` for any reason, grep for `TD-002` before committing to confirm the marker is still present.
 
+### TD-004 — `src/trigger/task-reminders.ts` — Rule P-07 console.error
+
+- **File:** `src/trigger/task-reminders.ts`
+- **Rule:** P-07 (no `console.log`, `console.error`, or `console.warn` in production — all error logging goes to Sentry only)
+- **What:** `console.error('[send-task-reminder] notification failed:', err)` inside `sendTaskReminderTask.run` (~line 69). Not covered by TD-002 which is scoped to `tasks-service.ts`.
+- **Fix:** Replace with `Sentry.captureException(err, { extra: { context: 'send-task-reminder notification' } })` once Sentry is wired up. Import `* as Sentry from '@sentry/nextjs'` at the top of the file.
+- **Logged:** 2026-05-30 (identified during task system architecture audit)
+
 ---
 
 ## Pattern notes (not debt — rules to carry forward)

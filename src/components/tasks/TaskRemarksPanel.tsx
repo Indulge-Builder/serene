@@ -42,6 +42,7 @@ import { formatRelativeTime } from "@/lib/utils/dates";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { toast } from "@/lib/toast";
 import { TASK_REMARK_STATUS_LABELS, TASK_STATUS } from "@/lib/constants/task-constants";
+import { EASE_OUT_EXPO, FAST_DURATION } from "@/lib/constants/motion";
 import { TaskStatusIcon } from "@/components/tasks/TaskStatusIcon";
 import type { TaskRemarkWithAuthor } from "@/lib/services/tasks-service";
 import type { TaskRemark, TaskStatus } from "@/lib/types/database";
@@ -76,9 +77,10 @@ export function TaskRemarksPanel({
   // Stable mount-scoped nonce — prevents Strict Mode double-invoke channel collision
   const mountId = useId();
 
-  const [remarks,    setRemarks]    = useState<TaskRemarkWithAuthor[]>(initialRemarks);
-  const [draft,      setDraft]      = useState("");
-  const [isPending,  startTransition] = useTransition();
+  const [remarks,      setRemarks]      = useState<TaskRemarkWithAuthor[]>(initialRemarks);
+  const [draft,        setDraft]        = useState("");
+  const [statusChange, setStatusChange] = useState<TaskStatus | null>(null);
+  const [isPending,    startTransition] = useTransition();
 
   // Seed seenIds from initialRemarks so Realtime never double-appends rows
   // that were already present when the modal opened.
@@ -167,13 +169,20 @@ export function TaskRemarksPanel({
 
   // ── Status pill toggle ────────────────────────────────────────────────────
 
+  function toggleStatusChange(status: TaskStatus) {
+    setStatusChange((prev) => (prev === status ? null : status));
+  }
+
   // ── Post remark ───────────────────────────────────────────────────────────
 
   const postRemark = useCallback(() => {
     const content = draft.trim();
     if (!content || isPending) return;
 
+    const pendingStatusChange = statusChange;
+
     setDraft("");
+    setStatusChange(null);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -189,7 +198,7 @@ export function TaskRemarksPanel({
       task_id:       taskId,
       author_id:     currentUserId,
       content:       sanitized,
-      status_change: null,
+      status_change: pendingStatusChange,
       created_at:    new Date().toISOString(),
       is_suppressed: false,
       suppressed_by: null,
@@ -200,7 +209,11 @@ export function TaskRemarksPanel({
     setRemarks((prev) => [...prev, optimisticRemark]);
 
     startTransition(async () => {
-      const result = await addTaskRemarkAction({ taskId, content });
+      const result = await addTaskRemarkAction({
+        taskId,
+        content,
+        statusChange: pendingStatusChange ?? undefined,
+      });
 
       if (result.error) {
         setRemarks((prev) => prev.filter((r) => r.id !== optimisticId));
@@ -226,7 +239,7 @@ export function TaskRemarksPanel({
         });
       }
     });
-  }, [draft, isPending, taskId, currentUserId, currentUserName]);
+  }, [draft, isPending, statusChange, taskId, currentUserId, currentUserName]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -442,7 +455,7 @@ export function TaskRemarksPanel({
                           <span
                             style={{
                               fontFamily: "var(--font-mono)",
-                              fontSize:   "10px",
+                              fontSize:   "var(--text-2xs)",
                               color:      "var(--theme-text-tertiary)",
                               flexShrink: 0,
                               whiteSpace: "nowrap",
@@ -557,6 +570,48 @@ export function TaskRemarksPanel({
               />
             </button>
           </div>
+
+          {/* Status-change chips */}
+          <div
+            style={{
+              display:   "flex",
+              flexWrap:  "wrap",
+              gap:       "var(--space-2)",
+              marginTop: "var(--space-2)",
+            }}
+          >
+            {(Object.keys(TASK_STATUS) as TaskStatus[]).map((status) => {
+              const isActive = statusChange === status;
+              return (
+                <motion.button
+                  key={status}
+                  type="button"
+                  onClick={() => toggleStatusChange(status)}
+                  animate={{
+                    background:   isActive ? "var(--theme-accent-surface)" : "var(--theme-paper-subtle)",
+                    borderColor:  isActive ? "var(--theme-accent)"         : "var(--theme-paper-border)",
+                    color:        isActive ? "var(--theme-accent)"         : "var(--theme-text-secondary)",
+                  }}
+                  transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+                  style={{
+                    height:       "var(--space-7)",
+                    padding:      "var(--space-2) var(--space-3)",
+                    border:       "1px solid var(--theme-paper-border)",
+                    borderRadius: "var(--radius-full)",
+                    fontFamily:   "var(--font-sans)",
+                    fontSize:     "var(--text-xs)",
+                    fontWeight:   "var(--weight-medium)",
+                    cursor:       "pointer",
+                    lineHeight:   1,
+                    whiteSpace:   "nowrap",
+                  }}
+                >
+                  {TASK_REMARK_STATUS_LABELS[status]}
+                </motion.button>
+              );
+            })}
+          </div>
+
           <p
             style={{
               fontFamily: "var(--font-sans)",

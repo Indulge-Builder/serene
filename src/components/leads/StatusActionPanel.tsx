@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Phone, TrendingUp, Leaf, XCircle, Trash2, ChevronDown, Trophy } from 'lucide-react';
+import { Phone, TrendingUp, Leaf, XCircle, Trash2, ChevronDown, Trophy, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
 import { updateLeadStatus } from '@/lib/actions/leads';
@@ -22,7 +22,7 @@ const STATUS_BADGE_STYLES: Record<BadgeVariant, { bg: string; text: string; bord
   danger:  { bg: 'var(--color-danger-light)',    text: 'var(--color-danger-text)',   border: 'var(--color-danger-light)'   },
 };
 
-type ActiveModal = 'called' | 'won' | 'nurturing' | 'lost' | 'junk' | null;
+type ActiveModal = 'called' | 'won' | 'nurturing' | 'lost' | 'junk' | 'revive' | null;
 
 type Props = {
   lead: Lead;
@@ -180,6 +180,17 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
           />
         )}
 
+        {/* Revive — only when junk */}
+        {status === 'junk' && (
+          <ActionButton
+            icon={<Zap style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
+            label="Revive Lead"
+            variant="revive"
+            disabled={isPending}
+            onClick={() => setActiveModal('revive')}
+          />
+        )}
+
         {/* Spacer pushes Called to the far right */}
         <div style={{ flex: 1 }} />
 
@@ -265,6 +276,19 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
           onConfirm={(reason) => fireStatusUpdate('junk', reason)}
         />
       )}
+
+      {activeModal === 'revive' && (
+        <ConfirmModal
+          title="Revive this Lead"
+          description="This will move the lead back to In Discussion. All previous history — calls, notes, and activity — will be preserved."
+          confirmLabel="Revive Lead"
+          confirmVariant="revive"
+          isPending={isPending}
+          error={error}
+          onClose={closeModal}
+          onConfirm={() => fireStatusUpdate('in_discussion')}
+        />
+      )}
     </>
   );
 }
@@ -272,7 +296,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
 // ─────────────────────────────────────────────
 // Action button
 // ─────────────────────────────────────────────
-type ButtonVariant = 'primary' | 'secondary' | 'success' | 'accent' | 'danger-outline' | 'ghost-danger';
+type ButtonVariant = 'primary' | 'secondary' | 'success' | 'accent' | 'danger-outline' | 'ghost-danger' | 'revive';
 
 const VARIANT_STYLES: Record<ButtonVariant, React.CSSProperties> = {
   primary: {
@@ -288,9 +312,10 @@ const VARIANT_STYLES: Record<ButtonVariant, React.CSSProperties> = {
     boxShadow:  'var(--shadow-1)',
   },
   success: {
-    background: 'var(--color-success-light)',
-    color:      'var(--color-success-text)',
-    border:     '1px solid var(--color-success-light)',
+    background: 'var(--color-success)',
+    color:      'var(--theme-text-inverse)',
+    border:     '1px solid var(--color-success)',
+    boxShadow:  '0 0 0 1px color-mix(in srgb, var(--color-success) 40%, transparent), 0 2px 8px color-mix(in srgb, var(--color-success) 25%, transparent)',
   },
   accent: {
     background: 'var(--theme-accent-surface)',
@@ -306,6 +331,12 @@ const VARIANT_STYLES: Record<ButtonVariant, React.CSSProperties> = {
     background: 'transparent',
     color:      'var(--color-danger-text)',
     border:     'none',
+  },
+  revive: {
+    background: 'var(--color-warning-light)',
+    color:      'var(--color-warning-text)',
+    border:     '1px solid var(--color-warning)',
+    fontWeight: 'var(--weight-semibold)' as string,
   },
 };
 
@@ -369,15 +400,16 @@ function ConfirmModal({
   title: string;
   description: string;
   confirmLabel: string;
-  confirmVariant: 'success' | 'accent';
+  confirmVariant: 'success' | 'accent' | 'revive';
   isPending: boolean;
   error: string | null;
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  const confirmStyle: React.CSSProperties = confirmVariant === 'success'
-    ? { background: 'var(--color-success)', color: 'var(--color-success-text)' }
-    : { background: 'var(--theme-accent)', color: 'var(--theme-accent-fg)' };
+  const confirmStyle: React.CSSProperties =
+    confirmVariant === 'success' ? { background: 'var(--color-success)',      color: 'var(--theme-text-inverse)'  } :
+    confirmVariant === 'revive'  ? { background: 'var(--color-warning)',       color: 'var(--color-warning-text)' } :
+                                   { background: 'var(--theme-accent)',        color: 'var(--theme-accent-fg)'    };
 
   return (
     <Modal

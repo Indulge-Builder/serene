@@ -8,6 +8,11 @@ import {
   EASE_SPRING,
 } from '@/lib/constants/motion';
 
+export interface TaskDotMeta {
+  count: number;
+  hasUrgent?: boolean;
+}
+
 export interface CalendarProps {
   value?: Date | null;
   rangeStart?: Date | null;
@@ -15,8 +20,21 @@ export interface CalendarProps {
   onSelect: (date: Date) => void;
   minDate?: Date;
   maxDate?: Date;
+  /**
+   * Optional per-day task indicators. Keys are local-date ISO strings (YYYY-MM-DD).
+   * When provided, day cells expand to 44px height to accommodate a 4px dot below
+   * the day number. When undefined (default), the calendar renders unchanged.
+   */
+  taskDots?: Record<string, TaskDotMeta>;
   className?: string;
   style?: React.CSSProperties;
+}
+
+function localDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -46,9 +64,11 @@ export function Calendar({
   onSelect,
   minDate,
   maxDate,
+  taskDots,
   className,
   style,
 }: CalendarProps) {
+  const hasTaskDots = taskDots !== undefined;
   const today = new Date();
   const [current, setCurrent] = React.useState(() => {
     const base = value ?? today;
@@ -191,6 +211,9 @@ export function Calendar({
 
             const isAccented = isSelected || isRangeStart || isRangeEnd;
 
+            const taskMeta = hasTaskDots ? taskDots![localDateKey(date)] : undefined;
+            const hasTaskDot = !!taskMeta && taskMeta.count > 0;
+
             return (
               <button
                 key={date.toISOString()}
@@ -205,7 +228,11 @@ export function Calendar({
                   justifyContent: 'center',
                   position:       'relative',
                   width:          '100%',
-                  aspectRatio:    '1',
+                  // taskDots mode: fixed 44px height (drops aspect-ratio so dot has room).
+                  // Default mode: aspect-ratio:1 squares — identical to legacy.
+                  ...(hasTaskDots
+                    ? { height: 44, aspectRatio: 'unset' as const }
+                    : { aspectRatio: '1' as const }),
                   borderRadius:   'var(--radius-sm)',
                   border:         'none',
                   background:     isAccented
@@ -238,8 +265,8 @@ export function Calendar({
                 }}
               >
                 {date.getDate()}
-                {/* Today dot */}
-                {isToday && !isAccented && (
+                {/* Today dot — hidden when a task dot occupies the same slot. */}
+                {isToday && !isAccented && !hasTaskDot && (
                   <span
                     style={{
                       position:     'absolute',
@@ -250,6 +277,34 @@ export function Calendar({
                       height:       4,
                       borderRadius: 'var(--radius-full)',
                       background:   'var(--theme-accent)',
+                    }}
+                  />
+                )}
+                {/* Task dot — absolute, never affects layout. */}
+                {hasTaskDot && (
+                  <motion.span
+                    key={`task-dot-${localDateKey(date)}`}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ duration: 0.15, ease: EASE_SPRING }}
+                    aria-hidden="true"
+                    style={{
+                      position:     'absolute',
+                      // 3px below the day number — number sits centred in the 44px cell,
+                      // so "below number" is roughly cell-center + ~half-line-height + 3.
+                      bottom:       6,
+                      left:         '50%',
+                      transform:    'translateX(-50%)',
+                      width:        4,
+                      height:       4,
+                      borderRadius: 'var(--radius-full)',
+                      background:   taskMeta!.hasUrgent
+                        ? 'var(--color-danger)'
+                        : 'var(--theme-accent)',
+                      opacity:      taskMeta!.hasUrgent
+                        ? 1
+                        : (taskMeta!.count >= 3 ? 1 : 0.7),
+                      zIndex:       1,
                     }}
                   />
                 )}

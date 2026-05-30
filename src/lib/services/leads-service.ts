@@ -25,6 +25,23 @@ export async function getLeadById(leadId: string): Promise<LeadWithAssignee | nu
 }
 
 // ─────────────────────────────────────────────
+// Query: single lead by slug (human-readable URL)
+// Indexed on idx_leads_slug — exact match only, never LIKE.
+// ─────────────────────────────────────────────
+export async function getLeadBySlug(slug: string): Promise<LeadWithAssignee | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('leads')
+    .select('*, assignee:profiles!leads_assigned_to_fkey(full_name)')
+    .eq('slug', slug)
+    .is('archived_at', null)
+    .single();
+
+  if (error || !data) return null;
+  return data as LeadWithAssignee;
+}
+
+// ─────────────────────────────────────────────
 // Query: leads for agent (only their own)
 // ─────────────────────────────────────────────
 export async function getLeadsForAgent(agentId: string): Promise<Lead[]> {

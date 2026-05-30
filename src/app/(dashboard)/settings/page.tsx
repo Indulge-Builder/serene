@@ -1,15 +1,11 @@
-import { redirect } from "next/navigation";
-import { getCurrentProfile } from "@/lib/services/profiles-service";
-import { getAgentRosterByDomain } from "@/lib/services/agent-routing-service";
-import { SettingsShell } from "./SettingsShell";
+import { redirect }                   from "next/navigation";
+import { getCurrentProfile }          from "@/lib/services/profiles-service";
+import { getAgentRosterByDomain }     from "@/lib/services/agent-routing-service";
+import { AgentSettingsTable }         from "@/components/settings/AgentSettingsTable";
 
 export const metadata = { title: "Settings — Eia" };
 
-export default async function SettingsPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string>>;
-}) {
+export default async function SettingsPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
   if (profile.role === "agent" || profile.role === "guest") redirect("/dashboard");
@@ -17,43 +13,21 @@ export default async function SettingsPage({
   const isPrivileged = profile.role === "admin" || profile.role === "founder";
   const rosterDomain = isPrivileged ? "*" : profile.domain;
 
-  const [roster, params] = await Promise.all([
-    getAgentRosterByDomain(rosterDomain),
-    searchParams,
-  ]);
-
-  const tab = params.tab === "shifts" ? "shifts" : "roster";
+  const roster = await getAgentRosterByDomain(rosterDomain);
 
   return (
-    <div
-      style={{
-        padding: "var(--space-8) var(--space-8) var(--space-10)",
-        maxWidth: 1100,
-        margin: "0 auto",
-      }}
-    >
-      <div style={{ marginBottom: "var(--space-8)" }}>
-        <h1 className="type-page-title">
+    <main className="flex-1 p-8">
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <h1 className="type-page-title m-0">
           Settings<span className="page-title-dot">.</span>
         </h1>
-        <p
-          style={{
-            marginTop: "var(--space-2)",
-            fontFamily: "var(--font-sans)",
-            fontSize: "var(--text-sm)",
-            color: "var(--theme-text-secondary)",
-          }}
-        >
-          Lead assignment configuration for your team.
-        </p>
       </div>
 
-      <SettingsShell
-        initialTab={tab}
+      <AgentSettingsTable
         initialRoster={roster}
         callerRole={profile.role}
         callerDomain={profile.domain}
       />
-    </div>
+    </main>
   );
 }

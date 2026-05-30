@@ -3,8 +3,9 @@
 import { useState }               from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar }                  from '@/components/ui/Avatar';
+import { BASE_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { AgentDetailPanel }        from './AgentDetailPanel';
-import type { AgentRosterRow }     from '@/lib/types/index';
+import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
 import type { AppDomain }          from '@/lib/types/database';
 import type { PerformancePeriod }  from '@/lib/services/performance-service';
 
@@ -129,14 +130,22 @@ function AgentCard({
 // ─────────────────────────────────────────────
 
 type Props = {
-  agentRoster: AgentRosterRow[];
-  domain:      AppDomain;
-  period:      PerformancePeriod;
+  agentRoster:           AgentRosterRow[];
+  domain:                AppDomain;
+  period:                PerformancePeriod;
+  initialAgentId?:       string | null;
+  initialDetailMetrics?: AgentDetailMetrics | null;
 };
 
-export function ManagerPerformancePanel({ agentRoster, domain, period }: Props) {
+export function ManagerPerformancePanel({
+  agentRoster,
+  domain,
+  period,
+  initialAgentId = null,
+  initialDetailMetrics = null,
+}: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(
-    agentRoster.length > 0 ? agentRoster[0].id : null,
+    initialAgentId ?? (agentRoster.length > 0 ? agentRoster[0].id : null),
   );
 
   const selectedAgent = agentRoster.find((a) => a.id === selectedId) ?? null;
@@ -216,12 +225,18 @@ export function ManagerPerformancePanel({ agentRoster, domain, period }: Props) 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
             >
               <AgentDetailPanel
                 agent={selectedAgent}
                 domain={domain}
                 period={period}
+                initialAgentId={initialAgentId ?? undefined}
+                initialData={
+                  selectedAgent.id === (initialAgentId ?? null)
+                    ? (initialDetailMetrics ?? undefined)
+                    : undefined
+                }
               />
             </motion.div>
           ) : null}

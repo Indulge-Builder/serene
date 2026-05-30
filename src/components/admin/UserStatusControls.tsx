@@ -42,7 +42,7 @@ export function UserStatusControls({
   return (
     <div
       style={{
-        padding:   "var(--space-4) var(--space-8)",
+        padding:   "var(--space-4) var(--space-6)",
         display:   "flex",
         gap:       "var(--space-6)",
         flexWrap:  "wrap",

@@ -1,11 +1,12 @@
 import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { getCurrentProfile, getProfileById } from "@/lib/services/profiles-service";
 import { getAgentRoutingConfig } from "@/lib/services/agent-routing-service";
 import { EditProfileForm } from "@/components/admin/EditProfileForm";
 import { EditAuthorizationForm } from "@/components/admin/EditAuthorizationForm";
 import { UserStatusControls } from "@/components/admin/UserStatusControls";
+import { Avatar } from "@/components/ui/Avatar";
+import { SectionCard } from "@/components/ui/SectionCard";
+import { BackButton } from "@/components/ui/BackButton";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import { DOMAIN_LABELS } from "@/lib/constants/domains";
 
@@ -27,234 +28,158 @@ export default async function UserDetailPage({ params }: Props) {
 
   if (!user) notFound();
 
-  const isPrivileged = ["admin", "founder"].includes(caller.role);
+  const isPrivileged     = ["admin", "founder"].includes(caller.role);
   const canToggleRouting = ["manager", "admin", "founder"].includes(caller.role);
 
-  // Fetch routing config only if user is an agent
   const routingConfig = user.role === "agent" && canToggleRouting
     ? await getAgentRoutingConfig(user.id)
     : null;
 
   return (
-    <>
-      <main style={{ flex: 1, padding: "var(--space-8)" }}>
-        {/* Back link */}
-        <Link
-          href="/admin/users"
-          style={{
-            display:        "inline-flex",
-            alignItems:     "center",
-            gap:            "var(--space-1)",
-            fontFamily:     "var(--font-sans)",
-            fontSize:       "var(--text-sm)",
-            color:          "var(--theme-canvas-text)",
-            textDecoration: "none",
-            marginBottom:   "var(--space-6)",
-            opacity:        0.7,
-          }}
-        >
-          <ChevronLeft style={{ width: "16px", height: "16px", strokeWidth: 1.5 }} />
-          Back to Users
-        </Link>
+    <main
+      style={{
+        flex:          1,
+        padding:       "var(--space-8)",
+        paddingBottom: "var(--space-16)",
+        maxWidth:      "1280px",
+      }}
+    >
+      {/* Page header — back button + Playfair title */}
+      <div
+        style={{
+          display:      "flex",
+          alignItems:   "center",
+          gap:          "var(--space-4)",
+          marginBottom: "var(--space-8)",
+        }}
+      >
+        <BackButton href="/admin/users" label="Back to Team" />
 
-        <div
+        <h1 className="type-page-title" style={{ margin: 0 }}>
+          {user.full_name}<span className="page-title-dot">.</span>
+        </h1>
+      </div>
+
+      {/* Two-column wide layout — primary forms left, identity sidebar right */}
+      <div
+        style={{
+          display:             "grid",
+          gridTemplateColumns: "minmax(0, 1fr) 340px",
+          gap:                 "var(--space-6)",
+          alignItems:          "start",
+        }}
+      >
+        {/* Left column — editable forms */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
+          <SectionCard
+            title="Profile Details"
+            description="Name, contact info, and username."
+          >
+            <EditProfileForm user={user} />
+          </SectionCard>
+
+          {isPrivileged && (
+            <SectionCard
+              title="Authorization"
+              description="Role and domain assignment. Changes are audited."
+            >
+              <EditAuthorizationForm user={user} />
+            </SectionCard>
+          )}
+        </div>
+
+        {/* Right column — identity sidebar, sticky on scroll */}
+        <aside
           style={{
             display:       "flex",
             flexDirection: "column",
-            gap:           "var(--space-6)",
-            maxWidth:      "640px",
+            gap:           "var(--space-5)",
+            position:      "sticky",
+            top:           "var(--space-6)",
           }}
         >
-          {/* Identity card */}
-          <div
-            style={{
-              background:   "var(--theme-paper)",
-              borderRadius: "var(--radius-lg)",
-              boxShadow:    "var(--shadow-paper)",
-              overflow:     "hidden",
-            }}
-          >
+          <SectionCard title="Identity" bodyPadding={false}>
             <div
               style={{
-                padding:      "var(--space-6) var(--space-8)",
-                borderBottom: "1px solid var(--theme-paper-border)",
-                display:      "flex",
-                alignItems:   "center",
-                gap:          "var(--space-4)",
+                display:       "flex",
+                flexDirection: "column",
+                alignItems:    "center",
+                textAlign:     "center",
+                gap:           "var(--space-3)",
+                padding:       "var(--space-6)",
               }}
             >
-              <div
-                style={{
-                  width:          "48px",
-                  height:         "48px",
-                  borderRadius:   "var(--radius-full)",
-                  background:     "var(--theme-accent-surface)",
-                  border:         "1px solid var(--theme-paper-border)",
-                  display:        "flex",
-                  alignItems:     "center",
-                  justifyContent: "center",
-                  fontSize:       "var(--text-lg)",
-                  fontWeight:     "var(--weight-semibold)",
-                  color:          "var(--theme-accent)",
-                  flexShrink:     0,
-                }}
-              >
-                {user.full_name.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <h2
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize:   "var(--text-lg)",
-                    fontWeight: "var(--weight-semibold)",
-                    color:      "var(--theme-text-primary)",
-                    margin:     0,
-                  }}
-                >
-                  {user.full_name}
-                </h2>
+              <Avatar src={user.avatar_url} name={user.full_name} size="xl" />
+
+              <div style={{ minWidth: 0, width: "100%" }}>
                 <p
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize:   "var(--text-sm)",
-                    color:      "var(--theme-text-secondary)",
-                    margin:     "2px 0 0",
-                  }}
-                >
-                  {user.email}
-                  {user.job_title && (
-                    <span style={{ color: "var(--theme-text-tertiary)" }}>
-                      {" "}· {user.job_title}
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div style={{ marginLeft: "auto", display: "flex", gap: "var(--space-2)" }}>
-                <span
-                  style={{
-                    display:      "inline-flex",
-                    alignItems:   "center",
-                    padding:      "2px var(--space-3)",
-                    borderRadius: "var(--radius-full)",
-                    fontSize:     "var(--text-xs)",
-                    fontWeight:   "var(--weight-semibold)",
-                    background:   "var(--theme-paper-subtle)",
-                    color:        "var(--theme-text-secondary)",
-                    border:       "1px solid var(--theme-paper-border)",
-                  }}
-                >
-                  {ROLE_LABELS[user.role]}
-                </span>
-                <span
-                  style={{
-                    display:      "inline-flex",
-                    alignItems:   "center",
-                    padding:      "2px var(--space-3)",
-                    borderRadius: "var(--radius-full)",
-                    fontSize:     "var(--text-xs)",
-                    fontWeight:   "var(--weight-medium)",
-                    background:   "var(--theme-paper-subtle)",
-                    color:        "var(--theme-text-tertiary)",
-                    border:       "1px solid var(--theme-paper-border)",
-                  }}
-                >
-                  {DOMAIN_LABELS[user.domain]}
-                </span>
-              </div>
-            </div>
-
-            {/* Status controls — is_active + routing toggle */}
-            <UserStatusControls
-              user={user}
-              routingConfig={routingConfig}
-              isPrivileged={isPrivileged}
-              canToggleRouting={canToggleRouting}
-            />
-          </div>
-
-          {/* Edit profile fields */}
-          <div
-            style={{
-              background:   "var(--theme-paper)",
-              borderRadius: "var(--radius-lg)",
-              boxShadow:    "var(--shadow-paper)",
-              overflow:     "hidden",
-            }}
-          >
-            <div
-              style={{
-                padding:      "var(--space-5) var(--space-8)",
-                borderBottom: "1px solid var(--theme-paper-border)",
-              }}
-            >
-              <h3
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize:   "var(--text-base)",
-                  fontWeight: "var(--weight-semibold)",
-                  color:      "var(--theme-text-primary)",
-                  margin:     0,
-                }}
-              >
-                Profile Details
-              </h3>
-              <p
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize:   "var(--text-sm)",
-                  color:      "var(--theme-text-secondary)",
-                  margin:     "var(--space-1) 0 0",
-                }}
-              >
-                Name, contact info, and preferences.
-              </p>
-            </div>
-            <EditProfileForm user={user} />
-          </div>
-
-          {/* Authorization — admin/founder only */}
-          {isPrivileged && (
-            <div
-              style={{
-                background:   "var(--theme-paper)",
-                borderRadius: "var(--radius-lg)",
-                boxShadow:    "var(--shadow-paper)",
-                overflow:     "hidden",
-              }}
-            >
-              <div
-                style={{
-                  padding:      "var(--space-5) var(--space-8)",
-                  borderBottom: "1px solid var(--theme-paper-border)",
-                }}
-              >
-                <h3
                   style={{
                     fontFamily: "var(--font-sans)",
                     fontSize:   "var(--text-base)",
                     fontWeight: "var(--weight-semibold)",
                     color:      "var(--theme-text-primary)",
                     margin:     0,
+                    lineHeight: "var(--leading-tight)",
+                    overflow:   "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  Authorization
-                </h3>
+                  {user.full_name}
+                </p>
                 <p
                   style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize:   "var(--text-sm)",
-                    color:      "var(--theme-text-secondary)",
-                    margin:     "var(--space-1) 0 0",
+                    fontFamily:   "var(--font-sans)",
+                    fontSize:     "var(--text-sm)",
+                    color:        "var(--theme-text-secondary)",
+                    margin:       "2px 0 0",
+                    overflow:     "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace:   "nowrap",
                   }}
                 >
-                  Role and domain assignment. Changes are audited.
+                  {user.email}
                 </p>
+                {user.job_title && (
+                  <p
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize:   "var(--text-xs)",
+                      color:      "var(--theme-text-tertiary)",
+                      margin:     "var(--space-1) 0 0",
+                    }}
+                  >
+                    {user.job_title}
+                  </p>
+                )}
               </div>
-              <EditAuthorizationForm user={user} />
+
+              <div
+                style={{
+                  display:        "flex",
+                  gap:            "var(--space-2)",
+                  flexWrap:       "wrap",
+                  justifyContent: "center",
+                  marginTop:      "var(--space-1)",
+                }}
+              >
+                <span className="status-pill status-pill--neutral">{ROLE_LABELS[user.role]}</span>
+                <span className="status-pill status-pill--neutral">{DOMAIN_LABELS[user.domain]}</span>
+              </div>
             </div>
-          )}
-        </div>
-      </main>
-    </>
+
+            {/* Status toggles */}
+            <div style={{ borderTop: "1px solid var(--theme-paper-border)" }}>
+              <UserStatusControls
+                user={user}
+                routingConfig={routingConfig}
+                isPrivileged={isPrivileged}
+                canToggleRouting={canToggleRouting}
+              />
+            </div>
+          </SectionCard>
+        </aside>
+      </div>
+    </main>
   );
 }

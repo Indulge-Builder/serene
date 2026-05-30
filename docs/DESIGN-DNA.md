@@ -1,11 +1,12 @@
 # Eia — Design System
 
-### Version 1.0
+## Version 1.0
 
 > The single source of truth for every visual decision in Eia.
 > Every colour, font, space, radius, shadow, animation, and component lives here.
 > Nothing is hardcoded anywhere else. Everything derives from this file.
 
+<!-- markdownlint-disable MD013 MD024 MD031 MD036 -->
 ---
 
 ## 0. Design Philosophy
@@ -56,7 +57,7 @@ The default theme is **Earth**. Users choose their theme in profile settings.
 
 ---
 
-# Theme 01 — Earth (Default)
+## Theme 01 — Earth (Default)
 
 > Warm. Grounded. Heritage.
 > When Earth is active, Eia looks and feels eye pleasing, asthetic, magentic, easy on eyes, beutiful, new gen soft, warm, thats gives psycologiacl relief and never strainf our user.
@@ -149,7 +150,7 @@ When implementing Earth theme:
 4. The sidebar has its own explicit bg token `--theme-sidebar-bg` — do not use `--theme-canvas` for sidebar background, they happen to be the same value in Earth but will differ in other themes
 5. Canvas atmosphere is composed by `.layout-canvas` in `globals.css` — grain SVG (shared) + `--theme-canvas-gradient-*` tokens (Earth-only today). See Section 3.5.
 
-# Theme 02 — Air
+## Theme 02 — Air
 
 > Still. Luminous. Breathless.
 > The sky before sunrise over Cappadocia. Cold high air. The colour of held breath and quiet thought.
@@ -246,7 +247,7 @@ When implementing Earth theme:
    from Earth will break Air's visual language; use `var(--theme-sidebar-active)` throughout
 5. Canvas glow is extremely subtle — do not increase its opacity; Air's power is in restraint
 
-# Theme 03 — Water
+## Theme 03 — Water
 
 > Deep. Fluid. Ancient memory.
 > The North Atlantic in November. Múlafossur falling into the sea.
@@ -563,99 +564,100 @@ When implementing Earth theme:
 
 These tokens are **always present**, regardless of theme. They do not change between themes.
 
-/_ ============================================================
+```css
+/* ============================================================
 SECTION 2.1 — SEMANTIC COLOUR TOKENS
 Base values are theme-agnostic and always present.
 Per-theme overrides sit inside each [data-theme] block
 and only touch what the paper/canvas shift demands.
-============================================================ _/
+============================================================ */
 
-/_ --- Base (Earth / fallback) ------------------------------- _/
+/* --- Base (Earth / fallback) ------------------------------- */
 
 :root {
-/_ Success _/
+/* Success */
 --color-success: #3a7d52;
 --color-success-light: #eaf5ee;
 --color-success-text: #2a6040;
 
-/_ Warning _/
+/* Warning */
 --color-warning: #b87a10;
 --color-warning-light: #fef5dc;
 --color-warning-text: #8a5c08;
 
-/_ Danger _/
+/* Danger */
 --color-danger: #b83a28;
 --color-danger-light: #faecea;
 --color-danger-text: #8a2c1c;
 
-/_ Info _/
+/* Info */
 --color-info: #2860a0;
 --color-info-light: #e8f0fa;
 --color-info-text: #1c4880;
 
-/_ Neutral _/
+/* Neutral */
 --color-neutral: #6b6560;
 --color-neutral-light: #f0eeea;
 --color-neutral-text: #4a4540;
 }
 :root {
-/_ Focus ring — used by all interactive elements _/
+/* Focus ring — used by all interactive elements */
 --color-focus-ring: color-mix(in srgb, var(--theme-accent) 40%, transparent);
 
-/_ Selection highlight — text selection across the app _/
+/* Selection highlight — text selection across the app */
 --color-selection-bg: color-mix(in srgb, var(--theme-accent) 18%, transparent);
 --color-selection-text: var(--theme-text-primary);
 }
 
-/_ --- Air overrides ----------------------------------------- _/
-/_ Paper is blue-tinted. Warm success/warning lights look off. _/
+/* --- Air overrides ----------------------------------------- */
+/* Paper is blue-tinted. Warm success/warning lights look off. */
 [data-theme="air"] {
---color-success-light: #e8f5f0; /_ cooler green tint _/
---color-warning-light: #faf4e8; /_ less amber, more neutral _/
---color-info-light: #e4eef8; /_ pulls toward Air's blue paper _/
---color-neutral-light: #edf0f5; /_ matches paper-subtle tone _/
---color-neutral: #64748b; /_ aligns with Air text-secondary _/
+--color-success-light: #e8f5f0; /* cooler green tint */
+--color-warning-light: #faf4e8; /* less amber, more neutral */
+--color-info-light: #e4eef8; /* pulls toward Air's blue paper */
+--color-neutral-light: #edf0f5; /* matches paper-subtle tone */
+--color-neutral: #64748b; /* aligns with Air text-secondary */
 --color-neutral-text: #475569;
 }
 
-/_ --- Water overrides --------------------------------------- _/
-/_ Paper has cyan undertone. Neutral must carry it. _/
+/* --- Water overrides --------------------------------------- */
+/* Paper has cyan undertone. Neutral must carry it. */
 [data-theme="water"] {
---color-success-light: #e4f5f0; /_ teal-shifted green _/
---color-success: #2a9070; /_ slightly cooler, sits with teal _/
---color-info-light: #e0f0f4; /_ teal-cool, not flat blue _/
---color-neutral-light: #e8f2f2; /_ matches Water paper-subtle _/
---color-neutral: #4a7a78; /_ Water text-secondary — chromatic _/
+--color-success-light: #e4f5f0; /* teal-shifted green */
+--color-success: #2a9070; /* slightly cooler, sits with teal */
+--color-info-light: #e0f0f4; /* teal-cool, not flat blue */
+--color-neutral-light: #e8f2f2; /* matches Water paper-subtle */
+--color-neutral: #4a7a78; /* Water text-secondary — chromatic */
 --color-neutral-text: #2e5a58;
 }
 
-/_ --- Fire overrides ---------------------------------------- _/
-/_ Paper is amber-warm. Cool info/neutral lights look jarring. _/
+/* --- Fire overrides ---------------------------------------- */
+/* Paper is amber-warm. Cool info/neutral lights look jarring. */
 [data-theme="fire"] {
---color-warning-light: #fdf0dc; /_ richer amber — fire owns warm _/
---color-warning: #c07818; /_ slightly deeper in fire's heat _/
---color-info-light: #edeaf8; /_ desaturated — fire is not cool _/
---color-info: #4a6890; /_ pulled toward warm blue-grey _/
---color-neutral-light: #f2e8e0; /_ matches Fire paper-subtle _/
---color-neutral: #7a5540; /_ Fire text-secondary — warm soot _/
+--color-warning-light: #fdf0dc; /* richer amber — fire owns warm */
+--color-warning: #c07818; /* slightly deeper in fire's heat */
+--color-info-light: #edeaf8; /* desaturated — fire is not cool */
+--color-info: #4a6890; /* pulled toward warm blue-grey */
+--color-neutral-light: #f2e8e0; /* matches Fire paper-subtle */
+--color-neutral: #7a5540; /* Fire text-secondary — warm soot */
 --color-neutral-text: #5a3a28;
 }
 
-/_ --- Cosmos overrides -------------------------------------- _/
-/_ Paper is violet-tinted. Green/red semantics need grounding. _/
+/* --- Cosmos overrides -------------------------------------- */
+/* Paper is violet-tinted. Green/red semantics need grounding. */
 [data-theme="cosmos"] {
---color-success-light: #e8f0f4; /_ desaturated — cosmos is not green _/
---color-success: #3a7a6a; /_ teal-shifted green, less jarring _/
---color-danger-light: #f4eaf2; /_ violet-shifted — danger in cosmos _/
---color-info-light: #ece8fb; /_ pulls toward Cosmos paper tone _/
---color-info: #6858b8; /_ violet-blue — feels native here _/
+--color-success-light: #e8f0f4; /* desaturated — cosmos is not green */
+--color-success: #3a7a6a; /* teal-shifted green, less jarring */
+--color-danger-light: #f4eaf2; /* violet-shifted — danger in cosmos */
+--color-info-light: #ece8fb; /* pulls toward Cosmos paper tone */
+--color-info: #6858b8; /* violet-blue — feels native here */
 --color-info-text: #4a3a9a;
---color-neutral-light: #eeecf8; /_ matches Cosmos paper-subtle _/
---color-neutral: #6b6485; /_ Cosmos text-secondary — dust lane _/
+--color-neutral-light: #eeecf8; /* matches Cosmos paper-subtle */
+--color-neutral: #6b6485; /* Cosmos text-secondary — dust lane */
 --color-neutral-text: #4a4268;
 }
 
-/\* ============================================================
+/* ============================================================
 SECTION 2.2 — TYPOGRAPHY
 Three voices. One system.
 
@@ -669,116 +671,116 @@ Used sparingly. Every appearance is an event.
 Geist Mono — the honest one. Code, IDs, timestamps,
 technical values. Never apologises for
 what it is.
-============================================================ \*/
+============================================================ */
 
-/_ --- Font Family ------------------------------------------- _/
+/* --- Font Family ------------------------------------------- */
 
 --font-sans: var(--font-geist-sans), "Geist Sans", system-ui, -apple-system, sans-serif;
 --font-serif: var(--font-playfair), "Playfair Display", Georgia, serif;
 --font-mono: var(--font-geist-mono), "Geist Mono", "Fira Code", monospace;
 
-/_ ============================================================
+/* ============================================================
 SECTION 2.3 — TYPE SCALE
 Built on a 1.250 Major Third modular scale.
 Every step is a conscious decision, not a round number.
-============================================================ _/
+============================================================ */
 
---text-2xs: 0.625rem; /_ 10px — micro labels, legal, kbd hints _/
---text-xs: 0.75rem; /_ 12px — badges, captions, table meta _/
---text-sm: 0.875rem; /_ 14px — body copy, table rows, form labels _/
---text-base: 1rem; /_ 16px — nav items, card body, default UI _/
---text-md: 1.125rem; /_ 18px — card titles, section leads _/
---text-lg: 1.25rem; /_ 20px — page sub-headings, dialog titles _/
---text-xl: 1.5rem; /_ 24px — page titles on mobile _/
---text-2xl: 1.875rem; /_ 30px — page titles on desktop _/
---text-3xl: 2.25rem; /_ 36px — hero headings, module names _/
---text-display: 3rem; /_ 48px — Lia empty state, landing hero _/
---text-giant: 4rem; /_ 64px — reserved: full-bleed moments only _/
+--text-2xs: 0.625rem; /* 10px — micro labels, legal, kbd hints */
+--text-xs: 0.75rem; /* 12px — badges, captions, table meta */
+--text-sm: 0.875rem; /* 14px — body copy, table rows, form labels */
+--text-base: 1rem; /* 16px — nav items, card body, default UI */
+--text-md: 1.125rem; /* 18px — card titles, section leads */
+--text-lg: 1.25rem; /* 20px — page sub-headings, dialog titles */
+--text-xl: 1.5rem; /* 24px — page titles on mobile */
+--text-2xl: 1.875rem; /* 30px — page titles on desktop */
+--text-3xl: 2.25rem; /* 36px — hero headings, module names */
+--text-display: 3rem; /* 48px — Lia empty state, landing hero */
+--text-giant: 4rem; /* 64px — reserved: full-bleed moments only */
 
-/_ ============================================================
+/* ============================================================
 SECTION 2.4 — LINE HEIGHT
 The vertical rhythm. The breath between lines.
 Tight for display. Generous for reading. Never arbitrary.
-============================================================ _/
+============================================================ */
 
---leading-none: 1; /_ display text, single-line labels _/
---leading-tight: 1.2; /_ headings — 2xl and above _/
---leading-snug: 1.35; /_ subheadings — lg to xl _/
---leading-normal: 1.5; /_ body copy — the default reading rhythm _/
---leading-relaxed: 1.65; /_ long-form prose, Lia responses _/
---leading-loose: 1.8; /_ small text — xs and 2xs for legibility _/
+--leading-none: 1; /* display text, single-line labels */
+--leading-tight: 1.2; /* headings — 2xl and above */
+--leading-snug: 1.35; /* subheadings — lg to xl */
+--leading-normal: 1.5; /* body copy — the default reading rhythm */
+--leading-relaxed: 1.65; /* long-form prose, Lia responses */
+--leading-loose: 1.8; /* small text — xs and 2xs for legibility */
 
-/_ ============================================================
+/* ============================================================
 SECTION 2.5 — LETTER SPACING
 The silence between letters.
 Display text is tracked out slightly — it needs room to breathe.
 Body text is never tracked. Mono is never tracked.
-============================================================ _/
+============================================================ */
 
---tracking-tighter: -0.03em; /_ large display — Playfair at 3xl+ _/
---tracking-tight: -0.01em; /_ headings — 2xl, xl _/
---tracking-normal: 0em; /_ body — never touch this _/
---tracking-wide: 0.04em; /_ UI labels, nav items, small caps _/
---tracking-wider: 0.08em; /_ badges, status pills, ALL CAPS labels _/
---tracking-widest: 0.14em; /_ section dividers, eyebrow text _/
+--tracking-tighter: -0.03em; /* large display — Playfair at 3xl+ */
+--tracking-tight: -0.01em; /* headings — 2xl, xl */
+--tracking-normal: 0em; /* body — never touch this */
+--tracking-wide: 0.04em; /* UI labels, nav items, small caps */
+--tracking-wider: 0.08em; /* badges, status pills, ALL CAPS labels */
+--tracking-widest: 0.14em; /* section dividers, eyebrow text */
 
-/_ ============================================================
+/* ============================================================
 SECTION 2.6 — FONT WEIGHT
 Named by intention, not by number.
-============================================================ _/
+============================================================ */
 
---weight-light: 300; /_ Playfair at display sizes — rare, intentional _/
---weight-normal: 400; /_ body copy, table data, default everything _/
---weight-medium: 500; /_ nav items, card titles, form labels _/
---weight-semibold: 600; /_ page headings, dialog titles, active states _/
---weight-bold: 700; /_ strong emphasis, metric values, alert titles _/
+--weight-light: 300; /* Playfair at display sizes — rare, intentional */
+--weight-normal: 400; /* body copy, table data, default everything */
+--weight-medium: 500; /* nav items, card titles, form labels */
+--weight-semibold: 600; /* page headings, dialog titles, active states */
+--weight-bold: 700; /* strong emphasis, metric values, alert titles */
 
-/_ ============================================================
+/* ============================================================
 SECTION 2.7 — SPACING SCALE
 Base unit: 4px.
 Every value is a multiple of 4.
 Never use arbitrary values outside this scale in components.
-============================================================ _/
+============================================================ */
 
---space-px: 1px; /_ 1px — hairlines, borders, dividers _/
---space-0: 0rem; /_ 0px — explicit zero _/
---space-1: 0.25rem; /_ 4px — icon nudges, tight gaps _/
---space-2: 0.5rem; /_ 8px — inline gaps, badge padding _/
---space-3: 0.75rem; /_ 12px — input padding, small component gaps _/
---space-4: 1rem; /_ 16px — standard component padding _/
---space-5: 1.25rem; /_ 20px — card padding (compact) _/
---space-6: 1.5rem; /_ 24px — card padding (default) _/
---space-7: 1.75rem; /_ 28px — section gaps (tight) _/
---space-8: 2rem; /_ 32px — section gaps (default) _/
---space-10: 2.5rem; /_ 40px — section gaps (loose) _/
---space-12: 3rem; /_ 48px — page section rhythm _/
---space-14: 3.5rem; /_ 56px — large layout gaps _/
---space-16: 4rem; /_ 64px — page top padding, hero breathing room _/
---space-20: 5rem; /_ 80px — full-bleed section padding _/
---space-24: 6rem; /_ 96px — reserved for landing / Lia hero _/
+--space-px: 1px; /* 1px — hairlines, borders, dividers */
+--space-0: 0rem; /* 0px — explicit zero */
+--space-1: 0.25rem; /* 4px — icon nudges, tight gaps */
+--space-2: 0.5rem; /* 8px — inline gaps, badge padding */
+--space-3: 0.75rem; /* 12px — input padding, small component gaps */
+--space-4: 1rem; /* 16px — standard component padding */
+--space-5: 1.25rem; /* 20px — card padding (compact) */
+--space-6: 1.5rem; /* 24px — card padding (default) */
+--space-7: 1.75rem; /* 28px — section gaps (tight) */
+--space-8: 2rem; /* 32px — section gaps (default) */
+--space-10: 2.5rem; /* 40px — section gaps (loose) */
+--space-12: 3rem; /* 48px — page section rhythm */
+--space-14: 3.5rem; /* 56px — large layout gaps */
+--space-16: 4rem; /* 64px — page top padding, hero breathing room */
+--space-20: 5rem; /* 80px — full-bleed section padding */
+--space-24: 6rem; /* 96px — reserved for landing / Lia hero */
 
-/_ ============================================================
+/* ============================================================
 SECTION 2.8 — BORDER RADIUS SCALE
 Earth is warm and rounded — never sharp, never pill-heavy.
 The scale follows the same philosophy across all themes.
-============================================================ _/
+============================================================ */
 
---radius-none: 0; /_ tables, flush-edge containers _/
---radius-xs: 0.25rem; /_ 4px — tight chips, inline code, kbd _/
---radius-sm: 0.5rem; /_ 8px — buttons, inputs, controls _/
---radius-md: 0.75rem; /_ 12px — dropdowns, tooltips, small cards _/
---radius-lg: 1rem; /_ 16px — cards, dialogs, popovers _/
---radius-xl: 1.5rem; /_ 24px — paper surface, panels, sheets _/
---radius-2xl: 2rem; /_ 32px — large feature cards, Lia surface _/
---radius-full: 9999px; /_ pills, avatars, status dots, sliders _/
+--radius-none: 0; /* tables, flush-edge containers */
+--radius-xs: 0.25rem; /* 4px — tight chips, inline code, kbd */
+--radius-sm: 0.5rem; /* 8px — buttons, inputs, controls */
+--radius-md: 0.75rem; /* 12px — dropdowns, tooltips, small cards */
+--radius-lg: 1rem; /* 16px — cards, dialogs, popovers */
+--radius-xl: 1.5rem; /* 24px — paper surface, panels, sheets */
+--radius-2xl: 2rem; /* 32px — large feature cards, Lia surface */
+--radius-full: 9999px; /* pills, avatars, status dots, sliders */
 
-/_ ============================================================
+/* ============================================================
 SECTION 2.9 — TYPOGRAPHIC COMPOSITIONS
 Pre-composed patterns for the most common text moments.
 Use these in components rather than assembling tokens each time.
-============================================================ _/
+============================================================ */
 
-/_ Eyebrow — the small label above a heading _/
+/* Eyebrow — the small label above a heading */
 --type-eyebrow:
 font-family: var(--font-sans);
 font-size: var(--text-xs);
@@ -787,7 +789,7 @@ letter-spacing: var(--tracking-widest);
 line-height: var(--leading-none);
 text-transform: uppercase;
 
-/_ Page title — the h1 of every dashboard page _/
+/* Page title — the h1 of every dashboard page */
 --type-page-title:
 font-family: var(--font-serif);
 font-size: var(--text-2xl);
@@ -795,7 +797,7 @@ font-weight: var(--weight-light);
 letter-spacing: var(--tracking-tighter);
 line-height: var(--leading-tight);
 
-/_ Card title — the primary label inside a card _/
+/* Card title — the primary label inside a card */
 --type-card-title:
 font-family: var(--font-sans);
 font-size: var(--text-md);
@@ -803,7 +805,7 @@ font-weight: var(--weight-semibold);
 letter-spacing: var(--tracking-tight);
 line-height: var(--leading-snug);
 
-/_ Body — default reading text _/
+/* Body — default reading text */
 --type-body:
 font-family: var(--font-sans);
 font-size: var(--text-sm);
@@ -811,7 +813,7 @@ font-weight: var(--weight-normal);
 letter-spacing: var(--tracking-normal);
 line-height: var(--leading-normal);
 
-/_ Label — form labels, table headers, nav items _/
+/* Label — form labels, table headers, nav items */
 --type-label:
 font-family: var(--font-sans);
 font-size: var(--text-sm);
@@ -819,7 +821,7 @@ font-weight: var(--weight-medium);
 letter-spacing: var(--tracking-wide);
 line-height: var(--leading-none);
 
-/_ Caption — secondary descriptive text _/
+/* Caption — secondary descriptive text */
 --type-caption:
 font-family: var(--font-sans);
 font-size: var(--text-xs);
@@ -827,7 +829,7 @@ font-weight: var(--weight-normal);
 letter-spacing: var(--tracking-normal);
 line-height: var(--leading-loose);
 
-/_ Mono — code, IDs, technical values _/
+/* Mono — code, IDs, technical values */
 --type-mono:
 font-family: var(--font-mono);
 font-size: var(--text-sm);
@@ -835,7 +837,7 @@ font-weight: var(--weight-normal);
 letter-spacing: var(--tracking-normal);
 line-height: var(--leading-relaxed);
 
-/_ Lia display — the large empty state and hero voice _/
+/* Lia display — the large empty state and hero voice */
 --type-lia-display:
 font-family: var(--font-serif);
 font-size: var(--text-display);
@@ -843,7 +845,7 @@ font-weight: var(--weight-light);
 letter-spacing: var(--tracking-tighter);
 line-height: var(--leading-tight);
 
-/\* ============================================================
+/* ============================================================
 SECTION 2.6 — ELEVATION & SHADOW SCALE
 
 Philosophy:
@@ -861,162 +863,162 @@ Two layers always:
 
 The contact shadow grounds. The ambient shadow lifts.
 Together they tell the eye exactly how high something floats.
-============================================================ \*/
+============================================================ */
 
-/_ --- Shadow Colour Primitives ------------------------------ _/
-/_ These are the raw ingredients. Do not use directly. _/
-/_ Use the named elevation tokens below. _/
+/* --- Shadow Colour Primitives ------------------------------ */
+/* These are the raw ingredients. Do not use directly. */
+/* Use the named elevation tokens below. */
 
 :root {
-/_ Base shadow colour — pure black for Earth / fallback _/
+/* Base shadow colour — pure black for Earth / fallback */
 --shadow-color: 0 0 0;
 --shadow-color-accent: var(--theme-accent);
 }
 
-/_ Each theme tints its shadows with its own ambient light _/
+/* Each theme tints its shadows with its own ambient light */
 
 [data-theme="earth"] {
---shadow-color: 10 8 2; /_ warm black — the basalt beneath gold _/
+--shadow-color: 10 8 2; /* warm black — the basalt beneath gold */
 }
 
 [data-theme="air"] {
---shadow-color: 8 12 20; /_ blue-black — cold altitude dark _/
+--shadow-color: 8 12 20; /* blue-black — cold altitude dark */
 }
 
 [data-theme="water"] {
---shadow-color: 4 18 18; /_ teal-black — depth, not void _/
+--shadow-color: 4 18 18; /* teal-black — depth, not void */
 }
 
 [data-theme="fire"] {
---shadow-color: 18 8 2; /_ amber-black — basalt holding heat _/
+--shadow-color: 18 8 2; /* amber-black — basalt holding heat */
 }
 
 [data-theme="cosmos"] {
---shadow-color: 8 6 18; /_ violet-black — the oldest dark _/
+--shadow-color: 8 6 18; /* violet-black — the oldest dark */
 }
 
-/_ ============================================================
+/* ============================================================
 ELEVATION SCALE
-============================================================ _/
+============================================================ */
 
-/_ --- Elevation 0 — flat ------------------------------------ _/
-/_ No shadow. Border does the separation work. _/
+/* --- Elevation 0 — flat ------------------------------------ */
+/* No shadow. Border does the separation work. */
 --shadow-0: none;
 
-/_ --- Elevation 1 — card resting on paper ------------------- _/
-/_ The card has barely lifted. It is almost flush. _/
-/_ Contact shadow only — 1–3px, very soft. _/
+/* --- Elevation 1 — card resting on paper ------------------- */
+/* The card has barely lifted. It is almost flush. */
+/* Contact shadow only — 1–3px, very soft. */
 --shadow-1:
 0 1px 2px 0 rgb(var(--shadow-color) / 0.04),
 0 1px 4px 0 rgb(var(--shadow-color) / 0.06);
 
-/_ --- Elevation 2 — dropdown, popover, tooltip -------------- _/
-/_ Floating above the page. User action caused this. _/
-/_ Contact shadow + ambient lift. _/
+/* --- Elevation 2 — dropdown, popover, tooltip -------------- */
+/* Floating above the page. User action caused this. */
+/* Contact shadow + ambient lift. */
 --shadow-2:
 0 2px 4px -1px rgb(var(--shadow-color) / 0.06),
 0 4px 16px -2px rgb(var(--shadow-color) / 0.10),
 0 1px 0 0 rgb(var(--shadow-color) / 0.04);
 
-/_ --- Elevation 3 — modal, drawer, command palette ---------- _/
-/_ High above the surface. Everything else dims beneath it. _/
-/_ Three layers: contact, ambient, and the far-field diffusion._/
+/* --- Elevation 3 — modal, drawer, command palette ---------- */
+/* High above the surface. Everything else dims beneath it. */
+/* Three layers: contact, ambient, and the far-field diffusion. */
 --shadow-3:
 0 2px 4px -2px rgb(var(--shadow-color) / 0.08),
 0 8px 24px -4px rgb(var(--shadow-color) / 0.14),
 0 24px 48px -8px rgb(var(--shadow-color) / 0.12);
 
-/_ --- Elevation 4 — notification, toast --------------------- _/
-/_ Arrives from outside. Highest z. Most assertive. _/
+/* --- Elevation 4 — notification, toast --------------------- */
+/* Arrives from outside. Highest z. Most assertive. */
 --shadow-4:
 0 2px 8px -2px rgb(var(--shadow-color) / 0.10),
 0 12px 32px -4px rgb(var(--shadow-color) / 0.16),
 0 32px 64px -8px rgb(var(--shadow-color) / 0.14),
 inset 0 1px 0 rgb(255 255 255 / 0.06);
 
-/_ ============================================================
+/* ============================================================
 SPECIAL SURFACE SHADOWS
-============================================================ _/
+============================================================ */
 
-/_ --- Paper shadow — the main content surface on canvas ----- _/
-/_ The paper is not a card. It is a world floating in another. _/
-/_ Four layers: inner highlight, edge ring, near lift, far halo_/
+/* --- Paper shadow — the main content surface on canvas ----- */
+/* The paper is not a card. It is a world floating in another. */
+/* Four layers: inner highlight, edge ring, near lift, far halo */
 --shadow-paper:
 inset 0 1px 0 rgb(255 255 255 / 0.055),
 0 0 0 1px rgb(var(--shadow-color) / 0.18),
 0 4px 24px 0 rgb(var(--shadow-color) / 0.28),
 0 24px 80px 0 rgb(var(--shadow-color) / 0.42);
 
-/_ --- Sidebar shadow — the left rail on canvas -------------- _/
-/_ Subtle. It should not fight the paper. _/
+/* --- Sidebar shadow — the left rail on canvas -------------- */
+/* Subtle. It should not fight the paper. */
 --shadow-sidebar:
 1px 0 0 0 rgb(var(--shadow-color) / 0.12),
 4px 0 24px -4px rgb(var(--shadow-color) / 0.14);
 
-/_ --- Inset shadow — pressed states, active inputs ---------- _/
-/_ The surface pressed in. Negative elevation. _/
+/* --- Inset shadow — pressed states, active inputs ---------- */
+/* The surface pressed in. Negative elevation. */
 --shadow-inset:
 inset 0 1px 3px rgb(var(--shadow-color) / 0.10),
 inset 0 1px 1px rgb(var(--shadow-color) / 0.06);
 
-/_ ============================================================
+/* ============================================================
 ACCENT SHADOWS
 Live interactions — focus, hover glow, primary button depth.
 All use color-mix against --theme-accent so they shift
 automatically with every theme.
-============================================================ _/
+============================================================ */
 
-/_ --- Focus ring — keyboard navigation, input focus --------- _/
-/_ 3px offset ring. Accessibility-grade visible. Accent-tinted._/
+/* --- Focus ring — keyboard navigation, input focus --------- */
+/* 3px offset ring. Accessibility-grade visible. Accent-tinted. */
 --shadow-focus:
 0 0 0 2px var(--theme-paper),
 0 0 0 4px color-mix(in srgb, var(--theme-accent) 55%, transparent);
 
-/_ --- Accent ring — subtle border glow on hover ------------- _/
-/_ Lighter than focus. Used on cards, nav pills, active items. _/
+/* --- Accent ring — subtle border glow on hover ------------- */
+/* Lighter than focus. Used on cards, nav pills, active items. */
 --shadow-accent-ring:
 0 0 0 1px color-mix(in srgb, var(--theme-accent) 22%, transparent),
 0 0 0 3px color-mix(in srgb, var(--theme-accent) 08%, transparent);
 
-/_ --- Accent glow — primary button, active badge ------------ _/
-/_ The button knows it is important. Two layers: _/
-/_ a crisp 1px ring that traces the edge, _/
-/_ a loose warm halo that diffuses beneath. _/
+/* --- Accent glow — primary button, active badge ------------ */
+/* The button knows it is important. Two layers: */
+/* a crisp 1px ring that traces the edge, */
+/* a loose warm halo that diffuses beneath. */
 --shadow-accent-glow:
 0 0 0 1px color-mix(in srgb, var(--theme-accent) 30%, transparent),
 0 2px 8px color-mix(in srgb, var(--theme-accent) 20%, transparent),
 0 4px 20px color-mix(in srgb, var(--theme-accent) 10%, transparent);
 
-/_ --- Accent lift — primary button on hover/press ----------- _/
-/_ The button lifting toward the user's finger. _/
+/* --- Accent lift — primary button on hover/press ----------- */
+/* The button lifting toward the user's finger. */
 --shadow-accent-lift:
 0 0 0 1px color-mix(in srgb, var(--theme-accent) 35%, transparent),
 0 4px 12px color-mix(in srgb, var(--theme-accent) 25%, transparent),
 0 8px 32px color-mix(in srgb, var(--theme-accent) 12%, transparent);
 
-/_ --- Gold shimmer — Earth only, luxury surface highlight --- _/
-/_ A single warm highlight on the top edge of elevated cards. _/
-/_ Only activate under [data-theme="earth"]. _/
+/* --- Gold shimmer — Earth only, luxury surface highlight --- */
+/* A single warm highlight on the top edge of elevated cards. */
+/* Only activate under [data-theme="earth"]. */
 --shadow-gold-shimmer:
 inset 0 1px 0 rgba(212, 175, 55, 0.12),
 0 0 0 1px rgba(212, 175, 55, 0.06);
 
-/_ ============================================================
+/* ============================================================
 SECTION 2.7 — BREAKPOINTS
 Mobile-first. Every value is a min-width boundary.
 Eia is a dashboard — lg and above is the primary target.
 sm and md exist for responsive moments, not full layouts.
-============================================================ _/
+============================================================ */
 
---bp-xs: 480px; /_ large phone — portrait edge case _/
---bp-sm: 640px; /_ mobile landscape / small tablet _/
---bp-md: 768px; /_ tablet portrait _/
---bp-lg: 1024px; /_ desktop — primary Eia viewport _/
---bp-xl: 1280px; /_ wide desktop _/
---bp-2xl: 1536px; /_ ultra-wide / external monitor _/
---bp-3xl: 1920px; /_ reserved — full HD, data-heavy views _/
+--bp-xs: 480px; /* large phone — portrait edge case */
+--bp-sm: 640px; /* mobile landscape / small tablet */
+--bp-md: 768px; /* tablet portrait */
+--bp-lg: 1024px; /* desktop — primary Eia viewport */
+--bp-xl: 1280px; /* wide desktop */
+--bp-2xl: 1536px; /* ultra-wide / external monitor */
+--bp-3xl: 1920px; /* reserved — full HD, data-heavy views */
 
-/\* ============================================================
+/* ============================================================
 SECTION 2.8 — MOTION & TRANSITION TOKENS
 
 Philosophy:
@@ -1039,94 +1041,95 @@ Four duration steps:
 — base the default — most transitions live here
 — slow considered — panels, modals, page elements
 — enter arrivals — things coming from off-screen
-============================================================ \*/
+============================================================ */
 
-/_ --- Easing Curves ----------------------------------------- _/
+/* --- Easing Curves ----------------------------------------- */
 
 --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-/_ Enters fast, settles with authority.
+/* Enters fast, settles with authority.
 Use for: dropdowns, drawers, toasts entering,
-any element sliding in from outside the viewport. _/
+any element sliding in from outside the viewport. */
 
 --ease-in-expo: cubic-bezier(0.7, 0, 0.84, 0);
-/_ Starts slow, exits fast — disappears with intent.
+/* Starts slow, exits fast — disappears with intent.
 Use for: elements leaving, toasts dismissing,
-modals closing. Never use for entering. _/
+modals closing. Never use for entering. */
 
 --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
-/_ Has a personality. Overshoots and snaps.
+/* Has a personality. Overshoots and snaps.
 Use for: buttons on press, toggles, active pill,
-any element that responds directly to a tap or click. _/
+any element that responds directly to a tap or click. */
 
 --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-/_ Calm, symmetrical. No opinion about direction.
+/* Calm, symmetrical. No opinion about direction.
 Use for: colour transitions, opacity fades,
-theme switching, focus ring appearing. _/
+theme switching, focus ring appearing. */
 
 --ease-out-soft: cubic-bezier(0.25, 0.46, 0.45, 0.94);
-/_ Gentle deceleration. Less dramatic than expo.
+/* Gentle deceleration. Less dramatic than expo.
 Use for: sidebar expanding, card height changes,
-any layout shift that should feel unhurried. _/
+any layout shift that should feel unhurried. */
 
-/_ --- Duration Steps ---------------------------------------- _/
+/* --- Duration Steps ---------------------------------------- */
 
---duration-instant: 100ms; /_ micro — checkbox tick, toggle snap _/
---duration-fast: 150ms; /_ UI feedback — hover fill, badge colour _/
---duration-base: 200ms; /_ default — most transitions live here _/
---duration-slow: 350ms; /_ deliberate — panel open, tab switch _/
---duration-enter: 400ms; /_ arrivals — modal, drawer, toast in _/
---duration-exit: 250ms; /_ departures — always faster than entering _/
---duration-page: 500ms; /_ page-level — route transitions, Lia load _/
+--duration-instant: 100ms; /* micro — checkbox tick, toggle snap */
+--duration-fast: 150ms; /* UI feedback — hover fill, badge colour */
+--duration-base: 200ms; /* default — most transitions live here */
+--duration-slow: 350ms; /* deliberate — panel open, tab switch */
+--duration-enter: 400ms; /* arrivals — modal, drawer, toast in */
+--duration-exit: 250ms; /* departures — always faster than entering */
+--duration-page: 500ms; /* page-level — route transitions, Lia load */
 
-/_ --- Named Transition Compositions ------------------------- _/
-/_ The combinations components actually reach for. _/
-/_ Use these rather than assembling curves each time. _/
+/* --- Named Transition Compositions ------------------------- */
+/* The combinations components actually reach for. */
+/* Use these rather than assembling curves each time. */
 
-/_ Hover state — colour, background, border _/
+/* Hover state — colour, background, border */
 --transition-hover:
 background-color var(--duration-fast) var(--ease-in-out),
 color var(--duration-fast) var(--ease-in-out),
 border-color var(--duration-fast) var(--ease-in-out);
 
-/_ Focus ring — appearing on keyboard navigation _/
+/* Focus ring — appearing on keyboard navigation */
 --transition-focus:
 box-shadow var(--duration-fast) var(--ease-in-out),
 outline var(--duration-fast) var(--ease-in-out);
 
-/_ Interactive element — button, toggle, nav pill _/
+/* Interactive element — button, toggle, nav pill */
 --transition-interactive:
 background-color var(--duration-fast) var(--ease-spring),
 color var(--duration-fast) var(--ease-spring),
 box-shadow var(--duration-base) var(--ease-in-out),
 transform var(--duration-instant) var(--ease-spring);
 
-/_ Panel / sheet entering _/
+/* Panel / sheet entering */
 --transition-enter:
 transform var(--duration-enter) var(--ease-out-expo),
 opacity var(--duration-enter) var(--ease-out-expo);
 
-/_ Panel / sheet leaving _/
+/* Panel / sheet leaving */
 --transition-exit:
 transform var(--duration-exit) var(--ease-in-expo),
 opacity var(--duration-exit) var(--ease-in-expo);
 
-/_ Layout shift — sidebar width, card height, grid reflow _/
+/* Layout shift — sidebar width, card height, grid reflow */
 --transition-layout:
 width var(--duration-slow) var(--ease-out-soft),
 height var(--duration-slow) var(--ease-out-soft),
 padding var(--duration-slow) var(--ease-out-soft),
 margin var(--duration-slow) var(--ease-out-soft);
 
-/_ Theme switch — the full canvas recolour _/
+/* Theme switch — the full canvas recolour */
 --transition-theme:
 background-color var(--duration-slow) var(--ease-in-out),
 color var(--duration-slow) var(--ease-in-out),
 border-color var(--duration-slow) var(--ease-in-out),
 box-shadow var(--duration-slow) var(--ease-in-out);
 
-/_ Opacity only — skeleton loaders, ghost states, fade _/
+/* Opacity only — skeleton loaders, ghost states, fade */
 --transition-fade:
 opacity var(--duration-base) var(--ease-in-out);
+```
 
 ---
 
@@ -1138,6 +1141,7 @@ Eia is a two-layer world.
 The canvas is the earth, the sky, the ocean, the void — depending on which theme is active.
 The paper is where work happens. It floats. It has weight. It has shadow.
 Nothing else in the UI should compete with this hierarchy.
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │ .layout-canvas │
 │ background: var(--theme-canvas) │
@@ -1161,6 +1165,7 @@ Nothing else in the UI should compete with this hierarchy.
 │ │ │ │ │ │
 │ └──────────┘ └──────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
+```
 
 **Two details that separate this from generic dashboard shells:**
 
@@ -1177,6 +1182,7 @@ address bar hides. `dvh` is dynamic — it follows the actual visible height.
 
 ### 3.2 Sidebar
 
+```text
 .eia-sidebar
 ├── width: 240px (desktop) → 64px (tablet) → 0 / bottom-bar (mobile)
 ├── position: fixed, full height, z-40
@@ -1211,6 +1217,7 @@ address bar hides. `dvh` is dynamic — it follows the actual visible height.
 │
 └── .sidebar-footer (h-16, px-4, border-top)
 └── user avatar + name + role badge
+```
 
 **Responsive behaviour:**
 
@@ -1225,6 +1232,7 @@ address bar hides. `dvh` is dynamic — it follows the actual visible height.
 
 ### 3.3 TopBar
 
+```text
 .eia-topbar
 ├── height: 56px (h-14)
 ├── position: sticky, top: 0, z-30
@@ -1241,6 +1249,7 @@ address bar hides. `dvh` is dynamic — it follows the actual visible height.
 └── RIGHT — action cluster
 notification bell → avatar → quick actions
 gap: var(--space-3)
+```
 
 **One rule:** The TopBar has no background of its own — it is the paper, sticky.
 As content scrolls beneath it, `backdrop-filter: blur(8px)` creates the sense
@@ -1252,6 +1261,8 @@ Do not give TopBar a separate background colour. Ever.
 ### 3.4 Page Content Structure
 
 Inside the paper, below the TopBar:
+
+```text
 .eia-page
 ├── padding: var(--space-6) md:var(--space-8)
 ├── max-width: governed by content type (see below)
@@ -1264,6 +1275,7 @@ Inside the paper, below the TopBar:
 │
 └── .page-body
 └── content zones (see max-width table)
+```
 
 **Content width by type:**
 
@@ -1486,7 +1498,7 @@ and collapses on monochrome displays.
 Do not use italic Playfair to emphasise a word inside a sentence.
 Use it for tone — Lia's voice, a welcome, a reflection.
 
-# Section 5 — Components
+## Section 5 — Components
 
 ## Philosophy
 
@@ -1518,7 +1530,7 @@ It receives props and renders. That is all.
 These rules apply to every component built in Eia, now and in the future.
 They are not suggestions. They are the contract.
 
-```
+```text
 RULE 01 — Token first
          Every visual property uses a CSS variable from the design system.
          No hex values. No rgb() literals. No hardcoded Tailwind colours
@@ -1619,7 +1631,7 @@ It has depth. It responds to presence before it responds to a click.
 
 **States:**
 
-```
+```text
 default  → resting shadow-accent-glow on primary
 hover    → --theme-accent-hover bg, --shadow-accent-lift, translateY(-1px)
 active   → scale(0.98) 80ms --ease-spring. The key pressing down.
@@ -1640,7 +1652,7 @@ On Air and Water, it is `#ffffff`. The button does not decide — the token does
 A quiet field. Not trying to be noticed until it needs to be.
 The moment focus arrives, it signals clearly.
 
-```
+```text
 Structure:
   [Label — .label-micro, --theme-text-tertiary        ]
   [Input field                                         ]
@@ -1670,7 +1682,7 @@ States:
 Status indicators, tags, labels. Elevated. Never flat.
 The 1px border and subtle shadow are what separate these from painted text.
 
-```
+```text
 Base:
   display: inline-flex, align-items: center, gap: 4px
   padding: px-2.5 py-0.5 (md), px-2 py-0 (sm), px-3 py-1 (lg)
@@ -1703,7 +1715,7 @@ Used when the badge communicates a live state — Online, Active, Processing.
 The card is the primary content surface inside the paper.
 It sits on the paper. It does not try to float away from it.
 
-```
+```text
 Base:
   background: --theme-paper
   border: 1px solid --theme-paper-border
@@ -1744,7 +1756,7 @@ Section label inside Card.Header:
 Squarish with rounded corners. Image if available. Initials if not.
 Never a circle — the rounded square is more human, less icon.
 
-```
+```text
 Shape:    border-radius --radius-sm
           aspect-ratio 1:1, overflow hidden
 
@@ -1781,7 +1793,7 @@ Two types. One for interruption, one for context.
 
 **Type A — Overlay Modal (interruption)**
 
-```
+```text
 Overlay:    fixed inset-0, bg black/50, backdrop-blur-sm
             z-[--z-overlay]
             entrance: opacity 0→1, 200ms --ease-in-out
@@ -1811,7 +1823,7 @@ Footer:     px-6 py-4
 
 **Type B — Contextual Panel (no overlay)**
 
-```
+```text
 Used for: info sections, highlighted data zones, Lia suggestion panels.
 
 Container:  bg --theme-accent-surface
@@ -1830,7 +1842,7 @@ Body:       --text-sm --theme-text-primary
 Clean, readable, breathing room.
 The column header shade is distinct from the row shade — immediately scannable.
 
-```
+```text
 Container:
   border 1px --theme-paper-border
   border-radius --radius-md
@@ -1872,7 +1884,7 @@ Responsive:
 
 Satisfying. Instant. The thumb lands with weight.
 
-```
+```text
 Track:
   w-10 h-6, border-radius --radius-full
   off: bg --theme-paper-border
@@ -1902,7 +1914,7 @@ Disabled:
 The dropdown opens into the same world it came from.
 It is a continuation of the surface, not a foreign object landing on top.
 
-```
+```text
 Trigger:
   h-9, px-3, gap-2, --radius-sm
   border 1px --theme-paper-border
@@ -1940,7 +1952,7 @@ Group label: .label-micro px-3 py-1.5
 An inviting field. The cursor blinks in accent colour.
 The shortcut chip tells you the keyboard knows this too.
 
-```
+```text
 Container: relative, w-full or fixed 280px (TopBar)
 
 Icon:
@@ -1983,7 +1995,7 @@ The primary input for all conversational surfaces —
 Lia chat, ticket notes, team messages.
 Inspired by the calm of the best messaging interfaces.
 
-```
+```text
 Container:
   w-full
   bg --theme-paper-subtle
@@ -2024,7 +2036,7 @@ Send button (right):
 The skeleton is a promise. It tells the user the shape of what is coming.
 It should never be more prominent than the content it represents.
 
-```
+```text
 Base:
   bg --theme-paper-subtle
   border-radius --radius-sm
@@ -2079,7 +2091,7 @@ If the answer to question 3 is yes — stop, find the token, continue.
 These are the patterns that appear in every large codebase
 and take months to undo. They are forbidden from day one.
 
-```
+```text
 NEVER   hardcode a colour value in a component
 NEVER   import from another feature's component folder directly
 NEVER   build a modal wider than max-w-2xl without documented justification
@@ -2092,7 +2104,7 @@ NEVER   use text-gray-* or bg-gray-* — the neutral palette is in the tokens
 NEVER   duplicate a component that already exists — extend it instead
 ```
 
-# Section 5.99 — The Micro-Details
+## Section 5.99 — The Micro-Details
 
 > This section exists for one reason only:
 > token names tell you _what_. These recipes tell you _how they combine_.
@@ -2110,7 +2122,7 @@ This is the most replicated pattern in Eia. It appears on every screen, every se
 Get it wrong and nothing feels right. It is always three layers together.
 Remove any one and it looks like a mistake.
 
-```
+```text
 Layer 1 — fill
   background: var(--theme-sidebar-active-bg)
   This is the accent at ~10–12% opacity. The item glows without shouting.
@@ -2206,7 +2218,7 @@ the border is a whisper, not a wall.
 
 Every empty state in Eia — no leads, no tasks, no messages, nothing yet — follows this pattern:
 
-```
+```text
 Icon:     w-12 h-12, --theme-text-tertiary, strokeWidth={1.5}
           mb-4, opacity 60%
 
@@ -2233,7 +2245,7 @@ Without it, empty states become the loudest admission that nothing was designed 
 
 ## 05 — The Card Border Is the Primary Elevation Signal
 
-```
+```text
 border: 1px solid var(--theme-paper-border)   ← this is what makes the card exist
 shadow: var(--shadow-1)                        ← this is secondary, supporting
 ```
@@ -2299,7 +2311,7 @@ It is doing more visual work than its 0.06 opacity suggests.
 
 Loading skeleton text lines use varying widths:
 
-```
+```text
 Line 1: 80%
 Line 2: 60%
 Line 3: 75%
@@ -2346,7 +2358,7 @@ Never change this value. If the texture feels too strong, reduce opacity (curren
 If it feels too subtle, increase opacity — maximum 6%.
 Do not touch the frequency.
 
-# Section 6 — Motion, Icons, Texture & Atmosphere
+## Section 6 — Motion, Icons, Texture & Atmosphere
 
 > The most expensive things in the world do not announce themselves.
 > The best leather does not shine. The best wool does not itch.
@@ -2382,7 +2394,7 @@ Noise costs attention. Attention is the most precious thing a user gives us.
 
 ## 6.2 — Motion Rules
 
-```
+```text
 RULE M-01 — Entrances move in one axis only
             y: 6px → 0 + opacity: 0 → 1
             Nothing scales on enter. Scaling feels like a magic trick.
@@ -2496,7 +2508,7 @@ Lia is alive in a way the rest of the UI is not.
 She is not a panel. She is not a form. She is a presence.
 Her animations reflect that — slower, more breathing, more organic.
 
-```
+```text
 liaBreathe — the ambient glow around Lia's avatar/glyph
   opacity: 0.35 ↔ 0.85
   duration: 3s
@@ -2564,7 +2576,7 @@ Never `strokeWidth={1}` on interactive icons. Never `strokeWidth={2.5}` anywhere
 
 ### Colour — Always Theme-Aware
 
-```
+```text
 Inactive / supporting:   var(--theme-text-tertiary)
 Active / selected:       var(--theme-accent)
 On dark fills (canvas):  var(--theme-canvas-text) at 70%
@@ -2587,7 +2599,7 @@ The same icon, five personalities.
 These icons represent the same concept everywhere in Eia.
 Consistency here builds the user's visual vocabulary.
 
-```
+```text
 Navigation & Structure
   Home / Dashboard:   LayoutDashboard
   Tasks:              CheckSquare
@@ -2764,7 +2776,7 @@ The palette is the only thing in focus. Literally.
 
 ### Where Backdrop Blur Is Never Used
 
-```
+```text
 Cards           — cards are paper on paper. No blur.
 Dropdowns       — dropdowns are solid. They have a border and a shadow.
 Modals          — the modal overlay is semi-transparent. No blur on the modal itself.
@@ -2820,7 +2832,7 @@ It lives at `src/components/ui/lia-glyph.tsx`.
 When someone closes their eyes and thinks of Lia, they see a softly glowing mark.
 That is what the animation is building. Not novelty. Recognition.
 
-# Section 9 — Responsiveness
+## Section 9 — Responsiveness
 
 ## Philosophy
 
@@ -2877,7 +2889,7 @@ Use only these. No arbitrary breakpoints in components.
 
 ## 9.3 — Mobile-Specific Rules
 
-```
+```text
 RULE R-01 — Use dvh, not vh
             min-height: 100dvh on the shell.
             100vh includes the browser chrome on mobile and causes layout jumps
@@ -2916,7 +2928,7 @@ RULE R-06 — Modals become bottom sheets below md
 
 ---
 
-# Section 10 — The Permanent Decisions
+## Section 10 — The Permanent Decisions
 
 > These are not guidelines. They are not preferences.
 > They are the decisions that were made once, with full consideration,
@@ -2932,7 +2944,7 @@ RULE R-06 — Modals become bottom sheets below md
 
 ## 10.1 — Visual & Token Rules
 
-```
+```text
 01  No hardcoded colour values in any component, ever.
     Every colour is a CSS variable from Section 2 or a theme token from Section 1.
     text-gray-500 is a violation. bg-white is a violation. #1a1a1a is a violation.
@@ -2979,7 +2991,7 @@ RULE R-06 — Modals become bottom sheets below md
 
 ## 10.2 — Component Architecture Rules
 
-```
+```text
 09  No component imports from another feature folder.
     features/finance/ does not import from features/concierge/.
     Cross-feature data flows through lib/ only.
@@ -3006,7 +3018,7 @@ RULE R-06 — Modals become bottom sheets below md
 
 ## 10.3 — Design Pattern Rules
 
-```
+```text
 13  No primary button using --theme-text-inverse as label colour.
     Primary button labels use --theme-accent-fg.
     These are different tokens. On Earth, --theme-accent-fg is #0a0a0a (dark on gold).
@@ -3063,7 +3075,7 @@ RULE R-06 — Modals become bottom sheets below md
 Any rule in Section 10 may be changed. Nothing in this document is sacred.
 But changes require a Decision Log entry in The_Blueprint.md with:
 
-```
+```text
 Date:      the date the decision was made
 Rule:      which rule is being changed or overridden
 Old:       what the rule said
@@ -3077,7 +3089,7 @@ Who:       who made the decision
 A rule changed without a log entry is not a rule change.
 It is a violation waiting to be reverted.
 
-# Section 11 — Loading & Skeleton States
+## Section 11 — Loading & Skeleton States
 
 ## Philosophy
 
@@ -3125,7 +3137,7 @@ One animation. Five personalities. No extra code per theme.
 
 Four building blocks. Compose these to build any skeleton layout.
 
-```
+```text
 skeleton-line    h-3, --radius-xs, bg --theme-paper-subtle
                  Widths: 80% / 60% / 75% / 45%
                  Always vary widths — uniform lines look like a loading bar,
@@ -3145,7 +3157,7 @@ skeleton-pill    h-5, w-14, --radius-full  ← for badges and status indicators
 
 **Stat Card:**
 
-```
+```text
 Container: card shell — bg --theme-paper, border --theme-paper-border
            --radius-md, p-5
 
@@ -3156,7 +3168,7 @@ skeleton-line  w-32  h-2             ← sub-label
 
 **Table (5 rows default):**
 
-```
+```text
 Header:   4 skeleton-lines at 20% / 35% / 20% / 15% widths — h-2.5
 Rows:     same column structure, h-3 per cell
           row height matches real: py-3 = 48px total
@@ -3165,7 +3177,7 @@ Rows:     same column structure, h-3 per cell
 
 **Profile / Employee Card:**
 
-```
+```text
 skeleton-avatar  w-10 h-10  (left)
 skeleton-line    w-28 h-3   mb-2   ← name
 skeleton-line    w-20 h-2.5        ← role
@@ -3174,7 +3186,7 @@ skeleton-pill    w-16              ← department tag
 
 **Chat Messages (3 messages):**
 
-```
+```text
 skeleton-block  w-[55%] h-14  ml-auto   --radius-md   ← right
 skeleton-block  w-[45%] h-10            --radius-md   ← left
 skeleton-block  w-[60%] h-16  ml-auto   --radius-md   ← right
@@ -3183,7 +3195,7 @@ stagger: 0ms / 120ms / 240ms
 
 **Full Page:**
 
-```
+```text
 TopBar:   skeleton-line w-40 h-5 (title) + skeleton-block w-8 h-8 (action)
 Content:  3–4 stat card skeletons side by side
           table skeleton below
@@ -3196,7 +3208,7 @@ Content:  3–4 stat card skeletons side by side
 
 When multiple skeletons appear together, stagger their pulse start:
 
-```
+```text
 Item 1:   animation-delay: 0ms
 Item 2:   animation-delay: 80ms
 Item 3:   animation-delay: 160ms
@@ -3214,7 +3226,7 @@ Cap:      400ms total — beyond 5 items, remaining items share the last delay v
 When real data arrives, never do a hard swap.
 Content materialises. It does not reload.
 
-```
+```text
 Skeleton exit:   opacity 1 → 0
                  duration: 150ms, ease-in
 
@@ -3227,7 +3239,7 @@ The skeleton is still fading as the content begins to appear.
 This crossfade is what makes arrival feel like materialisation.
 ```
 
-# Section 12 — Mobile Components & Touch Standards
+## Section 12 — Mobile Components & Touch Standards
 
 ## 12.1 — Bottom Navigation Bar
 
@@ -3235,7 +3247,7 @@ On mobile (`< md`), the sidebar disappears entirely.
 Navigation moves to a fixed bottom bar — the native mobile pattern.
 It lives on the canvas, not the paper. It feels like part of the device.
 
-```
+```text
 Container:
   position: fixed, bottom: 0, left: 0, right: 0
   height: 64px + env(safe-area-inset-bottom)   ← iOS home indicator
@@ -3277,7 +3289,7 @@ Never squeeze 6 icons into a bottom bar. It becomes unreadable and untappable.
 Every interactive element in Eia on mobile follows these standards.
 They are not responsive extras — they are the mobile contract.
 
-```
+```text
 Touch target minimum
   44×44px on every interactive element — the iOS HIG standard.
   The visual element can be smaller. The tap area cannot.
@@ -3312,7 +3324,7 @@ Scroll containers
   scroll-behavior: smooth
 ```
 
-# Section 13 — Toast & Notification System
+## Section 13 — Toast & Notification System
 
 > A notification is not an interruption.
 > It is an invitation — from the software to the person —
@@ -3354,7 +3366,7 @@ because the user genuinely needs to know time is passing.
 
 ## 13.2 — Toast Anatomy
 
-```
+```text
 ┌─────────────────────────────────────────────────┐
 │▌  ┌───┐  Title text — semibold               ✕  │
 │▌  │ ✓ │  Supporting message — secondary          │
@@ -3365,7 +3377,7 @@ because the user genuinely needs to know time is passing.
  3px living bar
 ```
 
-```
+```text
 Container:
   background:     var(--theme-paper)
   border:         1px solid var(--theme-paper-border)
@@ -3494,7 +3506,7 @@ Lia is always breathing. Even in a toast. Especially in a toast.
 
 **Entrance — desktop (slides from bottom right):**
 
-```
+```text
 initial:  { x: 24, opacity: 0, scale: 0.96 }
 animate:  { x: 0, opacity: 1, scale: 1 }
 duration: 350ms
@@ -3513,7 +3525,7 @@ The toast assembles itself — container, then bar breath, then icon, then words
 
 **Entrance — mobile (rises from bottom):**
 
-```
+```text
 initial:  { y: 24, opacity: 0 }
 animate:  { y: 0, opacity: 1 }
 duration: 350ms
@@ -3523,7 +3535,7 @@ Same internal stagger as desktop.
 
 **Exit:**
 
-```
+```text
 animate:  { opacity: 0, y: 8 }
 duration: 200ms
 easing:   var(--ease-in-expo)
@@ -3536,7 +3548,7 @@ After opacity reaches 0:
 
 **loading → success/danger transition (in place):**
 
-```
+```text
 The loading toast does not exit and re-enter.
 It transforms:
   Icon:     Loader2 fades out (100ms), type icon fades in (150ms) with scale 0.8→1
@@ -3553,7 +3565,7 @@ Total: ~400ms. One continuous toast. One continuous story.
 Maximum 3 toasts visible simultaneously.
 A 4th toast queues silently and enters only when one exits.
 
-```
+```text
 Toast 1 (top, newest): scale(1),    translateY(0)     — fully visible
 Toast 2 (behind):      scale(0.95), translateY(-8px)  — peeking
 Toast 3 (furthest):    scale(0.90), translateY(-14px) — barely peeking
@@ -3570,7 +3582,7 @@ Not a list reordering. Cards.
 
 ## 13.7 — Auto-Dismiss Timing
 
-```
+```text
 success:   4000ms   — confirmed, no urgency
 info:      5000ms   — a fact, give time to read
 warning:   6000ms   — time is part of the message, depleting bar active
@@ -3589,7 +3601,7 @@ The user should feel they can read at their own pace without losing the toast.
 
 ## 13.8 — Position
 
-```
+```text
 Desktop:
   position: fixed, bottom: var(--space-6), right: var(--space-6)
   z-index: var(--z-toast)
@@ -3661,7 +3673,7 @@ toast.dismissAll();
 The living bar breath animation and icon stagger add ~6 keyframe operations
 on toast entrance. This is negligible. The performance rules that matter:
 
-```
+```text
 ✓  Only opacity and transform animated — no layout properties
 ✓  CSS animations used for the bar breath — not JS/Framer
 ✓  Framer Motion used only for container entrance/exit and stack reflow
@@ -3676,7 +3688,7 @@ The living bar glow (`box-shadow` on a 3px × height element) fires once on entr
 and does not loop. The GPU cost is one composited paint on a sub-4px element.
 It is imperceptible in profiling. The payoff in feeling is not.
 
-# Section 7 — Form System
+## Section 7 — Form System
 
 > Forms are where trust is built or broken.
 > Every field is a conversation — the user is telling the software
@@ -3715,7 +3727,7 @@ Always specific, inline, at the field that needs attention.
 Every field in Eia follows the same vertical structure.
 No exceptions. This consistency is what makes the form readable.
 
-```
+```text
 ┌─────────────────────────────────────────────────────┐
 │  FIELD LABEL          optional badge: Required       │  ← Label row
 │                                                      │
@@ -3727,7 +3739,7 @@ No exceptions. This consistency is what makes the form readable.
 └─────────────────────────────────────────────────────┘
 ```
 
-```
+```text
 Label row:
   font:     var(--text-2xs) var(--weight-semibold)
   case:     uppercase
@@ -3778,7 +3790,7 @@ Field gap (between fields):
 
 Every control has five states. All five are designed. None are assumed.
 
-```
+```text
 Default:
   border: 1px solid var(--theme-paper-border)
   bg: var(--theme-paper)
@@ -3822,7 +3834,7 @@ Read-only:
 
 ### Text Input
 
-```
+```text
 The standard single-line field.
 Left icon (optional): absolute left-3, w-4 h-4, var(--theme-text-tertiary)
                        padding-left increases to pl-9 when icon present
@@ -3832,7 +3844,7 @@ Right element (optional): clear button, copy button, unit label
 
 ### Textarea
 
-```
+```text
 min-height: 80px (3 lines)
 max-height: 240px (auto-grow, then scroll)
 resize: vertical only — never both, never none on standard textareas
@@ -3847,7 +3859,7 @@ Auto-grow implementation:
 
 ### Select
 
-```
+```text
 appearance: none  ← custom styling
 background-image: ChevronDown icon as inline SVG data URI
                   colour: var(--theme-text-tertiary)
@@ -3862,7 +3874,7 @@ On open: ChevronDown rotates 180° via transition
 
 ### Phone Input
 
-```
+```text
 Two-part field: country code selector + number input
 Country code: w-20, select variant, border-right: none, radius right: 0
 Number input: flex-1, border-left: 1px var(--theme-paper-border), radius left: 0
@@ -3882,7 +3894,7 @@ Use that component inside forms, do not recreate it.
 
 ### Password Input
 
-```
+```text
 Right slot: Eye / EyeOff toggle icon button
             w-4 h-4, ghost, absolute right-3
             On click: input type toggles text ↔ password
@@ -3902,7 +3914,7 @@ Strength indicator (registration only):
 
 ### Checkbox
 
-```
+```text
 Box:        16×16px, border 1.5px var(--theme-paper-border)
             border-radius: var(--radius-xs)
             bg: transparent
@@ -3933,7 +3945,7 @@ Group:      flex flex-col, gap: var(--space-3)
 
 ### Radio
 
-```
+```text
 Same dimensions and states as Checkbox.
 border-radius: var(--radius-full)  ← the only difference
 
@@ -3951,7 +3963,7 @@ See Section 5.08 — the Toggle component.
 
 ### Date Picker
 
-```
+```text
 Trigger:    Standard input with Calendar icon left slot
             Displays formatted date when selected, placeholder when not
             Format: DD MMM YYYY (human) — "14 Jan 2026"
@@ -3989,7 +4001,7 @@ Time picker (optional, inline below calendar):
 
 ### Single Column (default)
 
-```
+```text
 All fields stacked vertically.
 max-width: 480px for standard forms, 640px for wider forms.
 The natural reading direction. Used for: login, settings, single-record edit.
@@ -3997,7 +4009,7 @@ The natural reading direction. Used for: login, settings, single-record edit.
 
 ### Two Column Grid
 
-```
+```text
 Two fields side by side at md+.
 Collapses to single column below md.
 Use only for: name (first + last), date range (start + end),
@@ -4008,7 +4020,7 @@ gap: var(--space-5)
 
 ### Inline Form
 
-```
+```text
 Label and control on the same row.
 Label: min-width 140px, var(--theme-text-secondary), text-right on desktop
 Control: flex-1
@@ -4018,7 +4030,7 @@ Collapses to stacked below sm.
 
 ### Section Groups
 
-```
+```text
 Long forms (more than 6 fields) must be grouped into named sections.
 
 Section header:
@@ -4063,7 +4075,7 @@ These are the only on-change validations. Everything else waits.
 Error messages in Eia are written in the first person, from the software's perspective.
 They are factual, specific, and never blame the user.
 
-```
+```text
 ❌ "Invalid email address"
 ✓  "This doesn't look like an email address"
 
@@ -4114,7 +4126,7 @@ export const formErrors = {
 
 When the entire form fails (server error, network, conflict):
 
-```
+```text
 A banner appears above the submit button — not at the top of the form.
 Near the action. Where the user's attention is.
 
@@ -4137,7 +4149,7 @@ Toasts disappear. Form errors must persist until resolved.
 
 ### The Action Row
 
-```
+```text
 position: at the bottom of the form
 layout: flex, justify-end, gap: var(--space-3)
 margin-top: var(--space-8)  ← generous space above — actions are important
@@ -4153,7 +4165,7 @@ Mobile: full-width buttons, stacked vertically, primary on top
 
 ### Submit Behaviour
 
-```
+```text
 On submit click:
   1. Button enters loading state immediately (width preserved)
   2. Zod validates synchronously — errors appear, loading ends if invalid
@@ -4167,7 +4179,7 @@ If the action takes more than 3 seconds: Trigger.dev (per The Rules, Rule 11).
 
 ### Dirty State & Unsaved Changes
 
-```
+```text
 When a form has been modified and the user tries to navigate away:
   Browser confirm dialog: "You have unsaved changes. Leave anyway?"
   This is a browser native dialog — do not build a custom one.
@@ -4185,7 +4197,7 @@ Implementation:
 Long forms that span multiple screens.
 Used for: user creation wizard, lead import, onboarding flows.
 
-```
+```text
 Progress indicator:
   Horizontal step bar at the top of the modal or page
   Steps: numbered circles connected by a line
@@ -4216,7 +4228,7 @@ Step state persistence:
 
 ## 7.10 — The Form Rules
 
-```
+```text
 RULE F-01 — Every form field has a label
             No placeholder-only fields. Placeholders disappear on type.
             The user needs to know what the field is after they've started typing.
@@ -4268,7 +4280,7 @@ RULE F-10 — Error messages are always specific
             It is an error log entry wearing a costume.
 ```
 
-# Section 8 — Data Display Patterns
+## Section 8 — Data Display Patterns
 
 > Numbers are the language of trust.
 > A number rendered inconsistently across two screens of the same software
@@ -4360,7 +4372,7 @@ formatCurrencyCompact(10000000, 'INR') → "₹1Cr"
 
 ### Metric Cards (stat display)
 
-```
+```text
 Large number on a stat card:
   Use formatCompact() for the primary value
   Use formatCount() when the number must be exact (invoice totals, balances)
@@ -4421,7 +4433,7 @@ formatDate(date, 'datetime')    → "14 Jan 2026, 2:30 PM"
 
 ### Rules
 
-```
+```text
 RULE D-01 — 12-hour time, always
             IST users read 12-hour time. "14:30" is not natural here.
             "2:30 PM" is. No exceptions in the UI.
@@ -4520,7 +4532,7 @@ A done task does not pulse. It is done.
 
 These three are not the same. They must never render the same way.
 
-```
+```text
 Zero (0):
   A real value. Render it as "0".
   "0 leads" is information. It means the pipeline is empty.
@@ -4548,7 +4560,7 @@ Not applicable:
 
 When a list, table, or grid has no items:
 
-```
+```text
 Do not:
   Render an empty container with no explanation.
   Show "No data available" in default body text.
@@ -4572,7 +4584,7 @@ Empty state copy is context-specific:
 
 Long text that cannot fit its container must truncate gracefully.
 
-```
+```text
 Single line truncation:
   overflow: hidden
   text-overflow: ellipsis
@@ -4660,7 +4672,7 @@ Use the util. Always.
 Tables are where data display rules matter most —
 the most information, the least space, the highest density of formatting decisions.
 
-```
+```text
 Column alignment:
   Text columns:     left-aligned  — natural reading direction
   Number columns:   right-aligned — decimal points align vertically
@@ -4685,7 +4697,7 @@ Column-specific formatting:
 
 ## 8.10 — Accessibility of Data
 
-```
+```text
 Screen readers and data:
   Formatted numbers need aria-label with the full spoken version.
   "₹1.2L" → aria-label="12 lakh rupees"
@@ -4705,7 +4717,7 @@ Delta indicators:
   The arrow is decoration. The label is the information.
 ```
 
-# Section 14 — Page Transition System
+## Section 14 — Page Transition System
 
 > The space between pages is not empty.
 > It is an opportunity to orient the user —
@@ -4743,7 +4755,7 @@ A skeleton is not a failure. A white flash is.
 
 Eia uses Next.js App Router. Page transitions work in two layers:
 
-```
+```text
 Layer 1 — The route progress bar (always running)
           A thin line at the top of the paper surface.
           Starts the moment the user clicks a link.
@@ -4764,7 +4776,7 @@ The content transition tells the user they have arrived.
 
 ## 14.3 — Route Progress Bar
 
-```
+```text
 The line that tells the user the software heard them.
 
 Position:   absolute top of .eia-paper, z-var(--z-sticky)
@@ -4804,7 +4816,7 @@ Glow:
 
 ### The Standard Transition (list → list, same level)
 
-```
+```text
 Outgoing page:
   opacity: 1 → 0
   duration: var(--duration-fast) — 150ms
@@ -4823,7 +4835,7 @@ Incoming page:
 
 ### The Drill-Down Transition (list → detail)
 
-```
+```text
 The user is going deeper. The animation moves forward.
 
 Outgoing (list):
@@ -4840,7 +4852,7 @@ Incoming (detail):
 
 ### The Return Transition (detail → list)
 
-```
+```text
 The user is going back. The animation reverses.
 
 Outgoing (detail):
@@ -4857,7 +4869,7 @@ Incoming (list):
 
 ### The Modal/Sheet Transition (same page, overlay)
 
-```
+```text
 Not a page transition — the page does not change.
 The overlay arrives on top. The page does not exit.
 
@@ -4878,7 +4890,7 @@ Modal (centred):
 
 ## 14.5 — Navigation Transition Rules
 
-```
+```text
 RULE P-01 — Detect direction from route hierarchy
             Drill-down: current route is a parent of the destination
             Return:     current route is a child of the destination
@@ -4926,7 +4938,7 @@ RULE P-06 — Tab navigation within a page is not a transition
 
 ## 14.6 — Loading States During Transition
 
-```
+```text
 The sequence when navigating to a data-heavy page:
 
 1. User clicks link
@@ -4960,7 +4972,7 @@ If data is still loading after transition completes (slow connection):
 When a user switches between domains (Finance → Concierge, Tech → Onboarding),
 the transition is heavier — it signals a more significant context change.
 
-```
+```text
 Domain switch is a special transition class.
 
 Outgoing domain:
@@ -4994,7 +5006,7 @@ It earns this time because it represents the largest context shift.
 
 ## 14.8 — Implementation Notes for Cursor
 
-```
+```text
 Framework: Next.js 16 App Router
 Transition library: Framer Motion (already in stack)
 
@@ -5048,7 +5060,7 @@ Scroll restoration:
 Some things must never animate during navigation.
 Movement here would create confusion, not clarity.
 
-```
+```text
 The sidebar           — fixed, never moves with navigation
 The TopBar shell      — fixed, only the title text crossfades
 Notification badges   — update in place, no animation
@@ -5069,7 +5081,7 @@ The canvas itself     — never transitions between routes
 Page transitions touch opacity and transform only.
 No layout properties are animated.
 
-```
+```text
 ✓  opacity and transform on the page wrapper only
 ✓  Framer Motion uses GPU-composited layers (will-change: transform)
 ✓  Progress bar: CSS transition on width — one element, minimal paint
@@ -5089,7 +5101,7 @@ The user is reading the skeleton while the transition completes.
 Time is spent well.
 ```
 
-# Section 15 — Lia Design Language
+## Section 15 — Lia Design Language
 
 > Lia is not a feature added to Eia.
 > She is in Eia the way a compass is in a ship.
@@ -5138,7 +5150,7 @@ The Lia glyph is Lia's face in the interface.
 It is a custom SVG mark — not a Lucide icon, not an emoji, not a letter.
 It lives at `src/components/ui/lia-glyph.tsx`.
 
-```
+```text
 Visual character:
   Minimal. Geometric. A mark that resolves into meaning on second look.
   It should feel like something discovered, not something designed.
@@ -5183,7 +5195,7 @@ Each surface has a specific anatomy and purpose.
 
 ### Surface A — The Lia Panel (persistent side panel)
 
-```
+```text
 When active, a panel opens from the right side of the paper.
 It does not push the main content — it overlays with a shadow.
 The main content dims slightly (opacity 0.6) to acknowledge Lia's presence.
@@ -5230,7 +5242,7 @@ Panel exit:
 
 ### Surface B — The Lia Conversation (full-screen mode)
 
-```
+```text
 When the user enters the Lia conversation full-screen —
 the paper becomes Lia's space entirely.
 
@@ -5273,7 +5285,7 @@ Welcome state (empty conversation):
 
 ### Surface C — The Lia Inline Suggestion
 
-```
+```text
 Lia's most powerful and most restrained surface.
 She surfaces a suggestion inside the existing UI —
 not in a panel, not in a chat. Right where the user is working.
@@ -5315,7 +5327,7 @@ Suggestion Card:
 
 ### Surface D — The Lia Action Proposal
 
-```
+```text
 When Lia wants to do something — send a message, update a field,
 create a task, generate a report — she proposes. She never acts unilaterally.
 This is Rule 13 from The_Rules. The design makes the rule visible.
@@ -5381,7 +5393,7 @@ Proposal Card:
 
 ### Message Anatomy
 
-```
+```text
 Two types of message in Lia's conversation:
 User messages and Lia messages. They are visually distinct.
 Not just aligned differently — fundamentally different in form.
@@ -5434,7 +5446,7 @@ Lia message (left-aligned):
 
 ### Message Stream (typing / generating)
 
-```
+```text
 While Lia is generating a response:
 
 Thinking state (before first token):
@@ -5466,7 +5478,7 @@ Complete state:
 
 ### Conversation Layout
 
-```
+```text
 Container: flex flex-col, h-full
 
 Message list:
@@ -5499,7 +5511,7 @@ Lia does not only speak in prose.
 When she analyses data, she surfaces it as structured UI —
 embedded directly in the conversation flow.
 
-```
+```text
 Each structured content type has a specific container:
 
 Data Table (when Lia returns tabular data):
@@ -5540,7 +5552,7 @@ Code / Technical (when Lia returns formatted data):
 
 Lia has presence states that the rest of the interface acknowledges.
 
-```
+```text
 Available (default):
   Lia glyph in sidebar: breathing at normal rhythm (3s cycle)
   No badge. No indicator. Just the breath.
@@ -5574,7 +5586,7 @@ Awaiting approval (Lia proposed an action, waiting for response):
 Design is not only visual. Lia's written voice is part of her design language.
 Every string Lia displays follows these rules.
 
-```
+```text
 Lia speaks in first person:
   "I noticed three leads haven't been contacted this week."
   Not: "Three leads have not been contacted this week."
@@ -5616,7 +5628,7 @@ Lia's error states:
 
 This is a design rule, not just a technical one.
 
-```
+```text
 Lia always knows which domain the user is currently in.
 Her suggestions are scoped to that domain.
 
@@ -5640,7 +5652,7 @@ The visual signal for cross-domain insights:
 
 ## 15.9 — The Rules That Make Lia Premium
 
-```
+```text
 RULE L-01 — Lia never appears without the glyph breathing
             A static glyph means Lia is not present.
             If she is present, she breathes. No exceptions.
@@ -5692,7 +5704,7 @@ RULE L-08 — Lia's colour is always the theme accent
 
 These are the design anti-patterns that will be proposed and must be refused.
 
-```
+```text
 Lia is not a chatbot widget
   She does not live in a floating bubble in the corner.
   She does not have a "chat with us" button.
@@ -5725,7 +5737,7 @@ Lia is not infallible
   exactly when the user needs help most.
 ```
 
-# Section 16 — Colour Usage in Data Visualisation
+## Section 16 — Colour Usage in Data Visualisation
 
 > A chart is not a dump of numbers with colours applied.
 > A chart is an argument. The colours are the rhetoric.
@@ -5771,7 +5783,7 @@ Never four. Four is a palette, not a signal.
 
 ### Primary Series Colour
 
-```
+```text
 The first and most important series in any chart.
 Always: var(--theme-accent)
 
@@ -5788,7 +5800,7 @@ on buttons, on focus rings. The chart belongs to the same world.
 
 ### Secondary Series Colour
 
-```
+```text
 When a second series must be distinguished from the first.
 
 Always: var(--theme-accent-muted)
@@ -5806,7 +5818,7 @@ one of them is wrong.
 
 ### Tertiary Series Colour
 
-```
+```text
 Only when three series are genuinely required.
 Used sparingly. Never as a default.
 
@@ -5821,7 +5833,7 @@ Three random colours are a legend exercise.
 
 ### The Comparison Colour
 
-```
+```text
 When showing a comparison period, a benchmark, or a target line.
 
 Always: var(--theme-text-tertiary)
@@ -5840,7 +5852,7 @@ is a chart that cannot be read at a glance.
 Some data has inherent semantic meaning.
 When it does, use the semantic colour system — not the visualisation palette.
 
-```
+```text
 Success / positive / above target:
   Fill:   var(--color-success-light)
   Stroke: var(--color-success)
@@ -5874,7 +5886,7 @@ The visualisation palette is for data that has no inherent good/bad/neutral mean
 
 ### Bar Chart
 
-```
+```text
 Single series:
   All bars: var(--theme-accent)
   Hovered bar: var(--theme-accent) at 85% opacity
@@ -5907,7 +5919,7 @@ Bar radius:
 
 ### Line Chart
 
-```
+```text
 Primary line:
   stroke: var(--theme-accent)
   stroke-width: 2px
@@ -5943,7 +5955,7 @@ Zero line (when data crosses zero):
 
 ### Donut / Pie Chart
 
-```
+```text
 Preferred: donut over pie.
 A donut has a centre that can hold a summary metric.
 A pie has a centre that holds nothing.
@@ -5978,7 +5990,7 @@ Hover state:
 
 ### Progress Bar / Pipeline Stage Chart
 
-```
+```text
 This is the chart most specific to Eia's use case —
 showing pipeline stages, conversion rates, task completion.
 
@@ -6009,7 +6021,7 @@ Threshold / target line:
 
 ### Scatter Plot
 
-```
+```text
 Used in Eia for: lead scoring, performance mapping, cohort analysis.
 
 Points:
@@ -6036,7 +6048,7 @@ Quadrant lines (when used):
 Every chart in Eia lives in a Card (Section 5.04).
 The chart is content inside the card. The card is the container.
 
-```
+```text
 Card shell:
   Standard card spec — bg var(--theme-paper),
   border var(--theme-paper-border), --radius-md, --shadow-1
@@ -6084,7 +6096,7 @@ Empty chart state:
 
 ## 16.6 — Tooltips in Charts
 
-```
+```text
 Chart tooltips are the most read text in data-heavy views.
 They must be immediate, precise, and legible in all themes.
 
@@ -6121,7 +6133,7 @@ Animation:
 
 ## 16.7 — Chart Animation
 
-```
+```text
 Data enters. Data does not appear.
 
 Bar chart entrance:
@@ -6160,7 +6172,7 @@ Reduced motion:
 
 ## 16.8 — The Data Viz Rules
 
-```
+```text
 RULE V-01 — Colour encodes meaning, never sequence
             If two series are assigned colours because they are
             "first" and "second", the colours are wrong.
@@ -6278,13 +6290,13 @@ Use a `useEffect` that listens to the `data-theme` attribute mutation
 and calls `getChartTokens()` to refresh.
 Without this, switching from Earth to Cosmos leaves gold charts on violet canvas.
 
-# Design DNA — Addendum A
+## Design DNA — Addendum A
 
 ## Three Sections Completed
 
 ---
 
-# Addendum A.1 — Semantic Colours on Dark Surfaces
+## Addendum A.1 — Semantic Colours on Dark Surfaces
 
 > The semantic colour system (Section 2.1) was designed for paper surfaces.
 > Success green on warm cream paper. Danger red on white paper.
@@ -6298,7 +6310,7 @@ Without this, switching from Earth to Cosmos leaves gold charts on violet canvas
 
 ## The Problem
 
-```
+```text
 --color-success: #3a7d52  on  --theme-canvas: #0d0c0a
 → Dark green on near-black. Barely legible. Lacks presence.
 
@@ -6359,7 +6371,7 @@ They activate on any dark surface — canvas, sidebar, tooltips, code blocks.
 
 ## Where Each Is Used
 
-```
+```text
 Toast container (bg: --theme-canvas):
   The toast background is canvas-dark.
   The living bar and icon use the standard semantic colours (full opacity).
@@ -6390,7 +6402,7 @@ Dark tone cards (tone: 'dark' in Section 5.04):
 
 ## The Rule
 
-```
+```text
 RULE S-01 — Surface determines semantic variant
             Paper surface:  use --color-*  and  --color-*-light
             Dark surface:   use --color-*-dark-text  and  --color-*-dark-fill
@@ -6407,7 +6419,7 @@ RULE S-01 — Surface determines semantic variant
 
 ---
 
-# Addendum A.2 — Drawer / Sheet Component
+## Addendum A.2 — Drawer / Sheet Component
 
 > The drawer is the most used overlay surface in Eia.
 > Client profiles, task details, Lia panel, mobile sidebar —
@@ -6419,7 +6431,7 @@ RULE S-01 — Surface determines semantic variant
 
 ## Anatomy
 
-```
+```text
 The drawer is a panel that enters from an edge.
 It lives above the paper content. Below modals.
 The backdrop dims but does not fully cover — the user
@@ -6438,7 +6450,7 @@ Structure:
 
 ## The Backdrop
 
-```
+```text
 .drawer-backdrop:
   position: fixed, inset: 0
   z-index: var(--z-overlay)
@@ -6457,7 +6469,7 @@ Structure:
 
 ## The Panel
 
-```
+```text
 .drawer-panel:
   position: fixed
   z-index: var(--z-modal)
@@ -6499,7 +6511,7 @@ Variants by origin edge:
 
 ## Internal Structure
 
-```
+```text
 .drawer-handle (bottom sheet only):
   width: 40px, height: 4px
   background: var(--theme-paper-border)
@@ -6540,7 +6552,7 @@ Variants by origin edge:
 
 ## Swipe to Dismiss (bottom sheet)
 
-```
+```text
 Bottom sheets support swipe-down to close.
 Implementation follows Section 12.2 — Touch & Gesture Standards:
 
@@ -6561,7 +6573,7 @@ Visual feedback during drag:
 
 ## Width System
 
-```
+```text
 Drawer widths are named, not arbitrary:
 
   sm:      360px   compact — notification details, quick actions
@@ -6581,7 +6593,7 @@ and return to where they were.
 
 ## The Drawer Rules
 
-```
+```text
 RULE D-01 — Every drawer has a close button
             No drawer traps the user. X button, always, top-right.
             Clicking the backdrop also dismisses.
@@ -6611,7 +6623,7 @@ RULE D-05 — Drawer width leaves 48px of content visible
 
 ---
 
-# Addendum A.3 — Scroll Behaviour
+## Addendum A.3 — Scroll Behaviour
 
 > Scroll is the most invisible interaction in software.
 > When it is right, nobody notices.
@@ -6726,7 +6738,7 @@ It belongs to the surface it lives on.
 
 ## Scroll Restoration
 
-```
+```text
 Between route navigations, scroll position is managed explicitly:
 
 Forward navigation (list → detail):
@@ -6806,7 +6818,7 @@ export function unlockBodyScroll(): void {
 
 ## Scroll Performance
 
-```
+```text
 RULE SC-01 — No scroll event listeners for UI logic
             Scroll position tracking (for sticky headers, parallax,
             scroll-triggered animations) must use IntersectionObserver,

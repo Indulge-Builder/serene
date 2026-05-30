@@ -11,6 +11,9 @@ import {
   type PerformancePeriod,
 } from '@/lib/services/performance-service';
 import { APP_DOMAINS }                from '@/lib/constants/domains';
+
+// Default domain when no ?domain= param is present
+const DEFAULT_DOMAIN: AppDomain = 'onboarding';
 import { ManagerPerformanceAsync }    from './ManagerPerformanceAsync';
 import { ManagerPerformanceSkeleton } from './ManagerPerformanceSkeleton';
 import { FounderDomainTabs }          from '@/components/performance/FounderDomainTabs';
@@ -28,16 +31,19 @@ export async function FounderPerformanceShell({ period, rawDomain }: Props) {
   // Fall back to full domain list if no leads exist yet
   const domains: AppDomain[] = activeDomains.length > 0 ? activeDomains : [...APP_DOMAINS];
 
-  // Validate domain from URL against active domains — default to first
+  // Validate domain from URL — default to onboarding (or first available if onboarding absent)
+  const fallback: AppDomain = (domains as string[]).includes(DEFAULT_DOMAIN)
+    ? DEFAULT_DOMAIN
+    : domains[0];
   const selectedDomain: AppDomain =
     rawDomain && (domains as string[]).includes(rawDomain)
       ? (rawDomain as AppDomain)
-      : domains[0];
+      : fallback;
 
   return (
     <div>
-      {/* Domain tab bar */}
-      <div style={{ marginBottom: 'var(--space-6)' }}>
+      {/* Domain tab bar — sits above the filter bar */}
+      <div style={{ marginBottom: 'var(--space-4)' }}>
         <FounderDomainTabs
           domains={domains}
           activeDomain={selectedDomain}

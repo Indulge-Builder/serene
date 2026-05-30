@@ -9,24 +9,27 @@ All components are display-only (A-06). Zero business logic. Zero DB calls. All 
 | Component | File | Props Interface | Notes |
 |---|---|---|---|
 | `Spinner` | `Spinner.tsx` | `SpinnerProps` | Sizes: sm/md/lg. Reuses `eia-spin` keyframe. Canvas variant. |
-| `Button` | `Button.tsx` | `ButtonProps` | Variants: primary/secondary/ghost/danger/success. Sizes: xs/sm/md/lg. Loading state swaps label for Spinner. `iconLeft`/`iconRight`. Primary always uses `--theme-accent-fg` (V-02). Uses `React.forwardRef` — required by `MotionButton`. |
+| `Button` | `Button.tsx` | `ButtonProps` | Variants: primary/secondary/ghost/danger/success. Sizes: xs/sm/md/lg. Border-radius `--radius-sm` (never `--radius-md`, §5.01). Loading state swaps `iconLeft` slot for Spinner — width preserved. `iconLeft`/`iconRight`. Primary: bg `--theme-accent`, fg `--theme-accent-fg`, resting `--shadow-accent-glow`, hover `--theme-accent-hover` + `--shadow-accent-lift` + `translateY(-1px)`. Secondary: paper-subtle + `--theme-paper-border` + `--shadow-1`, hover border `--theme-accent-muted`. Ghost: transparent + `--theme-text-primary`, hover bg paper-subtle. Danger/Success: soft `-light` rest → saturated base + `--theme-text-inverse` on hover (intentional drift from design-dna.md §5.01 saturated default — preserved to avoid breaking existing consumers). Disabled: `opacity 0.5`, `pointer-events: none`, `cursor: not-allowed`. Uses `React.forwardRef` — required by `MotionButton`. **No `whileTap` here** — Button stays a plain `<button>` so non-animated callers pay zero Framer Motion bundle cost; tap-scale lives in `MotionButton` + `MOTION_BUTTON_DEFAULTS`. |
 | `Avatar` | `Avatar.tsx` | `AvatarProps` | Sizes: xs/sm/md/lg/xl. Square `--radius-md`. Initials fallback: 6 semantic colour pairs from name hash. `loading="lazy"`. `selected?: boolean` — accent ring via `box-shadow`; CSS transition only, no layout shift. **Box-shadow composition:** caller `style.boxShadow` and `selected` ring are joined with `, ` — both layers always coexist; neither overwrites the other. |
 | `MotionButton` | `MotionButton.tsx` | All `ButtonProps` + Framer Motion props | `motion(Button)` factory — wraps Button without duplicating internals. Requires `Button` to use `React.forwardRef` (already done). Import `MOTION_BUTTON_DEFAULTS` for standard `whileTap: { scale: 0.97 }` + spring transition. Non-animated consumers import `Button` directly — `MotionButton` adds zero bundle cost to those. |
 | `AvatarStack` | `AvatarStack.tsx` | `AvatarStackProps` | `users: AvatarStackUser[]`, `max?` (default 4), `size?` (default `sm`), `overlap?` (default 8px). Renders up to `max` `Avatar` components with `box-shadow: 0 0 0 2px var(--theme-paper)` separator rings. Overflow pill: `+N`, `--radius-full`, paper-subtle background. Framer Motion `whileHover` spreads stack via `x` transform only — never animates margin. |
-| `SearchBar` | `SearchBar.tsx` | `SearchBarProps` | Controlled. Sizes: sm/md/lg. Clear button. Focus ring `--shadow-focus`. Fires `onChange` every keystroke — debounce by consumer. |
+| `SearchBar` | `SearchBar.tsx` | `SearchBarProps` | Controlled. Sizes: sm/md/lg. Default placeholder `"Search"`. Clear button (hover → `--theme-text-primary`, `var(--transition-hover)`). Focus ring `--shadow-focus` + `--theme-accent` border. `caretColor: --theme-accent`. Placeholder colour resolved via `.eia-input` class (`::placeholder` unreachable from inline style). Fires `onChange` every keystroke — debounce by consumer. |
 | `InfoRow` | `InfoRow.tsx` | `InfoRowProps` | Label + value. `value` accepts `React.ReactNode` (strings, badges, composite nodes). Optional icon left. Optional copy-to-clipboard. Horizontal/stacked. `divider` prop adds border-bottom. `style`/`className` pass through to the **root** element — use `style={{ gridColumn: '1 / -1' }}` for full-width grid spans. |
 | `EditButton` | `EditButton.tsx` | `EditButtonProps` | Icon-only Pencil. Ghost default, accent on hover. Tooltip "Edit". Composes hover states — do not re-implement. |
 | `Toggle` | `Toggle.tsx` | `ToggleProps` | Sizes: sm/md. Spring thumb. Label + description slot. |
 | `ProgressBar` | `ProgressBar.tsx` | `ProgressBarProps` | Auto-intent (value<33→danger, 33–66→warning, >66→success) unless `intent` override. Framer Motion fill animation. |
+| `SectionCard` | `SectionCard.tsx` | `SectionCardProps` | Canonical card shell for single-record detail pages. Props: `title`, `description?`, `headerRight?`, `bodyPadding?` (default `true`), `children`. Header strip `--theme-paper-subtle` + `label-micro` title + optional description (`--text-xs --theme-text-tertiary`) + optional right slot. Body padded `--space-6` by default; pass `bodyPadding={false}` when the child owns its own padding (composite cards with multiple zones). Chrome is always flat: `1px --theme-paper-border + --shadow-1 + --radius-lg`. **Never use `--shadow-paper` (levitating) for section cards** — that shadow is reserved for the dashboard paper surface itself. Used by `/profile`, `/admin/users/[id]`, `/admin/users/new`, `NewUserClient`. Server-component-safe. |
+| `BackButton` | `BackButton.tsx` | `BackButtonProps` | 36×36 circular icon-only back link. Props: `href` (Next.js `Link` route), `label` (drives both `aria-label` and `title` tooltip). Renders `ArrowLeft` (16px, strokeWidth 1.5) inside a `--theme-paper` button with `1px --theme-paper-border + --shadow-1 + --radius-full`. **Placement rule:** sits inline to the left of the page `<h1>` with `gap: var(--space-4)` — never on its own row above the title. Server-component-safe. Used on every detail page: `/leads/[id]`, `/campaigns/[id]`, `/admin/users/[id]`, `/admin/users/new`, `/tasks/[id]` (GroupTaskWorkspace). Never reimplement this chrome inline; if a new detail page needs a back affordance, import `BackButton`. |
 
 ### Navigation & Selection
 
 | Component | File | Props Interface | Notes |
 |---|---|---|---|
-| `TabSelector` | `TabSelector.tsx` | `TabSelectorProps` | **Backwards-compat wrapper** — accepts `tabs`, `activeTab`, `onChange` flat props and composes the compound API internally. Existing consumers do not need to change. New consumers should use the compound API (`Tabs` + `TabsList` + `TabsTrigger` + `TabsContent`) for full control. Variants: `pill`, `border-bottom`, `connected`. Spring indicator uses `SPRING_CONFIG` from `motion.ts`. **Pill variant**: active chip is `--theme-canvas` fill with `--theme-sidebar-border` hairline — dark chip on light tray. Active label is `--theme-canvas-text` (not `--theme-accent`). **z-index contract**: for the pill variant the label text is wrapped in `<span style="position:relative; z-index:1">` — this is required so the text sits above the dark `position:absolute` chip. Do not remove it. See compound API section below. |
+| `TabSelector` | `TabSelector.tsx` | `TabSelectorProps` | **Backwards-compat wrapper** — accepts `tabs`, `activeTab`, `onChange` flat props and composes the compound API internally. Existing consumers do not need to change. New consumers should use the compound API (`Tabs` + `TabsList` + `TabsTrigger` + `TabsContent`) for full control. Variants: `pill`, `connected` (no `border-bottom` variant — was never introduced; do not add without explicit spec). All variants use `SPRING_CONFIG` from `motion.ts` — no hardcoded stiffness/damping. **Pill variant**: tray bg `--theme-paper-subtle` + `--theme-paper-border` (radius `--radius-xl`, intentional drift from spec `--radius-md` to suit the dark-canvas chip pattern). Active chip is `--theme-canvas` fill + `--theme-sidebar-border` hairline + `--shadow-2`. Active label is `--theme-canvas-text` (NOT `--theme-accent`). Inactive label `--theme-text-secondary`. **z-index contract**: the button root is `color: transparent` and the label text lives inside an inner `<span style="position:relative; z-index:1; color: …">` — required so the label sits above the absolute chip AND so the colour transition applies to the label only (not to the chip background via inheritance). Do not remove. **Connected variant**: tray bg `--theme-paper-subtle` + `--theme-paper-border` + `--radius-md`. Active chip `--theme-paper` + `--shadow-1`. Active label `--theme-text-primary`. **Count badge**: active bg `--theme-accent-surface` + colour `--theme-accent`; inactive bg `--theme-paper-subtle` + colour `--theme-text-tertiary`; `--radius-full`, `min-h 18px`, `--text-2xs`. Zero hardcoded hex anywhere in the file. See compound API section below. |
 | `RadioGroup` | `RadioGroup.tsx` | `RadioGroupProps` | Variants: `default`, `card`. Card fills `--theme-accent-surface` when selected. |
-| `FilterDropdown` | `FilterDropdown.tsx` | `FilterDropdownProps` | Trigger with icon + count badge. Multi-select (checkboxes) and single-select. `DROPDOWN_VARIANTS`. |
+| `FilterDropdown` | `FilterDropdown.tsx` | `FilterDropdownProps` | Trigger (h-9, `--radius-md`) with optional icon + count badge. Multi-select (checkboxes) and single-select. `DROPDOWN_VARIANTS` for panel motion. **Trigger states**: open OR active (`selected.length > 0`) → border `--theme-accent`; transition `border-color var(--duration-fast) var(--ease-in-out)`. Active also tints bg `--theme-accent-surface` and label `--theme-accent`. **Count badge**: `--theme-accent` bg + `--theme-accent-fg` text + `--radius-full` + min-w/h 18px + `--text-2xs` (handles 2-digit counts without overflow). **ChevronDown**: rotates 180° on open, `transform var(--duration-fast) var(--ease-in-out)`. **Panel**: `--theme-paper` bg + `--theme-paper-border` + `--shadow-3` + `--radius-md`. **Checkbox**: unselected border `--theme-paper-border` + bg `--theme-paper`; selected border + bg `--theme-accent`, Check icon `--theme-accent-fg`. **Item hover**: bg `--theme-paper-subtle`, `var(--transition-hover)`. **Footer Clear**: visible only when `selected.length > 0`; right-aligned `--text-xs --theme-text-tertiary`, hover `--theme-accent`; fires `onChange([])` and closes when `multi=false`. Above the Clear sits a 1px `--theme-paper-border` separator (`my-1`). Consumers that early-return on empty arrays (e.g. URL-backed selectors) will see the Clear render as a no-op — this is by design. |
 | `Accordion` | `Accordion.tsx` | `AccordionProps` | `single`/`multiple` type. ChevronDown rotates 180°. `AnimatePresence` height animate. |
+| `ComboboxDropdown` | `ComboboxDropdown.tsx` | `ComboboxDropdownProps` | Single-select searchable picker. **Props**: `items: { id, label, sublabel?, imageUrl? }[]`, `value: string \| null`, `onChange(id)`, `placeholder?`, `searchPlaceholder?`, `disabled?`, `renderTrigger?: (ctx) => ReactNode`, `zIndex?`. **Default trigger**: inline `Avatar size="xs"` + label (no border, no box); ChevronDown (`--theme-text-tertiary`, `w-3.5 h-3.5`) fades in on hover/open. **`renderTrigger`** lets consumers (e.g. `LeadInfoCard.AssigneeCombobox`) keep a domain-specific trigger while reusing the panel + search + keyboard nav. Renderer receives `{ selected, placeholder, open, hovered, disabled }`. **Panel**: anchored below trigger by default; flips above when viewport space below < 320px. `--theme-paper` bg + `--theme-paper-border` + `--shadow-3` + `--radius-md`, `min-w 220 / max-w 280 / max-h 320`, sticky search header. **Search input**: `h-8`, `pl-8` (Search icon left), `--theme-paper-subtle` bg, caret `--theme-accent`; clear-X visible when query > 0. **Items**: 36px rows, `Avatar size="xs"` + label (`--text-sm --theme-text-primary`) + optional sublabel (`--text-xs --theme-text-secondary`); selected → `Check` icon `--theme-accent` (right). Active row (keyboard or hover) bg `--theme-paper-subtle`, `--radius-sm`. **Empty**: "No results", `--text-sm --theme-text-tertiary`, centred `py-6`. **Keyboard**: Escape closes; ArrowUp/Down navigate (active row auto-scrolls into view); Enter selects. **Animation**: `DROPDOWN_VARIANTS` from `motion.ts`. Click-outside via document `mousedown`. Zero hardcoded hex. Reference consumer: `LeadInfoCard.AssigneeCombobox`. |
 
 ### TabSelector — Compound API
 
@@ -41,7 +44,7 @@ All components are display-only (A-06). Zero business logic. Zero DB calls. All 
   onValueChange?: (id: string) => void
   indicatorLayoutId?: string        // default "eia-tab-indicator" — see collision warning below
   animatedContent?: boolean         // default true — TabsContent fade/slide
-  variant?: 'pill' | 'border-bottom' | 'connected'  // default 'pill'
+  variant?: 'pill' | 'connected'  // default 'pill'
 >
   <TabsList>
     <TabsTrigger value="tab-id" disabled?>
@@ -95,8 +98,8 @@ All existing consumers that pass `{ tabs, activeTab, onChange }` continue to wor
 
 | Component | File | Props Interface | Notes |
 |---|---|---|---|
-| `Calendar` | `Calendar.tsx` | `CalendarProps` | Month grid. Framer Motion slide between months. Today dot. Range selection. |
-| `DatePicker` | `DatePicker.tsx` | `DatePickerProps` | Trigger + popover. Mounts `Calendar`. Focus ring `--shadow-focus`. |
+| `Calendar` | `Calendar.tsx` | `CalendarProps` | Month grid. Framer Motion slide between months. Today dot. Range selection. **`taskDots?: Record<string, { count: number; hasUrgent?: boolean }>`** — when provided, each matching day cell renders a 4px×4px `--radius-full` dot below the day number (absolute, `zIndex: 1`, never affects layout). Colour: `--theme-accent` (non-urgent) or `--color-danger` (`hasUrgent=true`). Opacity: `0.7` when count 1–2, `1.0` when count ≥ 3 or urgent. Entrance: `scale 0→1`, 150ms, `EASE_SPRING`. **Key format**: local-date YYYY-MM-DD (use `date.getFullYear()/getMonth()+1/getDate()` — NEVER `toISOString().slice(0,10)`, which timezone-shifts IST). **Cell height**: when `taskDots` is provided, cells switch from `aspectRatio: 1` squares to fixed `height: 44px` to give the dot room without clipping; when undefined, the calendar renders byte-identically to the legacy implementation. The pre-existing "today dot" is suppressed for the today cell only when a task dot also occupies that cell (prevents stacking two 4px dots in the same slot). |
+| `DatePicker` | `DatePicker.tsx` | `DatePickerProps` | Trigger + popover. Mounts `Calendar`. Focus ring `--shadow-focus`. **`showTime?: boolean` (default `false`)** — when `true`, renders a time picker section below the calendar inside the same panel, separated by a 1px `--theme-paper-border` divider. Time picker: two scroll columns (Hours 1–12, Minutes [00, 15, 30, 45]) with `:` separator (`--theme-text-tertiary --text-sm`), centred. Selected cell highlight: bg `--theme-accent-surface`, `--radius-xs`. Columns: `maxHeight: 160px`, `overflowY: auto`, scrollbar hidden via `scrollbarWidth: none` / `msOverflowStyle: none` (macOS WebKit overlay scrollbar may still appear briefly — acceptable, do not add a global `::-webkit-scrollbar` rule). AM/PM toggle is a `TabSelector` with `variant="connected"` and `indicatorLayoutId="datepicker-ampm"` — never reimplement. Trigger label uses `formatDate(value, 'dd MMM yyyy, h:mm a')` when `showTime` AND value present, else `'dd MMM yyyy'`. All times committed through `toUTC()` from `lib/utils/dates.ts`. Internal `draftDate` lets the user pick day and time independently while the panel is open; commits fire on every change so the parent stays in sync. When `showTime=false`, behaviour is byte-identical to the legacy implementation — calendar click commits and closes. Value type stays `Date \| null` regardless of `showTime`. |
 
 ### Overlays
 
@@ -167,6 +170,23 @@ The `themeKey` prop is kept as an escape hatch for SSR/test contexts only.
 
 Status summary pills live in `LeadsTable.tsx` toolbar (left of column picker), not in the page header. Derived from the `leads` prop; `.status-pill` utilities in `design-tokens.css`; `hidden md:flex`.
 
+## Detail page header (reference implementation)
+
+Every single-record detail page (`/leads/[id]`, `/campaigns/[id]`, `/admin/users/[id]`, `/admin/users/new`, `/tasks/[id]`) uses one shared header layout:
+
+```
+[BackButton 36×36]  [.type-page-title Record Name.]
+                    ↑ optional inline subtitle (phone, etc.)
+```
+
+- **Container:** `display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-6 | --space-8)`.
+- **Left:** `<BackButton href="…" label="Back to …" />` from `src/components/ui/BackButton.tsx`. Never reimplement a back affordance inline.
+- **Right of the back button:** the page `<h1>` using `.type-page-title` (Playfair) + the canonical `<span className="page-title-dot">.</span>` accent.
+- **No eyebrow above the title** when a `BackButton` is present — the back affordance already establishes context. Eyebrows belong on top-level list pages, not on detail pages reached from them.
+- **No subtitle row below the title** unless it carries factual data (phone number, campaign date range). Descriptive prose ("Create with a password or send a magic-link invite") never goes here — let the cards on the page do the explaining.
+
+Wide-zone detail pages (`max-width: 1280px`) and narrow-zone detail pages (`max-width: 672px` — e.g. `/profile`) follow the same header rule. Only the body grid below differs.
+
 ## Labelled datum row (read-only detail fields)
 
 Standard layout for every read-only field in detail cards (dossiers, profile sections, audit panels).
@@ -183,6 +203,14 @@ Standard layout for every read-only field in detail cards (dossiers, profile sec
 - Separate visual groups with a full-width `1px` rule using `var(--theme-paper-border)` — no sub-headings.
 - Reference implementation: `InfoRow` in `src/components/ui/InfoRow.tsx` — adopted in `LeadInfoCard.tsx` (contact fields grid) and `SubTaskModal.tsx` (Key Variables).
 - Never hardcode icon colours. Never use `font-bold` / weight 700. Empty values show `—` in tertiary.
+
+## SectionCard Rule
+
+Every section on a single-record detail page (`/profile`, `/admin/users/[id]`, `/admin/users/new`, future settings/account pages, future config pages) **must compose** `src/components/ui/SectionCard.tsx`. Never reimplement the card chrome inline.
+
+`SectionCard` chrome is the canonical "grounded" surface: `1px --theme-paper-border + --shadow-1 + --radius-lg`. **`--shadow-paper` is reserved for the dashboard paper layer itself and must not appear on a section card** — that's the "levitating" look the surface contract explicitly avoids.
+
+If a card body contains multiple sub-zones (e.g. an identity row + a separate status-controls row), pass `bodyPadding={false}` and let each sub-zone own its own padding + separator. See `/admin/users/[id]`'s Identity card for the reference implementation.
 
 ## Modal Rule
 
@@ -381,7 +409,9 @@ Timeline: oldest at top, newest at bottom. Auto-scrolls to bottom on mount and o
 
 **Suppressed remarks:** italic "This remark was removed." in `var(--theme-text-tertiary)`.
 
-**Compose area:** textarea (grows to 3 lines) + 6 status-change pills (3-col desktop, 2-col mobile at ≤480px via `.task-remarks-status-pills` class) + "Post update" button. `useTransition` + `isPending` guard prevents duplicate submissions. Optimistic insert at 0.6 opacity, confirmed on Realtime echo. On error: optimistic row removed, `toast.danger` fires.
+**Compose area:** textarea (grows to 3 lines) + 6 status-change chips (flex-wrap row, `var(--space-2)` gap) + Send icon button. `useTransition` + `isPending` guard prevents duplicate submissions. Optimistic insert at 0.6 opacity, confirmed on Realtime echo. On error: optimistic row removed, `toast.danger` fires.
+
+**statusChange contract:** `statusChange: TaskStatus | null` state, initialised `null`. Clicking a chip toggles it — clicking the active chip deselects (→ `null`). On post: captured into `pendingStatusChange` before `setStatusChange(null)` so the clear and the action call use the same value. Passed to `addTaskRemarkAction` as `statusChange: pendingStatusChange ?? undefined` (schema uses `.optional()`, not `.nullable()`). Included in the optimistic remark's `status_change` field so the timeline reflects it immediately. Chip animation: `motion.button` `animate` on `background`/`borderColor`/`color`, `transition: { duration: FAST_DURATION, ease: EASE_OUT_EXPO }` — never inline the array.
 
 **Empty state:** Playfair italic "No updates yet." centred in `var(--theme-text-tertiary)`.
 
@@ -583,7 +613,7 @@ A full adoption sweep ran across `src/` replacing inline UI patterns with `src/c
 | Inline search input | `SearchBar` | UsersTable |
 | Raw `<table>` | `Table` | UsersTable |
 | Period toggle buttons | `TabSelector` (pill) | ManagerLeadVolumeWidget, PerformancePeriodSelector |
-| Custom tab bar | `TabSelector` (border-bottom) | TasksShell |
+| Custom tab bar | `TabSelector` (pill) | TasksShell |
 
 ### What was NOT touched (flagged)
 

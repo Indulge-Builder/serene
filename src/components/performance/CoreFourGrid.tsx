@@ -3,6 +3,7 @@
 import { motion }                                    from 'framer-motion';
 import type { CoreFourMetrics, TeamBenchmarks }       from '@/lib/services/performance-service';
 import { formatDuration }                            from '@/lib/utils/dates';
+import { EXIT_DURATION, EASE_OUT_EXPO }              from '@/lib/constants/motion';
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -63,7 +64,7 @@ function MetricCard({ eyebrow, value, delta, subLabel, delay, benchmarkLine }: C
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: delay / 1000, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: EXIT_DURATION, delay: delay / 1000, ease: EASE_OUT_EXPO }}
       style={{
         background:   "var(--theme-paper)",
         border:       "1px solid var(--theme-paper-border)",
@@ -76,7 +77,7 @@ function MetricCard({ eyebrow, value, delta, subLabel, delay, benchmarkLine }: C
       <p
         style={{
           fontFamily:    "var(--font-sans)",
-          fontSize:      "10px",
+          fontSize:      "var(--text-2xs)",
           fontWeight:    "var(--weight-medium)",
           letterSpacing: "0.12em",
           textTransform: "uppercase",
@@ -150,7 +151,7 @@ function MetricCard({ eyebrow, value, delta, subLabel, delay, benchmarkLine }: C
             <p
               style={{
                 fontFamily:    "var(--font-sans)",
-                fontSize:      "10px",
+                fontSize:      "var(--text-2xs)",
                 fontWeight:    "var(--weight-normal)",
                 color:         "var(--theme-text-tertiary)",
                 letterSpacing: "var(--tracking-wide)",

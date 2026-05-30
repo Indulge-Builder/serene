@@ -42,11 +42,9 @@ import {
   useState,
   useTransition,
 } from 'react';
-import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft,
   List,
   LayoutGrid,
   Plus,
@@ -72,7 +70,9 @@ import { TASK_STATUS, TASK_PRIORITY } from '@/lib/constants/task-constants';
 import { TASK_STATUS_LABELS } from '@/lib/constants/task-types';
 import type { SubtaskWithAssignee, TaskRemarkWithAuthor } from '@/lib/services/tasks-service';
 import { Avatar } from '@/components/ui/Avatar';
+import { BackButton } from '@/components/ui/BackButton';
 import type { Task, TaskGroup, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
+import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -402,29 +402,10 @@ export function GroupTaskWorkspace({
 
       {/* Back + header */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-        {/* Back link */}
-        <Link
-          href="/tasks?tab=group"
-          style={{
-            display:     'inline-flex',
-            alignItems:  'center',
-            gap:         'var(--space-1)',
-            fontFamily:  'var(--font-sans)',
-            fontSize:    'var(--text-sm)',
-            color:       'var(--theme-text-secondary)',
-            textDecoration: 'none',
-            width:       'fit-content',
-            transition:  'color var(--duration-fast) var(--ease-in-out)',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-secondary)'; }}
-        >
-          <ArrowLeft style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
-          Group Tasks
-        </Link>
+        {/* Title row: back button + title block + meta pills */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+          <BackButton href="/tasks?tab=group" label="Back to Group Tasks" />
 
-        {/* Title row */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1
               className="type-page-title"
@@ -587,7 +568,7 @@ export function GroupTaskWorkspace({
                     key={subtask.id}
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2, delay: Math.min(idx * 0.03, 0.24), ease: [0.16, 1, 0.3, 1] }}
+                    transition={{ duration: 0.2, delay: Math.min(idx * 0.03, 0.24), ease: EASE_OUT_EXPO }}
                     style={{
                       display:      'flex',
                       alignItems:   'center',
@@ -653,7 +634,7 @@ export function GroupTaskWorkspace({
                         background:   TASK_STATUS[subtask.status].pillBg,
                         color:        TASK_STATUS[subtask.status].pillText,
                         fontFamily:   'var(--font-sans)',
-                        fontSize:     '11px',
+                        fontSize:     'var(--text-xs)',
                         fontWeight:   'var(--weight-semibold)',
                         flexShrink:   0,
                       }}
@@ -801,7 +782,7 @@ export function GroupTaskWorkspace({
                             initial={{ opacity: 0, scale: 0.97 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.97 }}
-                            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                            transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
                             role="button"
                             tabIndex={0}
                             onClick={() => handleOpenModal(subtask)}
@@ -861,7 +842,7 @@ export function GroupTaskWorkspace({
                                 <span
                                   style={{
                                     fontFamily: 'var(--font-mono)',
-                                    fontSize:   '10px',
+                                    fontSize:   'var(--text-2xs)',
                                     color:      getDueDateColor(subtask.due_at, subtask.status),
                                     whiteSpace: 'nowrap',
                                     marginLeft: 'auto',
@@ -883,7 +864,7 @@ export function GroupTaskWorkspace({
                                 background:   TASK_STATUS[subtask.status].pillBg,
                                 color:        TASK_STATUS[subtask.status].pillText,
                                 fontFamily:   'var(--font-sans)',
-                                fontSize:     '10px',
+                                fontSize:     'var(--text-2xs)',
                                 fontWeight:   'var(--weight-semibold)',
                                 width:        'fit-content',
                               }}
@@ -923,7 +904,7 @@ export function GroupTaskWorkspace({
               initial={{ opacity: 0, y: 8, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.97 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
               style={{
                 background:   'var(--theme-paper)',
                 border:       '1px solid var(--theme-paper-border)',

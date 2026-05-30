@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { LogOut } from "lucide-react";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ProfileAvatarSection } from "@/components/profile/ProfileAvatarSection";
@@ -7,6 +6,12 @@ import { ProfileDetailsForm }   from "@/components/profile/ProfileDetailsForm";
 import { ThemeSelector }         from "@/components/profile/ThemeSelector";
 import { PasswordChangeForm }    from "@/components/profile/PasswordChangeForm";
 import { NotificationPreferences } from "@/components/profile/NotificationPreferences";
+import { SectionCard } from "@/components/ui/SectionCard";
+import { Avatar } from "@/components/ui/Avatar";
+import { Button } from "@/components/ui/Button";
+import { ROLE_LABELS } from "@/lib/constants/roles";
+import { DOMAIN_LABELS } from "@/lib/constants/domains";
+import { formatDate } from "@/lib/utils/dates";
 
 export const metadata = { title: "Profile Settings — Indulge OS" };
 
@@ -14,20 +19,22 @@ export default async function ProfilePage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
 
+  const memberSince = formatDate(profile.created_at, "MMM yyyy");
+
   return (
-    <div
+    <main
       style={{
-        padding:    "var(--space-8)",
-        maxWidth:   "672px",
-        margin:     "0 auto",
+        flex:          1,
+        padding:       "var(--space-8)",
         paddingBottom: "var(--space-16)",
+        maxWidth:      "1280px",
       }}
     >
       {/* ── Page header ──────────────────────────────── */}
       <div style={{ marginBottom: "var(--space-8)" }}>
         <p
-          className="label-micro"
-          style={{ marginBottom: "var(--space-2)", color: "var(--theme-text-tertiary)" }}
+          className="type-eyebrow"
+          style={{ marginBottom: "var(--space-2)" }}
         >
           Account
         </p>
@@ -36,135 +43,217 @@ export default async function ProfilePage() {
         </h1>
       </div>
 
-      {/* ── Sections ─────────────────────────────────── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
-
-        {/* Identity */}
-        <ProfileSection title="Identity">
-          <ProfileAvatarSection profile={profile} />
-        </ProfileSection>
-
-        {/* Personal Details */}
-        <ProfileSection title="Personal Details">
-          <ProfileDetailsForm profile={profile} />
-        </ProfileSection>
-
-        {/* Appearance */}
-        <ProfileSection title="Appearance">
-          <ThemeSelector currentTheme={profile.theme} profileId={profile.id} />
-        </ProfileSection>
-
-        {/* Security */}
-        <ProfileSection title="Security">
-          <PasswordChangeForm />
-        </ProfileSection>
-
-        {/* Notifications */}
-        <ProfileSection title="Notifications">
-          <NotificationPreferences />
-        </ProfileSection>
-
-        {/* Session */}
-        <div
-          style={{
-            display:         "flex",
-            alignItems:      "center",
-            justifyContent:  "space-between",
-            padding:         "var(--space-5) var(--space-6)",
-            background:      "var(--theme-paper)",
-            border:          "1px solid var(--theme-paper-border)",
-            borderRadius:    "var(--radius-lg)",
-            boxShadow:       "var(--shadow-1)",
-          }}
-        >
-          <div>
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize:   "var(--text-sm)",
-                fontWeight: "var(--weight-medium)",
-                color:      "var(--theme-text-primary)",
-                margin:     0,
-              }}
-            >
-              Sign out
-            </p>
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize:   "var(--text-xs)",
-                color:      "var(--theme-text-tertiary)",
-                margin:     "var(--space-1) 0 0",
-              }}
-            >
-              End your current session on this device.
-            </p>
-          </div>
-          <form action={signOutUser}>
-            <button
-              type="submit"
-              style={{
-                display:      "inline-flex",
-                alignItems:   "center",
-                gap:          "var(--space-2)",
-                padding:      "var(--space-2) var(--space-4)",
-                background:   "transparent",
-                color:        "var(--theme-text-secondary)",
-                border:       "1px solid var(--theme-paper-border)",
-                borderRadius: "var(--radius-sm)",
-                fontFamily:   "var(--font-sans)",
-                fontSize:     "var(--text-sm)",
-                fontWeight:   "var(--weight-medium)",
-                cursor:       "pointer",
-                transition:   "var(--transition-hover)",
-              }}
-            >
-              <LogOut style={{ width: "14px", height: "14px", strokeWidth: 1.5 }} />
-              Sign out
-            </button>
-          </form>
-        </div>
-
-      </div>
-    </div>
-  );
-}
-
-// ─── ProfileSection card shell ────────────────────────────
-
-function ProfileSection({
-  title,
-  children,
-}: {
-  title:    string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        background:    "var(--theme-paper)",
-        border:        "1px solid var(--theme-paper-border)",
-        borderRadius:  "var(--radius-lg)",
-        boxShadow:     "var(--shadow-1)",
-        overflow:      "hidden",
-      }}
-    >
-      {/* Card header */}
+      {/* ── Wide two-column layout ────────────────────── */}
       <div
         style={{
-          padding:      "var(--space-4) var(--space-6)",
-          background:   "var(--theme-paper-subtle)",
-          borderBottom: "1px solid var(--theme-paper-border)",
+          display:             "grid",
+          gridTemplateColumns: "minmax(0, 1fr) 340px",
+          gap:                 "var(--space-6)",
+          alignItems:          "start",
         }}
       >
-        <h2 className="label-micro" style={{ margin: 0 }}>
-          {title}
-        </h2>
+        {/* Left column — editable sections */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
+          <SectionCard
+            title="Personal Details"
+            description="Your name, contact info, and how the team finds you."
+          >
+            <ProfileDetailsForm profile={profile} />
+          </SectionCard>
+
+          <SectionCard
+            title="Appearance"
+            description="Choose the visual theme for your workspace."
+          >
+            <ThemeSelector currentTheme={profile.theme} profileId={profile.id} />
+          </SectionCard>
+
+          <SectionCard
+            title="Security"
+            description="Update your password. Sign out of this device."
+          >
+            <PasswordChangeForm />
+          </SectionCard>
+
+          <SectionCard
+            title="Notifications"
+            description="Choose how you'd like Eia to reach you."
+          >
+            <NotificationPreferences />
+          </SectionCard>
+        </div>
+
+        {/* Right column — identity sidebar, sticky */}
+        <aside
+          style={{
+            display:       "flex",
+            flexDirection: "column",
+            gap:           "var(--space-5)",
+            position:      "sticky",
+            top:           "var(--space-6)",
+          }}
+        >
+          <SectionCard title="Identity" bodyPadding={false}>
+            {/* Avatar + identity text — upload happens here */}
+            <div style={{ padding: "var(--space-6)" }}>
+              <div
+                style={{
+                  display:       "flex",
+                  flexDirection: "column",
+                  alignItems:    "center",
+                  textAlign:     "center",
+                  gap:           "var(--space-4)",
+                }}
+              >
+                <ProfileAvatarSection profile={profile} />
+              </div>
+
+              <div
+                style={{
+                  display:       "flex",
+                  flexDirection: "column",
+                  alignItems:    "center",
+                  textAlign:     "center",
+                  gap:           "var(--space-1)",
+                  marginTop:     "var(--space-4)",
+                  minWidth:      0,
+                  width:         "100%",
+                }}
+              >
+                <p
+                  style={{
+                    fontFamily:    "var(--font-sans)",
+                    fontSize:      "var(--text-base)",
+                    fontWeight:    "var(--weight-semibold)",
+                    color:         "var(--theme-text-primary)",
+                    margin:        0,
+                    lineHeight:    "var(--leading-tight)",
+                    overflow:      "hidden",
+                    textOverflow:  "ellipsis",
+                    whiteSpace:    "nowrap",
+                    maxWidth:      "100%",
+                  }}
+                >
+                  {profile.full_name}
+                </p>
+                <p
+                  style={{
+                    fontFamily:   "var(--font-sans)",
+                    fontSize:     "var(--text-sm)",
+                    color:        "var(--theme-text-secondary)",
+                    margin:       0,
+                    overflow:     "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace:   "nowrap",
+                    maxWidth:     "100%",
+                  }}
+                >
+                  {profile.email}
+                </p>
+                {profile.job_title && (
+                  <p
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize:   "var(--text-xs)",
+                      color:      "var(--theme-text-tertiary)",
+                      margin:     "var(--space-1) 0 0",
+                    }}
+                  >
+                    {profile.job_title}
+                  </p>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display:        "flex",
+                  gap:            "var(--space-2)",
+                  flexWrap:       "wrap",
+                  justifyContent: "center",
+                  marginTop:      "var(--space-4)",
+                }}
+              >
+                <span className="status-pill status-pill--accent">
+                  {ROLE_LABELS[profile.role]}
+                </span>
+                <span className="status-pill status-pill--neutral">
+                  {DOMAIN_LABELS[profile.domain]}
+                </span>
+              </div>
+            </div>
+
+            {/* Meta strip — member since */}
+            <div
+              style={{
+                display:        "flex",
+                alignItems:     "center",
+                justifyContent: "space-between",
+                padding:        "var(--space-4) var(--space-6)",
+                borderTop:      "1px solid var(--theme-paper-border)",
+                background:     "var(--theme-paper-subtle)",
+              }}
+            >
+              <span
+                className="label-micro"
+                style={{ color: "var(--theme-text-tertiary)" }}
+              >
+                Member since
+              </span>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize:   "var(--text-xs)",
+                  color:      "var(--theme-text-secondary)",
+                }}
+              >
+                {memberSince}
+              </span>
+            </div>
+          </SectionCard>
+
+          {/* Session — sign out */}
+          <SectionCard title="Session" bodyPadding={false}>
+            <div
+              style={{
+                display:        "flex",
+                alignItems:     "center",
+                justifyContent: "space-between",
+                gap:            "var(--space-4)",
+                padding:        "var(--space-5) var(--space-6)",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <p
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize:   "var(--text-sm)",
+                    fontWeight: "var(--weight-medium)",
+                    color:      "var(--theme-text-primary)",
+                    margin:     0,
+                  }}
+                >
+                  Sign out
+                </p>
+                <p
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize:   "var(--text-xs)",
+                    color:      "var(--theme-text-tertiary)",
+                    margin:     "var(--space-1) 0 0",
+                  }}
+                >
+                  End your session on this device.
+                </p>
+              </div>
+              <form action={signOutUser}>
+                <Button type="submit" variant="secondary" size="sm">
+                  Sign out
+                </Button>
+              </form>
+            </div>
+          </SectionCard>
+        </aside>
       </div>
-      {/* Card body */}
-      <div style={{ padding: "var(--space-6)" }}>
-        {children}
-      </div>
-    </div>
+    </main>
   );
 }

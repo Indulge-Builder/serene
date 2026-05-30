@@ -41,6 +41,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { AvatarStack } from '@/components/ui/AvatarStack';
 import type { Task, TaskGroup, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
 import { TASK_STATUS_LABELS } from '@/lib/constants/task-types';
+import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -209,7 +210,7 @@ function GroupRow({
         {/* Expand arrow */}
         <motion.div
           animate={{ rotate: isExpanded ? 90 : 0 }}
-          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
           style={{ flexShrink: 0, display: 'flex', alignItems: 'center', color: 'var(--theme-text-tertiary)' }}
         >
           <ChevronRight style={{ width: 16, height: 16, strokeWidth: 1.5 }} />
@@ -349,7 +350,7 @@ function GroupRow({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
             style={{ overflow: 'hidden' }}
           >
             <div
@@ -613,6 +614,7 @@ function GroupRow({
                   assignee={selectedSubtask.assignee ?? undefined}
                   initialRemarks={selectedSubtaskRemarks}
                   callerProfile={{ id: currentUserId, role: callerRole, domain: callerDomain }}
+                  currentUserName={currentUserName}
                 />
               )}
             </AnimatePresence>

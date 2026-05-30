@@ -95,7 +95,9 @@ function DomainBadge({ domain }: { domain: string }) {
 export function CampaignCard({ campaign, index }: CampaignCardProps) {
   const router = useRouter();
 
-  const encodedName = encodeURIComponent(campaign.campaign_name);
+  // Spaces → '+' so the address bar shows readable names (no %20).
+  // '+' must never appear in a utm_campaign name — it would decode as a space.
+  const encodedName = campaign.campaign_name.replace(/\s+/g, '+');
 
   function handleClick() {
     router.push(`/campaigns/${encodedName}`);

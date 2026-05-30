@@ -69,6 +69,7 @@ import { TaskRemarksPanel, type TaskRemarkWithAuthor } from "@/components/tasks/
 import { TaskStatusIcon } from "@/components/tasks/TaskStatusIcon";
 import { Avatar } from "@/components/ui/Avatar";
 import { InfoRow } from "@/components/ui/InfoRow";
+import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 import type {
   Task,
   TaskStatus,
@@ -534,11 +535,9 @@ export function SubTaskModal({
   }
 
   // ── Authorization: can this caller delete this task? ──────────────────────
-  const canDelete =
-    callerProfile.role === "admin" ||
-    callerProfile.role === "founder" ||
-    (isGroupSubtask) ||
-    (task.created_by === callerProfile.id && task.assigned_to === callerProfile.id);
+  const canDelete = isGroupSubtask
+    ? ["manager", "admin", "founder"].includes(callerProfile.role)
+    : task.created_by === callerProfile.id && task.assigned_to === callerProfile.id;
 
   // ── Checklist display ─────────────────────────────────────────────────────
   const CHECKLIST_PREVIEW = 5;
@@ -576,7 +575,7 @@ export function SubTaskModal({
         style={{
           position:   "fixed",
           inset:      0,
-          background: "rgba(0,0,0,0.5)",
+          background: "var(--overlay-bg)",
           zIndex:     "var(--z-overlay)" as React.CSSProperties["zIndex"],
         }}
       />
@@ -590,7 +589,7 @@ export function SubTaskModal({
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}
-        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
         onClick={(e) => e.stopPropagation()}
         style={{
           position:      "fixed",
@@ -1406,7 +1405,7 @@ export function SubTaskModal({
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 8 }}
-                    transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                    transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
                     style={{
                       display:        "flex",
                       justifyContent: "flex-end",

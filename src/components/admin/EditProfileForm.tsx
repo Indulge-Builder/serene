@@ -16,7 +16,7 @@ export function EditProfileForm({ user }: Props) {
   const succeeded = state.data !== null;
 
   return (
-    <form action={formAction} style={{ padding: "var(--space-6) var(--space-8)" }}>
+    <form action={formAction}>
       {/* Hidden user id */}
       <input type="hidden" name="id" value={user.id} />
 
@@ -108,8 +108,7 @@ export function EditProfileForm({ user }: Props) {
           style={{
             display:        "flex",
             justifyContent: "flex-end",
-            paddingTop:     "var(--space-3)",
-            borderTop:      "1px solid var(--theme-paper-border)",
+            paddingTop:     "var(--space-2)",
           }}
         >
           <Button variant="primary" type="submit" disabled={isPending} loading={isPending}>
@@ -136,10 +135,10 @@ function Field({ label, htmlFor, required, hint, children }: FieldProps) {
         htmlFor={htmlFor}
         style={{
           fontFamily:    "var(--font-sans)",
-          fontSize:      "var(--text-xs)",
+          fontSize:      "var(--text-2xs)",
           fontWeight:    "var(--weight-semibold)",
-          color:         "var(--theme-text-secondary)",
-          letterSpacing: "var(--tracking-wide)",
+          color:         "var(--theme-text-tertiary)",
+          letterSpacing: "var(--tracking-widest)",
           textTransform: "uppercase",
           display:       "flex",
           gap:           "var(--space-1)",

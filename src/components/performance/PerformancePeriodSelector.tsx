@@ -2,14 +2,15 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition }              from 'react';
-import { TabSelector, type TabItem } from '@/components/ui/TabSelector';
+import { SlidersHorizontal }          from 'lucide-react';
+import { FilterDropdown }             from '@/components/ui/FilterDropdown';
 import type { PerformancePeriod }     from '@/lib/services/performance-service';
 
-const PERIODS: TabItem[] = [
-  { id: 'this_week',   label: 'This Week'  },
-  { id: 'this_month',  label: 'This Month' },
-  { id: 'last_month',  label: 'Last Month' },
-  { id: 'all_time',    label: 'All Time'   },
+const PERIOD_ITEMS = [
+  { id: 'this_week',  label: 'This Week'  },
+  { id: 'this_month', label: 'This Month' },
+  { id: 'last_month', label: 'Last Month' },
+  { id: 'all_time',   label: 'All Time'   },
 ];
 
 type Props = {
@@ -21,7 +22,9 @@ export function PerformancePeriodSelector({ current }: Props) {
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
-  function handleSelect(period: PerformancePeriod) {
+  function handleChange(selected: string[]) {
+    const period = selected[0] as PerformancePeriod | undefined;
+    if (!period) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set('period', period);
     startTransition(() => {
@@ -30,12 +33,25 @@ export function PerformancePeriodSelector({ current }: Props) {
   }
 
   return (
-    <TabSelector
-      tabs={PERIODS}
-      activeTab={current}
-      onChange={(id) => handleSelect(id as PerformancePeriod)}
-      variant="pill"
-      style={{ opacity: isPending ? 0.6 : 1, transition: 'opacity var(--duration-fast) var(--ease-in-out)' }}
-    />
+    <div
+      style={{
+        display:    'flex',
+        alignItems: 'center',
+        gap:        'var(--space-3)',
+        opacity:    isPending ? 0.6 : 1,
+        transition: 'opacity var(--duration-fast) var(--ease-in-out)',
+      }}
+    >
+      <SlidersHorizontal
+        style={{ width: '1rem', height: '1rem', color: 'var(--theme-text-tertiary)', strokeWidth: 1.5, flexShrink: 0 }}
+      />
+      <FilterDropdown
+        label="Time Period"
+        items={PERIOD_ITEMS}
+        selected={[current]}
+        onChange={handleChange}
+        multi={false}
+      />
+    </div>
   );
 }

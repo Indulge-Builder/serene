@@ -3,6 +3,7 @@
 import { motion }                    from 'framer-motion';
 import type { OutcomeBreakdownItem } from '@/lib/services/performance-service';
 import type { CallOutcome }          from '@/lib/types/database';
+import { EXIT_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 // ─────────────────────────────────────────────
 // Outcome config — colour tokens, display labels
@@ -71,7 +72,7 @@ export function CallOutcomeBar({ breakdown }: Props) {
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: EXIT_DURATION, delay: 0.18, ease: EASE_OUT_EXPO }}
       style={{
         background:   "var(--theme-paper)",
         border:       "1px solid var(--theme-paper-border)",
@@ -84,7 +85,7 @@ export function CallOutcomeBar({ breakdown }: Props) {
       <p
         style={{
           fontFamily:    "var(--font-sans)",
-          fontSize:      "10px",
+          fontSize:      "var(--text-2xs)",
           fontWeight:    "var(--weight-medium)",
           letterSpacing: "0.12em",
           textTransform: "uppercase",

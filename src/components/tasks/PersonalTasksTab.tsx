@@ -60,8 +60,10 @@ import { SubTaskModal } from '@/components/tasks/SubTaskModal';
 import { AssigneePickerModal, type AssignableUser } from '@/components/tasks/AssigneePickerModal';
 import { CreatePersonalTaskModal } from '@/components/tasks/CreatePersonalTaskModal';
 import { Avatar } from '@/components/ui/Avatar';
-import type { PersonalTasksResult, TaskRemarkWithAuthor } from '@/lib/services/tasks-service';
+import { Spinner } from '@/components/ui/Spinner';
+import type { PersonalTasksResult, TaskRemarkWithAuthor, PersonalTaskCursor } from '@/lib/services/tasks-service';
 import type { Task, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
+import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -153,6 +155,26 @@ export function PersonalTasksTab({
   const [sectionRenderKey, setSectionRenderKey] = useState(0);
 
   const [isLoadingCompleted, setIsLoadingCompleted] = useState(false);
+
+  // ── Cursor pagination for active tasks ───────────────────────────────────────
+  const [hasMore,       setHasMore]       = useState(initialResult.hasMore);
+  const [nextCursor,    setNextCursor]    = useState<PersonalTaskCursor | null>(initialResult.nextCursor);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  const loadMore = useCallback(() => {
+    if (!hasMore || isLoadingMore || !nextCursor) return;
+    setIsLoadingMore(true);
+    getPersonalTasksAction({ cursor: nextCursor, status: ['to_do', 'in_progress', 'in_review', 'error', 'cancelled'] })
+      .then((r) => {
+        if (r.data) {
+          setActiveTasks((prev) => [...prev, ...r.data!.tasks]);
+          setHasMore(r.data.hasMore);
+          setNextCursor(r.data.nextCursor);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsLoadingMore(false));
+  }, [hasMore, isLoadingMore, nextCursor]);
 
   // Guards against double-fetch if the completed section header is clicked
   // twice before the first response returns. Set BEFORE the action call fires.
@@ -463,7 +485,7 @@ export function PersonalTasksTab({
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
               style={{ overflow: 'hidden' }}
             >
               {tasks.map((task, idx) => {
@@ -761,7 +783,7 @@ export function PersonalTasksTab({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
             style={{ overflow: 'hidden' }}
           >
             <div
@@ -1228,6 +1250,34 @@ export function PersonalTasksTab({
           )
         )}
       </div>
+
+      {/* Load more — active tasks pagination */}
+      {hasMore && (
+        <button
+          type="button"
+          onClick={loadMore}
+          disabled={isLoadingMore}
+          style={{
+            display:      'flex',
+            alignItems:   'center',
+            gap:          'var(--space-2)',
+            margin:       'var(--space-4) auto 0',
+            padding:      'var(--space-2) var(--space-4)',
+            background:   'transparent',
+            border:       '1px solid var(--theme-paper-border)',
+            borderRadius: 'var(--radius-sm)',
+            color:        'var(--theme-text-secondary)',
+            fontSize:     'var(--text-sm)',
+            fontWeight:   'var(--weight-medium)',
+            cursor:       isLoadingMore ? 'not-allowed' : 'pointer',
+            opacity:      isLoadingMore ? 0.5 : 1,
+            transition:   'opacity 150ms, border-color 150ms',
+          }}
+        >
+          {isLoadingMore ? <Spinner size="sm" /> : null}
+          {isLoadingMore ? 'Loading…' : 'Load more'}
+        </button>
+      )}
 
       {/* Create Personal Task Modal */}
       <CreatePersonalTaskModal

@@ -83,7 +83,7 @@ export default async function LeadsPage({
           />
         </div>
 
-        <div className="px-5 py-4 mb-4 rounded-md border border-[var(--theme-paper-border)] bg-[var(--theme-paper)] shadow-[var(--shadow-1)]">
+        <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
           <LeadsFilters
             role={profile.role}
             options={filterOptions}

@@ -590,8 +590,6 @@ export function CreatePersonalTaskModal({
         </div>
       </div>
 
-      {/* ─── Tags (UI only — no tags column on tasks table yet) ──────────── */}
-      {/* TODO: wire tags into createPersonalTaskAction once tasks.tags column exists */}
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <FieldLabel>Tags <span style={{ fontWeight: 'var(--weight-normal)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></FieldLabel>
         <div

@@ -2,12 +2,9 @@
 
 import { useRef, useState } from "react";
 import { Camera } from "lucide-react";
-import { Spinner } from '@/components/ui/Spinner';
+import { Spinner } from "@/components/ui/Spinner";
 import { createClient }        from "@/lib/supabase/client";
 import { updateProfileAvatar } from "@/lib/actions/profiles";
-import { ROLE_LABELS }         from "@/lib/constants/roles";
-import { DOMAIN_LABELS }       from "@/lib/constants/domains";
-import { formatDate }          from "@/lib/utils/dates";
 import type { Profile }        from "@/lib/types/database";
 
 function getInitials(name: string): string {
@@ -18,6 +15,14 @@ function getInitials(name: string): string {
 
 type Props = { profile: Profile };
 
+/**
+ * Avatar tile with click-to-upload. Used in the Identity sidebar of the
+ * profile page. Renders a single large square avatar (96×96) with a hover
+ * camera overlay and inline upload error message.
+ *
+ * Identity text (name, email, role pills, member-since) is owned by the
+ * page — this component is intentionally just the picture.
+ */
 export function ProfileAvatarSection({ profile }: Props) {
   const [avatarUrl,   setAvatarUrl]   = useState<string | null>(profile.avatar_url);
   const [uploading,   setUploading]   = useState(false);
@@ -59,7 +64,6 @@ export function ProfileAvatarSection({ profile }: Props) {
         .from("avatars")
         .getPublicUrl(storagePath);
 
-      // Cache-bust so the new image renders immediately.
       const freshUrl = `${publicUrl}?t=${Date.now()}`;
 
       const fd = new FormData();
@@ -84,224 +88,133 @@ export function ProfileAvatarSection({ profile }: Props) {
     }
   }
 
-  const initials     = getInitials(profile.full_name);
-  const roleLabel    = ROLE_LABELS[profile.role];
-  const domainLabel  = DOMAIN_LABELS[profile.domain];
-  const memberSince  = formatDate(profile.created_at, "MMM yyyy");
+  const initials = getInitials(profile.full_name);
 
   return (
-    <div style={{ display: "flex", gap: "var(--space-5)", alignItems: "flex-start" }}>
-
-      {/* ── Avatar + upload trigger ─────────────────── */}
-      <div style={{ flexShrink: 0, position: "relative" }}>
-        <button
-          type="button"
-          onClick={() => !uploading && fileInputRef.current?.click()}
-          aria-label="Change profile photo"
-          style={{
-            display:      "block",
-            position:     "relative",
-            width:        "72px",
-            height:       "72px",
-            borderRadius: "var(--radius-sm)",
-            border:       "none",
-            padding:      0,
-            cursor:       uploading ? "wait" : "pointer",
-            overflow:     "hidden",
-            background:   "var(--theme-accent-surface)",
-          }}
-          onMouseEnter={() => {
-            if (!uploading && overlayRef.current) {
-              overlayRef.current.style.opacity = "1";
-            }
-          }}
-          onMouseLeave={() => {
-            if (overlayRef.current) overlayRef.current.style.opacity = "0";
-          }}
-        >
-          {/* Image or initials */}
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt={profile.full_name}
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-            />
-          ) : (
-            <div
-              style={{
-                width:          "100%",
-                height:         "100%",
-                display:        "flex",
-                alignItems:     "center",
-                justifyContent: "center",
-                fontFamily:     "var(--font-sans)",
-                fontSize:       "var(--text-lg)",
-                fontWeight:     "var(--weight-semibold)",
-                color:          "var(--theme-accent)",
-                letterSpacing:  "var(--tracking-tight)",
-              }}
-            >
-              {initials}
-            </div>
-          )}
-
-          {/* Hover overlay — camera icon */}
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-2)" }}>
+      <button
+        type="button"
+        onClick={() => !uploading && fileInputRef.current?.click()}
+        aria-label="Change profile photo"
+        style={{
+          display:      "block",
+          position:     "relative",
+          width:        "96px",
+          height:       "96px",
+          borderRadius: "var(--radius-md)",
+          border:       "none",
+          padding:      0,
+          cursor:       uploading ? "wait" : "pointer",
+          overflow:     "hidden",
+          background:   "var(--theme-accent-surface)",
+          boxShadow:    "var(--shadow-1)",
+        }}
+        onMouseEnter={() => {
+          if (!uploading && overlayRef.current) {
+            overlayRef.current.style.opacity = "1";
+          }
+        }}
+        onMouseLeave={() => {
+          if (overlayRef.current) overlayRef.current.style.opacity = "0";
+        }}
+      >
+        {avatarUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={avatarUrl}
+            alt={profile.full_name}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          />
+        ) : (
           <div
-            ref={overlayRef}
-            aria-hidden="true"
             style={{
-              position:        "absolute",
-              inset:           0,
-              background:      "rgba(0,0,0,0.52)",
-              display:         "flex",
-              alignItems:      "center",
-              justifyContent:  "center",
-              opacity:         0,
-              transition:      "opacity var(--duration-fast) var(--ease-in-out)",
-              pointerEvents:   "none",
+              width:          "100%",
+              height:         "100%",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontFamily:     "var(--font-sans)",
+              fontSize:       "var(--text-2xl)",
+              fontWeight:     "var(--weight-semibold)",
+              color:          "var(--theme-accent)",
+              letterSpacing:  "var(--tracking-tight)",
             }}
           >
-            <Camera style={{ width: "22px", height: "22px", strokeWidth: 1.5, color: "var(--theme-canvas-text)" }} />
+            {initials}
           </div>
-
-          {/* Upload spinner */}
-          {uploading && (
-            <div
-              aria-hidden="true"
-              style={{
-                position:        "absolute",
-                inset:           0,
-                background:      "rgba(0,0,0,0.52)",
-                display:         "flex",
-                alignItems:      "center",
-                justifyContent:  "center",
-              }}
-            >
-              <Spinner size="md" canvas />
-            </div>
-          )}
-        </button>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleFileChange}
-          aria-hidden="true"
-          style={{ display: "none" }}
-        />
-      </div>
-
-      {/* ── Identity text ───────────────────────────── */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p
-          style={{
-            fontFamily:    "var(--font-sans)",
-            fontSize:      "var(--text-lg)",
-            fontWeight:    "var(--weight-semibold)",
-            letterSpacing: "var(--tracking-tight)",
-            color:         "var(--theme-text-primary)",
-            margin:        0,
-          }}
-        >
-          {profile.full_name}
-        </p>
-
-        {profile.job_title && (
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize:   "var(--text-sm)",
-              color:      "var(--theme-text-secondary)",
-              margin:     "var(--space-1) 0 0",
-            }}
-          >
-            {profile.job_title}
-          </p>
         )}
 
-        {/* Role + Domain badges */}
+        {/* Hover overlay — camera icon */}
         <div
+          ref={overlayRef}
+          aria-hidden="true"
           style={{
-            display:    "flex",
-            gap:        "var(--space-2)",
-            marginTop:  "var(--space-3)",
-            flexWrap:   "wrap",
+            position:       "absolute",
+            inset:          0,
+            background:     "rgba(0,0,0,0.52)",
+            display:        "flex",
+            alignItems:     "center",
+            justifyContent: "center",
+            opacity:        0,
+            transition:     "opacity var(--duration-fast) var(--ease-in-out)",
+            pointerEvents:  "none",
           }}
         >
-          <Pill variant="accent">{roleLabel}</Pill>
-          <Pill variant="neutral">{domainLabel}</Pill>
+          <Camera style={{ width: "24px", height: "24px", strokeWidth: 1.5, color: "var(--theme-canvas-text)" }} />
         </div>
 
-        {/* Member since */}
-        <p
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize:   "var(--text-xs)",
-            color:      "var(--theme-text-tertiary)",
-            margin:     "var(--space-3) 0 0",
-          }}
-        >
-          Member since {memberSince}
-        </p>
-
-        {/* Upload error */}
-        {uploadError && (
-          <p
-            role="alert"
+        {/* Upload spinner */}
+        {uploading && (
+          <div
+            aria-hidden="true"
             style={{
-              fontFamily: "var(--font-sans)",
-              fontSize:   "var(--text-xs)",
-              color:      "var(--color-danger-text)",
-              margin:     "var(--space-2) 0 0",
+              position:       "absolute",
+              inset:          0,
+              background:     "rgba(0,0,0,0.52)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
             }}
           >
-            {uploadError}
-          </p>
+            <Spinner size="md" canvas />
+          </div>
         )}
-      </div>
+      </button>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileChange}
+        aria-hidden="true"
+        style={{ display: "none" }}
+      />
+
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize:   "var(--text-xs)",
+          color:      "var(--theme-text-tertiary)",
+          margin:     0,
+        }}
+      >
+        Click photo to change
+      </p>
+
+      {uploadError && (
+        <p
+          role="alert"
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize:   "var(--text-xs)",
+            color:      "var(--color-danger-text)",
+            margin:     "var(--space-1) 0 0",
+            textAlign:  "center",
+          }}
+        >
+          {uploadError}
+        </p>
+      )}
     </div>
-  );
-}
-
-// ─── Pill ─────────────────────────────────────────────────
-
-function Pill({
-  children,
-  variant,
-}: {
-  children: React.ReactNode;
-  variant:  "accent" | "neutral";
-}) {
-  const styles =
-    variant === "accent"
-      ? {
-          background: "var(--theme-accent-surface)",
-          color:      "var(--theme-accent)",
-          border:     "1px solid var(--theme-accent-surface)",
-        }
-      : {
-          background: "var(--color-neutral-light)",
-          color:      "var(--color-neutral-text)",
-          border:     "1px solid var(--color-neutral-light)",
-        };
-
-  return (
-    <span
-      style={{
-        display:       "inline-flex",
-        alignItems:    "center",
-        padding:       "2px 10px",
-        borderRadius:  "var(--radius-full)",
-        fontFamily:    "var(--font-sans)",
-        fontSize:      "var(--text-xs)",
-        fontWeight:    "var(--weight-medium)",
-        letterSpacing: "var(--tracking-wide)",
-        boxShadow:     "0 1px 3px 0 rgb(0 0 0 / 0.06)",
-        ...styles,
-      }}
-    >
-      {children}
-    </span>
   );
 }

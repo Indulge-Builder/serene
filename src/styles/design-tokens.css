@@ -77,6 +77,10 @@
 
   /* Shadow colour primitive — warm black for Earth */
   --shadow-color: 10 8 2;
+
+  /* Overlay backdrops — theme-invariant */
+  --overlay-bg:       rgba(0, 0, 0, 0.5);
+  --overlay-bg-light: rgba(0, 0, 0, 0.35);
 }
 
 

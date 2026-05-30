@@ -2,13 +2,15 @@
 
 import { useState, useTransition } from "react";
 import { motion } from "framer-motion";
-import { DOMAIN_LABELS } from "@/lib/constants/domains";
-import { setAgentShiftAction } from "@/lib/actions/agent-routing";
+import { X } from "lucide-react";
+import { APP_DOMAINS, DOMAIN_LABELS } from "@/lib/constants/domains";
+import { Toggle } from "@/components/ui/Toggle";
+import { toggleAgentRouting, setAgentShiftAction } from "@/lib/actions/agent-routing";
 import { toast } from "@/lib/toast";
 import { ENTER_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 import type { AgentRosterRow, UserRole, AppDomain } from "@/lib/types/database";
 
-interface AgentShiftsTabProps {
+interface AgentSettingsTableProps {
   initialRoster: AgentRosterRow[];
   callerRole:    UserRole;
   callerDomain:  AppDomain;
@@ -20,6 +22,12 @@ interface ShiftState {
   error: string | null;
 }
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return (parts[0]?.[0] ?? "?").toUpperCase();
+  return ((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase();
+}
+
 function computeActiveHours(start: string | null, end: string | null): string {
   if (!start || !end) return "—";
   const [sh, sm] = start.split(":").map(Number);
@@ -28,27 +36,25 @@ function computeActiveHours(start: string | null, end: string | null): string {
   if (totalMin <= 0) return "—";
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
-  const label = h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
-  return `${start} – ${end} (${label})`;
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return (parts[0]?.[0] ?? "?").toUpperCase();
-  return ((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase();
+  return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
 }
 
 const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-export function AgentShiftsTab({
+export function AgentSettingsTable({
   initialRoster,
   callerRole,
   callerDomain,
-}: AgentShiftsTabProps) {
+}: AgentSettingsTableProps) {
   const isPrivileged     = callerRole === "admin" || callerRole === "founder";
   const showDomainFilter = isPrivileged;
 
-  // Local shift state per agent — tracks in-progress edits
+  const [roster, setRoster]       = useState<AgentRosterRow[]>(initialRoster);
+  const [activeDomain, setActiveDomain] = useState<AppDomain | "all">("all");
+  const [pendingIds, setPendingIds]   = useState<Set<string>>(new Set());
+  const [savingIds, setSavingIds]     = useState<Set<string>>(new Set());
+  const [, startTransition]           = useTransition();
+
   const [shifts, setShifts] = useState<Record<string, ShiftState>>(() => {
     const map: Record<string, ShiftState> = {};
     for (const agent of initialRoster) {
@@ -61,17 +67,50 @@ export function AgentShiftsTab({
     return map;
   });
 
-  const [activeDomain, setActiveDomain] = useState<AppDomain | "all">("all");
-  const [savingIds, setSavingIds]       = useState<Set<string>>(new Set());
-  const [, startTransition]             = useTransition();
-
   const presentDomains = Array.from(
-    new Set(initialRoster.map((r) => r.domain))
+    new Set(roster.map((r) => r.domain))
   ).sort() as AppDomain[];
 
   const filtered = activeDomain === "all"
-    ? initialRoster
-    : initialRoster.filter((r) => r.domain === activeDomain);
+    ? roster
+    : roster.filter((r) => r.domain === activeDomain);
+
+  // ── Assignment toggle ─────────────────────────────────────────────────────
+
+  function handleToggle(agent: AgentRosterRow) {
+    if (pendingIds.has(agent.id)) return;
+
+    setRoster((prev) =>
+      prev.map((r) =>
+        r.id === agent.id ? { ...r, routing_is_active: !r.routing_is_active } : r
+      )
+    );
+    setPendingIds((prev) => new Set(prev).add(agent.id));
+
+    const fd = new FormData();
+    fd.set("agent_id",  agent.id);
+    fd.set("is_active", String(!agent.routing_is_active));
+
+    startTransition(async () => {
+      const result = await toggleAgentRouting(fd);
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(agent.id);
+        return next;
+      });
+
+      if (result.error) {
+        setRoster((prev) =>
+          prev.map((r) =>
+            r.id === agent.id ? { ...r, routing_is_active: agent.routing_is_active } : r
+          )
+        );
+        toast.danger("Couldn't update pool status", { message: result.error });
+      }
+    });
+  }
+
+  // ── Shift editing ─────────────────────────────────────────────────────────
 
   function updateField(agentId: string, field: "start" | "end", value: string) {
     setShifts((prev) => ({
@@ -83,16 +122,10 @@ export function AgentShiftsTab({
   function handleBlur(agent: AgentRosterRow) {
     const state = shifts[agent.id];
     if (!state) return;
-
     const { start, end } = state;
 
-    // Both empty → clear
-    if (!start && !end) {
-      saveShift(agent.id, null, null);
-      return;
-    }
+    if (!start && !end) { saveShift(agent.id, null, null); return; }
 
-    // Only one filled → show hint, don't save
     if ((start && !end) || (!start && end)) {
       setShifts((prev) => ({
         ...prev,
@@ -101,7 +134,6 @@ export function AgentShiftsTab({
       return;
     }
 
-    // Both filled — validate format
     if (!TIME_REGEX.test(start) || !TIME_REGEX.test(end)) {
       setShifts((prev) => ({
         ...prev,
@@ -110,7 +142,6 @@ export function AgentShiftsTab({
       return;
     }
 
-    // shiftEnd must be > shiftStart
     if (end <= start) {
       setShifts((prev) => ({
         ...prev,
@@ -135,26 +166,22 @@ export function AgentShiftsTab({
     setSavingIds((prev) => new Set(prev).add(agentId));
 
     startTransition(async () => {
-      const result = await setAgentShiftAction({
-        agentId,
-        shiftStart: start,
-        shiftEnd:   end,
-      });
-
+      const result = await setAgentShiftAction({ agentId, shiftStart: start, shiftEnd: end });
       setSavingIds((prev) => {
         const next = new Set(prev);
         next.delete(agentId);
         return next;
       });
-
       if (result.error) {
         toast.danger("Couldn't save shift", { message: result.error });
       }
     });
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   const timeInputStyle: React.CSSProperties = {
-    width:        90,
+    width:        88,
     height:       32,
     padding:      "0 var(--space-2)",
     border:       "1px solid var(--theme-paper-border)",
@@ -170,35 +197,17 @@ export function AgentShiftsTab({
 
   return (
     <div>
-      {/* Domain filter — admin/founder only */}
+      {/* Domain filter — admin/founder only, only when multiple domains present */}
       {showDomainFilter && presentDomains.length > 1 && (
         <div
           style={{
-            display:    "flex",
-            flexWrap:   "wrap",
-            gap:        "var(--space-2)",
+            display:      "flex",
+            flexWrap:     "wrap",
+            gap:          "var(--space-2)",
             marginBottom: "var(--space-6)",
           }}
         >
-          <button
-            type="button"
-            onClick={() => setActiveDomain("all")}
-            style={{
-              padding:      "var(--space-1) var(--space-3)",
-              borderRadius: "var(--radius-full)",
-              border:       "1px solid var(--theme-paper-border)",
-              background:   activeDomain === "all" ? "var(--theme-accent)" : "transparent",
-              color:        activeDomain === "all" ? "var(--theme-accent-fg)" : "var(--theme-text-secondary)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-xs)",
-              fontWeight:   "var(--weight-medium)",
-              cursor:       "pointer",
-              transition:   "var(--transition-hover)",
-            }}
-          >
-            All
-          </button>
-          {presentDomains.map((d) => (
+          {(["all", ...presentDomains] as Array<"all" | AppDomain>).map((d) => (
             <button
               key={d}
               type="button"
@@ -216,7 +225,7 @@ export function AgentShiftsTab({
                 transition:   "var(--transition-hover)",
               }}
             >
-              {DOMAIN_LABELS[d] ?? d}
+              {d === "all" ? "All" : (DOMAIN_LABELS[d] ?? d)}
             </button>
           ))}
         </div>
@@ -249,38 +258,49 @@ export function AgentShiftsTab({
             boxShadow:    "var(--shadow-1)",
           }}
         >
-          {/* Table header */}
+          {/* Header */}
           <div
             style={{
-              display:          "grid",
+              display:             "grid",
               gridTemplateColumns: isPrivileged
-                ? "1fr 160px 100px 100px 1fr 40px"
-                : "1fr 100px 100px 1fr 40px",
-              gap:              "var(--space-4)",
-              padding:          "var(--space-3) var(--space-5)",
-              borderBottom:     "1px solid var(--theme-paper-border)",
-              background:       "var(--theme-paper-subtle)",
+                ? "1fr 140px 96px 96px 120px 120px 36px"
+                : "1fr 96px 96px 120px 120px 36px",
+              gap:          "var(--space-4)",
+              padding:      "var(--space-3) var(--space-5)",
+              borderBottom: "1px solid var(--theme-paper-border)",
+              background:   "var(--theme-paper-subtle)",
+              alignItems:   "center",
             }}
           >
-            {["Agent", ...(isPrivileged ? ["Domain"] : []), "Start", "End", "Active Hours", ""].map(
-              (col) => (
-                <span
-                  key={col}
-                  className="label-micro"
-                  style={{ color: "var(--theme-text-tertiary)" }}
-                >
-                  {col}
-                </span>
-              )
-            )}
+            {[
+              "Agent",
+              ...(isPrivileged ? ["Domain"] : []),
+              "Shift Start",
+              "Shift End",
+              "Active Hours",
+              "In Pool",
+              "",
+            ].map((col) => (
+              <span
+                key={col}
+                className="label-micro"
+                style={{ color: "var(--theme-text-tertiary)" }}
+              >
+                {col}
+              </span>
+            ))}
           </div>
 
           {/* Rows */}
           {filtered.map((agent, i) => {
-            const state   = shifts[agent.id] ?? { start: "", end: "", error: null };
-            const isSaving = savingIds.has(agent.id);
-            const hasBoth  = !!state.start && !!state.end;
+            const state     = shifts[agent.id] ?? { start: "", end: "", error: null };
+            const isSaving  = savingIds.has(agent.id);
+            const isPending = pendingIds.has(agent.id);
+            const hasBoth   = !!state.start && !!state.end;
             const hasEither = !!state.start || !!state.end;
+            const activeHours = hasBoth
+              ? computeActiveHours(state.start, state.end)
+              : null;
 
             return (
               <motion.div
@@ -289,49 +309,42 @@ export function AgentShiftsTab({
                 animate={{ opacity: 1 }}
                 transition={{
                   duration: ENTER_DURATION,
-                  delay:    i * 0.04,
+                  delay:    i * 0.035,
                   ease:     EASE_OUT_EXPO,
                 }}
                 style={{
-                  display:          "grid",
+                  display:             "grid",
                   gridTemplateColumns: isPrivileged
-                    ? "1fr 160px 100px 100px 1fr 40px"
-                    : "1fr 100px 100px 1fr 40px",
-                  gap:              "var(--space-4)",
-                  padding:          "var(--space-4) var(--space-5)",
-                  borderBottom:     i < filtered.length - 1
+                    ? "1fr 140px 96px 96px 120px 120px 36px"
+                    : "1fr 96px 96px 120px 120px 36px",
+                  gap:          "var(--space-4)",
+                  padding:      "var(--space-4) var(--space-5)",
+                  borderBottom: i < filtered.length - 1
                     ? "1px solid var(--theme-paper-border)"
                     : "none",
-                  alignItems:       "center",
-                  opacity:          isSaving ? 0.6 : 1,
-                  transition:       "opacity var(--duration-base) var(--ease-in-out)",
+                  alignItems:   "center",
+                  opacity:      (isSaving || isPending) ? 0.6 : 1,
+                  transition:   "opacity var(--duration-base) var(--ease-in-out)",
                 }}
               >
                 {/* Agent name + avatar */}
-                <div
-                  style={{
-                    display:    "flex",
-                    alignItems: "center",
-                    gap:        "var(--space-3)",
-                    minWidth:   0,
-                  }}
-                >
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", minWidth: 0 }}>
                   <div
                     aria-hidden="true"
                     style={{
-                      width:        32,
-                      height:       32,
-                      borderRadius: "var(--radius-sm)",
-                      flexShrink:   0,
-                      overflow:     "hidden",
-                      background:   "var(--theme-accent-surface)",
-                      display:      "flex",
-                      alignItems:   "center",
+                      width:          32,
+                      height:         32,
+                      borderRadius:   "var(--radius-sm)",
+                      flexShrink:     0,
+                      overflow:       "hidden",
+                      background:     "var(--theme-accent-surface)",
+                      display:        "flex",
+                      alignItems:     "center",
                       justifyContent: "center",
-                      fontSize:     "var(--text-xs)",
-                      fontWeight:   "var(--weight-semibold)",
-                      color:        "var(--theme-accent)",
-                      fontFamily:   "var(--font-sans)",
+                      fontSize:       "var(--text-xs)",
+                      fontWeight:     "var(--weight-semibold)",
+                      color:          "var(--theme-accent)",
+                      fontFamily:     "var(--font-sans)",
                     }}
                   >
                     {agent.avatar_url ? (
@@ -339,6 +352,7 @@ export function AgentShiftsTab({
                         src={agent.avatar_url}
                         alt={agent.full_name}
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        loading="lazy"
                       />
                     ) : (
                       getInitials(agent.full_name)
@@ -359,6 +373,21 @@ export function AgentShiftsTab({
                     >
                       {agent.full_name}
                     </p>
+                    {agent.job_title && (
+                      <p
+                        style={{
+                          fontFamily:   "var(--font-sans)",
+                          fontSize:     "var(--text-xs)",
+                          color:        "var(--theme-text-tertiary)",
+                          margin:       "1px 0 0",
+                          overflow:     "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace:   "nowrap",
+                        }}
+                      >
+                        {agent.job_title}
+                      </p>
+                    )}
                     {state.error && (
                       <p
                         style={{
@@ -382,6 +411,25 @@ export function AgentShiftsTab({
                       >
                         Set both times to save
                       </p>
+                    )}
+                    {agent.is_on_leave && (
+                      <span
+                        style={{
+                          display:       "inline-block",
+                          marginTop:     "var(--space-1)",
+                          padding:       "2px var(--space-2)",
+                          borderRadius:  "var(--radius-full)",
+                          background:    "var(--color-warning-light)",
+                          color:         "var(--color-warning-text)",
+                          fontFamily:    "var(--font-sans)",
+                          fontSize:      "var(--text-2xs)",
+                          fontWeight:    "var(--weight-semibold)",
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        On Leave
+                      </span>
                     )}
                   </div>
                 </div>
@@ -425,17 +473,27 @@ export function AgentShiftsTab({
                 {/* Active Hours */}
                 <span
                   style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize:   "var(--text-sm)",
-                    color:      hasBoth ? "var(--theme-text-primary)" : "var(--theme-text-tertiary)",
+                    fontFamily:  "var(--font-sans)",
+                    fontSize:    "var(--text-sm)",
+                    color:       hasBoth ? "var(--theme-text-primary)" : "var(--theme-text-tertiary)",
+                    whiteSpace:  "nowrap",
                   }}
                 >
-                  {hasBoth
-                    ? computeActiveHours(state.start, state.end)
-                    : "—"}
+                  {activeHours ?? "—"}
                 </span>
 
-                {/* Clear */}
+                {/* Assignment toggle */}
+                <div>
+                  <Toggle
+                    size="sm"
+                    checked={agent.routing_is_active}
+                    onChange={() => handleToggle(agent)}
+                    disabled={isPending}
+                    label={agent.routing_is_active ? "Active" : "Inactive"}
+                  />
+                </div>
+
+                {/* Clear shift */}
                 <div style={{ display: "flex", justifyContent: "center" }}>
                   {hasEither ? (
                     <button
@@ -444,30 +502,29 @@ export function AgentShiftsTab({
                       disabled={isSaving}
                       title="Clear shift"
                       style={{
-                        width:        28,
-                        height:       28,
-                        display:      "flex",
-                        alignItems:   "center",
+                        width:          28,
+                        height:         28,
+                        display:        "flex",
+                        alignItems:     "center",
                         justifyContent: "center",
-                        border:       "1px solid var(--theme-paper-border)",
-                        borderRadius: "var(--radius-sm)",
-                        background:   "transparent",
-                        color:        "var(--theme-text-tertiary)",
-                        cursor:       "pointer",
-                        fontSize:     "var(--text-xs)",
-                        fontFamily:   "var(--font-sans)",
-                        transition:   "var(--transition-hover)",
+                        border:         "1px solid var(--theme-paper-border)",
+                        borderRadius:   "var(--radius-sm)",
+                        background:     "transparent",
+                        color:          "var(--theme-text-tertiary)",
+                        cursor:         "pointer",
+                        transition:     "var(--transition-hover)",
+                        padding:        0,
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.color      = "var(--color-danger-text)";
+                        e.currentTarget.style.color       = "var(--color-danger-text)";
                         e.currentTarget.style.borderColor = "var(--color-danger-text)";
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.color       = "var(--theme-text-tertiary)";
-                        e.currentTarget.style.borderColor  = "var(--theme-paper-border)";
+                        e.currentTarget.style.borderColor = "var(--theme-paper-border)";
                       }}
                     >
-                      ×
+                      <X size={12} strokeWidth={1.5} />
                     </button>
                   ) : (
                     <span style={{ width: 28 }} />

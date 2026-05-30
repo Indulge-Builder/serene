@@ -30,7 +30,7 @@
 - Raw payload logged as step 1 (non-fatal — logging failure never blocks a lead).
 - Zod validation on normalized payload first — correct.
 - Domain resolution: explicit `data.domain` takes precedence, then campaign prefix mapping.
-- `DEFAULT_LEAD_DOMAIN` is `'concierge'` (not `'indulge_concierge'` — this was fixed).
+- `DEFAULT_LEAD_DOMAIN` is `'onboarding'` (was `'concierge'` prior to migration 0041).
 - Uses `createAdminClient()` for the DB insert and activity logs — correct (webhook has no session).
 - Logs `lead_created` activity unconditionally and `agent_assigned` activity only when an agent is found — correct.
 - `assigned_at` is set to `null` when no agent is found — correct.
@@ -44,7 +44,7 @@
 
 - DB-level `SELECT FOR UPDATE SKIP LOCKED` on `agent_routing_config` — race-free under concurrent webhooks.
 - O(agents) not O(leads) — `MAX(assigned_at) GROUP BY` subquery.
-- Domain values `'concierge'`, `'shop'`, `'legacy'`, `'house'`, `'b2b'` match `profiles.domain` enum exactly (was `'indulge_concierge'` — fixed).
+- Domain values `'onboarding'`, `'shop'`, `'legacy'`, `'house'`, `'b2b'` match `profiles.domain` enum exactly.
 - Two-step fallback for agents without a routing config row.
 
 ---
@@ -90,10 +90,10 @@
 
 | Where | Value |
 | ---- | ----- |
-| `CAMPAIGN_DOMAIN_MAP` | `concierge`, `shop`, `legacy`, `house`, `b2b` |
-| `DEFAULT_LEAD_DOMAIN` | `concierge` |
-| `profiles.domain` (DB enum) | `concierge` (unchanged) |
-| `AppDomain` type | `concierge` (unchanged) |
+| `CAMPAIGN_DOMAIN_MAP` | `onboarding`, `shop`, `legacy`, `house`, `b2b` |
+| `DEFAULT_LEAD_DOMAIN` | `onboarding` |
+| `profiles.domain` (DB enum) | `concierge` (valid enum value; non-agent staff only) |
+| `AppDomain` type | `concierge` (valid enum value; not used for leads or agent profiles) |
 
 All five campaign prefix → domain mappings (`TG_Global`, `TG_Shop`, `TG_Legacy`, `TG_House`, `TG_B2B`) resolve to values that exist in the `app_domain` enum.
 

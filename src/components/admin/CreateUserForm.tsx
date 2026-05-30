@@ -1,30 +1,30 @@
 "use client";
 
-import { useState, useActionState, useEffect } from "react";
+import { useActionState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { createUser, inviteUser } from "@/lib/actions/profiles";
 import { Button } from "@/components/ui/Button";
-import { TabSelector, type TabItem } from "@/components/ui/TabSelector";
 import { USER_ROLES, ROLE_LABELS } from "@/lib/constants/roles";
 import { APP_DOMAINS, DOMAIN_LABELS } from "@/lib/constants/domains";
 import type { ActionResult } from "@/lib/types";
 
+export type CreateUserMode = "password" | "invite";
+
 const initialState: ActionResult<{ id: string }> = { data: null, error: null };
 
-const MODE_TABS: TabItem[] = [
-  { id: 'password', label: 'Set password'    },
-  { id: 'invite',   label: 'Send invite link' },
-];
+type CreateUserFormProps = {
+  mode: CreateUserMode;
+};
 
-export function CreateUserForm() {
+export function CreateUserForm({ mode }: CreateUserFormProps) {
   const router = useRouter();
-  const [mode, setMode] = useState<"password" | "invite">("password");
 
   const [createState, createAction, createPending] = useActionState(createUser,  initialState);
   const [inviteState, inviteAction, invitePending] = useActionState(inviteUser, initialState);
 
-  const state   = mode === "password" ? createState : inviteState;
+  const state     = mode === "password" ? createState : inviteState;
   const isPending = mode === "password" ? createPending : invitePending;
 
   useEffect(() => {
@@ -34,17 +34,7 @@ export function CreateUserForm() {
   }, [createState.data, inviteState.data, router]);
 
   return (
-    <div>
-      {/* Mode switcher */}
-      <div style={{ padding: "var(--space-5) var(--space-8) 0" }}>
-        <TabSelector
-          tabs={MODE_TABS}
-          activeTab={mode}
-          onChange={(id) => setMode(id as "password" | "invite")}
-          variant="connected"
-        />
-      </div>
-
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
       {mode === "password" ? (
         <form action={createAction} style={formStyle}>
           <PasswordFields />
@@ -53,25 +43,6 @@ export function CreateUserForm() {
       ) : (
         <form action={inviteAction} style={formStyle}>
           <InviteFields />
-          <div
-            style={{
-              padding:      "var(--space-3) var(--space-4)",
-              background:   "var(--color-info-light)",
-              border:       "1px solid color-mix(in srgb, var(--color-info) 25%, transparent)",
-              borderRadius: "var(--radius-sm)",
-            }}
-          >
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize:   "var(--text-xs)",
-                color:      "var(--color-info-text)",
-                margin:     0,
-              }}
-            >
-              A magic link will be sent to their email. They can set their own password when they sign in for the first time.
-            </p>
-          </div>
           <FormFooter
             state={state}
             isPending={isPending}
@@ -228,30 +199,13 @@ function FormFooter({
         style={{
           display:        "flex",
           justifyContent: "flex-end",
-          gap:            "var(--space-3)",
-          paddingTop:     "var(--space-3)",
-          borderTop:      "1px solid var(--theme-paper-border)",
+          gap:            "var(--space-2)",
+          paddingTop:     "var(--space-2)",
         }}
       >
-        <a
-          href="/admin/users"
-          style={{
-            display:        "inline-flex",
-            alignItems:     "center",
-            padding:        "var(--space-2) var(--space-5)",
-            background:     "var(--theme-paper-subtle)",
-            border:         "1px solid var(--theme-paper-border)",
-            borderRadius:   "var(--radius-sm)",
-            fontFamily:     "var(--font-sans)",
-            fontSize:       "var(--text-sm)",
-            fontWeight:     "var(--weight-medium)",
-            color:          "var(--theme-text-secondary)",
-            textDecoration: "none",
-            cursor:         "pointer",
-          }}
-        >
-          Cancel
-        </a>
+        <Link href="/admin/users">
+          <Button variant="secondary" type="button">Cancel</Button>
+        </Link>
         <Button variant="primary" type="submit" disabled={isPending} loading={isPending}>
           {isPending ? pendingLabel : submitLabel}
         </Button>
@@ -311,11 +265,9 @@ function Field({ label, htmlFor, required, hint, children }: FieldProps) {
 // ─── Shared styles ─────────────────────────────────────────
 
 const formStyle: React.CSSProperties = {
-  padding: "var(--space-6) var(--space-8)",
-  display: "flex",
+  display:       "flex",
   flexDirection: "column",
-  gap: "var(--space-5)",
-  borderTop: "1px solid var(--theme-paper-border)",
+  gap:           "var(--space-5)",
 };
 
 const inputStyle: React.CSSProperties = {

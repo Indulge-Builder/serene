@@ -31,16 +31,19 @@ function buildStatusTimestamps(
   return map;
 }
 
-function formatDwell(from: Date, to: Date): string {
+function formatDwell(from: Date, to: Date, isActive: boolean): string | null {
   const ms      = to.getTime() - from.getTime();
   const minutes = Math.floor(ms / 60_000);
   const hours   = Math.floor(minutes / 60);
   const days    = Math.floor(hours / 24);
 
-  if (days > 0) return `${days}d`;
-  if (hours > 0) return `${hours}h`;
-  if (minutes > 0) return `${minutes}m`;
-  return '<1m';
+  let duration: string;
+  if (days >= 1)    duration = `${days} ${days === 1 ? 'day' : 'days'}`;
+  else if (hours >= 1) duration = `${hours} ${hours === 1 ? 'hr' : 'hrs'}`;
+  else if (minutes >= 1) duration = `${minutes} min`;
+  else return null; // sub-minute — not worth showing
+
+  return isActive ? `${duration} here` : duration;
 }
 
 export function LeadJourneyTimeline({ lead, activities }: Props) {
@@ -157,7 +160,7 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
               const nextStatus = JOURNEY_STATUSES[idx + 1];
               const nextAt     = nextStatus ? timestamps[nextStatus] : null;
               const endAt      = nextAt ?? (isActive ? now : null);
-              if (endAt) dwellStr = formatDwell(enteredAt, endAt);
+              if (endAt) dwellStr = formatDwell(enteredAt, endAt, isActive);
             }
 
             return (

@@ -16,15 +16,29 @@ Every modal composes `src/components/ui/modal.tsx` — never reimplements chrome
 
 Props:
 ```
-lead:          Lead
-assigneeName:  string | null
-adCreative?:   AdCreative | null    — resolved by the dossier page server component
+lead:            Lead
+assigneeName:    string | null
+adCreative?:     AdCreative | null    — resolved by the dossier page server component
+canEdit?:        boolean              — enables click-to-edit for contact fields (agent/admin/founder)
+canReassign?:    boolean              — enables inline reassignment (manager/admin/founder)
+agents?:         { id: string; full_name: string }[]   — active agents for the lead's domain; pre-fetched by dossier page
 ```
 
 Renders the left-column contact card on the lead dossier page.
-Contains the `AttributionStrip` (UTM fields) and `CampaignVideoModal` trigger logic.
+Contains the `AttributionStrip` (UTM fields), `CampaignVideoModal` trigger logic, and `AssigneeCombobox`.
+
+**Reassignment rules:**
+
+- When `canReassign={true}`, the "Assigned to" field renders as `AssigneeCombobox` instead of a plain `InfoRow`.
+- At rest `AssigneeCombobox` is visually identical to every other read-only field — no border, no box, no visible chevron.
+- On hover: a dashed accent underline appears under the name text and a small `ChevronDown` fades in.
+- On click: a dropdown opens with a search input (auto-focused) and a list of agents from the `agents` prop.
+- Selecting an agent calls `assignLead` from `lib/actions/leads.ts`, optimistically updates `currentAssigneeName` in local state, and shows a `Check` tick for 2 seconds. No page reload needed.
+- `canReassign` is derived server-side from `profile.role` — never computed in the component.
+- `agents` is fetched once in the dossier page via `getAgentsForDomain(lead.domain)` and is `[]` for agent-role callers (the field falls back to read-only `InfoRow`).
 
 **Ad creative trigger rules:**
+
 - `utm_campaign` renders as an interactive `<span role="button">` only when `adCreative` is not null.
 - Hover: `color → var(--theme-accent)`, `text-decoration-color → var(--theme-accent)`, 150ms transition.
 - `ad_name` row appears and is also interactive when `adCreative.ad_name === lead.ad_name`.
@@ -89,6 +103,32 @@ resetToDefaults: () => void
 
 Drag-to-reorder via `@dnd-kit/sortable`. Locked columns (status, name) show `Lock` icon — not toggleable.
 Entrance animation: `opacity 0→1, y -4→0`, 200ms, ease-out-expo.
+
+---
+
+### LeadNotesInput
+
+`LeadNotesInput.tsx` — `'use client'`
+
+Props:
+```
+leadId:       string
+canAdd:       boolean    — same gate as canEditPersonalDetails on the dossier page
+onNoteAdded?: () => void — optional callback fired after successful note post
+```
+
+Calls `addLeadNote` action. Submits via button click or ⌘+Enter. Uses `useTransition`.
+Header uses `--color-info-dark-*` tokens to visually distinguish from the scratchpad (which uses `--theme-paper-subtle`). Note has `call_outcome = null` — it does NOT increment `call_count` or change `last_call_outcome`.
+
+---
+
+### StatusActionPanel — Revive flow
+
+When `status === 'junk'`, a `Revive Lead` button (amber/warning style, Zap icon) appears.
+Clicking opens a `ConfirmModal` that calls `updateLeadStatus('in_discussion')`.
+All prior history (calls, notes, activities) is preserved.
+SLA timers re-schedule automatically — the existing `updateLeadStatus` action handles this correctly because `in_discussion` is not in `TERMINAL_SLA_STATUSES`.
+The Called button remains disabled for junk leads — revive first, then call.
 
 ---
 

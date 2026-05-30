@@ -43,7 +43,7 @@ export function AgentScratchpad({ leadId, initialContent, canEdit }: Props) {
         borderRadius: 'var(--radius-lg)',
         boxShadow:    'var(--shadow-1)',
         overflow:     'hidden',
-        height:       '100%',
+        flex:         1,
         display:      'flex',
         flexDirection:'column',
       }}
@@ -113,7 +113,7 @@ export function AgentScratchpad({ leadId, initialContent, canEdit }: Props) {
             placeholder="Your private notes on this lead. Only you can see this."
             style={{
               flex:        1,
-              minHeight:   '240px',
+              minHeight:   '80px',
               padding:     'var(--space-4) var(--space-5)',
               border:      'none',
               outline:     'none',

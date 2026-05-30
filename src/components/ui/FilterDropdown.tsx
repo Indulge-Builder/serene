@@ -86,14 +86,16 @@ export function FilterDropdown({
           height:         '2.25rem',
           padding:        'var(--space-1) var(--space-3)',
           background:     activeCount > 0 ? 'var(--theme-accent-surface)' : 'var(--theme-paper-subtle)',
-          border:         `1px solid ${activeCount > 0 ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
+          // Open state OR active state → accent border. Color transition lifted onto
+          // border-color explicitly so the open→closed change animates per spec.
+          border:         `1px solid ${(open || activeCount > 0) ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
           borderRadius:   'var(--radius-md)',
           fontSize:       'var(--text-sm)',
           fontFamily:     'var(--font-sans)',
           fontWeight:     'var(--weight-medium)',
           color:          activeCount > 0 ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
           cursor:         'pointer',
-          transition:     'var(--transition-hover)',
+          transition:     'var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out)',
           whiteSpace:     'nowrap',
           outline:        'none',
         }}
@@ -128,7 +130,7 @@ export function FilterDropdown({
             height:     14,
             strokeWidth: 1.5,
             transform:  open ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform var(--duration-base) var(--ease-spring)',
+            transition: 'transform var(--duration-fast) var(--ease-in-out)',
           }}
           aria-hidden="true"
         />
@@ -204,7 +206,7 @@ export function FilterDropdown({
                         height:         16,
                         border:         `1px solid ${isSelected ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
                         borderRadius:   'var(--radius-xs)',
-                        background:     isSelected ? 'var(--theme-accent)' : 'transparent',
+                        background:     isSelected ? 'var(--theme-accent)' : 'var(--theme-paper)',
                         flexShrink:     0,
                       }}
                     >
@@ -227,6 +229,52 @@ export function FilterDropdown({
                 </button>
               );
             })}
+
+            {activeCount > 0 && (
+              <>
+                <div
+                  role="separator"
+                  style={{
+                    height:          1,
+                    background:      'var(--theme-paper-border)',
+                    margin:          'var(--space-1) 0',
+                  }}
+                />
+                <div
+                  style={{
+                    display:         'flex',
+                    justifyContent:  'flex-end',
+                    padding:         'var(--space-1) var(--space-3)',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange([]);
+                      if (!multi) setOpen(false);
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.color = 'var(--theme-accent)';
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.color = 'var(--theme-text-tertiary)';
+                    }}
+                    style={{
+                      background:    'none',
+                      border:        'none',
+                      padding:       0,
+                      fontSize:      'var(--text-xs)',
+                      fontFamily:    'var(--font-sans)',
+                      color:         'var(--theme-text-tertiary)',
+                      cursor:        'pointer',
+                      transition:    'var(--transition-hover)',
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

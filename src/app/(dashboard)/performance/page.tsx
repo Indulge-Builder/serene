@@ -101,7 +101,7 @@ export default async function PerformancePage({
   const rawPeriod = typeof params.period === 'string' ? params.period : undefined;
   const period    = parsePeriod(rawPeriod);
 
-  // ── Agent view (unchanged) ──────────────────────────────────────────────
+  // ── Agent view ──────────────────────────────────────────────────────────
   if (profile.role === 'agent') {
     const { getCoreFourMetrics, getEffortMetrics } = await import(
       '@/lib/services/performance-service'
@@ -118,7 +118,19 @@ export default async function PerformancePage({
             Your Performance<span className="page-title-dot">.</span>
           </h1>
         </div>
-        <div style={{ marginBottom: 'var(--space-6)' }}>
+        {/* Filter bar — period dropdown */}
+        <div
+          style={{
+            display:      'flex',
+            alignItems:   'center',
+            gap:          'var(--space-3)',
+            padding:      'var(--space-3) var(--space-4)',
+            background:   'var(--theme-paper)',
+            border:       '1px solid var(--theme-paper-border)',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: 'var(--space-6)',
+          }}
+        >
           <PerformancePeriodSelector current={period} />
         </div>
         <Suspense fallback={<PerformanceSkeleton />}>
@@ -143,7 +155,19 @@ export default async function PerformancePage({
             Team Performance<span className="page-title-dot">.</span>
           </h1>
         </div>
-        <div style={{ marginBottom: 'var(--space-6)' }}>
+        {/* Filter bar — period dropdown */}
+        <div
+          style={{
+            display:      'flex',
+            alignItems:   'center',
+            gap:          'var(--space-3)',
+            padding:      'var(--space-3) var(--space-4)',
+            background:   'var(--theme-paper)',
+            border:       '1px solid var(--theme-paper-border)',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: 'var(--space-6)',
+          }}
+        >
           <PerformancePeriodSelector current={period} />
         </div>
         <Suspense fallback={<ManagerPerformanceSkeleton />}>
@@ -154,7 +178,9 @@ export default async function PerformancePage({
   }
 
   // ── Founder / admin view ────────────────────────────────────────────────
-  // Active domain tab comes from URL params (founder controls it via tab clicks).
+  // Domain tab comes first (Onboarding → Shop → House → Legacy → …).
+  // Filter bar lives below the domain tabs.
+  // Active domain tab comes from URL params — validated in FounderPerformanceShell.
   const rawDomain = typeof params.domain === 'string' ? params.domain : undefined;
 
   return (
@@ -164,9 +190,22 @@ export default async function PerformancePage({
           Performance<span className="page-title-dot">.</span>
         </h1>
       </div>
-      <div style={{ marginBottom: 'var(--space-6)' }}>
+      {/* Filter bar — period dropdown, sits below the title, above domain tabs */}
+      <div
+        style={{
+          display:      'flex',
+          alignItems:   'center',
+          gap:          'var(--space-3)',
+          padding:      'var(--space-3) var(--space-4)',
+          background:   'var(--theme-paper)',
+          border:       '1px solid var(--theme-paper-border)',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: 'var(--space-6)',
+        }}
+      >
         <PerformancePeriodSelector current={period} />
       </div>
+      {/* Domain tabs + team panel */}
       <FounderPerformanceShell period={period} rawDomain={rawDomain} />
     </main>
   );

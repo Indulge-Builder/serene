@@ -619,7 +619,7 @@ export async function getAgentRosterPerformance(
     if (diffMs >= 0) agg[aid].responseDiffs.push(diffMs / 60000);
   }
 
-  return agents.map((a) => {
+  const rows = agents.map((a) => {
     const data = agg[a.id as string];
     const closed = data.wonCount + data.lostCount;
     const conversionRate = closed > 0 ? (data.wonCount / closed) * 100 : null;
@@ -638,6 +638,20 @@ export async function getAgentRosterPerformance(
       avgResponseTimeMinutes,
     };
   });
+
+  // Sort: top performer first.
+  // Primary: leadsWon DESC (null treated as 0 — zero wins, not absent data).
+  // Secondary: conversionRate DESC (null → -Infinity so agents with no closed leads
+  //   sort below agents with actual conversion data, never to the top).
+  rows.sort((a, b) => {
+    const wonDiff = (b.leadsWon ?? 0) - (a.leadsWon ?? 0);
+    if (wonDiff !== 0) return wonDiff;
+    const aRate = a.conversionRate ?? -Infinity;
+    const bRate = b.conversionRate ?? -Infinity;
+    return bRate - aRate;
+  });
+
+  return rows;
 }
 
 // ─────────────────────────────────────────────

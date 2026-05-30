@@ -1,11 +1,247 @@
 # Eia — Changelog
 
+<!-- markdownlint-disable MD013 MD024 MD026 MD033 -->
+
 All notable changes to the Eia platform are recorded here in reverse chronological order.
 This is the **single source of truth** for all development changes.
 Every meaningful change — feature, fix, refactor, migration, new package — must be logged here before or alongside the code that implements it.
 Format: `[date] — [area] — [what changed]`
 
 ---
+
+## 2026-05-30 — Admin · UI: Team / user-management redesign + two new shared primitives (`SectionCard`, `BackButton`)
+
+**Pages redesigned (UI only — no backend, action, schema, or RLS change):**
+
+- `/admin/users` (Team list) — wrapper card switched from `--shadow-paper` (levitating) to `1px --theme-paper-border + --shadow-1` (flat, grounded). Aligns with `AgentSettingsTable` in `/settings`.
+- `/admin/users/[id]` (User detail) — full redesign. `max-width: 1280px` (Wide zone, DESIGN-DNA §3.4). Two-column grid `minmax(0, 1fr) 340px`: left stacks `Profile Details` + `Authorization` `SectionCard`s; right is a sticky `Identity` sidebar with `Avatar size="xl"`, name, email, job-title, role/domain status pills, plus the existing `UserStatusControls` toggles below a hairline. Drops the redundant "TEAM MEMBER" eyebrow — `BackButton` already establishes context.
+- `/admin/users/new` (New User) — full redesign. Wide 1280px two-column grid. Left: `SectionCard "Member Details"` containing `<CreateUserForm mode={mode} />`. Right: sticky `SectionCard "Onboarding Method"` containing the relocated `TabSelector` (variant `connected`, "Set password" / "Send invite link") and a mode-aware tips block (Password mode: temporary password + role/domain; Invite mode: magic-link + role/domain). Drops the page subtitle (redundant after the tabs moved up).
+- `/profile` — migrated from its private `ProfileSection` shell to the new shared `SectionCard` (visual output identical). Dead `ProfileSection` definition removed.
+
+**`CreateUserForm.tsx` refactor:** removed internal `useState`/`TabSelector` for mode. Now controlled — accepts `mode: "password" | "invite"` prop. Exports `CreateUserMode` type. Internal info-banner inside invite mode removed (its message now lives in the right-column tips block).
+
+**`EditProfileForm.tsx` + `EditAuthorizationForm.tsx`:** dropped their own outer `padding` and `borderTop` separators — `SectionCard` body padding owns it. Labels in `EditProfileForm` migrated to the canonical `label-micro` style (`--text-2xs / widest / tertiary`) — now matches `EditAuthorizationForm` and `CreateUserForm`.
+
+**`UserStatusControls.tsx`:** horizontal padding aligned to `--space-6` (was `--space-8`) — flush with the `SectionCard` body grid.
+
+**Cancel button:** `CreateUserForm` Cancel switched from a raw `<a>` to `<Link><Button variant="secondary"></Link>` (Q-12 — reuse the canonical primitive).
+
+**New shared primitives:**
+
+- `src/components/ui/SectionCard.tsx` — canonical card shell for single-record detail pages. Props: `title`, `description?`, `headerRight?`, `bodyPadding?` (default `true`), `children`. Header strip `--theme-paper-subtle` + `label-micro` title; body padded `--space-6` by default. Flat chrome: `1px --theme-paper-border + --shadow-1` — never `--shadow-paper`. Used by `/profile`, `/admin/users/[id]`, `/admin/users/new`, and `NewUserClient`.
+- `src/components/ui/BackButton.tsx` — 36×36 circular icon-only back link. Props: `href`, `label` (drives `aria-label` + `title`). Server-component-safe. Sits inline to the left of the page `<h1>` with `gap: var(--space-4)`. Replaces 5 inline back-link implementations: `/admin/users/new`, `/admin/users/[id]`, `/leads/[id]`, `/campaigns/[id]`, `tasks/[id]` (GroupTaskWorkspace).
+
+**Other migrations driven by `BackButton`:**
+
+- `leads/[id]/page.tsx` — header `<h1>` upgraded from a hand-rolled `var(--font-serif)` inline style to the canonical `.type-page-title` + `.page-title-dot` classes. Phone number subtitle preserved.
+- `campaigns/[id]/page.tsx` — back link upgraded from a raw `← Campaigns` `<a>` (no Next.js Link prefetching) to `BackButton`.
+- `GroupTaskWorkspace.tsx` — title row collapsed: back button + title + meta pills now sit on one flex row (was a stacked back-link / title row layout). Vertical real estate saved.
+
+**Wrapper for client state lift:** `src/components/admin/NewUserClient.tsx` — `'use client'` two-column layout. Owns `mode` state for `CreateUserForm` and the parallel `TabSelector` on the right. Required because the page is a Server Component but the form mode is client state shared across columns.
+
+**Files added:**
+
+- `src/components/ui/SectionCard.tsx`
+- `src/components/ui/BackButton.tsx`
+- `src/components/admin/NewUserClient.tsx`
+
+**Files modified:** `src/app/(dashboard)/admin/users/page.tsx`, `src/app/(dashboard)/admin/users/[id]/page.tsx`, `src/app/(dashboard)/admin/users/new/page.tsx`, `src/app/(dashboard)/profile/page.tsx`, `src/app/(dashboard)/leads/[id]/page.tsx`, `src/app/(dashboard)/campaigns/[id]/page.tsx`, `src/components/tasks/GroupTaskWorkspace.tsx`, `src/components/admin/CreateUserForm.tsx`, `src/components/admin/EditProfileForm.tsx`, `src/components/admin/EditAuthorizationForm.tsx`, `src/components/admin/UserStatusControls.tsx`.
+
+---
+
+## 2026-05-30 — Campaigns: detail page title beautified — `campaigns/[id]/page.tsx` now derives a display-only `campaignTitle` by splitting the raw campaign key on `_` and whitespace and joining with ` · ` (e.g. `TG_House_Meta+Leads_Goa+Resort` → `TG · House · Meta · Leads · Goa · Resort`). Decode step also strips `%2B` defensively (case-insensitive) before the `+→space` swap, so a double-encoded link from the address bar no longer shows literal `%2B` in the heading. The un-beautified `campaignName` is still the value passed to all DB lookups (`getCampaignDetailMetrics`, `getCampaignAgentDistribution`, `getLeadsByRoleCached`) — only the H1 changes.
+
+## 2026-05-30 — ComboboxDropdown ui primitive shipped — LeadInfoCard inline combobox migrated. Phase UI. New file `src/components/ui/ComboboxDropdown.tsx` (single-select searchable picker, viewport-flip, kbd nav Escape/Arrow/Enter, DROPDOWN_VARIANTS, no hardcoded hex). `renderTrigger` prop lets LeadInfoCard.AssigneeCombobox keep its InfoRow-styled trigger (label-above-value with dashed accent underline on hover) — visual identical to pre-migration; panel + search + list now live in the primitive. Inline panel/list/search/handlers removed from LeadInfoCard (~190 lines deleted).
+
+## 2026-05-30 — UI: Calendar.tsx gains optional taskDots prop — per-day 4px dot below the day number (absolute, zIndex:1, scale 0→1 / 150ms EASE_SPRING). --theme-accent at 0.7 opacity for 1–2 tasks, 1.0 for 3+; --color-danger when hasUrgent. Cell height switches from aspectRatio:1 to 44px only when taskDots provided. Local-date YYYY-MM-DD keying (IST-safe, never toISOString). taskDots=undefined renders byte-identical to legacy. Today dot suppressed when a task dot occupies the same cell.
+
+## 2026-05-30 — UI: DatePicker.tsx gains optional showTime prop — renders Hours (1–12) / Minutes (00,15,30,45) scroll columns with ":" separator and AM/PM TabSelector (variant="connected", indicatorLayoutId="datepicker-ampm") inside the same panel, separated by 1px --theme-paper-border. Selected cell bg --theme-accent-surface + --radius-xs. Trigger label switches to "dd MMM yyyy, h:mm a" when showTime + value present. All commits routed through toUTC(). showTime=false behaviour byte-identical to legacy (zero consumer impact — no callers today).
+
+## 2026-05-30 — UI: FilterDropdown.tsx enhancements — trigger border now accent when open (was only when active); ChevronDown rotation transition switched from --duration-base/--ease-spring to --duration-fast/--ease-in-out per spec; checkbox unselected bg now --theme-paper (was transparent); footer Clear link added (right-aligned --text-xs --theme-text-tertiary, hover --theme-accent, fires onChange([])) with 1px --theme-paper-border separator above; visible only when selected.length > 0. No prop API change.
+
+## 2026-05-30 — UI: TabSelector.tsx spec audit — confirmed pill (paper-subtle tray, --theme-canvas chip + --theme-sidebar-border + --shadow-2, --theme-canvas-text active label on z-index:1 inner span) and connected (paper-subtle tray, --theme-paper chip + --shadow-1) variants match spec; SPRING_CONFIG on both motion.span indicators (no hardcoded stiffness/damping); count badge uses --theme-accent-surface/--theme-accent; zero hardcoded hex. No border-bottom variant exists in code or consumers — not added (would be structural). Inline // ✓ spec comments added.
+
+## 2026-05-30 — UI: Button.tsx spec audit against design-dna.md §5.01 — border-radius corrected to --radius-sm (was --radius-md); primary gains --shadow-accent-glow rest + --shadow-accent-lift + translateY(-1px) on hover; secondary gains --shadow-1 + accent-muted border hover; ghost text colour fixed to --theme-text-primary + paper-subtle hover bg; danger/success kept soft-default (intentional drift from spec saturated default — preserves 9 existing consumers); pointer-events:none added to disabled state; whileTap stays in MotionButton per zero-bundle-cost rule.
+
+## 2026-05-30 — UI: SearchBar default placeholder shortened to "Search"; placeholder colour wired via .eia-input class so ::placeholder resolves to --theme-text-tertiary; clear button gains hover→text-primary with var(--transition-hover).
+
+## 2026-05-30 — Lead slug collision fix (migration 0046): generate_lead_slug now appends -2/-3 on collision; backfill re-run ordered by created_at ASC.
+
+---
+
+## 2026-05-30 — URL cleanup: lead slugs (migration 0045), campaign + encoding, performance ?domain= audit.
+
+- Migration 0045: `leads.slug` column, `generate_lead_slug()` function, `trg_lead_slug` trigger, `idx_leads_slug` partial unique index; back-fills all existing rows with non-null phone. Slug format: `priya-sharma-9182`. Immutable after insert.
+- `getLeadBySlug(slug)` added to `leads-service.ts`. `leads/[id]/page.tsx` tries slug first, falls back to UUID. `LeadsTable` href uses `lead.slug ?? lead.id`.
+- Campaign URLs: `CampaignCard` now encodes spaces as `+` (no `encodeURIComponent`); `campaigns/[id]/page.tsx` decodes `+` back to spaces. Address bar shows `TG_House_Meta+Leads_Goa+Resort` instead of `%20`-encoded form.
+- Performance page `?domain=` audit: Finding B — param is intentional for founder/admin multi-domain tab selector (`FounderDomainTabs`). Manager path never reads `?domain=`. Server validates the value against live DB before use. No code change required.
+
+---
+
+## 2026-05-30 — Tasks: status-change chips implemented in TaskRemarksPanel compose area — A-4 resolved.
+
+---
+
+## 2026-05-30 — Tasks: inline [0.16,1,0.3,1] easing replaced with EASE_OUT_EXPO across 5 components — F-1 resolved.
+
+---
+
+## 2026-05-30 — Tasks: Load more button rendered in PersonalTasksTab — A-1 resolved.
+
+---
+
+## 2026-05-30 — Tasks: currentUserName threaded GroupTasksTab → GroupRow → SubTaskModal — A-2 resolved.
+
+---
+
+## 2026-05-30 — Design tokens: --overlay-bg and --overlay-bg-light added; hardcoded RGBA backdrops replaced in SubTaskModal and AssigneePickerModal — B-2 + B-3 resolved.
+
+---
+
+## 2026-05-30 — TabSelector — `border-bottom` variant removed; `pill` is now the only default
+
+- `src/components/ui/TabSelector.tsx` — `TabSelectorVariant` type narrowed to `'pill' | 'connected'`; all `border-bottom` conditional branches removed from `TabsList`, `TabsTrigger`, and the underline indicator block; `isBorderBottom` variable deleted; `marginBottom: 0` hardcoded (was conditional)
+- `src/components/performance/FounderDomainTabs.tsx` — `variant="border-bottom"` → `variant="pill"` (domain tabs now match the Tasks page tab style)
+- `src/components/CLAUDE.md` — variant list updated; component sweep table corrected
+
+---
+
+## 2026-05-30 — Performance page — DRY audit + alignment: 10 violations fixed across 4 files — Phase 10 hardening
+
+- `CoreFourGrid.tsx` — inline `[0.16, 1, 0.3, 1]` → `EASE_OUT_EXPO`; `duration: 0.25` → `EXIT_DURATION`; `fontSize: "10px"` (×2) → `var(--text-2xs)`
+- `EffortGrid.tsx` — same motion + font violations fixed; imports `EXIT_DURATION`, `EASE_OUT_EXPO` from `lib/constants/motion`
+- `CallOutcomeBar.tsx` — same motion + font violations fixed
+- `ManagerPerformancePanel.tsx` — inline `[0.16, 1, 0.3, 1]` + `duration: 0.2` → `EASE_OUT_EXPO` + `BASE_DURATION`
+- No architecture (PN-001), DRY (Q-12), or P-07 violations found; `pnpm tsc --noEmit` passes clean
+- `src/app/(dashboard)/performance/CLAUDE.md` — hardening log added; canonical import paths table added
+
+---
+
+## 2026-05-30 — Settings page — unified single-page redesign; assignment + shifts merged into one table
+
+- `src/app/(dashboard)/settings/page.tsx` — removed tab shell and URL param logic; page now follows the standard header pattern (`h1.type-page-title` with blinking dot, `flex items-center justify-between`); fetches `getAgentRosterByDomain` directly and renders `AgentSettingsTable`
+- `src/components/settings/AgentSettingsTable.tsx` — new unified `'use client'` component replacing the two-tab system; one row per agent with avatar, name, job title, domain (admin/founder only), shift start input, shift end input, computed active hours, assignment pool toggle (`Toggle`), and clear-shift button (`X` icon); domain filter pills for admin/founder when multiple domains present; `pendingIds` + `savingIds` sets prevent concurrent mutations per agent; shift save fires on `onBlur` with full validation (both required, HH:MM format, end > start); optimistic toggle with revert on error
+- `src/app/(dashboard)/settings/SettingsShell.tsx` — deleted (tab shell no longer needed)
+- `src/components/settings/AgentRosterTab.tsx` — deleted (merged into `AgentSettingsTable`)
+- `src/components/settings/AgentShiftsTab.tsx` — deleted (merged into `AgentSettingsTable`)
+- `src/app/(dashboard)/settings/CLAUDE.md` — updated to reflect single-page architecture, new component map, and column layout per role
+
+---
+
+## 2026-05-30 — Performance page — layout redesign: domain tabs top, period filter bar, default domain onboarding
+
+- `src/components/performance/PerformancePeriodSelector.tsx` — replaced custom `TabSelector` pill row with `FilterDropdown` (single-select, from `src/components/ui/FilterDropdown.tsx`); wrapped in a filter bar row with `SlidersHorizontal` icon; no custom dropdown code
+- `src/app/(dashboard)/performance/page.tsx` — period selector now rendered inside a leads-style filter bar card (`var(--theme-paper)`, border, `--radius-md`) for all three role views (agent, manager, founder/admin); founder/admin: filter bar sits above domain tabs
+- `src/components/performance/FounderDomainTabs.tsx` — added `DOMAIN_TAB_ORDER` constant prescribing tab sequence: Onboarding → Shop → House → Legacy → Concierge → Finance → Marketing → Tech → B2B; `sortedDomains` sorts the live domain list against this order before building `TabItem[]`
+- `src/app/(dashboard)/performance/FounderPerformanceShell.tsx` — default domain changed from `domains[0]` (alphabetical fallback) to `onboarding`; gracefully falls back to first available domain if `onboarding` has no data for the selected period
+
+---
+
+## 2026-05-30 — Audit: Task system architecture audit complete
+
+- `docs/task-system-audit-2026-05-30.md` — read-only verification audit of the full task system (services, actions, validations, constants, Trigger.dev, components, migrations, auth layer); `pnpm tsc --noEmit` — 0 errors; 1 Critical finding (A-4: status change chips absent from `TaskRemarksPanel`), 2 High findings (A-1: Load More button not rendered; A-2: `currentUserName` not threaded to group subtask `SubTaskModal`; B-2: hardcoded RGBA backdrop in `SubTaskModal`), and 8 Medium/Low findings; TD-001 and TD-002 confirmed open; new debt item TD-004 added (console.error in `task-reminders.ts`)
+
+---
+
+## 2026-05-30 — Hotfix: get_campaign_metrics 42883 after domain enum migration
+
+- `supabase/migrations/20260530000044_fix_campaign_metrics_domain_type.sql` — `CREATE OR REPLACE FUNCTION get_campaign_metrics`: migration 0041 changed `leads.domain` from `text` to `app_domain` enum; the RPC parameter `p_domain` was still declared as `text`, causing PostgreSQL `42883` (`operator does not exist: app_domain = text`) on every `/campaigns` load — the service caught the error and silently returned `[]`, showing no campaigns. Fix: change `p_domain` parameter type to `app_domain`; `domain::text` cast added to the SELECT list to preserve the `RETURNS TABLE (domain text)` contract. Old `(text, timestamptz, timestamptz)` overload dropped to avoid ambiguity.
+
+---
+
+## 2026-05-30 — Hotfix: get_dashboard_summary 42883 after domain enum migration
+
+- `supabase/migrations/20260530000043_fix_dashboard_summary_domain_type.sql` — `CREATE OR REPLACE FUNCTION get_dashboard_summary`: migration 0041 changed `leads.domain` from `text` to `app_domain` enum; the RPC parameter `p_domain` was still declared as `text`, causing PostgreSQL `42883` (`operator does not exist: app_domain = text`) on every `/dashboard` load. Fix: change `p_domain` parameter type to `app_domain`. Old `(text, text, uuid)` overload dropped to avoid ambiguity.
+
+---
+
+## 2026-05-30 — Hotfix: get_group_task_summaries 42883 after domain enum migration
+
+- `supabase/migrations/20260530000042_fix_group_task_summaries_domain_type.sql` — `CREATE OR REPLACE FUNCTION get_group_task_summaries`: migration 0041 changed `task_groups.domain` from `text` to `app_domain` enum; the RPC still compared `tg.domain = get_user_domain()::text`, which resolves to `app_domain = text` — no operator exists, causing PostgreSQL `42883` for any manager loading the tasks page. Fix: remove the `::text` cast (both sides are now `app_domain`). Added `tg.domain::text` cast in the SELECT list to preserve the `RETURNS TABLE (domain text)` signature consumed by the service layer.
+
+---
+
+## 2026-05-30 — Performance page — roster sorted by top performer; first agent detail pre-fetched server-side (zero-flash initial load) — Phase 10 polish
+
+- `src/lib/services/performance-service.ts` — `getAgentRosterPerformance` now sorts the result array before returning: primary `leadsWon DESC` (null→0), secondary `conversionRate DESC` (null→-Infinity so zero-closed agents sort to the bottom, never the top). Pure in-memory JS sort — zero extra DB round-trips.
+- `src/app/(dashboard)/performance/ManagerPerformanceAsync.tsx` — extended to fetch `getAgentDetailMetrics(roster[0].id, …)` server-side after the roster resolves. Guard: skipped when roster is empty. `key={period}` added to `ManagerPerformancePanel` so period changes force a clean remount and never reuse stale seed data.
+- `src/components/performance/ManagerPerformancePanel.tsx` — accepts `initialAgentId` and `initialDetailMetrics` props; seeds `useState(selectedId)` from `initialAgentId`; threads both props to `AgentDetailPanel` (only for the matching agent — passes `undefined` for all other agent selections).
+- `src/components/performance/AgentDetailPanel.tsx` — accepts `initialData?: AgentDetailMetrics` and `initialAgentId?: string`; seeds `useState(metrics)` from `initialData`; first line of the fetch `useEffect` skips the server action when `agent.id === initialAgentId && initialData` — exact mirror of the dashboard perf-01 pattern. Refresh button remains and calls the action unconditionally.
+
+---
+
+## 2026-05-30 — Domain normalization: leads/task_groups/wa_logs typed as app_domain enum; TG_Global remapped to onboarding; 6 agent profiles corrected; indulge_* values purged
+
+- `supabase/migrations/20260530000041_normalize_lead_domain.sql` — 7-step single-transaction migration: (1) UPDATE profiles agent rows concierge→onboarding; (2) UPDATE leads for all indulge_*/concierge→canonical enum values; (3) UPDATE whatsapp_notification_logs.domain; (4) DO block audits both tables, RAISE WARNING + remap any unexpected value to 'onboarding'; (5) DROP all 15 RLS policies referencing leads.domain or task_groups.domain — direct (`leads_manager_select`, `leads_update`, `task_groups_select`, `task_groups_update`) or via sub-SELECT (`lead_activities_select`, `lead_notes_select`, `lead_sla_timers_agent_select`, `lead_sla_timers_manager_select`) or via `can_access_wa_conversation()` (`wa_conversations_agent_select`, `wa_conversations_manager_select`, `wa_conversations_admin_founder_select`, `wa_conversations_update`, `wa_messages_agent_select`, `wa_messages_manager_select`, `wa_messages_admin_founder_select`); (6) ALTER TABLE leads/task_groups/whatsapp_notification_logs domain TYPE app_domain; (7) RECREATE all 15 policies + CREATE OR REPLACE `can_access_wa_conversation()` — all `::text` casts on `get_user_domain()` removed since both sides are now `app_domain`
+- `src/lib/constants/campaign-domain-map.ts` — already clean (TG_Global → 'onboarding', DEFAULT_LEAD_DOMAIN = 'onboarding'); no change required
+- `src/components/leads/LeadInfoCard.tsx` — already imports DOMAIN_LABELS from `lib/constants/domains.ts`; no local label map; no change required
+- `docs/The_Gia.md` — section 1 domain-scoping sentence updated; section 2 domain column type/comment updated; section 5 agent assignment rule updated; WhatsApp lead default domain updated from `indulge_concierge` to `onboarding`
+- `docs/workflow.md` — Stage 3, 4, and 8 updated to reflect `onboarding` as the canonical default domain
+
+---
+
+## 2026-05-30 — Docs: task-blueprint.md full rewrite to match shipped task system
+
+- `task-blueprint.md` — regenerated from source (2026-05-30): Suspense-split page architecture (`TasksAsync`, `WorkspaceAsync`); `get_personal_tasks` RPC-only path (TD-003 resolved); `add_task_remark_with_status` RPC (migration 0035); performance optimizations (remarks pre-fetch, lazy completed load, local prepend, hoisted assignableUsers); `TaskStatusIcon` + extended `TASK_STATUS` tokens; nurturing Gia task fix (migration 0039); resolved TD-001/TD-003; updated component map, flows, auth matrix, migration index
+
+---
+
+## 2026-05-30 — Leads: Inline lead reassignment on dossier page (manager/admin/founder)
+
+- `src/components/leads/LeadInfoCard.tsx` — "Assigned to" field now renders as an inline combobox for manager/admin/founder; at rest it is visually identical to all other `InfoRow` fields (plain text, no border/box); on hover a dashed accent underline and a faint `ChevronDown` appear as an affordance; clicking opens a search-enabled dropdown anchored below the value; selecting an agent calls `assignLead`, updates the name optimistically with a `Check` tick, and closes; `canReassign?: boolean` and `agents?: Agent[]` props added; `currentAssigneeName` local state syncs optimistic update without page reload; `AssigneeCombobox` sub-component added (close on Escape + outside click, search filters agents client-side, avatar initial chip, selected state highlighted in accent)
+- `src/app/(dashboard)/leads/[id]/page.tsx` — `canReassign` derived from role (`manager | admin | founder`); `getAgentsForDomain(lead.domain)` added to the existing `Promise.all` (skipped for agents — resolves to `[]`); both passed as props to `LeadInfoCard`
+- `src/lib/actions/leads.ts` — no changes; existing `assignLead` action used as-is (Zod → auth → role guard → DB update + activity log + WhatsApp notifications + SLA reschedule)
+
+---
+
+## 2026-05-30 — Leads: Right column height aligned to left column; Team Notes + Scratchpad fill evenly
+
+- `src/app/(dashboard)/leads/[id]/page.tsx` — right column wrapper gets `alignSelf: 'stretch'` so it matches the full height of the left column (ends where `PersonalDetailsCard` ends)
+- `src/components/leads/LeadNotesInput.tsx` — `flex: 1` on card root so it fills half the right column; textarea `minHeight` set to `80px` as a floor only
+- `src/components/leads/AgentScratchpad.tsx` — `flex: 1` on card root so it fills the remaining half; textarea `minHeight` reduced to `80px` as a floor, `flex: 1` does the actual growing
+
+---
+
+## 2026-05-30 — leads.domain normalized to app_domain enum; TG_Global remapped to onboarding; indulge_* values purged
+
+- Migration 0041: `UPDATE leads` to remap `concierge` → `onboarding`, `indulge_concierge` → `onboarding`, `indulge_shop` → `shop`, `indulge_legacy` → `legacy`, `indulge_house` → `house`, `indulge_b2b` → `b2b`; audit DO block guards against any remaining non-enum values; `ALTER TABLE leads ALTER COLUMN domain TYPE app_domain USING domain::app_domain`
+- `src/lib/constants/campaign-domain-map.ts` — `TG_Global` remapped from `'concierge'` to `'onboarding'`; `DEFAULT_LEAD_DOMAIN` changed from `'concierge'` to `'onboarding'`; WhatsApp lead default updates automatically via this constant
+- `src/components/leads/LeadInfoCard.tsx` — local `DOMAIN_LABELS` map removed; now imports shared `DOMAIN_LABELS` from `src/lib/constants/domains.ts` (single source of truth; Q-12)
+- `src/lib/types/database.ts` — `Lead.domain` narrowed from `string` to `AppDomain` in the hand-written `Lead` composite type
+
+---
+
+## 2026-05-30 — Docs: DESIGN-DNA.md, changelog.md, The_Gia.md markdown structure fix (no data changes)
+
+- `docs/DESIGN-DNA.md` — fixed improper markdown that broke parsers/linters: Section 2 global tokens CSS wrapped in a css code fence with `/* */` comments restored (was raw `/_` hacks); theme/section `#` headings demoted to `##` for valid hierarchy; ASCII diagrams and layout tree blocks wrapped in text fences; bare code fences tagged; markdownlint passes (0 errors); all hex values and token assignments verified unchanged
+- `docs/changelog.md` — blank lines added around headings and lists (MD022/MD032); markdownlint-disable for line-length, duplicate date headings, trailing heading punctuation, and inline HTML; markdownlint passes (0 errors); no entry text changed
+- `docs/The_Gia.md` — same structural pass: `###` subtitle → `##`; bare fences tagged `text`; blank lines around headings/lists; Decision Log table normalized to compact pipe style; markdownlint passes (0 errors); no spec content changed
+
+## 2026-05-30 — Leads: LeadInfoCard inline edit, journey dwell format, Won button colour
+
+- `src/lib/validations/lead-schema.ts` — `UpdateLeadInfoSchema` + `UpdateLeadInfoInput` added (leadId, first_name, last_name?, phone → E.164, email?; phone/email surface field-specific error messages)
+- `src/lib/actions/leads.ts` — `updateLeadInfo` action: Zod → auth → access check (same gate as scratchpad) → admin UPDATE on leads (first_name, last_name, phone, email) → note_added activity log entry
+- `src/components/leads/LeadInfoCard.tsx` — converted to click-to-edit pattern matching `PersonalDetailsCard`; `canEdit` prop added; active state shows inline inputs for first_name, last_name, phone, email; system fields (domain, platform, assigned_to, call_count, received) remain read-only always; accent border + shadow-focus ring when active; Save/Cancel footer; "Click any field to edit contact details." hint when idle; `EditField` inline helper added
+- `src/app/(dashboard)/leads/[id]/page.tsx` — `canEdit={canEditScratchpad}` passed to `LeadInfoCard`
+- `src/components/leads/LeadJourneyTimeline.tsx` — `formatDwell` now returns human-readable strings ("2 days", "3 hrs", "45 min") instead of abbreviated ("2d", "3h", "45m"); active stage shows "X days here" / "X hrs here"; sub-minute dwell returns null (not shown)
+- `src/components/leads/StatusActionPanel.tsx` — Won/Level Up success variant now uses solid `--color-success` fill with `--theme-text-inverse` (white) text + green glow shadow; same fix applied to the Mark as Won confirm button (was dark-on-dark before)
+
+## 2026-05-30 — Leads: Junk leads can now be revived back to In Discussion
+
+- `src/components/leads/StatusActionPanel.tsx` — added `'revive'` to `ActiveModal` type; added `revive` button variant (amber/warning tokens); rendered `Revive Lead` button (Zap icon) when `status === 'junk'`; added `ConfirmModal` for revive that fires `updateLeadStatus('in_discussion')`; `ConfirmModal` now accepts `'revive'` as a third `confirmVariant`; no changes to the action or RPC layers — `updateLeadStatus` already accepts `in_discussion` as a target and SLA scheduling fires correctly on re-entry
+- Full call/note/activity history is preserved on revival; the lead resumes the journey from In Discussion
+
+## 2026-05-30 — Leads: Team Notes card added to lead dossier right column
+
+- Migration 0040 (`supabase/migrations/20260530000040_rpc_add_lead_plain_note.sql`): `add_lead_plain_note(p_lead_id, p_author_id, p_content, p_now)` RPC — note INSERT + lead `last_activity_at` UPDATE + `note_added` activity log in one transaction; SECURITY DEFINER; GRANT EXECUTE to authenticated
+- `src/lib/validations/lead-schema.ts` — `AddLeadNoteSchema` + `AddLeadNoteInput` added (leadId uuid, content 1–2000 chars, sanitized)
+- `src/lib/actions/leads.ts` — `addLeadNote` action: Zod → auth → access check → `add_lead_plain_note` RPC; same access rules as scratchpad
+- `src/components/leads/LeadNotesInput.tsx` — new `'use client'` card; info-toned header (`--color-info-dark-*` tokens); textarea with ⌘+Enter shortcut; Post note button with `useTransition`; `canAdd` prop (same access gate as `canEditPersonalDetails` on the dossier page); visible to all roles but editable only by assigned agent, manager, admin, founder
+- `src/app/(dashboard)/leads/[id]/page.tsx` — `LeadNotesInput` wired into right column below `AgentScratchpad`; right column now a flex column with `gap-6`
+
+---
+
+## 2026-05-30 — Fix: nurturing auto-task creation was silently failing; `update_lead_status` RPC (migration 0039) now includes `title` (NOT NULL, was missing) and `task_category = 'gia_followup'` (was defaulting to 'personal') in the tasks INSERT
 
 ## 2026-05-30 — WA: SLA breach WhatsApp notifications wired; agent template 54d5dd55 (4 params: leadName, leadPhone, status, lastUpdatedAt), manager template 682fd320 (5 params: +agentName); fires alongside in-app notifications in fireSlaBreachHandler; agent assignment template updated to 3bcebeb0
 
@@ -216,11 +452,13 @@ Three migrations establishing the WhatsApp data layer:
 Three bugs in the messaging system, all fixed together:
 
 **Root causes:**
+
 1. `TaskRemarksPanel` seeded `remarks` state from `initialRemarks` prop at mount. Since all call sites passed `initialRemarks={[]}`, the panel always opened empty — even though messages were in the DB.
 2. On send, the panel waited for a Realtime echo to confirm the optimistic row. If the echo arrived but `incoming.author_id !== currentUserId` (e.g. stale closure), the optimistic row was never replaced — a second "Unknown" row was appended instead.
 3. The optimistic row stayed half-opacity forever when the Realtime echo was the only confirmation path.
 
 **Fix:**
+
 - `TaskRemarksPanel` is now self-sufficient: fetches its own remarks from DB on mount via `getTaskRemarksAction`. The `initialRemarks` prop is removed entirely — no parent needs to pre-load remarks.
 - On action success, `result.data` (the confirmed DB row) immediately replaces the optimistic row. Realtime echo then hits `seenIds` and is dropped. No double-append possible.
 - Added `isLoading` state with "Loading…" empty state during the initial fetch.
@@ -294,31 +532,39 @@ New `/settings` route for manager/admin/founder — lead assignment configuratio
 **No migration required.** `shift_start` and `shift_end` columns already existed on `agent_routing_config` (confirmed present in type definition).
 
 **New type:**
+
 - `src/lib/types/database.ts` — `AgentRosterRow` type: joined profile + routing config row returned by `getAgentRosterByDomain`
 
 **Service extension:**
+
 - `src/lib/services/agent-routing-service.ts` — `getAgentRosterByDomain(domain | '*')`: joins `profiles + agent_routing_config!inner`, adminClient, returns `AgentRosterRow[]`, ORDER BY domain ASC / full_name ASC
 - `src/lib/services/agent-routing-service.ts` — `setAgentShift(agentId, shiftStart, shiftEnd)`: adminClient UPDATE on `agent_routing_config`
 
 **Validation:**
+
 - `src/lib/validations/agent-routing-schema.ts` — `SetAgentShiftSchema`: agentId uuid, shiftStart/shiftEnd regex `/^([01]\d|2[0-3]):([0-5]\d)$/` nullable, cross-field refine (end > start)
 
 **Action extension:**
+
 - `src/lib/actions/agent-routing.ts` — `setAgentShiftAction`: Zod → auth → manager domain check (getProfileById) → setAgentShift; revalidates `/settings`
 - `src/lib/actions/agent-routing.ts` — `toggleAgentRouting`: now also revalidates `/settings` (added alongside admin/users revalidation)
 
 **Page:**
+
 - `src/app/(dashboard)/settings/page.tsx` — server component; agent/guest → redirect `/dashboard`; fetches `getAgentRosterByDomain`; page h1 with `page-title-dot`
 - `src/app/(dashboard)/settings/SettingsShell.tsx` — `'use client'`; URL-param tab state (`?tab=roster|shifts`); `useTransition` + `router.replace`; renders `AgentRosterTab` or `AgentShiftsTab`
 
 **Tab components:**
+
 - `src/components/settings/AgentRosterTab.tsx` — agent card grid; domain filter pill bar (admin/founder only); `Toggle` for routing pool; optimistic update + toast.danger on error; `pendingIds` disable in-flight cards
 - `src/components/settings/AgentShiftsTab.tsx` — table layout; `<input type="time">` for shift windows; blur-to-save when both fields valid; inline error for end≤start; inline hint when only one field filled; Clear button; `setAgentShiftAction`; `computeActiveHours` display
 
 **Sidebar:**
+
 - `src/components/layout/Sidebar.tsx` — "Settings" nav item (`Settings` lucide icon, `/settings`), visible to manager/admin/founder; under new "Configuration" section label
 
 **CLAUDE.md updates:**
+
 - `src/app/(dashboard)/settings/CLAUDE.md` — created
 - `src/lib/CLAUDE.md` — services registry + actions registry updated
 
@@ -329,37 +575,46 @@ New `/settings` route for manager/admin/founder — lead assignment configuratio
 Event-driven SLA enforcement for the Gia lead module. 8 SLA rules, IST business-hours math, auto-task creation on breach, two new notification types.
 
 **Migrations:**
+
 - `supabase/migrations/20260529000027_lead_sla_columns.sql` — adds `status_changed_at` + `last_activity_at` columns to `leads` (backfilled from `created_at`); extends `notifications` type CHECK to include `sla_breach_agent` + `sla_breach_manager`; documents `sla_breach` as valid `lead_activities.action_type`
 - `supabase/migrations/20260529000028_lead_sla_timers.sql` — `lead_sla_timers` table with `lead_id`, `rule_code`, `scheduled_fire_at`, `trigger_run_id`, `status`, `fired_at`, `cancelled_at`; RLS scoped by role; no INSERT/UPDATE/DELETE policy for regular users — service role only; partial index on `status = 'pending'`
 
 **Constants + utils:**
+
 - `src/lib/constants/sla.ts` — `BUSINESS_HOURS` (IST, Mon–Sat, 09:00–19:00); `SLA_RULES` typed map of all 8 rule codes → config (statusTrigger, businessMinutes, recipient); `SLA_AUTO_TASK_TITLES` for agent rules; `getRulesForStatus()`, `getActivityRefreshRules()` helpers
 - `src/lib/utils/sla.ts` — `nextBusinessDeadline(from, businessMinutes)`, `isWithinBusinessHours(ts)`, `businessMinutesBetween(start, end)`; all math anchored in Asia/Kolkata (IST)
 
 **SLA rules:**
+
 - `SLA-01A/B`: New lead — 15min (agent) / 30min (manager)
 - `SLA-02A/B`: Touched lead — 1440min/24h (agent) / 2160min/36h (manager)
 - `SLA-03A/B`: In-discussion lead — 1440min/24h (agent) / 2160min/36h (manager)
 - `SLA-04A/B`: Active/nurturing lead — 5760min/4 biz-days (agent + manager)
 
 **Types:**
+
 - `src/lib/types/database.ts` — `SlaTimerStatus`, `LeadSlaTimer` types; `lead_sla_timers` Database table entry; `NotificationType` extended with `sla_breach_agent` + `sla_breach_manager`; `Lead` extended with `status_changed_at` + `last_activity_at`
 
 **Trigger.dev:**
+
 - `src/trigger/lead-sla.ts` — `fireLeadSlaTask` (Trigger.dev task; stale-fire guard; calls `fireSlaBreachAction`); `scheduleLeadSlasTask` (delayed job with idempotency key `lead-sla-${leadId}-${ruleCode}`, tag `lead-sla-${leadId}`); `cancelLeadSlasByLeadTask` (tag-based batch cancel)
 
 **Service:**
+
 - `src/lib/services/sla-service.ts` — `getSlaTimersForLead`, `getSlaTimerForLeadAndRule`, `createSlaTimer`, `updateSlaTimerRunId`, `cancelSlaTimersForLeadInDb`, `markSlaTimerFired`, `getOpenGiaFollowupTask`, `getManagersByDomain`
 
 **Actions:**
+
 - `src/lib/actions/sla.ts` — `scheduleSlaTimersForLead`, `cancelSlaTimersForLead`, `refreshActivitySlaTimers`, `fireSlaBreachAction` (Zod-validated Trigger.dev callback), `fireSlaBreachHandler` (8-step breach logic: stale-fire guard → call_count guard → recipient resolution → notification → auto-task dedup → activity log → timer mark fired)
 
 **Hook points in `leads.ts`:**
+
 - `assignLead` + `createManualLead` — after assignment: update `status_changed_at` + `last_activity_at`, schedule SLA-01 timers
 - `updateLeadStatus` — after status write: update `status_changed_at`; terminal → cancel only; non-terminal → cancel + reschedule
 - `addLeadCallNote` — after note write: update `last_activity_at`; auto-advanced new→touched → full SLA reset; else → refresh SLA-02/03 only
 
 **UI:**
+
 - `src/components/notifications/NotificationItem.tsx` — exhaustive switch extended: `sla_breach_agent` → `AlertTriangle` + `--color-warning-text`; `sla_breach_manager` → `AlertTriangle` + `--color-danger-text`
 
 ---
@@ -590,6 +845,7 @@ Full display-only, token-compliant, theme-aware UI component library. All compon
 - `src/components/ui/charts/ButterflyChart.tsx` — Recharts `BarChart` `layout="vertical"` with negative left series; axis formatter strips minus sign.
 
 **Sign-off passed:**
+
 - `pnpm tsc --noEmit` → 0 errors
 - `grep` for `text-gray|bg-white|bg-black|text-white|#[hex]` in `src/components/ui/**/*.tsx` → 0 results
 - Every component exports a named TypeScript interface for its props
@@ -847,9 +1103,11 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 ## 2026-05-28 — Trigger.dev reminder race window: documented as closed by SDK idempotency guarantee (A-12)
 
 ### Modified files
+
 - `src/trigger/task-reminders.ts` — added a detailed comment block at the top of the file documenting the Trigger.dev v3 idempotency key deduplication guarantee for DELAYED runs; confirms the list-snapshot race described in A-12 is structurally impossible because `tasks.trigger()` with an idempotency key matching an existing DELAYED run returns the existing run handle (`isCached: true`) rather than creating a second distinct run; evidence cited from `@trigger.dev/core@4.4.6` apiClient types (line 55) and SDK shared.js (lines 1063–1110); no code change to scheduling or cancellation logic required; no migration required
 
 ### Decision log
+
 - Approach chosen: document guarantee (not store-run-ID-in-DB), because the SDK evidence confirms deduplication makes a second concurrent DELAYED run with the same idempotency key impossible. The store-run-ID path would have required migration 0020 + adminClient write in scheduleTaskReminder — complexity not warranted when the race window does not exist.
 
 ---
@@ -857,9 +1115,11 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 ## 2026-05-28 — Tech debt register created; TD-001 logged for leads.ts
 
 ### New files
+
 - `docs/tech-debt.md` — tech debt register; tracks pre-existing violations identified but not fixed in the current session; each item has file, rule, what, fix, and logged date
 
 ### TD-001 logged
+
 - `src/lib/actions/leads.ts` — inline `getCallerProfile()` is a Rule A-03 / Rule 04 duplicate of `getCurrentProfile()` from `profiles-service.ts`; inline comment added at the violation site referencing TD-001; fix path documented (delete inline fn, import canonical, replace 8 call sites); must be resolved when `leads.ts` is next touched for any reason
 
 ---
@@ -867,6 +1127,7 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 ## 2026-05-28 — tasks.ts: replace local getCallerProfile duplicate with canonical getCurrentProfile (Rule 03/04)
 
 ### Modified files
+
 - `src/lib/actions/tasks.ts` — removed local `getCallerProfile()` inline definition (was duplicating `getCurrentProfile` from `profiles-service.ts`); replaced with `import { getCurrentProfile } from '@/lib/services/profiles-service'`; all 7 call sites updated to `getCurrentProfile()`; `createClient` import retained because `canMutateTask` still uses it for the manager domain lookup (user-scoped client, not admin)
 
 ---
@@ -874,6 +1135,7 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 ## 2026-05-28 — Security fix: updateTaskStatusAction + updateTaskAction missing application-layer auth (A-09/S-06)
 
 ### Modified files
+
 - `src/lib/actions/tasks.ts` — added `canMutateTask(caller, task)` helper that explicitly enforces the same access rules as the tasks RLS UPDATE policy (agent: `assigned_to OR created_by`; manager: same OR group subtask in caller's domain via `task_groups` join; admin/founder: unrestricted); wired into `updateTaskStatusAction` (step 4 — was entirely absent) and `updateTaskAction` (step 4 — replaced the agent-only check that left managers unguarded); both actions now fetch `group_id` in their task select to support the manager domain check; both fetches still use the user client (RLS layer 1) before the `adminClient` write
 
 ---
@@ -881,6 +1143,7 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 ## 2026-05-28 — Security fix: task_messages RLS creator visibility + manager domain scope (A-09)
 
 ### Migration 0019
+
 - `supabase/migrations/20260528000019_task_messages_rls_creator.sql` — drops the A-09-violating `task_messages_select` and `task_messages_insert` policies from migration 0017; replaces both with three-tier visibility: (1) assignee or creator of the task — any role, always visible; (2) manager whose domain matches the parent `task_groups.domain` for `group_subtask` tasks; (3) admin/founder unrestricted; fixes two bugs: task creator locked out of own chat thread, and manager cross-domain message leak
 
 ---
@@ -888,6 +1151,7 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 ## 2026-05-28 — Security fix: task_groups RLS domain enforcement (A-09)
 
 ### Migration 0018
+
 - `supabase/migrations/20260528000018_task_groups_rls_domain.sql` — drops the A-09-violating `task_groups_select` and `task_groups_update` policies from migration 0017; replaces both with domain-scoped versions: `created_by = auth.uid() OR get_user_role() IN ('admin', 'founder') OR (get_user_role() = 'manager' AND get_user_domain() = domain)`; managers can no longer read or mutate task_groups rows belonging to a different domain
 
 ---
@@ -895,16 +1159,19 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 ## 2026-05-28 — Tasks Page (Personal + Group tabs)
 
 ### New files
+
 - `src/app/(dashboard)/tasks/page.tsx` — Server Component; fetches `getPersonalTasks` + `getGroupTasks` in `Promise.all`; passes data as props to `TasksShell`; guest → redirect `/dashboard`
 - `src/app/(dashboard)/tasks/TasksShell.tsx` — `'use client'` tab shell; two tabs: "Personal" + "Group"; active tab persisted to `?tab=personal|group` URL param via `useSearchParams` + `useTransition` + `router.push`; browser back/forward works
 - `src/components/tasks/PersonalTasksTab.tsx` — filter bar (Status multi-select pills, Priority multi-select pills, due date range); quick-add inline row (priority selector + title input + due date + assignee picker, Enter=save, Esc=cancel); task list rows with 3px priority left border, title, due date, status pill; click row → `TaskModal`; "Load more" cursor pagination; `AssigneePickerModal` portaled to `document.body`; Playfair italic empty state
 - `src/components/tasks/GroupTasksTab.tsx` — accordion group list; one group expanded at a time (no conflicting Framer Motion); group row: title, priority border, status pill, due date, subtask count + progress%, member avatar stack (max 4 + overflow); subtask rows: title + status pill + assignee avatar; subtask add row at bottom of expanded group with assignee picker; click subtask → `TaskModal`; `AssigneePickerModal` portaled to `document.body`
 
 ### Modified files
+
 - `src/lib/services/tasks-service.ts` — `getPersonalTasks` now returns `PersonalTasksResult = { tasks, hasMore, nextCursor }`; LIMIT 50 + 1 (detects `hasMore` without COUNT query); cursor pagination via `due_at > cursor`; new exports: `PersonalTasksResult`, `PERSONAL_TASKS_PAGE_SIZE`
 - `src/components/layout/Sidebar.tsx` — "Tasks" nav item added (`CheckSquare`, `/tasks`); position: between Leads and Performance in `MAIN_NAV`
 
 ### Contracts established
+
 - `getPersonalTasks` always returns `PersonalTasksResult` — never `Task[]` alone
 - `hasMore` is detected by fetching `LIMIT + 1` rows — never a separate COUNT query
 - Accordion: `expandedGroupId` state is a single `string | null` — guarantees only one group expanded at a time
@@ -912,6 +1179,7 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 - Tasks page data is fetched server-side on load — `TasksShell` does not re-fetch on tab switch
 
 ### Sign-off
+
 - ✓ `pnpm tsc --noEmit` passes with zero errors
 - ✓ `?tab=` URL param persists on browser back/forward
 - ✓ `getPersonalTasks` uses cursor pagination — no unbounded SELECT
@@ -924,16 +1192,19 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 ## 2026-05-28 — Task Modal + Chat Panel (Prompt 3)
 
 ### New files
+
 - `src/components/tasks/TaskModal.tsx` — two-column task detail modal (55% details / 45% chat); inline title + description editing with 400ms debounce, flushed synchronously on close; 6-state segmented status control (2-col grid at ≤480px to prevent overflow); 3-pill priority selector; assignee avatar + meta fields; Framer Motion entrance 200ms ease-out-expo; mobile full-screen bottom sheet with swipe-down-to-dismiss; no `<form>` tag, no internal data fetching
 - `src/components/tasks/TaskChatPanel.tsx` — scrollable message list with auto-scroll; Realtime subscription on `task_messages` filtered by `task_id`, channel `task-messages-${taskId}`; optimistic inserts confirmed on Realtime echo, rolled back + `toast.danger` on error; growing textarea (1–3 lines), Enter to send, Shift+Enter newline; Playfair italic empty state; exports `TaskMessageWithAuthor` type
 - `src/components/tasks/AssigneePickerModal.tsx` — nested modal (`z-index: var(--z-modal) + 11`); domain tabs (only populated domains shown); client-side search; avatar + role badge per user row; single select + Confirm; exports `AssignableUser` type
 
 ### Contracts established
+
 - `TaskChatPanel` channel name must always be `task-messages-${taskId}` — never bare `task-messages`
 - `TaskModal` never fetches its own data — receives `task`, `assignee`, `initialMessages` as props
 - Debounced inline edits (title/description) are always flushed synchronously in `flushAndClose` before unmounting — no silent data loss on quick close
 
 ### Sign-off
+
 - ✓ `pnpm tsc --noEmit` passes with zero errors
 - ✓ Realtime channel uses `taskId` in name
 - ✓ Debounced saves flush on modal close
@@ -946,6 +1217,7 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 ## 2026-05-28 — OS Tasks: service + action layer
 
 ### New files
+
 - `src/lib/constants/task-constants.ts` — `TASK_PRIORITY`, `TASK_STATUS`, `TASK_CATEGORY` typed const objects; labels, colors as CSS token names (never hex), sort order
 - `src/lib/validations/task-schemas.ts` — `CreatePersonalTaskSchema`, `CreateGroupTaskSchema`, `CreateSubtaskSchema`, `UpdateTaskSchema`, `UpdateTaskStatusSchema`, `AddTaskMessageSchema`, `DeleteTaskSchema` + inferred input types; priority/status as inline `z.enum`; all text fields run through `sanitizeText`
 - `src/lib/services/tasks-service.ts` — `getPersonalTasks`, `getGroupTasks`, `getGroupSubtasks`, `getTaskById`, `getTaskMessages`; `getGroupTasks` uses a single flat query + in-memory aggregation to avoid N+1; batch profile fetch for assignee avatars; composite types: `TaskGroupRow`, `SubtaskWithAssignee`, `TaskWithMessages`, `AssigneeSlim`
@@ -953,12 +1225,15 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 - `src/lib/actions/tasks.ts` — `createPersonalTaskAction`, `createGroupTaskAction`, `createSubtaskAction`, `updateTaskStatusAction`, `updateTaskAction`, `deleteTaskAction`, `addTaskMessageAction`; all actions: Zod first, `{ data, error }` return, no throws; `deleteTaskAction` cancels Trigger.dev reminder **before** DB delete — if cancel throws, delete is aborted
 
 ### Package added
+
 - `@trigger.dev/sdk@4.4.6` — async job scheduling for task reminders; one-time delayed jobs via `tasks.trigger()` with `delay: Date`; cancellation via `runs.cancel()` using tag-based run discovery
 
 ### Updated docs
+
 - `src/lib/CLAUDE.md` — services registry, actions registry, Trigger.dev jobs section, `createNotification` call sites for tasks
 
 ### Pre-mortem invariants met
+
 - `getGroupTasks`: zero N+1 — one group query + one subtask query + one profile query, then O(subtasks) aggregation in memory
 - `scheduleTaskReminder`: no-op guard when `dueAt - 30min <= now()`; never errors on past dates
 - `deleteTaskAction`: Trigger.dev cancel precedes DB delete; cancel failure aborts delete
@@ -971,6 +1246,7 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 ### Migration `20260528000017_os_tasks.sql`
 
 **Part A — tasks core table extended:**
+
 - `title text NOT NULL` added; existing rows backfilled with `'(untitled)'`
 - `description text` added (nullable)
 - `priority text NOT NULL DEFAULT 'normal'` added; CHECK `IN ('urgent','high','normal')`
@@ -980,19 +1256,23 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 - New indexes: `idx_tasks_category`, `idx_tasks_group_id`, `idx_tasks_priority`
 
 **Part B — `task_groups` table created:**
+
 - Full RLS: SELECT (owner or manager+), INSERT (any authed), UPDATE (owner or manager+), DELETE (admin/founder)
 - `update_updated_at()` trigger reused (not recreated)
 - Indexes: `idx_task_groups_domain` (partial), `idx_task_groups_created_by`
 
 **Part C — `task_messages` table created (append-only):**
+
 - No UPDATE or DELETE RLS policies — enforced at policy level (rule A-11)
 - SELECT/INSERT RLS mirrors tasks visibility via indexed EXISTS subquery (no full table scan)
 - Realtime enabled: `ALTER PUBLICATION supabase_realtime ADD TABLE task_messages`
 
 **Part D — notifications type expanded:**
+
 - `task_assigned` added to `notifications_type_check` CHECK constraint
 
 ### TypeScript (`src/lib/types/database.ts`)
+
 - `TaskStatus` updated: `to_do | in_progress | in_review | completed | error | cancelled`
 - `TaskPriority` type added: `urgent | high | normal`
 - `TaskCategory` type added: `personal | group_subtask | gia_followup`
@@ -1003,6 +1283,7 @@ Migration 0020's initial `get_group_task_summaries` RPC accepted `p_domain text`
 - `Database` tables: `task_groups` and `task_messages` entries added; `tasks` Insert type updated
 
 ### Components
+
 - `src/components/notifications/NotificationItem.tsx` — `task_assigned` case added to exhaustive switch (maps to `CheckSquare` icon); `task_due` was already present; Q-11 still satisfied
 
 ---

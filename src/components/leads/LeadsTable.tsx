@@ -81,7 +81,7 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
       >
         {hasStatusPills && (
           <div
-            className="hidden md:flex items-center gap-2 flex-shrink-0"
+            className="hidden md:flex items-center gap-2 shrink-0"
             aria-label="Lead status summary"
           >
             {statusCounts.new > 0 && (
@@ -243,7 +243,7 @@ function LeadRow({
 
   return (
     <tr
-      onClick={() => router.push(`/leads/${lead.id}`)}
+      onClick={() => router.push(`/leads/${lead.slug ?? lead.id}`)}
       style={{
         borderBottom: '1px solid var(--theme-paper-border)',
         transition:   'background var(--duration-fast) var(--ease-in-out)',

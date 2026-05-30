@@ -295,6 +295,7 @@ export type Database = {
           platform: string | null
           previous_lead_id: string | null
           private_scratchpad: string | null
+          slug: string | null
           status: string
           status_changed_at: string | null
           updated_at: string
@@ -327,6 +328,7 @@ export type Database = {
           platform?: string | null
           previous_lead_id?: string | null
           private_scratchpad?: string | null
+          slug?: string | null
           status?: string
           status_changed_at?: string | null
           updated_at?: string
@@ -359,6 +361,7 @@ export type Database = {
           platform?: string | null
           previous_lead_id?: string | null
           private_scratchpad?: string | null
+          slug?: string | null
           status?: string
           status_changed_at?: string | null
           updated_at?: string
@@ -1462,7 +1465,7 @@ export type TaskRemark = Database['public']['Tables']['task_remarks']['Row']
 // (the generated Row uses `string` for status/platform/outcome columns)
 export type Lead = Omit<
   Database['public']['Tables']['leads']['Row'],
-  'status' | 'last_call_outcome' | 'platform' | 'personal_details' | 'form_data' | 'tags'
+  'status' | 'last_call_outcome' | 'platform' | 'personal_details' | 'form_data' | 'tags' | 'domain'
 > & {
   status:             LeadStatus
   last_call_outcome:  CallOutcome | null
@@ -1470,6 +1473,7 @@ export type Lead = Omit<
   personal_details:   Record<string, string> | null
   form_data:          Record<string, unknown> | null
   tags?:              string[]
+  domain:             AppDomain
 }
 
 // ─────────────────────────────────────────────

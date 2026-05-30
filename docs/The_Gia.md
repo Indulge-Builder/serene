@@ -1,6 +1,8 @@
 # The Gia
 
-### Onboarding Module — Lead Ingestion, Routing & Lifecycle
+<!-- markdownlint-disable MD013 MD036 MD029 MD060 -->
+
+## Onboarding Module — Lead Ingestion, Routing & Lifecycle
 
 > Gia is the CRM module that loads for the Onboarding domain.
 > It is the first place a lead touches Eia — and the last place
@@ -34,7 +36,7 @@
 
 Gia handles the complete journey of a lead — from the moment a form is submitted on a Meta ad, Google campaign, or website, through ingestion, validation, assignment, conversation, and resolution.
 
-It is domain-scoped. An agent in `indulge_concierge` sees only concierge leads. A manager in `indulge_concierge` sees all concierge leads. No agent ever sees a lead outside their domain unless a cross-domain grant exists.
+It is domain-scoped. An agent in `onboarding` sees only onboarding leads. A manager in `onboarding` sees all onboarding leads. No agent ever sees a lead outside their domain unless a cross-domain grant exists.
 
 Gia does not replace WhatsApp or phone calls. It records them. The agent calls outside the system and comes back to Gia to log what happened.
 
@@ -51,7 +53,7 @@ first_name          text          NOT NULL
 last_name           text
 email               text
 phone               text          -- stored as E.164 always
-domain              text          NOT NULL  -- indulge_concierge | indulge_shop | etc.
+domain              app_domain    NOT NULL  -- onboarding | shop | legacy | house | b2b | finance | marketing | tech | concierge
 
 -- Assignment
 assigned_to         uuid          REFERENCES profiles(id)
@@ -132,7 +134,7 @@ CREATE INDEX idx_lead_activities_lead_id
 
 ```json
 // lead_created
-{ "source": "meta", "campaign": "TG_Global_Q1", "domain": "indulge_concierge" }
+{ "source": "meta", "campaign": "TG_Global_Q1", "domain": "onboarding" }
 
 // status_changed
 { "old_status": "new", "new_status": "touched" }
@@ -303,30 +305,33 @@ The domain of a lead is resolved from the `utm_campaign` field using a prefix ma
 ```typescript
 // lib/constants/campaign-domain-map.ts
 export const CAMPAIGN_DOMAIN_MAP: Record<string, string> = {
-  TG_Global: "indulge_concierge",
-  TG_Shop: "indulge_shop",
-  TG_Legacy: "indulge_legacy",
-  TG_House: "indulge_house",
-  TG_B2B: "indulge_b2b",
+  TG_Global: "onboarding",
+  TG_Shop:   "shop",
+  TG_Legacy: "legacy",
+  TG_House:  "house",
+  TG_B2B:    "b2b",
 };
+
+// Safe default when no prefix matches — logged to Sentry as a warning
+export const DEFAULT_LEAD_DOMAIN = 'onboarding';
 
 // Resolution logic — prefix match
 export function resolveDomainFromCampaign(campaignName: string | null): string {
-  if (!campaignName) return "indulge_concierge"; // safe default
+  if (!campaignName) return DEFAULT_LEAD_DOMAIN;
   const entry = Object.entries(CAMPAIGN_DOMAIN_MAP).find(([prefix]) =>
     campaignName.startsWith(prefix),
   );
-  return entry ? entry[1] : "indulge_concierge";
+  return entry ? entry[1] : DEFAULT_LEAD_DOMAIN;
 }
 ```
 
-**Fallback:** If no prefix matches, domain defaults to `indulge_concierge`. This is logged to Sentry as a warning so the campaign map can be updated.
+**Fallback:** If no prefix matches, domain defaults to `onboarding`. This is logged to Sentry as a warning so the campaign map can be updated.
 
 ---
 
 ## 5. Agent Assignment — Round Robin
 
-**Rule:** Every lead is assigned to an agent in the same domain as the lead. An agent in `indulge_shop` never receives a lead from `indulge_concierge`.
+**Rule:** Every lead is assigned to an agent in the same domain as the lead. An agent in `shop` never receives a lead from `onboarding`.
 
 **Eligibility pool:** Agents where:
 
@@ -372,7 +377,7 @@ await logLeadActivity(leadId, systemActorId, "agent_assigned", {
 
 ### Journey Statuses
 
-```
+```text
 new → touched → in_discussion → won
 ```
 
@@ -380,7 +385,7 @@ These are the forward progression statuses. A lead moves through them in order. 
 
 ### Resolution Statuses
 
-```
+```text
 nurturing | lost | junk
 ```
 
@@ -430,7 +435,7 @@ The dossier is the full-detail view of a single lead. It is assembled from multi
 
 ### Component Layout
 
-```
+```text
 ┌──────────────────────────────────────────────────────────┐
 │  StatusActionPanel                                        │
 │  [ Called ] [ Lost ] [ Junk ] [ Won ] [ Nurture ]        │
@@ -560,7 +565,7 @@ Tasks on a lead come from three sources.
 
 When a lead status transitions to `nurturing`, a task is automatically created:
 
-```
+```text
 task_type: general_follow_up
 due_date:  now() + interval '3 months'
 lead_id:   this lead
@@ -571,7 +576,7 @@ assigned_to: the lead's current assigned agent
 
 When an agent logs a call with outcome `rnr` or `switched_off`, they can schedule a retry (mandatory). This creates:
 
-```
+```text
 task_type: call
 due_date:  agent-selected date/time
 lead_id:   this lead
@@ -625,7 +630,7 @@ These rules are enforced at two layers:
 
 ### Table Columns
 
-```
+```text
 Status pill | Name | Phone | Campaign | Assigned to | Created | Last outcome
 ```
 
@@ -635,7 +640,7 @@ On mobile: card stack — each lead becomes a card with name, status, phone, and
 
 ## 12. The Full Flow — End to End
 
-```
+```text
 INGESTION
 ─────────
 Webhook arrives (Meta / Google / Website via Pabbly)
@@ -701,7 +706,7 @@ The full history of every lead is always recoverable.
 
 ## 13. File Map
 
-```
+```text
 src/
 ├── app/
 │   └── (dashboard)/
@@ -788,7 +793,7 @@ The company WhatsApp number is connected to the **Meta WhatsApp Business API**. 
 
 **Flow on inbound message:**
 
-```
+```text
 Message arrives on company number
 → Verify Meta signature (reject 401 if invalid)
 → Extract sender phone (wa_id) + message content
@@ -801,7 +806,7 @@ Message arrives on company number
   IF NO  → INSERT into leads:
               first_name: wa_id (temporary, until agent updates)
               phone:      normalised E.164
-              domain:     'indulge_concierge' (default — agent can reassign)
+              domain:     'onboarding' (default — agent can reassign)
               status:     'new'
               source:     'whatsapp'
             LOG lead_created activity
@@ -810,7 +815,7 @@ Message arrives on company number
 
 **Duplicate guard:** Phone is the deduplication key. If a lead with that E.164 number already exists in any status (including `won`, `lost`, `junk`), the message is threaded into that lead's conversation — a second lead is never created for the same number.
 
-**Domain assignment:** WhatsApp leads cannot carry UTM data, so domain resolution from campaign prefix is not possible. All WhatsApp leads default to `indulge_concierge`. An agent or manager can manually reassign the domain from the dossier once they understand the intent of the enquiry.
+**Domain assignment:** WhatsApp leads cannot carry UTM data, so domain resolution from campaign prefix is not possible. All WhatsApp leads default to `onboarding`. An agent or manager can manually reassign the domain from the dossier once they understand the intent of the enquiry.
 
 ---
 
@@ -887,7 +892,7 @@ The WhatsApp page is a full messaging interface built into Eia. It looks and wor
 
 #### Layout
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │  WhatsApp                                          [ Search ]    │
 ├──────────────────────┬──────────────────────────────────────────┤
@@ -1004,7 +1009,7 @@ When a new WhatsApp lead comes in, the chatbot activates automatically and start
 
 **Architecture:**
 
-```
+```text
 Inbound WhatsApp message
 → Check: is bot active for this conversation?
    → YES: route to bot handler
@@ -1065,7 +1070,7 @@ Chunks are embedded at upload time. At query time, the lead's message is embedde
 
 **File map additions (when built):**
 
-```
+```text
 lib/
 ├── services/
 │   └── whatsapp-bot.ts          ← bot handler, RAG retrieval, Claude call
@@ -1096,7 +1101,7 @@ The Gia SLA Engine enforces response-time commitments on live leads using event-
 
 ### Business Hours
 
-```
+```text
 Timezone:   Asia/Kolkata (IST, UTC+5:30)
 Start:      09:00 IST (inclusive)
 End:        19:00 IST (exclusive)
@@ -1143,6 +1148,7 @@ Tracks Trigger.dev job state per (lead, rule). Not append-only — `status`, `fi
 When `fireSlaBreachHandler` runs for an agent rule, it calls `getOpenGiaFollowupTask(leadId, assignedTo)` before creating a task. If an open `gia_followup` task already exists for this lead + agent, no new task is created. This prevents duplicate tasks from stale-fire retries.
 
 Auto-task titles (from `SLA_AUTO_TASK_TITLES`):
+
 - `SLA-01A`: `'New lead untouched — follow up now'` (priority: urgent)
 - `SLA-02A`: `'No update in 24 hours — follow up on lead'` (priority: high)
 - `SLA-03A`: `'Discussion stalled — re-engage lead'` (priority: high)
@@ -1162,7 +1168,7 @@ The Trigger.dev job (`fireLeadSlaTask`) re-reads the lead from DB on every execu
 
 ## 16. File Map (Current)
 
-```
+```text
 src/
 ├── app/
 │   └── (dashboard)/
@@ -1223,11 +1229,11 @@ src/
 
 ## 17. Decision Log
 
-| Date | Decision                      | Chosen                                                                                                                                                                     | Why                                                                                                                                                                                                                          |
-| ---- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| —    | Notes: private vs common type | Removed `note_type` enum entirely. All notes in `lead_notes` are visible to anyone with domain access. Private working thoughts belong in `leads.private_scratchpad` only. | Scratchpad already covers the private use case. Splitting notes into two visibility tiers adds RLS complexity, a lock icon to build, and a choice agents don't need to make on every note.                                   |
-| —    | Scratchpad on reassignment    | Clear `private_scratchpad` when lead is reassigned                                                                                                                         | Scratchpad is named and designed as private to the assigned agent. Passing it to the next agent violates that contract. If context needs to transfer, the outgoing agent writes a note before reassignment.                  |
-| —    | Task architecture             | Core `tasks` table + per-module extension tables (`task_gia_meta`, etc.)                                                                                                   | A single god table with nullable module-specific columns becomes unmaintainable at scale. Extension tables isolate module concerns — adding or deprecating a module never touches the core table or any other module's data. |
+| Date | Decision | Chosen | Why |
+| --- | --- | --- | --- |
+| — | Notes: private vs common type | Removed `note_type` enum entirely. All notes in `lead_notes` are visible to anyone with domain access. Private working thoughts belong in `leads.private_scratchpad` only. | Scratchpad already covers the private use case. Splitting notes into two visibility tiers adds RLS complexity, a lock icon to build, and a choice agents don't need to make on every note. |
+| — | Scratchpad on reassignment | Clear `private_scratchpad` when lead is reassigned | Scratchpad is named and designed as private to the assigned agent. Passing it to the next agent violates that contract. If context needs to transfer, the outgoing agent writes a note before reassignment. |
+| — | Task architecture | Core `tasks` table + per-module extension tables (`task_gia_meta`, etc.) | A single god table with nullable module-specific columns becomes unmaintainable at scale. Extension tables isolate module concerns — adding or deprecating a module never touches the core table or any other module's data. |
 | 2026-05-28 | Atomic round-robin | `get_next_round_robin_agent()` SECURITY DEFINER function with `SELECT FOR UPDATE SKIP LOCKED` | Two concurrent webhook calls cannot pick the same agent. O(agents) not O(leads). Application-layer approach had a race window under concurrent load. |
 | 2026-05-28 | Lead dedup strategy | Phone as dedup key. Active lead → duplicate_submission activity, return existing lead. Terminal lead → new lead with previous_lead_id FK. | A phone number in an active conversation should never fork into two dossiers. After a terminal resolution the lead is effectively new — they have returned. |
 | 2026-05-28 | Campaign analytics in leads-service | `getCampaignMetrics` and `getCampaignDetailMetrics` added to `leads-service.ts` | Campaign data is directly derived from the `leads` table. No separate module concern justifies a separate service file. |

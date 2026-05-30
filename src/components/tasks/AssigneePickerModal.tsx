@@ -23,6 +23,7 @@ import { X, Search } from "lucide-react";
 import { APP_DOMAINS, DOMAIN_LABELS } from "@/lib/constants/domains";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import type { Profile, AppDomain } from "@/lib/types/database";
+import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,7 +134,7 @@ export function AssigneePickerModal({
             style={{
               position:   "fixed",
               inset:      0,
-              background: "rgba(0,0,0,0.35)",
+              background: "var(--overlay-bg-light)",
               zIndex:     "var(--z-modal-overlay)" as React.CSSProperties["zIndex"],
             }}
           />
@@ -147,7 +148,7 @@ export function AssigneePickerModal({
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.97 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
             onClick={(e) => e.stopPropagation()}
             style={{
               position:      "fixed",
@@ -413,7 +414,7 @@ export function AssigneePickerModal({
                           <span
                             style={{
                               fontFamily: "var(--font-sans)",
-                              fontSize:   "11px",
+                              fontSize:   "var(--text-xs)",
                               fontWeight: "var(--weight-semibold)",
                               color:      selected
                                 ? "var(--theme-accent-fg)"
@@ -455,7 +456,7 @@ export function AssigneePickerModal({
                           background:   roleBadge.bg,
                           color:        roleBadge.text,
                           fontFamily:   "var(--font-sans)",
-                          fontSize:     "10px",
+                          fontSize:     "var(--text-2xs)",
                           fontWeight:   "var(--weight-semibold)",
                           whiteSpace:   "nowrap",
                           flexShrink:   0,

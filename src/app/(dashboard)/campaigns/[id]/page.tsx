@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { redirect, notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import {
@@ -13,6 +13,7 @@ import { LeadsPagination } from '@/components/leads/LeadsPagination';
 import { LeadsTableSkeleton } from '@/components/leads/LeadsTableSkeleton';
 import { CampaignMetricsStrip } from '@/components/campaigns/CampaignMetricsStrip';
 import { CampaignMetricsStripSkeleton } from '@/components/campaigns/CampaignMetricsStripSkeleton';
+import { BackButton } from '@/components/ui/BackButton';
 
 // ─────────────────────────────────────────────
 // Metrics strip — async inner component (own Suspense boundary)
@@ -102,15 +103,21 @@ export default async function CampaignDetailPage({
 
   const { id } = await params;
 
-  // Decode: URL-encoded utm_campaign value.
-  // decodeURIComponent throws on a malformed percent-sequence (e.g. %GG) → Q-10.
-  let campaignName: string;
-  try {
-    campaignName = decodeURIComponent(id);
-  } catch {
-    notFound();
-    return null as never;
-  }
+  // Decode: spaces were encoded as '+' by CampaignCard (no encodeURIComponent).
+  // Exact inverse: replace every '+' with a space.
+  // Also handle '%2B' defensively — a browser address-bar paste or external
+  // link may have URL-encoded the '+' once more.
+  // '+' must never appear in a real utm_campaign name — if it does, the lookup
+  // returns an empty lead list (no error) and the empty-state is shown.
+  const campaignName = id.replace(/%2B/gi, ' ').replace(/\+/g, ' ');
+
+  // Display-only beautified title. Splits the raw key on '_' and ' ',
+  // drops empty segments, and joins with a thin separator. The DB lookup
+  // and metrics RPC continue to use the un-beautified `campaignName`.
+  const campaignTitle = campaignName
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .join(' · ');
 
   const resolvedParams = await searchParams;
 
@@ -141,28 +148,19 @@ export default async function CampaignDetailPage({
 
   return (
     <main className="flex-1 p-8">
-      {/* Back link */}
-      <div style={{ marginBottom: 'var(--space-2)' }}>
-        <a
-          href="/campaigns"
-          style={{
-            fontFamily:     'var(--font-sans)',
-            fontSize:       'var(--text-xs)',
-            fontWeight:     'var(--weight-medium)',
-            color:          'var(--theme-text-secondary)',
-            textDecoration: 'none',
-            letterSpacing:  'var(--tracking-wide)',
-            transition:     'color var(--duration-fast) var(--ease-in-out)',
-          }}
-        >
-          ← Campaigns
-        </a>
-      </div>
+      {/* Page header — back button + Playfair title */}
+      <div
+        style={{
+          display:      'flex',
+          alignItems:   'center',
+          gap:          'var(--space-4)',
+          marginBottom: 'var(--space-6)',
+        }}
+      >
+        <BackButton href="/campaigns" label="Back to Campaigns" />
 
-      {/* Page title */}
-      <div style={{ marginBottom: 'var(--space-6)' }}>
         <h1 className="type-page-title" style={{ margin: 0, fontStyle: 'italic' }}>
-          {campaignName}<span className="page-title-dot">.</span>
+          {campaignTitle}<span className="page-title-dot">.</span>
         </h1>
       </div>
 
