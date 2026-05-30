@@ -9,20 +9,25 @@ import type { MetaApiResponse, TemplateComponent } from '@/lib/types/whatsapp';
 // Env var guard — fail fast at startup
 // ─────────────────────────────────────────────
 
-const PHONE_NUMBER_ID      = process.env.WHATSAPP_PHONE_NUMBER_ID;
-const ACCESS_TOKEN         = process.env.WHATSAPP_ACCESS_TOKEN;
-const WEBHOOK_SECRET       = process.env.WHATSAPP_WEBHOOK_SECRET;
-const WEBHOOK_VERIFY_TOKEN = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
-const BUSINESS_ACCOUNT_ID  = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
+const WEBHOOK_SECRET        = process.env.WHATSAPP_WEBHOOK_SECRET;
+const WEBHOOK_VERIFY_TOKEN  = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+const BUSINESS_ACCOUNT_ID   = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
+// Meta vars — dormant until Meta credentials arrive; optional so server starts without them
+const PHONE_NUMBER_ID       = process.env.WHATSAPP_PHONE_NUMBER_ID;
+const ACCESS_TOKEN          = process.env.WHATSAPP_ACCESS_TOKEN;
+const GUPSHUP_API_KEY        = process.env.GUPSHUP_API_KEY;
+const GUPSHUP_APP_NAME       = process.env.GUPSHUP_APP_NAME;
+const GUPSHUP_PARTNER_NUMBER = process.env.GUPSHUP_PARTNER_NUMBER;
+const GUPSHUP_WEBHOOK_SECRET = process.env.GUPSHUP_WEBHOOK_SECRET;
 
-if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) {
+if (!GUPSHUP_API_KEY || !GUPSHUP_APP_NAME || !GUPSHUP_PARTNER_NUMBER || !GUPSHUP_WEBHOOK_SECRET) {
   throw new Error(
-    '[whatsapp-api] Missing required env vars: WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN must be set.',
+    '[whatsapp-api] Missing required env vars: GUPSHUP_API_KEY, GUPSHUP_APP_NAME, GUPSHUP_PARTNER_NUMBER, and GUPSHUP_WEBHOOK_SECRET must be set.',
   );
 }
 
 // ─────────────────────────────────────────────
-// Internal HTTP helper
+// Meta internal HTTP helper — dormant until Meta credentials arrive
 // ─────────────────────────────────────────────
 
 async function metaFetch<T>(
@@ -40,7 +45,6 @@ async function metaFetch<T>(
   });
 
   if (!res.ok) {
-    // Never propagate raw API response to callers (S-05)
     throw new Error(`[whatsapp-api] Meta API error: ${res.status} on ${path}`);
   }
 
@@ -48,23 +52,44 @@ async function metaFetch<T>(
 }
 
 // ─────────────────────────────────────────────
-// Send text message
+// Send text message — Gupshup v1
 // ─────────────────────────────────────────────
 
 export async function sendTextMessage(
   to:   string,
   text: string,
 ): Promise<MetaApiResponse> {
-  return metaFetch<MetaApiResponse>(`/${PHONE_NUMBER_ID}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      recipient_type:    'individual',
-      to,
-      type: 'text',
-      text: { body: text, preview_url: false },
-    }),
+  const source = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
+  const destination = to.replace(/^\+/, '');
+
+  const params = new URLSearchParams({
+    channel:     'whatsapp',
+    source,
+    destination,
+    message:     JSON.stringify({ type: 'text', text }),
+    'src.name':  GUPSHUP_APP_NAME!,
   });
+
+  const res = await fetch('https://api.gupshup.io/wa/api/v1/msg', {
+    method:  'POST',
+    headers: {
+      apikey:         GUPSHUP_API_KEY!,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  });
+
+  if (!res.ok) {
+    throw new Error(`[whatsapp-api] Gupshup API error: ${res.status}`);
+  }
+
+  const data = (await res.json()) as { messageId?: string };
+
+  return {
+    messaging_product: 'whatsapp',
+    contacts: [],
+    messages: [{ id: data.messageId ?? '' }],
+  };
 }
 
 // ─────────────────────────────────────────────

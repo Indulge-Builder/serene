@@ -7,6 +7,12 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-30 — WA: Gupshup v1 wired — x-gupshup-secret auth, dual-format inbound parser, Gupshup v1 outbound send
+
+- `src/app/api/webhooks/whatsapp/route.ts` — auth migrated from `Authorization` header to `x-gupshup-secret` checked with `timingSafeEqual`; dual-format POST handler: Gupshup v2 (`body.type === 'message'`) and dormant Meta v3 (`body.object === 'whatsapp_business_account'`) paths; `message-event` and `billing-event` acknowledged with 200 and no processing
+- `src/lib/services/whatsapp-api.ts` — `sendTextMessage` replaced with Gupshup v1 implementation (`POST https://api.gupshup.io/wa/api/v1/msg`, `apikey` header, `application/x-www-form-urlencoded`); startup guard updated to require `GUPSHUP_API_KEY`, `GUPSHUP_APP_NAME`, `GUPSHUP_PARTNER_NUMBER`, `GUPSHUP_WEBHOOK_SECRET`; Meta env vars (`PHONE_NUMBER_ID`, `ACCESS_TOKEN`) made optional (dormant functions retained for future use); `metaFetch` helper retained for dormant Meta functions
+- `src/app/api/webhooks/CLAUDE.md` — created: Gupshup auth pattern, dual-format parser spec, outbound send spec, env var inventory
+
 ## 2026-05-30 — WA: Remove Gupshup BSP layer; revert to pure Meta Cloud API architecture
 
 ## 2026-05-30 — WA webhook: GET health / Gupshup URL verify
