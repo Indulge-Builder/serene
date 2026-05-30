@@ -7,6 +7,13 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-30 — WA webhook: Gupshup POST `Authorization` token check
+
+- `src/app/api/webhooks/whatsapp/route.ts` — Gupshup branch validates `authorization` header against `GUPSHUP_WEBHOOK_TOKEN` before reading body; 401 plain `Unauthorized` on mismatch
+- `.env.example` — `GUPSHUP_WEBHOOK_TOKEN` added
+
+---
+
 ## 2026-05-30 — Fix: exclude `/api/webhooks` from Next.js proxy session refresh
 
 - `src/proxy.ts` — early return for `/api/webhooks/*` before `updateSession()`; matcher negative lookahead adds `api/webhooks`; delegates session refresh to `updateSession` from `lib/supabase/middleware.ts` (removes duplicate Supabase client setup)

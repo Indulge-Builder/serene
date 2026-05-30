@@ -32,15 +32,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 // ─────────────────────────────────────────────
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const rawBody = await req.text();
-  const bsp     = WHATSAPP_BSP;
+  const bsp = WHATSAPP_BSP;
 
   // ── Gupshup path ──────────────────────────────────────────────────────────
   if (bsp === 'gupshup') {
-    // TODO: Add Gupshup IP allowlist when their IPs are confirmed.
-    // Gupshup does not send x-hub-signature-256, so signature verification
-    // is skipped. IP allowlisting should be added before production use.
-    console.warn('[whatsapp/webhook] Gupshup IP allowlist not yet configured — proceeding without IP check.');
+    const token = req.headers.get('authorization');
+    if (!token || token !== process.env.GUPSHUP_WEBHOOK_TOKEN) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    const rawBody = await req.text();
 
     let body: GupshupWebhookPayload;
     try {
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // ── Meta Cloud API direct path ────────────────────────────────────────────
+  const rawBody = await req.text();
   const signature = req.headers.get('x-hub-signature-256');
   if (!verifyMetaSignature(rawBody, signature)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
