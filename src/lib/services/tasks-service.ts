@@ -5,11 +5,10 @@
  * No raw SQL strings outside this file.
  *
  * Caching notes:
- * - getGroupTasks: wrapped in unstable_cache with tag ['group-tasks', domain].
- *   Domain is always in the cache key — a manager in 'concierge' must never
- *   receive cached data from another domain. TTL: 60s.
- *   Revalidation sites: createGroupTaskAction, createSubtaskAction (both call
- *   revalidateTag('group-tasks') after a successful insert).
+ * - getGroupTasks: uses React cache() for per-request memoisation.
+ *   Cannot use unstable_cache — createClient() calls cookies() which is
+ *   forbidden inside unstable_cache closures (Next.js throws at runtime).
+ *   Per-request dedup is sufficient; the group tab is fetched once per RSC pass.
  *
  * Sort notes:
  * - getPersonalTasks: fully backed by the get_personal_tasks RPC (migration 0026).
@@ -20,7 +19,7 @@
  *   No JavaScript sort. No PostgREST .order()/.or() chain. One code path only.
  */
 
-import { unstable_cache } from 'next/cache';
+import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import type {
   Task,
@@ -183,17 +182,18 @@ type GroupTaskSummaryRaw = {
 };
 
 /**
- * Core implementation — not exported directly.
- * Exported via getGroupTasks (the cached wrapper below).
- *
- * Returns task_groups for a domain with subtask counts and
+ * Returns task_groups for the caller's domain with subtask counts and
  * up to 4 unique assignee avatars per group.
  * No subtask rows are returned — list view only.
  * Exactly 2 DB round-trips: one RPC + one profile batch fetch.
+ *
+ * Uses React cache() for per-request memoisation. Cannot use unstable_cache
+ * because createClient() calls cookies() which Next.js forbids inside
+ * unstable_cache closures. See src/lib/CLAUDE.md § unstable_cache + cookies().
  */
-async function getGroupTasksImpl(
+export const getGroupTasks = cache(async (
   filters: GroupTaskFilters = {},
-): Promise<TaskGroupRow[]> {
+): Promise<TaskGroupRow[]> => {
   const supabase = await createClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -262,40 +262,7 @@ async function getGroupTasksImpl(
       assignee_previews,
     };
   });
-}
-
-/**
- * Cached wrapper for getGroupTasksImpl.
- * TTL: 60s. Cache tag: 'group-tasks' + caller domain.
- *
- * Domain is always in the cache key — a manager in 'concierge' must never
- * receive cached results from another domain. The RPC derives the caller
- * domain from get_user_domain() internally (SECURITY DEFINER), but the
- * cache key must also be domain-scoped so cached responses are not served
- * cross-domain.
- *
- * Revalidation sites (must call revalidateTag('group-tasks') after mutation):
- *   - createGroupTaskAction (new group_task row)
- *   - createSubtaskAction   (new subtask changes aggregate counts)
- *
- * Note: unstable_cache key args must be JSON-serialisable. filters object
- * is included so filtered and unfiltered views are cached independently.
- */
-export function getGroupTasks(
-  filters: GroupTaskFilters = {},
-  callerDomain?: string,
-): Promise<TaskGroupRow[]> {
-  const domainKey = callerDomain ?? 'unknown';
-  const cachedFn = unstable_cache(
-    () => getGroupTasksImpl(filters),
-    ['group-tasks', domainKey, JSON.stringify(filters)],
-    {
-      revalidate: 60,
-      tags:       ['group-tasks'],
-    },
-  );
-  return cachedFn();
-}
+});
 
 // ─────────────────────────────────────────────
 // Query: subtasks for a single group
@@ -358,19 +325,17 @@ export async function getGroupSubtasks(groupId: string): Promise<SubtaskWithAssi
 /**
  * Returns a single task with its full message thread.
  * Used by the task detail modal.
+ * Task fetch and remarks fetch are independent — run in parallel.
  */
 export async function getTaskById(taskId: string): Promise<TaskWithMessages | null> {
   const supabase = await createClient();
 
-  const { data: task, error: taskError } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('id', taskId)
-    .single();
+  const [{ data: task, error: taskError }, messages] = await Promise.all([
+    supabase.from('tasks').select('*').eq('id', taskId).single(),
+    getTaskRemarks(taskId),
+  ]);
 
   if (taskError || !task) return null;
-
-  const messages = await getTaskRemarks(taskId);
 
   return { ...(task as Task), messages };
 }

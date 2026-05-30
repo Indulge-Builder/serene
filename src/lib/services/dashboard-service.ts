@@ -1,14 +1,47 @@
 // Dashboard-specific queries.
 // Never extend leads-service.ts for dashboard data — this file is the dedicated home.
-// Every widget owns exactly one service function call. No N+1 fan-out.
+//
+// PRIMARY ENTRY POINT: getDashboardSummary() — single cached RPC, all summary widgets.
+// Do not split back into individual service function calls for summary data.
+// Individual functions below are kept for reference and the period-toggle action only.
 
+import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
-import type { AppDomain, LeadStatus } from '@/lib/types/database';
+import type { AppDomain, LeadStatus, UserRole } from '@/lib/types/database';
+import type { DashboardSummary } from '@/lib/types';
 
 // ─────────────────────────────────────────────
-// Agent Tasks Widget
-// Single query joining tasks + task_gia_meta + leads.
-// Returns open tasks due today/overdue + new leads count.
+// getDashboardSummary — single RPC, per-request memoised
+// Replaces 4 individual queries (agent_tasks, agent_activity, lead_status, campaigns).
+//
+// Uses React cache() (not unstable_cache) because createClient() reads cookies(),
+// which cannot be called inside an unstable_cache closure (Next.js constraint).
+// React cache() deduplicates within a single RSC render pass — the RPC fires once
+// even if multiple components call getDashboardSummary with the same arguments.
+// ─────────────────────────────────────────────
+
+export const getDashboardSummary = cache(
+  async (role: UserRole, domain: AppDomain, userId: string): Promise<DashboardSummary> => {
+    const supabase = await createClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).rpc('get_dashboard_summary', {
+      p_role:    role,
+      p_domain:  domain,
+      p_user_id: userId,
+    });
+    if (error) throw error;
+    return data as DashboardSummary;
+  },
+);
+
+// ─────────────────────────────────────────────
+// Individual service functions below.
+// NOT used for initial page load — getDashboardSummary() handles that.
+// Used only for per-widget refresh buttons (user-initiated targeted refetch).
+// ─────────────────────────────────────────────
+
+// ─────────────────────────────────────────────
+// Agent Tasks Widget — refresh only
 // ─────────────────────────────────────────────
 
 export type AgentTask = {

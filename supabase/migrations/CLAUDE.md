@@ -35,6 +35,44 @@
 | `20260528000021_task_suppression_audit.sql` | `task_messages` suppression columns (`is_suppressed`, `suppressed_by`, `suppressed_at`) + UPDATE RLS for admin/founder; `task_audit_log` append-only table + `log_task_changes()` trigger (AFTER UPDATE on tasks, six fields: title/description/status/priority/due_at/assigned_to) |
 | `20260529000022_task_remarks.sql` | DROP TABLE task_messages CASCADE (pre-production, no data); CREATE TABLE `task_remarks` (replaces task_messages with added `status_change` nullable column, ASC index, same suppression + RLS pattern); Realtime enabled on `task_remarks` |
 | `20260529000023_task_attachments.sql` | ADD COLUMN `attachments jsonb NOT NULL DEFAULT '[]'` to `tasks`; CHECK constraint `tasks_attachments_is_array` validates JSON array; intentionally excluded from `log_task_changes()` trigger |
+| `20260529000029_get_dashboard_summary.sql` | `get_dashboard_summary(p_role, p_domain, p_user_id)` RPC — single jsonb response with 4 keys (`agent_tasks`, `agent_activity`, `lead_status`, `campaigns`); SECURITY DEFINER; role-based CTEs; all COUNT cast `::int`; GRANT EXECUTE to authenticated |
+| `20260529000030_rpc_add_lead_call_note.sql` | `add_lead_call_note(p_lead_id, p_author_id, p_content, p_call_outcome, p_now)` RPC — wraps all DB writes for `addLeadCallNote` action in one transaction (note insert + lead UPDATE + 2–3 activity inserts); returns `jsonb` with `note_id`, `new_call_count`, `did_auto_advance`, `assigned_to`, `domain`, `old_status`; SECURITY DEFINER; access control stays in action layer |
+| `20260529000031_rpc_update_lead_status.sql` | `update_lead_status(p_lead_id, p_actor_id, p_status, p_reason, p_now)` RPC — wraps all DB writes for `updateLeadStatus` action in one transaction (lead UPDATE + activity insert + conditional nurturing task + task_gia_meta); returns `jsonb` with `changed`, `old_status`, `new_status`, `assigned_to`, `domain`, `first_name`, `last_name`; early-returns `{ changed: false }` when status unchanged; SECURITY DEFINER; access control and won notifications stay in action layer |
+| `20260530000032_whatsapp_conversations.sql` | `whatsapp_conversations` table — one row per lead/phone; `wa_id` (E.164 without +) and `lead_id` both UNIQUE; `bot_active/bot_paused_by/bot_paused_at` columns; `can_access_wa_conversation()` SECURITY DEFINER helper; RLS mirrors leads table (agent → assigned leads, manager → domain, admin/founder → all); Realtime enabled |
+| `20260530000033_whatsapp_messages.sql` | `whatsapp_messages` table — **append-only** with one narrow UPDATE exception (delivery receipts: `status` + `status_at` only, via service-role client); `wa_message_id` is a **partial unique index** (`WHERE wa_message_id IS NOT NULL`) to allow multiple NULL rows for optimistic inserts; same RLS domain-scoping via `can_access_wa_conversation()`; no DELETE policy ever; Realtime enabled |
+| `20260530000034_whatsapp_reads.sql` | `whatsapp_conversation_reads` table — per-agent read position for unread badge counts (not in The_Gia.md §14 — deliberate addition); UNIQUE(conversation_id, agent_id); RLS: agents read/insert/update own rows only; no other roles need policies |
+| `20260530000035_rpc_add_task_remark_with_status.sql` | `add_task_remark_with_status(p_task_id, p_author_id, p_content, p_status_change)` RPC — collapses 6 sequential awaits in `addTaskRemarkAction` into 1 round-trip; inline auth check via `auth.uid()`; if `p_status_change` is not null: UPDATE tasks (triggers `log_task_changes()`); INSERT task_remarks (append-only); RETURNS `task_remarks` row; SECURITY DEFINER; access control and Zod validation stay in action layer |
+| `20260530000036_rpc_get_wa_unread_count.sql` | `get_wa_unread_count()` RPC — per-agent unread WhatsApp conversation count; LEFT JOIN `whatsapp_conversation_reads` on `agent_id = auth.uid()`; counts open conversations where `last_read_at IS NULL` or `last_message_at > last_read_at`; gated by `can_access_wa_conversation()`; RETURNS integer; STABLE SECURITY DEFINER; GRANT EXECUTE to authenticated |
+
+## Multi-write RPC pattern (perf-02)
+
+When a server action performs multiple sequential DB writes that must be atomic, move all writes into a `SECURITY DEFINER` RPC. Access control (Zod validation, auth check, role/domain verification) stays in the action layer. Application-layer side-effects (Trigger.dev, notifications, SLA scheduling) also stay in the action layer — they cannot go inside a Postgres function.
+
+**Pattern established by:** `add_lead_call_note` (migration 0030) and `update_lead_status` (migration 0031).
+
+**Rules:**
+
+- RPC must be `SECURITY DEFINER SET search_path = public` (A-10).
+- Never add access-control logic inside the RPC — it runs as the function owner, not the calling user.
+- Return a `jsonb` object with everything the action needs for fire-and-forget side-effects.
+- Use `RAISE EXCEPTION` for not-found cases; the action maps these to user-facing errors.
+- Cast `bigint` COUNT fields to `Number()` in the service/action layer before use (Q-09).
+
+## whatsapp_messages — append-only contract with delivery-receipt exception
+
+`whatsapp_messages` is append-only. There is no DELETE policy and no UPDATE policy for app users.
+
+The one narrow exception: delivery receipt status updates (`status`, `status_at`) are written by the webhook handler using the **service-role client** (`src/lib/supabase/admin.ts`), which bypasses RLS. This is a system write, not a user mutation — it satisfies A-11.
+
+PostgreSQL RLS cannot restrict which columns may be updated within an eligible row. Column restriction (only `status` and `status_at`) is enforced exclusively at the application layer in the webhook handler. Future engineers: do not add an UPDATE policy for agent/manager roles.
+
+**wa_message_id uniqueness:** Enforced via a **partial unique index** (`WHERE wa_message_id IS NOT NULL`), not a column `UNIQUE` constraint. This allows multiple rows with `wa_message_id = NULL` for optimistic pre-confirm inserts. A full unique constraint would reject these rows.
+
+**Realtime:** Both `whatsapp_conversations` and `whatsapp_messages` are on `supabase_realtime`. The WhatsApp page subscribes to both channels.
+
+**can_access_wa_conversation():** SECURITY DEFINER helper defined in migration 0032. Used by both `whatsapp_conversations` and `whatsapp_messages` RLS policies. If `leads` RLS ever changes, review this function too — they are coupled.
+
+---
 
 ## task_remarks — append-only contract with suppression exception
 

@@ -297,10 +297,38 @@ Every architectural decision that deviates from or extends the rules above must 
 
 | Date | Decision | Chosen | Why |
 | ---- | -------- | ------ | --- |
-| 2026-05-28 | **task_messages suppression: column restriction is application-layer only.** PostgreSQL RLS UPDATE policies cannot restrict which columns a permitted user may write — they only control row eligibility. Two alternatives were considered: (a) a DB-level trigger that raises an exception if non-suppression columns change, (b) a separate `suppression_requests` table written by the action and consumed by a trigger. | Application-layer enforcement only (`suppressTaskMessageAction` writes exactly `{is_suppressed, suppressed_by, suppressed_at}` and no other columns). | Trigger option adds complexity and a second round-trip with no user-visible benefit — `admin/founder` are trusted actors; the action is the single write path. The limitation is documented in the migration, the Server Action, and `supabase/migrations/CLAUDE.md`. |
+| 2026-05-28 | **task_messages suppression: column restriction is application-layer only.** PostgreSQL RLS UPDATE policies cannot restrict which columns a permitted user may write — they only control row eligibility. Two alternatives were considered: (a) a DB-level trigger that raises an exception if non-suppression columns change, (b) a separate `suppression_requests` table written by the action and consumed by a trigger. | Application-layer enforcement only (`suppressTaskRemarkAction` writes exactly `{is_suppressed, suppressed_by, suppressed_at}` and no other columns). | Trigger option adds complexity and a second round-trip with no user-visible benefit — `admin/founder` are trusted actors; the action is the single write path. The limitation is documented in the migration, the Server Action, and `supabase/migrations/CLAUDE.md`. |
 | 2026-05-28 | **`log_task_changes()` fallback: when `auth.uid()` is NULL (service-role context), attribute the change to `NEW.assigned_to`.** This means a service-role reassignment will record the new assignee as the actor, not the actual initiator. Two alternatives: (a) add a `changed_by` column to `tasks` so callers can pass an explicit actor, (b) accept the imperfection. | Accept the imperfection; no new column on `tasks`. | Service-role writes that mutate `assigned_to` are rare (currently only Trigger.dev reminder callbacks). Adding a `changed_by` parameter to every task mutation action to support this edge case widens every call site in the codebase. The audit log exists for manager-visible compliance review, not forensic-grade attribution. The known limitation is documented in the trigger body and in `supabase/migrations/CLAUDE.md`. |
 | 2026-05-28 | **`task_audit_log` uses `ON DELETE CASCADE` on the `task_id` FK.** Deleting a task removes its audit trail. Alternative: `ON DELETE RESTRICT` (block task deletion if audit rows exist) or `ON DELETE SET NULL` (retain orphaned audit rows). | `ON DELETE CASCADE` — audit log is removed with the task. | Task deletion is already admin/founder-only at the application layer. Retaining orphaned audit rows for deleted tasks adds schema complexity (nullable FK, orphan cleanup jobs) with no practical compliance benefit — the tasks themselves are gone. The trade-off is documented in the migration. |
+| 2026-05-29 | **`task_messages` renamed to `task_remarks` (migration 0022).** Pre-production table, no data to preserve. Adds `status_change` nullable text column (CHECK values coupled to `tasks.status`). DROP CASCADE used to cleanly remove all dependent policies and indexes. | DROP + CREATE. | Rename-in-place requires manual policy and index recreation with higher risk of inconsistency. The table had zero production rows. The rename better reflects what the records represent — contextual updates with optional status transitions, not chat messages. |
+| 2026-05-29 | **`add_lead_call_note` and `update_lead_status` collapsed to single-transaction RPCs.** `addLeadCallNote` had 9 sequential DB awaits; `updateLeadStatus` had 5. Both collapsed to single `admin.rpc()` calls in the action layer. | SECURITY DEFINER RPCs in `supabase/migrations/`. | Sequential awaits create serialisation overhead and leave partial state visible to readers between steps. A single transaction is atomic. SLA side-effects remain fire-and-forget in the action layer (not in the RPC) because they involve Trigger.dev calls that cannot be rolled back transactionally anyway. |
+| 2026-05-29 | **Dashboard summary collapsed to a single cached RSC fetch (perf-01).** 5 individual client-initiated `startTransition` server action calls replaced with one `getDashboardSummary` call at the RSC level, using React `cache()` for per-request memoisation. `unstable_cache` was not viable because `createClient()` calls `cookies()`, which Next.js forbids inside `unstable_cache` closures. | React `cache()` in the service function + RSC invocation at the page level. | Zero POST calls on initial dashboard load. `ManagerLeadVolumeWidget` is the only widget that still fires a server action on mount, because its period selector requires interactive fetch. |
+| 2026-05-29 | **`get_group_task_summaries` SECURITY DEFINER: domain scoping enforced inside RPC body, not via caller-supplied parameter.** Initial implementation accepted `p_domain text` and used it in the WHERE clause — any authenticated caller could pass any domain. Rewritten to replicate the `task_groups_select` RLS policy conditions inside the function body using `get_user_role()` and `get_user_domain()`. | Self-enforcing WHERE clause inside SECURITY DEFINER function. | SECURITY DEFINER bypasses RLS entirely. Caller-supplied scope parameters on SECURITY DEFINER functions are a security hole — they must never be trusted. All future SECURITY DEFINER RPCs follow this pattern: replicate the RLS check in the WHERE clause, never accept a scope parameter from the caller. |
+| 2026-05-29 | **`getGroupTasks` domain parameter removed.** After the RPC body rewrite, the service function no longer accepts or forwards a domain parameter. Domain scoping is fully server-enforced inside the RPC. | Remove domain param from service signature. | Passing domain from the call site to a SECURITY DEFINER function is misleading and dangerous — it implies the caller controls scope when they do not. The function ignores anything the caller could pass. Removing the param makes the security contract explicit at the call site. |
 
 ---
 
-_The Blueprint — Indulge OS. Last updated: 2026-05-28._
+## 10. Phase Status (as of 2026-05-30)
+
+| Phase | Status | Key Deliverable |
+| ----- | ------ | --------------- |
+| 0 | Complete | Foundation, design system, auth pages |
+| 1 | Complete | Profiles, admin user management |
+| 2 | Complete | Agent routing config, invite flow |
+| 3 | Complete | Gia: leads ingestion, assignment, lead list |
+| 4 | Complete | Lead dossier, full lifecycle |
+| 5 | Complete | Profile page, theme system |
+| 6 | Complete | Modal primitive, filters, column picker, Add Lead, error log |
+| 7 | Complete | Dashboard widget system (5 widgets), RSC consolidation |
+| 8 | Complete | Performance page, Campaign Analytics |
+| 9 | Complete | Toast + notifications, team benchmarks, SLA Engine, Settings page |
+| 10 | Complete | Performance page: manager & founder views (agent roster, detail panel, founder domain tabs) |
+| UI Foundation | Complete | 26+ component library, component sweep |
+| OS Tasks | Complete | task_groups, task_remarks, SubTaskModal, group workspace, tags, checklist, SLA hook points |
+| Perf | Complete | DB indexes, RPC consolidation, Suspense streaming, cursor pagination |
+
+**Next planned modules:** WhatsApp page (section 14 of The_Gia.md), Lia AI presence, client records (post-won flow).
+
+---
+
+_The Blueprint — Indulge OS. Last updated: 2026-05-30._

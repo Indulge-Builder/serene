@@ -34,22 +34,15 @@ import {
   useTransition,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Send,
-  Clock,
-  AlertCircle,
-  CheckCircle2,
-  XCircle,
-  RefreshCw,
-  PlayCircle,
-} from "lucide-react";
+import { Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "@/components/ui/Avatar";
 import { addTaskRemarkAction } from "@/lib/actions/tasks";
 import { formatRelativeTime } from "@/lib/utils/dates";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { toast } from "@/lib/toast";
-import { TASK_REMARK_STATUS_LABELS } from "@/lib/constants/task-constants";
+import { TASK_REMARK_STATUS_LABELS, TASK_STATUS } from "@/lib/constants/task-constants";
+import { TaskStatusIcon } from "@/components/tasks/TaskStatusIcon";
 import type { TaskRemarkWithAuthor } from "@/lib/services/tasks-service";
 import type { TaskRemark, TaskStatus } from "@/lib/types/database";
 
@@ -65,29 +58,6 @@ interface TaskRemarksPanelProps {
   composerPlaceholder?: string;
 }
 
-// ─── Status icons ─────────────────────────────────────────────────────────────
-
-const STATUS_ICONS: Record<TaskStatus, React.ReactNode> = {
-  to_do:       <Clock        style={{ width: 10, height: 10, strokeWidth: 1.5 }} />,
-  in_progress: <PlayCircle   style={{ width: 10, height: 10, strokeWidth: 1.5 }} />,
-  in_review:   <RefreshCw    style={{ width: 10, height: 10, strokeWidth: 1.5 }} />,
-  completed:   <CheckCircle2 style={{ width: 10, height: 10, strokeWidth: 1.5 }} />,
-  error:       <AlertCircle  style={{ width: 10, height: 10, strokeWidth: 1.5 }} />,
-  cancelled:   <XCircle      style={{ width: 10, height: 10, strokeWidth: 1.5 }} />,
-};
-
-const STATUS_CHIP_COLORS: Record<TaskStatus, { bg: string; color: string; border: string }> = {
-  to_do:       { bg: "var(--theme-paper-border)",   color: "var(--theme-text-secondary)", border: "var(--theme-paper-border)" },
-  in_progress: { bg: "var(--theme-accent-surface)", color: "var(--theme-accent)",         border: "var(--theme-accent-surface)" },
-  in_review:   { bg: "var(--color-info-light)",     color: "var(--color-info-text)",       border: "var(--color-info-light)" },
-  completed:   { bg: "var(--color-success-light)",  color: "var(--color-success-text)",    border: "var(--color-success-light)" },
-  error:       { bg: "var(--color-danger-light)",   color: "var(--color-danger-text)",     border: "var(--color-danger-light)" },
-  cancelled:   { bg: "var(--color-neutral-light)",  color: "var(--color-neutral-text)",    border: "var(--color-neutral-light)" },
-};
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function TaskRemarksPanel({
@@ -102,13 +72,22 @@ export function TaskRemarksPanel({
   const optimisticIds  = useRef<Set<string>>(new Set());
   // Tracks confirmed DB row IDs — prevents double-append when Strict Mode
   // mounts two subscriptions or Realtime fires the same event twice.
-  const seenIds        = useRef<Set<string>>(new Set(initialRemarks.map((r) => r.id)));
+  const seenIds        = useRef<Set<string>>(new Set());
   // Stable mount-scoped nonce — prevents Strict Mode double-invoke channel collision
   const mountId = useId();
 
-  const [remarks,   setRemarks]   = useState<TaskRemarkWithAuthor[]>(initialRemarks);
-  const [draft,     setDraft]     = useState("");
-  const [isPending, startTransition] = useTransition();
+  const [remarks,    setRemarks]    = useState<TaskRemarkWithAuthor[]>(initialRemarks);
+  const [draft,      setDraft]      = useState("");
+  const [isPending,  startTransition] = useTransition();
+
+  // Seed seenIds from initialRemarks so Realtime never double-appends rows
+  // that were already present when the modal opened.
+  useEffect(() => {
+    seenIds.current = new Set(initialRemarks.map((r) => r.id));
+    setRemarks(initialRemarks);
+  // Only re-seed when the task changes (new modal open for a different task).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
 
   // ── Auto-scroll to bottom ─────────────────────────────────────────────────
 
@@ -227,6 +206,24 @@ export function TaskRemarksPanel({
         setRemarks((prev) => prev.filter((r) => r.id !== optimisticId));
         optimisticIds.current.delete(optimisticId);
         toast.danger("Couldn't post update", { message: result.error });
+        return;
+      }
+
+      // Confirm optimistic row immediately from action result — do not wait for
+      // Realtime echo. The Realtime event will arrive later; seenIds guards against
+      // the double-append.
+      if (result.data) {
+        const confirmed: TaskRemarkWithAuthor = {
+          ...result.data,
+          author: { id: currentUserId, full_name: currentUserName, avatar_url: null },
+        };
+        seenIds.current.add(result.data.id);
+        optimisticIds.current.delete(optimisticId);
+        setRemarks((prev) => {
+          const idx = prev.findIndex((r) => r.id === optimisticId);
+          if (idx === -1) return prev; // already removed or replaced by Realtime
+          return [...prev.slice(0, idx), confirmed, ...prev.slice(idx + 1)];
+        });
       }
     });
   }, [draft, isPending, taskId, currentUserId, currentUserName]);
@@ -356,7 +353,7 @@ export function TaskRemarksPanel({
                 >
                   {/* Status chip — shown when remark recorded a transition */}
                   {remark.status_change && (() => {
-                    const chip = STATUS_CHIP_COLORS[remark.status_change as TaskStatus];
+                    const chip = TASK_STATUS[remark.status_change as TaskStatus];
                     return (
                       <div
                         style={{
@@ -365,14 +362,14 @@ export function TaskRemarksPanel({
                           gap:          "var(--space-1)",
                           padding:      "2px var(--space-2)",
                           borderRadius: "var(--radius-full)",
-                          background:   chip.bg,
-                          border:       `1px solid ${chip.border}`,
-                          color:        chip.color,
+                          background:   chip.remarkBg,
+                          border:       `1px solid ${chip.remarkBorder}`,
+                          color:        chip.remarkColor,
                           marginBottom: "var(--space-2)",
                           marginLeft:   "var(--space-2)",
                         }}
                       >
-                        {STATUS_ICONS[remark.status_change as TaskStatus]}
+                        <TaskStatusIcon status={remark.status_change as TaskStatus} size={10} />
                         <span
                           style={{
                             fontFamily: "var(--font-sans)",

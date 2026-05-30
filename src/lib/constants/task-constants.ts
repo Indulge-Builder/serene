@@ -89,17 +89,84 @@ export const TASK_PRIORITY: Record<
 
 // ─────────────────────────────────────────────
 // Task status config
+// All colour values are CSS variable strings — never hex.
+// color: icon + inline text (dropdowns, labels on paper)
+// pillBg / pillText: solid status pills (group list, workspace)
+// remarkBg / remarkColor / remarkBorder: light chips in remark timeline
 // ─────────────────────────────────────────────
 export const TASK_STATUS: Record<
   TaskStatus,
-  { label: string; color: string; order: number }
+  {
+    label: string;
+    color: string;
+    order: number;
+    pillBg: string;
+    pillText: string;
+    remarkBg: string;
+    remarkColor: string;
+    remarkBorder: string;
+  }
 > = {
-  to_do:       { label: 'To Do',       color: 'var(--theme-text-secondary)', order: 1 },
-  in_progress: { label: 'In Progress', color: 'var(--theme-accent)',         order: 2 },
-  in_review:   { label: 'In Review',   color: 'var(--theme-warning)',        order: 3 },
-  completed:   { label: 'Completed',   color: 'var(--color-success)',        order: 4 },
-  error:       { label: 'Error',       color: 'var(--color-danger)',         order: 5 },
-  cancelled:   { label: 'Cancelled',   color: 'var(--theme-text-tertiary)',  order: 6 },
+  to_do: {
+    label:        'To Do',
+    color:        'var(--theme-text-secondary)',
+    order:        1,
+    pillBg:       'var(--theme-paper-border)',
+    pillText:     'var(--theme-text-secondary)',
+    remarkBg:     'var(--theme-paper-border)',
+    remarkColor:  'var(--theme-text-secondary)',
+    remarkBorder: 'var(--theme-paper-border)',
+  },
+  in_progress: {
+    label:        'In Progress',
+    color:        'var(--theme-accent)',
+    order:        2,
+    pillBg:       'var(--theme-accent)',
+    pillText:     'var(--theme-accent-fg)',
+    remarkBg:     'var(--theme-accent-surface)',
+    remarkColor:  'var(--theme-accent)',
+    remarkBorder: 'var(--theme-accent-surface)',
+  },
+  in_review: {
+    label:        'In Review',
+    color:        'var(--color-info-text)',
+    order:        3,
+    pillBg:       'var(--color-info)',
+    pillText:     'var(--color-info-text)',
+    remarkBg:     'var(--color-info-light)',
+    remarkColor:  'var(--color-info-text)',
+    remarkBorder: 'var(--color-info-light)',
+  },
+  completed: {
+    label:        'Completed',
+    color:        'var(--color-success-text)',
+    order:        4,
+    pillBg:       'var(--color-success)',
+    pillText:     'var(--color-success-text)',
+    remarkBg:     'var(--color-success-light)',
+    remarkColor:  'var(--color-success-text)',
+    remarkBorder: 'var(--color-success-light)',
+  },
+  error: {
+    label:        'Error',
+    color:        'var(--color-danger-text)',
+    order:        5,
+    pillBg:       'var(--color-danger)',
+    pillText:     'var(--color-danger-text)',
+    remarkBg:     'var(--color-danger-light)',
+    remarkColor:  'var(--color-danger-text)',
+    remarkBorder: 'var(--color-danger-light)',
+  },
+  cancelled: {
+    label:        'Cancelled',
+    color:        'var(--color-neutral-text)',
+    order:        6,
+    pillBg:       'var(--theme-text-tertiary)',
+    pillText:     'var(--theme-text-inverse)',
+    remarkBg:     'var(--color-neutral-light)',
+    remarkColor:  'var(--color-neutral-text)',
+    remarkBorder: 'var(--color-neutral-light)',
+  },
 };
 
 // ─────────────────────────────────────────────

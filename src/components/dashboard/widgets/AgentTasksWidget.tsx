@@ -7,7 +7,7 @@ import { getAgentTasksSummaryAction } from '@/lib/actions/dashboard';
 import { Button } from '@/components/ui/Button';
 import { formatDate } from '@/lib/utils/dates';
 import { formatCompact } from '@/lib/utils/numbers';
-import type { AgentTask } from '@/lib/services/dashboard-service';
+import type { DashboardAgentTask } from '@/lib/types';
 import type { WidgetProps } from '../DashboardWidgetSlot';
 
 const TASK_TYPE_LABELS: Record<string, string> = {
@@ -18,19 +18,19 @@ const TASK_TYPE_LABELS: Record<string, string> = {
 };
 
 type AgentTasksData = {
-  tasks:         AgentTask[];
+  tasks:         DashboardAgentTask[];
   newLeadsCount: number;
 };
 
-// This component is lazy-loaded — receives initialData from the server action
-// run in the outer async wrapper (AgentTasksWidgetLoader).
-// It owns client-side refresh via the server action.
-export function AgentTasksWidget({ userId }: WidgetProps) {
-  const [data, setData]              = useState<AgentTasksData | null>(null);
-  const [loaded, setLoaded]          = useState(false);
+export function AgentTasksWidget({ userId, initialData }: WidgetProps) {
+  const seed = initialData?.agent_tasks ?? null;
+  const [data, setData]              = useState<AgentTasksData | null>(seed);
+  const [loaded, setLoaded]          = useState(seed !== null);
   const [isPending, startTransition] = useTransition();
 
+  // Only fetch on mount when no server-provided initialData
   useEffect(() => {
+    if (seed !== null) return;
     let cancelled = false;
     startTransition(async () => {
       const result = await getAgentTasksSummaryAction(userId);

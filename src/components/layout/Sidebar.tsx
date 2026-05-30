@@ -12,6 +12,7 @@ import {
   TrendingUp,
   CheckSquare,
   Settings,
+  MessageCircle,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
@@ -32,6 +33,7 @@ const MAIN_NAV: NavItem[] = [
   { href: "/dashboard",   label: "Dashboard",   icon: LayoutDashboard },
   { href: "/leads",       label: "Leads",       icon: UserRound       },
   { href: "/tasks",       label: "Tasks",       icon: CheckSquare     },
+  { href: "/whatsapp",    label: "WhatsApp",    icon: MessageCircle   },
   { href: "/performance", label: "Performance", icon: BarChart2       },
 ];
 

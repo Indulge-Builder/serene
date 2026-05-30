@@ -27,22 +27,25 @@
 
 **Status: Clean.**
 
+- Raw payload logged as step 1 (non-fatal — logging failure never blocks a lead).
 - Zod validation on normalized payload first — correct.
 - Domain resolution: explicit `data.domain` takes precedence, then campaign prefix mapping.
-- **Bug 1 fixed:** `DEFAULT_LEAD_DOMAIN` is now `'concierge'` (was `'indulge_concierge'`).
+- `DEFAULT_LEAD_DOMAIN` is `'concierge'` (not `'indulge_concierge'` — this was fixed).
 - Uses `createAdminClient()` for the DB insert and activity logs — correct (webhook has no session).
 - Logs `lead_created` activity unconditionally and `agent_assigned` activity only when an agent is found — correct.
 - `assigned_at` is set to `null` when no agent is found — correct.
+- Dedup by phone: active lead → `duplicate_submission` activity, return existing `leadId`. Terminal lead → new lead with `previous_lead_id` FK.
 
 ---
 
-### Stage 4 — Round-robin assignment `getNextRoundRobinAgent`
+### Stage 4 — Round-robin assignment `get_next_round_robin_agent()`
 
-**Status: Clean (both bugs fixed).**
+**Status: Clean — atomic DB function.**
 
-- **Bug 2 fixed:** Now uses `createAdminClient()` — not `createClient()`. Webhook context has no `auth.uid()`, so the anon client would return empty arrays from every RLS-protected query silently.
-- **Bug 3 fixed (via Bug 1):** Domain values `'concierge'`, `'shop'`, `'legacy'`, `'house'`, `'b2b'` now match `profiles.domain` exactly.
-- Logic: fetches active agents → filters by `agent_routing_config.is_active = true` → queries recent leads only for eligible agents → sorts by oldest `assigned_at` (nulls first) → returns top agent. Algorithm is correct.
+- DB-level `SELECT FOR UPDATE SKIP LOCKED` on `agent_routing_config` — race-free under concurrent webhooks.
+- O(agents) not O(leads) — `MAX(assigned_at) GROUP BY` subquery.
+- Domain values `'concierge'`, `'shop'`, `'legacy'`, `'house'`, `'b2b'` match `profiles.domain` enum exactly (was `'indulge_concierge'` — fixed).
+- Two-step fallback for agents without a routing config row.
 
 ---
 
@@ -53,6 +56,7 @@
 - Admin client used — bypasses RLS correctly.
 - All fields explicitly mapped — no implicit nulls.
 - `form_data` stored as-is (immutable after insert per spec).
+- `status_changed_at` and `last_activity_at` set on insert (migration 0027).
 
 ---
 
@@ -60,14 +64,14 @@
 
 **Status: Clean.**
 
-- All actions start with Zod validation — Rule 02 satisfied.
-- Auth check via `getCallerProfile()` before any DB work — Rule 09 satisfied.
+- All actions start with Zod validation — Rule S-01 satisfied.
+- Auth check via `getCurrentProfile()` (canonical import from `profiles-service.ts`, not a local duplicate) before any DB work — Rule A-09 satisfied.
 - Access verification done via `createClient()` (RLS-bound anon) — correct for user-session actions.
-- All mutations use `createAdminClient()` — correct (bypasses the INSERT/UPDATE RLS gaps).
-- `addLeadCallNote`: auto-advances `new → touched` on first call — correct per spec.
-- `updateLeadStatus`: nurturing side effect creates a task + `task_gia_meta` row — correct.
-- `assignLead`: clears `private_scratchpad` on reassign — correct per spec.
-- All actions return `{ data, error }`, never throw — Rule 10 satisfied.
+- All mutations use `createAdminClient()` — correct.
+- `addLeadCallNote`: delegates to `add_lead_call_note` RPC (single transaction — 9 sequential awaits collapsed). SLA side-effects (timer scheduling) remain in action layer.
+- `updateLeadStatus`: delegates to `update_lead_status` RPC (single transaction — 5 sequential awaits collapsed). Won notifications and SLA side-effects remain in action layer.
+- `assignLead`: pre-update `SELECT status, domain` before the UPDATE; no post-update SELECT (zero extra round-trips). Clears `private_scratchpad` on reassign — correct per spec.
+- All actions return `{ data, error }`, never throw — Rule Q-03 satisfied.
 
 ---
 
@@ -75,24 +79,49 @@
 
 **Status: Clean.**
 
-- Dossier page and `StatusActionPanel` both perform the same access-gate logic: agent = own leads only, manager = domain match, admin/founder = all. Two-layer enforcement (page + action).
-- `lead.domain` (typed `string`) compared against `profile.domain` (typed `AppDomain`) via `===` — works correctly at runtime now that the values are consistent.
+- Dossier page and `StatusActionPanel` both enforce: agent = own leads only, manager = domain match, admin/founder = all. Two-layer enforcement (page + action).
+- `lead.domain` (typed `string`) compared against `profile.domain` (typed `AppDomain`) via `===` — works correctly at runtime because domain values are consistent.
 
 ---
 
 ### Stage 8 — Domain value consistency
 
-**Status: Clean after fix.**
+**Status: Clean.**
 
-| Where                       | Value (before)      | Value (after)           |
-| --------------------------- | ------------------- | ----------------------- |
-| `CAMPAIGN_DOMAIN_MAP`       | `indulge_concierge` | `concierge`             |
-| `DEFAULT_LEAD_DOMAIN`       | `indulge_concierge` | `concierge`             |
-| `profiles.domain` (DB enum) | `concierge`         | `concierge` (unchanged) |
-| `AppDomain` type            | `concierge`         | `concierge` (unchanged) |
+| Where | Value |
+| ---- | ----- |
+| `CAMPAIGN_DOMAIN_MAP` | `concierge`, `shop`, `legacy`, `house`, `b2b` |
+| `DEFAULT_LEAD_DOMAIN` | `concierge` |
+| `profiles.domain` (DB enum) | `concierge` (unchanged) |
+| `AppDomain` type | `concierge` (unchanged) |
 
-All five campaign prefix → domain mappings (`TG_Global`, `TG_Shop`, `TG_Legacy`, `TG_House`, `TG_B2B`) now resolve to values that exist in the `app_domain` enum.
+All five campaign prefix → domain mappings (`TG_Global`, `TG_Shop`, `TG_Legacy`, `TG_House`, `TG_B2B`) resolve to values that exist in the `app_domain` enum.
 
 ---
 
-The pipeline is clean end-to-end. Incoming leads will now resolve the correct domain, find eligible agents in the correct pool, and assign correctly via round-robin.
+### Stage 9 — SLA Engine hook points
+
+**Status: Clean.**
+
+- `assignLead` + `createManualLead`: after assignment, updates `status_changed_at` + `last_activity_at`, then schedules SLA-01 timers (fire-and-forget, non-blocking).
+- `updateLeadStatus`: after status write, cancels existing timers; terminal status (`won`, `lost`, `junk`) → cancel only; non-terminal → cancel then reschedule for new status.
+- `addLeadCallNote`: after note write, updates `last_activity_at`; if auto-advanced `new → touched` → full SLA reset; otherwise → refreshes SLA-02/03 timers only (SLA-01 never reset by activity).
+- Stale-fire guard: `fireLeadSlaTask` re-reads lead status from DB on execution; exits cleanly with `outcome: 'stale_fire'` if status has changed.
+- Idempotency key: `lead-sla-${leadId}-${ruleCode}` — Trigger.dev deduplicates DELAYED runs. Double-scheduling is structurally impossible.
+
+---
+
+### Stage 10 — Lead list and filters
+
+**Status: Clean.**
+
+- Suspense-split architecture: `LeadsFilters` (stable, client) + `LeadsTableAsync` (Suspense child, server).
+- `getLeadsByRole` returns `{ leads: Lead[], totalCount: number }` — never `Lead[]` alone.
+- `totalCount` from `{ count: 'exact', head: false }` on the same query builder that has all constraints applied — one round trip, never two.
+- Every URL param push that changes a filter deletes the `page` param (enforced in `buildParams()`).
+- Server-side search: `.or(first_name.ilike, last_name.ilike, phone.ilike, email.ilike)` — 500ms debounce in `LeadsFilters`, `idx_leads_phone_text` index.
+- Column visibility: `useLeadColumnPreferences(userId)` — localStorage key `eia:leads:columns:${userId}:v1`; 11 columns; `status` and `name` locked.
+
+---
+
+The pipeline is clean end-to-end. All known bugs from the original audit have been resolved. The SLA Engine, atomic round-robin, lead dedup, column picker, server-side search, and RPC consolidations are all in production state.

@@ -1,10 +1,13 @@
-import { Suspense }              from 'react';
-import { redirect }              from 'next/navigation';
-import { getCurrentProfile }     from '@/lib/services/profiles-service';
-import { PerformanceAsync }      from './PerformanceAsync';
-import { PerformanceSkeleton }   from './PerformanceSkeleton';
+import { Suspense }                  from 'react';
+import { redirect }                  from 'next/navigation';
+import { getCurrentProfile }         from '@/lib/services/profiles-service';
+import { PerformanceAsync }          from './PerformanceAsync';
+import { PerformanceSkeleton }       from './PerformanceSkeleton';
+import { ManagerPerformanceSkeleton } from './ManagerPerformanceSkeleton';
+import { ManagerPerformanceAsync }   from './ManagerPerformanceAsync';
+import { FounderPerformanceShell }   from './FounderPerformanceShell';
 import { PerformancePeriodSelector } from '@/components/performance/PerformancePeriodSelector';
-import type { PerformancePeriod } from '@/lib/services/performance-service';
+import type { PerformancePeriod }    from '@/lib/services/performance-service';
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -29,7 +32,7 @@ function parsePeriod(raw: string | undefined): PerformancePeriod {
 }
 
 // ─────────────────────────────────────────────
-// Motivational footer — server component, Lia's voice
+// Motivational footer — server component, Lia's voice (agent view only)
 // ─────────────────────────────────────────────
 
 function PerformanceMotivationalFooter({
@@ -92,65 +95,79 @@ export default async function PerformancePage({
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
 
-  // Access gate: performance self-view is agent-only in Phase 1
-  if (profile.role !== 'agent') redirect('/dashboard');
+  if (profile.role === 'guest') redirect('/dashboard');
 
-  const params = await searchParams;
+  const params    = await searchParams;
   const rawPeriod = typeof params.period === 'string' ? params.period : undefined;
   const period    = parsePeriod(rawPeriod);
 
-  // Pre-fetch effort metrics for the motivational footer.
-  // These are already loaded inside PerformanceAsync — we use a lightweight
-  // import just for the footer sentence (leadsWon + inDiscussionCount).
-  // We avoid an extra DB call by importing from the service directly.
-  // Note: the footer renders server-side with the current period's data.
-  const { getCoreFourMetrics, getEffortMetrics } = await import(
-    '@/lib/services/performance-service'
-  );
-  const [coreForFooter, effortForFooter] = await Promise.all([
-    getCoreFourMetrics(profile.id, period),
-    getEffortMetrics(profile.id, period),
-  ]);
+  // ── Agent view (unchanged) ──────────────────────────────────────────────
+  if (profile.role === 'agent') {
+    const { getCoreFourMetrics, getEffortMetrics } = await import(
+      '@/lib/services/performance-service'
+    );
+    const [coreForFooter, effortForFooter] = await Promise.all([
+      getCoreFourMetrics(profile.id, period),
+      getEffortMetrics(profile.id, period),
+    ]);
+
+    return (
+      <main style={{ flex: 1, padding: 'var(--space-8)', maxWidth: '960px' }}>
+        <div style={{ marginBottom: 'var(--space-6)' }}>
+          <h1 className="type-page-title" style={{ margin: 0 }}>
+            Your Performance<span className="page-title-dot">.</span>
+          </h1>
+        </div>
+        <div style={{ marginBottom: 'var(--space-6)' }}>
+          <PerformancePeriodSelector current={period} />
+        </div>
+        <Suspense fallback={<PerformanceSkeleton />}>
+          <PerformanceAsync period={period} agentId={profile.id} domain={profile.domain} />
+        </Suspense>
+        <PerformanceMotivationalFooter
+          leadsWon={coreForFooter.leadsWon}
+          inDiscussionCount={effortForFooter.inDiscussionCount}
+          period={period}
+        />
+      </main>
+    );
+  }
+
+  // ── Manager view ───────────────────────────────────────────────────────
+  // domain is always read from the server-verified profile — never from URL params
+  if (profile.role === 'manager') {
+    return (
+      <main style={{ flex: 1, padding: 'var(--space-8)', minWidth: 0 }}>
+        <div style={{ marginBottom: 'var(--space-6)' }}>
+          <h1 className="type-page-title" style={{ margin: 0 }}>
+            Team Performance<span className="page-title-dot">.</span>
+          </h1>
+        </div>
+        <div style={{ marginBottom: 'var(--space-6)' }}>
+          <PerformancePeriodSelector current={period} />
+        </div>
+        <Suspense fallback={<ManagerPerformanceSkeleton />}>
+          <ManagerPerformanceAsync domain={profile.domain} period={period} />
+        </Suspense>
+      </main>
+    );
+  }
+
+  // ── Founder / admin view ────────────────────────────────────────────────
+  // Active domain tab comes from URL params (founder controls it via tab clicks).
+  const rawDomain = typeof params.domain === 'string' ? params.domain : undefined;
 
   return (
-    <main style={{ flex: 1, padding: 'var(--space-8)', maxWidth: '960px' }}>
-      {/* Page header */}
+    <main style={{ flex: 1, padding: 'var(--space-8)', minWidth: 0 }}>
       <div style={{ marginBottom: 'var(--space-6)' }}>
-        <p
-          style={{
-            fontFamily:    "var(--font-sans)",
-            fontSize:      "var(--text-2xs)",
-            fontWeight:    "var(--weight-medium)",
-            textTransform: "uppercase",
-            letterSpacing: "0.12em",
-            color:         "var(--theme-text-tertiary)",
-            margin:        0,
-            marginBottom:  "var(--space-1)",
-          }}
-        >
-          {PERIOD_LABELS[period]}
-        </p>
         <h1 className="type-page-title" style={{ margin: 0 }}>
-          Your Performance<span className="page-title-dot">.</span>
+          Performance<span className="page-title-dot">.</span>
         </h1>
       </div>
-
-      {/* Period selector */}
       <div style={{ marginBottom: 'var(--space-6)' }}>
         <PerformancePeriodSelector current={period} />
       </div>
-
-      {/* Main data — Suspense boundary shows skeleton while loading */}
-      <Suspense fallback={<PerformanceSkeleton />}>
-        <PerformanceAsync period={period} agentId={profile.id} domain={profile.domain} />
-      </Suspense>
-
-      {/* Motivational footer — Lia's quiet voice */}
-      <PerformanceMotivationalFooter
-        leadsWon={coreForFooter.leadsWon}
-        inDiscussionCount={effortForFooter.inDiscussionCount}
-        period={period}
-      />
+      <FounderPerformanceShell period={period} rawDomain={rawDomain} />
     </main>
   );
 }

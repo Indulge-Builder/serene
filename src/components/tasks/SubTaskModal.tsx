@@ -36,11 +36,7 @@ import {
   CalendarDays,
   User,
   AlertCircle,
-  Clock,
   CheckCircle2,
-  XCircle,
-  RefreshCw,
-  PlayCircle,
   Trash2,
   GripVertical,
   Plus,
@@ -70,6 +66,7 @@ import { formatDate } from "@/lib/utils/dates";
 import { toast } from "@/lib/toast";
 import { TASK_STATUS, TASK_PRIORITY } from "@/lib/constants/task-constants";
 import { TaskRemarksPanel, type TaskRemarkWithAuthor } from "@/components/tasks/TaskRemarksPanel";
+import { TaskStatusIcon } from "@/components/tasks/TaskStatusIcon";
 import { Avatar } from "@/components/ui/Avatar";
 import { InfoRow } from "@/components/ui/InfoRow";
 import type {
@@ -106,21 +103,6 @@ const ALL_PRIORITIES: TaskPriority[] = ["urgent", "high", "normal"];
 
 function truncate(str: string, max: number): string {
   return str.length > max ? str.slice(0, max) + "…" : str;
-}
-
-// ─── Status icon ─────────────────────────────────────────────────────────────
-
-function StatusIcon({ status, size = 14 }: { status: TaskStatus; size?: number }) {
-  const s = { width: size, height: size, strokeWidth: 1.5 };
-  switch (status) {
-    case "to_do":       return <Clock        style={s} />;
-    case "in_progress": return <PlayCircle   style={s} />;
-    case "in_review":   return <RefreshCw    style={s} />;
-    case "completed":   return <CheckCircle2 style={s} />;
-    case "error":       return <AlertCircle  style={s} />;
-    case "cancelled":   return <XCircle      style={s} />;
-    default:            return <Clock        style={s} />;
-  }
 }
 
 // ─── Eyebrow label ────────────────────────────────────────────────────────────
@@ -731,7 +713,7 @@ export function SubTaskModal({
                     whiteSpace:   "nowrap",
                   }}
                 >
-                  <StatusIcon status={status} size={11} />
+                  <TaskStatusIcon status={status} size={11} />
                   {statusCfg.label}
                 </button>
 
@@ -780,7 +762,7 @@ export function SubTaskModal({
                               textAlign:   "left",
                             }}
                           >
-                            <StatusIcon status={s} size={12} />
+                            <TaskStatusIcon status={s} size={12} />
                             {cfg.label}
                           </button>
                         );

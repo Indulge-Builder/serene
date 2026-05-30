@@ -29,7 +29,7 @@ type SortableWidgetProps = WidgetProps & {
   onRemove: (id: string) => void;
 };
 
-function SortableWidget({ widgetId, editMode, onRemove, userId, role, domain }: SortableWidgetProps) {
+function SortableWidget({ widgetId, editMode, onRemove, userId, role, domain, initialData }: SortableWidgetProps) {
   const definition = WIDGET_MAP[widgetId];
   const {
     attributes,
@@ -79,6 +79,7 @@ function SortableWidget({ widgetId, editMode, onRemove, userId, role, domain }: 
         userId={userId}
         role={role}
         domain={domain}
+        initialData={initialData}
       />
     </div>
   );
@@ -86,7 +87,7 @@ function SortableWidget({ widgetId, editMode, onRemove, userId, role, domain }: 
 
 type DashboardCanvasProps = WidgetProps;
 
-export function DashboardCanvas({ userId, role, domain }: DashboardCanvasProps) {
+export function DashboardCanvas({ userId, role, domain, initialData }: DashboardCanvasProps) {
   const { layout, removeWidget, reorderWidgets, resetToDefaults } = useDashboardLayout(userId, role);
   const [editMode, setEditMode] = useState(false);
 
@@ -192,6 +193,7 @@ export function DashboardCanvas({ userId, role, domain }: DashboardCanvasProps) 
                 userId={userId}
                 role={role}
                 domain={domain}
+                initialData={initialData}
               />
             ))}
           </div>

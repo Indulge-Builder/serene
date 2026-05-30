@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { getAgentRecentActivityAction } from '@/lib/actions/dashboard';
-import type { AgentActivity } from '@/lib/services/dashboard-service';
+import type { DashboardAgentActivity } from '@/lib/types';
 import type { WidgetProps } from '../DashboardWidgetSlot';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -28,7 +28,7 @@ function formatRelativeTime(createdAt: string): string {
   return `${diffDay}d ago`;
 }
 
-function describeActivity(activity: AgentActivity): string {
+function describeActivity(activity: DashboardAgentActivity): string {
   const base = ACTION_LABELS[activity.action_type] ?? activity.action_type;
   if (!activity.lead_name) return base;
 
@@ -41,7 +41,7 @@ function describeActivity(activity: AgentActivity): string {
   return `${base} · ${activity.lead_name}`;
 }
 
-function ActivityItem({ activity }: { activity: AgentActivity }) {
+function ActivityItem({ activity }: { activity: DashboardAgentActivity }) {
   return (
     <motion.div
       layout
@@ -82,16 +82,16 @@ function ActivityItem({ activity }: { activity: AgentActivity }) {
   );
 }
 
-export function AgentActivityWidget({ userId }: WidgetProps) {
-  const [activities, setActivities] = useState<AgentActivity[]>([]);
-  const [loaded, setLoaded]         = useState(false);
+export function AgentActivityWidget({ userId, initialData }: WidgetProps) {
+  const seed = initialData?.agent_activity ?? null;
+  const [activities, setActivities] = useState<DashboardAgentActivity[]>(seed ?? []);
+  const [loaded, setLoaded]         = useState(seed !== null);
   const mountId    = useId();
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
 
-  // Initial load via server action (satisfies P-01 — no useEffect for data fetching
-  // since we use startTransition via the action; initial fetch is in useEffect
-  // because we need the component to mount first to set up Realtime)
+  // Only fetch on mount when no server-provided initialData
   useEffect(() => {
+    if (seed !== null) return;
     let cancelled = false;
     getAgentRecentActivityAction(userId).then((result) => {
       if (!cancelled && result.data) {
@@ -132,7 +132,7 @@ export function AgentActivityWidget({ userId }: WidgetProps) {
           };
 
           setActivities((prev) => {
-            const activity: AgentActivity = {
+            const activity: DashboardAgentActivity = {
               id:          newRow.id,
               action_type: newRow.action_type,
               details:     newRow.details,

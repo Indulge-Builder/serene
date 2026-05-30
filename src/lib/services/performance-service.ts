@@ -10,6 +10,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import type { AppDomain, CallOutcome } from '@/lib/types/database';
+import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
 
 // ─────────────────────────────────────────────
 // Types
@@ -530,4 +531,284 @@ export async function getTeamBenchmarks(
     avgResponseTimeMinutes,
     agentCount,
   };
+}
+
+// ─────────────────────────────────────────────
+// Agent Roster Performance
+// Single query joining profiles + lead aggregates for manager / founder view.
+// Never N+1: one flat Supabase query with JavaScript aggregation on the result.
+// agentCount < 1 → returns empty array immediately (nothing to show).
+// ─────────────────────────────────────────────
+
+export async function getAgentRosterPerformance(
+  domain:   AppDomain,
+  dateFrom: string,
+  dateTo:   string,
+): Promise<AgentRosterRow[]> {
+  const supabase = await createClient();
+
+  // ── 1. Agent roster ──────────────────────────────────────────────────────
+  const { data: agentRows } = await supabase
+    .from('profiles')
+    .select('id, full_name, avatar_url')
+    .eq('domain', domain)
+    .eq('role', 'agent')
+    .eq('is_active', true)
+    .order('full_name', { ascending: true });
+
+  const agents = agentRows ?? [];
+  if (agents.length === 0) return [];
+
+  const agentIds = agents.map((a) => a.id as string);
+
+  // ── 2. All leads assigned to any agent in the domain in the period ───────
+  const { data: leadRows } = await supabase
+    .from('leads')
+    .select('id, assigned_to, status, deal_amount')
+    .in('assigned_to', agentIds)
+    .is('archived_at', null)
+    .gte('created_at', dateFrom)
+    .lte('created_at', dateTo);
+
+  const leads = leadRows ?? [];
+
+  // ── 3. First-touch response times for all agents ─────────────────────────
+  const { data: responseRows } = await supabase
+    .from('lead_activities')
+    .select('actor_id, created_at, lead:leads!lead_activities_lead_id_fkey(created_at)')
+    .in('actor_id', agentIds)
+    .eq('action_type', 'status_changed')
+    .filter('details->>new_status', 'eq', 'touched')
+    .gte('created_at', dateFrom)
+    .lte('created_at', dateTo);
+
+  // Per-agent aggregation
+  type AgentAgg = {
+    total: number;
+    won: number;
+    dealAmount: number;
+    wonCount: number;
+    lostCount: number;
+    responseDiffs: number[];
+  };
+
+  const agg: Record<string, AgentAgg> = {};
+  for (const a of agents) {
+    agg[a.id as string] = { total: 0, won: 0, dealAmount: 0, wonCount: 0, lostCount: 0, responseDiffs: [] };
+  }
+
+  for (const lead of leads) {
+    const aid = lead.assigned_to as string;
+    if (!agg[aid]) continue;
+    agg[aid].total += 1;
+    if (lead.status === 'won') {
+      agg[aid].won += 1;
+      agg[aid].wonCount += 1;
+      agg[aid].dealAmount += (lead.deal_amount ?? 0) as number;
+    }
+    if (lead.status === 'lost') {
+      agg[aid].lostCount += 1;
+    }
+  }
+
+  for (const row of responseRows ?? []) {
+    const aid  = row.actor_id as string;
+    const lead = Array.isArray(row.lead) ? row.lead[0] : row.lead;
+    if (!lead?.created_at || !agg[aid]) continue;
+    const diffMs = new Date(row.created_at).getTime() - new Date(lead.created_at).getTime();
+    if (diffMs >= 0) agg[aid].responseDiffs.push(diffMs / 60000);
+  }
+
+  return agents.map((a) => {
+    const data = agg[a.id as string];
+    const closed = data.wonCount + data.lostCount;
+    const conversionRate = closed > 0 ? (data.wonCount / closed) * 100 : null;
+    const avgResponseTimeMinutes =
+      data.responseDiffs.length > 0
+        ? data.responseDiffs.reduce((s, v) => s + v, 0) / data.responseDiffs.length
+        : null;
+    return {
+      id:                     a.id as string,
+      full_name:              a.full_name as string,
+      avatar_url:             (a.avatar_url as string | null) ?? null,
+      totalLeads:             data.total,
+      leadsWon:               data.won,
+      conversionRate,
+      totalDealAmount:        data.dealAmount,
+      avgResponseTimeMinutes,
+    };
+  });
+}
+
+// ─────────────────────────────────────────────
+// Agent Detail Metrics
+// All metrics for a single agent in a given date range.
+// Single Promise.all internally — never sequential awaits.
+// callsToday uses IST midnight boundary via getPeriodDateRange('today' workalike).
+// ─────────────────────────────────────────────
+
+export async function getAgentDetailMetrics(
+  agentId:  string,
+  domain:   AppDomain,
+  dateFrom: string,
+  dateTo:   string,
+): Promise<AgentDetailMetrics> {
+  const supabase = await createClient();
+
+  // callsToday: use IST midnight boundary (same logic as getPeriodDateRange('this_week'))
+  const nowIst = new Date(new Date().getTime() + IST_OFFSET_MS);
+  nowIst.setUTCHours(0, 0, 0, 0);
+  const todayStart = new Date(nowIst.getTime() - IST_OFFSET_MS).toISOString();
+
+  const [
+    leadsData,
+    callsTodayData,
+    followUpsData,
+    responseData,
+    notesData,
+  ] = await Promise.all([
+    // All leads in period for pipeline + won/deal
+    supabase
+      .from('leads')
+      .select('id, status, deal_amount, form_data')
+      .eq('assigned_to', agentId)
+      .is('archived_at', null)
+      .gte('created_at', dateFrom)
+      .lte('created_at', dateTo),
+
+    // callsToday: call notes by this agent since IST midnight
+    supabase
+      .from('lead_notes')
+      .select('id', { count: 'exact', head: true })
+      .eq('author_id', agentId)
+      .not('call_outcome', 'is', null)
+      .gte('created_at', todayStart),
+
+    // followUpsCompleted: call notes on leads that were already touched/nurturing
+    supabase
+      .from('lead_notes')
+      .select('id, lead:leads!lead_notes_lead_id_fkey(status)')
+      .eq('author_id', agentId)
+      .not('call_outcome', 'is', null)
+      .gte('created_at', dateFrom)
+      .lte('created_at', dateTo),
+
+    // response times for AgentDetailMetrics
+    supabase
+      .from('lead_activities')
+      .select('created_at, lead:leads!lead_activities_lead_id_fkey(created_at)')
+      .eq('actor_id', agentId)
+      .eq('action_type', 'status_changed')
+      .filter('details->>new_status', 'eq', 'touched')
+      .gte('created_at', dateFrom)
+      .lte('created_at', dateTo),
+
+    // call outcome breakdown
+    supabase
+      .from('lead_notes')
+      .select('call_outcome')
+      .eq('author_id', agentId)
+      .not('call_outcome', 'is', null)
+      .gte('created_at', dateFrom)
+      .lte('created_at', dateTo),
+  ]);
+
+  const leads    = leadsData.data ?? [];
+  const callsTd  = callsTodayData.count ?? 0;
+  const followRows = followUpsData.data ?? [];
+  const notes    = notesData.data ?? [];
+
+  // newLeadsAttended: leads that moved past 'new' status in the period
+  const newLeadsAttended = leads.filter((l) => l.status !== 'new').length;
+
+  // followUpsCompleted: calls on leads already in touched/nurturing at time of note
+  let followUpsCompleted = 0;
+  for (const row of followRows) {
+    const lead = Array.isArray(row.lead) ? row.lead[0] : row.lead;
+    if (lead && (lead.status === 'touched' || lead.status === 'nurturing' || lead.status === 'in_discussion')) {
+      followUpsCompleted += 1;
+    }
+  }
+
+  // won / deal amount
+  const wonLeads  = leads.filter((l) => l.status === 'won');
+  const leadsWon  = wonLeads.length;
+  const totalDealAmount = wonLeads.reduce((s, l) => s + ((l.deal_amount ?? 0) as number), 0);
+
+  // deal type breakdown from form_data.deal_type (if present)
+  const dealTypeMap: Record<string, { count: number; totalAmount: number }> = {};
+  for (const l of wonLeads) {
+    const fd = l.form_data as Record<string, unknown> | null;
+    const dt = (fd?.deal_type as string | undefined) ?? 'Other';
+    if (!dealTypeMap[dt]) dealTypeMap[dt] = { count: 0, totalAmount: 0 };
+    dealTypeMap[dt].count += 1;
+    dealTypeMap[dt].totalAmount += (l.deal_amount ?? 0) as number;
+  }
+  const dealTypeBreakdown = Object.entries(dealTypeMap).map(([dealType, v]) => ({
+    dealType,
+    count: v.count,
+    totalAmount: v.totalAmount,
+  }));
+
+  // pipeline breakdown
+  const statusCountMap: Record<string, number> = {};
+  for (const l of leads) {
+    statusCountMap[l.status] = (statusCountMap[l.status] ?? 0) + 1;
+  }
+  const pipelineBreakdown = Object.entries(statusCountMap).map(([status, count]) => ({ status, count }));
+
+  // call outcome breakdown
+  type CO = import('@/lib/types/database').CallOutcome;
+  const countMap: Partial<Record<CO, number>> = {};
+  for (const row of notes) {
+    const outcome = row.call_outcome as CO | null;
+    if (!outcome) continue;
+    countMap[outcome] = (countMap[outcome] ?? 0) + 1;
+  }
+  const callOutcomeBreakdown = Object.entries(countMap).map(([outcome, count]) => ({
+    outcome: outcome as CO,
+    count:   count as number,
+  }));
+
+  void responseData; // fetched but not used in detail panel (used in roster)
+
+  return {
+    callsToday:           callsTd,
+    newLeadsAttended,
+    followUpsCompleted,
+    leadsWon,
+    totalDealAmount,
+    dealTypeBreakdown,
+    pipelineBreakdown,
+    callOutcomeBreakdown,
+  };
+}
+
+// ─────────────────────────────────────────────
+// Domains with leads
+// Returns only domains that have ≥1 lead in the period.
+// Used by FounderPerformanceShell to show only active domain tabs.
+// ─────────────────────────────────────────────
+
+export async function getDomainsWithLeads(
+  dateFrom: string,
+  dateTo:   string,
+): Promise<AppDomain[]> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from('leads')
+    .select('domain')
+    .gte('created_at', dateFrom)
+    .lte('created_at', dateTo)
+    .is('archived_at', null)
+    .not('domain', 'is', null);
+
+  if (!data || data.length === 0) return [];
+
+  const domainSet = new Set<AppDomain>();
+  for (const row of data) {
+    if (row.domain) domainSet.add(row.domain as AppDomain);
+  }
+  return [...domainSet].sort();
 }

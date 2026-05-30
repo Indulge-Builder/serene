@@ -303,7 +303,20 @@ toast.resolve(id, "success", "Saved!");
 
 ## Task Components
 
-`src/components/tasks/` — SubTaskModal, TaskRemarksPanel, AssigneePickerModal.
+`src/components/tasks/` — SubTaskModal, TaskRemarksPanel, AssigneePickerModal, TaskStatusIcon.
+
+### TaskStatusIcon
+
+`src/components/tasks/TaskStatusIcon.tsx` — **canonical task status Lucide icon**. Never define inline `StatusIcon` switches in task components.
+
+Props:
+```
+status:    TaskStatus
+className?: string
+size?:     number   — edge length in px (default 13)
+```
+
+Icon colour comes from `TASK_STATUS[status].color` in `lib/constants/task-constants.ts`. Status pill backgrounds/text and remark timeline chips use `pillBg`/`pillText` and `remarkBg`/`remarkColor`/`remarkBorder` on the same constant — no local status colour maps.
 
 ### SubTaskModal
 
@@ -357,6 +370,8 @@ currentUserName:      string
 initialRemarks:       TaskRemarkWithAuthor[]
 composerPlaceholder?: string   — defaults to "Add an update…"
 ```
+
+**Data seeding:** `remarks` state is seeded directly from `initialRemarks` — no mount fetch. `seenIds` ref is seeded from `initialRemarks.map(r => r.id)` on each `taskId` change to prevent Realtime double-append. Call sites must fetch remarks via `getTaskRemarksAction(taskId)` **before** opening the modal (gate the render on `selectedTaskRemarks !== null`) and clear on close — see `PersonalTasksTab`, `GroupTaskWorkspace`, `GroupTasksTab` for the canonical pattern.
 
 Realtime: subscribes to `task_remarks` filtered by `task_id` on mount. **Channel name: `task-remarks-${taskId}-${mountId}`** — `mountId` (from `useId()`) prevents Strict Mode double-mount channel collisions. Unique per task, prevents cross-task subscription bleed.
 
@@ -497,6 +512,25 @@ callerDomain:    AppDomain
 **Due date chip colours:** overdue → `var(--color-danger-text)`, due today → `var(--color-warning-text)`, future → `var(--theme-text-tertiary)`.
 
 **Empty state:** Playfair italic "All clear for now." — only shown when no active tasks.
+
+---
+
+## WhatsApp Components — `src/components/whatsapp/`
+
+| Component | File | Responsibility |
+| --- | --- | --- |
+| `WhatsAppShell` | `WhatsAppShell.tsx` | `'use client'` two-panel layout. Owns conversation list state, active conversation selection, Realtime on `whatsapp_conversations`, cursor pagination, unread badge. |
+| `ConversationList` | `ConversationList.tsx` | `'use client'` left panel body. SearchBar + 300ms debounced search action. IntersectionObserver load-more (P-05). End-state "That's everything." |
+| `ConversationRow` | `ConversationRow.tsx` | Single conversation item. Unread dot, lead name, phone, timestamp, resolved badge. Active left-border accent state. |
+| `ConversationPanel` | `ConversationPanel.tsx` | `'use client'` right panel. Three zones: header (name, phone, resolve/reopen), message list (Realtime + date groups), composer (optimistic send, char count, resolved banner). |
+| `MessageBubble` | `MessageBubble.tsx` | Single message. Inbound (`paper-subtle`) / outbound (`accent-surface`). Delivery icons. Media placeholder. Bot label. |
+| `EmptyConversationState` | `EmptyConversationState.tsx` | Right panel empty state. Framer Motion entrance. Never "No data available." |
+
+**Channel name pattern:** `wa-messages-${conversationId}-${mountId}` and `wa-conversations-${userId}-${mountId}` — `useId()` mount suffix required for StrictMode safety. Both subscriptions use `supabase.removeChannel(channel)` on unmount.
+
+**Resolve/Reopen:** visible only to manager, admin, founder. Check against `MANAGER_ROLES = ['manager', 'admin', 'founder']`. Never hardcode role strings.
+
+**Server action wrappers:** `searchConversationsAction`, `getConversationsAction`, `getMessagesAction` in `src/lib/actions/whatsapp.ts` — client components must use these, not `whatsapp-service.ts` directly (server Supabase client restriction).
 
 ---
 

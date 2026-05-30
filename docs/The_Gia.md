@@ -1160,10 +1160,76 @@ The Trigger.dev job (`fireLeadSlaTask`) re-reads the lead from DB on every execu
 
 `won`, `lost`, `junk` → cancel all SLA timers, schedule none.
 
-## 16. Decision Log
+## 16. File Map (Current)
+
+```
+src/
+├── app/
+│   └── (dashboard)/
+│       └── leads/
+│           ├── page.tsx                              ← lead list (Suspense-split, thin orchestrator)
+│           ├── CLAUDE.md
+│           └── [id]/
+│               └── page.tsx                          ← lead dossier
+│
+├── components/
+│   └── leads/
+│       ├── CLAUDE.md
+│       ├── LeadsTable.tsx                            ← column picker + drag-to-reorder
+│       ├── LeadsFilters.tsx                          ← URL-param filter bar (client)
+│       ├── LeadsTableAsync.tsx                       ← async server component (Suspense child)
+│       ├── LeadsTableSkeleton.tsx
+│       ├── LeadsPagination.tsx
+│       ├── LeadColumnPicker.tsx                      ← popover, @dnd-kit sortable
+│       ├── AddLeadModal.tsx                          ← manual lead creation
+│       ├── AddLeadButton.tsx
+│       ├── LeadInfoCard.tsx                          ← client component (ad creative trigger)
+│       ├── StatusActionPanel.tsx
+│       ├── CalledModal.tsx
+│       ├── CampaignVideoModal.tsx
+│       ├── DynamicFormResponses.tsx
+│       ├── AgentScratchpad.tsx
+│       ├── LeadNotesSection.tsx
+│       ├── LeadJourneyTimeline.tsx
+│       ├── LeadDossierTasksAsync.tsx
+│       └── PersonalDetailsCard.tsx
+│
+├── lib/
+│   ├── actions/
+│   │   └── leads.ts                                  ← addLeadCallNote, updateLeadStatus, assignLead,
+│   │                                                    createManualLead, updatePersonalDetails,
+│   │                                                    updateScratchpad, listAgentsForDomain
+│   ├── services/
+│   │   ├── leads-service.ts                          ← all lead queries + campaign metrics + filter options
+│   │   └── lead-ingestion.ts                         ← ingestLead, round-robin, dedup, raw payload log
+│   ├── validations/
+│   │   └── lead-schema.ts
+│   └── constants/
+│       ├── lead-statuses.ts
+│       ├── call-outcomes.ts
+│       ├── task-types.ts
+│       ├── lead-columns.ts                           ← 11 columns, locked: status + name
+│       ├── lead-sources.ts
+│       └── campaign-domain-map.ts
+│
+└── app/
+    └── api/
+        └── webhooks/
+            └── leads/
+                └── route.ts                          ← POST handler, Bearer auth, rate limit
+```
+
+---
+
+## 17. Decision Log
 
 | Date | Decision                      | Chosen                                                                                                                                                                     | Why                                                                                                                                                                                                                          |
 | ---- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | —    | Notes: private vs common type | Removed `note_type` enum entirely. All notes in `lead_notes` are visible to anyone with domain access. Private working thoughts belong in `leads.private_scratchpad` only. | Scratchpad already covers the private use case. Splitting notes into two visibility tiers adds RLS complexity, a lock icon to build, and a choice agents don't need to make on every note.                                   |
 | —    | Scratchpad on reassignment    | Clear `private_scratchpad` when lead is reassigned                                                                                                                         | Scratchpad is named and designed as private to the assigned agent. Passing it to the next agent violates that contract. If context needs to transfer, the outgoing agent writes a note before reassignment.                  |
 | —    | Task architecture             | Core `tasks` table + per-module extension tables (`task_gia_meta`, etc.)                                                                                                   | A single god table with nullable module-specific columns becomes unmaintainable at scale. Extension tables isolate module concerns — adding or deprecating a module never touches the core table or any other module's data. |
+| 2026-05-28 | Atomic round-robin | `get_next_round_robin_agent()` SECURITY DEFINER function with `SELECT FOR UPDATE SKIP LOCKED` | Two concurrent webhook calls cannot pick the same agent. O(agents) not O(leads). Application-layer approach had a race window under concurrent load. |
+| 2026-05-28 | Lead dedup strategy | Phone as dedup key. Active lead → duplicate_submission activity, return existing lead. Terminal lead → new lead with previous_lead_id FK. | A phone number in an active conversation should never fork into two dossiers. After a terminal resolution the lead is effectively new — they have returned. |
+| 2026-05-28 | Campaign analytics in leads-service | `getCampaignMetrics` and `getCampaignDetailMetrics` added to `leads-service.ts` | Campaign data is directly derived from the `leads` table. No separate module concern justifies a separate service file. |
+| 2026-05-29 | addLeadCallNote and updateLeadStatus as RPCs | Collapsed 9 and 5 sequential DB awaits respectively into single SECURITY DEFINER RPC transactions (migrations 0030, 0031). SLA side-effects remain in action layer. | Sequential awaits leave partial state visible between steps. Single transaction is atomic. SLA involves Trigger.dev calls that cannot be rolled back and are not part of the data mutation concern. |
+| 2026-05-29 | SLA timer table (lead_sla_timers) writable by service role only | No INSERT/UPDATE/DELETE RLS policies for regular users — service role only via Trigger.dev and `fireSlaBreachAction`. | SLA timers are infrastructure state, not user-facing data. Regular users have SELECT only (scoped by their access level) for auditability. Mutation is only ever triggered by the SLA engine, never by user action. |

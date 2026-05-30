@@ -115,6 +115,10 @@
 | Q-10 | **`decodeURIComponent` in route handlers must be wrapped in `try/catch → notFound()`.** A malformed percent-sequence (e.g. `/campaigns/%GG`) throws a `URIError` at the server boundary, producing a 500 instead of a 404. Every `[id]` segment that will be decoded must be guarded: `try { name = decodeURIComponent(id) } catch { notFound() }`. |
 | Q-11 | **Every `switch` over a union type must be exhaustive. No `default` branch.** Use `assertNever(x)` from `src/lib/utils/assert-never.ts` as the final return. TypeScript will error at build time if any case is unhandled. A `default` branch absorbs missing cases silently — it is a violation. Applies to: `NotificationType`, `LeadStatus`, `CallOutcome`, `TaskType`, `ToastType`, and any future union enum. |
 | Q-12 | **Before creating any component, hook, util, or service function, search the codebase for an existing equivalent first. Search by behaviour, not by name — "date picker" not just "DatePicker", "format duration" not just "formatDuration".** If an equivalent exists: extend it or compose it. If a near-equivalent exists: refactor it to cover both cases. Creating a duplicate is a violation regardless of whether the names differ. Applies to: components, hooks, utils, service functions, constants, Zod schemas. |
+| Q-13 | **SECURITY DEFINER functions must never accept a caller-supplied scope parameter (domain, user_id, role).** The function runs as postgres, bypassing RLS. Domain scoping must be replicated inside the function body using `get_user_role()` and `get_user_domain()` — never trusted from the caller. Reference: `get_group_task_summaries` (migration 0020 rewrite). |
+| Q-14 | **Supabase Realtime channel names must include a mount-scoped nonce (`useId()`).** Pattern: `` `table-${id}-${mountId}` ``. React 18 Strict Mode double-mounts effects — without the nonce, the second mount reuses the already-subscribed channel object and throws "cannot add callbacks after subscribe()". `useId()` produces a stable mount-scoped string that is unique per mount even in Strict Mode. |
+| Q-15 | **Initial data fetch in a widget or client component must live in `useEffect`, never as a render-phase guard.** `startTransition` is a side effect and cannot be called during the render phase. Pattern: `useEffect(() => { let cancelled = false; startTransition(async () => { const r = await action(); if (!cancelled && r.data) setState(r.data); }); return () => { cancelled = true; }; }, []);` The `cancelled` flag guards against `setState` on an unmounted component. |
+| Q-16 | **`unstable_cache` keys must include every dimension that scopes the query.** For domain-scoped queries: always include `domain`. For user-scoped queries: always include `userId`. Omitting any dimension allows cross-user or cross-domain cache hits. Reference: `getGroupTasks` in `tasks-service.ts` (key includes `domain`). |
 
 ---
 
@@ -171,6 +175,13 @@ NEVER  use a raw RPC bigint field directly in a component — cast to Number() i
 NEVER  call decodeURIComponent in a route handler without a try/catch → notFound() guard (Q-10)
 NEVER  use a default branch in a switch over a union type — use assertNever() from lib/utils/assert-never.ts (Q-11)
 NEVER  create a component, hook, util, or service without first searching the codebase for an existing equivalent — search by behaviour, not filename (Q-12)
+NEVER  accept a caller-supplied domain/role/userId parameter in a SECURITY DEFINER function — replicate the access check inside the function body (Q-13)
+NEVER  use a bare table name as a Realtime channel name — always append a mount-scoped useId() nonce (Q-14)
+NEVER  call startTransition during the render phase — always inside useEffect (Q-15)
+NEVER  omit the domain from an unstable_cache key when the underlying query is domain-scoped (Q-16)
+NEVER  pass --theme-accent or any CSS variable directly to a Recharts fill/stroke prop — use useChartTokens() via getComputedStyle
+NEVER  use text-gray-* or bg-gray-* or bg-white in Tailwind — use CSS variable tokens
+NEVER  place backdrop-filter/blur on anything other than TopBar, mobile sidebar overlay, or command palette
 ```
 
 ---
@@ -180,6 +191,12 @@ NEVER  create a component, hook, util, or service without first searching the co
 When a rule must change or an exception must be granted, it is logged here.
 A rule changed without a log entry is not a rule change. It is a violation.
 
-| Date       | Rule | Old | New                       | Why              | Who |
-| ---------- | ---- | --- | ------------------------- | ---------------- | --- |
-| 2026-05-26 | —    | —   | Initial rules established | Foundation build | —   |
+| Date       | Rule  | Old | New                                         | Why                                                | Who |
+| ---------- | ----- | --- | ------------------------------------------- | -------------------------------------------------- | --- |
+| 2026-05-26 | —     | —   | Initial rules established                   | Foundation build                                   | —   |
+| 2026-05-28 | Q-11  | —   | assertNever + no default branch             | Exhaustive switches; build-time safety             | —   |
+| 2026-05-29 | Q-12  | —   | Mandatory codebase search before creating   | Prevents duplicates; 33 patterns already replaced  | —   |
+| 2026-05-29 | Q-13  | —   | SECURITY DEFINER scope via function body    | Caller-supplied domain bypasses RLS entirely       | —   |
+| 2026-05-29 | Q-14  | —   | Realtime channel nonce (useId)              | Strict Mode double-mount channel collision         | —   |
+| 2026-05-29 | Q-15  | —   | startTransition in useEffect only           | startTransition is a side effect, not render-safe  | —   |
+| 2026-05-29 | Q-16  | —   | unstable_cache key must include domain      | Prevents cross-domain cache hits                   | —   |

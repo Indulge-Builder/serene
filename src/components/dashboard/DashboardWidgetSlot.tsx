@@ -4,6 +4,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { WIDGET_MAP, type WidgetSize } from '@/lib/constants/dashboard-widgets';
 import { WidgetSkeleton } from './WidgetSkeleton';
 import type { UserRole, AppDomain } from '@/lib/types/database';
+import type { DashboardSummary } from '@/lib/types';
 
 // Static dynamic import map — never use require() from a string.
 // Each widget is code-split independently. Roles that cannot see a widget
@@ -17,9 +18,11 @@ const WIDGET_COMPONENTS: Record<string, React.LazyExoticComponent<React.Componen
 };
 
 export type WidgetProps = {
-  userId: string;
-  role:   UserRole;
-  domain: AppDomain;
+  userId:       string;
+  role:         UserRole;
+  domain:       AppDomain;
+  /** Pre-fetched dashboard summary from the RSC. When present widgets skip their mount fetch. */
+  initialData?: DashboardSummary;
 };
 
 type DashboardWidgetSlotProps = WidgetProps & {
@@ -52,6 +55,7 @@ export function DashboardWidgetSlot({
   userId,
   role,
   domain,
+  initialData,
 }: DashboardWidgetSlotProps) {
   const definition = WIDGET_MAP[widgetId];
   const Component  = WIDGET_COMPONENTS[widgetId];
@@ -112,7 +116,7 @@ export function DashboardWidgetSlot({
 
       <Suspense fallback={<WidgetSkeleton size={size} />}>
         <MinSkeletonBoundary size={size}>
-          <Component userId={userId} role={role} domain={domain} />
+          <Component userId={userId} role={role} domain={domain} initialData={initialData} />
         </MinSkeletonBoundary>
       </Suspense>
     </div>

@@ -25,23 +25,18 @@ import {
   ChevronRight,
   Plus,
   User,
-  Clock,
-  PlayCircle,
-  RefreshCw,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  Loader,
   ExternalLink,
 } from 'lucide-react';
-import { createSubtaskAction, getGroupSubtasksAction } from '@/lib/actions/tasks';
+import { createSubtaskAction, getGroupSubtasksAction, getTaskRemarksAction } from '@/lib/actions/tasks';
 import { listAgentsForDomain } from '@/lib/actions/leads';
 import { formatRelativeTime } from '@/lib/utils/dates';
 import { toast } from '@/lib/toast';
 import { SubTaskModal } from '@/components/tasks/SubTaskModal';
+import { TaskStatusIcon } from '@/components/tasks/TaskStatusIcon';
 import { AssigneePickerModal, type AssignableUser } from '@/components/tasks/AssigneePickerModal';
 import { CreateGroupTaskModal } from '@/components/tasks/CreateGroupTaskModal';
-import type { TaskGroupRow, SubtaskWithAssignee } from '@/lib/services/tasks-service';
+import { TASK_STATUS } from '@/lib/constants/task-constants';
+import type { TaskGroupRow, SubtaskWithAssignee, TaskRemarkWithAuthor } from '@/lib/services/tasks-service';
 import { Avatar } from '@/components/ui/Avatar';
 import { AvatarStack } from '@/components/ui/AvatarStack';
 import type { Task, TaskGroup, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
@@ -67,43 +62,17 @@ const PRIORITY_BORDER: Record<TaskPriority, string> = {
   normal: 'var(--theme-paper-border)',
 };
 
-// ─── Status config ─────────────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<TaskStatus, { bg: string; text: string }> = {
-  to_do:       { bg: 'var(--theme-paper-border)',    text: 'var(--theme-text-secondary)' },
-  in_progress: { bg: 'var(--theme-accent)',           text: 'var(--theme-accent-fg)' },
-  in_review:   { bg: 'var(--color-info)',             text: 'var(--color-info-text)' },
-  completed:   { bg: 'var(--color-success)',          text: 'var(--color-success-text)' },
-  error:       { bg: 'var(--color-danger)',           text: 'var(--color-danger-text)' },
-  cancelled:   { bg: 'var(--theme-text-tertiary)',    text: 'var(--theme-text-inverse)' },
-};
-
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-
-function StatusIcon({ status, size = 13 }: { status: TaskStatus; size?: number }) {
-  const style = { width: size, height: size, strokeWidth: 1.5, flexShrink: 0 as const };
-  switch (status) {
-    case 'to_do':       return <Clock        style={style} />;
-    case 'in_progress': return <PlayCircle   style={style} />;
-    case 'in_review':   return <RefreshCw    style={style} />;
-    case 'completed':   return <CheckCircle2 style={style} />;
-    case 'error':       return <AlertCircle  style={style} />;
-    case 'cancelled':   return <XCircle      style={style} />;
-    default:            return <Loader       style={style} />;
-  }
-}
-
-
 // ─── Group row ─────────────────────────────────────────────────────────────────
 
 interface GroupRowProps {
-  group:           TaskGroupRow;
-  isExpanded:      boolean;
-  onToggle:        () => void;
-  currentUserId:   string;
-  currentUserName: string;
-  callerRole:      UserRole;
-  callerDomain:    AppDomain;
+  group:            TaskGroupRow;
+  isExpanded:       boolean;
+  onToggle:         () => void;
+  currentUserId:    string;
+  currentUserName:  string;
+  callerRole:       UserRole;
+  callerDomain:     AppDomain;
+  assignableUsers:  AssignableUser[];
 }
 
 function GroupRow({
@@ -114,6 +83,7 @@ function GroupRow({
   currentUserName,
   callerRole,
   callerDomain,
+  assignableUsers,
 }: GroupRowProps) {
   const [subtasks,         setSubtasks]         = useState<SubtaskWithAssignee[]>([]);
   const [subtasksLoaded,   setSubtasksLoaded]   = useState(false);
@@ -124,13 +94,24 @@ function GroupRow({
   const [subtaskTitle,     setSubtaskTitle]     = useState('');
   const [subtaskAssignee,  setSubtaskAssignee]  = useState<AssignableUser | null>(null);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
-  const [assignableUsers,  setAssignableUsers]  = useState<AssignableUser[]>([]);
   const [isSaving,         setIsSaving]         = useState(false);
   const subtaskInputRef = useRef<HTMLInputElement>(null);
 
   // Task modal state
   const [selectedSubtask,         setSelectedSubtask]         = useState<SubtaskWithAssignee | null>(null);
+  const [selectedSubtaskRemarks,  setSelectedSubtaskRemarks]  = useState<TaskRemarkWithAuthor[] | null>(null);
   const [modalOpen,               setModalOpen]               = useState(false);
+
+  function handleOpenSubtask(subtask: SubtaskWithAssignee) {
+    setSelectedSubtask(subtask);
+    setSelectedSubtaskRemarks(null);
+    getTaskRemarksAction(subtask.id).then((r) => {
+      setSelectedSubtaskRemarks(r.data ?? []);
+    }).catch(() => {
+      setSelectedSubtaskRemarks([]);
+    });
+    setModalOpen(true);
+  }
 
   const [, startTransition] = useTransition();
 
@@ -147,27 +128,6 @@ function GroupRow({
     });
     return () => { cancelled = true; };
   }, [isExpanded, subtasksLoaded, group.id]);
-
-  // Load assignable users when first expanded (manager+)
-  useEffect(() => {
-    if (!isExpanded) return;
-    if (!['manager', 'admin', 'founder'].includes(callerRole)) return;
-    if (assignableUsers.length > 0) return;
-
-    listAgentsForDomain(callerDomain).then((result) => {
-      if (result.data) {
-        setAssignableUsers(
-          result.data.map((a: { id: string; full_name: string }) => ({
-            id:         a.id,
-            full_name:  a.full_name,
-            avatar_url: null,
-            role:       'agent' as const,
-            domain:     callerDomain,
-          })),
-        );
-      }
-    });
-  }, [isExpanded, callerRole, callerDomain, assignableUsers.length]);
 
   useEffect(() => {
     if (showAddSubtask) {
@@ -201,8 +161,8 @@ function GroupRow({
       setSubtaskTitle('');
       setSubtaskAssignee(null);
       setShowAddSubtask(false);
-      // Reload subtasks
-      setSubtasksLoaded(false);
+      // Append returned subtask — avoids a full getGroupSubtasksAction reload
+      setSubtasks((prev) => [...prev, result.data!]);
     });
   }, [subtaskTitle, subtaskAssignee, group.id, startTransition]);
 
@@ -215,7 +175,7 @@ function GroupRow({
   }
 
   const priorityBorder = PRIORITY_BORDER[group.priority];
-  const statusCfg      = STATUS_CONFIG[group.status];
+  const statusCfg      = TASK_STATUS[group.status];
   const progress       = group.subtask_count > 0
     ? Math.round((group.completed_count / group.subtask_count) * 100)
     : 0;
@@ -366,8 +326,8 @@ function GroupRow({
             gap:          'var(--space-1)',
             padding:      'var(--space-1) var(--space-2)',
             borderRadius: 'var(--radius-full)',
-            background:   statusCfg.bg,
-            color:        statusCfg.text,
+            background:   statusCfg.pillBg,
+            color:        statusCfg.pillText,
             fontFamily:   'var(--font-sans)',
             fontSize:     'var(--text-xs)',
             fontWeight:   'var(--weight-semibold)',
@@ -376,7 +336,7 @@ function GroupRow({
             boxShadow:    '0 1px 3px 0 rgb(0 0 0 / 0.06)',
           }}
         >
-          <StatusIcon status={group.status} size={11} />
+          <TaskStatusIcon status={group.status} size={11} />
           {TASK_STATUS_LABELS[group.status]}
         </span>
       </div>
@@ -429,18 +389,15 @@ function GroupRow({
                 </div>
               ) : (
                 subtasks.map((subtask, i) => {
-                  const subStatusCfg = STATUS_CONFIG[subtask.status];
+                  const subStatusCfg = TASK_STATUS[subtask.status];
                   return (
                     <div
                       key={subtask.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => { setSelectedSubtask(subtask); setModalOpen(true); }}
+                      onClick={() => handleOpenSubtask(subtask)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          setSelectedSubtask(subtask);
-                          setModalOpen(true);
-                        }
+                        if (e.key === 'Enter' || e.key === ' ') handleOpenSubtask(subtask);
                       }}
                       style={{
                         display:      'flex',
@@ -482,8 +439,8 @@ function GroupRow({
                           gap:          'var(--space-1)',
                           padding:      'var(--space-px) var(--space-2)',
                           borderRadius: 'var(--radius-full)',
-                          background:   subStatusCfg.bg,
-                          color:        subStatusCfg.text,
+                          background:   subStatusCfg.pillBg,
+                          color:        subStatusCfg.pillText,
                           fontFamily:   'var(--font-sans)',
                           fontSize:     'var(--text-xs)',
                           fontWeight:   'var(--weight-semibold)',
@@ -492,7 +449,7 @@ function GroupRow({
                           boxShadow:    '0 1px 3px 0 rgb(0 0 0 / 0.06)',
                         }}
                       >
-                        <StatusIcon status={subtask.status} size={10} />
+                        <TaskStatusIcon status={subtask.status} size={10} />
                         {TASK_STATUS_LABELS[subtask.status]}
                       </span>
 
@@ -647,14 +604,14 @@ function GroupRow({
 
             {/* Subtask Modal */}
             <AnimatePresence>
-              {selectedSubtask && modalOpen && (
+              {selectedSubtask && modalOpen && selectedSubtaskRemarks !== null && (
                 <SubTaskModal
                   open={modalOpen}
-                  onClose={() => { setModalOpen(false); setSelectedSubtask(null); }}
+                  onClose={() => { setModalOpen(false); setSelectedSubtask(null); setSelectedSubtaskRemarks(null); }}
                   task={selectedSubtask as Task}
                   group={group as TaskGroup}
                   assignee={selectedSubtask.assignee ?? undefined}
-                  initialRemarks={[]}
+                  initialRemarks={selectedSubtaskRemarks}
                   callerProfile={{ id: currentUserId, role: callerRole, domain: callerDomain }}
                 />
               )}
@@ -697,6 +654,30 @@ export function GroupTasksTab({
 
   // Local group rows — prepend new groups without refetch
   const [groupRows, setGroupRows] = useState<TaskGroupRow[]>(initialRows);
+
+  // Assignable agents — fetched once here for manager+, passed to every GroupRow.
+  // Each GroupRow must not fetch independently — that would be N calls for N groups.
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+
+  useEffect(() => {
+    if (!['manager', 'admin', 'founder'].includes(callerRole)) return;
+    let cancelled = false;
+    listAgentsForDomain(callerDomain).then((result) => {
+      if (cancelled || !result.data) return;
+      setAssignableUsers(
+        result.data.map((a: { id: string; full_name: string }) => ({
+          id:         a.id,
+          full_name:  a.full_name,
+          avatar_url: null,
+          role:       'agent' as const,
+          domain:     callerDomain,
+        })),
+      );
+    });
+    return () => { cancelled = true; };
+  // callerRole and callerDomain are stable for the lifetime of this tab mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Create group task modal
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -788,6 +769,7 @@ export function GroupTasksTab({
                 currentUserName={currentUserName}
                 callerRole={callerRole}
                 callerDomain={callerDomain}
+                assignableUsers={assignableUsers}
               />
             </div>
           ))}

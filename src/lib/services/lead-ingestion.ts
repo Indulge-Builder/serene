@@ -184,3 +184,70 @@ export async function ingestLead(
 
   return { success: true, leadId, rawPayloadId: rawPayloadId ?? '' };
 }
+
+// ─────────────────────────────────────────────
+// WhatsApp lead creation
+// Called by whatsapp-ingestion.ts when an inbound message arrives from an unknown number.
+// Domain defaults to concierge — WhatsApp leads carry no UTM data for campaign resolution.
+// Dedup is the caller's responsibility: this function always inserts.
+// ─────────────────────────────────────────────
+export async function createLeadFromWhatsApp(
+  waId:  string,
+  phone: string,
+): Promise<{ leadId: string; assignedTo: string | null }> {
+  const supabase = createAdminClient();
+  const domain   = DEFAULT_LEAD_DOMAIN;
+  const assignedTo = await getNextRoundRobinAgent(domain);
+
+  const { data: inserted, error } = await supabase
+    .from('leads')
+    .insert({
+      first_name:         waId,   // temporary — agent updates once contact is established
+      last_name:          null,
+      email:              null,
+      phone,
+      domain,
+      assigned_to:        assignedTo ?? null,
+      assigned_at:        assignedTo ? new Date().toISOString() : null,
+      status:             'new',
+      lead_intent:        null,
+      platform:           'whatsapp',
+      campaign_id:        null,
+      ad_name:            null,
+      utm_source:         null,
+      utm_medium:         null,
+      utm_campaign:       null,
+      utm_content:        null,
+      form_data:          {},
+      last_call_outcome:  null,
+      private_scratchpad: null,
+      personal_details:   null,
+      archived_at:        null,
+    })
+    .select('id')
+    .single();
+
+  if (error || !inserted) {
+    throw new Error(`[createLeadFromWhatsApp] Insert failed: ${error?.message ?? 'unknown'}`);
+  }
+
+  const leadId = inserted.id;
+
+  await supabase.from('lead_activities').insert({
+    lead_id:     leadId,
+    actor_id:    null,
+    action_type: 'lead_created',
+    details:     { source: 'whatsapp', domain, wa_id: waId },
+  });
+
+  if (assignedTo) {
+    await supabase.from('lead_activities').insert({
+      lead_id:     leadId,
+      actor_id:    null,
+      action_type: 'agent_assigned',
+      details:     { assigned_to: assignedTo, method: 'round_robin' },
+    });
+  }
+
+  return { leadId, assignedTo };
+}

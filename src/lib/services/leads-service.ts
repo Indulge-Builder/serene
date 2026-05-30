@@ -11,17 +11,17 @@ export type LeadTaskForDossier = Task & { task_type: Task['task_type'] };
 // ─────────────────────────────────────────────
 // Query: single lead by ID
 // ─────────────────────────────────────────────
-export async function getLeadById(leadId: string): Promise<Lead | null> {
+export async function getLeadById(leadId: string): Promise<LeadWithAssignee | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('leads')
-    .select('*')
+    .select('*, assignee:profiles!leads_assigned_to_fkey(full_name)')
     .eq('id', leadId)
     .is('archived_at', null)
     .single();
 
   if (error || !data) return null;
-  return data as Lead;
+  return data as LeadWithAssignee;
 }
 
 // ─────────────────────────────────────────────

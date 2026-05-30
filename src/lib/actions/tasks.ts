@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidateTag } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
@@ -19,9 +19,11 @@ import { formErrors } from '@/lib/validations/form-errors';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { createNotification } from '@/lib/services/notifications-service';
+import { getTaskRemarks } from '@/lib/services/tasks-service';
 import { scheduleTaskReminder, cancelTaskReminder } from '@/trigger/task-reminders';
 import type { ActionResult } from '@/lib/types/index';
-import type { TaskStatus, TaskPriority, TaskRemark, ChecklistItem } from '@/lib/types/database';
+import type { Task, TaskStatus, TaskPriority, TaskRemark, ChecklistItem } from '@/lib/types/database';
+import type { TaskRemarkWithAuthor, SubtaskWithAssignee } from '@/lib/services/tasks-service';
 
 // Terminal statuses — no reminders needed beyond these
 const TERMINAL_STATUSES: TaskStatus[] = ['completed', 'cancelled', 'error'];
@@ -183,9 +185,7 @@ export async function createGroupTaskAction(
 
   if (insertError || !group) return { data: null, error: formErrors.generic };
 
-  // Invalidate the group-tasks cache so the new group appears immediately.
-  // { expire: 0 } = immediate expiry (correct for Server Action mutations per Next.js 16 docs).
-  revalidateTag('group-tasks', { expire: 0 });
+  revalidatePath('/tasks');
 
   return { data: { groupId: group.id as string }, error: null };
 }
@@ -197,7 +197,7 @@ export async function createGroupTaskAction(
 // ─────────────────────────────────────────────
 export async function createSubtaskAction(
   input: unknown,
-): Promise<ActionResult<{ taskId: string }>> {
+): Promise<ActionResult<SubtaskWithAssignee>> {
   // 1. Zod validation
   const parsed = CreateSubtaskSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: formErrors.generic };
@@ -229,7 +229,7 @@ export async function createSubtaskAction(
 
   const admin = createAdminClient();
 
-  // 5. Insert subtask
+  // 5. Insert subtask — select full row for local prepend on the client
   const { data: task, error: insertError } = await admin
     .from('tasks')
     .insert({
@@ -245,17 +245,28 @@ export async function createSubtaskAction(
       due_at:        fields.due_at ?? null,
       group_id:      fields.group_id,
     })
-    .select('id')
+    .select('*')
     .single();
 
   if (insertError || !task) return { data: null, error: formErrors.generic };
 
   const taskId = task.id as string;
 
-  // Invalidate the group-tasks cache so the updated subtask counts appear immediately.
-  revalidateTag('group-tasks', { expire: 0 });
+  // 6. Fetch assignee profile in the same action — one extra query, zero extra round-trips
+  //    from the component. Failure is non-fatal; assignee renders as null (avatar falls back).
+  let assignee: SubtaskWithAssignee['assignee'] = null;
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, full_name, avatar_url')
+    .eq('id', fields.assigned_to)
+    .single();
+  if (profile) {
+    assignee = { id: profile.id, full_name: profile.full_name, avatar_url: profile.avatar_url };
+  }
 
-  // 6. Notify assignee — fire-and-forget, non-fatal (always notify for subtasks)
+  revalidatePath('/tasks');
+
+  // 7. Notify assignee — fire-and-forget, non-fatal (always notify for subtasks)
   if (fields.assigned_to !== caller.id) {
     createNotification({
       recipient_id: fields.assigned_to,
@@ -266,12 +277,17 @@ export async function createSubtaskAction(
     }).catch(() => {});
   }
 
-  // 7. Schedule reminder if due_at is set
+  // 8. Schedule reminder if due_at is set
   if (fields.due_at) {
     scheduleTaskReminder(taskId, new Date(fields.due_at), fields.assigned_to).catch(() => {});
   }
 
-  return { data: { taskId }, error: null };
+  const subtaskWithAssignee: SubtaskWithAssignee = {
+    ...(task as Task),
+    assignee,
+  };
+
+  return { data: subtaskWithAssignee, error: null };
 }
 
 // ─────────────────────────────────────────────
@@ -288,22 +304,22 @@ export async function updateTaskStatusAction(
 
   const { taskId, status } = parsed.data;
 
-  // 2. Auth check
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-
+  // 2. Auth + task fetch — independent, run in parallel
   const supabase = await createClient();
 
-  // 3. Fetch task via user client (RLS layer 1)
-  const { data: task } = await supabase
-    .from('tasks')
-    .select('id, assigned_to, created_by, group_id, status, due_at')
-    .eq('id', taskId)
-    .single();
+  const [caller, { data: task }] = await Promise.all([
+    getCurrentProfile(),
+    supabase
+      .from('tasks')
+      .select('id, assigned_to, created_by, group_id, status, due_at')
+      .eq('id', taskId)
+      .single(),
+  ]);
 
-  if (!task) return { data: null, error: 'Task not found.' };
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+  if (!task)   return { data: null, error: 'Task not found.' };
 
-  // 4. Application-layer authorization check (A-09 — layer 2)
+  // 3. Application-layer authorization check (A-09 — layer 2)
   const allowed = await canMutateTask(caller, task as TaskMutationTarget);
   if (!allowed) return { data: null, error: formErrors.unauthorized };
 
@@ -343,28 +359,28 @@ export async function updateTaskAction(
 
   const { taskId, ...fields } = parsed.data;
 
-  // 2. Auth check
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-
+  // 2. Auth + task fetch — independent, run in parallel
   const supabase = await createClient();
 
-  // 3. Fetch current task via user client (RLS layer 1)
-  const { data: existing } = await supabase
-    .from('tasks')
-    .select('id, assigned_to, created_by, group_id, due_at, status')
-    .eq('id', taskId)
-    .single();
+  const [caller, { data: existing }] = await Promise.all([
+    getCurrentProfile(),
+    supabase
+      .from('tasks')
+      .select('id, assigned_to, created_by, group_id, due_at, status')
+      .eq('id', taskId)
+      .single(),
+  ]);
 
+  if (!caller)   return { data: null, error: formErrors.unauthorized };
   if (!existing) return { data: null, error: 'Task not found.' };
 
-  // 4. Application-layer authorization check (A-09 — layer 2)
+  // 3. Application-layer authorization check (A-09 — layer 2)
   const allowed = await canMutateTask(caller, existing as TaskMutationTarget);
   if (!allowed) return { data: null, error: formErrors.unauthorized };
 
   const admin = createAdminClient();
 
-  // 5. Build typed update payload — only include defined fields
+  // 4. Build typed update payload — only include defined fields
   const due_at_changed = 'due_at' in fields;
 
   const updatePayload: {
@@ -392,7 +408,7 @@ export async function updateTaskAction(
 
   if (updateError) return { data: null, error: formErrors.generic };
 
-  // 6. Reminder management — cancel old, schedule new when due_at changes
+  // 5. Reminder management — cancel old, schedule new when due_at changes
   if (due_at_changed) {
     // Cancel the old reminder regardless
     await cancelTaskReminder(taskId).catch(() => {});
@@ -405,7 +421,7 @@ export async function updateTaskAction(
     }
   }
 
-  // 7. If status moved to terminal, cancel reminder (safety net)
+  // 6. If status moved to terminal, cancel reminder (safety net)
   if (
     fields.status &&
     TERMINAL_STATUSES.includes(fields.status as TaskStatus) &&
@@ -491,26 +507,26 @@ export async function updateChecklistAction(
 
   const { taskId, items } = parsed.data;
 
-  // 2. Auth check
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-
+  // 2. Auth + task fetch — independent, run in parallel
   const supabase = await createClient();
 
-  // 3. Fetch task via user client (RLS layer 1)
-  const { data: task } = await supabase
-    .from('tasks')
-    .select('id, assigned_to, created_by, group_id')
-    .eq('id', taskId)
-    .single();
+  const [caller, { data: task }] = await Promise.all([
+    getCurrentProfile(),
+    supabase
+      .from('tasks')
+      .select('id, assigned_to, created_by, group_id')
+      .eq('id', taskId)
+      .single(),
+  ]);
 
-  if (!task) return { data: null, error: 'Task not found.' };
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+  if (!task)   return { data: null, error: 'Task not found.' };
 
-  // 4. Application-layer authorization check (A-09 — layer 2)
+  // 3. Application-layer authorization check (A-09 — layer 2)
   const allowed = await canMutateTask(caller, task as TaskMutationTarget);
   if (!allowed) return { data: null, error: formErrors.unauthorized };
 
-  // 5. Write new checklist — adminClient bypasses RLS UPDATE
+  // 4. Write new checklist — adminClient bypasses RLS UPDATE
   //    (application-layer access check above provides the security equivalent)
   const admin = createAdminClient();
   const { error: updateError } = await admin
@@ -538,26 +554,26 @@ export async function updateTaskTagsAction(
 
   const { taskId, tags } = parsed.data;
 
-  // 2. Auth check
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-
+  // 2. Auth + task fetch — independent, run in parallel
   const supabase = await createClient();
 
-  // 3. Fetch task via user client (RLS layer 1)
-  const { data: task } = await supabase
-    .from('tasks')
-    .select('id, assigned_to, created_by, group_id')
-    .eq('id', taskId)
-    .single();
+  const [caller, { data: task }] = await Promise.all([
+    getCurrentProfile(),
+    supabase
+      .from('tasks')
+      .select('id, assigned_to, created_by, group_id')
+      .eq('id', taskId)
+      .single(),
+  ]);
 
-  if (!task) return { data: null, error: 'Task not found.' };
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+  if (!task)   return { data: null, error: 'Task not found.' };
 
-  // 4. Application-layer authorization check (A-09 — layer 2)
+  // 3. Application-layer authorization check (A-09 — layer 2)
   const allowed = await canMutateTask(caller, task as TaskMutationTarget);
   if (!allowed) return { data: null, error: formErrors.unauthorized };
 
-  // 5. Write new tags array
+  // 4. Write new tags array
   const admin = createAdminClient();
   const { error: updateError } = await admin
     .from('tasks')
@@ -582,7 +598,6 @@ import {
   getTaskGroupById,
 } from '@/lib/services/tasks-service';
 import type {
-  SubtaskWithAssignee,
   PersonalTaskFilters,
   PersonalTasksResult,
 } from '@/lib/services/tasks-service';
@@ -629,14 +644,16 @@ export async function getTaskGroupByIdAction(
 
 // ─────────────────────────────────────────────
 // Action: addTaskRemarkAction
-// Inserts a task_remarks row. Optionally advances the task status first.
+// Inserts a task_remarks row via the add_task_remark_with_status RPC.
 //
-// statusChange flow:
-//   If provided, updateTaskStatusAction is called first — status logic is
-//   NOT duplicated here. The remark insert only runs if the status update
-//   succeeds (or is a no-op because the status is already that value).
+// When statusChange is present, the RPC handles both the tasks UPDATE and the
+// task_remarks INSERT in a single transaction — 1 round-trip instead of 6
+// sequential awaits (perf-02 pattern from migrations 0030/0031).
 //
-// task_remarks is append-only — no update or delete (Rule A-11).
+// Access control: auth check + Zod validation in this action (A-09 layer 1).
+// The RPC performs a second inline check using auth.uid() (A-09 layer 2).
+//
+// task_remarks is append-only — the RPC only INSERTs (Rule A-11).
 // ─────────────────────────────────────────────
 export async function addTaskRemarkAction(
   input: unknown,
@@ -654,48 +671,28 @@ export async function addTaskRemarkAction(
   const caller = await getCurrentProfile();
   if (!caller) return { data: null, error: formErrors.unauthorized };
 
-  const supabase = await createClient();
+  // 3. Single RPC call — handles access check, optional status UPDATE, and
+  //    task_remarks INSERT atomically. The RPC returns the full remark row.
+  const admin = createAdminClient();
 
-  // 3. Verify task visibility — caller must be assigned_to OR created_by OR manager+
-  //    (mirrors RLS task_remarks_insert, belt-and-braces per A-09 two-layer rule)
-  const { data: task } = await supabase
-    .from('tasks')
-    .select('id, assigned_to, created_by, group_id')
-    .eq('id', taskId)
-    .single();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: remark, error: rpcError } = await (admin as any).rpc(
+    'add_task_remark_with_status',
+    {
+      p_task_id:      taskId,
+      p_author_id:    caller.id,
+      p_content:      sanitizedContent,
+      p_status_change: statusChange ?? null,
+    },
+  );
 
-  if (!task) return { data: null, error: 'Task not found.' };
-
-  const hasAccess =
-    task.assigned_to === caller.id ||
-    task.created_by  === caller.id ||
-    ['manager', 'admin', 'founder'].includes(caller.role);
-
-  if (!hasAccess) return { data: null, error: formErrors.unauthorized };
-
-  // 4. If statusChange is provided, advance task status first.
-  //    Reuse updateTaskStatusAction — do NOT duplicate status logic here.
-  //    updateTaskStatusAction does NOT insert a remark (verified pre-mortem).
-  if (statusChange) {
-    const statusResult = await updateTaskStatusAction({ taskId, status: statusChange });
-    if (statusResult.error) return { data: null, error: statusResult.error };
+  if (rpcError) {
+    if (rpcError.message?.includes('task_not_found')) return { data: null, error: 'Task not found.' };
+    if (rpcError.message?.includes('unauthorized'))   return { data: null, error: formErrors.unauthorized };
+    return { data: null, error: formErrors.generic };
   }
 
-  // 5. Insert remark — adminClient bypasses RLS INSERT (application-layer
-  //    access check above provides the security equivalent)
-  const admin = createAdminClient();
-  const { data: remark, error: insertError } = await admin
-    .from('task_remarks')
-    .insert({
-      task_id:       taskId,
-      author_id:     caller.id,
-      content:       sanitizedContent,
-      status_change: statusChange ?? null,
-    })
-    .select('*')
-    .single();
-
-  if (insertError || !remark) return { data: null, error: formErrors.generic };
+  if (!remark) return { data: null, error: formErrors.generic };
 
   return { data: remark as TaskRemark, error: null };
 }
@@ -754,4 +751,20 @@ export async function suppressTaskRemarkAction(
   if (updateError) return { data: null, error: formErrors.generic };
 
   return { data: { remarkId }, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: getTaskRemarksAction
+// Client-callable read action for fetching task_remarks.
+// Used when opening a TaskModal from a client component that cannot
+// call the service layer directly (e.g. GroupTaskWorkspace, PersonalTasksTab).
+// ─────────────────────────────────────────────
+export async function getTaskRemarksAction(
+  taskId: string,
+): Promise<ActionResult<TaskRemarkWithAuthor[]>> {
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const remarks = await getTaskRemarks(taskId);
+  return { data: remarks, error: null };
 }

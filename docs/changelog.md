@@ -7,6 +7,243 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-30 — WA-UI: WhatsApp page + 6 components (shell, list, panel, bubbles, composer, empty state) — Phase WA UI
+
+- `src/lib/actions/whatsapp.ts` — new file: `sendWhatsAppMessage`, `markConversationAsRead`, `resolveConversation`, `reopenConversation` + read-action wrappers (`getConversationsAction`, `getMessagesAction`, `searchConversationsAction`) for client-component access
+- `src/components/whatsapp/EmptyConversationState.tsx` — right-panel placeholder when no conversation is selected; Framer Motion entrance; accent icon
+- `src/components/whatsapp/MessageBubble.tsx` — inbound (paper-subtle) / outbound (accent-surface) bubbles; delivery status icons (sent/delivered/read/failed); media placeholder card; bot label above bot messages
+- `src/components/whatsapp/ConversationRow.tsx` — list item with unread dot, lead name, phone, relative timestamp, resolved badge; active left-border accent state
+- `src/components/whatsapp/ConversationList.tsx` — left panel body; `SearchBar` + 300ms debounced `searchConversationsAction`; IntersectionObserver-based load-more (P-05); end-state copy "That's everything."
+- `src/components/whatsapp/ConversationPanel.tsx` — three-zone layout (header / message list / composer); Realtime subscription on `whatsapp_messages` with `useId()+mountId` channel name (StrictMode-safe); optimistic send + echo dedup via `seenIds` ref; date-group separators; delivery status Realtime UPDATE handler; Resolve/Reopen buttons (manager/admin/founder only); resolved banner replaces composer; character count warning at 3000+
+- `src/components/whatsapp/WhatsAppShell.tsx` — two-panel shell; Realtime on `whatsapp_conversations` (INSERT → prepend, UPDATE → re-sort); cursor-based pagination via `getConversationsAction`; unread badge in left header
+- `src/app/(dashboard)/whatsapp/page.tsx` — Server Component; fetches initial conversations + unread count in `Promise.all`; passes `callerProfile` to shell
+- `src/app/(dashboard)/whatsapp/loading.tsx` — two-panel skeleton matching shell layout; uses `.skeleton` CSS class
+- `src/components/layout/Sidebar.tsx` — WhatsApp nav item added (`MessageCircle` icon, `/whatsapp` href); positioned between Tasks and Performance
+
+---
+
+## 2026-05-30 — Performance page — remove period label above page title
+
+- `src/app/(dashboard)/performance/page.tsx` — removed uppercase period label (`This Week`, etc.) above `<h1>` on agent, manager, and founder/admin views; period filter remains in `PerformancePeriodSelector` tabs
+
+---
+
+## 2026-05-30 — WA-4b: get_wa_unread_count RPC migration + getUnreadCount() wired to RPC
+
+- Migration 0036: `get_wa_unread_count()` RPC — per-agent unread WhatsApp conversation count; LEFT JOIN `whatsapp_conversation_reads` on `agent_id = auth.uid()`; counts open conversations where `last_read_at IS NULL OR last_message_at > last_read_at`; gated by `can_access_wa_conversation()`; RETURNS integer; STABLE SECURITY DEFINER; GRANT EXECUTE to authenticated
+- `src/lib/services/whatsapp-service.ts` — `getUnreadCount()` replaced approximation COUNT query with `supabase.rpc('get_wa_unread_count')`; approximation comment removed
+- `supabase/migrations/CLAUDE.md` — migration 0036 added to inventory
+- `src/lib/CLAUDE.md` — `getUnreadCount` entry updated to reflect RPC
+
+---
+
+## 2026-05-30 — Fix: restore named type aliases in database.ts after Supabase CLI regen (WA-4)
+
+Supabase CLI regenerated `src/lib/types/database.ts`, stripping all hand-written named type aliases and causing 188 TypeScript errors across 78 files. Fixed by appending a "Derived type aliases" section to `database.ts` only — no other files modified.
+
+- **Enum types** extracted from `Database['public']['Enums']`: `UserRole`, `AppDomain`
+- **String unions** hand-written: `LeadStatus`, `CallOutcome`, `LeadPlatform`, `TaskType`, `TaskStatus`, `TaskPriority`, `TaskCategory`, `NotificationType` (includes `sla_breach_agent`, `sla_breach_manager`)
+- **Row types** via indexed access with narrowing overrides: `Profile` (theme literal), `LeadNote` (call_outcome narrowed to `CallOutcome | null`), `LeadRawPayload` (payload widened to `Record<string, unknown>`), `Task` (status/priority/category/type narrowed, attachments typed as `ChecklistItem[]`), `Lead` (status/outcome/platform/form_data narrowed), `Notification` (type narrowed to `NotificationType`)
+- **Generated block patches**: `notifications.Row/Insert/Update.type` narrowed to `NotificationType`; `lead_raw_payloads.Insert/Update.payload` widened to accept `Record<string, unknown>`; `tasks.Row.attachments` widened to `Json | ChecklistItem[]` (enables `as Task` cast in leads-service without touching that file)
+- **Hand-written composites**: `ChecklistItem`, `ProfileAuditLog`, `AgentRoutingConfig`, `AgentRosterRow`, `TaskMessage`, `LeadFilters`, `CampaignFilters`, `CampaignMetrics`, `CampaignDetailMetrics`, `AgentDistributionRow`
+- `pnpm tsc --noEmit --skipLibCheck` → zero errors
+
+---
+
+## 2026-05-30 — Performance page — manager & founder views (agent roster panel, detail panel, founder domain tabs) — Phase 10
+
+- `src/lib/services/performance-service.ts` — `getAgentRosterPerformance(domain, dateFrom, dateTo)`: 3 flat queries, JS aggregation, `AgentRosterRow[]` with null-guarded conversionRate and totalDealAmount; `getAgentDetailMetrics(agentId, domain, dateFrom, dateTo)`: single Promise.all of 5 queries, callsToday uses IST midnight boundary via existing getPeriodDateRange helper; `getDomainsWithLeads(dateFrom, dateTo)`: single DISTINCT query for founder tab rendering
+- `src/lib/types/index.ts` — `AgentRosterRow`, `AgentDetailMetrics` types added
+- `src/lib/actions/performance.ts` — `getAgentDetailMetricsAction`: Zod + auth + manager-domain guard; agentId must belong to caller's domain (manager) or any domain (founder/admin)
+- `src/app/(dashboard)/performance/page.tsx` — agent-only redirect removed; role branching: agent → existing PerformanceAsync (unchanged), manager → ManagerPerformanceAsync, founder/admin → FounderPerformanceShell, guest → /dashboard; manager domain always from profile.domain, never URL
+- `src/app/(dashboard)/performance/ManagerPerformanceAsync.tsx` — async server component; Suspense child; Promise.all([getAgentRosterPerformance, periodDates]); passes agentRoster to ManagerPerformancePanel
+- `src/app/(dashboard)/performance/FounderPerformanceShell.tsx` — server component; fetches getDomainsWithLeads; reads domain from searchParams (defaults to first); renders FounderDomainTabs + ManagerPerformanceAsync — zero layout duplication
+- `src/app/(dashboard)/performance/ManagerPerformanceSkeleton.tsx` — two-column; left: 4 agent card skeletons staggered 0/80/160/240ms §11.4; right: header + stat strip + two bar skeletons
+- `src/components/performance/ManagerPerformancePanel.tsx` — 'use client'; two-column layout; agent roster left (Avatar lg, name, conversion rate pill colour-coded success/warning/danger); selected state: var(--theme-accent) 3px left border + var(--theme-paper-subtle) bg; Framer Motion layoutId on selection indicator; first agent pre-selected on mount
+- `src/components/performance/AgentDetailPanel.tsx` — 'use client'; fetches via getAgentDetailMetricsAction on agentId change with useTransition; header: Avatar xl + Playfair Display name + domain badge; Bloomberg-style 5-col stat strip (Calls Today · New Leads · Follow-ups · Won · Revenue) with var(--theme-paper-border) vertical dividers; deal type breakdown as horizontal pills (var(--theme-paper-subtle) bg, --radius-full); pipeline status bar reusing CallOutcomeBar with status colours §16.4; call outcome bar reusing CallOutcomeBar; AnimatePresence + key={agentId} dissolve on agent switch, var(--duration-200)
+- `src/components/performance/FounderDomainTabs.tsx` — 'use client'; thin TabSelector wrapper; useTransition on all pushes; domain labels from DOMAINS constant; pushes ?domain=X to URL
+- `src/app/(dashboard)/performance/CLAUDE.md` — updated: ManagerPerformanceAsync, FounderPerformanceShell, FounderDomainTabs, AgentRosterRow, AgentDetailMetrics, domain-from-profile rule (manager) vs domain-from-URL rule (founder), callsToday IST contract
+
+---
+
+## 2026-05-30 — Perf: addTaskRemarkAction RPC — 6 sequential awaits → 1 round-trip — Phase 2
+
+The most common power-user interaction (status change + remark) previously serialised 6 DB round-trips: two `getCurrentProfile()` calls, two `tasks SELECT` calls, one `tasks UPDATE`, one `task_remarks INSERT`. Under ~200ms of compounded latency.
+
+**Fix:** new `add_task_remark_with_status` RPC (migration 0035, SECURITY DEFINER). The RPC performs an inline auth check via `auth.uid()`, conditionally updates `tasks.status` (which still fires the `log_task_changes()` audit trigger), and inserts the `task_remarks` row — all in one transaction. `addTaskRemarkAction` now calls this RPC via `adminClient.rpc(...)` and returns the full remark row. `updateTaskStatusAction` is unchanged and still used for remark-free status changes.
+
+- `supabase/migrations/20260530000035_rpc_add_task_remark_with_status.sql` — new RPC; RETURNS `task_remarks`; SECURITY DEFINER; GRANT EXECUTE to authenticated
+- `src/lib/actions/tasks.ts` — `addTaskRemarkAction` rewritten to call RPC; 6 sequential awaits replaced with 1 `.rpc()` call; error mapping for `task_not_found` and `unauthorized` exception codes
+- `supabase/migrations/CLAUDE.md` — migration 0035 added to inventory
+- `src/lib/CLAUDE.md` — `addTaskRemarkAction` pattern note updated with RPC details
+
+---
+
+## 2026-05-30 — Perf: initialRemarks threaded into TaskRemarksPanel — mount POST eliminated
+
+Every `SubTaskModal` open previously triggered a `getTaskRemarksAction` POST inside a `TaskRemarksPanel` mount `useEffect`, causing a blank timeline until the response arrived.
+
+**Pattern change:** call sites (`PersonalTasksTab`, `GroupTasksTab`, `GroupTaskWorkspace`) now call `getTaskRemarksAction(taskId)` at row-click time, store the result in `selectedTaskRemarks` state (`null` while in-flight), and gate the `<AnimatePresence>` render on `selectedTaskRemarks !== null`. The modal only mounts once remarks are available. `TaskRemarksPanel` seeds its `remarks` state directly from `initialRemarks` and re-seeds on `taskId` change via `useEffect`. The mount `useEffect` fetch is removed entirely. Realtime subscription and `seenIds` deduplication are unchanged.
+
+- `src/components/tasks/TaskRemarksPanel.tsx` — `initialRemarks: TaskRemarkWithAuthor[]` restored to props; state seeded from prop; mount fetch `useEffect` removed; `seenIds` seeded from `initialRemarks` on `taskId` change
+- `src/components/tasks/SubTaskModal.tsx` — `initialRemarks: TaskRemarkWithAuthor[]` added to `SubTaskModalProps`; passed through to `TaskRemarksPanel`
+- `src/components/tasks/PersonalTasksTab.tsx` — `selectedTaskRemarks` state added; `handleRowClick` fires `getTaskRemarksAction` before setting `taskModalOpen`; modal gated on `selectedTaskRemarks !== null`; cleared on close
+- `src/components/tasks/GroupTaskWorkspace.tsx` — same pattern as `PersonalTasksTab`; `handleOpenModal` fires `getTaskRemarksAction`; `handleModalClose` clears remarks
+- `src/components/tasks/GroupTasksTab.tsx` — same pattern; `handleOpenSubtask` helper added
+
+**Pre-mortem addressed:** `selectedTaskRemarks === null` acts as a skeleton gate — modal never mounts with stale or missing data. Re-open of the same task re-fetches (stale `initialRemarks` is worse than a brief gate). The one extra round-trip on click is better than the current post-paint blank timeline.
+
+---
+
+## 2026-05-30 — Perf: auth + task fetch parallelised in 4 task mutation actions
+
+`updateTaskStatusAction`, `updateTaskAction`, `updateChecklistAction`, and `updateTaskTagsAction` in `src/lib/actions/tasks.ts` each previously issued `getCurrentProfile()` then a tasks SELECT sequentially. The two are fully independent (profiles table vs tasks table). All four actions now run them via `Promise.all`, saving one network round-trip on every task mutation.
+
+- `canMutateTask` signature and return type unchanged — it receives a pre-fetched task as before
+- `getTaskById` not used here (it now returns remarks too after 2-A fix); each action retains its own lean SELECT with only the columns it needs
+- Step 3 (group domain check inside `canMutateTask`) remains sequential — it depends on `task.group_id` from the task fetch
+- `pnpm tsc --noEmit` passes with zero new errors
+
+---
+
+## 2026-05-30 — Perf: getTaskById parallelised — task fetch + remarks fetch now concurrent
+
+`getTaskById` in `src/lib/services/tasks-service.ts` previously issued 3 sequential DB round-trips (task SELECT, then remarks SELECT, then profiles batch). The task SELECT and the `getTaskRemarks` call are fully independent — neither result depends on the other. They now run via `Promise.all`, reducing wall-clock latency for task modal open by one network round-trip.
+
+- `getTaskRemarks` internals unchanged (profiles batch remains sequential inside; separate optimisation)
+- `getGroupSubtasks` profiles batch not parallelised — it is correctly sequential (batch needs assignee ids derived from the subtasks result)
+- `pnpm tsc --noEmit` passes with zero errors
+
+---
+
+## 2026-05-30 — Refactor: TaskStatusIcon + canonical TASK_STATUS colour tokens
+
+Deduplicated task status icons and colour maps across the tasks UI:
+
+- `src/components/tasks/TaskStatusIcon.tsx` — single Lucide switch for all six `TaskStatus` values; colour from `TASK_STATUS[status].color`
+- `src/lib/constants/task-constants.ts` — `TASK_STATUS` extended with `pillBg`/`pillText` (solid pills) and `remarkBg`/`remarkColor`/`remarkBorder` (light remark chips); all values CSS variables, no hex
+- Removed local `STATUS_CONFIG`, `STATUS_CHIP_COLORS`, `STATUS_ICONS`, and inline `StatusIcon` from `GroupTasksTab`, `GroupTaskWorkspace`, `SubTaskModal`, `TaskRemarksPanel`
+- `src/components/CLAUDE.md` — documents `TaskStatusIcon` as the canonical status icon
+
+---
+
+## 2026-05-30 — WA-3: whatsapp-api.ts + whatsapp-ingestion.ts + whatsapp-service.ts — Phase WA Foundation
+
+- `src/lib/services/lead-ingestion.ts` — `createLeadFromWhatsApp(waId, phone)` added: inserts lead with `platform='whatsapp'`, domain=concierge, round-robin assignment, logs `lead_created` + `agent_assigned` activities
+- `src/lib/services/whatsapp-api.ts` — Meta Cloud API HTTP client: `sendTextMessage`, `sendTemplateMessage`, `sendMediaMessage`, `uploadMedia`, `getMediaDownloadUrl`, `verifyMetaSignature` (HMAC-SHA256 + `timingSafeEqual`); module-load env var guard; SERVER ONLY
+- `src/lib/services/whatsapp-ingestion.ts` — Inbound pipeline: `parseWebhookPayload`, `processInboundMessage` (9-step, idempotent), `processStatusUpdate` (adminClient delivery receipt), `resolveLeadByPhone`, `getOrCreateConversation` (race-safe ON CONFLICT), `insertInboundMessage`; SERVER ONLY
+- `src/lib/services/whatsapp-service.ts` — UI queries: `getConversations`, `getConversation`, `getMessages`, `getUnreadCount`, `markConversationRead`, `searchConversations`; session client, RLS enforced
+- `src/lib/CLAUDE.md` — service registry updated with all four service files
+
+---
+
+## 2026-05-30 — WA-2: WhatsApp types, constants, Zod schemas — Phase WA Foundation
+
+- `src/lib/types/whatsapp.ts` — Meta Cloud API payload shapes (discriminated union on `MetaInboundMessage.type`, `MetaStatusUpdate`, `MetaApiResponse`, `TemplateComponent`) + app-internal types (`WhatsAppConversation`, `WhatsAppMessage`, `SendMessageInput`)
+- `src/lib/constants/whatsapp.ts` — `WHATSAPP_API_VERSION`, `WHATSAPP_API_BASE`, message types, status/direction/sender-type vocabularies, notification template names, page sizes. No secret env vars.
+- `src/lib/validations/whatsapp-schema.ts` — `MetaWebhookPayloadSchema` (permissive passthrough), `MetaStatusUpdateSchema`, `SendMessageSchema` (uuid + 1–4096 chars), `ResolveConversationSchema`; all with human-readable errors
+- `src/lib/CLAUDE.md` — types, validations, and whatsapp constants registry entries added
+
+---
+
+## 2026-05-30 — WA-1: whatsapp_conversations + whatsapp_messages + whatsapp_conversation_reads migrations — Phase WA Foundation
+
+Three migrations establishing the WhatsApp data layer:
+
+- Migration 0032 (`whatsapp_conversations`): one row per lead/phone; `wa_id` (E.164 without +) and `lead_id` both UNIQUE; `bot_active/bot_paused_by/bot_paused_at` columns for AI chatbot toggle; `can_access_wa_conversation()` SECURITY DEFINER helper; RLS mirrors leads table exactly; Realtime enabled
+- Migration 0033 (`whatsapp_messages`): append-only with one narrow exception — delivery receipt status updates (`status`, `status_at`) via service-role client; `wa_message_id` partial unique index (WHERE NOT NULL) to allow optimistic NULL rows; same RLS domain-scoping; no DELETE policy; Realtime enabled
+- Migration 0034 (`whatsapp_conversation_reads`): per-agent read position for unread badge counts; UNIQUE(conversation_id, agent_id); agents read/write own rows only
+
+---
+
+## 2026-05-30 — Fix: replace GroupRow setSubtasksLoaded refetch with local append after subtask creation
+
+---
+
+## 2026-05-30 — Fix: hoist assignableUsers fetch from GroupRow to GroupTasksTab — single DB call for all groups
+
+---
+
+## 2026-05-30 — Fix: eliminate PersonalTasksTab mount re-fetch and quick-add full-reload — Phase 2
+
+---
+
+## 2026-05-30 — Fix: task remarks not stored / double message / "Unknown" author
+
+Three bugs in the messaging system, all fixed together:
+
+**Root causes:**
+1. `TaskRemarksPanel` seeded `remarks` state from `initialRemarks` prop at mount. Since all call sites passed `initialRemarks={[]}`, the panel always opened empty — even though messages were in the DB.
+2. On send, the panel waited for a Realtime echo to confirm the optimistic row. If the echo arrived but `incoming.author_id !== currentUserId` (e.g. stale closure), the optimistic row was never replaced — a second "Unknown" row was appended instead.
+3. The optimistic row stayed half-opacity forever when the Realtime echo was the only confirmation path.
+
+**Fix:**
+- `TaskRemarksPanel` is now self-sufficient: fetches its own remarks from DB on mount via `getTaskRemarksAction`. The `initialRemarks` prop is removed entirely — no parent needs to pre-load remarks.
+- On action success, `result.data` (the confirmed DB row) immediately replaces the optimistic row. Realtime echo then hits `seenIds` and is dropped. No double-append possible.
+- Added `isLoading` state with "Loading…" empty state during the initial fetch.
+- Removed `initialRemarks` from `SubTaskModalProps`, `GroupTaskWorkspace`, `PersonalTasksTab`, `GroupTasksTab` call sites.
+- Added `getTaskRemarksAction` to `src/lib/actions/tasks.ts` (auth-gated server action wrapping `getTaskRemarks`).
+
+---
+
+## 2026-05-29 — Eliminated sequential DB round-trips in addLeadCallNote and updateLeadStatus (Phase perf-02)
+
+`addLeadCallNote`: 9 sequential DB awaits (note insert + lead UPDATE + 3 activity inserts + second lead UPDATE + auth/access reads) collapsed to 1 RPC call.
+`updateLeadStatus`: 5 sequential DB awaits (lead UPDATE + activity insert + nurturing task + task_gia_meta + optional won query) collapsed to 1 RPC call.
+`assignLead`: post-update SELECT eliminated — lead status/domain now read before the UPDATE.
+`getCallerProfile` local duplicate removed — replaced with `getCurrentProfile` import from `profiles-service.ts` (TD-001 resolved).
+
+**Migrations:**
+
+- `supabase/migrations/20260529000030_rpc_add_lead_call_note.sql` — `add_lead_call_note(p_lead_id, p_author_id, p_content, p_call_outcome, p_now)` RPC; SECURITY DEFINER; single transaction: note insert + lead UPDATE (call_count, last_call_outcome, last_activity_at, conditional status+status_changed_at) + call_logged activity + note_added activity + conditional status_changed activity (new→touched only); returns jsonb with `note_id`, `new_call_count`, `did_auto_advance`, `assigned_to`, `domain`, `old_status`
+- `supabase/migrations/20260529000031_rpc_update_lead_status.sql` — `update_lead_status(p_lead_id, p_actor_id, p_status, p_reason, p_now)` RPC; SECURITY DEFINER; single transaction: early-return `{ changed: false }` when status unchanged; lead UPDATE + status_changed activity + conditional nurturing task + task_gia_meta; returns jsonb with `changed`, `old_status`, `new_status`, `assigned_to`, `domain`, `first_name`, `last_name`
+
+**Action layer (`src/lib/actions/leads.ts`):**
+
+- `addLeadCallNote` — steps 4–9 replaced with single `admin.rpc('add_lead_call_note', ...)` call; SLA side-effects remain fire-and-forget in action layer
+- `updateLeadStatus` — steps 4–7 replaced with single `admin.rpc('update_lead_status', ...)` call; won notifications and SLA side-effects remain in action layer
+- `assignLead` — added pre-update `SELECT status, domain` before the UPDATE; removed post-update SELECT entirely (zero post-update round-trips)
+- `getCallerProfile` local function removed; all actions now use `getCurrentProfile` from `@/lib/services/profiles-service` (TD-001 resolved)
+
+---
+
+## 2026-05-29 — Dashboard waterfall eliminated — RSC consolidation + single cached RPC (Phase perf-01)
+
+5 individual client-initiated server action calls on dashboard mount replaced with one cached RSC fetch.
+GET /dashboard now delivers widgets with data on first paint — zero POST calls on initial load.
+
+**Migration:**
+
+- `supabase/migrations/20260529000029_get_dashboard_summary.sql` — `get_dashboard_summary(p_role, p_domain, p_user_id)` RPC; SECURITY DEFINER; single jsonb response with 4 keys: `agent_tasks`, `agent_activity`, `lead_status`, `campaigns`; role-based filtering inside CTEs mirrors exact service function logic; all COUNT fields cast `::int`; GRANT EXECUTE to authenticated
+
+**New type:**
+
+- `src/lib/types/index.ts` — `DashboardSummary` + 7 constituent types (`DashboardAgentTask`, `DashboardAgentTasksSummary`, `DashboardAgentActivity`, `DashboardLeadStatusCount`, `DashboardAgentStatusBreakdown`, `DashboardLeadStatusSummary`, `DashboardCampaignStatusMix`); shape exactly matches RPC jsonb output
+
+**Service:**
+
+- `src/lib/services/dashboard-service.ts` — `getDashboardSummary(role, domain, userId)` with React `cache()` (per-request memoisation); `unstable_cache` cannot be used here — `createClient()` calls `cookies()` which Next.js forbids inside `unstable_cache` closures; React `cache()` deduplicates within a single RSC render pass
+
+**Page (RSC):**
+
+- `src/app/(dashboard)/dashboard/page.tsx` — calls `getDashboardSummary()` once after `getCurrentProfile()`; passes result as `initialData` to `DashboardCanvas`
+
+**Widget layer:**
+
+- `WidgetProps` extended with `initialData?: DashboardSummary` (in `DashboardWidgetSlot.tsx`)
+- `DashboardCanvas` threads `initialData` through `SortableWidget` → `DashboardWidgetSlot` → widget component
+- `AgentTasksWidget`, `AgentActivityWidget`, `ManagerLeadStatusWidget`, `ManagerCampaignWidget` — skip mount fetch when `initialData` present; seed state directly; refresh buttons remain for user-initiated refetch
+- `ManagerLeadVolumeWidget` — unchanged; period selector requires interactive fetch; no initial data seeding (volume data intentionally excluded from RPC — too period-dependent)
+- All widgets now type-import from `@/lib/types` (Dashboard* types); old service-layer types remain for refresh actions
+
+**Invariants:**
+
+- `getDashboardSummary` uses React `cache()` — deduplicated per request, per argument tuple (role+domain+userId); different users always get separate memoised results within their own request
+- `ManagerLeadVolumeWidget` is the only widget that fires a server action on initial render
+- Refresh buttons on `AgentTasksWidget`, `ManagerLeadStatusWidget`, `ManagerCampaignWidget` still call individual server actions (targeted, user-initiated only)
+
+---
+
 ## 2026-05-29 — Settings page: Agent Roster + Shifts
 
 New `/settings` route for manager/admin/founder — lead assignment configuration surface.

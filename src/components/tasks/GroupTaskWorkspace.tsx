@@ -52,13 +52,6 @@ import {
   Plus,
   X,
   User,
-  Clock,
-  PlayCircle,
-  RefreshCw,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  Loader,
   ArrowRight,
   CalendarDays,
   ChevronDown,
@@ -67,15 +60,17 @@ import { createClient } from '@/lib/supabase/client';
 import {
   createSubtaskAction,
   getGroupSubtasksAction,
+  getTaskRemarksAction,
 } from '@/lib/actions/tasks';
 import { listAgentsForDomain } from '@/lib/actions/leads';
 import { formatRelativeTime, formatDate } from '@/lib/utils/dates';
 import { toast } from '@/lib/toast';
 import { SubTaskModal } from '@/components/tasks/SubTaskModal';
+import { TaskStatusIcon } from '@/components/tasks/TaskStatusIcon';
 import { AssigneePickerModal, type AssignableUser } from '@/components/tasks/AssigneePickerModal';
 import { TASK_STATUS, TASK_PRIORITY } from '@/lib/constants/task-constants';
 import { TASK_STATUS_LABELS } from '@/lib/constants/task-types';
-import type { SubtaskWithAssignee } from '@/lib/services/tasks-service';
+import type { SubtaskWithAssignee, TaskRemarkWithAuthor } from '@/lib/services/tasks-service';
 import { Avatar } from '@/components/ui/Avatar';
 import type { Task, TaskGroup, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
 
@@ -98,15 +93,6 @@ const PRIORITY_CONFIG: Record<TaskPriority, { label: string; dot: string; border
   urgent: { label: 'Urgent', dot: 'var(--color-danger)',  border: 'var(--color-danger)' },
   high:   { label: 'High',   dot: 'var(--color-warning)', border: 'var(--color-warning)' },
   normal: { label: 'Normal', dot: 'var(--theme-text-tertiary)', border: 'var(--theme-paper-border)' },
-};
-
-const STATUS_CONFIG: Record<TaskStatus, { bg: string; text: string }> = {
-  to_do:       { bg: 'var(--theme-paper-border)',  text: 'var(--theme-text-secondary)' },
-  in_progress: { bg: 'var(--theme-accent)',         text: 'var(--theme-accent-fg)' },
-  in_review:   { bg: 'var(--color-info)',           text: 'var(--color-info-text)' },
-  completed:   { bg: 'var(--color-success)',        text: 'var(--color-success-text)' },
-  error:       { bg: 'var(--color-danger)',         text: 'var(--color-danger-text)' },
-  cancelled:   { bg: 'var(--theme-text-tertiary)',  text: 'var(--theme-text-inverse)' },
 };
 
 // Board columns — Error and Cancelled share one column (both terminal non-success)
@@ -147,25 +133,10 @@ function sortSubtasks(tasks: SubtaskWithAssignee[]): SubtaskWithAssignee[] {
   });
 }
 
-// ─── Status icon ──────────────────────────────────────────────────────────────
-
-function StatusIcon({ status, size = 12 }: { status: TaskStatus; size?: number }) {
-  const style = { width: size, height: size, strokeWidth: 1.5, flexShrink: 0 as const };
-  switch (status) {
-    case 'to_do':       return <Clock        style={style} />;
-    case 'in_progress': return <PlayCircle   style={style} />;
-    case 'in_review':   return <RefreshCw    style={style} />;
-    case 'completed':   return <CheckCircle2 style={style} />;
-    case 'error':       return <AlertCircle  style={style} />;
-    case 'cancelled':   return <XCircle      style={style} />;
-    default:            return <Loader       style={style} />;
-  }
-}
-
 // ─── Group status/priority pill ───────────────────────────────────────────────
 
 function GroupStatusPill({ group }: { group: TaskGroup }) {
-  const cfg = STATUS_CONFIG[group.status];
+  const cfg = TASK_STATUS[group.status];
   return (
     <span
       style={{
@@ -174,8 +145,8 @@ function GroupStatusPill({ group }: { group: TaskGroup }) {
         gap:          '4px',
         padding:      '3px var(--space-2)',
         borderRadius: 'var(--radius-full)',
-        background:   cfg.bg,
-        color:        cfg.text,
+        background:   cfg.pillBg,
+        color:        cfg.pillText,
         fontFamily:   'var(--font-sans)',
         fontSize:     'var(--text-xs)',
         fontWeight:   'var(--weight-semibold)',
@@ -183,7 +154,7 @@ function GroupStatusPill({ group }: { group: TaskGroup }) {
         flexShrink:   0,
       }}
     >
-      <StatusIcon status={group.status} size={11} />
+      <TaskStatusIcon status={group.status} size={11} />
       {TASK_STATUS_LABELS[group.status]}
     </span>
   );
@@ -321,16 +292,24 @@ export function GroupTaskWorkspace({
   }, [group.id]);
 
   // ── Task modal state ──────────────────────────────────────────────────────
-  const [selectedSubtask, setSelectedSubtask] = useState<SubtaskWithAssignee | null>(null);
-  const [modalOpen,       setModalOpen]       = useState(false);
+  const [selectedSubtask,        setSelectedSubtask]        = useState<SubtaskWithAssignee | null>(null);
+  const [selectedSubtaskRemarks, setSelectedSubtaskRemarks] = useState<TaskRemarkWithAuthor[] | null>(null);
+  const [modalOpen,              setModalOpen]              = useState(false);
 
   function handleOpenModal(subtask: SubtaskWithAssignee) {
     setSelectedSubtask(subtask);
+    setSelectedSubtaskRemarks(null); // show skeleton until remarks arrive
+    getTaskRemarksAction(subtask.id).then((r) => {
+      setSelectedSubtaskRemarks(r.data ?? []);
+    }).catch(() => {
+      setSelectedSubtaskRemarks([]);
+    });
     setModalOpen(true);
   }
 
   function handleModalClose() {
     setModalOpen(false);
+    setSelectedSubtaskRemarks(null);
     // Refresh subtasks after modal close — status may have changed via TaskModal
     getGroupSubtasksAction(group.id).then((r) => {
       if (r.data) setSubtasks(r.data);
@@ -671,15 +650,15 @@ export function GroupTaskWorkspace({
                         gap:          '4px',
                         padding:      '2px var(--space-2)',
                         borderRadius: 'var(--radius-full)',
-                        background:   STATUS_CONFIG[subtask.status].bg,
-                        color:        STATUS_CONFIG[subtask.status].text,
+                        background:   TASK_STATUS[subtask.status].pillBg,
+                        color:        TASK_STATUS[subtask.status].pillText,
                         fontFamily:   'var(--font-sans)',
                         fontSize:     '11px',
                         fontWeight:   'var(--weight-semibold)',
                         flexShrink:   0,
                       }}
                     >
-                      <StatusIcon status={subtask.status} size={10} />
+                      <TaskStatusIcon status={subtask.status} size={10} />
                       {TASK_STATUS_LABELS[subtask.status]}
                     </span>
 
@@ -901,15 +880,15 @@ export function GroupTaskWorkspace({
                                 gap:          '3px',
                                 padding:      '2px var(--space-2)',
                                 borderRadius: 'var(--radius-full)',
-                                background:   STATUS_CONFIG[subtask.status].bg,
-                                color:        STATUS_CONFIG[subtask.status].text,
+                                background:   TASK_STATUS[subtask.status].pillBg,
+                                color:        TASK_STATUS[subtask.status].pillText,
                                 fontFamily:   'var(--font-sans)',
                                 fontSize:     '10px',
                                 fontWeight:   'var(--weight-semibold)',
                                 width:        'fit-content',
                               }}
                             >
-                              <StatusIcon status={subtask.status} size={9} />
+                              <TaskStatusIcon status={subtask.status} size={9} />
                               {TASK_STATUS_LABELS[subtask.status]}
                             </span>
                           </motion.div>
@@ -1162,14 +1141,14 @@ export function GroupTaskWorkspace({
 
       {/* Task Modal */}
       <AnimatePresence>
-        {selectedSubtask && modalOpen && (
+        {selectedSubtask && modalOpen && selectedSubtaskRemarks !== null && (
           <SubTaskModal
             open={modalOpen}
             onClose={handleModalClose}
             task={selectedSubtask as Task}
             group={group}
             assignee={selectedSubtask.assignee ?? undefined}
-            initialRemarks={[]}
+            initialRemarks={selectedSubtaskRemarks}
             callerProfile={{ id: currentUserId, role: callerRole, domain: callerDomain }}
             currentUserName={currentUserName}
           />

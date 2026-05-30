@@ -57,9 +57,10 @@ fresh channel rather than calling `.on()` on an already-subscribed one.
 | `constants/lead-statuses.ts` | `LeadStatus` enums + badge config |
 | `constants/call-outcomes.ts` | `CallOutcome` enums + labels |
 | `constants/task-types.ts` | `TaskType` enums |
-| `constants/task-constants.ts` | `TASK_PRIORITY`, `TASK_STATUS`, `TASK_CATEGORY` — labels, CSS token color names, sort order |
+| `constants/task-constants.ts` | `TASK_PRIORITY`, `TASK_STATUS`, `TASK_CATEGORY` — labels, CSS token colours, sort order. `TASK_STATUS` also has `pillBg`/`pillText` and `remarkBg`/`remarkColor`/`remarkBorder` for pills and remark chips |
 | `constants/campaign-domain-map.ts` | prefix → domain mapping |
 | `constants/lead-columns.ts` | Column registry for the leads table — `LEAD_COLUMNS`, `LEAD_COLUMN_MAP`, `DEFAULT_COLUMN_ORDER`, `isValidLeadColumnId`. IDs are stable localStorage keys — never rename after shipping. |
+| `constants/whatsapp.ts` | `WHATSAPP_API_VERSION`, `WHATSAPP_API_BASE`, `WHATSAPP_MESSAGE_TYPES`, `WHATSAPP_CONVERSATION_STATUS`, `WHATSAPP_SENDER_TYPE`, `WHATSAPP_DIRECTION`, `WHATSAPP_MESSAGE_STATUS`, `WHATSAPP_NOTIFICATION_TEMPLATES`, `WHATSAPP_MESSAGES_PAGE_SIZE`, `WHATSAPP_CONVERSATIONS_PAGE_SIZE`. No secret env vars here — `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_WEBHOOK_SECRET` live in `process.env` only (S-11). |
 
 ## Services registry
 
@@ -68,12 +69,16 @@ fresh channel rather than calling `.on()` on an already-subscribed one.
 | `services/profiles-service.ts` | Profile DB queries |
 | `services/leads-service.ts` | Lead DB queries — `getLeadsByRole`, `getLeadById`, etc. |
 | `services/notifications-service.ts` | Notification reads/writes |
-| `services/dashboard-service.ts` | Dashboard widget queries only — never extend leads-service |
+| `services/dashboard-service.ts` | Dashboard data. Primary entry point: `getDashboardSummary(role, domain, userId)` — single RPC, memoised with React `cache()` per request (cannot use `unstable_cache` — `createClient()` reads `cookies()` which is forbidden inside `unstable_cache` closures). Do not split back into individual action calls for summary data. `getLeadVolumeByPeriod` is the only individual function still used (period toggle). |
 | `services/performance-service.ts` | Performance page queries |
 | `services/ad-creatives-service.ts` | `getAdCreativeForCampaign` |
 | `services/tasks-service.ts` | OS Tasks queries — `getPersonalTasks`, `getGroupTasks`, `getGroupSubtasks`, `getTaskById`, `getTaskRemarks` (ordered ASC, returns `TaskRemarkWithAuthor[]`). Also exports `TaskRemarkWithAuthor` — canonical type definition. |
 | `services/sla-service.ts` | Gia SLA Engine DB queries — `getSlaTimersForLead`, `getSlaTimerForLeadAndRule`, `createSlaTimer`, `updateSlaTimerRunId`, `cancelSlaTimersForLeadInDb`, `markSlaTimerFired`, `getOpenGiaFollowupTask`, `getManagersByDomain`. All writes use adminClient (service-role). |
 | `services/agent-routing-service.ts` | `getAgentRoutingConfig`, `getRoutingConfigsByDomain`, `getActiveRoutingConfigs`, `setRoutingActive`, `getAgentRosterByDomain` (joined profiles+config, adminClient), `setAgentShift` (adminClient) |
+| `services/lead-ingestion.ts` | Webhook lead ingestion pipeline. Also exports `createLeadFromWhatsApp(waId, phone): Promise<{leadId, assignedTo}>` — called by `whatsapp-ingestion.ts` when an inbound message arrives from an unknown number. Uses adminClient. |
+| `services/whatsapp-api.ts` | **SERVER ONLY.** Pure Meta Cloud API HTTP client — no DB, no Supabase. Reads `WHATSAPP_PHONE_NUMBER_ID` and `WHATSAPP_ACCESS_TOKEN` at module load (throws at startup if absent). Exports: `sendTextMessage`, `sendTemplateMessage`, `sendMediaMessage`, `uploadMedia`, `getMediaDownloadUrl`, `verifyMetaSignature` (HMAC-SHA256 + `timingSafeEqual`), `WEBHOOK_VERIFY_TOKEN`, `BUSINESS_ACCOUNT_ID`. Never import in client components. |
+| `services/whatsapp-ingestion.ts` | **SERVER ONLY.** Inbound WhatsApp processing pipeline. Uses adminClient throughout. Exports: `parseWebhookPayload` (flattens nested Meta envelope), `processInboundMessage` (full 9-step pipeline, idempotent via wa_message_id dedup), `processStatusUpdate` (delivery receipt — the ONLY UPDATE on whatsapp_messages, uses adminClient, A-11 narrow exception), `resolveLeadByPhone`, `getOrCreateConversation` (SELECT → INSERT ON CONFLICT DO NOTHING → re-SELECT), `insertInboundMessage` (sanitizes content with sanitizeText). |
+| `services/whatsapp-service.ts` | UI-facing WhatsApp queries. Uses session client — RLS handles access. Exports: `getConversations` (paginated, cursor = last_message_at), `getConversation`, `getMessages` (paginated ASC, joins sender profile), `getUnreadCount` (calls `get_wa_unread_count` RPC — per-agent LEFT JOIN unread count, returns 0 never null), `markConversationRead` (UPSERT into whatsapp_conversation_reads), `searchConversations` (ILIKE on name/phone, sanitized, max 20). |
 
 ## Composite cursor pattern for nullable sort columns
 
@@ -104,6 +109,34 @@ Expressed as a single `.or()` call in the Supabase query builder (not chained `.
 ## unstable_cache key rule
 
 When wrapping a service function in `unstable_cache`, the cache key **must** include every dimension that scopes the result. For domain-scoped queries, the caller's domain must be in the key — a manager in `concierge` must never receive a cached response intended for `finance`.
+
+## unstable_cache + cookies() — hard constraint
+
+`unstable_cache` closures **cannot** call `cookies()` or `headers()`. Next.js throws at runtime:
+
+> Route used `cookies()` inside a function cached with `unstable_cache()`. Accessing Dynamic data sources inside a cache scope is not supported.
+
+`createClient()` from `src/lib/supabase/server.ts` calls `cookies()` internally. Therefore any service function that calls `createClient()` **cannot** be wrapped in `unstable_cache`.
+
+**The correct alternative:** use React `cache()` from `'react'`. It deduplicates within a single RSC render pass (per-request memoisation) and has no restriction on dynamic data sources.
+
+```ts
+// ✅ Correct — createClient() calls cookies(); use React cache() instead
+import { cache } from 'react';
+export const myServiceFn = cache(async (arg: string) => {
+  const supabase = await createClient();
+  // ...
+});
+
+// ✗ Wrong — throws at runtime when createClient() is called inside the closure
+import { unstable_cache } from 'next/cache';
+export const myServiceFn = unstable_cache(async (arg: string) => {
+  const supabase = await createClient(); // ← cookies() call → runtime error
+  // ...
+}, ['key']);
+```
+
+**Reference implementation:** `getDashboardSummary` in `services/dashboard-service.ts`.
 
 ```ts
 // ✅ Correct — domain in key
@@ -156,6 +189,15 @@ Total: 2 DB round-trips, zero subtask rows transferred to Node.
 - Because the generated Supabase types won't include the new RPC until regenerated, cast the client to `any` for the `.rpc()` call with an `// eslint-disable-next-line @typescript-eslint/no-explicit-any` comment above it.
 - Add the RPC to `supabase/migrations/CLAUDE.md` migration inventory after the migration file is created.
 
+## addLeadCallNote and updateLeadStatus — RPC-backed writes
+
+Both actions call `SECURITY DEFINER` RPCs for all DB writes. Do not add sequential `await` DB calls to these actions.
+
+- `addLeadCallNote` calls `add_lead_call_note` RPC (migration 0030) — 1 round-trip for: note insert + lead UPDATE + 2–3 activity inserts.
+- `updateLeadStatus` calls `update_lead_status` RPC (migration 0031) — 1 round-trip for: lead UPDATE + activity insert + optional nurturing task + task_gia_meta.
+
+**What stays in the action layer:** Zod validation, auth/access check, won notifications, SLA scheduling (Trigger.dev). These are application-layer concerns that cannot go inside a Postgres function.
+
 ## Actions registry
 
 | File | Purpose |
@@ -167,6 +209,23 @@ Total: 2 DB round-trips, zero subtask rows transferred to Node.
 | `actions/notifications.ts` | `markNotificationReadAction`, `markAllReadAction` |
 | `actions/tasks.ts` | OS Tasks actions — `createPersonalTaskAction`, `createGroupTaskAction`, `createSubtaskAction`, `updateTaskStatusAction`, `updateTaskAction`, `deleteTaskAction`, `addTaskRemarkAction`, `suppressTaskRemarkAction` |
 | `actions/sla.ts` | Gia SLA Engine actions — `scheduleSlaTimersForLead`, `cancelSlaTimersForLead`, `refreshActivitySlaTimers`, `fireSlaBreachAction` (Trigger.dev only), `fireSlaBreachHandler` (internal) |
+
+## Types registry
+
+| File | Purpose |
+| ---- | ------- |
+| `types/database.ts` | Auto-generated Supabase row types. Regenerate with `supabase gen types typescript --local`. Never hand-edit. |
+| `types/index.ts` | Shared app types not tied to a single DB table (e.g. `DashboardSummary`, `ActionResult`). |
+| `types/whatsapp.ts` | Meta Cloud API payload shapes (`MetaWebhookPayload`, `MetaInboundMessage` discriminated union, `MetaStatusUpdate`, `MetaApiResponse`, `TemplateComponent`) + app-internal types (`WhatsAppConversation`, `WhatsAppMessage`, `SendMessageInput`). Types only — no runtime values. |
+
+## Validations registry
+
+| File | Purpose |
+| ---- | ------- |
+| `validations/profile-schema.ts` | Profile create/update/auth/deactivate/invite/avatar schemas |
+| `validations/lead-schema.ts` | Lead lifecycle schemas (call note, status update, assign, scratchpad, personal details, manual create, webhook) |
+| `validations/task-schemas.ts` | OS Tasks schemas (create personal/group/subtask, update, checklist, tags, remarks) |
+| `validations/whatsapp-schema.ts` | `MetaWebhookPayloadSchema` (permissive passthrough), `MetaStatusUpdateSchema`, `SendMessageSchema` (conversationId uuid + content 1–4096 chars), `ResolveConversationSchema`. Human-readable error messages — never Zod defaults. |
 
 ## Trigger.dev jobs
 
@@ -189,16 +248,20 @@ Total: 2 DB round-trips, zero subtask rows transferred to Node.
 2. `updateLeadStatus` — after status write: update `status_changed_at`; if terminal → `cancelSlaTimersForLead`; else → `scheduleSlaTimersForLead` (cancel-then-reschedule).
 3. `addLeadCallNote` — after note write: update `last_activity_at`; if auto-advanced new→touched → `scheduleSlaTimersForLead`; else → `refreshActivitySlaTimers` (SLA-02/03 only; SLA-01 never refreshed by activity).
 
-## addTaskRemarkAction — pattern
+## addTaskRemarkAction — RPC-backed (perf-02)
 
 `addTaskRemarkAction` is the ONLY path that inserts into `task_remarks`. It accepts:
 - `taskId` (uuid) — the task to remark on
 - `content` (string, 1–2000 chars, sanitized by Zod transform + explicit re-sanitize)
-- `statusChange` (optional `TaskStatus`) — if provided, calls `updateTaskStatusAction` first and records the transition in `status_change` column
+- `statusChange` (optional `TaskStatus`) — if provided, the RPC handles both the tasks UPDATE and the INSERT atomically
 
-**Status change flow:** `updateTaskStatusAction` is called internally. Its logic is NOT duplicated. If the status update fails, the remark insert is aborted. `updateTaskStatusAction` does not insert a remark — no circular dependency.
+**Implementation:** calls `add_task_remark_with_status` RPC (migration 0035) — 1 round-trip for both the optional status UPDATE and the task_remarks INSERT. The previous pattern of 6 sequential awaits has been retired.
 
-**Access:** caller must be `assigned_to`, `created_by`, or `manager+`. Checked at action layer (belt-and-braces over RLS).
+**Access:** Zod validation + `getCurrentProfile()` check in the action (A-09 layer 1). The RPC performs a second inline auth check via `auth.uid()` (A-09 layer 2).
+
+**`updateTaskStatusAction` is NOT called from `addTaskRemarkAction`.** The status update is handled entirely inside the RPC. `updateTaskStatusAction` remains for direct, remark-free status changes.
+
+**`log_task_changes()` trigger:** The UPDATE inside the RPC fires the audit trigger — status changes are still fully audited.
 
 **Returns:** `ActionResult<TaskRemark>` — full remark row (not just an id).
 

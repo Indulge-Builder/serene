@@ -510,6 +510,25 @@ Dashboard widget system: canvas, registry, hook, and 5 Gia widgets.
 - `src/app/(dashboard)/CLAUDE.md` — created: widget registry location, hook key format, dynamic import pattern, Phase B widget list, data access rules
 - `recharts@3.8.1` added to dependencies
 
+### Dashboard RSC consolidation — perf-01 (2026-05-29)
+
+Dashboard waterfall eliminated. 5 client-initiated server action calls → 1 cached RSC fetch.
+GET /dashboard now delivers all summary widgets with data on first paint. Zero POST calls on initial load.
+
+- Migration 0029: `get_dashboard_summary(p_role, p_domain, p_user_id)` RPC — single jsonb, 4 keys, SECURITY DEFINER, role-based CTEs, all COUNT cast `::int`
+- `src/lib/types/index.ts` — `DashboardSummary` type + 7 constituent types; shape mirrors RPC output exactly
+- `src/lib/services/dashboard-service.ts` — `getDashboardSummary(role, domain, userId)` with React `cache()` (per-request memoisation); `unstable_cache` not viable here — `createClient()` calls `cookies()` which Next.js forbids inside `unstable_cache` closures
+- `src/app/(dashboard)/dashboard/page.tsx` — calls `getDashboardSummary()` once; passes `initialData` to `DashboardCanvas`
+- `WidgetProps` extended with `initialData?: DashboardSummary`; threaded through `DashboardCanvas → SortableWidget → DashboardWidgetSlot → widget`
+- `AgentTasksWidget`, `AgentActivityWidget`, `ManagerLeadStatusWidget`, `ManagerCampaignWidget` — skip mount fetch when `initialData` present; refresh buttons remain for user-initiated refetch
+- `ManagerLeadVolumeWidget` — unchanged; period selector keeps its own action fetch (volume intentionally excluded from RPC)
+
+**Rule:** Dashboard summary data is RSC + cached. Do not split `getDashboardSummary` back into individual server action calls. `getLeadVolumeByPeriod` is the only individual dashboard service function still called (by the period toggle action).
+
+**Cache key rule:** `['dashboard-summary', role, domain, userId]` — all three identifiers required. Omitting any one risks cross-user cache hits.
+
+---
+
 ### Phase 7 — post-ship fix (2026-05-28)
 
 `startTransition` called during render — three widgets patched.

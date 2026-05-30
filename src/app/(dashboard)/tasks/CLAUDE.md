@@ -42,14 +42,11 @@ function toggleSection(key: string) {
 
 ## getGroupTasks cache
 
-`getGroupTasks` is wrapped in `unstable_cache` with:
-- Tag: `'group-tasks'`
-- TTL: 60 seconds
-- Cache key includes `callerDomain` — a manager in `concierge` must never see another domain's groups from cache
+`getGroupTasks` uses React `cache()` for per-request memoisation. It cannot use `unstable_cache`
+because `createClient()` calls `cookies()`, which Next.js forbids inside `unstable_cache` closures.
 
-**Revalidation sites** (must call `revalidateTag('group-tasks', { expire: 0 })` after success):
-- `createGroupTaskAction` — new group created
-- `createSubtaskAction` — subtask added (changes aggregate counts)
+After mutations, `createGroupTaskAction` and `createSubtaskAction` call `revalidatePath('/tasks')`
+to invalidate the RSC cache and trigger a fresh fetch on the next request.
 
 ## getPersonalTasks sort
 

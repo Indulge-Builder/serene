@@ -9,7 +9,7 @@ import { getLeadsByCampaignAction } from '@/lib/actions/dashboard';
 import { formatCompact } from '@/lib/utils/numbers';
 import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
 import type { LeadStatus } from '@/lib/types/database';
-import type { CampaignStatusMix } from '@/lib/services/dashboard-service';
+import type { DashboardCampaignStatusMix } from '@/lib/types';
 import type { WidgetProps } from '../DashboardWidgetSlot';
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
@@ -30,12 +30,15 @@ const CHART_SERIES: BarChartSeries[] = STATUS_ORDER.map((s) => ({
   label: LEAD_STATUS_LABELS[s],
 }));
 
-export function ManagerCampaignWidget({ role, domain }: WidgetProps) {
-  const [campaigns, setCampaigns]    = useState<CampaignStatusMix[]>([]);
-  const [loaded, setLoaded]          = useState(false);
+export function ManagerCampaignWidget({ role, domain, initialData }: WidgetProps) {
+  const seed = initialData?.campaigns ?? null;
+  const [campaigns, setCampaigns]    = useState<DashboardCampaignStatusMix[]>(seed ?? []);
+  const [loaded, setLoaded]          = useState(seed !== null);
   const [isPending, startTransition] = useTransition();
 
+  // Only fetch on mount when no server-provided initialData
   useEffect(() => {
+    if (seed !== null) return;
     let cancelled = false;
     startTransition(async () => {
       const result = await getLeadsByCampaignAction(role, domain);

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "trigger:dev": "trigger dev"
+    "trigger:dev": "trigger dev",
+    "trigger:deploy": "trigger deploy"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

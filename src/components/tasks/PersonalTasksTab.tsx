@@ -51,6 +51,7 @@ import {
   createPersonalTaskAction,
   getPersonalTasksAction,
   getPersonalTaskTagsAction,
+  getTaskRemarksAction,
   updateTaskStatusAction,
 } from '@/lib/actions/tasks';
 import { formatRelativeTime } from '@/lib/utils/dates';
@@ -58,9 +59,8 @@ import { toast } from '@/lib/toast';
 import { SubTaskModal } from '@/components/tasks/SubTaskModal';
 import { AssigneePickerModal, type AssignableUser } from '@/components/tasks/AssigneePickerModal';
 import { CreatePersonalTaskModal } from '@/components/tasks/CreatePersonalTaskModal';
-import { type TaskRemarkWithAuthor } from '@/components/tasks/TaskRemarksPanel';
 import { Avatar } from '@/components/ui/Avatar';
-import type { PersonalTasksResult } from '@/lib/services/tasks-service';
+import type { PersonalTasksResult, TaskRemarkWithAuthor } from '@/lib/services/tasks-service';
 import type { Task, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -136,7 +136,6 @@ export function PersonalTasksTab({
   // ── Task data ─────────────────────────────────────────────────────────────
   const [activeTasks,    setActiveTasks]    = useState<Task[]>(initialResult.tasks);
   const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
-  const [isLoading,      setIsLoading]      = useState(false);
 
   // ── Optimistic status map — keyed by taskId ────────────────────────────────
   // Tracks in-flight optimistic completions/reopens without causing section collapse.
@@ -208,7 +207,7 @@ export function PersonalTasksTab({
 
   // ── Task modal state ──────────────────────────────────────────────────────
   const [selectedTask,        setSelectedTask]        = useState<Task | null>(null);
-  const [selectedTaskRemarks, setSelectedTaskRemarks] = useState<TaskRemarkWithAuthor[]>([]);
+  const [selectedTaskRemarks, setSelectedTaskRemarks] = useState<TaskRemarkWithAuthor[] | null>(null);
   const [taskModalOpen,       setTaskModalOpen]       = useState(false);
 
   // ── Focus quick-add title on show ─────────────────────────────────────────
@@ -218,31 +217,12 @@ export function PersonalTasksTab({
     }
   }, [showQuickAdd]);
 
-  // ── Initial data fetch — active + tags in parallel on mount ───────────────
-  // Completed tasks are NOT fetched here — they load lazily on first accordion expand.
-  // This is a perceived-performance win: active tasks render immediately.
+  // ── Load tags on mount (not included in SSR initialResult) ─────────────────
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
-
-    Promise.all([
-      // All non-completed tasks — limit 500, no cursor (fetch all)
-      getPersonalTasksAction({
-        status: ['to_do', 'in_progress', 'in_review', 'error', 'cancelled'],
-        limit:  500,
-      }),
-      // All distinct tags used by this user's active tasks
-      getPersonalTaskTagsAction(),
-    ]).then(([activeResult, tagsResult]) => {
-      if (cancelled) return;
-      if (activeResult.data) setActiveTasks(activeResult.data.tasks);
-      if (tagsResult.data)   setAvailableTags(tagsResult.data);
-    }).catch(() => {
-      // Non-fatal — UI shows initialResult
-    }).finally(() => {
-      if (!cancelled) setIsLoading(false);
-    });
-
+    getPersonalTaskTagsAction().then((r) => {
+      if (!cancelled && r.data) setAvailableTags(r.data);
+    }).catch(() => {});
     return () => { cancelled = true; };
   // Only run on mount — no deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -320,13 +300,28 @@ export function PersonalTasksTab({
       setQuickDueAt('');
       setQuickAssignee(null);
 
-      // Refresh the active list to include the new task
-      getPersonalTasksAction({
-        status: ['to_do', 'in_progress', 'in_review', 'error', 'cancelled'],
-        limit:  500,
-      }).then((r) => {
-        if (r.data) setActiveTasks(r.data.tasks);
-      }).catch(() => {});
+      // Prepend synthetic task — avoids a full 500-row re-fetch
+      const now = new Date().toISOString();
+      const syntheticTask: Task = {
+        id:            result.data!.taskId,
+        title:         quickTitle.trim(),
+        description:   null,
+        priority:      'normal',
+        status:        'to_do',
+        due_at:        quickDueAt ? new Date(quickDueAt).toISOString() : null,
+        assigned_to:   quickAssignee?.id ?? '',
+        created_by:    '',
+        group_id:      null,
+        task_category: 'personal',
+        task_type:     'general_follow_up',
+        module:        'gia',
+        completed_at:  null,
+        attachments:   [],
+        tags:          [],
+        created_at:    now,
+        updated_at:    now,
+      };
+      setActiveTasks((prev) => [syntheticTask, ...prev]);
     });
   }, [isPending, quickTitle, quickDueAt, quickAssignee, startTransition]);
 
@@ -338,10 +333,15 @@ export function PersonalTasksTab({
     }
   }
 
-  // ── Row click → open modal ────────────────────────────────────────────────
+  // ── Row click → fetch remarks then open modal ─────────────────────────────
   function handleRowClick(task: Task) {
     setSelectedTask(task);
-    setSelectedTaskRemarks([]);
+    setSelectedTaskRemarks(null); // show skeleton until remarks arrive
+    getTaskRemarksAction(task.id).then((r) => {
+      setSelectedTaskRemarks(r.data ?? []);
+    }).catch(() => {
+      setSelectedTaskRemarks([]);
+    });
     setTaskModalOpen(true);
   }
 
@@ -926,7 +926,7 @@ export function PersonalTasksTab({
       )}
 
       {/* Empty state — only shown when no active tasks and not loading */}
-      {!hasAnyActive && !isLoading && (
+      {!hasAnyActive && (
         <div
           style={{
             border:       '1px solid var(--theme-paper-border)',
@@ -1248,10 +1248,10 @@ export function PersonalTasksTab({
 
       {/* Task Modal */}
       <AnimatePresence>
-        {selectedTask && taskModalOpen && (
+        {selectedTask && taskModalOpen && selectedTaskRemarks !== null && (
           <SubTaskModal
             open={taskModalOpen}
-            onClose={() => { setTaskModalOpen(false); setSelectedTask(null); }}
+            onClose={() => { setTaskModalOpen(false); setSelectedTask(null); setSelectedTaskRemarks(null); }}
             task={selectedTask}
             initialRemarks={selectedTaskRemarks}
             callerProfile={{ id: currentUserId, role: callerRole, domain: callerDomain }}

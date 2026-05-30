@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { formatCompact } from '@/lib/utils/numbers';
 import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
 import type { LeadStatus } from '@/lib/types/database';
-import type { LeadStatusCount, AgentStatusBreakdown } from '@/lib/services/dashboard-service';
+import type { DashboardLeadStatusCount, DashboardAgentStatusBreakdown } from '@/lib/types';
 import type { WidgetProps } from '../DashboardWidgetSlot';
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
@@ -73,16 +73,19 @@ function StackedBar({ mix, total }: StackedBarProps) {
 }
 
 type StatusData = {
-  totals:  LeadStatusCount[];
-  byAgent: AgentStatusBreakdown[];
+  totals:  DashboardLeadStatusCount[];
+  byAgent: DashboardAgentStatusBreakdown[];
 };
 
-export function ManagerLeadStatusWidget({ role, domain }: WidgetProps) {
-  const [data, setData]              = useState<StatusData | null>(null);
-  const [loaded, setLoaded]          = useState(false);
+export function ManagerLeadStatusWidget({ role, domain, initialData }: WidgetProps) {
+  const seed = initialData?.lead_status ?? null;
+  const [data, setData]              = useState<StatusData | null>(seed);
+  const [loaded, setLoaded]          = useState(seed !== null);
   const [isPending, startTransition] = useTransition();
 
+  // Only fetch on mount when no server-provided initialData
   useEffect(() => {
+    if (seed !== null) return;
     let cancelled = false;
     startTransition(async () => {
       const result = await getLeadStatusSummaryAction(role, domain);

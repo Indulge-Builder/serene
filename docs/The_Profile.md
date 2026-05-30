@@ -358,6 +358,36 @@ concern. It does not live on profiles. Profile owns
 identity and authorization only. Gia owns its own
 availability and assignment logic.
 
+### Gia module (Phase 2 — complete)
+
+`agent_routing_config` is a separate table, not a column
+on `profiles`. It owns all assignment-pool state:
+
+```sql
+agent_routing_config (
+  agent_id      uuid  PK REFERENCES profiles(id),
+  is_active     boolean NOT NULL DEFAULT true,
+  shift_start   time,   -- optional: '09:00'
+  shift_end     time,   -- optional: '18:00'
+  updated_at    timestamptz NOT NULL DEFAULT now()
+)
+```
+
+Auto-created by `handle_agent_routing_config` trigger
+when a profile is inserted or updated with `role = 'agent'`.
+No manual creation required.
+
+`is_active` = the holiday switch. Set to `false` → agent
+leaves the round-robin pool instantly. Flip back to `true`
+→ re-enters. Shift window is advisory only — eligibility
+is not automatically enforced by the DB; the ingestion
+service reads it.
+
+### OS Tasks module (Phase 9 — complete)
+
+No columns added to `profiles`. Task assignment uses
+`profiles.id` as a FK target only — no new profile columns.
+
 **Future amendments added here as modules are built.**
 
 ---

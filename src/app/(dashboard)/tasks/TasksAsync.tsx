@@ -48,7 +48,7 @@ export async function TasksAsync({
     tab === 'group'
       ? Promise.all([
           Promise.resolve(EMPTY_PERSONAL),
-          getGroupTasks({}, callerDomain),
+          getGroupTasks({}),
         ])
       : Promise.all([
           getPersonalTasks(userId),

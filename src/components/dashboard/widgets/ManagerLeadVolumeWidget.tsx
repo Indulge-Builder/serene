@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -24,25 +24,14 @@ const PERIODS: { value: VolumePeriod; label: string }[] = [
   { value: 'quarter', label: 'Quarter' },
 ];
 
-export function ManagerLeadVolumeWidget({ role, domain }: WidgetProps) {
+export function ManagerLeadVolumeWidget({ role, domain, initialData }: WidgetProps) {
+  // Seed from RSC-fetched week default. Only fires action on period change.
+  const seed = initialData?.lead_volume ?? null;
   const [period, setPeriod]           = useState<VolumePeriod>('week');
-  const [data, setData]               = useState<LeadVolumeSummary | null>(null);
-  const [loaded, setLoaded]           = useState(false);
+  const [data, setData]               = useState<LeadVolumeSummary | null>(seed);
+  const [loaded, setLoaded]           = useState(seed !== null);
   const [isPending, startTransition]  = useTransition();
   const { series: chartColors }       = useChartTokens();
-
-  useEffect(() => {
-    let cancelled = false;
-    startTransition(async () => {
-      const result = await getLeadVolumeByPeriodAction(role, domain, 'week');
-      if (!cancelled && result.data) {
-        setData(result.data);
-        setLoaded(true);
-      }
-    });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   function handlePeriodChange(p: VolumePeriod) {
     setPeriod(p);

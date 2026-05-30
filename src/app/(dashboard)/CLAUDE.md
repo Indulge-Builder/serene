@@ -132,6 +132,22 @@ This keeps bundle splitting clean — a widget not visible to a role is never lo
 
 ---
 
+## WhatsApp Page — `/whatsapp`
+
+**File:** `src/app/(dashboard)/whatsapp/page.tsx` — Server Component.
+
+Fetches `getCurrentProfile()`, then `getConversations({ limit: WHATSAPP_CONVERSATIONS_PAGE_SIZE })` and `getUnreadCount()` in `Promise.all`. Passes `callerProfile` and `initialConversations` to `WhatsAppShell`.
+
+**No Suspense boundary here** — the page itself streams via Next.js. `loading.tsx` provides the skeleton.
+
+**Access:** all roles except `guest` (redirected to `/dashboard`).
+
+**Layout:** full-height two-panel (`height: calc(100dvh - 56px)`). No `p-8` page padding — the shell is flush. `WhatsAppShell` owns both panels.
+
+**Client reads via actions:** `WhatsAppShell` and `ConversationList` call server action wrappers (`getConversationsAction`, `getMessagesAction`, `searchConversationsAction`) in `src/lib/actions/whatsapp.ts`. They must never import `whatsapp-service.ts` directly — it uses the server Supabase client.
+
+---
+
 ## Tasks Page — `/tasks`
 
 **File:** `src/app/(dashboard)/tasks/page.tsx` — thin Server Component orchestrator.
@@ -163,6 +179,8 @@ Uses `useSearchParams` + `useTransition` + `router.push`. Browser back/forward w
 - Task list rows with 3px priority left border. Click row → `SubTaskModal`.
 - Cursor pagination: "Load more" button. `PERSONAL_TASKS_PAGE_SIZE = 50`.
 - `AssigneePickerModal` portaled to `document.body` — never inline inside scroll container.
+- **Data initialisation:** `activeTasks` state is seeded directly from `initialResult.tasks` (SSR prop). No mount re-fetch. Tags are loaded once on mount via `getPersonalTaskTagsAction` (not in `initialResult`). Active task list is mutated locally — quick-add prepends a synthetic task, optimistic circle toggles update `optimisticStatus`. `getPersonalTasksAction` is never called on mount or after quick-add.
+- **Quick-add prepend pattern:** after `createPersonalTaskAction` succeeds, a synthetic `Task` object (all required fields, `priority: 'normal'`, `status: 'to_do'`, `tags: []`) is prepended to `activeTasks` state. Mirrors `CreatePersonalTaskModal.onCreated`.
 
 ### GroupTasksTab
 
@@ -173,6 +191,7 @@ Uses `useSearchParams` + `useTransition` + `router.push`. Browser back/forward w
 - Subtask rows: title + status pill + assignee avatar. Click → `SubTaskModal`.
 - "Add subtask" row at bottom. `AssigneePickerModal` portaled to `document.body`.
 - Subtask data loaded on first expand (`getGroupSubtasks`) — not on mount.
+- **Agent list fetch:** `listAgentsForDomain` is called **once on mount** in `GroupTasksTab` (manager+ only) and the result is stored as `assignableUsers` state. This is passed as a prop to every `GroupRow`. `GroupRow` must never call `listAgentsForDomain` independently — doing so would fire one DB call per expanded group.
 
 ### Group Task Workspace — `/tasks/[id]`
 
@@ -185,7 +204,7 @@ Uses `useSearchParams` + `useTransition` + `router.push`. Browser back/forward w
 - Two views: List (priority DESC + due_at ASC NULLS LAST) | Board (5 columns).
 - View persisted to `localStorage` at `eia:tasks:workspace-view:${groupId}`. Default `'list'` on SSR; `useEffect` reads after mount (no hydration mismatch).
 - Board has 5 columns: To Do · In Progress · In Review · Completed · Error/Cancelled. Error and Cancelled share one column; header shows sum of both counts; cards show actual status pill.
-- Click any row/card → `SubTaskModal`. Status changes via TaskModal → local state update on `handleModalClose` (re-fetches subtasks).
+- Click any row/card → fires `getTaskRemarksAction(subtask.id)`, sets `selectedSubtaskRemarks` state. `SubTaskModal` mounts only once `selectedSubtaskRemarks !== null`. Status changes via TaskModal → local state update on `handleModalClose` (re-fetches subtasks, clears remarks).
 - Realtime: subscribes to `tasks WHERE group_id = id`. Channel: `workspace-subtasks-${groupId}-${mountId}`.
 - Floating "+ Add subtask" FAB (bottom-right). Opens inline panel: title + assignee + priority + due date. `createSubtaskAction` → re-fetches on success.
 - No drag-and-drop. No inline complete for subtasks.
