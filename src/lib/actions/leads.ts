@@ -291,6 +291,7 @@ export async function assignLead(
     agentId,
     assignLeadName,
     existingLead.phone ?? '',
+    existingLead.domain as string,
   ).catch((err) => {
     console.error('[leads] assignment notification failed (non-fatal):', err);
   });
@@ -558,6 +559,7 @@ export async function createManualLead(
       assignedTo,
       manualLeadName,
       phone,
+      resolvedDomain as string,
     ).catch((err) => {
       console.error('[leads] assignment notification failed (non-fatal):', err);
     });

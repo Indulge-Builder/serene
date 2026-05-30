@@ -262,6 +262,7 @@ export async function sendLeadAssignmentNotification(
   agentId:   string,
   leadName:  string,
   leadPhone: string,
+  domain?:   string | null,
 ): Promise<void> {
   try {
     const admin = createAdminClient();
@@ -313,6 +314,7 @@ export async function sendLeadAssignmentNotification(
       recipientPhone: destination,
       leadName,
       leadPhone,
+      domain,
       gupshupStatus:  res.status,
       gupshupBody:    responseBody,
       delivered:      res.ok,

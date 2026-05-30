@@ -58,7 +58,9 @@ export async function requestPasswordResetAction(
   const supabase = await createClient();
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
-  // Always return success — never reveal whether the email exists (Rule S-09)
+  // Always return success — never reveal whether the email exists (Rule S-09).
+  // redirectTo receives token_hash + type=recovery params from Supabase — no
+  // PKCE code_verifier cookie required, so the link works from any browser/device.
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo: `${siteUrl}/api/auth/callback?next=/update-password`,
   });
