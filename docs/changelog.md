@@ -7,6 +7,10 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-30 — WA: extract sender name from Gupshup webhook payload; pass through to lead creation
+
+## 2026-05-30 — WA: add wa_messages_outbound_insert RLS policy; fix silent insert failure logging in sendWhatsAppMessage
+
 ## 2026-05-30 — WA webhook: replace void async IIFE with after() — fixes Vercel function termination before DB writes
 
 ## 2026-05-30 — WA: Gupshup v1 wired — x-gupshup-secret auth, dual-format inbound parser, Gupshup v1 outbound send

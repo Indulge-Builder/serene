@@ -73,7 +73,10 @@ export async function sendWhatsAppMessage(
     .select("*")
     .single();
 
-  if (insertError || !row) return { data: null, error: "Message sent but not recorded" };
+  if (insertError || !row) {
+    console.error('[sendWhatsAppMessage] insert failed:', insertError?.message ?? 'row was null');
+    return { data: null, error: "Message sent but not recorded" };
+  }
 
   const message: WhatsAppMessage = {
     id:              (row as Record<string, unknown>)["id"] as string,

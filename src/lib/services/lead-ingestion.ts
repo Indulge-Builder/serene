@@ -192,18 +192,23 @@ export async function ingestLead(
 // Dedup is the caller's responsibility: this function always inserts.
 // ─────────────────────────────────────────────
 export async function createLeadFromWhatsApp(
-  waId:  string,
-  phone: string,
+  waId:        string,
+  phone:       string,
+  senderName?: string | null,
 ): Promise<{ leadId: string; assignedTo: string | null }> {
   const supabase = createAdminClient();
   const domain   = DEFAULT_LEAD_DOMAIN;
   const assignedTo = await getNextRoundRobinAgent(domain);
 
+  const nameParts  = senderName?.split(' ') ?? [];
+  const first_name = nameParts[0] ?? phone;
+  const last_name  = nameParts.slice(1).join(' ') || null;
+
   const { data: inserted, error } = await supabase
     .from('leads')
     .insert({
-      first_name:         waId,   // temporary — agent updates once contact is established
-      last_name:          null,
+      first_name,
+      last_name,
       email:              null,
       phone,
       domain,

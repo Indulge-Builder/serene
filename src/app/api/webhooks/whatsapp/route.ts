@@ -73,10 +73,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       after(async () => {
         try {
           const payload   = body.payload as Record<string, unknown>;
+          const sender    = payload.sender as Record<string, unknown> | undefined;
           const inner     = payload.payload as Record<string, unknown>;
           const messageId = payload.id as string;
           const phone     = `+${payload.source as string}`;
           const waId      = payload.source as string;
+          const senderName = (typeof sender?.name === 'string' ? sender.name.trim() : null) || null;
 
           const message: MetaInboundMessage = {
             type:      'text',
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             text:      { body: inner.text as string },
           };
 
-          await processInboundMessage(waId, phone, message);
+          await processInboundMessage(waId, phone, message, senderName);
         } catch (err) {
           console.error('[whatsapp/webhook] Gupshup processing error:', err);
         }
@@ -114,11 +116,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   after(async () => {
     try {
+      // Build waId → sender name map from contacts array before flattening events
+      const nameByWaId = new Map<string, string>();
+      for (const entry of body.entry ?? []) {
+        for (const change of entry.changes ?? []) {
+          for (const contact of change.value.contacts ?? []) {
+            const name = contact.profile?.name?.trim();
+            if (name) nameByWaId.set(contact.wa_id, name);
+          }
+        }
+      }
+
       const events = parseWebhookPayload(body);
 
       for (const event of events) {
         if (event.type === 'message') {
-          await processInboundMessage(event.waId, event.phone, event.data);
+          const senderName = nameByWaId.get(event.waId) ?? null;
+          await processInboundMessage(event.waId, event.phone, event.data, senderName);
         } else if (event.type === 'status') {
           await processStatusUpdate(event.data.id, event.data.status);
         }

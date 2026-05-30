@@ -72,9 +72,10 @@ function resolveMediaObject(message: MetaInboundMessage): MetaMediaObject | null
 // ─────────────────────────────────────────────
 
 export async function processInboundMessage(
-  waId:    string,
-  phone:   string,
-  message: MetaInboundMessage,
+  waId:        string,
+  phone:       string,
+  message:     MetaInboundMessage,
+  senderName?: string | null,
 ): Promise<void> {
   // 1. Normalize phone to E.164
   let normalizedPhone: string;
@@ -103,7 +104,7 @@ export async function processInboundMessage(
 
   // 4. If no lead → create from WhatsApp
   if (!lead) {
-    const { leadId } = await createLeadFromWhatsApp(waId, normalizedPhone);
+    const { leadId } = await createLeadFromWhatsApp(waId, normalizedPhone, senderName ?? null);
     // Re-fetch so we have the full Lead row (createAdminClient returns typed client for leads)
     const adminClient = createAdminClient();
     const { data: created } = await adminClient
