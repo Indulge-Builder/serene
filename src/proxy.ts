@@ -1,30 +1,23 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
+
+/** Inbound BSP webhooks (Gupshup, Meta, Pabbly) — no session cookie; must bypass auth refresh. */
+const WEBHOOK_PREFIX = "/api/webhooks";
 
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
-          );
-        },
-      },
-    },
-  );
-  await supabase.auth.getUser();
-  return supabaseResponse;
+  if (request.nextUrl.pathname.startsWith(WEBHOOK_PREFIX)) {
+    return NextResponse.next({ request });
+  }
+  return updateSession(request);
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    /*
+     * Match all paths except static assets, favicon, and webhook routes.
+     * Webhooks are excluded here and via early return so external POSTs never
+     * hit Supabase session refresh (no cookie → no spurious auth side effects).
+     */
+    "/((?!_next/static|_next/image|favicon.ico|api/webhooks).*)",
+  ],
 };

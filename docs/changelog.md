@@ -7,6 +7,12 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-30 — Fix: exclude `/api/webhooks` from Next.js proxy session refresh
+
+- `src/proxy.ts` — early return for `/api/webhooks/*` before `updateSession()`; matcher negative lookahead adds `api/webhooks`; delegates session refresh to `updateSession` from `lib/supabase/middleware.ts` (removes duplicate Supabase client setup)
+
+---
+
 ## 2026-05-30 — WA-Gupshup: Gupshup BSP adapter — inbound parser + outbound send + webhook route BSP switch — Phase WA Foundation
 
 ## 2026-05-30 — WA-UI: WhatsApp page + 6 components (shell, list, panel, bubbles, composer, empty state) — Phase WA UI
