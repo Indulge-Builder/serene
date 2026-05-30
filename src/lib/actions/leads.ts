@@ -16,6 +16,7 @@ import { sanitizeText } from '@/lib/utils/sanitize';
 import { getAgentsForDomain } from '@/lib/services/leads-service';
 import { createNotification } from '@/lib/services/notifications-service';
 import { scheduleSlaTimersForLead, cancelSlaTimersForLead, refreshActivitySlaTimers } from '@/lib/actions/sla';
+import { sendLeadAssignmentNotification, sendFounderLeadNotification } from '@/lib/services/whatsapp-api';
 import type { ActionResult } from '@/lib/types/index';
 import type { LeadStatus, AppDomain } from '@/lib/types/database';
 
@@ -246,7 +247,7 @@ export async function assignLead(
   // 3. Fetch lead's current status + domain before the update (eliminates post-update SELECT)
   const { data: existingLead } = await admin
     .from('leads')
-    .select('status, domain')
+    .select('status, domain, first_name, last_name, phone')
     .eq('id', leadId)
     .single();
 
@@ -281,6 +282,33 @@ export async function assignLead(
     body:         `Assigned by ${caller.full_name}`,
     action_url:   `/leads/${leadId}`,
   }).catch(() => {});
+
+  const assignLeadName = existingLead.last_name
+    ? `${existingLead.first_name} ${existingLead.last_name}`
+    : existingLead.first_name;
+
+  void sendLeadAssignmentNotification(
+    agentId,
+    assignLeadName,
+    existingLead.phone ?? '',
+  ).catch((err) => {
+    console.error('[leads] assignment notification failed (non-fatal):', err);
+  });
+
+  const { data: assignedAgent } = await admin
+    .from('profiles')
+    .select('full_name')
+    .eq('id', agentId)
+    .single();
+
+  void sendFounderLeadNotification(
+    existingLead.domain as string,
+    assignedAgent?.full_name ?? 'Unknown Agent',
+    assignLeadName,
+    existingLead.phone ?? '',
+  ).catch((err) => {
+    console.error('[leads] founder notification failed (non-fatal):', err);
+  });
 
   // 7. SLA: schedule timers using the pre-fetched status + domain (no post-update SELECT)
   scheduleSlaTimersForLead({
@@ -421,7 +449,7 @@ export async function createManualLead(
     // Verify the target agent exists in the resolved domain
     const { data: targetAgent } = await admin
       .from('profiles')
-      .select('id, domain, role, is_active')
+      .select('id, domain, role, is_active, full_name')
       .eq('id', fields.assigned_to)
       .single();
 
@@ -435,6 +463,11 @@ export async function createManualLead(
     }
     assignedTo = fields.assigned_to;
   }
+
+  // Agent name for notifications — targetAgent is set only when assigning to another agent
+  const assignedAgentName = (fields.assigned_to && fields.assigned_to !== caller.id)
+    ? ((await admin.from('profiles').select('full_name').eq('id', fields.assigned_to).single()).data?.full_name ?? 'Unknown Agent')
+    : caller.full_name;
 
   // 5. sanitizeText on text fields (already done by Zod transforms in schema)
   //    normalizeToE164 on phone (already done by Zod transform in schema)
@@ -518,6 +551,25 @@ export async function createManualLead(
         action_url:   `/leads/${leadId}`,
       }).catch(() => {});
     }
+
+    const manualLeadName = last_name ? `${first_name} ${last_name}` : first_name;
+
+    void sendLeadAssignmentNotification(
+      assignedTo,
+      manualLeadName,
+      phone,
+    ).catch((err) => {
+      console.error('[leads] assignment notification failed (non-fatal):', err);
+    });
+
+    void sendFounderLeadNotification(
+      resolvedDomain as string,
+      assignedAgentName,
+      manualLeadName,
+      phone,
+    ).catch((err) => {
+      console.error('[leads] founder notification failed (non-fatal):', err);
+    });
   }
 
   // 10. SLA: schedule timers for new lead if assigned

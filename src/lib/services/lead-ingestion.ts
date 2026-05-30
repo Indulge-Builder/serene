@@ -33,7 +33,7 @@ export function sanitizeRawPayload(payload: unknown): unknown {
 }
 
 export type IngestionResult =
-  | { success: true; leadId: string; rawPayloadId: string }
+  | { success: true; leadId: string; rawPayloadId: string; assigned_to: string | null; agent_name: string | null; domain: string; lead_name: string; lead_phone: string }
   | { success: false; error: string; status: 400 | 401 | 422 | 500 };
 
 // ─────────────────────────────────────────────
@@ -109,6 +109,17 @@ export async function ingestLead(
   // 4. Round-robin agent assignment
   const assignedTo = await getNextRoundRobinAgent(domain);
 
+  // Fetch agent name for notifications — one query, non-fatal if absent
+  let assignedAgentName: string | null = null;
+  if (assignedTo) {
+    const { data: agentProfile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', assignedTo)
+      .single();
+    assignedAgentName = agentProfile?.full_name ?? null;
+  }
+
   // 5. Insert lead via admin (service role — bypasses RLS)
   const leadInsert: LeadInsert = {
     first_name:         data.first_name,
@@ -182,7 +193,20 @@ export async function ingestLead(
     });
   }
 
-  return { success: true, leadId, rawPayloadId: rawPayloadId ?? '' };
+  const ingestionLeadName = data.last_name
+    ? `${data.first_name} ${data.last_name}`
+    : data.first_name;
+
+  return {
+    success:      true,
+    leadId,
+    rawPayloadId: rawPayloadId ?? '',
+    assigned_to:  assignedTo ?? null,
+    agent_name:   assignedAgentName,
+    domain,
+    lead_name:    ingestionLeadName,
+    lead_phone:   data.phone,
+  };
 }
 
 // ─────────────────────────────────────────────

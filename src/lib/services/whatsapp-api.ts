@@ -2,7 +2,8 @@
 // Reads secret env vars at module load. Throws at startup if required vars are missing.
 
 import { createHmac, timingSafeEqual } from 'crypto';
-import { WHATSAPP_API_BASE } from '@/lib/constants/whatsapp';
+import { WHATSAPP_API_BASE, GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID, GUPSHUP_FOUNDER_LEAD_NOTIFICATION_TEMPLATE_ID } from '@/lib/constants/whatsapp';
+import { createAdminClient } from '@/lib/supabase/admin';
 import type { MetaApiResponse, TemplateComponent } from '@/lib/types/whatsapp';
 
 // ─────────────────────────────────────────────
@@ -212,5 +213,122 @@ export function verifyMetaSignature(
 // ─────────────────────────────────────────────
 // Expose verify token for GET challenge handler
 // ─────────────────────────────────────────────
+
+// ─────────────────────────────────────────────
+// Send lead assignment notification to an agent via Gupshup template
+// Fire-and-forget safe — never throws to the caller
+// ─────────────────────────────────────────────
+
+export async function sendLeadAssignmentNotification(
+  agentId:   string,
+  leadName:  string,
+  leadPhone: string,
+): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const { data: agent } = await admin
+      .from('profiles')
+      .select('phone')
+      .eq('id', agentId)
+      .single();
+
+    if (!agent?.phone) {
+      console.warn(`[whatsapp-api] Agent ${agentId} has no phone — skipping lead assignment notification`);
+      return;
+    }
+
+    const source      = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
+    const destination = agent.phone.replace(/^\+/, '');
+
+    const params = new URLSearchParams({
+      channel:    'whatsapp',
+      source,
+      destination,
+      'src.name': GUPSHUP_APP_NAME!,
+      template:   JSON.stringify({
+        id:     GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID,
+        params: [leadName, leadPhone || 'not provided'],
+      }),
+    });
+
+    const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
+      method:  'POST',
+      headers: {
+        apikey:         GUPSHUP_API_KEY!,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+
+    if (res.ok) {
+      console.log(`[whatsapp-api] Lead assignment notification sent to agent ${agentId} (...${destination.slice(-4)})`);
+    } else {
+      console.error(`[whatsapp-api] Lead assignment notification failed: HTTP ${res.status} for agent ${agentId}`);
+    }
+  } catch (err) {
+    console.error('[whatsapp-api] Unexpected error in sendLeadAssignmentNotification:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Send lead notification to all founders via Gupshup template
+// Fire-and-forget safe — never throws to the caller
+// ─────────────────────────────────────────────
+
+export async function sendFounderLeadNotification(
+  domain:    string,
+  agentName: string,
+  leadName:  string,
+  leadPhone: string,
+): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const { data: founders } = await admin
+      .from('profiles')
+      .select('id, phone, full_name')
+      .eq('role', 'founder');
+
+    if (!founders || founders.length === 0) return;
+
+    const source = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
+
+    for (const founder of founders) {
+      if (!founder.phone) {
+        console.warn(`[whatsapp-api] Founder ${founder.id} (${founder.full_name}) has no phone — skipping lead notification`);
+        continue;
+      }
+
+      const destination = founder.phone.replace(/^\+/, '');
+
+      const params = new URLSearchParams({
+        channel:    'whatsapp',
+        source,
+        destination,
+        'src.name': GUPSHUP_APP_NAME!,
+        template:   JSON.stringify({
+          id:     GUPSHUP_FOUNDER_LEAD_NOTIFICATION_TEMPLATE_ID,
+          params: [domain, agentName, leadName, leadPhone || 'not provided'],
+        }),
+      });
+
+      const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
+        method:  'POST',
+        headers: {
+          apikey:         GUPSHUP_API_KEY!,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      if (res.ok) {
+        console.log(`[whatsapp-api] Founder lead notification sent to ${founder.id} (...${destination.slice(-4)})`);
+      } else {
+        console.error(`[whatsapp-api] Founder lead notification failed: HTTP ${res.status} for founder ${founder.id}`);
+      }
+    }
+  } catch (err) {
+    console.error('[whatsapp-api] Unexpected error in sendFounderLeadNotification:', err);
+  }
+}
 
 export { WEBHOOK_VERIFY_TOKEN, BUSINESS_ACCOUNT_ID };

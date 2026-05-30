@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ingestLead, sanitizeRawPayload } from '@/lib/services/lead-ingestion';
+import { sendLeadAssignmentNotification, sendFounderLeadNotification } from '@/lib/services/whatsapp-api';
 
 // ─────────────────────────────────────────────
 // Rate limiting state (in-memory, per worker)
@@ -111,6 +112,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (!result.success) {
     return NextResponse.json({ error: result.error }, { status: result.status });
+  }
+
+  if (result.assigned_to) {
+    void sendLeadAssignmentNotification(
+      result.assigned_to,
+      result.lead_name,
+      result.lead_phone,
+    ).catch((err) => {
+      console.error('[webhooks/leads] assignment notification failed (non-fatal):', err);
+    });
+
+    void sendFounderLeadNotification(
+      result.domain,
+      result.agent_name ?? 'Unknown Agent',
+      result.lead_name,
+      result.lead_phone,
+    ).catch((err) => {
+      console.error('[webhooks/leads] founder notification failed (non-fatal):', err);
+    });
   }
 
   return NextResponse.json({ leadId: result.leadId }, { status: 201 });

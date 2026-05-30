@@ -7,6 +7,10 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-30 — WA: founder lead notification wired (template d5828042); fires on assignLead, createManualLead, and lead ingestion webhook
+
+## 2026-05-30 — WA: agent lead assignment notification via Gupshup template (ID: 5df612fe); hooked into assignLead, createManualLead, and lead ingestion webhook
+
 ## 2026-05-30 — WA: extract sender name from Gupshup webhook payload; pass through to lead creation
 
 ## 2026-05-30 — WA: add wa_messages_outbound_insert RLS policy; fix silent insert failure logging in sendWhatsAppMessage

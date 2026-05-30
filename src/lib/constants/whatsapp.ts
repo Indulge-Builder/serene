@@ -76,3 +76,10 @@ export const WHATSAPP_NOTIFICATION_TEMPLATES = {
 
 export const WHATSAPP_MESSAGES_PAGE_SIZE      = 30;
 export const WHATSAPP_CONVERSATIONS_PAGE_SIZE = 20;
+
+// ─────────────────────────────────────────────
+// Gupshup template IDs
+// ─────────────────────────────────────────────
+
+export const GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID = '5df612fe-faf2-4038-9da6-276da0350523';
+export const GUPSHUP_FOUNDER_LEAD_NOTIFICATION_TEMPLATE_ID = 'd5828042-fbfc-4e6d-a9d9-e72185d7d0c1';
