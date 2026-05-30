@@ -60,7 +60,7 @@ fresh channel rather than calling `.on()` on an already-subscribed one.
 | `constants/task-constants.ts` | `TASK_PRIORITY`, `TASK_STATUS`, `TASK_CATEGORY` — labels, CSS token colours, sort order. `TASK_STATUS` also has `pillBg`/`pillText` and `remarkBg`/`remarkColor`/`remarkBorder` for pills and remark chips |
 | `constants/campaign-domain-map.ts` | prefix → domain mapping |
 | `constants/lead-columns.ts` | Column registry for the leads table — `LEAD_COLUMNS`, `LEAD_COLUMN_MAP`, `DEFAULT_COLUMN_ORDER`, `isValidLeadColumnId`. IDs are stable localStorage keys — never rename after shipping. |
-| `constants/whatsapp.ts` | `WHATSAPP_API_VERSION`, `WHATSAPP_API_BASE`, `WHATSAPP_MESSAGE_TYPES`, `WHATSAPP_CONVERSATION_STATUS`, `WHATSAPP_SENDER_TYPE`, `WHATSAPP_DIRECTION`, `WHATSAPP_MESSAGE_STATUS`, `WHATSAPP_NOTIFICATION_TEMPLATES`, `WHATSAPP_MESSAGES_PAGE_SIZE`, `WHATSAPP_CONVERSATIONS_PAGE_SIZE`. No secret env vars here — `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_WEBHOOK_SECRET` live in `process.env` only (S-11). |
+| `constants/whatsapp.ts` | `WHATSAPP_BSP` (reads `process.env.WHATSAPP_BSP`, defaults `'gupshup'`), `GUPSHUP_API_BASE`, `WHATSAPP_API_VERSION`, `WHATSAPP_API_BASE`, `WHATSAPP_MESSAGE_TYPES`, `WHATSAPP_CONVERSATION_STATUS`, `WHATSAPP_SENDER_TYPE`, `WHATSAPP_DIRECTION`, `WHATSAPP_MESSAGE_STATUS`, `WHATSAPP_NOTIFICATION_TEMPLATES`, `WHATSAPP_MESSAGES_PAGE_SIZE`, `WHATSAPP_CONVERSATIONS_PAGE_SIZE`. No secret env vars here — `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_WEBHOOK_SECRET` live in `process.env` only (S-11). |
 
 ## Services registry
 
@@ -76,7 +76,26 @@ fresh channel rather than calling `.on()` on an already-subscribed one.
 | `services/sla-service.ts` | Gia SLA Engine DB queries — `getSlaTimersForLead`, `getSlaTimerForLeadAndRule`, `createSlaTimer`, `updateSlaTimerRunId`, `cancelSlaTimersForLeadInDb`, `markSlaTimerFired`, `getOpenGiaFollowupTask`, `getManagersByDomain`. All writes use adminClient (service-role). |
 | `services/agent-routing-service.ts` | `getAgentRoutingConfig`, `getRoutingConfigsByDomain`, `getActiveRoutingConfigs`, `setRoutingActive`, `getAgentRosterByDomain` (joined profiles+config, adminClient), `setAgentShift` (adminClient) |
 | `services/lead-ingestion.ts` | Webhook lead ingestion pipeline. Also exports `createLeadFromWhatsApp(waId, phone): Promise<{leadId, assignedTo}>` — called by `whatsapp-ingestion.ts` when an inbound message arrives from an unknown number. Uses adminClient. |
-| `services/whatsapp-api.ts` | **SERVER ONLY.** Pure Meta Cloud API HTTP client — no DB, no Supabase. Reads `WHATSAPP_PHONE_NUMBER_ID` and `WHATSAPP_ACCESS_TOKEN` at module load (throws at startup if absent). Exports: `sendTextMessage`, `sendTemplateMessage`, `sendMediaMessage`, `uploadMedia`, `getMediaDownloadUrl`, `verifyMetaSignature` (HMAC-SHA256 + `timingSafeEqual`), `WEBHOOK_VERIFY_TOKEN`, `BUSINESS_ACCOUNT_ID`. Never import in client components. |
+| `services/whatsapp-api.ts` | **SERVER ONLY.** BSP-aware HTTP client — no DB, no Supabase. Reads `WHATSAPP_BSP` at module load; requires Gupshup env vars when BSP=gupshup, Meta env vars when BSP=meta. `sendTextMessage` branches on BSP; all other functions still call Meta directly. Exports: `sendTextMessage`, `sendTemplateMessage`, `sendMediaMessage`, `uploadMedia`, `getMediaDownloadUrl`, `verifyMetaSignature` (HMAC-SHA256 + `timingSafeEqual`), `WEBHOOK_VERIFY_TOKEN`, `BUSINESS_ACCOUNT_ID`. Never import in client components. |
+| `services/whatsapp-gupshup-adapter.ts` | **BSP ADAPTER — delete when switching to Meta Cloud API direct.** Gupshup → internal type translation. Exports: `parseGupshupPayload` (body.type → typed event array), `adaptGupshupMessage` (GupshupMessagePayload → `{waId, phone, MetaInboundMessage}`; returns null on bad shape), `adaptGupshupStatus` (GupshupMessageEventPayload → `{waMessageId, status}`). To switch BSPs: remove this import from `route.ts` and set `WHATSAPP_BSP=meta`. |
+
+## Switching from Gupshup → Meta Cloud API direct
+
+Gupshup is a **temporary** BSP. When the Meta Cloud API is approved, switch with these four steps — nothing else changes:
+
+1. Set `WHATSAPP_BSP=meta` in `.env.local` (and production env).
+2. Delete `src/lib/services/whatsapp-gupshup-adapter.ts`.
+3. Remove the three adapter imports from `src/app/api/webhooks/whatsapp/route.ts`:
+
+   ```ts
+   import { parseGupshupPayload, adaptGupshupMessage, adaptGupshupStatus } from '@/lib/services/whatsapp-gupshup-adapter';
+   import type { GupshupWebhookPayload } from '@/lib/types/whatsapp';
+   ```
+
+   and delete the `if (bsp === 'gupshup')` block in the POST handler.
+4. Delete the `GupshupWebhookPayload` variable declaration in the POST handler (TypeScript will point to it).
+
+The entire downstream pipeline (`whatsapp-ingestion.ts`, `whatsapp-service.ts`, all actions, all UI) is untouched — that was the design goal.
 | `services/whatsapp-ingestion.ts` | **SERVER ONLY.** Inbound WhatsApp processing pipeline. Uses adminClient throughout. Exports: `parseWebhookPayload` (flattens nested Meta envelope), `processInboundMessage` (full 9-step pipeline, idempotent via wa_message_id dedup), `processStatusUpdate` (delivery receipt — the ONLY UPDATE on whatsapp_messages, uses adminClient, A-11 narrow exception), `resolveLeadByPhone`, `getOrCreateConversation` (SELECT → INSERT ON CONFLICT DO NOTHING → re-SELECT), `insertInboundMessage` (sanitizes content with sanitizeText). |
 | `services/whatsapp-service.ts` | UI-facing WhatsApp queries. Uses session client — RLS handles access. Exports: `getConversations` (paginated, cursor = last_message_at), `getConversation`, `getMessages` (paginated ASC, joins sender profile), `getUnreadCount` (calls `get_wa_unread_count` RPC — per-agent LEFT JOIN unread count, returns 0 never null), `markConversationRead` (UPSERT into whatsapp_conversation_reads), `searchConversations` (ILIKE on name/phone, sanitized, max 20). |
 

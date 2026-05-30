@@ -54,6 +54,10 @@ export type MetaMediaObject = {
   mime_type: string;
   sha256:    string;
   caption?:  string;
+  // Optional fields — populated by Gupshup adapter (URL already known).
+  // Meta path resolves URL separately via getMediaDownloadUrl(mediaObj.id).
+  url?:      string;
+  filename?: string;
 };
 
 export type MetaStatusUpdate = {
@@ -124,4 +128,54 @@ export type WhatsAppMessage = {
 export type SendMessageInput = {
   conversationId: string;
   content:        string;
+};
+
+// ─────────────────────────────────────────────
+// Gupshup BSP types
+// Delete this section when switching to Meta Cloud API direct.
+// ─────────────────────────────────────────────
+
+export type GupshupWebhookPayload = {
+  app:       string;
+  timestamp: number;
+  version:   number;
+  type:      'message' | 'message-event' | 'user-event' | 'billing-event' | 'system-event';
+  payload:   GupshupMessagePayload | GupshupMessageEventPayload | unknown;
+};
+
+export type GupshupMessagePayload = {
+  id:      string;
+  source:  string;
+  type:    'text' | 'image' | 'video' | 'file' | 'audio' | 'sticker' | 'location' | 'contact';
+  payload: GupshupTextPayload | GupshupMediaPayload;
+  sender:  {
+    phone:         string;
+    name:          string;
+    country_code?: string;
+    dial_code?:    string;
+  };
+};
+
+export type GupshupTextPayload = {
+  text: string;
+};
+
+export type GupshupMediaPayload = {
+  url:       string;
+  caption?:  string;
+  filename?: string;
+};
+
+export type GupshupMessageEventPayload = {
+  id:          string;
+  gsId?:       string;
+  type:        'enqueued' | 'sent' | 'delivered' | 'read' | 'failed';
+  payload?:    { ts: number };
+  destination: string;
+};
+
+export type GupshupApiResponse = {
+  status:     'submitted' | 'error';
+  messageId?: string;
+  message?:   string;
 };

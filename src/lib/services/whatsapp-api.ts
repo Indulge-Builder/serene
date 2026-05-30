@@ -2,23 +2,36 @@
 // Reads secret env vars at module load. Throws at startup if required vars are missing.
 
 import { createHmac, timingSafeEqual } from 'crypto';
-import { WHATSAPP_API_BASE } from '@/lib/constants/whatsapp';
-import type { MetaApiResponse, TemplateComponent } from '@/lib/types/whatsapp';
+import { WHATSAPP_API_BASE, WHATSAPP_BSP, GUPSHUP_API_BASE } from '@/lib/constants/whatsapp';
+import type { MetaApiResponse, TemplateComponent, GupshupApiResponse } from '@/lib/types/whatsapp';
 
 // ─────────────────────────────────────────────
 // Env var guard — fail fast at startup
 // ─────────────────────────────────────────────
 
-const PHONE_NUMBER_ID    = process.env.WHATSAPP_PHONE_NUMBER_ID;
-const ACCESS_TOKEN       = process.env.WHATSAPP_ACCESS_TOKEN;
-const WEBHOOK_SECRET     = process.env.WHATSAPP_WEBHOOK_SECRET;
+const PHONE_NUMBER_ID      = process.env.WHATSAPP_PHONE_NUMBER_ID;
+const ACCESS_TOKEN         = process.env.WHATSAPP_ACCESS_TOKEN;
+const WEBHOOK_SECRET       = process.env.WHATSAPP_WEBHOOK_SECRET;
 const WEBHOOK_VERIFY_TOKEN = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
-const BUSINESS_ACCOUNT_ID = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
+const BUSINESS_ACCOUNT_ID  = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
 
-if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) {
-  throw new Error(
-    '[whatsapp-api] Missing required env vars: WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN must be set.',
-  );
+// Gupshup-specific env vars — required only when WHATSAPP_BSP=gupshup
+const GUPSHUP_API_KEY      = process.env.GUPSHUP_API_KEY;
+const GUPSHUP_APP_NAME     = process.env.GUPSHUP_APP_NAME;
+const GUPSHUP_SOURCE_PHONE = process.env.GUPSHUP_SOURCE_PHONE;
+
+if (WHATSAPP_BSP === 'gupshup') {
+  if (!GUPSHUP_API_KEY || !GUPSHUP_APP_NAME || !GUPSHUP_SOURCE_PHONE) {
+    throw new Error(
+      '[whatsapp-api] Missing required env vars for Gupshup BSP: GUPSHUP_API_KEY, GUPSHUP_APP_NAME, and GUPSHUP_SOURCE_PHONE must be set.',
+    );
+  }
+} else {
+  if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) {
+    throw new Error(
+      '[whatsapp-api] Missing required env vars: WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN must be set.',
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -55,6 +68,38 @@ export async function sendTextMessage(
   to:   string,
   text: string,
 ): Promise<MetaApiResponse> {
+  if (WHATSAPP_BSP === 'gupshup') {
+    const params = new URLSearchParams({
+      channel:     'whatsapp',
+      source:      GUPSHUP_SOURCE_PHONE!,
+      destination: to.replace(/^\+/, ''), // Gupshup wants digits only, no + prefix
+      message:     JSON.stringify({ type: 'text', text }),
+      'src.name':  GUPSHUP_APP_NAME!,
+    });
+
+    const res = await fetch(`${GUPSHUP_API_BASE}/msg`, {
+      method:  'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        apikey:         GUPSHUP_API_KEY!,
+      },
+      body: params.toString(),
+    });
+
+    if (!res.ok) {
+      throw new Error(`[whatsapp-api] Gupshup API error: ${res.status}`);
+    }
+
+    const data = (await res.json()) as GupshupApiResponse;
+
+    // Normalise to MetaApiResponse shape so callers are BSP-agnostic
+    return {
+      messaging_product: 'whatsapp',
+      contacts:          [],
+      messages:          [{ id: data.messageId ?? '' }],
+    };
+  }
+
   return metaFetch<MetaApiResponse>(`/${PHONE_NUMBER_ID}/messages`, {
     method: 'POST',
     body: JSON.stringify({

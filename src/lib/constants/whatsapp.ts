@@ -3,11 +3,24 @@
 // live in process.env only and are accessed directly in server-side code.
 
 // ─────────────────────────────────────────────
+// BSP (Business Solution Provider) switch
+// Set WHATSAPP_BSP=meta when switching to Meta Cloud API direct.
+// ─────────────────────────────────────────────
+
+export const WHATSAPP_BSP = (process.env.WHATSAPP_BSP ?? 'gupshup') as 'gupshup' | 'meta';
+
+// ─────────────────────────────────────────────
 // Meta Cloud API
 // ─────────────────────────────────────────────
 
 export const WHATSAPP_API_VERSION = 'v21.0' as const;
 export const WHATSAPP_API_BASE    = 'https://graph.facebook.com/v21.0' as const;
+
+// ─────────────────────────────────────────────
+// Gupshup BSP API
+// ─────────────────────────────────────────────
+
+export const GUPSHUP_API_BASE = 'https://api.gupshup.io/wa/api/v1' as const;
 
 // ─────────────────────────────────────────────
 // Message types — mirrors DB CHECK constraint values

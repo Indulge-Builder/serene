@@ -7,6 +7,8 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-30 — WA-Gupshup: Gupshup BSP adapter — inbound parser + outbound send + webhook route BSP switch — Phase WA Foundation
+
 ## 2026-05-30 — WA-UI: WhatsApp page + 6 components (shell, list, panel, bubbles, composer, empty state) — Phase WA UI
 
 - `src/lib/actions/whatsapp.ts` — new file: `sendWhatsAppMessage`, `markConversationAsRead`, `resolveConversation`, `reopenConversation` + read-action wrappers (`getConversationsAction`, `getMessagesAction`, `searchConversationsAction`) for client-component access
