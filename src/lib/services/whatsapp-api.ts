@@ -215,6 +215,45 @@ export function verifyMetaSignature(
 // ─────────────────────────────────────────────
 
 // ─────────────────────────────────────────────
+// Internal: log every template notification attempt to whatsapp_notification_logs.
+// Stores last-4 phone digits only — never full numbers.
+// Never throws — a log failure must not surface to the caller.
+// ─────────────────────────────────────────────
+
+async function logNotification(entry: {
+  type:           'agent_assignment' | 'founder_alert';
+  leadId?:        string | null;
+  recipientId?:   string | null;
+  recipientPhone: string;
+  agentName?:     string | null;
+  leadName?:      string | null;
+  leadPhone?:     string | null;
+  domain?:        string | null;
+  gupshupStatus:  number;
+  gupshupBody:    string;
+  delivered:      boolean;
+}): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    await admin.from('whatsapp_notification_logs').insert({
+      type:            entry.type,
+      lead_id:         entry.leadId ?? null,
+      recipient_id:    entry.recipientId ?? null,
+      recipient_phone: entry.recipientPhone.slice(-4),
+      agent_name:      entry.agentName ?? null,
+      lead_name:       entry.leadName ?? null,
+      lead_phone:      entry.leadPhone ? entry.leadPhone.slice(-4) : null,
+      domain:          entry.domain ?? null,
+      gupshup_status:  entry.gupshupStatus,
+      gupshup_body:    entry.gupshupBody.slice(0, 2000),
+      delivered:       entry.delivered,
+    });
+  } catch (err) {
+    console.error('[whatsapp-api] Failed to write notification log:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
 // Send lead assignment notification to an agent via Gupshup template
 // Fire-and-forget safe — never throws to the caller
 // ─────────────────────────────────────────────
@@ -260,11 +299,24 @@ export async function sendLeadAssignmentNotification(
       body: params.toString(),
     });
 
+    const responseBody = await res.text();
+
     if (res.ok) {
       console.log(`[whatsapp-api] Lead assignment notification sent to agent ${agentId} (...${destination.slice(-4)})`);
     } else {
       console.error(`[whatsapp-api] Lead assignment notification failed: HTTP ${res.status} for agent ${agentId}`);
     }
+
+    void logNotification({
+      type:           'agent_assignment',
+      recipientId:    agentId,
+      recipientPhone: destination,
+      leadName,
+      leadPhone,
+      gupshupStatus:  res.status,
+      gupshupBody:    responseBody,
+      delivered:      res.ok,
+    });
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendLeadAssignmentNotification:', err);
   }
@@ -320,11 +372,26 @@ export async function sendFounderLeadNotification(
         body: params.toString(),
       });
 
+      const responseBody = await res.text();
+
       if (res.ok) {
         console.log(`[whatsapp-api] Founder lead notification sent to ${founder.id} (...${destination.slice(-4)})`);
       } else {
         console.error(`[whatsapp-api] Founder lead notification failed: HTTP ${res.status} for founder ${founder.id}`);
       }
+
+      void logNotification({
+        type:           'founder_alert',
+        recipientId:    founder.id,
+        recipientPhone: destination,
+        agentName,
+        leadName,
+        leadPhone,
+        domain,
+        gupshupStatus:  res.status,
+        gupshupBody:    responseBody,
+        delivered:      res.ok,
+      });
     }
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendFounderLeadNotification:', err);

@@ -7,6 +7,8 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-30 — WA: whatsapp_notification_logs table (migration 0038); every template notification attempt logged with status, delivery result, and 4-digit phone suffix
+
 ## 2026-05-30 — WA: founder lead notification wired (template d5828042); fires on assignLead, createManualLead, and lead ingestion webhook
 
 ## 2026-05-30 — WA: agent lead assignment notification via Gupshup template (ID: 5df612fe); hooked into assignLead, createManualLead, and lead ingestion webhook

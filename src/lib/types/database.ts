@@ -965,6 +965,54 @@ export type Database = {
           },
         ]
       }
+      whatsapp_notification_logs: {
+        Row: {
+          id:              string
+          type:            'agent_assignment' | 'founder_alert'
+          lead_id:         string | null
+          recipient_id:    string | null
+          recipient_phone: string
+          agent_name:      string | null
+          lead_name:       string | null
+          lead_phone:      string | null
+          domain:          string | null
+          gupshup_status:  number | null
+          gupshup_body:    string | null
+          delivered:       boolean
+          created_at:      string
+        }
+        Insert: {
+          id?:             string
+          type:            'agent_assignment' | 'founder_alert'
+          lead_id?:        string | null
+          recipient_id?:   string | null
+          recipient_phone: string
+          agent_name?:     string | null
+          lead_name?:      string | null
+          lead_phone?:     string | null
+          domain?:         string | null
+          gupshup_status?: number | null
+          gupshup_body?:   string | null
+          delivered?:      boolean
+          created_at?:     string
+        }
+        Update: {
+          id?:             string
+          type?:           'agent_assignment' | 'founder_alert'
+          lead_id?:        string | null
+          recipient_id?:   string | null
+          recipient_phone?: string
+          agent_name?:     string | null
+          lead_name?:      string | null
+          lead_phone?:     string | null
+          domain?:         string | null
+          gupshup_status?: number | null
+          gupshup_body?:   string | null
+          delivered?:      boolean
+          created_at?:     string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
