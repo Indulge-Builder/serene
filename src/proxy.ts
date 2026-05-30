@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-/** Inbound BSP webhooks (Gupshup, Meta, Pabbly) — no session cookie; must bypass auth refresh. */
+/** Inbound webhooks (Meta, Pabbly) — no session cookie; must bypass auth refresh. */
 const WEBHOOK_PREFIX = "/api/webhooks";
 
 export async function proxy(request: NextRequest) {

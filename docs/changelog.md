@@ -7,6 +7,14 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
+## 2026-05-30 — WA: Remove Gupshup BSP layer; revert to pure Meta Cloud API architecture
+
+## 2026-05-30 — WA webhook: GET health / Gupshup URL verify
+
+- `src/app/api/webhooks/whatsapp/route.ts` — non–Meta-challenge GET requests return plain `OK` (200) instead of 403; Meta `hub.mode=subscribe` challenge flow unchanged
+
+---
+
 ## 2026-05-30 — WA webhook: Gupshup POST `Authorization` token check
 
 - `src/app/api/webhooks/whatsapp/route.ts` — Gupshup branch validates `authorization` header against `GUPSHUP_WEBHOOK_TOKEN` before reading body; 401 plain `Unauthorized` on mismatch
