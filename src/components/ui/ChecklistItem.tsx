@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { CheckSquare2, Square } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FAST_DURATION, EASE_OUT_EXPO, EASE_SPRING } from '@/lib/constants/motion';
 
 export interface ChecklistItemProps {
   id: string;
@@ -36,11 +38,13 @@ export function ChecklistItem({
         ...style,
       }}
     >
-      <button
+      <motion.button
         type="button"
         onClick={() => !disabled && onToggle(id)}
         aria-label={checked ? `Uncheck: ${label}` : `Check: ${label}`}
         disabled={disabled}
+        whileTap={disabled ? undefined : { scale: 0.85 }}
+        transition={{ duration: FAST_DURATION, ease: EASE_SPRING }}
         style={{
           display:        'flex',
           alignItems:     'center',
@@ -53,14 +57,35 @@ export function ChecklistItem({
           color:          checked ? 'var(--color-success)' : 'var(--theme-paper-border)',
           transition:     'color var(--duration-base) var(--ease-in-out)',
           marginTop:      secondaryText ? '1px' : 0,
+          willChange:     'transform',
         }}
       >
-        {checked ? (
-          <CheckSquare2 style={{ width: 18, height: 18, strokeWidth: 1.5 }} aria-hidden="true" />
-        ) : (
-          <Square style={{ width: 18, height: 18, strokeWidth: 1.5 }} aria-hidden="true" />
-        )}
-      </button>
+        <AnimatePresence mode="wait" initial={false}>
+          {checked ? (
+            <motion.span
+              key="checked"
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.6, opacity: 0 }}
+              transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+              style={{ display: 'flex' }}
+            >
+              <CheckSquare2 style={{ width: 18, height: 18, strokeWidth: 1.5 }} aria-hidden="true" />
+            </motion.span>
+          ) : (
+            <motion.span
+              key="unchecked"
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.6, opacity: 0 }}
+              transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+              style={{ display: 'flex' }}
+            >
+              <Square style={{ width: 18, height: 18, strokeWidth: 1.5 }} aria-hidden="true" />
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </motion.button>
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <span

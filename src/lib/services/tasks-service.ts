@@ -449,3 +449,94 @@ export async function getPersonalTaskTags(userId: string): Promise<string[]> {
 
   return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
 }
+
+// ─────────────────────────────────────────────
+// Query: all gia_followup tasks for a lead (dossier task card)
+//
+// Starts from `tasks` (native column filters applied directly), then !inner-joins
+// task_gia_meta to filter by lead_id. Starting from task_gia_meta instead would
+// silently drop the status filter — PostgREST/Supabase JS client does not apply
+// dot-notation filters on joined tables when the root table is task_gia_meta.
+// See leads/CLAUDE.md §getNextLeadTask join direction for the full explanation.
+//
+// Order: active tasks first (NOT IN completed/cancelled/error), then due_at ASC
+// NULLS LAST. This uses a two-level ORDER BY: a CASE priority column first (0 for
+// active, 1 for terminal), then due_at.
+// ─────────────────────────────────────────────
+
+// ─────────────────────────────────────────────
+// GIA tasks for the tasks-page Gia tab
+// ─────────────────────────────────────────────
+
+/** Shape returned by the get_gia_tasks RPC — Task fields + joined lead identity. */
+export type GiaTask = Task & {
+  lead_id:         string;
+  lead_first_name: string | null;
+  lead_last_name:  string | null;
+  lead_phone:      string | null;
+  lead_slug:       string | null;
+  lead_domain:     string;
+};
+
+/**
+ * All gia_followup tasks for the caller (scoped by role via the get_gia_tasks RPC).
+ * Agents receive only their own assigned tasks.
+ * Managers/admin/founder receive all tasks in their domain.
+ * Ordered active-first, then due_at ASC NULLS LAST, then created_at ASC.
+ */
+export async function getGiaTasksForUser(
+  userId: string,
+  role:   string,
+  domain: string,
+): Promise<GiaTask[]> {
+  const supabase = await createClient();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc('get_gia_tasks', {
+    p_user_id: userId,
+    p_role:    role,
+    p_domain:  domain,
+  });
+
+  if (error) {
+    console.error(
+      '[tasks-service] getGiaTasksForUser error:',
+      error.message ?? error.code ?? error,
+    );
+    return [];
+  }
+
+  return (data ?? []) as GiaTask[];
+}
+
+// ─────────────────────────────────────────────
+// Lead tasks for one dossier
+// ─────────────────────────────────────────────
+
+/** All gia_followup tasks for one lead, ordered active-first then due_at ASC. */
+export async function getAllLeadTasks(leadId: string): Promise<Task[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*, task_gia_meta!inner(lead_id)')
+    .eq('task_gia_meta.lead_id', leadId)
+    .eq('task_category', 'gia_followup')
+    .order('due_at', { ascending: true, nullsFirst: false });
+
+  if (error) {
+    console.error('[tasks-service] getAllLeadTasks error:', error);
+    return [];
+  }
+
+  const tasks = (data ?? []) as Task[];
+
+  // Sort active tasks before terminal ones in JS (PostgREST cannot express a
+  // CASE column in ORDER BY across a join).
+  const TERMINAL = new Set(['completed', 'cancelled', 'error']);
+  return tasks.sort((a, b) => {
+    const aTerminal = TERMINAL.has(a.status) ? 1 : 0;
+    const bTerminal = TERMINAL.has(b.status) ? 1 : 0;
+    return aTerminal - bTerminal;
+  });
+}

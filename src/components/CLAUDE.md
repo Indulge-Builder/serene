@@ -25,11 +25,12 @@ All components are display-only (A-06). Zero business logic. Zero DB calls. All 
 
 | Component | File | Props Interface | Notes |
 |---|---|---|---|
-| `TabSelector` | `TabSelector.tsx` | `TabSelectorProps` | **Backwards-compat wrapper** — accepts `tabs`, `activeTab`, `onChange` flat props and composes the compound API internally. Existing consumers do not need to change. New consumers should use the compound API (`Tabs` + `TabsList` + `TabsTrigger` + `TabsContent`) for full control. Variants: `pill`, `connected` (no `border-bottom` variant — was never introduced; do not add without explicit spec). All variants use `SPRING_CONFIG` from `motion.ts` — no hardcoded stiffness/damping. **Pill variant**: tray bg `--theme-paper-subtle` + `--theme-paper-border` (radius `--radius-xl`, intentional drift from spec `--radius-md` to suit the dark-canvas chip pattern). Active chip is `--theme-canvas` fill + `--theme-sidebar-border` hairline + `--shadow-2`. Active label is `--theme-canvas-text` (NOT `--theme-accent`). Inactive label `--theme-text-secondary`. **z-index contract**: the button root is `color: transparent` and the label text lives inside an inner `<span style="position:relative; z-index:1; color: …">` — required so the label sits above the absolute chip AND so the colour transition applies to the label only (not to the chip background via inheritance). Do not remove. **Connected variant**: tray bg `--theme-paper-subtle` + `--theme-paper-border` + `--radius-md`. Active chip `--theme-paper` + `--shadow-1`. Active label `--theme-text-primary`. **Count badge**: active bg `--theme-accent-surface` + colour `--theme-accent`; inactive bg `--theme-paper-subtle` + colour `--theme-text-tertiary`; `--radius-full`, `min-h 18px`, `--text-2xs`. Zero hardcoded hex anywhere in the file. See compound API section below. |
+| `TabSelector` | `TabSelector.tsx` | `TabSelectorProps` | **Backwards-compat wrapper** — accepts `tabs`, `activeTab`, `onChange` flat props and composes the compound API internally. Existing consumers do not need to change. New consumers should use the compound API (`Tabs` + `TabsList` + `TabsTrigger` + `TabsContent`) for full control. Variants: `pill`, `connected`, `accent` (no `border-bottom` variant — was never introduced; do not add without explicit spec). All variants use `SPRING_CONFIG` from `motion.ts` — no hardcoded stiffness/damping. **Pill variant**: tray bg `--theme-paper-subtle` + `--theme-paper-border` (radius `--radius-xl`). Active chip is `--theme-tab-pill-active-bg` + `--theme-tab-pill-active-border` + `--shadow-1` (soft pastel wash). Active label `--theme-tab-pill-active-text`. **Accent variant**: same tray as connected; active chip `--theme-accent` + `--shadow-accent-glow`; active label `--theme-accent-fg`. Use on filter bars sitting on `--theme-paper` (e.g. `/tasks`). **Connected variant**: tray bg `--theme-paper-subtle` + `--theme-paper-border` + `--radius-md`. Active chip `--theme-paper` + `--shadow-1`. Active label `--theme-text-primary`. **z-index contract** (pill + accent): button root `color: transparent`; label in inner `<span z-index:1>`. **Count badge**: active bg `--theme-accent-surface` + colour `--theme-accent`; inactive bg `--theme-paper-subtle` + colour `--theme-text-tertiary`. See compound API section below. |
 | `RadioGroup` | `RadioGroup.tsx` | `RadioGroupProps` | Variants: `default`, `card`. Card fills `--theme-accent-surface` when selected. |
 | `FilterDropdown` | `FilterDropdown.tsx` | `FilterDropdownProps` | Trigger (h-9, `--radius-md`) with optional icon + count badge. Multi-select (checkboxes) and single-select. `DROPDOWN_VARIANTS` for panel motion. **Trigger states**: open OR active (`selected.length > 0`) → border `--theme-accent`; transition `border-color var(--duration-fast) var(--ease-in-out)`. Active also tints bg `--theme-accent-surface` and label `--theme-accent`. **Count badge**: `--theme-accent` bg + `--theme-accent-fg` text + `--radius-full` + min-w/h 18px + `--text-2xs` (handles 2-digit counts without overflow). **ChevronDown**: rotates 180° on open, `transform var(--duration-fast) var(--ease-in-out)`. **Panel**: `--theme-paper` bg + `--theme-paper-border` + `--shadow-3` + `--radius-md`. **Checkbox**: unselected border `--theme-paper-border` + bg `--theme-paper`; selected border + bg `--theme-accent`, Check icon `--theme-accent-fg`. **Item hover**: bg `--theme-paper-subtle`, `var(--transition-hover)`. **Footer Clear**: visible only when `selected.length > 0`; right-aligned `--text-xs --theme-text-tertiary`, hover `--theme-accent`; fires `onChange([])` and closes when `multi=false`. Above the Clear sits a 1px `--theme-paper-border` separator (`my-1`). Consumers that early-return on empty arrays (e.g. URL-backed selectors) will see the Clear render as a no-op — this is by design. |
 | `Accordion` | `Accordion.tsx` | `AccordionProps` | `single`/`multiple` type. ChevronDown rotates 180°. `AnimatePresence` height animate. |
-| `ComboboxDropdown` | `ComboboxDropdown.tsx` | `ComboboxDropdownProps` | Single-select searchable picker. **Props**: `items: { id, label, sublabel?, imageUrl? }[]`, `value: string \| null`, `onChange(id)`, `placeholder?`, `searchPlaceholder?`, `disabled?`, `renderTrigger?: (ctx) => ReactNode`, `zIndex?`. **Default trigger**: inline `Avatar size="xs"` + label (no border, no box); ChevronDown (`--theme-text-tertiary`, `w-3.5 h-3.5`) fades in on hover/open. **`renderTrigger`** lets consumers (e.g. `LeadInfoCard.AssigneeCombobox`) keep a domain-specific trigger while reusing the panel + search + keyboard nav. Renderer receives `{ selected, placeholder, open, hovered, disabled }`. **Panel**: anchored below trigger by default; flips above when viewport space below < 320px. `--theme-paper` bg + `--theme-paper-border` + `--shadow-3` + `--radius-md`, `min-w 220 / max-w 280 / max-h 320`, sticky search header. **Search input**: `h-8`, `pl-8` (Search icon left), `--theme-paper-subtle` bg, caret `--theme-accent`; clear-X visible when query > 0. **Items**: 36px rows, `Avatar size="xs"` + label (`--text-sm --theme-text-primary`) + optional sublabel (`--text-xs --theme-text-secondary`); selected → `Check` icon `--theme-accent` (right). Active row (keyboard or hover) bg `--theme-paper-subtle`, `--radius-sm`. **Empty**: "No results", `--text-sm --theme-text-tertiary`, centred `py-6`. **Keyboard**: Escape closes; ArrowUp/Down navigate (active row auto-scrolls into view); Enter selects. **Animation**: `DROPDOWN_VARIANTS` from `motion.ts`. Click-outside via document `mousedown`. Zero hardcoded hex. Reference consumer: `LeadInfoCard.AssigneeCombobox`. |
+
+**Single-select rule:** use `FilterDropdown` with `multi={false}` (default) for filter bars and modals (`CalledModal`, `LeadsFilters`). Dossier inline fields (`LeadInfoCard`) use `InlineSelectField` — `InfoRow` look at rest, themed menu on click. Do not use `FilterDropdown` on the dossier card.
 
 ### TabSelector — Compound API
 
@@ -212,6 +213,14 @@ Every section on a single-record detail page (`/profile`, `/admin/users/[id]`, `
 
 If a card body contains multiple sub-zones (e.g. an identity row + a separate status-controls row), pass `bodyPadding={false}` and let each sub-zone own its own padding + separator. See `/admin/users/[id]`'s Identity card for the reference implementation.
 
+## Side-edge accent strips — forbidden
+
+**Never** use a coloured border on a single edge of a card, row, or column as a category or status indicator (`borderLeft`, `borderTop`, `borderRight`, or `borderBottom` accent strips — e.g. `3px solid var(--color-danger)`).
+
+Use instead: `PriorityBadge`, status pills (`TASK_STATUS`), semantic dots (6px `border-radius: full`), icons, or count pills. Reference: `GroupTaskWorkspace` board column headers (dot + label), list rows (`PriorityBadge` for urgent/high).
+
+Structural dividers (`1px solid var(--theme-paper-border)` on bottom or between zones) are fine — the rule applies only to **semantic colour on one edge**.
+
 ## Modal Rule
 
 Every modal in Eia **must compose** `src/components/ui/modal.tsx`. Never reimplement modal chrome.
@@ -241,7 +250,7 @@ onSuccess:     (leadId: string) => void
 
 **Fields (in order):** First name, Last name, Phone, Email, Source, Domain (manager+ only), Assign to.
 
-**Source field:** optional `<select>` — WhatsApp, Website, Meta, Google, Referral, YPO, Events. Stored in `form_data.manual_source`. `lead_intent` is always `null` on manual leads.
+**Source field:** optional `<select>` — options from `LEAD_SOURCE_OPTIONS` (`lib/constants/lead-sources.ts`). Persisted on `leads.utm_source`. `lead_intent` is always `null` on manual leads.
 
 **Agent-domain enforcement rule:**
 - Agents never see the Domain field — domain is always locked to `callerProfile.domain`.
@@ -368,8 +377,8 @@ interface SubTaskModalProps {
 **Header:** breadcrumb left (`group.title › task.title` or `My Tasks › title`). Right cluster: status pill (inline dropdown, 6 options, optimistic), priority pill (inline dropdown, 3 options, optimistic), divider, edit pencil, more (⋯) menu, close ×.
 
 **Two zones:**
-- Zone A (38%, `var(--theme-surface)`): Title, Notes/Objective, Action Items checklist (group subtasks only), Key Variables (deadline + assignee), metadata footer. Edit mode footer (slide-up, Save Brief / Cancel).
-- Zone B (62%, `var(--theme-paper-subtle)`): `TaskRemarksPanel` with `composerPlaceholder` prop.
+- Zone A (38%, `var(--theme-paper-subtle)`): Title, Notes/Objective, Action Items checklist (personal + group subtasks), Key Variables (deadline + assignee), metadata footer. Edit mode footer (slide-up, Save Brief / Cancel).
+- Zone B (62%, `var(--theme-paper-subtle)`): `TaskRemarksPanel` (`embedded` prop).
 
 **Checklist:** always interactive (never read-only). First 5 visible, "Show N more" toggle. Edit mode: drag-to-reorder via `@dnd-kit/sortable`, delete ×, add new item input. Toggles call `updateChecklistAction` optimistically.
 
@@ -396,7 +405,7 @@ taskId:               string
 currentUserId:        string
 currentUserName:      string
 initialRemarks:       TaskRemarkWithAuthor[]
-composerPlaceholder?: string   — defaults to "Add an update…"
+Composer placeholder: “Write a progress.” (Playfair italic). No footer hint — shortcuts via `title` on focus.
 ```
 
 **Data seeding:** `remarks` state is seeded directly from `initialRemarks` — no mount fetch. `seenIds` ref is seeded from `initialRemarks.map(r => r.id)` on each `taskId` change to prevent Realtime double-append. Call sites must fetch remarks via `getTaskRemarksAction(taskId)` **before** opening the modal (gate the render on `selectedTaskRemarks !== null`) and clear on close — see `PersonalTasksTab`, `GroupTaskWorkspace`, `GroupTasksTab` for the canonical pattern.
@@ -471,7 +480,7 @@ Composes `src/components/ui/modal.tsx` with `maxWidth="max-w-3xl"`. No `<form>` 
 
 **Two-column layout:** left 280px live preview card · right form fields. Preview column hidden below 640px via `@media` rule inside `<style>`.
 
-**Fields (in order):** Title (autofocus), Description (auto-grow textarea), Domain (native `<select>` from `APP_DOMAINS`), Accent Colour (10 swatches from `GROUP_TASK_ACCENT_COLORS`), Icon (25 Lucide icons from `GROUP_TASK_ICONS` in a 5×5 grid), divider, Priority (Urgent/High/Normal chips), Due Date (optional `datetime-local`), Add Members (search + avatar chips).
+**Fields (in order):** Title (autofocus), Description (auto-grow textarea), Domain (native `<select>` from `GIA_DOMAINS` + `DOMAIN_LABELS`), Accent Colour (10 swatches from `GROUP_TASK_ACCENT_COLORS`), Icon (25 Lucide icons from `GROUP_TASK_ICONS` in a 5×5 grid), divider, Priority (Urgent/High/Normal chips), Due Date (optional `datetime-local`), Add Members (search + avatar chips).
 
 **Live preview card:** reads title, accentHex, iconName directly from state — updates on every keystroke, no debounce, no async.
 
@@ -612,7 +621,8 @@ A full adoption sweep ran across `src/` replacing inline UI patterns with `src/c
 | Custom avatar/initials fallback | `Avatar` | TaskRemarksPanel, SubTaskModal, PersonalTasksTab, CreateGroupTaskModal, GroupTaskWorkspace, GroupTasksTab, UsersTable |
 | Inline search input | `SearchBar` | UsersTable |
 | Raw `<table>` | `Table` | UsersTable |
-| Period toggle buttons | `TabSelector` (pill) | ManagerLeadVolumeWidget, PerformancePeriodSelector |
+| Period toggle buttons | `TabSelector` (pill) | ManagerLeadVolumeWidget |
+| List filter bar | `PerformanceFilters` / `LeadsFilters` / `CampaignFilters` | `buildFilterParams`, `SearchBar`, `FilterDropdown` |
 | Custom tab bar | `TabSelector` (pill) | TasksShell |
 
 ### What was NOT touched (flagged)

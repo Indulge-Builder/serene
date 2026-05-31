@@ -32,7 +32,7 @@ export interface BarChartProps {
   data: Record<string, unknown>[];
   series: BarChartSeries[];
   xKey: string;
-  height?: number;
+  height?: number | string;
   stacked?: boolean;
   loading?: boolean;
   themeKey?: string;
@@ -70,7 +70,7 @@ export function BarChart({
   data,
   series,
   xKey,
-  height = 240,
+  height = 240 as number | string,
   stacked = false,
   loading = false,
   themeKey,
@@ -112,7 +112,7 @@ export function BarChart({
     return () => observer.disconnect();
   }, [colorMap]);
 
-  if (loading) return <ChartSkeleton height={height} />;
+  if (loading) return <ChartSkeleton height={typeof height === 'number' ? height : 240} />;
 
   const lastSeriesIdx = series.length - 1;
   // Use resolved map when available, fall back to raw colorMap then tokens
@@ -135,7 +135,7 @@ export function BarChart({
         ...style,
       }}
     >
-      <ResponsiveContainer width="100%" height={height}>
+      <ResponsiveContainer width="100%" height={height as number | `${number}%`}>
         <RechartsBarChart
           data={data}
           margin={chartMargin}
@@ -197,6 +197,23 @@ export function BarChart({
                     fill={tokens.series[(s.colorIndex ?? i) % tokens.series.length]}
                   />
                 ))}
+                {/* Stacked: per-cell radius — only round the top of the last non-zero segment */}
+                {stacked && data.map((row, ci) => {
+                  // Find which series index is the topmost non-zero for this bar
+                  let topIdx = -1;
+                  for (let j = lastSeriesIdx; j >= 0; j--) {
+                    if ((row[series[j].key] as number) > 0) { topIdx = j; break; }
+                  }
+                  const cellRadius = topIdx === i ? topRadiusBar(4) : ([0, 0, 0, 0] as [number, number, number, number]);
+                  return (
+                    <Cell
+                      key={`cell-${ci}`}
+                      fill={color}
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      {...{ radius: cellRadius } as any}
+                    />
+                  );
+                })}
               </Bar>
             );
           })}

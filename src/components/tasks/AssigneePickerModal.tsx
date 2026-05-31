@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Search } from "lucide-react";
-import { APP_DOMAINS, DOMAIN_LABELS } from "@/lib/constants/domains";
+import { DOMAIN_LABELS, GIA_DOMAINS } from "@/lib/constants/domains";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import type { Profile, AppDomain } from "@/lib/types/database";
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
@@ -106,7 +106,7 @@ export function AssigneePickerModal({
 
   // Only show domains that have at least one user
   const domainsWithUsers = useMemo(
-    () => APP_DOMAINS.filter((d) => users.some((u) => u.domain === d)),
+    () => GIA_DOMAINS.filter((d) => users.some((u) => u.domain === d)),
     [users],
   );
 
@@ -139,7 +139,19 @@ export function AssigneePickerModal({
             }}
           />
 
-          {/* Dialog */}
+          {/* Centering shell — flex only; motion y/scale on inner panel (never overwrites translate). */}
+          <div
+            style={{
+              position:        "fixed",
+              inset:             0,
+              zIndex:            "var(--z-modal-nested)" as React.CSSProperties["zIndex"],
+              display:           "flex",
+              alignItems:        "center",
+              justifyContent:    "center",
+              padding:           "var(--space-4)",
+              pointerEvents:     "none",
+            }}
+          >
           <motion.div
             key="assignee-picker-container"
             role="dialog"
@@ -151,13 +163,9 @@ export function AssigneePickerModal({
             transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
             onClick={(e) => e.stopPropagation()}
             style={{
-              position:      "fixed",
-              top:           "50%",
-              left:          "50%",
-              transform:     "translate(-50%, -50%)",
-              zIndex:        "var(--z-modal-nested)" as React.CSSProperties["zIndex"],
-              width:         "min(520px, calc(100vw - 2rem))",
-              maxHeight:     "min(600px, calc(100vh - 4rem))",
+              pointerEvents: "auto",
+              width:         "min(520px, 100%)",
+              maxHeight:     "100%",
               background:    "var(--theme-paper)",
               borderRadius:  "var(--radius-lg)",
               boxShadow:     "var(--shadow-4)",
@@ -573,6 +581,7 @@ export function AssigneePickerModal({
               </div>
             </div>
           </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>

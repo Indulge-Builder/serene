@@ -7,12 +7,15 @@ import {
   getCampaignDetailMetrics,
   getCampaignAgentDistribution,
 } from '@/lib/services/leads-service';
+import { getAdCreativesForCampaign } from '@/lib/services/ad-creatives-service';
+import { beautifyCampaignTitle } from '@/lib/utils/campaigns';
 import type { LeadFilters, CampaignDetailMetrics, AgentDistributionRow } from '@/lib/types/database';
 import { LeadsTable } from '@/components/leads/LeadsTable';
 import { LeadsPagination } from '@/components/leads/LeadsPagination';
 import { LeadsTableSkeleton } from '@/components/leads/LeadsTableSkeleton';
 import { CampaignMetricsStrip } from '@/components/campaigns/CampaignMetricsStrip';
 import { CampaignMetricsStripSkeleton } from '@/components/campaigns/CampaignMetricsStripSkeleton';
+import { CampaignAdCard } from '@/components/campaigns/CampaignAdCard';
 import { BackButton } from '@/components/ui/BackButton';
 
 // ─────────────────────────────────────────────
@@ -28,7 +31,7 @@ async function CampaignMetricsAsync({
   dateFrom:     string | null;
   dateTo:       string | null;
 }) {
-  // All three fetches run in parallel — never sequential awaits
+  // All fetches run in parallel — never sequential awaits
   const [metrics, distribution] = await Promise.all([
     getCampaignDetailMetrics(campaignName, { date_from: dateFrom, date_to: dateTo }),
     getCampaignAgentDistribution(campaignName, { date_from: dateFrom, date_to: dateTo }),
@@ -107,17 +110,11 @@ export default async function CampaignDetailPage({
   // Exact inverse: replace every '+' with a space.
   // Also handle '%2B' defensively — a browser address-bar paste or external
   // link may have URL-encoded the '+' once more.
-  // '+' must never appear in a real utm_campaign name — if it does, the lookup
-  // returns an empty lead list (no error) and the empty-state is shown.
   const campaignName = id.replace(/%2B/gi, ' ').replace(/\+/g, ' ');
 
-  // Display-only beautified title. Splits the raw key on '_' and ' ',
-  // drops empty segments, and joins with a thin separator. The DB lookup
-  // and metrics RPC continue to use the un-beautified `campaignName`.
-  const campaignTitle = campaignName
-    .split(/[_\s]+/)
-    .filter(Boolean)
-    .join(' · ');
+  // Display-only beautified title via shared utility.
+  // campaignName is used for all DB lookups — never campaignTitle.
+  const campaignTitle = beautifyCampaignTitle(campaignName);
 
   const resolvedParams = await searchParams;
 
@@ -136,6 +133,7 @@ export default async function CampaignDetailPage({
   const filters: LeadFilters = {
     status:            null,
     last_call_outcome: null,
+    domain:            null,
     agent_id:          null,
     source:            null,
     campaign:          campaignName,
@@ -145,6 +143,9 @@ export default async function CampaignDetailPage({
     page,
     pageSize:          50,
   };
+
+  // A campaign may have multiple ad videos — fetch them all (newest first).
+  const adCreatives = await getAdCreativesForCampaign(campaignName);
 
   return (
     <main className="flex-1 p-8">
@@ -163,6 +164,9 @@ export default async function CampaignDetailPage({
           {campaignTitle}<span className="page-title-dot">.</span>
         </h1>
       </div>
+
+      {/* Ad creative card — between header and metrics; null when no creatives */}
+      <CampaignAdCard adCreatives={adCreatives} />
 
       {/* Metrics strip — own Suspense boundary, streams independently of the table */}
       <Suspense fallback={<CampaignMetricsStripSkeleton />}>

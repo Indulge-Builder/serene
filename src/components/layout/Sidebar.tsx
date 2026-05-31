@@ -10,9 +10,11 @@ import {
   LogOut,
   BarChart2,
   TrendingUp,
+  Trophy,
   CheckSquare,
   Settings,
   MessageCircle,
+  Film,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
@@ -30,22 +32,32 @@ type NavItem = {
 // ─── Nav configuration ────────────────────────────────────
 
 const MAIN_NAV: NavItem[] = [
-  { href: "/dashboard",   label: "Dashboard",   icon: LayoutDashboard },
-  { href: "/leads",       label: "Leads",       icon: UserRound       },
-  { href: "/tasks",       label: "Tasks",       icon: CheckSquare     },
-  { href: "/whatsapp",    label: "WhatsApp",    icon: MessageCircle   },
-  { href: "/performance", label: "Performance", icon: BarChart2       },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/leads",     label: "Leads",     icon: UserRound       },
+  { href: "/deals",     label: "Deals",     icon: Trophy          },
+  { href: "/tasks",     label: "Tasks",     icon: CheckSquare     },
+  { href: "/whatsapp",  label: "WhatsApp",  icon: MessageCircle   },
 ];
 
-// Visible to manager, admin, founder — not agent or guest
-const MANAGER_NAV: NavItem[] = [
+// Analytics section — Performance for all roles; Campaigns for manager+
+const ANALYTICS_NAV: NavItem[] = [
+  { href: "/performance", label: "Performance", icon: BarChart2 },
   { href: "/campaigns", label: "Campaigns", icon: TrendingUp },
 ];
 
-// Visible to manager, admin, founder — lead assignment config
-const SETTINGS_NAV: NavItem[] = [
-  { href: "/settings", label: "Settings", icon: Settings },
-];
+// Visible to manager, admin, founder — lead assignment config (+ ad creatives for admin/founder)
+function getConfigurationNav(isPrivileged: boolean): NavItem[] {
+  const items: NavItem[] = [];
+  if (isPrivileged) {
+    items.push({
+      href: "/admin/ad-creatives",
+      label: "Ad Creatives",
+      icon: Film,
+    });
+  }
+  items.push({ href: "/settings", label: "Settings", icon: Settings });
+  return items;
+}
 
 const ADMIN_NAV: NavItem[] = [
   { href: "/admin/users", label: "User Management", icon: Shield },
@@ -73,21 +85,23 @@ function NavLink({
     <Link
       href={href}
       style={{
-        position:       "relative",
-        display:        "flex",
-        alignItems:     "center",
-        gap:            "var(--space-3)",
-        padding:        "10px var(--space-3)",
-        borderRadius:   "var(--radius-md)",
-        color:          isActive ? "var(--theme-sidebar-active)" : "var(--theme-sidebar-text)",
-        background:     isActive ? "var(--theme-sidebar-active-bg)" : "transparent",
-        border:         isActive
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--space-3)",
+        padding: "10px var(--space-3)",
+        borderRadius: "var(--radius-md)",
+        color: isActive
+          ? "var(--theme-sidebar-active)"
+          : "var(--theme-sidebar-text)",
+        background: isActive ? "var(--theme-sidebar-active-bg)" : "transparent",
+        border: isActive
           ? "1px solid color-mix(in srgb, var(--theme-accent) 18%, transparent)"
           : "1px solid transparent",
-        fontFamily:     "var(--font-sans)",
-        fontSize:       "var(--text-sm)",
-        fontWeight:     isActive ? "var(--weight-medium)" : "var(--weight-normal)",
-        letterSpacing:  "var(--tracking-wide)",
+        fontFamily: "var(--font-sans)",
+        fontSize: "var(--text-sm)",
+        fontWeight: isActive ? "var(--weight-medium)" : "var(--weight-normal)",
+        letterSpacing: "var(--tracking-wide)",
         textDecoration: "none",
         transition:
           "color var(--duration-fast) var(--ease-in-out), background var(--duration-fast) var(--ease-in-out)",
@@ -95,13 +109,13 @@ function NavLink({
       onMouseEnter={(e) => {
         if (!isActive) {
           e.currentTarget.style.background = "var(--theme-sidebar-hover-bg)";
-          e.currentTarget.style.color      = "var(--theme-canvas-text)";
+          e.currentTarget.style.color = "var(--theme-canvas-text)";
         }
       }}
       onMouseLeave={(e) => {
         if (!isActive) {
           e.currentTarget.style.background = "transparent";
-          e.currentTarget.style.color      = "var(--theme-sidebar-text)";
+          e.currentTarget.style.color = "var(--theme-sidebar-text)";
         }
       }}
     >
@@ -110,19 +124,26 @@ function NavLink({
         <span
           aria-hidden="true"
           style={{
-            position:     "absolute",
-            left:         0,
-            top:          "50%",
-            transform:    "translateY(-50%)",
-            width:        "3px",
-            height:       "16px",
+            position: "absolute",
+            left: 0,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: "3px",
+            height: "16px",
             borderRadius: "0 var(--radius-full) var(--radius-full) 0",
-            background:   "var(--theme-sidebar-active-pill)",
+            background: "var(--theme-sidebar-active-pill)",
           }}
         />
       )}
 
-      <Icon style={{ width: "15px", height: "15px", strokeWidth: 1.5, flexShrink: 0 }} />
+      <Icon
+        style={{
+          width: "15px",
+          height: "15px",
+          strokeWidth: 1.5,
+          flexShrink: 0,
+        }}
+      />
       <span style={{ flex: 1 }}>{label}</span>
 
       {isActive && (
@@ -143,18 +164,19 @@ function NavSection({ label }: { label: string }) {
       <div
         aria-hidden="true"
         style={{
-          height:     "1px",
+          height: "1px",
           background: "var(--theme-sidebar-border)",
-          margin:     "var(--space-4) var(--space-2) var(--space-3)",
+          margin: "var(--space-4) var(--space-2) var(--space-3)",
         }}
       />
       <span
         className="label-micro"
         style={{
-          padding:      "0 var(--space-3)",
-          display:      "block",
+          padding: "0 var(--space-3)",
+          display: "block",
           marginBottom: "var(--space-2)",
-          color:        "color-mix(in srgb, var(--theme-sidebar-text) 40%, transparent)",
+          color:
+            "color-mix(in srgb, var(--theme-sidebar-text) 40%, transparent)",
         }}
       >
         {label}
@@ -166,50 +188,50 @@ function NavSection({ label }: { label: string }) {
 // ─── Sidebar ──────────────────────────────────────────────
 
 type SidebarProps = {
-  profile:               Profile;
+  profile: Profile;
   initialNotifications?: Notification[];
 };
 
 export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
-  const pathname     = usePathname();
+  const pathname = usePathname();
   const isPrivileged = profile.role === "admin" || profile.role === "founder";
-  const isManager    = profile.role === "manager" || isPrivileged;
-  const isOnProfile  = pathname === "/profile";
+  const isManager = profile.role === "manager" || isPrivileged;
+  const isOnProfile = pathname === "/profile";
 
-  const initials  = getInitials(profile.full_name);
+  const initials = getInitials(profile.full_name);
   const roleLabel = ROLE_LABELS[profile.role];
 
   return (
     <aside
       style={{
-        width:         "240px",
-        minHeight:     "100dvh",
-        background:    "var(--theme-sidebar-bg)",
-        boxShadow:     "var(--shadow-sidebar)",
-        display:       "flex",
+        width: "240px",
+        minHeight: "100dvh",
+        background: "var(--theme-sidebar-bg)",
+        boxShadow: "var(--shadow-sidebar)",
+        display: "flex",
         flexDirection: "column",
-        position:      "sticky",
-        top:           0,
-        flexShrink:    0,
-        zIndex:        "var(--z-sidebar)" as React.CSSProperties["zIndex"],
+        position: "sticky",
+        top: 0,
+        flexShrink: 0,
+        zIndex: "var(--z-sidebar)" as React.CSSProperties["zIndex"],
       }}
     >
       {/* ── Logo block ──────────────────────────────── */}
       <div
         style={{
-          padding:       "28px var(--space-5) var(--space-5)",
-          display:       "flex",
+          padding: "28px var(--space-5) var(--space-5)",
+          display: "flex",
           flexDirection: "column",
-          alignItems:    "center",
+          alignItems: "center",
         }}
       >
         <img
           src="/logo-light.avif"
           alt="Eia"
           style={{
-            width:       "128px",
-            height:      "128px",
-            objectFit:   "contain",
+            width: "128px",
+            height: "128px",
+            objectFit: "contain",
             filter: `
               drop-shadow(0 0 8px  color-mix(in srgb, var(--theme-accent) 30%, transparent))
               drop-shadow(0 0 20px color-mix(in srgb, var(--theme-accent) 12%, transparent))
@@ -219,10 +241,11 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
         <div
           aria-hidden="true"
           style={{
-            marginTop:  "var(--space-4)",
-            width:      "100%",
-            height:     "1px",
-            background: "linear-gradient(to right, transparent, color-mix(in srgb, var(--theme-accent) 22%, transparent) 30%, color-mix(in srgb, var(--theme-accent) 22%, transparent) 70%, transparent)",
+            marginTop: "var(--space-4)",
+            width: "100%",
+            height: "1px",
+            background:
+              "linear-gradient(to right, transparent, color-mix(in srgb, var(--theme-accent) 22%, transparent) 30%, color-mix(in srgb, var(--theme-accent) 22%, transparent) 70%, transparent)",
           }}
         />
       </div>
@@ -231,12 +254,12 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
       <nav
         className="sidebar-scrollable"
         style={{
-          flex:          1,
-          padding:       "var(--space-2) var(--space-3)",
-          display:       "flex",
+          flex: 1,
+          padding: "var(--space-2) var(--space-3)",
+          display: "flex",
           flexDirection: "column",
-          gap:           "2px",
-          overflowY:     "auto",
+          gap: "2px",
+          overflowY: "auto",
         }}
       >
         {MAIN_NAV.map(({ href, label, icon }) => (
@@ -249,10 +272,12 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
           />
         ))}
 
-        {isManager && (
+        {profile.role !== "guest" && (
           <>
             <NavSection label="Analytics" />
-            {MANAGER_NAV.map(({ href, label, icon }) => (
+            {ANALYTICS_NAV.filter(
+              (item) => isManager || item.href === "/performance",
+            ).map(({ href, label, icon }) => (
               <NavLink
                 key={href}
                 href={href}
@@ -267,7 +292,7 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
         {isManager && (
           <>
             <NavSection label="Configuration" />
-            {SETTINGS_NAV.map(({ href, label, icon }) => (
+            {getConfigurationNav(isPrivileged).map(({ href, label, icon }) => (
               <NavLink
                 key={href}
                 href={href}
@@ -300,13 +325,19 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
         <div
           aria-hidden="true"
           style={{
-            height:     "1px",
+            height: "1px",
             background: "var(--theme-sidebar-border)",
-            margin:     "0 var(--space-2) var(--space-4)",
+            margin: "0 var(--space-2) var(--space-4)",
           }}
         />
 
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-2)",
+          }}
+        >
           {/* Notification bell */}
           <NotificationBell
             userId={profile.id}
@@ -318,24 +349,31 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
           <Link
             href="/profile"
             style={{
-              display:        "flex",
-              alignItems:     "center",
-              gap:            "var(--space-2)",
-              flex:           1,
-              minWidth:       0,
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+              flex: 1,
+              minWidth: 0,
               textDecoration: "none",
-              borderRadius:   "var(--radius-md)",
-              padding:        "var(--space-1)",
-              margin:         "calc(-1 * var(--space-1))",
-              background:     isOnProfile ? "var(--theme-sidebar-active-bg)" : "transparent",
-              border:         isOnProfile ? "1px solid color-mix(in srgb, var(--theme-accent) 18%, transparent)" : "1px solid transparent",
-              transition:     "background var(--duration-fast) var(--ease-in-out)",
+              borderRadius: "var(--radius-md)",
+              padding: "var(--space-1)",
+              margin: "calc(-1 * var(--space-1))",
+              background: isOnProfile
+                ? "var(--theme-sidebar-active-bg)"
+                : "transparent",
+              border: isOnProfile
+                ? "1px solid color-mix(in srgb, var(--theme-accent) 18%, transparent)"
+                : "1px solid transparent",
+              transition: "background var(--duration-fast) var(--ease-in-out)",
             }}
             onMouseEnter={(e) => {
-              if (!isOnProfile) e.currentTarget.style.background = "var(--theme-sidebar-hover-bg)";
+              if (!isOnProfile)
+                e.currentTarget.style.background =
+                  "var(--theme-sidebar-hover-bg)";
             }}
             onMouseLeave={(e) => {
-              if (!isOnProfile) e.currentTarget.style.background = "transparent";
+              if (!isOnProfile)
+                e.currentTarget.style.background = "transparent";
             }}
           >
             {/* Avatar */}
@@ -344,31 +382,35 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
                 src={profile.avatar_url}
                 alt={profile.full_name}
                 style={{
-                  width:        "32px",
-                  height:       "32px",
+                  width: "32px",
+                  height: "32px",
                   borderRadius: "var(--radius-sm)",
-                  objectFit:    "cover",
-                  flexShrink:   0,
-                  border:       "1px solid color-mix(in srgb, var(--theme-canvas-text) 10%, transparent)",
+                  objectFit: "cover",
+                  flexShrink: 0,
+                  border:
+                    "1px solid color-mix(in srgb, var(--theme-canvas-text) 10%, transparent)",
                 }}
               />
             ) : (
               <div
                 aria-hidden="true"
                 style={{
-                  width:          "32px",
-                  height:         "32px",
-                  borderRadius:   "var(--radius-sm)",
-                  background:     "var(--theme-accent-surface)",
-                  display:        "flex",
-                  alignItems:     "center",
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--theme-accent-surface)",
+                  display: "flex",
+                  alignItems: "center",
                   justifyContent: "center",
-                  flexShrink:     0,
-                  fontFamily:     "var(--font-sans)",
-                  fontSize:       "var(--text-xs)",
-                  fontWeight:     "var(--weight-semibold)",
-                  color:          isOnProfile ? "var(--theme-sidebar-active)" : "var(--theme-sidebar-active)",
-                  border:         "1px solid color-mix(in srgb, var(--theme-accent) 20%, transparent)",
+                  flexShrink: 0,
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "var(--text-xs)",
+                  fontWeight: "var(--weight-semibold)",
+                  color: isOnProfile
+                    ? "var(--theme-sidebar-active)"
+                    : "var(--theme-sidebar-active)",
+                  border:
+                    "1px solid color-mix(in srgb, var(--theme-accent) 20%, transparent)",
                 }}
               >
                 {initials}
@@ -379,30 +421,33 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <p
                 style={{
-                  fontFamily:    "var(--font-sans)",
-                  fontSize:      "var(--text-sm)",
-                  fontWeight:    "var(--weight-medium)",
-                  color:         isOnProfile ? "var(--theme-sidebar-active)" : "var(--theme-canvas-text)",
-                  margin:        0,
-                  overflow:      "hidden",
-                  textOverflow:  "ellipsis",
-                  whiteSpace:    "nowrap",
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "var(--text-sm)",
+                  fontWeight: "var(--weight-medium)",
+                  color: isOnProfile
+                    ? "var(--theme-sidebar-active)"
+                    : "var(--theme-canvas-text)",
+                  margin: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
               >
                 {profile.full_name}
               </p>
               <p
                 style={{
-                  fontFamily:    "var(--font-sans)",
-                  fontSize:      "var(--text-2xs)",
-                  fontWeight:    "var(--weight-normal)",
-                  color:         "color-mix(in srgb, var(--theme-sidebar-text) 55%, transparent)",
-                  margin:        0,
-                  marginTop:     "2px",
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "var(--text-2xs)",
+                  fontWeight: "var(--weight-normal)",
+                  color:
+                    "color-mix(in srgb, var(--theme-sidebar-text) 55%, transparent)",
+                  margin: 0,
+                  marginTop: "2px",
                   letterSpacing: "var(--tracking-wide)",
-                  overflow:      "hidden",
-                  textOverflow:  "ellipsis",
-                  whiteSpace:    "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
               >
                 {roleLabel}
@@ -414,33 +459,41 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
           <button
             type="button"
             aria-label="Sign out"
-            onClick={async () => { await signOutUser(); }}
+            onClick={async () => {
+              await signOutUser();
+            }}
             style={{
-              display:        "flex",
-              alignItems:     "center",
+              display: "flex",
+              alignItems: "center",
               justifyContent: "center",
-              width:          "28px",
-              height:         "28px",
-              borderRadius:   "var(--radius-md)",
-              border:         "none",
-              background:     "transparent",
-              color:          "color-mix(in srgb, var(--theme-sidebar-text) 50%, transparent)",
-              cursor:         "pointer",
-              flexShrink:     0,
-              transition:     "background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out), transform var(--duration-base) var(--ease-spring)",
+              width: "28px",
+              height: "28px",
+              borderRadius: "var(--radius-md)",
+              border: "none",
+              background: "transparent",
+              color:
+                "color-mix(in srgb, var(--theme-sidebar-text) 50%, transparent)",
+              cursor: "pointer",
+              flexShrink: 0,
+              transition:
+                "background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out), transform var(--duration-base) var(--ease-spring)",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--theme-sidebar-hover-bg)";
-              e.currentTarget.style.color      = "var(--theme-canvas-text)";
-              e.currentTarget.style.transform  = "rotate(5deg) scale(1.05)";
+              e.currentTarget.style.background =
+                "var(--theme-sidebar-hover-bg)";
+              e.currentTarget.style.color = "var(--theme-canvas-text)";
+              e.currentTarget.style.transform = "rotate(5deg) scale(1.05)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color      = "color-mix(in srgb, var(--theme-sidebar-text) 50%, transparent)";
-              e.currentTarget.style.transform  = "rotate(0deg) scale(1)";
+              e.currentTarget.style.color =
+                "color-mix(in srgb, var(--theme-sidebar-text) 50%, transparent)";
+              e.currentTarget.style.transform = "rotate(0deg) scale(1)";
             }}
           >
-            <LogOut style={{ width: "14px", height: "14px", strokeWidth: 1.5 }} />
+            <LogOut
+              style={{ width: "14px", height: "14px", strokeWidth: 1.5 }}
+            />
           </button>
         </div>
       </div>

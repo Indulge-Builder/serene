@@ -8,45 +8,50 @@
 // Benchmark query: 3 flat queries scoped to assigned_to IN (agentIds) — constant
 // round trips regardless of domain size. Never loops over agents.
 
-import { createClient } from '@/lib/supabase/server';
-import type { AppDomain, CallOutcome } from '@/lib/types/database';
-import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
+import { createClient } from "@/lib/supabase/server";
+import type { AppDomain, CallOutcome } from "@/lib/types/database";
+import type { AgentRosterRow, AgentDetailMetrics } from "@/lib/types/index";
 
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
 
-export type PerformancePeriod = 'this_week' | 'this_month' | 'last_month' | 'all_time';
+export type PerformancePeriod =
+  | "this_week"
+  | "this_month"
+  | "last_month"
+  | "all_time"
+  | "custom";
 
 export type DateRange = {
   from: string;
-  to:   string;
+  to: string;
 };
 
 export type CoreFourMetrics = {
-  leadsWon:               number;
-  touchRate:              number | null;
+  leadsWon: number;
+  touchRate: number | null;
   avgResponseTimeMinutes: number | null;
-  conversionRate:         number | null;
+  conversionRate: number | null;
 };
 
 export type EffortMetrics = {
-  callsLogged:      number;
-  notesWritten:     number;
+  callsLogged: number;
+  notesWritten: number;
   inDiscussionCount: number;
-  nurturingCount:   number;
+  nurturingCount: number;
 };
 
 export type OutcomeBreakdownItem = {
   outcome: CallOutcome;
-  count:   number;
+  count: number;
 };
 
 export type TeamBenchmarks = {
-  avgTouchRate:           number | null;
-  avgConversionRate:      number | null;
+  avgTouchRate: number | null;
+  avgConversionRate: number | null;
   avgResponseTimeMinutes: number | null;
-  agentCount:             number;
+  agentCount: number;
 };
 
 // ─────────────────────────────────────────────
@@ -58,15 +63,15 @@ const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
 function toISTMidnight(d: Date): Date {
   // Build a Date whose UTC time corresponds to IST midnight of d's IST date
-  const istMs    = d.getTime() + IST_OFFSET_MS;
-  const istDate  = new Date(istMs);
+  const istMs = d.getTime() + IST_OFFSET_MS;
+  const istDate = new Date(istMs);
   istDate.setUTCHours(0, 0, 0, 0);
   // Back to UTC: subtract offset
   return new Date(istDate.getTime() - IST_OFFSET_MS);
 }
 
 function toISTEndOfDay(d: Date): Date {
-  const istMs   = d.getTime() + IST_OFFSET_MS;
+  const istMs = d.getTime() + IST_OFFSET_MS;
   const istDate = new Date(istMs);
   istDate.setUTCHours(23, 59, 59, 999);
   return new Date(istDate.getTime() - IST_OFFSET_MS);
@@ -74,9 +79,9 @@ function toISTEndOfDay(d: Date): Date {
 
 /** Returns the most recent Monday at IST midnight */
 function getISTMondayStart(now: Date): Date {
-  const istMs   = now.getTime() + IST_OFFSET_MS;
+  const istMs = now.getTime() + IST_OFFSET_MS;
   const istDate = new Date(istMs);
-  const dow     = istDate.getUTCDay(); // 0=Sun … 6=Sat
+  const dow = istDate.getUTCDay(); // 0=Sun … 6=Sat
   const daysBack = dow === 0 ? 6 : dow - 1;
   istDate.setUTCDate(istDate.getUTCDate() - daysBack);
   istDate.setUTCHours(0, 0, 0, 0);
@@ -87,22 +92,22 @@ export function getPeriodDateRange(period: PerformancePeriod): DateRange {
   const now = new Date();
 
   switch (period) {
-    case 'this_week': {
+    case "this_week": {
       const from = getISTMondayStart(now);
       return { from: from.toISOString(), to: now.toISOString() };
     }
 
-    case 'this_month': {
-      const istNow  = new Date(now.getTime() + IST_OFFSET_MS);
-      const first   = new Date(istNow);
+    case "this_month": {
+      const istNow = new Date(now.getTime() + IST_OFFSET_MS);
+      const first = new Date(istNow);
       first.setUTCDate(1);
       first.setUTCHours(0, 0, 0, 0);
       const fromUtc = new Date(first.getTime() - IST_OFFSET_MS);
       return { from: fromUtc.toISOString(), to: now.toISOString() };
     }
 
-    case 'last_month': {
-      const istNow     = new Date(now.getTime() + IST_OFFSET_MS);
+    case "last_month": {
+      const istNow = new Date(now.getTime() + IST_OFFSET_MS);
       const firstThisMonth = new Date(istNow);
       firstThisMonth.setUTCDate(1);
       firstThisMonth.setUTCHours(0, 0, 0, 0);
@@ -110,17 +115,24 @@ export function getPeriodDateRange(period: PerformancePeriod): DateRange {
       // Last day of previous month = day before first of this month
       const lastDayPrev = new Date(firstThisMonth.getTime() - 1); // still in IST frame
       // First of previous month
-      const firstPrev   = new Date(lastDayPrev);
+      const firstPrev = new Date(lastDayPrev);
       firstPrev.setUTCDate(1);
       firstPrev.setUTCHours(0, 0, 0, 0);
 
       const fromUtc = new Date(firstPrev.getTime() - IST_OFFSET_MS);
-      const toUtc   = toISTEndOfDay(new Date(lastDayPrev.getTime() - IST_OFFSET_MS));
+      const toUtc = toISTEndOfDay(
+        new Date(lastDayPrev.getTime() - IST_OFFSET_MS),
+      );
       return { from: fromUtc.toISOString(), to: toUtc.toISOString() };
     }
 
-    case 'all_time':
-      return { from: '2024-01-01T00:00:00Z', to: now.toISOString() };
+    case "all_time":
+      return { from: "2024-01-01T00:00:00Z", to: now.toISOString() };
+
+    case "custom":
+      // Custom dates are passed directly by the caller — this case is a safe fallback
+      // for any code path that calls getPeriodDateRange without custom date params.
+      return getPeriodDateRange("this_month");
   }
 }
 
@@ -128,50 +140,56 @@ export function getPeriodDateRange(period: PerformancePeriod): DateRange {
  * Returns the date range immediately preceding the given period (same length).
  * Returns null for 'all_time' — there is no meaningful prior period to compare.
  */
-export function getPreviousPeriodDateRange(period: PerformancePeriod): DateRange | null {
+export function getPreviousPeriodDateRange(
+  period: PerformancePeriod,
+): DateRange | null {
   const now = new Date();
 
   switch (period) {
-    case 'this_week': {
+    case "this_week": {
       const thisMonday = getISTMondayStart(now);
-      const prevMonday = new Date(thisMonday.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const prevMonday = new Date(
+        thisMonday.getTime() - 7 * 24 * 60 * 60 * 1000,
+      );
       const prevSunday = new Date(thisMonday.getTime() - 1);
       return {
         from: prevMonday.toISOString(),
-        to:   toISTEndOfDay(prevSunday).toISOString(),
+        to: toISTEndOfDay(prevSunday).toISOString(),
       };
     }
 
-    case 'this_month': {
+    case "this_month": {
       // last_month range IS the previous period for this_month
-      return getPeriodDateRange('last_month');
+      return getPeriodDateRange("last_month");
     }
 
-    case 'last_month': {
+    case "last_month": {
       // Two months ago
       const istNow = new Date(now.getTime() + IST_OFFSET_MS);
       const firstThisMonth = new Date(istNow);
       firstThisMonth.setUTCDate(1);
       firstThisMonth.setUTCHours(0, 0, 0, 0);
 
-      const lastDayPrev    = new Date(firstThisMonth.getTime() - 1);
-      const firstPrev      = new Date(lastDayPrev);
+      const lastDayPrev = new Date(firstThisMonth.getTime() - 1);
+      const firstPrev = new Date(lastDayPrev);
       firstPrev.setUTCDate(1);
       firstPrev.setUTCHours(0, 0, 0, 0);
 
-      const lastDayPrevPrev  = new Date(firstPrev.getTime() - 1);
-      const firstPrevPrev    = new Date(lastDayPrevPrev);
+      const lastDayPrevPrev = new Date(firstPrev.getTime() - 1);
+      const firstPrevPrev = new Date(lastDayPrevPrev);
       firstPrevPrev.setUTCDate(1);
       firstPrevPrev.setUTCHours(0, 0, 0, 0);
 
       const fromUtc = new Date(firstPrevPrev.getTime() - IST_OFFSET_MS);
-      const toUtc   = toISTEndOfDay(new Date(lastDayPrevPrev.getTime() - IST_OFFSET_MS));
+      const toUtc = toISTEndOfDay(
+        new Date(lastDayPrevPrev.getTime() - IST_OFFSET_MS),
+      );
       return { from: fromUtc.toISOString(), to: toUtc.toISOString() };
     }
 
-    case 'all_time':
-      // No meaningful previous period exists. Return null so the caller
-      // can suppress delta rendering entirely rather than show a 0% comparison.
+    case "all_time":
+    case "custom":
+      // No meaningful previous period exists for these cases.
       return null;
   }
 }
@@ -182,7 +200,7 @@ export function getPreviousPeriodDateRange(period: PerformancePeriod): DateRange
 
 export async function getCoreFourMetrics(
   agentId: string,
-  period:  PerformancePeriod,
+  period: PerformancePeriod,
 ): Promise<CoreFourMetrics> {
   return _getCoreFourMetricsForRange(agentId, getPeriodDateRange(period));
 }
@@ -190,47 +208,50 @@ export async function getCoreFourMetrics(
 /** Shared inner implementation — accepts a computed DateRange directly. */
 export async function _getCoreFourMetricsForRange(
   agentId: string,
-  range:   DateRange,
+  range: DateRange,
 ): Promise<CoreFourMetrics> {
   const supabase = await createClient();
   const { from, to } = range;
 
   // ── 1. leadsWon ─────────────────────────────────────────────────────────
+  // Filter by status_changed_at (when the lead became won), not created_at.
+  // This captures leads won during the period regardless of when they were created.
   const { count: leadsWon } = await supabase
-    .from('leads')
-    .select('id', { count: 'exact', head: true })
-    .eq('assigned_to', agentId)
-    .eq('status', 'won')
-    .is('archived_at', null)
-    .gte('created_at', from)
-    .lte('created_at', to);
+    .from("leads")
+    .select("id", { count: "exact", head: true })
+    .eq("assigned_to", agentId)
+    .eq("status", "won")
+    .is("archived_at", null)
+    .gte("status_changed_at", from)
+    .lte("status_changed_at", to);
 
   // ── 2. touchRate ─────────────────────────────────────────────────────────
-  // total assigned in period vs those with status != 'new'
+  // Cohort metric: of leads created in the period, what % moved past 'new'?
+  // Intentionally uses created_at — measures how quickly the agent touches new leads.
   const { data: touchRows } = await supabase
-    .from('leads')
-    .select('status')
-    .eq('assigned_to', agentId)
-    .is('archived_at', null)
-    .gte('created_at', from)
-    .lte('created_at', to);
+    .from("leads")
+    .select("status")
+    .eq("assigned_to", agentId)
+    .is("archived_at", null)
+    .gte("created_at", from)
+    .lte("created_at", to);
 
   const totalAssigned = touchRows?.length ?? 0;
-  const touched       = touchRows?.filter((r) => r.status !== 'new').length ?? 0;
-  const touchRate     = totalAssigned > 0 ? (touched / totalAssigned) * 100 : null;
+  const touched = touchRows?.filter((r) => r.status !== "new").length ?? 0;
+  const touchRate = totalAssigned > 0 ? (touched / totalAssigned) * 100 : null;
 
   // ── 3. avgResponseTimeMinutes ────────────────────────────────────────────
   // One query: lead_activities (type='status_changed', new_status='touched', actor=agent)
   // joined to leads to get leads.created_at; Postgres computes the diff in seconds.
   // Using the PostgREST syntax: select with embedded relationship.
   const { data: responseRows } = await supabase
-    .from('lead_activities')
-    .select('created_at, lead:leads!lead_activities_lead_id_fkey(created_at)')
-    .eq('actor_id', agentId)
-    .eq('action_type', 'status_changed')
-    .filter('details->>new_status', 'eq', 'touched')
-    .gte('created_at', from)
-    .lte('created_at', to);
+    .from("lead_activities")
+    .select("created_at, lead:leads!lead_activities_lead_id_fkey(created_at)")
+    .eq("actor_id", agentId)
+    .eq("action_type", "status_changed")
+    .filter("details->>new_status", "eq", "touched")
+    .gte("created_at", from)
+    .lte("created_at", to);
 
   let avgResponseTimeMinutes: number | null = null;
   if (responseRows && responseRows.length > 0) {
@@ -239,8 +260,8 @@ export async function _getCoreFourMetricsForRange(
       const lead = Array.isArray(row.lead) ? row.lead[0] : row.lead;
       if (!lead?.created_at) continue;
       const activityTs = new Date(row.created_at).getTime();
-      const leadTs     = new Date(lead.created_at).getTime();
-      const diffMs     = activityTs - leadTs;
+      const leadTs = new Date(lead.created_at).getTime();
+      const diffMs = activityTs - leadTs;
       if (diffMs >= 0) {
         diffs.push(diffMs / 60000); // convert to minutes
       }
@@ -251,22 +272,24 @@ export async function _getCoreFourMetricsForRange(
   }
 
   // ── 4. conversionRate ────────────────────────────────────────────────────
+  // Filter by status_changed_at so closed leads count in the period they were closed,
+  // not when they were originally created.
   const { data: closedRows } = await supabase
-    .from('leads')
-    .select('status')
-    .eq('assigned_to', agentId)
-    .is('archived_at', null)
-    .in('status', ['won', 'lost'])
-    .gte('created_at', from)
-    .lte('created_at', to);
+    .from("leads")
+    .select("status")
+    .eq("assigned_to", agentId)
+    .is("archived_at", null)
+    .in("status", ["won", "lost"])
+    .gte("status_changed_at", from)
+    .lte("status_changed_at", to);
 
-  const won_count  = closedRows?.filter((r) => r.status === 'won').length  ?? 0;
-  const lost_count = closedRows?.filter((r) => r.status === 'lost').length ?? 0;
-  const closed     = won_count + lost_count;
+  const won_count = closedRows?.filter((r) => r.status === "won").length ?? 0;
+  const lost_count = closedRows?.filter((r) => r.status === "lost").length ?? 0;
+  const closed = won_count + lost_count;
   const conversionRate = closed > 0 ? (won_count / closed) * 100 : null;
 
   return {
-    leadsWon:               leadsWon ?? 0,
+    leadsWon: leadsWon ?? 0,
     touchRate,
     avgResponseTimeMinutes,
     conversionRate,
@@ -279,7 +302,7 @@ export async function _getCoreFourMetricsForRange(
 
 export async function getPreviousPeriodCoreMetrics(
   agentId: string,
-  period:  PerformancePeriod,
+  period: PerformancePeriod,
 ): Promise<CoreFourMetrics | null> {
   const range = getPreviousPeriodDateRange(period);
   if (range === null) return null;
@@ -292,48 +315,48 @@ export async function getPreviousPeriodCoreMetrics(
 
 export async function getEffortMetrics(
   agentId: string,
-  period:  PerformancePeriod,
+  period: PerformancePeriod,
 ): Promise<EffortMetrics> {
   const supabase = await createClient();
   const { from, to } = getPeriodDateRange(period);
 
   // callsLogged: notes with a call_outcome set
   const { count: callsLogged } = await supabase
-    .from('lead_notes')
-    .select('id', { count: 'exact', head: true })
-    .eq('author_id', agentId)
-    .not('call_outcome', 'is', null)
-    .gte('created_at', from)
-    .lte('created_at', to);
+    .from("lead_notes")
+    .select("id", { count: "exact", head: true })
+    .eq("author_id", agentId)
+    .not("call_outcome", "is", null)
+    .gte("created_at", from)
+    .lte("created_at", to);
 
   // notesWritten: all notes by agent in period
   const { count: notesWritten } = await supabase
-    .from('lead_notes')
-    .select('id', { count: 'exact', head: true })
-    .eq('author_id', agentId)
-    .gte('created_at', from)
-    .lte('created_at', to);
+    .from("lead_notes")
+    .select("id", { count: "exact", head: true })
+    .eq("author_id", agentId)
+    .gte("created_at", from)
+    .lte("created_at", to);
 
   // Live pipeline counts — no period filter
   const { count: inDiscussionCount } = await supabase
-    .from('leads')
-    .select('id', { count: 'exact', head: true })
-    .eq('assigned_to', agentId)
-    .eq('status', 'in_discussion')
-    .is('archived_at', null);
+    .from("leads")
+    .select("id", { count: "exact", head: true })
+    .eq("assigned_to", agentId)
+    .eq("status", "in_discussion")
+    .is("archived_at", null);
 
   const { count: nurturingCount } = await supabase
-    .from('leads')
-    .select('id', { count: 'exact', head: true })
-    .eq('assigned_to', agentId)
-    .eq('status', 'nurturing')
-    .is('archived_at', null);
+    .from("leads")
+    .select("id", { count: "exact", head: true })
+    .eq("assigned_to", agentId)
+    .eq("status", "nurturing")
+    .is("archived_at", null);
 
   return {
-    callsLogged:       callsLogged       ?? 0,
-    notesWritten:      notesWritten      ?? 0,
+    callsLogged: callsLogged ?? 0,
+    notesWritten: notesWritten ?? 0,
     inDiscussionCount: inDiscussionCount ?? 0,
-    nurturingCount:    nurturingCount    ?? 0,
+    nurturingCount: nurturingCount ?? 0,
   };
 }
 
@@ -343,18 +366,18 @@ export async function getEffortMetrics(
 
 export async function getCallOutcomeBreakdown(
   agentId: string,
-  period:  PerformancePeriod,
+  period: PerformancePeriod,
 ): Promise<OutcomeBreakdownItem[]> {
   const supabase = await createClient();
   const { from, to } = getPeriodDateRange(period);
 
   const { data } = await supabase
-    .from('lead_notes')
-    .select('call_outcome')
-    .eq('author_id', agentId)
-    .not('call_outcome', 'is', null)
-    .gte('created_at', from)
-    .lte('created_at', to);
+    .from("lead_notes")
+    .select("call_outcome")
+    .eq("author_id", agentId)
+    .not("call_outcome", "is", null)
+    .gte("created_at", from)
+    .lte("created_at", to);
 
   if (!data || data.length === 0) return [];
 
@@ -367,7 +390,7 @@ export async function getCallOutcomeBreakdown(
 
   return Object.entries(countMap).map(([outcome, count]) => ({
     outcome: outcome as CallOutcome,
-    count:   count as number,
+    count: count as number,
   }));
 }
 
@@ -409,26 +432,26 @@ export async function getCallOutcomeBreakdown(
 
 export async function getTeamBenchmarks(
   callerDomain: AppDomain,
-  period:       PerformancePeriod,
+  period: PerformancePeriod,
 ): Promise<TeamBenchmarks> {
   const supabase = await createClient();
 
   // ── 1. Peer pool: all active agents in the domain (roster count) ─────────
   // agentCount reflects domain roster, not period activity — see comment block above.
   const { data: agentRows } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('domain', callerDomain)
-    .eq('role', 'agent')
-    .eq('is_active', true);
+    .from("profiles")
+    .select("id")
+    .eq("domain", callerDomain)
+    .eq("role", "agent")
+    .eq("is_active", true);
 
-  const agentIds   = (agentRows ?? []).map((r) => r.id as string);
+  const agentIds = (agentRows ?? []).map((r) => r.id as string);
   const agentCount = agentIds.length;
 
   if (agentCount < 2) {
     return {
-      avgTouchRate:           null,
-      avgConversionRate:      null,
+      avgTouchRate: null,
+      avgConversionRate: null,
       avgResponseTimeMinutes: null,
       agentCount,
     };
@@ -438,12 +461,12 @@ export async function getTeamBenchmarks(
 
   // ── 2. Touch rate: all leads assigned to any peer agent in the period ────
   const { data: touchRows } = await supabase
-    .from('leads')
-    .select('assigned_to, status')
-    .in('assigned_to', agentIds)
-    .is('archived_at', null)
-    .gte('created_at', from)
-    .lte('created_at', to);
+    .from("leads")
+    .select("assigned_to, status")
+    .in("assigned_to", agentIds)
+    .is("archived_at", null)
+    .gte("created_at", from)
+    .lte("created_at", to);
 
   const touchData = touchRows ?? [];
 
@@ -452,8 +475,8 @@ export async function getTeamBenchmarks(
   for (const row of touchData) {
     const aid = row.assigned_to as string;
     if (!touchByAgent[aid]) touchByAgent[aid] = { total: 0, touched: 0 };
-    touchByAgent[aid].total  += 1;
-    if (row.status !== 'new') touchByAgent[aid].touched += 1;
+    touchByAgent[aid].total += 1;
+    if (row.status !== "new") touchByAgent[aid].touched += 1;
   }
 
   // .filter(d.total > 0) excludes agents with no leads in the period from the average
@@ -461,27 +484,30 @@ export async function getTeamBenchmarks(
     .filter((d) => d.total > 0)
     .map((d) => (d.touched / d.total) * 100);
 
-  const avgTouchRate = agentTouchRates.length > 0
-    ? agentTouchRates.reduce((a, b) => a + b, 0) / agentTouchRates.length
-    : null;
+  const avgTouchRate =
+    agentTouchRates.length > 0
+      ? agentTouchRates.reduce((a, b) => a + b, 0) / agentTouchRates.length
+      : null;
 
-  // ── 3. Conversion rate: won+lost leads per peer agent in the period ──────
+  // ── 3. Conversion rate: won+lost leads closed in the period ─────────────
+  // Uses status_changed_at so leads closed during the period count regardless
+  // of when they were originally created.
   const { data: closedRows } = await supabase
-    .from('leads')
-    .select('assigned_to, status')
-    .in('assigned_to', agentIds)
-    .is('archived_at', null)
-    .in('status', ['won', 'lost'])
-    .gte('created_at', from)
-    .lte('created_at', to);
+    .from("leads")
+    .select("assigned_to, status")
+    .in("assigned_to", agentIds)
+    .is("archived_at", null)
+    .in("status", ["won", "lost"])
+    .gte("status_changed_at", from)
+    .lte("status_changed_at", to);
 
   const closedData = closedRows ?? [];
   const closedByAgent: Record<string, { won: number; lost: number }> = {};
   for (const row of closedData) {
     const aid = row.assigned_to as string;
     if (!closedByAgent[aid]) closedByAgent[aid] = { won: 0, lost: 0 };
-    if (row.status === 'won')  closedByAgent[aid].won  += 1;
-    if (row.status === 'lost') closedByAgent[aid].lost += 1;
+    if (row.status === "won") closedByAgent[aid].won += 1;
+    if (row.status === "lost") closedByAgent[aid].lost += 1;
   }
 
   // .filter(d.won + d.lost > 0) excludes agents with no closed leads from the average
@@ -489,29 +515,33 @@ export async function getTeamBenchmarks(
     .filter((d) => d.won + d.lost > 0)
     .map((d) => (d.won / (d.won + d.lost)) * 100);
 
-  const avgConversionRate = agentConvRates.length > 0
-    ? agentConvRates.reduce((a, b) => a + b, 0) / agentConvRates.length
-    : null;
+  const avgConversionRate =
+    agentConvRates.length > 0
+      ? agentConvRates.reduce((a, b) => a + b, 0) / agentConvRates.length
+      : null;
 
   // ── 4. Avg response time: first-touch activities across all peer agents ──
   // One query on lead_activities for all peer agents, joined to leads.
   const { data: responseRows } = await supabase
-    .from('lead_activities')
-    .select('actor_id, created_at, lead:leads!lead_activities_lead_id_fkey(created_at)')
-    .in('actor_id', agentIds)
-    .eq('action_type', 'status_changed')
-    .filter('details->>new_status', 'eq', 'touched')
-    .gte('created_at', from)
-    .lte('created_at', to);
+    .from("lead_activities")
+    .select(
+      "actor_id, created_at, lead:leads!lead_activities_lead_id_fkey(created_at)",
+    )
+    .in("actor_id", agentIds)
+    .eq("action_type", "status_changed")
+    .filter("details->>new_status", "eq", "touched")
+    .gte("created_at", from)
+    .lte("created_at", to);
 
   // Per-agent response diffs → unweighted mean of means (see comment block above)
   // .filter(diffs.length > 0) excludes agents who touched no leads in the period
   const diffsByAgent: Record<string, number[]> = {};
   for (const row of responseRows ?? []) {
-    const aid  = row.actor_id as string;
+    const aid = row.actor_id as string;
     const lead = Array.isArray(row.lead) ? row.lead[0] : row.lead;
     if (!lead?.created_at) continue;
-    const diffMs = new Date(row.created_at).getTime() - new Date(lead.created_at).getTime();
+    const diffMs =
+      new Date(row.created_at).getTime() - new Date(lead.created_at).getTime();
     if (diffMs < 0) continue;
     if (!diffsByAgent[aid]) diffsByAgent[aid] = [];
     diffsByAgent[aid].push(diffMs / 60000);
@@ -521,9 +551,10 @@ export async function getTeamBenchmarks(
     .filter((diffs) => diffs.length > 0)
     .map((diffs) => diffs.reduce((a, b) => a + b, 0) / diffs.length);
 
-  const avgResponseTimeMinutes = agentResponseAvgs.length > 0
-    ? agentResponseAvgs.reduce((a, b) => a + b, 0) / agentResponseAvgs.length
-    : null;
+  const avgResponseTimeMinutes =
+    agentResponseAvgs.length > 0
+      ? agentResponseAvgs.reduce((a, b) => a + b, 0) / agentResponseAvgs.length
+      : null;
 
   return {
     avgTouchRate,
@@ -541,20 +572,26 @@ export async function getTeamBenchmarks(
 // ─────────────────────────────────────────────
 
 export async function getAgentRosterPerformance(
-  domain:   AppDomain,
+  domain: AppDomain | null,
   dateFrom: string,
-  dateTo:   string,
+  dateTo: string,
 ): Promise<AgentRosterRow[]> {
   const supabase = await createClient();
 
   // ── 1. Agent roster ──────────────────────────────────────────────────────
-  const { data: agentRows } = await supabase
-    .from('profiles')
-    .select('id, full_name, avatar_url')
-    .eq('domain', domain)
-    .eq('role', 'agent')
-    .eq('is_active', true)
-    .order('full_name', { ascending: true });
+  // When domain is null (founder/admin all-domains view), fetch all agents.
+  let agentQuery = supabase
+    .from("profiles")
+    .select("id, full_name, avatar_url, domain")
+    .eq("role", "agent")
+    .eq("is_active", true)
+    .order("full_name", { ascending: true });
+
+  if (domain !== null) {
+    agentQuery = agentQuery.eq("domain", domain);
+  }
+
+  const { data: agentRows } = await agentQuery;
 
   const agents = agentRows ?? [];
   if (agents.length === 0) return [];
@@ -562,25 +599,42 @@ export async function getAgentRosterPerformance(
   const agentIds = agents.map((a) => a.id as string);
 
   // ── 2. All leads assigned to any agent in the domain in the period ───────
+  // Uses created_at for the cohort (touch rate denominator) and status_changed_at
+  // for won/lost counts. We fetch with created_at here to cover the full cohort;
+  // won/lost aggregation below also re-queries by status_changed_at for accuracy.
   const { data: leadRows } = await supabase
-    .from('leads')
-    .select('id, assigned_to, status, deal_amount')
-    .in('assigned_to', agentIds)
-    .is('archived_at', null)
-    .gte('created_at', dateFrom)
-    .lte('created_at', dateTo);
+    .from("leads")
+    .select("id, assigned_to, status, deal_amount")
+    .in("assigned_to", agentIds)
+    .is("archived_at", null)
+    .gte("created_at", dateFrom)
+    .lte("created_at", dateTo);
+
+  // Won/lost leads in the period — filter by status_changed_at so leads closed
+  // during the period count regardless of when they were originally created.
+  const { data: closedRows } = await supabase
+    .from("leads")
+    .select("id, assigned_to, status, deal_amount")
+    .in("assigned_to", agentIds)
+    .is("archived_at", null)
+    .in("status", ["won", "lost"])
+    .gte("status_changed_at", dateFrom)
+    .lte("status_changed_at", dateTo);
 
   const leads = leadRows ?? [];
+  const closed = closedRows ?? [];
 
   // ── 3. First-touch response times for all agents ─────────────────────────
   const { data: responseRows } = await supabase
-    .from('lead_activities')
-    .select('actor_id, created_at, lead:leads!lead_activities_lead_id_fkey(created_at)')
-    .in('actor_id', agentIds)
-    .eq('action_type', 'status_changed')
-    .filter('details->>new_status', 'eq', 'touched')
-    .gte('created_at', dateFrom)
-    .lte('created_at', dateTo);
+    .from("lead_activities")
+    .select(
+      "actor_id, created_at, lead:leads!lead_activities_lead_id_fkey(created_at)",
+    )
+    .in("actor_id", agentIds)
+    .eq("action_type", "status_changed")
+    .filter("details->>new_status", "eq", "touched")
+    .gte("created_at", dateFrom)
+    .lte("created_at", dateTo);
 
   // Per-agent aggregation
   type AgentAgg = {
@@ -590,32 +644,49 @@ export async function getAgentRosterPerformance(
     wonCount: number;
     lostCount: number;
     responseDiffs: number[];
+    domain: AppDomain;
   };
 
   const agg: Record<string, AgentAgg> = {};
   for (const a of agents) {
-    agg[a.id as string] = { total: 0, won: 0, dealAmount: 0, wonCount: 0, lostCount: 0, responseDiffs: [] };
+    agg[a.id as string] = {
+      total: 0,
+      won: 0,
+      dealAmount: 0,
+      wonCount: 0,
+      lostCount: 0,
+      responseDiffs: [],
+      domain: a.domain as AppDomain,
+    };
   }
 
+  // Cohort total — leads created in the period (touch rate denominator)
   for (const lead of leads) {
     const aid = lead.assigned_to as string;
     if (!agg[aid]) continue;
     agg[aid].total += 1;
-    if (lead.status === 'won') {
+  }
+
+  // Won/lost — leads closed in the period (status_changed_at filter)
+  for (const lead of closed) {
+    const aid = lead.assigned_to as string;
+    if (!agg[aid]) continue;
+    if (lead.status === "won") {
       agg[aid].won += 1;
       agg[aid].wonCount += 1;
       agg[aid].dealAmount += (lead.deal_amount ?? 0) as number;
     }
-    if (lead.status === 'lost') {
+    if (lead.status === "lost") {
       agg[aid].lostCount += 1;
     }
   }
 
   for (const row of responseRows ?? []) {
-    const aid  = row.actor_id as string;
+    const aid = row.actor_id as string;
     const lead = Array.isArray(row.lead) ? row.lead[0] : row.lead;
     if (!lead?.created_at || !agg[aid]) continue;
-    const diffMs = new Date(row.created_at).getTime() - new Date(lead.created_at).getTime();
+    const diffMs =
+      new Date(row.created_at).getTime() - new Date(lead.created_at).getTime();
     if (diffMs >= 0) agg[aid].responseDiffs.push(diffMs / 60000);
   }
 
@@ -625,16 +696,18 @@ export async function getAgentRosterPerformance(
     const conversionRate = closed > 0 ? (data.wonCount / closed) * 100 : null;
     const avgResponseTimeMinutes =
       data.responseDiffs.length > 0
-        ? data.responseDiffs.reduce((s, v) => s + v, 0) / data.responseDiffs.length
+        ? data.responseDiffs.reduce((s, v) => s + v, 0) /
+          data.responseDiffs.length
         : null;
     return {
-      id:                     a.id as string,
-      full_name:              a.full_name as string,
-      avatar_url:             (a.avatar_url as string | null) ?? null,
-      totalLeads:             data.total,
-      leadsWon:               data.won,
+      id: a.id as string,
+      full_name: a.full_name as string,
+      avatar_url: (a.avatar_url as string | null) ?? null,
+      domain: data.domain,
+      totalLeads: data.total,
+      leadsWon: data.won,
       conversionRate,
-      totalDealAmount:        data.dealAmount,
+      totalDealAmount: data.dealAmount,
       avgResponseTimeMinutes,
     };
   });
@@ -662,10 +735,10 @@ export async function getAgentRosterPerformance(
 // ─────────────────────────────────────────────
 
 export async function getAgentDetailMetrics(
-  agentId:  string,
-  domain:   AppDomain,
+  agentId: string,
+  domain: AppDomain | null,
   dateFrom: string,
-  dateTo:   string,
+  dateTo: string,
 ): Promise<AgentDetailMetrics> {
   const supabase = await createClient();
 
@@ -676,118 +749,145 @@ export async function getAgentDetailMetrics(
 
   const [
     leadsData,
+    wonLeadsData,
     callsTodayData,
     followUpsData,
     responseData,
     notesData,
   ] = await Promise.all([
-    // All leads in period for pipeline + won/deal
+    // All leads created in the period — for cohort metrics (touch rate, pipeline)
     supabase
-      .from('leads')
-      .select('id, status, deal_amount, form_data')
-      .eq('assigned_to', agentId)
-      .is('archived_at', null)
-      .gte('created_at', dateFrom)
-      .lte('created_at', dateTo),
+      .from("leads")
+      .select("id, status, deal_amount, form_data")
+      .eq("assigned_to", agentId)
+      .is("archived_at", null)
+      .gte("created_at", dateFrom)
+      .lte("created_at", dateTo),
+
+    // Won leads closed in the period — filtered by status_changed_at
+    // so leads won during the period count regardless of when they were created.
+    supabase
+      .from("leads")
+      .select("id, status, deal_amount, form_data")
+      .eq("assigned_to", agentId)
+      .eq("status", "won")
+      .is("archived_at", null)
+      .gte("status_changed_at", dateFrom)
+      .lte("status_changed_at", dateTo),
 
     // callsToday: call notes by this agent since IST midnight
     supabase
-      .from('lead_notes')
-      .select('id', { count: 'exact', head: true })
-      .eq('author_id', agentId)
-      .not('call_outcome', 'is', null)
-      .gte('created_at', todayStart),
+      .from("lead_notes")
+      .select("id", { count: "exact", head: true })
+      .eq("author_id", agentId)
+      .not("call_outcome", "is", null)
+      .gte("created_at", todayStart),
 
     // followUpsCompleted: call notes on leads that were already touched/nurturing
     supabase
-      .from('lead_notes')
-      .select('id, lead:leads!lead_notes_lead_id_fkey(status)')
-      .eq('author_id', agentId)
-      .not('call_outcome', 'is', null)
-      .gte('created_at', dateFrom)
-      .lte('created_at', dateTo),
+      .from("lead_notes")
+      .select("id, lead:leads!lead_notes_lead_id_fkey(status)")
+      .eq("author_id", agentId)
+      .not("call_outcome", "is", null)
+      .gte("created_at", dateFrom)
+      .lte("created_at", dateTo),
 
     // response times for AgentDetailMetrics
     supabase
-      .from('lead_activities')
-      .select('created_at, lead:leads!lead_activities_lead_id_fkey(created_at)')
-      .eq('actor_id', agentId)
-      .eq('action_type', 'status_changed')
-      .filter('details->>new_status', 'eq', 'touched')
-      .gte('created_at', dateFrom)
-      .lte('created_at', dateTo),
+      .from("lead_activities")
+      .select("created_at, lead:leads!lead_activities_lead_id_fkey(created_at)")
+      .eq("actor_id", agentId)
+      .eq("action_type", "status_changed")
+      .filter("details->>new_status", "eq", "touched")
+      .gte("created_at", dateFrom)
+      .lte("created_at", dateTo),
 
     // call outcome breakdown
     supabase
-      .from('lead_notes')
-      .select('call_outcome')
-      .eq('author_id', agentId)
-      .not('call_outcome', 'is', null)
-      .gte('created_at', dateFrom)
-      .lte('created_at', dateTo),
+      .from("lead_notes")
+      .select("call_outcome")
+      .eq("author_id", agentId)
+      .not("call_outcome", "is", null)
+      .gte("created_at", dateFrom)
+      .lte("created_at", dateTo),
   ]);
 
-  const leads    = leadsData.data ?? [];
-  const callsTd  = callsTodayData.count ?? 0;
+  const leads = leadsData.data ?? [];
+  const wonLeads = wonLeadsData.data ?? [];
+  const callsTd = callsTodayData.count ?? 0;
   const followRows = followUpsData.data ?? [];
-  const notes    = notesData.data ?? [];
+  const notes = notesData.data ?? [];
 
-  // newLeadsAttended: leads that moved past 'new' status in the period
-  const newLeadsAttended = leads.filter((l) => l.status !== 'new').length;
+  // newLeadsAttended: leads created in the period that moved past 'new'
+  const newLeadsAttended = leads.filter((l) => l.status !== "new").length;
 
   // followUpsCompleted: calls on leads already in touched/nurturing at time of note
   let followUpsCompleted = 0;
   for (const row of followRows) {
     const lead = Array.isArray(row.lead) ? row.lead[0] : row.lead;
-    if (lead && (lead.status === 'touched' || lead.status === 'nurturing' || lead.status === 'in_discussion')) {
+    if (
+      lead &&
+      (lead.status === "touched" ||
+        lead.status === "nurturing" ||
+        lead.status === "in_discussion")
+    ) {
       followUpsCompleted += 1;
     }
   }
 
-  // won / deal amount
-  const wonLeads  = leads.filter((l) => l.status === 'won');
-  const leadsWon  = wonLeads.length;
-  const totalDealAmount = wonLeads.reduce((s, l) => s + ((l.deal_amount ?? 0) as number), 0);
+  // won / deal amount — from the status_changed_at-filtered won leads query
+  const leadsWon = wonLeads.length;
+  const totalDealAmount = wonLeads.reduce(
+    (s, l) => s + ((l.deal_amount ?? 0) as number),
+    0,
+  );
 
   // deal type breakdown from form_data.deal_type (if present)
-  const dealTypeMap: Record<string, { count: number; totalAmount: number }> = {};
+  const dealTypeMap: Record<string, { count: number; totalAmount: number }> =
+    {};
   for (const l of wonLeads) {
     const fd = l.form_data as Record<string, unknown> | null;
-    const dt = (fd?.deal_type as string | undefined) ?? 'Other';
+    const dt = (fd?.deal_type as string | undefined) ?? "Other";
     if (!dealTypeMap[dt]) dealTypeMap[dt] = { count: 0, totalAmount: 0 };
     dealTypeMap[dt].count += 1;
     dealTypeMap[dt].totalAmount += (l.deal_amount ?? 0) as number;
   }
-  const dealTypeBreakdown = Object.entries(dealTypeMap).map(([dealType, v]) => ({
-    dealType,
-    count: v.count,
-    totalAmount: v.totalAmount,
-  }));
+  const dealTypeBreakdown = Object.entries(dealTypeMap).map(
+    ([dealType, v]) => ({
+      dealType,
+      count: v.count,
+      totalAmount: v.totalAmount,
+    }),
+  );
 
-  // pipeline breakdown
+  // pipeline breakdown — from the cohort (created_at filtered) leads
   const statusCountMap: Record<string, number> = {};
   for (const l of leads) {
     statusCountMap[l.status] = (statusCountMap[l.status] ?? 0) + 1;
   }
-  const pipelineBreakdown = Object.entries(statusCountMap).map(([status, count]) => ({ status, count }));
+  const pipelineBreakdown = Object.entries(statusCountMap).map(
+    ([status, count]) => ({ status, count }),
+  );
 
   // call outcome breakdown
-  type CO = import('@/lib/types/database').CallOutcome;
+  type CO = import("@/lib/types/database").CallOutcome;
   const countMap: Partial<Record<CO, number>> = {};
   for (const row of notes) {
     const outcome = row.call_outcome as CO | null;
     if (!outcome) continue;
     countMap[outcome] = (countMap[outcome] ?? 0) + 1;
   }
-  const callOutcomeBreakdown = Object.entries(countMap).map(([outcome, count]) => ({
-    outcome: outcome as CO,
-    count:   count as number,
-  }));
+  const callOutcomeBreakdown = Object.entries(countMap).map(
+    ([outcome, count]) => ({
+      outcome: outcome as CO,
+      count: count as number,
+    }),
+  );
 
   void responseData; // fetched but not used in detail panel (used in roster)
 
   return {
-    callsToday:           callsTd,
+    callsToday: callsTd,
     newLeadsAttended,
     followUpsCompleted,
     leadsWon,
@@ -806,17 +906,17 @@ export async function getAgentDetailMetrics(
 
 export async function getDomainsWithLeads(
   dateFrom: string,
-  dateTo:   string,
+  dateTo: string,
 ): Promise<AppDomain[]> {
   const supabase = await createClient();
 
   const { data } = await supabase
-    .from('leads')
-    .select('domain')
-    .gte('created_at', dateFrom)
-    .lte('created_at', dateTo)
-    .is('archived_at', null)
-    .not('domain', 'is', null);
+    .from("leads")
+    .select("domain")
+    .gte("created_at", dateFrom)
+    .lte("created_at", dateTo)
+    .is("archived_at", null)
+    .not("domain", "is", null);
 
   if (!data || data.length === 0) return [];
 

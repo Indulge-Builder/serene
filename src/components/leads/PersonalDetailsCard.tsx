@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { UserCircle, Check } from 'lucide-react';
 import { Spinner } from '@/components/ui/Spinner';
 import { Button } from '@/components/ui/Button';
@@ -24,17 +25,20 @@ const FIELDS: { label: string; key: string; placeholder: string; wide?: boolean 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export function PersonalDetailsCard({ lead, canEdit }: Props) {
-  const existing = (lead.personal_details ?? {}) as Record<string, string>;
+  const router  = useRouter();
+  const initial = (lead.personal_details ?? {}) as Record<string, string>;
 
+  // `saved` tracks what is confirmed persisted — drives the read-only display
+  const [saved, setSaved]           = useState<Record<string, string>>(initial);
   const [values, setValues]         = useState<Record<string, string>>(
-    Object.fromEntries(FIELDS.map(({ key }) => [key, existing[key] ?? '']))
+    Object.fromEntries(FIELDS.map(({ key }) => [key, initial[key] ?? '']))
   );
   const [active, setActive]         = useState(false);
   const [saveState, setSaveState]   = useState<SaveState>('idle');
   const [error, setError]           = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const hasAnyValue = FIELDS.some(({ key }) => (existing[key] ?? '').trim() !== '');
+  const hasAnyValue = FIELDS.some(({ key }) => (saved[key] ?? '').trim() !== '');
 
   function handleActivate() {
     if (canEdit) setActive(true);
@@ -58,7 +62,9 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
         return;
       }
 
+      setSaved({ ...values });
       setSaveState('saved');
+      router.refresh();
       setTimeout(() => {
         setSaveState('idle');
         setActive(false);
@@ -67,8 +73,7 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
   }
 
   function handleCancel() {
-    // Reset to last-saved values
-    setValues(Object.fromEntries(FIELDS.map(({ key }) => [key, existing[key] ?? ''])));
+    setValues(Object.fromEntries(FIELDS.map(({ key }) => [key, saved[key] ?? ''])));
     setError(null);
     setSaveState('idle');
     setActive(false);
@@ -235,7 +240,7 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
                   style={{
                     fontFamily: 'var(--font-sans)',
                     fontSize:   'var(--text-sm)',
-                    color:      (existing[key] ?? '').trim()
+                    color:      (saved[key] ?? '').trim()
                       ? 'var(--theme-text-primary)'
                       : 'var(--theme-text-tertiary)',
                     margin:     0,
@@ -243,7 +248,7 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
                     minHeight:  '1.25rem',
                   }}
                 >
-                  {(existing[key] ?? '').trim() || '—'}
+                  {(saved[key] ?? '').trim() || '—'}
                 </p>
               )}
             </div>

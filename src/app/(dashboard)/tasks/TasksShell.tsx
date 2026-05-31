@@ -1,33 +1,54 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Plus } from "lucide-react";
-import { PersonalTasksTab } from "@/components/tasks/PersonalTasksTab";
+import { useState, useTransition, useMemo, useEffect } from "react";
+import { AnimatePresence } from "framer-motion";
+import { MyTasksCalendarView } from "@/components/tasks/MyTasksCalendarView";
 import { GroupTasksTab } from "@/components/tasks/GroupTasksTab";
+import { GiaTasksTab } from "@/components/tasks/GiaTasksTab";
+import { CreateGiaTaskModal } from "@/components/tasks/CreateGiaTaskModal";
+import { TasksFilters } from "@/components/tasks/TasksFilters";
 import { TabSelector, type TabItem } from "@/components/ui/TabSelector";
+import { useTasksCreate } from "@/components/tasks/TasksCreateContext";
+import { getPersonalTaskTagsAction } from "@/lib/actions/tasks";
+import { DOMAIN_LABELS, compareDomainDisplayOrder } from "@/lib/constants/domains";
+import {
+  EMPTY_PERSONAL_TASK_FILTERS,
+  EMPTY_GROUP_TASK_FILTERS,
+  EMPTY_GIA_TASK_FILTERS,
+  domainsInGroupRows,
+  filterGiaTasks,
+  giaFiltersActiveCount,
+  type PersonalTaskFiltersState,
+  type GroupTaskFiltersState,
+  type GiaTaskFiltersState,
+} from "@/lib/utils/task-client-filters";
 import type {
   PersonalTasksResult,
   TaskGroupRow,
+  GiaTask,
 } from "@/lib/services/tasks-service";
-import type { UserRole, AppDomain } from "@/lib/types/database";
-
-type Tab = "personal" | "group";
+import type { UserRole, AppDomain, Task } from "@/lib/types/database";
+import type { TaskTab } from "./page";
 
 interface TasksShellProps {
-  initialTab: Tab;
+  initialTab:    TaskTab;
+  validTabs:     TaskTab[];
   personalResult: PersonalTasksResult;
-  groupRows: TaskGroupRow[];
+  groupRows:     TaskGroupRow[];
+  giaTasks:      GiaTask[];
   currentUserId: string;
   currentUserName: string;
-  callerRole: UserRole;
-  callerDomain: AppDomain;
+  callerRole:    UserRole;
+  callerDomain:  AppDomain;
 }
 
 export function TasksShell({
   initialTab,
+  validTabs,
   personalResult,
   groupRows,
+  giaTasks,
   currentUserId,
   currentUserName,
   callerRole,
@@ -37,18 +58,58 @@ export function TasksShell({
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
-  // createTrigger increments each time the header button is clicked.
-  // Each tab watches it in a useEffect and opens its own modal.
-  const [createTrigger, setCreateTrigger] = useState(0);
+  const { createTrigger } = useTasksCreate();
+
+  const [personalFilters, setPersonalFilters] = useState<PersonalTaskFiltersState>(
+    EMPTY_PERSONAL_TASK_FILTERS,
+  );
+  const [groupFilters, setGroupFilters] = useState<GroupTaskFiltersState>(
+    EMPTY_GROUP_TASK_FILTERS,
+  );
+  const [giaFilters, setGiaFilters] = useState<GiaTaskFiltersState>(
+    EMPTY_GIA_TASK_FILTERS,
+  );
+  const [personalTagItems, setPersonalTagItems] = useState<string[]>([]);
+  const [personalVisibleCount, setPersonalVisibleCount] = useState(
+    personalResult.tasks.length,
+  );
+  const [groupVisibleCount, setGroupVisibleCount] = useState(groupRows.length);
+  const [giaVisibleCount, setGiaVisibleCount] = useState(giaTasks.length);
+
+  // Gia modal state (create trigger from AddTaskButton → requestCreate)
+  const [giaCreateOpen, setGiaCreateOpen] = useState(false);
+  const [giaTasksList, setGiaTasksList] = useState<GiaTask[]>(giaTasks);
 
   const activeTab = initialTab;
+  const isPrivileged = callerRole === "admin" || callerRole === "founder";
 
-  // Only manager+ can create group tasks
-  const canCreateGroup = ["manager", "admin", "founder"].includes(callerRole);
-  // Button is hidden on group tab for agents
-  const showButton = activeTab === "personal" || canCreateGroup;
+  const groupDomainItems = useMemo(
+    () =>
+      domainsInGroupRows(groupRows)
+        .sort(compareDomainDisplayOrder)
+        .map((d) => ({ id: d, label: DOMAIN_LABELS[d] ?? d })),
+    [groupRows],
+  );
 
-  function setTab(tab: Tab) {
+  useEffect(() => {
+    if (activeTab !== "personal") return;
+    let cancelled = false;
+    getPersonalTaskTagsAction()
+      .then((r) => {
+        if (!cancelled && r.data) setPersonalTagItems(r.data);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeTab]);
+
+  // Open Gia modal when createTrigger fires on the gia tab
+  useEffect(() => {
+    if (activeTab === "gia" && createTrigger > 0) {
+      setGiaCreateOpen(true);
+    }
+  }, [createTrigger, activeTab]);
+
+  function setTab(tab: TaskTab) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", tab);
     startTransition(() => {
@@ -56,85 +117,131 @@ export function TasksShell({
     });
   }
 
-  const TABS: TabItem[] = [
-    { id: "personal", label: "My Tasks" },
-    { id: "group", label: "Group Tasks" },
-  ];
-
-  const buttonLabel = activeTab === "personal" ? "My Task" : "Group Task";
+  // Derive the tab bar directly from the server-validated validTabs array.
+  // This is the only correct source — rebuilding it client-side from initialTab
+  // breaks when the user navigates between tabs (initialTab changes each RSC pass).
+  const TAB_LABELS: Record<TaskTab, string> = {
+    gia:      "Gia Tasks",
+    personal: "My Tasks",
+    group:    "Group Tasks",
+  };
+  const TABS: TabItem[] = useMemo(
+    () => validTabs.map((t) => ({ id: t, label: TAB_LABELS[t] })),
+    // validTabs is serialised from the server — stable reference per render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [validTabs.join(",")],
+  );
 
   return (
     <div>
-      {/* Header row: tabs left, contextual button right */}
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: "var(--space-6)",
+          display:      "flex",
+          alignItems:   "center",
+          gap:          "var(--space-4)",
+          padding:      "var(--space-4) var(--space-5)",
+          marginBottom: "var(--space-4)",
+          background:   "var(--theme-paper)",
+          border:       "1px solid var(--theme-paper-border)",
+          borderRadius: "var(--radius-md)",
+          boxShadow:    "var(--shadow-1)",
+          flexWrap:     "wrap",
         }}
       >
         <TabSelector
           tabs={TABS}
           activeTab={activeTab}
-          onChange={(id) => setTab(id as Tab)}
-          variant="pill"
+          onChange={(id) => setTab(id as TaskTab)}
+          variant="accent"
+          indicatorLayoutId="tasks-page-tabs"
         />
 
-        {showButton && (
-          <button
-            type="button"
-            onClick={() => setCreateTrigger((n) => n + 1)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "var(--space-2)",
-              height: 36,
-              padding: "0 var(--space-4)",
-              borderRadius: "var(--radius-sm)",
-              border: "none",
-              background: "var(--theme-accent)",
-              color: "var(--theme-accent-fg)",
-              fontFamily: "var(--font-sans)",
-              fontSize: "var(--text-sm)",
-              fontWeight: "var(--weight-semibold)",
-              cursor: "pointer",
-              transition: "var(--transition-interactive)",
-              flexShrink: 0,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--theme-accent-hover)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--theme-accent)";
-            }}
-          >
-            <Plus style={{ width: 15, height: 15, strokeWidth: 1.5 }} />
-            {buttonLabel}
-          </button>
-        )}
+        <TasksFilters
+          activeTab={activeTab}
+          personalFilters={personalFilters}
+          onPersonalFiltersChange={setPersonalFilters}
+          personalTagItems={personalTagItems}
+          groupFilters={groupFilters}
+          onGroupFiltersChange={setGroupFilters}
+          groupDomainItems={groupDomainItems}
+          showGroupDomainFilter={isPrivileged}
+          giaFilters={giaFilters}
+          onGiaFiltersChange={setGiaFilters}
+          resultCount={
+            activeTab === "gia"      ? giaVisibleCount :
+            activeTab === "personal" ? personalVisibleCount :
+                                       groupVisibleCount
+          }
+          resultNoun={
+            activeTab === "gia"      ? (giaVisibleCount === 1 ? "task" : "tasks") :
+            activeTab === "personal" ? (personalVisibleCount === 1 ? "task" : "tasks") :
+                                       (groupVisibleCount === 1 ? "group" : "groups")
+          }
+        />
       </div>
 
       {/* Tab panels */}
-      {activeTab === "personal" ? (
-        <PersonalTasksTab
+      {activeTab === "gia" ? (
+        <>
+          <GiaTasksTab
+            initialTasks={giaTasksList}
+            filters={giaFilters}
+            currentUserId={currentUserId}
+            currentUserName={currentUserName}
+            callerRole={callerRole}
+            callerDomain={callerDomain}
+            createTrigger={createTrigger}
+            onFilteredCountChange={setGiaVisibleCount}
+            onTaskCreated={(task) => {
+              setGiaTasksList((prev) => [task, ...prev]);
+            }}
+          />
+          <AnimatePresence>
+            {giaCreateOpen && (
+              <CreateGiaTaskModal
+                open={giaCreateOpen}
+                onClose={() => setGiaCreateOpen(false)}
+                onTaskCreated={(task) => {
+                  setGiaTasksList((prev) => [task, ...prev]);
+                  setGiaVisibleCount((n) => n + 1);
+                  setGiaCreateOpen(false);
+                }}
+                callerRole={callerRole}
+              />
+            )}
+          </AnimatePresence>
+        </>
+      ) : activeTab === "personal" ? (
+        <MyTasksCalendarView
           initialResult={personalResult}
           currentUserId={currentUserId}
           currentUserName={currentUserName}
           callerRole={callerRole}
           callerDomain={callerDomain}
           createTrigger={createTrigger}
+          filters={personalFilters}
+          onFilteredCountChange={setPersonalVisibleCount}
+          onTagsMayHaveChanged={() => {
+            getPersonalTaskTagsAction().then((r) => {
+              if (r.data) setPersonalTagItems(r.data);
+            }).catch(() => {});
+          }}
         />
       ) : (
         <GroupTasksTab
           initialRows={groupRows}
+          filters={groupFilters}
           currentUserId={currentUserId}
           currentUserName={currentUserName}
           callerRole={callerRole}
           callerDomain={callerDomain}
           createTrigger={createTrigger}
+          onFilteredCountChange={setGroupVisibleCount}
         />
       )}
     </div>
   );
 }
+
+// Re-export type for consumers that need to import GiaTask from the shell layer
+export type { Task };

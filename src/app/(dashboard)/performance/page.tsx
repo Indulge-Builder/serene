@@ -1,34 +1,39 @@
-import { Suspense }                  from 'react';
-import { redirect }                  from 'next/navigation';
-import { getCurrentProfile }         from '@/lib/services/profiles-service';
-import { PerformanceAsync }          from './PerformanceAsync';
-import { PerformanceSkeleton }       from './PerformanceSkeleton';
-import { ManagerPerformanceSkeleton } from './ManagerPerformanceSkeleton';
-import { ManagerPerformanceAsync }   from './ManagerPerformanceAsync';
-import { FounderPerformanceShell }   from './FounderPerformanceShell';
-import { PerformancePeriodSelector } from '@/components/performance/PerformancePeriodSelector';
-import type { PerformancePeriod }    from '@/lib/services/performance-service';
-
+import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { DEFAULT_GIA_DOMAIN } from "@/lib/constants/domains";
+import type { PerformancePeriod } from "@/lib/services/performance-service";
+import { PerformanceAsync } from "./PerformanceAsync";
+import { PerformanceSkeleton } from "./PerformanceSkeleton";
+import { ManagerPerformanceSkeleton } from "./ManagerPerformanceSkeleton";
+import { ManagerPerformanceAsync } from "./ManagerPerformanceAsync";
+import { FounderPerformanceShell } from "./FounderPerformanceShell";
+import { PerformanceFilters } from "@/components/performance/PerformanceFilters";
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
 
 const VALID_PERIODS: PerformancePeriod[] = [
-  'this_week', 'this_month', 'last_month', 'all_time',
+  "this_week",
+  "this_month",
+  "last_month",
+  "all_time",
+  "custom",
 ];
 
 const PERIOD_LABELS: Record<PerformancePeriod, string> = {
-  this_week:  'This Week',
-  this_month: 'This Month',
-  last_month: 'Last Month',
-  all_time:   'All Time',
+  this_week: "This Week",
+  this_month: "This Month",
+  last_month: "Last Month",
+  all_time: "All Time",
+  custom: "Custom",
 };
 
 function parsePeriod(raw: string | undefined): PerformancePeriod {
   if (raw && (VALID_PERIODS as string[]).includes(raw)) {
     return raw as PerformancePeriod;
   }
-  return 'this_month';
+  return "this_month";
 }
 
 // ─────────────────────────────────────────────
@@ -40,39 +45,39 @@ function PerformanceMotivationalFooter({
   inDiscussionCount,
   period,
 }: {
-  leadsWon:          number;
+  leadsWon: number;
   inDiscussionCount: number;
-  period:            PerformancePeriod;
+  period: PerformancePeriod;
 }) {
   let message: string;
   const periodLabel = PERIOD_LABELS[period].toLowerCase();
 
   if (leadsWon > 0) {
-    message = `You've closed ${leadsWon} lead${leadsWon === 1 ? '' : 's'} ${
-      period === 'all_time' ? 'in total' : `this ${periodLabel}`
+    message = `You've closed ${leadsWon} lead${leadsWon === 1 ? "" : "s"} ${
+      period === "all_time" ? "in total" : `this ${periodLabel}`
     }.`;
   } else if (inDiscussionCount > 0) {
-    message = `${inDiscussionCount} lead${inDiscussionCount === 1 ? '' : 's'} in discussion — almost there.`;
+    message = `${inDiscussionCount} lead${inDiscussionCount === 1 ? "" : "s"} in discussion — almost there.`;
   } else {
-    message = 'Every expert was once a beginner.';
+    message = "Every expert was once a beginner.";
   }
 
   return (
     <div
       style={{
-        paddingTop:    "var(--space-8)",
+        paddingTop: "var(--space-8)",
         paddingBottom: "var(--space-4)",
-        textAlign:     "center",
+        textAlign: "center",
       }}
     >
       <p
         style={{
           fontFamily: "var(--font-serif)",
-          fontStyle:  "italic",
-          fontSize:   "var(--text-lg)",
+          fontStyle: "italic",
+          fontSize: "var(--text-lg)",
           fontWeight: "var(--weight-light)",
-          color:      "var(--theme-text-secondary)",
-          margin:     0,
+          color: "var(--theme-text-secondary)",
+          margin: 0,
         }}
       >
         {message}
@@ -93,48 +98,49 @@ export default async function PerformancePage({
   searchParams: SearchParams;
 }) {
   const profile = await getCurrentProfile();
-  if (!profile) redirect('/login');
+  if (!profile) redirect("/login");
 
-  if (profile.role === 'guest') redirect('/dashboard');
+  if (profile.role === "guest") redirect("/dashboard");
 
-  const params    = await searchParams;
-  const rawPeriod = typeof params.period === 'string' ? params.period : undefined;
-  const period    = parsePeriod(rawPeriod);
+  const params = await searchParams;
+  const rawPeriod =
+    typeof params.period === "string" ? params.period : undefined;
+  const period = parsePeriod(rawPeriod);
+
+  // Custom date params — only meaningful when period === 'custom'
+  const rawFrom = typeof params.from === "string" ? params.from : undefined;
+  const rawTo = typeof params.to === "string" ? params.to : undefined;
 
   // ── Agent view ──────────────────────────────────────────────────────────
-  if (profile.role === 'agent') {
-    const { getCoreFourMetrics, getEffortMetrics } = await import(
-      '@/lib/services/performance-service'
-    );
+  if (profile.role === "agent") {
+    const { getCoreFourMetrics, getEffortMetrics } =
+      await import("@/lib/services/performance-service");
     const [coreForFooter, effortForFooter] = await Promise.all([
       getCoreFourMetrics(profile.id, period),
       getEffortMetrics(profile.id, period),
     ]);
 
     return (
-      <main style={{ flex: 1, padding: 'var(--space-8)', maxWidth: '960px' }}>
-        <div style={{ marginBottom: 'var(--space-6)' }}>
+      <main style={{ flex: 1, padding: "var(--space-8)", maxWidth: "1280px", minWidth: 0 }}>
+        <div style={{ marginBottom: "var(--space-6)" }}>
           <h1 className="type-page-title" style={{ margin: 0 }}>
             Your Performance<span className="page-title-dot">.</span>
           </h1>
         </div>
-        {/* Filter bar — period dropdown */}
-        <div
-          style={{
-            display:      'flex',
-            alignItems:   'center',
-            gap:          'var(--space-3)',
-            padding:      'var(--space-3) var(--space-4)',
-            background:   'var(--theme-paper)',
-            border:       '1px solid var(--theme-paper-border)',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: 'var(--space-6)',
-          }}
-        >
-          <PerformancePeriodSelector current={period} />
+        <div className="px-5 py-4 mb-6 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
+          <PerformanceFilters
+            period={period}
+            customFrom={rawFrom ?? null}
+            customTo={rawTo ?? null}
+            showSearch={false}
+          />
         </div>
         <Suspense fallback={<PerformanceSkeleton />}>
-          <PerformanceAsync period={period} agentId={profile.id} domain={profile.domain} />
+          <PerformanceAsync
+            period={period}
+            agentId={profile.id}
+            domain={profile.domain}
+          />
         </Suspense>
         <PerformanceMotivationalFooter
           leadsWon={coreForFooter.leadsWon}
@@ -147,66 +153,59 @@ export default async function PerformancePage({
 
   // ── Manager view ───────────────────────────────────────────────────────
   // domain is always read from the server-verified profile — never from URL params
-  if (profile.role === 'manager') {
+  if (profile.role === "manager") {
     return (
-      <main style={{ flex: 1, padding: 'var(--space-8)', minWidth: 0 }}>
-        <div style={{ marginBottom: 'var(--space-6)' }}>
+      <main style={{ flex: 1, padding: "var(--space-8)", minWidth: 0 }}>
+        <div style={{ marginBottom: "var(--space-6)" }}>
           <h1 className="type-page-title" style={{ margin: 0 }}>
             Team Performance<span className="page-title-dot">.</span>
           </h1>
         </div>
-        {/* Filter bar — period dropdown */}
-        <div
-          style={{
-            display:      'flex',
-            alignItems:   'center',
-            gap:          'var(--space-3)',
-            padding:      'var(--space-3) var(--space-4)',
-            background:   'var(--theme-paper)',
-            border:       '1px solid var(--theme-paper-border)',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: 'var(--space-6)',
-          }}
-        >
-          <PerformancePeriodSelector current={period} />
+        <div className="px-5 py-4 mb-6 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
+          <PerformanceFilters
+            period={period}
+            customFrom={rawFrom ?? null}
+            customTo={rawTo ?? null}
+            showSearch
+          />
         </div>
         <Suspense fallback={<ManagerPerformanceSkeleton />}>
-          <ManagerPerformanceAsync domain={profile.domain} period={period} />
+          <ManagerPerformanceAsync
+            domain={profile.domain}
+            period={period}
+            customFrom={rawFrom}
+            customTo={rawTo}
+          />
         </Suspense>
       </main>
     );
   }
 
   // ── Founder / admin view ────────────────────────────────────────────────
-  // Domain tab comes first (Onboarding → Shop → House → Legacy → …).
-  // Filter bar lives below the domain tabs.
-  // Active domain tab comes from URL params — validated in FounderPerformanceShell.
-  const rawDomain = typeof params.domain === 'string' ? params.domain : undefined;
-
+  // All domains in one roster; domain filtering is client-side in ManagerPerformancePanel.
   return (
-    <main style={{ flex: 1, padding: 'var(--space-8)', minWidth: 0 }}>
-      <div style={{ marginBottom: 'var(--space-6)' }}>
+    <main style={{ flex: 1, padding: "var(--space-8)", minWidth: 0 }}>
+      <div style={{ marginBottom: "var(--space-6)" }}>
         <h1 className="type-page-title" style={{ margin: 0 }}>
           Performance<span className="page-title-dot">.</span>
         </h1>
       </div>
-      {/* Filter bar — period dropdown, sits below the title, above domain tabs */}
-      <div
-        style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-3)',
-          padding:      'var(--space-3) var(--space-4)',
-          background:   'var(--theme-paper)',
-          border:       '1px solid var(--theme-paper-border)',
-          borderRadius: 'var(--radius-md)',
-          marginBottom: 'var(--space-6)',
-        }}
-      >
-        <PerformancePeriodSelector current={period} />
+
+      <div className="px-5 py-4 mb-6 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
+        <PerformanceFilters
+          period={period}
+          customFrom={rawFrom ?? null}
+          customTo={rawTo ?? null}
+          showSearch
+        />
       </div>
-      {/* Domain tabs + team panel */}
-      <FounderPerformanceShell period={period} rawDomain={rawDomain} />
+
+      <FounderPerformanceShell
+        domain={DEFAULT_GIA_DOMAIN}
+        period={period}
+        customFrom={rawFrom}
+        customTo={rawTo}
+      />
     </main>
   );
 }

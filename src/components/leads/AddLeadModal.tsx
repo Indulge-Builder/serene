@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/modal';
 import { createManualLead, listAgentsForDomain } from '@/lib/actions/leads';
 import { CreateManualLeadSchema } from '@/lib/validations/lead-schema';
-import { APP_DOMAINS, DOMAIN_LABELS } from '@/lib/constants/domains';
+import { DOMAIN_LABELS, GIA_DOMAINS } from '@/lib/constants/domains';
+import { LEAD_SOURCE_OPTIONS } from '@/lib/constants/lead-sources';
 import type { AppDomain, UserRole } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
@@ -30,7 +31,7 @@ type FormValues = {
   last_name:     string;
   phone:         string;
   email:         string;
-  manual_source: string;
+  utm_source: string;
   domain:        string;
   assigned_to:   string;
 };
@@ -134,7 +135,7 @@ export function AddLeadModal({
       last_name:     '',
       phone:         '',
       email:         '',
-      manual_source: '',
+      utm_source: '',
       domain:        callerProfile.domain,
       assigned_to:   callerProfile.id,
     },
@@ -174,7 +175,7 @@ export function AddLeadModal({
         last_name:     '',
         phone:         '',
         email:         '',
-        manual_source: '',
+        utm_source: '',
         domain:        callerProfile.domain,
         assigned_to:   callerProfile.id,
       });
@@ -202,7 +203,7 @@ export function AddLeadModal({
         email:         values.email || undefined,
         domain:        values.domain,
         assigned_to:   values.assigned_to || undefined,
-        manual_source: values.manual_source || undefined,
+        utm_source: values.utm_source || undefined,
       });
 
       if (result.error) {
@@ -398,7 +399,7 @@ export function AddLeadModal({
             <select
               id="al-source"
               disabled={isPending}
-              {...register('manual_source')}
+              {...register('utm_source')}
               style={{
                 ...fieldInput,
                 paddingRight: 'var(--space-8)',
@@ -410,13 +411,9 @@ export function AddLeadModal({
               onBlur={focusOff}
             >
               <option value="">— Select source —</option>
-              <option value="whatsapp">WhatsApp</option>
-              <option value="website">Website</option>
-              <option value="meta">Meta</option>
-              <option value="google">Google</option>
-              <option value="referral">Referral</option>
-              <option value="ypo">YPO</option>
-              <option value="events">Events</option>
+              {LEAD_SOURCE_OPTIONS.map(({ id, label }) => (
+                <option key={id} value={id}>{label}</option>
+              ))}
             </select>
             <ChevronDown
               style={{
@@ -455,7 +452,7 @@ export function AddLeadModal({
                 onFocus={focusOn}
                 onBlur={focusOff}
               >
-                {APP_DOMAINS.map((d) => (
+                {GIA_DOMAINS.map((d) => (
                   <option key={d} value={d}>
                     {DOMAIN_LABELS[d]}
                   </option>

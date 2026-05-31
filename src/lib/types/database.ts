@@ -280,6 +280,7 @@ export type Database = {
           campaign_id: string | null
           created_at: string
           deal_amount: number | null
+          deal_duration: string | null
           deal_type: string | null
           domain: string
           email: string | null
@@ -313,6 +314,7 @@ export type Database = {
           campaign_id?: string | null
           created_at?: string
           deal_amount?: number | null
+          deal_duration?: string | null
           deal_type?: string | null
           domain: string
           email?: string | null
@@ -346,6 +348,7 @@ export type Database = {
           campaign_id?: string | null
           created_at?: string
           deal_amount?: number | null
+          deal_duration?: string | null
           deal_type?: string | null
           domain?: string
           email?: string | null
@@ -1046,6 +1049,7 @@ export type Database = {
           campaign_id: string | null
           created_at: string
           deal_amount: number | null
+          deal_duration: string | null
           deal_type: string | null
           domain: string
           email: string | null
@@ -1404,7 +1408,7 @@ export type CallOutcome =
 
 export type LeadPlatform = 'meta' | 'google' | 'website' | 'whatsapp'
 
-export type TaskType     = 'call' | 'whatsapp_message' | 'email' | 'general_follow_up'
+export type TaskType     = 'call' | 'whatsapp_message' | 'other'
 export type TaskStatus   = 'to_do' | 'in_progress' | 'in_review' | 'completed' | 'error' | 'cancelled'
 export type TaskPriority = 'urgent' | 'high' | 'normal'
 export type TaskCategory = 'personal' | 'group_subtask' | 'gia_followup'
@@ -1465,7 +1469,7 @@ export type TaskRemark = Database['public']['Tables']['task_remarks']['Row']
 // (the generated Row uses `string` for status/platform/outcome columns)
 export type Lead = Omit<
   Database['public']['Tables']['leads']['Row'],
-  'status' | 'last_call_outcome' | 'platform' | 'personal_details' | 'form_data' | 'tags' | 'domain'
+  'status' | 'last_call_outcome' | 'platform' | 'personal_details' | 'form_data' | 'tags' | 'domain' | 'deal_type' | 'deal_duration'
 > & {
   status:             LeadStatus
   last_call_outcome:  CallOutcome | null
@@ -1474,6 +1478,8 @@ export type Lead = Omit<
   form_data:          Record<string, unknown> | null
   tags?:              string[]
   domain:             AppDomain
+  deal_type:          import('@/lib/constants/deal-types').DealType | null
+  deal_duration:      import('@/lib/constants/deal-types').DealDuration | null
 }
 
 // ─────────────────────────────────────────────
@@ -1537,6 +1543,7 @@ export type TaskMessage = {
 export type LeadFilters = {
   status:            LeadStatus[] | null
   last_call_outcome: CallOutcome[] | null
+  domain:            AppDomain | null
   agent_id:          string | null
   source:            string | null
   campaign:          string | null
@@ -1551,6 +1558,20 @@ export type CampaignFilters = {
   date_from: string | null
   date_to:   string | null
   domain:    AppDomain | null
+  search:    string | null
+}
+
+// DealFilters — no `status` field. status='won' is a structural constraint in the service,
+// never a URL param. agent role constraint is applied before agent_id filter.
+export type DealFilters = {
+  search:    string | null
+  domain:    AppDomain | null   // admin/founder only via parseGiaDomainParam()
+  deal_type: string | null      // 'membership' | 'retail'
+  agent_id:  string | null
+  date_from: string | null
+  date_to:   string | null
+  page:      number
+  pageSize:  number
 }
 
 export type CampaignMetrics = {

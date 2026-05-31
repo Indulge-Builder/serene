@@ -1,181 +1,330 @@
-'use client';
+"use client";
 
-import { motion }                                    from 'framer-motion';
-import type { CoreFourMetrics, TeamBenchmarks }       from '@/lib/services/performance-service';
-import { formatDuration }                            from '@/lib/utils/dates';
-import { EXIT_DURATION, EASE_OUT_EXPO }              from '@/lib/constants/motion';
+import { motion } from "framer-motion";
+import { TrendingUp, TrendingDown, Minus, Trophy, Zap, Clock, Target } from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  ResponsiveContainer,
+  Tooltip,
+} from "recharts";
+import type {
+  CoreFourMetrics,
+  TeamBenchmarks,
+} from "@/lib/services/performance-service";
+import { formatDuration } from "@/lib/utils/dates";
+import { EXIT_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { useChartTokens } from "@/components/ui/charts/useChartTokens";
 
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
 
 function formatPct(value: number | null): string {
-  if (value === null || value === undefined) return '—';
+  if (value === null || value === undefined) return "—";
   const rounded = Math.round(value * 10) / 10;
   return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
 }
 
 function computeDelta(
-  current:  number | null,
+  current: number | null,
   previous: number | null,
-): { sign: '+' | '-' | '='; value: string } | null {
+): { sign: "+" | "-" | "="; value: string; pct: number } | null {
   if (current === null || previous === null) return null;
   const diff = current - previous;
-  if (Math.abs(diff) < 0.05) return { sign: '=', value: '0%' };
-  const pct  = previous !== 0 ? Math.abs(diff / previous) * 100 : 100;
-  const val  = `${(Math.round(pct * 10) / 10).toFixed(1)}%`;
-  return { sign: diff > 0 ? '+' : '-', value: val };
+  if (Math.abs(diff) < 0.05) return { sign: "=", value: "0%", pct: 0 };
+  const pct = previous !== 0 ? Math.abs(diff / previous) * 100 : 100;
+  const val = `${(Math.round(pct * 10) / 10).toFixed(1)}%`;
+  return { sign: diff > 0 ? "+" : "-", value: val, pct };
+}
+
+// Generate synthetic sparkline points from current + previous values
+// (we only have two data points, so we interpolate a gentle 6-point curve)
+function makeSpark(
+  current: number | null,
+  previous: number | null,
+): { v: number }[] {
+  const c = current ?? 0;
+  const p = previous ?? c;
+  if (c === 0 && p === 0) return Array.from({ length: 6 }, () => ({ v: 0 }));
+  // Gentle curve from prev → current with slight variance
+  const mid1 = p + (c - p) * 0.25 + (c - p) * 0.05;
+  const mid2 = p + (c - p) * 0.5 - (c - p) * 0.08;
+  const mid3 = p + (c - p) * 0.65 + (c - p) * 0.04;
+  const mid4 = p + (c - p) * 0.82;
+  return [
+    { v: p },
+    { v: mid1 },
+    { v: mid2 },
+    { v: mid3 },
+    { v: mid4 },
+    { v: c },
+  ];
+}
+
+// ─────────────────────────────────────────────
+// Card config
+// ─────────────────────────────────────────────
+
+type BenchmarkLine = {
+  displayValue: string;
+  agentCount: number;
+  agentBeats: boolean;
+};
+
+type CardConfig = {
+  eyebrow: string;
+  value: string;
+  delta: ReturnType<typeof computeDelta>;
+  subLabel: string;
+  icon: React.ElementType;
+  benchmarkLine: BenchmarkLine | null;
+  sparkData: { v: number }[];
+  // Whether a higher value is better (false = lower is better, e.g. response time)
+  higherIsBetter: boolean;
+};
+
+// ─────────────────────────────────────────────
+// Mini sparkline
+// ─────────────────────────────────────────────
+
+function MiniSparkline({
+  data,
+  color,
+  height = 44,
+}: {
+  data: { v: number }[];
+  color: string;
+  height?: number;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+        <defs>
+          <linearGradient id={`spark-grad-${color.replace(/[^a-z0-9]/gi, "")}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <Area
+          type="monotone"
+          dataKey="v"
+          stroke={color}
+          strokeWidth={1.5}
+          fill={`url(#spark-grad-${color.replace(/[^a-z0-9]/gi, "")})`}
+          dot={false}
+          isAnimationActive={false}
+        />
+        <Tooltip content={() => null} />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
 }
 
 // ─────────────────────────────────────────────
 // Single metric card
 // ─────────────────────────────────────────────
 
-type BenchmarkLine = {
-  displayValue: string;
-  agentCount:   number;
-  agentBeats:   boolean; // true when agent value > domain average
-};
+function MetricCard({
+  eyebrow,
+  value,
+  delta,
+  subLabel,
+  icon: Icon,
+  delay,
+  benchmarkLine,
+  sparkData,
+  higherIsBetter,
+  sparkColor,
+}: CardConfig & { delay: number; sparkColor: string }) {
 
-type CardProps = {
-  eyebrow:       string;
-  value:         string;
-  delta:         ReturnType<typeof computeDelta>;
-  subLabel:      string;
-  delay:         number;
-  benchmarkLine: BenchmarkLine | null;
-};
+  const isPositive = delta
+    ? (higherIsBetter ? delta.sign === "+" : delta.sign === "-")
+    : null;
 
-function MetricCard({ eyebrow, value, delta, subLabel, delay, benchmarkLine }: CardProps) {
   let deltaColor: string;
-  let deltaSymbol: string;
-  if (!delta || delta.sign === '=') {
-    deltaColor  = 'var(--theme-text-tertiary)';
-    deltaSymbol = '—';
-  } else if (delta.sign === '+') {
-    deltaColor  = 'var(--color-success-text)';
-    deltaSymbol = `↑ ${delta.value}`;
+  let DeltaIcon: React.ElementType;
+  let deltaLabel: string;
+
+  if (!delta || delta.sign === "=") {
+    deltaColor = "var(--theme-text-tertiary)";
+    DeltaIcon = Minus;
+    deltaLabel = "No change";
+  } else if (isPositive) {
+    deltaColor = "var(--color-success-text)";
+    DeltaIcon = TrendingUp;
+    deltaLabel = `+${delta.value} vs last period`;
   } else {
-    deltaColor  = 'var(--color-danger-text)';
-    deltaSymbol = `↓ ${delta.value}`;
+    deltaColor = "var(--color-danger-text)";
+    DeltaIcon = TrendingDown;
+    deltaLabel = `-${delta.value} vs last period`;
   }
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 6 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: EXIT_DURATION, delay: delay / 1000, ease: EASE_OUT_EXPO }}
+      transition={{
+        duration: EXIT_DURATION,
+        delay: delay / 1000,
+        ease: EASE_OUT_EXPO,
+      }}
       style={{
-        background:   "var(--theme-paper)",
-        border:       "1px solid var(--theme-paper-border)",
+        background: "var(--theme-paper)",
+        border: "1px solid var(--theme-paper-border)",
         borderRadius: "var(--radius-lg)",
-        padding:      "var(--space-5)",
-        boxShadow:    "var(--shadow-1)",
+        padding: "var(--space-5)",
+        boxShadow: "var(--shadow-1)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--space-3)",
+        flex: 1,
+        minWidth: 0,
+        overflow: "hidden",
+        position: "relative",
       }}
     >
-      {/* Eyebrow — V-10 micro label */}
-      <p
-        style={{
-          fontFamily:    "var(--font-sans)",
-          fontSize:      "var(--text-2xs)",
-          fontWeight:    "var(--weight-medium)",
-          letterSpacing: "0.12em",
-          textTransform: "uppercase",
-          color:         "var(--theme-text-tertiary)",
-          marginBottom:  "var(--space-2)",
-        }}
-      >
-        {eyebrow}
-      </p>
-
-      {/* Primary value — Playfair serif, the moment it earns it */}
-      <p
-        style={{
-          fontFamily:    "var(--font-serif)",
-          fontSize:      "var(--text-3xl)",
-          fontWeight:    "var(--weight-light)",
-          color:         "var(--theme-text-primary)",
-          lineHeight:    "var(--leading-tight)",
-          marginBottom:  "var(--space-2)",
-        }}
-      >
-        {value}
-      </p>
-
-      {/* Stats group: delta + benchmark — flex-col gap-1 */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-        {/* Delta line */}
+      {/* Top row: eyebrow + icon */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-2)" }}>
         <p
           style={{
             fontFamily: "var(--font-sans)",
-            fontSize:   "var(--text-xs)",
+            fontSize: "var(--text-2xs)",
             fontWeight: "var(--weight-medium)",
-            color:      deltaColor,
-            margin:     0,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--theme-text-tertiary)",
+            margin: 0,
+            flex: 1,
+            minWidth: 0,
           }}
         >
-          {delta ? deltaSymbol : '—'}
+          {eyebrow}
         </p>
+        <div
+          style={{
+            width: "28px",
+            height: "28px",
+            borderRadius: "var(--radius-sm)",
+            background: "var(--theme-accent-surface)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Icon
+            style={{
+              width: "14px",
+              height: "14px",
+              color: "var(--theme-accent)",
+              strokeWidth: 1.5,
+            }}
+          />
+        </div>
+      </div>
 
-        {/* Benchmark line — absent (not "—") when null */}
-        {benchmarkLine !== null && (
-          <>
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize:   "var(--text-xs)",
-                fontWeight: "var(--weight-medium)",
-                color:      "var(--theme-text-tertiary)",
-                margin:     0,
-                display:    "flex",
-                alignItems: "center",
-                gap:        "5px",
-              }}
-            >
-              {/* Accent pip — only when agent beats domain average */}
-              {benchmarkLine.agentBeats && (
-                <span
-                  aria-hidden="true"
-                  style={{
-                    display:      "inline-block",
-                    width:        "4px",
-                    height:       "4px",
-                    borderRadius: "var(--radius-full)",
-                    background:   "var(--theme-accent)",
-                    flexShrink:   0,
-                  }}
-                />
-              )}
-              Domain avg. {benchmarkLine.displayValue}
-            </p>
-            <p
-              style={{
-                fontFamily:    "var(--font-sans)",
-                fontSize:      "var(--text-2xs)",
-                fontWeight:    "var(--weight-normal)",
-                color:         "var(--theme-text-tertiary)",
-                letterSpacing: "var(--tracking-wide)",
-                margin:        0,
-              }}
-            >
-              across {benchmarkLine.agentCount} agents
-            </p>
-          </>
-        )}
-
-        {/* Sub-label context */}
+      {/* Primary value + sparkline side by side */}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: "var(--space-3)" }}>
         <p
           style={{
-            fontFamily: "var(--font-sans)",
-            fontSize:   "var(--text-xs)",
-            color:      "var(--theme-text-tertiary)",
-            margin:     0,
-            marginTop:  benchmarkLine !== null ? "2px" : 0,
+            fontFamily: "var(--font-serif)",
+            fontSize: "var(--text-3xl)",
+            fontWeight: "var(--weight-light)",
+            color: "var(--theme-text-primary)",
+            lineHeight: "var(--leading-tight)",
+            margin: 0,
+            flexShrink: 0,
           }}
         >
-          {subLabel}
+          {value}
         </p>
+        {/* Sparkline — fills remaining space */}
+        <div style={{ flex: 1, minWidth: 0, paddingBottom: "4px" }}>
+          <MiniSparkline data={sparkData} color={sparkColor} height={40} />
+        </div>
       </div>
+
+      {/* Delta line */}
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
+        <DeltaIcon
+          style={{
+            width: "12px",
+            height: "12px",
+            color: deltaColor,
+            strokeWidth: 2,
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "var(--text-xs)",
+            fontWeight: "var(--weight-medium)",
+            color: deltaColor,
+          }}
+        >
+          {deltaLabel}
+        </span>
+      </div>
+
+      {/* Benchmark line */}
+      {benchmarkLine !== null && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-1)",
+            paddingTop: "2px",
+            borderTop: "1px solid var(--theme-paper-border)",
+          }}
+        >
+          {benchmarkLine.agentBeats && (
+            <span
+              aria-hidden="true"
+              style={{
+                display: "inline-block",
+                width: "5px",
+                height: "5px",
+                borderRadius: "var(--radius-full)",
+                background: "var(--theme-accent)",
+                flexShrink: 0,
+              }}
+            />
+          )}
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "var(--text-2xs)",
+              color: "var(--theme-text-tertiary)",
+            }}
+          >
+            Domain avg. {benchmarkLine.displayValue}
+            <span
+              style={{
+                marginLeft: "var(--space-1)",
+                color: "var(--theme-text-tertiary)",
+                opacity: 0.7,
+              }}
+            >
+              · {benchmarkLine.agentCount} agents
+            </span>
+          </span>
+        </div>
+      )}
+
+      {/* Sub-label */}
+      <p
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: "var(--text-xs)",
+          color: "var(--theme-text-tertiary)",
+          margin: 0,
+          lineHeight: "var(--leading-snug)",
+        }}
+      >
+        {subLabel}
+      </p>
     </motion.div>
   );
 }
@@ -185,96 +334,118 @@ function MetricCard({ eyebrow, value, delta, subLabel, delay, benchmarkLine }: C
 // ─────────────────────────────────────────────
 
 type Props = {
-  current:    CoreFourMetrics;
-  /** null when there is no meaningful prior period (all_time). Suppresses all delta badges. */
-  previous:   CoreFourMetrics | null;
-  /** null when agentCount < 2 or benchmarks unavailable. Suppresses benchmark lines. */
+  current: CoreFourMetrics;
+  previous: CoreFourMetrics | null;
   benchmarks: TeamBenchmarks | null;
 };
 
 function makeBenchmarkLine(
-  agentValue:      number | null,
-  benchmarkValue:  number | null,
-  agentCount:      number,
-  format:          (v: number | null) => string,
+  agentValue: number | null,
+  benchmarkValue: number | null,
+  agentCount: number,
+  format: (v: number | null) => string,
+  lowerIsBetter = false,
 ): BenchmarkLine | null {
   if (benchmarkValue === null) return null;
+  const agentBeats = agentValue !== null
+    ? (lowerIsBetter ? agentValue < benchmarkValue : agentValue > benchmarkValue)
+    : false;
   return {
     displayValue: format(benchmarkValue),
     agentCount,
-    // For response time: lower is better, so agent beats when value < benchmark.
-    // Caller sets this correctly per metric.
-    agentBeats: agentValue !== null && agentValue > benchmarkValue,
-  };
-}
-
-function makeBenchmarkLineInverse(
-  agentValue:      number | null,
-  benchmarkValue:  number | null,
-  agentCount:      number,
-  format:          (v: number | null) => string,
-): BenchmarkLine | null {
-  if (benchmarkValue === null) return null;
-  return {
-    displayValue: format(benchmarkValue),
-    agentCount,
-    // Response time: lower is better — agent beats when value < benchmark
-    agentBeats: agentValue !== null && agentValue < benchmarkValue,
+    agentBeats,
   };
 }
 
 export function CoreFourGrid({ current, previous, benchmarks }: Props) {
+  const tokens = useChartTokens();
   const bCount = benchmarks?.agentCount ?? 0;
 
-  const cards = [
+  const cards: CardConfig[] = [
     {
-      eyebrow:       'Leads Won',
-      value:         String(current.leadsWon),
-      delta:         previous ? computeDelta(current.leadsWon, previous.leadsWon) : null,
-      subLabel:      'converted this period',
-      // leadsWon excluded from benchmarks by design — absolute count, not a rate
-      benchmarkLine: null as BenchmarkLine | null,
+      eyebrow: "Leads Won",
+      value: String(current.leadsWon),
+      delta: previous ? computeDelta(current.leadsWon, previous.leadsWon) : null,
+      subLabel: "converted this period",
+      icon: Trophy,
+      benchmarkLine: null,
+      sparkData: makeSpark(current.leadsWon, previous?.leadsWon ?? null),
+      higherIsBetter: true,
     },
     {
-      eyebrow:       'Touch Rate',
-      value:         formatPct(current.touchRate),
-      delta:         previous ? computeDelta(current.touchRate, previous.touchRate) : null,
-      subLabel:      'of assigned leads touched',
+      eyebrow: "Touch Rate",
+      value: formatPct(current.touchRate),
+      delta: previous ? computeDelta(current.touchRate, previous.touchRate) : null,
+      subLabel: "of assigned leads touched",
+      icon: Zap,
       benchmarkLine: benchmarks
         ? makeBenchmarkLine(current.touchRate, benchmarks.avgTouchRate, bCount, formatPct)
         : null,
+      sparkData: makeSpark(current.touchRate, previous?.touchRate ?? null),
+      higherIsBetter: true,
     },
     {
-      eyebrow:       'Avg. Response Time',
-      value:         formatDuration(current.avgResponseTimeMinutes),
-      delta:         previous ? computeDelta(current.avgResponseTimeMinutes, previous.avgResponseTimeMinutes) : null,
-      subLabel:      'from lead created to first touch',
-      // Response time: lower is better — use inverse comparison
-      benchmarkLine: benchmarks
-        ? makeBenchmarkLineInverse(current.avgResponseTimeMinutes, benchmarks.avgResponseTimeMinutes, bCount, formatDuration)
+      eyebrow: "Avg. Response Time",
+      value: formatDuration(current.avgResponseTimeMinutes),
+      delta: previous
+        ? computeDelta(current.avgResponseTimeMinutes, previous.avgResponseTimeMinutes)
         : null,
+      subLabel: "first touch after lead arrives",
+      icon: Clock,
+      benchmarkLine: benchmarks
+        ? makeBenchmarkLine(
+            current.avgResponseTimeMinutes,
+            benchmarks.avgResponseTimeMinutes,
+            bCount,
+            formatDuration,
+            true,
+          )
+        : null,
+      sparkData: makeSpark(
+        current.avgResponseTimeMinutes,
+        previous?.avgResponseTimeMinutes ?? null,
+      ),
+      higherIsBetter: false,
     },
     {
-      eyebrow:       'Conversion Rate',
-      value:         formatPct(current.conversionRate),
-      delta:         previous ? computeDelta(current.conversionRate, previous.conversionRate) : null,
-      subLabel:      'win rate vs closed leads',
+      eyebrow: "Conversion Rate",
+      value: formatPct(current.conversionRate),
+      delta: previous
+        ? computeDelta(current.conversionRate, previous.conversionRate)
+        : null,
+      subLabel: "win rate vs closed leads",
+      icon: Target,
       benchmarkLine: benchmarks
         ? makeBenchmarkLine(current.conversionRate, benchmarks.avgConversionRate, bCount, formatPct)
         : null,
+      sparkData: makeSpark(current.conversionRate, previous?.conversionRate ?? null),
+      higherIsBetter: true,
     },
+  ];
+
+  // Sparkline colours: accent for won, info for touch rate, warning for response time, success for conversion
+  const sparkColors = [
+    tokens.series[0], // accent
+    tokens.series[1], // info
+    tokens.series[3], // warning
+    tokens.series[2], // success
   ];
 
   return (
     <div
       style={{
-        display:             "grid",
-        gridTemplateColumns: "repeat(2, 1fr)",
-        gap:                 "var(--space-4)",
+        display: "flex",
+        gap: "var(--space-4)",
+        alignItems: "stretch",
       }}
     >
       {cards.map((card, i) => (
-        <MetricCard key={card.eyebrow} {...card} delay={i * 60} />
+        <MetricCard
+          key={card.eyebrow}
+          {...card}
+          delay={i * 60}
+          sparkColor={sparkColors[i]}
+        />
       ))}
     </div>
   );

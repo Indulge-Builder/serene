@@ -1,0 +1,906 @@
+'use client';
+
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from 'react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ArrowRight,
+  User,
+  UserCircle,
+  X,
+  CalendarDays,
+  ChevronDown,
+  Sparkles,
+} from 'lucide-react';
+import { Calendar } from '@/components/ui/Calendar';
+import type { TaskDotMeta } from '@/components/ui/Calendar';
+import { DatePicker } from '@/components/ui/DatePicker';
+import {
+  createPersonalTaskAction,
+  getPersonalTasksAction,
+  getTaskRemarksAction,
+} from '@/lib/actions/tasks';
+import { TaskCompletionCircle } from '@/components/tasks/TaskCompletionCircle';
+import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';
+import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
+import { formatDate } from '@/lib/utils/dates';
+import { toast } from '@/lib/toast';
+import { SubTaskModal } from '@/components/tasks/SubTaskModal';
+import { AssigneePickerModal, type AssignableUser } from '@/components/tasks/AssigneePickerModal';
+import { CreatePersonalTaskModal } from '@/components/tasks/CreatePersonalTaskModal';
+import { Avatar } from '@/components/ui/Avatar';
+import { Spinner } from '@/components/ui/Spinner';
+import type { PersonalTasksResult, TaskRemarkWithAuthor } from '@/lib/services/tasks-service';
+import type { Task, TaskStatus, UserRole, AppDomain } from '@/lib/types/database';
+import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import {
+  resolvePersonalTaskAssignee,
+  type PersonalTaskFiltersState,
+} from '@/lib/utils/task-client-filters';
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+interface MyTasksCalendarViewProps {
+  initialResult:          PersonalTasksResult;
+  currentUserId:          string;
+  currentUserName:        string;
+  callerRole:             UserRole;
+  callerDomain:           AppDomain;
+  createTrigger?:         number;
+  filters:                PersonalTaskFiltersState;
+  onFilteredCountChange?: (count: number) => void;
+  onTagsMayHaveChanged?:  () => void;
+}
+
+// ─── Date helpers ──────────────────────────────────────────────────────────────
+
+function localKey(d: Date): string {
+  const y  = d.getFullYear();
+  const m  = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+function todayKey(): string { return localKey(new Date()); }
+function tomorrowKey(): string {
+  const t = new Date(); t.setDate(t.getDate() + 1); return localKey(t);
+}
+function taskLocalKey(dueAt: string): string { return localKey(new Date(dueAt)); }
+function isOverdueDate(dueAt: string | null): boolean {
+  if (!dueAt) return false; return taskLocalKey(dueAt) < todayKey();
+}
+
+function sectionLabel(dateKey: string): string {
+  const d = new Date(dateKey + 'T00:00:00');
+  const diffDays = Math.round(
+    (d.getTime() - new Date(todayKey() + 'T00:00:00').getTime()) / 86_400_000,
+  );
+  const dayName  = d.toLocaleDateString('en-US', { weekday: 'long' });
+  const dayMonth = formatDate(d, 'd MMM');
+  if (diffDays < 7) return `${dayName}, ${dayMonth}`;
+  return formatDate(d, 'EEE, d MMM yyyy');
+}
+
+function buildTaskDots(tasks: Task[]): Record<string, TaskDotMeta> {
+  const map: Record<string, TaskDotMeta> = {};
+  for (const t of tasks) {
+    if (!t.due_at) continue;
+    const k = taskLocalKey(t.due_at);
+    if (!map[k]) map[k] = { count: 0, hasUrgent: false };
+    map[k].count++;
+    if (t.priority === 'urgent') map[k].hasUrgent = true;
+  }
+  return map;
+}
+
+// ─── Section grouping ──────────────────────────────────────────────────────────
+
+interface DateSection {
+  key:       string;   // 'today' | 'overdue' | 'no-date' | YYYY-MM-DD
+  label:     string;
+  tasks:     Task[];
+  isToday?:   boolean;
+  isOverdue?: boolean;
+  isNoDate?:  boolean;
+}
+
+function groupTasksByDate(tasks: Task[], optimisticStatus: Record<string, TaskStatus>): DateSection[] {
+  const today    = todayKey();
+  const tomorrow = tomorrowKey();
+
+  const buckets: { today: Task[]; overdue: Task[]; noDate: Task[]; future: Record<string, Task[]> } =
+    { today: [], overdue: [], noDate: [], future: {} };
+
+  for (const task of tasks) {
+    const effective = optimisticStatus[task.id] ?? task.status;
+    if (effective === 'completed') continue;
+    if (!task.due_at) { buckets.noDate.push(task); continue; }
+    const k = taskLocalKey(task.due_at);
+    if (k < today)       buckets.overdue.push(task);
+    else if (k === today) buckets.today.push(task);
+    else {
+      if (!buckets.future[k]) buckets.future[k] = [];
+      buckets.future[k].push(task);
+    }
+  }
+
+  const sections: DateSection[] = [];
+  sections.push({ key: 'today', label: 'Today', tasks: buckets.today, isToday: true });
+
+  for (const k of Object.keys(buckets.future).sort()) {
+    const label = k === tomorrow
+      ? `Tomorrow, ${formatDate(new Date(k + 'T00:00:00'), 'd MMM')}`
+      : sectionLabel(k);
+    sections.push({ key: k, label, tasks: buckets.future[k] });
+  }
+  if (buckets.overdue.length > 0)
+    sections.push({ key: 'overdue', label: 'Overdue', tasks: buckets.overdue, isOverdue: true });
+  if (buckets.noDate.length > 0)
+    sections.push({ key: 'no-date', label: 'No Due Date', tasks: buckets.noDate, isNoDate: true });
+
+  return sections;
+}
+
+function getDueDateColor(dueAt: string | null, status: TaskStatus): string {
+  if (!dueAt || status === 'completed' || status === 'cancelled') return 'var(--theme-text-tertiary)';
+  const k = taskLocalKey(dueAt); const t = todayKey();
+  if (k < t) return 'var(--color-danger-text)';
+  if (k === t) return 'var(--color-warning-text)';
+  return 'var(--theme-text-tertiary)';
+}
+
+// ─── Component ─────────────────────────────────────────────────────────────────
+
+export function MyTasksCalendarView({
+  initialResult,
+  currentUserId,
+  currentUserName,
+  callerRole,
+  callerDomain,
+  createTrigger = 0,
+  filters,
+  onFilteredCountChange,
+  onTagsMayHaveChanged,
+}: MyTasksCalendarViewProps) {
+  // ── Task data ─────────────────────────────────────────────────────────────
+  const [activeTasks,   setActiveTasks]   = useState<Task[]>(initialResult.tasks);
+  const [hasMore,       setHasMore]       = useState(initialResult.hasMore);
+  const [nextCursor,    setNextCursor]    = useState(initialResult.nextCursor);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
+
+  // ── Optimistic complete ────────────────────────────────────────────────────
+  const { optimisticStatus, handleToggle } = useTaskCompletionToggle();
+  const caller = { id: currentUserId, role: callerRole, domain: callerDomain };
+
+  // ── Calendar: null = "all sections" mode, a Date = single-date filter mode ─
+  const [calendarDate, setCalendarDate] = useState<Date | null>(null);
+  const isAllMode = calendarDate === null;
+
+  // ── Collapsed sections ─────────────────────────────────────────────────────
+  // All sections start expanded
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
+  function toggleCollapse(key: string) {
+    setCollapsedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  // ── Task modal ─────────────────────────────────────────────────────────────
+  const [selectedTask,        setSelectedTask]        = useState<Task | null>(null);
+  const [selectedTaskRemarks, setSelectedTaskRemarks] = useState<TaskRemarkWithAuthor[] | null>(null);
+  const [taskModalOpen,       setTaskModalOpen]       = useState(false);
+
+  // ── Create modal ───────────────────────────────────────────────────────────
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  useEffect(() => { if (createTrigger > 0) setCreateModalOpen(true); }, [createTrigger]);
+
+  // ── Quick-add ──────────────────────────────────────────────────────────────
+  const [showQuickAdd,       setShowQuickAdd]       = useState(false);
+  const [quickTitle,         setQuickTitle]         = useState('');
+  const [quickDueAt,         setQuickDueAt]         = useState<Date | null>(null);
+  const [quickAssignee,      setQuickAssignee]      = useState<AssignableUser | null>(null);
+  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  const [assignableUsers,    setAssignableUsers]    = useState<AssignableUser[]>([]);
+  const quickTitleRef = useRef<HTMLInputElement>(null);
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (showQuickAdd) setTimeout(() => quickTitleRef.current?.focus(), 50);
+  }, [showQuickAdd]);
+
+  useEffect(() => {
+    if (!['manager', 'admin', 'founder'].includes(callerRole)) return;
+    import('@/lib/actions/leads').then(({ listAgentsForDomain }) => {
+      listAgentsForDomain(callerDomain).then((r) => {
+        if (r.data) setAssignableUsers(
+          r.data.map((a: { id: string; full_name: string }) => ({
+            id: a.id, full_name: a.full_name, avatar_url: null,
+            role: 'agent' as const, domain: callerDomain,
+          })),
+        );
+      });
+    });
+  }, [callerRole, callerDomain]);
+
+  const handleQuickAddSave = useCallback(() => {
+    if (isPending || !quickTitle.trim()) { quickTitleRef.current?.focus(); return; }
+    startTransition(async () => {
+      const result = await createPersonalTaskAction({
+        title:       quickTitle.trim(),
+        priority:    'normal',
+        due_at:      quickDueAt ? quickDueAt.toISOString() : null,
+        assigned_to: quickAssignee?.id ?? undefined,
+      });
+      if (result.error) { toast.danger('Failed to create task', { message: result.error }); return; }
+      toast.success('Task created');
+      setShowQuickAdd(false); setQuickTitle(''); setQuickDueAt(null); setQuickAssignee(null);
+      const now = new Date().toISOString();
+      const syntheticTask: Task = {
+        id: result.data!.taskId, title: quickTitle.trim(), description: null,
+        priority: 'normal', status: 'to_do',
+        due_at: quickDueAt ? quickDueAt.toISOString() : null,
+        assigned_to: result.data!.assignedTo,
+        created_by:  result.data!.createdBy,
+        group_id:    null,
+        task_category: 'personal', task_type: 'other', module: 'gia',
+        completed_at: null, attachments: [], tags: [], created_at: now, updated_at: now,
+      };
+      setActiveTasks((prev) => [syntheticTask, ...prev]);
+    });
+  }, [isPending, quickTitle, quickDueAt, quickAssignee, startTransition]);
+
+  // ── Load more ───────────────────────────────────────────────────────────────
+  const loadMore = useCallback(() => {
+    if (!hasMore || isLoadingMore || !nextCursor) return;
+    setIsLoadingMore(true);
+    getPersonalTasksAction({ cursor: nextCursor, status: ['to_do', 'in_progress', 'in_review', 'error', 'cancelled'] })
+      .then((r) => {
+        if (r.data) {
+          setActiveTasks((prev) => [...prev, ...r.data!.tasks]);
+          setHasMore(r.data.hasMore);
+          setNextCursor(r.data.nextCursor);
+        }
+      }).catch(() => {}).finally(() => setIsLoadingMore(false));
+  }, [hasMore, isLoadingMore, nextCursor]);
+
+  // ── Row click → pre-fetch remarks then open modal ──────────────────────────
+  function handleRowClick(task: Task) {
+    setSelectedTask(task);
+    setSelectedTaskRemarks(null);
+    getTaskRemarksAction(task.id)
+      .then((r) => setSelectedTaskRemarks(r.data ?? []))
+      .catch(() => setSelectedTaskRemarks([]));
+    setTaskModalOpen(true);
+  }
+
+  // ── Calendar date click ────────────────────────────────────────────────────
+  function handleCalendarSelect(date: Date) {
+    const key = localKey(date);
+    if (calendarDate && localKey(calendarDate) === key) {
+      // clicking the same date again → go back to all mode
+      setCalendarDate(null);
+    } else {
+      setCalendarDate(date);
+    }
+  }
+
+  function goToToday() {
+    setCalendarDate(null);
+  }
+
+  // ── Filter tasks ────────────────────────────────────────────────────────────
+  function taskPassesFilters(task: Task): boolean {
+    if (filters.search.trim()) {
+      const hay = `${task.title} ${task.description ?? ''}`.toLowerCase();
+      if (!hay.includes(filters.search.trim().toLowerCase())) return false;
+    }
+    if (filters.tags.length > 0 && !filters.tags.every((t) => task.tags.includes(t))) return false;
+    const eff = optimisticStatus[task.id] ?? task.status;
+    if (filters.statuses.length > 0 && !filters.statuses.includes(eff)) return false;
+    if (filters.priorities.length > 0 && !filters.priorities.includes(task.priority)) return false;
+    return true;
+  }
+
+  const filteredTasks  = activeTasks.filter(taskPassesFilters);
+  const allSections    = groupTasksByDate(filteredTasks, optimisticStatus);
+  const taskDots       = buildTaskDots(filteredTasks);
+
+  // In single-date mode, narrow to just tasks matching the selected date
+  const visibleSections: DateSection[] = (() => {
+    if (isAllMode) return allSections;
+    const selKey = localKey(calendarDate!);
+    const today  = todayKey();
+    // Map the selected calendar date to the right section key
+    const sectionKey = selKey === today ? 'today' : selKey < today ? 'overdue' : selKey;
+    // For overdue mode we show ALL overdue tasks, for a specific future date we filter
+    if (sectionKey === 'overdue') {
+      const overdueSec = allSections.find((s) => s.isOverdue);
+      return overdueSec ? [overdueSec] : [];
+    }
+    const found = allSections.find((s) => s.key === sectionKey);
+    if (found) return [found];
+    // The selected date exists on the calendar but has no tasks
+    return [{
+      key:    sectionKey,
+      label:  sectionKey === today ? 'Today' : sectionLabel(selKey),
+      tasks:  [],
+      isToday: sectionKey === today,
+    }];
+  })();
+
+  const visibleCount = filteredTasks.filter((t) => {
+    const eff = optimisticStatus[t.id] ?? t.status;
+    return eff !== 'completed';
+  }).length;
+
+  useEffect(() => { onFilteredCountChange?.(visibleCount); }, [visibleCount, onFilteredCountChange]);
+
+  const hasActiveFilters =
+    filters.search.trim() !== '' ||
+    filters.tags.length > 0 ||
+    filters.statuses.length > 0 ||
+    filters.priorities.length > 0;
+
+  // ─── Section card ──────────────────────────────────────────────────────────
+
+  function renderSection(section: DateSection) {
+    const sIsToday   = !!section.isToday;
+    const sIsOverdue = !!section.isOverdue;
+    const sIsNoDate  = !!section.isNoDate;
+    const isCollapsed = collapsedKeys.has(section.key);
+
+    const headerBg = sIsOverdue
+      ? 'var(--color-danger-light)'
+      : sIsToday
+      ? 'var(--theme-accent-surface)'
+      : 'var(--theme-paper-subtle)';
+
+    const headerColor = sIsOverdue
+      ? 'var(--color-danger-text)'
+      : sIsToday
+      ? 'var(--theme-accent)'
+      : 'var(--theme-text-secondary)';
+
+    const dotColor = sIsOverdue
+      ? 'var(--color-danger)'
+      : sIsToday
+      ? 'var(--theme-accent)'
+      : 'var(--theme-text-tertiary)';
+
+    const isEmpty = section.tasks.length === 0;
+
+    return (
+      <div
+        key={section.key}
+        style={{
+          background:   'var(--theme-paper)',
+          border:       '1px solid var(--theme-paper-border)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow:    'var(--shadow-1)',
+          overflow:     'hidden',
+        }}
+      >
+        {/* Section header — always clickable to collapse */}
+        <button
+          type="button"
+          onClick={() => { if (!isEmpty) toggleCollapse(section.key); }}
+          style={{
+            display:        'flex',
+            alignItems:     'center',
+            gap:            'var(--space-2)',
+            width:          '100%',
+            padding:        'var(--space-3) var(--space-4)',
+            background:     headerBg,
+            border:         'none',
+            borderBottom:   (!isEmpty && !isCollapsed) ? '1px solid var(--theme-paper-border)' : 'none',
+            cursor:         isEmpty ? 'default' : 'pointer',
+            textAlign:      'left',
+          }}
+        >
+          <span style={{
+            width: 6, height: 6, borderRadius: 'var(--radius-full)',
+            background: dotColor, flexShrink: 0,
+          }} />
+          <span style={{
+            fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-semibold)', letterSpacing: 'var(--tracking-widest)',
+            textTransform: 'uppercase', color: headerColor, flex: 1,
+          }}>
+            {section.label}
+          </span>
+          {!isEmpty && (
+            <>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center',
+                padding: '1px var(--space-2)',
+                borderRadius: 'var(--radius-full)',
+                background: sIsOverdue
+                  ? 'color-mix(in srgb, var(--color-danger) 14%, transparent)'
+                  : sIsToday
+                  ? 'color-mix(in srgb, var(--theme-accent) 14%, transparent)'
+                  : 'var(--theme-paper-border)',
+                color: sIsOverdue ? 'var(--color-danger-text)' : sIsToday ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
+                fontFamily: 'var(--font-sans)', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-semibold)',
+              }}>
+                {section.tasks.length}
+              </span>
+              <motion.span
+                animate={{ rotate: isCollapsed ? -90 : 0 }}
+                transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
+                style={{ display: 'flex', alignItems: 'center', color: headerColor, flexShrink: 0 }}
+              >
+                <ChevronDown style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
+              </motion.span>
+            </>
+          )}
+        </button>
+
+        {/* Body: task rows or empty state */}
+        <AnimatePresence initial={false}>
+          {(!isCollapsed) && (
+            <motion.div
+              key="body"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+              style={{ overflow: 'hidden' }}
+            >
+              {isEmpty ? (
+                /* Empty state — for today or a selected date with no tasks */
+                <div style={{
+                  padding: 'var(--space-8) var(--space-6)',
+                  textAlign: 'center',
+                  background: 'var(--theme-paper)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
+                    <Sparkles style={{ width: 28, height: 28, strokeWidth: 1, color: 'var(--theme-accent)', opacity: 0.5 }} />
+                  </div>
+                  <p style={{
+                    fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+                    fontSize: 'var(--text-lg)', color: 'var(--theme-text-secondary)', margin: 0,
+                  }}>
+                    Hooray<span className="page-title-dot">.</span>
+                  </p>
+                  <p style={{
+                    fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)',
+                    color: 'var(--theme-text-tertiary)', marginTop: 'var(--space-1)', marginBottom: 0,
+                  }}>
+                    {sIsToday ? 'Nothing due today.' : 'Nothing scheduled for this day.'}
+                  </p>
+                </div>
+              ) : (
+                section.tasks.map((task, idx) => {
+                  const effectiveStatus = optimisticStatus[task.id] ?? task.status;
+                  const isComplete      = effectiveStatus === 'completed';
+                  const canComplete     = canToggleTaskComplete(task, caller);
+                  const dueDateColor    = getDueDateColor(task.due_at, effectiveStatus);
+                  const overdue         = isOverdueDate(task.due_at) && !isComplete;
+
+                  return (
+                    <motion.div
+                      key={task.id}
+                      initial={{ opacity: 0, y: 3 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.18, delay: Math.min(idx * 40, 200) / 1000, ease: EASE_OUT_EXPO }}
+                      style={{
+                        display:      'flex',
+                        alignItems:   'center',
+                        gap:          'var(--space-3)',
+                        padding:      'var(--space-3) var(--space-4)',
+                        borderBottom: idx < section.tasks.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
+                        background:   'var(--theme-paper)',
+                      }}
+                      onMouseEnter={() => setHoveredTaskId(task.id)}
+                      onMouseLeave={() => setHoveredTaskId(null)}
+                    >
+                      <TaskCompletionCircle
+                        checked={isComplete}
+                        disabled={!canComplete}
+                        highlighted={hoveredTaskId === task.id}
+                        onToggle={(e) => handleToggle(e, task)}
+                      />
+
+                      <div
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0, cursor: 'pointer' }}
+                        role="button" tabIndex={0}
+                        onClick={() => handleRowClick(task)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleRowClick(task); }}
+                      >
+                        <span style={{
+                          fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)',
+                          fontWeight: 'var(--weight-medium)',
+                          color:      isComplete ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)',
+                          textDecoration: isComplete ? 'line-through' : 'none',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          flex: 1, minWidth: 0,
+                        }}>
+                          {task.title}
+                        </span>
+                        {task.assigned_to && task.assigned_to !== currentUserId && (
+                          <div title="Assigned to someone else" style={{
+                            width: 'var(--space-5)', height: 'var(--space-5)',
+                            borderRadius: 'var(--radius-xs)',
+                            background: 'var(--theme-accent-surface)',
+                            border: '1px solid var(--theme-paper-border)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                          }}>
+                            <User style={{ width: 10, height: 10, strokeWidth: 1.5, color: 'var(--theme-accent)' }} />
+                          </div>
+                        )}
+                      </div>
+
+                      {task.due_at && !sIsToday && (
+                        <span style={{
+                          fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+                          color:      dueDateColor,
+                          fontWeight: overdue ? 'var(--weight-semibold)' : 'var(--weight-normal)',
+                          flexShrink: 0, whiteSpace: 'nowrap',
+                        }}>
+                          {overdue ? 'Overdue' : formatDate(new Date(task.due_at), 'd MMM')}
+                        </span>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleRowClick(task)}
+                        aria-label="Open task details"
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          width: 'var(--space-6)', height: 'var(--space-6)',
+                          borderRadius: 'var(--radius-xs)',
+                          border: '1px solid var(--theme-paper-border)',
+                          background: 'transparent', color: 'var(--theme-text-tertiary)',
+                          cursor: 'pointer', flexShrink: 0, transition: 'var(--transition-hover)',
+                        }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)';
+                          (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-accent)';
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)';
+                          (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
+                        }}
+                      >
+                        <ArrowRight style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
+                      </button>
+                    </motion.div>
+                  );
+                })
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <div style={{ display: 'flex', gap: 'var(--space-5)', alignItems: 'flex-start' }}>
+
+      {/* ── Left: Calendar panel ──────────────────────────────────────────── */}
+      <div style={{
+        flexShrink: 0, width: 280,
+        position: 'sticky', top: 'var(--space-4)',
+        display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
+      }}>
+        {/* Calendar card */}
+        <div style={{
+          background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)',
+          borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-1)', overflow: 'hidden',
+        }}>
+          <Calendar
+            value={calendarDate ?? new Date()}
+            onSelect={handleCalendarSelect}
+            taskDots={taskDots}
+            style={{ width: '100%', borderRadius: 0, border: 'none', boxShadow: 'none', padding: 'var(--space-4)' }}
+          />
+          {/* Today button — bottom of calendar, inside the card */}
+          {!isAllMode && (
+            <div style={{ borderTop: '1px solid var(--theme-paper-border)', padding: 'var(--space-2) var(--space-4)' }}>
+              <button
+                type="button"
+                onClick={goToToday}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '100%', padding: 'var(--space-1-5) 0',
+                  background: 'transparent', border: 'none',
+                  fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+                  fontWeight: 'var(--weight-semibold)', letterSpacing: 'var(--tracking-wide)',
+                  color: 'var(--theme-accent)', cursor: 'pointer',
+                  transition: 'opacity 150ms',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.7'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+              >
+                Back To Present
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Quick stats strip */}
+        <div style={{
+          background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)',
+          borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-1)',
+          padding: 'var(--space-3) var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
+        }}>
+          <p className="label-micro" style={{ margin: 0 }}>Summary</p>
+          {(() => {
+            const todaySec      = allSections.find((s) => s.isToday);
+            const overdueSec    = allSections.find((s) => s.isOverdue);
+            const totalUpcoming = allSections
+              .filter((s) => !s.isToday && !s.isOverdue && !s.isNoDate)
+              .reduce((sum, s) => sum + s.tasks.length, 0);
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                <StatRow color="var(--theme-accent)"         label="Due today" count={todaySec?.tasks.length ?? 0} />
+                <StatRow color="var(--color-danger)"         label="Overdue"   count={overdueSec?.tasks.length ?? 0} />
+                <StatRow color="var(--theme-text-tertiary)"  label="Upcoming"  count={totalUpcoming} />
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Quick-add trigger */}
+        <button
+          type="button"
+          onClick={() => setShowQuickAdd((v) => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 'var(--space-2)', width: '100%',
+            padding: 'var(--space-2) var(--space-3)',
+            borderRadius: 'var(--radius-md)', border: '1px dashed var(--theme-paper-border)',
+            background:   showQuickAdd ? 'var(--theme-accent-surface)' : 'transparent',
+            color:        showQuickAdd ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
+            fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)',
+            cursor: 'pointer', transition: 'var(--transition-hover)',
+          }}
+          onMouseEnter={(e) => {
+            if (!showQuickAdd) {
+              (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-accent)';
+              (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!showQuickAdd) {
+              (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
+              (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)';
+            }
+          }}
+        >
+          <CalendarDays style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
+          Quick add task
+        </button>
+      </div>
+
+      {/* ── Right: Date-grouped task list ─────────────────────────────────── */}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+
+        {/* Quick-add row */}
+        <AnimatePresence>
+          {showQuickAdd && (
+            <motion.div
+              key="quick-add"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+              style={{ overflow: 'hidden', marginBottom: 'var(--space-2)' }}
+            >
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                padding: 'var(--space-3) var(--space-4)',
+                background: 'var(--theme-accent-surface)',
+                border: '1px solid var(--theme-paper-border)',
+                borderRadius: 'var(--radius-md)',
+              }}>
+                <input
+                  ref={quickTitleRef}
+                  type="text" value={quickTitle}
+                  onChange={(e) => setQuickTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleQuickAddSave();
+                    if (e.key === 'Escape') { setShowQuickAdd(false); setQuickTitle(''); }
+                  }}
+                  placeholder="Task title…" disabled={isPending}
+                  style={{
+                    flex: 1, border: 'none', outline: 'none',
+                    background: 'transparent', fontFamily: 'var(--font-sans)',
+                    fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)',
+                    caretColor: 'var(--theme-accent)',
+                    opacity: isPending ? 0.6 : 1, cursor: isPending ? 'not-allowed' : 'text',
+                  }}
+                />
+                <DatePicker
+                  value={quickDueAt} onChange={setQuickDueAt}
+                  placeholder="Due date…" disabled={isPending}
+                  aria-label="Due date" style={{ flexShrink: 0 }}
+                />
+                {['manager', 'admin', 'founder'].includes(callerRole) && (
+                  <button
+                    type="button" onClick={() => setShowAssigneePicker(true)}
+                    aria-label="Pick assignee"
+                    title={quickAssignee?.full_name ?? `${currentUserName} (you)`}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 'var(--space-7)', height: 'var(--space-7)',
+                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)',
+                      background: quickAssignee ? 'var(--theme-accent-surface)' : 'transparent',
+                      color: quickAssignee ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
+                      cursor: 'pointer', transition: 'var(--transition-hover)', flexShrink: 0,
+                    }}
+                  >
+                    <Avatar
+                      name={(quickAssignee ?? { full_name: currentUserName }).full_name}
+                      size="xs"
+                      style={{ width: 18, height: 18, minWidth: 18 }}
+                    />
+                  </button>
+                )}
+                <button
+                  type="button" onClick={handleQuickAddSave}
+                  disabled={isPending || !quickTitle.trim()}
+                  style={{
+                    padding: 'var(--space-1) var(--space-3)', borderRadius: 'var(--radius-sm)', border: 'none',
+                    background: quickTitle.trim() ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
+                    color: quickTitle.trim() ? 'var(--theme-accent-fg)' : 'var(--theme-text-tertiary)',
+                    fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)',
+                    cursor: isPending || !quickTitle.trim() ? 'not-allowed' : 'pointer',
+                    opacity: isPending ? 0.6 : 1, transition: 'var(--transition-interactive)', flexShrink: 0,
+                  }}
+                >
+                  {isPending ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  type="button" onClick={() => { setShowQuickAdd(false); setQuickTitle(''); }}
+                  aria-label="Cancel"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 'var(--space-6)', height: 'var(--space-6)',
+                    borderRadius: 'var(--radius-sm)', border: 'none',
+                    background: 'transparent', color: 'var(--theme-text-tertiary)',
+                    cursor: 'pointer', flexShrink: 0,
+                  }}
+                >
+                  <X style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
+                </button>
+              </div>
+              <p style={{
+                fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+                color: 'var(--theme-text-tertiary)', margin: 'var(--space-1) 0 0 var(--space-4)',
+              }}>
+                <UserCircle style={{ display: 'inline', width: 12, height: 12, strokeWidth: 1.5, marginRight: 4 }} />
+                Press Enter to save · Esc to cancel
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Date sections — each in its own card with gap between */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          {visibleSections.map((section) => renderSection(section))}
+
+          {/* Global empty state — only when filters hide everything in all-mode */}
+          {isAllMode && visibleSections.every((s) => s.tasks.length === 0 && !s.isToday) && hasActiveFilters && (
+            <div style={{
+              padding: 'var(--space-16) var(--space-8)', textAlign: 'center',
+              background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)',
+              borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-1)',
+            }}>
+              <p style={{
+                fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+                fontSize: 'var(--text-lg)', color: 'var(--theme-text-tertiary)', margin: 0,
+              }}>
+                Nothing matches your filters.
+              </p>
+              <p style={{
+                fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)',
+                color: 'var(--theme-text-tertiary)', marginTop: 'var(--space-2)', marginBottom: 0,
+              }}>
+                Try adjusting your search or filters.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Load more */}
+        {hasMore && (
+          <button
+            type="button" onClick={loadMore} disabled={isLoadingMore}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+              margin: 'var(--space-4) auto 0',
+              padding: 'var(--space-2) var(--space-4)',
+              background: 'transparent', border: '1px solid var(--theme-paper-border)',
+              borderRadius: 'var(--radius-sm)', color: 'var(--theme-text-secondary)',
+              fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)',
+              cursor: isLoadingMore ? 'not-allowed' : 'pointer',
+              opacity: isLoadingMore ? 0.5 : 1, transition: 'opacity 150ms, border-color 150ms',
+            }}
+          >
+            {isLoadingMore ? <Spinner size="sm" /> : null}
+            {isLoadingMore ? 'Loading…' : 'Load more'}
+          </button>
+        )}
+      </div>
+
+      {/* ── Modals ──────────────────────────────────────────────────────────── */}
+
+      <CreatePersonalTaskModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreated={(task) => {
+          setActiveTasks((prev) => [task, ...prev]);
+          setCreateModalOpen(false);
+          if (task.tags.length > 0) onTagsMayHaveChanged?.();
+        }}
+      />
+
+      <AnimatePresence>
+        {selectedTask && taskModalOpen && selectedTaskRemarks !== null && (
+          <SubTaskModal
+            open={taskModalOpen}
+            onClose={() => { setTaskModalOpen(false); setSelectedTask(null); setSelectedTaskRemarks(null); }}
+            task={selectedTask}
+            assignee={resolvePersonalTaskAssignee(
+              selectedTask,
+              { id: currentUserId, full_name: currentUserName },
+              assignableUsers,
+            )}
+            initialRemarks={selectedTaskRemarks}
+            callerProfile={{ id: currentUserId, role: callerRole, domain: callerDomain }}
+            currentUserName={currentUserName}
+          />
+        )}
+      </AnimatePresence>
+
+      {typeof window !== 'undefined' && createPortal(
+        <AssigneePickerModal
+          open={showAssigneePicker}
+          onClose={() => setShowAssigneePicker(false)}
+          onConfirm={(_uid, user) => { setQuickAssignee(user); setShowAssigneePicker(false); }}
+          users={assignableUsers}
+          initialDomain={callerDomain}
+        />,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+// ─── Small stat row helper ─────────────────────────────────────────────────────
+
+function StatRow({ color, label, count }: { color: string; label: string; count: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+      <span style={{
+        width: 6, height: 6, borderRadius: 'var(--radius-full)',
+        background: count > 0 ? color : 'var(--theme-paper-border)', flexShrink: 0,
+      }} />
+      <span style={{
+        fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+        color: count > 0 ? 'var(--theme-text-secondary)' : 'var(--theme-text-tertiary)', flex: 1,
+      }}>
+        {label}
+      </span>
+      <span style={{
+        fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)',
+        color: count > 0 ? color : 'var(--theme-text-tertiary)',
+      }}>
+        {count}
+      </span>
+    </div>
+  );
+}

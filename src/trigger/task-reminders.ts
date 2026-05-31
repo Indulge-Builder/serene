@@ -3,7 +3,7 @@
  * One-time Trigger.dev reminder jobs for OS Tasks.
  *
  * Two exports only:
- *   scheduleTaskReminder(taskId, dueAt, assignedTo) — fires 30 min before dueAt; no-op if in the past
+ *   scheduleTaskReminder(taskId, dueAt, assignedTo) — fires at dueAt; no-op if dueAt is in the past
  *   cancelTaskReminder(taskId)                      — cancels any pending reminder for this task
  *
  * The task definition (sendTaskReminderTask) must be exported so Trigger.dev
@@ -63,8 +63,8 @@ export const sendTaskReminderTask = task({
     await createNotification({
       recipient_id: payload.assignedTo,
       type:         'task_due',
-      title:        'Task due soon',
-      body:         'A task assigned to you is due in 30 minutes.',
+      title:        'Task due now',
+      body:         'A task assigned to you is due.',
       action_url:   `/tasks`,
     }).catch((err: unknown) => {
       console.error('[send-task-reminder] notification failed:', err);
@@ -73,8 +73,8 @@ export const sendTaskReminderTask = task({
 });
 
 // ─────────────────────────────────────────────
-// Schedule a one-time reminder 30 min before dueAt
-// Pre-mortem: if dueAt - 30min < now(), this is a no-op (never errors).
+// Schedule a one-time reminder at dueAt
+// Pre-mortem: if dueAt <= now(), this is a no-op (never errors).
 // ─────────────────────────────────────────────
 
 export async function scheduleTaskReminder(
@@ -82,10 +82,8 @@ export async function scheduleTaskReminder(
   dueAt:      Date,
   assignedTo: string,
 ): Promise<void> {
-  const reminderAt = new Date(dueAt.getTime() - 30 * 60 * 1000); // dueAt - 30min
-
-  if (reminderAt <= new Date()) {
-    // Due date is too soon or in the past — skip scheduling, do not error.
+  if (dueAt <= new Date()) {
+    // Due date is in the past — skip scheduling, do not error.
     return;
   }
 
@@ -93,7 +91,7 @@ export async function scheduleTaskReminder(
     'send-task-reminder',
     { taskId, assignedTo },
     {
-      delay:          reminderAt,
+      delay:          dueAt,
       idempotencyKey: `task-reminder-${taskId}`,
       tags:           [`task-reminder-${taskId}`],
     },

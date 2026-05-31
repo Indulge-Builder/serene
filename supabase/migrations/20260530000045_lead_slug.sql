@@ -4,9 +4,9 @@
 -- Collision guard: UNIQUE constraint; in practice impossible since phone is
 -- already a dedup key (no two active leads share a phone).
 
-ALTER TABLE leads ADD COLUMN slug text;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS slug text;
 
-CREATE UNIQUE INDEX idx_leads_slug ON leads(slug) WHERE slug IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_slug ON leads(slug) WHERE slug IS NOT NULL;
 
 -- ─── Generator function ───────────────────────────────────────────────────────
 
@@ -31,12 +31,7 @@ BEGIN
 END;
 $$;
 
--- ─── Back-fill existing rows ──────────────────────────────────────────────────
-
-UPDATE leads
-SET slug = generate_lead_slug(first_name, last_name, phone)
-WHERE slug IS NULL
-  AND phone IS NOT NULL;
+-- Back-fill deferred to migration 0046 (collision-safe generator + per-row loop).
 
 -- ─── Insert trigger — auto-set slug, immutable after creation ─────────────────
 

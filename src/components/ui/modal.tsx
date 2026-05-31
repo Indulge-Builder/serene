@@ -10,7 +10,7 @@ export type ModalType = 'standard' | 'lia';
 export interface ModalProps {
   open: boolean;
   onClose: () => void;
-  title: string;
+  title: React.ReactNode;
   description?: string;
   children: React.ReactNode;
   /** Footer slot — for standard type. Lia type enforces Approve / Dismiss only. */

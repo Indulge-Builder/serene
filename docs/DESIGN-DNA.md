@@ -6849,3 +6849,67 @@ RULE SC-04 — Infinite scroll always has a bottom state
             A list that silently stops loading looks broken.
             A list that tells the user it has ended feels complete.
 ```
+
+---
+
+## Addendum A.4 — Lead Status Colours (Theme-Invariant)
+
+Lead status colours are **fixed psychological anchors**. They do not change with the chosen
+theme. A user who associates red with disqualified leads must see red regardless of whether
+they are on Earth, Air, Water, Fire, or Cosmos.
+
+### The Status Colour Map
+
+| Status          | Colour family  | Psychological intent                        | Token prefix              |
+|-----------------|----------------|---------------------------------------------|---------------------------|
+| `new`           | Amber / yellow | Unacted — needs attention now               | `--status-new-*`          |
+| `touched`       | Blue           | Contact made, in motion                     | `--status-touched-*`      |
+| `in_discussion` | Teal           | Active two-way engagement, progressing      | `--status-in-discussion-*`|
+| `won`           | Green          | Closed positive — universal success signal  | `--status-won-*`          |
+| `nurturing`     | Violet/purple  | Long-term patience, not lost, not won yet   | `--status-nurturing-*`    |
+| `lost`          | Red            | Closed negative                             | `--status-lost-*`         |
+| `junk`          | Red            | Disqualified — same signal as lost          | `--status-junk-*`         |
+
+### Token Structure
+
+Each status has three tokens defined in `src/styles/design-tokens.css` under `:root`:
+
+```css
+--status-{name}-text:    foreground colour (text on light background)
+--status-{name}-light:   background fill (light tint for pill/badge)
+--status-{name}-border:  border colour for pill outlines
+```
+
+### Usage Rules
+
+**CSS classes (preferred):** Use `.status-pill.status-pill--lead-{status}` for any pill or
+badge that shows a lead status label. These classes are defined in `design-tokens.css` and
+automatically apply all three token values.
+
+```html
+<!-- correct -->
+<span class="status-pill status-pill--lead-new">New</span>
+<span class="status-pill status-pill--lead-won">Won</span>
+```
+
+**Inline styles (charts, SVG, canvas):** When CSS classes cannot be used (Recharts fills,
+SVG elements, canvas drawing), import `LEAD_STATUS_COLORS` from
+`src/lib/constants/lead-statuses.ts` and use the `.text`, `.light`, `.border` values directly.
+
+```ts
+import { LEAD_STATUS_COLORS } from '@/lib/constants/lead-statuses';
+const c = LEAD_STATUS_COLORS['won'];
+// c.text   → 'var(--status-won-text)'
+// c.light  → 'var(--status-won-light)'
+// c.border → 'var(--status-won-border)'
+```
+
+### What is Forbidden
+
+- Never map a lead status to a generic `--color-success`, `--color-danger`, `--color-info`,
+  or `--color-warning` token. Those tokens shift per theme; status colours must not.
+- Never map `in_discussion` to `--theme-accent`. The accent changes per theme; teal does not.
+- Never map `nurturing` to `--theme-accent-muted`. Violet/purple is the permanent signal.
+- Never use the old `LEAD_STATUS_BADGE` variant strings (`'neutral'`, `'info'`, `'warning'`,
+  `'success'`, `'accent'`, `'danger'`) for lead status pills. That mapping is retired.
+  `LEAD_STATUS_BADGE` now returns `'lead-{status}'` class suffixes directly.

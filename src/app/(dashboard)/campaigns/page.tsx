@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { parseGiaDomainParam } from '@/lib/constants/domains';
 import type { CampaignFilters, AppDomain } from '@/lib/types/database';
 import { CampaignFilters as CampaignFiltersBar } from '@/components/campaigns/CampaignFilters';
 import { CampaignListAsync } from '@/components/campaigns/CampaignListAsync';
@@ -25,12 +26,13 @@ function parseFilters(
   const domain: AppDomain | null =
     role === 'manager'
       ? callerDomain
-      : (getString('domain') as AppDomain | null);
+      : parseGiaDomainParam(getString('domain'));
 
   return {
     date_from: getString('date_from'),
     date_to:   getString('date_to'),
     domain,
+    search:    getString('search'),
   };
 }
 
@@ -49,6 +51,7 @@ export default async function CampaignsPage({
 
   const resolvedParams = await searchParams;
   const filters = parseFilters(resolvedParams, profile.role, profile.domain);
+  const showDomainFilter = profile.role === 'admin' || profile.role === 'founder';
 
   return (
     <main className="flex-1 p-8">
@@ -56,17 +59,11 @@ export default async function CampaignsPage({
         <h1 className="type-page-title m-0">Campaigns<span className="page-title-dot">.</span></h1>
       </div>
 
-      <div
-        style={{
-          padding:      'var(--space-4) var(--space-5)',
-          marginBottom: 'var(--space-4)',
-          borderRadius: 'var(--radius-md)',
-          border:       '1px solid var(--theme-paper-border)',
-          background:   'var(--theme-paper)',
-          boxShadow:    'var(--shadow-1)',
-        }}
-      >
-        <CampaignFiltersBar role={profile.role} filters={filters} />
+      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
+        <CampaignFiltersBar
+          role={profile.role}
+          showDomainFilter={showDomainFilter}
+        />
       </div>
 
       <Suspense fallback={<CampaignListSkeleton />}>

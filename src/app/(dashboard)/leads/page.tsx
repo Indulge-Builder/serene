@@ -2,7 +2,8 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { getLeadFilterOptions, getAgentsForDomain } from '@/lib/services/leads-service';
+import { isGiaDomain, parseGiaDomainParam } from '@/lib/constants/domains';
+import { getLeadFilterOptions, getAgentsForDomain, getActiveUsersForDomain } from '@/lib/services/leads-service';
 import type { LeadFilters, LeadStatus, CallOutcome } from '@/lib/types/database';
 import { LeadsFilters } from '@/components/leads/LeadsFilters';
 import { LeadsTableAsync } from '@/components/leads/LeadsTableAsync';
@@ -32,6 +33,7 @@ function parseFilters(searchParams: Awaited<SearchParams>): LeadFilters {
   return {
     status:            getMulti<LeadStatus>('status'),
     last_call_outcome: getMulti<CallOutcome>('outcome'),
+    domain:            parseGiaDomainParam(getString('domain')),
     agent_id:          getString('agent_id'),
     source:            getString('source'),
     campaign:          getString('campaign'),
@@ -56,15 +58,22 @@ export default async function LeadsPage({
   if (!profile) redirect('/login');
   if (profile.role === 'guest') redirect('/dashboard');
 
+  const resolvedParams = await searchParams;
+  const filters        = parseFilters(resolvedParams);
+
   const [filterOptions, initialAgents] = await Promise.all([
-    getLeadFilterOptions(profile.role, profile.domain),
-    getAgentsForDomain(profile.domain),
+    getLeadFilterOptions(
+      profile.role,
+      profile.domain,
+      filters.domain && isGiaDomain(filters.domain) ? filters.domain : null,
+    ),
+    (profile.role === 'admin' || profile.role === 'founder')
+      ? getActiveUsersForDomain(profile.domain)
+      : getAgentsForDomain(profile.domain),
   ]);
 
-  const resolvedParams = await searchParams;
-  const filters = parseFilters(resolvedParams);
-
-  const showAgentFilter = profile.role !== 'agent';
+  const showAgentFilter  = profile.role !== 'agent';
+  const showDomainFilter = profile.role === 'admin' || profile.role === 'founder';
 
   return (
     <>
@@ -88,6 +97,7 @@ export default async function LeadsPage({
             role={profile.role}
             options={filterOptions}
             showAgentFilter={showAgentFilter}
+            showDomainFilter={showDomainFilter}
           />
         </div>
 

@@ -2,14 +2,20 @@
 
 import React from 'react';
 import { Search, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FAST_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 export type SearchBarSize = 'sm' | 'md' | 'lg';
+
+/** default — bordered field. soft — borderless at rest (sidebar / embedded lists). */
+export type SearchBarVariant = 'default' | 'soft';
 
 export interface SearchBarProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   size?: SearchBarSize;
+  variant?: SearchBarVariant;
   disabled?: boolean;
   className?: string;
   style?: React.CSSProperties;
@@ -28,6 +34,7 @@ export function SearchBar({
   onChange,
   placeholder = 'Search',
   size = 'md',
+  variant = 'default',
   disabled = false,
   className,
   style,
@@ -37,6 +44,15 @@ export function SearchBar({
   const { height, fontSize, iconSize, pl } = SIZE_STYLES[size];
   const [focused, setFocused] = React.useState(false);
   const [clearHovered, setClearHovered] = React.useState(false);
+
+  const borderColor =
+    variant === 'soft'
+      ? focused
+        ? 'var(--theme-accent)'
+        : 'transparent'
+      : focused
+        ? 'var(--theme-accent)'
+        : 'var(--theme-paper-border)';
 
   return (
     <div
@@ -82,7 +98,7 @@ export function SearchBar({
           paddingLeft:     pl,
           paddingRight:    value ? 'calc(var(--space-2) + 16px + var(--space-2))' : 'var(--space-3)',
           background:      'var(--theme-paper-subtle)',
-          border:          `1px solid ${focused ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
+          border:          `1px solid ${borderColor}`,
           borderRadius:    'var(--radius-md)',
           fontSize,
           color:           'var(--theme-text-primary)',
@@ -97,35 +113,43 @@ export function SearchBar({
       />
 
       {/* Clear button */}
-      {value && !disabled && (
-        <button
-          type="button"
-          onClick={() => onChange('')}
-          onMouseEnter={() => setClearHovered(true)}
-          onMouseLeave={() => setClearHovered(false)}
-          aria-label="Clear search"
-          style={{
-            position:       'absolute',
-            right:          'var(--space-2)',
-            top:            '50%',
-            transform:      'translateY(-50%)',
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            width:          20,
-            height:         20,
-            background:     'transparent',
-            border:         'none',
-            borderRadius:   'var(--radius-full)',
-            cursor:         'pointer',
-            color:          clearHovered ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
-            transition:     'var(--transition-hover)',
-            padding:        0,
-          }}
-        >
-          <X style={{ width: 14, height: 14, strokeWidth: 1.5 }} aria-hidden="true" />
-        </button>
-      )}
+      <AnimatePresence>
+        {value && !disabled && (
+          <motion.button
+            type="button"
+            onClick={() => onChange('')}
+            onMouseEnter={() => setClearHovered(true)}
+            onMouseLeave={() => setClearHovered(false)}
+            aria-label="Clear search"
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.7 }}
+            whileTap={{ scale: 0.8 }}
+            transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+            style={{
+              position:       'absolute',
+              right:          'var(--space-2)',
+              top:            '50%',
+              transform:      'translateY(-50%)',
+              display:        'flex',
+              alignItems:     'center',
+              justifyContent: 'center',
+              width:          20,
+              height:         20,
+              background:     'transparent',
+              border:         'none',
+              borderRadius:   'var(--radius-full)',
+              cursor:         'pointer',
+              color:          clearHovered ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
+              transition:     'color var(--transition-hover)',
+              padding:        0,
+              willChange:     'transform',
+            }}
+          >
+            <X style={{ width: 14, height: 14, strokeWidth: 1.5 }} aria-hidden="true" />
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

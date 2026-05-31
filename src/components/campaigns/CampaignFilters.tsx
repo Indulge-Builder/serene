@@ -1,61 +1,74 @@
 'use client';
 
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { useTransition } from 'react';
-import { X } from 'lucide-react';
-import type { UserRole, AppDomain, CampaignFilters } from '@/lib/types/database';
-import { APP_DOMAINS, DOMAIN_LABELS } from '@/lib/constants/domains';
+import { useTransition, useState, useEffect } from 'react';
+import { X, SlidersHorizontal } from 'lucide-react';
+import { FilterDropdown } from '@/components/ui/FilterDropdown';
+import { DatePicker } from '@/components/ui/DatePicker';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { GIA_DOMAIN_FILTER_ITEMS } from '@/lib/constants/domains';
+import {
+  buildFilterParams,
+  dateFromUrlParam,
+  dateToUrlParam,
+} from '@/lib/utils/filter-params';
+import type { UserRole } from '@/lib/types/database';
 
 type CampaignFiltersProps = {
-  role:    UserRole;
-  filters: CampaignFilters;
+  role:             UserRole;
+  showDomainFilter: boolean;
 };
 
-// ─────────────────────────────────────────────
-// Helpers — URL param I/O
-// ─────────────────────────────────────────────
-
-function buildParams(
-  current: URLSearchParams,
-  updates: Record<string, string | null>,
-): URLSearchParams {
-  const next = new URLSearchParams(current.toString());
-  for (const [key, val] of Object.entries(updates)) {
-    if (val === null || val === '') {
-      next.delete(key);
-    } else {
-      next.set(key, val);
-    }
-  }
-  return next;
-}
-
-// ─────────────────────────────────────────────
-// CampaignFilters
-// ─────────────────────────────────────────────
-
-export function CampaignFilters({ role, filters }: CampaignFiltersProps) {
-  const router   = useRouter();
-  const pathname = usePathname();
-  const params   = useSearchParams();
+export function CampaignFilters({ role: _role, showDomainFilter }: CampaignFiltersProps) {
+  const router              = useRouter();
+  const pathname            = usePathname();
+  const params              = useSearchParams();
   const [, startTransition] = useTransition();
 
-  const showDomainFilter = role === 'admin' || role === 'founder';
+  const domainFilter = showDomainFilter ? params.get('domain') : null;
+  const dateFrom     = params.get('date_from');
+  const dateTo       = params.get('date_to');
+  const searchParam  = params.get('search') ?? '';
+
+  const [searchInput, setSearchInput] = useState(searchParam);
+
+  useEffect(() => {
+    setSearchInput(params.get('search') ?? '');
+  }, [params]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const trimmed = searchInput.trim();
+      const current = params.get('search') ?? '';
+      if (trimmed === current) return;
+      const next = buildFilterParams(params, { search: trimmed || null });
+      startTransition(() => {
+        router.push(`${pathname}?${next.toString()}`);
+      });
+    }, 500);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  const activeCount =
+    (searchParam ? 1 : 0) +
+    (domainFilter ? 1 : 0) +
+    (dateFrom ? 1 : 0) +
+    (dateTo ? 1 : 0);
 
   function push(updates: Record<string, string | null>) {
-    const next = buildParams(params, updates);
+    const next = buildFilterParams(params, updates);
     startTransition(() => {
       router.push(`${pathname}?${next.toString()}`);
     });
   }
 
   function clearAll() {
+    setSearchInput('');
     startTransition(() => {
       router.push(pathname);
     });
   }
-
-  const hasActive = !!(filters.date_from || filters.date_to || filters.domain);
 
   return (
     <div
@@ -66,132 +79,97 @@ export function CampaignFilters({ role, filters }: CampaignFiltersProps) {
         flexWrap:   'wrap',
       }}
     >
-      {/* Domain filter — admin/founder only */}
-      {showDomainFilter && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <label
-            style={{
-              fontFamily:    'var(--font-sans)',
-              fontSize:      'var(--text-xs)',
-              fontWeight:    'var(--weight-medium)',
-              color:         'var(--theme-text-secondary)',
-              whiteSpace:    'nowrap',
-            }}
-          >
-            Domain
-          </label>
-          <select
-            value={filters.domain ?? ''}
-            onChange={(e) => push({ domain: e.target.value || null })}
-            style={{
-              fontFamily:   'var(--font-sans)',
-              fontSize:     'var(--text-sm)',
-              color:        'var(--theme-text-primary)',
-              background:   'var(--theme-paper)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-sm)',
-              padding:      '6px var(--space-3)',
-              cursor:       'pointer',
-              outline:      'none',
-            }}
-          >
-            <option value="">All domains</option>
-            {APP_DOMAINS.map((d) => (
-              <option key={d} value={d}>
-                {DOMAIN_LABELS[d]}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {/* Date from */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-        <label
-          style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize:   'var(--text-xs)',
-            fontWeight: 'var(--weight-medium)',
-            color:      'var(--theme-text-secondary)',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          From
-        </label>
-        <input
-          type="date"
-          value={filters.date_from ?? ''}
-          onChange={(e) => push({ date_from: e.target.value || null })}
-          style={{
-            fontFamily:   'var(--font-sans)',
-            fontSize:     'var(--text-sm)',
-            color:        'var(--theme-text-primary)',
-            background:   'var(--theme-paper)',
-            border:       '1px solid var(--theme-paper-border)',
-            borderRadius: 'var(--radius-sm)',
-            padding:      '6px var(--space-3)',
-            caretColor:   'var(--theme-accent)',
-            outline:      'none',
-          }}
+      {/* Filter icon + active count badge */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+        <SlidersHorizontal
+          style={{ width: '1rem', height: '1rem', color: 'var(--theme-text-tertiary)', strokeWidth: 1.5 }}
         />
+        {activeCount > 0 && (
+          <span
+            style={{
+              display:        'inline-flex',
+              alignItems:     'center',
+              justifyContent: 'center',
+              minWidth:       '1.25rem',
+              height:         '1.25rem',
+              padding:        '0 0.25rem',
+              borderRadius:   'var(--radius-full)',
+              background:     'var(--theme-accent)',
+              color:          'var(--theme-accent-fg)',
+              fontSize:       '10px',
+              fontWeight:     'var(--weight-medium)',
+              lineHeight:     1,
+            }}
+          >
+            {activeCount}
+          </span>
+        )}
       </div>
 
-      {/* Date to */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-        <label
-          style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize:   'var(--text-xs)',
-            fontWeight: 'var(--weight-medium)',
-            color:      'var(--theme-text-secondary)',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          To
-        </label>
-        <input
-          type="date"
-          value={filters.date_to ?? ''}
-          onChange={(e) => push({ date_to: e.target.value || null })}
-          style={{
-            fontFamily:   'var(--font-sans)',
-            fontSize:     'var(--text-sm)',
-            color:        'var(--theme-text-primary)',
-            background:   'var(--theme-paper)',
-            border:       '1px solid var(--theme-paper-border)',
-            borderRadius: 'var(--radius-sm)',
-            padding:      '6px var(--space-3)',
-            caretColor:   'var(--theme-accent)',
-            outline:      'none',
-          }}
+      {/* Search — debounced 500ms → URL `search` param */}
+      <SearchBar
+        value={searchInput}
+        onChange={setSearchInput}
+        placeholder="Search campaigns…"
+        size="md"
+        aria-label="Search campaigns"
+        style={{ flex: '1 1 220px', minWidth: '180px' }}
+      />
+
+      {/* Domain — single select, admin/founder only (GIA_DOMAINS) */}
+      {showDomainFilter && (
+        <FilterDropdown
+          label="Domain"
+          items={GIA_DOMAIN_FILTER_ITEMS}
+          selected={domainFilter ? [domainFilter] : []}
+          onChange={(next) => push({ domain: next[0] ?? null })}
+        />
+      )}
+
+      {/* Date range */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+        <DatePicker
+          value={dateFromUrlParam(dateFrom)}
+          onChange={(d) => push({ date_from: dateToUrlParam(d) })}
+          placeholder="From…"
+          maxDate={dateTo ? dateFromUrlParam(dateTo) ?? undefined : undefined}
+          aria-label="From date"
+        />
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', flexShrink: 0 }}>→</span>
+        <DatePicker
+          value={dateFromUrlParam(dateTo)}
+          onChange={(d) => push({ date_to: dateToUrlParam(d) })}
+          placeholder="To…"
+          minDate={dateFrom ? dateFromUrlParam(dateFrom) ?? undefined : undefined}
+          aria-label="To date"
         />
       </div>
 
       {/* Clear all */}
-      {hasActive && (
+      {activeCount > 0 && (
         <button
           type="button"
           onClick={clearAll}
           style={{
-            display:      'flex',
-            alignItems:   'center',
-            gap:          'var(--space-1)',
-            fontFamily:   'var(--font-sans)',
-            fontSize:     'var(--text-xs)',
-            fontWeight:   'var(--weight-medium)',
-            color:        'var(--theme-text-secondary)',
-            background:   'transparent',
-            border:       'none',
-            borderRadius: 'var(--radius-sm)',
-            padding:      '4px var(--space-2)',
-            cursor:       'pointer',
-            transition:   'color var(--duration-fast) var(--ease-in-out)',
+            display:    'inline-flex',
+            alignItems: 'center',
+            gap:        'var(--space-1)',
+            height:     '2.25rem',
+            padding:    '0 var(--space-2)',
+            border:     'none',
+            background: 'transparent',
+            color:      'var(--theme-text-tertiary)',
+            fontSize:   'var(--text-sm)',
+            fontFamily: 'var(--font-sans)',
+            cursor:     'pointer',
+            transition: 'color var(--duration-fast) var(--ease-in-out)',
+            flexShrink: 0,
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--theme-text-primary)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--theme-text-secondary)'; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-primary)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)'; }}
         >
-          <X style={{ width: '12px', height: '12px', strokeWidth: 1.5 }} />
-          Clear
+          <X style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />
+          <span>Clear filters</span>
         </button>
       )}
     </div>

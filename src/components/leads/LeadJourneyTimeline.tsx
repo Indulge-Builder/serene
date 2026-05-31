@@ -1,6 +1,6 @@
-import { CheckCircle2, Circle, Clock } from 'lucide-react';
-import { JOURNEY_STATUSES, RESOLUTION_STATUSES, LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
-import type { Lead } from '@/lib/types/database';
+import { CheckCircle2, Circle, Clock, XCircle, AlertCircle } from 'lucide-react';
+import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants/lead-statuses';
+import type { Lead, LeadStatus } from '@/lib/types/database';
 import type { LeadActivityWithActor } from '@/lib/services/leads-service';
 
 type Props = {
@@ -8,7 +8,19 @@ type Props = {
   activities: LeadActivityWithActor[];
 };
 
-// Timestamps keyed by status (when did the lead first enter this status)
+// The core progression stages — always shown
+const CORE_STAGES: LeadStatus[] = ['new', 'touched', 'in_discussion'];
+
+// Terminal outcomes — shown as the final stage replacing "won"
+const TERMINAL_OUTCOMES: LeadStatus[] = ['won', 'lost', 'junk', 'nurturing'];
+
+function getTerminalConfig(status: LeadStatus) {
+  const c = LEAD_STATUS_COLORS[status];
+  if (!c) return null;
+  const icon = status === 'won' ? 'check' : status === 'nurturing' ? 'alert' : 'x';
+  return { bg: c.light, border: c.border, text: c.text, icon };
+}
+
 function buildStatusTimestamps(
   lead: Lead,
   activities: LeadActivityWithActor[],
@@ -18,6 +30,9 @@ function buildStatusTimestamps(
     touched:       null,
     in_discussion: null,
     won:           null,
+    lost:          null,
+    junk:          null,
+    nurturing:     null,
   };
 
   for (const act of activities) {
@@ -38,10 +53,10 @@ function formatDwell(from: Date, to: Date, isActive: boolean): string | null {
   const days    = Math.floor(hours / 24);
 
   let duration: string;
-  if (days >= 1)    duration = `${days} ${days === 1 ? 'day' : 'days'}`;
-  else if (hours >= 1) duration = `${hours} ${hours === 1 ? 'hr' : 'hrs'}`;
-  else if (minutes >= 1) duration = `${minutes} min`;
-  else return null; // sub-minute — not worth showing
+  if (days >= 1)        duration = `${days}d`;
+  else if (hours >= 1)  duration = `${hours}h`;
+  else if (minutes >= 1) duration = `${minutes}m`;
+  else return null;
 
   return isActive ? `${duration} here` : duration;
 }
@@ -50,8 +65,15 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
   const timestamps = buildStatusTimestamps(lead, activities);
   const now        = new Date();
 
-  const isResolved = (RESOLUTION_STATUSES as string[]).includes(lead.status);
-  const currentJourneyIdx = JOURNEY_STATUSES.indexOf(lead.status as typeof JOURNEY_STATUSES[number]);
+  const isTerminal   = (TERMINAL_OUTCOMES as string[]).includes(lead.status);
+  const terminalConf = isTerminal ? getTerminalConfig(lead.status as LeadStatus) : null;
+
+  // Build the visible stages: always core + the terminal outcome if reached (or still progressing to won)
+  const terminalStatus: LeadStatus = isTerminal ? (lead.status as LeadStatus) : 'won';
+  const stages: LeadStatus[] = [...CORE_STAGES, terminalStatus];
+
+  // Index of how far the lead has progressed through CORE_STAGES
+  const coreIdx = CORE_STAGES.indexOf(lead.status as LeadStatus);
 
   return (
     <div
@@ -96,8 +118,8 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
           Lead Journey
         </span>
 
-        {/* Resolution badge */}
-        {isResolved && (
+        {/* Terminal outcome badge */}
+        {isTerminal && terminalConf && (
           <span
             style={{
               marginLeft:   'auto',
@@ -105,21 +127,13 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
               alignItems:   'center',
               padding:      '0.125rem var(--space-2)',
               borderRadius: 'var(--radius-full)',
-              background:   lead.status === 'won'
-                ? 'var(--color-success-light)'
-                : lead.status === 'nurturing'
-                  ? 'var(--theme-accent-surface)'
-                  : 'var(--color-danger-light)',
-              color: lead.status === 'won'
-                ? 'var(--color-success-text)'
-                : lead.status === 'nurturing'
-                  ? 'var(--theme-accent)'
-                  : 'var(--color-danger-text)',
-              fontSize:   'var(--text-xs)',
-              fontWeight: 'var(--weight-medium)',
+              background:   terminalConf.bg,
+              color:        terminalConf.text,
+              fontSize:     'var(--text-xs)',
+              fontWeight:   'var(--weight-medium)',
             }}
           >
-            {LEAD_STATUS_LABELS[lead.status]}
+            {LEAD_STATUS_LABELS[lead.status as LeadStatus]}
           </span>
         )}
       </div>
@@ -129,7 +143,7 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
         <div
           style={{
             display:             'grid',
-            gridTemplateColumns: `repeat(${JOURNEY_STATUSES.length}, 1fr)`,
+            gridTemplateColumns: `repeat(${stages.length}, 1fr)`,
             gap:                 'var(--space-2)',
             position:            'relative',
           }}
@@ -137,45 +151,101 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
           {/* Connector line */}
           <div
             style={{
-              position:    'absolute',
-              top:         '10px',
-              left:        'calc(50% / 4)',
-              right:       'calc(50% / 4)',
-              height:      '2px',
-              background:  'var(--theme-paper-border)',
-              zIndex:      0,
+              position:   'absolute',
+              top:        '10px',
+              left:       `calc(50% / ${stages.length})`,
+              right:      `calc(50% / ${stages.length})`,
+              height:     '2px',
+              background: 'var(--theme-paper-border)',
+              zIndex:     0,
             }}
           />
 
-          {JOURNEY_STATUSES.map((status, idx) => {
-            const enteredAt = timestamps[status];
-            const isActive  = lead.status === status;
-            const isPassed  = currentJourneyIdx > idx ||
-              (isResolved && enteredAt !== null);
-            const isFuture  = !isActive && !isPassed;
+          {stages.map((status, idx) => {
+            const enteredAt  = timestamps[status];
+            const isActive   = lead.status === status;
+            const isLastStage = idx === stages.length - 1;
 
-            // Dwell time: from entry to next stage entry (or now if active/resolved at this stage)
+            // A core stage is "passed" if the lead has moved beyond it
+            const corePassed = idx < CORE_STAGES.length && (
+              coreIdx > idx || isTerminal
+            );
+
+            // The terminal stage is "passed" only if the lead IS that status
+            const terminalPassed = isLastStage && isTerminal;
+
+            const isPassed = corePassed || terminalPassed;
+            const isFuture = !isActive && !isPassed;
+
+            const isTerminalStage = isLastStage;
+            const termInfo = isTerminalStage ? getTerminalConfig(terminalStatus) : null;
+
+            // Dwell: from entry to next stage (or now if active)
             let dwellStr: string | null = null;
             if (enteredAt) {
-              const nextStatus = JOURNEY_STATUSES[idx + 1];
+              const nextStatus = stages[idx + 1];
               const nextAt     = nextStatus ? timestamps[nextStatus] : null;
-              const endAt      = nextAt ?? (isActive ? now : null);
+              const endAt      = nextAt ?? (isActive ? now : (isTerminal && isLastStage ? now : null));
               if (endAt) dwellStr = formatDwell(enteredAt, endAt, isActive);
             }
+
+            // Colours for this node
+            const nodeColors = (() => {
+              if (isActive && isTerminalStage && termInfo) {
+                return {
+                  bg:     termInfo.bg,
+                  border: `2px solid ${termInfo.border}`,
+                  dot:    termInfo.text,
+                };
+              }
+              if (isActive) {
+                return {
+                  bg:     'var(--theme-accent)',
+                  border: '2px solid var(--theme-accent)',
+                  dot:    'var(--theme-accent-fg)',
+                };
+              }
+              if (isPassed && isTerminalStage && termInfo) {
+                return {
+                  bg:     termInfo.bg,
+                  border: `2px solid ${termInfo.border}`,
+                  dot:    null,
+                };
+              }
+              if (isPassed) {
+                return {
+                  bg:     'var(--color-success-light)',
+                  border: '2px solid var(--color-success)',
+                  dot:    null,
+                };
+              }
+              return {
+                bg:     'var(--theme-paper)',
+                border: '2px solid var(--theme-paper-border)',
+                dot:    null,
+              };
+            })();
+
+            const labelColor = (() => {
+              if (isActive && isTerminalStage && termInfo) return termInfo.text;
+              if (isActive) return 'var(--theme-accent)';
+              if (isPassed) return 'var(--theme-text-secondary)';
+              return 'var(--theme-text-tertiary)';
+            })();
 
             return (
               <div
                 key={status}
                 style={{
-                  display:        'flex',
-                  flexDirection:  'column',
-                  alignItems:     'center',
-                  gap:            'var(--space-2)',
-                  position:       'relative',
-                  zIndex:         1,
+                  display:       'flex',
+                  flexDirection: 'column',
+                  alignItems:    'center',
+                  gap:           'var(--space-2)',
+                  position:      'relative',
+                  zIndex:        1,
                 }}
               >
-                {/* Icon */}
+                {/* Node icon */}
                 <div
                   style={{
                     width:          '22px',
@@ -184,26 +254,25 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
                     display:        'flex',
                     alignItems:     'center',
                     justifyContent: 'center',
-                    background:     isActive
-                      ? 'var(--theme-accent)'
-                      : isPassed
-                        ? 'var(--color-success-light)'
-                        : 'var(--theme-paper)',
-                    border:         isActive
-                      ? '2px solid var(--theme-accent)'
-                      : isPassed
-                        ? '2px solid var(--color-success)'
-                        : '2px solid var(--theme-paper-border)',
+                    background:     nodeColors.bg,
+                    border:         nodeColors.border,
                   }}
                 >
-                  {isPassed ? (
+                  {isPassed && isTerminalStage && termInfo?.icon === 'x' ? (
+                    <XCircle
+                      style={{ width: '14px', height: '14px', color: termInfo.text, strokeWidth: 2 }}
+                    />
+                  ) : isPassed && isTerminalStage && termInfo?.icon === 'alert' ? (
+                    <AlertCircle
+                      style={{ width: '14px', height: '14px', color: termInfo.text, strokeWidth: 2 }}
+                    />
+                  ) : isPassed && isTerminalStage && termInfo?.icon === 'check' ? (
                     <CheckCircle2
-                      style={{
-                        width:       '14px',
-                        height:      '14px',
-                        color:       'var(--color-success)',
-                        strokeWidth: 2,
-                      }}
+                      style={{ width: '14px', height: '14px', color: termInfo.text, strokeWidth: 2 }}
+                    />
+                  ) : isPassed ? (
+                    <CheckCircle2
+                      style={{ width: '14px', height: '14px', color: 'var(--color-success)', strokeWidth: 2 }}
                     />
                   ) : isActive ? (
                     <div
@@ -211,17 +280,12 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
                         width:        '8px',
                         height:       '8px',
                         borderRadius: 'var(--radius-full)',
-                        background:   'var(--theme-accent-fg)',
+                        background:   isTerminalStage && termInfo ? termInfo.text : 'var(--theme-accent-fg)',
                       }}
                     />
                   ) : (
                     <Circle
-                      style={{
-                        width:       '12px',
-                        height:      '12px',
-                        color:       'var(--theme-paper-border)',
-                        strokeWidth: 1.5,
-                      }}
+                      style={{ width: '12px', height: '12px', color: 'var(--theme-paper-border)', strokeWidth: 1.5 }}
                     />
                   )}
                 </div>
@@ -229,15 +293,11 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
                 {/* Label */}
                 <span
                   style={{
-                    fontFamily:  'var(--font-sans)',
-                    fontSize:    'var(--text-xs)',
-                    fontWeight:  isActive ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                    color:       isActive
-                      ? 'var(--theme-accent)'
-                      : isPassed
-                        ? 'var(--theme-text-secondary)'
-                        : 'var(--theme-text-tertiary)',
-                    textAlign:   'center',
+                    fontFamily:    'var(--font-sans)',
+                    fontSize:      'var(--text-xs)',
+                    fontWeight:    isActive ? 'var(--weight-semibold)' : 'var(--weight-normal)',
+                    color:         labelColor,
+                    textAlign:     'center',
                     letterSpacing: isActive ? 'var(--tracking-wide)' : 'var(--tracking-normal)',
                   }}
                 >
@@ -254,7 +314,7 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
                       textAlign:  'center',
                     }}
                   >
-                    {formatDate(enteredAt)}
+                    {formatLocalDate(enteredAt)}
                   </span>
                 )}
 
@@ -266,15 +326,19 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
                       alignItems:   'center',
                       padding:      '0.0625rem var(--space-2)',
                       borderRadius: 'var(--radius-full)',
-                      background:   isActive
-                        ? 'var(--theme-accent-surface)'
-                        : 'var(--theme-paper-subtle)',
-                      border: '1px solid var(--theme-paper-border)',
-                      fontSize:   'var(--text-2xs)',
-                      fontFamily: 'var(--font-mono)',
-                      color:      isActive
-                        ? 'var(--theme-accent)'
-                        : 'var(--theme-text-tertiary)',
+                      background:   isActive && termInfo
+                        ? termInfo.bg
+                        : isActive
+                          ? 'var(--theme-accent-surface)'
+                          : 'var(--theme-paper-subtle)',
+                      border:    '1px solid var(--theme-paper-border)',
+                      fontSize:  'var(--text-2xs)',
+                      fontFamily:'var(--font-mono)',
+                      color:     isActive && termInfo
+                        ? termInfo.text
+                        : isActive
+                          ? 'var(--theme-accent)'
+                          : 'var(--theme-text-tertiary)',
                     }}
                   >
                     {dwellStr}
@@ -301,9 +365,6 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
   );
 }
 
-// ─────────────────────────────────────────────
-// Local date format helper (avoids importing full formatDate)
-// ─────────────────────────────────────────────
-function formatDate(date: Date): string {
+function formatLocalDate(date: Date): string {
   return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 }

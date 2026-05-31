@@ -53,6 +53,11 @@
   --theme-paper-subtle:      #f9f9f6;
   --theme-paper-border:      #e5e4df;
 
+  /* Tab pill (on paper) — soft pastel chip; accent-muted washed into paper */
+  --theme-tab-pill-active-bg:     color-mix(in srgb, var(--theme-accent-muted) 18%, var(--theme-paper-subtle));
+  --theme-tab-pill-active-border: color-mix(in srgb, var(--theme-accent-muted) 22%, var(--theme-paper-border));
+  --theme-tab-pill-active-text:   var(--theme-accent-muted);
+
   /* Accent */
   --theme-accent:            #d4af37;
   --theme-accent-hover:      #a88b25;
@@ -334,6 +339,44 @@
   --color-neutral-dark-text:  rgba(255, 255, 255, 0.55);
   --color-neutral-dark-fill:  rgba(255, 255, 255, 0.06);
   --color-neutral-dark-border:rgba(255, 255, 255, 0.12);
+
+  /* ── Lead status colours — FIXED, theme-invariant ──────────────────────────
+     These colours carry psychological meaning and must never change with theme.
+     new:           amber-yellow  — unacted, needs attention
+     touched:       blue          — contact made, in motion
+     in_discussion: teal          — active two-way engagement
+     won:           green         — closed positive
+     nurturing:     violet-purple — long-term patience
+     lost:          red           — closed negative
+     junk:          red           — disqualified (same signal as lost)
+     ─────────────────────────────────────────────────────────────────────── */
+  --status-new-text:           #92620a;
+  --status-new-light:          #fef5dc;
+  --status-new-border:         #f0d080;
+
+  --status-touched-text:       #1c4880;
+  --status-touched-light:      #e8f0fa;
+  --status-touched-border:     #a8c4e8;
+
+  --status-in-discussion-text: #1a6058;
+  --status-in-discussion-light:#e0f4f0;
+  --status-in-discussion-border:#90d4c8;
+
+  --status-won-text:           #2a6040;
+  --status-won-light:          #eaf5ee;
+  --status-won-border:         #90cc9a;
+
+  --status-nurturing-text:     #5038a0;
+  --status-nurturing-light:    #eeebfc;
+  --status-nurturing-border:   #c0b0e8;
+
+  --status-lost-text:          #8a2c1c;
+  --status-lost-light:         #faecea;
+  --status-lost-border:        #e0a098;
+
+  --status-junk-text:          #8a2c1c;
+  --status-junk-light:         #faecea;
+  --status-junk-border:        #e0a098;
 
   /* Focus and selection */
   --color-focus-ring:     color-mix(in srgb, var(--theme-accent) 40%, transparent);
@@ -689,6 +732,11 @@
   to   { transform: rotate(360deg); }
 }
 
+@keyframes eia-subtask-pulse {
+  0%,  100% { opacity: 1;    transform: scale(1);    }
+  50%        { opacity: 0.45; transform: scale(0.72); }
+}
+
 /* Utility animation classes */
 .skeleton {
   background:  var(--theme-paper-subtle);
@@ -776,6 +824,43 @@
   background-color: var(--color-danger-light);
   color:            var(--color-danger-text);
   border-color:     var(--color-danger-light);
+}
+
+/* Lead status pills — fixed colours, theme-invariant */
+.status-pill--lead-new {
+  background-color: var(--status-new-light);
+  color:            var(--status-new-text);
+  border-color:     var(--status-new-border);
+}
+.status-pill--lead-touched {
+  background-color: var(--status-touched-light);
+  color:            var(--status-touched-text);
+  border-color:     var(--status-touched-border);
+}
+.status-pill--lead-in-discussion {
+  background-color: var(--status-in-discussion-light);
+  color:            var(--status-in-discussion-text);
+  border-color:     var(--status-in-discussion-border);
+}
+.status-pill--lead-won {
+  background-color: var(--status-won-light);
+  color:            var(--status-won-text);
+  border-color:     var(--status-won-border);
+}
+.status-pill--lead-nurturing {
+  background-color: var(--status-nurturing-light);
+  color:            var(--status-nurturing-text);
+  border-color:     var(--status-nurturing-border);
+}
+.status-pill--lead-lost {
+  background-color: var(--status-lost-light);
+  color:            var(--status-lost-text);
+  border-color:     var(--status-lost-border);
+}
+.status-pill--lead-junk {
+  background-color: var(--status-junk-light);
+  color:            var(--status-junk-text);
+  border-color:     var(--status-junk-border);
 }
 
 /* Micro label — used on form labels, table headers, section dividers */

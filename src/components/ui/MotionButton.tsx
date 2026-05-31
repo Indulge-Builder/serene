@@ -17,7 +17,7 @@ import { motion } from 'framer-motion';
 import { Button } from './Button';
 import { INSTANT_DURATION, EASE_SPRING } from '@/lib/constants/motion';
 
-export const MotionButton = motion(Button);
+export const MotionButton = motion.create(Button);
 
 /** Default tap + spring transition — spread onto MotionButton when you want the
  *  standard press-down feel without custom override. */

@@ -10,7 +10,7 @@ import { SPRING_CONFIG, BASE_DURATION, EASE_OUT_EXPO } from '@/lib/constants/mot
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type TabSelectorVariant = 'pill' | 'connected';
+export type TabSelectorVariant = 'pill' | 'connected' | 'accent';
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -132,6 +132,14 @@ export function TabsList({ children, className, style }: TabsListProps) {
       padding: 'var(--space-1)',
       gap: 0,
     }),
+    // Accent tray — for filter bars on --theme-paper; active tab is full accent fill.
+    ...(variant === 'accent' && {
+      background: 'var(--theme-paper-subtle)',
+      border: '1px solid var(--theme-paper-border)',
+      borderRadius: 'var(--radius-md)',
+      padding: 'var(--space-1)',
+      gap: 'var(--space-1)',
+    }),
     ...style,
   };
 
@@ -162,13 +170,16 @@ export function TabsTrigger({
   const { value: activeValue, onValueChange, layoutId, variant } = useTabsContext();
   const isActive = value === activeValue;
   const isConnected = variant === 'connected';
+  const isAccent    = variant === 'accent';
 
-  // Pill variant: active text sits on a dark canvas chip — use canvas-text.
-  // Other variants retain their existing colour logic.
+  // Pill variant: soft pastel chip on paper (--theme-tab-pill-active-*).
   const isPill = variant === 'pill';
+  const usesInnerLabelSpan = isPill || isAccent;
   const activeTextColor = isPill
-    ? 'var(--theme-canvas-text)'
-    : (isConnected ? 'var(--theme-text-primary)' : 'var(--theme-accent)');
+    ? 'var(--theme-tab-pill-active-text)'
+    : isAccent
+      ? 'var(--theme-accent-fg)'
+      : (isConnected ? 'var(--theme-text-primary)' : 'var(--theme-accent)');
 
   const buttonStyle: React.CSSProperties = {
     position: 'relative',
@@ -185,7 +196,7 @@ export function TabsTrigger({
     // Colour is intentionally transparent on the root for pill variant —
     // text colour is handled on the inner content span (see below) so the
     // transition applies to the text only, not to the pill element.
-    color: isPill ? 'transparent' : (isActive ? activeTextColor : 'var(--theme-text-secondary)'),
+    color: usesInnerLabelSpan ? 'transparent' : (isActive ? activeTextColor : 'var(--theme-text-secondary)'),
     background: 'transparent',
     border: 'none',
     borderRadius: isConnected ? 'var(--radius-sm)' : 'var(--radius-lg)',
@@ -217,18 +228,17 @@ export function TabsTrigger({
         e.currentTarget.removeAttribute('data-focus-visible');
       }}
     >
-      {/* ✓ spec — pill active chip: --theme-canvas bg + --theme-sidebar-border + --shadow-2.
-          SPRING_CONFIG (no hardcoded stiffness/damping). z-index:-1 sits below content span. */}
+      {/* Pill active chip — soft pastel on paper (--theme-tab-pill-active-*). */}
       {isPill && isActive && (
         <motion.span
           layoutId={layoutId}
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'var(--theme-canvas)',
+            background: 'var(--theme-tab-pill-active-bg)',
             borderRadius: 'var(--radius-lg)',
-            border: '1px solid var(--theme-sidebar-border)',
-            boxShadow: 'var(--shadow-2)',
+            border: '1px solid var(--theme-tab-pill-active-border)',
+            boxShadow: 'var(--shadow-1)',
             zIndex: -1,
           }}
           transition={SPRING_CONFIG}
@@ -251,18 +261,27 @@ export function TabsTrigger({
         />
       )}
 
+      {isAccent && isActive && (
+        <motion.span
+          layoutId={`${layoutId}-accent`}
+          style={{
+            position:     'absolute',
+            inset:        0,
+            background:   'var(--theme-accent)',
+            borderRadius: 'var(--radius-sm)',
+            boxShadow:    'var(--shadow-accent-glow)',
+            zIndex:       -1,
+          }}
+          transition={SPRING_CONFIG}
+        />
+      )}
+
       {/*
         Content span — sits above the pill via position:relative + z-index:1.
-        For the pill variant, text colour lives here (not on the button root)
-        so the colour transition applies only to the label, not to the pill element.
-        The button root is colour:transparent for pill to avoid colouring the
-        absolute-positioned pill child.
+        For pill/accent variants, text colour lives here (not on the button root)
+        so the colour transition applies only to the label, not to the chip element.
       */}
-      {/* ✓ spec — pill label sits on inner span with z-index:1; colour transition lives
-          here only (not on the button root, which is colour:transparent for pill so it
-          can't inherit-paint the absolute chip child). Active → --theme-canvas-text,
-          inactive → --theme-text-secondary. */}
-      {isPill ? (
+      {usesInnerLabelSpan ? (
         <span
           style={{
             position: 'relative',
@@ -270,7 +289,9 @@ export function TabsTrigger({
             display: 'inline-flex',
             alignItems: 'center',
             gap: 'var(--space-1)',
-            color: isActive ? 'var(--theme-canvas-text)' : 'var(--theme-text-secondary)',
+            color: isActive
+              ? (isAccent ? 'var(--theme-accent-fg)' : 'var(--theme-tab-pill-active-text)')
+              : 'var(--theme-text-secondary)',
             transition: `color var(--duration-fast) var(--ease-in-out)`,
           }}
         >

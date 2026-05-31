@@ -3,6 +3,8 @@
 import React from 'react';
 import { Copy, Check } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FAST_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 export interface InfoRowProps {
   label: string;
@@ -101,10 +103,12 @@ export function InfoRow({
           </span>
 
           {copyable && (
-            <button
+            <motion.button
               type="button"
               onClick={handleCopy}
               aria-label={copied ? 'Copied' : `Copy ${label}`}
+              whileTap={{ scale: 0.8 }}
+              transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
               style={{
                 display:        'inline-flex',
                 alignItems:     'center',
@@ -117,16 +121,37 @@ export function InfoRow({
                 borderRadius:   'var(--radius-xs)',
                 cursor:         'pointer',
                 color:          copied ? 'var(--color-success-text)' : 'var(--theme-text-tertiary)',
-                transition:     'var(--transition-hover)',
+                transition:     'color var(--transition-hover)',
                 padding:        0,
+                willChange:     'transform',
               }}
             >
-              {copied ? (
-                <Check style={{ width: 12, height: 12, strokeWidth: 2 }} aria-hidden="true" />
-              ) : (
-                <Copy style={{ width: 12, height: 12, strokeWidth: 1.5 }} aria-hidden="true" />
-              )}
-            </button>
+              <AnimatePresence mode="wait" initial={false}>
+                {copied ? (
+                  <motion.span
+                    key="check"
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.5, opacity: 0 }}
+                    transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+                    style={{ display: 'flex' }}
+                  >
+                    <Check style={{ width: 12, height: 12, strokeWidth: 2 }} aria-hidden="true" />
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="copy"
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.5, opacity: 0 }}
+                    transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+                    style={{ display: 'flex' }}
+                  >
+                    <Copy style={{ width: 12, height: 12, strokeWidth: 1.5 }} aria-hidden="true" />
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </motion.button>
           )}
         </div>
       </div>

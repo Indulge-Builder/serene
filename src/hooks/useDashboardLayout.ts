@@ -6,6 +6,7 @@ import {
   isValidWidgetId,
   DEFAULT_LAYOUT_BY_ROLE,
   type WidgetSize,
+  type WidgetColSpan,
 } from '@/lib/constants/dashboard-widgets';
 import type { UserRole } from '@/lib/types/database';
 
@@ -17,6 +18,7 @@ export type WidgetPlacement = {
   col:      number;
   row:      number;
   size:     WidgetSize;
+  colSpan:  WidgetColSpan;
 };
 
 type StoredLayout = {
@@ -34,6 +36,7 @@ function getDefaults(role: UserRole): StoredLayout {
     col:      i % 2,
     row:      Math.floor(i / 2),
     size:     WIDGET_MAP[id]?.defaultSize ?? 'md',
+    colSpan:  WIDGET_MAP[id]?.colSpan ?? 1,
   }));
   return { placements };
 }
@@ -51,6 +54,8 @@ function sanitizeStored(raw: unknown, role: UserRole): StoredLayout {
 
   const validSizes: WidgetSize[] = ['sm', 'md', 'lg', 'xl'];
 
+  const validColSpans: WidgetColSpan[] = [1, 2];
+
   const placements: WidgetPlacement[] = (obj.placements as unknown[])
     .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
     .filter((p) => typeof p.widgetId === 'string' && isValidWidgetId(p.widgetId))
@@ -59,6 +64,10 @@ function sanitizeStored(raw: unknown, role: UserRole): StoredLayout {
       col:      typeof p.col === 'number' ? p.col : 0,
       row:      typeof p.row === 'number' ? p.row : 0,
       size:     validSizes.includes(p.size as WidgetSize) ? (p.size as WidgetSize) : 'md',
+      // colSpan: fall back to the widget definition default for older stored layouts
+      colSpan:  validColSpans.includes(p.colSpan as WidgetColSpan)
+        ? (p.colSpan as WidgetColSpan)
+        : (WIDGET_MAP[p.widgetId as string]?.colSpan ?? 1),
     }));
 
   return { placements };
@@ -83,14 +92,15 @@ function writeToStorage(userId: string, layout: StoredLayout): void {
 }
 
 export type UseDashboardLayoutReturn = {
-  layout:         WidgetPlacement[];
-  isHydrated:     boolean;
-  addWidget:      (widgetId: string) => void;
-  removeWidget:   (widgetId: string) => void;
-  moveWidget:     (widgetId: string, col: number, row: number) => void;
-  resizeWidget:   (widgetId: string, size: WidgetSize) => void;
-  reorderWidgets: (newOrder: string[]) => void;
-  resetToDefaults: () => void;
+  layout:           WidgetPlacement[];
+  isHydrated:       boolean;
+  addWidget:        (widgetId: string) => void;
+  removeWidget:     (widgetId: string) => void;
+  moveWidget:       (widgetId: string, col: number, row: number) => void;
+  resizeWidget:     (widgetId: string, size: WidgetSize) => void;
+  resizePlacement:  (widgetId: string, size: WidgetSize, colSpan: WidgetColSpan) => void;
+  reorderWidgets:   (newOrder: string[]) => void;
+  resetToDefaults:  () => void;
 };
 
 export function useDashboardLayout(userId: string, role: UserRole): UseDashboardLayoutReturn {
@@ -130,7 +140,7 @@ export function useDashboardLayout(userId: string, role: UserRole): UseDashboard
       persist({
         placements: [
           ...stored.placements,
-          { widgetId, col: 0, row: maxRow + 1, size: widget?.defaultSize ?? 'md' },
+          { widgetId, col: 0, row: maxRow + 1, size: widget?.defaultSize ?? 'md', colSpan: widget?.colSpan ?? 1 },
         ],
       });
     },
@@ -168,6 +178,17 @@ export function useDashboardLayout(userId: string, role: UserRole): UseDashboard
     [stored, persist],
   );
 
+  const resizePlacement = useCallback(
+    (widgetId: string, size: WidgetSize, colSpan: WidgetColSpan) => {
+      persist({
+        placements: stored.placements.map((p) =>
+          p.widgetId === widgetId ? { ...p, size, colSpan } : p,
+        ),
+      });
+    },
+    [stored, persist],
+  );
+
   const reorderWidgets = useCallback(
     (newOrder: string[]) => {
       const ordered = newOrder
@@ -178,7 +199,8 @@ export function useDashboardLayout(userId: string, role: UserRole): UseDashboard
             widgetId: id,
             col:      i % 2,
             row:      Math.floor(i / 2),
-            size:     existing?.size ?? WIDGET_MAP[id]?.defaultSize ?? 'md',
+            size:     existing?.size    ?? WIDGET_MAP[id]?.defaultSize ?? 'md',
+            colSpan:  existing?.colSpan ?? WIDGET_MAP[id]?.colSpan    ?? 1,
           };
         });
       persist({ placements: ordered });
@@ -191,12 +213,13 @@ export function useDashboardLayout(userId: string, role: UserRole): UseDashboard
   }, [role, persist]);
 
   return {
-    layout:          stored.placements,
+    layout:           stored.placements,
     isHydrated,
     addWidget,
     removeWidget,
     moveWidget,
     resizeWidget,
+    resizePlacement,
     reorderWidgets,
     resetToDefaults,
   };

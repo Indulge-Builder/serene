@@ -10,6 +10,7 @@ import {
   useTransition,
 } from "react";
 import { Send } from "lucide-react";
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { MessageBubble } from "@/components/whatsapp/MessageBubble";
@@ -275,24 +276,32 @@ export function ConversationPanel({
           display:        "flex",
           alignItems:     "center",
           gap:            "var(--space-3)",
-          padding:        "0 var(--space-5)",
-          height:         "64px",
+          padding:        "var(--space-8) var(--space-8) var(--space-5)",
           flexShrink:     0,
           borderBottom:   "1px solid var(--theme-paper-border)",
           background:     "var(--theme-paper)",
         }}
       >
+        {/* Contact avatar */}
+        <Avatar
+          name={conversation.lead_name ?? conversation.phone}
+          size="sm"
+          style={{ flexShrink: 0 }}
+        />
+
         <div style={{ flex: 1, minWidth: 0 }}>
           <p
             style={{
-              fontFamily:   "var(--font-sans)",
+              fontFamily:   "var(--font-serif)",
+              fontStyle:    "italic",
               fontSize:     "var(--text-base)",
-              fontWeight:   "var(--weight-semibold)",
+              fontWeight:   "var(--weight-normal)",
               color:        "var(--theme-text-primary)",
               margin:       "0 0 1px",
               overflow:     "hidden",
               textOverflow: "ellipsis",
               whiteSpace:   "nowrap",
+              lineHeight:   1.2,
             }}
           >
             {conversation.lead_name ?? conversation.phone}
@@ -315,6 +324,7 @@ export function ConversationPanel({
             style={{
               display:      "inline-flex",
               alignItems:   "center",
+              flexShrink:   0,
               padding:      "2px var(--space-2)",
               borderRadius: "var(--radius-full)",
               background:   "var(--color-success)",
@@ -428,16 +438,16 @@ export function ConversationPanel({
           style={{
             padding:        "var(--space-4)",
             flexShrink:     0,
-            borderTop:      "1px solid var(--theme-paper-border)",
-            background:     "var(--theme-paper)",
             display:        "flex",
             alignItems:     "center",
             justifyContent: "center",
+            gap:            "var(--space-3)",
           }}
         >
           <p
             style={{
-              fontFamily: "var(--font-sans)",
+              fontFamily: "var(--font-serif)",
+              fontStyle:  "italic",
               fontSize:   "var(--text-sm)",
               color:      "var(--theme-text-tertiary)",
               margin:     0,
@@ -452,8 +462,6 @@ export function ConversationPanel({
           style={{
             padding:    "var(--space-3) var(--space-4)",
             flexShrink: 0,
-            borderTop:  "1px solid var(--theme-paper-border)",
-            background: "var(--theme-paper)",
           }}
         >
           <div
@@ -461,10 +469,11 @@ export function ConversationPanel({
               display:      "flex",
               alignItems:   "flex-end",
               gap:          "var(--space-2)",
-              background:   "var(--theme-paper-subtle)",
+              background:   "var(--theme-paper)",
               border:       "1px solid var(--theme-paper-border)",
               borderRadius: "var(--radius-lg)",
               padding:      "var(--space-2) var(--space-3)",
+              boxShadow:    "var(--shadow-2)",
               transition:   "border-color var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out)",
             }}
             onFocus={(e) => {
@@ -474,7 +483,7 @@ export function ConversationPanel({
             onBlur={(e) => {
               if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                 (e.currentTarget as HTMLDivElement).style.borderColor = "";
-                (e.currentTarget as HTMLDivElement).style.boxShadow   = "";
+                (e.currentTarget as HTMLDivElement).style.boxShadow   = "var(--shadow-2)";
               }
             }}
           >
@@ -553,16 +562,6 @@ export function ConversationPanel({
             </p>
           )}
 
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize:   "var(--text-2xs)",
-              color:      "var(--theme-text-tertiary)",
-              margin:     "var(--space-1) var(--space-1) 0",
-            }}
-          >
-            Enter to send · Shift+Enter for new line
-          </p>
         </div>
       )}
     </div>

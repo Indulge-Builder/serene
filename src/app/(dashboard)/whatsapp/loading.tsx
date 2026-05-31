@@ -1,119 +1,134 @@
-// Skeleton for the WhatsApp page — two-panel layout.
-// Renders immediately on navigation, replaced by the page once data is ready.
-
-const TOPBAR_HEIGHT = 56;
+// Skeleton — left rail (title + list) + full-height right pane.
 
 export default function WhatsAppLoading() {
   return (
-    <div
-      style={{
-        display:  "flex",
-        height:   `calc(100dvh - ${TOPBAR_HEIGHT}px)`,
-        overflow: "hidden",
-      }}
-    >
-      {/* Left panel skeleton */}
+    <main className="flex min-h-0 flex-1 overflow-hidden">
       <div
         style={{
           width:         "320px",
           flexShrink:    0,
           display:       "flex",
           flexDirection: "column",
-          background:    "var(--theme-paper-subtle)",
+          paddingTop:    "var(--space-8)",
+          paddingLeft:   "var(--space-8)",
+          background:    "var(--theme-paper)",
           borderRight:   "1px solid var(--theme-paper-border)",
         }}
       >
-        {/* Header skeleton */}
-        <div
-          style={{
-            display:      "flex",
-            alignItems:   "center",
-            gap:          "var(--space-3)",
-            padding:      "0 var(--space-5)",
-            height:       "64px",
-            flexShrink:   0,
-            borderBottom: "1px solid var(--theme-paper-border)",
-          }}
-        >
+        <div className="mb-6 flex shrink-0 items-center justify-between gap-4" style={{ paddingRight: "var(--space-4)" }}>
           <div
             className="skeleton"
             style={{
-              width:        "100px",
-              height:       "20px",
+              width:        "140px",
+              height:       "28px",
               borderRadius: "var(--radius-sm)",
             }}
           />
         </div>
 
-        {/* Search skeleton */}
-        <div style={{ padding: "var(--space-3) var(--space-4)" }}>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-3)",
+            marginRight: "var(--space-4)",
+            marginBottom: "var(--space-4)",
+          }}
+        >
           <div
-            className="skeleton"
             style={{
-              width:        "100%",
-              height:       "32px",
-              borderRadius: "var(--radius-md)",
+              flexShrink: 0,
+              padding: "var(--space-3) var(--space-4)",
+              border: "1px solid var(--theme-paper-border)",
+              borderRadius: "var(--radius-lg)",
+              boxShadow: "var(--shadow-1)",
             }}
-          />
-        </div>
-
-        {/* Conversation row skeletons */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-          {Array.from({ length: 6 }).map((_, i) => (
+          >
             <div
-              key={i}
+              className="skeleton"
               style={{
-                display:    "flex",
-                alignItems: "flex-start",
-                gap:        "var(--space-3)",
-                padding:    "var(--space-3) var(--space-4)",
-                animationDelay: `${i * 80}ms`,
+                width: "100%",
+                height: "32px",
+                borderRadius: "var(--radius-md)",
               }}
-            >
+            />
+          </div>
+
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              border: "1px solid var(--theme-paper-border)",
+              borderRadius: "var(--radius-lg)",
+              boxShadow: "var(--shadow-1)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+          <div
+            style={{
+              flexShrink: 0,
+              padding: "var(--space-3) var(--space-4) var(--space-2)",
+              borderBottom: "1px solid var(--theme-paper-border)",
+            }}
+          >
+            <div
+              className="skeleton"
+              style={{
+                width: "100px",
+                height: "10px",
+                borderRadius: "var(--radius-sm)",
+              }}
+            />
+          </div>
+          <div style={{ padding: "var(--space-1)" }}>
+            {Array.from({ length: 7 }).map((_, i) => (
               <div
-                className="skeleton"
+                key={i}
                 style={{
-                  width:        "8px",
-                  height:       "8px",
-                  borderRadius: "50%",
-                  marginTop:    "6px",
-                  flexShrink:   0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-3)",
+                  padding: "var(--space-3) var(--space-4)",
+                  animationDelay: `${Math.min(i * 35, 280)}ms`,
                 }}
-              />
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)" }}>
-                  <div
-                    className="skeleton"
-                    style={{
-                      width:        "60%",
-                      height:       "14px",
-                      borderRadius: "var(--radius-sm)",
-                    }}
-                  />
-                  <div
-                    className="skeleton"
-                    style={{
-                      width:        "40px",
-                      height:       "12px",
-                      borderRadius: "var(--radius-sm)",
-                    }}
-                  />
-                </div>
+              >
                 <div
                   className="skeleton"
                   style={{
-                    width:        "80px",
-                    height:       "12px",
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "var(--radius-md)",
+                    flexShrink: 0,
+                  }}
+                />
+                <div
+                  className="skeleton"
+                  style={{
+                    flex: 1,
+                    height: "14px",
                     borderRadius: "var(--radius-sm)",
                   }}
                 />
+                <div
+                  className="skeleton"
+                  style={{
+                    width: "36px",
+                    height: "12px",
+                    borderRadius: "var(--radius-sm)",
+                    flexShrink: 0,
+                  }}
+                />
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          </div>
         </div>
       </div>
 
-      {/* Right panel skeleton — empty state placeholder */}
       <div
         style={{
           flex:           1,
@@ -121,35 +136,37 @@ export default function WhatsAppLoading() {
           flexDirection:  "column",
           alignItems:     "center",
           justifyContent: "center",
-          gap:            "var(--space-4)",
-          background:     "var(--theme-paper)",
+          gap:            "var(--space-5)",
+          background:     "var(--theme-paper-subtle)",
         }}
       >
         <div
           className="skeleton"
           style={{
-            width:        "56px",
-            height:       "56px",
+            width:        "64px",
+            height:       "64px",
             borderRadius: "var(--radius-xl)",
           }}
         />
-        <div
-          className="skeleton"
-          style={{
-            width:        "160px",
-            height:       "24px",
-            borderRadius: "var(--radius-sm)",
-          }}
-        />
-        <div
-          className="skeleton"
-          style={{
-            width:        "220px",
-            height:       "14px",
-            borderRadius: "var(--radius-sm)",
-          }}
-        />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-2)" }}>
+          <div
+            className="skeleton"
+            style={{
+              width:        "150px",
+              height:       "24px",
+              borderRadius: "var(--radius-sm)",
+            }}
+          />
+          <div
+            className="skeleton"
+            style={{
+              width:        "200px",
+              height:       "14px",
+              borderRadius: "var(--radius-sm)",
+            }}
+          />
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

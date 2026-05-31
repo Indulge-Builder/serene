@@ -44,6 +44,16 @@ export function formatRelativeTime(date: Date | string): string {
  * < 60 min → "48m"
  * ≥ 60 min → "2h 34m"
  */
+/**
+ * Normalises PostgreSQL `time` strings (often `HH:MM:SS`) to `HH:MM` for UI + validation.
+ */
+export function normalizeTimeHHMM(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const match = trimmed.match(/^([01]\d|2[0-3]):([0-5]\d)/);
+  return match ? `${match[1]}:${match[2]}` : null;
+}
+
 export function formatDuration(minutes: number | null): string {
   if (minutes === null || minutes === undefined) return "—";
   const total = Math.round(minutes);

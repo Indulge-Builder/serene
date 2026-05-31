@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Columns } from 'lucide-react';
 import type { LeadWithAssignee } from '@/lib/services/leads-service';
-import { LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
+import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
+import type { LeadStatus } from '@/lib/types/database';
 import { CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
+import { getLeadSourceLabel } from '@/lib/constants/lead-sources';
 import { formatDate } from '@/lib/utils/dates';
 import { LEAD_COLUMN_MAP, type LeadColumnId } from '@/lib/constants/lead-columns';
 import { useLeadColumnPreferences } from '@/hooks/useLeadColumnPreferences';
@@ -31,27 +33,14 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
     [columnOrder, visibleColumns],
   );
 
-  const statusCounts = useMemo(
-    () => ({
-      new:    leads.filter((l) => l.status === 'new').length,
-      active: leads.filter((l) =>
-        (['touched', 'in_discussion', 'nurturing'] as const).includes(
-          l.status as 'touched' | 'in_discussion' | 'nurturing',
-        ),
-      ).length,
-      won:  leads.filter((l) => l.status === 'won').length,
-      lost: leads.filter((l) =>
-        (['lost', 'junk'] as const).includes(l.status as 'lost' | 'junk'),
-      ).length,
-    }),
-    [leads],
-  );
+  const statusCounts = useMemo(() => {
+    const counts = {} as Record<LeadStatus, number>;
+    for (const status of LEAD_STATUSES) counts[status] = 0;
+    for (const lead of leads) counts[lead.status] += 1;
+    return counts;
+  }, [leads]);
 
-  const hasStatusPills =
-    statusCounts.new > 0 ||
-    statusCounts.active > 0 ||
-    statusCounts.won > 0 ||
-    statusCounts.lost > 0;
+  const hasStatusPills = LEAD_STATUSES.some((s) => statusCounts[s] > 0);
 
   // Section 11.5: content enters opacity 0→1 + y 4px→0 at 250ms ease-out-expo
   // with 100ms delay (overlap with skeleton exit at 150ms ease-in)
@@ -84,18 +73,18 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
             className="hidden md:flex items-center gap-2 shrink-0"
             aria-label="Lead status summary"
           >
-            {statusCounts.new > 0 && (
-              <StatusSummaryPill label="New" count={statusCounts.new} variant="neutral" />
-            )}
-            {statusCounts.active > 0 && (
-              <StatusSummaryPill label="Active" count={statusCounts.active} variant="accent" />
-            )}
-            {statusCounts.won > 0 && (
-              <StatusSummaryPill label="Won" count={statusCounts.won} variant="success" />
-            )}
-            {statusCounts.lost > 0 && (
-              <StatusSummaryPill label="Lost" count={statusCounts.lost} variant="danger" />
-            )}
+            {LEAD_STATUSES.map((status) => {
+              const count = statusCounts[status];
+              if (count === 0) return null;
+              return (
+                <StatusBadge
+                  key={status}
+                  variant={LEAD_STATUS_BADGE[status]}
+                  label={LEAD_STATUS_LABELS[status]}
+                  count={count}
+                />
+              );
+            })}
           </div>
         )}
 
@@ -137,17 +126,6 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
           />
         </div>
 
-        {/* Row count — reflects server-filtered page */}
-        <span
-          style={{
-            fontSize:   'var(--text-xs)',
-            color:      'var(--theme-text-tertiary)',
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-          }}
-        >
-          {leads.length} lead{leads.length !== 1 ? 's' : ''} this page
-        </span>
       </div>
 
       {/* Table */}
@@ -237,23 +215,30 @@ function LeadRow({
   lead: LeadWithAssignee;
   visibleColumns: LeadColumnId[];
 }) {
-  const router      = useRouter();
+  const router       = useRouter();
+  const [hovered, setHovered] = useState(false);
   const badgeVariant = LEAD_STATUS_BADGE[lead.status];
-  const fullName    = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
+  const fullName     = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
 
   return (
     <tr
       onClick={() => router.push(`/leads/${lead.slug ?? lead.id}`)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         borderBottom: '1px solid var(--theme-paper-border)',
-        transition:   'background var(--duration-fast) var(--ease-in-out)',
         cursor:       'pointer',
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = 'var(--theme-paper-subtle)'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = ''; }}
     >
       {visibleColumns.map((colId) => (
-        <LeadCell key={colId} colId={colId} lead={lead} fullName={fullName} badgeVariant={badgeVariant} />
+        <LeadCell
+          key={colId}
+          colId={colId}
+          lead={lead}
+          fullName={fullName}
+          badgeVariant={badgeVariant}
+          statusHighlighted={hovered}
+        />
       ))}
     </tr>
   );
@@ -262,18 +247,18 @@ function LeadRow({
 // ─────────────────────────────────────────────
 // Individual cell renderer — exhaustive switch keeps column logic co-located
 // ─────────────────────────────────────────────
-type BadgeVariant = 'neutral' | 'info' | 'warning' | 'success' | 'accent' | 'danger';
-
 function LeadCell({
   colId,
   lead,
   fullName,
   badgeVariant,
+  statusHighlighted,
 }: {
-  colId:        LeadColumnId;
-  lead:         LeadWithAssignee;
-  fullName:     string;
-  badgeVariant: BadgeVariant;
+  colId:              LeadColumnId;
+  lead:               LeadWithAssignee;
+  fullName:           string;
+  badgeVariant:       string;
+  statusHighlighted?: boolean;
 }) {
   const baseCell: React.CSSProperties = {
     padding:    'var(--space-3) var(--space-4)',
@@ -284,7 +269,11 @@ function LeadCell({
     case 'status':
       return (
         <td style={baseCell}>
-          <StatusBadge variant={badgeVariant} label={LEAD_STATUS_LABELS[lead.status]} />
+          <StatusBadge
+            variant={badgeVariant}
+            label={LEAD_STATUS_LABELS[lead.status]}
+            highlighted={statusHighlighted}
+          />
         </td>
       );
 
@@ -319,7 +308,7 @@ function LeadCell({
     case 'source':
       return (
         <td style={{ ...baseCell, fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
-          {lead.utm_source ?? lead.platform ?? '—'}
+          {getLeadSourceLabel(lead.utm_source ?? lead.platform)}
         </td>
       );
 
@@ -364,83 +353,38 @@ function LeadCell({
 }
 
 // ─────────────────────────────────────────────
-// Toolbar status summary pills (current page rows)
+// Status badge — .status-pill--lead-* from design-tokens.css (theme-invariant)
 // ─────────────────────────────────────────────
-type SummaryPillVariant = 'neutral' | 'accent' | 'success' | 'danger';
+const STATUS_PILL_ACCENT_RING =
+  '0 0 0 2px var(--theme-paper), 0 0 0 4px var(--theme-accent)';
 
-function StatusSummaryPill({
+function StatusBadge({
+  variant,
   label,
   count,
-  variant,
+  highlighted = false,
 }: {
+  variant: string;
   label:   string;
-  count:   number;
-  variant: SummaryPillVariant;
+  count?:  number;
+  /** Row hover — accent ring on the pill, no row background fill. */
+  highlighted?: boolean;
 }) {
   return (
-    <span className={`status-pill status-pill--${variant}`}>
-      {label}
-      <span aria-hidden="true">·</span>
-      {count}
-    </span>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Status badge
-// ─────────────────────────────────────────────
-const BADGE_STYLES: Record<BadgeVariant, { bg: string; text: string; border: string }> = {
-  neutral: {
-    bg:     'var(--color-neutral-light)',
-    text:   'var(--color-neutral-text)',
-    border: 'var(--color-neutral-light)',
-  },
-  info: {
-    bg:     'var(--color-info-light)',
-    text:   'var(--color-info-text)',
-    border: 'var(--color-info-light)',
-  },
-  warning: {
-    bg:     'var(--color-warning-light)',
-    text:   'var(--color-warning-text)',
-    border: 'var(--color-warning-light)',
-  },
-  success: {
-    bg:     'var(--color-success-light)',
-    text:   'var(--color-success-text)',
-    border: 'var(--color-success-light)',
-  },
-  accent: {
-    bg:     'var(--theme-accent-surface)',
-    text:   'var(--theme-accent)',
-    border: 'var(--theme-accent-surface)',
-  },
-  danger: {
-    bg:     'var(--color-danger-light)',
-    text:   'var(--color-danger-text)',
-    border: 'var(--color-danger-light)',
-  },
-};
-
-function StatusBadge({ variant, label }: { variant: BadgeVariant; label: string }) {
-  const styles = BADGE_STYLES[variant];
-  return (
     <span
+      className={`status-pill status-pill--${variant}`}
       style={{
-        display:      'inline-flex',
-        alignItems:   'center',
-        padding:      '0.125rem 0.625rem',
-        borderRadius: 'var(--radius-full)',
-        border:       `1px solid ${styles.border}`,
-        background:   styles.bg,
-        color:        styles.text,
-        fontSize:     'var(--text-xs)',
-        fontWeight:   'var(--weight-medium)',
-        whiteSpace:   'nowrap',
-        boxShadow:    'var(--shadow-1)',
+        boxShadow: highlighted ? STATUS_PILL_ACCENT_RING : undefined,
+        transition: 'box-shadow var(--duration-fast) var(--ease-in-out)',
       }}
     >
       {label}
+      {count !== undefined && (
+        <>
+          <span aria-hidden="true">·</span>
+          {count}
+        </>
+      )}
     </span>
   );
 }

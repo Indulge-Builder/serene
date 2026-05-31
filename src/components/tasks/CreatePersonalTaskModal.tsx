@@ -27,8 +27,9 @@ import {
   useCallback,
   KeyboardEvent,
 } from 'react';
-import { Plus, X, ChevronDown } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
+import { DatePicker } from '@/components/ui/DatePicker';
 import { createPersonalTaskAction } from '@/lib/actions/tasks';
 import { toast } from '@/lib/toast';
 import { CreatePersonalTaskSchema } from '@/lib/validations/task-schemas';
@@ -161,14 +162,13 @@ export function CreatePersonalTaskModal({
   onCreated,
 }: CreatePersonalTaskModalProps) {
   // ── Form state ─────────────────────────────────────────────────────────────
-  const [title,          setTitle]          = useState('');
-  const [titleError,     setTitleError]     = useState('');
-  const [priority,       setPriority]       = useState<TaskPriority>('normal');
-  const [duePreset,      setDuePreset]      = useState<'today' | 'tomorrow' | 'next-week' | null>(null);
-  const [dueSpecific,    setDueSpecific]    = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [notes,          setNotes]          = useState('');
-  const [showNotes,      setShowNotes]      = useState(false);
+  const [title,      setTitle]      = useState('');
+  const [titleError, setTitleError] = useState('');
+  const [priority,   setPriority]   = useState<TaskPriority>('normal');
+  const [duePreset,  setDuePreset]  = useState<'today' | 'tomorrow' | 'next-week' | null>(null);
+  const [dueDate,    setDueDate]    = useState<Date | null>(null);
+  const [notes,      setNotes]      = useState('');
+  const [showNotes,  setShowNotes]  = useState(false);
 
   const [tags,       setTags]       = useState<string[]>([]);
   const [tagInput,   setTagInput]   = useState('');
@@ -184,8 +184,7 @@ export function CreatePersonalTaskModal({
       setTitleError('');
       setPriority('normal');
       setDuePreset(null);
-      setDueSpecific('');
-      setShowDatePicker(false);
+      setDueDate(null);
       setNotes('');
       setShowNotes(false);
       setTags([]);
@@ -202,12 +201,9 @@ export function CreatePersonalTaskModal({
     el.style.height = `${el.scrollHeight}px`;
   }
 
-  // ── Resolve due_at from preset or specific ─────────────────────────────────
+  // ── Resolve due_at from preset or specific date ────────────────────────────
   function getResolvedDueAt(): string | null {
-    if (dueSpecific) {
-      // Native datetime-local value is "YYYY-MM-DDTHH:mm" in local time
-      return new Date(dueSpecific).toISOString();
-    }
+    if (dueDate) return dueDate.toISOString();
     if (duePreset === 'today')     return istEndOfDay(0);
     if (duePreset === 'tomorrow')  return istEndOfDay(1);
     if (duePreset === 'next-week') return istEndOfDay(7);
@@ -217,14 +213,13 @@ export function CreatePersonalTaskModal({
   // ── Preset chip handler ────────────────────────────────────────────────────
   function handlePresetClick(preset: 'today' | 'tomorrow' | 'next-week') {
     setDuePreset((prev) => prev === preset ? null : preset);
-    setDueSpecific('');       // deselect specific when preset chosen
-    setShowDatePicker(false); // collapse picker
+    setDueDate(null); // deselect specific when preset chosen
   }
 
-  // ── Specific date change ───────────────────────────────────────────────────
-  function handleSpecificDateChange(value: string) {
-    setDueSpecific(value);
-    if (value) setDuePreset(null); // deselect preset when specific date chosen
+  // ── DatePicker change ──────────────────────────────────────────────────────
+  function handleDatePickerChange(date: Date | null) {
+    setDueDate(date);
+    if (date) setDuePreset(null); // deselect preset when specific date chosen
   }
 
   // ── Tag input ──────────────────────────────────────────────────────────────
@@ -305,11 +300,7 @@ export function CreatePersonalTaskModal({
       toast.success('Task created');
 
       // Build a Task-shaped object from known fields so parent can prepend
-      // without a re-fetch. Server returns only taskId; remaining fields
-      // are filled with defaults matching what the DB insert would produce.
-      // assigned_to and created_by are non-nullable in the Task type — the
-      // server action assigns them to the caller's id; we use an empty string
-      // as a safe placeholder since the parent only reads title/priority/status.
+      // without a re-fetch. Server returns assignee ids from the insert.
       const syntheticTask: Task = {
         id:            result.data!.taskId,
         title:         parsed.data.title,
@@ -317,11 +308,11 @@ export function CreatePersonalTaskModal({
         priority:      parsed.data.priority,
         status:        'to_do',
         due_at:        parsed.data.due_at ?? null,
-        assigned_to:   '',
-        created_by:    '',
+        assigned_to:   result.data!.assignedTo,
+        created_by:    result.data!.createdBy,
         group_id:      null,
         task_category: 'personal',
-        task_type:     'general_follow_up',
+        task_type:     'other',
         module:        'gia',
         completed_at:  null,
         attachments:   [],
@@ -334,7 +325,7 @@ export function CreatePersonalTaskModal({
       onClose();
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPending, title, priority, duePreset, dueSpecific, notes, tags]);
+  }, [isPending, title, priority, duePreset, dueDate, notes, tags]);
 
   // ── Priority colours (from TASK_PRIORITY constants) ────────────────────────
   const PRIORITY_CHIPS: { value: TaskPriority; label: string; color: string }[] = [
@@ -500,70 +491,17 @@ export function CreatePersonalTaskModal({
           />
         </div>
 
-        {/* "Or pick a specific date & time" toggle */}
-        <button
-          type="button"
-          onClick={() => setShowDatePicker((prev) => !prev)}
-          style={{
-            display:     'inline-flex',
-            alignItems:  'center',
-            gap:         'var(--space-1)',
-            marginTop:   'var(--space-2)',
-            background:  'none',
-            border:      'none',
-            padding:     0,
-            fontFamily:  'var(--font-sans)',
-            fontSize:    'var(--text-xs)',
-            color:       'var(--theme-text-tertiary)',
-            cursor:      'pointer',
-            transition:  'color var(--duration-fast) var(--ease-in-out)',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-secondary)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)'; }}
-        >
-          <ChevronDown
-            style={{
-              width:     12,
-              height:    12,
-              strokeWidth: 1.5,
-              transform: showDatePicker ? 'rotate(0deg)' : 'rotate(-90deg)',
-              transition: 'transform var(--duration-base) var(--ease-out-expo)',
-            }}
+        {/* Specific date + time picker */}
+        <div style={{ marginTop: 'var(--space-2)' }}>
+          <DatePicker
+            showTime
+            value={dueDate}
+            onChange={handleDatePickerChange}
+            placeholder="Or pick a specific date & time…"
+            disabled={isPending}
+            aria-label="Pick a specific due date and time"
           />
-          Or pick a specific date &amp; time…
-        </button>
-
-        {/* Specific datetime input */}
-        {showDatePicker && (
-          <input
-            type="datetime-local"
-            value={dueSpecific}
-            onChange={(e) => handleSpecificDateChange(e.target.value)}
-            style={{
-              display:      'block',
-              marginTop:    'var(--space-2)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-sm)',
-              background:   'var(--theme-paper)',
-              fontFamily:   'var(--font-sans)',
-              fontSize:     'var(--text-sm)',
-              color:        'var(--theme-text-primary)',
-              padding:      'var(--space-2) var(--space-3)',
-              outline:      'none',
-              caretColor:   'var(--theme-accent)',
-              width:        '100%',
-              boxSizing:    'border-box',
-            }}
-            onFocus={(e) => {
-              e.target.style.borderColor = 'var(--theme-accent)';
-              e.target.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--theme-accent) 10%, transparent)';
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = 'var(--theme-paper-border)';
-              e.target.style.boxShadow = '';
-            }}
-          />
-        )}
+        </div>
       </div>
 
       {/* ─── Priority ────────────────────────────────────────────────────── */}

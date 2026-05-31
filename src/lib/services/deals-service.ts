@@ -1,0 +1,173 @@
+import { createClient } from '@/lib/supabase/server';
+import { isGiaDomain } from '@/lib/constants/domains';
+import type { UserRole, AppDomain, DealFilters } from '@/lib/types/database';
+import type { LeadWithAssignee } from '@/lib/services/leads-service';
+
+// ─────────────────────────────────────────────
+// Result types
+// ─────────────────────────────────────────────
+
+export type DealWithAssignee = LeadWithAssignee;
+
+export type DealsResult = {
+  deals:      DealWithAssignee[];
+  totalCount: number;
+};
+
+export type DealsSummary = {
+  total_deals:      number;
+  total_revenue:    number;
+  membership_count: number;
+  retail_count:     number;
+};
+
+// ─────────────────────────────────────────────
+// getDealsByRole — role-scoped won leads with deal_amount
+//
+// Security contract (mirrors getLeadsByRole exactly):
+//   - agent: assigned_to = auth.uid() applied first, DealFilters.agent_id ignored
+//   - manager: domain constraint applied before any filter
+//   - admin/founder: optional domain/agent_id from DealFilters
+//
+// Structural constraints (never conditional):
+//   - status = 'won'
+//   - deal_amount IS NOT NULL
+//
+// Count: { count: 'exact', head: false } — one round trip, never two queries.
+// ─────────────────────────────────────────────
+export async function getDealsByRole(
+  role:    UserRole,
+  userId:  string,
+  domain:  AppDomain,
+  filters: DealFilters = {
+    search:    null,
+    domain:    null,
+    deal_type: null,
+    agent_id:  null,
+    date_from: null,
+    date_to:   null,
+    page:      1,
+    pageSize:  50,
+  },
+): Promise<DealsResult> {
+  const supabase = await createClient();
+
+  const page     = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.max(1, Math.min(200, filters.pageSize ?? 50));
+  const offset   = (page - 1) * pageSize;
+
+  let query = supabase
+    .from('leads')
+    .select('*, assignee:profiles!leads_assigned_to_fkey(full_name)', { count: 'exact', head: false })
+    .is('archived_at', null)
+    .eq('status', 'won')
+    .not('deal_amount', 'is', null)
+    .order('status_changed_at', { ascending: false });
+
+  // Role-level constraints — applied before any filter, cannot be overridden
+  if (role === 'agent') {
+    query = query.eq('assigned_to', userId);
+    // DealFilters.agent_id intentionally NOT applied — role constraint wins
+  } else if (role === 'manager') {
+    query = query.eq('domain', domain);
+    if (filters.agent_id) {
+      query = query.eq('assigned_to', filters.agent_id);
+    }
+  } else {
+    // admin / founder — optional domain slice (Gia domains only); agent_id honoured
+    if (filters.domain && isGiaDomain(filters.domain)) {
+      query = query.eq('domain', filters.domain);
+    }
+    if (filters.agent_id) {
+      query = query.eq('assigned_to', filters.agent_id);
+    }
+  }
+
+  // Optional filters
+  if (filters.deal_type) {
+    query = query.eq('deal_type', filters.deal_type);
+  }
+
+  if (filters.date_from) {
+    query = query.gte('status_changed_at', filters.date_from);
+  }
+
+  if (filters.date_to) {
+    const endOfDay = filters.date_to.replace(/T.*$/, 'T23:59:59.999Z');
+    query = query.lte('status_changed_at', endOfDay);
+  }
+
+  if (filters.search) {
+    const term = filters.search.trim().toLowerCase();
+    if (term) {
+      query = query.or(
+        `first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`,
+      );
+    }
+  }
+
+  // Pagination — always applied
+  query = query.range(offset, offset + pageSize - 1);
+
+  const { data, error, count } = await query;
+  if (error || !data) return { deals: [], totalCount: 0 };
+  return { deals: data as DealWithAssignee[], totalCount: count ?? 0 };
+}
+
+// ─────────────────────────────────────────────
+// getDealsSummary — calls get_deals_summary RPC
+//
+// Same role+filter constraints as getDealsByRole — the RPC mirrors them exactly.
+// Returns aggregate counts for the DealsSummaryStrip.
+// ─────────────────────────────────────────────
+export async function getDealsSummary(
+  role:    UserRole,
+  userId:  string,
+  domain:  AppDomain,
+  filters: DealFilters,
+): Promise<DealsSummary> {
+  const supabase = await createClient();
+
+  // p_caller_domain — always the server-verified profile domain.
+  // Used by the RPC for the manager role-gate: l.domain = p_caller_domain.
+  // Never derived from filters — a tampered filter.domain cannot redirect this.
+  const rpcCallerDomain: string = domain;
+
+  // p_filter_domain — optional admin/founder domain slice from the URL filter.
+  // Ignored by the RPC when p_role = 'manager' (already gated by p_caller_domain).
+  const rpcFilterDomain: string | null =
+    role !== 'agent' && role !== 'manager' && filters.domain && isGiaDomain(filters.domain)
+      ? filters.domain
+      : null;
+
+  // For agent role, pass their own userId as the agent_id gate.
+  const rpcAgentId = role === 'agent' ? userId : (filters.agent_id ?? null);
+
+  const dateFrom = filters.date_from ?? null;
+  const dateTo   = filters.date_to
+    ? filters.date_to.replace(/T.*$/, 'T23:59:59.999Z')
+    : null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc('get_deals_summary', {
+    p_role:          role,
+    p_caller_domain: rpcCallerDomain,
+    p_filter_domain: rpcFilterDomain,
+    p_agent_id:      rpcAgentId,
+    p_deal_type:     filters.deal_type ?? null,
+    p_date_from:     dateFrom,
+    p_date_to:       dateTo,
+  });
+
+  if (error || !data || !Array.isArray(data) || data.length === 0) {
+    return { total_deals: 0, total_revenue: 0, membership_count: 0, retail_count: 0 };
+  }
+
+  const row = data[0];
+  return {
+    total_deals:      Number(row.total_deals      ?? 0),
+    total_revenue:    Number(row.total_revenue     ?? 0),
+    membership_count: Number(row.membership_count  ?? 0),
+    retail_count:     Number(row.retail_count      ?? 0),
+  };
+}

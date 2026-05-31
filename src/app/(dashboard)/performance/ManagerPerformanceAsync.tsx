@@ -11,27 +11,36 @@ import {
   type PerformancePeriod,
 } from '@/lib/services/performance-service';
 import type { AppDomain }          from '@/lib/types/database';
+import { getFirstAgentInPerformanceRosterList } from '@/lib/utils/performance-roster-display';
 import { ManagerPerformancePanel } from '@/components/performance/ManagerPerformancePanel';
 
 type Props = {
-  domain: AppDomain;
-  period: PerformancePeriod;
+  domain:      AppDomain;
+  period:      PerformancePeriod;
+  customFrom?: string;
+  customTo?:   string;
+  // When true (founder/admin all-domains view), roster shows all agents across all domains.
+  allDomains?: boolean;
 };
 
-export async function ManagerPerformanceAsync({ domain, period }: Props) {
-  const { from, to } = getPeriodDateRange(period);
+export async function ManagerPerformanceAsync({ domain, period, customFrom, customTo, allDomains = false }: Props) {
+  const range    = getPeriodDateRange(period);
+  const from     = (period === 'custom' && customFrom) ? customFrom : range.from;
+  const to       = (period === 'custom' && customTo)   ? customTo   : range.to;
 
-  // Fetch roster first — we need roster[0].id to pre-fetch detail.
-  // Roster query is fast (profiles + lead aggregates, capped at domain agent count).
-  const agentRoster = await getAgentRosterPerformance(domain, from, to);
+  // Roster: null domain → all agents across all domains (founder/admin).
+  const rosterDomain = allDomains ? null : domain;
+  const agentRoster  = await getAgentRosterPerformance(rosterDomain, from, to);
 
-  const firstAgentId = agentRoster.length > 0 ? agentRoster[0].id : null;
+  const firstAgentId = getFirstAgentInPerformanceRosterList(agentRoster, {
+    allDomains,
+    domain,
+  });
 
-  // Pre-fetch the top agent's detail metrics server-side so the right panel
-  // arrives with real data on first paint — no skeleton flash for the default selection.
-  // Guard: never call getAgentDetailMetrics with a null/undefined id.
+  // Pre-fetch top agent's detail — no domain restriction for founder/admin.
+  const detailDomain = allDomains ? null : domain;
   const initialDetailMetrics = firstAgentId
-    ? await getAgentDetailMetrics(firstAgentId, domain, from, to)
+    ? await getAgentDetailMetrics(firstAgentId, detailDomain, from, to)
     : null;
 
   return (
@@ -40,8 +49,11 @@ export async function ManagerPerformanceAsync({ domain, period }: Props) {
       agentRoster={agentRoster}
       domain={domain}
       period={period}
+      customFrom={(period === 'custom' && customFrom) ? customFrom : undefined}
+      customTo={(period === 'custom' && customTo)     ? customTo   : undefined}
       initialAgentId={firstAgentId}
       initialDetailMetrics={initialDetailMetrics}
+      allDomains={allDomains}
     />
   );
 }

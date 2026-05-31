@@ -1,12 +1,9 @@
 'use client';
 
 import React from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  SLOW_DURATION,
-  EASE_SPRING,
-} from '@/lib/constants/motion';
+import { SLOW_DURATION, EASE_SPRING, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 export interface TaskDotMeta {
   count: number;
@@ -20,27 +17,30 @@ export interface CalendarProps {
   onSelect: (date: Date) => void;
   minDate?: Date;
   maxDate?: Date;
-  /**
-   * Optional per-day task indicators. Keys are local-date ISO strings (YYYY-MM-DD).
-   * When provided, day cells expand to 44px height to accommodate a 4px dot below
-   * the day number. When undefined (default), the calendar renders unchanged.
-   */
   taskDots?: Record<string, TaskDotMeta>;
   className?: string;
   style?: React.CSSProperties;
 }
 
 function localDateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const y   = d.getFullYear();
+  const m   = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
 const MONTHS = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
+  'January', 'February', 'March', 'April',
+  'May', 'June', 'July', 'August',
+  'September', 'October', 'November', 'December',
+];
+
+const MONTHS_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr',
+  'May', 'Jun', 'Jul', 'Aug',
+  'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
 function isSameDay(a: Date, b: Date): boolean {
@@ -53,9 +53,182 @@ function isBetween(d: Date, start: Date, end: Date): boolean {
   return d > start && d < end;
 }
 
-function startOfMonth(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1);
+// ─── Year / Month Picker ───────────────────────────────────────────────────────
+
+interface PickerProps {
+  year:     number;
+  month:    number;
+  onPick:   (year: number, month: number) => void;
+  onClose:  () => void;
 }
+
+function YearMonthPicker({ year, month, onPick, onClose }: PickerProps) {
+  const thisYear = new Date().getFullYear();
+  // 12-year window: 4 before current year, 7 after
+  const years = Array.from({ length: 12 }, (_, i) => thisYear - 4 + i);
+
+  return (
+    <motion.div
+      key="picker"
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -6 }}
+      transition={{ duration: 0.22, ease: EASE_OUT_EXPO }}
+      style={{
+        position:      'absolute',
+        inset:         0,
+        background:    'var(--theme-paper)',
+        borderRadius:  'inherit',
+        zIndex:        10,
+        display:       'flex',
+        flexDirection: 'column',
+        overflow:      'hidden',
+      }}
+    >
+      {/* Header */}
+      <div style={{
+        display:        'flex',
+        alignItems:     'center',
+        justifyContent: 'space-between',
+        padding:        'var(--space-4) var(--space-4) var(--space-3)',
+        borderBottom:   '1px solid var(--theme-paper-border)',
+      }}>
+        <span style={{
+          fontFamily:  'var(--font-serif)',
+          fontSize:    'var(--text-base)',
+          fontWeight:  'var(--weight-normal)',
+          color:       'var(--theme-text-primary)',
+          letterSpacing: 'var(--tracking-tight)',
+        }}>
+          Jump to
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close picker"
+          style={{
+            display:        'flex',
+            alignItems:     'center',
+            justifyContent: 'center',
+            width:          26,
+            height:         26,
+            border:         'none',
+            background:     'var(--theme-paper-subtle)',
+            borderRadius:   'var(--radius-sm)',
+            color:          'var(--theme-text-tertiary)',
+            cursor:         'pointer',
+            transition:     'var(--transition-hover)',
+          }}
+        >
+          <ChevronDown style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+
+        {/* Year section */}
+        <div>
+          <p style={{
+            fontFamily:    'var(--font-sans)',
+            fontSize:      'var(--text-2xs)',
+            fontWeight:    'var(--weight-semibold)',
+            letterSpacing: 'var(--tracking-widest)',
+            textTransform: 'uppercase',
+            color:         'var(--theme-text-tertiary)',
+            margin:        '0 0 var(--space-2)',
+          }}>
+            Year
+          </p>
+          <div style={{
+            display:             'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap:                 'var(--space-1)',
+          }}>
+            {years.map((y) => {
+              const active = y === year;
+              return (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => onPick(y, month)}
+                  style={{
+                    padding:      'var(--space-2) 0',
+                    borderRadius: 'var(--radius-sm)',
+                    border:       active ? '1px solid var(--theme-accent)' : '1px solid transparent',
+                    background:   active ? 'var(--theme-accent-surface)' : 'var(--theme-paper-subtle)',
+                    color:        active ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
+                    fontFamily:   'var(--font-sans)',
+                    fontSize:     'var(--text-xs)',
+                    fontWeight:   active ? 'var(--weight-semibold)' : 'var(--weight-normal)',
+                    cursor:       'pointer',
+                    textAlign:    'center',
+                    transition:   'var(--transition-hover)',
+                    letterSpacing: active ? 'var(--tracking-wide)' : '0',
+                  }}
+                >
+                  {y}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div style={{ height: 1, background: 'var(--theme-paper-border)' }} />
+
+        {/* Month section */}
+        <div>
+          <p style={{
+            fontFamily:    'var(--font-sans)',
+            fontSize:      'var(--text-2xs)',
+            fontWeight:    'var(--weight-semibold)',
+            letterSpacing: 'var(--tracking-widest)',
+            textTransform: 'uppercase',
+            color:         'var(--theme-text-tertiary)',
+            margin:        '0 0 var(--space-2)',
+          }}>
+            Month
+          </p>
+          <div style={{
+            display:             'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap:                 'var(--space-1)',
+          }}>
+            {MONTHS_SHORT.map((label, idx) => {
+              const active = idx === month;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => { onPick(year, idx); onClose(); }}
+                  style={{
+                    padding:      'var(--space-2) 0',
+                    borderRadius: 'var(--radius-sm)',
+                    border:       active ? '1px solid var(--theme-accent)' : '1px solid transparent',
+                    background:   active ? 'var(--theme-accent)' : 'var(--theme-paper-subtle)',
+                    color:        active ? 'var(--theme-accent-fg)' : 'var(--theme-text-secondary)',
+                    fontFamily:   'var(--font-sans)',
+                    fontSize:     'var(--text-xs)',
+                    fontWeight:   active ? 'var(--weight-semibold)' : 'var(--weight-normal)',
+                    cursor:       'pointer',
+                    textAlign:    'center',
+                    transition:   'var(--transition-hover)',
+                    letterSpacing: 'var(--tracking-wide)',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Calendar ─────────────────────────────────────────────────────────────────
 
 export function Calendar({
   value,
@@ -70,20 +243,26 @@ export function Calendar({
 }: CalendarProps) {
   const hasTaskDots = taskDots !== undefined;
   const today = new Date();
+
   const [current, setCurrent] = React.useState(() => {
     const base = value ?? today;
     return new Date(base.getFullYear(), base.getMonth(), 1);
   });
-  const [direction, setDirection] = React.useState<1 | -1>(1);
+  const [direction,  setDirection]  = React.useState<1 | -1>(1);
+  const [pickerOpen, setPickerOpen] = React.useState(false);
 
   function navigate(delta: 1 | -1) {
     setDirection(delta);
     setCurrent((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
   }
 
-  const year = current.getFullYear();
-  const month = current.getMonth();
-  const firstDay = startOfMonth(current).getDay();
+  function handlePickerPick(y: number, m: number) {
+    setCurrent(new Date(y, m, 1));
+  }
+
+  const year        = current.getFullYear();
+  const month       = current.getMonth();
+  const firstDay    = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   const cells: (Date | null)[] = [];
@@ -99,18 +278,17 @@ export function Calendar({
         padding:      'var(--space-4)',
         width:        260,
         userSelect:   'none',
+        position:     'relative',
         ...style,
       }}
     >
-      {/* Header */}
-      <div
-        style={{
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: 'space-between',
-          marginBottom:   'var(--space-3)',
-        }}
-      >
+      {/* ── Header ──────────────────────────────────────────────────── */}
+      <div style={{
+        display:        'flex',
+        alignItems:     'center',
+        justifyContent: 'space-between',
+        marginBottom:   'var(--space-3)',
+      }}>
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -125,22 +303,56 @@ export function Calendar({
             background:     'transparent',
             borderRadius:   'var(--radius-sm)',
             cursor:         'pointer',
-            color:          'var(--theme-text-secondary)',
+            color:          'var(--theme-text-tertiary)',
             transition:     'var(--transition-hover)',
           }}
         >
-          <ChevronLeft style={{ width: 14, height: 14, strokeWidth: 1.5 }} aria-hidden="true" />
+          <ChevronLeft style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
         </button>
 
-        <span
+        {/* Month + Year — clickable */}
+        <button
+          type="button"
+          onClick={() => setPickerOpen((v) => !v)}
+          aria-label="Pick month and year"
+          aria-expanded={pickerOpen}
           style={{
-            fontSize:   'var(--text-sm)',
-            fontWeight: 'var(--weight-semibold)',
-            color:      'var(--theme-text-primary)',
+            display:       'flex',
+            alignItems:    'center',
+            gap:           'var(--space-1)',
+            border:        'none',
+            background:    'transparent',
+            padding:       'var(--space-1) var(--space-2)',
+            borderRadius:  'var(--radius-sm)',
+            cursor:        'pointer',
+            transition:    'var(--transition-hover)',
           }}
         >
-          {MONTHS[month]} {year}
-        </span>
+          <span style={{
+            fontFamily:    'var(--font-sans)',
+            fontSize:      'var(--text-sm)',
+            fontWeight:    'var(--weight-semibold)',
+            color:         'var(--theme-text-primary)',
+            letterSpacing: 'var(--tracking-tight)',
+          }}>
+            {MONTHS[month]}
+          </span>
+          <span style={{
+            fontFamily:  'var(--font-mono)',
+            fontSize:    'var(--text-xs)',
+            color:       'var(--theme-text-tertiary)',
+            fontWeight:  'var(--weight-normal)',
+          }}>
+            {year}
+          </span>
+          <motion.span
+            animate={{ rotate: pickerOpen ? 180 : 0 }}
+            transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
+            style={{ display: 'flex', alignItems: 'center', color: 'var(--theme-text-tertiary)', marginLeft: 1 }}
+          >
+            <ChevronDown style={{ width: 11, height: 11, strokeWidth: 2 }} />
+          </motion.span>
+        </button>
 
         <button
           type="button"
@@ -156,40 +368,47 @@ export function Calendar({
             background:     'transparent',
             borderRadius:   'var(--radius-sm)',
             cursor:         'pointer',
-            color:          'var(--theme-text-secondary)',
+            color:          'var(--theme-text-tertiary)',
             transition:     'var(--transition-hover)',
           }}
         >
-          <ChevronRight style={{ width: 14, height: 14, strokeWidth: 1.5 }} aria-hidden="true" />
+          <ChevronRight style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
         </button>
       </div>
 
-      {/* Weekday labels */}
-      <div
-        style={{
-          display:             'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
-          marginBottom:        'var(--space-1)',
-        }}
-      >
+      {/* ── Weekday labels ───────────────────────────────────────────── */}
+      <div style={{
+        display:             'grid',
+        gridTemplateColumns: 'repeat(7, 1fr)',
+        marginBottom:        'var(--space-1)',
+      }}>
         {WEEKDAYS.map((d) => (
           <span
             key={d}
-            className="label-micro"
-            style={{ textAlign: 'center', padding: '0 0 var(--space-1)' }}
+            style={{
+              textAlign:     'center',
+              fontFamily:    'var(--font-sans)',
+              fontSize:      'var(--text-2xs)',
+              fontWeight:    'var(--weight-semibold)',
+              letterSpacing: 'var(--tracking-widest)',
+              textTransform: 'uppercase' as const,
+              color:         'var(--theme-text-tertiary)',
+              padding:       '0 0 var(--space-1)',
+              display:       'block',
+            }}
           >
             {d}
           </span>
         ))}
       </div>
 
-      {/* Days grid */}
+      {/* ── Days grid ───────────────────────────────────────────────── */}
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={`${year}-${month}`}
-          initial={{ opacity: 0, x: direction * 16 }}
+          initial={{ opacity: 0, x: direction * 14 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: direction * -16 }}
+          exit={{ opacity: 0, x: direction * -14 }}
           transition={{ duration: SLOW_DURATION, ease: EASE_SPRING }}
           style={{
             display:             'grid',
@@ -200,19 +419,15 @@ export function Calendar({
           {cells.map((date, idx) => {
             if (!date) return <span key={`empty-${idx}`} />;
 
-            const isToday = isSameDay(date, today);
-            const isSelected = value ? isSameDay(date, value) : false;
+            const isToday      = isSameDay(date, today);
+            const isSelected   = value ? isSameDay(date, value) : false;
             const isRangeStart = rangeStart ? isSameDay(date, rangeStart) : false;
-            const isRangeEnd = rangeEnd ? isSameDay(date, rangeEnd) : false;
-            const isInRange =
-              rangeStart && rangeEnd ? isBetween(date, rangeStart, rangeEnd) : false;
-            const isDisabled =
-              (minDate && date < minDate) || (maxDate && date > maxDate);
-
-            const isAccented = isSelected || isRangeStart || isRangeEnd;
-
-            const taskMeta = hasTaskDots ? taskDots![localDateKey(date)] : undefined;
-            const hasTaskDot = !!taskMeta && taskMeta.count > 0;
+            const isRangeEnd   = rangeEnd   ? isSameDay(date, rangeEnd)   : false;
+            const isInRange    = rangeStart && rangeEnd ? isBetween(date, rangeStart, rangeEnd) : false;
+            const isDisabled   = (minDate && date < minDate) || (maxDate && date > maxDate);
+            const isAccented   = isSelected || isRangeStart || isRangeEnd;
+            const taskMeta     = hasTaskDots ? taskDots![localDateKey(date)] : undefined;
+            const hasTaskDot   = !!taskMeta && taskMeta.count > 0;
 
             return (
               <button
@@ -228,13 +443,15 @@ export function Calendar({
                   justifyContent: 'center',
                   position:       'relative',
                   width:          '100%',
-                  // taskDots mode: fixed 44px height (drops aspect-ratio so dot has room).
-                  // Default mode: aspect-ratio:1 squares — identical to legacy.
                   ...(hasTaskDots
-                    ? { height: 44, aspectRatio: 'unset' as const }
+                    ? { height: 40, aspectRatio: 'unset' as const }
                     : { aspectRatio: '1' as const }),
-                  borderRadius:   'var(--radius-sm)',
-                  border:         'none',
+                  borderRadius:   isToday && !isAccented
+                    ? 'var(--radius-sm)'
+                    : 'var(--radius-sm)',
+                  border:         isToday && !isAccented
+                    ? '1px solid color-mix(in srgb, var(--theme-accent) 30%, transparent)'
+                    : 'none',
                   background:     isAccented
                     ? 'var(--theme-accent)'
                     : isInRange
@@ -244,66 +461,41 @@ export function Calendar({
                     ? 'var(--theme-accent-fg)'
                     : isInRange
                     ? 'var(--theme-accent)'
+                    : isToday
+                    ? 'var(--theme-accent)'
                     : 'var(--theme-text-primary)',
-                  fontSize:       'var(--text-xs)',
-                  fontFamily:     'var(--font-sans)',
-                  cursor:         isDisabled ? 'not-allowed' : 'pointer',
-                  opacity:        isDisabled ? 0.35 : 1,
-                  transition:     'var(--transition-hover)',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isDisabled && !isAccented) {
-                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--theme-paper-subtle)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isDisabled && !isAccented) {
-                    (e.currentTarget as HTMLButtonElement).style.background = isInRange
-                      ? 'var(--theme-accent-surface)'
-                      : 'transparent';
-                  }
+                  fontFamily:   'var(--font-sans)',
+                  fontSize:     'var(--text-xs)',
+                  fontWeight:   isToday || isAccented ? 'var(--weight-semibold)' : 'var(--weight-normal)',
+                  cursor:       isDisabled ? 'not-allowed' : 'pointer',
+                  opacity:      isDisabled ? 0.3 : 1,
+                  transition:   'background var(--duration-fast) var(--ease-in-out)',
                 }}
               >
                 {date.getDate()}
-                {/* Today dot — hidden when a task dot occupies the same slot. */}
-                {isToday && !isAccented && !hasTaskDot && (
-                  <span
-                    style={{
-                      position:     'absolute',
-                      bottom:       2,
-                      left:         '50%',
-                      transform:    'translateX(-50%)',
-                      width:        4,
-                      height:       4,
-                      borderRadius: 'var(--radius-full)',
-                      background:   'var(--theme-accent)',
-                    }}
-                  />
-                )}
-                {/* Task dot — absolute, never affects layout. */}
+
+                {/* Task dot */}
                 {hasTaskDot && (
                   <motion.span
-                    key={`task-dot-${localDateKey(date)}`}
+                    key={`dot-${localDateKey(date)}`}
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ duration: 0.15, ease: EASE_SPRING }}
                     aria-hidden="true"
                     style={{
                       position:     'absolute',
-                      // 3px below the day number — number sits centred in the 44px cell,
-                      // so "below number" is roughly cell-center + ~half-line-height + 3.
-                      bottom:       6,
+                      bottom:       5,
                       left:         '50%',
                       transform:    'translateX(-50%)',
-                      width:        4,
-                      height:       4,
+                      width:        3,
+                      height:       3,
                       borderRadius: 'var(--radius-full)',
                       background:   taskMeta!.hasUrgent
                         ? 'var(--color-danger)'
+                        : isAccented
+                        ? 'var(--theme-accent-fg)'
                         : 'var(--theme-accent)',
-                      opacity:      taskMeta!.hasUrgent
-                        ? 1
-                        : (taskMeta!.count >= 3 ? 1 : 0.7),
+                      opacity:      isAccented ? 0.7 : taskMeta!.count >= 3 ? 1 : 0.65,
                       zIndex:       1,
                     }}
                   />
@@ -312,6 +504,18 @@ export function Calendar({
             );
           })}
         </motion.div>
+      </AnimatePresence>
+
+      {/* ── Year / Month picker overlay ───────────────────────────── */}
+      <AnimatePresence>
+        {pickerOpen && (
+          <YearMonthPicker
+            year={year}
+            month={month}
+            onPick={handlePickerPick}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
       </AnimatePresence>
     </div>
   );

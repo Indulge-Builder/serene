@@ -1,8 +1,9 @@
 // CampaignListAsync — async server component
-// Direct child of <Suspense>. Fetches campaign metrics and renders CampaignCard list.
-// Never rendered without a Suspense boundary above it.
+// Direct child of <Suspense>. Fetches campaign metrics + ad creatives in parallel,
+// then renders CampaignCard list. Never rendered without a Suspense boundary above it.
 
 import { getCampaignMetrics } from '@/lib/services/leads-service';
+import { getAdCreativesForCampaigns } from '@/lib/services/ad-creatives-service';
 import { CampaignCard } from '@/components/campaigns/CampaignCard';
 import type { UserRole, AppDomain, CampaignFilters } from '@/lib/types/database';
 
@@ -44,6 +45,11 @@ export async function CampaignListAsync({
     );
   }
 
+  // Single batch query — never one call per card
+  const creativesMap = await getAdCreativesForCampaigns(
+    campaigns.map((c) => c.campaign_name)
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       {campaigns.map((campaign, i) => (
@@ -51,6 +57,7 @@ export async function CampaignListAsync({
           key={`${campaign.campaign_name}::${campaign.domain}`}
           campaign={campaign}
           index={i}
+          adCreatives={creativesMap.get(campaign.campaign_name.toLowerCase().trim()) ?? []}
         />
       ))}
     </div>

@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { FAST_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 export interface ListRowProps {
   leftSlot?: React.ReactNode;
@@ -24,58 +26,45 @@ export function ListRow({
   className,
   style,
 }: ListRowProps) {
+  const [hovered, setHovered] = React.useState(false);
+  const isClickable = !!onClick;
+
   return (
     <div
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
       onClick={onClick}
-      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
+      onKeyDown={isClickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
       className={className}
+      onMouseEnter={() => isClickable && setHovered(true)}
+      onMouseLeave={() => isClickable && setHovered(false)}
+      onFocus={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-focus)'; }}
+      onBlur={(e)  => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'none'; }}
       style={{
         display:        'flex',
         alignItems:     'center',
         gap:            'var(--space-3)',
         padding:        'var(--space-3) var(--space-4)',
-        background:     'var(--theme-paper)',
+        background:     hovered ? 'var(--theme-paper-subtle)' : 'var(--theme-paper)',
         borderRadius:   'var(--radius-md)',
-        cursor:         onClick ? 'pointer' : 'default',
+        cursor:         isClickable ? 'pointer' : 'default',
         transition:     'background var(--duration-fast) var(--ease-in-out)',
         outline:        'none',
         ...style,
       }}
-      onMouseEnter={(e) => {
-        if (onClick) {
-          (e.currentTarget as HTMLDivElement).style.background = 'var(--theme-paper-subtle)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (onClick) {
-          (e.currentTarget as HTMLDivElement).style.background = 'var(--theme-paper)';
-        }
-      }}
-      onFocus={(e) => {
-        (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-focus)';
-      }}
-      onBlur={(e) => {
-        (e.currentTarget as HTMLDivElement).style.boxShadow = 'none';
-      }}
     >
-      {leftSlot && (
-        <div style={{ flexShrink: 0 }}>
-          {leftSlot}
-        </div>
-      )}
+      {leftSlot && <div style={{ flexShrink: 0 }}>{leftSlot}</div>}
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
-            fontSize:   'var(--text-sm)',
-            fontWeight: 'var(--weight-medium)',
-            color:      'var(--theme-text-primary)',
-            lineHeight: 'var(--leading-snug)',
-            overflow:   'hidden',
+            fontSize:     'var(--text-sm)',
+            fontWeight:   'var(--weight-medium)',
+            color:        'var(--theme-text-primary)',
+            lineHeight:   'var(--leading-snug)',
+            overflow:     'hidden',
             textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            whiteSpace:   'nowrap',
           }}
         >
           {primaryText}
@@ -96,23 +85,19 @@ export function ListRow({
         )}
       </div>
 
-      {rightSlot && (
-        <div style={{ flexShrink: 0 }}>
-          {rightSlot}
-        </div>
-      )}
+      {rightSlot && <div style={{ flexShrink: 0 }}>{rightSlot}</div>}
 
       {showChevron && (
-        <ChevronRight
-          style={{
-            width:       16,
-            height:      16,
-            strokeWidth: 1.5,
-            flexShrink:  0,
-            color:       'var(--theme-text-tertiary)',
-          }}
-          aria-hidden="true"
-        />
+        <motion.span
+          animate={{ x: hovered ? 2 : 0 }}
+          transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+          style={{ display: 'flex', flexShrink: 0, willChange: 'transform' }}
+        >
+          <ChevronRight
+            style={{ width: 16, height: 16, strokeWidth: 1.5, color: 'var(--theme-text-tertiary)' }}
+            aria-hidden="true"
+          />
+        </motion.span>
       )}
     </div>
   );

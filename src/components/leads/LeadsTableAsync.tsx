@@ -28,6 +28,7 @@ export async function LeadsTableAsync({
     !!(
       (filters.status && filters.status.length > 0) ||
       (filters.last_call_outcome && filters.last_call_outcome.length > 0) ||
+      filters.domain ||
       filters.agent_id ||
       filters.source ||
       filters.campaign ||

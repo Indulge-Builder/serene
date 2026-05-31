@@ -2,17 +2,18 @@ import { createClient } from '@/lib/supabase/server';
 import type { AdCreative } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
-// Query: resolve ad creative by campaign name
+// Query: resolve ad creatives for one campaign
 // ─────────────────────────────────────────────
-// Normalises the input (toLowerCase + trim) before querying — the campaign_key
-// column has a DB CHECK constraint enforcing the same normalisation on write,
-// so the join will always be consistent.
-// Returns null on no match or any DB error — never throws.
-export async function getAdCreativeForCampaign(
+// A campaign may have MULTIPLE videos (migration 0058 dropped the UNIQUE on
+// campaign_key). Returns all rows for the campaign, newest first.
+// Normalises the input (toLowerCase + trim) — the campaign_key column has a DB
+// CHECK enforcing the same normalisation on write, so the join is consistent.
+// Returns [] on no match or any DB error — never throws.
+export async function getAdCreativesForCampaign(
   campaignName: string
-): Promise<AdCreative | null> {
+): Promise<AdCreative[]> {
   const normalised = campaignName.toLowerCase().trim();
-  if (!normalised) return null;
+  if (!normalised) return [];
 
   try {
     const supabase = await createClient();
@@ -20,12 +21,73 @@ export async function getAdCreativeForCampaign(
       .from('ad_creatives')
       .select('*')
       .eq('campaign_key', normalised)
-      .single();
+      .order('created_at', { ascending: false });
 
-    if (error || !data) return null;
-    return data as AdCreative;
+    if (error || !data) return [];
+    return data as AdCreative[];
   } catch (err) {
-    console.error('[ad-creatives-service] getAdCreativeForCampaign error:', err);
-    return null;
+    console.error('[ad-creatives-service] getAdCreativesForCampaign error:', err);
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────
+// Query: list all ad creatives (admin management view)
+// ─────────────────────────────────────────────
+// Newest first. RLS already restricts SELECT to authenticated; the admin page
+// gates by role before rendering. Returns [] on error — never throws.
+export async function getAllAdCreatives(): Promise<AdCreative[]> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('ad_creatives')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return [];
+    return data as AdCreative[];
+  } catch (err) {
+    console.error('[ad-creatives-service] getAllAdCreatives error:', err);
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────
+// Query: batch-resolve ad creatives for a list of campaign names
+// ─────────────────────────────────────────────
+// Single query: WHERE campaign_key = ANY(normalised_keys).
+// Returns Map<campaignKey, AdCreative[]> — each campaign may have multiple videos
+// (migration 0058). Each array is newest-first.
+// Call once per page render — never inside a loop or per-card useEffect.
+// Returns an empty Map (never null/throws) on error.
+export async function getAdCreativesForCampaigns(
+  campaignNames: string[]
+): Promise<Map<string, AdCreative[]>> {
+  const normalisedKeys = campaignNames
+    .map((n) => n.toLowerCase().trim())
+    .filter(Boolean);
+
+  if (normalisedKeys.length === 0) return new Map();
+
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('ad_creatives')
+      .select('*')
+      .in('campaign_key', normalisedKeys)
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return new Map();
+
+    const map = new Map<string, AdCreative[]>();
+    for (const row of data) {
+      const list = map.get(row.campaign_key);
+      if (list) list.push(row as AdCreative);
+      else map.set(row.campaign_key, [row as AdCreative]);
+    }
+    return map;
+  } catch (err) {
+    console.error('[ad-creatives-service] getAdCreativesForCampaigns error:', err);
+    return new Map();
   }
 }

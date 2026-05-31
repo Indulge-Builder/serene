@@ -1,13 +1,19 @@
 "use client";
 
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { Avatar } from "@/components/ui/Avatar";
+import { ENTER_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { formatRelativeTime } from "@/lib/utils/dates";
 import type { WhatsAppConversation } from "@/lib/types/whatsapp";
 
 interface ConversationRowProps {
-  conversation:         WhatsAppConversation;
-  isActive:             boolean;
-  hasUnread:            boolean;
-  onClick:              () => void;
+  conversation: WhatsAppConversation;
+  isActive: boolean;
+  hasUnread: boolean;
+  onClick: () => void;
+  /** Stagger entrance delay in ms — matches Performance agent roster */
+  delay?: number;
 }
 
 export function ConversationRow({
@@ -15,128 +21,107 @@ export function ConversationRow({
   isActive,
   hasUnread,
   onClick,
+  delay = 0,
 }: ConversationRowProps) {
+  const [hovered, setHovered] = useState(false);
+  const isHighlighted = isActive || hovered;
+
   const isResolved = conversation.status === "resolved";
+  const displayName = conversation.lead_name ?? conversation.phone;
+
+  const trailing = isResolved
+    ? "Resolved"
+    : conversation.last_message_at
+      ? formatRelativeTime(conversation.last_message_at)
+      : null;
+
+  const trailingColor = isResolved
+    ? "var(--color-success)"
+    : isHighlighted
+      ? "var(--theme-accent)"
+      : "var(--theme-text-tertiary)";
 
   return (
-    <button
+    <motion.button
       type="button"
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{
+        duration: ENTER_DURATION,
+        delay: delay / 1000,
+        ease: EASE_OUT_EXPO,
+      }}
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        display:         "flex",
-        alignItems:      "flex-start",
-        gap:             "var(--space-3)",
-        width:           "100%",
-        padding:         "var(--space-3) var(--space-4)",
-        border:          "none",
-        borderLeft:      isActive ? "2px solid var(--theme-accent)" : "2px solid transparent",
-        borderRadius:    0,
-        background:      isActive ? "var(--theme-accent-surface)" : "transparent",
-        cursor:          "pointer",
-        textAlign:       "left",
-        transition:      "background var(--duration-fast) var(--ease-in-out)",
-      }}
-      onMouseEnter={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.background = "var(--theme-paper-subtle)";
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.background = "transparent";
-        }
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--space-3)",
+        padding: "var(--space-3) var(--space-4)",
+        borderRadius: "var(--radius-md)",
+        background: "transparent",
+        border: "none",
+        cursor: "pointer",
+        width: "100%",
+        textAlign: "left",
       }}
     >
-      {/* Unread dot */}
-      <div
-        style={{
-          width:          "8px",
-          height:         "8px",
-          borderRadius:   "50%",
-          background:     hasUnread ? "var(--theme-accent)" : "transparent",
-          flexShrink:     0,
-          marginTop:      "6px",
-          transition:     "background var(--duration-fast) var(--ease-in-out)",
-        }}
-        aria-hidden="true"
-      />
-
-      {/* Content */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Row 1: name + timestamp */}
-        <div
-          style={{
-            display:      "flex",
-            alignItems:   "center",
-            gap:          "var(--space-2)",
-            marginBottom: "var(--space-1)",
-          }}
-        >
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <Avatar name={displayName} size="sm" selected={isHighlighted} />
+        {hasUnread && (
           <span
+            aria-hidden="true"
             style={{
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-sm)",
-              fontWeight:   "var(--weight-medium)",
-              color:        "var(--theme-text-primary)",
-              flex:         1,
-              minWidth:     0,
-              overflow:     "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace:   "nowrap",
+              position: "absolute",
+              top: "-2px",
+              right: "-2px",
+              width: "10px",
+              height: "10px",
+              borderRadius: "50%",
+              background: "var(--theme-accent)",
+              border: "2px solid var(--theme-paper)",
             }}
-          >
-            {conversation.lead_name ?? conversation.phone}
-          </span>
-          <span
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize:   "10px",
-              color:      "var(--theme-text-tertiary)",
-              flexShrink: 0,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {conversation.last_message_at
-              ? formatRelativeTime(conversation.last_message_at)
-              : ""}
-          </span>
-        </div>
-
-        {/* Row 2: phone */}
-        <p
-          style={{
-            fontFamily:   "var(--font-mono)",
-            fontSize:     "var(--text-xs)",
-            color:        "var(--theme-text-tertiary)",
-            margin:       "0 0 var(--space-1)",
-            overflow:     "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace:   "nowrap",
-          }}
-        >
-          {conversation.lead_phone ?? conversation.phone}
-        </p>
-
-        {/* Row 3: status badge */}
-        {isResolved && (
-          <span
-            style={{
-              display:      "inline-flex",
-              alignItems:   "center",
-              padding:      "1px var(--space-2)",
-              borderRadius: "var(--radius-full)",
-              background:   "var(--color-success)",
-              color:        "var(--color-success-text)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-2xs)",
-              fontWeight:   "var(--weight-semibold)",
-            }}
-          >
-            Resolved
-          </span>
+          />
         )}
       </div>
-    </button>
+
+      <p
+        style={{
+          flex: 1,
+          fontFamily: "var(--font-sans)",
+          fontSize: "var(--text-sm)",
+          fontWeight: isHighlighted
+            ? "var(--weight-semibold)"
+            : "var(--weight-normal)",
+          color: "var(--theme-text-primary)",
+          margin: 0,
+          minWidth: 0,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          transition: "font-weight var(--duration-fast) var(--ease-in-out)",
+        }}
+      >
+        {displayName}
+      </p>
+
+      {trailing && (
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-xs)",
+            fontWeight: "var(--weight-medium)",
+            color: trailingColor,
+            flexShrink: 0,
+            letterSpacing: "-0.01em",
+            transition: "color var(--duration-fast) var(--ease-in-out)",
+          }}
+        >
+          {trailing}
+        </span>
+      )}
+    </motion.button>
   );
 }
 

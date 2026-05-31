@@ -31,7 +31,7 @@
  *   count = error_count + cancelled_count, cards show actual status pill.
  * - Subtasks received as props — no client-side fetch on mount.
  * - No drag-and-drop — status changes via TaskModal only.
- * - No inline complete — click always opens TaskModal.
+ * - Completion circle on each row toggles completed ↔ to_do (optimistic).
  */
 
 import {
@@ -63,8 +63,11 @@ import {
 import { listAgentsForDomain } from '@/lib/actions/leads';
 import { formatRelativeTime, formatDate } from '@/lib/utils/dates';
 import { toast } from '@/lib/toast';
-import { SubTaskModal } from '@/components/tasks/SubTaskModal';
+import { SubTaskModal, type SubTaskModalTaskUpdate } from '@/components/tasks/SubTaskModal';
+import { TaskCompletionCircle } from '@/components/tasks/TaskCompletionCircle';
 import { TaskStatusIcon } from '@/components/tasks/TaskStatusIcon';
+import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';
+import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
 import { AssigneePickerModal, type AssignableUser } from '@/components/tasks/AssigneePickerModal';
 import { TASK_STATUS, TASK_PRIORITY } from '@/lib/constants/task-constants';
 import { TASK_STATUS_LABELS } from '@/lib/constants/task-types';
@@ -89,10 +92,10 @@ type WorkspaceView = 'list' | 'board';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const PRIORITY_CONFIG: Record<TaskPriority, { label: string; dot: string; border: string }> = {
-  urgent: { label: 'Urgent', dot: 'var(--color-danger)',  border: 'var(--color-danger)' },
-  high:   { label: 'High',   dot: 'var(--color-warning)', border: 'var(--color-warning)' },
-  normal: { label: 'Normal', dot: 'var(--theme-text-tertiary)', border: 'var(--theme-paper-border)' },
+const PRIORITY_CONFIG: Record<TaskPriority, { label: string; dot: string }> = {
+  urgent: { label: 'Urgent', dot: 'var(--color-danger)' },
+  high:   { label: 'High',   dot: 'var(--color-warning)' },
+  normal: { label: 'Normal', dot: 'var(--theme-text-tertiary)' },
 };
 
 // Board columns — Error and Cancelled share one column (both terminal non-success)
@@ -241,6 +244,9 @@ export function GroupTaskWorkspace({
 
   // ── Subtask state ─────────────────────────────────────────────────────────
   const [subtasks, setSubtasks] = useState<SubtaskWithAssignee[]>(initialSubtasks);
+  const [hoveredSubtaskId, setHoveredSubtaskId] = useState<string | null>(null);
+  const { getEffectiveStatus, handleToggle } = useTaskCompletionToggle();
+  const caller = { id: currentUserId, role: callerRole, domain: callerDomain };
 
   // ── Realtime subscription ─────────────────────────────────────────────────
   const mountId = useId();
@@ -307,10 +313,25 @@ export function GroupTaskWorkspace({
     setModalOpen(true);
   }
 
+  const handleSubtaskUpdated = useCallback((update: SubTaskModalTaskUpdate) => {
+    setSubtasks((prev) =>
+      prev.map((s) => (s.id === update.id ? { ...s, ...update } : s)),
+    );
+    setSelectedSubtask((prev) =>
+      prev?.id === update.id ? { ...prev, ...update } : prev,
+    );
+  }, []);
+
+  const handleSubtaskDeleted = useCallback((taskId: string) => {
+    setSubtasks((prev) => prev.filter((s) => s.id !== taskId));
+    setSelectedSubtask(null);
+    setModalOpen(false);
+  }, []);
+
   function handleModalClose() {
     setModalOpen(false);
     setSelectedSubtaskRemarks(null);
-    // Refresh subtasks after modal close — status may have changed via TaskModal
+    // Belt-and-suspenders sync after modal close (realtime + onTaskUpdated cover most cases)
     getGroupSubtasksAction(group.id).then((r) => {
       if (r.data) setSubtasks(r.data);
     }).catch(() => {});
@@ -559,9 +580,13 @@ export function GroupTaskWorkspace({
               }}
             >
               {sortedSubtasks.map((subtask, idx) => {
-                const pCfg      = PRIORITY_CONFIG[subtask.priority];
-                const isComplete = subtask.status === 'completed';
-                const dueDateColor = getDueDateColor(subtask.due_at, subtask.status);
+                const effectiveStatus = getEffectiveStatus(subtask.id, subtask.status);
+                const isComplete     = effectiveStatus === 'completed';
+                const dueDateColor   = getDueDateColor(subtask.due_at, effectiveStatus);
+                const canComplete    =
+                  canToggleTaskComplete(subtask, caller, group.domain) &&
+                  effectiveStatus !== 'cancelled' &&
+                  effectiveStatus !== 'error';
 
                 return (
                   <motion.div
@@ -576,17 +601,30 @@ export function GroupTaskWorkspace({
                       padding:      'var(--space-3) var(--space-4)',
                       borderBottom: idx < sortedSubtasks.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
                       background:   'var(--theme-paper)',
-                      borderLeft:   `3px solid ${pCfg.border}`,
                       cursor:       'pointer',
-                      transition:   'background var(--duration-fast) var(--ease-in-out)',
                     }}
                     role="button"
                     tabIndex={0}
                     onClick={() => handleOpenModal(subtask)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleOpenModal(subtask); }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper)'; }}
+                    onMouseEnter={() => setHoveredSubtaskId(subtask.id)}
+                    onMouseLeave={() => setHoveredSubtaskId(null)}
                   >
+                    <TaskCompletionCircle
+                      checked={isComplete}
+                      disabled={!canComplete}
+                      highlighted={hoveredSubtaskId === subtask.id}
+                      onToggle={(e) =>
+                        handleToggle(e, subtask, (newStatus) => {
+                          setSubtasks((prev) =>
+                            prev.map((s) =>
+                              s.id === subtask.id ? { ...s, status: newStatus } : s,
+                            ),
+                          );
+                        })
+                      }
+                    />
+
                     {/* Title */}
                     <span
                       style={{
@@ -604,6 +642,10 @@ export function GroupTaskWorkspace({
                     >
                       {subtask.title}
                     </span>
+
+                    {subtask.priority !== 'normal' && (
+                      <PriorityBadge priority={subtask.priority} />
+                    )}
 
                     {/* Assignee avatar */}
                     <AssigneeChip assignee={subtask.assignee} />
@@ -631,16 +673,16 @@ export function GroupTaskWorkspace({
                         gap:          '4px',
                         padding:      '2px var(--space-2)',
                         borderRadius: 'var(--radius-full)',
-                        background:   TASK_STATUS[subtask.status].pillBg,
-                        color:        TASK_STATUS[subtask.status].pillText,
+                        background:   TASK_STATUS[effectiveStatus].pillBg,
+                        color:        TASK_STATUS[effectiveStatus].pillText,
                         fontFamily:   'var(--font-sans)',
                         fontSize:     'var(--text-xs)',
                         fontWeight:   'var(--weight-semibold)',
                         flexShrink:   0,
                       }}
                     >
-                      <TaskStatusIcon status={subtask.status} size={10} />
-                      {TASK_STATUS_LABELS[subtask.status]}
+                      <TaskStatusIcon status={effectiveStatus} size={10} />
+                      {TASK_STATUS_LABELS[effectiveStatus]}
                     </span>
 
                     {/* Arrow */}
@@ -693,7 +735,9 @@ export function GroupTaskWorkspace({
           }}
         >
           {BOARD_COLUMNS.map((col) => {
-            const colSubtasks = subtasks.filter((t) => col.statuses.includes(t.status));
+            const colSubtasks = subtasks.filter((t) =>
+              col.statuses.includes(getEffectiveStatus(t.id, t.status)),
+            );
             return (
               <div
                 key={col.key}
@@ -708,15 +752,26 @@ export function GroupTaskWorkspace({
                 {/* Column header */}
                 <div
                   style={{
-                    padding:    'var(--space-3) var(--space-3)',
-                    background: 'var(--theme-paper-subtle)',
-                    borderTop:  `3px solid ${col.accent}`,
+                    padding:      'var(--space-3) var(--space-3)',
+                    background:   'var(--theme-paper-subtle)',
                     borderBottom: '1px solid var(--theme-paper-border)',
-                    display:    'flex',
-                    alignItems: 'center',
-                    gap:        'var(--space-2)',
+                    display:      'flex',
+                    alignItems:   'center',
+                    gap:          'var(--space-2)',
                   }}
                 >
+                  <span
+                    style={{
+                      width:        6,
+                      height:       6,
+                      borderRadius: 'var(--radius-full)',
+                      background:   col.accent === 'var(--theme-paper-border)'
+                        ? 'var(--theme-text-tertiary)'
+                        : col.accent,
+                      flexShrink:   0,
+                    }}
+                    aria-hidden
+                  />
                   <span
                     style={{
                       fontFamily:    'var(--font-sans)',
@@ -773,8 +828,14 @@ export function GroupTaskWorkspace({
                       </p>
                     ) : (
                       colSubtasks.map((subtask) => {
-                        const pCfg = PRIORITY_CONFIG[subtask.priority];
-                        const isComplete = subtask.status === 'completed';
+                        const pCfg            = PRIORITY_CONFIG[subtask.priority];
+                        const effectiveStatus = getEffectiveStatus(subtask.id, subtask.status);
+                        const isComplete      = effectiveStatus === 'completed';
+                        const canComplete     =
+                          canToggleTaskComplete(subtask, caller, group.domain) &&
+                          effectiveStatus !== 'cancelled' &&
+                          effectiveStatus !== 'error';
+
                         return (
                           <motion.div
                             key={subtask.id}
@@ -790,7 +851,6 @@ export function GroupTaskWorkspace({
                             style={{
                               background:   'var(--theme-paper)',
                               border:       '1px solid var(--theme-paper-border)',
-                              borderLeft:   `3px solid ${pCfg.border}`,
                               borderRadius: 'var(--radius-sm)',
                               padding:      'var(--space-2) var(--space-3)',
                               cursor:       'pointer',
@@ -806,20 +866,35 @@ export function GroupTaskWorkspace({
                               (e.currentTarget as HTMLElement).style.boxShadow = '';
                             }}
                           >
-                            {/* Title */}
-                            <span
-                              style={{
-                                fontFamily:     'var(--font-sans)',
-                                fontSize:       'var(--text-xs)',
-                                fontWeight:     'var(--weight-medium)',
-                                color:          isComplete ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)',
-                                textDecoration: isComplete ? 'line-through' : 'none',
-                                lineHeight:     'var(--leading-snug)',
-                                wordBreak:      'break-word',
-                              }}
-                            >
-                              {subtask.title}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+                              <TaskCompletionCircle
+                                checked={isComplete}
+                                disabled={!canComplete}
+                                onToggle={(e) =>
+                                  handleToggle(e, subtask, (newStatus) => {
+                                    setSubtasks((prev) =>
+                                      prev.map((s) =>
+                                        s.id === subtask.id ? { ...s, status: newStatus } : s,
+                                      ),
+                                    );
+                                  })
+                                }
+                              />
+                              <span
+                                style={{
+                                  flex:           1,
+                                  fontFamily:     'var(--font-sans)',
+                                  fontSize:       'var(--text-xs)',
+                                  fontWeight:     'var(--weight-medium)',
+                                  color:          isComplete ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)',
+                                  textDecoration: isComplete ? 'line-through' : 'none',
+                                  lineHeight:     'var(--leading-snug)',
+                                  wordBreak:      'break-word',
+                                }}
+                              >
+                                {subtask.title}
+                              </span>
+                            </div>
 
                             {/* Bottom row: assignee + priority dot + due */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
@@ -1132,6 +1207,8 @@ export function GroupTaskWorkspace({
             initialRemarks={selectedSubtaskRemarks}
             callerProfile={{ id: currentUserId, role: callerRole, domain: callerDomain }}
             currentUserName={currentUserName}
+            onTaskUpdated={handleSubtaskUpdated}
+            onTaskDeleted={handleSubtaskDeleted}
           />
         )}
       </AnimatePresence>

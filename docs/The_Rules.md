@@ -27,6 +27,7 @@
 | A-12 | All async work exceeding 3 seconds or requiring retry logic runs in Trigger.dev. Never in route handlers. |
 | A-13 | Every dashboard route is protected by middleware. No authenticated page renders without a verified session. |
 | A-14 | Never edit a migration that has already run in production. Write a new one. |
+| A-15 | `'use client'` components must never import value symbols from `lib/services/`. Service modules import the server Supabase client (`next/headers`), which hard-errors in the client bundle. Client components that need lazy or paginated data must call a Server Action in `lib/actions/` instead. `import type` from services is safe — type imports are erased at compile time. |
 
 ---
 
@@ -119,6 +120,7 @@
 | Q-14 | **Supabase Realtime channel names must include a mount-scoped nonce (`useId()`).** Pattern: `` `table-${id}-${mountId}` ``. React 18 Strict Mode double-mounts effects — without the nonce, the second mount reuses the already-subscribed channel object and throws "cannot add callbacks after subscribe()". `useId()` produces a stable mount-scoped string that is unique per mount even in Strict Mode. |
 | Q-15 | **Initial data fetch in a widget or client component must live in `useEffect`, never as a render-phase guard.** `startTransition` is a side effect and cannot be called during the render phase. Pattern: `useEffect(() => { let cancelled = false; startTransition(async () => { const r = await action(); if (!cancelled && r.data) setState(r.data); }); return () => { cancelled = true; }; }, []);` The `cancelled` flag guards against `setState` on an unmounted component. |
 | Q-16 | **`unstable_cache` keys must include every dimension that scopes the query.** For domain-scoped queries: always include `domain`. For user-scoped queries: always include `userId`. Omitting any dimension allows cross-user or cross-domain cache hits. Reference: `getGroupTasks` in `tasks-service.ts` (key includes `domain`). |
+| Q-17 | **Two domain registries — never mix them.** `APP_DOMAINS` + `DOMAIN_LABELS` in `lib/constants/domains.ts` is the full platform enum (user management, profiles, authorization). `GIA_DOMAINS` is the Gia module subset (leads, campaigns, dashboard Gia widgets, performance domain pickers). Canonical Gia display names: **Onboarding**, **Indulge House**, **Indulge Shop**, **Indulge Legacy** — all via `DOMAIN_LABELS` only. Never hardcode domain tab labels, never add local `DOMAIN_SHORT` / `FEATURED_DOMAINS` maps. To add a Gia domain later, append to `GIA_DOMAINS` and `DOMAIN_LABELS` in one file. |
 
 ---
 
@@ -165,6 +167,7 @@ NEVER  edit a migration that has already run in production
 NEVER  use z-index values outside the --z-* scale
 NEVER  animate layout properties (width, height, padding, margin)
 NEVER  use backdrop-blur outside the three sanctioned surfaces
+NEVER  use a coloured border on one edge of a card, row, or column as a category/status indicator (borderLeft/borderTop/borderRight/borderBottom accent strips) — use pills, dots, icons, or semantic badges instead
 NEVER  use font-bold (700) — semibold (600) is the ceiling
 NEVER  show a skeleton for less than 150ms
 NEVER  add a package without a changelog entry in docs/changelog.md
@@ -179,6 +182,9 @@ NEVER  accept a caller-supplied domain/role/userId parameter in a SECURITY DEFIN
 NEVER  use a bare table name as a Realtime channel name — always append a mount-scoped useId() nonce (Q-14)
 NEVER  call startTransition during the render phase — always inside useEffect (Q-15)
 NEVER  omit the domain from an unstable_cache key when the underlying query is domain-scoped (Q-16)
+NEVER  hardcode Gia domain names or duplicate domain lists outside lib/constants/domains.ts — use GIA_DOMAINS + DOMAIN_LABELS (Q-17)
+NEVER  use APP_DOMAINS in Gia UI pickers (leads, campaigns, performance, dashboard widgets) — use GIA_DOMAINS (Q-17)
+NEVER  import a value symbol from lib/services/ inside a 'use client' component — it pulls next/headers into the client bundle and hard-errors; call a Server Action instead (A-15)
 NEVER  pass --theme-accent or any CSS variable directly to a Recharts fill/stroke prop — use useChartTokens() via getComputedStyle
 NEVER  use text-gray-* or bg-gray-* or bg-white in Tailwind — use CSS variable tokens
 NEVER  place backdrop-filter/blur on anything other than TopBar, mobile sidebar overlay, or command palette
@@ -200,3 +206,5 @@ A rule changed without a log entry is not a rule change. It is a violation.
 | 2026-05-29 | Q-14  | —   | Realtime channel nonce (useId)              | Strict Mode double-mount channel collision         | —   |
 | 2026-05-29 | Q-15  | —   | startTransition in useEffect only           | startTransition is a side effect, not render-safe  | —   |
 | 2026-05-29 | Q-16  | —   | unstable_cache key must include domain      | Prevents cross-domain cache hits                   | —   |
+| 2026-05-31 | Q-17  | —   | APP_DOMAINS vs GIA_DOMAINS split            | Gia uses four sales domains; user mgmt keeps full enum | — |
+| 2026-05-31 | A-15  | —   | Client components must never import value symbols from lib/services/ | Service modules pull next/headers → hard client bundle error; identified during tasks module build | — |

@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar } from './Calendar';
-import { TabSelector } from './TabSelector';
+import { TimePickerWheelPanel, type Meridiem } from './TimePicker';
 import { DROPDOWN_VARIANTS } from '@/lib/constants/motion';
 import { toUTC, formatDate } from '@/lib/utils/dates';
 
@@ -16,8 +17,8 @@ export interface DatePickerProps {
   maxDate?: Date;
   disabled?: boolean;
   /**
-   * When true, renders a time picker below the calendar inside the same panel.
-   * Hours 1–12, Minutes [00, 15, 30, 45], AM/PM toggle. Default false (date-only).
+   * When true, renders a time picker beside the calendar (calendar left, time right).
+   * Hours 1–12, minutes 00–59 (scroll wheel), AM/PM toggle. Default false (date-only).
    * showTime=false behaviour is identical to the legacy implementation.
    */
   showTime?: boolean;
@@ -25,11 +26,6 @@ export interface DatePickerProps {
   style?: React.CSSProperties;
   'aria-label'?: string;
 }
-
-const HOURS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-const MINUTES = [0, 15, 30, 45];
-
-type Meridiem = 'AM' | 'PM';
 
 function to12Hour(d: Date): { hour: number; minute: number; meridiem: Meridiem } {
   const h24 = d.getHours();
@@ -47,11 +43,11 @@ function combine(date: Date, hour: number, minute: number, meridiem: Meridiem): 
   return next;
 }
 
-function snapMinuteToStep(m: number): number {
-  // Round to nearest 15-min step within [0, 15, 30, 45].
-  const idx = Math.round(m / 15);
-  return MINUTES[Math.min(idx, MINUTES.length - 1)];
-}
+// Approximate panel dimensions for viewport flip detection.
+// Calendar is 260px + 32px padding; time wheel column adds ~148px when showTime.
+const PANEL_WIDTH_DATE_ONLY = 292;
+const PANEL_WIDTH_WITH_TIME = 448;
+const PANEL_HEIGHT = 320;
 
 export function DatePicker({
   value,
@@ -65,14 +61,35 @@ export function DatePicker({
   style,
   'aria-label': ariaLabel,
 }: DatePickerProps) {
-  const [open, setOpen] = React.useState(false);
-  const [focused, setFocused] = React.useState(false);
+  const [open, setOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [panelPos, setPanelPos] = useState({ top: 0, left: 0, flipUp: false });
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef   = useRef<HTMLButtonElement>(null);
+  const panelRef     = useRef<HTMLDivElement>(null);
+
+  const panelWidth = showTime ? PANEL_WIDTH_WITH_TIME : PANEL_WIDTH_DATE_ONLY;
+
+  const updatePanelPosition = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const flipLeft = rect.left + panelWidth > window.innerWidth - 8;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const flipUp = spaceBelow < PANEL_HEIGHT && rect.top > spaceBelow;
+    const left = flipLeft ? rect.right - panelWidth : rect.left;
+    const top = flipUp ? rect.top - 4 : rect.bottom + 4;
+    setPanelPos({ top, left, flipUp });
+  }, [panelWidth]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Draft date held only while the panel is open in showTime mode — lets the user
   // pick a calendar day without committing until they also pick a time. In date-only
   // mode this state is unused; calendar selection commits and closes immediately.
-  const [draftDate, setDraftDate] = React.useState<Date | null>(value ?? null);
+  const [draftDate, setDraftDate] = useState<Date | null>(value ?? null);
 
   // Sync draft when value changes externally (parent overrides).
   useEffect(() => {
@@ -81,21 +98,31 @@ export function DatePicker({
 
   useEffect(() => {
     if (!open) return;
+    updatePanelPosition();
     function handleOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
+      const target = e.target as Node;
+      if (
+        containerRef.current?.contains(target) ||
+        panelRef.current?.contains(target)
+      ) {
+        return;
       }
+      setOpen(false);
     }
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setOpen(false);
     }
-    document.addEventListener('mousedown', handleOutside);
-    document.addEventListener('keydown', handleKey);
+    window.addEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleKey);
+    window.addEventListener('scroll', updatePanelPosition, true);
+    window.addEventListener('resize', updatePanelPosition);
     return () => {
-      document.removeEventListener('mousedown', handleOutside);
-      document.removeEventListener('keydown', handleKey);
+      window.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleKey);
+      window.removeEventListener('scroll', updatePanelPosition, true);
+      window.removeEventListener('resize', updatePanelPosition);
     };
-  }, [open]);
+  }, [open, updatePanelPosition]);
 
   // Derive current time-picker state from draftDate (or value, or now).
   const seed = draftDate ?? value ?? null;
@@ -103,7 +130,7 @@ export function DatePicker({
     if (seed) return to12Hour(seed);
     return { hour: 9, minute: 0, meridiem: 'AM' as Meridiem };
   }, [seed]);
-  const selMinute = snapMinuteToStep(selMinuteRaw);
+  const selMinute = Math.min(59, Math.max(0, selMinuteRaw));
 
   function commit(next: Date) {
     onChange(toUTC(next));
@@ -137,6 +164,65 @@ export function DatePicker({
         : formatDate(value, 'dd MMM yyyy'))
     : placeholder;
 
+  const popover = (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          ref={panelRef}
+          key="datepicker-popover"
+          role="dialog"
+          aria-label="Calendar"
+          variants={DROPDOWN_VARIANTS}
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          style={{
+            position:     'fixed',
+            top:          panelPos.top,
+            left:         panelPos.left,
+            transform:    panelPos.flipUp ? 'translateY(-100%)' : undefined,
+            zIndex:       'var(--z-modal-nested)' as React.CSSProperties['zIndex'],
+            boxShadow:    'var(--shadow-3)',
+            borderRadius: 'var(--radius-md)',
+            border:       '1px solid var(--theme-paper-border)',
+            overflow:     'hidden',
+            background:   'var(--theme-paper)',
+          }}
+        >
+          <div
+            style={{
+              display:    'flex',
+              flexDirection: 'row',
+              alignItems: 'stretch',
+            }}
+          >
+            <Calendar
+              value={draftDate ?? value}
+              onSelect={handleCalendarSelect}
+              minDate={minDate}
+              maxDate={maxDate}
+              style={
+                showTime
+                  ? { borderRadius: 'var(--radius-md) 0 0 var(--radius-md)' }
+                  : undefined
+              }
+            />
+
+            {showTime && (
+              <TimePickerWheelPanel
+                variant="embedded"
+                hour={selHour}
+                minute={selMinute}
+                meridiem={selMeridiem}
+                onChange={handleTimeChange}
+              />
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
   return (
     <div
       ref={containerRef}
@@ -145,6 +231,7 @@ export function DatePicker({
     >
       {/* Trigger */}
       <button
+        ref={triggerRef}
         type="button"
         aria-label={ariaLabel ?? 'Date picker'}
         aria-haspopup="dialog"
@@ -180,204 +267,8 @@ export function DatePicker({
         {triggerLabel}
       </button>
 
-      {/* Popover */}
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            key="datepicker-popover"
-            role="dialog"
-            aria-label="Calendar"
-            variants={DROPDOWN_VARIANTS}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            style={{
-              position:   'absolute',
-              top:        'calc(100% + var(--space-1))',
-              left:       0,
-              zIndex:     'var(--z-dropdown)' as React.CSSProperties['zIndex'],
-              boxShadow:  'var(--shadow-3)',
-              borderRadius: 'var(--radius-md)',
-              border:     '1px solid var(--theme-paper-border)',
-              overflow:   'hidden',
-              background: 'var(--theme-paper)',
-            }}
-          >
-            <Calendar
-              value={draftDate ?? value}
-              onSelect={handleCalendarSelect}
-              minDate={minDate}
-              maxDate={maxDate}
-            />
-
-            {showTime && (
-              <TimePickerSection
-                hour={selHour}
-                minute={selMinute}
-                meridiem={selMeridiem}
-                onChange={handleTimeChange}
-              />
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {mounted && typeof document !== 'undefined' ? createPortal(popover, document.body) : null}
     </div>
   );
 }
 
-// ─── Time picker section ──────────────────────────────────────────────────────
-
-interface TimePickerSectionProps {
-  hour: number;
-  minute: number;
-  meridiem: Meridiem;
-  onChange: (hour: number, minute: number, meridiem: Meridiem) => void;
-}
-
-function TimePickerSection({ hour, minute, meridiem, onChange }: TimePickerSectionProps) {
-  return (
-    <div
-      style={{
-        borderTop:  '1px solid var(--theme-paper-border)',
-        padding:    'var(--space-3)',
-        display:    'flex',
-        flexDirection: 'column',
-        gap:        'var(--space-3)',
-        background: 'var(--theme-paper)',
-      }}
-    >
-      <div
-        style={{
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: 'center',
-          gap:            'var(--space-2)',
-          fontSize:       'var(--text-sm)',
-          fontFamily:     'var(--font-sans)',
-          color:          'var(--theme-text-primary)',
-        }}
-      >
-        <ScrollColumn
-          values={HOURS}
-          selected={hour}
-          format={(h) => String(h).padStart(2, '0')}
-          onSelect={(h) => onChange(h, minute, meridiem)}
-          ariaLabel="Hours"
-        />
-        <span
-          aria-hidden="true"
-          style={{
-            color:      'var(--theme-text-tertiary)',
-            fontSize:   'var(--text-sm)',
-            lineHeight: 1,
-          }}
-        >
-          :
-        </span>
-        <ScrollColumn
-          values={MINUTES}
-          selected={minute}
-          format={(m) => String(m).padStart(2, '0')}
-          onSelect={(m) => onChange(hour, m, meridiem)}
-          ariaLabel="Minutes"
-        />
-      </div>
-
-      <TabSelector
-        variant="connected"
-        indicatorLayoutId="datepicker-ampm"
-        activeTab={meridiem}
-        onChange={(id) => onChange(hour, minute, id as Meridiem)}
-        tabs={[
-          { id: 'AM', label: 'AM' },
-          { id: 'PM', label: 'PM' },
-        ]}
-      />
-    </div>
-  );
-}
-
-interface ScrollColumnProps<T extends number> {
-  values: readonly T[];
-  selected: T;
-  format: (v: T) => string;
-  onSelect: (v: T) => void;
-  ariaLabel: string;
-}
-
-function ScrollColumn<T extends number>({
-  values,
-  selected,
-  format,
-  onSelect,
-  ariaLabel,
-}: ScrollColumnProps<T>) {
-  const listRef = useRef<HTMLDivElement>(null);
-  const selectedRef = useRef<HTMLButtonElement>(null);
-
-  // Scroll the selected item into view when the column mounts or selection changes.
-  // Touch scroll on mobile remains native — we only nudge programmatically.
-  useEffect(() => {
-    const el = selectedRef.current;
-    const list = listRef.current;
-    if (!el || !list) return;
-    const elTop = el.offsetTop;
-    const target = elTop - list.clientHeight / 2 + el.clientHeight / 2;
-    list.scrollTo({ top: target, behavior: 'auto' });
-  }, [selected]);
-
-  return (
-    <div
-      ref={listRef}
-      role="listbox"
-      aria-label={ariaLabel}
-      style={{
-        maxHeight:    160,
-        overflowY:    'auto',
-        scrollbarWidth: 'none',
-        msOverflowStyle: 'none',
-        padding:      'var(--space-1)',
-        display:      'flex',
-        flexDirection: 'column',
-        gap:          'var(--space-1)',
-        // Hide WebKit scrollbar without affecting touch-scroll behaviour.
-        WebkitOverflowScrolling: 'touch',
-      }}
-    >
-      {values.map((v) => {
-        const isSelected = v === selected;
-        return (
-          <button
-            key={v}
-            ref={isSelected ? selectedRef : null}
-            type="button"
-            role="option"
-            aria-selected={isSelected}
-            onClick={() => onSelect(v)}
-            style={{
-              minWidth:     'var(--space-9)',
-              padding:      'var(--space-1) var(--space-2)',
-              background:   isSelected ? 'var(--theme-accent-surface)' : 'transparent',
-              border:       'none',
-              borderRadius: 'var(--radius-xs)',
-              fontSize:     'var(--text-sm)',
-              fontFamily:   'var(--font-sans)',
-              fontWeight:   isSelected
-                ? 'var(--weight-semibold)'
-                : 'var(--weight-medium)',
-              color:        isSelected
-                ? 'var(--theme-accent)'
-                : 'var(--theme-text-secondary)',
-              cursor:       'pointer',
-              textAlign:    'center',
-              transition:   'var(--transition-hover)',
-              lineHeight:   1.2,
-            }}
-          >
-            {format(v)}
-          </button>
-        );
-      })}
-    </div>
-  );
-}

@@ -16,16 +16,19 @@ export function EmptyConversationState() {
         alignItems:     "center",
         justifyContent: "center",
         height:         "100%",
-        gap:            "var(--space-4)",
+        gap:            "var(--space-5)",
         padding:        "var(--space-8)",
       }}
     >
+      {/* Icon glyph */}
       <div
         style={{
-          width:          "56px",
-          height:         "56px",
+          width:          "64px",
+          height:         "64px",
           borderRadius:   "var(--radius-xl)",
-          background:     "var(--theme-accent-surface)",
+          background:     "var(--theme-paper)",
+          border:         "1px solid var(--theme-paper-border)",
+          boxShadow:      "var(--shadow-1)",
           display:        "flex",
           alignItems:     "center",
           justifyContent: "center",
@@ -33,15 +36,15 @@ export function EmptyConversationState() {
       >
         <MessageCircle
           style={{
-            width:       "26px",
-            height:      "26px",
+            width:       "28px",
+            height:      "28px",
             strokeWidth: 1.5,
             color:       "var(--theme-accent)",
           }}
         />
       </div>
 
-      <div style={{ textAlign: "center" }}>
+      <div style={{ textAlign: "center", maxWidth: "240px" }}>
         <p
           style={{
             fontFamily: "var(--font-serif)",
@@ -50,9 +53,10 @@ export function EmptyConversationState() {
             color:      "var(--theme-text-primary)",
             margin:     "0 0 var(--space-2)",
             fontWeight: "var(--weight-normal)",
+            lineHeight: 1.3,
           }}
         >
-          Select a conversation
+          Select a conversation.
         </p>
         <p
           style={{
@@ -63,7 +67,7 @@ export function EmptyConversationState() {
             lineHeight: "var(--leading-relaxed)",
           }}
         >
-          Choose a conversation from the left to start messaging.
+          Choose from the list to view the full thread.
         </p>
       </div>
     </motion.div>

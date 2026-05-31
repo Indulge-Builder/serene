@@ -10,20 +10,19 @@ export type ActionResult<T = null> = {
 // Shape must exactly match what get_dashboard_summary RPC returns.
 // Used by getDashboardSummary() in dashboard-service.ts and consumed by widget props.
 
-import type { LeadStatus } from "./database";
+import type { LeadStatus, AppDomain } from "./database";
 
 export type DashboardAgentTask = {
-  id:         string;
-  task_type:  string;
-  due_at:     string | null;
-  lead_id:    string;
-  lead_name:  string;
-  is_overdue: boolean;
-};
-
-export type DashboardAgentTasksSummary = {
-  tasks:         DashboardAgentTask[];
-  newLeadsCount: number;
+  id:            string;
+  title:         string;
+  task_category: 'personal' | 'group_subtask' | 'gia_followup';
+  task_type:     string;
+  priority:      'urgent' | 'high' | 'normal';
+  status:        'to_do' | 'in_progress' | 'in_review';
+  due_at:        string | null;
+  is_overdue:    boolean;
+  context_label: string | null;
+  lead_id:       string | null;
 };
 
 export type DashboardAgentActivity = {
@@ -75,6 +74,7 @@ export type AgentRosterRow = {
   id:                     string;
   full_name:              string;
   avatar_url:             string | null;
+  domain:                 AppDomain;
   totalLeads:             number;
   leadsWon:               number;
   conversionRate:         number | null;
@@ -98,8 +98,11 @@ export type AgentDetailMetrics = {
  * getLeadVolumeByPeriod() (separate call for the week default).
  * lead_volume is NOT in the RPC — time-bucketing is too period-dependent.
  */
+/** @deprecated — agent_tasks is now DashboardAgentTask[] directly on DashboardSummary */
+// DashboardAgentTasksSummary removed — shape flattened into DashboardSummary.agent_tasks
+
 export type DashboardSummary = {
-  agent_tasks:    DashboardAgentTasksSummary;
+  agent_tasks:    DashboardAgentTask[];
   agent_activity: DashboardAgentActivity[];
   lead_status:    DashboardLeadStatusSummary;
   campaigns:      DashboardCampaignStatusMix[];

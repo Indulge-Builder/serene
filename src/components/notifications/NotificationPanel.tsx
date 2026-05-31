@@ -2,16 +2,53 @@
 
 /**
  * NotificationPanel — dropdown panel anchored to the bell button.
- * Desktop: fixed dropdown (380px wide).
- * Mobile (< 768px): bottom sheet via CSS media query + conditional positioning.
- * Entrance: translateY(-4px) → 0, opacity 0 → 1, 150ms --ease-out-expo.
+ * Desktop: fixed dropdown (380px wide). Max-height 480px.
+ * Entrance: opacity 0→1, y 6→0, 400ms --ease-out-expo.
+ * Exit:     opacity 0, y -4, 250ms --ease-in-expo.
  * Closes on outside click, Escape, or item click with action_url.
  */
 
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { NotificationItem } from "@/components/notifications/NotificationItem";
+import {
+  ENTER_DURATION,
+  EXIT_DURATION,
+  EASE_OUT_EXPO,
+  EASE_IN_EXPO,
+} from "@/lib/constants/motion";
 import type { Notification } from "@/lib/types/database";
+
+// ─── Panel variants — spec-exact (not DROPDOWN_VARIANTS which uses BASE_DURATION) ──
+
+const PANEL_VARIANTS = {
+  hidden: { opacity: 0, y: 6 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: ENTER_DURATION, ease: EASE_OUT_EXPO },
+  },
+  exit: {
+    opacity: 0,
+    y: -4,
+    transition: { duration: EXIT_DURATION, ease: EASE_IN_EXPO },
+  },
+} as const;
+
+// ─── Item stagger variants ────────────────────────────────────────────────────
+
+const ITEM_VARIANTS = {
+  hidden: { opacity: 0, y: 4 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      delay:    Math.min(i * 50, 200) / 1000,
+      duration: 0.25,
+      ease:     EASE_OUT_EXPO,
+    },
+  }),
+} as const;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -36,7 +73,18 @@ export function NotificationPanel({
   onMarkAllRead,
   anchorRef,
 }: NotificationPanelProps) {
-  const panelRef = useRef<HTMLDivElement>(null);
+  const panelRef       = useRef<HTMLDivElement>(null);
+  const isInitialMount = useRef(true);
+
+  // After first render, flip the flag so subsequent Realtime items use custom={0}
+  useEffect(() => {
+    if (open) {
+      const id = setTimeout(() => { isInitialMount.current = false; }, 0);
+      return () => clearTimeout(id);
+    } else {
+      isInitialMount.current = true;
+    }
+  }, [open]);
 
   // Close on outside click
   useEffect(() => {
@@ -86,7 +134,7 @@ export function NotificationPanel({
               inset:      0,
               background: "rgba(0,0,0,0.4)",
               zIndex:     "calc(var(--z-dropdown) - 1)",
-              display:    "none",   // shown via CSS @media below
+              display:    "none",
             }}
           />
 
@@ -94,11 +142,10 @@ export function NotificationPanel({
             ref={panelRef}
             role="dialog"
             aria-label="Notifications"
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-            className="notification-panel"
+            variants={PANEL_VARIANTS}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
             style={{
               position:     "absolute",
               top:          "calc(100% + var(--space-2))",
@@ -107,8 +154,8 @@ export function NotificationPanel({
               width:        "380px",
               background:   "var(--theme-paper)",
               border:       "1px solid var(--theme-paper-border)",
-              borderRadius: "var(--radius-md)",
-              boxShadow:    "var(--shadow-3)",
+              borderRadius: "var(--radius-lg)",
+              boxShadow:    "var(--shadow-4)",
               overflow:     "hidden",
             }}
           >
@@ -124,10 +171,10 @@ export function NotificationPanel({
             >
               <span
                 style={{
-                  fontFamily:  "var(--font-sans)",
-                  fontSize:    "var(--text-sm)",
-                  fontWeight:  "var(--weight-semibold)",
-                  color:       "var(--theme-text-primary)",
+                  fontFamily: "var(--font-serif)",
+                  fontStyle:  "italic",
+                  fontSize:   "var(--text-md)",
+                  color:      "var(--theme-text-primary)",
                 }}
               >
                 Notifications
@@ -140,13 +187,16 @@ export function NotificationPanel({
                   style={{
                     fontFamily:  "var(--font-sans)",
                     fontSize:    "var(--text-xs)",
-                    fontWeight:  "var(--weight-semibold)",
-                    color:       "var(--theme-accent)",
+                    fontWeight:  "var(--weight-normal)",
+                    color:       "var(--theme-text-tertiary)",
                     background:  "none",
                     border:      "none",
                     cursor:      "pointer",
                     padding:     0,
+                    transition:  "color var(--transition-hover)",
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--theme-accent)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--theme-text-tertiary)"; }}
                 >
                   Mark all read
                 </button>
@@ -156,10 +206,7 @@ export function NotificationPanel({
             {/* List */}
             <div
               className="scrollable"
-              style={{
-                maxHeight:  "420px",
-                overflowY:  "auto",
-              }}
+              style={{ maxHeight: "480px" }}
             >
               {notifications.length === 0 ? (
                 <div
@@ -170,25 +217,37 @@ export function NotificationPanel({
                 >
                   <p
                     style={{
-                      fontFamily:  "var(--font-serif)",
-                      fontStyle:   "italic",
-                      fontSize:    "var(--text-sm)",
-                      color:       "var(--theme-text-tertiary)",
-                      margin:      0,
+                      fontFamily: "var(--font-serif)",
+                      fontStyle:  "italic",
+                      fontSize:   "var(--text-sm)",
+                      color:      "var(--theme-text-tertiary)",
+                      margin:     0,
                     }}
                   >
                     {"You're all caught up."}
                   </p>
                 </div>
               ) : (
-                notifications.map((n) => (
-                  <NotificationItem
-                    key={n.id}
-                    notification={n}
-                    onMarkRead={onMarkRead}
-                    onClose={onClose}
-                  />
-                ))
+                <motion.div layout style={{ padding: "var(--space-1) 0" }}>
+                  <AnimatePresence initial={false}>
+                    {notifications.map((n, i) => (
+                      <motion.div
+                        key={n.id}
+                        layout
+                        custom={isInitialMount.current ? i : 0}
+                        variants={ITEM_VARIANTS}
+                        initial="hidden"
+                        animate="visible"
+                      >
+                        <NotificationItem
+                          notification={n}
+                          onMarkRead={onMarkRead}
+                          onClose={onClose}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
               )}
             </div>
           </motion.div>

@@ -20,17 +20,63 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, LayoutDashboard, RotateCcw } from 'lucide-react';
 import { useDashboardLayout } from '@/hooks/useDashboardLayout';
-import { WIDGET_MAP } from '@/lib/constants/dashboard-widgets';
+import { WIDGET_MAP, type WidgetSize, type WidgetColSpan } from '@/lib/constants/dashboard-widgets';
 import { DashboardWidgetSlot, type WidgetProps } from './DashboardWidgetSlot';
 
+/*
+ * Bento grid — 12 equal columns.
+ * col-span-1 widgets → 6 columns (half width) on ≥ 768 px, 12 columns (full) below.
+ * col-span-2 widgets → 12 columns always (campaign chart needs the room).
+ *
+ * The grid is 12 columns. Each "design column" is 6 grid columns.
+ * This gives us clean halves without fractional arithmetic.
+ *
+ * Responsive rule lives in the injected <style> block so it works without
+ * a Tailwind breakpoint (we use inline styles for the grid).
+ */
+
+const GRID_CSS = `
+.eia-bento-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--space-4);
+  width: 100%;
+  align-items: start;
+}
+.eia-bento-cell-1 { grid-column: span 6; }
+.eia-bento-cell-2 { grid-column: span 12; }
+
+/* Below 820 px — all widgets stack full-width */
+@media (max-width: 820px) {
+  .eia-bento-cell-1,
+  .eia-bento-cell-2 { grid-column: span 12; }
+}
+
+/* Between 820–1100 px — both half-width widgets stay halves
+   but campaign spans full (already 12, no change needed) */
+`;
+
 type SortableWidgetProps = WidgetProps & {
-  widgetId: string;
-  editMode: boolean;
-  onRemove: (id: string) => void;
+  widgetId:  string;
+  size:      WidgetSize;
+  colSpan:   WidgetColSpan;
+  editMode:  boolean;
+  onRemove:  (id: string) => void;
+  onResize:  (id: string, size: WidgetSize, colSpan: WidgetColSpan) => void;
 };
 
-function SortableWidget({ widgetId, editMode, onRemove, userId, role, domain, initialData }: SortableWidgetProps) {
-  const definition = WIDGET_MAP[widgetId];
+function SortableWidget({
+  widgetId,
+  size,
+  colSpan,
+  editMode,
+  onRemove,
+  onResize,
+  userId,
+  role,
+  domain,
+  initialData,
+}: SortableWidgetProps) {
   const {
     attributes,
     listeners,
@@ -43,7 +89,8 @@ function SortableWidget({ widgetId, editMode, onRemove, userId, role, domain, in
   const style = {
     transform:  CSS.Transform.toString(transform),
     transition,
-    opacity:    isDragging ? 0.5 : 1,
+    opacity:    isDragging ? 0.4 : 1,
+    zIndex:     isDragging ? 50 : undefined,
   };
 
   const dragHandle = editMode ? (
@@ -52,16 +99,16 @@ function SortableWidget({ widgetId, editMode, onRemove, userId, role, domain, in
       {...listeners}
       aria-label="Drag to reorder"
       style={{
-        cursor:       'grab',
-        width:        '24px',
-        height:       '24px',
-        display:      'flex',
-        alignItems:   'center',
+        cursor:         'grab',
+        width:          '24px',
+        height:         '24px',
+        display:        'flex',
+        alignItems:     'center',
         justifyContent: 'center',
-        color:        'var(--theme-text-tertiary)',
-        background:   'var(--theme-paper)',
-        border:       '1px solid var(--theme-paper-border)',
-        borderRadius: 'var(--radius-sm)',
+        color:          'var(--theme-text-tertiary)',
+        background:     'var(--theme-paper)',
+        border:         '1px solid var(--theme-paper-border)',
+        borderRadius:   'var(--radius-sm)',
       }}
     >
       <GripVertical size={14} strokeWidth={1.5} />
@@ -69,12 +116,18 @@ function SortableWidget({ widgetId, editMode, onRemove, userId, role, domain, in
   ) : undefined;
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div
+      ref={setNodeRef}
+      className={`eia-bento-cell-${colSpan}`}
+      style={style}
+    >
       <DashboardWidgetSlot
         widgetId={widgetId}
-        size={definition?.defaultSize ?? 'md'}
+        size={size}
+        colSpan={colSpan}
         editMode={editMode}
         onRemove={onRemove}
+        onResize={onResize}
         dragHandle={dragHandle}
         userId={userId}
         role={role}
@@ -85,10 +138,21 @@ function SortableWidget({ widgetId, editMode, onRemove, userId, role, domain, in
   );
 }
 
-type DashboardCanvasProps = WidgetProps;
+type DashboardCanvasProps = WidgetProps & {
+  greeting:  string;
+  firstName: string;
+};
 
-export function DashboardCanvas({ userId, role, domain, initialData }: DashboardCanvasProps) {
-  const { layout, removeWidget, reorderWidgets, resetToDefaults } = useDashboardLayout(userId, role);
+export function DashboardCanvas({
+  userId,
+  role,
+  domain,
+  initialData,
+  greeting,
+  firstName,
+}: DashboardCanvasProps) {
+  const { layout, removeWidget, resizePlacement, reorderWidgets, resetToDefaults } =
+    useDashboardLayout(userId, role);
   const [editMode, setEditMode] = useState(false);
 
   const sensors = useSensors(
@@ -118,78 +182,80 @@ export function DashboardCanvas({ userId, role, domain, initialData }: Dashboard
 
   return (
     <div>
-      {/* Canvas toolbar */}
-      <div
-        style={{
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: 'flex-end',
-          gap:            'var(--space-2)',
-          marginBottom:   'var(--space-4)',
-        }}
-      >
-        {editMode && (
+      {/* Inject bento grid CSS once */}
+      <style>{GRID_CSS}</style>
+
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <h1 className="type-page-title m-0">
+          {greeting},{' '}
+          <span style={{ color: 'var(--theme-accent)' }}>{firstName}</span>
+          <span className="page-title-dot">.</span>
+        </h1>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {editMode && (
+            <button
+              type="button"
+              onClick={resetToDefaults}
+              style={{
+                display:    'flex',
+                alignItems: 'center',
+                gap:        'var(--space-1)',
+                fontSize:   'var(--text-xs)',
+                color:      'var(--theme-text-tertiary)',
+                background: 'transparent',
+                border:     'none',
+                cursor:     'pointer',
+                padding:    'var(--space-1) var(--space-2)',
+              }}
+            >
+              <RotateCcw size={12} strokeWidth={1.5} />
+              Reset layout
+            </button>
+          )}
           <button
-            onClick={resetToDefaults}
+            type="button"
+            onClick={() => setEditMode((v) => !v)}
+            aria-pressed={editMode}
             style={{
-              display:     'flex',
-              alignItems:  'center',
-              gap:         'var(--space-1)',
-              fontSize:    'var(--text-xs)',
-              color:       'var(--theme-text-tertiary)',
-              background:  'transparent',
-              border:      'none',
-              cursor:      'pointer',
-              padding:     'var(--space-1) var(--space-2)',
+              display:      'flex',
+              alignItems:   'center',
+              gap:          'var(--space-1)',
+              fontSize:     'var(--text-xs)',
+              fontWeight:   'var(--weight-medium)',
+              color:        editMode ? 'var(--theme-accent-fg)' : 'var(--theme-text-secondary)',
+              background:   editMode ? 'var(--theme-accent)' : 'var(--theme-paper-subtle)',
+              border:       '1px solid var(--theme-paper-border)',
+              borderRadius: 'var(--radius-sm)',
+              cursor:       'pointer',
+              padding:      '0 var(--space-3)',
+              height:       '32px',
             }}
           >
-            <RotateCcw size={12} strokeWidth={1.5} />
-            Reset layout
+            <LayoutDashboard size={12} strokeWidth={1.5} />
+            {editMode ? 'Done' : 'Edit layout'}
           </button>
-        )}
-        <button
-          onClick={() => setEditMode((v) => !v)}
-          aria-pressed={editMode}
-          style={{
-            display:        'flex',
-            alignItems:     'center',
-            gap:            'var(--space-1)',
-            fontSize:       'var(--text-xs)',
-            fontWeight:     'var(--weight-medium)',
-            color:          editMode ? 'var(--theme-accent-fg)' : 'var(--theme-text-secondary)',
-            background:     editMode ? 'var(--theme-accent)' : 'var(--theme-paper-subtle)',
-            border:         '1px solid var(--theme-paper-border)',
-            borderRadius:   'var(--radius-sm)',
-            cursor:         'pointer',
-            padding:        '0 var(--space-3)',
-            height:         '32px',
-          }}
-        >
-          <LayoutDashboard size={12} strokeWidth={1.5} />
-          {editMode ? 'Done' : 'Edit layout'}
-        </button>
+        </div>
       </div>
 
-      {/* Widget grid */}
+      {/* Bento grid */}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={widgetIds} strategy={verticalListSortingStrategy}>
-          <div
-            style={{
-              display:             'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
-              gap:                 'var(--space-4)',
-            }}
-          >
+          <div className="eia-bento-grid">
             {layout.map((placement) => (
               <SortableWidget
                 key={placement.widgetId}
                 widgetId={placement.widgetId}
+                size={placement.size}
+                colSpan={placement.colSpan ?? (WIDGET_MAP[placement.widgetId]?.colSpan ?? 1)}
                 editMode={editMode}
                 onRemove={removeWidget}
+                onResize={resizePlacement}
                 userId={userId}
                 role={role}
                 domain={domain}

@@ -16,6 +16,7 @@ import {
   markNotificationReadAction,
   markAllReadAction,
 } from "@/lib/actions/notifications";
+import { useNotificationSound } from "@/hooks/useNotificationSound";
 import type { Notification } from "@/lib/types/database";
 
 interface UseNotificationsOptions {
@@ -39,6 +40,8 @@ export function useNotifications({
   const [isLoading, setIsLoading]         = useState(false);
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
 
+  const sound = useNotificationSound();
+
   const unreadCount = notifications.filter((n) => n.read_at === null).length;
 
   // ── Realtime subscription ─────────────────────────────────────────────────
@@ -61,6 +64,7 @@ export function useNotifications({
         (payload) => {
           const incoming = payload.new as Notification;
           setNotifications((prev) => [incoming, ...prev].slice(0, 50));
+          sound.play();
         },
       )
       .on(

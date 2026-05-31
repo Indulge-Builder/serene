@@ -11,115 +11,41 @@
  *   - Minimum display time enforced by Suspense boundary (≥150ms, V-08)
  */
 
-// ─── Personal skeleton ────────────────────────────────────────────────────────
+// ─── Personal skeleton (two-column: calendar left + date list right) ─────────
 
-const PERSONAL_STAGGER = [0, 80, 160, 240, 320];
-const PRIORITY_SECTION_STAGGER = [0, 80, 160];
+const ROW_STAGGER = [0, 80, 160, 240, 320];
 
 function TaskRowSkeleton({ delay }: { delay: number }) {
   return (
     <div
       style={{
-        display:     'flex',
-        alignItems:  'center',
-        gap:         'var(--space-3)',
-        padding:     'var(--space-3) var(--space-4)',
+        display:      'flex',
+        alignItems:   'center',
+        gap:          'var(--space-3)',
+        padding:      'var(--space-3) var(--space-4)',
         borderBottom: '1px solid var(--theme-paper-border)',
         background:   'var(--theme-paper)',
       }}
     >
-      {/* Completion circle */}
-      <div
-        className="skeleton"
-        style={{
-          width:          'var(--space-6)',
-          height:         'var(--space-6)',
-          borderRadius:   'var(--radius-full)',
-          flexShrink:     0,
-          animationDelay: `${delay}ms`,
-        }}
-      />
-      {/* Title */}
-      <div
-        className="skeleton"
-        style={{
-          flex:           1,
-          height:         '14px',
-          borderRadius:   'var(--radius-xs)',
-          animationDelay: `${delay}ms`,
-        }}
-      />
-      {/* Due date chip */}
-      <div
-        className="skeleton"
-        style={{
-          width:          '60px',
-          height:         '12px',
-          borderRadius:   'var(--radius-xs)',
-          flexShrink:     0,
-          animationDelay: `${delay}ms`,
-        }}
-      />
-      {/* Arrow button */}
-      <div
-        className="skeleton"
-        style={{
-          width:          'var(--space-6)',
-          height:         'var(--space-6)',
-          borderRadius:   'var(--radius-xs)',
-          flexShrink:     0,
-          animationDelay: `${delay}ms`,
-        }}
-      />
+      <div className="skeleton" style={{ width: 'var(--space-6)', height: 'var(--space-6)', borderRadius: 'var(--radius-full)', flexShrink: 0, animationDelay: `${delay}ms` }} />
+      <div className="skeleton" style={{ flex: 1, height: '14px', borderRadius: 'var(--radius-xs)', animationDelay: `${delay}ms` }} />
+      <div className="skeleton" style={{ width: '60px', height: '12px', borderRadius: 'var(--radius-xs)', flexShrink: 0, animationDelay: `${delay}ms` }} />
+      <div className="skeleton" style={{ width: 'var(--space-6)', height: 'var(--space-6)', borderRadius: 'var(--radius-xs)', flexShrink: 0, animationDelay: `${delay}ms` }} />
     </div>
   );
 }
 
-function PrioritySectionSkeleton({ sectionDelay }: { sectionDelay: number }) {
+function DateSectionSkeleton({ sectionDelay, rowCount = 3 }: { sectionDelay: number; rowCount?: number }) {
   return (
-    <div
-      style={{
-        border:       '1px solid var(--theme-paper-border)',
-        borderRadius: 'var(--radius-md)',
-        overflow:     'hidden',
-        boxShadow:    'var(--shadow-1)',
-      }}
-    >
+    <div>
       {/* Section header */}
-      <div
-        style={{
-          display:     'flex',
-          alignItems:  'center',
-          gap:         'var(--space-2)',
-          padding:     'var(--space-2) var(--space-4)',
-          background:  'var(--theme-paper-subtle)',
-          borderBottom: '1px solid var(--theme-paper-border)',
-        }}
-      >
-        <div
-          className="skeleton"
-          style={{
-            width:          '60px',
-            height:         '10px',
-            borderRadius:   'var(--radius-xs)',
-            animationDelay: `${sectionDelay}ms`,
-          }}
-        />
-        <div
-          className="skeleton"
-          style={{
-            width:          '24px',
-            height:         '18px',
-            borderRadius:   'var(--radius-full)',
-            marginLeft:     'auto',
-            animationDelay: `${sectionDelay}ms`,
-          }}
-        />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-4)', background: 'var(--theme-paper-subtle)', borderBottom: '1px solid var(--theme-paper-border)' }}>
+        <div className="skeleton" style={{ width: 6, height: 6, borderRadius: 'var(--radius-full)', flexShrink: 0, animationDelay: `${sectionDelay}ms` }} />
+        <div className="skeleton" style={{ width: '80px', height: '10px', borderRadius: 'var(--radius-xs)', animationDelay: `${sectionDelay}ms` }} />
+        <div className="skeleton" style={{ width: '20px', height: '16px', borderRadius: 'var(--radius-full)', marginLeft: 'auto', animationDelay: `${sectionDelay}ms` }} />
       </div>
-
-      {/* Task rows */}
-      {PERSONAL_STAGGER.map((rowDelay, i) => (
-        <TaskRowSkeleton key={i} delay={sectionDelay + rowDelay} />
+      {Array.from({ length: rowCount }).map((_, i) => (
+        <TaskRowSkeleton key={i} delay={sectionDelay + (ROW_STAGGER[i] ?? 0)} />
       ))}
     </div>
   );
@@ -127,10 +53,60 @@ function PrioritySectionSkeleton({ sectionDelay }: { sectionDelay: number }) {
 
 function PersonalTabSkeleton() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-      {PRIORITY_SECTION_STAGGER.map((delay, i) => (
-        <PrioritySectionSkeleton key={i} sectionDelay={delay} />
-      ))}
+    <div style={{ display: 'flex', gap: 'var(--space-5)', alignItems: 'flex-start' }}>
+      {/* Left: calendar */}
+      <div style={{ flexShrink: 0, width: 280, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        {/* Calendar card */}
+        <div style={{ background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-1)', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          {/* Month header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="skeleton" style={{ width: '100px', height: '14px', borderRadius: 'var(--radius-xs)' }} />
+            <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+              <div className="skeleton" style={{ width: 24, height: 24, borderRadius: 'var(--radius-xs)' }} />
+              <div className="skeleton" style={{ width: 24, height: 24, borderRadius: 'var(--radius-xs)' }} />
+            </div>
+          </div>
+          {/* Day labels */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 'var(--space-1)' }}>
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="skeleton" style={{ height: '10px', borderRadius: 'var(--radius-xs)', animationDelay: `${i * 20}ms` }} />
+            ))}
+          </div>
+          {/* Calendar grid — 5 rows × 7 cols */}
+          {Array.from({ length: 5 }).map((_, row) => (
+            <div key={row} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 'var(--space-1)' }}>
+              {Array.from({ length: 7 }).map((_, col) => (
+                <div key={col} className="skeleton" style={{ height: '32px', borderRadius: 'var(--radius-xs)', animationDelay: `${(row * 7 + col) * 15}ms` }} />
+              ))}
+            </div>
+          ))}
+        </div>
+        {/* Stats strip */}
+        <div style={{ background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-1)', padding: 'var(--space-3) var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          {[0, 80, 160].map((delay, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <div className="skeleton" style={{ width: 6, height: 6, borderRadius: 'var(--radius-full)', flexShrink: 0, animationDelay: `${delay}ms` }} />
+              <div className="skeleton" style={{ flex: 1, height: '10px', borderRadius: 'var(--radius-xs)', animationDelay: `${delay}ms` }} />
+              <div className="skeleton" style={{ width: '20px', height: '10px', borderRadius: 'var(--radius-xs)', animationDelay: `${delay}ms` }} />
+            </div>
+          ))}
+        </div>
+        {/* Quick-add button */}
+        <div className="skeleton" style={{ height: '34px', borderRadius: 'var(--radius-md)' }} />
+      </div>
+
+      {/* Right: date sections */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-1)' }}>
+          <DateSectionSkeleton sectionDelay={0} rowCount={3} />
+          <div style={{ borderTop: '1px solid var(--theme-paper-border)' }}>
+            <DateSectionSkeleton sectionDelay={80} rowCount={2} />
+          </div>
+          <div style={{ borderTop: '1px solid var(--theme-paper-border)' }}>
+            <DateSectionSkeleton sectionDelay={160} rowCount={2} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -229,10 +205,118 @@ function GroupTabSkeleton() {
   );
 }
 
+// ─── Gia skeleton (date-grouped rows) ─────────────────────────────────────────
+
+function GiaRowSkeleton({ delay, width }: { delay: number; width: string }) {
+  return (
+    <div
+      style={{
+        display:    'flex',
+        alignItems: 'center',
+        gap:        'var(--space-3)',
+        padding:    'var(--space-3) 0',
+      }}
+    >
+      {/* completion circle */}
+      <div
+        className="skeleton"
+        style={{
+          width:          '24px',
+          height:         '24px',
+          borderRadius:   'var(--radius-full)',
+          flexShrink:     0,
+          animationDelay: `${delay}ms`,
+        }}
+      />
+      {/* task type icon */}
+      <div
+        className="skeleton"
+        style={{
+          width:          '16px',
+          height:         '16px',
+          borderRadius:   'var(--radius-sm)',
+          flexShrink:     0,
+          animationDelay: `${delay}ms`,
+        }}
+      />
+      {/* lead name + label */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+        <div
+          className="skeleton"
+          style={{
+            width:          width,
+            height:         '14px',
+            borderRadius:   'var(--radius-full)',
+            animationDelay: `${delay}ms`,
+          }}
+        />
+        <div
+          className="skeleton"
+          style={{
+            width:          '60px',
+            height:         '10px',
+            borderRadius:   'var(--radius-full)',
+            animationDelay: `${delay}ms`,
+          }}
+        />
+      </div>
+      {/* due time */}
+      <div
+        className="skeleton"
+        style={{
+          width:          '48px',
+          height:         '12px',
+          borderRadius:   'var(--radius-full)',
+          animationDelay: `${delay}ms`,
+        }}
+      />
+    </div>
+  );
+}
+
+function GiaDaySectionSkeleton({ delay, widths }: { delay: number; widths: string[] }) {
+  return (
+    <div style={{ marginBottom: 'var(--space-4)' }}>
+      {/* date label */}
+      <div
+        className="skeleton"
+        style={{
+          width:          '80px',
+          height:         '10px',
+          borderRadius:   'var(--radius-full)',
+          marginBottom:   'var(--space-2)',
+          animationDelay: `${delay}ms`,
+        }}
+      />
+      {widths.map((w, i) => (
+        <GiaRowSkeleton key={i} delay={delay + i * 80} width={w} />
+      ))}
+    </div>
+  );
+}
+
+function GiaTabSkeleton() {
+  return (
+    <div
+      style={{
+        background:   'var(--theme-paper)',
+        border:       '1px solid var(--theme-paper-border)',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow:    'var(--shadow-1)',
+        padding:      'var(--space-5)',
+      }}
+    >
+      <GiaDaySectionSkeleton delay={0}   widths={['80%', '60%']} />
+      <GiaDaySectionSkeleton delay={160} widths={['75%']} />
+      <GiaDaySectionSkeleton delay={240} widths={['65%', '50%']} />
+    </div>
+  );
+}
+
 // ─── Public export ────────────────────────────────────────────────────────────
 
 interface TasksSkeletonProps {
-  tab: 'personal' | 'group';
+  tab: 'personal' | 'group' | 'gia';
 }
 
 export function TasksSkeleton({ tab }: TasksSkeletonProps) {
@@ -272,7 +356,11 @@ export function TasksSkeleton({ tab }: TasksSkeletonProps) {
         />
       </div>
 
-      {tab === 'personal' ? <PersonalTabSkeleton /> : <GroupTabSkeleton />}
+      {tab === 'gia'
+        ? <GiaTabSkeleton />
+        : tab === 'personal'
+          ? <PersonalTabSkeleton />
+          : <GroupTabSkeleton />}
     </div>
   );
 }

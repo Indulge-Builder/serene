@@ -7,8 +7,7 @@
  * and on new remarks. Each entry shows avatar + name + timestamp + content.
  * If remark.status_change is set, a status chip is rendered above the content.
  *
- * Input area: textarea (grows to 3 lines) + optional status-change pill row
- * (2×3 grid on mobile, 1 row of 6 on desktop) + "Post update" button.
+ * Input area: textarea (grows to 3 lines) + send button.
  *
  * Realtime: subscribes to task_remarks filtered by task_id.
  * Channel name: task-remarks-${taskId}-${mountId}
@@ -19,7 +18,6 @@
  *
  * Pre-mortem addressed:
  * - Channel name includes taskId — no cross-task bleed.
- * - 6 status pills in a 2×3 grid on mobile (≤480px) — no overflow at 375px.
  * - useTransition isPending guards the Post button — no duplicate submissions.
  * - No form tag — all onClick/onChange.
  * - No tasks-service import — all data via props or actions.
@@ -42,12 +40,16 @@ import { formatRelativeTime } from "@/lib/utils/dates";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { toast } from "@/lib/toast";
 import { TASK_REMARK_STATUS_LABELS, TASK_STATUS } from "@/lib/constants/task-constants";
-import { EASE_OUT_EXPO, FAST_DURATION } from "@/lib/constants/motion";
 import { TaskStatusIcon } from "@/components/tasks/TaskStatusIcon";
 import type { TaskRemarkWithAuthor } from "@/lib/services/tasks-service";
 import type { TaskRemark, TaskStatus } from "@/lib/types/database";
 
 export type { TaskRemarkWithAuthor };
+
+const COMPOSER_PLACEHOLDER = "Write a progress.";
+const COMPOSER_SEND_SIZE   = 32;
+const COMPOSER_LINE_HEIGHT = 20;
+const COMPOSER_TEXT_PAD_Y  = (COMPOSER_SEND_SIZE - COMPOSER_LINE_HEIGHT) / 2;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,7 +58,8 @@ interface TaskRemarksPanelProps {
   currentUserId:        string;
   currentUserName:      string;
   initialRemarks:       TaskRemarkWithAuthor[];
-  composerPlaceholder?: string;
+  /** When true (SubTaskModal zone B): softer cards, padding aligned to shared grid header row. */
+  embedded?:            boolean;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -66,7 +69,7 @@ export function TaskRemarksPanel({
   currentUserId,
   currentUserName,
   initialRemarks,
-  composerPlaceholder = "Add an update…",
+  embedded = false,
 }: TaskRemarksPanelProps) {
   const listRef        = useRef<HTMLDivElement>(null);
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
@@ -77,10 +80,9 @@ export function TaskRemarksPanel({
   // Stable mount-scoped nonce — prevents Strict Mode double-invoke channel collision
   const mountId = useId();
 
-  const [remarks,      setRemarks]      = useState<TaskRemarkWithAuthor[]>(initialRemarks);
-  const [draft,        setDraft]        = useState("");
-  const [statusChange, setStatusChange] = useState<TaskStatus | null>(null);
-  const [isPending,    startTransition] = useTransition();
+  const [remarks,   setRemarks]   = useState<TaskRemarkWithAuthor[]>(initialRemarks);
+  const [draft,     setDraft]     = useState("");
+  const [isPending, startTransition] = useTransition();
 
   // Seed seenIds from initialRemarks so Realtime never double-appends rows
   // that were already present when the modal opened.
@@ -167,22 +169,13 @@ export function TaskRemarksPanel({
     el.style.height = `${Math.min(el.scrollHeight, 72)}px`; // max 3 lines ≈ 72px
   }
 
-  // ── Status pill toggle ────────────────────────────────────────────────────
-
-  function toggleStatusChange(status: TaskStatus) {
-    setStatusChange((prev) => (prev === status ? null : status));
-  }
-
   // ── Post remark ───────────────────────────────────────────────────────────
 
   const postRemark = useCallback(() => {
     const content = draft.trim();
     if (!content || isPending) return;
 
-    const pendingStatusChange = statusChange;
-
     setDraft("");
-    setStatusChange(null);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -198,7 +191,7 @@ export function TaskRemarksPanel({
       task_id:       taskId,
       author_id:     currentUserId,
       content:       sanitized,
-      status_change: pendingStatusChange,
+      status_change: null,
       created_at:    new Date().toISOString(),
       is_suppressed: false,
       suppressed_by: null,
@@ -212,7 +205,6 @@ export function TaskRemarksPanel({
       const result = await addTaskRemarkAction({
         taskId,
         content,
-        statusChange: pendingStatusChange ?? undefined,
       });
 
       if (result.error) {
@@ -239,7 +231,7 @@ export function TaskRemarksPanel({
         });
       }
     });
-  }, [draft, isPending, statusChange, taskId, currentUserId, currentUserName]);
+  }, [draft, isPending, taskId, currentUserId, currentUserName]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -268,6 +260,12 @@ export function TaskRemarksPanel({
           35%  { transform: translate(-20px, 16px) scale(1.1);  opacity: 0.05;  }
           65%  { transform: translate(14px, -10px) scale(0.94); opacity: 0.025; }
           100% { transform: translate(0px, 0px)    scale(1);    opacity: 0.03;  }
+        }
+        .trp-composer-input::placeholder {
+          color:      var(--theme-text-tertiary);
+          font-family: var(--font-serif);
+          font-style: italic;
+          opacity:    1;
         }
       `}</style>
 
@@ -325,7 +323,9 @@ export function TaskRemarksPanel({
           style={{
             flex:                    1,
             overflowY:               "auto",
-            padding:                 "var(--space-5) var(--space-4)",
+            padding:                 embedded
+              ? "var(--space-3) var(--space-5) var(--space-2)"
+              : "var(--space-5) var(--space-4)",
             display:                 "flex",
             flexDirection:           "column",
             gap:                     "var(--space-3)",
@@ -400,7 +400,7 @@ export function TaskRemarksPanel({
                   <div
                     style={{
                       background:   "var(--theme-paper)",
-                      border:       "1px solid var(--theme-paper-border)",
+                      border:       embedded ? "none" : "1px solid var(--theme-paper-border)",
                       borderRadius: "var(--radius-md)",
                       padding:      "var(--space-3) var(--space-4)",
                       boxShadow:    "var(--shadow-1)",
@@ -491,20 +491,24 @@ export function TaskRemarksPanel({
         {/* Compose area */}
         <div
           style={{
-            padding:       "var(--space-3) var(--space-4)",
+            padding:       embedded
+              ? "var(--space-3) var(--space-5) var(--space-4)"
+              : "var(--space-3) var(--space-4)",
             flexShrink:    0,
           }}
         >
           <div
             style={{
               display:      "flex",
-              alignItems:   "flex-end",
+              alignItems:   "center",
               gap:          "var(--space-2)",
               background:   "var(--theme-paper)",
-              border:       "1px solid var(--theme-paper-border)",
+              border:       embedded
+                ? "1px solid color-mix(in srgb, var(--theme-paper-border) 50%, transparent)"
+                : "1px solid var(--theme-paper-border)",
               borderRadius: "var(--radius-lg)",
-              padding:      "var(--space-2) var(--space-3)",
-              boxShadow:    "var(--shadow-2)",
+              padding:      `var(--space-2) var(--space-2) var(--space-2) var(--space-4)`,
+              boxShadow:    embedded ? "var(--shadow-1)" : "var(--shadow-2)",
               transition:   "var(--transition-hover)",
             }}
             onFocus={(e) => {
@@ -520,36 +524,42 @@ export function TaskRemarksPanel({
           >
             <textarea
               ref={textareaRef}
+              className="trp-composer-input"
               value={draft}
               onChange={handleDraftChange}
               onKeyDown={handleKeyDown}
-              placeholder={composerPlaceholder}
               rows={1}
+              aria-label={COMPOSER_PLACEHOLDER}
+              title="Return to send · Shift+Return for a new line"
+              placeholder={COMPOSER_PLACEHOLDER}
               style={{
-                flex:       1,
-                border:     "none",
-                outline:    "none",
-                background: "transparent",
-                resize:     "none",
-                fontFamily: "var(--font-sans)",
-                fontSize:   "var(--text-sm)",
-                color:      "var(--theme-text-primary)",
-                lineHeight: "var(--leading-relaxed)",
-                minHeight:  "24px",
-                maxHeight:  "72px",
-                overflowY:  "auto",
-                caretColor: "var(--theme-accent)",
+                flex:         1,
+                border:       "none",
+                outline:      "none",
+                background:   "transparent",
+                resize:       "none",
+                fontFamily:   "var(--font-sans)",
+                fontSize:     "var(--text-sm)",
+                color:        "var(--theme-text-primary)",
+                lineHeight:   `${COMPOSER_LINE_HEIGHT}px`,
+                minHeight:    `${COMPOSER_LINE_HEIGHT}px`,
+                maxHeight:    "72px",
+                overflowY:    "auto",
+                caretColor:   "var(--theme-accent)",
+                padding:      `${COMPOSER_TEXT_PAD_Y}px 0`,
+                margin:       0,
+                boxSizing:    "border-box",
               }}
             />
             <button
               type="button"
               onClick={postRemark}
               disabled={!canPost}
-              aria-label="Post update"
+              aria-label="Send update"
               style={{
-                width:          "32px",
-                height:         "32px",
-                borderRadius:   "var(--radius-sm)",
+                width:          `${COMPOSER_SEND_SIZE}px`,
+                height:         `${COMPOSER_SEND_SIZE}px`,
+                borderRadius:   "var(--radius-md)",
                 border:         "none",
                 cursor:         canPost ? "pointer" : "not-allowed",
                 display:        "flex",
@@ -570,58 +580,6 @@ export function TaskRemarksPanel({
               />
             </button>
           </div>
-
-          {/* Status-change chips */}
-          <div
-            style={{
-              display:   "flex",
-              flexWrap:  "wrap",
-              gap:       "var(--space-2)",
-              marginTop: "var(--space-2)",
-            }}
-          >
-            {(Object.keys(TASK_STATUS) as TaskStatus[]).map((status) => {
-              const isActive = statusChange === status;
-              return (
-                <motion.button
-                  key={status}
-                  type="button"
-                  onClick={() => toggleStatusChange(status)}
-                  animate={{
-                    background:   isActive ? "var(--theme-accent-surface)" : "var(--theme-paper-subtle)",
-                    borderColor:  isActive ? "var(--theme-accent)"         : "var(--theme-paper-border)",
-                    color:        isActive ? "var(--theme-accent)"         : "var(--theme-text-secondary)",
-                  }}
-                  transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
-                  style={{
-                    height:       "var(--space-7)",
-                    padding:      "var(--space-2) var(--space-3)",
-                    border:       "1px solid var(--theme-paper-border)",
-                    borderRadius: "var(--radius-full)",
-                    fontFamily:   "var(--font-sans)",
-                    fontSize:     "var(--text-xs)",
-                    fontWeight:   "var(--weight-medium)",
-                    cursor:       "pointer",
-                    lineHeight:   1,
-                    whiteSpace:   "nowrap",
-                  }}
-                >
-                  {TASK_REMARK_STATUS_LABELS[status]}
-                </motion.button>
-              );
-            })}
-          </div>
-
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize:   "var(--text-2xs)",
-              color:      "var(--theme-text-tertiary)",
-              margin:     "var(--space-1) var(--space-1) 0",
-            }}
-          >
-            Enter to send · Shift+Enter for new line
-          </p>
         </div>
       </div>
     </>

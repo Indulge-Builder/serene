@@ -1,9 +1,7 @@
 "use client";
 
-// Stubbed in Phase 4 — toggles render but do nothing.
-// Will be wired when the notification system is built.
-
-import { Toggle } from '@/components/ui/Toggle';
+import { Toggle } from "@/components/ui/Toggle";
+import { useNotificationSound } from "@/hooks/useNotificationSound";
 
 type NotificationRow = {
   id:          string;
@@ -11,7 +9,7 @@ type NotificationRow = {
   description: string;
 };
 
-const NOTIFICATION_ROWS: NotificationRow[] = [
+const STUB_ROWS: NotificationRow[] = [
   {
     id:          "notif_whatsapp",
     label:       "WhatsApp Notifications",
@@ -25,14 +23,34 @@ const NOTIFICATION_ROWS: NotificationRow[] = [
 ];
 
 export function NotificationPreferences() {
+  const sound = useNotificationSound();
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
-      {NOTIFICATION_ROWS.map((row, index) => (
+      {/* Sound toggle — live, localStorage-backed. Hidden until hydrated (avoids flicker). */}
+      {sound.enabled !== null && (
+        <div
+          style={{
+            padding:      "var(--space-4) 0",
+            borderBottom: "1px solid var(--theme-paper-border)",
+          }}
+        >
+          <Toggle
+            checked={sound.enabled}
+            onChange={sound.setEnabled}
+            label="Notification sound"
+            description="A short chime when new notifications arrive"
+          />
+        </div>
+      )}
+
+      {/* Stubbed rows — not yet wired to DB */}
+      {STUB_ROWS.map((row, index) => (
         <div
           key={row.id}
           style={{
             padding:      "var(--space-4) 0",
-            borderBottom: index < NOTIFICATION_ROWS.length - 1
+            borderBottom: index < STUB_ROWS.length - 1
               ? "1px solid var(--theme-paper-border)"
               : "none",
             opacity: 0.45,
@@ -57,7 +75,7 @@ export function NotificationPreferences() {
           fontStyle:  "italic",
         }}
       >
-        Notification controls will be available in a future update.
+        Additional notification controls will be available in a future update.
       </p>
     </div>
   );

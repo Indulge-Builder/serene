@@ -41,69 +41,77 @@ export const getDashboardSummary = cache(
 // ─────────────────────────────────────────────
 
 // ─────────────────────────────────────────────
-// Agent Tasks Widget — refresh only
+// Agent Tasks Widget — refresh only (mirrors the RPC CTE shape)
 // ─────────────────────────────────────────────
 
-export type AgentTask = {
-  id:           string;
-  task_type:    string;
-  due_at:       string | null;
-  lead_id:      string;
-  lead_name:    string;
-  is_overdue:   boolean;
-};
-
-export type AgentTasksSummary = {
-  tasks:          AgentTask[];
-  newLeadsCount:  number;
-};
-
-export async function getAgentTasksSummary(agentId: string): Promise<AgentTasksSummary> {
+export async function getAgentTasksSummary(agentId: string): Promise<import('@/lib/types').DashboardAgentTask[]> {
   const supabase = await createClient();
   const now      = new Date().toISOString();
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-  const todayEndStr = todayEnd.toISOString();
 
-  // Single query: tasks pending due today or overdue, joined to lead name via task_gia_meta
   const { data: taskRows } = await supabase
     .from('tasks')
-    .select('id, task_type, due_at, task_gia_meta!inner(lead_id, lead:leads!task_gia_meta_lead_id_fkey(first_name, last_name))')
+    .select(`
+      id, title, task_category, task_type, priority, status, due_at,
+      task_gia_meta(lead_id, lead:leads!task_gia_meta_lead_id_fkey(first_name, last_name)),
+      task_groups(title)
+    `)
     .eq('assigned_to', agentId)
-    .eq('status', 'to_do')
-    .or(`due_at.lte.${todayEndStr},due_at.is.null`)
+    .in('status', ['to_do', 'in_progress', 'in_review'])
     .order('due_at', { ascending: true, nullsFirst: false })
-    .limit(20);
+    .limit(30);
 
-  const tasks: AgentTask[] = (taskRows ?? []).map((row) => {
-    const meta     = Array.isArray(row.task_gia_meta) ? row.task_gia_meta[0] : row.task_gia_meta;
-    const lead     = meta?.lead as { first_name: string; last_name: string | null } | null;
-    const leadName = lead ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') : 'Unknown';
-    return {
-      id:         row.id,
-      task_type:  row.task_type as string,
-      due_at:     row.due_at,
-      lead_id:    (meta?.lead_id as string) ?? '',
-      lead_name:  leadName,
-      is_overdue: !!row.due_at && row.due_at < now,
-    };
-  });
+  type TaskCategory = 'personal' | 'group_subtask' | 'gia_followup';
+  type Priority     = 'urgent' | 'high' | 'normal';
+  type Status       = 'to_do' | 'in_progress' | 'in_review';
 
-  // Count new leads — piggyback in the same server function call
-  const { count } = await supabase
-    .from('leads')
-    .select('id', { count: 'exact', head: true })
-    .eq('assigned_to', agentId)
-    .eq('status', 'new')
-    .is('archived_at', null);
+  return (taskRows ?? [])
+    .map((row) => {
+      const category = row.task_category as TaskCategory;
+      const meta     = Array.isArray(row.task_gia_meta) ? row.task_gia_meta[0] : row.task_gia_meta;
+      const group    = Array.isArray(row.task_groups) ? row.task_groups[0] : row.task_groups;
+      const lead     = meta?.lead as { first_name: string; last_name: string | null } | null;
 
-  return { tasks, newLeadsCount: count ?? 0 };
+      let contextLabel: string | null = null;
+      if (category === 'gia_followup' && lead) {
+        contextLabel = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
+      } else if (category === 'group_subtask' && group) {
+        contextLabel = (group as { title: string }).title;
+      }
+
+      return {
+        id:            row.id,
+        title:         row.title,
+        task_category: category,
+        task_type:     row.task_type as string,
+        priority:      (row.priority as Priority) ?? 'normal',
+        status:        row.status as Status,
+        due_at:        row.due_at,
+        is_overdue:    !!row.due_at && row.due_at < now,
+        context_label: contextLabel,
+        lead_id:       category === 'gia_followup' ? ((meta?.lead_id as string) ?? null) : null,
+      };
+    })
+    .sort((a, b) => {
+      const overdueA = a.is_overdue ? 0 : 1;
+      const overdueB = b.is_overdue ? 0 : 1;
+      if (overdueA !== overdueB) return overdueA - overdueB;
+      const pOrder = { urgent: 1, high: 2, normal: 3 };
+      const pDiff  = pOrder[a.priority] - pOrder[b.priority];
+      if (pDiff !== 0) return pDiff;
+      if (!a.due_at && !b.due_at) return 0;
+      if (!a.due_at) return 1;
+      if (!b.due_at) return -1;
+      return a.due_at < b.due_at ? -1 : 1;
+    });
 }
 
 // ─────────────────────────────────────────────
 // Agent Activity Widget
-// Last 10 activities performed by the agent.
 // Used as initial data; client subscribes to Realtime for updates.
+// Role-scoped:
+//   admin/founder → all activities (cross-domain)
+//   manager       → activities on leads in their domain
+//   agent         → only activities where actor_id = agentId
 // ─────────────────────────────────────────────
 
 export type AgentActivity = {
@@ -115,15 +123,42 @@ export type AgentActivity = {
   lead_name:   string | null;
 };
 
-export async function getAgentRecentActivity(agentId: string): Promise<AgentActivity[]> {
+export async function getAgentRecentActivity(
+  agentId: string,
+  role?: string,
+  domain?: string,
+): Promise<AgentActivity[]> {
   const supabase = await createClient();
 
-  const { data } = await supabase
+  // For manager: fetch lead IDs in their domain first, then filter activities.
+  // For admin/founder: no filter. For agent: filter by actor_id.
+  let leadIdFilter: string[] | null = null;
+  if (role === 'manager' && domain) {
+    const { data: domainLeads } = await supabase
+      .from('leads')
+      .select('id')
+      .eq('domain', domain as AppDomain)
+      .is('archived_at', null)
+      .limit(1000);
+    leadIdFilter = (domainLeads ?? []).map((r) => r.id);
+  }
+
+  let query = supabase
     .from('lead_activities')
     .select('id, action_type, details, created_at, lead_id, lead:leads!lead_activities_lead_id_fkey(first_name, last_name)')
-    .eq('actor_id', agentId)
     .order('created_at', { ascending: false })
-    .limit(10);
+    .limit(25);
+
+  if (role === 'admin' || role === 'founder') {
+    // no additional filter — all activities visible
+  } else if (role === 'manager' && leadIdFilter) {
+    if (leadIdFilter.length === 0) return [];
+    query = query.in('lead_id', leadIdFilter);
+  } else {
+    query = query.eq('actor_id', agentId);
+  }
+
+  const { data } = await query;
 
   return (data ?? []).map((row) => {
     const lead     = row.lead as { first_name: string; last_name: string | null } | null;
@@ -165,6 +200,7 @@ export type LeadStatusSummary = {
 export async function getLeadStatusSummary(
   role: string,
   domain: AppDomain,
+  targetDomain?: AppDomain,
 ): Promise<LeadStatusSummary> {
   const supabase = await createClient();
 
@@ -176,6 +212,8 @@ export async function getLeadStatusSummary(
 
   if (role === 'manager') {
     query = query.eq('domain', domain);
+  } else if (targetDomain) {
+    query = query.eq('domain', targetDomain);
   }
 
   const { data } = await query;
@@ -328,6 +366,81 @@ export async function getLeadVolumeByPeriod(
 }
 
 // ─────────────────────────────────────────────
+// Multi-domain Lead Volume
+// Returns per-domain series so the widget can render 4 lines.
+// Used by admin/founder domain-picker view; manager uses single-domain above.
+// ─────────────────────────────────────────────
+
+export type MultiDomainVolumePoint = {
+  label:       string;
+  [domain: string]: number | string; // domain keys are dynamic
+};
+
+export type MultiDomainVolumeSummary = {
+  domains: AppDomain[];
+  totals:  Record<AppDomain, number>;
+  series:  MultiDomainVolumePoint[];
+};
+
+export async function getLeadVolumeByDomains(
+  domains: AppDomain[],
+  period: VolumePeriod,
+): Promise<MultiDomainVolumeSummary> {
+  const supabase = await createClient();
+  const { from, to, bucketMs } = getPeriodBounds(period);
+
+  const { data } = await supabase
+    .from('leads')
+    .select('created_at, domain')
+    .is('archived_at', null)
+    .gte('created_at', from.toISOString())
+    .lte('created_at', to.toISOString())
+    .in('domain', domains);
+
+  const rows = (data ?? []) as { created_at: string; domain: string }[];
+
+  // Build bucket keys
+  const bucketKeys: string[] = [];
+  const cursor = new Date(from);
+  while (cursor <= to) {
+    bucketKeys.push(cursor.toISOString());
+    cursor.setTime(cursor.getTime() + bucketMs);
+  }
+
+  // Per-domain bucket maps
+  const domainMaps: Record<string, Record<string, number>> = {};
+  for (const d of domains) {
+    domainMaps[d] = Object.fromEntries(bucketKeys.map((k) => [k, 0]));
+  }
+
+  for (const row of rows) {
+    if (!domainMaps[row.domain]) continue;
+    const ts        = new Date(row.created_at).getTime();
+    const fromMs    = from.getTime();
+    const bucketIdx = Math.floor((ts - fromMs) / bucketMs);
+    const bucketStart = new Date(fromMs + bucketIdx * bucketMs);
+    const key       = bucketStart.toISOString();
+    if (key in domainMaps[row.domain]) {
+      domainMaps[row.domain][key] += 1;
+    }
+  }
+
+  const series: MultiDomainVolumePoint[] = bucketKeys.map((key) => {
+    const point: MultiDomainVolumePoint = { label: formatBucketLabel(new Date(key), period) };
+    for (const d of domains) {
+      point[d] = domainMaps[d][key] ?? 0;
+    }
+    return point;
+  });
+
+  const totals = Object.fromEntries(
+    domains.map((d) => [d, rows.filter((r) => r.domain === d).length]),
+  ) as Record<AppDomain, number>;
+
+  return { domains, totals, series };
+}
+
+// ─────────────────────────────────────────────
 // Manager Campaign Widget
 // Leads per utm_campaign, with status mix.
 // ─────────────────────────────────────────────
@@ -341,6 +454,7 @@ export type CampaignStatusMix = {
 export async function getLeadsByCampaign(
   role: string,
   domain: AppDomain,
+  targetDomain?: AppDomain,
 ): Promise<CampaignStatusMix[]> {
   const supabase = await createClient();
 
@@ -352,6 +466,8 @@ export async function getLeadsByCampaign(
 
   if (role === 'manager') {
     query = query.eq('domain', domain);
+  } else if (targetDomain) {
+    query = query.eq('domain', targetDomain);
   }
 
   const { data } = await query;

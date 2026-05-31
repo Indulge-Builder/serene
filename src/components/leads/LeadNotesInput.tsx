@@ -56,22 +56,22 @@ export function LeadNotesInput({ leadId, canAdd, onNoteAdded }: Props) {
         flex:          1,
       }}
     >
-      {/* Header — info-toned to distinguish from scratchpad */}
+      {/* Header — accent-surface toned to distinguish from scratchpad */}
       <div
         style={{
           display:      'flex',
           alignItems:   'center',
           gap:          'var(--space-2)',
           padding:      'var(--space-4) var(--space-5)',
-          borderBottom: '1px solid var(--color-info-dark-border)',
-          background:   'var(--color-info-dark-fill)',
+          borderBottom: '1px solid color-mix(in srgb, var(--theme-accent) 18%, transparent)',
+          background:   'var(--theme-accent-surface)',
         }}
       >
         <BookOpen
           style={{
             width:       '0.875rem',
             height:      '0.875rem',
-            color:       'var(--color-info-dark-text)',
+            color:       'var(--theme-accent)',
             strokeWidth: 1.5,
             flexShrink:  0,
           }}
@@ -83,7 +83,7 @@ export function LeadNotesInput({ leadId, canAdd, onNoteAdded }: Props) {
             fontWeight:    'var(--weight-semibold)',
             letterSpacing: 'var(--tracking-widest)',
             textTransform: 'uppercase',
-            color:         'var(--color-info-dark-text)',
+            color:         'var(--theme-accent)',
           }}
         >
           Team Notes
@@ -92,8 +92,7 @@ export function LeadNotesInput({ leadId, canAdd, onNoteAdded }: Props) {
           style={{
             marginLeft: 'auto',
             fontSize:   'var(--text-xs)',
-            color:      'var(--color-info-dark-text)',
-            opacity:    0.7,
+            color:      'var(--theme-accent-muted)',
           }}
         >
           Visible to all
@@ -170,11 +169,11 @@ export function LeadNotesInput({ leadId, canAdd, onNoteAdded }: Props) {
                   gap:            'var(--space-2)',
                   padding:        'var(--space-2) var(--space-4)',
                   borderRadius:   'var(--radius-md)',
-                  border:         '1px solid var(--color-info-dark-border)',
+                  border:         '1px solid color-mix(in srgb, var(--theme-accent) 30%, transparent)',
                   background:     content.trim() && !isPending
-                    ? 'var(--color-info-dark-fill)'
+                    ? 'var(--theme-accent-surface)'
                     : 'transparent',
-                  color:          'var(--color-info-dark-text)',
+                  color:          'var(--theme-accent)',
                   fontSize:       'var(--text-xs)',
                   fontWeight:     'var(--weight-medium)',
                   cursor:         content.trim() && !isPending ? 'pointer' : 'not-allowed',

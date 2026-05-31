@@ -77,7 +77,7 @@ async function canMutateTask(
 // ─────────────────────────────────────────────
 export async function createPersonalTaskAction(
   input: unknown,
-): Promise<ActionResult<{ taskId: string }>> {
+): Promise<ActionResult<{ taskId: string; assignedTo: string; createdBy: string }>> {
   // 1. Zod validation — first, always (Rule S-01)
   const parsed = CreatePersonalTaskSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: formErrors.generic };
@@ -106,7 +106,7 @@ export async function createPersonalTaskAction(
       assigned_to:   resolvedAssignedTo,
       created_by:    caller.id,
       module:        'gia',              // personal tasks default to gia module
-      task_type:     'general_follow_up',
+      task_type:     'other',
       task_category: 'personal',
       title:         fields.title,
       description:   fields.description ?? null,
@@ -139,7 +139,10 @@ export async function createPersonalTaskAction(
     scheduleTaskReminder(taskId, new Date(fields.due_at), resolvedAssignedTo).catch(() => {});
   }
 
-  return { data: { taskId }, error: null };
+  return {
+    data: { taskId, assignedTo: resolvedAssignedTo, createdBy: caller.id },
+    error: null,
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -236,7 +239,7 @@ export async function createSubtaskAction(
       assigned_to:   fields.assigned_to,
       created_by:    caller.id,
       module:        'gia',
-      task_type:     'general_follow_up',
+      task_type:     'other',
       task_category: 'group_subtask',
       title:         fields.title,
       description:   fields.description ?? null,
@@ -650,8 +653,8 @@ export async function getTaskGroupByIdAction(
 // task_remarks INSERT in a single transaction — 1 round-trip instead of 6
 // sequential awaits (perf-02 pattern from migrations 0030/0031).
 //
-// Access control: auth check + Zod validation in this action (A-09 layer 1).
-// The RPC performs a second inline check using auth.uid() (A-09 layer 2).
+// Access control: if the user-scoped client can SELECT the task (RLS), they may
+// post. RPC is SECURITY DEFINER via service role — no auth.uid() inside (00051).
 //
 // task_remarks is append-only — the RPC only INSERTs (Rule A-11).
 // ─────────────────────────────────────────────
@@ -667,12 +670,20 @@ export async function addTaskRemarkAction(
   // sanitizeText is called by the Zod transform; re-apply explicitly (Rule S-06)
   const sanitizedContent = sanitizeText(content);
 
-  // 2. Auth check
+  // 2. Auth — session required; task must be visible under tasks RLS (view = post)
   const caller = await getCurrentProfile();
   if (!caller) return { data: null, error: formErrors.unauthorized };
 
-  // 3. Single RPC call — handles access check, optional status UPDATE, and
-  //    task_remarks INSERT atomically. The RPC returns the full remark row.
+  const supabase = await createClient();
+  const { data: task } = await supabase
+    .from('tasks')
+    .select('id')
+    .eq('id', taskId)
+    .single();
+
+  if (!task) return { data: null, error: formErrors.unauthorized };
+
+  // 3. RPC — atomic optional status UPDATE + task_remarks INSERT
   const admin = createAdminClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

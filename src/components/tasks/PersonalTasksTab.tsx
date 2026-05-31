@@ -26,7 +26,7 @@
  * - Fetch limit 500 — no unbounded SELECT.
  * - Quick-add useTransition guard preserved exactly from Problem 7 fix.
  * - Priority selector removed from quick-add (defaults to 'normal').
- * - Filter bar removed entirely.
+ * - Filters live in TasksShell filter bar (client-side only).
  */
 
 import {
@@ -42,21 +42,21 @@ import {
   ChevronDown,
   UserCircle,
   X,
-  CheckCircle2,
   ArrowRight,
   User,
-  Circle,
 } from 'lucide-react';
+import { DatePicker } from '@/components/ui/DatePicker';
 import {
   createPersonalTaskAction,
   getPersonalTasksAction,
-  getPersonalTaskTagsAction,
   getTaskRemarksAction,
-  updateTaskStatusAction,
 } from '@/lib/actions/tasks';
+import { TaskCompletionCircle } from '@/components/tasks/TaskCompletionCircle';
+import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';
+import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
 import { formatRelativeTime } from '@/lib/utils/dates';
 import { toast } from '@/lib/toast';
-import { SubTaskModal } from '@/components/tasks/SubTaskModal';
+import { SubTaskModal, type SubTaskModalTaskUpdate } from '@/components/tasks/SubTaskModal';
 import { AssigneePickerModal, type AssignableUser } from '@/components/tasks/AssigneePickerModal';
 import { CreatePersonalTaskModal } from '@/components/tasks/CreatePersonalTaskModal';
 import { Avatar } from '@/components/ui/Avatar';
@@ -64,6 +64,11 @@ import { Spinner } from '@/components/ui/Spinner';
 import type { PersonalTasksResult, TaskRemarkWithAuthor, PersonalTaskCursor } from '@/lib/services/tasks-service';
 import type { Task, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import {
+  countVisiblePersonalTasks,
+  resolvePersonalTaskAssignee,
+  type PersonalTaskFiltersState,
+} from '@/lib/utils/task-client-filters';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -75,6 +80,9 @@ interface PersonalTasksTabProps {
   callerDomain:    AppDomain;
   /** Increments each time the parent header button is clicked — triggers modal open */
   createTrigger?:  number;
+  filters:           PersonalTaskFiltersState;
+  onFilteredCountChange?: (count: number) => void;
+  onTagsMayHaveChanged?: () => void;
 }
 
 // ─── Priority config ───────────────────────────────────────────────────────────
@@ -134,14 +142,17 @@ export function PersonalTasksTab({
   callerRole,
   callerDomain,
   createTrigger = 0,
+  filters,
+  onFilteredCountChange,
+  onTagsMayHaveChanged,
 }: PersonalTasksTabProps) {
   // ── Task data ─────────────────────────────────────────────────────────────
   const [activeTasks,    setActiveTasks]    = useState<Task[]>(initialResult.tasks);
   const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
 
-  // ── Optimistic status map — keyed by taskId ────────────────────────────────
-  // Tracks in-flight optimistic completions/reopens without causing section collapse.
-  const [optimisticStatus, setOptimisticStatus] = useState<Record<string, TaskStatus>>({});
+  // ── Optimistic complete / reopen (circle control) ─────────────────────────
+  const { optimisticStatus, handleToggle } = useTaskCompletionToggle();
+  const caller = { id: currentUserId, role: callerRole, domain: callerDomain };
 
   // ── Section collapse — useRef, NOT useState — pre-mortem P-04 ─────────────
   // Prevents optimistic status updates (which re-render) from collapsing sections.
@@ -155,6 +166,7 @@ export function PersonalTasksTab({
   const [sectionRenderKey, setSectionRenderKey] = useState(0);
 
   const [isLoadingCompleted, setIsLoadingCompleted] = useState(false);
+  const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
 
   // ── Cursor pagination for active tasks ───────────────────────────────────────
   const [hasMore,       setHasMore]       = useState(initialResult.hasMore);
@@ -204,10 +216,6 @@ export function PersonalTasksTab({
     }
   }
 
-  // ── Tag filter ────────────────────────────────────────────────────────────
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
-  const [selectedTags,  setSelectedTags]  = useState<string[]>([]);
-
   // ── Create task modal ─────────────────────────────────────────────────────
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
@@ -219,7 +227,7 @@ export function PersonalTasksTab({
   // ── Quick-add row state ──────────────────────────────────────────────────
   const [showQuickAdd,       setShowQuickAdd]       = useState(false);
   const [quickTitle,         setQuickTitle]         = useState('');
-  const [quickDueAt,         setQuickDueAt]         = useState('');
+  const [quickDueAt,         setQuickDueAt]         = useState<Date | null>(null);
   const [quickAssignee,      setQuickAssignee]      = useState<AssignableUser | null>(null);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [assignableUsers,    setAssignableUsers]    = useState<AssignableUser[]>([]);
@@ -238,17 +246,6 @@ export function PersonalTasksTab({
       setTimeout(() => quickTitleRef.current?.focus(), 50);
     }
   }, [showQuickAdd]);
-
-  // ── Load tags on mount (not included in SSR initialResult) ─────────────────
-  useEffect(() => {
-    let cancelled = false;
-    getPersonalTaskTagsAction().then((r) => {
-      if (!cancelled && r.data) setAvailableTags(r.data);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  // Only run on mount — no deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── Assignee picker: load users on mount (manager+ only) ─────────────────
   useEffect(() => {
@@ -271,33 +268,6 @@ export function PersonalTasksTab({
     });
   }, [callerRole, callerDomain]);
 
-  // ── Optimistic complete / reopen ──────────────────────────────────────────
-
-  function handleCircleClick(e: React.MouseEvent, task: Task) {
-    e.stopPropagation(); // don't open the modal
-
-    const effectiveStatus = optimisticStatus[task.id] ?? task.status;
-    const newStatus: TaskStatus = effectiveStatus === 'completed' ? 'to_do' : 'completed';
-
-    // Optimistic update
-    setOptimisticStatus((prev) => ({ ...prev, [task.id]: newStatus }));
-
-    startTransition(async () => {
-      const result = await updateTaskStatusAction({ taskId: task.id, status: newStatus });
-      if (result.error) {
-        // Rollback
-        setOptimisticStatus((prev) => {
-          const next = { ...prev };
-          delete next[task.id];
-          return next;
-        });
-        toast.danger("Couldn't update task", { message: result.error });
-      }
-      // On success, keep optimistic state. The list will be refreshed next
-      // time the component mounts (or user triggers a refresh).
-    });
-  }
-
   // ── Quick-add confirm (Problem 7 fix preserved exactly) ───────────────────
   const handleQuickAddSave = useCallback(() => {
     if (isPending) return;
@@ -309,7 +279,7 @@ export function PersonalTasksTab({
       const result = await createPersonalTaskAction({
         title:       quickTitle.trim(),
         priority:    'normal',      // always normal — user sets priority in TaskModal
-        due_at:      quickDueAt ? new Date(quickDueAt).toISOString() : null,
+        due_at:      quickDueAt ? quickDueAt.toISOString() : null,
         assigned_to: quickAssignee?.id ?? undefined,
       });
       if (result.error) {
@@ -319,7 +289,7 @@ export function PersonalTasksTab({
       toast.success('Task created');
       setShowQuickAdd(false);
       setQuickTitle('');
-      setQuickDueAt('');
+      setQuickDueAt(null);
       setQuickAssignee(null);
 
       // Prepend synthetic task — avoids a full 500-row re-fetch
@@ -330,12 +300,12 @@ export function PersonalTasksTab({
         description:   null,
         priority:      'normal',
         status:        'to_do',
-        due_at:        quickDueAt ? new Date(quickDueAt).toISOString() : null,
-        assigned_to:   quickAssignee?.id ?? '',
-        created_by:    '',
+        due_at:        quickDueAt ? quickDueAt.toISOString() : null,
+        assigned_to:   result.data!.assignedTo,
+        created_by:    result.data!.createdBy,
         group_id:      null,
         task_category: 'personal',
-        task_type:     'general_follow_up',
+        task_type:     'other',
         module:        'gia',
         completed_at:  null,
         attachments:   [],
@@ -367,24 +337,69 @@ export function PersonalTasksTab({
     setTaskModalOpen(true);
   }
 
-  // ── Group active tasks by priority (with optional tag filter) ────────────
+  const handlePersonalTaskUpdated = useCallback((update: SubTaskModalTaskUpdate) => {
+    const merge = (t: Task) => (t.id === update.id ? { ...t, ...update } : t);
+    setActiveTasks((prev) => prev.map(merge));
+    setCompletedTasks((prev) => prev.map(merge));
+    setSelectedTask((prev) => (prev?.id === update.id ? { ...prev, ...update } : prev));
+  }, []);
+
+  // ── Group active tasks by priority (client-side filters from filter bar) ──
   const tasksByPriority: Record<TaskPriority, Task[]> = {
     urgent: [],
     high:   [],
     normal: [],
   };
 
+  function taskPassesFilters(task: Task, effectiveStatus: TaskStatus): boolean {
+    if (filters.search.trim()) {
+      const haystack = `${task.title} ${task.description ?? ''}`.toLowerCase();
+      if (!haystack.includes(filters.search.trim().toLowerCase())) return false;
+    }
+    if (filters.tags.length > 0 && !filters.tags.every((t) => task.tags.includes(t))) {
+      return false;
+    }
+    if (filters.statuses.length > 0 && !filters.statuses.includes(effectiveStatus)) {
+      return false;
+    }
+    if (filters.priorities.length > 0 && !filters.priorities.includes(task.priority)) {
+      return false;
+    }
+    return true;
+  }
+
   for (const task of activeTasks) {
     const effectiveStatus = optimisticStatus[task.id] ?? task.status;
     if (effectiveStatus === 'completed') continue;
-    // Tag filter — task must contain ALL selected tags
-    if (selectedTags.length > 0 && !selectedTags.every((t) => task.tags.includes(t))) continue;
+    if (!taskPassesFilters(task, effectiveStatus)) continue;
     tasksByPriority[task.priority]?.push(task);
   }
+
+  const filteredCompleted = completedTasks.filter((task) => {
+    const effectiveStatus = optimisticStatus[task.id] ?? task.status;
+    return taskPassesFilters(task, effectiveStatus);
+  });
+
+  const visibleCount = countVisiblePersonalTasks(
+    activeTasks,
+    completedTasks,
+    optimisticStatus,
+    filters,
+  );
+
+  useEffect(() => {
+    onFilteredCountChange?.(visibleCount);
+  }, [visibleCount, onFilteredCountChange]);
 
   const totalActive = activeTasks.filter(
     (t) => (optimisticStatus[t.id] ?? t.status) !== 'completed',
   ).length;
+
+  const hasActiveFilters =
+    filters.search.trim() !== '' ||
+    filters.tags.length > 0 ||
+    filters.statuses.length > 0 ||
+    filters.priorities.length > 0;
 
   // ─── Section render helper ────────────────────────────────────────────────
 
@@ -491,8 +506,7 @@ export function PersonalTasksTab({
               {tasks.map((task, idx) => {
                 const effectiveStatus = optimisticStatus[task.id] ?? task.status;
                 const isComplete      = isCompleted || effectiveStatus === 'completed';
-                const isOwn           = task.assigned_to === currentUserId || task.assigned_to === null;
-                const canComplete     = isOwn;
+                const canComplete     = canToggleTaskComplete(task, caller);
                 const dueDateColor    = getDueDateColor(task.due_at, effectiveStatus);
                 const overdue         = isOverdue(task.due_at, effectiveStatus);
 
@@ -507,69 +521,16 @@ export function PersonalTasksTab({
                       borderBottom: idx < tasks.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
                       background:   'var(--theme-paper)',
                       borderLeft:   `3px solid ${isComplete ? 'var(--color-success)' : cfg.borderColor}`,
-                      transition:   'background var(--duration-fast) var(--ease-in-out)',
                     }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)';
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper)';
-                    }}
+                    onMouseEnter={() => setHoveredTaskId(task.id)}
+                    onMouseLeave={() => setHoveredTaskId(null)}
                   >
-                    {/* Completion circle */}
-                    <button
-                      type="button"
-                      onClick={(e) => handleCircleClick(e, task)}
+                    <TaskCompletionCircle
+                      checked={isComplete}
                       disabled={!canComplete}
-                      aria-label={isComplete ? 'Reopen task' : 'Complete task'}
-                      style={{
-                        width:          'var(--space-6)',
-                        height:         'var(--space-6)',
-                        borderRadius:   'var(--radius-full)',
-                        border:         canComplete
-                          ? (isComplete
-                              ? 'none'
-                              : '1.5px solid var(--theme-paper-border)')
-                          : '1.5px dashed var(--theme-paper-border)',
-                        background:     isComplete ? 'transparent' : 'transparent',
-                        display:        'flex',
-                        alignItems:     'center',
-                        justifyContent: 'center',
-                        cursor:         canComplete ? 'pointer' : 'default',
-                        flexShrink:     0,
-                        transition:     'border-color var(--duration-fast) var(--ease-in-out)',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!canComplete || isComplete) return;
-                        (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-accent)';
-                        (e.currentTarget as HTMLElement).style.background  = 'var(--theme-accent-surface)';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!canComplete || isComplete) return;
-                        (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
-                        (e.currentTarget as HTMLElement).style.background  = 'transparent';
-                      }}
-                    >
-                      {isComplete ? (
-                        <CheckCircle2
-                          style={{
-                            width:       16,
-                            height:      16,
-                            strokeWidth: 1.5,
-                            color:       'var(--theme-accent)',
-                          }}
-                        />
-                      ) : !canComplete ? (
-                        <Circle
-                          style={{
-                            width:       10,
-                            height:      10,
-                            strokeWidth: 1.5,
-                            color:       'var(--theme-paper-border)',
-                          }}
-                        />
-                      ) : null}
-                    </button>
+                      highlighted={hoveredTaskId === task.id}
+                      onToggle={(e) => handleToggle(e, task)}
+                    />
 
                     {/* Title + assignee avatar (if assigned to someone else) */}
                     <div
@@ -691,89 +652,12 @@ export function PersonalTasksTab({
   // ── Render ────────────────────────────────────────────────────────────────
 
   const hasAnyActive = totalActive > 0;
+  const hasVisibleInSections = ACTIVE_PRIORITIES.some((p) => tasksByPriority[p].length > 0);
+  const showMainEmpty = !hasVisibleInSections && (totalActive === 0 || hasActiveFilters);
 
   return (
     // Key on sectionRenderKey forces header chevron re-render without collapsing body
     <div key={`tab-${sectionRenderKey}`} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-
-      {/* Tag filter bar — only rendered when at least one tag exists */}
-      {availableTags.length > 0 && (
-        <div
-          style={{
-            display:    'flex',
-            alignItems: 'center',
-            gap:        'var(--space-2)',
-            flexWrap:   'wrap',
-          }}
-        >
-          <span
-            style={{
-              fontFamily:    'var(--font-sans)',
-              fontSize:      'var(--text-2xs)',
-              fontWeight:    'var(--weight-semibold)',
-              letterSpacing: 'var(--tracking-wide)',
-              textTransform: 'uppercase',
-              color:         'var(--theme-text-tertiary)',
-              flexShrink:    0,
-            }}
-          >
-            Filter by tag
-          </span>
-          {availableTags.map((tag) => {
-            const active = selectedTags.includes(tag);
-            return (
-              <button
-                key={tag}
-                type="button"
-                onClick={() =>
-                  setSelectedTags((prev) =>
-                    active ? prev.filter((t) => t !== tag) : [...prev, tag],
-                  )
-                }
-                style={{
-                  display:      'inline-flex',
-                  alignItems:   'center',
-                  padding:      '3px var(--space-3)',
-                  borderRadius: 'var(--radius-full)',
-                  border:       active
-                    ? '1.5px solid var(--theme-accent)'
-                    : '1px solid var(--theme-paper-border)',
-                  background:   active ? 'var(--theme-accent-surface)' : 'transparent',
-                  color:        active ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
-                  fontFamily:   'var(--font-sans)',
-                  fontSize:     'var(--text-xs)',
-                  fontWeight:   active ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                  cursor:       'pointer',
-                  transition:   'var(--transition-hover)',
-                }}
-              >
-                {tag}
-              </button>
-            );
-          })}
-          {selectedTags.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setSelectedTags([])}
-              style={{
-                display:    'inline-flex',
-                alignItems: 'center',
-                gap:        'var(--space-1)',
-                background: 'none',
-                border:     'none',
-                padding:    0,
-                cursor:     'pointer',
-                fontFamily: 'var(--font-sans)',
-                fontSize:   'var(--text-xs)',
-                color:      'var(--theme-text-tertiary)',
-              }}
-            >
-              <X style={{ width: 10, height: 10, strokeWidth: 2 }} />
-              Clear
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Quick-add row */}
       <AnimatePresence>
@@ -823,23 +707,13 @@ export function PersonalTasksTab({
               />
 
               {/* Due date */}
-              <input
-                type="date"
+              <DatePicker
                 value={quickDueAt}
-                onChange={(e) => setQuickDueAt(e.target.value)}
+                onChange={setQuickDueAt}
+                placeholder="Due date…"
+                disabled={isPending}
                 aria-label="Due date"
-                style={{
-                  border:       '1px solid var(--theme-paper-border)',
-                  borderRadius: 'var(--radius-sm)',
-                  background:   'var(--theme-paper)',
-                  fontFamily:   'var(--font-sans)',
-                  fontSize:     'var(--text-xs)',
-                  color:        'var(--theme-text-primary)',
-                  padding:      'var(--space-1) var(--space-2)',
-                  outline:      'none',
-                  caretColor:   'var(--theme-accent)',
-                  flexShrink:   0,
-                }}
+                style={{ flexShrink: 0 }}
               />
 
               {/* Assignee picker button (manager+ only) */}
@@ -848,7 +722,7 @@ export function PersonalTasksTab({
                   type="button"
                   onClick={() => setShowAssigneePicker(true)}
                   aria-label="Pick assignee"
-                  title={quickAssignee ? quickAssignee.full_name : 'Unassigned'}
+                  title={quickAssignee?.full_name ?? `${currentUserName} (you)`}
                   style={{
                     display:        'flex',
                     alignItems:     'center',
@@ -864,11 +738,11 @@ export function PersonalTasksTab({
                     flexShrink:     0,
                   }}
                 >
-                  {quickAssignee ? (
-                    <Avatar name={quickAssignee.full_name} size="xs" style={{ width: 18, height: 18, minWidth: 18 }} />
-                  ) : (
-                    <User style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
-                  )}
+                  <Avatar
+                    name={(quickAssignee ?? { full_name: currentUserName }).full_name}
+                    size="xs"
+                    style={{ width: 18, height: 18, minWidth: 18 }}
+                  />
                 </button>
               )}
 
@@ -947,8 +821,8 @@ export function PersonalTasksTab({
         ),
       )}
 
-      {/* Empty state — only shown when no active tasks and not loading */}
-      {!hasAnyActive && (
+      {/* Empty state — no visible tasks (cleared roster or filters hide everything) */}
+      {showMainEmpty && (
         <div
           style={{
             border:       '1px solid var(--theme-paper-border)',
@@ -967,7 +841,7 @@ export function PersonalTasksTab({
               margin:     0,
             }}
           >
-            {selectedTags.length > 0 ? 'Nothing tagged that way.' : 'All clear for now.'}
+            {hasActiveFilters ? 'Nothing matches your filters.' : 'All clear for now.'}
           </p>
           <p
             style={{
@@ -978,8 +852,8 @@ export function PersonalTasksTab({
               marginBottom: 0,
             }}
           >
-            {selectedTags.length > 0
-              ? 'No tasks match the selected tags.'
+            {hasActiveFilters
+              ? 'Try adjusting your search or filters.'
               : 'Create your first task with the button above.'}
           </p>
         </div>
@@ -1028,7 +902,7 @@ export function PersonalTasksTab({
             COMPLETED
           </span>
           {/* Count pill — shows actual count when loaded, placeholder when not yet */}
-          {completedTasks.length > 0 && (
+          {(hasActiveFilters ? filteredCompleted.length : completedTasks.length) > 0 && (
             <span
               style={{
                 display:      'inline-flex',
@@ -1042,7 +916,7 @@ export function PersonalTasksTab({
                 fontWeight:   'var(--weight-semibold)',
               }}
             >
-              {completedTasks.length}
+              {hasActiveFilters ? filteredCompleted.length : completedTasks.length}
             </span>
           )}
           <ChevronDown
@@ -1081,14 +955,13 @@ export function PersonalTasksTab({
                 Loading completed tasks…
               </p>
             </div>
-          ) : completedTasks.length > 0 ? (
+          ) : filteredCompleted.length > 0 ? (
             /* Completed task rows rendered via existing renderSection helper */
             <div>
-              {completedTasks.map((task, idx) => {
+              {filteredCompleted.map((task, idx) => {
                 const effectiveStatus = optimisticStatus[task.id] ?? task.status;
                 const isComplete      = true;
-                const isOwn           = task.assigned_to === currentUserId || task.assigned_to === null;
-                const canComplete     = isOwn;
+                const canComplete     = canToggleTaskComplete(task, caller);
                 const dueDateColor    = getDueDateColor(task.due_at, effectiveStatus);
                 const overdue         = false; // completed tasks are never overdue
 
@@ -1100,46 +973,19 @@ export function PersonalTasksTab({
                       alignItems:   'center',
                       gap:          'var(--space-3)',
                       padding:      'var(--space-3) var(--space-4)',
-                      borderBottom: idx < completedTasks.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
+                      borderBottom: idx < filteredCompleted.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
                       background:   'var(--theme-paper)',
                       borderLeft:   '3px solid var(--color-success)',
-                      transition:   'background var(--duration-fast) var(--ease-in-out)',
                     }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)';
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper)';
-                    }}
+                    onMouseEnter={() => setHoveredTaskId(task.id)}
+                    onMouseLeave={() => setHoveredTaskId(null)}
                   >
-                    {/* Completion circle */}
-                    <button
-                      type="button"
-                      onClick={(e) => handleCircleClick(e, task)}
+                    <TaskCompletionCircle
+                      checked
                       disabled={!canComplete}
-                      aria-label="Reopen task"
-                      style={{
-                        width:          'var(--space-6)',
-                        height:         'var(--space-6)',
-                        borderRadius:   'var(--radius-full)',
-                        border:         'none',
-                        background:     'transparent',
-                        display:        'flex',
-                        alignItems:     'center',
-                        justifyContent: 'center',
-                        cursor:         canComplete ? 'pointer' : 'default',
-                        flexShrink:     0,
-                      }}
-                    >
-                      <CheckCircle2
-                        style={{
-                          width:       16,
-                          height:      16,
-                          strokeWidth: 1.5,
-                          color:       'var(--theme-accent)',
-                        }}
-                      />
-                    </button>
+                      highlighted={hoveredTaskId === task.id}
+                      onToggle={(e) => handleToggle(e, task)}
+                    />
 
                     {/* Title */}
                     <div
@@ -1287,11 +1133,8 @@ export function PersonalTasksTab({
           // Prepend to the correct priority section in local state — no refetch needed.
           setActiveTasks((prev) => [task, ...prev]);
           setCreateModalOpen(false);
-          // Refresh available tags in case the new task introduced new ones
           if (task.tags.length > 0) {
-            getPersonalTaskTagsAction().then((r) => {
-              if (r.data) setAvailableTags(r.data);
-            }).catch(() => {});
+            onTagsMayHaveChanged?.();
           }
         }}
       />
@@ -1303,9 +1146,15 @@ export function PersonalTasksTab({
             open={taskModalOpen}
             onClose={() => { setTaskModalOpen(false); setSelectedTask(null); setSelectedTaskRemarks(null); }}
             task={selectedTask}
+            assignee={resolvePersonalTaskAssignee(
+              selectedTask,
+              { id: currentUserId, full_name: currentUserName },
+              assignableUsers,
+            )}
             initialRemarks={selectedTaskRemarks}
             callerProfile={{ id: currentUserId, role: callerRole, domain: callerDomain }}
             currentUserName={currentUserName}
+            onTaskUpdated={handlePersonalTaskUpdated}
           />
         )}
       </AnimatePresence>

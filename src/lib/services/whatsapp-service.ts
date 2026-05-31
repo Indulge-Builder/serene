@@ -13,21 +13,72 @@ import {
   WHATSAPP_CONVERSATIONS_PAGE_SIZE,
   WHATSAPP_MESSAGES_PAGE_SIZE,
 } from '@/lib/constants/whatsapp';
+import type { WhatsAppPeriod } from '@/lib/constants/whatsapp-period';
+import { getWhatsAppPeriodRange } from '@/lib/utils/whatsapp-period';
 import type { WhatsAppConversation, WhatsAppMessage } from '@/lib/types/whatsapp';
+
+export type WhatsAppConversationListFilters = {
+  period?:     WhatsAppPeriod;
+  customFrom?: string | null;
+  customTo?:   string | null;
+};
+
+function mapConversationRow(row: Record<string, unknown>): WhatsAppConversation {
+  const lead = row['leads'] as { first_name: string; last_name: string | null; phone: string };
+  return {
+    id:              row['id'] as string,
+    lead_id:         row['lead_id'] as string,
+    wa_id:           row['wa_id'] as string,
+    phone:           row['phone'] as string,
+    status:          row['status'] as 'open' | 'resolved',
+    last_message_at: row['last_message_at'] as string | null,
+    bot_active:      row['bot_active'] as boolean,
+    bot_paused_by:   row['bot_paused_by'] as string | null,
+    bot_paused_at:   row['bot_paused_at'] as string | null,
+    created_at:      row['created_at'] as string,
+    updated_at:      row['updated_at'] as string,
+    lead_name:  [lead.first_name, lead.last_name].filter(Boolean).join(' '),
+    lead_phone: lead.phone,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyLastMessagePeriodFilter(query: any, filters?: WhatsAppConversationListFilters) {
+  if (!filters?.period) return query;
+
+  const range = getWhatsAppPeriodRange(
+    filters.period,
+    filters.customFrom,
+    filters.customTo,
+  );
+  if (!range) return query;
+
+  return query
+    .not('last_message_at', 'is', null)
+    .gte('last_message_at', range.from)
+    .lte('last_message_at', range.to);
+}
 
 // ─────────────────────────────────────────────
 // getConversations
 // Paginated conversation list, sorted by last_message_at DESC.
 // Cursor = last row's last_message_at ISO string.
+// Optional period filter uses last_message_at (last send/receive).
 // ─────────────────────────────────────────────
 
 export async function getConversations(options: {
-  limit?:  number;
-  cursor?: string;
+  limit?:      number;
+  cursor?:     string;
+  period?:     WhatsAppPeriod;
+  customFrom?: string | null;
+  customTo?:   string | null;
 }): Promise<{ conversations: WhatsAppConversation[]; nextCursor: string | null }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = (await createClient()) as any;
   const limit    = options.limit ?? WHATSAPP_CONVERSATIONS_PAGE_SIZE;
+  const listFilters: WhatsAppConversationListFilters | undefined = options.period
+    ? { period: options.period, customFrom: options.customFrom, customTo: options.customTo }
+    : undefined;
 
   let query = supabase
     .from('whatsapp_conversations')
@@ -42,6 +93,8 @@ export async function getConversations(options: {
     .order('last_message_at', { ascending: false, nullsFirst: false })
     .limit(limit);
 
+  query = applyLastMessagePeriodFilter(query, listFilters);
+
   if (options.cursor) {
     query = query.lt('last_message_at', options.cursor);
   }
@@ -50,24 +103,9 @@ export async function getConversations(options: {
 
   if (error || !data) return { conversations: [], nextCursor: null };
 
-  const conversations: WhatsAppConversation[] = (data as Record<string, unknown>[]).map((row) => {
-    const lead = row['leads'] as { first_name: string; last_name: string | null; phone: string };
-    return {
-      id:              row['id'] as string,
-      lead_id:         row['lead_id'] as string,
-      wa_id:           row['wa_id'] as string,
-      phone:           row['phone'] as string,
-      status:          row['status'] as 'open' | 'resolved',
-      last_message_at: row['last_message_at'] as string | null,
-      bot_active:      row['bot_active'] as boolean,
-      bot_paused_by:   row['bot_paused_by'] as string | null,
-      bot_paused_at:   row['bot_paused_at'] as string | null,
-      created_at:      row['created_at'] as string,
-      updated_at:      row['updated_at'] as string,
-      lead_name:  [lead.first_name, lead.last_name].filter(Boolean).join(' '),
-      lead_phone: lead.phone,
-    };
-  });
+  const conversations: WhatsAppConversation[] = (data as Record<string, unknown>[]).map(
+    mapConversationRow,
+  );
 
   const nextCursor =
     conversations.length === limit
@@ -230,13 +268,14 @@ export async function markConversationRead(conversationId: string): Promise<void
 
 export async function searchConversations(
   query: string,
+  filters?: WhatsAppConversationListFilters,
 ): Promise<WhatsAppConversation[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = (await createClient()) as any;
   const safe     = sanitizeText(query).trim();
   if (!safe) return [];
 
-  const { data, error } = await supabase
+  let dbQuery = supabase
     .from('whatsapp_conversations')
     .select(`
       *,
@@ -250,24 +289,11 @@ export async function searchConversations(
     .order('last_message_at', { ascending: false, nullsFirst: false })
     .limit(20);
 
+  dbQuery = applyLastMessagePeriodFilter(dbQuery, filters);
+
+  const { data, error } = await dbQuery;
+
   if (error || !data) return [];
 
-  return (data as Record<string, unknown>[]).map((row) => {
-    const lead = row['leads'] as { first_name: string; last_name: string | null; phone: string };
-    return {
-      id:              row['id'] as string,
-      lead_id:         row['lead_id'] as string,
-      wa_id:           row['wa_id'] as string,
-      phone:           row['phone'] as string,
-      status:          row['status'] as 'open' | 'resolved',
-      last_message_at: row['last_message_at'] as string | null,
-      bot_active:      row['bot_active'] as boolean,
-      bot_paused_by:   row['bot_paused_by'] as string | null,
-      bot_paused_at:   row['bot_paused_at'] as string | null,
-      created_at:      row['created_at'] as string,
-      updated_at:      row['updated_at'] as string,
-      lead_name:  [lead.first_name, lead.last_name].filter(Boolean).join(' '),
-      lead_phone: lead.phone,
-    };
-  });
+  return (data as Record<string, unknown>[]).map(mapConversationRow);
 }

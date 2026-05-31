@@ -4,23 +4,14 @@ import { useState, useTransition } from 'react';
 import { Phone, TrendingUp, Leaf, XCircle, Trash2, ChevronDown, Trophy, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
-import { updateLeadStatus } from '@/lib/actions/leads';
+import { updateLeadStatus, recordDeal } from '@/lib/actions/leads';
 import { CalledModal } from './CalledModal';
+import { WonDealModal } from './WonDealModal';
 import { Modal } from '@/components/ui/modal';
 import { formErrors } from '@/lib/validations/form-errors';
-import { LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
+import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants/lead-statuses';
 import type { Lead, Profile, LeadStatus } from '@/lib/types/database';
-
-type BadgeVariant = 'neutral' | 'info' | 'warning' | 'success' | 'accent' | 'danger';
-
-const STATUS_BADGE_STYLES: Record<BadgeVariant, { bg: string; text: string; border: string }> = {
-  neutral: { bg: 'var(--color-neutral-light)',  text: 'var(--color-neutral-text)',  border: 'var(--color-neutral-light)'  },
-  info:    { bg: 'var(--color-info-light)',      text: 'var(--color-info-text)',     border: 'var(--color-info-light)'     },
-  warning: { bg: 'var(--color-warning-light)',   text: 'var(--color-warning-text)',  border: 'var(--color-warning-light)'  },
-  success: { bg: 'var(--color-success-light)',   text: 'var(--color-success-text)',  border: 'var(--color-success-light)'  },
-  accent:  { bg: 'var(--theme-accent-surface)',  text: 'var(--theme-accent)',        border: 'var(--theme-accent-surface)' },
-  danger:  { bg: 'var(--color-danger-light)',    text: 'var(--color-danger-text)',   border: 'var(--color-danger-light)'   },
-};
+import type { DealType, DealDuration } from '@/lib/constants/deal-types';
 
 type ActiveModal = 'called' | 'won' | 'nurturing' | 'lost' | 'junk' | 'revive' | null;
 
@@ -59,12 +50,29 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
     });
   }
 
+  function fireDeal(deal: { deal_type: DealType; deal_duration: DealDuration | null; deal_amount: number }) {
+    setError(null);
+    startTransition(async () => {
+      const result = await recordDeal({
+        leadId:        lead.id,
+        deal_type:     deal.deal_type,
+        deal_duration: deal.deal_duration,
+        deal_amount:   deal.deal_amount,
+      });
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      closeModal();
+      router.refresh();
+    });
+  }
+
   if (!canAct) return null;
 
-  const status      = lead.status;
-  const isTerminal  = status === 'won' || status === 'lost' || status === 'junk';
-  const badgeVariant = LEAD_STATUS_BADGE[status];
-  const badgeStyle   = STATUS_BADGE_STYLES[badgeVariant];
+  const status     = lead.status;
+  const isTerminal = status === 'won' || status === 'lost' || status === 'junk';
+  const badgeStyle = LEAD_STATUS_COLORS[status];
 
   return (
     <>
@@ -89,7 +97,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
             gap:          'var(--space-2)',
             padding:      '0.375rem var(--space-4)',
             borderRadius: 'var(--radius-full)',
-            background:   badgeStyle.bg,
+            background:   badgeStyle.light,
             border:       `1px solid ${badgeStyle.border}`,
             color:        badgeStyle.text,
             fontFamily:   'var(--font-sans)',
@@ -228,15 +236,12 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
       )}
 
       {activeModal === 'won' && (
-        <ConfirmModal
-          title="Mark as Won"
-          description="This lead has converted. The journey will close at Won."
-          confirmLabel="Mark as Won"
-          confirmVariant="success"
+        <WonDealModal
+          leadId={lead.id}
           isPending={isPending}
           error={error}
           onClose={closeModal}
-          onConfirm={() => fireStatusUpdate('won')}
+          onConfirm={fireDeal}
         />
       )}
 

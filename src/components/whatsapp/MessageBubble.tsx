@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, CheckCheck, X, FileText, ImageIcon, Video, Mic } from "lucide-react";
+import { Avatar } from "@/components/ui/Avatar";
 import { formatRelativeTime } from "@/lib/utils/dates";
 import type { WhatsAppMessage } from "@/lib/types/whatsapp";
 
@@ -47,7 +48,6 @@ function DeliveryIcon({ status }: { status: WhatsAppMessage["status"] }) {
       />
     );
   }
-  // sent
   return (
     <Check
       style={{
@@ -83,7 +83,7 @@ function MediaPlaceholder({ message }: { message: WhatsAppMessage }) {
         alignItems:   "center",
         gap:          "var(--space-2)",
         padding:      "var(--space-3)",
-        background:   "rgba(0,0,0,0.06)",
+        background:   "var(--theme-paper-border)",
         borderRadius: "var(--radius-sm)",
       }}
     >
@@ -128,6 +128,7 @@ function MediaPlaceholder({ message }: { message: WhatsAppMessage }) {
 export function MessageBubble({ message, isOptimistic = false }: MessageBubbleProps) {
   const isOutbound = message.direction === "outbound";
   const isMedia    = ["image", "video", "document", "audio"].includes(message.message_type);
+  const senderName = message.sender_name ?? (isOutbound ? "You" : "Lead");
 
   return (
     <div
@@ -139,13 +140,42 @@ export function MessageBubble({ message, isOptimistic = false }: MessageBubblePr
         transition:     "opacity 0.2s ease",
       }}
     >
-      {/* Bot label */}
+      {/* Inbound sender row: avatar + name */}
+      {!isOutbound && (
+        <div
+          style={{
+            display:     "flex",
+            alignItems:  "center",
+            gap:         "var(--space-2)",
+            marginBottom: "var(--space-1)",
+          }}
+        >
+          <Avatar
+            src={message.sender_avatar_url ?? null}
+            name={senderName}
+            size="xs"
+          />
+          <span
+            style={{
+              fontFamily:  "var(--font-sans)",
+              fontSize:    "var(--text-xs)",
+              fontWeight:  "var(--weight-medium)",
+              color:       "var(--theme-text-secondary)",
+            }}
+          >
+            {senderName}
+          </span>
+        </div>
+      )}
+
+      {/* Bot label for outbound bot messages */}
       {message.is_bot && isOutbound && (
         <span
           style={{
             fontFamily:   "var(--font-sans)",
             fontSize:     "var(--text-2xs)",
-            color:        "var(--theme-text-tertiary)",
+            color:        "var(--theme-accent)",
+            fontWeight:   "var(--weight-medium)",
             marginBottom: "var(--space-1)",
             paddingRight: "var(--space-1)",
           }}
@@ -164,10 +194,11 @@ export function MessageBubble({ message, isOptimistic = false }: MessageBubblePr
             : "var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-sm)",
           background:   isOutbound
             ? "var(--theme-accent-surface)"
-            : "var(--theme-paper-subtle)",
+            : "var(--theme-paper)",
           border:       isOutbound
             ? "1px solid color-mix(in srgb, var(--theme-accent) 25%, transparent)"
             : "1px solid var(--theme-paper-border)",
+          boxShadow:    "var(--shadow-1)",
         }}
       >
         {isMedia ? (

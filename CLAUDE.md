@@ -57,6 +57,7 @@ src/lib/utils/phone.ts              ← normalizeToE164() — the only normalize
 src/lib/utils/dates.ts              ← formatDate() — the only date formatter
 src/lib/utils/numbers.ts            ← formatCount(), formatCurrency() etc.
 src/lib/utils/chart-tokens.ts       ← getChartTokens() — Recharts bridge
+src/lib/utils/campaigns.ts          ← beautifyCampaignTitle() — the only campaign-title decorator
 src/lib/utils/scroll.ts             ← scrollToBottom(), lockBodyScroll() etc.
 src/lib/services/dashboard-service.ts ← ALL dashboard widget queries (never extend leads-service.ts)
 src/lib/actions/dashboard.ts         ← ALL dashboard server actions (widget data refresh)
@@ -129,8 +130,10 @@ NEVER  use "No data available" as empty state copy
 NEVER  use more than 3 colours in a single chart
 NEVER  show a skeleton for less than 150ms
 NEVER  add backdrop-blur outside the three sanctioned surfaces
+NEVER  use a coloured border on one edge of a card, row, or column as a category/status indicator (borderLeft/borderTop/borderRight/borderBottom accent strips) — use pills, dots, icons, or semantic badges instead
 NEVER  add a package or meaningful change without a docs/changelog.md entry
 NEVER  write to The_Changelog.md — it has been deleted; docs/changelog.md is the only changelog
+NEVER  import a value symbol from lib/services/ in a 'use client' component — it pulls next/headers into the client bundle and hard-errors; use a Server Action in lib/actions/ instead
 ```
 
 ---
@@ -161,6 +164,58 @@ Detail pages (leads/[id], campaigns/[id], admin/users/[id]) are exempt — they 
 
 **Form errors:** Always from `lib/validations/form-errors.ts`.
 Never raw Zod messages. Never "Invalid input."
+
+---
+
+## Standard Page Layout Contract
+
+### The Lead List Layout is the canonical template for all primary nav list pages.
+
+Every list page (leads, users, settings, campaigns, tasks, etc.) follows this exact structure:
+
+```
+<main className="flex-1 p-8">
+  {/* Row 1 — Page header */}
+  <div className="flex items-center justify-between gap-4 mb-6">
+    <h1 className="type-page-title m-0">Title<span className="page-title-dot">.</span></h1>
+    <ActionButton />          {/* primary CTA — always top-right */}
+  </div>
+
+  {/* Row 2 — Filter bar */}
+  <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
+    <FiltersComponent />      {/* search + filters relevant to this page */}
+  </div>
+
+  {/* Row 3 — Content (table or card list) */}
+  <Suspense fallback={<ContentSkeleton />}>
+    <ContentAsync />
+  </Suspense>
+</main>
+```
+
+**Rules (non-negotiable):**
+- The title row is always `flex items-center justify-between` — title left, action right.
+- The filter bar is always a rounded bordered `--theme-paper` strip with `--shadow-1`, `mb-4`.
+- The content area follows immediately below the filter bar. No extra wrappers.
+- `Suspense` with a skeleton is mandatory for any async content component.
+
+### Two content display modes
+
+**Dense table** (high-volume pages: `/leads`, any page that can exceed 100 rows)
+- Use the `<Table>` component or the leads table pattern.
+- Filter bar runs server-side (URL params). Table is display-only.
+- Column visibility + drag-to-reorder via `useLeadColumnPreferences` pattern (Q-08).
+
+**Card list** (low-volume pages: `/admin/users`, `/settings`, `/campaigns`)
+- Each row is a `motion.div` card with `--shadow-1` at rest → `--shadow-2` on hover.
+- Cards animate in with staggered `opacity 0→1, y 4→0` at 250ms, `EASE_OUT_EXPO`.
+- On hover: `translateY(-1px)` + `--shadow-2`. On leave: reset. Transition via CSS `transition` prop.
+- Cards never exceed 500ms total entrance stagger (`Math.min(index * 80, 320)`).
+- Framer Motion `motion.div` — transform and opacity only (never width/height/padding).
+
+**Reference implementations:**
+- Dense table: `src/components/leads/LeadsTable.tsx` + `src/app/(dashboard)/leads/page.tsx`
+- Card list: `src/components/campaigns/CampaignCard.tsx` + `src/components/admin/UsersTable.tsx`
 
 ---
 
@@ -286,7 +341,7 @@ Profiles system built. User creation flow live.
 - `src/lib/supabase/admin.ts` — service-role client (user creation only)
 - `src/lib/types/database.ts` — `Profile`, `UserRole`, `AppDomain`, `ActionResult`
 - `src/lib/constants/roles.ts` — `USER_ROLES`, `ROLE_LABELS`
-- `src/lib/constants/domains.ts` — `APP_DOMAINS`, `DOMAIN_LABELS`
+- `src/lib/constants/domains.ts` — `APP_DOMAINS` (user mgmt), `GIA_DOMAINS` (Gia module), `DOMAIN_LABELS` — Q-17 in `docs/The_Rules.md`
 - `src/lib/validations/profile-schema.ts` — create/update/auth/deactivate schemas
 - `src/lib/services/profiles-service.ts` — all profile DB queries
 - `src/lib/actions/profiles.ts` — `createUser`, `updateProfile`, `updateUserAuthorization`, `toggleUserActive`
@@ -501,8 +556,8 @@ Dashboard widget system: canvas, registry, hook, and 5 Gia widgets.
 - `src/components/dashboard/DashboardCanvas.tsx` — `'use client'`; 2-column CSS grid (full-canvas skeleton before hydration); `@dnd-kit/sortable` drag-to-reorder; edit mode toggle; reset layout button
 - `src/lib/services/dashboard-service.ts` — dedicated dashboard queries: `getAgentTasksSummary`, `getAgentRecentActivity`, `getLeadStatusSummary`, `getLeadVolumeByPeriod`, `getLeadsByCampaign`; no dashboard queries added to `leads-service.ts`
 - `src/lib/actions/dashboard.ts` — server actions: `getAgentTasksSummaryAction`, `getAgentRecentActivityAction`, `getLeadStatusSummaryAction`, `getLeadsByCampaignAction`, `getLeadVolumeByPeriodAction`; all re-verify via `getCurrentProfile()`; role guards on manager actions
-- `src/components/dashboard/widgets/AgentTasksWidget.tsx` — `'use client'`; overdue + today tasks; new leads count; server action refresh button
-- `src/components/dashboard/widgets/AgentActivityWidget.tsx` — `'use client'`; Supabase Realtime subscription filtered by `actor_id=eq.${userId}`; initial load via server action; 200ms `y: -8→0, opacity: 0→1` Framer Motion animation on new items; subscription cleaned up on unmount
+- `src/components/dashboard/widgets/AgentTasksWidget.tsx` — `'use client'`; all 3 task categories (`personal`, `group_subtask`, `gia_followup`), active statuses only (`to_do/in_progress/in_review`); animated pulsing category dot (7px, `eia-cat-dot-pulse` keyframe, staggered delays); priority chip (urgent/high only); status chip (in_progress/in_review only); context label (lead name or group name); category legend footer; sorted overdue→priority→due_at; limit 30
+- `src/components/dashboard/widgets/AgentActivityWidget.tsx` — `'use client'`; auto-scrolling live ticker: `translateY` loop via `setTimeout(16ms)`, speed `0.11px/frame`, pauses on hover, wraps to top; fixed `220px` viewport with top+bottom fade masks; Supabase Realtime filtered by `actor_id=eq.${userId}`; new event resets offset to 0; `note_added` rows filtered everywhere; state cap 25; action types: `call_logged` (Phone icon, outcome label), `status_changed` (ArrowRight, old→new status), `lead_created` (UserPlus), `agent_assigned` (User), `duplicate_submission` (Copy); subtitle "Live Lead Activity."
 - `src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx` — `'use client'`; stacked bar pipeline + per-agent breakdown; semantic status colours (design-dna.md §16.4)
 - `src/components/dashboard/widgets/ManagerLeadVolumeWidget.tsx` — `'use client'`; Recharts `LineChart`; period toggle Today/Week/Month/Quarter in local state; `useTransition` on toggle; all colours CSS vars — no hex
 - `src/components/dashboard/widgets/ManagerCampaignWidget.tsx` — `'use client'`; Recharts stacked `BarChart`; top-radius only per §16.4 bar rules; legend; empty state
@@ -717,6 +772,26 @@ Dashboard shell canvas upgraded for Earth theme — warmer base, grain texture, 
 - `src/app/(dashboard)/layout.tsx` — shell migrated from inline background to `layout-canvas min-h-screen`
 
 **`.layout-canvas` contract:** grain opacity is hardcoded in the SVG data URI (cannot reference CSS vars). Gradient layers use `--theme-canvas-gradient-*` — only Earth defines these today; other themes show flat canvas until enhanced. See `docs/design-dna.md` §3.5 and §6.6.
+
+---
+
+### Micro-animation pass — UI primitives (2026-05-31)
+
+Six `src/components/ui/` primitives gained GPU-only micro-animations. All use `transform` + `opacity` exclusively. `willChange: 'transform'` set only on elements that actually move. Zero layout properties animated. Zero impact on initial render or server-fetching paths.
+
+- `BackButton.tsx` — converted to `motion(Link)`. Mount: `x -6 → 0, opacity 0 → 1` (150ms). Hover: `x -2, scale 1.05`; inner arrow nudges additional `x -1`. Tap: `scale 0.93`.
+- `ChecklistItem.tsx` — Square ↔ CheckSquare icon crossfades via `AnimatePresence mode="wait"`, `scale 0.6 → 1` (150ms). Tap: `whileTap scale 0.85`.
+- `InfoRow.tsx` — Copy ↔ Check icon crossfades via `AnimatePresence mode="wait"`, `scale 0.5 → 1` (150ms). Tap: `whileTap scale 0.8` on the copy button.
+- `EditButton.tsx` — Pencil rotates `0 → -8°` on hover (150ms). Tap: `whileTap scale 0.88`. Props interface narrowed to explicit named props (no `...rest` spread — avoids Framer Motion type conflict).
+- `ListRow.tsx` — Chevron wraps in `motion.span`, nudges `x 0 → 2` on hover (150ms). Background hover state moved from imperative `style.setProperty` to reactive `hovered` state.
+- `SearchBar.tsx` — Clear × wrapped in `AnimatePresence`; `scale 0.7 → 1, opacity 0 → 1` on appear, reversed on exit. Tap: `whileTap scale 0.8`.
+
+**`MotionButton` — first real consumers:**
+
+- `AddLeadButton.tsx` and `TasksShell.tsx` header button switched from `Button` to `MotionButton + MOTION_BUTTON_DEFAULTS` (`scale 0.97` spring tap). These are standalone primary CTAs pressed repeatedly — tap animation is appropriate.
+- All other `Button` callers (form submits, modal footers, auth pages) remain on plain `Button`. Never add `MotionButton` to a form submit — the animation adds Framer bundle cost and no perceptual value on a page-transition press.
+
+**Rule:** `Button` (CSS hover, zero Framer cost) for form submits and modal actions. `MotionButton + MOTION_BUTTON_DEFAULTS` for standalone primary CTAs. Never merge.
 
 ---
 

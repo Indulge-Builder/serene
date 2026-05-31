@@ -53,7 +53,7 @@ fresh channel rather than calling `.on()` on an already-subscribed one.
 | File | Purpose |
 | ---- | ------- |
 | `constants/roles.ts` | `USER_ROLES`, `ROLE_LABELS` |
-| `constants/domains.ts` | `APP_DOMAINS`, `DOMAIN_LABELS` |
+| `constants/domains.ts` | `APP_DOMAINS` (user mgmt), `GIA_DOMAINS` (Gia module), `DOMAIN_LABELS`, `GIA_DOMAIN_ENUM`, `APP_DOMAIN_ENUM` — see Q-17 in `docs/The_Rules.md` |
 | `constants/lead-statuses.ts` | `LeadStatus` enums + badge config |
 | `constants/call-outcomes.ts` | `CallOutcome` enums + labels |
 | `constants/task-types.ts` | `TaskType` enums |
@@ -71,7 +71,7 @@ fresh channel rather than calling `.on()` on an already-subscribed one.
 | `services/notifications-service.ts` | Notification reads/writes |
 | `services/dashboard-service.ts` | Dashboard data. Primary entry point: `getDashboardSummary(role, domain, userId)` — single RPC, memoised with React `cache()` per request (cannot use `unstable_cache` — `createClient()` reads `cookies()` which is forbidden inside `unstable_cache` closures). Do not split back into individual action calls for summary data. `getLeadVolumeByPeriod` is the only individual function still used (period toggle). |
 | `services/performance-service.ts` | Performance page queries |
-| `services/ad-creatives-service.ts` | `getAdCreativeForCampaign` |
+| `services/ad-creatives-service.ts` | `getAdCreativesForCampaign` (one campaign → `AdCreative[]`, newest first), `getAdCreativesForCampaigns` (batch → `Map<key, AdCreative[]>`), `getAllAdCreatives` (admin list, newest-first). A campaign may have multiple videos (migration 0058 dropped the UNIQUE on campaign_key). |
 | `services/tasks-service.ts` | OS Tasks queries — `getPersonalTasks`, `getGroupTasks`, `getGroupSubtasks`, `getTaskById`, `getTaskRemarks` (ordered ASC, returns `TaskRemarkWithAuthor[]`). Also exports `TaskRemarkWithAuthor` — canonical type definition. |
 | `services/sla-service.ts` | Gia SLA Engine DB queries — `getSlaTimersForLead`, `getSlaTimerForLeadAndRule`, `createSlaTimer`, `updateSlaTimerRunId`, `cancelSlaTimersForLeadInDb`, `markSlaTimerFired`, `getOpenGiaFollowupTask`, `getManagersByDomain`. All writes use adminClient (service-role). |
 | `services/agent-routing-service.ts` | `getAgentRoutingConfig`, `getRoutingConfigsByDomain`, `getActiveRoutingConfigs`, `setRoutingActive`, `getAgentRosterByDomain` (joined profiles+config, adminClient), `setAgentShift` (adminClient) |
@@ -206,6 +206,7 @@ Both actions call `SECURITY DEFINER` RPCs for all DB writes. Do not add sequenti
 | `actions/agent-routing.ts` | `toggleAgentRouting`, `setAgentShiftAction` |
 | `actions/leads.ts` | Lead lifecycle actions |
 | `actions/dashboard.ts` | Dashboard widget data refresh |
+| `actions/ad-creatives.ts` | `upsertAdCreative`, `deleteAdCreative` (admin/founder only; adminClient writes; normalise campaign_key; revalidate /admin/ad-creatives + /campaigns) |
 | `actions/notifications.ts` | `markNotificationReadAction`, `markAllReadAction` |
 | `actions/tasks.ts` | OS Tasks actions — `createPersonalTaskAction`, `createGroupTaskAction`, `createSubtaskAction`, `updateTaskStatusAction`, `updateTaskAction`, `deleteTaskAction`, `addTaskRemarkAction`, `suppressTaskRemarkAction` |
 | `actions/sla.ts` | Gia SLA Engine actions — `scheduleSlaTimersForLead`, `cancelSlaTimersForLead`, `refreshActivitySlaTimers`, `fireSlaBreachAction` (Trigger.dev only), `fireSlaBreachHandler` (internal) |
@@ -225,6 +226,7 @@ Both actions call `SECURITY DEFINER` RPCs for all DB writes. Do not add sequenti
 | `validations/profile-schema.ts` | Profile create/update/auth/deactivate/invite/avatar schemas |
 | `validations/lead-schema.ts` | Lead lifecycle schemas (call note, status update, assign, scratchpad, personal details, manual create, webhook) |
 | `validations/task-schemas.ts` | OS Tasks schemas (create personal/group/subtask, update, checklist, tags, remarks) |
+| `validations/ad-creative-schema.ts` | `upsertAdCreativeSchema` (id optional → create/update), `deleteAdCreativeSchema` |
 | `validations/whatsapp-schema.ts` | `MetaWebhookPayloadSchema` (permissive passthrough), `MetaStatusUpdateSchema`, `SendMessageSchema` (conversationId uuid + content 1–4096 chars), `ResolveConversationSchema`. Human-readable error messages — never Zod defaults. |
 
 ## Trigger.dev jobs
@@ -234,7 +236,7 @@ Both actions call `SECURITY DEFINER` RPCs for all DB writes. Do not add sequenti
 | `src/trigger/task-reminders.ts` | `scheduleTaskReminder(taskId, dueAt, assignedTo)`, `cancelTaskReminder(taskId)` |
 | `src/trigger/lead-sla.ts` | `scheduleLeadSlasTask(leadId, ruleCode, fireAt, assignedAgentId, domainManagerIds)`, `cancelLeadSlasByLeadTask(leadId)`, `fireLeadSlaTask` (Trigger.dev task — exported for scan) |
 
-**Rule:** `scheduleTaskReminder` is a no-op when `dueAt - 30min < now()`. It never errors on past dates.
+**Rule:** `scheduleTaskReminder` is a no-op when `dueAt <= now()`. It never errors on past dates. The Trigger.dev job fires at `dueAt`, not before.
 **Rule:** `deleteTaskAction` cancels the Trigger.dev reminder **before** the DB delete. If cancel throws, the delete is aborted.
 **Rule:** Tags (`task-reminder-${taskId}`) are used to locate and cancel runs — no run IDs stored in the DB.
 
@@ -255,7 +257,7 @@ Both actions call `SECURITY DEFINER` RPCs for all DB writes. Do not add sequenti
 - `content` (string, 1–2000 chars, sanitized by Zod transform + explicit re-sanitize)
 - `statusChange` (optional `TaskStatus`) — if provided, the RPC handles both the tasks UPDATE and the INSERT atomically
 
-**Implementation:** calls `add_task_remark_with_status` RPC (migration 0035) — 1 round-trip for both the optional status UPDATE and the task_remarks INSERT. The previous pattern of 6 sequential awaits has been retired.
+**Implementation:** calls `add_task_remark_with_status` RPC (migration 0035, auth fix 00051) — 1 round-trip for both the optional status UPDATE and the task_remarks INSERT. **View = post:** the action gates on a user-scoped `tasks` SELECT (RLS); if the row is visible, the remark is allowed. The RPC trusts the action layer (service-role — `auth.uid()` is NULL inside the function).
 
 **Access:** Zod validation + `getCurrentProfile()` check in the action (A-09 layer 1). The RPC performs a second inline auth check via `auth.uid()` (A-09 layer 2).
 

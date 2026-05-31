@@ -59,8 +59,11 @@ export function FilterDropdown({
   function toggleItem(id: string) {
     if (multi) {
       onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
+    } else if (selected.includes(id)) {
+      // Single-select: re-clicking the active option closes the menu only (Clear still deselects).
+      setOpen(false);
     } else {
-      onChange(selected.includes(id) ? [] : [id]);
+      onChange([id]);
       setOpen(false);
     }
   }

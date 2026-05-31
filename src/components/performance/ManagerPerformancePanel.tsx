@@ -1,127 +1,351 @@
 'use client';
 
-import { useState }               from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Avatar }                  from '@/components/ui/Avatar';
-import { BASE_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
-import { AgentDetailPanel }        from './AgentDetailPanel';
+import { useState, useRef, useEffect }          from 'react';
+import { useSearchParams }                      from 'next/navigation';
+import { motion, AnimatePresence }               from 'framer-motion';
+import { SlidersHorizontal, Check }              from 'lucide-react';
+import { Avatar }                                from '@/components/ui/Avatar';
+import { ENTER_DURATION, EASE_OUT_EXPO, BASE_DURATION } from '@/lib/constants/motion';
+import { DOMAIN_LABELS } from '@/lib/constants/domains';
+import {
+  buildPerformanceRosterGroups,
+  getFirstAgentInPerformanceRosterList,
+  PERFORMANCE_ROSTER_DOMAIN_ORDER,
+} from '@/lib/utils/performance-roster-display';
+import { AgentDetailPanel }                      from './AgentDetailPanel';
 import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
-import type { AppDomain }          from '@/lib/types/database';
-import type { PerformancePeriod }  from '@/lib/services/performance-service';
+import type { AppDomain }                        from '@/lib/types/database';
+import type { PerformancePeriod }                from '@/lib/services/performance-service';
 
 // ─────────────────────────────────────────────
-// Conversion rate colour coding (§16.4)
-// ─────────────────────────────────────────────
-
-function convRatePillStyle(rate: number | null): React.CSSProperties {
-  if (rate === null) {
-    return {
-      background: "var(--color-neutral-light)",
-      color:      "var(--color-neutral-text)",
-    };
-  }
-  if (rate >= 40) {
-    return {
-      background: "var(--color-success-light)",
-      color:      "var(--color-success-text)",
-    };
-  }
-  if (rate >= 20) {
-    return {
-      background: "var(--color-warning-light)",
-      color:      "var(--color-warning-text)",
-    };
-  }
-  return {
-    background: "var(--color-danger-light)",
-    color:      "var(--color-danger-text)",
-  };
-}
-
-// ─────────────────────────────────────────────
-// Agent roster card
+// AgentCard — roster row
 // ─────────────────────────────────────────────
 
 function AgentCard({
   agent,
   isSelected,
   onClick,
+  delay,
 }: {
   agent:      AgentRosterRow;
   isSelected: boolean;
   onClick:    () => void;
+  delay:      number;
 }) {
-  const pillStyle = convRatePillStyle(agent.conversionRate);
+  const [hovered, setHovered] = useState(false);
+  const isHighlighted = isSelected || hovered;
 
   return (
-    <button
+    <motion.button
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: ENTER_DURATION, delay: delay / 1000, ease: EASE_OUT_EXPO }}
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        display:       "flex",
-        alignItems:    "center",
-        gap:           "var(--space-3)",
-        padding:       "var(--space-3) var(--space-3)",
-        borderRadius:  "var(--radius-md)",
-        background:    isSelected ? "var(--theme-paper-subtle)" : "transparent",
-        border:        "none",
-        borderLeft:    isSelected ? "3px solid var(--theme-accent)" : "3px solid transparent",
-        cursor:        "pointer",
-        width:         "100%",
-        textAlign:     "left",
-        transition:    "background-color var(--duration-fast) var(--ease-in-out)",
-        position:      "relative",
+        display:      'flex',
+        alignItems:   'center',
+        gap:          'var(--space-3)',
+        padding:      'var(--space-3) var(--space-4)',
+        borderRadius: 'var(--radius-md)',
+        background:   'transparent',
+        border:       'none',
+        cursor:     'pointer',
+        width:      '100%',
+        textAlign:  'left',
       }}
     >
       <Avatar
         src={agent.avatar_url}
         name={agent.full_name}
-        size="md"
+        size="sm"
+        selected={isHighlighted}
         style={{ flexShrink: 0 }}
       />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p
+
+      {/* Name */}
+      <p
+        style={{
+          flex:         1,
+          fontFamily:   'var(--font-sans)',
+          fontSize:     'var(--text-sm)',
+          fontWeight:   isHighlighted ? 'var(--weight-semibold)' : 'var(--weight-normal)',
+          color:        'var(--theme-text-primary)',
+          margin:       0,
+          minWidth:     0,
+          whiteSpace:   'nowrap',
+          overflow:     'hidden',
+          textOverflow: 'ellipsis',
+          transition:   'font-weight var(--duration-fast) var(--ease-in-out)',
+        }}
+      >
+        {agent.full_name}
+      </p>
+
+      {/* Total leads — right side */}
+      <span
+        style={{
+          fontFamily:    'var(--font-mono)',
+          fontSize:      'var(--text-xs)',
+          fontWeight:    'var(--weight-medium)',
+          color:         isHighlighted ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
+          flexShrink:    0,
+          letterSpacing: '-0.01em',
+          transition:    'color var(--duration-fast) var(--ease-in-out)',
+        }}
+      >
+        {agent.totalLeads}
+      </span>
+    </motion.button>
+  );
+}
+
+// ─────────────────────────────────────────────
+// DomainSection label
+// ─────────────────────────────────────────────
+
+function DomainSectionLabel({ label }: { label: string }) {
+  return (
+    <div
+      style={{
+        padding:       'var(--space-2) var(--space-4) var(--space-1)',
+        marginTop:     'var(--space-1)',
+      }}
+    >
+      <span
+        style={{
+          fontFamily:    'var(--font-sans)',
+          fontSize:      'var(--text-2xs)',
+          fontWeight:    'var(--weight-medium)',
+          letterSpacing: '0.10em',
+          textTransform: 'uppercase',
+          color:         'var(--theme-text-tertiary)',
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// DomainFilterPopover — inline filter panel
+// ─────────────────────────────────────────────
+
+function DomainFilterPopover({
+  availableDomains,
+  selected,
+  onSelect,
+  onClose,
+}: {
+  availableDomains: AppDomain[];
+  selected:         AppDomain | null;
+  onSelect:         (d: AppDomain | null) => void;
+  onClose:          () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [onClose]);
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: -4, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0,  scale: 1    }}
+      exit={{    opacity: 0, y: -4, scale: 0.97 }}
+      transition={{ duration: 0.15, ease: EASE_OUT_EXPO }}
+      style={{
+        position:     'absolute',
+        top:          'calc(100% + 6px)',
+        right:        0,
+        zIndex:       50,
+        background:   'var(--theme-paper)',
+        border:       '1px solid var(--theme-paper-border)',
+        borderRadius: 'var(--radius-md)',
+        boxShadow:    'var(--shadow-3)',
+        minWidth:     '180px',
+        padding:      'var(--space-1)',
+        overflow:     'hidden',
+      }}
+    >
+      {/* All domains option */}
+      <button
+        onClick={() => { onSelect(null); onClose(); }}
+        style={{
+          display:      'flex',
+          alignItems:   'center',
+          gap:          'var(--space-2)',
+          width:        '100%',
+          padding:      'var(--space-2) var(--space-3)',
+          borderRadius: 'var(--radius-sm)',
+          background:   selected === null ? 'var(--theme-accent-surface)' : 'transparent',
+          border:       'none',
+          cursor:       'pointer',
+          textAlign:    'left',
+          transition:   'background var(--duration-fast) var(--ease-in-out)',
+        }}
+        onMouseEnter={(e) => { if (selected !== null) e.currentTarget.style.background = 'var(--theme-paper-subtle)'; }}
+        onMouseLeave={(e) => { if (selected !== null) e.currentTarget.style.background = 'transparent'; }}
+      >
+        <span
           style={{
-            fontFamily:   "var(--font-sans)",
-            fontSize:     "var(--text-sm)",
-            fontWeight:   "var(--weight-semibold)",
-            color:        "var(--theme-text-primary)",
-            margin:       0,
-            whiteSpace:   "nowrap",
-            overflow:     "hidden",
-            textOverflow: "ellipsis",
+            flex:       1,
+            fontFamily: 'var(--font-sans)',
+            fontSize:   'var(--text-sm)',
+            color:      selected === null ? 'var(--theme-accent)' : 'var(--theme-text-primary)',
+            fontWeight: selected === null ? 'var(--weight-semibold)' : 'var(--weight-normal)',
           }}
         >
-          {agent.full_name}
-        </p>
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginTop: "3px" }}>
+          All domains
+        </span>
+        {selected === null && <Check style={{ width: 13, height: 13, color: 'var(--theme-accent)', flexShrink: 0 }} strokeWidth={2} />}
+      </button>
+
+      {/* Separator */}
+      <div style={{ height: '1px', background: 'var(--theme-paper-border)', margin: 'var(--space-1) 0' }} />
+
+      {/* Per-domain options */}
+      {availableDomains.map((d) => (
+        <button
+          key={d}
+          onClick={() => { onSelect(d); onClose(); }}
+          style={{
+            display:      'flex',
+            alignItems:   'center',
+            gap:          'var(--space-2)',
+            width:        '100%',
+            padding:      'var(--space-2) var(--space-3)',
+            borderRadius: 'var(--radius-sm)',
+            background:   selected === d ? 'var(--theme-accent-surface)' : 'transparent',
+            border:       'none',
+            cursor:       'pointer',
+            textAlign:    'left',
+            transition:   'background var(--duration-fast) var(--ease-in-out)',
+          }}
+          onMouseEnter={(e) => { if (selected !== d) e.currentTarget.style.background = 'var(--theme-paper-subtle)'; }}
+          onMouseLeave={(e) => { if (selected !== d) e.currentTarget.style.background = 'transparent'; }}
+        >
           <span
             style={{
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-2xs)",
-              color:        "var(--theme-text-tertiary)",
+              flex:       1,
+              fontFamily: 'var(--font-sans)',
+              fontSize:   'var(--text-sm)',
+              color:      selected === d ? 'var(--theme-accent)' : 'var(--theme-text-primary)',
+              fontWeight: selected === d ? 'var(--weight-semibold)' : 'var(--weight-normal)',
             }}
           >
-            {agent.totalLeads} lead{agent.totalLeads !== 1 ? 's' : ''}
+            {DOMAIN_LABELS[d as keyof typeof DOMAIN_LABELS]}
           </span>
-          <span
+          {selected === d && <Check style={{ width: 13, height: 13, color: 'var(--theme-accent)', flexShrink: 0 }} strokeWidth={2} />}
+        </button>
+      ))}
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Roster header — "Agents" label + filter icon
+// ─────────────────────────────────────────────
+
+function RosterHeader({
+  allDomains,
+  availableDomains,
+  domainFilter,
+  onFilterChange,
+}: {
+  allDomains:      boolean;
+  availableDomains: AppDomain[];
+  domainFilter:    AppDomain | null;
+  onFilterChange:  (d: AppDomain | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const isFiltered = domainFilter !== null;
+
+  return (
+    <div
+      style={{
+        display:        'flex',
+        alignItems:     'center',
+        justifyContent: 'space-between',
+        padding:        'var(--space-3) var(--space-4) var(--space-2)',
+        borderBottom:   '1px solid var(--theme-paper-border)',
+        marginBottom:   'var(--space-1)',
+        position:       'relative',
+      }}
+    >
+      <span
+        style={{
+          fontFamily:    'var(--font-sans)',
+          fontSize:      'var(--text-2xs)',
+          fontWeight:    'var(--weight-medium)',
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color:         'var(--theme-text-tertiary)',
+        }}
+      >
+        Agents
+      </span>
+
+      {/* Filter icon — only shown in all-domains mode */}
+      {allDomains && (
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setOpen((v) => !v)}
+            title="Filter by domain"
             style={{
-              display:      "inline-flex",
-              alignItems:   "center",
-              padding:      "1px 6px",
-              borderRadius: "var(--radius-full)",
-              fontSize:     "var(--text-2xs)",
-              fontWeight:   "var(--weight-medium)",
-              fontFamily:   "var(--font-sans)",
-              ...pillStyle,
+              display:      'flex',
+              alignItems:   'center',
+              justifyContent: 'center',
+              width:        '26px',
+              height:       '26px',
+              borderRadius: 'var(--radius-sm)',
+              border:       isFiltered
+                ? '1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent)'
+                : '1px solid transparent',
+              background:   isFiltered ? 'var(--theme-accent-surface)' : 'transparent',
+              cursor:       'pointer',
+              transition:   'background var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out)',
+            }}
+            onMouseEnter={(e) => {
+              if (!isFiltered) e.currentTarget.style.background = 'var(--theme-paper-subtle)';
+            }}
+            onMouseLeave={(e) => {
+              if (!isFiltered) e.currentTarget.style.background = 'transparent';
             }}
           >
-            {agent.conversionRate !== null
-              ? `${Math.round(agent.conversionRate)}%`
-              : '—'}
-          </span>
+            <SlidersHorizontal
+              style={{
+                width:  14,
+                height: 14,
+                color:  isFiltered ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
+                transition: 'color var(--duration-fast) var(--ease-in-out)',
+              }}
+              strokeWidth={1.5}
+            />
+          </button>
+
+          <AnimatePresence>
+            {open && (
+              <DomainFilterPopover
+                availableDomains={availableDomains}
+                selected={domainFilter}
+                onSelect={onFilterChange}
+                onClose={() => setOpen(false)}
+              />
+            )}
+          </AnimatePresence>
         </div>
-      </div>
-    </button>
+      )}
+    </div>
   );
 }
 
@@ -133,42 +357,84 @@ type Props = {
   agentRoster:           AgentRosterRow[];
   domain:                AppDomain;
   period:                PerformancePeriod;
+  customFrom?:           string;
+  customTo?:             string;
   initialAgentId?:       string | null;
   initialDetailMetrics?: AgentDetailMetrics | null;
+  // When true, roster spans all domains — grouped by domain, filterable by domain.
+  allDomains?:           boolean;
 };
 
 export function ManagerPerformancePanel({
   agentRoster,
   domain,
   period,
+  customFrom,
+  customTo,
   initialAgentId = null,
   initialDetailMetrics = null,
+  allDomains = false,
 }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(
-    initialAgentId ?? (agentRoster.length > 0 ? agentRoster[0].id : null),
+    initialAgentId ??
+      getFirstAgentInPerformanceRosterList(agentRoster, { allDomains, domain }),
   );
+  const [domainFilter, setDomainFilter] = useState<AppDomain | null>(null);
+  const searchParams                    = useSearchParams();
+  const searchTerm                      = (searchParams.get('search') ?? '').trim().toLowerCase();
 
   const selectedAgent = agentRoster.find((a) => a.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const stillVisible = agentRoster.filter((a) => {
+      if (domainFilter && a.domain !== domainFilter) return false;
+      if (searchTerm && !a.full_name.toLowerCase().includes(searchTerm)) return false;
+      return true;
+    });
+    if (!stillVisible.find((a) => a.id === selectedId)) {
+      setSelectedId(
+        getFirstAgentInPerformanceRosterList(stillVisible, { allDomains, domain }),
+      );
+    }
+  }, [searchTerm, domainFilter, agentRoster, selectedId, allDomains, domain]);
+
+  // Unique domains that actually have agents, in roster display order
+  const presentDomains = PERFORMANCE_ROSTER_DOMAIN_ORDER.filter((d) =>
+    agentRoster.some((a) => a.domain === d),
+  );
+
+  // Apply domain + search filters (client-side, no refetch — URL is source of truth)
+  const visibleAgents = agentRoster.filter((a) => {
+    if (domainFilter && a.domain !== domainFilter) return false;
+    if (searchTerm && !a.full_name.toLowerCase().includes(searchTerm)) return false;
+    return true;
+  });
+
+  const groups = buildPerformanceRosterGroups(visibleAgents, { allDomains, domain });
+
+  // Flat list with stable animation delays
+  let globalIndex = 0;
 
   if (agentRoster.length === 0) {
     return (
       <div
         style={{
-          background:   "var(--theme-paper)",
-          border:       "1px solid var(--theme-paper-border)",
-          borderRadius: "var(--radius-lg)",
-          padding:      "var(--space-12) var(--space-6)",
-          textAlign:    "center",
-          boxShadow:    "var(--shadow-1)",
+          background:   'var(--theme-paper)',
+          border:       '1px solid var(--theme-paper-border)',
+          borderRadius: 'var(--radius-lg)',
+          padding:      'var(--space-12) var(--space-6)',
+          textAlign:    'center',
+          boxShadow:    'var(--shadow-1)',
         }}
       >
         <p
           style={{
-            fontFamily: "var(--font-serif)",
-            fontStyle:  "italic",
-            fontSize:   "var(--text-lg)",
-            fontWeight: "var(--weight-light)",
-            color:      "var(--theme-text-tertiary)",
+            fontFamily: 'var(--font-serif)',
+            fontStyle:  'italic',
+            fontSize:   'var(--text-lg)',
+            fontWeight: 'var(--weight-light)',
+            color:      'var(--theme-text-tertiary)',
             margin:     0,
           }}
         >
@@ -178,59 +444,115 @@ export function ManagerPerformancePanel({
     );
   }
 
+  // Clamp stagger so large rosters don't take forever
+  function delay(i: number) {
+    return Math.min(i * 35, 280);
+  }
+
   return (
     <div
       style={{
-        display: "flex",
-        gap:     "var(--space-6)",
-        alignItems: "flex-start",
+        display:    'flex',
+        gap:        'var(--space-5)',
+        alignItems: 'flex-start',
       }}
     >
-      {/* ── Left column: agent roster ──────────────────────────────────── */}
+      {/* ── Left: agent roster ──────────────────────────────────────── */}
       <div
         style={{
-          width:         "280px",
-          flexShrink:    0,
-          background:    "var(--theme-paper)",
-          border:        "1px solid var(--theme-paper-border)",
-          borderRadius:  "var(--radius-lg)",
-          padding:       "var(--space-3)",
-          boxShadow:     "var(--shadow-1)",
+          width:        '268px',
+          flexShrink:   0,
+          background:   'var(--theme-paper)',
+          border:       '1px solid var(--theme-paper-border)',
+          borderRadius: 'var(--radius-lg)',
+          overflow:     'hidden',
+          boxShadow:    'var(--shadow-1)',
         }}
       >
-        <p
-          className="label-micro"
-          style={{ paddingLeft: "var(--space-3)", paddingBottom: "var(--space-2)" }}
+        <RosterHeader
+          allDomains={allDomains}
+          availableDomains={presentDomains}
+          domainFilter={domainFilter}
+          onFilterChange={(d) => {
+            setDomainFilter(d);
+            const stillVisible = agentRoster.filter((a) => {
+              if (d && a.domain !== d) return false;
+              if (searchTerm && !a.full_name.toLowerCase().includes(searchTerm)) return false;
+              return true;
+            });
+            if (selectedId && !stillVisible.find((a) => a.id === selectedId)) {
+              setSelectedId(
+                getFirstAgentInPerformanceRosterList(stillVisible, { allDomains, domain }),
+              );
+            }
+          }}
+        />
+
+        <div
+          style={{
+            padding:   'var(--space-1)',
+            maxHeight: '600px',
+            overflowY: 'auto',
+          }}
         >
-          Agents
-        </p>
-        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-          {agentRoster.map((agent) => (
-            <AgentCard
-              key={agent.id}
-              agent={agent}
-              isSelected={agent.id === selectedId}
-              onClick={() => setSelectedId(agent.id)}
-            />
+          {groups.map((group) => (
+            <div key={group.domain}>
+              {/* Domain section label — only when showing all domains and more than one domain present */}
+              {allDomains && groups.length > 1 && (
+                <DomainSectionLabel
+                  label={DOMAIN_LABELS[group.domain as keyof typeof DOMAIN_LABELS]}
+                />
+              )}
+              {group.agents.map((agent) => {
+                const idx = globalIndex++;
+                return (
+                  <AgentCard
+                    key={agent.id}
+                    agent={agent}
+                    isSelected={agent.id === selectedId}
+                    onClick={() => setSelectedId(agent.id)}
+                    delay={delay(idx)}
+                  />
+                );
+              })}
+            </div>
           ))}
+
+          {visibleAgents.length === 0 && agentRoster.length > 0 && (
+            <p
+              style={{
+                fontFamily: 'var(--font-serif)',
+                fontStyle:  'italic',
+                fontSize:   'var(--text-sm)',
+                color:      'var(--theme-text-tertiary)',
+                textAlign:  'center',
+                padding:    'var(--space-6) var(--space-4)',
+                margin:     0,
+              }}
+            >
+              Nothing matches these filters.
+            </p>
+          )}
         </div>
       </div>
 
-      {/* ── Right column: agent detail panel ──────────────────────────── */}
+      {/* ── Right: agent detail panel ─────────────────────────────── */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <AnimatePresence mode="wait">
           {selectedAgent ? (
             <motion.div
               key={selectedAgent.id}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
               transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
             >
               <AgentDetailPanel
                 agent={selectedAgent}
-                domain={domain}
+                domain={allDomains ? null : domain}
                 period={period}
+                customFrom={customFrom}
+                customTo={customTo}
                 initialAgentId={initialAgentId ?? undefined}
                 initialData={
                   selectedAgent.id === (initialAgentId ?? null)

@@ -2,7 +2,7 @@
 
 <!-- markdownlint-disable MD013 MD060 -->
 
-> Last verified against source: **2026-05-30**. Every fact extracted from migrations, services, actions, and components. Where source contradicts this document, source wins.
+> Last verified against source: **2026-05-31**. Every fact extracted from migrations, services, actions, and components. Where source contradicts this document, source wins.
 
 ---
 
@@ -24,10 +24,36 @@ All three categories share one `tasks` table (discriminated by `task_category`) 
 
 | Route | Purpose |
 |---|---|
-| `/tasks` | Personal + group list (tabbed) |
+| `/tasks` | **Gia Tasks** (GIA_DOMAINS only) + **My Tasks** + **Group Tasks** (tabbed; `?tab=gia\|personal\|group`) |
 | `/tasks/[id]` | Full group workspace (list/board views) |
 
 **Sidebar:** Tasks nav item lives in `src/components/layout/Sidebar.tsx`.
+
+### Tasks page layout (canonical list page)
+
+Follows the standard page contract (same as Leads):
+
+```text
+<main className="flex-1 p-8">
+  Row 1 — <h1>Tasks.</h1>  +  <AddTaskButton />     ← header; MotionButton primary CTA
+  Row 2 — paper filter strip:
+            TabSelector (left, variant="accent", indicatorLayoutId="tasks-page-tabs")
+            TasksFilters (right — search + dropdowns + result count)
+  Row 3 — active tab content:
+            tab=gia      → GiaTasksTab          (GIA_DOMAINS only)
+            tab=personal → MyTasksCalendarView
+            tab=group    → GroupTasksTab
+</main>
+```
+
+Wrapped in `<TasksCreateProvider>` so the header button and tab modals share one `createTrigger` counter.
+
+| Control | Location | Behaviour |
+|---|---|---|
+| **Gia Tasks / My Tasks / Group Tasks** | Filter strip, left | URL `?tab=gia\|personal\|group`; `router.push` + `useTransition`. Gia tab only present for GIA_DOMAINS callers. Non-Gia callers: `?tab=gia` resolves to `personal` server-side — no error. SSR fetches **active tab only** |
+| **+ Gia Task / + My Task / + Group Task** | Page header | `AddTaskButton` label switches per tab; `requestCreate()` → `createTrigger++`; Gia tab opens `CreateGiaTaskModal` in `TasksShell`. Hidden on group tab for **agents** |
+| **Filters** | Filter strip, right | All **client-side** via `src/lib/utils/task-client-filters.ts` — never refetch on filter change. Separate state objects per tab (`personalFilters` / `groupFilters`) preserved when switching tabs |
+| **Result count** | Filter strip | `onFilteredCountChange` from active tab — stays accurate after optimistic creates/toggles |
 
 ---
 
@@ -48,7 +74,7 @@ All three categories share one `tasks` table (discriminated by `task_category`) 
                              │ serialisable props
 ┌────────────────────────────▼────────────────────────────────────┐
 │  Client shells + feature components                             │
-│    TasksShell → PersonalTasksTab | GroupTasksTab                  │
+│    TasksShell → MyTasksCalendarView | GroupTasksTab               │
 │    GroupTaskWorkspace → SubTaskModal → TaskRemarksPanel           │
 └────────────────────────────┬────────────────────────────────────┘
                              │ server actions
@@ -123,6 +149,9 @@ Null group redirect (`/tasks?tab=group`) happens inside `WorkspaceAsync`, not th
 | Gia task creation | `src/lib/actions/leads.ts` (RPCs) |
 | Zod schemas | `src/lib/validations/task-schemas.ts` |
 | UI constants | `src/lib/constants/task-constants.ts`, `task-types.ts` |
+| Client filters | `src/lib/utils/task-client-filters.ts` |
+| Completion UI auth | `src/lib/utils/task-complete-auth.ts` (`canToggleTaskComplete`) |
+| Completion toggle hook | `src/hooks/useTaskCompletionToggle.ts` |
 | Reminders | `src/trigger/task-reminders.ts` |
 | Notifications | `src/lib/services/notifications-service.ts` |
 | Page rules | `src/app/(dashboard)/tasks/CLAUDE.md` |
@@ -333,7 +362,7 @@ Full `NotificationType` union in `database.ts` also includes `lead_assigned`, `l
 
 **Returns:** full `task_remarks` row
 
-**Security:** `SECURITY DEFINER` — RLS bypassed; access check duplicated inside function.
+**Security (migration 0035 + fix 00051):** `SECURITY DEFINER` — RLS bypassed inside the RPC. **Migration `20260531000051`** removed the broken `auth.uid()` gate (NULL under service-role). The action layer enforces access: **view = post** — `addTaskRemarkAction` runs a user-scoped `tasks` SELECT first; only if RLS returns the row does it call the RPC with `adminClient`. Agents see tasks they **created** or are **assigned to** (`tasks_agent_select` includes `created_by`).
 
 ---
 
@@ -517,7 +546,7 @@ All text fields pass through `sanitizeText()` in schema transforms.
 
 | Action | Auth highlights | Side effects |
 |---|---|---|
-| `createPersonalTaskAction` | manager+ to assign others | `task_assigned` notification; `scheduleTaskReminder` if due |
+| `createPersonalTaskAction` | manager+ to assign others; defaults `assigned_to` to caller | Returns `{ taskId, assignedTo, createdBy }`; `task_assigned` notification; `scheduleTaskReminder` if due |
 | `createGroupTaskAction` | manager+ only; domain locked for managers | `revalidatePath('/tasks')` |
 | `createSubtaskAction` | agent domain-scoped | returns full `SubtaskWithAssignee`; notification; reminder; `revalidatePath('/tasks')` |
 | `updateTaskStatusAction` | `canMutateTask`; auth + task fetch in `Promise.all` | sets `completed_at`; `cancelTaskReminder` on terminal |
@@ -550,11 +579,11 @@ Never accept `userId` from the client — always derive from `getCurrentProfile(
 
 - ID: `'send-task-reminder'`, retry ×3
 - Payload: `{ taskId, assignedTo }`
-- Fires `createNotification({ type: 'task_due', action_url: '/tasks' })` 30 min before due
+- Fires `createNotification({ type: 'task_due', action_url: '/tasks' })` at due time
 
 ### `scheduleTaskReminder(taskId, dueAt, assignedTo)`
 
-- `reminderAt = dueAt - 30min`; no-op if past
+- Delay until `dueAt`; no-op if `dueAt <= now()`
 - `idempotencyKey: 'task-reminder-${taskId}'` — Trigger.dev v3 deduplicates DELAYED runs
 - Tag: `task-reminder-${taskId}`
 
@@ -596,12 +625,23 @@ All action-side `createNotification()` calls are fire-and-forget.
 
 | File | Role |
 |---|---|
-| `page.tsx` | Session gate; parse `?tab=personal\|group`; render Suspense |
+| `page.tsx` | Session gate; parse `?tab=personal\|group`; `<TasksCreateProvider>`; header + Suspense |
 | `TasksAsync.tsx` | Fetch active tab only; pass props to shell |
-| `TasksSkeleton.tsx` | Fallback — personal (3×5 rows) or group (4 cards), stagger §11.4 |
-| `TasksShell.tsx` | Tab state, URL sync, `+ My Task` / `+ Group Task` header button |
+| `TasksSkeleton.tsx` | Fallback — **personal:** two-column (calendar 280px + date sections); **group:** 4 cards; stagger §11.4 |
+| `TasksShell.tsx` | Filter strip (tabs + `TasksFilters`); mounts `MyTasksCalendarView` or `GroupTasksTab` |
+| `AddTaskButton.tsx` | Header CTA — `MotionButton`; label **My Task** / **Group Task** |
+| `TasksCreateContext.tsx` | `createTrigger` + `requestCreate()` shared with tab modals |
 
-**Inactive tab:** receives empty sentinel on SSR; no fetch until user switches tab (client refetch via actions on tab activation is **not** implemented — switching tab triggers full navigation with new SSR fetch via URL).
+**Inactive tab:** receives empty sentinel on SSR (`{ tasks: [], hasMore: false, nextCursor: null }` or `[]`). Switching tabs = `router.push` with new `?tab=` → full RSC refetch for the newly active tab. Inactive tab component **never mounts** — no empty-state flash.
+
+**Client filters (both tabs):**
+
+| Tab | Filters (`TasksFilters` + `task-client-filters.ts`) |
+|---|---|
+| **My Tasks** | Search (title + description), tags (multi), status (multi), priority (multi) |
+| **Group Tasks** | Search (group title), status, priority, domain (admin/founder only — options from domains present in roster), progress (`in_progress` / `complete` / `empty`) |
+
+Tags for My Tasks: `getPersonalTaskTagsAction` once when personal tab is active (`TasksShell`); refreshed after create when new task has tags.
 
 ### `/tasks/[id]`
 
@@ -616,45 +656,86 @@ All action-side `createNotification()` calls are fire-and-forget.
 
 ## 13. Component Map
 
-### `PersonalTasksTab`
+### `MyTasksCalendarView` (My Tasks tab — **canonical**)
 
-**Props:** `initialResult`, `currentUserId`, `currentUserName`, `callerRole`, `callerDomain`, `createTrigger?`
+**File:** `src/components/tasks/MyTasksCalendarView.tsx`  
+**Mounted from:** `TasksShell` when `tab=personal`. Replaces the older priority-section layout (`PersonalTasksTab.tsx` remains in the repo but is **not** wired to the page).
 
-**Data strategy:**
+**Props:** `initialResult`, user context, `createTrigger?`, `filters` (`PersonalTaskFiltersState`), `onFilteredCountChange?`, `onTagsMayHaveChanged?`
 
-- Active tasks: seeded from SSR `initialResult` — **no mount re-fetch**
-- Completed: lazy-loaded on first accordion expand (`hasLoadedCompleted` ref guard)
-- Tags: `getPersonalTaskTagsAction` on mount
-- Assignable agents: `listAgentsForDomain` on mount (manager+ only)
+**Layout — two columns:**
 
-**Layout:** quick-add row → URGENT / HIGH / NORMAL sections → COMPLETED (collapsed)
+| Column | Contents |
+|---|---|
+| **Left (280px, sticky)** | `Calendar` with `taskDots` (per-day count + urgent → danger dot); **Summary** strip (due today / overdue / upcoming); **Quick add task** dashed trigger |
+| **Right (flex)** | Optional inline quick-add row; **date-grouped section cards**; **Load more** when SSR cursor has more pages |
 
-**Modal open pattern:**
+**Section order (all-mode):** Today → future dates ascending → Overdue → No Due Date. Completed tasks are **excluded** from sections (completion toggle moves row out via optimistic status).
 
-1. Row click → `setSelectedTaskRemarks(null)` (gate)
-2. `getTaskRemarksAction(taskId)` in flight
-3. `<AnimatePresence>` renders `SubTaskModal` only when `selectedTaskRemarks !== null`
+**Calendar interaction:**
 
-**Actions:** `createPersonalTaskAction`, `updateTaskStatusAction` (completion circle), `getPersonalTasksAction` (completed lazy load), `getTaskRemarksAction`
+- `calendarDate === null` → **all sections** visible (default).
+- Click a day → **single-date mode** (only that section; empty day shows Playfair **"Hooray."**).
+- Click same day again or **Back To Present** → return to all-mode.
+- Task dot keys use **local** `YYYY-MM-DD` (`localKey()` — never `toISOString().slice(0,10)`).
 
-**Optimistic:** completion circle via `optimisticStatus` map; section collapse in `useRef`
+**Data:**
 
-**Quick-add:** prepends synthetic task on success — no full re-fetch
+- Active list seeded from SSR `initialResult` — **no mount re-fetch**
+- **Load more:** `getPersonalTasksAction({ cursor, status: active statuses })` appends pages
+- Manager+: `listAgentsForDomain` once for quick-add assignee + `resolvePersonalTaskAssignee` in modal
+- Filters applied client-side from `TasksShell` props
+
+**Completion:** `TaskCompletionCircle` + `useTaskCompletionToggle` + `canToggleTaskComplete` (mirrors `canMutateTask` for UI only). Row hover highlights **circle accent ring only** — no row background fill.
+
+**Creates:** header modal via `createTrigger` → `CreatePersonalTaskModal`; sidebar quick-add; both prepend synthetic task with `assignedTo` / `createdBy` from action response.
+
+**Modal pattern:** row click → `getTaskRemarksAction` → gate `SubTaskModal` on `selectedTaskRemarks !== null`; `onTaskUpdated` syncs list row fields.
+
+---
+
+### `PersonalTasksTab` (legacy — not mounted)
+
+**File:** `src/components/tasks/PersonalTasksTab.tsx` — priority-section layout (URGENT / HIGH / NORMAL + lazy COMPLETED accordion). Superseded by `MyTasksCalendarView` on 2026-05-31. Do not extend; delete only when no references remain in docs/tests.
+
+---
+
+### `TasksFilters`
+
+**File:** `src/components/tasks/TasksFilters.tsx`  
+**Props:** active tab, filter state + setters, `personalTagItems`, `groupDomainItems`, `showGroupDomainFilter`, `resultCount`, `resultNoun`.  
+Composes `SearchBar` + `FilterDropdown` (multi/single). Active filter badge count via `personalFiltersActiveCount` / `groupFiltersActiveCount`.
+
+---
+
+### `TaskCompletionCircle` + `useTaskCompletionToggle`
+
+| Piece | Role |
+|---|---|
+| `TaskCompletionCircle.tsx` | 24px control — hollow circle / accent `CheckCircle2` / dashed disabled |
+| `useTaskCompletionToggle.ts` | `optimisticStatus` map; `handleToggle` → `updateTaskStatusAction` (`completed` ↔ `to_do`) |
+| `task-complete-auth.ts` | `canToggleTaskComplete` — client gate before showing interactive circle |
+
+Used on: My Tasks rows, Group Tasks subtask rows, workspace list (where applicable).
 
 ---
 
 ### `GroupTasksTab`
 
-**Props:** `initialRows`, user context, `createTrigger?`
+**Props:** `initialRows`, `filters` (`GroupTaskFiltersState`), user context, `createTrigger?`, `onFilteredCountChange?`
 
 **Data strategy:**
 
+- Rows filtered client-side via `filterGroupRows(initialRows, filters)`
 - `assignableUsers` fetched **once** at tab level — passed to every `GroupRow` (not N calls)
 - Subtasks lazy-loaded per group on first accordion expand
 - New group prepended locally from `CreateGroupTaskModal.onCreated`
 - New subtask appended locally from `createSubtaskAction` return value
+- Deterministic **accent colour + icon** per row from `GROUP_TASK_ACCENT_COLORS` / `GROUP_TASK_ICONS` hash until DB columns exist
 
-**Modal open:** same remarks pre-fetch gate as personal tab
+**UI:** Group cards with `IconBox` (accent-tinted); expand shows subtask rows with `TaskCompletionCircle`; **Open** workspace link (`/tasks/[id]`). Row hover: icon box accent ring only — no card background wash.
+
+**Modal:** remarks pre-fetch gate; `SubTaskModal` with `onTaskUpdated` / `onTaskDeleted` to sync subtask row + group `completed_count` / `subtask_count` without page refresh.
 
 **Actions:** `getGroupSubtasksAction`, `createSubtaskAction`, `getTaskRemarksAction`, `listAgentsForDomain`
 
@@ -666,34 +747,40 @@ All action-side `createNotification()` calls are fire-and-forget.
 
 **Views:** list (default) | board (5 columns) — persisted to `localStorage` key `eia:tasks:workspace-view:${groupId}`
 
-**Realtime:** subtask INSERT/UPDATE merged into local state
+**List view:** priority DESC + due_at ASC; `PriorityBadge` for urgent/high — **no** side-edge priority borders.
 
-**Board:** Framer Motion `layout` on card move — **no drag-and-drop between columns**
+**Board view:** five columns; terminal = Error + Cancelled; column headers use **status dots** (not `borderTop` accents). Framer Motion `layout` — **no drag-and-drop between columns**.
 
-**No inline complete** for subtasks in list/board — status changes happen in `SubTaskModal`
+**Realtime:** `workspace-subtasks-${groupId}-${mountId}` — INSERT/UPDATE merged locally.
 
-**Actions:** `createSubtaskAction`, `getGroupSubtasksAction` (modal close re-sync), `getTaskRemarksAction`
+**Modal:** `SubTaskModal` with `onTaskUpdated` / `onTaskDeleted`; close handler may refetch as backup.
+
+**FAB:** `+ Add subtask` inline panel → `createSubtaskAction`.
+
+**Actions:** `createSubtaskAction`, `getGroupSubtasksAction`, `getTaskRemarksAction`
 
 ---
 
 ### `SubTaskModal`
 
-**Props:** `open`, `onClose`, `task`, `group?`, `assignee?`, `initialRemarks`, `callerProfile`, `currentUserName?`
+**Props:** `open`, `onClose`, `task`, `group?`, `assignee?`, `initialRemarks`, `callerProfile`, `currentUserName?`, `onTaskUpdated?`, `onTaskDeleted?`
 
-**Shell:** fixed overlay, ~1100px max width, 90vh. Backdrop uses `var(--theme-overlay)`.
+**Callbacks:** `onTaskUpdated({ id, status?, priority?, title?, … })` fires after successful status/priority/title writes so parent lists update without `router.refresh()`. `onTaskDeleted(taskId)` removes row from group tab / workspace.
+
+**Shell:** fixed overlay, ~1100px max width, 90vh. Backdrop `var(--overlay-bg)`.
 
 **Zones:**
 
-- **A (38%):** title, description, checklist (group subtasks only), deadline, assignee, metadata
+- **A (38%):** title, description, **Action Items** checklist (always visible add row at bottom via `ActionItemAddRow` — persists immediately outside edit mode), deadline, assignee, metadata
 - **B (62%):** `TaskRemarksPanel`
 
 **Header:** status + priority dropdowns (optimistic), edit pencil, delete menu
 
-**Edit mode:** Zone A only — `updateTaskAction` + `updateChecklistAction`; no remark inserted
+**Edit mode:** Zone A batch save — `updateTaskAction` + `updateChecklistAction`; no remark inserted
 
 **Delete:** personal — agent needs both ownership fields; group subtask — broader access
 
-**`AnimatePresence`:** required at **call site** for exit animation; modal has internal backdrop animation only
+**`AnimatePresence`:** required at **call site** for exit animation
 
 **Uses:** `TaskStatusIcon` for status UI
 
@@ -730,7 +817,7 @@ Nested modal (`--z-modal-nested`). Portaled to `document.body`. Domain tabs + cl
 
 ### `CreatePersonalTaskModal`
 
-Composes `ui/modal.tsx`. Fields: title, due presets (IST end-of-day chips), priority, tags, notes. Tags wired to DB since migration 0024. `onCreated(syntheticTask)` — parent prepends.
+Composes `ui/modal.tsx`. Fields: title, due presets (IST end-of-day chips), priority, tags, notes. Tags wired to DB (migration 0024). `onCreated(syntheticTask)` — parent prepends with server `assignedTo` / `createdBy`.
 
 ---
 
@@ -744,15 +831,15 @@ Composes `ui/modal.tsx` (`max-w-3xl`). Left preview + right form. Accent colour,
 
 ### A. Create personal task (modal)
 
-Header `+ My Task` → `createTrigger++` → modal → `createPersonalTaskAction` → parent prepends synthetic task.
+Header **+ My Task** (`AddTaskButton`) → `requestCreate()` → `createTrigger++` → `CreatePersonalTaskModal` → `createPersonalTaskAction` → returns `{ taskId, assignedTo, createdBy }` → parent prepends synthetic `Task`.
 
 ### B. Create personal task (quick-add)
 
-Inline row → Enter/Save → `createPersonalTaskAction` → prepend to `activeTasks` (no refetch).
+Calendar sidebar **Quick add task** or inline row → Enter/Save → `createPersonalTaskAction` → prepend to `activeTasks` (no refetch).
 
-### C. Inline complete (personal list)
+### C. Inline complete (My Tasks + group subtasks)
 
-Circle click → optimistic status → `updateTaskStatusAction` → on error rollback + toast.
+`TaskCompletionCircle` → `useTaskCompletionToggle` → `updateTaskStatusAction` (`completed` ↔ `to_do`) → on error rollback + toast. Completed My Tasks rows drop out of date sections (not shown in a COMPLETED accordion).
 
 ### D. Create group task
 
@@ -764,7 +851,7 @@ Inline panel or workspace FAB → `createSubtaskAction` → returns `SubtaskWith
 
 ### F. Open SubTaskModal
 
-Row click → fetch remarks → gate modal on `remarks !== null` → mount with populated timeline.
+Row click → fetch remarks → gate modal on `remarks !== null` → mount with populated timeline. Parent passes `onTaskUpdated` / `onTaskDeleted` when list should stay in sync without refresh.
 
 ### G. Edit brief (Zone A)
 
@@ -818,9 +905,41 @@ Displayed in `AgentTasksWidget` and `LeadDossierTasksAsync` via dashboard/leads 
 | Surface | Service | Query pattern |
 |---|---|---|
 | Dashboard widget | `getAgentTasksSummary` | `tasks !inner task_gia_meta !inner leads` |
-| Lead dossier | `getNextLeadTask` | root `tasks`, filter `task_gia_meta.lead_id`, status active, order `due_at ASC`, limit 1 |
+| Lead dossier | `getAllLeadTasks` | root `tasks`, `!inner` join `task_gia_meta`, filter `lead_id`, active-first sort, no limit |
+| Tasks page — Gia tab | `getGiaTasksForUser` | `get_gia_tasks` RPC (migration 0055); role-scoped: agent → `assigned_to = userId`; manager+ → `leads.domain = domain`; joined lead identity fields returned in the same row |
 
 **Join rule:** filter on root table columns; use `!inner` when filtering on joined tables in Supabase JS.
+
+### Gia tab on `/tasks` (migration 0055, 2026-05-31)
+
+Agents and managers in `GIA_DOMAINS` see a **Gia Tasks** tab as the first tab on `/tasks`.
+
+**Domain-aware tab validation** (server-side, `page.tsx`):
+
+- Gia agent: `validTabs = ['gia', 'personal']`, default `gia`.
+- Gia manager/admin/founder: `validTabs = ['gia', 'personal', 'group']`, default `gia`.
+- Non-Gia: `validTabs = ['personal', 'group']`. `?tab=gia` silently falls back to `personal`.
+
+**`get_gia_tasks(p_user_id, p_role, p_domain)` RPC:**
+
+- `p_domain` typed as `app_domain` enum — no `42883` error post-migration-0041.
+- Returns all `tasks` columns + `lead_id`, `lead_first_name`, `lead_last_name`, `lead_phone`, `lead_slug`, `lead_domain`.
+- Order: active (`to_do/in_progress/in_review`) before terminal, then `due_at ASC NULLS LAST`.
+
+**`searchLeadsAction`:** Zod-validated, scoped to caller's role + domain. Calls `searchLeadsForTask` in `leads-service.ts`. Used by `CreateGiaTaskModal` lead picker (300ms debounce, max 8 results).
+
+**`CreateGiaTaskModal`** reuses `createLeadTaskAction` — no new action written.
+
+### UI creation — `createLeadTaskAction` (migration 0054)
+
+Gia follow-up tasks can now be created directly from the lead dossier:
+
+- **UI:** `LeadTasksCard` (dossier right area) → `+` button → `CreateLeadTaskModal`
+- **Action:** `createLeadTaskAction` in `src/lib/actions/leads.ts` — Zod → auth → lead access check → `create_lead_gia_task` RPC → fire-and-forget `scheduleTaskReminder`
+- **RPC:** `create_lead_gia_task` (migration 0054) — two-INSERT transaction (`tasks` + `task_gia_meta`). An orphaned `tasks` row with no `task_gia_meta` is invisible on all Gia surfaces — the RPC prevents this.
+- **Task title:** always derived from `TASK_TYPE_LABELS[taskType]` — never a hardcoded string.
+- **Assignee:** defaults to `lead.assigned_to`; falls back to caller when lead has no assignee.
+- **`LeadDossierTasksAsync` retired:** replaced by `LeadTasksAsync` + `LeadTasksCard` which show all tasks (not just the next one). `LeadDossierTasksAsync` still exists in the repo but is no longer mounted.
 
 ---
 
@@ -858,11 +977,16 @@ Displayed in `AgentTasksWidget` and `LeadDossierTasksAsync` via dashboard/leads 
 | Remarks pre-fetch before modal mount | 2026-05-30 | Eliminates blank timeline POST on modal open |
 | `Promise.all` auth + task fetch in 4 mutation actions | 2026-05-30 | −1 RTT per mutation |
 | `getTaskById` parallel task + remarks | 2026-05-30 | −1 RTT |
-| Completed tasks lazy load | 2026-05-30 | No completed fetch on page load |
+| Completed tasks lazy load | 2026-05-30 | Was in `PersonalTasksTab`; calendar view excludes completed from sections instead |
 | Quick-add / subtask create local prepend | 2026-05-30 | No 500-row refetch after create |
 | `assignableUsers` hoisted to `GroupTasksTab` | 2026-05-30 | N agent fetches → 1 |
 | Suspense-split tasks pages | 2026-05-30 | Skeleton renders immediately |
 | Lead RPCs for call note + status (0030/0031) | 2026-05-29 | Gia task creation atomic with lead writes |
+| Client-side tab filters + header create | 2026-05-31 | `TasksFilters` + `task-client-filters.ts`; Leads-style header CTA |
+| My Tasks calendar + date sections | 2026-05-31 | `MyTasksCalendarView` replaces priority-section tab |
+| Remark RPC auth fix (00051) | 2026-05-31 | Progress posts work under service-role action |
+| `onTaskUpdated` / `onTaskDeleted` on modal | 2026-05-31 | Group list/workspace sync without refresh |
+| `TaskCompletionCircle` + shared toggle hook | 2026-05-31 | One completion UX across personal + group rows |
 
 ---
 
@@ -880,8 +1004,8 @@ Displayed in `AgentTasksWidget` and `LeadDossierTasksAsync` via dashboard/leads 
 **TD-002 — `console.error` in tasks-service**  
 `getPersonalTasks`, `getGroupTasks`, `getGroupSubtasks`, `getTaskRemarks` log to console. Replace with Sentry when wired.
 
-**Stale TODO in `CreatePersonalTaskModal`**  
-Comment about wiring tags is obsolete — tags work since migration 0024. Remove comment.
+**`PersonalTasksTab.tsx` orphan**  
+File still exists; page uses `MyTasksCalendarView`. Safe to delete after doc/comment cleanup.
 
 **`CreateGroupTaskModal` open items:**
 
@@ -906,7 +1030,7 @@ Comment about wiring tags is obsolete — tags work since migration 0024. Remove
 | CSV/batch task import | Not built |
 | Board drag-and-drop | Board view exists; no column DnD |
 | Inline complete for group subtasks | Status changes via modal only |
-| Direct UI to create `gia_followup` | All creation via lead RPCs |
+| Direct UI to create `gia_followup` | **Resolved 2026-05-31** — `createLeadTaskAction` + `create_lead_gia_task` RPC (migration 0054); `LeadTasksCard` shows all lead tasks. |
 | LuxuryCalendar | Use `ui/DatePicker` if needed |
 
 ---
@@ -928,6 +1052,7 @@ Comment about wiring tags is obsolete — tags work since migration 0024. Remove
 | 0031 | `20260529000031_rpc_update_lead_status.sql` | Lead status atomic RPC |
 | 0035 | `20260530000035_rpc_add_task_remark_with_status.sql` | Remark + status RPC |
 | 0039 | `20260530000039_fix_nurturing_task_insert.sql` | Nurturing Gia task fix |
+| 0051 | `20260531000051_task_remark_rpc_auth_fix.sql` | Remark RPC trusts action layer; `tasks_agent_select` + `task_remarks` RLS aligned to created_by / assignee |
 
 ---
 

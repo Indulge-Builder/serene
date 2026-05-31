@@ -83,7 +83,7 @@ export const TASK_PRIORITY: Record<
   { label: string; color: string; order: number }
 > = {
   urgent: { label: 'Urgent', color: 'var(--color-danger)',  order: 1 },
-  high:   { label: 'High',   color: 'var(--theme-warning)', order: 2 },
+  high:   { label: 'High',   color: 'var(--color-warning)', order: 2 },
   normal: { label: 'Normal', color: 'var(--theme-text-tertiary)', order: 3 },
 };
 
@@ -131,7 +131,7 @@ export const TASK_STATUS: Record<
     label:        'In Review',
     color:        'var(--color-info-text)',
     order:        3,
-    pillBg:       'var(--color-info)',
+    pillBg:       'var(--color-info-light)',
     pillText:     'var(--color-info-text)',
     remarkBg:     'var(--color-info-light)',
     remarkColor:  'var(--color-info-text)',
@@ -141,7 +141,7 @@ export const TASK_STATUS: Record<
     label:        'Completed',
     color:        'var(--color-success-text)',
     order:        4,
-    pillBg:       'var(--color-success)',
+    pillBg:       'var(--color-success-light)',
     pillText:     'var(--color-success-text)',
     remarkBg:     'var(--color-success-light)',
     remarkColor:  'var(--color-success-text)',
@@ -151,7 +151,7 @@ export const TASK_STATUS: Record<
     label:        'Error',
     color:        'var(--color-danger-text)',
     order:        5,
-    pillBg:       'var(--color-danger)',
+    pillBg:       'var(--color-danger-light)',
     pillText:     'var(--color-danger-text)',
     remarkBg:     'var(--color-danger-light)',
     remarkColor:  'var(--color-danger-text)',
@@ -174,9 +174,9 @@ export const TASK_STATUS: Record<
 // ─────────────────────────────────────────────
 export const TASK_CATEGORY: Record<
   TaskCategory,
-  { label: string; color: string }
+  { label: string; color: string; dotColor: string }
 > = {
-  personal:      { label: 'Personal',    color: 'var(--theme-accent)'       },
-  group_subtask: { label: 'Group Task',  color: 'var(--theme-text-primary)' },
-  gia_followup:  { label: 'Gia Follow-up', color: 'var(--color-info)'       },
+  personal:      { label: 'Personal',      color: 'var(--theme-accent)',    dotColor: 'var(--theme-accent)'    },
+  group_subtask: { label: 'Group Task',    color: 'var(--theme-text-primary)', dotColor: 'var(--color-info)'  },
+  gia_followup:  { label: 'Gia Follow-up', color: 'var(--color-info)',      dotColor: 'var(--color-warning)'   },
 };

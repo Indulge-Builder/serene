@@ -1,6 +1,7 @@
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { isGiaDomain, type GiaDomain } from '@/lib/constants/domains';
 import type { Lead, LeadActivity, LeadNote, LeadRawPayload, Task, UserRole, AppDomain, LeadFilters, CampaignFilters, CampaignMetrics, CampaignDetailMetrics, AgentDistributionRow, Profile } from '@/lib/types/database';
 
 export type LeadNoteWithAuthor = LeadNote & { author: { full_name: string } };
@@ -117,6 +118,7 @@ export async function getLeadsByRole(
   filters: LeadFilters = {
     status:            null,
     last_call_outcome: null,
+    domain:            null,
     agent_id:          null,
     source:            null,
     campaign:          null,
@@ -150,7 +152,10 @@ export async function getLeadsByRole(
       query = query.eq('assigned_to', filters.agent_id);
     }
   } else {
-    // admin / founder — no pre-constraint; agent_id filter is honoured
+    // admin / founder — optional domain slice (Gia domains only); agent_id honoured
+    if (filters.domain && isGiaDomain(filters.domain)) {
+      query = query.eq('domain', filters.domain);
+    }
     if (filters.agent_id) {
       query = query.eq('assigned_to', filters.agent_id);
     }
@@ -215,17 +220,26 @@ export type LeadFilterOptions = {
 
 export async function getLeadFilterOptions(
   role: UserRole,
-  domain: AppDomain,
+  callerDomain: AppDomain,
+  filterDomain: GiaDomain | null = null,
 ): Promise<LeadFilterOptions> {
   const supabase = await createClient();
 
   // Distinct campaign names — uses idx_leads_utm_campaign partial index
-  const { data: campaignRows } = await supabase
+  let campaignQuery = supabase
     .from('leads')
     .select('utm_campaign')
     .is('archived_at', null)
     .not('utm_campaign', 'is', null)
     .order('utm_campaign', { ascending: true });
+
+  if (role === 'manager') {
+    campaignQuery = campaignQuery.eq('domain', callerDomain);
+  } else if (filterDomain) {
+    campaignQuery = campaignQuery.eq('domain', filterDomain);
+  }
+
+  const { data: campaignRows } = await campaignQuery;
 
   const campaigns = [
     ...new Set(
@@ -244,7 +258,9 @@ export async function getLeadFilterOptions(
     .order('full_name', { ascending: true });
 
   if (role === 'manager') {
-    agentsQuery = agentsQuery.eq('domain', domain);
+    agentsQuery = agentsQuery.eq('domain', callerDomain);
+  } else if (filterDomain) {
+    agentsQuery = agentsQuery.eq('domain', filterDomain);
   }
 
   const { data: agentRows } = await agentsQuery;
@@ -371,6 +387,22 @@ export async function getAgentsForDomain(
   return data as { id: string; full_name: string }[];
 }
 
+export async function getActiveUsersForDomain(
+  domain: string,
+): Promise<{ id: string; full_name: string; role: string }[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, role')
+    .eq('domain', domain as AppDomain)
+    .eq('is_active', true)
+    .neq('role', 'guest')
+    .order('full_name', { ascending: true });
+
+  if (error || !data) return [];
+  return data as { id: string; full_name: string; role: string }[];
+}
+
 // ─────────────────────────────────────────────
 // Query: campaign analytics — single RPC call, one round trip
 //
@@ -423,7 +455,7 @@ export async function getCampaignMetrics(
 
   if (error || !data) return [];
 
-  return (data as CampaignRpcRow[]).map((row) => ({
+  const rows = (data as CampaignRpcRow[]).map((row) => ({
     campaign_name: row.campaign_name,
     domain:        row.domain as AppDomain,
     total_leads:   Number(row.total_leads),
@@ -438,6 +470,13 @@ export async function getCampaignMetrics(
     switched_off:  Number(row.outcome_switched_off),
     converted:     Number(row.outcome_converted),
   }));
+
+  if (!filters.search) return rows;
+
+  const term = filters.search.trim().toLowerCase();
+  if (!term) return rows;
+
+  return rows.filter((row) => row.campaign_name.toLowerCase().includes(term));
 }
 
 // ─────────────────────────────────────────────
@@ -608,4 +647,56 @@ export async function getNextRoundRobinAgent(domain: string): Promise<string | n
   });
 
   return eligibleAgents[0];
+}
+
+// ─────────────────────────────────────────────
+// Lead search for task creation
+// ─────────────────────────────────────────────
+
+export type LeadSearchResult = {
+  id:         string;
+  slug:       string | null;
+  first_name: string;
+  last_name:  string | null;
+  phone:      string | null;
+  domain:     AppDomain;
+};
+
+/**
+ * Search leads by name or phone for the lead picker in CreateGiaTaskModal.
+ * Scoped by caller role: agent sees only their assigned leads,
+ * manager sees their domain, admin/founder see all.
+ * Returns at most 8 results.
+ */
+export async function searchLeadsForTask(
+  query:   string,
+  role:    UserRole,
+  domain:  AppDomain,
+  userId:  string,
+): Promise<LeadSearchResult[]> {
+  const supabase = await createClient();
+  const term = `%${query.trim().toLowerCase()}%`;
+
+  let q = supabase
+    .from('leads')
+    .select('id, slug, first_name, last_name, phone, domain')
+    .or(`first_name.ilike.${term},last_name.ilike.${term},phone.ilike.${term}`)
+    .is('archived_at', null)
+    .limit(8);
+
+  if (role === 'agent') {
+    q = q.eq('assigned_to', userId);
+  } else if (role === 'manager') {
+    q = q.eq('domain', domain);
+  }
+  // admin/founder: no domain constraint
+
+  const { data, error } = await q.order('first_name', { ascending: true });
+
+  if (error) {
+    console.error('[leads-service] searchLeadsForTask error:', error);
+    return [];
+  }
+
+  return (data ?? []) as LeadSearchResult[];
 }

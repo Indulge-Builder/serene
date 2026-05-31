@@ -16,7 +16,7 @@ export type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
 export interface DialogProps {
   open: boolean;
   onClose: () => void;
-  title?: string;
+  title?: React.ReactNode;
   description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;

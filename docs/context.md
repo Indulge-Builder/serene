@@ -41,11 +41,21 @@ Next.js 16 App Router · TypeScript strict (no `any`) · Tailwind CSS v4 · shad
 
 **Phase 8 — Complete:** Performance page (agent self-view). Core Four metrics, effort layer, call outcome breakdown, period selector. Campaign Analytics command center — list + detail pages, `get_campaign_metrics` RPC.
 
-**Phase 9 — Complete:** Toast system + persistent notification inbox. Team benchmarks layer. Gia SLA Engine (8 rules, IST business hours, auto-task creation). Settings page (`/settings`) — Agent Roster + Shifts tabs.
+**Phase 9 — Complete:** Toast system + persistent notification inbox. Team benchmarks layer. Gia SLA Engine (8 rules, IST business hours, auto-task creation). Settings page (`/settings`) — Agent Roster + Shifts (unified single-page redesign).
 
-**UI Foundation — Complete:** Full component library in `src/components/ui/`. 26+ components. Zero hardcoded colours. MutationObserver-driven chart token resolution. Component sweep — 33 inline patterns replaced.
+**UI Foundation — Complete:** Full component library in `src/components/ui/`. 26+ components. Zero hardcoded colours. MutationObserver-driven chart token resolution. Component sweep — 33 inline patterns replaced. New primitives: `ComboboxDropdown`, `TimePicker`. `Button`, `TabSelector`, `FilterDropdown`, `SearchBar`, `DatePicker`, `Calendar` all spec-audited and hardened.
 
-**OS Tasks — Complete:** Full task system across 15+ migrations and build sessions. `task_groups`, `task_remarks` (was `task_messages`), `tasks` extended. Personal tasks tab (priority sections, completion circles, tags). Group task workspace (`/tasks/[id]`). SubTaskModal. Realtime remarks panel. SLA Engine hook points. Performance indexes.
+**OS Tasks — Complete:** Full task system across 15+ migrations and build sessions. `task_groups`, `task_remarks` (was `task_messages`), `tasks` extended. Personal tasks tab now uses `MyTasksCalendarView` (calendar + date-grouped layout, `TaskCompletionCircle`). Group task workspace (`/tasks/[id]`). `SubTaskModal` two-zone grid layout (brief left, activity right). Realtime remarks panel. SLA Engine hook points. Performance indexes. `add_task_remark_with_status` RPC (migration 0035) — 6 sequential awaits → 1 round-trip. `SubTaskModal` parent callbacks sync group list without page refresh.
+
+**Phase 10 — Complete:** Performance page manager & founder views. Agent roster panel (sorted by top performer, first agent pre-fetched server-side for zero-flash). Domain tabs at top. Founder all-domains view. Filter bar (period + domain dropdowns, clear button). DRY audit — 10 violations fixed.
+
+**WhatsApp Module — Complete:** Full WhatsApp integration. `whatsapp_conversations`, `whatsapp_messages`, `whatsapp_conversation_reads`, `whatsapp_notification_logs` tables with RLS. Gupshup v1 inbound/outbound (dual-format parser, `x-gupshup-secret` auth). `/whatsapp` page — split layout, conversation list with period filter + seamless search rail, message panel, composer. Realtime message delivery. Unread count RPC (`get_wa_unread_count`). Agent assignment + SLA breach + founder lead notifications via Gupshup templates. `WhatsAppShell`, `ConversationList`, `ConversationPanel`, `MessageBubble`, `ConversationRow`, `EmptyConversationState`, `WhatsAppConversationPeriodFilter` components.
+
+**Lead Dossier Hardening — Complete:** Inline lead reassignment (manager/admin/founder). Team Notes card in right column. Junk leads revivable back to In Discussion. Won deal capture flow. `CalledModal` outcome picker redesign. Lead slug URLs (migrations 0045–0046, collision-safe). Domain normalized to `app_domain` enum across `leads`, `task_groups`, `whatsapp_notification_logs`. `LeadInfoCard` inline combobox (assignee) using `ComboboxDropdown`.
+
+**Admin/Profile Redesign — Complete:** `/admin/users` and `/admin/users/[id]` redesigned to canonical wide detail-page layout. New shared primitives `SectionCard` and `BackButton`. `/profile` widened to two-column layout matching admin pages. `NewUserClient.tsx` wrapper for client state lift. `CreateUserForm` mode prop (password / invite).
+
+**Dashboard Bento Grid — Complete:** Widget resize controls (height + width). Bento grid layout replacing fixed 2-col. Domain tab selector on Lead Pipeline and Campaign Performance widgets. Lead Volume widget — domain picker + multi-line chart, merged domain footer. Live Lead Activity widget — role-scoped visibility. Agent dashboard summary RPC scoped to all task categories (migration 0047), activity limit 25 (migration 0048), role-scoped visibility (migration 0050).
 
 ---
 
@@ -83,6 +93,26 @@ Next.js 16 App Router · TypeScript strict (no `any`) · Tailwind CSS v4 · shad
 | 0029 | `get_dashboard_summary(p_role, p_domain, p_user_id)` RPC — single jsonb, 4 keys |
 | 0030 | `add_lead_call_note(...)` RPC — single transaction replacing 9 sequential awaits |
 | 0031 | `update_lead_status(...)` RPC — single transaction replacing 5 sequential awaits |
+| 0032 | `whatsapp_conversations` table — lead_id FK, agent_id FK, phone, last_message_at, unread_count, RLS |
+| 0033 | `whatsapp_messages` table — conversation_id FK, direction (inbound/outbound), content, metadata JSONB, RLS, Realtime |
+| 0034 | `whatsapp_conversation_reads` table — marks last-read per user per conversation |
+| 0035 | `add_task_remark_with_status(...)` RPC — inline auth check, conditional status update + remark insert in one transaction |
+| 0036 | `get_wa_unread_count(p_user_id)` RPC — total unread conversations for a user |
+| 0037 | `wa_messages_outbound_insert` RLS policy — allows authenticated insert on outbound messages |
+| 0038 | `whatsapp_notification_logs` table — logs every template notification attempt with status + delivery result |
+| 0039 | Fix `update_lead_status` RPC — adds `title` (NOT NULL) and `task_category='gia_followup'` to nurturing auto-task INSERT |
+| 0040 | `add_lead_plain_note(...)` RPC — plain note insert without status change |
+| 0041 | `normalize_lead_domain` — migrates `leads.domain` to `app_domain` enum; remaps TG_Global → onboarding |
+| 0042 | Fix `get_group_task_summaries` domain type mismatch (42883) |
+| 0043 | Fix `get_dashboard_summary` domain type mismatch (42883) |
+| 0044 | Fix `get_campaign_metrics` domain type mismatch (42883) |
+| 0045 | `lead_slug` column on `leads` — URL-safe unique slugs; backfill existing rows |
+| 0046 | `generate_lead_slug` collision fix — appends `-2/-3` on collision; backfill re-run ordered by `created_at ASC` |
+| 0047 | `get_dashboard_summary` — agent tasks CTE includes all task categories (not just personal) |
+| 0048 | `get_dashboard_summary` — activity limit raised to 25 |
+| 0049 | `leads.deal_duration` column — days between `created_at` and `status_changed_at` for won leads |
+| 0050 | `get_dashboard_summary` — activity feed role-scoped (agent sees own, manager sees domain, admin/founder sees all) |
+| 0051 | `add_task_remark_with_status` RPC auth fix — inline `auth.uid()` check; prevents unauthorized remark posting |
 
 ---
 
@@ -96,9 +126,11 @@ src/lib/
 │   ├── dashboard.ts         ← 5 server actions (widget data refresh)
 │   ├── leads.ts             ← addLeadCallNote, updateLeadStatus, assignLead, createManualLead, updatePersonalDetails, updateScratchpad, listAgentsForDomain
 │   ├── notifications.ts     ← markNotificationReadAction, markAllReadAction
+│   ├── performance.ts       ← getAgentPerformanceAction, getAgentListForDomainAction
 │   ├── profiles.ts          ← createUser, updateProfile, updateUserAuthorization, toggleUserActive, inviteUser, updateProfileAvatar
 │   ├── sla.ts               ← scheduleSlaTimersForLead, cancelSlaTimersForLead, refreshActivitySlaTimers, fireSlaBreachAction
-│   └── tasks.ts             ← createPersonalTaskAction, createGroupTaskAction, createSubtaskAction, updateTaskStatusAction, updateTaskAction, deleteTaskAction, addTaskRemarkAction, suppressTaskRemarkAction, updateChecklistAction, updateTaskTagsAction, getPersonalTaskTagsAction, getTaskRemarksAction, getGroupSubtasksAction, getPersonalTasksAction, getTaskGroupByIdAction
+│   ├── tasks.ts             ← createPersonalTaskAction, createGroupTaskAction, createSubtaskAction, updateTaskStatusAction, updateTaskAction, deleteTaskAction, addTaskRemarkAction, suppressTaskRemarkAction, updateChecklistAction, updateTaskTagsAction, getPersonalTaskTagsAction, getTaskRemarksAction, getGroupSubtasksAction, getPersonalTasksAction, getTaskGroupByIdAction
+│   └── whatsapp.ts          ← sendMessageAction, markConversationReadAction, getConversationsAction, getMessagesAction, searchConversationsAction
 │
 ├── services/
 │   ├── ad-creatives-service.ts      ← getAdCreativeForCampaign
@@ -110,21 +142,26 @@ src/lib/
 │   ├── performance-service.ts       ← getCoreFourMetrics, getEffortMetrics, getCallOutcomeBreakdown, getPreviousPeriodCoreMetrics, getTeamBenchmarks
 │   ├── profiles-service.ts          ← getProfile, getCurrentProfile, getProfilesByDomain, getProfileById
 │   ├── sla-service.ts               ← getSlaTimersForLead, createSlaTimer, cancelSlaTimersForLeadInDb, markSlaTimerFired, getOpenGiaFollowupTask, getManagersByDomain
-│   └── tasks-service.ts             ← getPersonalTasks, getGroupTasks (unstable_cache 60s), getGroupSubtasks, getTaskById, getTaskRemarks, getTaskGroupById, getPersonalTaskTags
+│   ├── tasks-service.ts             ← getPersonalTasks, getGroupTasks (unstable_cache 60s), getGroupSubtasks, getTaskById, getTaskRemarks, getTaskGroupById, getPersonalTaskTags
+│   ├── whatsapp-api.ts              ← sendTextMessage (Gupshup v1 outbound)
+│   ├── whatsapp-ingestion.ts        ← processInboundMessage, resolveOrCreateConversation
+│   └── whatsapp-service.ts          ← getConversations, getMessages, getConversation, markConversationRead, searchConversations, getUnreadCount
 │
 ├── constants/
 │   ├── call-outcomes.ts
 │   ├── campaign-domain-map.ts
 │   ├── dashboard-widgets.ts  ← widget registry, DEFAULT_LAYOUT_BY_ROLE
-│   ├── domains.ts
+│   ├── domains.ts            ← APP_DOMAINS, GIA_DOMAINS, DOMAIN_LABELS
 │   ├── lead-columns.ts       ← 11 columns, locked: status + name
 │   ├── lead-sources.ts
 │   ├── lead-statuses.ts
-│   ├── motion.ts             ← ENTER_DURATION, EASE_OUT_EXPO, SPRING_CONFIG, MODAL_VARIANTS, etc.
+│   ├── motion.ts             ← ENTER_DURATION, EASE_OUT_EXPO, SPRING_CONFIG, MODAL_VARIANTS, MOTION_BUTTON_DEFAULTS, etc.
 │   ├── roles.ts
 │   ├── sla.ts                ← BUSINESS_HOURS (IST, Mon–Sat 09:00–19:00), SLA_RULES (8 rules), SLA_AUTO_TASK_TITLES
 │   ├── task-constants.ts     ← TASK_PRIORITY, TASK_STATUS, TASK_CATEGORY, TASK_REMARK_STATUS_LABELS, GROUP_TASK_ACCENT_COLORS, GROUP_TASK_ICONS
-│   └── task-types.ts
+│   ├── task-types.ts
+│   ├── whatsapp.ts           ← WHATSAPP_CONVERSATIONS_PAGE_SIZE, WHATSAPP_MESSAGES_PAGE_SIZE
+│   └── whatsapp-period.ts    ← WhatsAppPeriod type, WHATSAPP_PERIOD_OPTIONS
 │
 ├── utils/
 │   ├── assert-never.ts       ← assertNever(x: never): never — Q-11 canonical helper
@@ -134,11 +171,13 @@ src/lib/
 │   ├── phone.ts
 │   ├── sanitize.ts
 │   ├── scroll.ts
-│   └── sla.ts                ← nextBusinessDeadline, isWithinBusinessHours, businessMinutesBetween (IST)
+│   ├── sla.ts                ← nextBusinessDeadline, isWithinBusinessHours, businessMinutesBetween (IST)
+│   └── whatsapp-period.ts    ← getWhatsAppPeriodRange, parseWhatsAppPeriodFromSearchParams
 │
 ├── types/
 │   ├── database.ts           ← All DB types; Lead, Profile, Task, TaskGroup, TaskRemark, TaskAuditLog, Notification, LeadSlaTimer, AgentRosterRow, DashboardSummary, ChecklistItem, etc.
-│   └── index.ts              ← DashboardSummary + 7 constituent types, ActionResult, etc.
+│   ├── index.ts              ← DashboardSummary + 7 constituent types, ActionResult, etc.
+│   └── whatsapp.ts           ← WhatsAppConversation, WhatsAppMessage, WhatsAppNotificationLog types
 │
 └── toast.ts                  ← singleton toast store; toast.success/danger/warning/info/loading/lia/resolve/dismiss
 
@@ -154,13 +193,26 @@ src/hooks/
 
 src/components/ui/            ← 26+ display-only token-compliant components
   Spinner, Button (forwardRef), MotionButton, Avatar (selected prop), AvatarStack,
-  SearchBar, InfoRow, TabSelector (pill | border-bottom | connected),
+  SearchBar, InfoRow, TabSelector (pill | connected),
   Dialog, FilterDropdown, Table, ListRow, ProgressBar, Toggle, ChecklistItem, Checklist,
-  RadioGroup, Calendar, DatePicker, EditButton, Accordion,
+  RadioGroup, Calendar (taskDots prop), DatePicker (showTime prop), EditButton, Accordion,
+  ComboboxDropdown (single-select searchable, viewport-flip, kbd nav),
+  TimePicker (premium scroll-wheel, shared across app),
+  BackButton (motion Link, shared across detail pages),
+  SectionCard (shared section wrapper for admin/profile pages),
   Modal (wraps Dialog; type="lia" for two-action Lia proposals),
   charts/LineChart, BarChart (colorMap prop), PieChart, DonutChart, AreaChart, ButterflyChart,
   charts/useChartTokens (MutationObserver-driven), charts/ChartSkeleton,
   toast-item.tsx, toast-provider.tsx, lia-glyph.tsx
+
+src/components/whatsapp/
+  WhatsAppShell.tsx           ← outer split layout, hydrates conversation list + unread count
+  ConversationList.tsx        ← scrollable list, period filter, search rail
+  ConversationRow.tsx         ← avatar ring hover pattern
+  ConversationPanel.tsx       ← message thread, Realtime, read tracking
+  MessageBubble.tsx           ← inbound/outbound bubble variants
+  EmptyConversationState.tsx  ← Playfair italic empty state
+  WhatsAppConversationPeriodFilter.tsx ← period dropdown (Today/Week/Month/custom)
 ```
 
 ---
@@ -176,8 +228,39 @@ src/components/ui/            ← 26+ display-only token-compliant components
 **Key constants:**
 - `tasks.status` CHECK values and `task_remarks.status_change` CHECK values are coupled — adding a new status requires a migration on both.
 - `task_remarks` append-only contract: the ONLY mutation allowed is the suppression UPDATE by admin/founder.
+- `task_remarks` RPC: `add_task_remark_with_status` (migration 0051) performs inline `auth.uid()` check, conditional status update (fires `log_task_changes()` trigger), and remark insert — all in one transaction. `addTaskRemarkAction` calls this RPC via `adminClient.rpc()`.
 
 **task_remarks `status_change` coupling warning:** If `tasks.status` gains a new value, a new migration must extend `task_remarks.status_change` CHECK too.
+
+**Personal tasks UI:** `PersonalTasksTab` is legacy/unmounted. The active personal tasks view is `MyTasksCalendarView` — calendar + date-grouped sections, `TaskCompletionCircle`, `useTaskCompletionToggle`. `TasksCreateContext` / `AddTaskButton` owns create modal trigger.
+
+**`SubTaskModal` parent callbacks:** `onTaskUpdated` / `onTaskDeleted` propagate successful writes back to `GroupTasksTab` and `GroupTaskWorkspace` without a page refresh.
+
+---
+
+### WhatsApp System — Current State
+
+**Provider:** Gupshup v1 (BSP). Auth: `x-gupshup-secret` header. Inbound: dual-format parser (Gupshup native + fallback). Outbound: `sendTextMessage()` in `whatsapp-api.ts`.
+
+**Tables:**
+- `whatsapp_conversations` — per-lead conversation thread. `lead_id` FK, `agent_id` FK, `phone`, `last_message_at`, `unread_count`.
+- `whatsapp_messages` — individual messages. `conversation_id` FK, `direction` (inbound/outbound), `content`, `metadata JSONB`. Realtime enabled.
+- `whatsapp_conversation_reads` — tracks last-read position per user per conversation.
+- `whatsapp_notification_logs` — every template notification attempt logged with `status`, `delivery_result`, 4-digit phone suffix.
+
+**Notification templates (Gupshup):**
+| Event | Recipient | Template ID |
+|-------|-----------|-------------|
+| Agent lead assignment | Agent | `3bcebeb0` (3 params: leadName, leadPhone, domain) |
+| Founder lead notification | Founder | `d5828042` |
+| SLA breach (agent) | Agent | `54d5dd55` (4 params: leadName, leadPhone, status, lastUpdatedAt) |
+| SLA breach (manager) | Manager | `682fd320` (5 params: + agentName) |
+
+**Webhook route:** `POST /api/webhooks/whatsapp` — `x-gupshup-secret` auth; `GET` returns 200 for URL verification. Excluded from Next.js proxy session refresh.
+
+**Unread count:** `get_wa_unread_count(p_user_id)` RPC (migration 0036) — total unread conversations. Called on `/whatsapp` page load.
+
+**Page:** `/whatsapp` — split layout (conversation list left, message panel right). `WhatsAppShell` owns all hydration. `ConversationList` has period filter + seamless search rail. Realtime subscription on `whatsapp_messages`. Read state marked via `markConversationRead` on panel open.
 
 ---
 

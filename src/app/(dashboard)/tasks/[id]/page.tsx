@@ -15,7 +15,6 @@
 
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
-import Link from 'next/link';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { WorkspaceAsync } from './WorkspaceAsync';
 import { WorkspaceSkeleton } from './WorkspaceSkeleton';
@@ -33,24 +32,6 @@ export default async function GroupTaskWorkspacePage({ params }: Props) {
 
   return (
     <main className="flex-1 p-8">
-      {/* Back link — rendered immediately in the page shell, outside Suspense */}
-      <div style={{ marginBottom: 'var(--space-5)' }}>
-        <Link
-          href="/tasks?tab=group"
-          style={{
-            display:        'inline-flex',
-            alignItems:     'center',
-            gap:            'var(--space-1)',
-            fontFamily:     'var(--font-sans)',
-            fontSize:       'var(--text-sm)',
-            color:          'var(--theme-text-secondary)',
-            textDecoration: 'none',
-          }}
-        >
-          ← Group Tasks
-        </Link>
-      </div>
-
       <Suspense fallback={<WorkspaceSkeleton />}>
         <WorkspaceAsync
           groupId={id}

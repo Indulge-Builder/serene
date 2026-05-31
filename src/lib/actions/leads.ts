@@ -1,26 +1,46 @@
-'use server';
+"use server";
 
-import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
-import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentProfile } from "@/lib/services/profiles-service";
 import {
   AddCallNoteSchema,
   AddLeadNoteSchema,
-  UpdateLeadInfoSchema,
+  UpdateLeadEmailSchema,
+  UpdateLeadDomainSchema,
+  UpdateLeadUtmSourceSchema,
   UpdateLeadStatusSchema,
   AssignLeadSchema,
   UpdateScratchpadSchema,
   UpdatePersonalDetailsSchema,
   CreateManualLeadSchema,
-} from '@/lib/validations/lead-schema';
-import { formErrors } from '@/lib/validations/form-errors';
-import { sanitizeText } from '@/lib/utils/sanitize';
-import { getAgentsForDomain } from '@/lib/services/leads-service';
-import { createNotification } from '@/lib/services/notifications-service';
-import { scheduleSlaTimersForLead, cancelSlaTimersForLead, refreshActivitySlaTimers } from '@/lib/actions/sla';
-import { sendLeadAssignmentNotification, sendFounderLeadNotification } from '@/lib/services/whatsapp-api';
-import type { ActionResult } from '@/lib/types/index';
-import type { LeadStatus, AppDomain } from '@/lib/types/database';
+  RecordDealSchema,
+  CreateLeadTaskSchema,
+  SearchLeadsSchema,
+} from "@/lib/validations/lead-schema";
+import { formErrors } from "@/lib/validations/form-errors";
+import { sanitizeText } from "@/lib/utils/sanitize";
+import {
+  getAgentsForDomain,
+  getActiveUsersForDomain,
+  searchLeadsForTask,
+  type LeadSearchResult,
+} from "@/lib/services/leads-service";
+import { createNotification } from "@/lib/services/notifications-service";
+import {
+  scheduleSlaTimersForLead,
+  cancelSlaTimersForLead,
+  refreshActivitySlaTimers,
+} from "@/lib/actions/sla";
+import {
+  sendLeadAssignmentNotification,
+  sendFounderLeadNotification,
+} from "@/lib/services/whatsapp-api";
+import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
+import { scheduleTaskReminder } from "@/trigger/task-reminders";
+import type { ActionResult } from "@/lib/types/index";
+import type { LeadStatus, AppDomain, Task } from "@/lib/types/database";
 
 // ─────────────────────────────────────────────
 // Action: addLeadCallNote
@@ -44,18 +64,18 @@ export async function addLeadCallNote(
 
   // 3. Verify access to this lead
   const { data: lead } = await supabase
-    .from('leads')
-    .select('id, status, assigned_to, domain')
-    .eq('id', leadId)
+    .from("leads")
+    .select("id, status, assigned_to, domain")
+    .eq("id", leadId)
     .single();
 
-  if (!lead) return { data: null, error: 'Lead not found.' };
+  if (!lead) return { data: null, error: "Lead not found." };
 
   const hasAccess =
-    (caller.role === 'agent' && lead.assigned_to === caller.id) ||
-    (caller.role === 'manager' && lead.domain === (caller.domain as string)) ||
-    caller.role === 'admin' ||
-    caller.role === 'founder';
+    (caller.role === "agent" && lead.assigned_to === caller.id) ||
+    (caller.role === "manager" && lead.domain === (caller.domain as string)) ||
+    caller.role === "admin" ||
+    caller.role === "founder";
 
   if (!hasAccess) return { data: null, error: formErrors.unauthorized };
 
@@ -64,45 +84,48 @@ export async function addLeadCallNote(
   const now = new Date().toISOString();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rpcResult, error: rpcError } = await (admin as any).rpc('add_lead_call_note', {
-    p_lead_id:      leadId,
-    p_author_id:    caller.id,
-    p_content:      content,
-    p_call_outcome: callOutcome,
-    p_now:          now,
-  });
+  const { data: rpcResult, error: rpcError } = await (admin as any).rpc(
+    "add_lead_call_note",
+    {
+      p_lead_id: leadId,
+      p_author_id: caller.id,
+      p_content: content,
+      p_call_outcome: callOutcome,
+      p_now: now,
+    },
+  );
 
   if (rpcError || !rpcResult) return { data: null, error: formErrors.generic };
 
   const {
-    note_id:          noteId,
+    note_id: noteId,
     did_auto_advance: didAutoAdvance,
-    assigned_to:      assignedTo,
+    assigned_to: assignedTo,
     domain,
-    old_status:       oldStatus,
+    old_status: oldStatus,
   } = rpcResult as {
-    note_id:          string;
+    note_id: string;
     did_auto_advance: boolean;
-    assigned_to:      string | null;
-    domain:           string;
-    old_status:       string;
+    assigned_to: string | null;
+    domain: string;
+    old_status: string;
   };
 
   // 5. SLA side-effects (fire-and-forget, non-fatal — cannot go in the RPC)
-  const postStatus = didAutoAdvance ? 'touched' : oldStatus;
+  const postStatus = didAutoAdvance ? "touched" : oldStatus;
 
   if (didAutoAdvance) {
     scheduleSlaTimersForLead({
       leadId,
-      status:     'touched',
+      status: "touched",
       assignedAt: now,
       assignedTo: assignedTo ?? caller.id,
       domain,
     }).catch(() => {});
-  } else if (assignedTo && ['touched', 'in_discussion'].includes(postStatus)) {
+  } else if (assignedTo && ["touched", "in_discussion"].includes(postStatus)) {
     refreshActivitySlaTimers({
       leadId,
-      status:     postStatus,
+      status: postStatus,
       assignedTo,
       domain,
     }).catch(() => {});
@@ -133,18 +156,18 @@ export async function updateLeadStatus(
 
   // 3. Fetch lead for access check
   const { data: lead } = await supabase
-    .from('leads')
-    .select('id, status, assigned_to, domain')
-    .eq('id', leadId)
+    .from("leads")
+    .select("id, status, assigned_to, domain")
+    .eq("id", leadId)
     .single();
 
-  if (!lead) return { data: null, error: 'Lead not found.' };
+  if (!lead) return { data: null, error: "Lead not found." };
 
   const hasAccess =
-    (caller.role === 'agent' && lead.assigned_to === caller.id) ||
-    (caller.role === 'manager' && lead.domain === (caller.domain as string)) ||
-    caller.role === 'admin' ||
-    caller.role === 'founder';
+    (caller.role === "agent" && lead.assigned_to === caller.id) ||
+    (caller.role === "manager" && lead.domain === (caller.domain as string)) ||
+    caller.role === "admin" ||
+    caller.role === "founder";
 
   if (!hasAccess) return { data: null, error: formErrors.unauthorized };
 
@@ -153,24 +176,27 @@ export async function updateLeadStatus(
   const now = new Date().toISOString();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rpcResult, error: rpcError } = await (admin as any).rpc('update_lead_status', {
-    p_lead_id:  leadId,
-    p_actor_id: caller.id,
-    p_status:   status,
-    p_reason:   reason ?? null,
-    p_now:      now,
-  });
+  const { data: rpcResult, error: rpcError } = await (admin as any).rpc(
+    "update_lead_status",
+    {
+      p_lead_id: leadId,
+      p_actor_id: caller.id,
+      p_status: status,
+      p_reason: reason ?? null,
+      p_now: now,
+    },
+  );
 
   if (rpcError || !rpcResult) return { data: null, error: formErrors.generic };
 
   const result = rpcResult as {
-    changed:      boolean;
-    old_status?:  string;
-    new_status?:  string;
+    changed: boolean;
+    old_status?: string;
+    new_status?: string;
     assigned_to?: string | null;
-    domain?:      string;
-    first_name?:  string | null;
-    last_name?:   string | null;
+    domain?: string;
+    first_name?: string | null;
+    last_name?: string | null;
   };
 
   // RPC returned early — status was already the same
@@ -179,27 +205,27 @@ export async function updateLeadStatus(
   const { assigned_to: assignedTo, domain, first_name, last_name } = result;
 
   // 5. Won: notify all active managers/admins/founders in the domain
-  if (status === 'won') {
+  if (status === "won") {
     const displayName = last_name
-      ? `${first_name ?? 'A lead'} ${last_name}`
-      : (first_name ?? 'A lead');
+      ? `${first_name ?? "A lead"} ${last_name}`
+      : (first_name ?? "A lead");
 
     const { data: managers } = await admin
-      .from('profiles')
-      .select('id')
-      .eq('domain', domain as AppDomain)
-      .in('role', ['manager', 'admin', 'founder'])
-      .eq('is_active', true);
+      .from("profiles")
+      .select("id")
+      .eq("domain", domain as AppDomain)
+      .in("role", ["manager", "admin", "founder"])
+      .eq("is_active", true);
 
     if (managers && managers.length > 0) {
       await Promise.all(
         managers.map((m: { id: string }) =>
           createNotification({
             recipient_id: m.id,
-            type:         'lead_won',
-            title:        `Lead won — ${displayName}`,
-            body:         `Marked won by ${caller.full_name}`,
-            action_url:   `/leads/${leadId}`,
+            type: "lead_won",
+            title: `Lead won — ${displayName}`,
+            body: `Marked won by ${caller.full_name}`,
+            action_url: `/leads/${leadId}`,
           }),
         ),
       );
@@ -215,7 +241,7 @@ export async function updateLeadStatus(
       status,
       assignedAt: now,
       assignedTo,
-      domain:     domain as string,
+      domain: domain as string,
     }).catch(() => {});
   }
 
@@ -223,7 +249,7 @@ export async function updateLeadStatus(
 }
 
 // Terminal statuses for SLA purposes (no new timers)
-const TERMINAL_SLA_STATUSES = new Set<LeadStatus>(['won', 'lost', 'junk']);
+const TERMINAL_SLA_STATUSES = new Set<LeadStatus>(["won", "lost", "junk"]);
 
 // ─────────────────────────────────────────────
 // Action: assignLead (manual reassign)
@@ -240,7 +266,7 @@ export async function assignLead(
   // 2. Auth — only manager, admin, founder can manually assign
   const caller = await getCurrentProfile();
   if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (!['manager', 'admin', 'founder'].includes(caller.role)) {
+  if (!["manager", "admin", "founder"].includes(caller.role)) {
     return { data: null, error: formErrors.unauthorized };
   }
 
@@ -248,41 +274,41 @@ export async function assignLead(
 
   // 3. Fetch lead's current status + domain before the update (eliminates post-update SELECT)
   const { data: existingLead } = await admin
-    .from('leads')
-    .select('status, domain, first_name, last_name, phone')
-    .eq('id', leadId)
+    .from("leads")
+    .select("status, domain, first_name, last_name, phone")
+    .eq("id", leadId)
     .single();
 
-  if (!existingLead) return { data: null, error: 'Lead not found.' };
+  if (!existingLead) return { data: null, error: "Lead not found." };
 
   // 4. Reassign + clear scratchpad (per spec: incoming agent starts blank)
   const assignedAt = new Date().toISOString();
   await admin
-    .from('leads')
+    .from("leads")
     .update({
-      assigned_to:        agentId,
-      assigned_at:        assignedAt,
+      assigned_to: agentId,
+      assigned_at: assignedAt,
       private_scratchpad: null,
-      status_changed_at:  assignedAt,
-      last_activity_at:   assignedAt,
+      status_changed_at: assignedAt,
+      last_activity_at: assignedAt,
     })
-    .eq('id', leadId);
+    .eq("id", leadId);
 
   // 5. Log agent_assigned activity
-  await admin.from('lead_activities').insert({
-    lead_id:     leadId,
-    actor_id:    caller.id,
-    action_type: 'agent_assigned',
-    details:     { assigned_to: agentId, method: 'manual' },
+  await admin.from("lead_activities").insert({
+    lead_id: leadId,
+    actor_id: caller.id,
+    action_type: "agent_assigned",
+    details: { assigned_to: agentId, method: "manual" },
   });
 
   // 6. Notify the receiving agent — fire-and-forget, non-fatal
   createNotification({
     recipient_id: agentId,
-    type:         'lead_assigned',
-    title:        'New lead assigned to you',
-    body:         `Assigned by ${caller.full_name}`,
-    action_url:   `/leads/${leadId}`,
+    type: "lead_assigned",
+    title: "New lead assigned to you",
+    body: `Assigned by ${caller.full_name}`,
+    action_url: `/leads/${leadId}`,
   }).catch(() => {});
 
   const assignLeadName = existingLead.last_name
@@ -292,34 +318,34 @@ export async function assignLead(
   void sendLeadAssignmentNotification(
     agentId,
     assignLeadName,
-    existingLead.phone ?? '',
+    existingLead.phone ?? "",
     existingLead.domain as string,
   ).catch((err) => {
-    console.error('[leads] assignment notification failed (non-fatal):', err);
+    console.error("[leads] assignment notification failed (non-fatal):", err);
   });
 
   const { data: assignedAgent } = await admin
-    .from('profiles')
-    .select('full_name')
-    .eq('id', agentId)
+    .from("profiles")
+    .select("full_name")
+    .eq("id", agentId)
     .single();
 
   void sendFounderLeadNotification(
     existingLead.domain as string,
-    assignedAgent?.full_name ?? 'Unknown Agent',
+    assignedAgent?.full_name ?? "Unknown Agent",
     assignLeadName,
-    existingLead.phone ?? '',
+    existingLead.phone ?? "",
   ).catch((err) => {
-    console.error('[leads] founder notification failed (non-fatal):', err);
+    console.error("[leads] founder notification failed (non-fatal):", err);
   });
 
   // 7. SLA: schedule timers using the pre-fetched status + domain (no post-update SELECT)
   scheduleSlaTimersForLead({
     leadId,
-    status:     existingLead.status as string,
+    status: existingLead.status as string,
     assignedAt,
     assignedTo: agentId,
-    domain:     existingLead.domain as string,
+    domain: existingLead.domain as string,
   }).catch(() => {});
 
   return { data: { leadId }, error: null };
@@ -344,22 +370,25 @@ export async function updateScratchpad(
   const supabase = await createClient();
 
   const { data: lead } = await supabase
-    .from('leads')
-    .select('assigned_to')
-    .eq('id', leadId)
+    .from("leads")
+    .select("assigned_to")
+    .eq("id", leadId)
     .single();
 
-  if (!lead) return { data: null, error: 'Lead not found.' };
+  if (!lead) return { data: null, error: "Lead not found." };
 
   const canEdit =
-    (caller.role === 'agent' && lead.assigned_to === caller.id) ||
-    caller.role === 'admin' ||
-    caller.role === 'founder';
+    (caller.role === "agent" && lead.assigned_to === caller.id) ||
+    caller.role === "admin" ||
+    caller.role === "founder";
 
   if (!canEdit) return { data: null, error: formErrors.unauthorized };
 
   const admin = createAdminClient();
-  await admin.from('leads').update({ private_scratchpad: content }).eq('id', leadId);
+  await admin
+    .from("leads")
+    .update({ private_scratchpad: content })
+    .eq("id", leadId);
 
   return { data: null, error: null };
 }
@@ -383,18 +412,18 @@ export async function updatePersonalDetails(
   const supabase = await createClient();
 
   const { data: lead } = await supabase
-    .from('leads')
-    .select('assigned_to, domain, personal_details')
-    .eq('id', leadId)
+    .from("leads")
+    .select("assigned_to, domain, personal_details")
+    .eq("id", leadId)
     .single();
 
-  if (!lead) return { data: null, error: 'Lead not found.' };
+  if (!lead) return { data: null, error: "Lead not found." };
 
   const hasAccess =
-    (caller.role === 'agent' && lead.assigned_to === caller.id) ||
-    (caller.role === 'manager' && lead.domain === (caller.domain as string)) ||
-    caller.role === 'admin' ||
-    caller.role === 'founder';
+    (caller.role === "agent" && lead.assigned_to === caller.id) ||
+    (caller.role === "manager" && lead.domain === (caller.domain as string)) ||
+    caller.role === "admin" ||
+    caller.role === "founder";
 
   if (!hasAccess) return { data: null, error: formErrors.unauthorized };
 
@@ -403,7 +432,7 @@ export async function updatePersonalDetails(
   const merged: Record<string, string> = { ...existing };
   for (const [k, rawV] of Object.entries(details)) {
     const v = sanitizeText(String(rawV));
-    if (v === '') {
+    if (v === "") {
       delete merged[k];
     } else {
       merged[k] = v;
@@ -411,7 +440,10 @@ export async function updatePersonalDetails(
   }
 
   const admin = createAdminClient();
-  await admin.from('leads').update({ personal_details: merged }).eq('id', leadId);
+  await admin
+    .from("leads")
+    .update({ personal_details: merged })
+    .eq("id", leadId);
 
   return { data: null, error: null };
 }
@@ -425,7 +457,7 @@ export async function createManualLead(
   // 1. Zod validate — first line, always (Rule S-01)
   const parsed = CreateManualLeadSchema.safeParse(input);
   if (!parsed.success) {
-    const phoneIssue = parsed.error.issues.find((i) => i.path[0] === 'phone');
+    const phoneIssue = parsed.error.issues.find((i) => i.path[0] === "phone");
     if (phoneIssue) return { data: null, error: formErrors.phoneInvalid };
     return { data: null, error: formErrors.generic };
   }
@@ -438,7 +470,7 @@ export async function createManualLead(
 
   // 3. Domain enforcement: agents cannot submit to any domain other than their own (Rule S-06, S-14)
   const resolvedDomain =
-    caller.role === 'agent' ? caller.domain : fields.domain;
+    caller.role === "agent" ? caller.domain : fields.domain;
 
   // 4. Resolve assigned_to — defaults to caller; verify cross-domain if explicitly provided
   const admin = createAdminClient();
@@ -446,75 +478,93 @@ export async function createManualLead(
 
   if (fields.assigned_to && fields.assigned_to !== caller.id) {
     // Only manager/admin/founder can assign to another agent
-    if (caller.role === 'agent') {
+    if (caller.role === "agent") {
       return { data: null, error: formErrors.unauthorized };
     }
     // Verify the target agent exists in the resolved domain
     const { data: targetAgent } = await admin
-      .from('profiles')
-      .select('id, domain, role, is_active, full_name')
-      .eq('id', fields.assigned_to)
+      .from("profiles")
+      .select("id, domain, role, is_active, full_name")
+      .eq("id", fields.assigned_to)
       .single();
 
     if (
       !targetAgent ||
-      targetAgent.role !== 'agent' ||
       targetAgent.domain !== resolvedDomain ||
       !targetAgent.is_active
     ) {
-      return { data: null, error: 'The selected agent is not available in this domain.' };
+      return {
+        data: null,
+        error: "The selected user is not available in this domain.",
+      };
     }
     assignedTo = fields.assigned_to;
   }
 
   // Agent name for notifications — targetAgent is set only when assigning to another agent
-  const assignedAgentName = (fields.assigned_to && fields.assigned_to !== caller.id)
-    ? ((await admin.from('profiles').select('full_name').eq('id', fields.assigned_to).single()).data?.full_name ?? 'Unknown Agent')
-    : caller.full_name;
+  const assignedAgentName =
+    fields.assigned_to && fields.assigned_to !== caller.id
+      ? ((
+          await admin
+            .from("profiles")
+            .select("full_name")
+            .eq("id", fields.assigned_to)
+            .single()
+        ).data?.full_name ?? "Unknown Agent")
+      : caller.full_name;
 
   // 5. sanitizeText on text fields (already done by Zod transforms in schema)
   //    normalizeToE164 on phone (already done by Zod transform in schema)
-  const { first_name, last_name, phone, email, manual_source } = fields;
+  const { first_name, last_name, phone, email, utm_source } = fields;
 
   // 6. Duplicate check via get_active_lead_by_phone (Rule S-09 / dedup spec)
   //    Cast through unknown: RPC function not yet in generated DB types
-  const { data: existingLeads } = await (admin as unknown as { rpc: (fn: string, args: Record<string, string>) => Promise<{ data: { id: string }[] | null }> })
-    .rpc('get_active_lead_by_phone', { p_phone: phone });
+  const { data: existingLeads } = await (
+    admin as unknown as {
+      rpc: (
+        fn: string,
+        args: Record<string, string>,
+      ) => Promise<{ data: { id: string }[] | null }>;
+    }
+  ).rpc("get_active_lead_by_phone", { p_phone: phone });
 
   if (existingLeads && existingLeads.length > 0) {
-    return { data: { leadId: existingLeads[0].id, duplicate: true }, error: null };
+    return {
+      data: { leadId: existingLeads[0].id, duplicate: true },
+      error: null,
+    };
   }
 
-  // 7. INSERT lead — platform = 'manual', source = null, form_data = {}, status = 'new'
+  // 7. INSERT lead — utm_source from modal when set; form_data empty for manual leads
   const now = new Date().toISOString();
   const { data: inserted, error: insertError } = await admin
-    .from('leads')
+    .from("leads")
     .insert({
       first_name,
-      last_name:          last_name ?? null,
-      email:              email ?? null,
+      last_name: last_name ?? null,
+      email: email ?? null,
       phone,
-      domain:             resolvedDomain,
-      assigned_to:        assignedTo,
-      assigned_at:        assignedTo ? now : null,
-      status:             'new',
-      status_changed_at:  assignedTo ? now : null,
-      last_activity_at:   assignedTo ? now : null,
-      lead_intent:        null,
-      platform:           null,
-      campaign_id:        null,
-      ad_name:            null,
-      utm_source:         null,
-      utm_medium:         null,
-      utm_campaign:       null,
-      utm_content:        null,
-      form_data:          manual_source ? { manual_source } : {},
-      last_call_outcome:  null,
+      domain: resolvedDomain,
+      assigned_to: assignedTo,
+      assigned_at: assignedTo ? now : null,
+      status: "new",
+      status_changed_at: assignedTo ? now : null,
+      last_activity_at: assignedTo ? now : null,
+      lead_intent: null,
+      platform: null,
+      campaign_id: null,
+      ad_name: null,
+      utm_source: utm_source ?? null,
+      utm_medium: null,
+      utm_campaign: null,
+      utm_content: null,
+      form_data: {},
+      last_call_outcome: null,
       private_scratchpad: null,
-      personal_details:   null,
-      archived_at:        null,
+      personal_details: null,
+      archived_at: null,
     })
-    .select('id')
+    .select("id")
     .single();
 
   if (insertError || !inserted) {
@@ -524,38 +574,40 @@ export async function createManualLead(
   const leadId = inserted.id as string;
 
   // 8. INSERT lead_created activity
-  await admin.from('lead_activities').insert({
-    lead_id:     leadId,
-    actor_id:    caller.id,
-    action_type: 'lead_created',
-    details:     {
-      source:        'manual',
-      manual_source: manual_source ?? null,
-      domain:        resolvedDomain,
+  await admin.from("lead_activities").insert({
+    lead_id: leadId,
+    actor_id: caller.id,
+    action_type: "lead_created",
+    details: {
+      source: "manual",
+      utm_source: utm_source ?? null,
+      domain: resolvedDomain,
     },
   });
 
   // 9. INSERT agent_assigned activity if assigned_to is set
   if (assignedTo) {
-    await admin.from('lead_activities').insert({
-      lead_id:     leadId,
-      actor_id:    caller.id,
-      action_type: 'agent_assigned',
-      details:     { assigned_to: assignedTo, method: 'manual' },
+    await admin.from("lead_activities").insert({
+      lead_id: leadId,
+      actor_id: caller.id,
+      action_type: "agent_assigned",
+      details: { assigned_to: assignedTo, method: "manual" },
     });
 
     // Notify the assigned agent (only when it differs from the caller)
     if (assignedTo !== caller.id) {
       createNotification({
         recipient_id: assignedTo,
-        type:         'lead_assigned',
-        title:        'New lead assigned to you',
-        body:         `Manually added by ${caller.full_name}`,
-        action_url:   `/leads/${leadId}`,
+        type: "lead_assigned",
+        title: "New lead assigned to you",
+        body: `Manually added by ${caller.full_name}`,
+        action_url: `/leads/${leadId}`,
       }).catch(() => {});
     }
 
-    const manualLeadName = last_name ? `${first_name} ${last_name}` : first_name;
+    const manualLeadName = last_name
+      ? `${first_name} ${last_name}`
+      : first_name;
 
     void sendLeadAssignmentNotification(
       assignedTo,
@@ -563,7 +615,7 @@ export async function createManualLead(
       phone,
       resolvedDomain as string,
     ).catch((err) => {
-      console.error('[leads] assignment notification failed (non-fatal):', err);
+      console.error("[leads] assignment notification failed (non-fatal):", err);
     });
 
     void sendFounderLeadNotification(
@@ -572,7 +624,7 @@ export async function createManualLead(
       manualLeadName,
       phone,
     ).catch((err) => {
-      console.error('[leads] founder notification failed (non-fatal):', err);
+      console.error("[leads] founder notification failed (non-fatal):", err);
     });
   }
 
@@ -580,10 +632,10 @@ export async function createManualLead(
   if (assignedTo) {
     scheduleSlaTimersForLead({
       leadId,
-      status:     'new',
+      status: "new",
       assignedAt: now,
       assignedTo,
-      domain:     resolvedDomain as string,
+      domain: resolvedDomain as string,
     }).catch(() => {}); // fire-and-forget, non-fatal
   }
 
@@ -591,63 +643,152 @@ export async function createManualLead(
   return { data: { leadId }, error: null };
 }
 
+type LeadEditContext = {
+  id: string;
+  assigned_to: string | null;
+  domain: string;
+  slug: string | null;
+};
+
+async function assertLeadFieldEditAccess(
+  leadId: string,
+): Promise<
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      caller: NonNullable<Awaited<ReturnType<typeof getCurrentProfile>>>;
+      lead: LeadEditContext;
+    }
+> {
+  const caller = await getCurrentProfile();
+  if (!caller) return { ok: false, error: formErrors.unauthorized };
+
+  const supabase = await createClient();
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("id, assigned_to, domain, slug")
+    .eq("id", leadId)
+    .single();
+
+  if (!lead) return { ok: false, error: "Lead not found." };
+
+  const hasAccess =
+    (caller.role === "agent" && lead.assigned_to === caller.id) ||
+    (caller.role === "manager" && lead.domain === (caller.domain as string)) ||
+    caller.role === "admin" ||
+    caller.role === "founder";
+
+  if (!hasAccess) return { ok: false, error: formErrors.unauthorized };
+
+  return { ok: true, caller, lead };
+}
+
+function revalidateLeadDossier(lead: LeadEditContext) {
+  const segment = lead.slug ?? lead.id;
+  revalidatePath(`/leads/${segment}`);
+}
+
 // ─────────────────────────────────────────────
-// Action: updateLeadInfo
-// Updates contact fields: first_name, last_name, phone, email.
-// Access: same as scratchpad (assigned agent, manager, admin, founder).
+// Action: updateLeadEmail
 // ─────────────────────────────────────────────
-export async function updateLeadInfo(
+export async function updateLeadEmail(
   input: unknown,
 ): Promise<ActionResult<{ leadId: string }>> {
-  const parsed = UpdateLeadInfoSchema.safeParse(input);
+  const parsed = UpdateLeadEmailSchema.safeParse(input);
   if (!parsed.success) {
-    const phoneIssue = parsed.error.issues.find((i) => i.path[0] === 'phone');
-    const emailIssue = parsed.error.issues.find((i) => i.path[0] === 'email');
-    if (phoneIssue) return { data: null, error: phoneIssue.message };
+    const emailIssue = parsed.error.issues.find((i) => i.path[0] === "email");
     if (emailIssue) return { data: null, error: emailIssue.message };
     return { data: null, error: formErrors.generic };
   }
 
-  const { leadId, first_name, last_name, phone, email } = parsed.data;
-
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-
-  const supabase = await createClient();
-
-  const { data: lead } = await supabase
-    .from('leads')
-    .select('id, assigned_to, domain')
-    .eq('id', leadId)
-    .single();
-
-  if (!lead) return { data: null, error: 'Lead not found.' };
-
-  const hasAccess =
-    (caller.role === 'agent' && lead.assigned_to === caller.id) ||
-    (caller.role === 'manager' && lead.domain === (caller.domain as string)) ||
-    caller.role === 'admin' ||
-    caller.role === 'founder';
-
-  if (!hasAccess) return { data: null, error: formErrors.unauthorized };
+  const { leadId, email } = parsed.data;
+  const access = await assertLeadFieldEditAccess(leadId);
+  if (!access.ok) return { data: null, error: access.error };
 
   const admin = createAdminClient();
-
   const { error: updateError } = await admin
-    .from('leads')
-    .update({ first_name, last_name, phone, email })
-    .eq('id', leadId);
+    .from("leads")
+    .update({ email })
+    .eq("id", leadId);
 
   if (updateError) return { data: null, error: formErrors.generic };
 
-  // Log the edit as an activity
-  await admin.from('lead_activities').insert({
-    lead_id:     leadId,
-    actor_id:    caller.id,
-    action_type: 'note_added',
-    details:     { type: 'contact_info_updated' },
+  await admin.from("lead_activities").insert({
+    lead_id: leadId,
+    actor_id: access.caller.id,
+    action_type: "note_added",
+    details: { type: "lead_email_updated" },
   });
 
+  revalidateLeadDossier(access.lead);
+  return { data: { leadId }, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: updateLeadDomain — manager+ only (agents cannot move domains)
+// ─────────────────────────────────────────────
+export async function updateLeadDomain(
+  input: unknown,
+): Promise<ActionResult<{ leadId: string }>> {
+  const parsed = UpdateLeadDomainSchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  const { leadId, domain } = parsed.data;
+  const access = await assertLeadFieldEditAccess(leadId);
+  if (!access.ok) return { data: null, error: access.error };
+
+  if (access.caller.role === "agent") {
+    return { data: null, error: formErrors.unauthorized };
+  }
+
+  const admin = createAdminClient();
+  const { error: updateError } = await admin
+    .from("leads")
+    .update({ domain })
+    .eq("id", leadId);
+
+  if (updateError) return { data: null, error: formErrors.generic };
+
+  await admin.from("lead_activities").insert({
+    lead_id: leadId,
+    actor_id: access.caller.id,
+    action_type: "note_added",
+    details: { type: "lead_domain_updated", domain },
+  });
+
+  revalidateLeadDossier(access.lead);
+  return { data: { leadId }, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: updateLeadUtmSource
+// ─────────────────────────────────────────────
+export async function updateLeadUtmSource(
+  input: unknown,
+): Promise<ActionResult<{ leadId: string }>> {
+  const parsed = UpdateLeadUtmSourceSchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  const { leadId, utm_source } = parsed.data;
+  const access = await assertLeadFieldEditAccess(leadId);
+  if (!access.ok) return { data: null, error: access.error };
+
+  const admin = createAdminClient();
+  const { error: updateError } = await admin
+    .from("leads")
+    .update({ utm_source })
+    .eq("id", leadId);
+
+  if (updateError) return { data: null, error: formErrors.generic };
+
+  await admin.from("lead_activities").insert({
+    lead_id: leadId,
+    actor_id: access.caller.id,
+    action_type: "note_added",
+    details: { type: "lead_utm_source_updated", utm_source },
+  });
+
+  revalidateLeadDossier(access.lead);
   return { data: { leadId }, error: null };
 }
 
@@ -670,35 +811,97 @@ export async function addLeadNote(
   const supabase = await createClient();
 
   const { data: lead } = await supabase
-    .from('leads')
-    .select('id, assigned_to, domain')
-    .eq('id', leadId)
+    .from("leads")
+    .select("id, assigned_to, domain")
+    .eq("id", leadId)
     .single();
 
-  if (!lead) return { data: null, error: 'Lead not found.' };
+  if (!lead) return { data: null, error: "Lead not found." };
 
   const hasAccess =
-    (caller.role === 'agent' && lead.assigned_to === caller.id) ||
-    (caller.role === 'manager' && lead.domain === (caller.domain as string)) ||
-    caller.role === 'admin' ||
-    caller.role === 'founder';
+    (caller.role === "agent" && lead.assigned_to === caller.id) ||
+    (caller.role === "manager" && lead.domain === (caller.domain as string)) ||
+    caller.role === "admin" ||
+    caller.role === "founder";
 
   if (!hasAccess) return { data: null, error: formErrors.unauthorized };
 
   const admin = createAdminClient();
-  const now   = new Date().toISOString();
+  const now = new Date().toISOString();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rpcResult, error: rpcError } = await (admin as any).rpc('add_lead_plain_note', {
-    p_lead_id:   leadId,
-    p_author_id: caller.id,
-    p_content:   content,
-    p_now:       now,
-  });
+  const { data: rpcResult, error: rpcError } = await (admin as any).rpc(
+    "add_lead_plain_note",
+    {
+      p_lead_id: leadId,
+      p_author_id: caller.id,
+      p_content: content,
+      p_now: now,
+    },
+  );
 
   if (rpcError || !rpcResult) return { data: null, error: formErrors.generic };
 
   return { data: { noteId: rpcResult.note_id }, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: recordDeal
+// Called after Won confirmation. Writes deal_type, deal_duration, deal_amount
+// then fires updateLeadStatus('won') atomically — both succeed or both fail.
+// ─────────────────────────────────────────────
+export async function recordDeal(
+  input: unknown,
+): Promise<ActionResult<{ leadId: string }>> {
+  // 1. Validate
+  const parsed = RecordDealSchema.safeParse(input);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return { data: null, error: first?.message ?? formErrors.generic };
+  }
+
+  const { leadId, deal_type, deal_duration, deal_amount } = parsed.data;
+
+  // 2. Auth check
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const supabase = await createClient();
+
+  // 3. Fetch lead for access check
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("id, status, assigned_to, domain")
+    .eq("id", leadId)
+    .single();
+
+  if (!lead) return { data: null, error: "Lead not found." };
+
+  const hasAccess =
+    (caller.role === "agent" && lead.assigned_to === caller.id) ||
+    (caller.role === "manager" && lead.domain === (caller.domain as string)) ||
+    caller.role === "admin" ||
+    caller.role === "founder";
+
+  if (!hasAccess) return { data: null, error: formErrors.unauthorized };
+
+  const admin = createAdminClient();
+
+  // 4. Write deal fields — must succeed before status change
+  const { error: dealError } = await admin
+    .from("leads")
+    .update({
+      deal_type,
+      deal_duration:
+        deal_type === "membership" ? (deal_duration ?? null) : null,
+      deal_amount,
+    })
+    .eq("id", leadId);
+
+  if (dealError) return { data: null, error: formErrors.generic };
+
+  // 5. Mark Won — delegates to updateLeadStatus which handles notifications + SLA
+  return updateLeadStatus({ leadId, status: "won" });
 }
 
 // ─────────────────────────────────────────────
@@ -711,6 +914,118 @@ export async function listAgentsForDomain(
   const caller = await getCurrentProfile();
   if (!caller) return { data: null, error: formErrors.unauthorized };
 
-  const agents = await getAgentsForDomain(domain);
-  return { data: agents, error: null };
+  const users =
+    caller.role === "admin" || caller.role === "founder"
+      ? await getActiveUsersForDomain(domain)
+      : await getAgentsForDomain(domain);
+  return { data: users, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: createLeadTaskAction
+// Creates a gia_followup task + task_gia_meta atomically via the
+// create_lead_gia_task RPC (migration 0054).
+// The task is assigned to the lead's current assignee.
+// Title is derived from TASK_TYPE_LABELS — never hardcoded.
+// ─────────────────────────────────────────────
+export async function createLeadTaskAction(
+  input: unknown,
+): Promise<ActionResult<Task>> {
+  // 1. Validate (S-01 — Zod first, always)
+  const parsed = CreateLeadTaskSchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  const { leadId, taskType, description, priority, dueAt } = parsed.data;
+
+  // 2. Auth
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const supabase = await createClient();
+
+  // 3. Fetch lead — verify existence and access (S-06, A-09 layer 1)
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("id, assigned_to, domain, slug")
+    .eq("id", leadId)
+    .single();
+
+  if (!lead) return { data: null, error: "Lead not found." };
+
+  const hasAccess =
+    (caller.role === "agent" && lead.assigned_to === caller.id) ||
+    (caller.role === "manager" && lead.domain === (caller.domain as string)) ||
+    caller.role === "admin" ||
+    caller.role === "founder";
+
+  if (!hasAccess) return { data: null, error: formErrors.unauthorized };
+
+  // 4. Derive task title from the canonical constant — never a hardcoded string
+  const title = TASK_TYPE_LABELS[taskType];
+
+  // 5. Assign to lead's current assignee, fall back to caller
+  const assignedTo = (lead.assigned_to as string | null) ?? caller.id;
+
+  const adminClient = createAdminClient();
+
+  // 6. Atomic two-INSERT via RPC (tasks + task_gia_meta in one transaction)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: rows, error: rpcError } = await (adminClient as any).rpc(
+    "create_lead_gia_task",
+    {
+      p_lead_id: leadId,
+      p_assigned_to: assignedTo,
+      p_created_by: caller.id,
+      p_task_type: taskType,
+      p_title: title,
+      p_description: description ?? null,
+      p_priority: priority,
+      p_due_at: dueAt ? new Date(dueAt).toISOString() : null,
+    },
+  );
+
+  if (rpcError || !rows || (rows as Task[]).length === 0) {
+    return { data: null, error: formErrors.generic };
+  }
+
+  const task = (rows as Task[])[0];
+
+  // 7. Schedule Trigger.dev reminder — fire-and-forget, never blocks the action
+  if (dueAt) {
+    scheduleTaskReminder(task.id, new Date(dueAt), assignedTo).catch(() => {});
+  }
+
+  // 8. Invalidate dossier RSC cache so LeadTasksAsync refetches after router.refresh()
+  const dossierSegment = (lead.slug as string | null) ?? leadId;
+  revalidatePath(`/leads/${dossierSegment}`);
+
+  return { data: task, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: searchLeadsAction
+// Used by CreateGiaTaskModal lead picker.
+// Returns leads matching query, scoped by the caller's role + domain (A-09).
+// ─────────────────────────────────────────────
+export async function searchLeadsAction(
+  query: string,
+): Promise<ActionResult<LeadSearchResult[]>> {
+  "use server";
+
+  const parsed = SearchLeadsSchema.safeParse({ query });
+  if (!parsed.success) {
+    return { data: null, error: "Search query is required." };
+  }
+
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const results = await searchLeadsForTask(
+    parsed.data.query,
+    caller.role,
+    caller.domain,
+    caller.id,
+  );
+
+  return { data: results, error: null };
 }

@@ -1,274 +1,391 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useTransition } from 'react';
-import Link from 'next/link';
-import { RefreshCcw, CheckSquare, AlertCircle, Users } from 'lucide-react';
-import { getAgentTasksSummaryAction } from '@/lib/actions/dashboard';
-import { Button } from '@/components/ui/Button';
-import { formatDate } from '@/lib/utils/dates';
-import { formatCompact } from '@/lib/utils/numbers';
-import type { DashboardAgentTask } from '@/lib/types';
-import type { WidgetProps } from '../DashboardWidgetSlot';
+import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
+import { RefreshCcw } from "lucide-react";
+import { getAgentTasksSummaryAction } from "@/lib/actions/dashboard";
+import { Button } from "@/components/ui/Button";
+import { formatDate } from "@/lib/utils/dates";
+import {
+  TASK_CATEGORY,
+  TASK_PRIORITY,
+  TASK_STATUS,
+} from "@/lib/constants/task-constants";
+import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
+import type { DashboardAgentTask } from "@/lib/types";
+import type { WidgetProps } from "../DashboardWidgetSlot";
 
-const TASK_TYPE_LABELS: Record<string, string> = {
-  call:              'Call',
-  whatsapp_message:  'WhatsApp',
-  email:             'Email',
-  general_follow_up: 'Follow-up',
-};
+// Keyframe injected once — GPU-only pulse on the category dot.
+// scale + opacity only, no layout properties.
+const DOT_PULSE_CSS = `
+@keyframes eia-cat-dot-pulse {
+  0%, 100% { transform: scale(1);    opacity: 1;    }
+  50%       { transform: scale(1.55); opacity: 0.55; }
+}
+@keyframes eia-tasks-live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.55), 0 0 0 0 rgba(34,197,94,0.6); }
+  60%  { box-shadow: 0 0 0 6px rgba(255,255,255,0),  0 0 0 10px rgba(34,197,94,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,255,255,0),    0 0 0 0 rgba(34,197,94,0);   }
+}
+`;
 
-type AgentTasksData = {
-  tasks:         DashboardAgentTask[];
-  newLeadsCount: number;
-};
+function CategoryDot({
+  category,
+}: {
+  category: DashboardAgentTask["task_category"];
+}) {
+  const cfg = TASK_CATEGORY[category];
+  const delay =
+    category === "personal"
+      ? "0s"
+      : category === "group_subtask"
+        ? "0.4s"
+        : "0.8s";
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "inline-block",
+        width: 7,
+        height: 7,
+        borderRadius: "50%",
+        background: cfg.dotColor,
+        flexShrink: 0,
+        animation: `eia-cat-dot-pulse 2.4s ease-in-out ${delay} infinite`,
+        willChange: "transform, opacity",
+      }}
+    />
+  );
+}
 
-export function AgentTasksWidget({ userId, initialData }: WidgetProps) {
+function PriorityChip({
+  priority,
+}: {
+  priority: DashboardAgentTask["priority"];
+}) {
+  if (priority === "normal") return null;
+  const cfg = TASK_PRIORITY[priority];
+  return (
+    <span
+      style={{
+        fontSize: "var(--text-2xs)",
+        fontWeight: "var(--weight-medium)",
+        color: cfg.color,
+        letterSpacing: "0.04em",
+        flexShrink: 0,
+      }}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
+function StatusChip({ status }: { status: DashboardAgentTask["status"] }) {
+  const cfg = TASK_STATUS[status];
+  if (status === "to_do") return null;
+  return (
+    <span
+      style={{
+        fontSize: "var(--text-2xs)",
+        padding: "1px 6px",
+        borderRadius: "var(--radius-full)",
+        background: cfg.pillBg,
+        color: cfg.pillText,
+        fontWeight: "var(--weight-medium)",
+        flexShrink: 0,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
+function TaskRow({ task }: { task: DashboardAgentTask }) {
+  const href = task.lead_id ? `/leads/${task.lead_id}` : "/tasks";
+  const isOverdue = task.is_overdue;
+
+  return (
+    <Link
+      href={href}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--space-2)",
+        padding: "var(--space-2) var(--space-3)",
+        borderRadius: "var(--radius-sm)",
+        background: isOverdue
+          ? "var(--color-danger-light)"
+          : "var(--theme-paper-subtle)",
+        border: "1px solid",
+        borderColor: isOverdue ? "transparent" : "var(--theme-paper-border)",
+        textDecoration: "none",
+        minWidth: 0,
+      }}
+    >
+      {/* Animated category dot */}
+      <CategoryDot category={task.task_category} />
+
+      {/* Title + context label */}
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          fontSize: "var(--text-sm)",
+          color: isOverdue
+            ? "var(--color-danger-text)"
+            : "var(--theme-text-primary)",
+        }}
+      >
+        {task.title}
+        {task.context_label && (
+          <span
+            style={{
+              color: isOverdue
+                ? "var(--color-danger-text)"
+                : "var(--theme-text-tertiary)",
+              marginLeft: "var(--space-1)",
+              fontSize: "var(--text-xs)",
+              fontStyle: "italic",
+              opacity: 0.8,
+            }}
+          >
+            · {task.context_label}
+          </span>
+        )}
+      </span>
+
+      {/* Priority chip (only urgent/high) */}
+      <PriorityChip priority={task.priority} />
+
+      {/* Status chip (only in_progress / in_review) */}
+      <StatusChip status={task.status} />
+
+      {/* Due date */}
+      {task.due_at && (
+        <span
+          style={{
+            fontSize: "var(--text-xs)",
+            color: isOverdue
+              ? "var(--color-danger-text)"
+              : "var(--theme-text-tertiary)",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+        >
+          {formatDate(task.due_at, "dd MMM")}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetProps) {
   const seed = initialData?.agent_tasks ?? null;
-  const [data, setData]              = useState<AgentTasksData | null>(seed);
-  const [loaded, setLoaded]          = useState(seed !== null);
+  const [tasks, setTasks] = useState<DashboardAgentTask[]>(seed ?? []);
+  const [loaded, setLoaded] = useState(seed !== null);
   const [isPending, startTransition] = useTransition();
 
-  // Only fetch on mount when no server-provided initialData
   useEffect(() => {
     if (seed !== null) return;
     let cancelled = false;
     startTransition(async () => {
       const result = await getAgentTasksSummaryAction(userId);
       if (!cancelled && result.data) {
-        setData(result.data);
+        setTasks(result.data);
         setLoaded(true);
       }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
-
-  const tasks         = data?.tasks ?? [];
-  const newLeadsCount = data?.newLeadsCount ?? 0;
-  const overdue       = tasks.filter((t) => t.is_overdue);
-  const upcoming      = tasks.filter((t) => !t.is_overdue);
 
   function handleRefresh() {
     startTransition(async () => {
       const result = await getAgentTasksSummaryAction(userId);
-      if (result.data) setData(result.data);
+      if (result.data) setTasks(result.data);
     });
   }
 
-  return (
-    <div
-      style={{
-        borderRadius:  'var(--radius-lg)',
-        border:        '1px solid var(--theme-paper-border)',
-        background:    'var(--theme-paper)',
-        boxShadow:     'var(--shadow-1)',
-        padding:       'var(--space-5)',
-        display:       'flex',
-        flexDirection: 'column',
-        gap:           'var(--space-4)',
-        minHeight:     '260px',
-      }}
-    >
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <div>
-          <p
-            style={{
-              fontSize:      'var(--text-2xs)',
-              fontWeight:    'var(--weight-medium)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.12em',
-              color:         'var(--theme-text-tertiary)',
-              margin:        0,
-              marginBottom:  'var(--space-1)',
-            }}
-          >
-            Gia · My Tasks
-          </p>
-          <p
-            style={{
-              fontSize:   'var(--text-md)',
-              fontFamily: 'var(--font-serif)',
-              fontStyle:  'italic',
-              color:      'var(--theme-text-primary)',
-              margin:     0,
-            }}
-          >
-            {isPending && !loaded
-              ? 'Loading…'
-              : tasks.length === 0
-                ? 'Clear for now.'
-                : `${formatCompact(tasks.length)} open task${tasks.length === 1 ? '' : 's'}`}
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          onClick={handleRefresh}
-          disabled={isPending}
-          title="Refresh"
-          style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--theme-paper-border)', flexShrink: 0 }}
-          iconLeft={RefreshCcw}
-          size="xs"
-        />
-      </div>
+  const overdue = tasks.filter((t) => t.is_overdue);
+  const active = tasks.filter((t) => !t.is_overdue);
 
-      {/* Overdue tasks */}
-      {overdue.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+  return (
+    <>
+      {/* Inject pulse keyframe once */}
+      <style>{DOT_PULSE_CSS}</style>
+
+      <div
+        style={{
+          borderRadius: "var(--radius-lg)",
+          border: "1px solid var(--theme-paper-border)",
+          background: "var(--theme-paper)",
+          boxShadow: "var(--shadow-1)",
+          padding: "var(--space-5)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-4)",
+          height: WIDGET_HEIGHT_BY_SIZE[size],
+          overflow: "hidden",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
           <p
             style={{
-              fontSize:      'var(--text-2xs)',
-              fontWeight:    'var(--weight-medium)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.12em',
-              color:         'var(--color-danger-text)',
-              margin:        0,
-              display:       'flex',
-              alignItems:    'center',
-              gap:           'var(--space-1)',
+              fontSize: "var(--text-md)",
+              fontFamily: "var(--font-serif)",
+              fontStyle: "italic",
+              color: "var(--theme-text-primary)",
+              margin: 0,
             }}
           >
-            <AlertCircle size={10} strokeWidth={2} />
-            Overdue
+            My Tasks<span className="page-title-dot">.</span>
           </p>
-          {overdue.map((task) => (
-            <Link
-              key={task.id}
-              href={`/leads/${task.lead_id}`}
+          <Button
+            variant="ghost"
+            onClick={handleRefresh}
+            disabled={isPending}
+            title="Refresh"
+            style={{
+              width: 28,
+              height: 28,
+              padding: 0,
+              border: "1px solid var(--theme-paper-border)",
+              flexShrink: 0,
+            }}
+            iconLeft={RefreshCcw}
+            size="xs"
+          />
+        </div>
+
+        {/* Scrollable task list — flex:1 fills the fixed-height card */}
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-3)",
+            scrollbarWidth: "none",
+          }}
+        >
+          {/* Overdue section */}
+          {overdue.length > 0 && (
+            <div
               style={{
-                display:        'flex',
-                alignItems:     'center',
-                justifyContent: 'space-between',
-                padding:        'var(--space-2) var(--space-3)',
-                borderRadius:   'var(--radius-sm)',
-                background:     'var(--color-danger-light)',
-                border:         '1px solid transparent',
-                textDecoration: 'none',
-                gap:            'var(--space-2)',
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-1)",
               }}
             >
-              <span
+              <p
                 style={{
-                  fontSize:     'var(--text-sm)',
-                  color:        'var(--color-danger-text)',
-                  fontWeight:   'var(--weight-medium)',
-                  flex:         1,
-                  overflow:     'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace:   'nowrap',
+                  fontSize: "var(--text-2xs)",
+                  fontWeight: "var(--weight-medium)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.12em",
+                  color: "var(--color-danger-text)",
+                  margin: 0,
                 }}
               >
-                {TASK_TYPE_LABELS[task.task_type] ?? task.task_type} · {task.lead_name}
-              </span>
-              {task.due_at && (
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)', whiteSpace: 'nowrap' }}>
-                  {formatDate(task.due_at, 'dd MMM')}
-                </span>
-              )}
-            </Link>
-          ))}
-        </div>
-      )}
+                Overdue
+              </p>
+              {overdue.map((task) => (
+                <TaskRow key={task.id} task={task} />
+              ))}
+            </div>
+          )}
 
-      {/* Upcoming tasks */}
-      {upcoming.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-          {overdue.length > 0 && (
+          {/* Active tasks */}
+          {active.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-1)",
+              }}
+            >
+              {overdue.length > 0 && (
+                <p
+                  style={{
+                    fontSize: "var(--text-2xs)",
+                    fontWeight: "var(--weight-medium)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.12em",
+                    color: "var(--theme-text-tertiary)",
+                    margin: 0,
+                  }}
+                >
+                  Active
+                </p>
+              )}
+              {active.map((task) => (
+                <TaskRow key={task.id} task={task} />
+              ))}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {loaded && tasks.length === 0 && (
             <p
               style={{
-                fontSize:      'var(--text-2xs)',
-                fontWeight:    'var(--weight-medium)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-                color:         'var(--theme-text-tertiary)',
-                margin:        0,
+                fontFamily: "var(--font-serif)",
+                fontStyle: "italic",
+                fontSize: "var(--text-sm)",
+                color: "var(--theme-text-tertiary)",
+                textAlign: "center",
+                padding: "var(--space-6) 0",
+                margin: 0,
               }}
             >
-              Today
+              Nothing on your plate. Enjoy the quiet.
             </p>
           )}
-          {upcoming.map((task) => (
-            <Link
-              key={task.id}
-              href={`/leads/${task.lead_id}`}
-              style={{
-                display:        'flex',
-                alignItems:     'center',
-                justifyContent: 'space-between',
-                padding:        'var(--space-2) var(--space-3)',
-                borderRadius:   'var(--radius-sm)',
-                background:     'var(--theme-paper-subtle)',
-                border:         '1px solid var(--theme-paper-border)',
-                textDecoration: 'none',
-                gap:            'var(--space-2)',
-              }}
-            >
-              <span
-                style={{
-                  fontSize:     'var(--text-sm)',
-                  color:        'var(--theme-text-primary)',
-                  flex:         1,
-                  overflow:     'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace:   'nowrap',
-                }}
-              >
-                <CheckSquare
-                  size={12}
-                  strokeWidth={1.5}
-                  style={{ marginRight: 'var(--space-1)', color: 'var(--theme-text-tertiary)', verticalAlign: 'middle' }}
-                />
-                {TASK_TYPE_LABELS[task.task_type] ?? task.task_type} · {task.lead_name}
-              </span>
-              {task.due_at && (
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', whiteSpace: 'nowrap' }}>
-                  {formatDate(task.due_at, 'dd MMM')}
-                </span>
-              )}
-            </Link>
-          ))}
         </div>
-      )}
 
-      {/* Empty state — only show when loaded */}
-      {loaded && tasks.length === 0 && (
-        <p
-          style={{
-            fontFamily: 'var(--font-serif)',
-            fontStyle:  'italic',
-            fontSize:   'var(--text-sm)',
-            color:      'var(--theme-text-tertiary)',
-            textAlign:  'center',
-            padding:    'var(--space-6) 0',
-            margin:     0,
-          }}
-        >
-          Nothing due today. Enjoy the quiet.
-        </p>
-      )}
-
-      {/* New leads footer */}
-      {newLeadsCount > 0 && (
-        <Link
-          href="/leads?status=new"
-          style={{
-            display:        'flex',
-            alignItems:     'center',
-            gap:            'var(--space-2)',
-            padding:        'var(--space-2) var(--space-3)',
-            borderRadius:   'var(--radius-sm)',
-            background:     'var(--theme-accent-surface)',
-            border:         '1px solid transparent',
-            textDecoration: 'none',
-            marginTop:      'auto',
-          }}
-        >
-          <Users size={12} strokeWidth={1.5} style={{ color: 'var(--theme-accent)' }} />
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--theme-accent)', fontWeight: 'var(--weight-medium)' }}>
-            {formatCompact(newLeadsCount)} new lead{newLeadsCount === 1 ? '' : 's'} waiting
-          </span>
-        </Link>
-      )}
-    </div>
+        {/* Category legend */}
+        {loaded && tasks.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              gap: "var(--space-4)",
+              marginTop: "auto",
+              paddingTop: "var(--space-2)",
+              borderTop: "1px solid var(--theme-paper-border)",
+            }}
+          >
+            {(["personal", "group_subtask", "gia_followup"] as const).map(
+              (cat) => (
+                <span
+                  key={cat}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-1)",
+                    fontSize: "var(--text-2xs)",
+                    color: "var(--theme-text-tertiary)",
+                  }}
+                >
+                  <CategoryDot category={cat} />
+                  {TASK_CATEGORY[cat].label}
+                </span>
+              ),
+            )}
+          </div>
+        )}
+      </div>
+    </>
   );
 }

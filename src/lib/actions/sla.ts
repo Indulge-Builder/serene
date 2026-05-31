@@ -380,7 +380,7 @@ export async function fireSlaBreachHandler(
             assigned_to:   assignedTo,
             created_by:    assignedTo, // system-generated; use agent as owner
             module:        'gia',
-            task_type:     'general_follow_up',
+            task_type:     'other',
             title:         taskTitle,
             description:   `SLA rule ${ruleCode} — ${ruleDesc}`,
             status:        'to_do',

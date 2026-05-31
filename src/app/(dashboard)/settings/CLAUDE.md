@@ -17,8 +17,8 @@ src/components/settings/
 ## Architecture
 
 Single page. No tabs. Each agent row in `AgentSettingsTable` exposes:
-- **Shift Start** — `<input type="time">`; saves on blur when both fields are valid
-- **Shift End** — `<input type="time">`; saves on blur when both fields are valid
+- **Shift Start** — `<TimePicker>` (`src/components/ui/TimePicker.tsx`); saves immediately on each pick when both fields are valid
+- **Shift End** — `<TimePicker>`; saves immediately on each pick when both fields are valid
 - **Active Hours** — computed client-side from start/end strings; displays as "Xh Ym"
 - **In Pool toggle** — `Toggle` component; optimistic update via `toggleAgentRouting`
 - **Clear button** — appears when any shift field is set; fires `setAgentShiftAction(id, null, null)`
@@ -31,11 +31,12 @@ Single page. No tabs. Each agent row in `AgentSettingsTable` exposes:
 - The fetched `AgentRosterRow[]` is passed as `initialRoster` to `AgentSettingsTable`.
 - No re-fetches from the server — mutations use server actions + optimistic/local updates.
 
-## Domain filter
+## Filter bar
 
-- Shown only to admin/founder when multiple domains are present.
-- Manager's domain filter is hidden — they only ever see one domain.
-- The filter is purely presentational — it filters the `initialRoster` array client-side.
+Standard paper strip (same chrome as Team / Leads): sliders icon + active-count badge, `SearchBar` (name + job title), `FilterDropdown` domain (admin/founder only, when roster spans multiple domains), pool status select (all / in pool / out of pool), agent count on the right.
+
+- All filtering is client-side over `initialRoster` — no URL params, no re-fetch.
+- Managers always see the bar (search + pool); domain dropdown is hidden (roster is already domain-scoped).
 
 ## AgentSettingsTable — toggleAgentRouting
 

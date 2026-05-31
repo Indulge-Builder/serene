@@ -4,7 +4,7 @@ import { BackButton } from '@/components/ui/BackButton';
 
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getLeadBySlug, getLeadById, getLeadNotesFull, getLeadActivitiesFull, getAgentsForDomain } from '@/lib/services/leads-service';
-import { getAdCreativeForCampaign } from '@/lib/services/ad-creatives-service';
+import { getAdCreativesForCampaign } from '@/lib/services/ad-creatives-service';
 import { LeadInfoCard } from '@/components/leads/LeadInfoCard';
 import { StatusActionPanel } from '@/components/leads/StatusActionPanel';
 import { DynamicFormResponses } from '@/components/leads/DynamicFormResponses';
@@ -12,7 +12,8 @@ import { AgentScratchpad } from '@/components/leads/AgentScratchpad';
 import { LeadNotesInput } from '@/components/leads/LeadNotesInput';
 import { LeadJourneyTimeline } from '@/components/leads/LeadJourneyTimeline';
 import { LeadNotesSection } from '@/components/leads/LeadNotesSection';
-import { LeadDossierTasksAsync } from '@/components/leads/LeadDossierTasksAsync';
+import { LeadTasksAsync } from '@/components/leads/LeadTasksAsync';
+import { LeadTasksCardSkeleton } from '@/components/leads/LeadTasksCardSkeleton';
 import { LeadActivityLog } from '@/components/leads/LeadActivityLog';
 import { PersonalDetailsCard } from '@/components/leads/PersonalDetailsCard';
 
@@ -45,10 +46,10 @@ export default async function LeadDossierPage({ params }: Props) {
     profile.role === 'founder';
 
   // Fetch supporting data in parallel
-  const [notes, activities, adCreative, agents] = await Promise.all([
+  const [notes, activities, adCreatives, agents] = await Promise.all([
     getLeadNotesFull(id),
     getLeadActivitiesFull(id),
-    lead.utm_campaign ? getAdCreativeForCampaign(lead.utm_campaign) : Promise.resolve(null),
+    lead.utm_campaign ? getAdCreativesForCampaign(lead.utm_campaign) : Promise.resolve([]),
     canReassign ? getAgentsForDomain(lead.domain) : Promise.resolve([]),
   ]);
 
@@ -56,6 +57,14 @@ export default async function LeadDossierPage({ params }: Props) {
     (profile.role === 'agent' && lead.assigned_to === profile.id) ||
     profile.role === 'admin' ||
     profile.role === 'founder';
+
+  const canEditLeadFields =
+    (profile.role === 'agent' && lead.assigned_to === profile.id) ||
+    (profile.role === 'manager' && lead.domain === profile.domain) ||
+    profile.role === 'admin' ||
+    profile.role === 'founder';
+
+  const canEditDomain = canEditLeadFields && profile.role !== 'agent';
 
   const canEditPersonalDetails =
     (profile.role === 'agent' && lead.assigned_to === profile.id) ||
@@ -115,7 +124,15 @@ export default async function LeadDossierPage({ params }: Props) {
         >
           {/* Left column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-            <LeadInfoCard lead={lead} assigneeName={lead.assignee?.full_name ?? null} adCreative={adCreative} canEdit={canEditScratchpad} canReassign={canReassign} agents={agents} />
+            <LeadInfoCard
+              lead={lead}
+              assigneeName={lead.assignee?.full_name ?? null}
+              adCreatives={adCreatives}
+              canEdit={canEditLeadFields}
+              canEditDomain={canEditDomain}
+              canReassign={canReassign}
+              agents={agents}
+            />
             <PersonalDetailsCard lead={lead} canEdit={canEditPersonalDetails} />
             {lead.form_data && Object.keys(lead.form_data).length > 0 && (
               <DynamicFormResponses formData={lead.form_data} />
@@ -124,6 +141,9 @@ export default async function LeadDossierPage({ params }: Props) {
 
           {/* Right column — stretches to match left column height */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', alignSelf: 'stretch' }}>
+            <Suspense fallback={<LeadTasksCardSkeleton />}>
+              <LeadTasksAsync leadId={lead.id} />
+            </Suspense>
             <LeadNotesInput
               leadId={lead.id}
               canAdd={canEditPersonalDetails}
@@ -147,15 +167,8 @@ export default async function LeadDossierPage({ params }: Props) {
         </div>
 
         {/* Chronological activity history */}
-        <div style={{ marginTop: 'var(--space-6)' }}>
-          <LeadActivityLog activities={activities} />
-        </div>
-
-        {/* Next due task */}
         <div style={{ marginTop: 'var(--space-6)', marginBottom: 'var(--space-8)' }}>
-          <Suspense fallback={null}>
-            <LeadDossierTasksAsync leadId={lead.id} />
-          </Suspense>
+          <LeadActivityLog activities={activities} />
         </div>
       </main>
     </>

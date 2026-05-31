@@ -35,6 +35,7 @@ Defined in: `src/lib/types/database.ts` (not a separate types file — this is t
 export type LeadFilters = {
   status:            LeadStatus[] | null;
   last_call_outcome: CallOutcome[] | null;
+  domain:            AppDomain | null;  // admin/founder only; must pass isGiaDomain() — URL via parseGiaDomainParam()
   agent_id:          string | null;
   source:            string | null;
   campaign:          string | null;
@@ -44,6 +45,9 @@ export type LeadFilters = {
   page:              number;          // default 1
   pageSize:          number;          // default 50, fixed — not user-configurable
 };
+```
+
+**Domain filter:** URL param `domain`. Items from `GIA_DOMAIN_FILTER_ITEMS` in `lib/constants/domains.ts`. Visible only when `showDomainFilter` (admin/founder). Managers are locked to `profile.domain` — URL param ignored. Changing domain clears `agent_id` and `campaign` (scoped options refetch at page level).
 ```
 
 `.range()` is always applied in `getLeadsByRole` regardless of filter presence.

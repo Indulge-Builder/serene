@@ -12,6 +12,10 @@ import {
 } from "@/lib/services/whatsapp-service";
 import { createClient } from "@/lib/supabase/server";
 import { sanitizeText } from "@/lib/utils/sanitize";
+import {
+  WhatsAppListFilterSchema,
+  WhatsAppSearchFilterSchema,
+} from "@/lib/validations/whatsapp-schema";
 import type { ActionResult } from "@/lib/types/index";
 import type { WhatsAppConversation, WhatsAppMessage } from "@/lib/types/whatsapp";
 
@@ -182,13 +186,25 @@ export async function reopenConversation(
 // whatsapp-service.ts uses the server Supabase client and cannot be imported
 // from client components. These thin wrappers expose service reads via actions.
 
-export async function getConversationsAction(options: {
-  limit?:  number;
-  cursor?: string;
-}): Promise<{ conversations: WhatsAppConversation[]; nextCursor: string | null }> {
+export async function getConversationsAction(
+  input: unknown,
+): Promise<{ conversations: WhatsAppConversation[]; nextCursor: string | null }> {
+  const parsed = WhatsAppListFilterSchema.safeParse(input ?? {});
+  if (!parsed.success) {
+    return { conversations: [], nextCursor: null };
+  }
+
   const profile = await getCurrentProfile();
   if (!profile) return { conversations: [], nextCursor: null };
-  return serviceGetConversations(options);
+
+  const { period, customFrom, customTo, limit, cursor } = parsed.data;
+  return serviceGetConversations({
+    limit,
+    cursor: cursor ?? undefined,
+    period,
+    customFrom: customFrom ?? undefined,
+    customTo:   customTo   ?? undefined,
+  });
 }
 
 export async function getMessagesAction(
@@ -203,9 +219,17 @@ export async function getMessagesAction(
 }
 
 export async function searchConversationsAction(
-  query: string,
+  input: unknown,
 ): Promise<WhatsAppConversation[]> {
+  const parsed = WhatsAppSearchFilterSchema.safeParse(input);
+  if (!parsed.success) return [];
+
   const profile = await getCurrentProfile();
   if (!profile) return [];
-  return serviceSearchConversations(query);
+
+  const { query, period, customFrom, customTo } = parsed.data;
+  return serviceSearchConversations(query, period
+    ? { period, customFrom: customFrom ?? null, customTo: customTo ?? null }
+    : undefined,
+  );
 }

@@ -43,17 +43,7 @@ export default async function AdminUsersPage() {
         </Link>
       </div>
 
-      <div
-        style={{
-          background:   "var(--theme-paper)",
-          border:       "1px solid var(--theme-paper-border)",
-          borderRadius: "var(--radius-lg)",
-          boxShadow:    "var(--shadow-1)",
-          overflow:     "hidden",
-        }}
-      >
-        <UsersTable users={users} />
-      </div>
+      <UsersTable users={users} />
     </main>
   );
 }

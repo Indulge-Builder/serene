@@ -3,9 +3,1092 @@
 <!-- markdownlint-disable MD013 MD024 MD026 MD033 -->
 
 All notable changes to the Eia platform are recorded here in reverse chronological order.
-This is the **single source of truth** for all development changes.
-Every meaningful change — feature, fix, refactor, migration, new package — must be logged here before or alongside the code that implements it.
-Format: `[date] — [area] — [what changed]`
+
+---
+
+## 2026-06-01 — Sidebar: Ad Creatives under Configuration
+
+- `src/components/layout/Sidebar.tsx` — Ad Creatives moved from Admin to Configuration (above Settings); still visible only to admin/founder.
+
+---
+
+## 2026-06-01 — Ad Creatives admin page layout (design contract)
+
+- `src/app/(dashboard)/admin/ad-creatives/page.tsx` — removed `maxWidth: 960px`; full-width `flex-1 p-8` shell matches Team/Campaigns list pages.
+- `src/components/admin/AdCreativesManager.tsx` — canonical three-row layout (header + filter strip + card list); `MotionButton` primary CTA; `SearchBar` filter with active-count badge and result count; card hover (`translateY(-1px)` + `--shadow-2`); Playfair empty states (V-09); Edit/Delete actions match `UsersTable` bordered buttons; ad name shown as primary title when set.
+- `src/components/admin/AdCreativeFormModal.tsx` — field labels use `label-micro` (V-10); campaign dropdown shows `beautifyCampaignTitle()`.
+
+---
+
+## 2026-06-01 — Lead source on `utm_source` (not `form_data` / `platform`)
+
+- `src/lib/constants/lead-sources.ts` — canonical list: meta, google, website, whatsapp, referral, ypo, events; `LEAD_SOURCE_OPTIONS`, `getLeadSourceLabel()`.
+- Manual lead create (`createManualLead`, `AddLeadModal`) — source written to `leads.utm_source`; no `form_data.manual_source`.
+- `src/lib/actions/leads.ts` — `updateLeadPlatform` replaced by `updateLeadUtmSource`.
+- `src/components/leads/LeadInfoCard.tsx` — dossier field renamed **Source**; edits `utm_source` via inline select.
+- `src/lib/validations/lead-schema.ts` — `CreateManualLeadSchema.utm_source`, `UpdateLeadUtmSourceSchema`.
+
+---
+
+## 2026-06-01 — Remove ComboboxDropdown; LeadInfoCard uses FilterDropdown
+
+- Deleted `src/components/ui/ComboboxDropdown.tsx` — searchable combobox was a duplicate of `FilterDropdown`.
+- `src/components/leads/LeadInfoCard.tsx` — domain, platform, assignee: `InfoRow`-matched trigger + simple themed option menu on click (not `FilterDropdown`).
+
+---
+
+## 2026-06-01 — Lead dossier: per-field inline edit on LeadInfoCard
+
+- `src/components/leads/LeadInfoCard.tsx` — removed card-wide click-to-edit mode. Name and phone stay read-only. Email (inline input), domain, source (`utm_source`), and assignee each save on their own. Added **Last modified** (`lead.updated_at`). Assignee-style hover affordance on all editable fields.
+- `src/lib/actions/leads.ts` — `updateLeadInfo` replaced by `updateLeadEmail`, `updateLeadDomain` (manager+), `updateLeadUtmSource`; shared `assertLeadFieldEditAccess` + dossier `revalidatePath`.
+- `src/lib/validations/lead-schema.ts` — per-field Zod schemas for the three update actions.
+- `src/app/(dashboard)/leads/[id]/page.tsx` — `canEditLeadFields` (includes in-domain managers) and `canEditDomain` props.
+
+---
+
+## 2026-06-01 — Task due notifications fire at due time (not 30 min early)
+
+- `src/trigger/task-reminders.ts` — `scheduleTaskReminder` delays the Trigger.dev job until `dueAt` exactly; notification copy updated to "Task due now". Past due dates remain a no-op.
+- `src/components/leads/CalledModal.tsx` — helper/validation aligned: future due time required; no 30-minute lead window.
+
+---
+
+## 2026-06-01 — CalledModal: due date required for Log Update + Task
+
+- `src/components/leads/CalledModal.tsx` — **Log Update + Task** requires due date &amp; time; helper copy explains in-app notification at due time. Task create errors surface instead of being swallowed after the call note is saved.
+
+---
+
+## 2026-06-01 — Lead dossier: Gia tasks list updates without manual refresh
+
+- `src/lib/actions/leads.ts` — `createLeadTaskAction` calls `revalidatePath` on the lead dossier URL (slug or id) so `router.refresh()` serves fresh tasks.
+- `src/components/leads/LeadTasksCard.tsx` — syncs `initialTasks` when the async child refetches; `handleTaskCreated` dedupes by id and calls `router.refresh()` after optimistic prepend.
+
+---
+
+## 2026-06-01 — CalledModal cleanup + Gia task types narrowed to Call / WhatsApp / Other
+
+- `src/components/leads/CalledModal.tsx` — phone icon moved into modal title ("Log a call"); removed helper/subtitle copy; removed "Next step" section header; footer Cancel removed (header × closes); follow-up fields kept for Log Update + Task.
+- `src/components/ui/Dialog.tsx`, `src/components/ui/modal.tsx` — `title` prop accepts `React.ReactNode` (enables icon + label headers).
+- `src/lib/constants/task-types.ts` — `TASK_TYPES` is now `call`, `whatsapp_message`, `other`; labels shortened to Call / WhatsApp / Other; `email` and `general_follow_up` removed from UI surfaces.
+- `src/lib/types/database.ts` — `TaskType` union updated to match.
+- `src/lib/validations/lead-schema.ts` — `CreateLeadTaskSchema.taskType` enum aligned.
+- `src/components/tasks/GiaTaskRow.tsx` — icon map updated (`other` → `MoreHorizontal`).
+- `src/lib/actions/tasks.ts`, `src/lib/actions/sla.ts`, `src/components/tasks/CreatePersonalTaskModal.tsx`, `src/components/tasks/PersonalTasksTab.tsx`, `src/components/tasks/MyTasksCalendarView.tsx` — default/synthetic `task_type` set to `other`.
+- `supabase/migrations/20260531000057_task_type_other.sql` — backfills `email` and `general_follow_up` rows to `other`; `update_lead_status` nurturing auto-task uses `other`.
+
+---
+
+## 2026-06-01 — Performance page redesign: 4-in-a-row KPI row, sparkline charts, donut outcome breakdown
+
+- `src/components/performance/CoreFourGrid.tsx` — **completely rebuilt**. 4 KPI cards now render in a single flex row (not a 2×2 grid). Each card: accent-icon chip top-right, Playfair serif number, mini `AreaChart` sparkline (Recharts) filling the remaining width, TrendingUp/Down delta with directional context (higher/lower is better per metric), benchmark line in a bottom border strip. Sparkline colours: accent / info / warning / success per metric. `useChartTokens()` resolves series colours so sparklines are fully theme-reactive.
+- `src/components/performance/EffortGrid.tsx` — **rebuilt**. 4 compact cards in a flex row. Each has: icon chip with semantic colour (success/accent/info/warning), value in `--text-2xl`, animated horizontal fill bar (calls logged and notes written normalised against each other), description micro-text. Framer Motion fill bar animates from 0% on mount.
+- `src/components/performance/CallOutcomeBar.tsx` — **rebuilt**. Replaces the flat segmented bar with a two-zone layout: left legend (coloured pill rows, count + %, total footer) + right `PieChart` donut (Recharts) with a centre label showing top outcome %. Donut cell colours resolved via `resolveVar()` for Recharts SVG fill compatibility.
+- `src/app/(dashboard)/performance/PerformanceAsync.tsx` — adds `SectionLabel` dividers ("Key Performance Indicators", "Effort & Pipeline", "Call Outcomes") between each tier; layout is now `flex-col gap-5` with a label+content block per section.
+- `src/app/(dashboard)/performance/PerformanceSkeleton.tsx` — **rebuilt** to mirror the new layout: 4 KPI skeletons with sparkline placeholder, 4 compact skeletons with fill bar, 1 wide donut+legend skeleton.
+- `src/app/(dashboard)/performance/page.tsx` — agent view `maxWidth` widened from `960px` → `1280px` to give the 4-card KPI row adequate breathing room.
+
+---
+
+## 2026-06-01 — Multiple ad videos per campaign + carousel (Phase 8)
+
+A campaign can now have many ad videos. All three video surfaces (campaign preview modal, campaign detail card, lead dossier modal) show a looping carousel with prev/next arrows + a counter, newest first.
+
+- **Migration 0058:** drops the UNIQUE constraint on `ad_creatives.campaign_key` (one row per video now). Normalisation CHECK + lookup index preserved. **USER must run the SQL** (linked remote — `ALTER TABLE public.ad_creatives DROP CONSTRAINT IF EXISTS ad_creatives_campaign_key_key;`).
+- `src/lib/services/ad-creatives-service.ts` — `getAdCreativeForCampaign` (singular, `.single()`) **renamed** → `getAdCreativesForCampaign` returns `AdCreative[]` (newest first). `getAdCreativesForCampaigns` batch now returns `Map<campaignKey, AdCreative[]>`.
+- `src/components/campaigns/AdCreativeCarousel.tsx` — new reusable looping carousel: one `AdCreativePlayer` at a time, prev/next arrows (wrap), dot indicators + "n / total", optional per-video ad_name/notes (`showMeta`). `key={current.id}` forces clean remount per video so each autoplays. Single video → no arrows.
+- `src/components/campaigns/CampaignPreviewModal.tsx` — prop `adCreative` → `adCreatives: AdCreative[]`; left column renders the carousel; duplicate ad_name/notes blocks removed (carousel owns them).
+- `src/components/campaigns/CampaignAdCard.tsx` — prop `adCreative` → `adCreatives`; single-column carousel (max 320px), "N ads" count in header; `null` when empty.
+- `src/components/campaigns/CampaignCard.tsx` + `CampaignListAsync.tsx` — pass `adCreatives` array from the `Map<key, AdCreative[]>`.
+- `src/app/(dashboard)/campaigns/[id]/page.tsx` — `getAdCreativesForCampaign` (array) → `<CampaignAdCard adCreatives={…} />`.
+- `src/app/(dashboard)/leads/[id]/page.tsx` — `getAdCreativesForCampaign` (array) → `LeadInfoCard adCreatives`.
+- `src/components/leads/LeadInfoCard.tsx` — `adCreative` → `adCreatives: AdCreative[]`; `AttributionStrip` campaign trigger fires when `length > 0`; ad-name row matches `adCreatives.some(c => c.ad_name === lead.ad_name)`.
+- `src/components/leads/CampaignVideoModal.tsx` — `adCreative` → `adCreatives`; renders `AdCreativeCarousel`; subtitle shows count when > 1.
+- Admin UI unchanged — each upload already creates a new row, so adding N videos to one campaign now simply yields N rows (no UNIQUE collision).
+
+---
+
+## 2026-06-01 — Ad creatives admin: upload + manage UI (Phase 8)
+
+Admin/founder can now upload campaign videos and manage `ad_creatives` rows from a dedicated page — previously the table was read-only with no write path.
+
+- **Manual step (once):** create a public Supabase Storage bucket `ad-creatives` (authenticated write). Mirrors the `avatars` bucket setup. Not in a migration (buckets are created in the dashboard, same as avatars).
+- `src/lib/validations/ad-creative-schema.ts` — `upsertAdCreativeSchema` (id optional → create vs update; campaign_key, video_url required+url, thumbnail_url/ad_name/notes optional) + `deleteAdCreativeSchema`; human-readable error codes.
+- `src/lib/services/ad-creatives-service.ts` — `getAllAdCreatives()` added (newest-first list for the admin view; returns [] on error).
+- `src/lib/actions/ad-creatives.ts` — `upsertAdCreative` (Zod → admin/founder guard → normalise campaign_key lowercase+trim → sanitizeText on ad_name/notes → adminClient INSERT or UPDATE; 23505 → friendly "already exists") + `deleteAdCreative` (admin/founder guard); both `revalidatePath('/admin/ad-creatives')` + `revalidatePath('/campaigns')`.
+- `src/components/admin/AdCreativeFormModal.tsx` — `'use client'` modal composing `ui/modal.tsx`; video upload to `ad-creatives` bucket via browser client (mirrors `ProfileAvatarSection`), then `getPublicUrl` → `upsertAdCreative`; campaign dropdown (locked on edit); 100 MB / video-mime guard; live `<video>` preview.
+- `src/components/admin/AdCreativesManager.tsx` — `'use client'` list with thumbnail + beautified title + edit/delete; optimistic local state (no refetch on save/delete); `window.confirm` before delete; Framer Motion staggered card entrance.
+- `src/app/(dashboard)/admin/ad-creatives/page.tsx` — server orchestrator; admin/founder gate; parallel `getAllAdCreatives` + `getCampaignMetrics` (campaign names → dropdown, normalised + deduped).
+- `src/components/layout/Sidebar.tsx` — "Ad Creatives" link (Film icon) added to `ADMIN_NAV` (gated to admin/founder via existing `isPrivileged`).
+
+---
+
+## 2026-06-01 — Campaign ad creative: preview modal on list page + inline card on detail page (Phase 8)
+
+- `src/lib/utils/campaigns.ts` — `beautifyCampaignTitle(raw)` extracted; both consumers import from here; zero inline split/join occurrences remain.
+- `src/lib/services/ad-creatives-service.ts` — `getAdCreativesForCampaigns(campaignNames[])` batch function; single `WHERE campaign_key = ANY(...)` query; returns `Map<campaignKey, AdCreative>`; never called in a loop.
+- `src/components/campaigns/AdCreativePlayer.tsx` — reusable `'use client'` video primitive; `useEffect` cleanup calls `video.pause(); video.src = ''` to prevent audio bleed on navigation; `aspect-ratio: 9/16`, `max-height: 480px`, `object-fit: contain`.
+- `src/components/campaigns/CampaignPreviewModal.tsx` — `'use client'` modal composing `ui/modal.tsx`; two-column layout when creative present (40% video / 60% info); single-column when absent; 2×3 metric grid; "Open Campaign →" navigates then closes; beautifyCampaignTitle for display.
+- `src/components/campaigns/CampaignCard.tsx` — `adCreative?: AdCreative | null` prop; `previewOpen` state; `onClick` → modal (not direct router.push); modal rendered at JSX tail.
+- `src/components/campaigns/CampaignListAsync.tsx` — calls `getAdCreativesForCampaigns` once after `getCampaignMetrics`; passes per-card creative from map; zero N+1.
+- `src/components/campaigns/CampaignAdCard.tsx` — `'use client'`; composes `SectionCard`; `AdCreativePlayer` left (40%) + notes column right; Framer Motion entrance `opacity 0→1, y 8→0, 350ms ease-out-expo`; returns `null` when `adCreative` is null.
+- `src/app/(dashboard)/campaigns/[id]/page.tsx` — `getAdCreativeForCampaign` awaited (parallel with no other blocking call); `beautifyCampaignTitle` imported from util; `<CampaignAdCard>` rendered between header and metrics strip.
+
+---
+
+## 2026-05-31 — Hotfix: get_gia_tasks 42703 when leads.slug missing
+
+- `supabase/migrations/20260531000055_get_gia_tasks.sql` — `ALTER TABLE leads ADD COLUMN IF NOT EXISTS slug text` guard before the RPC (depends on migration 0045 for generator/trigger; column must exist for the SELECT).
+- `supabase/migrations/20260531000056_get_gia_tasks_slug_prereq.sql` — repairs databases where 0055 ran before 0045: adds `slug` + partial unique index, backfills when `generate_lead_slug` exists, recreates `get_gia_tasks`.
+- `supabase/migrations/20260530000045_lead_slug.sql` — idempotent `ADD COLUMN` / index; bulk backfill removed (was failing with `23505` on duplicate slugs) — backfill stays in 0046 collision-safe loop.
+- `src/lib/services/tasks-service.ts` — logs `error.message` on `getGiaTasksForUser` failure (empty `{}` in console was hiding the Postgres detail).
+
+---
+
+## 2026-05-31 — Tasks page: Gia Tasks tab for GIA_DOMAINS agents + CreateGiaTaskModal (Phase 11)
+
+Agents and managers in `GIA_DOMAINS` (`onboarding`, `house`, `shop`, `legacy`) now see a **Gia Tasks** tab as the first tab on `/tasks`. Non-Gia callers are unaffected.
+
+- `supabase/migrations/20260531000055_get_gia_tasks.sql` — `get_gia_tasks(p_user_id, p_role, p_domain app_domain)` RPC; agent role scopes to `assigned_to = p_user_id`; manager+ scopes to `leads.domain = p_domain`; returns task columns + joined lead identity; `p_domain` typed `app_domain` (prevents `42883` post-migration-0041); STABLE SECURITY DEFINER.
+- `src/lib/services/tasks-service.ts` — `getGiaTasksForUser(userId, role, domain)` wraps RPC via server client; exports `GiaTask` type (Task + lead identity fields).
+- `src/lib/services/leads-service.ts` — `searchLeadsForTask(query, role, domain, userId)` added; ILIKE on first_name/last_name/phone; scoped by role; returns max 8 `LeadSearchResult`.
+- `src/lib/validations/lead-schema.ts` — `SearchLeadsSchema` + `SearchLeadsInput` added.
+- `src/lib/actions/leads.ts` — `searchLeadsAction` added: Zod → `getCurrentProfile()` → `searchLeadsForTask` scoped by caller; returns `{ data, error }`.
+- `src/app/(dashboard)/tasks/page.tsx` — `TaskTab` type exported; `GIA_DOMAINS`-aware `validTabs` computed server-side; `?tab=gia` for non-Gia callers falls back to `validTabs[0]`; `AddTaskButton` receives `validTabs` prop.
+- `src/app/(dashboard)/tasks/TasksAsync.tsx` — `gia` branch calls `getGiaTasksForUser`; `GiaTask[]` passed to `TasksShell`.
+- `src/app/(dashboard)/tasks/TasksShell.tsx` — `giaTasks` + `giaCreateOpen` state; renders `GiaTasksTab` + `CreateGiaTaskModal` (with `AnimatePresence`) on `tab=gia`; task count shown in filter bar for Gia tab.
+- `src/app/(dashboard)/tasks/TasksSkeleton.tsx` — `'gia'` added to `tab` prop union; `GiaTabSkeleton` with three date-grouped block skeletons.
+- `src/components/tasks/AddTaskButton.tsx` — `validTabs: TaskTab[]` prop added; label map: `gia → 'Gia Task'`, `personal → 'My Task'`, `group → 'Group Task'`.
+- `src/components/tasks/GiaDaySection.tsx` — date-group heading; label-micro style; 1px paper-border bottom rule.
+- `src/components/tasks/GiaTaskRow.tsx` — completion circle + task-type icon (`var(--theme-accent)`) + lead name link (`/leads/[slug ?? id]`) + type label + due time; overdue in `var(--color-danger)`; completed at 0.5 opacity + strikethrough.
+- `src/components/tasks/GiaTasksTab.tsx` — groups tasks by date bucket (local-clock keys, same pattern as `MyTasksCalendarView`); Framer Motion staggered section entrance; Playfair italic empty state; `TaskCompletionCircle` + `useTaskCompletionToggle` reused.
+- `src/components/tasks/CreateGiaTaskModal.tsx` — composes `modal.tsx`; lead search (300ms debounce → `searchLeadsAction`); task type radio list; priority chips; `DatePicker showTime`; notes textarea; reuses `createLeadTaskAction` — no new action.
+- `src/components/tasks/CLAUDE.md` — created with full component inventory for all tasks components.
+- `src/app/(dashboard)/tasks/CLAUDE.md` — Gia tab architecture, domain-aware tab validation, RPC contract, `searchLeadsAction` scope rules documented.
+- `docs/task-blueprint.md` — §1 routes/layout table updated; §15 new "Gia tab on /tasks" subsection; display surfaces table updated with `getGiaTasksForUser`.
+- `supabase/migrations/CLAUDE.md` — migration 0055 entry added.
+
+---
+
+## 2026-05-31 — Lead dossier: Follow-up Tasks card moved above Team Notes
+
+- `src/app/(dashboard)/leads/[id]/page.tsx` — `LeadTasksAsync` moved from page footer into the right column, above `LeadNotesInput`; bottom-of-page tasks block removed.
+- `src/components/leads/LeadTasksCard.tsx` — compact body: `bodyPadding={false}`, scrollable list capped at `min(220px, 28vh)` so Team Notes and scratchpad keep their flex share.
+- `src/components/leads/LeadTasksCardSkeleton.tsx` — padding and max-height aligned with the card.
+
+---
+
+## 2026-05-31 — Lead dossier task card — full task list + manual task creation (Phase 11)
+
+Lead dossier now shows all Gia follow-up tasks (was: next task only) and allows manual task creation from the dossier.
+
+- `supabase/migrations/20260531000054_create_lead_gia_task.sql` — `create_lead_gia_task` RPC: two-INSERT transaction (tasks + task_gia_meta) prevents orphaned rows; SECURITY DEFINER; GRANT to authenticated.
+- `src/lib/services/tasks-service.ts` — `getAllLeadTasks(leadId)` added; starts from `tasks` (not `task_gia_meta`) with `!inner` join; active-first sort (JS secondary sort).
+- `src/lib/validations/lead-schema.ts` — `CreateLeadTaskSchema` + `CreateLeadTaskInput` added.
+- `src/lib/actions/leads.ts` — `createLeadTaskAction`: Zod → auth → lead access check → `create_lead_gia_task` RPC via adminClient → fire-and-forget `scheduleTaskReminder`; title derived from `TASK_TYPE_LABELS` (never hardcoded).
+- `src/components/leads/CreateLeadTaskModal.tsx` — task type radio list, priority chips, `DatePicker showTime`, optional description textarea; calls `createLeadTaskAction`.
+- `src/components/leads/LeadTasksCard.tsx` — client component; `SectionCard` shell; `TaskCompletionCircle` + `useTaskCompletionToggle`; prepends new task locally on create; overdue dates in `var(--color-danger)`; Playfair italic empty state.
+- `src/components/leads/LeadTasksAsync.tsx` — async server component; only place calling `getAllLeadTasks`.
+- `src/components/leads/LeadTasksCardSkeleton.tsx` — two-row skeleton (80%/60% widths).
+- `src/app/(dashboard)/leads/[id]/page.tsx` — `LeadDossierTasksAsync` replaced with `<Suspense fallback={<LeadTasksCardSkeleton />}><LeadTasksAsync /></Suspense>`.
+
+---
+
+## 2026-05-31 — Notification sound
+
+Synthesised C6/E6 chime via Web Audio API. No audio files. Fires on Realtime INSERT only (not on initial seed). 1500ms debounce gate. Autoplay-safe — silently skips when AudioContext is suspended. localStorage preference (`eia:notifications:sound:v1`, default on). Settings toggle added to profile Notification Preferences section.
+
+---
+
+## 2026-05-31 — Notification system redesign
+
+Bell dot spring entrance (once on arrival, never loops), panel 400ms ease-out-expo entrance / 250ms exit, `--shadow-4` + `--theme-paper` surface, unread/read visual distinction (paper-subtle + shadow-1 vs transparent), item stagger at mount only (Realtime items skip stagger), GPU-only animations throughout.
+
+---
+
+## 2026-05-31 — Gia · Deals page
+
+**Feature.** Deals page (`/deals`) — won leads with a non-null `deal_amount`, visible for all roles. Includes role-scoped list, summary strip, server-side filters, and pagination.
+
+- `supabase/migrations/20260531000052_get_deals_summary.sql` — `get_deals_summary` RPC (SECURITY DEFINER STABLE): aggregate `total_deals`, `total_revenue`, `membership_count`, `retail_count`; same role/filter constraints as the list query.
+- `src/lib/types/database.ts` — `DealFilters` type added (no `status` field — structural constraint).
+- `src/lib/services/deals-service.ts` — `getDealsByRole` (role-scoped, pagination, single query + count), `getDealsSummary` (RPC wrapper); `DealWithAssignee`, `DealsResult`, `DealsSummary` types.
+- `src/components/deals/DealsFilters.tsx` — search (500ms debounce), deal-type single-select, domain (admin/founder), agent (manager+), date range (applied to `status_changed_at`); `buildFilterParams` + `resetKeys: ['page']`.
+- `src/components/deals/DealCard.tsx` — `motion.div` card; left (Playfair name + phone + domain badge), centre (deal-type + duration chips), right (Playfair accent amount + won date + agent). Links to `/leads/[slug ?? id]`.
+- `src/components/deals/DealsSummaryStrip.tsx` — four stat cells (Total Deals, Total Revenue, Memberships, Retail); Playfair accent values; reuses `formatCount` + `formatCurrency`.
+- `src/app/(dashboard)/deals/DealsAsync.tsx` — async server component; `Promise.all` for list + summary; renders `DealsSummaryStrip` + `DealCard` list + `LeadsPagination`.
+- `src/app/(dashboard)/deals/DealsSkeleton.tsx` — 4 stat chip skeletons + 5 card row skeletons; stagger 0/80/160/240/320ms.
+- `src/app/(dashboard)/deals/page.tsx` — thin orchestrator; calls `getLeadFilterOptions` once for agent dropdown; `parseFilters` enforces no `status` param; manager domain locked at service layer.
+- `src/app/(dashboard)/deals/CLAUDE.md` — three invariants, `DealFilters` no-status rule, RPC param contract.
+- `src/components/layout/Sidebar.tsx` — Deals nav item (`Trophy`, `/deals`) added to `MAIN_NAV` below Leads; visible for all roles.
+
+**Phase:** Post-Lead-Hardening (Gia Deals).
+
+---
+
+## 2026-05-31 — Docs · task-blueprint aligned to current Tasks UI
+
+**Docs.** `docs/task-blueprint.md` updated to match shipped Tasks: Leads-style page header + `AddTaskButton` / `TasksCreateProvider`; filter strip with **My Tasks / Group Tasks** accent tabs and `TasksFilters` (client-side via `task-client-filters.ts`); **MyTasksCalendarView** as the personal tab (calendar + date sections); `TaskCompletionCircle` / `useTaskCompletionToggle`; remark RPC auth (migration 00051); `SubTaskModal` parent callbacks. `PersonalTasksTab` documented as legacy/unmounted.
+
+**Changed files:** `docs/task-blueprint.md`
+
+---
+
+## 2026-05-31 — Tasks · subtask modal syncs group list without refresh
+
+**Tasks.** Status/priority/title changes in `SubTaskModal` only updated modal-local state — the expanded group card on `/tasks` and the workspace list/board stayed stale until a full page refresh. `onTaskUpdated` / `onTaskDeleted` callbacks now propagate successful writes to `GroupTasksTab` (subtask rows + `completed_count` / `subtask_count` on the group header) and `GroupTaskWorkspace` (list/board + refetch on close).
+
+**Changed files:** `src/components/tasks/SubTaskModal.tsx`, `src/components/tasks/GroupTasksTab.tsx`, `src/components/tasks/GroupTaskWorkspace.tsx`
+
+---
+
+## 2026-05-31 — Tasks · personal task creation shows correct assignee
+
+**Tasks.** `createPersonalTaskAction` already defaulted `assigned_to` to the creator on insert, but optimistic list rows used empty `assigned_to` / `created_by` placeholders and `SubTaskModal` on My Tasks never received an `assignee` prop — new tasks looked unassigned and the completion circle could be disabled until refresh. Action now returns `assignedTo` + `createdBy`; create/quick-add synthetic tasks use those values; `resolvePersonalTaskAssignee` feeds the modal from `task.assigned_to`.
+
+**Changed files:** `src/lib/actions/tasks.ts`, `src/lib/utils/task-client-filters.ts`, `src/components/tasks/CreatePersonalTaskModal.tsx`, `src/components/tasks/PersonalTasksTab.tsx`, `src/components/tasks/MyTasksCalendarView.tsx`
+
+---
+
+## 2026-05-31 — Tasks · task remark posting fixed (RPC auth)
+
+**Tasks.** Progress messages in `SubTaskModal` failed because `add_task_remark_with_status` ran via service role while the RPC gated on `auth.uid()` (always NULL). Migration `20260531000051`: RPC trusts the action layer; **view = post** — `addTaskRemarkAction` only posts if the user-scoped client can `SELECT` the task (tasks RLS). Agents now see tasks they created or are assigned to (`tasks_agent_select` adds `created_by`). `task_remarks` SELECT/INSERT mirror the same rule.
+
+**Changed files:** `supabase/migrations/20260531000051_task_remark_rpc_auth_fix.sql` (new), `src/lib/actions/tasks.ts`, `src/lib/CLAUDE.md`
+
+---
+
+## 2026-05-31 — Tasks · SubTaskModal action item composer always visible
+
+**Tasks.** Action Items no longer require entering edit mode to add rows. `ActionItemAddRow` sits at the bottom of the checklist with a dashed checkbox, focus wash, and accent **Add** chip on Enter or button press. Outside edit mode, new items persist immediately via `updateChecklistAction`; in edit mode they still batch with Save. Composer hidden when `canToggleTaskComplete` is false.
+
+**Changed files:** `src/components/tasks/SubTaskModal.tsx`
+
+---
+
+## 2026-05-31 — Tasks · subtask row hover (circle only)
+
+**Tasks.** Subtask row hover highlights only `TaskCompletionCircle` with a single `--theme-accent` border (removed Avatar-style double ring `box-shadow`). Group Tasks expanded rows no longer fade in or restyle the Open eye pill on row hover. Group task card header row hover highlights only `IconBox` — the Open workspace pill stays static (no border/background/color shift).
+
+**Changed files:** `src/components/tasks/TaskCompletionCircle.tsx`, `src/components/tasks/GroupTasksTab.tsx`
+
+---
+
+## 2026-05-31 — Performance · default agent matches sidebar list order
+
+**Performance.** The open agent on load was `roster[0]` from `getAgentRosterPerformance` (top performer by `leadsWon`). The sidebar lists agents A–Z (by domain on founder/admin). `getFirstAgentInPerformanceRosterList` + `buildPerformanceRosterGroups` in `performance-roster-display.ts` now drive `initialAgentId`, filter resets, and single-domain roster sort so the default selection is always the first row shown.
+
+**Changed files:** `src/lib/utils/performance-roster-display.ts` (new), `src/app/(dashboard)/performance/ManagerPerformanceAsync.tsx`, `src/components/performance/ManagerPerformancePanel.tsx`
+
+---
+
+## 2026-05-31 — components/CLAUDE.md · side-edge accent strip rule documented
+
+**Docs.** `src/components/CLAUDE.md` now has an explicit **Side-edge accent strips — forbidden** section. Rule: never use a coloured border on a single edge (`borderLeft`, `borderTop`, `borderRight`, `borderBottom`) as a category or status indicator. Use `PriorityBadge`, status pills (`TASK_STATUS`), semantic dots, icons, or count pills instead. Structural `1px --theme-paper-border` dividers between zones are fine — the ban is on semantic colour on one edge only. Reference implementation: `GroupTaskWorkspace` board column headers and list rows.
+
+**Changed files:** `src/components/CLAUDE.md`
+
+---
+
+## 2026-05-31 — Tasks · tab selector left + accent variant
+
+**Tasks.** Filter strip: `TabSelector` moved from right to left (before filters). New `TabSelector` `accent` variant — active tab uses `--theme-accent` fill + `--theme-accent-fg` label (replaces muted pill wash on the paper filter bar). `indicatorLayoutId="tasks-page-tabs"`.
+
+**Changed files:** `src/app/(dashboard)/tasks/TasksShell.tsx`, `src/components/ui/TabSelector.tsx`, `src/app/(dashboard)/tasks/CLAUDE.md`
+
+---
+
+## 2026-05-31 — Group task workspace · no side-edge accent borders
+
+**Tasks.** `GroupTaskWorkspace` list rows and board cards no longer use `borderLeft` priority strips; board column headers no longer use `borderTop` status accents. Priority uses `PriorityBadge` (list) or dot (board); column headers use a 6px status dot. Never-Do rule added (CLAUDE.md, `.cursorrules`, `The_Rules.md`, `components/CLAUDE.md`): no single-edge coloured borders as category/status indicators — use pills, dots, icons, or badges.
+
+**Changed files:** `src/components/tasks/GroupTaskWorkspace.tsx`, `CLAUDE.md`, `.cursorrules`, `docs/The_Rules.md`, `src/components/CLAUDE.md`
+
+---
+
+## 2026-05-31 — My Tasks · calendar + date-grouped layout
+
+**Tasks.** Personal tasks tab replaced with a two-panel calendar view. Left panel: sticky `Calendar` component (reused from `ui/Calendar.tsx`) with task-dot indicators per day; summary strip (due today / overdue / upcoming counts); quick-add trigger. Right panel: tasks grouped by date — TODAY (empty state: Playfair italic "Hooray.") → future dates ascending → OVERDUE → NO DATE. Clicking a calendar date scrolls to the matching section. Sticky section headers with colored dot + count pill. Priority left border (urgent → danger, high → warning, normal → paper-border). All existing behaviour preserved: completion toggle, SubTaskModal, quick-add row, CreatePersonalTaskModal, cursor pagination, filter support.
+
+`TasksSkeleton` personal variant updated to match the new two-column layout.
+
+**Changed files:** `src/components/tasks/MyTasksCalendarView.tsx` (new), `src/app/(dashboard)/tasks/TasksShell.tsx`, `src/app/(dashboard)/tasks/TasksSkeleton.tsx`
+
+---
+
+## 2026-05-31 — My Tasks calendar · day hover uses accent ring
+
+**Tasks.** Calendar day cells (shared `ui/Calendar`) no longer use `paper-subtle` fill on hover; unselected days show the accent ring. Selected days keep accent fill. My Tasks date-section rows drop row background hover — completion circle ring only.
+
+**Changed files:** `src/components/ui/Calendar.tsx`, `src/components/tasks/MyTasksCalendarView.tsx`
+
+---
+
+## 2026-05-31 — Performance · agent roster hover uses avatar ring only
+
+**Performance.** Manager agent roster rows no longer use `paper-subtle` background or border on hover; hover mirrors selection via accent avatar ring, semibold name, and accent lead count (selected state unchanged).
+
+**Changed files:** `src/components/performance/ManagerPerformancePanel.tsx`
+
+---
+
+## 2026-05-31 — Leads table · row hover highlights status pill
+
+**Leads.** Table rows no longer use `paper-subtle` background on hover; the lead status pill gets the accent ring (same pattern as avatar / task completion circle). Toolbar summary pills unchanged.
+
+**Changed files:** `src/components/leads/LeadsTable.tsx`
+
+---
+
+## 2026-05-31 — Tasks · row hover uses accent ring (no row fill)
+
+**Tasks.** Group task headers highlight the icon box ring on hover (no row background). Subtasks and personal task rows highlight `TaskCompletionCircle` on hover — same accent ring as WhatsApp/avatar `selected`, no `paper-subtle` row fill. Applied in Group Tasks tab, workspace list, personal list, and calendar view.
+
+**Changed files:** `src/components/tasks/TaskCompletionCircle.tsx`, `src/components/tasks/GroupTasksTab.tsx`, `src/components/tasks/GroupTaskWorkspace.tsx`, `src/components/tasks/PersonalTasksTab.tsx`, `src/components/tasks/MyTasksCalendarView.tsx`
+
+---
+
+## 2026-05-31 — WhatsApp · conversation list period filter
+
+**WhatsApp.** Filter icon on the Conversations card header opens a period menu (Today, This Week, This Month, Custom + All). Filters server-side on `last_message_at` (IST presets via `whatsapp-period` utils); URL params `period`, `from`, `to`; list refetches on change; search respects the same range.
+
+**Changed files:** `src/lib/constants/whatsapp-period.ts`, `src/lib/utils/whatsapp-period.ts`, `src/lib/services/whatsapp-service.ts`, `src/lib/actions/whatsapp.ts`, `src/lib/validations/whatsapp-schema.ts`, `src/components/whatsapp/WhatsAppConversationPeriodFilter.tsx`, `src/components/whatsapp/ConversationList.tsx`, `src/components/whatsapp/WhatsAppShell.tsx`, `src/app/(dashboard)/whatsapp/page.tsx`
+
+---
+
+## 2026-05-31 — WhatsApp · search in its own rail card
+
+**WhatsApp.** Conversation search sits in a dedicated bordered card (`shadow-1`, padded bar only — no section header) above the conversations list; loading skeleton updated.
+
+**Changed files:** `src/components/whatsapp/ConversationList.tsx`, `src/app/(dashboard)/whatsapp/loading.tsx`
+
+---
+
+## 2026-05-31 — WhatsApp · conversation row hover uses avatar ring only
+
+**WhatsApp.** Conversation list rows no longer show paper-subtle background or border on hover; hover mirrors selection via accent avatar ring, semibold name, and accent trailing time.
+
+**Changed files:** `src/components/whatsapp/ConversationRow.tsx`
+
+---
+
+## 2026-05-31 — WhatsApp · conversation list matches Performance agent roster
+
+**WhatsApp.** Left-rail participant list uses the same card + row pattern as the Performance manager agent roster: bordered `shadow-1` panel with uppercase section label, `motion.button` rows (avatar ring when selected, staggered entrance), single-line name + mono trailing (relative time or “Resolved”). Loading skeleton aligned to the new layout.
+
+**Changed files:** `src/components/whatsapp/ConversationList.tsx`, `src/components/whatsapp/ConversationRow.tsx`, `src/app/(dashboard)/whatsapp/loading.tsx`
+
+---
+
+## 2026-05-31 — WhatsApp · active conversation avatar ring
+
+**WhatsApp.** Selected conversation row no longer uses accent background fill or left border; active state matches Performance agent roster — accent ring on the avatar via `Avatar selected`.
+
+**Changed files:** `src/components/whatsapp/ConversationRow.tsx`
+
+---
+
+## 2026-05-31 — Tasks · completion circle (personal + group subtasks)
+
+**Tasks.** Radio-style completion circle on personal task rows and group subtask rows (Group Tasks tab + workspace). Click toggles `completed` ↔ `to_do` via `updateTaskStatusAction` with optimistic UI; shared `TaskCompletionCircle`, `useTaskCompletionToggle`, and `canToggleTaskComplete` auth helper.
+
+**Changed files:** `src/components/tasks/TaskCompletionCircle.tsx`, `src/hooks/useTaskCompletionToggle.ts`, `src/lib/utils/task-complete-auth.ts`, `src/components/tasks/PersonalTasksTab.tsx`, `src/components/tasks/GroupTasksTab.tsx`, `src/components/tasks/GroupTaskWorkspace.tsx`
+
+---
+
+## 2026-05-31 — SubTaskModal · two-zone grid layout (brief left, activity right)
+
+## 2026-05-31 — Tasks · status & priority pill layout
+
+**Tasks.** Group subtask rows: title left, aligned meta cluster (status + priority pills + assignee + due) on the right; pills share height and padding. SubTaskModal header: matching pill triggers with `TaskStatusIcon` on status.
+
+**Changed files:** `src/components/tasks/GroupTasksTab.tsx`, `src/components/tasks/SubTaskModal.tsx`
+
+---
+
+## 2026-05-31 — Group tasks · inline subtask assignee + picker centering
+
+**Tasks.** Inline “Add subtask” on Group Tasks tab defaults assignee to the creator (save works without opening the picker); `AssigneePickerModal` centered via flex shell so Framer Motion no longer clips the dialog.
+
+**Changed files:** `src/components/tasks/GroupTasksTab.tsx`, `src/components/tasks/AssigneePickerModal.tsx`
+
+---
+
+## 2026-05-31 — Group tasks · priority-tinted expanded subtasks
+
+**Tasks.** Removed per-subtask priority background fills on expanded Group Tasks rows — clean list on `--theme-paper-subtle` with hover to paper only.
+
+**Changed files:** `src/components/tasks/GroupTasksTab.tsx`
+
+---
+
+## 2026-05-31 — TaskRemarksPanel · minimal composer
+
+**Tasks.** Activity composer: placeholder “Write a progress.” (Playfair italic); textarea vertically aligned with 32px send control via matched line-height and padding.
+
+**Changed files:** `src/components/tasks/TaskRemarksPanel.tsx`, `src/components/tasks/SubTaskModal.tsx`
+
+---
+
+## 2026-05-31 — SubTaskModal · Action Items on personal tasks
+
+**Tasks.** Action Items checklist (attachments) now shown in `SubTaskModal` for personal tasks as well as group subtasks — toggle in view mode, edit/reorder in edit mode.
+
+**Changed files:** `src/components/tasks/SubTaskModal.tsx`
+
+---
+
+## 2026-05-31 — SubTaskModal · two-zone grid layout (brief left, activity right)
+
+**Tasks.** SubTaskModal restructured as a 2×2 CSS grid: row 1 aligns Zone A (title, description, status, priority) with Zone B (edit/delete/close icons); row 2 pairs Zone A scroll body with `TaskRemarksPanel` so messages start level with details — no full-width header rule. `TaskRemarksPanel` gains `embedded` prop for softer message cards and composer padding in zone B. Group-task breadcrumb pill removed from the Zone A header.
+
+**Changed files:** `src/components/tasks/SubTaskModal.tsx`, `src/components/tasks/TaskRemarksPanel.tsx`
+
+---
+
+## 2026-05-31 — SubTaskModal · semantic header icon colours
+
+**Tasks.** SubTaskModal header actions (edit, delete, close) each use design-token semantic colours at rest: `--theme-accent` gold for edit (not accent-muted), danger light/text for delete, tertiary on paper-subtle for close.
+
+**Changed files:** `src/components/tasks/SubTaskModal.tsx`
+
+---
+
+## 2026-05-31 — WhatsApp · split layout (title left, messages full height)
+
+**WhatsApp.** and the conversation list stay in the left rail with standard `p-8` top/left inset + `mb-6` under the title. The right message pane starts at the **top of the screen** (not below the title). `ConversationPanel` contact header uses `padding: var(--space-8)` top/sides so avatar and name have the same breathing room as other primary pages.
+
+**Changed files:** `src/app/(dashboard)/whatsapp/page.tsx`, `src/app/(dashboard)/whatsapp/loading.tsx`, `src/components/whatsapp/WhatsAppShell.tsx`, `src/components/whatsapp/ConversationPanel.tsx`, `src/components/whatsapp/ConversationList.tsx`, `src/components/whatsapp/ConversationRow.tsx`
+
+---
+
+## 2026-05-31 — WhatsApp · seamless left-panel search
+
+Removed the hard rules around the conversation search so it sits flush under the title: no 1px divider before the list, and `SearchBar` `variant="soft"` (transparent border at rest, accent ring on focus only).
+
+**Changed files:** `src/components/whatsapp/ConversationList.tsx`, `src/components/ui/SearchBar.tsx`
+
+---
+
+## 2026-05-31 — TimePicker · premium scroll wheel (shared across app)
+
+Rebuilt `TimePicker.tsx` as the single source of truth for time selection.
+
+**Wheel UX:** iOS-style dead-scroll columns for hours (1–12) and minutes (00–59, every minute — no 5/15-min steps). Centre selection band with top/bottom fade masks; items scale and fade by distance from centre; snap + smooth settle on scroll end.
+
+**Exports:** `TimePicker` (standalone trigger + popover), `TimePickerWheelPanel` (`variant="embedded"` for DatePicker side panel, `standalone` for popover body).
+
+**Consistency:** `DatePicker` `showTime` now composes `TimePickerWheelPanel` — duplicate scroll/toggle code removed from `DatePicker.tsx`. Agent settings `TimePicker` callers pick up the new wheel automatically.
+
+**Changed files:** `src/components/ui/TimePicker.tsx`, `src/components/ui/DatePicker.tsx`
+
+---
+
+## 2026-05-31 — DatePicker · portal + viewport flip inside modals
+
+Fixed: opening the due-date picker in **New Task** (and other modals) required scrolling the modal body to see the full calendar — the popover was `position: absolute` inside the dialog's `overflow: auto` body.
+
+**New behaviour:** popover renders via `createPortal` to `document.body` with `position: fixed`, viewport-aware flip (up/down + left/right), and `--z-modal-nested` so it stacks above modal chrome. When `showTime` is set, calendar and time picker sit **side-by-side** (date left, time right) so panel height matches date-only mode (~320px) instead of stacking ~480px tall.
+
+**Changed files:** `src/components/ui/DatePicker.tsx`
+
+---
+
+## 2026-05-31 — Tasks · Group task row redesign + SubTaskModal status/priority in Zone A
+
+**Group task row (`GroupTasksTab.tsx`):** Replaced identity-block header with flat card design — `rounded-2xl` paper card with `--shadow-1` border; collapsed header row with `ChevronRight` (rotates 90° when expanded), 32×32 accent-tinted `IconBox`, Playfair 15px title, gold "Workspace" pill, member avatars (max 4), 128px progress bar with % label, "X/Y done" count, and `DueDateChip`; subtask rows with status badge, title, 24×24 initials circle, priority badge, due chip, and eye button revealed on hover. All hex violations fixed: `SUBTASK_STATUS_PASTEL` replaced with CSS token pairings; `color-mix()` used for alpha accent tints.
+
+**`task-constants.ts` fixes:** `TASK_PRIORITY.high.color` corrected from phantom `--theme-warning` → `var(--color-warning)`. `TASK_STATUS` pill pairings fixed for `in_review`, `completed`, `error` — switched from saturated fills (dark-on-dark) to `-light` bg + `-text` pairing.
+
+**SubTaskModal — status/priority moved to Zone A:** Status and priority controls removed from modal header. Both now appear in the Key Variables section (section 4) of Zone A as interactive inline selectors — icon + label left, interactive pill right; dropdowns open **upward** (`bottom: calc(100% + var(--space-1))`) to avoid clipping.
+
+**Changed files:** `src/components/tasks/GroupTasksTab.tsx`, `src/lib/constants/task-constants.ts`, `src/components/tasks/SubTaskModal.tsx`
+
+---
+
+## 2026-05-31 — Live Lead Activity widget · role-scoped visibility
+
+Fixed: admin/founder saw "No activity yet" on the dashboard Live Lead Activity widget because the underlying query filtered by `actor_id = userId` (their own account — they never log calls themselves).
+
+**New behaviour:** admin/founder see all `lead_activities` (cross-domain); manager sees activities on leads in their domain; agent sees only their own activity (unchanged).
+
+**Changed files:**
+
+- `supabase/migrations/20260531000050_dashboard_activity_role_scoped.sql` — rewrites the `agent_activity` CTE in `get_dashboard_summary` with a role-aware `CASE` filter
+- `src/lib/services/dashboard-service.ts` — `getAgentRecentActivity` now accepts `role` + `domain` params for the widget refresh-button path
+- `src/lib/actions/dashboard.ts` — `getAgentRecentActivityAction` passes verified `profile.role` + `profile.domain`
+- `src/components/dashboard/widgets/AgentActivityWidget.tsx` — Realtime subscription removes `actor_id` filter for admin/founder so live updates arrive for all activity
+
+---
+
+## 2026-05-31 — Sidebar · Performance under Analytics
+
+Moved Performance from main nav into the Analytics section (above Campaigns). Agents see Analytics with Performance only; manager/admin/founder see Performance + Campaigns.
+
+**Changed files:** `src/components/layout/Sidebar.tsx`
+
+---
+
+## 2026-05-31 — Tasks filter bar · tab-aware client-side filters
+
+Added standard paper filter strip below My Tasks / Group Tasks tabs. Create button moved to page header (Leads pattern) via `AddTaskButton` + `TasksCreateProvider`. `TasksFilters` swaps controls by tab: **My Tasks** — search, tags, status, priority; **Group Tasks** — search, status, priority, domain (admin/founder), progress (in progress / complete / no subtasks). All filtering is client-side via `lib/utils/task-client-filters.ts` — no extra server fetches; tag list still loads once when personal tab is active. Personal tag pill row removed from `PersonalTasksTab` (moved to filter bar).
+
+**Changed files:** `src/components/tasks/TasksFilters.tsx` (new), `src/lib/utils/task-client-filters.ts` (new), `src/app/(dashboard)/tasks/TasksShell.tsx`, `PersonalTasksTab.tsx`, `GroupTasksTab.tsx`, `src/app/(dashboard)/tasks/CLAUDE.md`
+
+---
+
+## 2026-05-31 — Settings filter bar · search, domain, pool
+
+Replaced domain pill tabs with standard paper filter strip: `SlidersHorizontal` + active-count badge, `SearchBar` (name/title), `FilterDropdown` domain (admin/founder, domains present in roster), pool status select (all / in pool / out of pool), agent count. Client-side filtering via `useMemo`. Empty state copy matches Team page pattern.
+
+**Changed files:** `src/components/settings/AgentSettingsTable.tsx`, `src/app/(dashboard)/settings/CLAUDE.md`
+
+---
+
+## 2026-05-31 — Admin Team filter bar · sliders icon
+
+Team page filter strip gains `SlidersHorizontal` + accent active-filter badge (search, role, domain), matching leads filter chrome.
+
+**Changed files:** `src/components/admin/UsersTable.tsx`
+
+---
+
+## 2026-05-31 — Campaigns filter bar · domain selector + DRY with leads
+
+Campaigns filter row aligned with leads: `FilterDropdown` domain (admin/founder, `GIA_DOMAIN_FILTER_ITEMS`), `SearchBar` (500ms debounce, URL `search`, filters `campaign_name` in service), `DatePicker` date range, sliders icon + active-count badge, clear filters. Shared URL helpers extracted to `lib/utils/filter-params.ts` (`buildFilterParams`, `dateFromUrlParam`, `dateToUrlParam`); `LeadsFilters` refactored to consume them. `parseGiaDomainParam()` used in `campaigns/page.tsx`.
+
+**Changed files:** `src/lib/utils/filter-params.ts` (new), `src/components/campaigns/CampaignFilters.tsx`, `src/components/leads/LeadsFilters.tsx`, `src/lib/types/database.ts`, `src/lib/services/leads-service.ts`, `src/app/(dashboard)/campaigns/page.tsx`, `src/app/(dashboard)/campaigns/CLAUDE.md`
+
+---
+
+## 2026-05-31 — Performance filter bar · aligned with leads/campaigns (DRY)
+
+Replaced `PerformancePeriodSelector` + `PerformanceClearButton` with unified `PerformanceFilters`: sliders icon, active-count badge, `SearchBar` (manager/founder/admin, 500ms debounce, URL `search`), period `FilterDropdown`, custom date pickers, clear filters. Uses `buildFilterParams` from `lib/utils/filter-params.ts`. Agent roster filters by name client-side in `ManagerPerformancePanel`. Filter strip uses same paper/border classes as leads and campaigns. Agent self-view omits search.
+
+**Changed files:** `src/components/performance/PerformanceFilters.tsx` (new), deleted `PerformancePeriodSelector.tsx`, `ManagerPerformancePanel.tsx`, `src/app/(dashboard)/performance/page.tsx`, `src/app/(dashboard)/performance/CLAUDE.md`
+
+---
+
+## 2026-05-31 — Performance roster · remove selected agent left accent bar
+
+Selected agent card no longer renders the 3px left accent stripe or accent surface fill; selection shown via semibold name, accent lead count, and avatar ring only. Fixed sticky hover fill when switching agents — hover uses React state (`showHover = hovered && !isSelected`) instead of imperative `style` mutation that skipped clear on mouse leave while selected.
+
+**Changed files:** `src/components/performance/ManagerPerformancePanel.tsx`
+
+---
+
+## 2026-05-31 — Performance page · domain filter removed from filter bar
+
+Founder/admin filter bar no longer shows `FounderDomainTabs` / `?domain=` URL state. Period + custom dates only. Cross-domain roster unchanged (`allDomains={true}`); domain narrowing stays on the agent list via `ManagerPerformancePanel` popover (sliders icon). `FounderDomainTabs.tsx` deleted. `getDomainsWithLeads` no longer called from `page.tsx` for tab population.
+
+**Changed files:** `src/app/(dashboard)/performance/page.tsx`, `FounderPerformanceShell.tsx`, `src/components/performance/PerformancePeriodSelector.tsx`, `src/app/(dashboard)/performance/CLAUDE.md` (deleted `FounderDomainTabs.tsx`)
+
+---
+
+## 2026-05-31 — Leads table · toolbar status pills use lead-status tokens
+
+Table header status summary pills no longer use retired generic variants (`neutral` / `accent` / `success` / `danger`). Each non-zero status on the current page renders a pill with `LEAD_STATUS_BADGE` → `.status-pill--lead-*` and design-token `--status-*` colours. Per-status counts replace the old aggregated Active/Lost groupings.
+
+**Changed files:** `src/components/leads/LeadsTable.tsx`
+
+---
+
+## 2026-05-31 — Leads page · domain filter (admin/founder)
+
+Domain filter added to the leads filter bar as a `FilterDropdown` (same pattern as Source/Campaign). URL param `domain`; validated via `parseGiaDomainParam()`. Items from `GIA_DOMAIN_FILTER_ITEMS`. Server: `getLeadsByRole` applies `.eq('domain', …)` for admin/founder when set; managers unchanged. `getLeadFilterOptions` scopes campaign + agent lists when a domain is selected. Changing domain clears `agent_id` and `campaign`.
+
+**Changed files:** `src/lib/constants/domains.ts`, `src/lib/types/database.ts`, `src/lib/services/leads-service.ts`, `src/components/leads/LeadsFilters.tsx`, `src/components/leads/LeadsTableAsync.tsx`, `src/app/(dashboard)/leads/page.tsx`, `src/app/(dashboard)/leads/CLAUDE.md`
+
+---
+
+## 2026-05-31 — Gia domain registry (`GIA_DOMAINS`) + canonical labels
+
+Split platform domains from Gia module domains. `APP_DOMAINS` remains the full enum for user management (profiles, admin create/edit). `GIA_DOMAINS` is the four active sales domains: `onboarding`, `house`, `shop`, `legacy`. Canonical display names via `DOMAIN_LABELS` only — **Onboarding**, **Indulge House**, **Indulge Shop**, **Indulge Legacy** (`legacy` label updated from "Legacy"). Removed all local `FEATURED_DOMAINS` / `DOMAIN_SHORT` maps from dashboard widgets and campaigns filter. Gia pickers (leads, campaigns, performance, dashboard widgets, group task domain select) now import `GIA_DOMAINS` only. Rule **Q-17** added to `docs/The_Rules.md`.
+
+**Changed files:** `src/lib/constants/domains.ts`, `docs/The_Rules.md`, `src/lib/validations/lead-schema.ts`, `src/lib/validations/profile-schema.ts`, `src/lib/actions/dashboard.ts`, `src/components/dashboard/widgets/ManagerLead*.tsx`, `ManagerCampaignWidget.tsx`, `src/components/campaigns/CampaignFilters.tsx`, `src/components/leads/AddLeadModal.tsx`, `src/components/performance/FounderDomainTabs.tsx`, `ManagerPerformancePanel.tsx`, `src/app/(dashboard)/performance/page.tsx`, `src/components/tasks/CreateGroupTaskModal.tsx`, `AssigneePickerModal.tsx`, `src/lib/CLAUDE.md`, `src/components/CLAUDE.md`
+
+---
+
+## 2026-05-31 — Performance page · Filter bar clear button
+
+Added a "Clear" button at the far right of the performance filter bar. Visible only when any filter deviates from the default state (period ≠ `this_month`, or domain set, or custom from/to dates present). Clicking it navigates to `/performance` with no params, resetting all filters to defaults. Animates in/out with `scale + opacity`. Hover state goes danger-coloured to signal destructive intent. Present across all three role views (agent, manager, founder/admin).
+
+**Changed files:** `src/components/performance/PerformancePeriodSelector.tsx` (added `PerformanceClearButton` export), `src/app/(dashboard)/performance/page.tsx`
+
+---
+
+## 2026-05-31 — Performance page · Filter bar — period and domain as dropdowns
+
+Period selector and domain selector in the performance filter bar replaced from `TabSelector` pill tabs to `FilterDropdown` dropdowns, consistent with the leads page filter row.
+
+- `PerformancePeriodSelector` — now renders a `FilterDropdown` with `Calendar` icon and single-select behaviour. Custom date pickers still appear inline when "Custom" is selected.
+- `FounderDomainTabs` — renamed conceptually; now renders a `FilterDropdown` with `Building2` icon and single-select behaviour. Domain ordering preserved.
+- Separator `<span>` between the two removed from `page.tsx` (not needed between two compact dropdowns).
+- Both components preserve all existing URL-param write behaviour unchanged.
+
+**Changed files:** `src/components/performance/PerformancePeriodSelector.tsx`, `src/components/performance/FounderDomainTabs.tsx`, `src/app/(dashboard)/performance/page.tsx`
+
+---
+
+## 2026-05-31 — Performance page · Roster panel redesign
+
+Roster left panel overhauled for clarity and domain awareness.
+
+- **Header**: "Team / Conv." labels replaced with "Agents" + a `SlidersHorizontal` filter icon (shown only in founder/admin all-domains mode). Filter icon highlights when a domain filter is active.
+- **Domain filter popover**: clicking the filter icon opens an inline popover listing all domains that have agents. Selecting a domain filters the list client-side (no refetch). "All domains" resets the filter. Active selection gets a `Check` icon and accent colour.
+- **Grouping**: in all-domains mode (founder/admin) agents are grouped by domain in canonical order (onboarding → shop → house → legacy → …). A subtle section label appears between groups. When filtered to one domain, the section label is suppressed.
+- **Sorting**: within each domain group, agents are sorted A-Z by full name. The previous performance-rank sort is removed.
+- **Card**: rank number removed. Conversion rate removed. Right side now shows only the total leads count (mono, accent-coloured when selected) based on the selected time period.
+- **Stagger cap**: entrance animation stagger capped at 280ms so large rosters don't feel slow.
+- **Scroll**: roster list scrollable (`maxHeight: 600px`) so it doesn't push the page when there are many agents.
+
+**Changed file:** `src/components/performance/ManagerPerformancePanel.tsx`
+
+---
+
+## 2026-05-31 — Performance page · Founder/admin all-domains agent roster
+
+For founder and admin roles, the left agent roster now shows all agents across every domain (onboarding, shop, house, legacy, concierge, etc.) rather than only agents from the currently-selected domain tab. Each agent card displays a domain badge so origin is still visible at a glance. The right detail panel fetches metrics globally for the selected agent (no domain restriction). Manager view is unchanged — still scoped to their own domain.
+
+**Changed files:**
+
+- `src/lib/types/index.ts` — `AgentRosterRow` gains `domain: AppDomain` field
+- `src/lib/services/performance-service.ts` — `getAgentRosterPerformance` accepts `AppDomain | null`; null = all domains. `getAgentDetailMetrics` domain param made optional (`AppDomain | null`)
+- `src/lib/actions/performance.ts` — `getAgentDetailMetricsAction` accepts `domain: AppDomain | null`; manager guard still enforces own-domain
+- `src/app/(dashboard)/performance/ManagerPerformanceAsync.tsx` — new `allDomains?: boolean` prop; passes null domain to roster/detail when true
+- `src/app/(dashboard)/performance/FounderPerformanceShell.tsx` — passes `allDomains={true}` to `ManagerPerformanceAsync`
+- `src/components/performance/ManagerPerformancePanel.tsx` — new `allDomains?: boolean` prop; passes `showDomain` to `AgentCard`; domain badge per card in all-domains mode
+- `src/components/performance/AgentDetailPanel.tsx` — domain prop widened to `AppDomain | null`; header label falls back to `agent.domain` when no domain override
+
+---
+
+## 2026-05-31 — Performance page · Fix zero scores bug
+
+All performance metrics (`leadsWon`, `conversionRate`, `touchRate`) were showing zero because they filtered leads by `created_at` within the selected period. In production, agents work leads created in prior periods — e.g. a lead from March marked won in May would never appear in "This Month" stats.
+
+**Root cause:** `_getCoreFourMetricsForRange`, `getAgentRosterPerformance`, `getTeamBenchmarks`, and `getAgentDetailMetrics` all used `created_at >= from AND created_at <= to` for won/lost queries.
+
+**Fix (`src/lib/services/performance-service.ts`):**
+
+- `leadsWon`: now filters by `status_changed_at` (when the lead _became_ won), not `created_at`
+- `conversionRate`: now filters closed leads (won + lost) by `status_changed_at`
+- `touchRate`: intentionally kept on `created_at` — it measures what % of new-period leads were touched (cohort metric)
+- `getAgentRosterPerformance`: split into two queries — cohort total via `created_at`, won/lost via `status_changed_at`
+- `getAgentDetailMetrics`: added a separate won-leads query by `status_changed_at`; pipeline breakdown still uses the `created_at` cohort
+
+---
+
+## 2026-05-31 — Leads · Won deal capture flow
+
+When marking a lead as Won, the user now goes through a two-step modal instead of a single confirm. Step 1 selects deal type (Membership or Retail). Step 2 captures duration (Membership only: 3 Months / 6 Months / 1 Year) and deal amount (₹). The deal is written atomically before the status is changed to Won.
+
+**`supabase/migrations/20260531000049_leads_deal_duration.sql`**
+
+- Adds `deal_duration text` column to `leads` (nullable)
+- Adds `leads_deal_type_check` CHECK constraint (`membership | retail`) if absent
+- Adds `leads_deal_duration_check` CHECK constraint (`3_months | 6_months | 1_year | NULL`)
+
+**`src/lib/constants/deal-types.ts`** _(new)_
+
+- `DEAL_TYPES`, `DealType`, `DEAL_TYPE_LABELS`
+- `DEAL_DURATIONS`, `DealDuration`, `DEAL_DURATION_LABELS`
+
+**`src/lib/types/database.ts`**
+
+- `deal_duration: string | null` added to leads Row / Insert / Update
+- `Lead` type now has `deal_type: DealType | null` and `deal_duration: DealDuration | null` (narrowed from `string | null`)
+
+**`src/lib/validations/lead-schema.ts`**
+
+- `RecordDealSchema` + `RecordDealInput` — validates deal_type, deal_duration (required when membership), deal_amount (positive, ≤ 100M)
+
+**`src/lib/actions/leads.ts`**
+
+- `recordDeal` — Zod → auth → access check → UPDATE deal fields → calls `updateLeadStatus('won')`
+
+**`src/components/leads/WonDealModal.tsx`** _(new)_
+
+- Two-step modal: type selection slide → details slide (duration chips + amount input)
+- Composes `ui/modal.tsx`. Zero hardcoded colours. All tokens.
+
+**`src/components/leads/StatusActionPanel.tsx`**
+
+- Won button now opens `WonDealModal` instead of a plain `ConfirmModal`
+- `fireDeal()` handler calls `recordDeal` action
+
+---
+
+## 2026-05-31 — Dashboard · widget resize control (height + width)
+
+Users can now resize any dashboard widget while in Edit Layout mode. Clicking the size label in the edit overlay opens a popover with four height tiers and a half/full width toggle. Preferences are persisted per-user in localStorage alongside the existing layout order.
+
+**`src/lib/constants/dashboard-widgets.ts`**
+
+- `WIDGET_HEIGHT_BY_SIZE` — single source of truth for widget container heights (`sm: 200px`, `md: 300px`, `lg: 420px`, `xl: 540px`)
+- `WIDGET_SIZE_LABELS` — display labels for each tier (Compact / Standard / Tall / Full)
+
+**`src/hooks/useDashboardLayout.ts`**
+
+- `WidgetPlacement` extended with `colSpan: WidgetColSpan` (previously fixed to widget definition, now user-adjustable per placement)
+- `resizePlacement(widgetId, size, colSpan)` added — atomically persists both height tier and column span
+- `sanitizeStored` upgraded to hydrate `colSpan` from stored data (falls back to widget definition default for older stored layouts)
+- `addWidget`, `reorderWidgets` updated to include `colSpan` in every placement they construct
+
+**`src/components/dashboard/DashboardWidgetSlot.tsx`**
+
+- `WidgetProps` gains optional `size?: WidgetSize` — passed down so each widget can set its container height from `WIDGET_HEIGHT_BY_SIZE[size]`
+- `onResize` prop added — fires `resizePlacement` from the canvas
+- `ResizePopover` — new inline component; renders a size-label trigger button + dropdown panel with four height rows (showing pixel value) and half/full width toggle; closes on outside click or Escape; zero `backdrop-filter`, zero hardcoded hex
+
+**`src/components/dashboard/DashboardCanvas.tsx`**
+
+- `SortableWidget` now reads `size` and `colSpan` from the placement record (not the widget definition) — user overrides take effect immediately
+- `onResize` wired through canvas → sortable widget → slot
+
+**`src/components/dashboard/WidgetSkeleton.tsx`**
+
+- Switched from local `SIZE_MIN_HEIGHTS` to `WIDGET_HEIGHT_BY_SIZE` so skeleton and widget sizes are always in sync
+
+**All 5 widgets** (`AgentTasksWidget`, `AgentActivityWidget`, `ManagerLeadStatusWidget`, `ManagerLeadVolumeWidget`, `ManagerCampaignWidget`)
+
+- Accept optional `size` prop; container height driven by `WIDGET_HEIGHT_BY_SIZE[size]` instead of hardcoded pixel values
+
+---
+
+## 2026-05-31 — Performance · agent profile card redesign
+
+UI-only redesign of the agent detail panel and roster list on the manager/founder performance page. Zero business logic or data changes.
+
+**`AgentDetailPanel.tsx`** (`src/components/performance/AgentDetailPanel.tsx`)
+
+- **Identity zone** — flat header replaced with a dedicated card: `Avatar size="lg"` with accent ring + live-state pip (success dot), Playfair name, accent-surface domain badge, and conversion rate numeral right-anchored with colour-coded tone (success/warning/danger).
+- **Key metrics grid** — horizontal stat strip replaced with a `3-column CSS grid` of `StatAtom` cells. Calls Today / New Leads / Follow-ups in the first row at `--text-xl`; Leads Won and Revenue in the second row at `--text-2xl` on `--theme-accent-surface` accent backgrounds to signal the two primary outcomes. All values in Playfair Light.
+- **Pipeline bar** — bar height reduced to `10px` with `--radius-full` overflow for a refined pill look; legend converted from raw text pairs to compact rounded chip pills (`--theme-paper-subtle + --theme-paper-border`), each showing status name + count + percentage.
+- **Loading skeletons** — per-section `AnimatePresence mode="wait"` replaces the single opacity-dimming approach; skeletons match the real layout shape exactly so no layout shift occurs on data arrival.
+- **Error state** — inline danger card (`--color-danger-light` bg + border) replacing raw `<p>` text.
+- **`SectionCard` local wrapper** — titled content card for pipeline and deal-breakdown sections. Chrome: `--theme-paper + --shadow-1 + --radius-lg`, matching established section-card conventions.
+
+**`ManagerPerformancePanel.tsx`** (`src/components/performance/ManagerPerformancePanel.tsx`)
+
+- **`AgentCard`** — converted from plain `<button>` to `motion.button` with `x: -8 → 0` staggered entrance (40ms per row). Active left indicator: 3px × 20px `--theme-accent` pill at the left edge (matches sidebar active-pill convention). Conversion rate rendered as a mono numeral (colour-coded) rather than a filled pill badge — cleaner at small sizes.
+- **`RosterHeader`** — new two-column micro-label row ("TEAM" left, "CONV." right) above the roster with a `--theme-paper-border` hairline separator.
+- **Panel exit animation** — `AnimatePresence` transition extended with `y: -4` exit to complement the `y: 6` entrance (was opacity-only).
+
+---
+
+## 2026-05-31 — Dashboard · bento grid layout redesign
+
+- `DashboardCanvas.tsx` — 2-column rigid grid replaced with a 12-column CSS bento grid (`repeat(12, 1fr)`). Half-width widgets (`colSpan: 1`) occupy 6 columns; full-width widgets (`colSpan: 2`) occupy all 12. Below 820 px all widgets collapse to full-width (single column). Drag-to-reorder updated to `rectSortingStrategy` (was `verticalListSortingStrategy`) for correct 2D grid dragging.
+- `dashboard-widgets.ts` — `WidgetColSpan` type added; `colSpan` field added to `WidgetDefinition`; `agent-tasks`, `agent-activity`, `manager-lead-status`, `manager-lead-volume` → `colSpan: 1`; `manager-campaigns` → `colSpan: 2` (chart needs full width).
+- `DashboardWidgetSlot.tsx` — `colSpan: WidgetColSpan` prop added; root container given `height: 100%` so widgets fill their bento cell.
+- `WidgetSkeleton.tsx` — switched from fixed `height` to `minHeight` + `height: 100%` so the skeleton fills the cell rather than being a fixed box.
+- `AgentActivityWidget.tsx` — removed hardcoded `VIEWPORT_HEIGHT = 220` constant; ticker viewport now uses `flex: 1` + `minHeight: 160px` to fill remaining widget height; `viewportRef` added so the scroll tick reads the actual measured height.
+- `ManagerCampaignWidget.tsx` — outer container `height: 100%`; chart container gains `flex: 1` and `minHeight: 260px`; chart height bumped from 260 to 300 px (benefits from full-canvas width).
+- `ManagerLeadVolumeWidget.tsx` — outer container `minHeight: 340px` + `height: 100%`; chart container uses `flex: 1` + `minHeight: 180px`; `ResponsiveContainer` height changed from `180` to `"100%"` so the chart expands with available vertical space; `ChartEmpty` uses `height: 100%`.
+- `ManagerLeadStatusWidget.tsx`, `AgentTasksWidget.tsx` — `height: 100%` added so cards stretch to match the tallest sibling in the same grid row.
+
+---
+
+## 2026-05-31 — UI · micro-animation pass — interactive components
+
+GPU-only micro-animations added to six small UI components. All animations use `transform` and `opacity` exclusively — no layout properties touched. `willChange: 'transform'` set only on elements that move. Zero impact on initial render or data-fetching paths.
+
+**`BackButton`** (`src/components/ui/BackButton.tsx`)
+
+- Converted from plain `<Link>` to `motion(Link)`. Mounts with `x: -6 → 0, opacity: 0 → 1` (150ms, ease-out-expo).
+- Hover: whole button nudges `x: -2` + `scale 1.05`; inner arrow nudges an additional `x: -1` (layered directional signal).
+- Tap: `scale 0.93` spring. `willChange: 'transform'` on the link element.
+
+**`ChecklistItem`** (`src/components/ui/ChecklistItem.tsx`)
+
+- Square ↔ CheckSquare icon crossfades via `AnimatePresence mode="wait"` — `scale 0.6 → 1, opacity 0 → 1` (150ms, ease-out-expo) on both enter and exit. Never two icons in DOM simultaneously.
+- Tap: `motion.button` `whileTap scale 0.85` spring on the toggle button.
+
+**`InfoRow` copy button** (`src/components/ui/InfoRow.tsx`)
+
+- Copy ↔ Check icon crossfades via `AnimatePresence mode="wait"` — `scale 0.5 → 1` (150ms). Confirms the copy action with a satisfying pop.
+- Tap: `whileTap scale 0.8` on the copy button itself.
+
+**`EditButton`** (`src/components/ui/EditButton.tsx`)
+
+- Converted to `motion.button`. Pencil icon rotates `0 → -8°` on hover (150ms, ease-out-expo) — suggests "ready to edit".
+- Tap: `whileTap scale 0.88`.
+- Props interface narrowed: explicit `onClick, onMouseEnter, onMouseLeave, onFocus, onBlur, disabled, className` — avoids `...rest` spread conflict with Framer Motion prop types.
+
+**`ListRow`** (`src/components/ui/ListRow.tsx`)
+
+- Chevron wraps in `motion.span`; animates `x: 0 → 2` on hover (150ms) — directional nudge signals the row is navigable.
+- Background hover state moved from imperative `style.setProperty` to reactive `hovered` state — consistent with the rest of the library.
+
+**`SearchBar`** (`src/components/ui/SearchBar.tsx`)
+
+- Clear × button wrapped in `AnimatePresence`; fades + scales in (`scale 0.7 → 1`) when text is present, out when cleared or tapped.
+- Tap: `whileTap scale 0.8`.
+
+**`MotionButton` — first real consumers wired**
+
+- `AddLeadButton.tsx` — switched from `Button` to `MotionButton` + `MOTION_BUTTON_DEFAULTS` (spring tap `scale 0.97`). Primary CTA pressed repeatedly by agents.
+- `TasksShell.tsx` — "+ My Task / + Group Task" header button switched to `MotionButton` + `MOTION_BUTTON_DEFAULTS`.
+- All other `Button` callers (form submits, modal footers, auth pages) remain on plain `Button` — tap animation is unnecessary and would add Framer bundle cost on those pages.
+
+**Architecture rule confirmed:** `Button` (CSS hover, zero Framer cost) is correct for form submits and modal actions. `MotionButton` is correct for standalone primary CTAs that users tap repeatedly. Never merge them.
+
+---
+
+## 2026-05-31 — Leads · Called modal outcome picker
+
+- `CalledModal.tsx` — native `<select>` for call outcome replaced with `FilterDropdown` (single-select), matching the filter bar and task tag pickers.
+
+---
+
+## 2026-05-31 — Performance · unified filter bar + custom date range
+
+- `page.tsx` — filter bar unified across all roles: period selector + (founder/admin) domain tabs rendered in a single `--theme-paper` strip, replacing the two-zone layout (domain tabs below period selector). Custom date params `?from=` and `?to=` parsed from URL and threaded through to all async components.
+- `PerformancePeriodSelector.tsx` — "Custom" tab added; selecting it reveals two inline `DatePicker` components (From → To) with `AnimatePresence` slide-in; pickers write `?from=&to=` URL params; switching away from Custom clears both params; domain param preserved when switching periods.
+- `FounderDomainTabs.tsx` — now rendered inside the filter bar alongside the period selector, separated by a `1px --theme-paper-border` divider; `?from=`/`?to=` params preserved when switching domains.
+- `FounderPerformanceShell.tsx` — domain fetching + tab rendering removed (moved to `page.tsx`); shell now a thin passthrough that delegates to `ManagerPerformanceAsync` with resolved `domain`, `period`, and optional `customFrom`/`customTo`.
+- `ManagerPerformanceAsync.tsx` — accepts optional `customFrom`/`customTo` string props; uses these directly as date range when `period === 'custom'`, falling back to `getPeriodDateRange` otherwise.
+- `performance-service.ts` — `PerformancePeriod` extended with `'custom'`; `getPeriodDateRange('custom')` falls back to `this_month` (safe fallback — custom dates are always passed directly by callers); `getPreviousPeriodDateRange('custom')` returns `null` (no meaningful prior period).
+
+---
+
+## 2026-05-31 — Performance · agent roster redesign
+
+- `ManagerPerformancePanel.tsx` — `AgentCard` fully redesigned:
+  - Removed generic `3px solid var(--theme-accent)` left-border selection indicator.
+  - Selected state now uses `--theme-accent-surface` background + subtle accent-tinted border (`color-mix`), matching the system's card selection pattern.
+  - Added `rank` prop — mono numeric rank rendered left of avatar, accented on selection.
+  - Avatar downsized from `md` (40px) to `sm` (32px) — list is a navigation aid, not a profile display.
+  - Conversion rate pill moved to right-aligned column, separated from the name/leads stack — cleaner scan left-to-right.
+  - `onMouseEnter/Leave` handlers add hover state without disrupting the selected card.
+  - "Team / N agents" header block and "Agent / Rate" column label row removed — clean card list without a table-like header.
+  - Rank number `<span>` given `lineHeight: 1; alignSelf: center` — correctly centered vertically with avatar.
+  - Panel width reduced to 280px with `padding: var(--space-2)` inner padding for edge-to-edge card layout.
+
+---
+
+## 2026-05-31 — WhatsApp · title and composer gap fixes
+
+- `WhatsAppShell.tsx` — heading renamed to "WhatsApp" with `<span className="page-title-dot">.</span>` blinking dot + `type-page-title` class (Playfair, matches all primary nav pages). Shell changed from `height: calc(100dvh - 56px)` to `height: 100%` — the `dvh` calculation was evaluated inside the scrollable paper card, causing the composer to float mid-page instead of pinning to the bottom edge.
+- `ConversationPanel.tsx` — removed "Enter to send · Shift+Enter for new line" hint `<p>` below the composer.
+- `app/(dashboard)/whatsapp/page.tsx` — wrapped `WhatsAppShell` in a `flex: 1; overflow: hidden; min-height: 0` container so the paper card's height constraint propagates down and the shell fills exactly to the bottom.
+
+---
+
+## 2026-05-31 — WhatsApp · design system alignment
+
+- `WhatsAppShell.tsx` — left panel header: Playfair italic "Messages" heading replaces generic sans-serif "WhatsApp" span; left panel background corrected to `--theme-paper`; right panel background corrected to `--theme-paper-subtle`.
+- `ConversationRow.tsx` — `Avatar` component replaces raw unread dot; avatar overlaid with accent dot badge when unread; name/timestamp use proper type tokens; resolved badge now flex-shrink safe.
+- `ConversationPanel.tsx` — `Avatar` added to header zone; contact name uses Playfair italic; resolved composer banner copy uses Playfair italic; `Avatar` imported from `src/components/ui/Avatar`.
+- `MessageBubble.tsx` — inbound messages now show sender avatar (`Avatar size="xs"`) + sender name row above bubble; bot label styled with `--theme-accent` and `--weight-medium`; hardcoded `rgba(0,0,0,0.06)` in `MediaPlaceholder` replaced with `--theme-paper-border`; outbound bubbles gain `--shadow-1`; inbound bubbles use `--theme-paper` background (elevated from paper-subtle).
+- `EmptyConversationState.tsx` — icon container uses `--theme-paper` + `--shadow-1` + border (grounded card style matching system empty states); copy tightened to on-brand language.
+- `loading.tsx` — skeleton left panel updated to `--theme-paper` background; avatar-style 32×32 rounded squares replace the small unread dot circles; right panel updated to `--theme-paper-subtle`.
+
+---
+
+## 2026-05-31 — Performance · period selector — active tab restored
+
+- `PerformancePeriodSelector.tsx` — reverted from `FilterDropdown` to `TabSelector` (pill). The dropdown always showed a generic “Time Period” label with a `1` badge and no visible active period; tabs show the selected range with the pill indicator again. `indicatorLayoutId="performance-period-tabs"` avoids shared-layout clashes with founder domain tabs.
+- `FilterDropdown.tsx` — single-select: re-clicking the active option no longer clears selection (menu closes only; **Clear** still deselects).
+
+---
+
+## 2026-05-31 — UI · TabSelector pill — soft pastel active chip
+
+- `design-tokens.css` — `--theme-tab-pill-active-bg`, `--theme-tab-pill-active-border`, `--theme-tab-pill-active-text` (accent-muted washed into paper surfaces; Earth reads as soft brown on cream).
+- `TabSelector.tsx` — pill variant active chip no longer uses dark `--theme-canvas`; uses new tokens + `--shadow-1`. Affects all pill consumers (Lead Volume period tabs, TasksShell, PerformancePeriodSelector, etc.).
+
+---
+
+## 2026-05-31 — Dashboard · Lead Pipeline + Campaign Performance — domain tab selector
+
+- `ManagerLeadStatusWidget.tsx`, `ManagerCampaignWidget.tsx` — domain picker switched from `variant="pill"` to `variant="connected"` to match `ManagerLeadVolumeWidget` (segmented tray, equal-width tabs, primary active text).
+
+---
+
+## 2026-05-31 — Dashboard · Lead Pipeline widget — Overall label
+
+- `ManagerLeadStatusWidget.tsx` — domain-wide stacked bar now has an **Overall** row label (name + lead count) matching the per-agent bar layout above the status legend.
+
+---
+
+## 2026-05-31 — Dashboard · Lead Volume widget — merged domain footer
+
+- `ManagerLeadVolumeWidget.tsx` — domain tab row and per-domain totals strip merged into one connected tab bar below the chart: domain label + period total (`--font-mono`, `--text-sm`, `formatCount`). Chart Recharts legend unchanged. Period tabs stay in the header row.
+
+---
+
+## 2026-05-31 — Dashboard · Lead Volume widget — header total removed
+
+- `ManagerLeadVolumeWidget.tsx` — period aggregate count removed from the widget header; title row is Playfair title + period tabs only. Per-domain totals strip gains a non-clickable **Total** label summing all four featured domains.
+
+---
+
+## 2026-05-31 — Dashboard · Lead Volume widget — domain picker + multi-line chart
+
+Enhanced the `ManagerLeadVolumeWidget` with domain filtering and a 4-line cross-domain chart.
+
+- **Period tabs reordered:** This Month (left) | This Week (default, middle) | Today (right). Uses `Tabs` + `TabsList` + `TabsTrigger` compound API with `indicatorLayoutId="lead-volume-period"` — replaced the previous `TabSelector` backwards-compat wrapper.
+- **Domain picker** (admin/founder only): connected tab row — All | Onboarding | Shop | House | Legacy. Uses the same compound API with `indicatorLayoutId="lead-volume-domain"`. Manager role sees no picker (locked to own domain).
+- **Multi-line chart** ("All" mode): 4 `<Line>` components, one per featured domain, each coloured from `useChartTokens`. Custom `MultiLineTooltip` shows all 4 domain values on hover. Recharts `<Legend>` with short domain labels below the chart. Per-domain totals strip at the bottom — clicking a domain name drills into it.
+- **Single-line chart** (specific domain selected or manager role): same as before, one line for the selected domain.
+- `src/lib/services/dashboard-service.ts` — `getLeadVolumeByDomains(domains, period)` added: single query fetching `created_at + domain` for the 4 featured domains, bucketed into per-domain time series. Returns `MultiDomainVolumeSummary { domains, totals, series }`.
+- `src/lib/actions/dashboard.ts` — `getLeadVolumeByDomainsAction(period, domains)` added (manager/admin/founder); `getLeadVolumeForDomainAction(period, targetDomain)` added for single-domain drill-down — passes `role='manager'` to `getLeadVolumeByPeriod` to force the domain filter regardless of caller role.
+- **Bug fixed:** previous `getLeadVolumeByPeriodAction` ignored its `_domain` param and always used `profile.domain`, so domain tab drill-downs returned all-domain data. New `getLeadVolumeForDomainAction` passes the target domain explicitly.
+- **Bug fixed:** `useRef` guard on the mount `useEffect` broke under React Strict Mode — the ref survived the dev double-mount cycle but the `cancelled` flag did not, so `setLoaded(true)` was never called. Replaced with the standard single-flag pattern.
+
+---
+
+## 2026-05-31 — Group Tasks · identity block redesign + subtask row cleanup
+
+- `GroupTasksTab.tsx` — `IdentityBlock` fully redesigned: replaced the hard-coloured 60px accent-filled panel with a soft 52px column using `var(--theme-paper-subtle)` background, a 1px `--theme-paper-border` right edge, and a 3px left accent line. Icon reduced from 22px white-on-solid to 16px at 70% opacity in the accent colour — subordinate, not dominant. `ProgressRing` now draws on the paper surface: track uses `var(--theme-paper-border)`, fill uses the accent colour (switches to `--color-success-text` at 100%), zero-progress ring renders at 30% opacity. Count label moved below the ring in `--theme-text-tertiary`. Overall feel is grounded, soft, and theme-reactive rather than a hard branded block.
+- `GroupTasksTab.tsx` — completion circle removed from subtask rows entirely. Subtask row layout is now: pastel `SubtaskStatusBadge` (left) → title (grows, 13px `--weight-medium` `--theme-text-secondary`) → assignee chip (20px avatar + first name, right). No toggle affordance on the row — subtask status is changed inside `SubTaskModal`.
+
+---
+
+## 2026-05-31 — Tasks · SubTaskModal remarks composer
+
+- `TaskRemarksPanel.tsx` — removed status-change pill row below the message bar ("moved to To Do", "started work", etc.). Remarks post text only; existing timeline status chips on older remarks are unchanged.
+
+---
+
+## 2026-05-31 — TimePicker · AM/PM flicker fix
+
+- `src/components/ui/TimePicker.tsx` — replaced `TabSelector` (Framer `layoutId` spring pill) with static `AmpmToggle` on the AM/PM row. The shared-layout indicator was re-animating from the left when hour/minute picks triggered parent re-renders, which looked like a tab sliding across the scroll columns. Draft now seeds only on panel open, not on every `value` prop update while the panel stays open.
+
+---
+
+## 2026-05-31 — TimePicker · settings page fixes
+
+- `src/lib/utils/dates.ts` — `normalizeTimeHHMM()` strips optional seconds from PostgreSQL `time` values (`09:00:00` → `09:00`).
+- `src/components/ui/TimePicker.tsx` — panel portals to `document.body` with `position: fixed` (no longer clipped by stacked settings cards); viewport flip up/down + left; draft state while open; all values normalised through `normalizeTimeHHMM` before parse/display.
+- `src/components/settings/AgentSettingsTable.tsx` — shift times normalised on load and on each pick so validation/save accepts DB `time` strings.
+
+---
+
+## 2026-05-31 — Settings · AgentSettingsTable row/column layout fix
+
+- Grid column widths corrected: Shift Start/End `96px → 104px` (gives TimePicker room), Active Hours `120px → 96px`, In Pool `120px → 88px` (toggle is 32px wide, no label in cell).
+- `overflow: hidden` removed from table container — was clipping TimePicker dropdown panels. Replaced with `borderRadius` on header (top corners) and last row (bottom corners) directly, preserving the rounded card appearance without a clipping context.
+- Toggle `label` prop removed from row cells — column header "In Pool" already communicates it; inline "Active"/"Inactive" label was redundant.
+- `TimePicker` trigger: `width: 100%` + `minWidth: 88` so it stretches to fill its grid cell. Container `flexDirection: column` added to support full-width stretch.
+
+---
+
+## 2026-05-31 — New component · TimePicker (`src/components/ui/TimePicker.tsx`)
+
+Standalone time-only picker replacing `<input type="time">` throughout the codebase.
+
+- **Props:** `value: string | null` (HH:MM 24-hour, matching PostgreSQL `time`), `onChange: (string | null) => void`, `placeholder?`, `disabled?`, `style?`, `aria-label?`
+- **Trigger:** 88×32 button matching the paper-subtle input aesthetic — Clock icon + formatted time label ("9:00 AM"). Accent border + focus shadow on open/focus. Width matches the old `<input type="time">` slot exactly.
+- **Panel:** `DROPDOWN_VARIANTS` Framer Motion popover. Horizontal flip detection (same pattern as DatePicker — `getBoundingClientRect` on open, `right: 0` when near viewport edge). Hour scroll column (1–12) + minute scroll column (0–55 in 5-minute steps) + AM/PM connected TabSelector.
+- **ScrollColumn:** local copy of the same scroll-column pattern from `DatePicker.tsx` — selected item auto-scrolls into view on mount and on selection change. Selected cell: `--theme-accent-surface` bg + `--theme-accent` text.
+- **Serialisation:** `parse("HH:MM") → TimeState` (12h display), `serialise(h, m, meridiem) → "HH:MM"` (24h for DB). Minute snapped to nearest 5-minute step. No Date objects involved — string-only, timezone-safe.
+- **`AgentSettingsTable`** — both `<input type="time">` replaced with `<TimePicker>`. `timeInputStyle` object removed. `updateField` + `handleBlur` removed; replaced with `handleTimeChange` (updates shift state + calls `validateAndSave` immediately on each pick) and extracted `validateAndSave` function.
+
+---
+
+## 2026-05-31 — Settings · AgentSettingsTable primitives migration + hardening
+
+- `AgentSettingsTable.tsx` — adopted `Avatar` (sm, borderRadius override to --radius-sm) replacing bespoke 32×32 div with manual initials/image logic; `getInitials()` local function removed (Avatar handles semantic colour fallback + initials internally). Clear-shift button replaced with `Button variant="danger" size="xs"` — eliminates imperative `onMouseEnter/onMouseLeave` DOM mutation for hover states. Row opacity for saving/pending state moved from conflicting inline `style.opacity` into Framer Motion `animate={{ opacity }}` — resolves the race between entrance animation and dimming transition. Unused `APP_DOMAINS` import removed.
+
+---
+
+## 2026-05-31 — Group Tasks · subtask visual hierarchy + assignee chip
+
+- `GroupTasksTab.tsx` — `SubtaskStatusBadge` internal component added with a fully independent pastel palette (`SUBTASK_STATUS_PASTEL`) — six distinct colour sets not tied to `--theme-accent`, so they remain vivid across all five Eia themes: slate (to_do), amber (in_progress), indigo (in_review), emerald (completed), rose (error), cool-grey (cancelled). Badge placed on the **left** of each subtask row (not the right). `in_progress` status dot animates via `eia-subtask-pulse` keyframe (2s ease-in-out, scale + opacity). Subtask title styled at `13px`, `--weight-medium`, `--theme-text-secondary`, `letter-spacing: -0.01em` — visually subordinate to the group task title. Left indent via `padding-left: var(--space-10)` to reinforce the hierarchy. Assignee display changed from bare `Avatar` icon to a proper chip: Avatar (20×20) + first name in `12px --weight-medium --theme-text-secondary`, with `marginLeft: var(--space-2)` and `opacity: 0.45` when the subtask is completed.
+- `src/styles/design-tokens.css` — `@keyframes eia-subtask-pulse` added: `0%/100%` → scale 1, opacity 1; `50%` → scale 0.72, opacity 0.45.
+
+---
+
+## 2026-05-31 — Group Tasks · CreateGroupTaskModal full UX redesign
+
+- `CreateGroupTaskModal.tsx` — complete rewrite. Removed: two-column preview layout, accent colour swatches (no DB column), icon picker (no DB column), member search stub. Replaced with a single-screen layout: group details (title, description, domain, priority, due date) + inline subtask drafts section. Each draft row has title input, priority dots, assignee inline picker, and due date. Subtasks are created via `createSubtaskAction` in `Promise.allSettled` immediately after `createGroupTaskAction` on submit. Props extended: `callerRole` and `callerDomain` required (manager domain auto-locked, domain select hidden). `AssigneeInlinePicker` added as internal component — compact inline dropdown composing `Avatar` + search. Priority shown as 20px dot buttons per draft row for density. `DatePicker` used for group-level and per-subtask due dates. Agents fetched via `listAgentsForDomain` when domain is selected; drafts cleared on domain change.
+- `GroupTasksTab.tsx` — `CreateGroupTaskModal` call site updated to pass `callerRole` and `callerDomain`.
+
+---
+
+## 2026-05-31 — Tasks page · primitives migration + visual audit
+
+- `PersonalTasksTab.tsx` — quick-add due date `<input type="date">` replaced with `<DatePicker>`; `quickDueAt` state changed from `string` to `Date | null`; `due_at` action calls updated to `quickDueAt.toISOString()` directly; reset changed from `''` to `null`. Tag filter bar (bespoke inline pill buttons + Clear link) replaced with `<FilterDropdown multi>` — items built from `availableTags`. `X` re-added to lucide imports (still used by quick-add cancel button). `FilterDropdown` and `DatePicker` imports added.
+- `TasksShell.tsx` — raw `<button>` with inline styles replaced with `<Button variant="primary" size="sm">`; `Button` import added; `Plus` rendered as inline child (Button has no `leftIcon` prop). `borderRadius: --radius-sm` violation corrected (Button applies `--radius-md` per spec).
+
+---
+
+## 2026-05-31 — Dashboard · AgentActivityWidget: auto-scrolling live ticker, speed tuned
+
+- Scroll speed reduced to `0.11px/frame` (~6.6px/s at 60fps) — slow enough to read without stopping
+- Previous value was `0.4` (too fast), intermediate `0.15` (still fast), settled on `0.11`
+
+---
+
+## 2026-05-31 — Dashboard · AgentActivityWidget: auto-scrolling live ticker, limit 25, note_added filtered
+
+- **Migration 0048** (`20260531000048_dashboard_activity_limit_25.sql`): bumps `agent_activity` LIMIT 10 → 25 in `get_dashboard_summary` RPC; `getAgentRecentActivity` service function also bumped to 25
+- "Recent Activity" eyebrow label removed; subtitle changed to "Live Lead Activity."
+- Fixed-height ticker viewport (`220px`), overflow hidden, fade masks top + bottom using `--theme-paper` gradient
+- Inner list scrolls via `translateY` on a `setTimeout` loop (`FRAME_INTERVAL = 16ms`); wraps to 0 when last row scrolls out
+- Pauses on `mouseenter`, resumes on `mouseleave`
+- New Realtime event: resets offset to 0 instantly so new item appears at top, then resumes
+- `note_added` filtered in all three paths: seed, refresh fetch, Realtime handler
+- State cap: 25 rows (`ACTIVITY_CAP`); `ROW_HEIGHT = 48px` constant drives wrap calculation
+
+---
+
+## 2026-05-31 — Dashboard · AgentTasksWidget: unified all-category task list with animated category dots
+
+Widget renamed from "Gia · My Tasks" to "My Tasks". Now shows all active tasks assigned to the agent across all 3 categories (`personal`, `group_subtask`, `gia_followup`) instead of only gia lead tasks due today.
+
+- **Migration 0047** (`20260531000047_dashboard_agent_tasks_all_categories.sql`): replaces the `agent_tasks` CTE in `get_dashboard_summary` RPC — LEFT JOINs `task_gia_meta`+`leads` for gia context, `task_groups` for group context; active statuses `to_do/in_progress/in_review`; sort: overdue → priority → due_at; limit 30; `newLeadsCount` removed
+- `DashboardAgentTask` type rewritten: now carries `title`, `task_category`, `priority`, `status`, `context_label`, `lead_id`
+- `DashboardSummary.agent_tasks` is now `DashboardAgentTask[]` directly (no longer wrapped in `DashboardAgentTasksSummary`)
+- `getAgentTasksSummary()` in `dashboard-service.ts` rewritten to match new shape (3-category join, client-side sort mirror)
+- `TASK_CATEGORY` constants extended with `dotColor` CSS token per category
+- `AgentTasksWidget`: animated pulsing dot per category identifier (scale+opacity, GPU-only, `eia-cat-dot-pulse` keyframe, staggered delays 0s/0.4s/0.8s); priority chip (urgent/high only); status chip (in_progress/in_review only); context label italic below title; category legend footer; "new leads" footer removed
+
+---
+
+## 2026-05-31 — Leads · LeadsFilters: migrated to FilterDropdown + DatePicker primitives
+
+`LeadsFilters.tsx` fully rewritten. Removed three inline sub-components (`MultiSelectDropdown`, `SingleSelectDropdown`, `DateRangeFilter`) and the `<style>` keyframe injection. Replaced with:
+
+- `FilterDropdown multi={true}` for Status and Outcome
+- `FilterDropdown` (single-select) for Source, Campaign, Agent — `selected` bridged as `[value]`/`value ?? null`
+- Two `DatePicker` components (date-only) for the date range, with `minDate`/`maxDate` cross-constraints
+- `dateFromParam` / `dateToParam` helpers for IST-safe round-trip between `YYYY-MM-DD` URL params and `Date` objects (avoids `new Date('2026-05-31')` UTC midnight parse)
+- Search input gains `eia-input` className so `::placeholder` resolves correctly via global CSS rule
+- Search input `borderRadius` corrected to `--radius-md` (matching FilterDropdown trigger)
+- Removed `formatDate` re-export (no consumer was importing it from here)
+- All animation now via Framer Motion `DROPDOWN_VARIANTS` inside `FilterDropdown` — inline `@keyframes ddEnter` removed
+
+---
+
+## 2026-05-31 — Tasks · CreatePersonalTaskModal: migrated specific-date picker to DatePicker component
+
+`CreatePersonalTaskModal.tsx` — replaced the raw `<input type="datetime-local">` behind a manual toggle with `<DatePicker showTime value={dueDate} onChange={handleDatePickerChange} />`. `dueSpecific: string` state replaced with `dueDate: Date | null`. `showDatePicker` boolean toggle and `ChevronDown` button removed. `ChevronDown` import removed. `getResolvedDueAt()` now reads `dueDate.toISOString()` instead of `new Date(dueSpecific).toISOString()`. Preset chip handler clears `dueDate` (was `dueSpecific + showDatePicker`). DatePicker handles its own open/close toggle internally — no wrapper toggle needed. IST end-of-day logic for presets is unchanged.
+
+---
+
+## 2026-05-30 — Profile · UI: `/profile` widened to canonical detail-page layout
+
+UI-only change. No backend, action, schema, or RLS change. No business logic touched — every server action call site and Supabase upload path is byte-identical.
+
+**`src/app/(dashboard)/profile/page.tsx`:**
+
+- Layout switched from the old 672px centred narrow shell to the canonical wide detail-page pattern (`max-width: 1280px`, two-column grid `minmax(0, 1fr) 340px`). Now matches `/admin/users/[id]` exactly.
+- Left column: `Personal Details`, `Appearance`, `Security`, `Notifications` — each `SectionCard` gained a one-line `description` explaining the section's purpose.
+- Right sticky sidebar (340px): new `Identity` `SectionCard` (avatar tile, name, email, job-title, role + domain status pills, "Member since" meta strip on `--theme-paper-subtle` divider) and `Session` `SectionCard` containing the sign-out form.
+- Added `.type-eyebrow` "Account" label above the page title — matches the established detail-page header pattern.
+- Sign-out button migrated from a raw inline `<button>` to `Button variant="secondary" size="sm"` (Q-12 reuse). `LogOut` icon dropped — `Button.iconLeft` accepts a `LucideIcon` component reference which cannot cross the server→client component boundary in this server-component page; text-only is fine since the form context and section title already establish the action.
+
+**`src/components/profile/ProfileAvatarSection.tsx`:**
+
+- Reduced from a horizontal `avatar + identity text + role/domain pills + member-since` composite to just the upload tile (96×96, `--radius-md`, hover camera overlay, spinner, inline error).
+- Identity text + pills + member-since now live at the page level inside the `Identity` sidebar card.
+- Removed the local `Pill` helper — the page uses the canonical `.status-pill` utility from `design-tokens.css`.
+- Upload logic (`createClient`, `updateProfileAvatar`, 2 MB validation, cache-busting) is byte-identical.
+
+**Files modified:** `src/app/(dashboard)/profile/page.tsx`, `src/components/profile/ProfileAvatarSection.tsx`.
 
 ---
 
@@ -49,7 +1132,7 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
-## 2026-05-30 — Campaigns: detail page title beautified — `campaigns/[id]/page.tsx` now derives a display-only `campaignTitle` by splitting the raw campaign key on `_` and whitespace and joining with ` · ` (e.g. `TG_House_Meta+Leads_Goa+Resort` → `TG · House · Meta · Leads · Goa · Resort`). Decode step also strips `%2B` defensively (case-insensitive) before the `+→space` swap, so a double-encoded link from the address bar no longer shows literal `%2B` in the heading. The un-beautified `campaignName` is still the value passed to all DB lookups (`getCampaignDetailMetrics`, `getCampaignAgentDistribution`, `getLeadsByRoleCached`) — only the H1 changes.
+## 2026-05-30 — Campaigns: detail page title beautified — `campaigns/[id]/page.tsx` now derives a display-only `campaignTitle` by splitting the raw campaign key on `_` and whitespace and joining with `·` (e.g. `TG_House_Meta+Leads_Goa+Resort` → `TG · House · Meta · Leads · Goa · Resort`). Decode step also strips `%2B` defensively (case-insensitive) before the `+→space` swap, so a double-encoded link from the address bar no longer shows literal `%2B` in the heading. The un-beautified `campaignName` is still the value passed to all DB lookups (`getCampaignDetailMetrics`, `getCampaignAgentDistribution`, `getLeadsByRoleCached`) — only the H1 changes.
 
 ## 2026-05-30 — ComboboxDropdown ui primitive shipped — LeadInfoCard inline combobox migrated. Phase UI. New file `src/components/ui/ComboboxDropdown.tsx` (single-select searchable picker, viewport-flip, kbd nav Escape/Arrow/Enter, DROPDOWN_VARIANTS, no hardcoded hex). `renderTrigger` prop lets LeadInfoCard.AssigneeCombobox keep its InfoRow-styled trigger (label-above-value with dashed accent underline on hover) — visual identical to pre-migration; panel + search + list now live in the primitive. Inline panel/list/search/handlers removed from LeadInfoCard (~190 lines deleted).
 
@@ -170,9 +1253,9 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
-## 2026-05-30 — Domain normalization: leads/task_groups/wa_logs typed as app_domain enum; TG_Global remapped to onboarding; 6 agent profiles corrected; indulge_* values purged
+## 2026-05-30 — Domain normalization: leads/task*groups/wa_logs typed as app_domain enum; TG_Global remapped to onboarding; 6 agent profiles corrected; indulge*\* values purged
 
-- `supabase/migrations/20260530000041_normalize_lead_domain.sql` — 7-step single-transaction migration: (1) UPDATE profiles agent rows concierge→onboarding; (2) UPDATE leads for all indulge_*/concierge→canonical enum values; (3) UPDATE whatsapp_notification_logs.domain; (4) DO block audits both tables, RAISE WARNING + remap any unexpected value to 'onboarding'; (5) DROP all 15 RLS policies referencing leads.domain or task_groups.domain — direct (`leads_manager_select`, `leads_update`, `task_groups_select`, `task_groups_update`) or via sub-SELECT (`lead_activities_select`, `lead_notes_select`, `lead_sla_timers_agent_select`, `lead_sla_timers_manager_select`) or via `can_access_wa_conversation()` (`wa_conversations_agent_select`, `wa_conversations_manager_select`, `wa_conversations_admin_founder_select`, `wa_conversations_update`, `wa_messages_agent_select`, `wa_messages_manager_select`, `wa_messages_admin_founder_select`); (6) ALTER TABLE leads/task_groups/whatsapp_notification_logs domain TYPE app_domain; (7) RECREATE all 15 policies + CREATE OR REPLACE `can_access_wa_conversation()` — all `::text` casts on `get_user_domain()` removed since both sides are now `app_domain`
+- `supabase/migrations/20260530000041_normalize_lead_domain.sql` — 7-step single-transaction migration: (1) UPDATE profiles agent rows concierge→onboarding; (2) UPDATE leads for all indulge\_\*/concierge→canonical enum values; (3) UPDATE whatsapp_notification_logs.domain; (4) DO block audits both tables, RAISE WARNING + remap any unexpected value to 'onboarding'; (5) DROP all 15 RLS policies referencing leads.domain or task_groups.domain — direct (`leads_manager_select`, `leads_update`, `task_groups_select`, `task_groups_update`) or via sub-SELECT (`lead_activities_select`, `lead_notes_select`, `lead_sla_timers_agent_select`, `lead_sla_timers_manager_select`) or via `can_access_wa_conversation()` (`wa_conversations_agent_select`, `wa_conversations_manager_select`, `wa_conversations_admin_founder_select`, `wa_conversations_update`, `wa_messages_agent_select`, `wa_messages_manager_select`, `wa_messages_admin_founder_select`); (6) ALTER TABLE leads/task_groups/whatsapp_notification_logs domain TYPE app_domain; (7) RECREATE all 15 policies + CREATE OR REPLACE `can_access_wa_conversation()` — all `::text` casts on `get_user_domain()` removed since both sides are now `app_domain`
 - `src/lib/constants/campaign-domain-map.ts` — already clean (TG_Global → 'onboarding', DEFAULT_LEAD_DOMAIN = 'onboarding'); no change required
 - `src/components/leads/LeadInfoCard.tsx` — already imports DOMAIN_LABELS from `lib/constants/domains.ts`; no local label map; no change required
 - `docs/The_Gia.md` — section 1 domain-scoping sentence updated; section 2 domain column type/comment updated; section 5 agent assignment rule updated; WhatsApp lead default domain updated from `indulge_concierge` to `onboarding`
@@ -202,7 +1285,7 @@ Format: `[date] — [area] — [what changed]`
 
 ---
 
-## 2026-05-30 — leads.domain normalized to app_domain enum; TG_Global remapped to onboarding; indulge_* values purged
+## 2026-05-30 — leads.domain normalized to app*domain enum; TG_Global remapped to onboarding; indulge*\* values purged
 
 - Migration 0041: `UPDATE leads` to remap `concierge` → `onboarding`, `indulge_concierge` → `onboarding`, `indulge_shop` → `shop`, `indulge_legacy` → `legacy`, `indulge_house` → `house`, `indulge_b2b` → `b2b`; audit DO block guards against any remaining non-enum values; `ALTER TABLE leads ALTER COLUMN domain TYPE app_domain USING domain::app_domain`
 - `src/lib/constants/campaign-domain-map.ts` — `TG_Global` remapped from `'concierge'` to `'onboarding'`; `DEFAULT_LEAD_DOMAIN` changed from `'concierge'` to `'onboarding'`; WhatsApp lead default updates automatically via this constant
@@ -515,7 +1598,7 @@ GET /dashboard now delivers widgets with data on first paint — zero POST calls
 - `DashboardCanvas` threads `initialData` through `SortableWidget` → `DashboardWidgetSlot` → widget component
 - `AgentTasksWidget`, `AgentActivityWidget`, `ManagerLeadStatusWidget`, `ManagerCampaignWidget` — skip mount fetch when `initialData` present; seed state directly; refresh buttons remain for user-initiated refetch
 - `ManagerLeadVolumeWidget` — unchanged; period selector requires interactive fetch; no initial data seeding (volume data intentionally excluded from RPC — too period-dependent)
-- All widgets now type-import from `@/lib/types` (Dashboard* types); old service-layer types remain for refresh actions
+- All widgets now type-import from `@/lib/types` (Dashboard\* types); old service-layer types remain for refresh actions
 
 **Invariants:**
 

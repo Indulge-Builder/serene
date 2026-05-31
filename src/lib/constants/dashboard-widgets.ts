@@ -5,6 +5,24 @@ import type { UserRole, AppDomain } from '@/lib/types/database';
 
 export type WidgetSize = 'sm' | 'md' | 'lg' | 'xl';
 
+// Single source of truth for widget container heights.
+// Widgets read their container height from this map via the `size` prop.
+// WidgetSkeleton uses the same values for skeleton sizing.
+export const WIDGET_HEIGHT_BY_SIZE: Record<WidgetSize, string> = {
+  sm:  '200px',
+  md:  '300px',
+  lg:  '420px',
+  xl:  '540px',
+};
+
+export const WIDGET_SIZE_LABELS: Record<WidgetSize, string> = {
+  sm: 'Compact',
+  md: 'Standard',
+  lg: 'Tall',
+  xl: 'Full',
+};
+export type WidgetColSpan = 1 | 2;
+
 export type WidgetModule = 'gia' | 'finance' | 'ops' | 'marketing' | 'tech';
 
 export type WidgetDefinition = {
@@ -14,6 +32,7 @@ export type WidgetDefinition = {
   roles:        UserRole[];
   domains:      AppDomain[] | '*';
   defaultSize:  WidgetSize;
+  colSpan:      WidgetColSpan;
   module:       WidgetModule;
 };
 
@@ -25,6 +44,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     roles:       ['agent', 'manager', 'admin', 'founder'],
     domains:     '*',
     defaultSize: 'md',
+    colSpan:     1,
     module:      'gia',
   },
   {
@@ -34,6 +54,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     roles:       ['agent', 'manager', 'admin', 'founder'],
     domains:     '*',
     defaultSize: 'md',
+    colSpan:     1,
     module:      'gia',
   },
   {
@@ -43,6 +64,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     roles:       ['manager', 'admin', 'founder'],
     domains:     '*',
     defaultSize: 'lg',
+    colSpan:     1,
     module:      'gia',
   },
   {
@@ -52,6 +74,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     roles:       ['manager', 'admin', 'founder'],
     domains:     '*',
     defaultSize: 'lg',
+    colSpan:     1,
     module:      'gia',
   },
   {
@@ -61,6 +84,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     roles:       ['manager', 'admin', 'founder'],
     domains:     '*',
     defaultSize: 'xl',
+    colSpan:     2,
     module:      'gia',
   },
 ];

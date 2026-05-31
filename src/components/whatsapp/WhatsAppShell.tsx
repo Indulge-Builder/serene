@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import { MessageCircle } from "lucide-react";
 import { ConversationList } from "@/components/whatsapp/ConversationList";
 import { ConversationPanel } from "@/components/whatsapp/ConversationPanel";
@@ -11,40 +12,87 @@ import {
   getMessagesAction,
 } from "@/lib/actions/whatsapp";
 import { WHATSAPP_CONVERSATIONS_PAGE_SIZE } from "@/lib/constants/whatsapp";
-import type { WhatsAppConversation, WhatsAppMessage } from "@/lib/types/whatsapp";
+import { parseWhatsAppPeriodFromSearchParams } from "@/lib/utils/whatsapp-period";
+import type {
+  WhatsAppConversation,
+  WhatsAppMessage,
+} from "@/lib/types/whatsapp";
 import type { UserRole } from "@/lib/types/database";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface WhatsAppShellProps {
   initialConversations: WhatsAppConversation[];
-  unreadCount:          number;
-  callerProfile:        { id: string; full_name: string; avatar_url?: string | null; role: UserRole };
+  unreadCount: number;
+  callerProfile: {
+    id: string;
+    full_name: string;
+    avatar_url?: string | null;
+    role: UserRole;
+  };
 }
 
-const TOPBAR_HEIGHT = 56; // matches .eia-topbar height
+const LEFT_RAIL_WIDTH = "320px";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function WhatsAppShell({
   initialConversations,
-  unreadCount: initialUnreadCount,
+  unreadCount,
   callerProfile,
 }: WhatsAppShellProps) {
   const mountId = useId();
+  const searchParams = useSearchParams();
+  const { period, customFrom, customTo } = parseWhatsAppPeriodFromSearchParams(searchParams);
+  const skipPeriodRefetch = useRef(true);
 
-  const [conversations,         setConversations]         = useState<WhatsAppConversation[]>(initialConversations);
-  const [activeConversationId,  setActiveConversationId]  = useState<string | null>(null);
-  const [activeMessages,        setActiveMessages]        = useState<WhatsAppMessage[]>([]);
-  const [unreadCount,           setUnreadCount]           = useState(initialUnreadCount);
-  const [cursor,                setCursor]                = useState<string | null>(
+  const [conversations, setConversations] =
+    useState<WhatsAppConversation[]>(initialConversations);
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
+  const [activeMessages, setActiveMessages] = useState<WhatsAppMessage[]>([]);
+  const [cursor, setCursor] = useState<string | null>(
     initialConversations.length > 0
-      ? (initialConversations[initialConversations.length - 1]?.last_message_at ?? null)
+      ? (initialConversations[initialConversations.length - 1]
+          ?.last_message_at ?? null)
       : null,
   );
-  const [hasMore,        setHasMore]        = useState(initialConversations.length >= WHATSAPP_CONVERSATIONS_PAGE_SIZE);
-  const [isLoadingMore,  startLoadMoreTransition] = useTransition();
-  const [isLoadingConv,  setIsLoadingConv]  = useState(false);
+  const [hasMore, setHasMore] = useState(
+    initialConversations.length >= WHATSAPP_CONVERSATIONS_PAGE_SIZE,
+  );
+  const [isLoadingMore, startLoadMoreTransition] = useTransition();
+  const [isRefetchingList, startListRefetchTransition] = useTransition();
+  const [isLoadingConv, setIsLoadingConv] = useState(false);
+
+  const listFilter = {
+    period:     period ?? undefined,
+    customFrom: customFrom ?? undefined,
+    customTo:   customTo   ?? undefined,
+  };
+
+  // ── Refetch list when period URL params change ────────────────────────────────
+
+  useEffect(() => {
+    if (skipPeriodRefetch.current) {
+      skipPeriodRefetch.current = false;
+      return;
+    }
+
+    startListRefetchTransition(async () => {
+      const { conversations: fresh, nextCursor } = await getConversationsAction({
+        limit: WHATSAPP_CONVERSATIONS_PAGE_SIZE,
+        ...listFilter,
+      });
+      setConversations(fresh);
+      setCursor(nextCursor);
+      setHasMore(fresh.length >= WHATSAPP_CONVERSATIONS_PAGE_SIZE);
+      setActiveConversationId((current) =>
+        current && fresh.some((c) => c.id === current) ? current : null,
+      );
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, customFrom, customTo]);
 
   // ── Realtime — conversation list updates ────────────────────────────────────
 
@@ -57,9 +105,9 @@ export function WhatsAppShell({
       .on(
         "postgres_changes",
         {
-          event:  "*",
+          event: "*",
           schema: "public",
-          table:  "whatsapp_conversations",
+          table: "whatsapp_conversations",
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (payload: any) => {
@@ -86,7 +134,7 @@ export function WhatsAppShell({
     return () => {
       supabase.removeChannel(channel);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callerProfile.id]);
 
   // ── Load more conversations ──────────────────────────────────────────────────
@@ -95,8 +143,9 @@ export function WhatsAppShell({
     if (!cursor || isLoadingMore) return;
     startLoadMoreTransition(async () => {
       const { conversations: more, nextCursor } = await getConversationsAction({
-        limit:  WHATSAPP_CONVERSATIONS_PAGE_SIZE,
+        limit: WHATSAPP_CONVERSATIONS_PAGE_SIZE,
         cursor,
+        ...listFilter,
       });
       setConversations((prev) => [...prev, ...more]);
       setCursor(nextCursor);
@@ -123,73 +172,63 @@ export function WhatsAppShell({
   function handleConversationUpdate(updated: Partial<WhatsAppConversation>) {
     if (!activeConversationId) return;
     setConversations((prev) =>
-      prev.map((c) => (c.id === activeConversationId ? { ...c, ...updated } : c)),
+      prev.map((c) =>
+        c.id === activeConversationId ? { ...c, ...updated } : c,
+      ),
     );
   }
 
-  const activeConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
+  const activeConversation =
+    conversations.find((c) => c.id === activeConversationId) ?? null;
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <div
       style={{
-        display:   "flex",
-        height:    `calc(100dvh - ${TOPBAR_HEIGHT}px)`,
-        overflow:  "hidden",
+        display: "flex",
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
       }}
     >
-      {/* Left panel — conversation list */}
+      {/* Left rail — page title + search + list (same inset as Leads / Settings) */}
       <div
         style={{
-          width:         "320px",
-          flexShrink:    0,
-          display:       "flex",
+          width: LEFT_RAIL_WIDTH,
+          flexShrink: 0,
+          display: "flex",
           flexDirection: "column",
-          background:    "var(--theme-paper-subtle)",
-          borderRight:   "1px solid var(--theme-paper-border)",
-          overflow:      "hidden",
+          paddingTop: "var(--space-8)",
+          paddingLeft: "var(--space-8)",
+          background: "var(--theme-paper)",
+          borderRight: "1px solid var(--theme-paper-border)",
+          overflow: "hidden",
         }}
       >
-        {/* Left header */}
         <div
-          style={{
-            display:        "flex",
-            alignItems:     "center",
-            gap:            "var(--space-2)",
-            padding:        "0 var(--space-5)",
-            height:         "64px",
-            flexShrink:     0,
-            borderBottom:   "1px solid var(--theme-paper-border)",
-          }}
+          className="mb-6 flex shrink-0 items-center justify-between gap-4"
+          style={{ paddingRight: "var(--space-4)" }}
         >
-          <span
-            style={{
-              fontFamily:  "var(--font-display, var(--font-sans))",
-              fontSize:    "var(--text-lg)",
-              fontWeight:  "var(--weight-semibold)",
-              color:       "var(--theme-text-primary)",
-            }}
-          >
-            WhatsApp
-          </span>
-
-          {/* Unread badge */}
+          <h1 className="type-page-title m-0">
+            WhatsApp<span className="page-title-dot">.</span>
+          </h1>
           {unreadCount > 0 && (
             <span
               style={{
-                display:        "inline-flex",
-                alignItems:     "center",
+                display: "inline-flex",
+                alignItems: "center",
                 justifyContent: "center",
-                minWidth:       "20px",
-                height:         "20px",
-                padding:        "0 var(--space-1)",
-                borderRadius:   "var(--radius-full)",
-                background:     "var(--theme-accent)",
-                color:          "var(--theme-accent-fg)",
-                fontFamily:     "var(--font-sans)",
-                fontSize:       "var(--text-xs)",
-                fontWeight:     "var(--weight-semibold)",
+                minWidth: "22px",
+                height: "22px",
+                padding: "0 var(--space-1)",
+                borderRadius: "var(--radius-full)",
+                background: "var(--theme-accent)",
+                color: "var(--theme-accent-fg)",
+                fontFamily: "var(--font-sans)",
+                fontSize: "var(--text-xs)",
+                fontWeight: "var(--weight-semibold)",
+                flexShrink: 0,
               }}
             >
               {unreadCount > 99 ? "99+" : unreadCount}
@@ -197,45 +236,46 @@ export function WhatsAppShell({
           )}
         </div>
 
-        {/* Conversation list */}
-        <div style={{ flex: 1, overflow: "hidden" }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <ConversationList
             conversations={conversations}
             activeConversationId={activeConversationId}
             onSelect={handleSelectConversation}
             onLoadMore={handleLoadMore}
             hasMore={hasMore}
-            isLoadingMore={isLoadingMore}
+            isLoadingMore={isLoadingMore || isRefetchingList}
+            period={period}
           />
         </div>
       </div>
 
-      {/* Right panel — conversation or empty state */}
+      {/* Right pane — full height from top; contact header owns top breathing room */}
       <div
         style={{
-          flex:       1,
-          minWidth:   0,
-          background: "var(--theme-paper)",
-          overflow:   "hidden",
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+          background: "var(--theme-paper-subtle)",
+          overflow: "hidden",
         }}
       >
         {activeConversation ? (
           isLoadingConv ? (
             <div
               style={{
-                display:        "flex",
-                alignItems:     "center",
+                display: "flex",
+                alignItems: "center",
                 justifyContent: "center",
-                height:         "100%",
+                height: "100%",
               }}
             >
               <MessageCircle
                 style={{
-                  width:       "32px",
-                  height:      "32px",
+                  width: "32px",
+                  height: "32px",
                   strokeWidth: 1.5,
-                  color:       "var(--theme-text-tertiary)",
-                  animation:   "eia-spin 1s linear infinite",
+                  color: "var(--theme-text-tertiary)",
+                  animation: "eia-spin 1s linear infinite",
                 }}
               />
             </div>

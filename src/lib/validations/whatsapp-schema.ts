@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WHATSAPP_PERIODS } from '@/lib/constants/whatsapp-period';
 
 // ─────────────────────────────────────────────
 // Meta webhook envelope
@@ -82,3 +83,24 @@ export const ResolveConversationSchema = z.object({
 });
 
 export type ResolveConversationInput = z.infer<typeof ResolveConversationSchema>;
+
+// ─────────────────────────────────────────────
+// Conversation list period filter
+// ─────────────────────────────────────────────
+
+export const WhatsAppListFilterSchema = z.object({
+  period:     z.enum(WHATSAPP_PERIODS).optional(),
+  customFrom: z.string().optional().nullable(),
+  customTo:   z.string().optional().nullable(),
+  limit:      z.number().int().min(1).max(100).optional(),
+  cursor:     z.string().optional().nullable(),
+});
+
+export type WhatsAppListFilterInput = z.infer<typeof WhatsAppListFilterSchema>;
+
+export const WhatsAppSearchFilterSchema = z.object({
+  query:      z.string().min(1).max(200),
+  period:     z.enum(WHATSAPP_PERIODS).optional(),
+  customFrom: z.string().optional().nullable(),
+  customTo:   z.string().optional().nullable(),
+});

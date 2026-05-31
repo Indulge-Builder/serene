@@ -15,6 +15,15 @@ tasks/page.tsx          ← thin orchestrator (session read + URL parse only —
 
 **`TasksSkeleton.tsx`:** `<Suspense>` fallback. Two variants: `personal` (3 priority sections × 5 task rows) and `group` (4 group cards). Stagger delays: 0/80/160/240/320ms per §11.4. Uses `var(--theme-paper-subtle)` for shimmer — never hardcoded colours.
 
+## Filter bar (`TasksShell` + `TasksFilters`)
+
+- Single paper strip: **My Tasks / Group Tasks** `TabSelector` **left** (`variant="accent"`, `indicatorLayoutId="tasks-page-tabs"`), **filters** to the right in the same row. **Create button** is in the page header (`AddTaskButton`, same row as `<h1>`) — mirrors Leads. `TasksCreateProvider` wires header clicks to tab modals via `createTrigger`.
+- Filter state lives in `TasksShell` (separate `personalFilters` / `groupFilters` objects — switching tabs preserves each tab’s filters).
+- **All filtering is client-side** via `src/lib/utils/task-client-filters.ts`. Never add server refetches for filter changes.
+- **My Tasks:** search (title + description), tags (multi), status (multi), priority (multi). Tags fetched once via `getPersonalTaskTagsAction` when the personal tab is active.
+- **Group Tasks:** search (group title), status, priority, domain (`FilterDropdown`, admin/founder only, domains present in roster), progress (in progress / complete / no subtasks).
+- Result count in the filter bar is reported from each tab (`onFilteredCountChange`) so optimistic row updates stay accurate.
+
 ## Lazy-loaded completed tasks
 
 Completed tasks in `PersonalTasksTab` are NOT fetched on page load. They are fetched lazily on the first time the user expands the COMPLETED accordion section.
@@ -71,6 +80,42 @@ tasks/[id]/page.tsx          ← thin orchestrator (session read + params only �
 **`WorkspaceSkeleton.tsx`:** `<Suspense>` fallback. Renders a group header skeleton (title + priority badge + domain pill + two action button outlines), a view-toggle skeleton (two tab buttons), and five subtask row skeletons. Stagger: 0/80/160/240/320ms per §11.4. Uses `var(--theme-paper-subtle)` for shimmer — never hardcoded colours. Does NOT include the back-navigation link — that renders in the page shell immediately.
 
 **Prop boundary contract:** `WorkspaceAsync` passes only JSON-serialisable plain objects to `GroupTaskWorkspace` (`TaskGroup` and `SubtaskWithAssignee[]` — string timestamps, no Date instances, no class instances).
+
+---
+
+## Gia Tasks tab — domain-aware logic (2026-05-31)
+
+`page.tsx` computes `isGiaDomain = GIA_DOMAINS.includes(profile.domain)`.
+
+- **Gia agent:** `validTabs = ['gia', 'personal']` — Gia tab is the default.
+- **Gia manager/admin/founder:** `validTabs = ['gia', 'personal', 'group']`.
+- **Non-Gia:** `validTabs = ['personal', 'group']` — Gia tab never rendered or reachable.
+
+`?tab=gia` for a non-Gia caller resolves to `validTabs[0]` server-side — no error, no blank page.
+
+**Gia tab data path:**
+
+```
+page.tsx   ← getGiaTasksForUser not called here (thin orchestrator)
+  └─ <Suspense fallback={<TasksSkeleton tab="gia" />}>
+       └─ TasksAsync   ← calls getGiaTasksForUser(userId, role, domain) when tab === 'gia'
+            └─ TasksShell  ← renders GiaTasksTab with giaTasks prop
+                 └─ GiaTasksTab  ← date-groups tasks, renders GiaTaskRow items
+```
+
+**`get_gia_tasks` RPC (migration 0055):**
+- `p_role = 'agent'` → `tasks.assigned_to = p_user_id`
+- Other roles → `leads.domain = p_domain`
+- `p_domain` cast to `app_domain` enum inside the function — no `42883` on `=` operator mismatch.
+- Order: active tasks first, then `due_at ASC NULLS LAST, created_at ASC`.
+
+**`searchLeadsAction`** in `lib/actions/leads.ts`:
+- Calls `searchLeadsForTask` in `leads-service.ts`.
+- Scoped by caller role: agent → `assigned_to = userId`; manager → `domain`; admin/founder → all.
+- Returns max 8 results. Used by `CreateGiaTaskModal` lead picker (300ms debounce).
+
+**`TaskTab` type** exported from `page.tsx`: `'gia' | 'personal' | 'group'`.
+All shell components (`TasksAsync`, `TasksShell`, `AddTaskButton`, `TasksSkeleton`) consume this type — do not widen or narrow it elsewhere.
 
 ---
 

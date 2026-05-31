@@ -3,9 +3,12 @@
 /**
  * SubTaskModal — centered two-zone task detail modal.
  *
- * Zone A (38%): The Brief — title, notes/objective, checklist (group subtasks),
- *               key variables (deadline, assignee, status, priority), metadata.
- * Zone B (62%): Activity — TaskRemarksPanel.
+ * Two-zone CSS grid (38% / 62%):
+ *   Row 1 — Zone A header: title + description (left), status + priority (right).
+ *           Zone B header: edit / delete / close icons (right).
+ *   Row 2 — Zone A body: checklist, details, metadata (scroll).
+ *           Zone B body: TaskRemarksPanel (messages + composer).
+ * Row heights align so messages start level with Zone A body — no harsh header rule.
  *
  * Pre-mortem addressed:
  * - AnimatePresence must wrap the conditional at the CALL SITE, not inside
@@ -31,15 +34,12 @@ import {
   X,
   ChevronRight,
   Pencil,
-  MoreHorizontal,
   CheckSquare,
   CalendarDays,
   User,
-  AlertCircle,
   CheckCircle2,
   Trash2,
   GripVertical,
-  Plus,
 } from "lucide-react";
 import {
   DndContext,
@@ -68,8 +68,8 @@ import { TASK_STATUS, TASK_PRIORITY } from "@/lib/constants/task-constants";
 import { TaskRemarksPanel, type TaskRemarkWithAuthor } from "@/components/tasks/TaskRemarksPanel";
 import { TaskStatusIcon } from "@/components/tasks/TaskStatusIcon";
 import { Avatar } from "@/components/ui/Avatar";
-import { InfoRow } from "@/components/ui/InfoRow";
-import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { EASE_OUT_EXPO, FAST_DURATION } from '@/lib/constants/motion';
+import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
 import type {
   Task,
   TaskStatus,
@@ -81,6 +81,14 @@ import type {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type SubTaskModalTaskUpdate = {
+  id:          string;
+  status?:     TaskStatus;
+  priority?:   TaskPriority;
+  title?:      string;
+  description?: string | null;
+};
+
 export interface SubTaskModalProps {
   open:             boolean;
   onClose:          () => void;
@@ -90,6 +98,91 @@ export interface SubTaskModalProps {
   initialRemarks:   TaskRemarkWithAuthor[];
   callerProfile:    Pick<Profile, "id" | "role" | "domain">;
   currentUserName?: string;
+  /** Fired after a successful server write so list/board parents can sync without refresh */
+  onTaskUpdated?:   (update: SubTaskModalTaskUpdate) => void;
+  onTaskDeleted?:   (taskId: string) => void;
+}
+
+// ─── Icon button ──────────────────────────────────────────────────────────────
+
+type IconButtonVariant = "edit" | "danger" | "close";
+
+function iconButtonStyles(
+  variant: IconButtonVariant,
+  active?: boolean,
+  danger?: boolean,
+): React.CSSProperties {
+  const base: React.CSSProperties = {
+    display:        "flex",
+    alignItems:     "center",
+    justifyContent: "center",
+    width:          "30px",
+    height:         "30px",
+    borderRadius:   "var(--radius-sm)",
+    cursor:         "pointer",
+    transition:     "var(--transition-hover)",
+    flexShrink:     0,
+  };
+
+  switch (variant) {
+    case "edit":
+      return {
+        ...base,
+        border: active
+          ? "1px solid var(--theme-accent)"
+          : "1px solid color-mix(in srgb, var(--theme-accent) 32%, transparent)",
+        background: active
+          ? "color-mix(in srgb, var(--theme-accent) 18%, transparent)"
+          : "color-mix(in srgb, var(--theme-accent) 10%, var(--theme-paper))",
+        color: active ? "var(--theme-accent-hover)" : "var(--theme-accent)",
+      };
+    case "danger":
+      return {
+        ...base,
+        border: danger
+          ? "1px solid color-mix(in srgb, var(--color-danger) 45%, transparent)"
+          : "1px solid color-mix(in srgb, var(--color-danger) 22%, transparent)",
+        background: danger
+          ? "color-mix(in srgb, var(--color-danger) 12%, transparent)"
+          : "var(--color-danger-light)",
+        color: "var(--color-danger-text)",
+      };
+    case "close":
+      return {
+        ...base,
+        border:     "1px solid var(--theme-paper-border)",
+        background: "var(--theme-paper-subtle)",
+        color:      "var(--theme-text-tertiary)",
+      };
+  }
+}
+
+function IconButton({
+  onClick,
+  label,
+  variant,
+  active,
+  danger,
+  children,
+}: {
+  onClick: () => void;
+  label: string;
+  variant: IconButtonVariant;
+  active?: boolean;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      style={iconButtonStyles(variant, active, danger)}
+    >
+      {children}
+    </button>
+  );
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -100,35 +193,148 @@ const ALL_STATUSES: TaskStatus[] = [
 
 const ALL_PRIORITIES: TaskPriority[] = ["urgent", "high", "normal"];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+const META_PILL_TRIGGER: React.CSSProperties = {
+  display:        "inline-flex",
+  alignItems:     "center",
+  justifyContent: "center",
+  gap:            "var(--space-1)",
+  minHeight:      28,
+  padding:        "0 var(--space-3)",
+  borderRadius:   "var(--radius-full)",
+  fontFamily:     "var(--font-sans)",
+  fontSize:       "var(--text-xs)",
+  fontWeight:     "var(--weight-semibold)",
+  whiteSpace:     "nowrap",
+  cursor:         "pointer",
+  transition:     "var(--transition-hover)",
+  flexShrink:     0,
+  lineHeight:     1,
+};
 
-function truncate(str: string, max: number): string {
-  return str.length > max ? str.slice(0, max) + "…" : str;
-}
+// ─── Add action item row (always visible when caller can edit) ────────────────
 
-// ─── Eyebrow label ────────────────────────────────────────────────────────────
+function ActionItemAddRow({
+  value,
+  onChange,
+  onSubmit,
+  hasItemsAbove,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  hasItemsAbove: boolean;
+  disabled?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
 
-function EyebrowLabel({ children }: { children: React.ReactNode }) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onSubmit();
+    }
+  }
+
   return (
-    <span
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+      onClick={() => {
+        if (!disabled) inputRef.current?.focus();
+      }}
       style={{
-        display:       "block",
-        fontFamily:    "var(--font-sans)",
-        fontSize:      "var(--text-2xs)",
-        fontWeight:    "var(--weight-semibold)",
-        letterSpacing: "var(--tracking-widest)",
-        textTransform: "uppercase",
-        color:         "var(--theme-text-tertiary)",
-        marginBottom:  "var(--space-1)",
+        display:       "flex",
+        alignItems:    "center",
+        gap:           "var(--space-2)",
+        padding:       "var(--space-2) var(--space-1)",
+        marginTop:     hasItemsAbove ? "var(--space-1)" : 0,
+        borderRadius:  "var(--radius-sm)",
+        borderTop:     hasItemsAbove ? "1px solid var(--theme-paper-border)" : "none",
+        paddingTop:    hasItemsAbove ? "var(--space-3)" : "var(--space-2)",
+        cursor:        disabled ? "default" : "text",
+        background:    focused ? "var(--theme-paper-subtle)" : "transparent",
+        boxShadow:     focused ? "inset 0 0 0 1px var(--theme-accent-surface)" : "none",
+        transition:    "background var(--transition-hover), box-shadow var(--transition-hover)",
+        opacity:       disabled ? 0.5 : 1,
       }}
     >
-      {children}
-    </span>
+      <div
+        aria-hidden
+        style={{
+          width:        "16px",
+          height:       "16px",
+          borderRadius: "var(--radius-xs)",
+          border:       "1.5px dashed var(--theme-paper-border)",
+          flexShrink:   0,
+          transition:   "border-color var(--transition-hover)",
+          ...(focused ? { borderColor: "var(--theme-accent)" } : {}),
+        }}
+      />
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        placeholder="Add an action item…"
+        aria-label="Add an action item"
+        style={{
+          flex:         1,
+          border:       "none",
+          outline:      "none",
+          background:   "transparent",
+          fontFamily:   "var(--font-sans)",
+          fontSize:     "var(--text-sm)",
+          color:        "var(--theme-text-primary)",
+          padding:      0,
+          caretColor:   "var(--theme-accent)",
+        }}
+      />
+      <AnimatePresence initial={false}>
+        {value.trim().length > 0 && !disabled && (
+          <motion.button
+            key="add-action-submit"
+            type="button"
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSubmit();
+            }}
+            whileTap={{ scale: 0.92 }}
+            aria-label="Add action item"
+            style={{
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              flexShrink:     0,
+              padding:        "2px var(--space-2)",
+              borderRadius:   "var(--radius-full)",
+              border:         "none",
+              background:     "var(--theme-accent)",
+              color:          "var(--theme-accent-fg)",
+              fontFamily:     "var(--font-sans)",
+              fontSize:       "var(--text-2xs)",
+              fontWeight:     "var(--weight-semibold)",
+              letterSpacing:  "var(--tracking-wide)",
+              cursor:         "pointer",
+              willChange:     "transform",
+            }}
+          >
+            Add
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
-}
-
-function monoValue(text: string) {
-  return <span style={{ fontFamily: "var(--font-mono)" }}>{text}</span>;
 }
 
 // ─── Sortable checklist item ──────────────────────────────────────────────────
@@ -160,10 +366,10 @@ function SortableChecklistItem({
       ref={setNodeRef}
       style={{
         ...style,
-        display:     "flex",
-        alignItems:  "center",
-        gap:         "var(--space-2)",
-        padding:     "var(--space-1) 0",
+        display:    "flex",
+        alignItems: "center",
+        gap:        "var(--space-2)",
+        padding:    "var(--space-1) 0",
       }}
     >
       {editMode && (
@@ -171,10 +377,10 @@ function SortableChecklistItem({
           {...attributes}
           {...listeners}
           style={{
-            display:    "flex",
-            cursor:     "grab",
-            color:      "var(--theme-text-tertiary)",
-            flexShrink: 0,
+            display:     "flex",
+            cursor:      "grab",
+            color:       "var(--theme-text-tertiary)",
+            flexShrink:  0,
             touchAction: "none",
           }}
         >
@@ -219,15 +425,16 @@ function SortableChecklistItem({
           value={item.text}
           onChange={(e) => onTextChange(item.id, e.target.value)}
           style={{
-            flex:       1,
-            border:     "none",
+            flex:         1,
+            border:       "none",
             borderBottom: "1px solid var(--theme-paper-border)",
-            outline:    "none",
-            background: "transparent",
-            fontFamily: "var(--font-sans)",
-            fontSize:   "var(--text-sm)",
-            color:      "var(--theme-text-primary)",
-            padding:    "var(--space-px) 0",
+            outline:      "none",
+            background:   "transparent",
+            fontFamily:   "var(--font-sans)",
+            fontSize:     "var(--text-sm)",
+            color:        "var(--theme-text-primary)",
+            padding:      "var(--space-px) 0",
+            caretColor:   "var(--theme-accent)",
           }}
         />
       ) : (
@@ -236,7 +443,9 @@ function SortableChecklistItem({
             flex:           1,
             fontFamily:     "var(--font-sans)",
             fontSize:       "var(--text-sm)",
-            color:          item.checked ? "var(--theme-text-tertiary)" : "var(--theme-text-primary)",
+            color:          item.checked
+              ? "var(--theme-text-tertiary)"
+              : "var(--theme-text-primary)",
             textDecoration: item.checked ? "line-through" : "none",
             lineHeight:     "var(--leading-relaxed)",
           }}
@@ -303,6 +512,8 @@ export function SubTaskModal({
   initialRemarks,
   callerProfile,
   currentUserName = "",
+  onTaskUpdated,
+  onTaskDeleted,
 }: SubTaskModalProps) {
   const isGroupSubtask = task.task_category === "group_subtask";
 
@@ -313,10 +524,10 @@ export function SubTaskModal({
   const [priority,    setPriority]    = useState<TaskPriority>(task.priority);
   const [checklist,   setChecklist]   = useState<ChecklistItem[]>(task.attachments ?? []);
 
-  const [editMode,        setEditMode]        = useState(false);
-  const [showStatusMenu,  setShowStatusMenu]  = useState(false);
-  const [showPriorityMenu, setShowPriorityMenu] = useState(false);
-  const [showMoreMenu,    setShowMoreMenu]    = useState(false);
+  const [editMode,          setEditMode]          = useState(false);
+  const [showStatusMenu,    setShowStatusMenu]    = useState(false);
+  const [showPriorityMenu,  setShowPriorityMenu]  = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const [editTitle, setEditTitle]       = useState(task.title);
   const [editDesc,  setEditDesc]        = useState(task.description ?? "");
@@ -332,7 +543,6 @@ export function SubTaskModal({
   // ── Refs for dropdown click-outside ──────────────────────────────────────
   const statusMenuRef   = useRef<HTMLDivElement>(null);
   const priorityMenuRef = useRef<HTMLDivElement>(null);
-  const moreMenuRef     = useRef<HTMLDivElement>(null);
 
   // ── Sync task prop into local state ──────────────────────────────────────
   useEffect(() => {
@@ -365,13 +575,14 @@ export function SubTaskModal({
       if (priorityMenuRef.current && !priorityMenuRef.current.contains(e.target as Node)) {
         setShowPriorityMenu(false);
       }
-      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
-        setShowMoreMenu(false);
-      }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  function emitTaskUpdate(update: SubTaskModalTaskUpdate) {
+    onTaskUpdated?.(update);
+  }
 
   // ── Status update (optimistic) ────────────────────────────────────────────
   function handleStatusChange(newStatus: TaskStatus) {
@@ -384,7 +595,9 @@ export function SubTaskModal({
       if (result.error) {
         setStatus(prev);
         toast.danger("Couldn't update status", { message: result.error });
+        return;
       }
+      emitTaskUpdate({ id: task.id, status: newStatus });
     });
   }
 
@@ -399,7 +612,9 @@ export function SubTaskModal({
       if (result.error) {
         setPriority(prev);
         toast.danger("Couldn't update priority", { message: result.error });
+        return;
       }
+      emitTaskUpdate({ id: task.id, priority: newPriority });
     });
   }
 
@@ -448,6 +663,13 @@ export function SubTaskModal({
         }
         setTitle(trimmedTitle);
         setDescription(editDesc.trim());
+        emitTaskUpdate({
+          id: task.id,
+          ...(trimmedTitle !== task.title ? { title: trimmedTitle } : {}),
+          ...(editDesc.trim() !== (task.description ?? "")
+            ? { description: editDesc.trim() || null }
+            : {}),
+        });
       }
 
       // Save checklist separately if changed
@@ -472,12 +694,13 @@ export function SubTaskModal({
 
   // ── Delete task ───────────────────────────────────────────────────────────
   function handleDeleteTask() {
-    setShowMoreMenu(false);
+    setShowDeleteConfirm(false);
     startTransition(async () => {
       const result = await deleteTaskAction({ taskId: task.id });
       if (result.error) {
         toast.danger("Couldn't delete task", { message: result.error });
       } else {
+        onTaskDeleted?.(task.id);
         onClose();
       }
     });
@@ -500,23 +723,36 @@ export function SubTaskModal({
     );
   }
 
-  function handleAddNewItem() {
-    const text = newItemText.trim();
-    if (!text) return;
-    const newItem: ChecklistItem = {
+  function buildNewChecklistItem(text: string): ChecklistItem {
+    return {
       id:      `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       text,
       checked: false,
     };
-    setEditItems((prev) => [...prev, newItem]);
+  }
+
+  function handleAddNewItem() {
+    const text = newItemText.trim();
+    if (!text) return;
+    setEditItems((prev) => [...prev, buildNewChecklistItem(text)]);
     setNewItemText("");
   }
 
-  function handleNewItemKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleAddNewItem();
-    }
+  function handlePersistAddItem() {
+    const text = newItemText.trim();
+    if (!text) return;
+    const newItem = buildNewChecklistItem(text);
+    const updated = [...checklist, newItem];
+    const previous = checklist;
+    setChecklist(updated);
+    setNewItemText("");
+    startTransition(async () => {
+      const result = await updateChecklistAction({ taskId: task.id, items: updated });
+      if (result.error) {
+        setChecklist(previous);
+        toast.danger("Couldn't add action item", { message: result.error });
+      }
+    });
   }
 
   // ── DnD sensors ───────────────────────────────────────────────────────────
@@ -551,14 +787,17 @@ export function SubTaskModal({
   const totalCount  = checklist.length;
   const progressPct = totalCount > 0 ? (doneCount / totalCount) * 100 : 0;
 
+  const canEditChecklist = canToggleTaskComplete(
+    task,
+    callerProfile,
+    group?.domain ?? null,
+  );
+
+  const addRowHasItemsAbove = editMode ? editItems.length > 0 : totalCount > 0;
+
   // ── Status pill config ────────────────────────────────────────────────────
   const statusCfg   = TASK_STATUS[status];
   const priorityCfg = TASK_PRIORITY[priority];
-
-  // ── Composer placeholder ──────────────────────────────────────────────────
-  const composerPlaceholder = isGroupSubtask
-    ? "Log a progress update, note, or observation…"
-    : "Add a note…";
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -575,7 +814,7 @@ export function SubTaskModal({
         style={{
           position:   "fixed",
           inset:      0,
-          background: "var(--overlay-bg)",
+          background: "rgba(0,0,0,0.72)",
           zIndex:     "var(--z-overlay)" as React.CSSProperties["zIndex"],
         }}
       />
@@ -586,142 +825,205 @@ export function SubTaskModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+        initial={{ opacity: 0, scale: 0.97, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: 8 }}
+        transition={{ duration: 0.22, ease: EASE_OUT_EXPO }}
         onClick={(e) => e.stopPropagation()}
         style={{
-          position:      "fixed",
-          top:           0,
-          right:         0,
-          bottom:        0,
-          left:          "240px",
-          display:       "flex",
-          alignItems:    "center",
+          position:       "fixed",
+          top:            0,
+          right:          0,
+          bottom:         0,
+          left:           "240px",
+          display:        "flex",
+          alignItems:     "center",
           justifyContent: "center",
-          zIndex:        "var(--z-modal)" as React.CSSProperties["zIndex"],
-          pointerEvents: "none",
+          zIndex:         "var(--z-modal)" as React.CSSProperties["zIndex"],
+          pointerEvents:  "none",
         }}
       >
         <div
           style={{
-            pointerEvents:  "auto",
-            width:          "95vw",
-            maxWidth:       "1100px",
-            height:         "90vh",
-            maxHeight:      "820px",
-            background:     "var(--theme-paper)",
-            borderRadius:   "var(--radius-lg)",
-            boxShadow:      "var(--shadow-4)",
-            overflow:       "hidden",
-            display:        "flex",
-            flexDirection:  "column",
+            pointerEvents: "auto",
+            width:         "95vw",
+            maxWidth:      "1100px",
+            height:        "90vh",
+            maxHeight:     "820px",
+            background:    "var(--theme-paper)",
+            borderRadius:  "var(--radius-lg)",
+            boxShadow:     "var(--shadow-4)",
+            border:        "1px solid var(--theme-paper-border)",
+            overflow:      "hidden",
+            display:       "flex",
+            flexDirection: "column",
           }}
         >
-          {/* ── HEADER ─────────────────────────────────────────────── */}
+          {/* ── TWO-ZONE GRID — shared header row, aligned content row ─ */}
           <div
             style={{
-              display:        "flex",
-              alignItems:     "center",
-              justifyContent: "space-between",
-              padding:        "var(--space-3) var(--space-5)",
-              borderBottom:   "1px solid var(--theme-paper-border)",
-              flexShrink:     0,
-              gap:            "var(--space-3)",
+              display:              "grid",
+              gridTemplateColumns:  "38% 62%",
+              gridTemplateRows:     "auto 1fr",
+              flex:                 1,
+              minHeight:            0,
+              overflow:             "hidden",
+              background:           "var(--theme-paper-subtle)",
             }}
           >
-            {/* Left: breadcrumb */}
+            {/* Zone A header — title + description | status + priority */}
             <div
               id={titleId}
               style={{
-                display:    "flex",
-                alignItems: "center",
-                gap:        "var(--space-1)",
-                minWidth:   0,
-                flex:       1,
+                gridColumn:     1,
+                gridRow:        1,
+                display:        "flex",
+                alignItems:     "flex-start",
+                justifyContent: "space-between",
+                gap:            "var(--space-5)",
+                padding:        "var(--space-5) var(--space-6) var(--space-4)",
+                paddingLeft:    "var(--space-7)",
               }}
             >
-              <span
-                style={{
-                  fontFamily:  "var(--font-sans)",
-                  fontSize:    "var(--text-xs)",
-                  color:       "var(--theme-text-tertiary)",
-                  whiteSpace:  "nowrap",
-                  flexShrink:  0,
-                }}
-              >
-                {isGroupSubtask && group ? truncate(group.title, 28) : "My Tasks"}
-              </span>
-              <ChevronRight
-                style={{
-                  width:       12,
-                  height:      12,
-                  strokeWidth: 1.5,
-                  color:       "var(--theme-text-tertiary)",
-                  flexShrink:  0,
-                }}
-              />
-              <span
-                style={{
-                  fontFamily:  "var(--font-sans)",
-                  fontSize:    "var(--text-sm)",
-                  fontWeight:  "var(--weight-semibold)",
-                  color:       "var(--theme-text-primary)",
-                  overflow:    "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace:  "nowrap",
-                }}
-              >
-                {truncate(title, 40)}
-              </span>
-            </div>
+              {/* Left: title + description */}
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+                {editMode ? (
+                  <input
+                    autoFocus
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    maxLength={255}
+                    style={{
+                      width:        "100%",
+                      border:       "1px solid var(--theme-paper-border)",
+                      borderRadius: "var(--radius-sm)",
+                      outline:      "none",
+                      background:   "var(--theme-paper-subtle)",
+                      fontFamily:   "var(--font-serif)",
+                      fontSize:     "var(--text-xl)",
+                      fontWeight:   "var(--weight-semibold)",
+                      color:        "var(--theme-text-primary)",
+                      padding:      "var(--space-2) var(--space-3)",
+                      caretColor:   "var(--theme-accent)",
+                      boxSizing:    "border-box",
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = "var(--theme-accent)";
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = "var(--theme-paper-border)";
+                    }}
+                  />
+                ) : (
+                  <h2
+                    style={{
+                      margin:        0,
+                      fontFamily:    "var(--font-serif)",
+                      fontSize:      "var(--text-xl)",
+                      fontWeight:    "var(--weight-semibold)",
+                      color:         "var(--theme-text-primary)",
+                      lineHeight:    "var(--leading-snug)",
+                      letterSpacing: "var(--tracking-tight)",
+                    }}
+                  >
+                    {title}
+                  </h2>
+                )}
 
-            {/* Right: status pill + priority pill + divider + actions */}
-            <div
-              style={{
-                display:    "flex",
-                alignItems: "center",
-                gap:        "var(--space-2)",
-                flexShrink: 0,
-              }}
-            >
-              {/* Status pill */}
+                {editMode ? (
+                  <textarea
+                    value={editDesc}
+                    onChange={(e) => setEditDesc(e.target.value)}
+                    rows={2}
+                    style={{
+                      width:        "100%",
+                      border:       "1px solid var(--theme-paper-border)",
+                      borderRadius: "var(--radius-sm)",
+                      outline:      "none",
+                      background:   "var(--theme-paper-subtle)",
+                      resize:       "vertical",
+                      fontFamily:   "var(--font-sans)",
+                      fontSize:     "var(--text-sm)",
+                      color:        "var(--theme-text-primary)",
+                      lineHeight:   "var(--leading-relaxed)",
+                      padding:      "var(--space-2) var(--space-3)",
+                      caretColor:   "var(--theme-accent)",
+                      boxSizing:    "border-box",
+                      maxHeight:    "120px",
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = "var(--theme-accent)";
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = "var(--theme-paper-border)";
+                    }}
+                  />
+                ) : (
+                  <span
+                    style={{
+                      display:    "block",
+                      fontFamily: description ? "var(--font-sans)" : "var(--font-serif)",
+                      fontStyle:  description ? "normal" : "italic",
+                      fontSize:   "var(--text-sm)",
+                      color:      description
+                        ? "var(--theme-text-secondary)"
+                        : "var(--theme-text-tertiary)",
+                      lineHeight: "var(--leading-relaxed)",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {description || "No description yet."}
+                  </span>
+                )}
+              </div>
+
+              {/* Right: status + priority */}
+              <div
+                style={{
+                  display:       "flex",
+                  flexDirection: "column",
+                  alignItems:    "flex-end",
+                  gap:           "var(--space-2)",
+                  flexShrink:    0,
+                  paddingTop:    "var(--space-1)",
+                }}
+              >
+                <div
+                  style={{
+                    display:        "flex",
+                    alignItems:     "center",
+                    justifyContent: "flex-end",
+                    gap:            "var(--space-2)",
+                    flexWrap:       "nowrap",
+                  }}
+                >
+
+                {/* Status selector */}
               <div ref={statusMenuRef} style={{ position: "relative" }}>
                 <button
                   type="button"
                   onClick={() => {
                     setShowStatusMenu((v) => !v);
                     setShowPriorityMenu(false);
-                    setShowMoreMenu(false);
                   }}
                   style={{
-                    display:      "inline-flex",
-                    alignItems:   "center",
-                    gap:          "var(--space-1)",
-                    padding:      "var(--space-1) var(--space-2)",
-                    borderRadius: "var(--radius-full)",
-                    border:       "1px solid var(--theme-paper-border)",
-                    background:   "var(--theme-paper-subtle)",
-                    color:        statusCfg.color,
-                    fontFamily:   "var(--font-sans)",
-                    fontSize:     "var(--text-xs)",
-                    fontWeight:   "var(--weight-semibold)",
-                    cursor:       "pointer",
-                    transition:   "var(--transition-interactive)",
-                    whiteSpace:   "nowrap",
+                    ...META_PILL_TRIGGER,
+                    background: statusCfg.pillBg,
+                    color:      statusCfg.pillText,
+                    border:     `1px solid color-mix(in srgb, ${statusCfg.color} 20%, transparent)`,
                   }}
                 >
                   <TaskStatusIcon status={status} size={11} />
                   {statusCfg.label}
+                  <ChevronRight style={{ width: 10, height: 10, strokeWidth: 2, opacity: 0.5, transform: "rotate(90deg)", flexShrink: 0 }} />
                 </button>
 
                 <AnimatePresence>
                   {showStatusMenu && (
                     <motion.div
-                      initial={{ opacity: 0, y: -4 }}
+                      initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
+                      exit={{ opacity: 0, y: 6 }}
                       transition={{ duration: 0.15 }}
                       style={{
                         position:     "absolute",
@@ -733,7 +1035,8 @@ export function SubTaskModal({
                         borderRadius: "var(--radius-md)",
                         boxShadow:    "var(--shadow-3)",
                         overflow:     "hidden",
-                        minWidth:     "140px",
+                        minWidth:     "160px",
+                        padding:      "var(--space-1)",
                       }}
                     >
                       {ALL_STATUSES.map((s) => {
@@ -745,23 +1048,29 @@ export function SubTaskModal({
                             type="button"
                             onClick={() => handleStatusChange(s)}
                             style={{
-                              display:     "flex",
-                              alignItems:  "center",
-                              gap:         "var(--space-2)",
-                              width:       "100%",
-                              padding:     "var(--space-2) var(--space-3)",
-                              border:      "none",
-                              background:  active ? "var(--theme-paper-subtle)" : "transparent",
-                              color:       cfg.color,
-                              fontFamily:  "var(--font-sans)",
-                              fontSize:    "var(--text-sm)",
-                              fontWeight:  active ? "var(--weight-semibold)" : "var(--weight-normal)",
-                              cursor:      "pointer",
-                              transition:  "var(--transition-hover)",
-                              textAlign:   "left",
+                              display:      "flex",
+                              alignItems:   "center",
+                              gap:          "var(--space-2)",
+                              width:        "100%",
+                              padding:      "var(--space-2) var(--space-3)",
+                              border:       "none",
+                              borderRadius: "var(--radius-sm)",
+                              background:   active ? cfg.remarkBg : "transparent",
+                              color:        active ? cfg.remarkColor : "var(--theme-text-secondary)",
+                              fontFamily:   "var(--font-sans)",
+                              fontSize:     "var(--text-sm)",
+                              cursor:       "pointer",
+                              textAlign:    "left",
+                              transition:   "background 0.1s",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!active) (e.currentTarget as HTMLButtonElement).style.background = "var(--theme-paper-subtle)";
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent";
                             }}
                           >
-                            <TaskStatusIcon status={s} size={12} />
+                            <span style={{ display: "block", width: 7, height: 7, borderRadius: "var(--radius-full)", background: cfg.color, flexShrink: 0 }} />
                             {cfg.label}
                           </button>
                         );
@@ -771,41 +1080,41 @@ export function SubTaskModal({
                 </AnimatePresence>
               </div>
 
-              {/* Priority pill */}
+              {/* Priority selector */}
               <div ref={priorityMenuRef} style={{ position: "relative" }}>
                 <button
                   type="button"
                   onClick={() => {
                     setShowPriorityMenu((v) => !v);
                     setShowStatusMenu(false);
-                    setShowMoreMenu(false);
                   }}
                   style={{
-                    display:      "inline-flex",
-                    alignItems:   "center",
-                    gap:          "var(--space-1)",
-                    padding:      "var(--space-1) var(--space-2)",
-                    borderRadius: "var(--radius-full)",
-                    border:       "1px solid var(--theme-paper-border)",
-                    background:   "var(--theme-paper-subtle)",
-                    color:        priorityCfg.color,
-                    fontFamily:   "var(--font-sans)",
-                    fontSize:     "var(--text-xs)",
-                    fontWeight:   "var(--weight-semibold)",
-                    cursor:       "pointer",
-                    transition:   "var(--transition-interactive)",
-                    whiteSpace:   "nowrap",
+                    ...META_PILL_TRIGGER,
+                    background: "var(--theme-paper)",
+                    border:     `1px solid color-mix(in srgb, ${priorityCfg.color} 24%, var(--theme-paper-border))`,
+                    color:      priorityCfg.color,
                   }}
                 >
+                  <span
+                    style={{
+                      display:      "block",
+                      width:        6,
+                      height:       6,
+                      borderRadius: "var(--radius-full)",
+                      background:   priorityCfg.color,
+                      flexShrink:   0,
+                    }}
+                  />
                   {priorityCfg.label}
+                  <ChevronRight style={{ width: 10, height: 10, strokeWidth: 2, opacity: 0.5, transform: "rotate(90deg)", flexShrink: 0 }} />
                 </button>
 
                 <AnimatePresence>
                   {showPriorityMenu && (
                     <motion.div
-                      initial={{ opacity: 0, y: -4 }}
+                      initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
+                      exit={{ opacity: 0, y: 6 }}
                       transition={{ duration: 0.15 }}
                       style={{
                         position:     "absolute",
@@ -817,7 +1126,8 @@ export function SubTaskModal({
                         borderRadius: "var(--radius-md)",
                         boxShadow:    "var(--shadow-3)",
                         overflow:     "hidden",
-                        minWidth:     "120px",
+                        minWidth:     "130px",
+                        padding:      "var(--space-1)",
                       }}
                     >
                       {ALL_PRIORITIES.map((p) => {
@@ -829,21 +1139,30 @@ export function SubTaskModal({
                             type="button"
                             onClick={() => handlePriorityChange(p)}
                             style={{
-                              display:    "flex",
-                              alignItems: "center",
-                              width:      "100%",
-                              padding:    "var(--space-2) var(--space-3)",
-                              border:     "none",
-                              background: active ? "var(--theme-paper-subtle)" : "transparent",
-                              color:      cfg.color,
-                              fontFamily: "var(--font-sans)",
-                              fontSize:   "var(--text-sm)",
-                              fontWeight: active ? "var(--weight-semibold)" : "var(--weight-normal)",
-                              cursor:     "pointer",
-                              transition: "var(--transition-hover)",
-                              textAlign:  "left",
+                              display:      "flex",
+                              alignItems:   "center",
+                              gap:          "var(--space-2)",
+                              width:        "100%",
+                              padding:      "var(--space-2) var(--space-3)",
+                              border:       "none",
+                              borderRadius: "var(--radius-sm)",
+                              background:   active ? "var(--theme-paper-subtle)" : "transparent",
+                              color:        active ? cfg.color : "var(--theme-text-secondary)",
+                              fontFamily:   "var(--font-sans)",
+                              fontSize:     "var(--text-sm)",
+                              fontWeight:   active ? "var(--weight-semibold)" : "var(--weight-normal)",
+                              cursor:       "pointer",
+                              textAlign:    "left",
+                              transition:   "background 0.1s",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!active) (e.currentTarget as HTMLButtonElement).style.background = "var(--theme-paper-subtle)";
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent";
                             }}
                           >
+                            <span style={{ display: "block", width: 6, height: 6, borderRadius: "var(--radius-full)", background: cfg.color, flexShrink: 0 }} />
                             {cfg.label}
                           </button>
                         );
@@ -853,321 +1172,207 @@ export function SubTaskModal({
                 </AnimatePresence>
               </div>
 
-              {/* Divider */}
+                </div>
+              </div>
+            </div>
+
+            {/* Zone B header — action icons */}
+            <div
+              style={{
+                gridColumn:     2,
+                gridRow:        1,
+                display:        "flex",
+                flexDirection:  "column",
+                alignItems:     "flex-end",
+                gap:            "var(--space-2)",
+                padding:        "var(--space-5) var(--space-6) var(--space-4)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
+                <IconButton
+                  variant="edit"
+                  onClick={() => editMode ? setEditMode(false) : enterEditMode()}
+                  label={editMode ? "Cancel editing" : "Edit brief"}
+                  active={editMode}
+                >
+                  <Pencil style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
+                </IconButton>
+
+                {canDelete && (
+                  <IconButton
+                    variant="danger"
+                    onClick={() => setShowDeleteConfirm((v) => !v)}
+                    label="Delete task"
+                    danger={showDeleteConfirm}
+                  >
+                    <Trash2 style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
+                  </IconButton>
+                )}
+
+                <IconButton variant="close" onClick={onClose} label="Close">
+                  <X style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
+                </IconButton>
+              </div>
+
+            {/* Delete confirm banner — slides in */}
+            <AnimatePresence>
+              {showDeleteConfirm && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+                  style={{ overflow: "hidden" }}
+                >
+                  <div
+                    style={{
+                      display:        "flex",
+                      alignItems:     "center",
+                      justifyContent: "space-between",
+                      padding:        "var(--space-3) var(--space-4)",
+                      background:     "color-mix(in srgb, var(--color-danger) 8%, var(--theme-paper-subtle))",
+                      borderRadius:   "var(--radius-md)",
+                      gap:            "var(--space-4)",
+                      width:          "100%",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize:   "var(--text-sm)",
+                        color:      "var(--theme-text-secondary)",
+                      }}
+                    >
+                      This task will be permanently deleted. Are you sure?
+                    </span>
+                    <div style={{ display: "flex", gap: "var(--space-2)", flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(false)}
+                        style={{
+                          padding:      "var(--space-1) var(--space-3)",
+                          borderRadius: "var(--radius-sm)",
+                          border:       "1px solid var(--theme-paper-border)",
+                          background:   "var(--theme-paper)",
+                          color:        "var(--theme-text-secondary)",
+                          fontFamily:   "var(--font-sans)",
+                          fontSize:     "var(--text-sm)",
+                          cursor:       "pointer",
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteTask}
+                        style={{
+                          padding:      "var(--space-1) var(--space-3)",
+                          borderRadius: "var(--radius-sm)",
+                          border:       "none",
+                          background:   "var(--color-danger-text)",
+                          color:        "#ffffff",
+                          fontFamily:   "var(--font-sans)",
+                          fontSize:     "var(--text-sm)",
+                          fontWeight:   "var(--weight-semibold)",
+                          cursor:       "pointer",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            </div>
+
+            {/* Zone A body — checklist, details, metadata */}
+            <div
+              style={{
+                gridColumn:    1,
+                gridRow:       2,
+                minHeight:     0,
+                overflow:      "hidden",
+                display:       "flex",
+                flexDirection: "column",
+                position:      "relative",
+              }}
+            >
+              {/* Left accent glow bar */}
               <div
+                aria-hidden
                 style={{
-                  width:      "1px",
-                  height:     "20px",
-                  background: "var(--theme-paper-border)",
-                  flexShrink: 0,
+                  position:     "absolute",
+                  left:         0,
+                  top:          "var(--space-6)",
+                  bottom:       "var(--space-6)",
+                  width:        "2px",
+                  borderRadius: "var(--radius-full)",
+                  background:   "linear-gradient(to bottom, transparent, var(--theme-accent), transparent)",
+                  opacity:      0.4,
+                  pointerEvents: "none",
                 }}
               />
 
-              {/* Edit pencil */}
-              <button
-                type="button"
-                onClick={() => editMode ? setEditMode(false) : enterEditMode()}
-                aria-label={editMode ? "Cancel editing" : "Edit brief"}
-                title={editMode ? "Cancel editing" : "Edit brief"}
-                style={{
-                  display:        "flex",
-                  alignItems:     "center",
-                  justifyContent: "center",
-                  width:          "28px",
-                  height:         "28px",
-                  borderRadius:   "var(--radius-sm)",
-                  border:         editMode ? "1px solid var(--theme-accent)" : "1px solid var(--theme-paper-border)",
-                  background:     editMode ? "var(--theme-accent-surface)" : "transparent",
-                  color:          editMode ? "var(--theme-accent)" : "var(--theme-text-tertiary)",
-                  cursor:         "pointer",
-                  transition:     "var(--transition-hover)",
-                  flexShrink:     0,
-                }}
-              >
-                <Pencil style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
-              </button>
-
-              {/* More menu */}
-              <div ref={moreMenuRef} style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMoreMenu((v) => !v);
-                    setShowStatusMenu(false);
-                    setShowPriorityMenu(false);
-                  }}
-                  aria-label="More options"
-                  style={{
-                    display:        "flex",
-                    alignItems:     "center",
-                    justifyContent: "center",
-                    width:          "28px",
-                    height:         "28px",
-                    borderRadius:   "var(--radius-sm)",
-                    border:         "1px solid var(--theme-paper-border)",
-                    background:     "transparent",
-                    color:          "var(--theme-text-tertiary)",
-                    cursor:         "pointer",
-                    transition:     "var(--transition-hover)",
-                    flexShrink:     0,
-                  }}
-                >
-                  <MoreHorizontal style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
-                </button>
-
-                <AnimatePresence>
-                  {showMoreMenu && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      transition={{ duration: 0.15 }}
-                      style={{
-                        position:     "absolute",
-                        top:          "calc(100% + var(--space-1))",
-                        right:        0,
-                        zIndex:       "calc(var(--z-modal) + 1)" as React.CSSProperties["zIndex"],
-                        background:   "var(--theme-paper)",
-                        border:       "1px solid var(--theme-paper-border)",
-                        borderRadius: "var(--radius-md)",
-                        boxShadow:    "var(--shadow-3)",
-                        overflow:     "hidden",
-                        minWidth:     "140px",
-                      }}
-                    >
-                      {canDelete && (
-                        <button
-                          type="button"
-                          onClick={handleDeleteTask}
-                          style={{
-                            display:    "flex",
-                            alignItems: "center",
-                            gap:        "var(--space-2)",
-                            width:      "100%",
-                            padding:    "var(--space-2) var(--space-3)",
-                            border:     "none",
-                            background: "transparent",
-                            color:      "var(--color-danger-text)",
-                            fontFamily: "var(--font-sans)",
-                            fontSize:   "var(--text-sm)",
-                            cursor:     "pointer",
-                            transition: "var(--transition-hover)",
-                            textAlign:  "left",
-                          }}
-                          onMouseEnter={(e) => {
-                            (e.currentTarget as HTMLButtonElement).style.background = "var(--color-danger-light)";
-                          }}
-                          onMouseLeave={(e) => {
-                            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                          }}
-                        >
-                          <Trash2 style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
-                          Delete task
-                        </button>
-                      )}
-                      {!canDelete && (
-                        <div
-                          style={{
-                            padding:    "var(--space-3)",
-                            fontFamily: "var(--font-sans)",
-                            fontSize:   "var(--text-xs)",
-                            color:      "var(--theme-text-tertiary)",
-                          }}
-                        >
-                          No actions available
-                        </div>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Close */}
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                style={{
-                  display:        "flex",
-                  alignItems:     "center",
-                  justifyContent: "center",
-                  width:          "28px",
-                  height:         "28px",
-                  borderRadius:   "var(--radius-sm)",
-                  border:         "1px solid var(--theme-paper-border)",
-                  background:     "transparent",
-                  color:          "var(--theme-text-tertiary)",
-                  cursor:         "pointer",
-                  transition:     "var(--transition-hover)",
-                  flexShrink:     0,
-                }}
-              >
-                <X style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
-              </button>
-            </div>
-          </div>
-
-          {/* ── TWO-ZONE BODY ───────────────────────────────────────── */}
-          <div
-            style={{
-              display:  "flex",
-              flex:     1,
-              overflow: "hidden",
-            }}
-          >
-            {/* ── ZONE A — The Brief (38%) ──────────────────────────── */}
-            <div
-              style={{
-                flex:          "0 0 38%",
-                borderRight:   "1px solid var(--theme-paper-border)",
-                display:       "flex",
-                flexDirection: "column",
-                overflow:      "hidden",
-              }}
-            >
+              {/* Scrollable body */}
               <div
                 style={{
-                  flex:      1,
-                  overflowY: "auto",
-                  padding:   "var(--space-5) var(--space-5)",
-                  display:   "flex",
+                  flex:          1,
+                  overflowY:     "auto",
+                  padding:       "var(--space-4) var(--space-6) var(--space-6) var(--space-7)",
+                  display:       "flex",
                   flexDirection: "column",
-                  gap:       "var(--space-5)",
+                  gap:           "var(--space-5)",
                 }}
               >
-                {/* 1. Title */}
-                <div>
-                  <EyebrowLabel>Title</EyebrowLabel>
-                  {editMode ? (
-                    <input
-                      autoFocus
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      maxLength={255}
-                      style={{
-                        width:        "100%",
-                        border:       "1px solid var(--theme-paper-border)",
-                        borderRadius: "var(--radius-sm)",
-                        outline:      "none",
-                        background:   "var(--theme-paper-subtle)",
-                        fontFamily:   "var(--font-sans)",
-                        fontSize:     "var(--text-sm)",
-                        fontWeight:   "var(--weight-semibold)",
-                        color:        "var(--theme-text-primary)",
-                        padding:      "var(--space-2) var(--space-3)",
-                        caretColor:   "var(--theme-accent)",
-                        boxSizing:    "border-box",
-                      }}
-                      onFocus={(e) => {
-                        e.currentTarget.style.borderColor = "var(--theme-accent)";
-                        e.currentTarget.style.boxShadow  = "var(--shadow-accent-ring)";
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.borderColor = "";
-                        e.currentTarget.style.boxShadow  = "";
-                      }}
-                    />
-                  ) : (
-                    <span
-                      style={{
-                        display:    "block",
-                        fontFamily: "var(--font-sans)",
-                        fontSize:   "var(--text-sm)",
-                        fontWeight: "var(--weight-semibold)",
-                        color:      "var(--theme-text-primary)",
-                        lineHeight: "var(--leading-relaxed)",
-                      }}
-                    >
-                      {title}
-                    </span>
-                  )}
-                </div>
 
-                {/* 2. Notes / Objective */}
-                <div>
-                  <EyebrowLabel>
-                    {isGroupSubtask ? "Objective" : "Notes"}
-                  </EyebrowLabel>
-                  {editMode ? (
-                    <textarea
-                      value={editDesc}
-                      onChange={(e) => setEditDesc(e.target.value)}
-                      rows={4}
-                      style={{
-                        width:        "100%",
-                        border:       "1px solid var(--theme-paper-border)",
-                        borderRadius: "var(--radius-sm)",
-                        outline:      "none",
-                        background:   "var(--theme-paper-subtle)",
-                        resize:       "vertical",
-                        fontFamily:   "var(--font-sans)",
-                        fontSize:     "var(--text-sm)",
-                        color:        "var(--theme-text-primary)",
-                        lineHeight:   "var(--leading-relaxed)",
-                        padding:      "var(--space-2) var(--space-3)",
-                        caretColor:   "var(--theme-accent)",
-                        boxSizing:    "border-box",
-                        maxHeight:    "200px",
-                      }}
-                      onFocus={(e) => {
-                        e.currentTarget.style.borderColor = "var(--theme-accent)";
-                        e.currentTarget.style.boxShadow  = "var(--shadow-accent-ring)";
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.borderColor = "";
-                        e.currentTarget.style.boxShadow  = "";
-                      }}
-                    />
-                  ) : (
-                    <span
-                      style={{
-                        display:    "block",
-                        fontFamily: description ? "var(--font-sans)" : "var(--font-serif)",
-                        fontStyle:  description ? "normal" : "italic",
-                        fontSize:   "var(--text-sm)",
-                        color:      description ? "var(--theme-text-primary)" : "var(--theme-text-tertiary)",
-                        lineHeight: "var(--leading-relaxed)",
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {description || "No description provided."}
-                    </span>
-                  )}
-                </div>
-
-                {/* 3. Action Items (group subtasks only) */}
-                {isGroupSubtask && (
-                  <div>
-                    {/* Section header */}
+                {/* 2. Action Items card — checklist (personal + group subtasks) */}
+                  <div
+                    style={{
+                      background:   "var(--theme-paper)",
+                      borderRadius: "var(--radius-md)",
+                      border:       "1px solid var(--theme-paper-border)",
+                      overflow:     "hidden",
+                      boxShadow:    "var(--shadow-1)",
+                    }}
+                  >
+                    {/* Card header */}
                     <div
                       style={{
                         display:        "flex",
                         alignItems:     "center",
-                        gap:            "var(--space-2)",
-                        marginBottom:   "var(--space-2)",
+                        justifyContent: "space-between",
+                        padding:        "var(--space-3) var(--space-4)",
+                        borderBottom:   "1px solid var(--theme-paper-border)",
+                        background:     "var(--theme-paper-subtle)",
                       }}
                     >
-                      <CheckSquare
-                        style={{
-                          width:       14,
-                          height:      14,
-                          strokeWidth: 1.5,
-                          color:       "var(--theme-text-tertiary)",
-                          flexShrink:  0,
-                        }}
-                      />
-                      <EyebrowLabel>Action Items</EyebrowLabel>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                        <CheckSquare style={{ width: 13, height: 13, strokeWidth: 1.5, color: "var(--theme-text-tertiary)", flexShrink: 0 }} />
+                        <span
+                          style={{
+                            fontFamily:    "var(--font-sans)",
+                            fontSize:      "var(--text-2xs)",
+                            fontWeight:    "var(--weight-semibold)",
+                            letterSpacing: "var(--tracking-widest)",
+                            textTransform: "uppercase" as const,
+                            color:         "var(--theme-text-tertiary)",
+                          }}
+                        >
+                          Action Items
+                        </span>
+                      </div>
                       {totalCount > 0 && (
                         <span
                           style={{
-                            fontFamily:   "var(--font-sans)",
+                            fontFamily:   "var(--font-mono)",
                             fontSize:     "var(--text-2xs)",
-                            color:        "var(--theme-text-tertiary)",
-                            background:   "var(--theme-paper-subtle)",
-                            border:       "1px solid var(--theme-paper-border)",
+                            fontWeight:   "var(--weight-semibold)",
+                            color:        progressPct === 100 ? "var(--color-success-text)" : "var(--theme-accent)",
+                            background:   progressPct === 100 ? "var(--color-success-light)" : "var(--theme-accent-surface)",
                             borderRadius: "var(--radius-full)",
-                            padding:      "0 var(--space-2)",
-                            lineHeight:   "1.6",
+                            padding:      "1px var(--space-2)",
+                            transition:   "var(--transition-hover)",
                           }}
                         >
                           {doneCount}/{totalCount}
@@ -1177,222 +1382,182 @@ export function SubTaskModal({
 
                     {/* Progress bar */}
                     {totalCount > 0 && (
-                      <div
-                        style={{
-                          height:       "3px",
-                          background:   "var(--theme-paper-border)",
-                          borderRadius: "var(--radius-full)",
-                          marginBottom: "var(--space-3)",
-                          overflow:     "hidden",
-                        }}
-                      >
-                        <div
+                      <div style={{ height: "2px", background: "var(--theme-paper-border)" }}>
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progressPct}%` }}
+                          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
                           style={{
-                            height:       "100%",
-                            width:        `${progressPct}%`,
-                            background:   "var(--theme-accent)",
-                            borderRadius: "var(--radius-full)",
-                            transition:   "width var(--duration-base) var(--ease-out-expo)",
+                            height:     "100%",
+                            background: progressPct === 100 ? "var(--color-success)" : "var(--theme-accent)",
                           }}
                         />
                       </div>
                     )}
 
                     {/* Checklist items */}
-                    {editMode ? (
-                      <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        onDragEnd={handleDragEnd}
-                      >
-                        <SortableContext
-                          items={editItems.map((i) => i.id)}
-                          strategy={verticalListSortingStrategy}
+                    <div style={{ padding: "var(--space-2) var(--space-4)" }}>
+                      {editMode ? (
+                        <DndContext
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={handleDragEnd}
                         >
-                          {editItems.map((item) => (
+                          <SortableContext
+                            items={editItems.map((i) => i.id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            {editItems.map((item) => (
+                              <SortableChecklistItem
+                                key={item.id}
+                                item={item}
+                                editMode={true}
+                                onToggle={handleEditItemToggle}
+                                onDelete={handleEditItemDelete}
+                                onTextChange={handleEditItemTextChange}
+                              />
+                            ))}
+                          </SortableContext>
+                        </DndContext>
+                      ) : (
+                        <>
+                          {displayItems.map((item) => (
                             <SortableChecklistItem
                               key={item.id}
                               item={item}
-                              editMode={true}
-                              onToggle={handleEditItemToggle}
-                              onDelete={handleEditItemDelete}
-                              onTextChange={handleEditItemTextChange}
+                              editMode={false}
+                              onToggle={handleChecklistToggle}
+                              onDelete={() => {}}
+                              onTextChange={() => {}}
                             />
                           ))}
-                        </SortableContext>
-                      </DndContext>
-                    ) : (
-                      <>
-                        {displayItems.map((item) => (
-                          <SortableChecklistItem
-                            key={item.id}
-                            item={item}
-                            editMode={false}
-                            onToggle={handleChecklistToggle}
-                            onDelete={() => {}}
-                            onTextChange={() => {}}
-                          />
-                        ))}
-                        {!checklistExpanded && hiddenCount > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setChecklistExpanded(true)}
-                            style={{
-                              display:    "block",
-                              marginTop:  "var(--space-1)",
-                              fontFamily: "var(--font-sans)",
-                              fontSize:   "var(--text-xs)",
-                              color:      "var(--theme-accent)",
-                              background: "transparent",
-                              border:     "none",
-                              cursor:     "pointer",
-                              padding:    0,
-                              textAlign:  "left",
-                            }}
-                          >
-                            Show {hiddenCount} more…
-                          </button>
-                        )}
-                      </>
-                    )}
+                          {!checklistExpanded && hiddenCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setChecklistExpanded(true)}
+                              style={{
+                                display:    "block",
+                                margin:     "var(--space-1) 0 var(--space-2)",
+                                fontFamily: "var(--font-sans)",
+                                fontSize:   "var(--text-xs)",
+                                color:      "var(--theme-accent)",
+                                background: "transparent",
+                                border:     "none",
+                                cursor:     "pointer",
+                                padding:    0,
+                              }}
+                            >
+                              Show {hiddenCount} more…
+                            </button>
+                          )}
+                        </>
+                      )}
 
-                    {/* Edit mode: add new item */}
-                    {editMode && (
-                      <div
-                        style={{
-                          display:    "flex",
-                          alignItems: "center",
-                          gap:        "var(--space-2)",
-                          marginTop:  "var(--space-2)",
-                        }}
-                      >
-                        <Plus
-                          style={{
-                            width:       14,
-                            height:      14,
-                            strokeWidth: 1.5,
-                            color:       "var(--theme-text-tertiary)",
-                            flexShrink:  0,
-                          }}
-                        />
-                        <input
+                      {canEditChecklist && (
+                        <ActionItemAddRow
                           value={newItemText}
-                          onChange={(e) => setNewItemText(e.target.value)}
-                          onKeyDown={handleNewItemKeyDown}
-                          placeholder="Add action item…"
-                          style={{
-                            flex:       1,
-                            border:     "none",
-                            borderBottom: "1px solid var(--theme-paper-border)",
-                            outline:    "none",
-                            background: "transparent",
-                            fontFamily: "var(--font-sans)",
-                            fontSize:   "var(--text-sm)",
-                            color:      "var(--theme-text-primary)",
-                            padding:    "var(--space-px) 0",
-                            caretColor: "var(--theme-accent)",
-                          }}
+                          onChange={setNewItemText}
+                          onSubmit={editMode ? handleAddNewItem : handlePersistAddItem}
+                          hasItemsAbove={addRowHasItemsAbove}
                         />
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                )}
 
-                {/* Divider */}
-                <div style={{ height: "1px", background: "var(--theme-paper-border)" }} />
-
-                {/* 4. Key Variables */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-                  <InfoRow
-                    icon={CalendarDays}
-                    label="Deadline"
-                    value={
-                      task.due_at ? (
-                        monoValue(formatDate(task.due_at, "dd MMM yyyy, HH:mm"))
+                {/* 3. Details card — deadline + assignee */}
+                <div
+                  style={{
+                    background:   "var(--theme-paper)",
+                    borderRadius: "var(--radius-md)",
+                    border:       "1px solid var(--theme-paper-border)",
+                    overflow:     "hidden",
+                    boxShadow:    "var(--shadow-1)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display:      "flex",
+                      alignItems:   "center",
+                      gap:          "var(--space-2)",
+                      padding:      "var(--space-3) var(--space-4)",
+                      borderBottom: "1px solid var(--theme-paper-border)",
+                      background:   "var(--theme-paper-subtle)",
+                    }}
+                  >
+                    <CalendarDays style={{ width: 13, height: 13, strokeWidth: 1.5, color: "var(--theme-text-tertiary)", flexShrink: 0 }} />
+                    <span
+                      style={{
+                        fontFamily:    "var(--font-sans)",
+                        fontSize:      "var(--text-2xs)",
+                        fontWeight:    "var(--weight-semibold)",
+                        letterSpacing: "var(--tracking-widest)",
+                        textTransform: "uppercase" as const,
+                        color:         "var(--theme-text-tertiary)",
+                      }}
+                    >
+                      Details
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display:       "flex",
+                      flexDirection: "column",
+                      gap:           "var(--space-3)",
+                      padding:       "var(--space-4)",
+                    }}
+                  >
+                    {/* Deadline row */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+                      <CalendarDays style={{ width: 13, height: 13, strokeWidth: 1.5, color: "var(--theme-text-tertiary)", flexShrink: 0 }} />
+                      <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)", flexShrink: 0, minWidth: "60px" }}>Deadline</span>
+                      {task.due_at ? (
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--theme-text-primary)" }}>
+                          {formatDate(task.due_at, "dd MMM yyyy, HH:mm")}
+                        </span>
                       ) : (
-                        <span
-                          style={{
-                            fontFamily: "var(--font-sans)",
-                            fontStyle:  "italic",
-                            color:      "var(--theme-text-tertiary)",
-                          }}
-                        >
+                        <span style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "var(--text-sm)", color: "var(--theme-text-tertiary)" }}>
                           No deadline set
                         </span>
-                      )
-                    }
-                  />
-
-                  <InfoRow
-                    icon={User}
-                    label="Assigned To"
-                    value={
-                      assignee ? (
+                      )}
+                    </div>
+                    <div style={{ height: "1px", background: "var(--theme-paper-border)" }} />
+                    {/* Assignee row */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+                      <User style={{ width: 13, height: 13, strokeWidth: 1.5, color: "var(--theme-text-tertiary)", flexShrink: 0 }} />
+                      <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)", flexShrink: 0, minWidth: "60px" }}>Assigned</span>
+                      {assignee ? (
                         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-                          <Avatar
-                            src={assignee.avatar_url}
-                            name={assignee.full_name}
-                            size="xs"
-                            style={{ borderRadius: "var(--radius-xs)", width: 20, height: 20, minWidth: 20 }}
-                          />
-                          <span>{assignee.full_name}</span>
+                          <Avatar src={assignee.avatar_url} name={assignee.full_name} size="xs" style={{ borderRadius: "var(--radius-xs)", width: 18, height: 18, minWidth: 18 }} />
+                          <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-xs)", color: "var(--theme-text-primary)" }}>{assignee.full_name}</span>
                         </div>
                       ) : (
-                        <span style={{ color: "var(--theme-text-tertiary)" }}>Unassigned</span>
-                      )
-                    }
-                  />
+                        <span style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "var(--text-sm)", color: "var(--theme-text-tertiary)" }}>
+                          Unassigned
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Divider */}
-                <div style={{ height: "1px", background: "var(--theme-paper-border)" }} />
-
-                {/* 5. Metadata footer */}
+                {/* 4. Metadata footer — whispered, monospace */}
                 <div
                   style={{
                     display:       "flex",
                     flexDirection: "column",
                     gap:           "var(--space-1)",
+                    paddingTop:    "var(--space-2)",
+                    borderTop:     "1px dashed var(--theme-paper-border)",
                   }}
                 >
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize:   "var(--text-2xs)",
-                      color:      "var(--theme-text-tertiary)",
-                    }}
-                  >
-                    ID: {task.id.slice(0, 8)}
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", color: "var(--theme-text-tertiary)" }}>
+                    {task.id.slice(0, 8).toUpperCase()}
                   </span>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize:   "var(--text-2xs)",
-                      color:      "var(--theme-text-tertiary)",
-                    }}
-                  >
-                    Created: {formatDate(task.created_at, "dd MMM yyyy, HH:mm")}
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", color: "var(--theme-text-tertiary)" }}>
+                    Created {formatDate(task.created_at, "dd MMM yyyy")}
                   </span>
                   {task.updated_at !== task.created_at && (
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize:   "var(--text-2xs)",
-                        color:      "var(--theme-text-tertiary)",
-                      }}
-                    >
-                      Updated: {formatDate(task.updated_at, "dd MMM yyyy, HH:mm")}
-                    </span>
-                  )}
-                  {isGroupSubtask && group && (
-                    <span
-                      style={{
-                        fontFamily: "var(--font-sans)",
-                        fontSize:   "var(--text-2xs)",
-                        color:      "var(--theme-text-tertiary)",
-                      }}
-                    >
-                      In: {group.title}
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", color: "var(--theme-text-tertiary)" }}>
+                      Updated {formatDate(task.updated_at, "dd MMM yyyy")}
                     </span>
                   )}
                 </div>
@@ -1412,6 +1577,7 @@ export function SubTaskModal({
                       gap:            "var(--space-2)",
                       padding:        "var(--space-3) var(--space-5)",
                       borderTop:      "1px solid var(--theme-paper-border)",
+                      background:     "var(--theme-paper-subtle)",
                       flexShrink:     0,
                     }}
                   >
@@ -1422,7 +1588,7 @@ export function SubTaskModal({
                         padding:      "var(--space-2) var(--space-4)",
                         borderRadius: "var(--radius-sm)",
                         border:       "1px solid var(--theme-paper-border)",
-                        background:   "transparent",
+                        background:   "var(--theme-paper)",
                         color:        "var(--theme-text-secondary)",
                         fontFamily:   "var(--font-sans)",
                         fontSize:     "var(--text-sm)",
@@ -1448,22 +1614,24 @@ export function SubTaskModal({
                         transition:   "var(--transition-interactive)",
                       }}
                     >
-                      Save Brief
+                      Save
                     </button>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
-            {/* ── ZONE B — Activity (62%) ────────────────────────────── */}
+            {/* Zone B body — remarks timeline + composer */}
             <div
               style={{
-                flex:          "0 0 62%",
+                gridColumn:    2,
+                gridRow:       2,
+                minHeight:     0,
+                overflow:      "hidden",
                 display:       "flex",
                 flexDirection: "column",
-                overflow:      "hidden",
-                background:    "transparent",
                 position:      "relative",
+                borderLeft:    "1px solid color-mix(in srgb, var(--theme-paper-border) 40%, transparent)",
               }}
             >
               <TaskRemarksPanel
@@ -1471,7 +1639,7 @@ export function SubTaskModal({
                 currentUserId={callerProfile.id}
                 currentUserName={currentUserName}
                 initialRemarks={initialRemarks}
-                composerPlaceholder={composerPlaceholder}
+                embedded
               />
             </div>
           </div>

@@ -1,239 +1,509 @@
 'use client';
 
-/**
- * CreateGroupTaskModal — Group task creation with live preview.
- *
- * Layout: Two-column on desktop (preview left | form right).
- *         Stacks vertically on mobile (preview hidden, form full-width).
- *
- * accent_color + icon_key: NOT passed to createGroupTaskAction — task_groups
- * has no such columns as of migration 0017.
- * TODO: add `accent_color text` and `icon_key text` columns (new migration).
- *
- * Member search: searchProfilesAction does not exist yet.
- * TODO: implement searchProfilesAction in src/lib/actions/profiles.ts.
- *
- * memberIds: NOT passed to createGroupTaskAction — no task_group_members table.
- * TODO: add task_group_members table + wire memberIds once the table exists.
- */
-
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   useTransition,
 } from 'react';
-import * as LucideIcons from 'lucide-react';
-import { Plus, X, ChevronDown, Search, Users } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, X, User, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
-import { createGroupTaskAction } from '@/lib/actions/tasks';
+import { DatePicker } from '@/components/ui/DatePicker';
+import { Avatar } from '@/components/ui/Avatar';
+import { createGroupTaskAction, createSubtaskAction } from '@/lib/actions/tasks';
+import { listAgentsForDomain } from '@/lib/actions/leads';
 import { toast } from '@/lib/toast';
 import { CreateGroupTaskSchema } from '@/lib/validations/task-schemas';
-import {
-  GROUP_TASK_ACCENT_COLORS,
-  GROUP_TASK_ICONS,
-  TASK_PRIORITY,
-} from '@/lib/constants/task-constants';
-import { APP_DOMAINS, DOMAIN_LABELS } from '@/lib/constants/domains';
-import { Avatar } from '@/components/ui/Avatar';
-import type { TaskGroup, TaskPriority, AppDomain } from '@/lib/types/database';
+import * as LucideIcons from 'lucide-react';
+import { TASK_PRIORITY, GROUP_TASK_ACCENT_COLORS, GROUP_TASK_ICONS } from '@/lib/constants/task-constants';
+import { DOMAIN_LABELS, GIA_DOMAINS } from '@/lib/constants/domains';
+import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import type { TaskGroup, TaskPriority, AppDomain, UserRole } from '@/lib/types/database';
+import type { AssignableUser } from '@/components/tasks/AssigneePickerModal';
+
+// ─── Extended group type — accent/icon are UI-only until migration adds DB cols ─
+
+export type GroupTaskWithMeta = TaskGroup & {
+  accent_color?: string;
+  icon_key?:     string;
+};
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
 export interface CreateGroupTaskModalProps {
-  open:      boolean;
-  onClose:   () => void;
-  onCreated: (group: TaskGroup) => void;
+  open:          boolean;
+  onClose:       () => void;
+  onCreated:     (group: GroupTaskWithMeta) => void;
+  callerRole:    UserRole;
+  callerDomain:  AppDomain;
 }
 
-// ─── Lucide icon renderer ──────────────────────────────────────────────────────
-// Cast through unknown to bridge IconComponentProps → { style } type gap.
+// ─── Subtask draft ─────────────────────────────────────────────────────────────
 
-type AnyLucideIcon = React.FC<{ style?: React.CSSProperties }>;
-
-function TaskIcon({ name, size = 16 }: { name: string; size?: number }) {
-  const Icon = (LucideIcons as unknown as Record<string, AnyLucideIcon>)[name];
-  if (!Icon) return null;
-  return <Icon style={{ width: size, height: size, strokeWidth: 1.5 }} />;
+interface SubtaskDraft {
+  id:         string;
+  title:      string;
+  priority:   TaskPriority;
+  assignee:   AssignableUser | null;
+  dueAt:      Date | null;
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
+// ─── Shared field-label style ──────────────────────────────────────────────────
 
+const FIELD_LABEL_STYLE: React.CSSProperties = {
+  display:       'block',
+  fontFamily:    'var(--font-sans)',
+  fontSize:      'var(--text-2xs)',
+  fontWeight:    'var(--weight-semibold)',
+  letterSpacing: 'var(--tracking-widest)',
+  textTransform: 'uppercase',
+  color:         'var(--theme-text-tertiary)',
+  marginBottom:  'var(--space-1)',
+};
 
-// ─── Field label ───────────────────────────────────────────────────────────────
+const INPUT_BASE: React.CSSProperties = {
+  display:      'block',
+  width:        '100%',
+  boxSizing:    'border-box',
+  height:       36,
+  border:       '1px solid var(--theme-paper-border)',
+  borderRadius: 'var(--radius-sm)',
+  background:   'var(--theme-paper)',
+  padding:      '0 var(--space-3)',
+  fontFamily:   'var(--font-sans)',
+  fontSize:     'var(--text-sm)',
+  color:        'var(--theme-text-primary)',
+  caretColor:   'var(--theme-accent)',
+  outline:      'none',
+  transition:   'border-color var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out)',
+};
 
-function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
+function useInputFocus() {
+  return {
+    onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      e.currentTarget.style.borderColor = 'var(--theme-accent)';
+      e.currentTarget.style.boxShadow   = '0 0 0 3px color-mix(in srgb, var(--theme-accent) 10%, transparent)';
+    },
+    onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      e.currentTarget.style.borderColor = 'var(--theme-paper-border)';
+      e.currentTarget.style.boxShadow   = '';
+    },
+  };
+}
+
+// ─── Priority pills ─────────────────────────────────────────────────────────────
+
+function PriorityPills({
+  value,
+  onChange,
+  disabled,
+}: {
+  value:    TaskPriority;
+  onChange: (p: TaskPriority) => void;
+  disabled?: boolean;
+}) {
   return (
-    <div
-      style={{
-        display:        'flex',
-        alignItems:     'center',
-        justifyContent: 'space-between',
-        marginBottom:   'var(--space-1)',
-      }}
-    >
-      <span
+    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+      {(['urgent', 'high', 'normal'] as TaskPriority[]).map((p) => {
+        const cfg      = TASK_PRIORITY[p];
+        const isActive = value === p;
+        return (
+          <button
+            key={p}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(p)}
+            style={{
+              display:      'inline-flex',
+              alignItems:   'center',
+              height:       28,
+              padding:      '0 var(--space-3)',
+              borderRadius: 'var(--radius-full)',
+              border:       isActive
+                ? `1.5px solid ${cfg.color}`
+                : '1px solid var(--theme-paper-border)',
+              background:   isActive
+                ? `color-mix(in srgb, ${cfg.color} 12%, transparent)`
+                : 'transparent',
+              color:        isActive ? cfg.color : 'var(--theme-text-secondary)',
+              fontFamily:   'var(--font-sans)',
+              fontSize:     'var(--text-xs)',
+              fontWeight:   isActive ? 'var(--weight-semibold)' : 'var(--weight-normal)',
+              cursor:       disabled ? 'not-allowed' : 'pointer',
+              opacity:      disabled ? 0.6 : 1,
+              transition:   'var(--transition-hover)',
+              whiteSpace:   'nowrap',
+            }}
+          >
+            {cfg.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Assignee chip (inline) ────────────────────────────────────────────────────
+
+function AssigneeInlinePicker({
+  value,
+  users,
+  onChange,
+  disabled,
+  warn,
+}: {
+  value:    AssignableUser | null;
+  users:    AssignableUser[];
+  onChange: (u: AssignableUser | null) => void;
+  disabled?: boolean;
+  warn?:     boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const dropId = useId();
+  const filtered = users.filter((u) =>
+    !query.trim() || u.full_name.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => { setOpen((o) => !o); setQuery(''); }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         style={{
-          fontFamily:    'var(--font-sans)',
-          fontSize:      'var(--text-2xs)',
-          fontWeight:    'var(--weight-semibold)',
-          letterSpacing: 'var(--tracking-widest)',
-          textTransform: 'uppercase',
-          color:         'var(--theme-text-tertiary)',
+          display:        'inline-flex',
+          alignItems:     'center',
+          gap:            'var(--space-2)',
+          height:         30,
+          padding:        '0 var(--space-2)',
+          borderRadius:   'var(--radius-sm)',
+          border:         value
+            ? '1px solid var(--theme-accent)'
+            : warn
+              ? '1px dashed var(--color-warning-text)'
+              : '1px dashed var(--theme-paper-border)',
+          background:     value ? 'var(--theme-accent-surface)' : 'transparent',
+          color:          value ? 'var(--theme-accent)' : warn ? 'var(--color-warning-text)' : 'var(--theme-text-tertiary)',
+          fontFamily:     'var(--font-sans)',
+          fontSize:       'var(--text-xs)',
+          cursor:         disabled ? 'not-allowed' : 'pointer',
+          opacity:        disabled ? 0.6 : 1,
+          whiteSpace:     'nowrap',
+          transition:     'var(--transition-hover)',
+          maxWidth:       120,
         }}
       >
-        {children}
-      </span>
-      {required && (
-        <span
-          style={{
-            fontFamily:   'var(--font-sans)',
-            fontSize:     'var(--text-2xs)',
-            fontWeight:   'var(--weight-medium)',
-            background:   'var(--theme-paper-subtle)',
-            border:       '1px solid var(--theme-paper-border)',
-            color:        'var(--theme-text-tertiary)',
-            borderRadius: 'var(--radius-full)',
-            padding:      'var(--space-px) var(--space-2)',
-          }}
-        >
-          Required
-        </span>
+        {value ? (
+          <>
+            <Avatar
+              src={value.avatar_url}
+              name={value.full_name}
+              size="xs"
+              style={{ width: 16, height: 16, minWidth: 16, borderRadius: 'var(--radius-full)' }}
+            />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {value.full_name.split(' ')[0]}
+            </span>
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="Clear assignee"
+              onClick={(e) => { e.stopPropagation(); onChange(null); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onChange(null); } }}
+              style={{ display: 'flex', color: 'var(--theme-accent)', flexShrink: 0 }}
+            >
+              <X style={{ width: 10, height: 10, strokeWidth: 2 }} />
+            </span>
+          </>
+        ) : (
+          <>
+            <User style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
+            Assign
+          </>
+        )}
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            id={dropId}
+            role="listbox"
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.97 }}
+            transition={{ duration: 0.15, ease: EASE_OUT_EXPO }}
+            style={{
+              position:     'absolute',
+              top:          'calc(100% + 4px)',
+              left:         0,
+              zIndex:       'var(--z-dropdown)' as unknown as number,
+              minWidth:     200,
+              maxWidth:     240,
+              maxHeight:    220,
+              overflowY:    'auto',
+              background:   'var(--theme-paper)',
+              border:       '1px solid var(--theme-paper-border)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow:    'var(--shadow-3)',
+              display:      'flex',
+              flexDirection: 'column',
+            }}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {/* Search */}
+            <div style={{ padding: 'var(--space-2)', borderBottom: '1px solid var(--theme-paper-border)', flexShrink: 0 }}>
+              <input
+                autoFocus
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search…"
+                style={{
+                  ...INPUT_BASE,
+                  height:     28,
+                  fontSize:   'var(--text-xs)',
+                  background: 'var(--theme-paper-subtle)',
+                }}
+              />
+            </div>
+
+            {/* Options */}
+            {filtered.length === 0 ? (
+              <div style={{ padding: 'var(--space-3)', fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', fontStyle: 'italic', textAlign: 'center' }}>
+                No users found
+              </div>
+            ) : (
+              filtered.map((u) => {
+                const isSelected = value?.id === u.id;
+                return (
+                  <button
+                    key={u.id}
+                    role="option"
+                    aria-selected={isSelected}
+                    type="button"
+                    onClick={() => { onChange(u); setOpen(false); }}
+                    style={{
+                      display:     'flex',
+                      alignItems:  'center',
+                      gap:         'var(--space-2)',
+                      width:       '100%',
+                      padding:     'var(--space-2) var(--space-3)',
+                      border:      'none',
+                      background:  isSelected ? 'var(--theme-accent-surface)' : 'transparent',
+                      cursor:      'pointer',
+                      textAlign:   'left',
+                      transition:  'background var(--duration-fast) var(--ease-in-out)',
+                      flexShrink:  0,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'transparent';
+                    }}
+                  >
+                    <Avatar
+                      src={u.avatar_url}
+                      name={u.full_name}
+                      size="xs"
+                      style={{ width: 20, height: 20, minWidth: 20, borderRadius: 'var(--radius-full)' }}
+                    />
+                    <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {u.full_name}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Click-outside close */}
+      {open && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 'calc(var(--z-dropdown) - 1)' as unknown as number }}
+          onClick={() => setOpen(false)}
+        />
       )}
     </div>
   );
 }
 
-// ─── Inline error ──────────────────────────────────────────────────────────────
+// ─── Subtask row ────────────────────────────────────────────────────────────────
 
-function FieldError({ message }: { message?: string }) {
-  if (!message) return null;
+function SubtaskRow({
+  draft,
+  users,
+  onTitleChange,
+  onPriorityChange,
+  onAssigneeChange,
+  onDueChange,
+  onRemove,
+  autoFocus,
+  disabled,
+}: {
+  draft:            SubtaskDraft;
+  users:            AssignableUser[];
+  onTitleChange:    (v: string) => void;
+  onPriorityChange: (p: TaskPriority) => void;
+  onAssigneeChange: (u: AssignableUser | null) => void;
+  onDueChange:      (d: Date | null) => void;
+  onRemove:         () => void;
+  autoFocus?:       boolean;
+  disabled?:        boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const focusHandlers = useInputFocus();
+
+  useEffect(() => {
+    if (autoFocus) setTimeout(() => inputRef.current?.focus(), 30);
+  }, [autoFocus]);
+
   return (
-    <p
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4, height: 0 }}
+      transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
       style={{
-        fontFamily:   'var(--font-sans)',
-        fontSize:     'var(--text-xs)',
-        color:        'var(--color-danger)',
-        marginTop:    'var(--space-1)',
-        marginBottom: 0,
-        lineHeight:   'var(--leading-normal)',
+        display:       'grid',
+        gridTemplateColumns: '1fr auto auto auto auto',
+        gap:           'var(--space-2)',
+        alignItems:    'center',
+        padding:       'var(--space-2) var(--space-3)',
+        borderRadius:  'var(--radius-sm)',
+        background:    'var(--theme-paper-subtle)',
+        border:        '1px solid var(--theme-paper-border)',
       }}
     >
-      {message}
-    </p>
-  );
-}
-
-// ─── Member chip type ──────────────────────────────────────────────────────────
-
-interface MemberChip {
-  id:         string;
-  full_name:  string;
-  avatar_url: string | null;
-  role:       string;
-}
-
-// ─── Live preview card ─────────────────────────────────────────────────────────
-
-function PreviewCard({
-  title,
-  accentHex,
-  iconName,
-}: {
-  title:     string;
-  accentHex: string;
-  iconName:  string;
-}) {
-  const displayTitle = title.trim() || 'Group task title';
-  const isEmpty      = !title.trim();
-
-  return (
-    <div>
-      <p
+      {/* Title */}
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft.title}
+        onChange={(e) => onTitleChange(e.target.value)}
+        placeholder="Subtask title…"
+        disabled={disabled}
         style={{
-          fontFamily:    'var(--font-sans)',
-          fontSize:      'var(--text-2xs)',
-          fontWeight:    'var(--weight-semibold)',
-          letterSpacing: 'var(--tracking-wide)',
-          textTransform: 'uppercase',
-          color:         'var(--theme-text-tertiary)',
-          margin:        '0 0 var(--space-2)',
+          border:       'none',
+          background:   'transparent',
+          outline:      'none',
+          fontFamily:   'var(--font-sans)',
+          fontSize:     'var(--text-sm)',
+          color:        'var(--theme-text-primary)',
+          caretColor:   'var(--theme-accent)',
+          minWidth:     0,
+          width:        '100%',
         }}
-      >
-        Preview
-      </p>
+        {...focusHandlers}
+      />
 
-      <div
-        style={{
-          borderRadius: 'var(--radius-md)',
-          border:       '1px solid var(--theme-paper-border)',
-          background:   'var(--theme-paper)',
-          boxShadow:    'var(--shadow-1)',
-          overflow:     'hidden',
-        }}
-      >
-        <div
-          style={{
-            display:    'flex',
-            alignItems: 'center',
-            gap:        'var(--space-3)',
-            padding:    'var(--space-3) var(--space-4)',
-            borderLeft: `3px solid ${accentHex}`,
-          }}
-        >
-          <span
-            style={{
-              flexShrink: 0,
-              display:    'flex',
-              color:      'var(--theme-text-secondary)',
-            }}
-          >
-            <TaskIcon name={iconName} size={20} />
-          </span>
-
-          <span
-            style={{
-              flex:         1,
-              fontFamily:   'var(--font-sans)',
-              fontSize:     'var(--text-sm)',
-              fontWeight:   'var(--weight-semibold)',
-              color:        isEmpty ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)',
-              fontStyle:    isEmpty ? 'italic' : 'normal',
-              overflow:     'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace:   'nowrap',
-              minWidth:     0,
-            }}
-          >
-            {displayTitle}
-          </span>
-
-          <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize:   'var(--text-xs)',
-              color:      'var(--theme-text-tertiary)',
-              flexShrink: 0,
-            }}
-          >
-            0/0
-          </span>
-        </div>
+      {/* Priority inline */}
+      <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
+        {(['urgent', 'high', 'normal'] as TaskPriority[]).map((p) => {
+          const cfg      = TASK_PRIORITY[p];
+          const isActive = draft.priority === p;
+          if (!isActive && draft.priority !== p) {
+            // show only a small dot for inactive
+          }
+          return (
+            <button
+              key={p}
+              type="button"
+              title={cfg.label}
+              aria-label={cfg.label}
+              disabled={disabled}
+              onClick={() => onPriorityChange(p)}
+              style={{
+                width:        20,
+                height:        20,
+                borderRadius: 'var(--radius-full)',
+                border:       isActive ? `2px solid ${cfg.color}` : '1.5px solid var(--theme-paper-border)',
+                background:   isActive ? `color-mix(in srgb, ${cfg.color} 14%, transparent)` : 'transparent',
+                cursor:       disabled ? 'not-allowed' : 'pointer',
+                flexShrink:   0,
+                transition:   'var(--transition-hover)',
+                position:     'relative',
+                display:      'flex',
+                alignItems:   'center',
+                justifyContent: 'center',
+              }}
+            >
+              {isActive && (
+                <span
+                  style={{
+                    width:        6,
+                    height:       6,
+                    borderRadius: 'var(--radius-full)',
+                    background:   cfg.color,
+                    display:      'block',
+                    flexShrink:   0,
+                  }}
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      <p
+      {/* Assignee — warn when title is filled but no assignee (subtask will be skipped) */}
+      <AssigneeInlinePicker
+        value={draft.assignee}
+        users={users}
+        onChange={onAssigneeChange}
+        disabled={disabled}
+        warn={!!draft.title.trim() && !draft.assignee}
+      />
+
+      {/* Due date */}
+      <DatePicker
+        value={draft.dueAt}
+        onChange={onDueChange}
+        disabled={disabled}
+        placeholder="Due date"
+        style={{ height: 30, minWidth: 100, fontSize: 'var(--text-xs)' }}
+        aria-label="Due date"
+      />
+
+      {/* Remove */}
+      <button
+        type="button"
+        onClick={onRemove}
+        disabled={disabled}
+        aria-label="Remove subtask"
         style={{
-          fontFamily: 'var(--font-sans)',
-          fontSize:   'var(--text-xs)',
-          color:      'var(--theme-text-tertiary)',
-          fontStyle:  'italic',
-          margin:     'var(--space-2) 0 0',
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'center',
+          width:          24,
+          height:         24,
+          borderRadius:   'var(--radius-sm)',
+          border:         'none',
+          background:     'transparent',
+          color:          'var(--theme-text-tertiary)',
+          cursor:         disabled ? 'not-allowed' : 'pointer',
+          flexShrink:     0,
+          transition:     'color var(--duration-fast) var(--ease-in-out), background var(--duration-fast) var(--ease-in-out)',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.color      = 'var(--color-danger-text)';
+          (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-light)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.color      = 'var(--theme-text-tertiary)';
+          (e.currentTarget as HTMLElement).style.background = 'transparent';
         }}
       >
-        How it appears in Group Tasks.
-      </p>
-    </div>
+        <Trash2 style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
+      </button>
+    </motion.div>
   );
 }
 
@@ -243,101 +513,116 @@ export function CreateGroupTaskModal({
   open,
   onClose,
   onCreated,
+  callerRole,
+  callerDomain,
 }: CreateGroupTaskModalProps) {
-  // ── Form state ─────────────────────────────────────────────────────────────
+  // Group fields
   const [title,       setTitle]       = useState('');
   const [titleError,  setTitleError]  = useState('');
   const [description, setDescription] = useState('');
-  const [domain,      setDomain]      = useState<AppDomain | ''>('');
-  const [domainError, setDomainError] = useState('');
-  const [priority,    setPriority]    = useState<TaskPriority>('normal');
-  const [dueAt,       setDueAt]       = useState('');
+  const [domain,      setDomain]      = useState<AppDomain | ''>(
+    callerRole === 'manager' ? callerDomain : '',
+  );
+  const [domainError,  setDomainError]  = useState('');
+  const [priority,     setPriority]     = useState<TaskPriority>('normal');
+  const [dueAt,        setDueAt]        = useState<Date | null>(null);
+  const [accentColor,  setAccentColor]  = useState<string>(GROUP_TASK_ACCENT_COLORS[0].hex);
+  const [iconKey,      setIconKey]      = useState<string>(GROUP_TASK_ICONS[0].id);
 
-  // Accent colour — UI only, no DB column yet
-  const [accentId, setAccentId] = useState(GROUP_TASK_ACCENT_COLORS[0].id);
-  // Icon — UI only, no DB column yet
-  const [iconId, setIconId]     = useState(GROUP_TASK_ICONS[0].id);
+  // Subtask drafts
+  const [drafts,        setDrafts]        = useState<SubtaskDraft[]>([]);
+  const [lastAddedId,   setLastAddedId]   = useState<string | null>(null);
 
-  // Member search — stubbed, no searchProfilesAction yet
-  const [memberQuery,          setMemberQuery]          = useState('');
-  const [memberSearchPending,  setMemberSearchPending]  = useState(false);
-  const [memberResults,        setMemberResults]        = useState<MemberChip[]>([]);
-  const [members,              setMembers]              = useState<MemberChip[]>([]);
+  // Assignable users — fetched when domain changes
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
 
   const titleRef = useRef<HTMLInputElement>(null);
   const descRef  = useRef<HTMLTextAreaElement>(null);
+  const focusHandlers = useInputFocus();
 
   const [isPending, startTransition] = useTransition();
+  const [phase, setPhase] = useState<'idle' | 'creating-group' | 'creating-subtasks'>('idle');
 
-  const accentHex = GROUP_TASK_ACCENT_COLORS.find((c) => c.id === accentId)?.hex
-    ?? GROUP_TASK_ACCENT_COLORS[0].hex;
+  const isManagerLocked = callerRole === 'manager';
 
-  // ── Reset on open ──────────────────────────────────────────────────────────
+  // Fetch agents when domain changes (or on open for managers)
+  useEffect(() => {
+    const d = isManagerLocked ? callerDomain : domain;
+    if (!d) { setAssignableUsers([]); return; }
+    let cancelled = false;
+    listAgentsForDomain(d as AppDomain).then((r) => {
+      if (cancelled || !r.data) return;
+      setAssignableUsers(
+        r.data.map((a: { id: string; full_name: string }) => ({
+          id:         a.id,
+          full_name:  a.full_name,
+          avatar_url: null,
+          role:       'agent' as const,
+          domain:     (d as AppDomain),
+        })),
+      );
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domain, isManagerLocked]);
+
+  // Reset on open
   useEffect(() => {
     if (!open) return;
     setTitle('');
     setTitleError('');
     setDescription('');
-    setDomain('');
+    setDomain(callerRole === 'manager' ? callerDomain : '');
     setDomainError('');
     setPriority('normal');
-    setDueAt('');
-    setAccentId(GROUP_TASK_ACCENT_COLORS[0].id);
-    setIconId(GROUP_TASK_ICONS[0].id);
-    setMemberQuery('');
-    setMemberResults([]);
-    setMembers([]);
+    setDueAt(null);
+    setAccentColor(GROUP_TASK_ACCENT_COLORS[0].hex);
+    setIconKey(GROUP_TASK_ICONS[0].id);
+    setDrafts([]);
+    setLastAddedId(null);
+    setPhase('idle');
     setTimeout(() => titleRef.current?.focus(), 50);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // ── Auto-grow textarea ─────────────────────────────────────────────────────
   function autoGrow(el: HTMLTextAreaElement | null) {
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   }
 
-  // ── Member search stub ─────────────────────────────────────────────────────
-  // TODO: wire to searchProfilesAction once it exists in src/lib/actions/profiles.ts
-  useEffect(() => {
-    if (memberQuery.trim().length < 2) {
-      setMemberResults([]);
-      return;
-    }
-    setMemberSearchPending(true);
-    const t = setTimeout(() => {
-      setMemberResults([]);
-      setMemberSearchPending(false);
-    }, 150);
-    return () => clearTimeout(t);
-  }, [memberQuery]);
-
-  function addMember(m: MemberChip) {
-    if (members.some((x) => x.id === m.id)) return;
-    setMembers((prev) => [...prev, m]);
-    setMemberQuery('');
-    setMemberResults([]);
+  function addDraft() {
+    const newId = crypto.randomUUID();
+    setDrafts((prev) => [...prev, { id: newId, title: '', priority: 'normal', assignee: null, dueAt: null }]);
+    setLastAddedId(newId);
   }
 
-  function removeMember(id: string) {
-    setMembers((prev) => prev.filter((m) => m.id !== id));
+  function removeDraft(id: string) {
+    setDrafts((prev) => prev.filter((d) => d.id !== id));
   }
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
+  function updateDraft(id: string, patch: Partial<SubtaskDraft>) {
+    setDrafts((prev) => prev.map((d) => d.id === id ? { ...d, ...patch } : d));
+  }
+
+  const canSubmit = title.trim().length > 0 && (isManagerLocked || domain !== '') && !isPending;
+
   const handleSubmit = useCallback(() => {
-    if (isPending) return;
+    if (!canSubmit) return;
 
     let hasError = false;
-    if (!title.trim()) { setTitleError('Title is required.'); titleRef.current?.focus(); hasError = true; }
-    if (!domain)        { setDomainError('Domain is required.'); hasError = true; }
+    if (!title.trim())             { setTitleError('Title is required.'); titleRef.current?.focus(); hasError = true; }
+    if (!isManagerLocked && !domain) { setDomainError('Domain is required.'); hasError = true; }
     if (hasError) return;
+
+    const resolvedDomain = isManagerLocked ? callerDomain : domain as AppDomain;
 
     const parsed = CreateGroupTaskSchema.safeParse({
       title:       title.trim(),
       description: description.trim() || undefined,
       priority,
-      due_at:      dueAt ? new Date(dueAt).toISOString() : null,
-      domain,
+      due_at:      dueAt ? dueAt.toISOString() : null,
+      domain:      resolvedDomain,
     });
 
     if (!parsed.success) {
@@ -348,59 +633,89 @@ export function CreateGroupTaskModal({
     setTitleError('');
     setDomainError('');
 
+    // Only drafts with a title AND an assignee can be sent to createSubtaskAction
+    // (assigned_to is a required UUID field in CreateSubtaskSchema)
+    const validDrafts = drafts.filter((d) => d.title.trim() && d.assignee?.id);
+
     startTransition(async () => {
-      // accent_color, icon_key, memberIds NOT passed — no DB columns yet.
-      // TODO: wire all three once migrations add the columns + junction table.
-      const result = await createGroupTaskAction({
+      // 1. Create the group
+      setPhase('creating-group');
+      const groupResult = await createGroupTaskAction({
         title:       parsed.data.title,
         description: parsed.data.description ?? undefined,
         priority:    parsed.data.priority,
         due_at:      parsed.data.due_at ?? null,
-        domain:      parsed.data.domain,
+        domain:      resolvedDomain,
       });
 
-      if (result.error) {
-        toast.danger('Could not create group task', { message: result.error });
+      if (groupResult.error) {
+        toast.danger('Could not create group task', { message: groupResult.error });
+        setPhase('idle');
         return;
       }
 
-      toast.success('Group task created');
+      const groupId = groupResult.data!.groupId;
 
-      const syntheticGroup: TaskGroup = {
-        id:          result.data!.groupId,
-        title:       parsed.data.title,
-        description: parsed.data.description ?? null,
-        priority:    parsed.data.priority,
-        status:      'to_do',
-        due_at:      parsed.data.due_at ?? null,
-        created_by:  '',
-        domain:      parsed.data.domain,
-        created_at:  new Date().toISOString(),
-        updated_at:  new Date().toISOString(),
+      // 2. Create subtasks (parallel, best-effort)
+      let createdCount = 0;
+      if (validDrafts.length > 0) {
+        setPhase('creating-subtasks');
+        const results = await Promise.allSettled(
+          validDrafts.map((d) =>
+            createSubtaskAction({
+              group_id:    groupId,
+              title:       d.title.trim(),
+              priority:    d.priority,
+              due_at:      d.dueAt ? d.dueAt.toISOString() : null,
+              assigned_to: d.assignee!.id,
+            }),
+          ),
+        );
+        createdCount = results.filter(
+          (r) => r.status === 'fulfilled' && !r.value.error,
+        ).length;
+      }
+
+      const count = createdCount;
+      toast.success(
+        `Group task created${count > 0 ? ` with ${count} subtask${count > 1 ? 's' : ''}` : ''}`,
+      );
+
+      const syntheticGroup: GroupTaskWithMeta = {
+        id:           groupId,
+        title:        parsed.data.title,
+        description:  parsed.data.description ?? null,
+        priority:     parsed.data.priority,
+        status:       'to_do',
+        due_at:       parsed.data.due_at ?? null,
+        created_by:   '',
+        domain:       resolvedDomain,
+        created_at:   new Date().toISOString(),
+        updated_at:   new Date().toISOString(),
+        accent_color: accentColor,
+        icon_key:     iconKey,
       };
 
+      setPhase('idle');
       onCreated(syntheticGroup);
       onClose();
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPending, title, description, domain, priority, dueAt]);
+  }, [canSubmit, title, description, domain, priority, dueAt, drafts, isManagerLocked, callerDomain]);
 
-  const canSubmit = title.trim().length > 0 && domain !== '' && !isPending;
+  // ── Status label ─────────────────────────────────────────────────────────────
+  const submitLabel = isPending
+    ? phase === 'creating-subtasks'
+      ? `Adding subtasks…`
+      : 'Creating…'
+    : (
+      <>
+        <Plus style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
+        Create Group Task
+      </>
+    );
 
-  // ── Shared input focus/blur handlers ──────────────────────────────────────
-  const inputFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    e.target.style.borderColor = 'var(--theme-accent)';
-    e.target.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--theme-accent) 10%, transparent)';
-  };
-  const inputBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    e.target.style.borderColor = 'var(--theme-paper-border)';
-    e.target.style.boxShadow = '';
-  };
-  const inputFocusError = (e: React.FocusEvent<HTMLInputElement>) => {
-    // Keep error ring on focus when field is in error state — don't overwrite
-  };
-
-  // ── Footer ─────────────────────────────────────────────────────────────────
+  // ── Footer ───────────────────────────────────────────────────────────────────
   const footer = (
     <>
       <button
@@ -433,7 +748,7 @@ export function CreateGroupTaskModal({
           display:      'inline-flex',
           alignItems:   'center',
           gap:          'var(--space-2)',
-          padding:      '0 var(--space-4)',
+          padding:      '0 var(--space-5)',
           borderRadius: 'var(--radius-sm)',
           border:       'none',
           background:   canSubmit ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
@@ -445,12 +760,7 @@ export function CreateGroupTaskModal({
           transition:   'var(--transition-interactive)',
         }}
       >
-        {isPending ? 'Creating…' : (
-          <>
-            <Plus style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
-            Create Group Task
-          </>
-        )}
+        {submitLabel}
       </button>
     </>
   );
@@ -463,526 +773,357 @@ export function CreateGroupTaskModal({
       footer={footer}
       maxWidth="max-w-2xl"
     >
-      {/*
-        Two-column layout inside Modal body.
-        Desktop: preview (200px fixed) | gap (space-6) | form (flex-1)
-        Mobile: form only — preview hides at ≤640px via data attribute + CSS below
-      */}
-      <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
 
-        {/* ── Left: Live preview ──────────────────────────────────────── */}
-        <div
-          data-preview-col=""
-          style={{
-            width:      200,
-            flexShrink: 0,
-          }}
-        >
-          <PreviewCard title={title} accentHex={accentHex} iconName={iconId} />
+        {/* ── Section A: Group details ────────────────────────────────────── */}
+
+        {/* Title */}
+        <div>
+          <span style={FIELD_LABEL_STYLE}>Title <span style={{ color: 'var(--color-danger)' }}>*</span></span>
+          <input
+            ref={titleRef}
+            type="text"
+            value={title}
+            onChange={(e) => { setTitle(e.target.value); if (titleError && e.target.value.trim()) setTitleError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+            placeholder="What is this group task called?"
+            disabled={isPending}
+            style={{
+              ...INPUT_BASE,
+              borderColor: titleError ? 'var(--color-danger)' : undefined,
+              boxShadow:   titleError ? '0 0 0 3px var(--color-danger-light)' : undefined,
+            }}
+            {...focusHandlers}
+          />
+          {titleError && (
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--color-danger)', margin: 'var(--space-1) 0 0' }}>
+              {titleError}
+            </p>
+          )}
         </div>
 
-        {/* ── Right: Form ─────────────────────────────────────────────── */}
+        {/* Description */}
+        <div>
+          <span style={FIELD_LABEL_STYLE}>Description</span>
+          <textarea
+            ref={descRef}
+            value={description}
+            onChange={(e) => { setDescription(e.target.value); autoGrow(e.target); }}
+            placeholder="Brief objective or context…"
+            rows={2}
+            disabled={isPending}
+            style={{
+              display:      'block',
+              width:        '100%',
+              boxSizing:    'border-box',
+              border:       '1px solid var(--theme-paper-border)',
+              borderRadius: 'var(--radius-sm)',
+              background:   'var(--theme-paper)',
+              padding:      'var(--space-2) var(--space-3)',
+              fontFamily:   'var(--font-sans)',
+              fontSize:     'var(--text-sm)',
+              color:        'var(--theme-text-primary)',
+              caretColor:   'var(--theme-accent)',
+              resize:       'none',
+              lineHeight:   'var(--leading-relaxed)',
+              minHeight:    60,
+              maxHeight:    100,
+              outline:      'none',
+              opacity:      isPending ? 0.6 : 1,
+              transition:   'border-color var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out)',
+            }}
+            {...focusHandlers}
+          />
+        </div>
+
+        {/* Domain + Priority + Due date — one row */}
         <div
           style={{
-            flex:          1,
-            minWidth:      0,
-            display:       'flex',
-            flexDirection: 'column',
-            gap:           'var(--space-5)',
+            display:             'grid',
+            gridTemplateColumns: isManagerLocked ? '1fr 1fr' : '1fr 1fr 1fr',
+            gap:                 'var(--space-4)',
+            alignItems:          'end',
           }}
         >
-
-          {/* Title */}
-          <div>
-            <FieldLabel required>Title</FieldLabel>
-            <input
-              ref={titleRef}
-              type="text"
-              value={title}
-              onChange={(e) => { setTitle(e.target.value); if (titleError && e.target.value.trim()) setTitleError(''); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
-              placeholder="Group task title"
-              disabled={isPending}
-              style={{
-                display:      'block',
-                width:        '100%',
-                boxSizing:    'border-box',
-                height:       36,
-                border:       titleError ? '1px solid var(--color-danger)' : '1px solid var(--theme-paper-border)',
-                boxShadow:    titleError ? '0 0 0 3px var(--color-danger-light)' : 'none',
-                borderRadius: 'var(--radius-sm)',
-                background:   'var(--theme-paper)',
-                padding:      '0 var(--space-3)',
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-sm)',
-                color:        'var(--theme-text-primary)',
-                caretColor:   'var(--theme-accent)',
-                outline:      'none',
-                opacity:      isPending ? 0.6 : 1,
-                transition:   'var(--transition-hover)',
-              }}
-              onFocus={(e) => { if (!titleError) inputFocus(e); else inputFocusError(e); }}
-              onBlur={(e) => { if (!titleError) inputBlur(e); }}
-            />
-            <FieldError message={titleError} />
-          </div>
-
-          {/* Description */}
-          <div>
-            <FieldLabel>Description</FieldLabel>
-            <textarea
-              ref={descRef}
-              value={description}
-              onChange={(e) => { setDescription(e.target.value); autoGrow(e.target); }}
-              placeholder="What is this group task about?"
-              rows={2}
-              disabled={isPending}
-              style={{
-                display:      'block',
-                width:        '100%',
-                boxSizing:    'border-box',
-                border:       '1px solid var(--theme-paper-border)',
-                borderRadius: 'var(--radius-sm)',
-                background:   'var(--theme-paper)',
-                padding:      'var(--space-2) var(--space-3)',
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-sm)',
-                color:        'var(--theme-text-primary)',
-                caretColor:   'var(--theme-accent)',
-                resize:       'vertical',
-                lineHeight:   'var(--leading-relaxed)',
-                minHeight:    60,
-                maxHeight:    120,
-                outline:      'none',
-                opacity:      isPending ? 0.6 : 1,
-                transition:   'var(--transition-hover)',
-              }}
-              onFocus={inputFocus}
-              onBlur={inputBlur}
-            />
-          </div>
-
-          {/* Domain */}
-          <div>
-            <FieldLabel required>Domain</FieldLabel>
-            <div style={{ position: 'relative' }}>
-              <select
-                value={domain}
-                onChange={(e) => { setDomain(e.target.value as AppDomain | ''); if (domainError && e.target.value) setDomainError(''); }}
-                disabled={isPending}
-                style={{
-                  display:          'block',
-                  width:            '100%',
-                  boxSizing:        'border-box',
-                  height:           36,
-                  appearance:       'none',
-                  WebkitAppearance: 'none',
-                  border:           domainError ? '1px solid var(--color-danger)' : '1px solid var(--theme-paper-border)',
-                  boxShadow:        domainError ? '0 0 0 3px var(--color-danger-light)' : 'none',
-                  borderRadius:     'var(--radius-sm)',
-                  background:       'var(--theme-paper)',
-                  paddingLeft:      'var(--space-3)',
-                  paddingRight:     'var(--space-8)',
-                  fontFamily:       'var(--font-sans)',
-                  fontSize:         'var(--text-sm)',
-                  color:            domain ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
-                  outline:          'none',
-                  cursor:           isPending ? 'not-allowed' : 'pointer',
-                  opacity:          isPending ? 0.6 : 1,
-                  transition:       'var(--transition-hover)',
-                }}
-                onFocus={(e) => { if (!domainError) inputFocus(e); }}
-                onBlur={(e) => { if (!domainError) inputBlur(e); }}
-              >
-                <option value="" disabled>Select domain</option>
-                {APP_DOMAINS.map((d) => (
-                  <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>
-                ))}
-              </select>
-              <ChevronDown
-                style={{
-                  position:      'absolute',
-                  right:         'var(--space-3)',
-                  top:           '50%',
-                  transform:     'translateY(-50%)',
-                  width:         14,
-                  height:        14,
-                  strokeWidth:   1.5,
-                  color:         'var(--theme-text-tertiary)',
-                  pointerEvents: 'none',
-                  flexShrink:    0,
-                }}
-              />
+          {/* Domain — hidden for managers (locked to their domain) */}
+          {!isManagerLocked && (
+            <div>
+              <span style={FIELD_LABEL_STYLE}>Domain <span style={{ color: 'var(--color-danger)' }}>*</span></span>
+              <div style={{ position: 'relative' }}>
+                <select
+                  value={domain}
+                  onChange={(e) => { setDomain(e.target.value as AppDomain | ''); if (domainError && e.target.value) setDomainError(''); setDrafts([]); }}
+                  disabled={isPending}
+                  style={{
+                    ...INPUT_BASE,
+                    appearance:       'none',
+                    WebkitAppearance: 'none',
+                    paddingRight:     'var(--space-8)',
+                    color:            domain ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
+                    borderColor:      domainError ? 'var(--color-danger)' : undefined,
+                    boxShadow:        domainError ? '0 0 0 3px var(--color-danger-light)' : undefined,
+                    cursor:           isPending ? 'not-allowed' : 'pointer',
+                  }}
+                  {...focusHandlers}
+                >
+                  <option value="" disabled>Select domain</option>
+                  {GIA_DOMAINS.map((d) => (
+                    <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 12 12"
+                  style={{ position: 'absolute', right: 'var(--space-3)', top: '50%', transform: 'translateY(-50%)', width: 12, height: 12, pointerEvents: 'none', color: 'var(--theme-text-tertiary)' }}
+                  stroke="currentColor" fill="none" strokeWidth="1.5"
+                >
+                  <path d="M2 4l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              {domainError && (
+                <p style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--color-danger)', margin: 'var(--space-1) 0 0' }}>
+                  {domainError}
+                </p>
+              )}
             </div>
-            <FieldError message={domainError} />
+          )}
+
+          {/* Priority */}
+          <div>
+            <span style={FIELD_LABEL_STYLE}>Priority</span>
+            <PriorityPills value={priority} onChange={setPriority} disabled={isPending} />
           </div>
 
-          {/* Accent Colour — UI only, no DB column yet */}
-          {/* TODO: wire to task_groups.accent_color once column is added via migration */}
+          {/* Due date */}
           <div>
-            <FieldLabel>Accent Colour</FieldLabel>
-            <div
-              style={{
-                display:             'grid',
-                gridTemplateColumns: 'repeat(10, 1fr)',
-                gap:                 'var(--space-2)',
-              }}
-            >
-              {GROUP_TASK_ACCENT_COLORS.map((c) => {
-                const isSelected = accentId === c.id;
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    title={c.label}
-                    aria-label={`${c.label}${isSelected ? ' (selected)' : ''}`}
-                    onClick={() => setAccentId(c.id)}
-                    style={{
-                      aspectRatio:  '1',
-                      borderRadius: 'var(--radius-xs)',
-                      background:   c.hex,
-                      border:       isSelected ? `2px solid var(--theme-paper)` : '2px solid transparent',
-                      outline:      isSelected ? `2px solid ${c.hex}` : '2px solid transparent',
-                      outlineOffset: '1px',
-                      cursor:       'pointer',
-                      transition:   'outline var(--duration-fast) var(--ease-in-out)',
-                    }}
-                  />
-                );
-              })}
+            <span style={FIELD_LABEL_STYLE}>Due Date</span>
+            <DatePicker
+              value={dueAt}
+              onChange={setDueAt}
+              disabled={isPending}
+              placeholder="Optional"
+              showTime
+              style={{ width: '100%' }}
+              aria-label="Group due date"
+            />
+          </div>
+        </div>
+
+        {/* ── Section: Appearance (colour + icon) ─────────────────────────── */}
+        <div
+          style={{
+            display:      'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap:          'var(--space-4)',
+          }}
+        >
+          {/* Accent colour */}
+          <div>
+            <span style={FIELD_LABEL_STYLE}>Accent colour</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
+              {GROUP_TASK_ACCENT_COLORS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  title={c.label}
+                  aria-label={c.label}
+                  onClick={() => setAccentColor(c.hex)}
+                  style={{
+                    width:        22,
+                    height:       22,
+                    borderRadius: 'var(--radius-full)',
+                    background:   c.hex,
+                    border:       accentColor === c.hex
+                      ? `2px solid var(--theme-text-primary)`
+                      : '2px solid transparent',
+                    outline:      accentColor === c.hex
+                      ? `2px solid ${c.hex}`
+                      : 'none',
+                    outlineOffset: 2,
+                    cursor:       'pointer',
+                    flexShrink:   0,
+                    transition:   'border 0.12s, outline 0.12s',
+                    boxSizing:    'border-box',
+                  }}
+                />
+              ))}
             </div>
           </div>
 
-          {/* Icon — UI only, no DB column yet */}
-          {/* TODO: wire to task_groups.icon_key once column is added via migration */}
+          {/* Icon */}
           <div>
-            <FieldLabel>Icon</FieldLabel>
+            <span style={FIELD_LABEL_STYLE}>Icon</span>
             <div
               style={{
-                display:             'grid',
-                gridTemplateColumns: 'repeat(5, 1fr)',
-                gap:                 'var(--space-1)',
+                display:   'flex',
+                flexWrap:  'wrap',
+                gap:       'var(--space-1)',
+                marginTop: 'var(--space-1)',
+                maxHeight: 80,
+                overflowY: 'auto',
               }}
             >
               {GROUP_TASK_ICONS.map((ic) => {
-                const isSelected = iconId === ic.id;
+                const IconComp = (LucideIcons as unknown as Record<string, React.ComponentType<{ style?: React.CSSProperties }>>)[ic.id];
+                if (!IconComp) return null;
+                const isActive = iconKey === ic.id;
                 return (
                   <button
                     key={ic.id}
                     type="button"
                     title={ic.label}
-                    aria-label={`${ic.label} icon${isSelected ? ' (selected)' : ''}`}
-                    onClick={() => setIconId(ic.id)}
+                    aria-label={ic.label}
+                    onClick={() => setIconKey(ic.id)}
                     style={{
                       display:        'flex',
                       alignItems:     'center',
                       justifyContent: 'center',
-                      height:         32,
-                      borderRadius:   'var(--radius-sm)',
-                      border:         '1px solid',
-                      borderColor:    isSelected ? 'var(--theme-accent)' : 'transparent',
-                      background:     isSelected ? 'var(--theme-accent)' : 'transparent',
-                      color:          isSelected ? 'var(--theme-accent-fg)' : 'var(--theme-text-secondary)',
+                      width:          26,
+                      height:         26,
+                      borderRadius:   'var(--radius-xs)',
+                      border:         isActive ? `1.5px solid ${accentColor}` : '1.5px solid transparent',
+                      background:     isActive ? `color-mix(in srgb, ${accentColor} 16%, transparent)` : 'transparent',
+                      color:          isActive ? accentColor : 'var(--theme-text-secondary)',
                       cursor:         'pointer',
-                      transition:     'var(--transition-hover)',
+                      flexShrink:     0,
+                      transition:     'background 0.12s, border 0.12s, color 0.12s',
                     }}
                     onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        (e.currentTarget as HTMLElement).style.background   = 'var(--theme-paper-subtle)';
-                        (e.currentTarget as HTMLElement).style.borderColor  = 'var(--theme-paper-border)';
-                      }
+                      if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)';
                     }}
                     onMouseLeave={(e) => {
-                      if (!isSelected) {
-                        (e.currentTarget as HTMLElement).style.background  = 'transparent';
-                        (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
-                      }
+                      if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent';
                     }}
                   >
-                    <span style={{ color: isSelected ? 'var(--theme-accent-fg)' : 'var(--theme-text-secondary)', display: 'flex' }}>
-                      <TaskIcon name={ic.id} size={15} />
-                    </span>
+                    <IconComp style={{ width: 13, height: 13, strokeWidth: 1.5 } as React.CSSProperties} />
                   </button>
                 );
               })}
             </div>
           </div>
-
-          {/* Divider */}
-          <div
-            style={{
-              height:     1,
-              background: 'var(--theme-paper-border)',
-            }}
-          />
-
-          {/* Priority */}
-          <div>
-            <FieldLabel>Priority</FieldLabel>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              {(['urgent', 'high', 'normal'] as TaskPriority[]).map((p) => {
-                const cfg      = TASK_PRIORITY[p];
-                const isActive = priority === p;
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => { if (isActive && p !== 'normal') setPriority('normal'); else setPriority(p); }}
-                    style={{
-                      display:      'inline-flex',
-                      alignItems:   'center',
-                      height:       28,
-                      padding:      '0 var(--space-3)',
-                      borderRadius: 'var(--radius-full)',
-                      border:       isActive
-                        ? `1.5px solid ${cfg.color}`
-                        : '1px solid var(--theme-paper-border)',
-                      background:   isActive
-                        ? `color-mix(in srgb, ${cfg.color} 12%, transparent)`
-                        : 'transparent',
-                      color:        isActive ? cfg.color : 'var(--theme-text-secondary)',
-                      fontFamily:   'var(--font-sans)',
-                      fontSize:     'var(--text-xs)',
-                      fontWeight:   isActive ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                      cursor:       'pointer',
-                      transition:   'var(--transition-hover)',
-                      whiteSpace:   'nowrap',
-                    }}
-                  >
-                    {cfg.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Due Date */}
-          <div>
-            <FieldLabel>Due Date (Optional)</FieldLabel>
-            <input
-              type="datetime-local"
-              value={dueAt}
-              onChange={(e) => setDueAt(e.target.value)}
-              disabled={isPending}
-              style={{
-                display:      'block',
-                width:        '100%',
-                boxSizing:    'border-box',
-                height:       36,
-                border:       '1px solid var(--theme-paper-border)',
-                borderRadius: 'var(--radius-sm)',
-                background:   'var(--theme-paper)',
-                padding:      '0 var(--space-3)',
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-sm)',
-                color:        dueAt ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
-                outline:      'none',
-                caretColor:   'var(--theme-accent)',
-                opacity:      isPending ? 0.6 : 1,
-                transition:   'var(--transition-hover)',
-              }}
-              onFocus={inputFocus}
-              onBlur={inputBlur}
-            />
-          </div>
-
-          {/* Add Members */}
-          {/* TODO: wire to searchProfilesAction once it exists in src/lib/actions/profiles.ts */}
-          {/* TODO: wire memberIds to createGroupTaskAction once task_group_members table is added */}
-          <div>
-            <FieldLabel>Add Members (Optional)</FieldLabel>
-
-            {/* Member chips */}
-            {members.length > 0 && (
-              <div
-                style={{
-                  display:      'flex',
-                  flexWrap:     'wrap',
-                  gap:          'var(--space-1)',
-                  marginBottom: 'var(--space-2)',
-                }}
-              >
-                {members.map((m) => (
-                  <span
-                    key={m.id}
-                    style={{
-                      display:      'inline-flex',
-                      alignItems:   'center',
-                      gap:          'var(--space-1)',
-                      padding:      'var(--space-1) var(--space-2)',
-                      borderRadius: 'var(--radius-full)',
-                      background:   'var(--theme-accent-surface)',
-                      border:       '1px solid var(--theme-paper-border)',
-                      fontFamily:   'var(--font-sans)',
-                      fontSize:     'var(--text-xs)',
-                      color:        'var(--theme-text-primary)',
-                    }}
-                  >
-                    <Avatar src={m.avatar_url} name={m.full_name} size="xs" style={{ width: 20, height: 20, minWidth: 20, borderRadius: 'var(--radius-full)' }} />
-                    {m.full_name}
-                    <button
-                      type="button"
-                      onClick={() => removeMember(m.id)}
-                      aria-label={`Remove ${m.full_name}`}
-                      style={{
-                        display:    'flex',
-                        alignItems: 'center',
-                        background: 'none',
-                        border:     'none',
-                        padding:    0,
-                        cursor:     'pointer',
-                        color:      'var(--theme-text-tertiary)',
-                      }}
-                    >
-                      <X style={{ width: 10, height: 10, strokeWidth: 2 }} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Search input */}
-            <div style={{ position: 'relative' }}>
-              <Search
-                style={{
-                  position:      'absolute',
-                  left:          'var(--space-3)',
-                  top:           '50%',
-                  transform:     'translateY(-50%)',
-                  width:         14,
-                  height:        14,
-                  strokeWidth:   1.5,
-                  color:         'var(--theme-text-tertiary)',
-                  pointerEvents: 'none',
-                }}
-              />
-              <input
-                type="text"
-                value={memberQuery}
-                onChange={(e) => setMemberQuery(e.target.value)}
-                placeholder="Search by name… (min 2 characters)"
-                style={{
-                  display:      'block',
-                  width:        '100%',
-                  boxSizing:    'border-box',
-                  height:       36,
-                  border:       '1px solid var(--theme-paper-border)',
-                  borderRadius: 'var(--radius-sm)',
-                  background:   'var(--theme-paper-subtle)',
-                  paddingLeft:  'var(--space-8)',
-                  paddingRight: 'var(--space-3)',
-                  fontFamily:   'var(--font-sans)',
-                  fontSize:     'var(--text-sm)',
-                  color:        'var(--theme-text-primary)',
-                  caretColor:   'var(--theme-accent)',
-                  outline:      'none',
-                  transition:   'var(--transition-hover)',
-                }}
-                onFocus={inputFocus}
-                onBlur={inputBlur}
-              />
-            </div>
-
-            {/* Search results */}
-            {memberQuery.trim().length >= 2 && (
-              <div
-                style={{
-                  marginTop:    'var(--space-1)',
-                  border:       '1px solid var(--theme-paper-border)',
-                  borderRadius: 'var(--radius-md)',
-                  background:   'var(--theme-paper)',
-                  boxShadow:    'var(--shadow-2)',
-                  overflow:     'hidden',
-                }}
-              >
-                {memberSearchPending ? (
-                  <div
-                    style={{
-                      padding:    'var(--space-3) var(--space-4)',
-                      fontFamily: 'var(--font-sans)',
-                      fontSize:   'var(--text-xs)',
-                      color:      'var(--theme-text-tertiary)',
-                    }}
-                  >
-                    Searching…
-                  </div>
-                ) : memberResults.length === 0 ? (
-                  <div
-                    style={{
-                      display:    'flex',
-                      alignItems: 'center',
-                      gap:        'var(--space-2)',
-                      padding:    'var(--space-3) var(--space-4)',
-                    }}
-                  >
-                    <Users style={{ width: 14, height: 14, strokeWidth: 1.5, color: 'var(--theme-text-tertiary)', flexShrink: 0 }} />
-                    <span
-                      style={{
-                        fontFamily: 'var(--font-sans)',
-                        fontSize:   'var(--text-xs)',
-                        color:      'var(--theme-text-tertiary)',
-                        fontStyle:  'italic',
-                      }}
-                    >
-                      Member search is pending — searchProfilesAction not yet implemented.
-                    </span>
-                  </div>
-                ) : (
-                  memberResults.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => addMember(m)}
-                      style={{
-                        display:      'flex',
-                        alignItems:   'center',
-                        gap:          'var(--space-3)',
-                        width:        '100%',
-                        padding:      'var(--space-2) var(--space-4)',
-                        border:       'none',
-                        borderBottom: '1px solid var(--theme-paper-border)',
-                        background:   'transparent',
-                        cursor:       'pointer',
-                        textAlign:    'left',
-                        transition:   'background var(--duration-fast) var(--ease-in-out)',
-                      }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                    >
-                      <Avatar src={m.avatar_url} name={m.full_name} size="xs" style={{ width: 24, height: 24, minWidth: 24, borderRadius: 'var(--radius-sm)' }} />
-                      <span style={{ flex: 1, fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)' }}>
-                        {m.full_name}
-                      </span>
-                      <span
-                        style={{
-                          padding:      'var(--space-px) var(--space-2)',
-                          borderRadius: 'var(--radius-full)',
-                          background:   'var(--theme-paper-subtle)',
-                          border:       '1px solid var(--theme-paper-border)',
-                          fontFamily:   'var(--font-sans)',
-                          fontSize:     'var(--text-2xs)',
-                          color:        'var(--theme-text-tertiary)',
-                          flexShrink:   0,
-                        }}
-                      >
-                        {m.role}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
         </div>
-      </div>
 
-      {/*
-        Hide preview column below 640px.
-        Inlined here as a scoped style — the data attribute selector is
-        specific enough that it won't bleed into other components.
-      */}
-      <style>{`@media(max-width:640px){[data-preview-col]{display:none!important}}`}</style>
+        {/* ── Divider ─────────────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--theme-paper-border)' }} />
+          <span
+            style={{
+              fontFamily:    'var(--font-sans)',
+              fontSize:      'var(--text-2xs)',
+              fontWeight:    'var(--weight-semibold)',
+              letterSpacing: 'var(--tracking-widest)',
+              textTransform: 'uppercase',
+              color:         'var(--theme-text-tertiary)',
+              whiteSpace:    'nowrap',
+            }}
+          >
+            Subtasks
+          </span>
+          <div style={{ flex: 1, height: 1, background: 'var(--theme-paper-border)' }} />
+        </div>
+
+        {/* ── Section B: Subtasks ──────────────────────────────────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+
+          {/* Column headers — only show when there are drafts */}
+          {drafts.length > 0 && (
+            <div
+              style={{
+                display:             'grid',
+                gridTemplateColumns: '1fr auto auto auto auto',
+                gap:                 'var(--space-2)',
+                padding:             '0 var(--space-3)',
+                alignItems:          'center',
+              }}
+            >
+              <span style={{ ...FIELD_LABEL_STYLE, marginBottom: 0 }}>Title</span>
+              <span style={{ ...FIELD_LABEL_STYLE, marginBottom: 0, minWidth: 68 }}>Priority</span>
+              <span style={{ ...FIELD_LABEL_STYLE, marginBottom: 0, minWidth: 72 }}>Assignee</span>
+              <span style={{ ...FIELD_LABEL_STYLE, marginBottom: 0, minWidth: 100 }}>Due</span>
+              <span style={{ width: 24 }} />
+            </div>
+          )}
+
+          <AnimatePresence initial={false}>
+            {drafts.map((d) => (
+              <SubtaskRow
+                key={d.id}
+                draft={d}
+                users={assignableUsers}
+                onTitleChange={(v) => updateDraft(d.id, { title: v })}
+                onPriorityChange={(p) => updateDraft(d.id, { priority: p })}
+                onAssigneeChange={(u) => updateDraft(d.id, { assignee: u })}
+                onDueChange={(dt) => updateDraft(d.id, { dueAt: dt })}
+                onRemove={() => removeDraft(d.id)}
+                autoFocus={d.id === lastAddedId}
+                disabled={isPending}
+              />
+            ))}
+          </AnimatePresence>
+
+          {/* Add subtask trigger */}
+          <button
+            type="button"
+            onClick={addDraft}
+            disabled={isPending || (!isManagerLocked && !domain)}
+            style={{
+              display:      'flex',
+              alignItems:   'center',
+              gap:          'var(--space-2)',
+              padding:      'var(--space-2) var(--space-3)',
+              border:       '1px dashed var(--theme-paper-border)',
+              borderRadius: 'var(--radius-sm)',
+              background:   'transparent',
+              fontFamily:   'var(--font-sans)',
+              fontSize:     'var(--text-sm)',
+              color:        'var(--theme-text-tertiary)',
+              cursor:       (isPending || (!isManagerLocked && !domain)) ? 'not-allowed' : 'pointer',
+              opacity:      (isPending || (!isManagerLocked && !domain)) ? 0.5 : 1,
+              width:        '100%',
+              transition:   'color var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out)',
+            }}
+            onMouseEnter={(e) => {
+              if (!isPending && (isManagerLocked || domain)) {
+                (e.currentTarget as HTMLElement).style.color        = 'var(--theme-accent)';
+                (e.currentTarget as HTMLElement).style.borderColor  = 'var(--theme-accent)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.color       = 'var(--theme-text-tertiary)';
+              (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
+            }}
+          >
+            <Plus style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
+            {drafts.length === 0 ? 'Add a subtask' : 'Add another subtask'}
+          </button>
+
+          {!isManagerLocked && !domain ? (
+            <p
+              style={{
+                fontFamily: 'var(--font-sans)',
+                fontSize:   'var(--text-xs)',
+                color:      'var(--theme-text-tertiary)',
+                fontStyle:  'italic',
+                margin:     0,
+                textAlign:  'center',
+              }}
+            >
+              Select a domain above to add subtasks and assign them to people.
+            </p>
+          ) : drafts.length > 0 && (
+            <p
+              style={{
+                fontFamily: 'var(--font-sans)',
+                fontSize:   'var(--text-xs)',
+                color:      'var(--theme-text-tertiary)',
+                margin:     0,
+              }}
+            >
+              Subtasks without an assignee will be skipped — assign each one before creating.
+            </p>
+          )}
+        </div>
+
+      </div>
     </Modal>
   );
 }

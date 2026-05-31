@@ -129,6 +129,7 @@ NEVER  use "No data available" as empty state copy
 NEVER  use more than 3 colours in a single chart
 NEVER  show a skeleton for less than 150ms
 NEVER  add backdrop-blur outside the three sanctioned surfaces
+NEVER  use a coloured border on one edge of a card, row, or column as a category/status indicator (borderLeft/borderTop/borderRight/borderBottom accent strips) — use pills, dots, icons, or semantic badges instead
 NEVER  add a package or meaningful change without a docs/changelog.md entry
 NEVER  write to The_Changelog.md — it has been deleted; docs/changelog.md is the only changelog
 ```
