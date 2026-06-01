@@ -6,6 +6,19 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-01 — Fix: WhatsApp-originated leads not sending assignment notifications
+
+- `src/lib/services/whatsapp-ingestion.ts` — `processInboundMessage` was discarding the `assignedTo` return value from `createLeadFromWhatsApp`, so agents and founders never received a WhatsApp notification when a new lead entered via an inbound WhatsApp message. Fixed by destructuring `{ leadId, assignedTo }` and firing `sendLeadAssignmentNotification` (to agent) and `sendFounderLeadNotification` (to all founders) after re-fetching the full lead row. Both calls are fire-and-forget with `.catch()` — a notification failure never blocks message processing.
+
+---
+
+## 2026-06-01 — WA notification wiring audit (phase WA)
+
+- `src/lib/services/whatsapp-api.ts` — full notification wiring audit: null guards verified, param order verified against §7 template table, `logNotification` now called on both success and fetch-throw paths (network error previously went unlogged), no full phone numbers in logs, all fire-and-forget calls have `.catch()` with `[whatsapp-api]` prefix, no notification awaited in hot path; SLA breach path verified (agent fires before manager per rule split, no-agent edge case exits cleanly); `src/lib/CLAUDE.md` updated with verified call site inventory.
+- `src/lib/services/whatsapp-api.ts` — `isGupshupDelivered(httpOk, body)` helper added: Gupshup returns HTTP 200 with `{"status":"error","message":"..."}` on template ID mismatches and inactive numbers; `delivered` now derived from body parse (`status === 'error'` → false) rather than `res.ok` alone; non-JSON bodies fall through to trust `httpOk`; all four send functions updated; error log lines now include raw body fragment for observability. Confirmed `responseBody` is `await res.text()` at all four call sites — `JSON.parse` receives a string, not a pre-parsed object.
+
+---
+
 ## 2026-06-01 — Design system reference manual
 
 - `docs/design-system.md` — full design system reference manual generated; 2026-06-01; housekeeping.
