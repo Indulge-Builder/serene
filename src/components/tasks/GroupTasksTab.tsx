@@ -24,7 +24,6 @@ import { createSubtaskAction, getGroupSubtasksAction, getTaskRemarksAction } fro
 import { TaskCompletionCircle } from '@/components/tasks/TaskCompletionCircle';
 import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';
 import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
-import { listAgentsForDomain } from '@/lib/actions/leads';
 import { formatRelativeTime } from '@/lib/utils/dates';
 import { toast } from '@/lib/toast';
 import { SubTaskModal, type SubTaskModalTaskUpdate } from '@/components/tasks/SubTaskModal';
@@ -60,6 +59,7 @@ interface GroupTasksTabProps {
   currentUserName:         string;
   callerRole:              UserRole;
   callerDomain:            AppDomain;
+  initialAgents:           AssignableUser[];
   createTrigger?:          number;
   onFilteredCountChange?:  (count: number) => void;
 }
@@ -1026,6 +1026,7 @@ export function GroupTasksTab({
   currentUserName,
   callerRole,
   callerDomain,
+  initialAgents,
   createTrigger = 0,
   onFilteredCountChange,
 }: GroupTasksTabProps) {
@@ -1046,26 +1047,10 @@ export function GroupTasksTab({
   useEffect(() => {
     onFilteredCountChange?.(filteredRows.length);
   }, [filteredRows.length, onFilteredCountChange]);
-  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
 
-  useEffect(() => {
-    if (!['manager', 'admin', 'founder'].includes(callerRole)) return;
-    let cancelled = false;
-    listAgentsForDomain(callerDomain).then((result) => {
-      if (cancelled || !result.data) return;
-      setAssignableUsers(
-        result.data.map((a: { id: string; full_name: string }) => ({
-          id:         a.id,
-          full_name:  a.full_name,
-          avatar_url: null,
-          role:       'agent' as const,
-          domain:     callerDomain,
-        })),
-      );
-    });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Agents are pre-fetched by TasksAsync (SSR) and passed as initialAgents.
+  // No mount-time action call needed.
+  const assignableUsers: AssignableUser[] = initialAgents;
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
 

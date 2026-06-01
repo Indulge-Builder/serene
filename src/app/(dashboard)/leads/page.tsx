@@ -28,7 +28,7 @@ function parseFilters(searchParams: Awaited<SearchParams>): LeadFilters {
   }
 
   const page     = Math.max(1, parseInt(getString('page') ?? '1', 10) || 1);
-  const pageSize = 50;
+  const pageSize = 30;
 
   return {
     status:            getMulti<LeadStatus>('status'),

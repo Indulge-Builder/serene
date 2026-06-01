@@ -106,7 +106,62 @@ export async function ingestLead(
     console.warn(`[lead-ingestion] Unknown campaign prefix: ${data.utm_campaign}`);
   }
 
-  // 4. Round-robin agent assignment
+  // 4. Dedup check — phone is the identity key (migration 0008)
+  //    Active statuses: new | touched | in_discussion | nurturing → log duplicate_submission, no insert
+  //    Terminal statuses: lost | junk | won → allow new lead with previous_lead_id chain
+  const phone = data.phone;
+  let previousLeadId: string | null = null;
+
+  if (phone) {
+    const { data: existingLeads } = await (
+      supabase as unknown as {
+        rpc: (fn: string, args: Record<string, string>) => Promise<{ data: { id: string; status: string }[] | null }>;
+      }
+    ).rpc('get_active_lead_by_phone', { p_phone: phone });
+
+    if (existingLeads && existingLeads.length > 0) {
+      const existing = existingLeads[0];
+      const activeStatuses = ['new', 'touched', 'in_discussion', 'nurturing'];
+
+      if (activeStatuses.includes(existing.status)) {
+        // Log a duplicate_submission activity on the existing lead — non-fatal
+        await supabase.from('lead_activities').insert({
+          lead_id:     existing.id,
+          actor_id:    null,
+          action_type: 'duplicate_submission',
+          details: {
+            source:         source,
+            utm_campaign:   data.utm_campaign ?? null,
+            domain,
+            raw_payload_id: rawPayloadId,
+          },
+        });
+
+        if (rawPayloadId) {
+          await supabase
+            .from('lead_raw_payloads')
+            .update({ lead_id: existing.id })
+            .eq('id', rawPayloadId);
+        }
+
+        return {
+          success:      true,
+          leadId:       existing.id,
+          rawPayloadId: rawPayloadId ?? '',
+          assigned_to:  null,
+          agent_name:   null,
+          domain,
+          lead_name:    data.last_name ? `${data.first_name} ${data.last_name}` : data.first_name,
+          lead_phone:   phone,
+        };
+      }
+
+      // Terminal lead exists — new lead is a returning prospect; link the chain
+      previousLeadId = existing.id;
+    }
+  }
+
+  // 5. Round-robin agent assignment
   const assignedTo = await getNextRoundRobinAgent(domain);
 
   // Fetch agent name for notifications — one query, non-fatal if absent
@@ -120,12 +175,13 @@ export async function ingestLead(
     assignedAgentName = agentProfile?.full_name ?? null;
   }
 
-  // 5. Insert lead via admin (service role — bypasses RLS)
+  // 6. Insert lead via admin (service role — bypasses RLS)
   const leadInsert: LeadInsert = {
     first_name:         data.first_name,
     last_name:          data.last_name ?? null,
     email:              data.email ?? null,
     phone:              data.phone,
+    previous_lead_id:   previousLeadId,
     domain,
     assigned_to:        assignedTo ?? null,
     assigned_at:        assignedTo ? new Date().toISOString() : null,
@@ -159,7 +215,7 @@ export async function ingestLead(
 
   const leadId = inserted.id;
 
-  // 6. Backfill lead_id on the raw payload log now that the lead row exists
+  // 7. Backfill lead_id on the raw payload log now that the lead row exists
   if (rawPayloadId) {
     await supabase
       .from('lead_raw_payloads')
@@ -167,7 +223,7 @@ export async function ingestLead(
       .eq('id', rawPayloadId);
   }
 
-  // 7. Log lead_created activity
+  // 8. Log lead_created activity
   await supabase.from('lead_activities').insert({
     lead_id:     leadId,
     actor_id:    null,
@@ -180,7 +236,7 @@ export async function ingestLead(
     },
   });
 
-  // 8. Log agent_assigned activity if an agent was found
+  // 9. Log agent_assigned activity if an agent was found
   if (assignedTo) {
     await supabase.from('lead_activities').insert({
       lead_id:     leadId,

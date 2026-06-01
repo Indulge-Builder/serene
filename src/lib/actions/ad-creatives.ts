@@ -11,6 +11,8 @@ import {
 } from "@/lib/validations/ad-creative-schema";
 import type { ActionResult } from "@/lib/types";
 import type { AdCreative } from "@/lib/types/database";
+import { redis } from "@/lib/redis";
+import { REDIS_KEYS } from "@/lib/constants/redis-keys";
 
 const ADMIN_ROLES = ["admin", "founder"];
 
@@ -68,6 +70,10 @@ export async function upsertAdCreative(
 
     if (error || !data) return { data: null, error: formErrors.generic };
 
+    void redis
+      .del(REDIS_KEYS.campaign.campaignAdCreative(normalisedKey))
+      .catch(() => {});
+
     revalidatePath("/admin/ad-creatives");
     revalidatePath("/campaigns");
     return { data: data as AdCreative, error: null };
@@ -86,6 +92,10 @@ export async function upsertAdCreative(
     }
     return { data: null, error: formErrors.generic };
   }
+
+  void redis
+    .del(REDIS_KEYS.campaign.campaignAdCreative(normalisedKey))
+    .catch(() => {});
 
   revalidatePath("/admin/ad-creatives");
   revalidatePath("/campaigns");
@@ -115,12 +125,18 @@ export async function deleteAdCreative(
   }
 
   const adminClient = createAdminClient();
-  const { error } = await adminClient
+  const { data: deleted, error } = await adminClient
     .from("ad_creatives")
     .delete()
-    .eq("id", parsed.data.id);
+    .eq("id", parsed.data.id)
+    .select("campaign_key")
+    .maybeSingle();
 
-  if (error) return { data: null, error: formErrors.generic };
+  if (error || !deleted) return { data: null, error: formErrors.generic };
+
+  void redis
+    .del(REDIS_KEYS.campaign.campaignAdCreative(deleted.campaign_key))
+    .catch(() => {});
 
   revalidatePath("/admin/ad-creatives");
   revalidatePath("/campaigns");

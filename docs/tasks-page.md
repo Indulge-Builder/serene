@@ -285,9 +285,9 @@ Realtime: **enabled**.
 | --- | --- | --- | --- | --- |
 | `getPersonalTasks` | `userId`, `filters?` | `PersonalTasksResult` | RPC `get_personal_tasks` only | `getPersonalTasksAction`, `TasksAsync` (personal tab) |
 | `getGroupTasks` | `filters?` | `TaskGroupRow[]` | RPC + batch profiles; React `cache()` | `TasksAsync` (group tab) |
-| `getGroupSubtasks` | `groupId` | `SubtaskWithAssignee[]` | PostgREST + batch assignees | `getGroupSubtasksAction`, `WorkspaceAsync` |
+| `getGroupSubtasks` | `groupId`, `userId` | `SubtaskWithAssignee[]` | Redis 30s → PostgREST + batch assignees; React `cache()`. `userId` scopes cache key — prevents cross-user bleed. | `getGroupSubtasksAction`, `WorkspaceAsync` |
 | `getTaskById` | `taskId` | `TaskWithMessages \| null` | Parallel task + remarks | (modal/detail paths) |
-| `getTaskRemarks` | `taskId` | `TaskRemarkWithAuthor[]` | PostgREST ASC + batch authors | `getTaskRemarksAction` |
+| `getTaskRemarks` | `taskId` | `TaskRemarkWithAuthor[]` | Redis 30s → PostgREST ASC + batch authors; React `cache()` | `getTaskRemarksAction` |
 | `getTaskGroupById` | `groupId` | `TaskGroup \| null` | Single row; RLS | `getTaskGroupByIdAction`, `WorkspaceAsync` |
 | `getPersonalTaskTags` | `userId` | `string[]` | Active personal tasks; dedupe sort | `getPersonalTaskTagsAction`, `TasksShell` |
 | `getGiaTasksForUser` | `userId`, `role`, `domain` | `GiaTask[]` | RPC `get_gia_tasks` | `TasksAsync` (gia tab) |

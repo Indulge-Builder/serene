@@ -11,7 +11,9 @@ tasks/page.tsx          ← thin orchestrator (session read + URL parse only —
 
 **`page.tsx` rule:** Zero data-fetching calls in the page component body. Only `getCurrentProfile()` and `searchParams` parse. If this rule is violated, the Suspense boundary is broken and the skeleton never renders.
 
-**`TasksAsync.tsx`:** Async server component — the ONLY component in the tasks tree allowed to call `getPersonalTasks` or `getGroupTasks`. Returns serialisable plain objects to `TasksShell` (no service references, no Promises, no class instances cross the server→client boundary).
+**`TasksAsync.tsx`:** Async server component — the ONLY component in the tasks tree allowed to call `getPersonalTasks`, `getGroupTasks`, `getAgentsForDomain`, or `getPersonalTaskTags`. Returns serialisable plain objects to `TasksShell` (no service references, no Promises, no class instances cross the server→client boundary).
+
+**SSR hoists (perf — 2026-06-01):** `TasksAsync` fetches `initialAgents` (from `getAgentsForDomain`) and `initialTags` (from `getPersonalTaskTags`) in parallel with the active tab data. These are passed as props to `TasksShell`, then threaded to `GroupTasksTab` and `MyTasksCalendarView`. Neither component calls `listAgentsForDomain` or `getPersonalTaskTagsAction` on mount — the SSR data is always present. The `onTagsMayHaveChanged` callback in `TasksShell` still calls `getPersonalTaskTagsAction` for post-create tag refresh, which is correct — that is a user-triggered update, not a mount fetch.
 
 **`TasksSkeleton.tsx`:** `<Suspense>` fallback. Two variants: `personal` (3 priority sections × 5 task rows) and `group` (4 group cards). Stagger delays: 0/80/160/240/320ms per §11.4. Uses `var(--theme-paper-subtle)` for shimmer — never hardcoded colours.
 
@@ -20,7 +22,7 @@ tasks/page.tsx          ← thin orchestrator (session read + URL parse only —
 - Single paper strip: **My Tasks / Group Tasks** `TabSelector` **left** (`variant="accent"`, `indicatorLayoutId="tasks-page-tabs"`), **filters** to the right in the same row. **Create button** is in the page header (`AddTaskButton`, same row as `<h1>`) — mirrors Leads. `TasksCreateProvider` wires header clicks to tab modals via `createTrigger`.
 - Filter state lives in `TasksShell` (separate `personalFilters` / `groupFilters` objects — switching tabs preserves each tab’s filters).
 - **All filtering is client-side** via `src/lib/utils/task-client-filters.ts`. Never add server refetches for filter changes.
-- **My Tasks:** search (title + description), tags (multi), status (multi), priority (multi). Tags fetched once via `getPersonalTaskTagsAction` when the personal tab is active.
+- **My Tasks:** search (title + description), tags (multi), status (multi), priority (multi). Tags seeded from `initialTags` prop (SSR); refreshed via `getPersonalTaskTagsAction` only after a task create/update that may have changed the tag set.
 - **Group Tasks:** search (group title), status, priority, domain (`FilterDropdown`, admin/founder only, domains present in roster), progress (in progress / complete / no subtasks).
 - Result count in the filter bar is reported from each tab (`onFilteredCountChange`) so optimistic row updates stay accurate.
 
@@ -99,6 +101,27 @@ page.tsx   ← getGiaTasksForUser not called here (thin orchestrator)
 
 **`TaskTab` type** exported from `page.tsx`: `'gia' | 'personal' | 'group'`.
 All shell components (`TasksAsync`, `TasksShell`, `AddTaskButton`, `TasksSkeleton`) consume this type — do not widen or narrow it elsewhere.
+
+---
+
+## TasksShell — prop contract (updated 2026-06-01)
+
+`src/app/(dashboard)/tasks/TasksShell.tsx` — `'use client'`. Two tabs: personal / group / gia.
+
+**Props added by perf-hoisting pass:**
+
+| Prop | Type | Source | Consumer |
+| --- | --- | --- | --- |
+| `initialAgents` | `AgentSlim[]` | `getAgentsForDomain(callerDomain)` in `TasksAsync` | `GroupTasksTab`, `MyTasksCalendarView` |
+| `initialTags` | `string[]` | `getPersonalTaskTags(userId)` in `TasksAsync` (personal tab only) | `personalTagItems` state seed |
+
+`AgentSlim` is exported from `TasksAsync.tsx`: `{ id: string; full_name: string; avatar_url: string | null; role: 'agent'; domain: AppDomain }`.
+
+**Rules:**
+
+- `GroupTasksTab` and `MyTasksCalendarView` must NOT call `listAgentsForDomain` on mount. They receive `initialAgents` as a prop.
+- `getPersonalTaskTagsAction` is still called from `onTagsMayHaveChanged` (post-create tag refresh) — this is a user-triggered update, not a mount fetch. Do not remove it.
+- `getPersonalTaskTagsAction` import in `TasksShell` is retained for the `onTagsMayHaveChanged` callback only.
 
 ---
 

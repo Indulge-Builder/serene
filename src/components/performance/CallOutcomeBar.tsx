@@ -25,6 +25,10 @@ const OUTCOME_CONFIG: Record<
 // Ordered for visual hierarchy: best → worst
 const OUTCOME_ORDER: CallOutcome[] = ['conversing', 'rnr', 'switched_off', 'wrong_number', 'other'];
 
+// Recharts ResponsiveContainer with width/height "100%" reads initialDimension (-1, -1)
+// before ResizeObserver fires — use explicit pixels (see ManagerCampaignWidget).
+const DONUT_SIZE = 180;
+
 // CSS var → resolved hex (needed for Recharts SVG fills)
 function resolveVar(name: string): string {
   if (typeof window === 'undefined') return '#888';
@@ -233,8 +237,15 @@ export function CallOutcomeBar({ breakdown }: Props) {
       </div>
 
       {/* Right: Donut chart */}
-      <div style={{ flexShrink: 0, position: 'relative', width: '180px', height: '180px' }}>
-        <ResponsiveContainer width="100%" height="100%">
+      <div
+        style={{
+          flexShrink: 0,
+          position: 'relative',
+          width: DONUT_SIZE,
+          height: DONUT_SIZE,
+        }}
+      >
+        <ResponsiveContainer width={DONUT_SIZE} height={DONUT_SIZE} minWidth={0}>
           <PieChart>
             <Pie
               data={pieData}

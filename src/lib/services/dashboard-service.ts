@@ -7,6 +7,8 @@
 
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
+import { redis } from '@/lib/redis';
+import { REDIS_KEYS, REDIS_TTL } from '@/lib/constants/redis-keys';
 import type { AppDomain, LeadStatus, UserRole } from '@/lib/types/database';
 import type { DashboardSummary } from '@/lib/types';
 
@@ -202,6 +204,19 @@ export async function getLeadStatusSummary(
   domain: AppDomain,
   targetDomain?: AppDomain,
 ): Promise<LeadStatusSummary> {
+  // Role is not in the key — managers/admins/founders in the same domain see
+  // identical lead status data. Manager uses `domain`; admin/founder use `targetDomain`
+  // (which, when set, narrows to the same domain). Result is domain-equivalent.
+  const effectiveDomain = (role === 'manager' ? domain : targetDomain ?? domain) as string;
+  const cacheKey = REDIS_KEYS.dashboardLeadStatus(effectiveDomain);
+
+  try {
+    const cached = await redis.get<LeadStatusSummary>(cacheKey);
+    if (cached !== null) return cached;
+  } catch (e) {
+    console.error('[dashboard-service] getLeadStatusSummary Redis get error:', e);
+  }
+
   const supabase = await createClient();
 
   // Fetch all active leads with assigned agent and status in one query
@@ -254,7 +269,15 @@ export async function getLeadStatusSummary(
 
   const byAgent = Object.values(agentMap).sort((a, b) => b.total - a.total);
 
-  return { totals, byAgent };
+  const result: LeadStatusSummary = { totals, byAgent };
+
+  try {
+    await redis.setex(cacheKey, REDIS_TTL.DASHBOARD_LEAD_STATUS, result);
+  } catch (e) {
+    console.error('[dashboard-service] getLeadStatusSummary Redis setex error:', e);
+  }
+
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -319,6 +342,17 @@ export async function getLeadVolumeByPeriod(
   domain: AppDomain,
   period: VolumePeriod,
 ): Promise<LeadVolumeSummary> {
+  // Role IS in the key — manager domain-locks the query; admin/founder may receive
+  // a different scope (no domain restriction).
+  const cacheKey = REDIS_KEYS.dashboardLeadVolume(role, domain as string, period);
+
+  try {
+    const cached = await redis.get<LeadVolumeSummary>(cacheKey);
+    if (cached !== null) return cached;
+  } catch (e) {
+    console.error('[dashboard-service] getLeadVolumeByPeriod Redis get error:', e);
+  }
+
   const supabase        = await createClient();
   const { from, to, bucketMs } = getPeriodBounds(period);
 
@@ -362,7 +396,15 @@ export async function getLeadVolumeByPeriod(
     count,
   }));
 
-  return { total: rows.length, series };
+  const result: LeadVolumeSummary = { total: rows.length, series };
+
+  try {
+    await redis.setex(cacheKey, REDIS_TTL.DASHBOARD_LEAD_VOLUME, result);
+  } catch (e) {
+    console.error('[dashboard-service] getLeadVolumeByPeriod Redis setex error:', e);
+  }
+
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -386,6 +428,15 @@ export async function getLeadVolumeByDomains(
   domains: AppDomain[],
   period: VolumePeriod,
 ): Promise<MultiDomainVolumeSummary> {
+  const cacheKey = REDIS_KEYS.dashboardLeadVolumeMulti(domains as string[], period);
+
+  try {
+    const cached = await redis.get<MultiDomainVolumeSummary>(cacheKey);
+    if (cached !== null) return cached;
+  } catch (e) {
+    console.error('[dashboard-service] getLeadVolumeByDomains Redis get error:', e);
+  }
+
   const supabase = await createClient();
   const { from, to, bucketMs } = getPeriodBounds(period);
 
@@ -437,7 +488,15 @@ export async function getLeadVolumeByDomains(
     domains.map((d) => [d, rows.filter((r) => r.domain === d).length]),
   ) as Record<AppDomain, number>;
 
-  return { domains, totals, series };
+  const result: MultiDomainVolumeSummary = { domains, totals, series };
+
+  try {
+    await redis.setex(cacheKey, REDIS_TTL.DASHBOARD_LEAD_VOLUME, result);
+  } catch (e) {
+    console.error('[dashboard-service] getLeadVolumeByDomains Redis setex error:', e);
+  }
+
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -456,6 +515,16 @@ export async function getLeadsByCampaign(
   domain: AppDomain,
   targetDomain?: AppDomain,
 ): Promise<CampaignStatusMix[]> {
+  const effectiveDomain = (role === 'manager' ? domain : targetDomain ?? domain) as string;
+  const cacheKey = REDIS_KEYS.dashboardCampaigns(effectiveDomain);
+
+  try {
+    const cached = await redis.get<CampaignStatusMix[]>(cacheKey);
+    if (cached !== null) return cached;
+  } catch (e) {
+    console.error('[dashboard-service] getLeadsByCampaign Redis get error:', e);
+  }
+
   const supabase = await createClient();
 
   let query = supabase
@@ -485,5 +554,13 @@ export async function getLeadsByCampaign(
     campaignMap[campaign].total += 1;
   }
 
-  return Object.values(campaignMap).sort((a, b) => b.total - a.total).slice(0, 12);
+  const result = Object.values(campaignMap).sort((a, b) => b.total - a.total).slice(0, 12);
+
+  try {
+    await redis.setex(cacheKey, REDIS_TTL.DASHBOARD_CAMPAIGNS, result);
+  } catch (e) {
+    console.error('[dashboard-service] getLeadsByCampaign Redis setex error:', e);
+  }
+
+  return result;
 }

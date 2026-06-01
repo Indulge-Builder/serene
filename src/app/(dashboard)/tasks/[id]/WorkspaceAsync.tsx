@@ -38,7 +38,7 @@ export async function WorkspaceAsync({
 }: WorkspaceAsyncProps) {
   const [group, initialSubtasks] = await Promise.all([
     getTaskGroupById(groupId),
-    getGroupSubtasks(groupId),
+    getGroupSubtasks(groupId, currentUserId),
   ]);
 
   // Null = RLS denied or group not found — never 404, always redirect

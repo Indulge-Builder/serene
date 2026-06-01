@@ -52,6 +52,7 @@ interface MyTasksCalendarViewProps {
   currentUserName:        string;
   callerRole:             UserRole;
   callerDomain:           AppDomain;
+  initialAgents:          AssignableUser[];
   createTrigger?:         number;
   filters:                PersonalTaskFiltersState;
   onFilteredCountChange?: (count: number) => void;
@@ -163,6 +164,7 @@ export function MyTasksCalendarView({
   currentUserName,
   callerRole,
   callerDomain,
+  initialAgents,
   createTrigger = 0,
   filters,
   onFilteredCountChange,
@@ -209,27 +211,15 @@ export function MyTasksCalendarView({
   const [quickDueAt,         setQuickDueAt]         = useState<Date | null>(null);
   const [quickAssignee,      setQuickAssignee]      = useState<AssignableUser | null>(null);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
-  const [assignableUsers,    setAssignableUsers]    = useState<AssignableUser[]>([]);
+  // Agents are pre-fetched by TasksAsync (SSR) and passed as initialAgents.
+  // No mount-time action call needed.
+  const assignableUsers: AssignableUser[] = initialAgents;
   const quickTitleRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     if (showQuickAdd) setTimeout(() => quickTitleRef.current?.focus(), 50);
   }, [showQuickAdd]);
-
-  useEffect(() => {
-    if (!['manager', 'admin', 'founder'].includes(callerRole)) return;
-    import('@/lib/actions/leads').then(({ listAgentsForDomain }) => {
-      listAgentsForDomain(callerDomain).then((r) => {
-        if (r.data) setAssignableUsers(
-          r.data.map((a: { id: string; full_name: string }) => ({
-            id: a.id, full_name: a.full_name, avatar_url: null,
-            role: 'agent' as const, domain: callerDomain,
-          })),
-        );
-      });
-    });
-  }, [callerRole, callerDomain]);
 
   const handleQuickAddSave = useCallback(() => {
     if (isPending || !quickTitle.trim()) { quickTitleRef.current?.focus(); return; }

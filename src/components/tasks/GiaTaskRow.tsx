@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Phone, MessageSquare, MoreHorizontal } from 'lucide-react';
 import { TaskCompletionCircle } from '@/components/tasks/TaskCompletionCircle';
 import { TASK_TYPE_LABELS } from '@/lib/constants/task-types';
-import { formatDate } from '@/lib/utils/dates';
+import { formatTaskDueAt } from '@/lib/utils/dates';
 import type { GiaTask } from '@/lib/services/tasks-service';
 import type { TaskStatus, TaskType } from '@/lib/types/database';
 
@@ -18,11 +18,6 @@ const TASK_TYPE_ICONS: Record<TaskType, React.FC<{ style?: React.CSSProperties }
 function isOverdue(dueAt: string | null): boolean {
   if (!dueAt) return false;
   return new Date(dueAt) < new Date();
-}
-
-function formatDueTime(dueAt: string | null): string | null {
-  if (!dueAt) return null;
-  return formatDate(new Date(dueAt), 'h:mm a, d MMM');
 }
 
 interface GiaTaskRowProps {
@@ -43,7 +38,7 @@ export function GiaTaskRow({
   const checked    = effectiveStatus === 'completed';
   const isDisabled = task.assigned_to !== currentUserId;
   const overdue    = !checked && isOverdue(task.due_at);
-  const dueLabel   = formatDueTime(task.due_at);
+  const dueLabel   = formatTaskDueAt(task.due_at);
 
   const leadHref = task.lead_slug
     ? `/leads/${task.lead_slug}`
@@ -122,7 +117,7 @@ export function GiaTaskRow({
         <span
           style={{
             fontSize:   'var(--text-xs)',
-            color:      overdue ? 'var(--color-danger)' : 'var(--theme-text-tertiary)',
+            color:      overdue ? 'var(--color-danger-text)' : 'var(--theme-text-tertiary)',
             fontFamily: 'var(--font-mono)',
             flexShrink: 0,
             whiteSpace: 'nowrap',

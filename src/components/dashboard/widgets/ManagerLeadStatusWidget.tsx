@@ -26,7 +26,7 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
 
 type DomainMode = "all" | GiaDomain;
 
-// Resolved from LEAD_STATUS_COLORS — fixed theme-invariant status colours
+// Text colours for chip labels and agent stat numbers
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new:           "var(--status-new-text)",
   touched:       "var(--status-touched-text)",
@@ -37,6 +37,7 @@ const STATUS_COLORS: Record<LeadStatus, string> = {
   junk:          "var(--status-junk-text)",
 };
 
+// Chip background colours — soft pastels for the 5 stat chips only
 const STATUS_BG: Record<LeadStatus, string> = {
   new:           "var(--status-new-light)",
   touched:       "var(--status-touched-light)",
@@ -45,6 +46,17 @@ const STATUS_BG: Record<LeadStatus, string> = {
   won:           "var(--status-won-light)",
   lost:          "var(--status-lost-light)",
   junk:          "var(--status-junk-light)",
+};
+
+// Distinct saturated colours for the agent stacked bar segments
+const BAR_COLORS: Record<LeadStatus, string> = {
+  new:           "#F5A623",
+  touched:       "#4A90D9",
+  in_discussion: "#27AE8F",
+  nurturing:     "#8B6FD4",
+  won:           "#27AE60",
+  lost:          "#E05C4B",
+  junk:          "#B0B0B0",
 };
 
 const STATUS_ORDER: LeadStatus[] = [
@@ -69,7 +81,7 @@ function StackedBar({ mix, total }: { mix: Partial<Record<LeadStatus, number>>; 
     return (
       <div
         style={{
-          height: "6px",
+          height: "10px",
           borderRadius: "var(--radius-full)",
           background: "var(--theme-paper-border)",
           width: "100%",
@@ -77,28 +89,52 @@ function StackedBar({ mix, total }: { mix: Partial<Record<LeadStatus, number>>; 
       />
     );
   }
+
+  const segments = STATUS_ORDER.map((s) => ({ s, count: mix[s] ?? 0 })).filter((x) => x.count > 0);
+
   return (
-    <div
-      style={{
-        display: "flex",
-        height: "6px",
-        borderRadius: "var(--radius-full)",
-        overflow: "hidden",
-        gap: "1px",
-        background: "var(--theme-paper-border)",
-      }}
-    >
-      {STATUS_ORDER.map((s) => {
-        const count = mix[s] ?? 0;
-        if (count === 0) return null;
-        return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "3px", width: "100%" }}>
+      {/* Numbers above each segment */}
+      <div style={{ display: "flex", width: "100%" }}>
+        {segments.map(({ s, count }) => (
+          <div
+            key={s}
+            style={{ width: `${(count / total) * 100}%`, display: "flex", justifyContent: "center", overflow: "hidden" }}
+          >
+            <span
+              style={{
+                fontSize: "var(--text-2xs)",
+                fontFamily: "var(--font-mono)",
+                fontWeight: "var(--weight-semibold)",
+                color: BAR_COLORS[s],
+                fontVariantNumeric: "tabular-nums",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {count}
+            </span>
+          </div>
+        ))}
+      </div>
+      {/* Bar */}
+      <div
+        style={{
+          display: "flex",
+          height: "10px",
+          borderRadius: "var(--radius-full)",
+          overflow: "hidden",
+          gap: "1px",
+          background: "var(--theme-paper-border)",
+        }}
+      >
+        {segments.map(({ s, count }) => (
           <div
             key={s}
             title={`${LEAD_STATUS_LABELS[s]}: ${count}`}
-            style={{ width: `${(count / total) * 100}%`, background: STATUS_COLORS[s], flexShrink: 0 }}
+            style={{ width: `${(count / total) * 100}%`, background: BAR_COLORS[s], flexShrink: 0 }}
           />
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 }
@@ -272,83 +308,94 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
         </div>
       )}
 
+      {/* ── Legend ── */}
+      {loaded && grandTotal > 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "var(--space-2)",
+          }}
+        >
+          {STATUS_ORDER.filter((s) => s !== "nurturing").map((s) => (
+            <div
+              key={s}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "2px var(--space-2)",
+                borderRadius: "var(--radius-full)",
+                background: "var(--theme-paper-subtle)",
+              }}
+            >
+              <span
+                style={{
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "var(--radius-full)",
+                  background: BAR_COLORS[s],
+                  flexShrink: 0,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: "var(--text-2xs)",
+                  color: "var(--theme-text-tertiary)",
+                  whiteSpace: "nowrap",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                {LEAD_STATUS_LABELS[s]}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Per-agent scorecard ── */}
       {loaded && byAgent.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
 
           {byAgent.slice(0, 6).map((agent) => {
-            const won     = agent.counts.won ?? 0;
-            const winRate = agent.total > 0 ? Math.round((won / agent.total) * 100) : 0;
             return (
               <div
                 key={agent.agent_id}
-                style={{ display: "flex", flexDirection: "column", gap: "3px", paddingBottom: "var(--space-2)" }}
+                style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", paddingBottom: "var(--space-2)" }}
               >
-                {/* Row: name + 4 stat numbers */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0,1fr) repeat(5, 36px)",
-                    columnGap: "var(--space-2)",
-                    alignItems: "center",
-                  }}
-                >
-                  {/* Name + subtitle */}
-                  <div style={{ minWidth: 0 }}>
-                    <span
-                      style={{
-                        fontSize: "var(--text-xs)",
-                        fontWeight: "var(--weight-medium)",
-                        color: "var(--theme-text-primary)",
-                        display: "block",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {agent.agent_name.split(" ")[0]}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "var(--text-2xs)",
-                        color: "var(--theme-text-tertiary)",
-                        fontFamily: "var(--font-mono)",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {formatCompact(agent.total)}
-                      {winRate > 0 && (
-                        <span style={{ color: "var(--color-success-text)", marginLeft: "4px" }}>
-                          {winRate}%↑
-                        </span>
-                      )}
-                    </span>
-                  </div>
-
-                  {/* Stat cells aligned to header columns */}
-                  {(["new", "touched", "in_discussion", "won", "junk"] as LeadStatus[]).map((s) => {
-                    const count = agent.counts[s] ?? 0;
-                    return (
-                      <span
-                        key={s}
-                        title={`${LEAD_STATUS_LABELS[s]}: ${count}`}
-                        style={{
-                          fontSize: "var(--text-xs)",
-                          fontFamily: "var(--font-mono)",
-                          fontWeight: count > 0 ? "var(--weight-semibold)" : undefined,
-                          color: count > 0 ? STATUS_COLORS[s] : "var(--theme-paper-border)",
-                          textAlign: "center",
-                          fontVariantNumeric: "tabular-nums",
-                        }}
-                      >
-                        {count > 0 ? formatCompact(count) : "·"}
-                      </span>
-                    );
-                  })}
+                {/* Name + total + win rate — all inline, fixed width */}
+                <div style={{ flexShrink: 0, width: "80px", display: "flex", alignItems: "baseline", gap: "4px", overflow: "hidden" }}>
+                  <span
+                    style={{
+                      fontSize: "var(--text-xs)",
+                      fontWeight: "var(--weight-medium)",
+                      color: "var(--theme-text-primary)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      flexShrink: 1,
+                    }}
+                  >
+                    {agent.agent_name.split(" ")[0]}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "var(--text-2xs)",
+                      color: "var(--theme-text-tertiary)",
+                      fontFamily: "var(--font-mono)",
+                      fontVariantNumeric: "tabular-nums",
+                      flexShrink: 0,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {formatCompact(agent.total)}
+                  </span>
                 </div>
 
-                {/* Mini bar — shows all statuses including nurturing/lost/junk */}
-                <StackedBar mix={agent.counts} total={agent.total} />
+                {/* Bar — fills remaining width */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <StackedBar mix={agent.counts} total={agent.total} />
+                </div>
               </div>
             );
           })}

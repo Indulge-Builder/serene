@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useRef } from 'react';
 import { motion, AnimatePresence }             from 'framer-motion';
 import { Avatar }                              from '@/components/ui/Avatar';
 import { CallOutcomeBar }                      from './CallOutcomeBar';
@@ -383,10 +383,21 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo, 
   const [metrics, setMetrics]         = useState<AgentDetailMetrics | null>(initialData ?? null);
   const [error, setError]             = useState<string | null>(null);
   const [isPending, startTransition]  = useTransition();
+  const lastFetchKeyRef               = useRef<string>('');
 
   useEffect(() => {
-    if (agent.id === initialAgentId && initialData) return;
+    const key = `${agent.id}|${domain ?? 'all'}|${period}|${customFrom ?? ''}|${customTo ?? ''}`;
 
+    // Duplicate fire for the same params in the same mount — skip.
+    if (lastFetchKeyRef.current === key) return;
+
+    // Server-seeded initial data — skip the round-trip on first mount.
+    if (agent.id === initialAgentId && initialData && lastFetchKeyRef.current === '') {
+      lastFetchKeyRef.current = key;
+      return;
+    }
+
+    lastFetchKeyRef.current = key;
     let cancelled = false;
     setMetrics(null);
     setError(null);

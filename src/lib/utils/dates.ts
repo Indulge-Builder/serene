@@ -10,6 +10,14 @@ export function formatDate(
   return formatInTimeZone(new Date(date), tz, fmt);
 }
 
+/** Task row due stamp (IST) — matches Gia task list on /tasks and lead dossier. */
+export function formatTaskDueAt(
+  dueAt: Date | string | null | undefined,
+): string | null {
+  if (!dueAt) return null;
+  return formatDate(dueAt, "h:mm a, d MMM");
+}
+
 export function toUTC(date: Date | string): Date {
   return new Date(new Date(date).toISOString());
 }

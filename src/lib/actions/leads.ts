@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { redis } from "@/lib/redis";
+import { REDIS_KEYS, leadListKeyPrefix } from "@/lib/constants/redis-keys";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import {
   AddCallNoteSchema,
@@ -111,6 +113,13 @@ export async function addLeadCallNote(
     old_status: string;
   };
 
+  // Redis invalidation — fire-and-forget, never blocks the response
+  void Promise.all([
+    redis.del(REDIS_KEYS.leadRowId(leadId)),
+    redis.del(REDIS_KEYS.leadNotes(leadId)),
+    redis.del(REDIS_KEYS.leadActivities(leadId)),
+  ]).catch(() => {});
+
   // 5. SLA side-effects (fire-and-forget, non-fatal — cannot go in the RPC)
   const postStatus = didAutoAdvance ? "touched" : oldStatus;
 
@@ -201,6 +210,12 @@ export async function updateLeadStatus(
 
   // RPC returned early — status was already the same
   if (!result.changed) return { data: { leadId }, error: null };
+
+  // Redis invalidation — fire-and-forget, never blocks the response
+  void Promise.all([
+    redis.del(REDIS_KEYS.leadRowId(leadId)),
+    redis.del(REDIS_KEYS.leadActivities(leadId)),
+  ]).catch(() => {});
 
   const { assigned_to: assignedTo, domain, first_name, last_name } = result;
 
@@ -301,6 +316,12 @@ export async function assignLead(
     action_type: "agent_assigned",
     details: { assigned_to: agentId, method: "manual" },
   });
+
+  // Redis invalidation — fire-and-forget, never blocks the response
+  void Promise.all([
+    redis.del(REDIS_KEYS.leadRowId(leadId)),
+    redis.del(REDIS_KEYS.leadActivities(leadId)),
+  ]).catch(() => {});
 
   // 6. Notify the receiving agent — fire-and-forget, non-fatal
   createNotification({
@@ -639,7 +660,22 @@ export async function createManualLead(
     }).catch(() => {}); // fire-and-forget, non-fatal
   }
 
-  // 11. Return success
+  // 11. Invalidate list cache for this caller so the new lead appears immediately.
+  //     Scans all cached page keys for this role+domain+userId triple and deletes them.
+  //     Fire-and-forget — a scan failure never blocks the response.
+  void (async () => {
+    try {
+      const prefix = leadListKeyPrefix(caller.role, caller.domain as string, caller.id);
+      let cursor = 0;
+      do {
+        const [nextCursor, keys] = await redis.scan(cursor, { match: `${prefix}*`, count: 100 });
+        cursor = Number(nextCursor);
+        if (keys.length > 0) await redis.del(...(keys as [string, ...string[]]));
+      } while (cursor !== 0);
+    } catch { /* non-fatal */ }
+  })();
+
+  // 12. Return success
   return { data: { leadId }, error: null };
 }
 
@@ -686,6 +722,10 @@ async function assertLeadFieldEditAccess(
 function revalidateLeadDossier(lead: LeadEditContext) {
   const segment = lead.slug ?? lead.id;
   revalidatePath(`/leads/${segment}`);
+  // Fire-and-forget Redis invalidation — never blocks the action response
+  void redis.del(REDIS_KEYS.leadRowId(lead.id)).catch(() => {});
+  if (lead.slug) void redis.del(REDIS_KEYS.leadRowSlug(lead.slug)).catch(() => {});
+  void redis.del(REDIS_KEYS.leadActivities(lead.id)).catch(() => {});
 }
 
 // ─────────────────────────────────────────────
@@ -841,6 +881,12 @@ export async function addLeadNote(
   );
 
   if (rpcError || !rpcResult) return { data: null, error: formErrors.generic };
+
+  // Redis invalidation — fire-and-forget, never blocks the response
+  void Promise.all([
+    redis.del(REDIS_KEYS.leadNotes(leadId)),
+    redis.del(REDIS_KEYS.leadActivities(leadId)),
+  ]).catch(() => {});
 
   return { data: { noteId: rpcResult.note_id }, error: null };
 }

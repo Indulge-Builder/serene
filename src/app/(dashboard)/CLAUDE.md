@@ -216,7 +216,8 @@ Filters live in `TasksFilters` / `TasksShell` (`task-client-filters.ts` — all 
 
 **Page:** `src/app/(dashboard)/tasks/[id]/page.tsx` — Server Component.
 
-- Fetches `getTaskGroupById(id)` + `getGroupSubtasks(id)` in parallel.
+- `WorkspaceAsync` fetches `getTaskGroupById(groupId)` + `getGroupSubtasks(groupId, userId)` in parallel.
+- `userId` is the second param — used only for Redis cache key scoping. RLS on the Supabase query is unchanged. See `docs/tasks-page.md` §4.
 - Null group (RLS blocks access or not found) → `redirect('/tasks?tab=group')`. No 404.
 - Passes `group`, `initialSubtasks`, `currentUserId`, `currentUserName`, `callerRole`, `callerDomain` as props.
 

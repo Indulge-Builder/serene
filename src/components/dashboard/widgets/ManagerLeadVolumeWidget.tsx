@@ -30,6 +30,20 @@ import type { AppDomain } from "@/lib/types/database";
 import { DOMAIN_LABELS, GIA_DOMAINS } from "@/lib/constants/domains";
 import type { GiaDomain } from '@/lib/constants/domains';
 
+// 4 visually distinct line colours — hardcoded so no two domains ever clash
+// regardless of active theme. Chosen across the hue wheel: amber, blue, violet, rose.
+const DOMAIN_LINE_COLORS: Record<string, string> = {
+  onboarding:  "#F5A623",
+  concierge:   "#4A90D9",
+  finance:     "#8B6FD4",
+  lifestyle:   "#E05C4B",
+};
+const FALLBACK_COLORS = ["#F5A623", "#4A90D9", "#8B6FD4", "#E05C4B"];
+
+function getDomainColor(domain: string, index: number): string {
+  return DOMAIN_LINE_COLORS[domain] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length];
+}
+
 // Period tabs: Month (left) | Week (default, middle) | Today (right)
 const PERIODS: { value: VolumePeriod; label: string }[] = [
   { value: "month", label: "Month" },
@@ -148,7 +162,7 @@ export function ManagerLeadVolumeWidget({
   );
   const [loaded, setLoaded] = useState(seed !== null);
   const [isPending, startTransition] = useTransition();
-  const { series: chartColors } = useChartTokens();
+  const { series: chartColors } = useChartTokens(); // used for single-domain manager line
 
   // Initial load — standard cancelled-flag pattern (Strict Mode safe)
   useEffect(() => {
@@ -359,7 +373,7 @@ export function ManagerLeadVolumeWidget({
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       payload={props.payload as any}
                       label={props.label as string}
-                      colors={chartColors}
+                      colors={GIA_DOMAINS.map((d, i) => getDomainColor(d, i))}
                     />
                   )}
                   cursor={{
@@ -385,12 +399,12 @@ export function ManagerLeadVolumeWidget({
                     key={d}
                     type="monotone"
                     dataKey={d}
-                    stroke={chartColors[i] ?? chartColors[0]}
+                    stroke={getDomainColor(d, i)}
                     strokeWidth={2}
                     dot={false}
                     activeDot={{
                       r: 4,
-                      fill: chartColors[i] ?? chartColors[0],
+                      fill: getDomainColor(d, i),
                       stroke: "var(--theme-paper)",
                       strokeWidth: 2,
                     }}

@@ -2,6 +2,15 @@ import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { isGiaDomain, type GiaDomain } from '@/lib/constants/domains';
+import { redis } from '@/lib/redis';
+import {
+  REDIS_KEYS,
+  REDIS_TTL,
+  buildLeadListKey,
+  CAMPAIGN_LIST_TTL,
+  CAMPAIGN_DETAIL_TTL,
+  CAMPAIGN_DISTRIBUTION_TTL,
+} from '@/lib/constants/redis-keys';
 import type { Lead, LeadActivity, LeadNote, LeadRawPayload, Task, UserRole, AppDomain, LeadFilters, CampaignFilters, CampaignMetrics, CampaignDetailMetrics, AgentDistributionRow, Profile } from '@/lib/types/database';
 
 export type LeadNoteWithAuthor = LeadNote & { author: { full_name: string } };
@@ -13,6 +22,12 @@ export type LeadTaskForDossier = Task & { task_type: Task['task_type'] };
 // Query: single lead by ID
 // ─────────────────────────────────────────────
 export async function getLeadById(leadId: string): Promise<LeadWithAssignee | null> {
+  const key = REDIS_KEYS.leadRowId(leadId);
+  try {
+    const cached = await redis.get<LeadWithAssignee>(key);
+    if (cached) return cached;
+  } catch { /* Redis unavailable — fall through to DB */ }
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('leads')
@@ -22,7 +37,9 @@ export async function getLeadById(leadId: string): Promise<LeadWithAssignee | nu
     .single();
 
   if (error || !data) return null;
-  return data as LeadWithAssignee;
+  const result = data as LeadWithAssignee;
+  try { await redis.setex(key, REDIS_TTL.LEAD_ROW, result); } catch { /* non-fatal */ }
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -30,6 +47,12 @@ export async function getLeadById(leadId: string): Promise<LeadWithAssignee | nu
 // Indexed on idx_leads_slug — exact match only, never LIKE.
 // ─────────────────────────────────────────────
 export async function getLeadBySlug(slug: string): Promise<LeadWithAssignee | null> {
+  const key = REDIS_KEYS.leadRowSlug(slug);
+  try {
+    const cached = await redis.get<LeadWithAssignee>(key);
+    if (cached) return cached;
+  } catch { /* Redis unavailable — fall through to DB */ }
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('leads')
@@ -39,7 +62,9 @@ export async function getLeadBySlug(slug: string): Promise<LeadWithAssignee | nu
     .single();
 
   if (error || !data) return null;
-  return data as LeadWithAssignee;
+  const result = data as LeadWithAssignee;
+  try { await redis.setex(key, REDIS_TTL.LEAD_ROW, result); } catch { /* non-fatal */ }
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -126,13 +151,22 @@ export async function getLeadsByRole(
     date_to:           null,
     search:            null,
     page:              1,
-    pageSize:          50,
+    pageSize:          30,
   },
 ): Promise<LeadsResult> {
+  // Redis cache-aside: try cache first; DB on miss; warm individual dossier caches after DB hit
+  // domain (caller's verified profile domain) is always the second segment so managers in
+  // different domains with identical filter args never share a cache slot.
+  const listKey = buildLeadListKey(role, domain, userId, filters);
+  try {
+    const cached = await redis.get<LeadsResult>(listKey);
+    if (cached) return cached;
+  } catch { /* Redis unavailable — fall through to DB */ }
+
   const supabase = await createClient();
 
   const page     = Math.max(1, filters.page ?? 1);
-  const pageSize = Math.max(1, Math.min(200, filters.pageSize ?? 50));
+  const pageSize = Math.max(1, Math.min(200, filters.pageSize ?? 30));
   const offset   = (page - 1) * pageSize;
 
   // Use count: 'exact' to get total matching rows in the same round trip
@@ -203,7 +237,26 @@ export async function getLeadsByRole(
 
   const { data, error, count } = await query;
   if (error || !data) return { leads: [], totalCount: 0 };
-  return { leads: data as LeadWithAssignee[], totalCount: count ?? 0 };
+
+  const result: LeadsResult = { leads: data as LeadWithAssignee[], totalCount: count ?? 0 };
+
+  // Cache the list result and warm individual dossier caches as a single fire-and-forget batch
+  try {
+    await redis.setex(listKey, REDIS_TTL.LEAD_LIST, result);
+    void (async () => {
+      try {
+        await Promise.all(
+          result.leads.flatMap((lead) => {
+            const ops = [redis.setex(REDIS_KEYS.leadRowId(lead.id), REDIS_TTL.LEAD_ROW, lead)];
+            if (lead.slug) ops.push(redis.setex(REDIS_KEYS.leadRowSlug(lead.slug), REDIS_TTL.LEAD_ROW, lead));
+            return ops;
+          }),
+        );
+      } catch { /* non-fatal: warming failure never blocks the list */ }
+    })();
+  } catch { /* non-fatal: list cache failure never blocks the response */ }
+
+  return result;
 }
 
 /** Deduped per-request — safe to call from page header and LeadsTableAsync. */
@@ -223,6 +276,12 @@ export async function getLeadFilterOptions(
   callerDomain: AppDomain,
   filterDomain: GiaDomain | null = null,
 ): Promise<LeadFilterOptions> {
+  const key = REDIS_KEYS.leadFilterOptions(role, callerDomain, filterDomain ?? '');
+  try {
+    const cached = await redis.get<LeadFilterOptions>(key);
+    if (cached) return cached;
+  } catch { /* Redis unavailable — fall through to DB */ }
+
   const supabase = await createClient();
 
   // Distinct campaign names — uses idx_leads_utm_campaign partial index
@@ -266,7 +325,9 @@ export async function getLeadFilterOptions(
   const { data: agentRows } = await agentsQuery;
   const agents = (agentRows ?? []) as Pick<Profile, 'id' | 'full_name'>[];
 
-  return { campaigns, agents };
+  const result: LeadFilterOptions = { campaigns, agents };
+  try { await redis.setex(key, REDIS_TTL.LEAD_FILTER_OPTIONS, result); } catch { /* non-fatal */ }
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -303,6 +364,12 @@ export async function getLeadNotes(leadId: string): Promise<LeadNote[]> {
 // Query: lead notes with author names — single joined query
 // ─────────────────────────────────────────────
 export async function getLeadNotesFull(leadId: string): Promise<LeadNoteWithAuthor[]> {
+  const key = REDIS_KEYS.leadNotes(leadId);
+  try {
+    const cached = await redis.get<LeadNoteWithAuthor[]>(key);
+    if (cached) return cached;
+  } catch { /* Redis unavailable — fall through to DB */ }
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('lead_notes')
@@ -311,13 +378,21 @@ export async function getLeadNotesFull(leadId: string): Promise<LeadNoteWithAuth
     .order('created_at', { ascending: false });
 
   if (error || !data) return [];
-  return data as LeadNoteWithAuthor[];
+  const result = data as LeadNoteWithAuthor[];
+  try { await redis.setex(key, REDIS_TTL.LEAD_NOTES, result); } catch { /* non-fatal */ }
+  return result;
 }
 
 // ─────────────────────────────────────────────
 // Query: lead activities with actor names — single joined query
 // ─────────────────────────────────────────────
 export async function getLeadActivitiesFull(leadId: string): Promise<LeadActivityWithActor[]> {
+  const key = REDIS_KEYS.leadActivities(leadId);
+  try {
+    const cached = await redis.get<LeadActivityWithActor[]>(key);
+    if (cached) return cached;
+  } catch { /* Redis unavailable — fall through to DB */ }
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('lead_activities')
@@ -326,7 +401,9 @@ export async function getLeadActivitiesFull(leadId: string): Promise<LeadActivit
     .order('created_at', { ascending: false });
 
   if (error || !data) return [];
-  return data as LeadActivityWithActor[];
+  const result = data as LeadActivityWithActor[];
+  try { await redis.setex(key, REDIS_TTL.LEAD_ACTIVITIES, result); } catch { /* non-fatal */ }
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -416,13 +493,48 @@ export async function getCampaignMetrics(
   callerDomain: AppDomain,
   filters: CampaignFilters,
 ): Promise<CampaignMetrics[]> {
-  const supabase = await createClient();
-
   // Manager constraint: always scope to their domain, regardless of what filters.domain says
   const effectiveDomain: string | null =
     role === 'manager'
       ? callerDomain
       : (filters.domain ?? null);
+
+  const normalizedDateFrom = filters.date_from ?? '';
+  const normalizedDateTo = filters.date_to ?? '';
+
+  const cacheKey = REDIS_KEYS.campaign.campaignList(
+    effectiveDomain ?? 'all',
+    normalizedDateFrom,
+    normalizedDateTo,
+  );
+
+  let rows: CampaignMetrics[];
+
+  try {
+    const cached = await redis.get<CampaignMetrics[]>(cacheKey);
+    if (cached) {
+      rows = cached;
+    } else {
+      rows = await fetchCampaignMetricsFromRpc(effectiveDomain, filters);
+      void redis.setex(cacheKey, CAMPAIGN_LIST_TTL, rows).catch(() => {});
+    }
+  } catch {
+    rows = await fetchCampaignMetricsFromRpc(effectiveDomain, filters);
+  }
+
+  if (!filters.search) return rows;
+
+  const term = filters.search.trim().toLowerCase();
+  if (!term) return rows;
+
+  return rows.filter((row) => row.campaign_name.toLowerCase().includes(term));
+}
+
+async function fetchCampaignMetricsFromRpc(
+  effectiveDomain: string | null,
+  filters: Pick<CampaignFilters, 'date_from' | 'date_to'>,
+): Promise<CampaignMetrics[]> {
+  const supabase = await createClient();
 
   // date_to end-of-day transform — same rule as getLeadsByRole
   const dateTo = filters.date_to
@@ -445,7 +557,6 @@ export async function getCampaignMetrics(
     outcome_converted:    number;
   };
 
-  // The Database type does not include custom RPC functions; cast through unknown.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as unknown as any).rpc('get_campaign_metrics', {
     p_domain:    effectiveDomain,
@@ -455,7 +566,7 @@ export async function getCampaignMetrics(
 
   if (error || !data) return [];
 
-  const rows = (data as CampaignRpcRow[]).map((row) => ({
+  return (data as CampaignRpcRow[]).map((row) => ({
     campaign_name: row.campaign_name,
     domain:        row.domain as AppDomain,
     total_leads:   Number(row.total_leads),
@@ -470,13 +581,6 @@ export async function getCampaignMetrics(
     switched_off:  Number(row.outcome_switched_off),
     converted:     Number(row.outcome_converted),
   }));
-
-  if (!filters.search) return rows;
-
-  const term = filters.search.trim().toLowerCase();
-  if (!term) return rows;
-
-  return rows.filter((row) => row.campaign_name.toLowerCase().includes(term));
 }
 
 // ─────────────────────────────────────────────
@@ -485,10 +589,26 @@ export async function getCampaignMetrics(
 // Called only from the [id] detail page. Never from the list page.
 // Returns null when the campaign has no matching leads.
 // ─────────────────────────────────────────────
+type CampaignDetailCacheEntry = { payload: CampaignDetailMetrics | null };
+
 export async function getCampaignDetailMetrics(
   campaignName: string,
   filters: Pick<CampaignFilters, 'date_from' | 'date_to'>,
 ): Promise<CampaignDetailMetrics | null> {
+  const campaignKey = campaignName.toLowerCase().trim();
+  const normalizedDateFrom = filters.date_from ?? '';
+  const normalizedDateTo = filters.date_to ?? '';
+  const cacheKey = REDIS_KEYS.campaign.campaignDetail(
+    campaignKey,
+    normalizedDateFrom,
+    normalizedDateTo,
+  );
+
+  try {
+    const cached = await redis.get<CampaignDetailCacheEntry>(cacheKey);
+    if (cached !== null && cached !== undefined) return cached.payload;
+  } catch { /* fall through to DB */ }
+
   const supabase = await createClient();
 
   const dateTo = filters.date_to
@@ -521,29 +641,37 @@ export async function getCampaignDetailMetrics(
     },
   );
 
-  if (error || !data || !Array.isArray(data) || data.length === 0) return null;
+  let result: CampaignDetailMetrics | null = null;
 
-  const row = data[0] as DetailRpcRow;
-  return {
-    campaign_name: row.campaign_name,
-    // domain not returned by this RPC — not needed on the detail page
-    domain:        '' as AppDomain,
-    total_leads:   Number(row.total_leads),
-    new:           Number(row.status_new),
-    touched:       Number(row.status_touched),
-    in_discussion: Number(row.status_in_discussion),
-    won:           Number(row.status_won),
-    nurturing:     Number(row.status_nurturing),
-    lost:          Number(row.status_lost),
-    junk:          Number(row.status_junk),
-    rnr:           Number(row.outcome_rnr),
-    switched_off:  Number(row.outcome_switched_off),
-    converted:     Number(row.outcome_converted),
-    avg_hours_to_first_touch:
-      row.avg_hours_to_first_touch !== null
-        ? Number(row.avg_hours_to_first_touch)
-        : null,
-  };
+  if (!error && data && Array.isArray(data) && data.length > 0) {
+    const row = data[0] as DetailRpcRow;
+    result = {
+      campaign_name: row.campaign_name,
+      // domain not returned by this RPC — not needed on the detail page
+      domain:        '' as AppDomain,
+      total_leads:   Number(row.total_leads),
+      new:           Number(row.status_new),
+      touched:       Number(row.status_touched),
+      in_discussion: Number(row.status_in_discussion),
+      won:           Number(row.status_won),
+      nurturing:     Number(row.status_nurturing),
+      lost:          Number(row.status_lost),
+      junk:          Number(row.status_junk),
+      rnr:           Number(row.outcome_rnr),
+      switched_off:  Number(row.outcome_switched_off),
+      converted:     Number(row.outcome_converted),
+      avg_hours_to_first_touch:
+        row.avg_hours_to_first_touch !== null
+          ? Number(row.avg_hours_to_first_touch)
+          : null,
+    };
+  }
+
+  void redis
+    .setex(cacheKey, CAMPAIGN_DETAIL_TTL, { payload: result } satisfies CampaignDetailCacheEntry)
+    .catch(() => {});
+
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -556,6 +684,20 @@ export async function getCampaignAgentDistribution(
   campaignName: string,
   filters: Pick<CampaignFilters, 'date_from' | 'date_to'>,
 ): Promise<AgentDistributionRow[]> {
+  const campaignKey = campaignName.toLowerCase().trim();
+  const normalizedDateFrom = filters.date_from ?? '';
+  const normalizedDateTo = filters.date_to ?? '';
+  const cacheKey = REDIS_KEYS.campaign.campaignDistribution(
+    campaignKey,
+    normalizedDateFrom,
+    normalizedDateTo,
+  );
+
+  try {
+    const cached = await redis.get<AgentDistributionRow[]>(cacheKey);
+    if (cached) return cached;
+  } catch { /* fall through to DB */ }
+
   const supabase = await createClient();
 
   const dateTo = filters.date_to
@@ -572,15 +714,20 @@ export async function getCampaignAgentDistribution(
     },
   );
 
-  if (error || !data) return [];
+  const result: AgentDistributionRow[] =
+    error || !data
+      ? []
+      : (data as Array<{ agent_id: string; full_name: string; lead_count: number }>).map(
+          (row) => ({
+            agent_id:   row.agent_id,
+            full_name:  row.full_name,
+            lead_count: Number(row.lead_count),
+          }),
+        );
 
-  return (data as Array<{ agent_id: string; full_name: string; lead_count: number }>).map(
-    (row) => ({
-      agent_id:   row.agent_id,
-      full_name:  row.full_name,
-      lead_count: Number(row.lead_count),
-    }),
-  );
+  void redis.setex(cacheKey, CAMPAIGN_DISTRIBUTION_TTL, result).catch(() => {});
+
+  return result;
 }
 
 // ─────────────────────────────────────────────

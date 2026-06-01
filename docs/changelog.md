@@ -6,6 +6,56 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-01 — perf: campaigns — Redis cache-aside on getCampaignMetrics (120s, pre-search), getCampaignDetailMetrics (120s), getCampaignAgentDistribution (120s), getAdCreativesForCampaign (300s), getAdCreativesForCampaigns per-key strategy (300s); ad-creative Redis del on upsert/delete. 2026-06-01. Phase performance.
+
+- `src/lib/constants/redis-keys.ts` — `REDIS_KEYS.campaign` namespace (list, detail, distribution, ad-creative key builders) + `CAMPAIGN_*_TTL` constants (120s / 300s).
+- `src/lib/services/leads-service.ts` — cache-aside on `getCampaignMetrics` (RPC result before search; key uses `effectiveDomain ?? 'all'`), `getCampaignDetailMetrics` (null cached via `{ payload }` wrapper), `getCampaignAgentDistribution`.
+- `src/lib/services/ad-creatives-service.ts` — cache-aside on `getAdCreativesForCampaign`; `getAdCreativesForCampaigns` per-key `Promise.all` get + single batched `.in()` on misses.
+- `src/lib/actions/ad-creatives.ts` — `redis.del(campaign:ad-creative:…)` after successful upsert/delete.
+- `src/app/(dashboard)/campaigns/CLAUDE.md` — Redis section documenting TTLs, search-post-cache pattern, invalidation.
+
+---
+
+## 2026-06-01 — perf: performance page — eliminate 6x duplicate action calls, parallelize queries, Redis cache-aside
+
+- `src/components/performance/AgentDetailPanel.tsx` — added `lastFetchKeyRef` (`useRef<string>('')`) dedup guard: duplicate fires for same params return early; server-seeded `initialData` skips the mount round-trip entirely (mirrors dashboard perf-01 pattern).
+- `src/lib/services/performance-service.ts` — parallelised 11 sequential Supabase queries across 3 functions via `Promise.all`: `_getCoreFourMetricsForRange` (4 queries), `getEffortMetrics` (4 queries), `getTeamBenchmarks` (3 queries after agentIds resolves). Removed unused `responseData` query from `getAgentDetailMetrics` (was fetched but `void`-ed — 1 PgBouncer slot freed per call).
+- `src/lib/services/performance-service.ts` — Redis cache-aside added to 6 service functions: `_getCoreFourMetricsForRange` (60s), `getEffortMetrics` (30s), `getCallOutcomeBreakdown` (60s), `getTeamBenchmarks` (120s), `getAgentRosterPerformance` (120s), `getAgentDetailMetrics` (30s). Key namespace `perf:`. Cache miss falls through to DB; Redis failure never blocks. `domain` intentionally excluded from `perf:agent-detail` key (auth-only, does not filter query result).
+- `src/lib/constants/redis-keys.ts` — added `REDIS_KEYS.perf` namespace (6 key builder functions) + 6 TTL constants (`PERF_CORE_FOUR_TTL`, `PERF_EFFORT_TTL`, `PERF_OUTCOME_TTL`, `PERF_BENCHMARKS_TTL`, `PERF_ROSTER_TTL`, `PERF_AGENT_DETAIL_TTL`).
+
+---
+
+## 2026-06-01 — lead dossier Gia Tasks: show due time on task rows
+
+- `src/lib/utils/dates.ts` — `formatTaskDueAt()` (`h:mm a, d MMM`, IST) shared by lead dossier and `/tasks` Gia tab.
+- `src/components/leads/LeadTasksCard.tsx` — due stamp uses `formatTaskDueAt` (was date-only `dd MMM`).
+- `src/components/tasks/GiaTaskRow.tsx` — imports shared formatter; overdue text uses `--color-danger-text`.
+
+---
+
+## 2026-06-01 — fix: Recharts width(-1)/height(-1) console warnings on /performance
+
+- `src/components/performance/CallOutcomeBar.tsx` — donut `ResponsiveContainer` now uses explicit `180×180` pixel dimensions instead of `width/height="100%"` (Recharts 3 defaults `initialDimension` to -1 before ResizeObserver measures the parent).
+- `src/components/performance/CoreFourGrid.tsx` — sparkline wrapper gets `minWidth: 0` + positive `initialDimension` so flex KPI cards measure correctly on first paint.
+
+---
+
+## 2026-06-01 — perf: leads Redis key isolation + createManualLead list invalidation + CLAUDE.md registry update. 2026-06-01. Phase performance.
+
+---
+
+## 2026-06-01 — perf: leads Redis cache-aside (list 30s, row/notes/activities 120s, filter-options 300s) + pageSize 50→30 + dossier warm from list load. 2026-06-01. Phase performance.
+
+---
+
+## 2026-06-01 — perf: Redis cache-aside layer — tasks (subtasks 30s, remarks 30s) + dashboard (lead-status 60s, volume 120s, campaigns 120s). Key schema in src/lib/constants/redis-keys.ts. Phase performance.
+
+---
+
+## 2026-06-01 — perf: hoist agents+tags to SSR in TasksAsync, cache() on getGroupSubtasks+getTaskRemarks — eliminates ~2.2s of redundant client action calls per /tasks session. Phase performance.
+
+---
+
 ## 2026-06-01 — Fix: WhatsApp-originated leads not sending assignment notifications
 
 - `src/lib/services/whatsapp-ingestion.ts` — `processInboundMessage` was discarding the `assignedTo` return value from `createLeadFromWhatsApp`, so agents and founders never received a WhatsApp notification when a new lead entered via an inbound WhatsApp message. Fixed by destructuring `{ leadId, assignedTo }` and firing `sendLeadAssignmentNotification` (to agent) and `sendFounderLeadNotification` (to all founders) after re-fetching the full lead row. Both calls are fire-and-forget with `.catch()` — a notification failure never blocks message processing.

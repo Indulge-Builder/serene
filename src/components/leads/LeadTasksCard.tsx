@@ -10,7 +10,7 @@ import { useTaskCompletionToggle } from "@/hooks/useTaskCompletionToggle";
 import { CreateLeadTaskModal } from "@/components/leads/CreateLeadTaskModal";
 import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
 import { TASK_STATUS } from "@/lib/constants/task-constants";
-import { formatDate } from "@/lib/utils/dates";
+import { formatTaskDueAt } from "@/lib/utils/dates";
 import type { Task } from "@/lib/types/database";
 
 interface LeadTasksCardProps {
@@ -122,6 +122,7 @@ export function LeadTasksCard({ leadId, initialTasks }: LeadTasksCardProps) {
                     !isTerminal &&
                     task.due_at &&
                     new Date(task.due_at) < new Date();
+                  const dueLabel = formatTaskDueAt(task.due_at);
                   const statusConfig = TASK_STATUS[effectiveStatus];
 
                   return (
@@ -208,19 +209,18 @@ export function LeadTasksCard({ leadId, initialTasks }: LeadTasksCardProps) {
                           </span>
                         )}
 
-                        {/* Due date */}
-                        {task.due_at && (
+                        {dueLabel && (
                           <span
                             style={{
                               fontFamily: "var(--font-mono)",
                               fontSize: "var(--text-xs)",
                               color: isOverdue
-                                ? "var(--color-danger)"
+                                ? "var(--color-danger-text)"
                                 : "var(--theme-text-tertiary)",
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {formatDate(task.due_at, "dd MMM")}
+                            {dueLabel}
                           </span>
                         )}
                       </div>

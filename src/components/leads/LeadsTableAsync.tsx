@@ -21,7 +21,7 @@ export async function LeadsTableAsync({
 }: LeadsTableAsyncProps) {
   const { leads, totalCount } = await getLeadsByRoleCached(role, userId, domain, filters);
 
-  const pageSize = filters.pageSize ?? 50;
+  const pageSize = filters.pageSize ?? 30;
   const page     = filters.page ?? 1;
 
   const hasActiveFilters =

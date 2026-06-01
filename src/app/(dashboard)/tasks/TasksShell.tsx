@@ -12,6 +12,7 @@ import { TabSelector, type TabItem } from "@/components/ui/TabSelector";
 import { useTasksCreate } from "@/components/tasks/TasksCreateContext";
 import { getPersonalTaskTagsAction } from "@/lib/actions/tasks";
 import { DOMAIN_LABELS, compareDomainDisplayOrder } from "@/lib/constants/domains";
+import type { AgentSlim } from "./TasksAsync";
 import {
   EMPTY_PERSONAL_TASK_FILTERS,
   EMPTY_GROUP_TASK_FILTERS,
@@ -41,6 +42,8 @@ interface TasksShellProps {
   currentUserName: string;
   callerRole:    UserRole;
   callerDomain:  AppDomain;
+  initialAgents: AgentSlim[];
+  initialTags:   string[];
 }
 
 export function TasksShell({
@@ -53,6 +56,8 @@ export function TasksShell({
   currentUserName,
   callerRole,
   callerDomain,
+  initialAgents,
+  initialTags,
 }: TasksShellProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -69,7 +74,7 @@ export function TasksShell({
   const [giaFilters, setGiaFilters] = useState<GiaTaskFiltersState>(
     EMPTY_GIA_TASK_FILTERS,
   );
-  const [personalTagItems, setPersonalTagItems] = useState<string[]>([]);
+  const [personalTagItems, setPersonalTagItems] = useState<string[]>(initialTags);
   const [personalVisibleCount, setPersonalVisibleCount] = useState(
     personalResult.tasks.length,
   );
@@ -90,17 +95,6 @@ export function TasksShell({
         .map((d) => ({ id: d, label: DOMAIN_LABELS[d] ?? d })),
     [groupRows],
   );
-
-  useEffect(() => {
-    if (activeTab !== "personal") return;
-    let cancelled = false;
-    getPersonalTaskTagsAction()
-      .then((r) => {
-        if (!cancelled && r.data) setPersonalTagItems(r.data);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [activeTab]);
 
   // Open Gia modal when createTrigger fires on the gia tab
   useEffect(() => {
@@ -218,6 +212,7 @@ export function TasksShell({
           currentUserName={currentUserName}
           callerRole={callerRole}
           callerDomain={callerDomain}
+          initialAgents={initialAgents}
           createTrigger={createTrigger}
           filters={personalFilters}
           onFilteredCountChange={setPersonalVisibleCount}
@@ -235,6 +230,7 @@ export function TasksShell({
           currentUserName={currentUserName}
           callerRole={callerRole}
           callerDomain={callerDomain}
+          initialAgents={initialAgents}
           createTrigger={createTrigger}
           onFilteredCountChange={setGroupVisibleCount}
         />

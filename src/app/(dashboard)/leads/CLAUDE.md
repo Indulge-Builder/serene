@@ -55,14 +55,14 @@ export type LeadFilters = {
   date_to:           string | null;
   search:            string | null;   // server-side ilike across name/phone/email
   page:              number;          // default 1
-  pageSize:          number;          // default 50, fixed — not user-configurable
+  pageSize:          number;          // default 30, fixed — not user-configurable
 };
 ```
 
 **Domain filter:** URL param `domain`. Items from `GIA_DOMAIN_FILTER_ITEMS` in `lib/constants/domains.ts`. Visible only when `showDomainFilter` (admin/founder). Managers are locked to `profile.domain` — URL param ignored. Changing domain clears `agent_id` and `campaign` (scoped options refetch at page level).
 
 `.range()` is always applied in `getLeadsByRole` regardless of filter presence.
-An unfiltered first load fetches exactly `pageSize` rows — never the full table.
+An unfiltered first load fetches exactly `pageSize` (30) rows — never the full table.
 
 URL param key for search: `search`. Trimmed in the service before query — never trust raw input.
 
@@ -147,9 +147,9 @@ If you see two Supabase calls for leads in the same `getLeadsByRole` execution, 
 )}
 ```
 
-When `totalCount <= 50`, pagination is **absent from the DOM entirely**. One page of results needs no controls.
+When `totalCount <= 30`, pagination is **absent from the DOM entirely**. One page of results needs no controls.
 
-`pageSize` is fixed at 50. There is no page size selector. Do not add one.
+`pageSize` is fixed at **30**. There is no page size selector. Do not add one. (Invariant #6 — was 50 before 2026-06-01 Redis cache-aside work.)
 
 ---
 

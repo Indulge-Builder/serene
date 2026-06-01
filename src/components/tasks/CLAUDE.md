@@ -143,7 +143,7 @@ currentUserId:   string
 
 Single Gia task row: completion circle + task-type icon (accent colour) + lead name link +
 type label + optional due time. Lead name links to `/leads/[slug ?? id]`.
-Overdue `due_at` renders in `var(--color-danger)`. Completed rows at `opacity: 0.5` + strikethrough.
+Overdue `due_at` renders in `var(--color-danger-text)` via `formatTaskDueAt()`. Completed rows at `opacity: 0.5` + strikethrough.
 
 ---
 

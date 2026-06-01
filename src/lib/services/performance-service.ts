@@ -9,6 +9,8 @@
 // round trips regardless of domain size. Never loops over agents.
 
 import { createClient } from "@/lib/supabase/server";
+import { redis } from "@/lib/redis";
+import { REDIS_KEYS, PERF_CORE_FOUR_TTL, PERF_EFFORT_TTL, PERF_OUTCOME_TTL, PERF_BENCHMARKS_TTL, PERF_ROSTER_TTL, PERF_AGENT_DETAIL_TTL } from "@/lib/constants/redis-keys";
 import type { AppDomain, CallOutcome } from "@/lib/types/database";
 import type { AgentRosterRow, AgentDetailMetrics } from "@/lib/types/index";
 
@@ -210,48 +212,68 @@ export async function _getCoreFourMetricsForRange(
   agentId: string,
   range: DateRange,
 ): Promise<CoreFourMetrics> {
+  const cacheKey = REDIS_KEYS.perf.coreFour(
+    agentId,
+    range.from.slice(0, 10),
+    range.to.slice(0, 10),
+  );
+  try {
+    const hit = await redis.get<CoreFourMetrics>(cacheKey);
+    if (hit) return hit;
+  } catch { /* fall through to DB */ }
+
   const supabase = await createClient();
   const { from, to } = range;
 
-  // ── 1. leadsWon ─────────────────────────────────────────────────────────
-  // Filter by status_changed_at (when the lead became won), not created_at.
-  // This captures leads won during the period regardless of when they were created.
-  const { count: leadsWon } = await supabase
-    .from("leads")
-    .select("id", { count: "exact", head: true })
-    .eq("assigned_to", agentId)
-    .eq("status", "won")
-    .is("archived_at", null)
-    .gte("status_changed_at", from)
-    .lte("status_changed_at", to);
+  const [
+    { count: leadsWon },
+    { data: touchRows },
+    { data: responseRows },
+    { data: closedRows },
+  ] = await Promise.all([
+    // ── 1. leadsWon — filter by status_changed_at (when lead became won) ──
+    supabase
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("assigned_to", agentId)
+      .eq("status", "won")
+      .is("archived_at", null)
+      .gte("status_changed_at", from)
+      .lte("status_changed_at", to),
 
-  // ── 2. touchRate ─────────────────────────────────────────────────────────
-  // Cohort metric: of leads created in the period, what % moved past 'new'?
-  // Intentionally uses created_at — measures how quickly the agent touches new leads.
-  const { data: touchRows } = await supabase
-    .from("leads")
-    .select("status")
-    .eq("assigned_to", agentId)
-    .is("archived_at", null)
-    .gte("created_at", from)
-    .lte("created_at", to);
+    // ── 2. touchRate — cohort: leads created in period, what % moved past 'new'? ──
+    supabase
+      .from("leads")
+      .select("status")
+      .eq("assigned_to", agentId)
+      .is("archived_at", null)
+      .gte("created_at", from)
+      .lte("created_at", to),
+
+    // ── 3. avgResponseTimeMinutes — first-touch activities joined to leads ──
+    supabase
+      .from("lead_activities")
+      .select("created_at, lead:leads!lead_activities_lead_id_fkey(created_at)")
+      .eq("actor_id", agentId)
+      .eq("action_type", "status_changed")
+      .filter("details->>new_status", "eq", "touched")
+      .gte("created_at", from)
+      .lte("created_at", to),
+
+    // ── 4. conversionRate — closed leads filtered by status_changed_at ──
+    supabase
+      .from("leads")
+      .select("status")
+      .eq("assigned_to", agentId)
+      .is("archived_at", null)
+      .in("status", ["won", "lost"])
+      .gte("status_changed_at", from)
+      .lte("status_changed_at", to),
+  ]);
 
   const totalAssigned = touchRows?.length ?? 0;
   const touched = touchRows?.filter((r) => r.status !== "new").length ?? 0;
   const touchRate = totalAssigned > 0 ? (touched / totalAssigned) * 100 : null;
-
-  // ── 3. avgResponseTimeMinutes ────────────────────────────────────────────
-  // One query: lead_activities (type='status_changed', new_status='touched', actor=agent)
-  // joined to leads to get leads.created_at; Postgres computes the diff in seconds.
-  // Using the PostgREST syntax: select with embedded relationship.
-  const { data: responseRows } = await supabase
-    .from("lead_activities")
-    .select("created_at, lead:leads!lead_activities_lead_id_fkey(created_at)")
-    .eq("actor_id", agentId)
-    .eq("action_type", "status_changed")
-    .filter("details->>new_status", "eq", "touched")
-    .gte("created_at", from)
-    .lte("created_at", to);
 
   let avgResponseTimeMinutes: number | null = null;
   if (responseRows && responseRows.length > 0) {
@@ -263,7 +285,7 @@ export async function _getCoreFourMetricsForRange(
       const leadTs = new Date(lead.created_at).getTime();
       const diffMs = activityTs - leadTs;
       if (diffMs >= 0) {
-        diffs.push(diffMs / 60000); // convert to minutes
+        diffs.push(diffMs / 60000);
       }
     }
     if (diffs.length > 0) {
@@ -271,29 +293,20 @@ export async function _getCoreFourMetricsForRange(
     }
   }
 
-  // ── 4. conversionRate ────────────────────────────────────────────────────
-  // Filter by status_changed_at so closed leads count in the period they were closed,
-  // not when they were originally created.
-  const { data: closedRows } = await supabase
-    .from("leads")
-    .select("status")
-    .eq("assigned_to", agentId)
-    .is("archived_at", null)
-    .in("status", ["won", "lost"])
-    .gte("status_changed_at", from)
-    .lte("status_changed_at", to);
-
   const won_count = closedRows?.filter((r) => r.status === "won").length ?? 0;
   const lost_count = closedRows?.filter((r) => r.status === "lost").length ?? 0;
-  const closed = won_count + lost_count;
-  const conversionRate = closed > 0 ? (won_count / closed) * 100 : null;
+  const closed_count = won_count + lost_count;
+  const conversionRate = closed_count > 0 ? (won_count / closed_count) * 100 : null;
 
-  return {
+  const result: CoreFourMetrics = {
     leadsWon: leadsWon ?? 0,
     touchRate,
     avgResponseTimeMinutes,
     conversionRate,
   };
+
+  redis.set(cacheKey, JSON.stringify(result), { ex: PERF_CORE_FOUR_TTL }).catch(() => {});
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -317,47 +330,64 @@ export async function getEffortMetrics(
   agentId: string,
   period: PerformancePeriod,
 ): Promise<EffortMetrics> {
+  const today = new Date().toISOString().slice(0, 10);
+  const cacheKey = REDIS_KEYS.perf.effort(agentId, period, today);
+  try {
+    const hit = await redis.get<EffortMetrics>(cacheKey);
+    if (hit) return hit;
+  } catch { /* fall through to DB */ }
+
   const supabase = await createClient();
   const { from, to } = getPeriodDateRange(period);
 
-  // callsLogged: notes with a call_outcome set
-  const { count: callsLogged } = await supabase
-    .from("lead_notes")
-    .select("id", { count: "exact", head: true })
-    .eq("author_id", agentId)
-    .not("call_outcome", "is", null)
-    .gte("created_at", from)
-    .lte("created_at", to);
+  const [
+    { count: callsLogged },
+    { count: notesWritten },
+    { count: inDiscussionCount },
+    { count: nurturingCount },
+  ] = await Promise.all([
+    // callsLogged: notes with a call_outcome set
+    supabase
+      .from("lead_notes")
+      .select("id", { count: "exact", head: true })
+      .eq("author_id", agentId)
+      .not("call_outcome", "is", null)
+      .gte("created_at", from)
+      .lte("created_at", to),
 
-  // notesWritten: all notes by agent in period
-  const { count: notesWritten } = await supabase
-    .from("lead_notes")
-    .select("id", { count: "exact", head: true })
-    .eq("author_id", agentId)
-    .gte("created_at", from)
-    .lte("created_at", to);
+    // notesWritten: all notes by agent in period
+    supabase
+      .from("lead_notes")
+      .select("id", { count: "exact", head: true })
+      .eq("author_id", agentId)
+      .gte("created_at", from)
+      .lte("created_at", to),
 
-  // Live pipeline counts — no period filter
-  const { count: inDiscussionCount } = await supabase
-    .from("leads")
-    .select("id", { count: "exact", head: true })
-    .eq("assigned_to", agentId)
-    .eq("status", "in_discussion")
-    .is("archived_at", null);
+    // Live pipeline counts — no period filter (inDiscussionCount, nurturingCount)
+    supabase
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("assigned_to", agentId)
+      .eq("status", "in_discussion")
+      .is("archived_at", null),
 
-  const { count: nurturingCount } = await supabase
-    .from("leads")
-    .select("id", { count: "exact", head: true })
-    .eq("assigned_to", agentId)
-    .eq("status", "nurturing")
-    .is("archived_at", null);
+    supabase
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("assigned_to", agentId)
+      .eq("status", "nurturing")
+      .is("archived_at", null),
+  ]);
 
-  return {
+  const result: EffortMetrics = {
     callsLogged: callsLogged ?? 0,
     notesWritten: notesWritten ?? 0,
     inDiscussionCount: inDiscussionCount ?? 0,
     nurturingCount: nurturingCount ?? 0,
   };
+
+  redis.set(cacheKey, JSON.stringify(result), { ex: PERF_EFFORT_TTL }).catch(() => {});
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -368,6 +398,13 @@ export async function getCallOutcomeBreakdown(
   agentId: string,
   period: PerformancePeriod,
 ): Promise<OutcomeBreakdownItem[]> {
+  const today = new Date().toISOString().slice(0, 10);
+  const cacheKey = REDIS_KEYS.perf.outcome(agentId, period, today);
+  try {
+    const hit = await redis.get<OutcomeBreakdownItem[]>(cacheKey);
+    if (hit) return hit;
+  } catch { /* fall through to DB */ }
+
   const supabase = await createClient();
   const { from, to } = getPeriodDateRange(period);
 
@@ -388,10 +425,13 @@ export async function getCallOutcomeBreakdown(
     countMap[outcome] = (countMap[outcome] ?? 0) + 1;
   }
 
-  return Object.entries(countMap).map(([outcome, count]) => ({
+  const result = Object.entries(countMap).map(([outcome, count]) => ({
     outcome: outcome as CallOutcome,
     count: count as number,
   }));
+
+  redis.set(cacheKey, JSON.stringify(result), { ex: PERF_OUTCOME_TTL }).catch(() => {});
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -434,10 +474,18 @@ export async function getTeamBenchmarks(
   callerDomain: AppDomain,
   period: PerformancePeriod,
 ): Promise<TeamBenchmarks> {
+  const today = new Date().toISOString().slice(0, 10);
+  const cacheKey = REDIS_KEYS.perf.benchmarks(callerDomain, period, today);
+  try {
+    const hit = await redis.get<TeamBenchmarks>(cacheKey);
+    if (hit) return hit;
+  } catch { /* fall through to DB */ }
+
   const supabase = await createClient();
 
   // ── 1. Peer pool: all active agents in the domain (roster count) ─────────
   // agentCount reflects domain roster, not period activity — see comment block above.
+  // agentRows must resolve before the IN clause below can be built.
   const { data: agentRows } = await supabase
     .from("profiles")
     .select("id")
@@ -459,14 +507,43 @@ export async function getTeamBenchmarks(
 
   const { from, to } = getPeriodDateRange(period);
 
-  // ── 2. Touch rate: all leads assigned to any peer agent in the period ────
-  const { data: touchRows } = await supabase
-    .from("leads")
-    .select("assigned_to, status")
-    .in("assigned_to", agentIds)
-    .is("archived_at", null)
-    .gte("created_at", from)
-    .lte("created_at", to);
+  // ── 2–4. Touch, closed, response — all independent, run in parallel ──────
+  const [
+    { data: touchRows },
+    { data: closedRows },
+    { data: responseRows },
+  ] = await Promise.all([
+    // Touch rate: leads assigned to peer agents created in the period
+    supabase
+      .from("leads")
+      .select("assigned_to, status")
+      .in("assigned_to", agentIds)
+      .is("archived_at", null)
+      .gte("created_at", from)
+      .lte("created_at", to),
+
+    // Conversion rate: won+lost leads closed in the period (status_changed_at)
+    supabase
+      .from("leads")
+      .select("assigned_to, status")
+      .in("assigned_to", agentIds)
+      .is("archived_at", null)
+      .in("status", ["won", "lost"])
+      .gte("status_changed_at", from)
+      .lte("status_changed_at", to),
+
+    // Avg response time: first-touch activities across all peer agents
+    supabase
+      .from("lead_activities")
+      .select(
+        "actor_id, created_at, lead:leads!lead_activities_lead_id_fkey(created_at)",
+      )
+      .in("actor_id", agentIds)
+      .eq("action_type", "status_changed")
+      .filter("details->>new_status", "eq", "touched")
+      .gte("created_at", from)
+      .lte("created_at", to),
+  ]);
 
   const touchData = touchRows ?? [];
 
@@ -489,18 +566,6 @@ export async function getTeamBenchmarks(
       ? agentTouchRates.reduce((a, b) => a + b, 0) / agentTouchRates.length
       : null;
 
-  // ── 3. Conversion rate: won+lost leads closed in the period ─────────────
-  // Uses status_changed_at so leads closed during the period count regardless
-  // of when they were originally created.
-  const { data: closedRows } = await supabase
-    .from("leads")
-    .select("assigned_to, status")
-    .in("assigned_to", agentIds)
-    .is("archived_at", null)
-    .in("status", ["won", "lost"])
-    .gte("status_changed_at", from)
-    .lte("status_changed_at", to);
-
   const closedData = closedRows ?? [];
   const closedByAgent: Record<string, { won: number; lost: number }> = {};
   for (const row of closedData) {
@@ -520,21 +585,7 @@ export async function getTeamBenchmarks(
       ? agentConvRates.reduce((a, b) => a + b, 0) / agentConvRates.length
       : null;
 
-  // ── 4. Avg response time: first-touch activities across all peer agents ──
-  // One query on lead_activities for all peer agents, joined to leads.
-  const { data: responseRows } = await supabase
-    .from("lead_activities")
-    .select(
-      "actor_id, created_at, lead:leads!lead_activities_lead_id_fkey(created_at)",
-    )
-    .in("actor_id", agentIds)
-    .eq("action_type", "status_changed")
-    .filter("details->>new_status", "eq", "touched")
-    .gte("created_at", from)
-    .lte("created_at", to);
-
   // Per-agent response diffs → unweighted mean of means (see comment block above)
-  // .filter(diffs.length > 0) excludes agents who touched no leads in the period
   const diffsByAgent: Record<string, number[]> = {};
   for (const row of responseRows ?? []) {
     const aid = row.actor_id as string;
@@ -556,12 +607,15 @@ export async function getTeamBenchmarks(
       ? agentResponseAvgs.reduce((a, b) => a + b, 0) / agentResponseAvgs.length
       : null;
 
-  return {
+  const result: TeamBenchmarks = {
     avgTouchRate,
     avgConversionRate,
     avgResponseTimeMinutes,
     agentCount,
   };
+
+  redis.set(cacheKey, JSON.stringify(result), { ex: PERF_BENCHMARKS_TTL }).catch(() => {});
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -576,6 +630,16 @@ export async function getAgentRosterPerformance(
   dateFrom: string,
   dateTo: string,
 ): Promise<AgentRosterRow[]> {
+  const cacheKey = REDIS_KEYS.perf.roster(
+    domain ?? 'all',
+    dateFrom.slice(0, 10),
+    dateTo.slice(0, 10),
+  );
+  try {
+    const hit = await redis.get<AgentRosterRow[]>(cacheKey);
+    if (hit) return hit;
+  } catch { /* fall through to DB */ }
+
   const supabase = await createClient();
 
   // ── 1. Agent roster ──────────────────────────────────────────────────────
@@ -724,6 +788,7 @@ export async function getAgentRosterPerformance(
     return bRate - aRate;
   });
 
+  redis.set(cacheKey, JSON.stringify(rows), { ex: PERF_ROSTER_TTL }).catch(() => {});
   return rows;
 }
 
@@ -740,6 +805,17 @@ export async function getAgentDetailMetrics(
   dateFrom: string,
   dateTo: string,
 ): Promise<AgentDetailMetrics> {
+  // domain is auth-only — does not filter the query result — excluded from cache key
+  const cacheKey = REDIS_KEYS.perf.agentDetail(
+    agentId,
+    dateFrom.slice(0, 10),
+    dateTo.slice(0, 10),
+  );
+  try {
+    const hit = await redis.get<AgentDetailMetrics>(cacheKey);
+    if (hit) return hit;
+  } catch { /* fall through to DB */ }
+
   const supabase = await createClient();
 
   // callsToday: use IST midnight boundary (same logic as getPeriodDateRange('this_week'))
@@ -752,7 +828,6 @@ export async function getAgentDetailMetrics(
     wonLeadsData,
     callsTodayData,
     followUpsData,
-    responseData,
     notesData,
   ] = await Promise.all([
     // All leads created in the period — for cohort metrics (touch rate, pipeline)
@@ -789,16 +864,6 @@ export async function getAgentDetailMetrics(
       .select("id, lead:leads!lead_notes_lead_id_fkey(status)")
       .eq("author_id", agentId)
       .not("call_outcome", "is", null)
-      .gte("created_at", dateFrom)
-      .lte("created_at", dateTo),
-
-    // response times for AgentDetailMetrics
-    supabase
-      .from("lead_activities")
-      .select("created_at, lead:leads!lead_activities_lead_id_fkey(created_at)")
-      .eq("actor_id", agentId)
-      .eq("action_type", "status_changed")
-      .filter("details->>new_status", "eq", "touched")
       .gte("created_at", dateFrom)
       .lte("created_at", dateTo),
 
@@ -884,9 +949,7 @@ export async function getAgentDetailMetrics(
     }),
   );
 
-  void responseData; // fetched but not used in detail panel (used in roster)
-
-  return {
+  const result: AgentDetailMetrics = {
     callsToday: callsTd,
     newLeadsAttended,
     followUpsCompleted,
@@ -896,6 +959,9 @@ export async function getAgentDetailMetrics(
     pipelineBreakdown,
     callOutcomeBreakdown,
   };
+
+  redis.set(cacheKey, JSON.stringify(result), { ex: PERF_AGENT_DETAIL_TTL }).catch(() => {});
+  return result;
 }
 
 // ─────────────────────────────────────────────

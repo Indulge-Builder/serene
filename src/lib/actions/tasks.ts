@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { redis } from '@/lib/redis';
+import { REDIS_KEYS } from '@/lib/constants/redis-keys';
 import {
   CreatePersonalTaskSchema,
   CreateGroupTaskSchema,
@@ -269,6 +271,16 @@ export async function createSubtaskAction(
 
   revalidatePath('/tasks');
 
+  // Invalidate caller's subtask cache — fire-and-forget, never blocks the response.
+  // Only the caller's cache is invalidated; other users' 30s TTL handles staleness.
+  void (async () => {
+    try {
+      await redis.del(REDIS_KEYS.taskSubtasks(fields.group_id, caller.id));
+    } catch (e) {
+      console.error('[tasks] createSubtaskAction Redis del error:', e);
+    }
+  })();
+
   // 7. Notify assignee — fire-and-forget, non-fatal (always notify for subtasks)
   if (fields.assigned_to !== caller.id) {
     createNotification({
@@ -344,6 +356,17 @@ export async function updateTaskStatusAction(
   // 4. Cancel reminder when moving to terminal status
   if (TERMINAL_STATUSES.includes(status as TaskStatus)) {
     cancelTaskReminder(taskId).catch(() => {});
+  }
+
+  // Invalidate subtask cache if this is a group subtask — fire-and-forget.
+  if (task.group_id) {
+    void (async () => {
+      try {
+        await redis.del(REDIS_KEYS.taskSubtasks(task.group_id as string, caller.id));
+      } catch (e) {
+        console.error('[tasks] updateTaskStatusAction Redis del error:', e);
+      }
+    })();
   }
 
   return { data: { taskId }, error: null };
@@ -433,6 +456,17 @@ export async function updateTaskAction(
     cancelTaskReminder(taskId).catch(() => {});
   }
 
+  // Invalidate subtask cache if this is a group subtask — fire-and-forget.
+  if (existing.group_id) {
+    void (async () => {
+      try {
+        await redis.del(REDIS_KEYS.taskSubtasks(existing.group_id as string, caller.id));
+      } catch (e) {
+        console.error('[tasks] updateTaskAction Redis del error:', e);
+      }
+    })();
+  }
+
   return { data: { taskId }, error: null };
 }
 
@@ -461,7 +495,7 @@ export async function deleteTaskAction(
   // 3. Fetch task to check authorization
   const { data: task } = await supabase
     .from('tasks')
-    .select('id, assigned_to, created_by')
+    .select('id, assigned_to, created_by, group_id')
     .eq('id', taskId)
     .single();
 
@@ -490,6 +524,17 @@ export async function deleteTaskAction(
     .eq('id', taskId);
 
   if (deleteError) return { data: null, error: formErrors.generic };
+
+  // Invalidate subtask cache if this was a group subtask — fire-and-forget.
+  if (task.group_id) {
+    void (async () => {
+      try {
+        await redis.del(REDIS_KEYS.taskSubtasks(task.group_id as string, caller.id));
+      } catch (e) {
+        console.error('[tasks] deleteTaskAction Redis del error:', e);
+      }
+    })();
+  }
 
   return { data: null, error: null };
 }
@@ -612,7 +657,7 @@ export async function getGroupSubtasksAction(
   const caller = await getCurrentProfile();
   if (!caller) return { data: null, error: 'Unauthorized.' };
 
-  const rows = await getGroupSubtasks(groupId);
+  const rows = await getGroupSubtasks(groupId, caller.id);
   return { data: rows, error: null };
 }
 
@@ -705,6 +750,15 @@ export async function addTaskRemarkAction(
 
   if (!remark) return { data: null, error: formErrors.generic };
 
+  // Invalidate remarks cache — fire-and-forget, never blocks the response.
+  void (async () => {
+    try {
+      await redis.del(REDIS_KEYS.taskRemarks(taskId));
+    } catch (e) {
+      console.error('[tasks] addTaskRemarkAction Redis del error:', e);
+    }
+  })();
+
   return { data: remark as TaskRemark, error: null };
 }
 
@@ -740,7 +794,7 @@ export async function suppressTaskRemarkAction(
   // 3. Verify remark exists (Rule S-06 — never trust client IDs)
   const { data: existing } = await admin
     .from('task_remarks')
-    .select('id, is_suppressed')
+    .select('id, task_id, is_suppressed')
     .eq('id', remarkId)
     .single();
 
@@ -760,6 +814,15 @@ export async function suppressTaskRemarkAction(
     .eq('id', remarkId);
 
   if (updateError) return { data: null, error: formErrors.generic };
+
+  // Invalidate remarks cache — fire-and-forget, never blocks the response.
+  void (async () => {
+    try {
+      await redis.del(REDIS_KEYS.taskRemarks(existing.task_id as string));
+    } catch (e) {
+      console.error('[tasks] suppressTaskRemarkAction Redis del error:', e);
+    }
+  })();
 
   return { data: { remarkId }, error: null };
 }

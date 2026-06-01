@@ -96,6 +96,24 @@ Returns `null` when empty — no conditional wrapper at the call site. Composes 
 
 ---
 
+## Redis cache-aside (campaign reads)
+
+Key schema: `src/lib/constants/redis-keys.ts` (`REDIS_KEYS.campaign.*`, `CAMPAIGN_*_TTL`).
+
+| Function | Key pattern | TTL | Notes |
+| -------- | ----------- | --- | ----- |
+| `getCampaignMetrics` | `campaign:list:{domain}:{dateFrom}:{dateTo}` | 120s | Caches raw RPC array **before** search. `domain` is `effectiveDomain ?? 'all'` (post-manager resolution). Search term is **never** in the key — applied after cache hit/miss. |
+| `getCampaignDetailMetrics` | `campaign:detail:{campaignKey}:{dateFrom}:{dateTo}` | 120s | `campaignKey` = `campaignName.toLowerCase().trim()`. `null` results cached (`{ payload: null }`) to avoid repeat RPC for unknown campaigns. |
+| `getCampaignAgentDistribution` | `campaign:distribution:{campaignKey}:{dateFrom}:{dateTo}` | 120s | Same date/campaignKey normalisation as detail metrics. |
+| `getAdCreativesForCampaign` | `campaign:ad-creative:{campaignKey}` | 300s | Not date-scoped. |
+| `getAdCreativesForCampaigns` | per-key `campaign:ad-creative:{campaignKey}` | 300s | `Promise.all` Redis gets (each `.catch(() => null)`); misses batched in one `.in('campaign_key', missKeys)` query; empty `[]` cached for campaigns with no creatives. |
+
+**Invalidation:** `upsertAdCreative` and `deleteAdCreative` fire-and-forget `redis.del` on `campaign:ad-creative:{normalisedKey}` after a successful DB write. Campaign metric keys are TTL-only.
+
+Redis failure never blocks the DB path.
+
+---
+
 ## get_campaign_metrics RPC
 
 Lives in: `supabase/migrations/20260528000014_campaign_analytics.sql`

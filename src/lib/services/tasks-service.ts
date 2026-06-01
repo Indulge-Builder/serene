@@ -21,6 +21,8 @@
 
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
+import { redis } from '@/lib/redis';
+import { REDIS_KEYS, REDIS_TTL } from '@/lib/constants/redis-keys';
 import type {
   Task,
   TaskGroup,
@@ -271,8 +273,29 @@ export const getGroupTasks = cache(async (
 /**
  * Returns all subtasks for one group with their assignee profile.
  * Ordered by priority then due_at.
+ *
+ * userId is required for the Redis cache key — agents get RLS-filtered results
+ * (assigned tasks only); managers get all; cache must be user-scoped to prevent
+ * cross-user data bleed. The Supabase query and RLS are unchanged.
+ *
+ * Uses React cache() for per-request memoisation. Cannot use unstable_cache
+ * because createClient() calls cookies(), which Next.js forbids inside
+ * unstable_cache closures. See src/lib/CLAUDE.md § unstable_cache + cookies().
+ *
+ * Security: Redis cache stores the RESULT of an RLS-filtered query.
+ * Key design (groupId + userId) prevents cross-user cache bleed. See redis-keys.ts.
  */
-export async function getGroupSubtasks(groupId: string): Promise<SubtaskWithAssignee[]> {
+export const getGroupSubtasks = cache(async (groupId: string, userId: string): Promise<SubtaskWithAssignee[]> => {
+  const cacheKey = REDIS_KEYS.taskSubtasks(groupId, userId);
+
+  // Cache-aside: try Redis first, fall through to DB on any error or miss.
+  try {
+    const cached = await redis.get<SubtaskWithAssignee[]>(cacheKey);
+    if (cached !== null) return cached;
+  } catch (e) {
+    console.error('[tasks-service] getGroupSubtasks Redis get error:', e);
+  }
+
   const supabase = await createClient();
 
   const { data: subtasks, error } = await supabase
@@ -312,11 +335,20 @@ export async function getGroupSubtasks(groupId: string): Promise<SubtaskWithAssi
     }
   }
 
-  return (subtasks as Task[]).map((task): SubtaskWithAssignee => ({
+  const result = (subtasks as Task[]).map((task): SubtaskWithAssignee => ({
     ...task,
     assignee: task.assigned_to ? (profileMap.get(task.assigned_to) ?? null) : null,
   }));
-}
+
+  // Populate cache on success — non-fatal.
+  try {
+    await redis.setex(cacheKey, REDIS_TTL.TASK_SUBTASKS, result);
+  } catch (e) {
+    console.error('[tasks-service] getGroupSubtasks Redis setex error:', e);
+  }
+
+  return result;
+});
 
 // ─────────────────────────────────────────────
 // Query: single task with messages (modal view)
@@ -348,10 +380,31 @@ export async function getTaskById(taskId: string): Promise<TaskWithMessages | nu
  * Returns task_remarks ordered ASC (oldest first — newest appended at bottom).
  * Batch-resolves author profiles in one query — no N+1.
  * Server client only. Never call adminClient here.
+ *
+ * No userId in the cache key — all authorized viewers see identical remarks.
+ * RLS gates task access (not remark filtering), so the result is identical for
+ * every user who can see the task.
+ *
+ * Uses React cache() for per-request memoisation. Cannot use unstable_cache
+ * because createClient() calls cookies(), which Next.js forbids inside
+ * unstable_cache closures. See src/lib/CLAUDE.md § unstable_cache + cookies().
+ *
+ * Security: Redis cache stores the RESULT of an RLS-gated access path.
+ * All authorized callers see identical remarks — no per-user key needed. See redis-keys.ts.
  */
-export async function getTaskRemarks(
+export const getTaskRemarks = cache(async (
   taskId: string,
-): Promise<TaskRemarkWithAuthor[]> {
+): Promise<TaskRemarkWithAuthor[]> => {
+  const cacheKey = REDIS_KEYS.taskRemarks(taskId);
+
+  // Cache-aside: try Redis first, fall through to DB on any error or miss.
+  try {
+    const cached = await redis.get<TaskRemarkWithAuthor[]>(cacheKey);
+    if (cached !== null) return cached;
+  } catch (e) {
+    console.error('[tasks-service] getTaskRemarks Redis get error:', e);
+  }
+
   const supabase = await createClient();
 
   const { data: remarks, error } = await supabase
@@ -389,11 +442,20 @@ export async function getTaskRemarks(
     }
   }
 
-  return (remarks as TaskRemark[]).map((remark) => ({
+  const result = (remarks as TaskRemark[]).map((remark) => ({
     ...remark,
     author: profileMap.get(remark.author_id) ?? null,
   }));
-}
+
+  // Populate cache on success — non-fatal.
+  try {
+    await redis.setex(cacheKey, REDIS_TTL.TASK_REMARKS, result);
+  } catch (e) {
+    console.error('[tasks-service] getTaskRemarks Redis setex error:', e);
+  }
+
+  return result;
+});
 
 // ─────────────────────────────────────────────
 // Query: single task_group by id (workspace view)

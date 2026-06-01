@@ -131,6 +131,25 @@ Exported functions:
 
 `key={period}` is set on `ManagerPerformancePanel` so a period change forces a clean remount — preventing the seed guard from firing against stale data.
 
+## Redis cache-aside — performance service (2026-06-01)
+
+All six service functions have Redis cache-aside active. Miss → DB, hit → return parsed JSON. Redis failure never blocks (try/catch swallows, falls through to DB).
+
+| Function | Key namespace | TTL |
+| --- | --- | --- |
+| `_getCoreFourMetricsForRange` | `perf:core-four:{agentId}:{from.slice(0,10)}:{to.slice(0,10)}` | 60s |
+| `getEffortMetrics` | `perf:effort:{agentId}:{period}:{today}` | 30s (live pipeline counts) |
+| `getCallOutcomeBreakdown` | `perf:outcome:{agentId}:{period}:{today}` | 60s |
+| `getTeamBenchmarks` | `perf:benchmarks:{callerDomain}:{period}:{today}` | 120s |
+| `getAgentRosterPerformance` | `perf:roster:{domain\|'all'}:{dateFrom.slice(0,10)}:{dateTo.slice(0,10)}` | 120s |
+| `getAgentDetailMetrics` | `perf:agent-detail:{agentId}:{dateFrom.slice(0,10)}:{dateTo.slice(0,10)}` | 30s (callsToday live) |
+
+`today` = `new Date().toISOString().slice(0, 10)` — normalises intraday calls, auto-invalidates at UTC midnight.
+
+`domain` is NOT in the `perf:agent-detail` key — domain is auth-only and does not filter the query result. Two callers with different domains requesting the same agent receive identical data correctly.
+
+Key builders + TTL constants are in `src/lib/constants/redis-keys.ts` (`REDIS_KEYS.perf.*`, `PERF_*_TTL`).
+
 ## AgentDetailPanel — seed-skip guard (perf-01 pattern)
 
 `AgentDetailPanel` accepts optional `initialData?: AgentDetailMetrics` and `initialAgentId?: string` props.

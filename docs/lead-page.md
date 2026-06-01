@@ -443,7 +443,7 @@ export type LeadsResult = { leads: LeadWithAssignee[]; totalCount: number };
 | `date_from` / `date_to` | ISO dates |
 | `search` | `search` |
 | `page` | `page`, default `1` |
-| `pageSize` | fixed `50` |
+| `pageSize` | fixed `30` |
 
 **Gates:** guest → `/dashboard`; `showAgentFilter = role !== 'agent'`; `showDomainFilter = admin \| founder`.
 
@@ -506,7 +506,7 @@ Playfair italic heading (`var(--font-serif)`). Table has **zero** filter/sort lo
 
 ### 6d. LeadsPagination
 
-- **`pageSize`:** `50` (fixed in `parseFilters`, not user-configurable).  
+- **`pageSize`:** `30` (fixed in `parseFilters`, not user-configurable).  
 - **Absent when:** `totalCount <= pageSize` (not in DOM).  
 - **Showing text:** `from = (page-1)*pageSize+1`, `to = min(page*pageSize, totalCount)`.  
 - **`useTransition`** on Prev/Next `router.push`; disabled buttons `pointer-events: none`, `opacity: 0.4`.
@@ -724,7 +724,7 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 5. **Search lives in `LeadsFilters.tsx` only** — debounced 500ms, URL param `search`. **`LeadsTable.tsx` contains zero filtering, searching, or sorting logic.**
 
-6. **`LeadsPagination` absent from DOM when `totalCount <= 50`.** `pageSize` is fixed at 50. Do not add a page size selector.
+6. **`LeadsPagination` absent from DOM when `totalCount <= 30`.** `pageSize` is fixed at 30. Do not add a page size selector.
 
 7. **Search debounce: 500ms** via `useEffect` + `setTimeout`/`clearTimeout`. Never push search on every keystroke.
 

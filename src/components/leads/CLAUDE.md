@@ -155,7 +155,7 @@ Shows all gia_followup tasks for a lead (replaces `LeadDossierTasksAsync` which 
 Header right slot: small `+` ghost icon button → opens `CreateLeadTaskModal`.
 Uses `TaskCompletionCircle` + `useTaskCompletionToggle` for completion toggles.
 After successful task creation, prepends new task to local state (no full refetch).
-Overdue `due_at` renders in `var(--color-danger)`.
+Overdue `due_at` renders in `var(--color-danger-text)` via `formatTaskDueAt()` (`h:mm a, d MMM`, IST).
 Completed tasks rendered at 0.5 opacity with strikethrough.
 Empty state: Playfair italic sentence.
 
