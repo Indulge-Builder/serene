@@ -169,11 +169,11 @@ Never raw Zod messages. Never "Invalid input."
 
 ## Standard Page Layout Contract
 
-### The Lead List Layout is the canonical template for all primary nav list pages.
+### The Lead List Layout is the canonical template for all primary nav list pages
 
 Every list page (leads, users, settings, campaigns, tasks, etc.) follows this exact structure:
 
-```
+```tsx
 <main className="flex-1 p-8">
   {/* Row 1 — Page header */}
   <div className="flex items-center justify-between gap-4 mb-6">
@@ -194,6 +194,7 @@ Every list page (leads, users, settings, campaigns, tasks, etc.) follows this ex
 ```
 
 **Rules (non-negotiable):**
+
 - The title row is always `flex items-center justify-between` — title left, action right.
 - The filter bar is always a rounded bordered `--theme-paper` strip with `--shadow-1`, `mb-4`.
 - The content area follows immediately below the filter bar. No extra wrappers.
@@ -202,11 +203,13 @@ Every list page (leads, users, settings, campaigns, tasks, etc.) follows this ex
 ### Two content display modes
 
 **Dense table** (high-volume pages: `/leads`, any page that can exceed 100 rows)
+
 - Use the `<Table>` component or the leads table pattern.
 - Filter bar runs server-side (URL params). Table is display-only.
 - Column visibility + drag-to-reorder via `useLeadColumnPreferences` pattern (Q-08).
 
 **Card list** (low-volume pages: `/admin/users`, `/settings`, `/campaigns`)
+
 - Each row is a `motion.div` card with `--shadow-1` at rest → `--shadow-2` on hover.
 - Cards animate in with staggered `opacity 0→1, y 4→0` at 250ms, `EASE_OUT_EXPO`.
 - On hover: `translateY(-1px)` + `--shadow-2`. On leave: reset. Transition via CSS `transition` prop.
@@ -214,6 +217,7 @@ Every list page (leads, users, settings, campaigns, tasks, etc.) follows this ex
 - Framer Motion `motion.div` — transform and opacity only (never width/height/padding).
 
 **Reference implementations:**
+
 - Dense table: `src/components/leads/LeadsTable.tsx` + `src/app/(dashboard)/leads/page.tsx`
 - Card list: `src/components/campaigns/CampaignCard.tsx` + `src/components/admin/UsersTable.tsx`
 
@@ -492,6 +496,7 @@ Props: `open: boolean`, `onClose: () => void`, `title: string`, `children: React
 - `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` added to `package.json`
 
 **Conventions established (see Q-07, Q-08 in The_Rules.md):**
+
 - `@dnd-kit` is the canonical drag library for all of Eia. Use it everywhere drag-to-reorder is needed. Never add an alternative.
 - The `useLeadColumnPreferences` hook is the canonical pattern for per-user table column preferences. Replicate its signature and key format (`eia:[module]:columns:${userId}:v1`) for any future table that gains a column picker.
 
@@ -511,6 +516,7 @@ Props: `open: boolean`, `onClose: () => void`, `title: string`, `children: React
 - `src/app/(dashboard)/leads/CLAUDE.md` — updated with search, count shape, pagination, debounce, and page-reset rules
 
 **Four invariants that must never be violated (full spec in `src/app/(dashboard)/leads/CLAUDE.md`):**
+
 - `getLeadsByRole` returns `{ leads: Lead[], totalCount: number }` — never `Lead[]` alone. Every call site destructures both fields.
 - `totalCount` comes from `{ count: 'exact', head: false }` on the same query builder that has all role constraints, filters, and search applied. A second `SELECT COUNT(*)` is a bug — it returns the wrong number when any filter is active.
 - Every URL param push that changes a filter or search must delete the `page` param. This is enforced in `buildParams()`. Never bypass it with a hand-built `router.push` string.
@@ -728,7 +734,8 @@ Checklist stored as JSONB on `tasks`.
 - `src/components/tasks/GroupTaskWorkspace.tsx` — `currentUserName` now passed to `SubTaskModal`.
 
 **`SubTaskModal` props:**
-```
+
+```text
 open:             boolean
 onClose:          () => void
 task:             Task
@@ -799,7 +806,7 @@ Six `src/components/ui/` primitives gained GPU-only micro-animations. All use `t
 
 Every task, every time. No exceptions.
 
-```
+```text
 1. Read the relevant authority files for this task:
    - CLAUDE.md (this file) and src/components/CLAUDE.md
    - docs/design-dna.md for any visual/layout decision

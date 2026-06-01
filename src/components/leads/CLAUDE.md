@@ -15,7 +15,8 @@ Every modal composes `src/components/ui/modal.tsx` — never reimplements chrome
 `LeadInfoCard.tsx` — `'use client'`
 
 Props:
-```
+
+```text
 lead:            Lead
 assigneeName:    string | null
 adCreatives?:    AdCreative[]         — all videos for the lead's campaign (newest first); resolved by the dossier page
@@ -32,8 +33,8 @@ Name and phone are always read-only `InfoRow`s. Email: click → inline text inp
 
 **Reassignment rules:**
 
-- When `canReassign={true}`, the "Assigned to" field renders as `AssigneeCombobox` instead of a plain `InfoRow`.
-- At rest `AssigneeCombobox` is visually identical to every other read-only field — no border, no box, no visible chevron.
+- When `canReassign={true}`, the "Assigned to" field uses the same inline themed option menu as domain/source — not `FilterDropdown`, not a combobox component.
+- At rest it is visually identical to every other read-only `InfoRow` — no border, no box, no visible chevron.
 - On hover: a dashed accent underline appears under the name text and a small `ChevronDown` fades in.
 - On click: a dropdown opens with a search input (auto-focused) and a list of agents from the `agents` prop.
 - Selecting an agent calls `assignLead` from `lib/actions/leads.ts`, optimistically updates `currentAssigneeName` in local state, and shows a `Check` tick for 2 seconds. No page reload needed.
@@ -54,7 +55,8 @@ Name and phone are always read-only `InfoRow`s. Email: click → inline text inp
 `CampaignVideoModal.tsx` — `'use client'`
 
 Props:
-```
+
+```text
 isOpen:       boolean
 onClose:      () => void
 campaignName: string
@@ -64,8 +66,7 @@ adCreatives:  AdCreative[]
 Composes `ui/modal.tsx` with `maxWidth="max-w-2xl"`, footer `null`. Renders
 `AdCreativeCarousel` (from `components/campaigns/`) with `showMeta` — loops through
 all of the campaign's videos via prev/next arrows. Subtitle shows the count when > 1.
-Returns `null` when `adCreatives` is empty. The carousel owns the `<video>` + autoplay
-+ pause-on-unmount; this modal no longer renders a raw `<video>`.
+Returns `null` when `adCreatives` is empty. The carousel owns the `<video>` element (autoplay and pause-on-unmount); this modal no longer renders a raw `<video>`.
 
 ---
 
@@ -74,7 +75,8 @@ Returns `null` when `adCreatives` is empty. The carousel owns the `<video>` + au
 `AddLeadModal.tsx` — `'use client'`
 
 Props:
-```
+
+```text
 open:          boolean
 onClose:       () => void
 callerProfile: { id: string; role: UserRole; domain: AppDomain; full_name: string }
@@ -93,7 +95,8 @@ Duplicate detection server-side; inline banner with dossier link on dup — moda
 `LeadColumnPicker.tsx` — `'use client'`
 
 Props:
-```
+
+```text
 open:            boolean
 onClose:         () => void
 visibleColumns:  LeadColumnId[]
@@ -113,7 +116,8 @@ Entrance animation: `opacity 0→1, y -4→0`, 200ms, ease-out-expo.
 `LeadNotesInput.tsx` — `'use client'`
 
 Props:
-```
+
+```text
 leadId:       string
 canAdd:       boolean    — same gate as canEditPersonalDetails on the dossier page
 onNoteAdded?: () => void — optional callback fired after successful note post
@@ -141,7 +145,8 @@ The Called button remains disabled for junk leads — revive first, then call.
 `LeadTasksCard.tsx` — `'use client'`
 
 Props:
-```
+
+```text
 leadId:       string
 initialTasks: Task[]    — pre-fetched by LeadTasksAsync (server component)
 ```
@@ -181,14 +186,16 @@ Used as `fallback` for the `<Suspense>` wrapping `<LeadTasksAsync>` on the dossi
 `CreateLeadTaskModal.tsx` — `'use client'`
 
 Props:
-```
+
+```text
 open:          boolean
 onClose:       () => void
 leadId:        string
 onTaskCreated: (task: Task) => void
 ```
 
-Composes `src/components/ui/modal.tsx`. Three fields only:
+Composes `src/components/ui/modal.tsx`. Four fields only:
+
 1. Task type — RadioGroup-style list using `TASK_TYPES` / `TASK_TYPE_LABELS` from `task-types.ts`
 2. Priority — three chip buttons (Urgent / High / Normal), default Normal
 3. Due date & time — `DatePicker` with `showTime=true` from `src/components/ui/DatePicker.tsx`
@@ -204,13 +211,13 @@ Inline error below submit button in `var(--color-danger)` on failure.
 
 ## Service dependency map
 
-| Component            | Service used (via prop, not import) |
-|----------------------|--------------------------------------|
-| LeadInfoCard         | `AdCreative` resolved by dossier page → `ad-creatives-service.ts` |
-| AddLeadModal         | `createManualLead` action, `listAgentsForDomain` action |
-| LeadColumnPicker     | none — props only |
-| CampaignVideoModal   | none — props only |
-| LeadTasksCard        | `TaskCompletionCircle` + `useTaskCompletionToggle`; `createLeadTaskAction` via `CreateLeadTaskModal` |
-| LeadTasksAsync       | `getAllLeadTasks` from `tasks-service.ts` (server only) |
-| LeadTasksCardSkeleton| none |
-| CreateLeadTaskModal  | `createLeadTaskAction` from `lib/actions/leads.ts` |
+| Component             | Service used (via prop, not import)                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------------------- |
+| LeadInfoCard          | `getAdCreativesForCampaign` on dossier page → `ad-creatives-service.ts`                              |
+| AddLeadModal          | `createManualLead` action, `listAgentsForDomain` action                                              |
+| LeadColumnPicker      | none — props only                                                                                    |
+| CampaignVideoModal    | none — props only                                                                                    |
+| LeadTasksCard         | `TaskCompletionCircle` + `useTaskCompletionToggle`; `createLeadTaskAction` via `CreateLeadTaskModal` |
+| LeadTasksAsync        | `getAllLeadTasks` from `tasks-service.ts` (server only)                                              |
+| LeadTasksCardSkeleton | none                                                                                                 |
+| CreateLeadTaskModal   | `createLeadTaskAction` from `lib/actions/leads.ts`                                                   |

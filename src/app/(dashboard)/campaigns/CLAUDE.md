@@ -2,7 +2,7 @@
 
 ## Architecture
 
-```
+```text
 campaigns/page.tsx                   ← Server component (thin orchestrator)
   │  access-gate: agent + guest → redirect /dashboard
   │  parses searchParams → CampaignFilters
@@ -116,6 +116,7 @@ The service maps RPC column names (`status_new`, `status_won`, etc.) to the clea
 A manager MUST never see cross-domain campaign data.
 
 This is enforced at two layers:
+
 1. **`campaigns/page.tsx`**: `parseFilters` ignores `domain` URL param for managers — always uses `callerDomain`.
 2. **`getCampaignMetrics` service**: `role === 'manager'` → `effectiveDomain = callerDomain` — ignores `filters.domain`.
 
@@ -130,13 +131,13 @@ Filter bar shares `lib/utils/filter-params.ts` (`buildFilterParams`, `dateFromUr
 
 ## URL Param Keys
 
-| Filter    | URL param   | Type              |
-|-----------|-------------|-------------------|
-| domain    | `domain`    | AppDomain string  |
-| search    | `search`    | substring match on `campaign_name` (trimmed in service) |
-| date from | `date_from` | ISO date string   |
-| date to   | `date_to`   | ISO date string   |
-| page      | `page`      | integer (detail page only) |
+| Filter    | URL param   | Type                                                      |
+| --------- | ----------- | --------------------------------------------------------- |
+| domain    | `domain`    | AppDomain string                                          |
+| search    | `search`    | substring match on `campaign_name` (trimmed in service)   |
+| date from | `date_from` | ISO date string                                           |
+| date to   | `date_to`   | ISO date string                                           |
+| page      | `page`      | integer (detail page only)                                |
 
 Campaign filter changes do not need a page param — the list page has no pagination.
 The detail page uses `page` for lead pagination (passed through `LeadsPagination`).
@@ -152,7 +153,7 @@ calling the RPC. This is done in `getCampaignMetrics()`, not in the component or
 
 ## Detail Page Architecture (campaigns/[id]/page.tsx)
 
-```
+```text
 [id]/page.tsx                        ← Server component
   │  decodes id with decodeURIComponent → notFound() on throw (Q-10)
   │  campaignName used identically for BOTH the metrics RPC and leads query
@@ -215,6 +216,7 @@ its own Suspense boundary — it does not participate in the same Promise.all.
 ## Division-by-Zero Guard Contract
 
 All rate fields divide by `total_leads`. When `total_leads === 0`:
+
 - Conversion rate → "—"
 - Junk rate value → "—"
 - RNR rate sub-label → "—"
@@ -236,13 +238,20 @@ never a CSS `transition: width` (Rule V-19: never animate layout properties).
 
 ## Access Control
 
-| Role     | Access                              |
-|----------|-------------------------------------|
-| agent    | redirect → /dashboard              |
-| guest    | redirect → /dashboard              |
-| manager  | domain pre-locked to their domain   |
-| admin    | all domains, domain filter visible  |
-| founder  | all domains, domain filter visible  |
+| Role    | Access                             |
+| ------- | ---------------------------------- |
+| agent   | redirect → /dashboard              |
+| guest   | redirect → /dashboard              |
+| manager | domain pre-locked to their domain  |
+| admin   | all domains, domain filter visible |
+| founder | all domains, domain filter visible |
 
 Sidebar "Campaigns" link is rendered for manager, admin, founder only.
 `isManager = profile.role === 'manager' || isPrivileged` (Sidebar.tsx).
+
+---
+
+## Ad creative uploads (admin)
+
+Manage videos at `/admin/ad-creatives` — see `src/app/(dashboard)/admin/ad-creatives/CLAUDE.md`.
+List/detail pages only **read** via `getAdCreativesForCampaigns` (batch) or `getAdCreativesForCampaign` (dossier).

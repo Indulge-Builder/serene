@@ -13,7 +13,7 @@
 
 ### Agent view (unchanged)
 
-```
+```text
 performance/page.tsx              ← Server component (thin orchestrator)
   │  reads searchParams.period, defaults to 'this_month'
   │  role = agent → renders agent layout below
@@ -32,7 +32,7 @@ performance/page.tsx              ← Server component (thin orchestrator)
 
 ### Manager view
 
-```
+```text
 performance/page.tsx              ← role = manager
   │  domain ALWAYS from profile (server-verified) — never from URL params
   │
@@ -50,7 +50,7 @@ performance/page.tsx              ← role = manager
 
 ### Founder / Admin view
 
-```
+```text
 performance/page.tsx              ← role = founder | admin
   │  filter bar: period, search, custom dates (no domain selector in bar)
   │
@@ -71,13 +71,22 @@ Founder/admin **do not** use `?domain=` or a filter-bar domain control. Domain s
 
 ## Domain-source rule — critical
 
-| Role            | Domain source                                       |
-| --------------- | --------------------------------------------------- |
-| manager         | `profile.domain` (server profile, not URL)          |
+| Role            | Domain source                                                               |
+| --------------- | --------------------------------------------------------------------------- |
+| manager         | `profile.domain` (server profile, not URL)                                  |
 | founder / admin | `allDomains={true}` on `ManagerPerformanceAsync`; roster filter client-side |
 
 **Never read `?domain=` from URL params.** Manager path uses `profile.domain` only.
 Founder/admin path fetches the full cross-domain roster server-side; domain narrowing is the roster popover only.
+
+## Agent self-view layout (2026-06-01)
+
+- Page shell: `maxWidth: 1280px` on `<main>` (`performance/page.tsx`).
+- **CoreFourGrid:** single row of 4 KPI cards (Leads Won, Conversion Rate, Avg Response Time, In Discussion) with Lucide header icons, inline period delta, Recharts sparkline (`AreaChart` + `useChartTokens`), team benchmark line when `benchmarks` non-null.
+- **CallOutcomeBar:** donut chart (Recharts `PieChart`) replacing the legacy horizontal bar for agent view.
+- **EffortGrid:** unchanged 4-col compact cards below KPI row.
+
+Do not revert agent view to 2×2 KPI grid without an explicit spec change.
 
 ## Service File
 
@@ -115,8 +124,8 @@ Exported functions:
 
 | Prop                   | Type                         | Purpose                                                                 |
 | ---------------------- | ---------------------------- | ----------------------------------------------------------------------- |
-| `initialAgentId`       | `string \| null`             | First agent in sidebar display order (`getFirstAgentInPerformanceRosterList`) |
-| `initialDetailMetrics` | `AgentDetailMetrics \| null` | Server-pre-fetched detail for that agent                                |
+| `initialAgentId`       | `string \                    | null`                                                                   |
+| `initialDetailMetrics` | `AgentDetailMetrics \        | null`                                                                   |
 
 `ManagerPerformancePanel` seeds `useState(selectedId)` from `initialAgentId` and threads both props to `AgentDetailPanel`.
 
@@ -190,19 +199,19 @@ Manager role: `caller.domain !== domain` → 403. Domain never trusted from clie
 
 ## Component Map
 
-| Component                    | Location                                               |
-| ---------------------------- | ------------------------------------------------------ |
+| Component                    | Location                                                                |
+| ---------------------------- | ----------------------------------------------------------------------- |
 | `PerformanceFilters`         | `src/components/performance/` — unified filter bar; `buildFilterParams` |
-| `CoreFourGrid`               | `src/components/performance/`                          |
-| `EffortGrid`                 | `src/components/performance/`                          |
-| `CallOutcomeBar`             | `src/components/performance/` (reused in detail panel) |
-| `ManagerPerformancePanel`    | `src/components/performance/` — roster domain popover + URL `search` |
-| `AgentDetailPanel`           | `src/components/performance/`                          |
-| `PerformanceAsync`           | `src/app/(dashboard)/performance/`                     |
-| `ManagerPerformanceAsync`    | `src/app/(dashboard)/performance/`                     |
-| `FounderPerformanceShell`    | `src/app/(dashboard)/performance/`                     |
-| `PerformanceSkeleton`        | `src/app/(dashboard)/performance/`                     |
-| `ManagerPerformanceSkeleton` | `src/app/(dashboard)/performance/`                     |
+| `CoreFourGrid`               | `src/components/performance/`                                           |
+| `EffortGrid`                 | `src/components/performance/`                                           |
+| `CallOutcomeBar`             | `src/components/performance/` (reused in detail panel)                  |
+| `ManagerPerformancePanel`    | `src/components/performance/` — roster domain popover + URL `search`    |
+| `AgentDetailPanel`           | `src/components/performance/`                                           |
+| `PerformanceAsync`           | `src/app/(dashboard)/performance/`                                      |
+| `ManagerPerformanceAsync`    | `src/app/(dashboard)/performance/`                                      |
+| `FounderPerformanceShell`    | `src/app/(dashboard)/performance/`                                      |
+| `PerformanceSkeleton`        | `src/app/(dashboard)/performance/`                                      |
+| `ManagerPerformanceSkeleton` | `src/app/(dashboard)/performance/`                                      |
 
 ## Phase 10 Hardening — DRY Audit (2026-05-30)
 

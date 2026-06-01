@@ -27,11 +27,12 @@
 9. [Notes System](#9-notes-system)
 10. [Tasks on a Lead](#10-tasks-on-a-lead)
 11. [Lead List & Access Control](#11-lead-list--access-control)
-12. [The Full Flow — End to End](#12-the-full-flow--end-to-end)
-13. [WhatsApp](#13-whatsapp)
-14. [SLA Engine](#14-sla-engine)
-15. [File Map](#15-file-map)
-16. [Decision Log](#16-decision-log)
+12. [Deals Page](#12-deals-page)
+13. [The Full Flow — End to End](#13-the-full-flow--end-to-end)
+14. [WhatsApp](#14-whatsapp)
+15. [SLA Engine](#15-sla-engine)
+16. [File Map](#16-file-map)
+17. [Decision Log](#17-decision-log)
 
 ---
 
@@ -396,11 +397,11 @@ Every transition is handled by the `update_lead_status` RPC (migration 0031) cal
 **Parallel fetches on page load:**
 
 ```typescript
-const [lead, notes, activities, adCreative, agents] = await Promise.all([
+const [lead, notes, activities, adCreatives, agents] = await Promise.all([
   getLeadBySlug(id) ?? getLeadById(id),
   getLeadNotesFull(lead.id),       // 1 query with author join
   getLeadActivitiesFull(lead.id),  // 1 query with actor join
-  getAdCreativeForCampaign(lead.utm_campaign),
+  getAdCreativesForCampaign(lead.utm_campaign),  // AdCreative[] — carousel when len > 1
   getAgentsForDomain(lead.domain),
 ]);
 ```
@@ -415,23 +416,14 @@ const [lead, notes, activities, adCreative, agents] = await Promise.all([
 │  [ Called ] [ Won ] [ Nurture ] [ Lost ] [ Junk ]  (context) │
 ├──────────────────────────────────────────────────────────────┤
 │  LEFT COLUMN                    │  RIGHT COLUMN              │
-│  LeadInfoCard                   │  LeadNotesInput            │
-│  — contact fields (editable)    │  — plain note composer     │
-│  — UTM attribution strip        │                            │
-│  — reassignment (manager+)      │  AgentScratchpad           │
-│                                 │  — private textarea        │
-│  PersonalDetailsCard            │    (assigned agent only)   │
-│  — company, occupation,         │                            │
-│    interests, city, notes       │                            │
-│                                 │                            │
-│  DynamicFormResponses           │                            │
-│  — raw form_data JSONB          │                            │
+│  LeadInfoCard                   │  LeadTasksCard             │
+│  — per-field inline edit        │  — all Gia follow-up tasks │
+│  — UTM / source (utm_source)    │  — CreateLeadTaskModal     │
+│  PersonalDetailsCard            │  LeadNotesInput            │
+│  DynamicFormResponses           │  AgentScratchpad           │
 ├──────────────────────────────────┴────────────────────────────┤
 │  LeadJourneyTimeline                                           │
 │  Visual stage path with dwell times                           │
-├───────────────────────────────────────────────────────────────┤
-│  LeadDossierTasksAsync                                         │
-│  Next due task on this lead                                   │
 ├───────────────────────────────────────────────────────────────┤
 │  LeadNotesSection                                              │
 │  Timeline of all call notes (outcome badge + author)          │
@@ -462,7 +454,7 @@ Status pill + action buttons. Context-aware — shows different actions per curr
 - Terminal (won/lost/nurturing): read-only status pill only
 
 **`LeadInfoCard`**
-Contact fields (first_name, last_name, phone, email) + UTM attribution strip + lead intent badge. Inline edit on click when `canEdit`. Save state machine: idle → saving → saved (1.2s) → idle. Reassignment via `ComboboxDropdown` when `canReassign`. Campaign name triggers `CampaignVideoModal` when an ad creative exists.
+Contact fields: name and phone are read-only. Email, domain, source (`utm_source`), and assignee each save independently via per-field inline edit when permitted (`canEdit` / `canReassign`). Assignee, domain, and source use `FilterDropdown`. Campaign name opens `CampaignVideoModal` (carousel when multiple `ad_creatives` rows share the key — migration 0058). **Last modified** shows `lead.updated_at`.
 
 **`PersonalDetailsCard`**
 5 enrichment fields (Company, Occupation, Interests, City, Details). Click to activate edit mode. Saved via `updatePersonalDetails` action which merges into `leads.personal_details` JSONB.
@@ -479,8 +471,8 @@ Chronological timeline of all `lead_notes` rows. Notes from `CalledModal` show t
 **`LeadJourneyTimeline`**
 Visual path: new → touched → in_discussion → terminal outcome. Dwell time shown per stage. Terminal badge in header. Built from `lead_activities` timestamps.
 
-**`LeadDossierTasksAsync`**
-Async server component. Shows next pending task. Overdue state highlighted.
+**`LeadTasksAsync` + `LeadTasksCard`**
+Async server component fetches all lead Gia tasks via `getAllLeadTasks`. `LeadTasksCard` lists every `gia_followup` task (not just the next due). `CreateLeadTaskModal` calls `createLeadTaskAction` → `create_lead_gia_task` RPC (migration 0054). Dossier revalidates on create so the list updates without manual refresh.
 
 **`DynamicFormResponses`**
 Renders `leads.form_data` JSONB as field → value pairs.
@@ -577,7 +569,7 @@ Tasks on a lead come from four sources.
 When lead status transitions to `nurturing` (via RPC):
 
 ```text
-task_type:   general_follow_up
+task_type:   other
 status:      to_do
 due_at:      now() + interval '3 months'
 assigned_to: lead's current assigned agent (falls back to actor_id)
@@ -588,7 +580,7 @@ assigned_to: lead's current assigned agent (falls back to actor_id)
 When an SLA breach fires for an agent rule, a task is created (if no open gia_followup task already exists):
 
 ```text
-task_type:   general_follow_up   (task_category: gia_followup)
+task_type:   other   (task_category: gia_followup)
 titles:
   SLA-01A: 'New lead untouched — follow up now'        (priority: urgent)
   SLA-02A: 'No update in 24 hours — follow up on lead' (priority: high)
@@ -614,10 +606,11 @@ From the dossier:
 | ------------------- | ------------------- |
 | `call`              | Scheduled call      |
 | `whatsapp_message`  | WhatsApp follow-up  |
-| `email`             | Email follow-up     |
-| `general_follow_up` | Any other follow-up |
+| `other`             | Any other follow-up |
 
-Tasks displayed in `LeadDossierTasksAsync` — next due task only inline on the dossier. Full task list in the Tasks module.
+Legacy values `email` and `general_follow_up` were backfilled to `other` in migration 0057.
+
+Tasks displayed in `LeadTasksCard` on the dossier (full list). Gia tab on `/tasks` uses `get_gia_tasks` RPC (migration 0055). `CreateGiaTaskModal` on the tasks page reuses `createLeadTaskAction`.
 
 ---
 
@@ -687,7 +680,7 @@ Column visibility + drag-to-reorder via `useLeadColumnPreferences(userId)` hook.
 
 **Button:** `AddLeadButton` in page header → `AddLeadModal`
 
-**Fields:** first_name, last_name, phone, email, source (manual_source stored in form_data), domain (manager+), assigned_to (manager+)
+**Fields:** first_name, last_name, phone, email, source (`utm_source` — `LEAD_SOURCES` enum), domain (manager+), assigned_to (manager+)
 
 **Agent enforcement:** `createManualLead` server action always overwrites `domain = caller.domain` when caller role is `agent`. Form payload never trusted.
 
@@ -695,7 +688,32 @@ Column visibility + drag-to-reorder via `useLeadColumnPreferences(userId)` hook.
 
 ---
 
-## 12. The Full Flow — End to End
+## 12. Deals Page
+
+**Route:** `/deals` — all roles (sidebar: `Trophy`, below Leads).
+
+Lists won leads where `deal_amount IS NOT NULL`. There is no separate `deals` table — deal fields live on `leads` (migration 0049).
+
+**Architecture:** Same Suspense-split pattern as leads:
+
+```text
+deals/page.tsx           ← thin orchestrator; getLeadFilterOptions once
+  ├── <DealsFilters />   ← client; URL params only
+  └── <Suspense>
+        <DealsAsync />     ← Promise.all: getDealsByRole + getDealsSummary
+```
+
+**Summary strip:** `get_deals_summary` RPC (migrations 0052–0053) — `total_deals`, `total_revenue`, `membership_count`, `retail_count`. Manager role-gate uses `p_caller_domain` (server-verified); admin/founder domain filter uses `p_filter_domain`.
+
+**Date filters:** Applied to `status_changed_at` (when the lead was marked won), not `created_at`.
+
+**Invariants:** See `src/app/(dashboard)/deals/CLAUDE.md` — no `status` in `DealFilters`; `getDealsByRole` returns `{ deals, totalCount }`; agent role constraint wins over crafted `agent_id` URL param.
+
+`DealCard` links to `/leads/${slug ?? id}`.
+
+---
+
+## 13. The Full Flow — End to End
 
 ```text
 INGESTION
@@ -779,7 +797,7 @@ The full history of every lead is always recoverable.
 
 ---
 
-## 13. WhatsApp
+## 14. WhatsApp
 
 WhatsApp is the second ingestion channel into Gia — alongside the webhook from Meta/Google/website forms.
 
@@ -958,7 +976,7 @@ Architecture, RAG setup, and per-conversation bot on/off toggle — see the orig
 
 ---
 
-## 14. SLA Engine
+## 15. SLA Engine
 
 The Gia SLA Engine enforces response-time commitments using event-driven Trigger.dev delayed jobs. No polling. No cron scanners.
 
@@ -1013,17 +1031,20 @@ Before creating an auto-task, `fireSlaBreachHandler` calls `getOpenGiaFollowupTa
 
 ---
 
-## 15. File Map
+## 16. File Map
 
 ```text
 src/
 ├── app/
 │   └── (dashboard)/
-│       └── leads/
-│           ├── page.tsx                              ← lead list (Suspense-split, thin orchestrator)
-│           ├── CLAUDE.md                             ← filter invariants, slug rules, FK joins
-│           └── [id]/
-│               └── page.tsx                          ← lead dossier (slug-first lookup)
+│       ├── leads/
+│       │   ├── page.tsx                              ← lead list (Suspense-split, thin orchestrator)
+│       │   ├── CLAUDE.md                             ← filter invariants, slug rules, FK joins
+│       │   └── [id]/
+│       │       └── page.tsx                          ← lead dossier (slug-first lookup)
+│       ├── deals/                                    ← won leads + summary strip (CLAUDE.md)
+│       └── admin/
+│           └── ad-creatives/                         ← campaign video upload (admin/founder)
 │
 ├── components/
 │   └── leads/
@@ -1036,19 +1057,26 @@ src/
 │       ├── LeadColumnPicker.tsx                      ← @dnd-kit sortable, locked columns
 │       ├── AddLeadModal.tsx                          ← manual lead creation, duplicate detection
 │       ├── AddLeadButton.tsx
-│       ├── LeadInfoCard.tsx                          ← contact fields, UTM strip, reassignment combobox
+│       ├── LeadInfoCard.tsx                          ← per-field inline edit; FilterDropdown assignee/source/domain
 │       ├── StatusActionPanel.tsx                     ← status pill + context-aware action buttons
 │       ├── CalledModal.tsx                           ← call outcome + note
 │       ├── WonDealModal.tsx                          ← deal_type / deal_duration / deal_amount
-│       ├── CampaignVideoModal.tsx                    ← native <video> ad creative preview
+│       ├── CampaignVideoModal.tsx                    ← ad creative carousel (multiple videos per campaign)
+│       ├── LeadTasksAsync.tsx                        ← async: all lead Gia tasks
+│       ├── LeadTasksCard.tsx                         ← full task list + create modal trigger
+│       ├── CreateLeadTaskModal.tsx                   ← manual Gia task on dossier
 │       ├── DynamicFormResponses.tsx                  ← form_data JSONB renderer
 │       ├── AgentScratchpad.tsx                       ← debounced private notes
 │       ├── LeadNotesInput.tsx                        ← plain note composer (no call outcome)
 │       ├── LeadNotesSection.tsx                      ← notes timeline
 │       ├── LeadActivityLog.tsx                       ← lead_activities audit trail
 │       ├── LeadJourneyTimeline.tsx                   ← visual stage path with dwell times
-│       ├── LeadDossierTasksAsync.tsx                 ← next due task (async server component)
 │       └── PersonalDetailsCard.tsx                   ← enrichment JSONB fields
+│
+│   └── deals/
+│       ├── DealsFilters.tsx
+│       ├── DealCard.tsx
+│       └── DealsSummaryStrip.tsx
 │
 ├── components/
 │   └── whatsapp/
@@ -1061,10 +1089,13 @@ src/
 │
 ├── lib/
 │   ├── actions/
+│   │   ├── ad-creatives.ts                           ← upsertAdCreative, deleteAdCreative
 │   │   ├── leads.ts                                  ← addLeadCallNote, updateLeadStatus, assignLead,
-│   │   │                                               createManualLead, updatePersonalDetails,
-│   │   │                                               updateScratchpad, addLeadNote, recordDeal,
-│   │   │                                               updateLeadInfo, listAgentsForDomain
+│   │   │                                               createManualLead, createLeadTaskAction,
+│   │   │                                               updatePersonalDetails, updateScratchpad,
+│   │   │                                               addLeadNote, recordDeal, updateLeadEmail,
+│   │   │                                               updateLeadDomain, updateLeadUtmSource,
+│   │   │                                               listAgentsForDomain, searchLeadsAction
 │   │   └── whatsapp.ts                               ← sendWhatsAppMessageAction, resolve/reopen,
 │   │                                                    getConversationsAction, getMessagesAction,
 │   │                                                    searchConversationsAction
@@ -1078,7 +1109,8 @@ src/
 │   │   │   getLeadNotesFull, getLeadActivitiesFull,
 │   │   │   getNextLeadTask, getAgentsForDomain
 │   │   ├── lead-ingestion.ts                         ← ingestLead, round-robin, dedup, raw payload log
-│   │   ├── ad-creatives-service.ts                   ← getAdCreativeForCampaign
+│   │   ├── ad-creatives-service.ts                   ← getAdCreativesForCampaign, getAdCreativesForCampaigns, getAllAdCreatives
+│   │   ├── deals-service.ts                          ← getDealsByRole, getDealsSummary
 │   │   └── whatsapp-service.ts                       ← getConversations, getMessages, sendMessage,
 │   │                                                    getUnreadCount, searchConversations
 │   ├── validations/
@@ -1088,7 +1120,7 @@ src/
 │       ├── call-outcomes.ts                          ← outcome enums + labels
 │       ├── task-types.ts                             ← task_type enums
 │       ├── lead-columns.ts                           ← 11 columns, locked: status + name
-│       ├── lead-sources.ts                           ← LEAD_SOURCES, LEAD_SOURCE_LABELS
+│       ├── lead-sources.ts                           ← LEAD_SOURCES, LEAD_SOURCE_LABELS, getLeadSourceLabel
 │       └── campaign-domain-map.ts                    ← prefix → domain mapping
 │
 └── app/
@@ -1119,11 +1151,18 @@ supabase/migrations/ — key Gia migrations:
   20260530 0045   lead_slug (generate_lead_slug, trg_lead_slug trigger, backfill)
   20260530 0046   lead_slug collision fix
   20260531 0049   deal_amount, deal_type, deal_duration columns on leads
+  20260531 0052   get_deals_summary RPC
+  20260531 0053   get_deals_summary manager domain fix (p_caller_domain / p_filter_domain)
+  20260531 0054   create_lead_gia_task RPC
+  20260531 0055   get_gia_tasks RPC
+  20260531 0056   get_gia_tasks slug prereq
+  20260531 0057   task_type_other (call | whatsapp_message | other)
+  20260601 0058   ad_creatives_multi_video (drop UNIQUE on campaign_key)
 ```
 
 ---
 
-## 16. Decision Log
+## 17. Decision Log
 
 | Date | Decision | Chosen | Why |
 | --- | --- | --- | --- |
@@ -1139,3 +1178,8 @@ supabase/migrations/ — key Gia migrations:
 | 2026-05-30 | Lead slug as URL identifier | `priya-sharma-9182` format — immutable after insert, generated by DB trigger. | Human-readable URLs survive agent handoffs. Immutable avoids broken bookmarks when name/phone changes. |
 | 2026-05-30 | DEFAULT_LEAD_DOMAIN = 'onboarding' | Migrated from 'concierge' (migration 0041) | 'concierge' is a staff domain, not a lead-receiving domain. All unknown UTM prefixes should land in onboarding. |
 | 2026-05-31 | Deal fields on leads | `deal_amount`, `deal_type`, `deal_duration` on `leads` table (migration 0049). Membership requires duration; retail requires amount only. | Single record per lead; no separate deals table needed at current scale. |
+| 2026-05-31 | Deals page | `/deals` reads won leads with `deal_amount`; aggregates via `get_deals_summary` RPC. | List + summary without a new table; same role/filter contract as lead list. |
+| 2026-05-31 | Lead Gia task RPC | `create_lead_gia_task` — atomic `tasks` + `task_gia_meta` insert (migration 0054). | Orphan tasks are invisible on all Gia surfaces. |
+| 2026-06-01 | Lead source on `utm_source` | Manual create + dossier edit; `LEAD_SOURCES` constant. | Attribution field, not `form_data`. |
+| 2026-06-01 | `task_type` = other | Migration 0057; UI shows Call / WhatsApp / Other only. | Matches agent workflow; legacy types backfilled. |
+| 2026-06-01 | Multiple ad videos per campaign | Migration 0058; `getAdCreativesForCampaign` returns array. | One row per video; carousel in modal. |

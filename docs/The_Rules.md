@@ -197,14 +197,16 @@ NEVER  place backdrop-filter/blur on anything other than TopBar, mobile sidebar 
 When a rule must change or an exception must be granted, it is logged here.
 A rule changed without a log entry is not a rule change. It is a violation.
 
-| Date       | Rule  | Old | New                                         | Why                                                | Who |
-| ---------- | ----- | --- | ------------------------------------------- | -------------------------------------------------- | --- |
-| 2026-05-26 | —     | —   | Initial rules established                   | Foundation build                                   | —   |
-| 2026-05-28 | Q-11  | —   | assertNever + no default branch             | Exhaustive switches; build-time safety             | —   |
-| 2026-05-29 | Q-12  | —   | Mandatory codebase search before creating   | Prevents duplicates; 33 patterns already replaced  | —   |
-| 2026-05-29 | Q-13  | —   | SECURITY DEFINER scope via function body    | Caller-supplied domain bypasses RLS entirely       | —   |
-| 2026-05-29 | Q-14  | —   | Realtime channel nonce (useId)              | Strict Mode double-mount channel collision         | —   |
-| 2026-05-29 | Q-15  | —   | startTransition in useEffect only           | startTransition is a side effect, not render-safe  | —   |
-| 2026-05-29 | Q-16  | —   | unstable_cache key must include domain      | Prevents cross-domain cache hits                   | —   |
-| 2026-05-31 | Q-17  | —   | APP_DOMAINS vs GIA_DOMAINS split            | Gia uses four sales domains; user mgmt keeps full enum | — |
-| 2026-05-31 | A-15  | —   | Client components must never import value symbols from lib/services/ | Service modules pull next/headers → hard client bundle error; identified during tasks module build | — |
+| Date       | Rule  | Old | New                                                                  | Why                                                                                                | Who                     |
+| ---------- | ----- | --- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------- |
+| 2026-05-26 | —     | —   | Initial rules established                                            | Foundation build                                                                                   | —                       |
+| 2026-05-28 | Q-11  | —   | assertNever + no default branch                                      | Exhaustive switches; build-time safety                                                             | —                       |
+| 2026-05-29 | Q-12  | —   | Mandatory codebase search before creating                            | Prevents duplicates; 33 patterns already replaced                                                  | —                       |
+| 2026-05-29 | Q-13  | —   | SECURITY DEFINER scope via function body                             | Caller-supplied domain bypasses RLS entirely                                                       | —                       |
+| 2026-05-29 | Q-14  | —   | Realtime channel nonce (useId)                                       | Strict Mode double-mount channel collision                                                         | —                       |
+| 2026-05-29 | Q-15  | —   | startTransition in useEffect only                                    | startTransition is a side effect, not render-safe                                                  | —                       |
+| 2026-05-29 | Q-16  | —   | unstable_cache key must include domain                               | Prevents cross-domain cache hits                                                                   | —                       |
+| 2026-05-31 | Q-17  | —   | APP_DOMAINS vs GIA_DOMAINS split                                     | Gia uses four sales domains; user mgmt keeps full enum                                             | —                       |
+| 2026-05-31 | A-15  | —   | Client components must never import value symbols from lib/services/ | Service modules pull next/headers → hard client bundle error; identified during tasks module build | —                       |
+| 2026-06-01 | —     | —   | Lead source lives on `leads.utm_source` only                         | `form_data.manual_source` retired; use `LEAD_SOURCES` + `getLeadSourceLabel()`                     | —                       |
+| 2026-06-01 | —     | —   | Gia `task_type` vocabulary                                           | `call`, `whatsapp_message`, `other` only in UI and new writes                                      | Migration 0057 backfill |

@@ -6913,3 +6913,7 @@ const c = LEAD_STATUS_COLORS['won'];
 - Never use the old `LEAD_STATUS_BADGE` variant strings (`'neutral'`, `'info'`, `'warning'`,
   `'success'`, `'accent'`, `'danger'`) for lead status pills. That mapping is retired.
   `LEAD_STATUS_BADGE` now returns `'lead-{status}'` class suffixes directly.
+
+---
+
+_Design DNA — maintenance note (2026-06-01): Token values live in `src/styles/design-tokens.css` (canonical). `docs/design-tokens.css` is a mirror — regenerate from src when tokens change. Product changes since 2026-05-31 (Deals page, ad creatives carousel, performance KPI row, `FilterDropdown` replacing `ComboboxDropdown`) are documented in `docs/context.md` and `docs/changelog.md`._

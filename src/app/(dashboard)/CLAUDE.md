@@ -3,18 +3,21 @@
 ## What currently renders at `/dashboard`
 
 `src/app/(dashboard)/dashboard/page.tsx` — server component.
-Fetches `getCurrentProfile()`, renders `<DashboardCanvas>` with `userId`, `role`, `domain` props.
+Fetches `getCurrentProfile()`, then `Promise.all([getDashboardSummary(role, domain, userId), getLeadVolumeByPeriod(..., 'week')])`.
+Merges into `initialData` and passes to `<DashboardCanvas>` with `userId`, `role`, `domain`, `initialData`, `greeting`, `firstName`.
+
+**RSC rule (perf-01):** Summary widgets must not POST on initial load. `AgentTasksWidget`, `AgentActivityWidget`, `ManagerLeadStatusWidget`, `ManagerCampaignWidget` skip mount fetch when `initialData` is present; refresh buttons still call server actions. `ManagerLeadVolumeWidget` keeps its own period-toggle fetch (volume excluded from RPC).
 
 ---
 
 ## Widget System Architecture
 
-The dashboard is a widget canvas. Each widget is an independently code-split client component
-that fetches its own data via server actions. Widgets never share data with each other.
+The dashboard is a widget canvas. Each widget is an independently code-split client component.
+Summary widgets receive `initialData` from the page (RSC); only `ManagerLeadVolumeWidget` and user-initiated refresh buttons call server actions on load. Widgets never share mutable state with each other.
 
 ### Component Hierarchy
 
-```
+```text
 dashboard/page.tsx                   ← Server component (thin orchestrator)
   ↓
 DashboardCanvas                      ← 'use client'; reads useDashboardLayout; owns drag-to-reorder
@@ -33,6 +36,7 @@ DashboardWidgetSlot                  ← Suspense boundary; min 150ms skeleton r
 **File:** `src/lib/constants/dashboard-widgets.ts`
 
 Pure data — no component references. Each entry:
+
 ```typescript
 {
   id:           string;           // stable localStorage key — NEVER rename after shipping
@@ -48,7 +52,7 @@ Pure data — no component references. Each entry:
 **Current widgets (Phase 7 — Gia module):**
 
 | id | label | roles | size |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `agent-tasks` | My Tasks | all except guest | md |
 | `agent-activity` | Recent Activity | all except guest | md |
 | `manager-lead-status` | Lead Pipeline | manager, admin, founder | lg |
@@ -66,6 +70,7 @@ Pattern mirrors `useLeadColumnPreferences` exactly.
 **localStorage key format:** `eia:dashboard:layout:${userId}:v1`
 
 **Returns:**
+
 ```typescript
 {
   layout:          WidgetPlacement[];  // { widgetId, col, row, size }[]
@@ -171,20 +176,34 @@ If a Suspense-on-tab-switch pattern is added later, replace this guard with an `
 Two tabs: "Personal" and "Group". Active tab persisted to `?tab=personal|group` URL param.
 Uses `useSearchParams` + `useTransition` + `router.push`. Browser back/forward works.
 
-### PersonalTasksTab
+### Tab routing (`TasksShell`)
 
-`src/components/tasks/PersonalTasksTab.tsx` — `'use client'`.
-- Client-side filters: Status (multi-select pills), Priority (multi-select pills), due date range.
-- Quick-add inline row: title input + priority selector + due date + assignee picker. Enter=save, Esc=cancel.
-- Task list rows with 3px priority left border. Click row → `SubTaskModal`.
-- Cursor pagination: "Load more" button. `PERSONAL_TASKS_PAGE_SIZE = 50`.
-- `AssigneePickerModal` portaled to `document.body` — never inline inside scroll container.
-- **Data initialisation:** `activeTasks` state is seeded directly from `initialResult.tasks` (SSR prop). No mount re-fetch. Tags are loaded once on mount via `getPersonalTaskTagsAction` (not in `initialResult`). Active task list is mutated locally — quick-add prepends a synthetic task, optimistic circle toggles update `optimisticStatus`. `getPersonalTasksAction` is never called on mount or after quick-add.
-- **Quick-add prepend pattern:** after `createPersonalTaskAction` succeeds, a synthetic `Task` object (all required fields, `priority: 'normal'`, `status: 'to_do'`, `tags: []`) is prepended to `activeTasks` state. Mirrors `CreatePersonalTaskModal.onCreated`.
+`src/app/(dashboard)/tasks/page.tsx` parses `?tab=` against `validTabs` (Gia domain adds `gia` tab; default tab is `gia` for Gia agents).
+
+| Tab | Component | Data source |
+| --- | --- | --- |
+| `gia` | `GiaTasksTab` | `getGiaTasksForUser` in `TasksAsync` |
+| `personal` | `MyTasksCalendarView` | `getPersonalTasks` in `TasksAsync` |
+| `group` | `GroupTasksTab` | `getGroupTasks` in `TasksAsync` |
+
+Filters live in `TasksFilters` / `TasksShell` (`task-client-filters.ts` — all client-side, no refetch on filter change).
+
+### MyTasksCalendarView
+
+`src/components/tasks/MyTasksCalendarView.tsx` — `'use client'`.
+
+- Calendar month grid with `taskDots` from active (non-completed) tasks.
+- Date-grouped list below; filters from parent `filters` prop.
+- Click row → `getTaskRemarksAction` then `SubTaskModal`; `onTaskUpdated` / `onTaskDeleted` patch local list.
+- `createTrigger` opens `CreatePersonalTaskModal` (wired from header `AddTaskButton` via `TasksCreateProvider`).
+- `AssigneePickerModal` portaled to `document.body`.
+
+`PersonalTasksTab.tsx` is **not mounted** — do not document new behaviour there.
 
 ### GroupTasksTab
 
 `src/components/tasks/GroupTasksTab.tsx` — `'use client'`.
+
 - Accordion: only one group expanded at a time. `expandedGroupId: string | null`.
 - Group row: priority border, title, description, subtask count + progress%, due date, avatar stack (max 4), status pill.
 - **"Open" link** per group row: `Link href="/tasks/${group.id}"` — `e.stopPropagation()` on click/keydown prevents accordion expand.
@@ -196,11 +215,13 @@ Uses `useSearchParams` + `useTransition` + `router.push`. Browser back/forward w
 ### Group Task Workspace — `/tasks/[id]`
 
 **Page:** `src/app/(dashboard)/tasks/[id]/page.tsx` — Server Component.
+
 - Fetches `getTaskGroupById(id)` + `getGroupSubtasks(id)` in parallel.
 - Null group (RLS blocks access or not found) → `redirect('/tasks?tab=group')`. No 404.
 - Passes `group`, `initialSubtasks`, `currentUserId`, `currentUserName`, `callerRole`, `callerDomain` as props.
 
 **Client Component:** `src/components/tasks/GroupTaskWorkspace.tsx`
+
 - Two views: List (priority DESC + due_at ASC NULLS LAST) | Board (5 columns).
 - View persisted to `localStorage` at `eia:tasks:workspace-view:${groupId}`. Default `'list'` on SSR; `useEffect` reads after mount (no hydration mismatch).
 - Board has 5 columns: To Do · In Progress · In Review · Completed · Error/Cancelled. Error and Cancelled share one column; header shows sum of both counts; cards show actual status pill.
@@ -211,7 +232,7 @@ Uses `useSearchParams` + `useTransition` + `router.push`. Browser back/forward w
 
 ### getPersonalTasks contract (mandatory)
 
-```
+```text
 getPersonalTasks(userId, filters?) → Promise<PersonalTasksResult>
 
 PersonalTasksResult = {
@@ -227,7 +248,7 @@ PersonalTasksResult = {
 
 ## Phase B Widgets — File Locations
 
-```
+```text
 src/components/dashboard/
   DashboardCanvas.tsx         ← 'use client'; grid + dnd-kit + edit mode
   DashboardWidgetSlot.tsx     ← 'use client'; Suspense boundary + min 150ms skeleton

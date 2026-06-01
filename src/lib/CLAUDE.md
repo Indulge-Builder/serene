@@ -1,4 +1,4 @@
-# Lib CLAUDE.md — stub. Update as patterns are established.
+# Lib CLAUDE.md — stub. Update as patterns are established
 
 ## Browser Supabase client — singleton contract
 
@@ -56,7 +56,8 @@ fresh channel rather than calling `.on()` on an already-subscribed one.
 | `constants/domains.ts` | `APP_DOMAINS` (user mgmt), `GIA_DOMAINS` (Gia module), `DOMAIN_LABELS`, `GIA_DOMAIN_ENUM`, `APP_DOMAIN_ENUM` — see Q-17 in `docs/The_Rules.md` |
 | `constants/lead-statuses.ts` | `LeadStatus` enums + badge config |
 | `constants/call-outcomes.ts` | `CallOutcome` enums + labels |
-| `constants/task-types.ts` | `TaskType` enums |
+| `constants/task-types.ts` | `TASK_TYPES`: `call`, `whatsapp_message`, `other` + `TASK_TYPE_LABELS` |
+| `constants/lead-sources.ts` | `LEAD_SOURCES`, `LEAD_SOURCE_LABELS`, `LEAD_SOURCE_OPTIONS`, `getLeadSourceLabel()` — canonical lead source on `leads.utm_source` |
 | `constants/task-constants.ts` | `TASK_PRIORITY`, `TASK_STATUS`, `TASK_CATEGORY` — labels, CSS token colours, sort order. `TASK_STATUS` also has `pillBg`/`pillText` and `remarkBg`/`remarkColor`/`remarkBorder` for pills and remark chips |
 | `constants/campaign-domain-map.ts` | prefix → domain mapping |
 | `constants/lead-columns.ts` | Column registry for the leads table — `LEAD_COLUMNS`, `LEAD_COLUMN_MAP`, `DEFAULT_COLUMN_ORDER`, `isValidLeadColumnId`. IDs are stable localStorage keys — never rename after shipping. |
@@ -67,12 +68,13 @@ fresh channel rather than calling `.on()` on an already-subscribed one.
 | File | Purpose |
 | ---- | ------- |
 | `services/profiles-service.ts` | Profile DB queries |
-| `services/leads-service.ts` | Lead DB queries — `getLeadsByRole`, `getLeadById`, etc. |
+| `services/leads-service.ts` | Lead DB queries — `getLeadsByRole`, `getLeadBySlug`, `getLeadById`, `getCampaignMetrics`, `searchLeadsForTask`, etc. |
+| `services/deals-service.ts` | `getDealsByRole`, `getDealsSummary` (RPC wrapper for `/deals`) |
 | `services/notifications-service.ts` | Notification reads/writes |
 | `services/dashboard-service.ts` | Dashboard data. Primary entry point: `getDashboardSummary(role, domain, userId)` — single RPC, memoised with React `cache()` per request (cannot use `unstable_cache` — `createClient()` reads `cookies()` which is forbidden inside `unstable_cache` closures). Do not split back into individual action calls for summary data. `getLeadVolumeByPeriod` is the only individual function still used (period toggle). |
 | `services/performance-service.ts` | Performance page queries |
 | `services/ad-creatives-service.ts` | `getAdCreativesForCampaign` (one campaign → `AdCreative[]`, newest first), `getAdCreativesForCampaigns` (batch → `Map<key, AdCreative[]>`), `getAllAdCreatives` (admin list, newest-first). A campaign may have multiple videos (migration 0058 dropped the UNIQUE on campaign_key). |
-| `services/tasks-service.ts` | OS Tasks queries — `getPersonalTasks`, `getGroupTasks`, `getGroupSubtasks`, `getTaskById`, `getTaskRemarks` (ordered ASC, returns `TaskRemarkWithAuthor[]`). Also exports `TaskRemarkWithAuthor` — canonical type definition. |
+| `services/tasks-service.ts` | OS Tasks — `getPersonalTasks`, `getGroupTasks`, `getGroupSubtasks`, `getTaskById`, `getTaskRemarks`, `getAllLeadTasks`, `getGiaTasksForUser`. Exports `TaskRemarkWithAuthor`. |
 | `services/sla-service.ts` | Gia SLA Engine DB queries — `getSlaTimersForLead`, `getSlaTimerForLeadAndRule`, `createSlaTimer`, `updateSlaTimerRunId`, `cancelSlaTimersForLeadInDb`, `markSlaTimerFired`, `getOpenGiaFollowupTask`, `getManagersByDomain`. All writes use adminClient (service-role). |
 | `services/agent-routing-service.ts` | `getAgentRoutingConfig`, `getRoutingConfigsByDomain`, `getActiveRoutingConfigs`, `setRoutingActive`, `getAgentRosterByDomain` (joined profiles+config, adminClient), `setAgentShift` (adminClient) |
 | `services/lead-ingestion.ts` | Webhook lead ingestion pipeline. Also exports `createLeadFromWhatsApp(waId, phone): Promise<{leadId, assignedTo}>` — called by `whatsapp-ingestion.ts` when an inbound message arrives from an unknown number. Uses adminClient. |
@@ -147,6 +149,7 @@ unstable_cache(() => queryFn(), ['some-tag'], { ... })
 ```
 
 **Reference implementation:** `getGroupTasks` in `services/tasks-service.ts`
+
 - Cache tag: `'group-tasks'`
 - TTL: 60s
 - Revalidation sites: `createGroupTaskAction`, `createSubtaskAction` (both call `revalidateTag('group-tasks', { expire: 0 })` after successful insert)
@@ -161,6 +164,7 @@ Sort order is identical on every page: `due_at ASC NULLS LAST → priority CASE 
 The three cursor RPC params (`p_cursor_id`, `p_cursor_due_at`, `p_cursor_has_due_at`) are all `null` for page 1. `p_cursor_has_due_at` disambiguates the null-cursor case: `true` = cursor row had a deadline; `false` = cursor row had no deadline (only remaining null-due_at rows returned).
 
 **Rules that must never be violated:**
+
 - No JavaScript `.sort()` on the result of `getPersonalTasks`.
 - No PostgREST `.order()`, `.or()`, `.lte()`, `.in()` chain inside `getPersonalTasks`.
 - No split-path `if (!cursor)` with different query strategies for cursor vs no-cursor pages.
@@ -204,7 +208,7 @@ Both actions call `SECURITY DEFINER` RPCs for all DB writes. Do not add sequenti
 | ---- | ------- |
 | `actions/profiles.ts` | User/profile management |
 | `actions/agent-routing.ts` | `toggleAgentRouting`, `setAgentShiftAction` |
-| `actions/leads.ts` | Lead lifecycle actions |
+| `actions/leads.ts` | Lead lifecycle — `addLeadCallNote`, `addLeadNote`, `updateLeadStatus`, `assignLead`, `createManualLead`, `createLeadTaskAction`, `recordDeal`, `updateLeadEmail`, `updateLeadDomain`, `updateLeadUtmSource`, `updatePersonalDetails`, `updateScratchpad`, `listAgentsForDomain`, `searchLeadsAction` |
 | `actions/dashboard.ts` | Dashboard widget data refresh |
 | `actions/ad-creatives.ts` | `upsertAdCreative`, `deleteAdCreative` (admin/founder only; adminClient writes; normalise campaign_key; revalidate /admin/ad-creatives + /campaigns) |
 | `actions/notifications.ts` | `markNotificationReadAction`, `markAllReadAction` |
@@ -224,7 +228,7 @@ Both actions call `SECURITY DEFINER` RPCs for all DB writes. Do not add sequenti
 | File | Purpose |
 | ---- | ------- |
 | `validations/profile-schema.ts` | Profile create/update/auth/deactivate/invite/avatar schemas |
-| `validations/lead-schema.ts` | Lead lifecycle schemas (call note, status update, assign, scratchpad, personal details, manual create, webhook) |
+| `validations/lead-schema.ts` | Lead schemas — includes `CreateManualLeadSchema.utm_source`, `UpdateLeadUtmSourceSchema`, `createLeadTask` / `recordDeal` |
 | `validations/task-schemas.ts` | OS Tasks schemas (create personal/group/subtask, update, checklist, tags, remarks) |
 | `validations/ad-creative-schema.ts` | `upsertAdCreativeSchema` (id optional → create/update), `deleteAdCreativeSchema` |
 | `validations/whatsapp-schema.ts` | `MetaWebhookPayloadSchema` (permissive passthrough), `MetaStatusUpdateSchema`, `SendMessageSchema` (conversationId uuid + content 1–4096 chars), `ResolveConversationSchema`. Human-readable error messages — never Zod defaults. |
@@ -241,11 +245,13 @@ Both actions call `SECURITY DEFINER` RPCs for all DB writes. Do not add sequenti
 **Rule:** Tags (`task-reminder-${taskId}`) are used to locate and cancel runs — no run IDs stored in the DB.
 
 **`lead-sla.ts` three exports:**
+
 - `scheduleLeadSlasTask` — schedules one delayed job per (leadId, ruleCode) pair. Idempotency key `lead-sla-${leadId}-${ruleCode}`. Tag `lead-sla-${leadId}`.
 - `cancelLeadSlasByLeadTask` — lists all DELAYED/QUEUED runs for tag `lead-sla-${leadId}`, cancels each, then calls `cancelSlaTimersForLeadInDb`.
 - `fireLeadSlaTask` — Trigger.dev task (internal); calls `fireSlaBreachAction` from `lib/actions/sla.ts`.
 
 **Three hook points in `lib/actions/leads.ts`:**
+
 1. `assignLead` + `createManualLead` — after assignment write: update `status_changed_at` + `last_activity_at`, call `scheduleSlaTimersForLead({ leadId, status: 'new', ... })`.
 2. `updateLeadStatus` — after status write: update `status_changed_at`; if terminal → `cancelSlaTimersForLead`; else → `scheduleSlaTimersForLead` (cancel-then-reschedule).
 3. `addLeadCallNote` — after note write: update `last_activity_at`; if auto-advanced new→touched → `scheduleSlaTimersForLead`; else → `refreshActivitySlaTimers` (SLA-02/03 only; SLA-01 never refreshed by activity).
@@ -253,13 +259,14 @@ Both actions call `SECURITY DEFINER` RPCs for all DB writes. Do not add sequenti
 ## addTaskRemarkAction — RPC-backed (perf-02)
 
 `addTaskRemarkAction` is the ONLY path that inserts into `task_remarks`. It accepts:
+
 - `taskId` (uuid) — the task to remark on
 - `content` (string, 1–2000 chars, sanitized by Zod transform + explicit re-sanitize)
 - `statusChange` (optional `TaskStatus`) — if provided, the RPC handles both the tasks UPDATE and the INSERT atomically
 
 **Implementation:** calls `add_task_remark_with_status` RPC (migration 0035, auth fix 00051) — 1 round-trip for both the optional status UPDATE and the task_remarks INSERT. **View = post:** the action gates on a user-scoped `tasks` SELECT (RLS); if the row is visible, the remark is allowed. The RPC trusts the action layer (service-role — `auth.uid()` is NULL inside the function).
 
-**Access:** Zod validation + `getCurrentProfile()` check in the action (A-09 layer 1). The RPC performs a second inline auth check via `auth.uid()` (A-09 layer 2).
+**Access:** Zod validation + `getCurrentProfile()` in the action (A-09 layer 1). User-scoped `tasks` SELECT must return the row before the RPC runs (A-09 layer 2). The RPC does **not** call `auth.uid()` — it is NULL under `adminClient`.
 
 **`updateTaskStatusAction` is NOT called from `addTaskRemarkAction`.** The status update is handled entirely inside the RPC. `updateTaskStatusAction` remains for direct, remark-free status changes.
 
@@ -293,6 +300,7 @@ as the changer. Do not add a `changed_by` parameter to tasks to compensate — n
 `createNotification()` from `src/lib/services/notifications-service.ts` must only be called from server actions.
 
 Current call sites in `src/lib/actions/leads.ts`:
+
 - `updateLeadStatus`: when `status === 'won'` — notifies all active managers/admins/founders in the lead's domain (`lead_won` type).
 - `assignLead`: fires `lead_assigned` notification to the receiving agent (fire-and-forget, non-fatal `.catch(() => {})`).
 - `createManualLead`: fires `lead_assigned` notification to the assigned agent when `assignedTo !== caller.id` (fire-and-forget).
@@ -300,9 +308,11 @@ Current call sites in `src/lib/actions/leads.ts`:
 **Rule:** Notification creation is always fire-and-forget in leads actions (non-fatal). If the notification fails, the lead action must still succeed. Wrap with `.catch(() => {})` when calling without `await`.
 
 `src/lib/actions/notifications.ts`:
+
 - `markNotificationReadAction(id)` — validates UUID, confirms ownership, calls service.
 - `markAllReadAction()` — session-scoped, calls service. No input parameter.
 
 `src/lib/actions/tasks.ts`:
+
 - `createPersonalTaskAction`: fires `task_assigned` notification to assignee when `assigned_to ≠ auth.uid()` (fire-and-forget).
 - `createSubtaskAction`: always fires `task_assigned` notification to assignee when `assigned_to ≠ auth.uid()` (fire-and-forget).

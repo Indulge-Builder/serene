@@ -7,10 +7,10 @@ All components are display-only (A-06). Zero business logic. Zero DB calls. All 
 ### Core Primitives
 
 | Component | File | Props Interface | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `Spinner` | `Spinner.tsx` | `SpinnerProps` | Sizes: sm/md/lg. Reuses `eia-spin` keyframe. Canvas variant. |
 | `Button` | `Button.tsx` | `ButtonProps` | Variants: primary/secondary/ghost/danger/success. Sizes: xs/sm/md/lg. Border-radius `--radius-sm` (never `--radius-md`, §5.01). Loading state swaps `iconLeft` slot for Spinner — width preserved. `iconLeft`/`iconRight`. Primary: bg `--theme-accent`, fg `--theme-accent-fg`, resting `--shadow-accent-glow`, hover `--theme-accent-hover` + `--shadow-accent-lift` + `translateY(-1px)`. Secondary: paper-subtle + `--theme-paper-border` + `--shadow-1`, hover border `--theme-accent-muted`. Ghost: transparent + `--theme-text-primary`, hover bg paper-subtle. Danger/Success: soft `-light` rest → saturated base + `--theme-text-inverse` on hover (intentional drift from design-dna.md §5.01 saturated default — preserved to avoid breaking existing consumers). Disabled: `opacity 0.5`, `pointer-events: none`, `cursor: not-allowed`. Uses `React.forwardRef` — required by `MotionButton`. **No `whileTap` here** — Button stays a plain `<button>` so non-animated callers pay zero Framer Motion bundle cost; tap-scale lives in `MotionButton` + `MOTION_BUTTON_DEFAULTS`. |
-| `Avatar` | `Avatar.tsx` | `AvatarProps` | Sizes: xs/sm/md/lg/xl. Square `--radius-md`. Initials fallback: 6 semantic colour pairs from name hash. `loading="lazy"`. `selected?: boolean` — accent ring via `box-shadow`; CSS transition only, no layout shift. **Box-shadow composition:** caller `style.boxShadow` and `selected` ring are joined with `, ` — both layers always coexist; neither overwrites the other. |
+| `Avatar` | `Avatar.tsx` | `AvatarProps` | Sizes: xs/sm/md/lg/xl. Square `--radius-md`. Initials fallback: 6 semantic colour pairs from name hash. `loading="lazy"`. `selected?: boolean` — accent ring via `box-shadow`; CSS transition only, no layout shift. **Box-shadow composition:** caller `style.boxShadow` and `selected` ring are joined with a comma — both layers always coexist; neither overwrites the other. |
 | `MotionButton` | `MotionButton.tsx` | All `ButtonProps` + Framer Motion props | `motion(Button)` factory — wraps Button without duplicating internals. Requires `Button` to use `React.forwardRef` (already done). Import `MOTION_BUTTON_DEFAULTS` for standard `whileTap: { scale: 0.97 }` + spring transition. Non-animated consumers import `Button` directly — `MotionButton` adds zero bundle cost to those. |
 | `AvatarStack` | `AvatarStack.tsx` | `AvatarStackProps` | `users: AvatarStackUser[]`, `max?` (default 4), `size?` (default `sm`), `overlap?` (default 8px). Renders up to `max` `Avatar` components with `box-shadow: 0 0 0 2px var(--theme-paper)` separator rings. Overflow pill: `+N`, `--radius-full`, paper-subtle background. Framer Motion `whileHover` spreads stack via `x` transform only — never animates margin. |
 | `SearchBar` | `SearchBar.tsx` | `SearchBarProps` | Controlled. Sizes: sm/md/lg. Default placeholder `"Search"`. Clear button (hover → `--theme-text-primary`, `var(--transition-hover)`). Focus ring `--shadow-focus` + `--theme-accent` border. `caretColor: --theme-accent`. Placeholder colour resolved via `.eia-input` class (`::placeholder` unreachable from inline style). Fires `onChange` every keystroke — debounce by consumer. |
@@ -24,7 +24,7 @@ All components are display-only (A-06). Zero business logic. Zero DB calls. All 
 ### Navigation & Selection
 
 | Component | File | Props Interface | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `TabSelector` | `TabSelector.tsx` | `TabSelectorProps` | **Backwards-compat wrapper** — accepts `tabs`, `activeTab`, `onChange` flat props and composes the compound API internally. Existing consumers do not need to change. New consumers should use the compound API (`Tabs` + `TabsList` + `TabsTrigger` + `TabsContent`) for full control. Variants: `pill`, `connected`, `accent` (no `border-bottom` variant — was never introduced; do not add without explicit spec). All variants use `SPRING_CONFIG` from `motion.ts` — no hardcoded stiffness/damping. **Pill variant**: tray bg `--theme-paper-subtle` + `--theme-paper-border` (radius `--radius-xl`). Active chip is `--theme-tab-pill-active-bg` + `--theme-tab-pill-active-border` + `--shadow-1` (soft pastel wash). Active label `--theme-tab-pill-active-text`. **Accent variant**: same tray as connected; active chip `--theme-accent` + `--shadow-accent-glow`; active label `--theme-accent-fg`. Use on filter bars sitting on `--theme-paper` (e.g. `/tasks`). **Connected variant**: tray bg `--theme-paper-subtle` + `--theme-paper-border` + `--radius-md`. Active chip `--theme-paper` + `--shadow-1`. Active label `--theme-text-primary`. **z-index contract** (pill + accent): button root `color: transparent`; label in inner `<span z-index:1>`. **Count badge**: active bg `--theme-accent-surface` + colour `--theme-accent`; inactive bg `--theme-paper-subtle` + colour `--theme-text-tertiary`. See compound API section below. |
 | `RadioGroup` | `RadioGroup.tsx` | `RadioGroupProps` | Variants: `default`, `card`. Card fills `--theme-accent-surface` when selected. |
 | `FilterDropdown` | `FilterDropdown.tsx` | `FilterDropdownProps` | Trigger (h-9, `--radius-md`) with optional icon + count badge. Multi-select (checkboxes) and single-select. `DROPDOWN_VARIANTS` for panel motion. **Trigger states**: open OR active (`selected.length > 0`) → border `--theme-accent`; transition `border-color var(--duration-fast) var(--ease-in-out)`. Active also tints bg `--theme-accent-surface` and label `--theme-accent`. **Count badge**: `--theme-accent` bg + `--theme-accent-fg` text + `--radius-full` + min-w/h 18px + `--text-2xs` (handles 2-digit counts without overflow). **ChevronDown**: rotates 180° on open, `transform var(--duration-fast) var(--ease-in-out)`. **Panel**: `--theme-paper` bg + `--theme-paper-border` + `--shadow-3` + `--radius-md`. **Checkbox**: unselected border `--theme-paper-border` + bg `--theme-paper`; selected border + bg `--theme-accent`, Check icon `--theme-accent-fg`. **Item hover**: bg `--theme-paper-subtle`, `var(--transition-hover)`. **Footer Clear**: visible only when `selected.length > 0`; right-aligned `--text-xs --theme-text-tertiary`, hover `--theme-accent`; fires `onChange([])` and closes when `multi=false`. Above the Clear sits a 1px `--theme-paper-border` separator (`my-1`). Consumers that early-return on empty arrays (e.g. URL-backed selectors) will see the Clear render as a no-op — this is by design. |
@@ -89,7 +89,7 @@ All existing consumers that pass `{ tabs, activeTab, onChange }` continue to wor
 ### Data Display
 
 | Component | File | Props Interface | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `Table` | `Table.tsx` | `TableProps<T>` | Generic. Sticky header option. Dev-only `console.warn` when `rowCount > 100 && !virtualized` (P-03). |
 | `ListRow` | `ListRow.tsx` | `ListRowProps` | Left slot, primary text, secondary text, right slot, chevron. |
 | `ChecklistItem` | `ChecklistItem.tsx` | `ChecklistItemProps` | Checked: strikethrough + `--color-success` icon. |
@@ -98,14 +98,14 @@ All existing consumers that pass `{ tabs, activeTab, onChange }` continue to wor
 ### Inputs & Date
 
 | Component | File | Props Interface | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `Calendar` | `Calendar.tsx` | `CalendarProps` | Month grid. Framer Motion slide between months. Today dot. Range selection. **`taskDots?: Record<string, { count: number; hasUrgent?: boolean }>`** — when provided, each matching day cell renders a 4px×4px `--radius-full` dot below the day number (absolute, `zIndex: 1`, never affects layout). Colour: `--theme-accent` (non-urgent) or `--color-danger` (`hasUrgent=true`). Opacity: `0.7` when count 1–2, `1.0` when count ≥ 3 or urgent. Entrance: `scale 0→1`, 150ms, `EASE_SPRING`. **Key format**: local-date YYYY-MM-DD (use `date.getFullYear()/getMonth()+1/getDate()` — NEVER `toISOString().slice(0,10)`, which timezone-shifts IST). **Cell height**: when `taskDots` is provided, cells switch from `aspectRatio: 1` squares to fixed `height: 44px` to give the dot room without clipping; when undefined, the calendar renders byte-identically to the legacy implementation. The pre-existing "today dot" is suppressed for the today cell only when a task dot also occupies that cell (prevents stacking two 4px dots in the same slot). |
 | `DatePicker` | `DatePicker.tsx` | `DatePickerProps` | Trigger + popover. Mounts `Calendar`. Focus ring `--shadow-focus`. **`showTime?: boolean` (default `false`)** — when `true`, renders a time picker section below the calendar inside the same panel, separated by a 1px `--theme-paper-border` divider. Time picker: two scroll columns (Hours 1–12, Minutes [00, 15, 30, 45]) with `:` separator (`--theme-text-tertiary --text-sm`), centred. Selected cell highlight: bg `--theme-accent-surface`, `--radius-xs`. Columns: `maxHeight: 160px`, `overflowY: auto`, scrollbar hidden via `scrollbarWidth: none` / `msOverflowStyle: none` (macOS WebKit overlay scrollbar may still appear briefly — acceptable, do not add a global `::-webkit-scrollbar` rule). AM/PM toggle is a `TabSelector` with `variant="connected"` and `indicatorLayoutId="datepicker-ampm"` — never reimplement. Trigger label uses `formatDate(value, 'dd MMM yyyy, h:mm a')` when `showTime` AND value present, else `'dd MMM yyyy'`. All times committed through `toUTC()` from `lib/utils/dates.ts`. Internal `draftDate` lets the user pick day and time independently while the panel is open; commits fire on every change so the parent stays in sync. When `showTime=false`, behaviour is byte-identical to the legacy implementation — calendar click commits and closes. Value type stays `Date \| null` regardless of `showTime`. |
 
 ### Overlays
 
 | Component | File | Props Interface | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `Dialog` | `Dialog.tsx` | `DialogProps` | Eia overlay (`--theme-canvas` 72% opacity), `--theme-paper` surface, `--shadow-4`, `--radius-xl`. Five sizes: sm/md/lg/xl/full. `ENTER_DURATION`/`EXIT_DURATION` from `motion.ts`. |
 | `Modal` | `Modal.tsx` | `ModalProps` | Wraps `Dialog`. `type="lia"` enforces exactly two actions (Approve + Dismiss) with `LiaGlyph`. `maxWidth` prop for backward compat. **Every modal in Eia composes this or `modal.tsx` — never reimplements chrome.** |
 | `modal.tsx` | `modal.tsx` | `ModalProps` (legacy) | Legacy modal with `maxWidth` string prop. Existing callers preserved. New modals: prefer `Modal.tsx`. |
@@ -115,7 +115,7 @@ All existing consumers that pass `{ tabs, activeTab, onChange }` continue to wor
 All charts: `--theme-paper` bg, `--theme-paper-border` grid, `--theme-text-tertiary` axis labels, `--shadow-2` tooltip. All colours via `useChartTokens` — zero hardcoded hex passed to Recharts props.
 
 | Component | File | Props Interface | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `useChartTokens` | `useChartTokens.ts` | `ChartTokens` | Resolves 6 series colours + grid/axis/tooltip from `getComputedStyle`. Re-resolves on `themeKey` change. Exports `resolveColorMap(map)` — resolves CSS variable strings in a `Record<string, string>` to computed hex/rgb values at runtime (same `getComputedStyle` pattern). Use when a feature-level colour map needs to be passed to SVG fills. |
 | `LineChart` | `LineChart.tsx` | `LineChartProps` | Multi-series. `loading` → `ChartSkeleton`. |
 | `BarChart` | `BarChart.tsx` | `BarChartProps` | Stacked option. Top-radius bars. **`colorMap?: Record<string, string>`** — per-key semantic colour override; keys match `series[].key`; values are CSS variable strings resolved via `resolveColorMap` at mount and on theme switch. Partial maps valid — unmatched keys fall back to positional tokens. When `colorMap` is provided, the built-in Recharts `<Legend>` is suppressed (caller owns the legend and reads from the same map for swatch colours). **`STATUS_COLORS` pattern:** domain colour maps stay in the feature folder; `colorMap` is the bridge prop — never import feature colour maps into the wrapper. Additional passthrough props: `margin`, `barCategoryGap`, `xAxisProps`, `yAxisProps`, `tooltipProps`, `gridProps`. |
@@ -151,6 +151,7 @@ The `themeKey` prop is kept as an escape hatch for SSR/test contexts only.
 ### 3. `Table<T>` vs bespoke feature tables — the boundary
 
 `Table<T>` (`src/components/ui/Table.tsx`) is for **secondary/admin tables**:
+
 - Audit logs
 - User management grids
 - Reporting / RPC result tables
@@ -175,7 +176,7 @@ Status summary pills live in `LeadsTable.tsx` toolbar (left of column picker), n
 
 Every single-record detail page (`/leads/[id]`, `/campaigns/[id]`, `/admin/users/[id]`, `/admin/users/new`, `/tasks/[id]`) uses one shared header layout:
 
-```
+```text
 [BackButton 36×36]  [.type-page-title Record Name.]
                     ↑ optional inline subtitle (phone, etc.)
 ```
@@ -192,7 +193,7 @@ Wide-zone detail pages (`max-width: 1280px`) and narrow-zone detail pages (`max-
 
 Standard layout for every read-only field in detail cards (dossiers, profile sections, audit panels).
 
-```
+```text
 [Icon w-4 h-4]  [Micro-label]     ← --text-2xs, semibold, widest tracking, uppercase, tertiary
                 [Value]           ← --text-sm, normal weight, primary (tertiary when empty/—)
 ```
@@ -226,7 +227,8 @@ Structural dividers (`1px solid var(--theme-paper-border)` on bottom or between 
 Every modal in Eia **must compose** `src/components/ui/modal.tsx`. Never reimplement modal chrome.
 
 Modal props contract:
-```
+
+```text
 open:      boolean          — controls visibility
 onClose:   () => void       — fired on Escape, backdrop click, or explicit close
 title:     string           — rendered in modal header
@@ -240,7 +242,8 @@ maxWidth?: string           — Tailwind max-width class (default: "max-w-lg")
 `src/components/leads/AddLeadModal.tsx`
 
 Props:
-```
+
+```text
 open:          boolean
 onClose:       () => void
 callerProfile: { id: string; role: UserRole; domain: AppDomain; full_name: string }
@@ -253,12 +256,14 @@ onSuccess:     (leadId: string) => void
 **Source field:** optional `<select>` — options from `LEAD_SOURCE_OPTIONS` (`lib/constants/lead-sources.ts`). Persisted on `leads.utm_source`. `lead_intent` is always `null` on manual leads.
 
 **Agent-domain enforcement rule:**
+
 - Agents never see the Domain field — domain is always locked to `callerProfile.domain`.
 - Agents never see the Assign-to select — rendered as a read-only display chip showing their own name.
 - The server action (`createManualLead`) enforces `domain = caller.domain` on the server regardless of what the form sends.
 - Managers/admins/founders see both Domain and Assign-to fields. When the domain changes, `listAgentsForDomain` is called to repopulate the agent dropdown.
 
 **Duplicate phone handling:**
+
 - Duplicate detection runs server-side via `get_active_lead_by_phone()`.
 - When a duplicate is detected, the modal does NOT close. An inline warning banner appears with a link to the existing lead.
 - The action returns `{ data: { leadId, duplicate: true }, error: null }` — never a silent insert.
@@ -268,7 +273,8 @@ onSuccess:     (leadId: string) => void
 `src/components/leads/LeadColumnPicker.tsx`
 
 Props:
-```
+
+```text
 open:            boolean
 onClose:         () => void
 visibleColumns:  LeadColumnId[]
@@ -287,7 +293,7 @@ Entrance animation: `opacity 0→1, y -4→0` over 200ms with `ease-out-expo`.
 
 `src/hooks/useLeadColumnPreferences.ts`
 
-```
+```text
 useLeadColumnPreferences(userId: string) → {
   visibleColumns:  LeadColumnId[]
   columnOrder:     LeadColumnId[]
@@ -318,6 +324,7 @@ Uses `AnimatePresence` from Framer Motion. Zero Supabase dependency.
 `src/components/ui/toast-item.tsx`
 
 Single toast card. Implements Section 13.2 anatomy exactly.
+
 - Living 3px left bar uses `eia-toast-bar-breathe` CSS keyframe (fires once). `lia` type uses continuous `eia-lia-breathe`.
 - Warning type renders a depletion bar (`toast-deplete` keyframe, linear timing — intentional).
 - `loading` type has `Loader2` icon with `animate-spin` class.
@@ -347,7 +354,8 @@ toast.resolve(id, "success", "Saved!");
 `src/components/tasks/TaskStatusIcon.tsx` — **canonical task status Lucide icon**. Never define inline `StatusIcon` switches in task components.
 
 Props:
-```
+
+```text
 status:    TaskStatus
 className?: string
 size?:     number   — edge length in px (default 13)
@@ -360,6 +368,7 @@ Icon colour comes from `TASK_STATUS[status].color` in `lib/constants/task-consta
 `src/components/tasks/SubTaskModal.tsx` — **replaces the deleted `TaskModal.tsx`**
 
 Props:
+
 ```typescript
 interface SubTaskModalProps {
   open:           boolean
@@ -369,6 +378,9 @@ interface SubTaskModalProps {
   assignee?:      Profile
   initialRemarks: TaskRemarkWithAuthor[]
   callerProfile:  Pick<Profile, 'id' | 'role' | 'domain'>
+  currentUserName?: string
+  onTaskUpdated?:   (update: SubTaskModalTaskUpdate) => void
+  onTaskDeleted?:   (taskId: string) => void
 }
 ```
 
@@ -377,6 +389,7 @@ interface SubTaskModalProps {
 **Header:** breadcrumb left (`group.title › task.title` or `My Tasks › title`). Right cluster: status pill (inline dropdown, 6 options, optimistic), priority pill (inline dropdown, 3 options, optimistic), divider, edit pencil, more (⋯) menu, close ×.
 
 **Two zones:**
+
 - Zone A (38%, `var(--theme-paper-subtle)`): Title, Notes/Objective, Action Items checklist (personal + group subtasks), Key Variables (deadline + assignee), metadata footer. Edit mode footer (slide-up, Save Brief / Cancel).
 - Zone B (62%, `var(--theme-paper-subtle)`): `TaskRemarksPanel` (`embedded` prop).
 
@@ -385,6 +398,7 @@ interface SubTaskModalProps {
 **Edit mode:** only Zone A. Save calls `updateTaskAction` (title/description) + `updateChecklistAction` if changed. Does NOT insert into `task_remarks`.
 
 **AnimatePresence:** wrap the conditional at the **call site**, not inside `SubTaskModal`. Required for exit animation:
+
 ```tsx
 <AnimatePresence>
   {selectedTask && open && (
@@ -400,7 +414,8 @@ interface SubTaskModalProps {
 `src/components/tasks/TaskRemarksPanel.tsx`
 
 Props:
-```
+
+```text
 taskId:               string
 currentUserId:        string
 currentUserName:      string
@@ -408,7 +423,7 @@ initialRemarks:       TaskRemarkWithAuthor[]
 Composer placeholder: “Write a progress.” (Playfair italic). No footer hint — shortcuts via `title` on focus.
 ```
 
-**Data seeding:** `remarks` state is seeded directly from `initialRemarks` — no mount fetch. `seenIds` ref is seeded from `initialRemarks.map(r => r.id)` on each `taskId` change to prevent Realtime double-append. Call sites must fetch remarks via `getTaskRemarksAction(taskId)` **before** opening the modal (gate the render on `selectedTaskRemarks !== null`) and clear on close — see `PersonalTasksTab`, `GroupTaskWorkspace`, `GroupTasksTab` for the canonical pattern.
+**Data seeding:** `remarks` state is seeded directly from `initialRemarks` — no mount fetch. `seenIds` ref is seeded from `initialRemarks.map(r => r.id)` on each `taskId` change to prevent Realtime double-append. Call sites must fetch remarks via `getTaskRemarksAction(taskId)` **before** opening the modal (gate the render on `selectedTaskRemarks !== null`) and clear on close — see `MyTasksCalendarView`, `GroupTaskWorkspace`, `GroupTasksTab`, `GiaTasksTab` for the canonical pattern.
 
 Realtime: subscribes to `task_remarks` filtered by `task_id` on mount. **Channel name: `task-remarks-${taskId}-${mountId}`** — `mountId` (from `useId()`) prevents Strict Mode double-mount channel collisions. Unique per task, prevents cross-task subscription bleed.
 
@@ -431,7 +446,8 @@ Export: `TaskRemarkWithAuthor` (re-exported from `src/lib/services/tasks-service
 `src/components/tasks/AssigneePickerModal.tsx`
 
 Props:
-```
+
+```text
 open:          boolean
 onClose:       () => void
 onConfirm:     (userId: string, user: AssignableUser) => void
@@ -470,7 +486,8 @@ Export: `AssignableUser = Pick<Profile, "id" | "full_name" | "avatar_url" | "rol
 `src/components/tasks/CreateGroupTaskModal.tsx` — `'use client'`
 
 Props:
-```
+
+```text
 open:      boolean
 onClose:   () => void
 onCreated: (group: TaskGroup) => void   — parent converts to TaskGroupRow and prepends; no refetch
@@ -499,7 +516,8 @@ Composes `src/components/ui/modal.tsx` with `maxWidth="max-w-3xl"`. No `<form>` 
 `src/components/tasks/CreatePersonalTaskModal.tsx` — `'use client'`
 
 Props:
-```
+
+```text
 open:      boolean
 onClose:   () => void
 onCreated: (task: Task) => void   — parent prepends returned task to active list; no refetch
@@ -513,30 +531,32 @@ Composes `src/components/ui/modal.tsx`. No `<form>` tag — onClick/onChange thr
 
 **Priority single-select:** clicking the active Non-normal chip deselects it → falls back to Normal. Normal cannot be deselected entirely.
 
-**Tags:** UI-only. Tags are collected but NOT passed to `createPersonalTaskAction` — the `tasks` table has no `tags` column as of migration 0022. TODO comment in file. Add a migration + wire when ready.
+**Tags:** persisted via `createPersonalTaskAction` (`tasks.tags text[]`, migration 0024). Max 10 per task.
 
-**onCreated:** receives a synthetic `Task` object built from the known fields + server-returned `taskId`. Parent (PersonalTasksTab) prepends it to `activeTasks` state — no re-fetch needed.
+**onCreated:** receives a synthetic `Task` object built from the known fields + server-returned `taskId`. Parent (`MyTasksCalendarView`) merges into local task list — no full-page refetch.
 
 **Inline error:** title-required error shown under the title field. Toast `danger` for server errors — modal stays open.
 
 ---
 
-## PersonalTasksTab
+## MyTasksCalendarView (canonical My Tasks UI)
 
-`src/components/tasks/PersonalTasksTab.tsx`
+`src/components/tasks/MyTasksCalendarView.tsx` — mounted by `TasksShell` when `tab=personal`.
 
-Props:
-```
-initialResult:   PersonalTasksResult
-currentUserId:   string
-currentUserName: string
-callerRole:      UserRole
-callerDomain:    AppDomain
-```
+Props: `initialResult`, `currentUserId`, `currentUserName`, `callerRole`, `callerDomain`, `createTrigger?`, `filters` (from `TasksShell`), `onFilteredCountChange?`, `onTagsMayHaveChanged?`.
 
-**Layout:** three active priority sections (URGENT / HIGH / NORMAL) + one collapsed Completed section at the bottom. No filter bar. No pagination.
+**Layout:** calendar + date-grouped task list. Client filters via `task-client-filters.ts` (status, priority, tags, search). Completed tasks are excluded from the active list (not a lazy-loaded accordion).
 
-**Data:** on mount, two parallel `getPersonalTasksAction` calls via `Promise.all`:
+**Remarks gate:** same as SubTaskModal — fetch `getTaskRemarksAction` before opening modal; clear on close.
+
+## PersonalTasksTab (legacy — not mounted)
+
+`src/components/tasks/PersonalTasksTab.tsx` remains in the tree for reference only. **`TasksShell` does not render it.** Do not extend this file for new My Tasks behaviour — use `MyTasksCalendarView`.
+
+**Historical layout:** three priority sections + collapsed Completed with lazy fetch on first expand.
+
+**Historical data:** on mount, two parallel `getPersonalTasksAction` calls via `Promise.all`:
+
 - Active tasks: `status: ['to_do','in_progress','in_review','error','cancelled'], limit: 500`
 - Completed tasks: `status: ['completed'], limit: 20`
 
@@ -614,7 +634,7 @@ A full adoption sweep ran across `src/` replacing inline UI patterns with `src/c
 ### What was replaced
 
 | Pattern | Component adopted | Files |
-|---------|------------------|-------|
+| --------- | ------------------ | ------- |
 | `Loader2` inline spinners | `Spinner` | CalledModal, AgentScratchpad, PersonalDetailsCard, ProfileAvatarSection |
 | Raw `<button>` primary/secondary | `Button` | All auth forms, all admin forms, profile forms, lead modals, dashboard widgets (refresh buttons) |
 | Custom toggle/switch | `Toggle` | NotificationPreferences, UserStatusControls |

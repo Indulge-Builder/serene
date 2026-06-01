@@ -6,6 +6,78 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-01 — Design system reference manual
+
+- `docs/design-system.md` — full design system reference manual generated; 2026-06-01; housekeeping.
+
+---
+
+## 2026-06-01 — Deals module intelligence document
+
+- `docs/deals-page.md` — full deals module intelligence document generated; 2026-06-01; housekeeping.
+
+---
+
+## 2026-06-01 — Auth, session & profile intelligence document
+
+- `docs/auth-pages.md` — auth, session, and profile module intelligence document generated; 2026-06-01; housekeeping.
+
+---
+
+## 2026-06-01 — Ad creatives module intelligence document
+
+- `docs/ad-creatives-page.md` — full ad creatives module intelligence document generated; 2026-06-01; housekeeping.
+
+---
+
+## 2026-06-01 — User management module intelligence document
+
+- `docs/user-management-page.md` — full user management module intelligence document generated; 2026-06-01; housekeeping.
+
+---
+
+## 2026-06-01 — Settings module intelligence document
+
+- `docs/settings-page.md` — full settings module intelligence document generated; 2026-06-01; housekeeping.
+
+---
+
+## 2026-06-01 — Campaigns module intelligence document
+
+- `docs/campaigns-page.md` — full campaigns module intelligence document generated; 2026-06-01; housekeeping.
+
+---
+
+## 2026-06-01 — Performance module intelligence document
+
+- `docs/performance-page.md` — full performance module intelligence document generated; 2026-06-01; housekeeping.
+
+---
+
+## 2026-06-01 — WhatsApp module intelligence document
+
+- `docs/whatsapp-page.md` — full WhatsApp module intelligence document generated; 2026-06-01; housekeeping.
+
+---
+
+## 2026-06-01 — Tasks module intelligence document
+
+- `docs/tasks-page.md` — full tasks module intelligence document generated; 2026-06-01; housekeeping.
+
+---
+
+## 2026-06-01 — Dashboard module intelligence document
+
+- `docs/dashboard-page.md` — full dashboard module intelligence document generated; 2026-06-01; housekeeping.
+
+---
+
+## 2026-06-01 — Leads module intelligence document
+
+- `docs/lead-page.md` — full leads module intelligence document generated; 2026-06-01; housekeeping.
+
+---
+
 ## 2026-06-01 — Sidebar: Ad Creatives under Configuration
 
 - `src/components/layout/Sidebar.tsx` — Ad Creatives moved from Admin to Configuration (above Settings); still visible only to admin/founder.
