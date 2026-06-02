@@ -223,7 +223,10 @@ function LeadRow({
   return (
     <tr
       onClick={() => router.push(`/leads/${lead.slug ?? lead.id}`)}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => {
+        setHovered(true);
+        router.prefetch(`/leads/${lead.slug ?? lead.id}`);
+      }}
       onMouseLeave={() => setHovered(false)}
       style={{
         borderBottom: '1px solid var(--theme-paper-border)',

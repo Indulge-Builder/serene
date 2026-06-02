@@ -53,7 +53,7 @@ function TypeChip({
 }
 
 type Props = {
-  leadId: string;
+  leadId:  string;
   onClose: () => void;
 };
 

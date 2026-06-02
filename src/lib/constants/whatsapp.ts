@@ -81,7 +81,7 @@ export const WHATSAPP_CONVERSATIONS_PAGE_SIZE = 20;
 // Gupshup template IDs
 // ─────────────────────────────────────────────
 
-export const GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID            = '3bcebeb0-2dcf-4af1-8cb6-cb12a07c3499';
+export const GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID            = '193e330d-e7ee-48e0-9cd4-f3808b50fc80';
 export const GUPSHUP_FOUNDER_LEAD_NOTIFICATION_TEMPLATE_ID  = 'd5828042-fbfc-4e6d-a9d9-e72185d7d0c1';
 export const GUPSHUP_SLA_AGENT_TEMPLATE_ID                  = '54d5dd55-a1fa-482b-8823-49e9b9e22745';
 export const GUPSHUP_SLA_MANAGER_TEMPLATE_ID                = '682fd320-3b04-45da-8b1a-9a390770fac8';

@@ -336,6 +336,38 @@ dedup key so no two active leads share the same phone (and thus the same slug su
 
 ---
 
+## Prefetch-on-hover — LeadsTable
+
+Each `LeadRow` `<tr>` element calls `router.prefetch('/leads/${lead.slug ?? lead.id}')` inside `onMouseEnter`. The href shape is identical to the `onClick` push — same slug fallback, same prefix. Next.js deduplicates repeated `prefetch` calls internally; no debounce is needed. Uses the single `useRouter()` instance already at the top of `LeadRow`. Never create a new `useRouter()` call per row.
+
+---
+
+## Optimistic status updates — StatusActionPanel
+
+`StatusActionPanel` uses `useOptimistic(lead.status)` to show the new status immediately when a button is clicked, before the server action resolves.
+
+**Pattern — every status-changing path:**
+
+```ts
+startTransition(async () => {
+  setOptimisticStatus(newStatus);          // updates UI immediately
+  const result = await someStatusAction(…);
+  if (result.error) throw new Error(result.error);  // triggers automatic revert
+  closeModal();
+  router.refresh();
+});
+```
+
+`useOptimistic` reverts `optimisticStatus` back to `lead.status` only when the enclosing `startTransition` throws. Our actions return `{ data, error }` and never throw — so every error path must `throw new Error(result.error)` explicitly.
+
+**CalledModal auto-advance path:** The "Called" button `onClick` in `StatusActionPanel` checks `lead.status === 'new'` (server truth, not `optimisticStatus`) and, if true, fires its own `startTransition` that calls `setOptimisticStatus('touched')` before opening the modal. `CalledModal` is unaware of the advance — it has no `initialStatus` or callback props. The `add_lead_call_note` RPC always auto-advances `new → touched`; that invariant is what makes the pre-emptive optimistic set safe. Using `lead.status` (not `optimisticStatus`) for the guard prevents a double-advance race if the component re-renders mid-transition.
+
+**JSX rule:** every `lead.status` reference in rendered output must be `optimisticStatus`. Handler-level checks (e.g. `if (lead.status === 'new')` inside a callback) use the server truth `lead.status` — not `optimisticStatus`.
+
+**`isPending` from `useTransition`** remains the correct disabled/loading signal for buttons. Do not add a separate `isLoading` state.
+
+---
+
 ## AddLeadModal — Agent Fetch Guard
 
 `AddLeadModal` receives `initialDomain: AppDomain` (always `callerProfile.domain`, passed from `AddLeadButton`).

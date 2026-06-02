@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useOptimistic } from 'react';
 import { Phone, TrendingUp, Leaf, XCircle, Trash2, ChevronDown, Trophy, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
@@ -21,10 +21,11 @@ type Props = {
 };
 
 export function StatusActionPanel({ lead, callerProfile }: Props) {
-  const router                       = useRouter();
+  const router                        = useRouter();
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
-  const [isPending, startTransition] = useTransition();
-  const [error, setError]            = useState<string | null>(null);
+  const [isPending, startTransition]  = useTransition();
+  const [error, setError]             = useState<string | null>(null);
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic(lead.status);
 
   const canAct =
     (callerProfile.role === 'agent' && lead.assigned_to === callerProfile.id) ||
@@ -37,13 +38,14 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
     setError(null);
   }
 
-  function fireStatusUpdate(status: LeadStatus, reason?: string) {
+  function fireStatusUpdate(newStatus: LeadStatus, reason?: string) {
     setError(null);
     startTransition(async () => {
-      const result = await updateLeadStatus({ leadId: lead.id, status, reason });
+      setOptimisticStatus(newStatus);
+      const result = await updateLeadStatus({ leadId: lead.id, status: newStatus, reason });
       if (result.error) {
         setError(result.error);
-        return;
+        throw new Error(result.error);
       }
       closeModal();
       router.refresh();
@@ -53,6 +55,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
   function fireDeal(deal: { deal_type: DealType; deal_duration: DealDuration | null; deal_amount: number }) {
     setError(null);
     startTransition(async () => {
+      setOptimisticStatus('won');
       const result = await recordDeal({
         leadId:        lead.id,
         deal_type:     deal.deal_type,
@@ -61,7 +64,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
       });
       if (result.error) {
         setError(result.error);
-        return;
+        throw new Error(result.error);
       }
       closeModal();
       router.refresh();
@@ -70,9 +73,8 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
 
   if (!canAct) return null;
 
-  const status     = lead.status;
-  const isTerminal = status === 'won' || status === 'lost' || status === 'junk';
-  const badgeStyle = LEAD_STATUS_COLORS[status];
+  const isTerminal = optimisticStatus === 'won' || optimisticStatus === 'lost' || optimisticStatus === 'junk';
+  const badgeStyle = LEAD_STATUS_COLORS[optimisticStatus];
 
   return (
     <>
@@ -119,7 +121,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
               opacity:      0.7,
             }}
           />
-          {LEAD_STATUS_LABELS[status]}
+          {LEAD_STATUS_LABELS[optimisticStatus]}
         </div>
 
         {/* Vertical divider after status pill */}
@@ -134,7 +136,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
         />
 
         {/* Level Up — only when touched */}
-        {status === 'touched' && (
+        {optimisticStatus === 'touched' && (
           <ActionButton
             icon={<TrendingUp style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
             label="Level Up"
@@ -145,7 +147,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
         )}
 
         {/* Junk — only when touched */}
-        {status === 'touched' && (
+        {optimisticStatus === 'touched' && (
           <ActionButton
             icon={<Trash2 style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
             label="Junk"
@@ -156,7 +158,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
         )}
 
         {/* Won — only when in_discussion */}
-        {status === 'in_discussion' && (
+        {optimisticStatus === 'in_discussion' && (
           <ActionButton
             icon={<Trophy style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
             label="Won"
@@ -167,7 +169,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
         )}
 
         {/* Nurture — only when in_discussion */}
-        {status === 'in_discussion' && (
+        {optimisticStatus === 'in_discussion' && (
           <ActionButton
             icon={<Leaf style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
             label="Nurture"
@@ -178,7 +180,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
         )}
 
         {/* Lost — only when in_discussion */}
-        {status === 'in_discussion' && (
+        {optimisticStatus === 'in_discussion' && (
           <ActionButton
             icon={<XCircle style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
             label="Lost"
@@ -189,7 +191,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
         )}
 
         {/* Revive — only when junk */}
-        {status === 'junk' && (
+        {optimisticStatus === 'junk' && (
           <ActionButton
             icon={<Zap style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
             label="Revive Lead"
@@ -219,7 +221,14 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
           label="Called"
           variant="primary"
           disabled={isPending || isTerminal}
-          onClick={() => setActiveModal('called')}
+          onClick={() => {
+            if (lead.status === 'new') {
+              startTransition(async () => {
+                setOptimisticStatus('touched');
+              });
+            }
+            setActiveModal('called');
+          }}
         />
       </div>
 
@@ -232,7 +241,10 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
 
       {/* Modals */}
       {activeModal === 'called' && (
-        <CalledModal leadId={lead.id} onClose={closeModal} />
+        <CalledModal
+          leadId={lead.id}
+          onClose={closeModal}
+        />
       )}
 
       {activeModal === 'won' && (

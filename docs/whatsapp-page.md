@@ -438,7 +438,7 @@ All sends use Gupshup `POST https://api.gupshup.io/wa/api/v1/template/msg` with 
 
 | Event | Recipient | Template ID constant | Parameters (count + order) |
 | --- | --- | --- | --- |
-| Lead assigned to agent | Assigned agent’s profile phone | `GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID` (`3bcebeb0-2dcf-4af1-8cb6-cb12a07c3499`) | 2: `leadName`, `leadPhone` (or `'not provided'`) |
+| Lead assigned to agent | Assigned agent’s profile phone | `GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID` (`193e330d-e7ee-48e0-9cd4-f3808b50fc80`) | 1: lead name, 2: lead number (`leadPhone` or `'not provided'`) |
 | New lead → founders | Each founder with phone | `GUPSHUP_FOUNDER_LEAD_NOTIFICATION_TEMPLATE_ID` (`d5828042-fbfc-4e6d-a9d9-e72185d7d0c1`) | 4: `domain`, `agentName`, `leadName`, `leadPhone` |
 | SLA breach → agent | Assigned agent | `GUPSHUP_SLA_AGENT_TEMPLATE_ID` (`54d5dd55-a1fa-482b-8823-49e9b9e22745`) | 4: `leadName`, `leadPhone`, `status`, `lastUpdatedAt` |
 | SLA breach → managers | Manager profile phones | `GUPSHUP_SLA_MANAGER_TEMPLATE_ID` (`682fd320-3b04-45da-8b1a-9a390770fac8`) | 5: `leadName`, `leadPhone`, `agentName`, `status`, `lastUpdatedAt` |

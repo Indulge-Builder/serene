@@ -313,6 +313,7 @@ export async function sendLeadAssignmentNotification(
       'src.name': GUPSHUP_APP_NAME!,
       template:   JSON.stringify({
         id:     GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID,
+        // Gupshup {{1}} = lead name, {{2}} = lead phone
         params: [leadName, leadPhone || 'not provided'],
       }),
     });

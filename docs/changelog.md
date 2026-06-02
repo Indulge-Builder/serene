@@ -6,6 +6,22 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-02 — ux: leads — row prefetch on hover + optimistic status updates in StatusActionPanel
+
+- `src/components/leads/LeadsTable.tsx` — `onMouseEnter` on each table row calls `router.prefetch('/leads/${slug ?? id}')` using the existing `useRouter` instance; no new hook call per row.
+- `src/components/leads/StatusActionPanel.tsx` — `useOptimistic(lead.status)` added; `fireStatusUpdate` sets `optimisticStatus` before the action and `throw new Error(result.error)` on failure to trigger automatic revert (actions return `{ data, error }` and never throw natively — the explicit throw is what signals `useOptimistic` to revert); `fireDeal` same pattern with `'won'`; all JSX render references to `lead.status` replaced with `optimisticStatus`; "Called" button `onClick` checks `lead.status === 'new'` (server truth) and fires its own `startTransition(() => setOptimisticStatus('touched'))` before opening the modal — parent owns the decision, `CalledModal` is unaware.
+- `src/components/leads/CalledModal.tsx` — `initialStatus` and `onAutoAdvance` props removed; modal is now stateless with respect to the auto-advance.
+- `src/app/(dashboard)/leads/CLAUDE.md` — prefetch-on-hover pattern and optimistic status pattern (including throw-on-error revert contract) documented.
+
+---
+
+## 2026-06-02 — fix: Gupshup lead-assignment WhatsApp template ID
+
+- `src/lib/constants/whatsapp.ts` — `GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID` → `193e330d-e7ee-48e0-9cd4-f3808b50fc80`. Template params unchanged: `{{1}}` lead name, `{{2}}` lead phone (or `'not provided'`).
+- `docs/whatsapp-page.md` — template table updated to match.
+
+---
+
 ## 2026-06-01 — perf: campaigns — Redis cache-aside on getCampaignMetrics (120s, pre-search), getCampaignDetailMetrics (120s), getCampaignAgentDistribution (120s), getAdCreativesForCampaign (300s), getAdCreativesForCampaigns per-key strategy (300s); ad-creative Redis del on upsert/delete. 2026-06-01. Phase performance.
 
 - `src/lib/constants/redis-keys.ts` — `REDIS_KEYS.campaign` namespace (list, detail, distribution, ad-creative key builders) + `CAMPAIGN_*_TTL` constants (120s / 300s).
