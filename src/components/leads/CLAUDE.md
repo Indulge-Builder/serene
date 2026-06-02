@@ -128,6 +128,21 @@ Header uses `--color-info-dark-*` tokens to visually distinguish from the scratc
 
 ---
 
+### ReasonModal (inside StatusActionPanel)
+
+`ReasonModal` is a private component inside `StatusActionPanel.tsx`.
+It receives a `status: 'junk' | 'lost'` prop and uses it to select the correct reason list:
+
+- `'junk'` → `JUNK_REASONS` from `src/lib/constants/lead-resolution-reasons.ts`
+- `'lost'` → `LOST_REASONS` from `src/lib/constants/lead-resolution-reasons.ts`
+
+The reason selector is rendered with `FilterDropdown multi={false}` — matching the `CalledModal`
+outcome selector pattern exactly. The old raw `<select>` + `ChevronDown` overlay is removed.
+
+`RESOLUTION_REASON_LABELS` (same file) maps reason IDs to display labels for use in the activity log.
+
+---
+
 ### StatusActionPanel — Revive flow
 
 When `status === 'junk'`, a `Revive Lead` button (amber/warning style, Zap icon) appears.

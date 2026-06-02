@@ -6,6 +6,46 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-02 — fix: addLeadCallNote — revalidatePath moved after await redis.del block; ordering now consistent with CLAUDE.md invariant
+
+- `src/lib/actions/leads.ts` — `addLeadCallNote`: `revalidatePath` call moved to after the `try { await Promise.all([redis.del(…)]) } catch` block. No logic change — ordering only. `updateLeadStatus` and `addLeadNote` were already correct and not touched.
+
+---
+
+## 2026-06-02 — docs: CLAUDE.md — void redis.del anti-pattern codified as named invariant with correct await pattern
+
+- `/CLAUDE.md` — new named invariant added to `## Pattern Notes`: `void redis.del().catch()` in server actions is a bug; documents the race between fire-and-forget del and `revalidatePath`; correct `try { await Promise.all(…) } catch` pattern shown with actual token names from the leads action; references `updateLeadStatus`, `addLeadCallNote`, `addLeadNote` as canonical implementations.
+
+---
+
+## 2026-06-02 — fix: leads — explicit redis.del on updateLeadStatus, addLeadCallNote, addLeadNote; dossier stale-data window eliminated
+
+- `src/lib/actions/leads.ts` — `addLeadCallNote`, `updateLeadStatus`, `addLeadNote`: fire-and-forget `void Promise.all(…).catch(() => {})` replaced with `try { await Promise.all(…) } catch (e) { console.warn(…) }`. Keys deleted match the RPC's write surface: `updateLeadStatus` → row + activities; `addLeadCallNote` → row + notes + activities; `addLeadNote` → notes + activities. Dashboard keys (`dashboardLeadStatus`, `dashboardLeadVolume`, `dashboardCampaigns`) remain TTL-only — intentional.
+- `src/app/(dashboard)/leads/CLAUDE.md` — Redis invalidation section added: key inventory, TTL table, per-mutation del matrix, dashboard TTL-only exception documented.
+
+---
+
+## 2026-06-02 — fix: ReasonModal — RadioGroup replaces FilterDropdown (overflow fix), textarea restored, 'Other' option added
+
+- `src/lib/constants/lead-resolution-reasons.ts` — `other: 'Other'` added as the last entry in both `JUNK_REASONS` and `LOST_REASONS`; `RESOLUTION_REASON_LABELS` updated.
+- `src/components/leads/StatusActionPanel.tsx` — `ReasonModal`: `FilterDropdown` removed (was clipping inside modal `overflow:hidden`); replaced with `RadioGroup variant='default'` (no portal, no overflow dependency). Textarea restored per design-dna §7.4 (min-height 80px, resize vertical, auto-grow via `scrollHeight`, `var(--leading-relaxed)` line-height, focus ring). `selectedReason === 'other'` → textarea required, confirm button disabled until `noteText.trim().length > 0`. `p_reason` composition: `other` → freetext; else → label + optional `" — note"`. `useRef` added for textarea auto-grow.
+- `src/app/(dashboard)/leads/CLAUDE.md` — RadioGroup-inside-modal pattern documented; FilterDropdown-inside-modal prohibition noted.
+
+---
+
+## 2026-06-02 — feat: leads.resolution_reason + ReasonModal FilterDropdown + addLeadCallNote revalidatePath
+
+- `supabase/migrations/20260602000060_leads_resolution_reason.sql` — `leads.resolution_reason TEXT` column added; partial index `idx_leads_resolution_reason` on junk/lost non-archived rows; `CREATE OR REPLACE FUNCTION update_lead_status` surgically extended: `p_reason` is now persisted to the column when non-null (junk/lost), and cleared to NULL on revive (`in_discussion`); `GRANT EXECUTE` preserved.
+- `src/lib/constants/lead-resolution-reasons.ts` — `JUNK_REASONS` (5 options: wrong_number, spam_bot, duplicate, out_of_area, test_lead) and `LOST_REASONS` (5 options: chose_competitor, budget, unresponsive, wrong_service, not_ready) exported; `RESOLUTION_REASON_LABELS` combined map for activity log display.
+- `src/components/leads/StatusActionPanel.tsx` — `ReasonModal` internal component: old raw `<select>` + `ChevronDown` overlay replaced with `FilterDropdown multi={false}`, matching the `CalledModal` outcome selector pattern exactly; receives `status: 'junk' | 'lost'` prop to switch between reason lists; both call sites updated with the new prop.
+- `src/lib/actions/leads.ts` — `addLeadCallNote`: lead fetch now includes `slug`; `revalidatePath('/leads/${slug ?? id}')` called after successful RPC (fixes stale dossier after CalledModal submits). `updateLeadStatus`: same slug fetch + `revalidatePath` added after RPC succeeds and `result.changed` is true. Pattern follows `createLeadTaskAction`.
+
+---
+
+## 2026-06-02 — perf: remove seed prefetch from ManagerPerformanceAsync — GET request simplified
+
+## 2026-06-02 — fix: AgentDetailPanel seed guard + async fetch pattern — skeleton-stuck bug resolved
+
 ## 2026-06-02 — fix: DatePicker + TimePicker — zoom-responsive panel positioning (visualViewport correction, measured flip thresholds, dynamic WheelColumn item height) — Phase UI
 
 ## 2026-06-02 — feat: agent shift days — per-agent work-day override for SLA deadline computation

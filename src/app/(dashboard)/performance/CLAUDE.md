@@ -41,11 +41,9 @@ performance/page.tsx              ← role = manager
   └── <Suspense fallback={<ManagerPerformanceSkeleton />}>
         <ManagerPerformanceAsync domain={profile.domain} period={period} />
               1. Fetches getAgentRosterPerformance(domain, from, to)
-              2. Pre-fetches getAgentDetailMetrics for first sidebar agent (display order via getFirstAgentInPerformanceRosterList)
-              Renders: <ManagerPerformancePanel key={period} initialAgentId initialDetailMetrics>
+              Renders: <ManagerPerformancePanel key={period}>
                   Left: agent roster list (AgentCard with conversion rate pill), sorted by totalWon DESC
-                  Right: <AgentDetailPanel> — seeded from initialDetailMetrics for first agent,
-                         client-fetches via getAgentDetailMetricsAction for subsequent agent selections
+                  Right: <AgentDetailPanel> — always fetches via getAgentDetailMetricsAction on mount
 ```
 
 ### Founder / Admin view
@@ -118,18 +116,11 @@ Exported functions:
 - **Founder/admin (`allDomains`):** `PERFORMANCE_ROSTER_DOMAIN_ORDER` (Gia domains first), A–Z by name within each domain
 - **Manager (single domain):** A–Z by name
 
-## initialAgentId + initialDetailMetrics — ManagerPerformancePanel props
+## ManagerPerformancePanel — default agent selection
 
-`ManagerPerformanceAsync` passes two extra props to `ManagerPerformancePanel`:
+`ManagerPerformancePanel` calls `getFirstAgentInPerformanceRosterList(agentRoster, { allDomains, domain })` directly to seed `useState(selectedId)`. There are no seed-prefetch props — the detail panel always fetches client-side.
 
-| Prop                   | Type                         | Purpose                                                                 |
-| ---------------------- | ---------------------------- | ----------------------------------------------------------------------- |
-| `initialAgentId`       | `string \                    | null`                                                                   |
-| `initialDetailMetrics` | `AgentDetailMetrics \        | null`                                                                   |
-
-`ManagerPerformancePanel` seeds `useState(selectedId)` from `initialAgentId` and threads both props to `AgentDetailPanel`.
-
-`key={period}` is set on `ManagerPerformancePanel` so a period change forces a clean remount — preventing the seed guard from firing against stale data.
+`key={period}` is set on `ManagerPerformancePanel` in `ManagerPerformanceAsync` so a period change forces a clean remount — resetting roster state and triggering a fresh detail fetch.
 
 ## Redis cache-aside — performance service (2026-06-01)
 
@@ -150,14 +141,12 @@ All six service functions have Redis cache-aside active. Miss → DB, hit → re
 
 Key builders + TTL constants are in `src/lib/constants/redis-keys.ts` (`REDIS_KEYS.perf.*`, `PERF_*_TTL`).
 
-## AgentDetailPanel — seed-skip guard (perf-01 pattern)
+## AgentDetailPanel — fetch contract
 
-`AgentDetailPanel` accepts optional `initialData?: AgentDetailMetrics` and `initialAgentId?: string` props.
-
-When `agent.id === initialAgentId && initialData` is true inside the `useEffect`, the post-mount server action fetch is skipped entirely — the component renders with server-pre-fetched data. This is identical to the Dashboard RSC consolidation (perf-01).
-
-The refresh button remains and calls `getAgentDetailMetricsAction` unconditionally (bypasses the seed).
-Selecting a different agent runs the full client fetch path — the guard only fires when `agent.id` matches `initialAgentId`.
+`AgentDetailPanel` always fetches via `getAgentDetailMetricsAction` on mount. There is no seed
+prefetch from the server — `ManagerPerformanceAsync` fetches only the roster. The panel shows
+a skeleton on first paint (`isLoading` initialises to `true`) and populates when the action
+resolves. On agent change or period change the component remounts and fetches fresh data.
 
 ## Types
 

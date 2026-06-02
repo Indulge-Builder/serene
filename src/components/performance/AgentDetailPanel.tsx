@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useTransition, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence }             from 'framer-motion';
 import { Avatar }                              from '@/components/ui/Avatar';
 import { CallOutcomeBar }                      from './CallOutcomeBar';
@@ -370,48 +370,42 @@ function SectionCard({
 // ─────────────────────────────────────────────
 
 type Props = {
-  agent:           AgentRosterRow;
-  domain:          AppDomain | null;
-  period:          PerformancePeriod;
-  customFrom?:     string;
-  customTo?:       string;
-  initialData?:    AgentDetailMetrics;
-  initialAgentId?: string;
+  agent:       AgentRosterRow;
+  domain:      AppDomain | null;
+  period:      PerformancePeriod;
+  customFrom?: string;
+  customTo?:   string;
 };
 
-export function AgentDetailPanel({ agent, domain, period, customFrom, customTo, initialData, initialAgentId }: Props) {
-  const [metrics, setMetrics]         = useState<AgentDetailMetrics | null>(initialData ?? null);
-  const [error, setError]             = useState<string | null>(null);
-  const [isPending, startTransition]  = useTransition();
-  const lastFetchKeyRef               = useRef<string>('');
+export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }: Props) {
+  const [metrics, setMetrics]     = useState<AgentDetailMetrics | null>(null);
+  const [error, setError]         = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const key = `${agent.id}|${domain ?? 'all'}|${period}|${customFrom ?? ''}|${customTo ?? ''}`;
-
-    // Duplicate fire for the same params in the same mount — skip.
-    if (lastFetchKeyRef.current === key) return;
-
-    // Server-seeded initial data — skip the round-trip on first mount.
-    if (agent.id === initialAgentId && initialData && lastFetchKeyRef.current === '') {
-      lastFetchKeyRef.current = key;
-      return;
-    }
-
-    lastFetchKeyRef.current = key;
     let cancelled = false;
     setMetrics(null);
     setError(null);
-    startTransition(async () => {
-      const result = await getAgentDetailMetricsAction(agent.id, domain, period, customFrom, customTo);
-      if (cancelled) return;
-      if (result.error || !result.data) {
-        setError(result.error ?? 'Failed to load.');
-      } else {
-        setMetrics(result.data);
-      }
-    });
+    setIsLoading(true);
+
+    getAgentDetailMetricsAction(agent.id, domain, period, customFrom, customTo)
+      .then((result) => {
+        if (cancelled) return;
+        setIsLoading(false);
+        if (result.error || !result.data) {
+          setError(result.error ?? 'Failed to load.');
+        } else {
+          setMetrics(result.data);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsLoading(false);
+        setError('Failed to load metrics.');
+      });
+
     return () => { cancelled = true; };
-  }, [agent.id, domain, period, customFrom, customTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [agent.id, domain, period, customFrom, customTo]);
 
   return (
     <div
@@ -419,7 +413,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo, 
         display:        'flex',
         flexDirection:  'column',
         gap:            'var(--space-4)',
-        opacity:        isPending ? 0.55 : 1,
+        opacity:        (isLoading && !!metrics) ? 0.55 : 1,
         transition:     'opacity var(--duration-base) var(--ease-in-out)',
       }}
     >

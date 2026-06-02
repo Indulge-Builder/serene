@@ -851,6 +851,43 @@ Revalidation in Server Actions uses `revalidateTag(tag, { expire: 0 })` (Next.js
 
 ---
 
+### `void redis.del().catch()` in server actions is a bug, not a pattern
+
+`void Promise.all([redis.del(key)]).catch(() => {})` is fire-and-forget. In a Next.js server
+action, the action's return value unblocks the caller before the promise settles. `revalidatePath`
+makes the RSC subtree immediately eligible for re-render — if any request hits the route before
+the del completes, the service function will repopulate Redis from the DB, then the late del
+evicts a fresh entry and extends the stale-serving window.
+
+The correct pattern for any Redis del that must precede a cache revalidation:
+
+```ts
+// ✅ Correct — dels complete before revalidatePath fires
+try {
+  await Promise.all([
+    redis.del(REDIS_KEYS.leadRowId(leadId)),
+    redis.del(REDIS_KEYS.leadActivities(leadId)),
+  ]);
+} catch (e) {
+  console.warn('[leads-action] redis del failed on status update', e);
+}
+revalidatePath(`/leads/${(lead.slug as string | null) ?? leadId}`);
+
+// ✗ Wrong — del races against revalidatePath; can evict a fresh entry
+void Promise.all([redis.del(REDIS_KEYS.leadRowId(leadId))]).catch(() => {});
+revalidatePath(`/leads/${slug}`);
+```
+
+**Rule:** Every `redis.del` in a server action must be `await`-ed inside a `try/catch` that logs
+a `[module-action]`-prefixed warning. The `try/catch` keeps Redis failure non-fatal. The `await`
+ensures the cache layer is consistent before the RSC layer is told it can re-render. These two
+requirements are not in conflict.
+
+Reference implementation: `updateLeadStatus`, `addLeadCallNote`, `addLeadNote` in
+`src/lib/actions/leads.ts`.
+
+---
+
 ## When in Doubt
 
 1. Check `docs/design-dna.md` for the full spec on any section.

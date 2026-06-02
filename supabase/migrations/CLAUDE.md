@@ -69,6 +69,8 @@
 | `20260531000055_get_gia_tasks.sql` | `get_gia_tasks(p_user_id uuid, p_role text, p_domain app_domain)` RPC — returns all `gia_followup` tasks for the caller with joined lead identity (`lead_id`, `lead_first_name`, `lead_last_name`, `lead_phone`, `lead_slug`, `lead_domain`); agent role filters `assigned_to = p_user_id`; other roles filter `leads.domain = p_domain`; `p_domain` typed `app_domain` to avoid `42883` after migration 0041; order: active tasks first, then `due_at ASC NULLS LAST`; STABLE SECURITY DEFINER; GRANT EXECUTE to authenticated; includes `ADD COLUMN IF NOT EXISTS slug` guard |
 | `20260531000056_get_gia_tasks_slug_prereq.sql` | Hotfix when 0055 ran before 0045: ensures `leads.slug` + `idx_leads_slug`, optional backfill via `generate_lead_slug`, recreates `get_gia_tasks` (fixes `42703 column l.slug does not exist`) |
 | `20260601000058_ad_creatives_multi_video.sql` | Drops the UNIQUE constraint on `ad_creatives.campaign_key` so one campaign can have multiple ad videos (one row per video). Idempotent `pg_constraint` guard; recreates non-unique `idx_ad_creatives_campaign_key`; normalisation CHECK from 0012 unchanged. |
+| `20260602000059_agent_shift_days.sql` | `ADD COLUMN IF NOT EXISTS shift_days integer[]` on `agent_routing_config`; JS day-of-week array (0=Sun…6=Sat); NULL = use global BUSINESS_HOURS. |
+| `20260602000060_leads_resolution_reason.sql` | `leads.resolution_reason TEXT` column; partial index `idx_leads_resolution_reason` (junk/lost, not archived); `CREATE OR REPLACE FUNCTION update_lead_status` — surgically adds persistence of `p_reason` to the column on junk/lost, clears it on revive (in_discussion); `GRANT EXECUTE` preserved. |
 
 ## Multi-write RPC pattern (perf-02)
 

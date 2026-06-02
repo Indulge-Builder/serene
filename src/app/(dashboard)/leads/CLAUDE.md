@@ -273,6 +273,36 @@ Three partial indexes on `leads` (all `WHERE archived_at IS NULL`):
 
 ---
 
+## Redis cache invalidation — lead dossier keys
+
+Key builders (all in `src/lib/constants/redis-keys.ts`, flat on `REDIS_KEYS`):
+
+| Key                                  | TTL  | Invalidation                                          |
+| ------------------------------------ | ---- | ----------------------------------------------------- |
+| `REDIS_KEYS.leadRowId(leadId)`       | 120s | Explicit `await redis.del` on mutation                |
+| `REDIS_KEYS.leadRowSlug(slug)`       | 120s | Explicit `await redis.del` on mutation (slug known)   |
+| `REDIS_KEYS.leadNotes(leadId)`       | 120s | Explicit `await redis.del` on mutation                |
+| `REDIS_KEYS.leadActivities(leadId)`  | 120s | Explicit `await redis.del` on mutation                |
+| `REDIS_KEYS.leadList(…)`             | 30s  | TTL-only (list pages accept 30s staleness)            |
+| `REDIS_KEYS.leadFilterOptions(…)`    | 300s | TTL-only (campaigns/agents change infrequently)       |
+
+**Per-mutation del matrix** (`src/lib/actions/leads.ts`):
+
+| Action              | row | notes | activities |
+| ------------------- | --- | ----- | ---------- |
+| `updateLeadStatus`  | ✓   | —     | ✓          |
+| `addLeadCallNote`   | ✓   | ✓     | ✓          |
+| `addLeadNote`       | —   | ✓     | ✓          |
+
+All three use `try { await Promise.all([…]) } catch (e) { console.warn(…) }` — awaited so the
+next dossier load within the 120s window never reads stale data. Redis failure logs a warn and
+never propagates an error to the caller.
+
+**Dashboard keys are TTL-only — never explicitly deleted from leads actions.** `dashboardLeadStatus`,
+`dashboardLeadVolume`, `dashboardCampaigns` use their own TTLs (60–120s). This is intentional.
+
+---
+
 ## Lead Slug — URL identifier (2026-05-30)
 
 `leads.slug` is a human-readable, immutable URL identifier. Format: `priya-sharma-9182`
@@ -339,6 +369,18 @@ dedup key so no two active leads share the same phone (and thus the same slug su
 ## Prefetch-on-hover — LeadsTable
 
 Each `LeadRow` `<tr>` element calls `router.prefetch('/leads/${lead.slug ?? lead.id}')` inside `onMouseEnter`. The href shape is identical to the `onClick` push — same slug fallback, same prefix. Next.js deduplicates repeated `prefetch` calls internally; no debounce is needed. Uses the single `useRouter()` instance already at the top of `LeadRow`. Never create a new `useRouter()` call per row.
+
+---
+
+## Short single-select pickers inside modals — RadioGroup pattern
+
+`RadioGroup variant='default'` is the correct component for single-select with 5–6 labelled options
+inside a `Modal`. **Do not use `FilterDropdown` inside a modal body.** `FilterDropdown` renders an
+absolutely-positioned portal panel that clips against `overflow: hidden` on the modal body scroll
+container, causing the dropdown to appear under the modal chrome or get cut off entirely.
+
+`RadioGroup` has no portal dependency, no z-index conflicts, and is semantically correct for
+mutually exclusive choices. Reference implementation: `ReasonModal` inside `StatusActionPanel.tsx`.
 
 ---
 

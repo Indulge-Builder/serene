@@ -6,12 +6,10 @@
 
 import {
   getAgentRosterPerformance,
-  getAgentDetailMetrics,
   getPeriodDateRange,
   type PerformancePeriod,
 } from '@/lib/services/performance-service';
 import type { AppDomain }          from '@/lib/types/database';
-import { getFirstAgentInPerformanceRosterList } from '@/lib/utils/performance-roster-display';
 import { ManagerPerformancePanel } from '@/components/performance/ManagerPerformancePanel';
 
 type Props = {
@@ -32,17 +30,6 @@ export async function ManagerPerformanceAsync({ domain, period, customFrom, cust
   const rosterDomain = allDomains ? null : domain;
   const agentRoster  = await getAgentRosterPerformance(rosterDomain, from, to);
 
-  const firstAgentId = getFirstAgentInPerformanceRosterList(agentRoster, {
-    allDomains,
-    domain,
-  });
-
-  // Pre-fetch top agent's detail — no domain restriction for founder/admin.
-  const detailDomain = allDomains ? null : domain;
-  const initialDetailMetrics = firstAgentId
-    ? await getAgentDetailMetrics(firstAgentId, detailDomain, from, to)
-    : null;
-
   return (
     <ManagerPerformancePanel
       key={period}
@@ -51,8 +38,6 @@ export async function ManagerPerformanceAsync({ domain, period, customFrom, cust
       period={period}
       customFrom={(period === 'custom' && customFrom) ? customFrom : undefined}
       customTo={(period === 'custom' && customTo)     ? customTo   : undefined}
-      initialAgentId={firstAgentId}
-      initialDetailMetrics={initialDetailMetrics}
       allDomains={allDomains}
     />
   );

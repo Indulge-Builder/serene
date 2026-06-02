@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useTransition, useOptimistic } from 'react';
-import { Phone, TrendingUp, Leaf, XCircle, Trash2, ChevronDown, Trophy, Zap } from 'lucide-react';
+import { useState, useTransition, useOptimistic, useRef } from 'react';
+import { Phone, TrendingUp, Leaf, XCircle, Trash2, Trophy, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { RadioGroup } from '@/components/ui/RadioGroup';
 import { useRouter } from 'next/navigation';
 import { updateLeadStatus, recordDeal } from '@/lib/actions/leads';
 import { CalledModal } from './CalledModal';
@@ -10,6 +11,7 @@ import { WonDealModal } from './WonDealModal';
 import { Modal } from '@/components/ui/modal';
 import { formErrors } from '@/lib/validations/form-errors';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants/lead-statuses';
+import { JUNK_REASONS, LOST_REASONS, RESOLUTION_REASON_LABELS } from '@/lib/constants/lead-resolution-reasons';
 import type { Lead, Profile, LeadStatus } from '@/lib/types/database';
 import type { DealType, DealDuration } from '@/lib/constants/deal-types';
 
@@ -275,6 +277,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
           title="Mark as Lost"
           description="Provide a reason so the team can learn from this."
           confirmLabel="Mark Lost"
+          status="lost"
           isPending={isPending}
           error={error}
           onClose={closeModal}
@@ -287,6 +290,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
           title="Mark as Junk"
           description="Provide a reason — wrong number, spam, or other."
           confirmLabel="Mark Junk"
+          status="junk"
           isPending={isPending}
           error={error}
           onClose={closeModal}
@@ -466,20 +470,29 @@ function ConfirmModal({
 
 // ─────────────────────────────────────────────
 // Reason modal (Lost / Junk)
+// Uses RadioGroup variant='default' — no portal, no overflow dependency.
+// FilterDropdown was removed because its absolutely-positioned panel clips
+// against overflow:hidden on the modal body (scroll bug).
+// Textarea restored per design-dna §7.4. 'Other' requires textarea before submit.
 // ─────────────────────────────────────────────
-const REASON_OPTIONS = [
-  'Wrong number',
-  'Not interested',
-  'Duplicate lead',
-  'Spam / bot submission',
-  'No response after multiple attempts',
-  'Other',
-];
+const JUNK_REASON_OPTIONS = JUNK_REASONS.map(({ id, label }) => ({ id, label }));
+const LOST_REASON_OPTIONS = LOST_REASONS.map(({ id, label }) => ({ id, label }));
+
+const microLabelStyle: React.CSSProperties = {
+  display:       'block',
+  fontSize:      'var(--text-2xs)',
+  fontWeight:    'var(--weight-semibold)',
+  letterSpacing: 'var(--tracking-widest)',
+  textTransform: 'uppercase',
+  color:         'var(--theme-text-tertiary)',
+  marginBottom:  'var(--space-2)',
+};
 
 function ReasonModal({
   title,
   description,
   confirmLabel,
+  status,
   isPending,
   error,
   onClose,
@@ -488,24 +501,50 @@ function ReasonModal({
   title: string;
   description: string;
   confirmLabel: string;
+  status: 'junk' | 'lost';
   isPending: boolean;
   error: string | null;
   onClose: () => void;
   onConfirm: (reason: string) => void;
 }) {
-  const [selected, setSelected]     = useState('');
-  const [custom, setCustom]         = useState('');
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [selectedReason, setSelectedReason] = useState('');
+  const [noteText, setNoteText]             = useState('');
+  const [localError, setLocalError]         = useState<string | null>(null);
+  const textareaRef                         = useRef<HTMLTextAreaElement>(null);
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const reason = selected === 'Other' ? custom.trim() : selected;
-    if (!reason) {
+  const reasonOptions = status === 'junk' ? JUNK_REASON_OPTIONS : LOST_REASON_OPTIONS;
+  const isOther       = selectedReason === 'other';
+  const noteRequired  = isOther;
+  const canSubmit     = selectedReason !== '' && (!noteRequired || noteText.trim().length > 0);
+
+  function handleTextareaInput(e: React.FormEvent<HTMLTextAreaElement>) {
+    const el = e.currentTarget;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+    setNoteText(el.value);
+  }
+
+  function handleSubmit() {
+    if (!selectedReason) {
       setLocalError(formErrors.required);
       return;
     }
+    if (noteRequired && !noteText.trim()) {
+      setLocalError('Please describe the reason.');
+      return;
+    }
     setLocalError(null);
-    onConfirm(reason);
+
+    // Compose p_reason: 'other' → freetext; else → label optionally appended with note
+    let composed: string;
+    if (isOther) {
+      composed = noteText.trim();
+    } else {
+      const label = RESOLUTION_REASON_LABELS[selectedReason] ?? selectedReason;
+      composed = noteText.trim() ? `${label} — ${noteText.trim()}` : label;
+    }
+
+    onConfirm(composed);
   }
 
   return (
@@ -521,9 +560,9 @@ function ReasonModal({
           </Button>
           <Button
             variant="danger"
-            type="submit"
-            form="reason-modal-form"
-            disabled={isPending}
+            type="button"
+            onClick={handleSubmit}
+            disabled={isPending || !canSubmit}
             loading={isPending}
           >
             {isPending ? 'Saving…' : confirmLabel}
@@ -531,76 +570,44 @@ function ReasonModal({
         </>
       }
     >
-      <form id="reason-modal-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--theme-text-secondary)', lineHeight: 'var(--leading-normal)', margin: 0 }}>
           {description}
         </p>
 
-        <div>
-          <label
-            htmlFor="reason-select"
-            style={{
-              display:       'block',
-              fontSize:      'var(--text-2xs)',
-              fontWeight:    'var(--weight-semibold)',
-              letterSpacing: 'var(--tracking-widest)',
-              textTransform: 'uppercase',
-              color:         'var(--theme-text-tertiary)',
-              marginBottom:  'var(--space-2)',
-            }}
-          >
+        {/* Reason picker — RadioGroup, no portal, no overflow dependency */}
+        <div style={{ opacity: isPending ? 0.6 : 1, pointerEvents: isPending ? 'none' : 'auto' }}>
+          <span style={microLabelStyle}>
             Reason <span style={{ color: 'var(--color-danger)' }}>*</span>
-          </label>
-          <div style={{ position: 'relative' }}>
-            <select
-              id="reason-select"
-              value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-              disabled={isPending}
-              style={{
-                width:        '100%',
-                height:       '2.25rem',
-                paddingLeft:  'var(--space-3)',
-                paddingRight: 'var(--space-8)',
-                border:       '1px solid var(--theme-paper-border)',
-                borderRadius: 'var(--radius-sm)',
-                background:   'var(--theme-paper-subtle)',
-                fontSize:     'var(--text-sm)',
-                color:        selected ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
-                appearance:   'none',
-                cursor:       isPending ? 'not-allowed' : 'pointer',
-                outline:      'none',
-              }}
-            >
-              <option value="" disabled>Select a reason…</option>
-              {REASON_OPTIONS.map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
-            <ChevronDown
-              style={{
-                position:      'absolute',
-                right:         'var(--space-3)',
-                top:           '50%',
-                transform:     'translateY(-50%)',
-                width:         '0.875rem',
-                height:        '0.875rem',
-                color:         'var(--theme-text-tertiary)',
-                pointerEvents: 'none',
-              }}
-            />
-          </div>
+          </span>
+          <RadioGroup
+            options={reasonOptions}
+            value={selectedReason}
+            onChange={setSelectedReason}
+            variant="default"
+          />
         </div>
 
-        {selected === 'Other' && (
+        {/* Textarea — optional unless 'Other' is selected (§7.4 auto-grow spec) */}
+        <div>
+          <span style={microLabelStyle}>
+            {isOther ? (
+              <>Note <span style={{ color: 'var(--color-danger)' }}>*</span></>
+            ) : (
+              'Note (optional)'
+            )}
+          </span>
           <textarea
-            value={custom}
-            onChange={(e) => setCustom(e.target.value)}
-            placeholder="Describe the reason…"
-            rows={3}
+            ref={textareaRef}
+            value={noteText}
+            onInput={handleTextareaInput}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder={isOther ? 'Describe why (required)' : 'Add a note (optional)'}
             disabled={isPending}
+            rows={3}
             style={{
               width:        '100%',
+              minHeight:    '80px',
               padding:      'var(--space-3)',
               border:       '1px solid var(--theme-paper-border)',
               borderRadius: 'var(--radius-sm)',
@@ -612,16 +619,26 @@ function ReasonModal({
               outline:      'none',
               fontFamily:   'var(--font-sans)',
               boxSizing:    'border-box',
+              transition:   'height var(--duration-base) var(--ease-out-soft), border-color var(--duration-fast) var(--ease-in-out)',
+              opacity:      isPending ? 0.6 : 1,
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = 'var(--theme-accent)';
+              e.currentTarget.style.boxShadow   = 'var(--shadow-focus)';
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = 'var(--theme-paper-border)';
+              e.currentTarget.style.boxShadow   = 'none';
             }}
           />
-        )}
+        </div>
 
         {(localError ?? error) && (
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)', margin: 0 }}>
             {localError ?? error}
           </p>
         )}
-      </form>
+      </div>
     </Modal>
   );
 }

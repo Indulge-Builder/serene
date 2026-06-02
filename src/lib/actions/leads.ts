@@ -67,7 +67,7 @@ export async function addLeadCallNote(
   // 3. Verify access to this lead
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, status, assigned_to, domain")
+    .select("id, status, assigned_to, domain, slug")
     .eq("id", leadId)
     .single();
 
@@ -113,12 +113,19 @@ export async function addLeadCallNote(
     old_status: string;
   };
 
-  // Redis invalidation — fire-and-forget, never blocks the response
-  void Promise.all([
-    redis.del(REDIS_KEYS.leadRowId(leadId)),
-    redis.del(REDIS_KEYS.leadNotes(leadId)),
-    redis.del(REDIS_KEYS.leadActivities(leadId)),
-  ]).catch(() => {});
+  // Redis invalidation — awaited so the next dossier load never reads stale data
+  try {
+    await Promise.all([
+      redis.del(REDIS_KEYS.leadRowId(leadId)),
+      redis.del(REDIS_KEYS.leadNotes(leadId)),
+      redis.del(REDIS_KEYS.leadActivities(leadId)),
+    ]);
+  } catch (e) {
+    console.warn('[leads-action] redis del failed on call note', e);
+  }
+
+  // Invalidate dossier RSC cache so the server component reflects the new status/note
+  revalidatePath(`/leads/${(lead.slug as string | null) ?? leadId}`);
 
   // 5. SLA side-effects (fire-and-forget, non-fatal — cannot go in the RPC)
   const postStatus = didAutoAdvance ? "touched" : oldStatus;
@@ -166,7 +173,7 @@ export async function updateLeadStatus(
   // 3. Fetch lead for access check
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, status, assigned_to, domain")
+    .select("id, status, assigned_to, domain, slug")
     .eq("id", leadId)
     .single();
 
@@ -211,11 +218,18 @@ export async function updateLeadStatus(
   // RPC returned early — status was already the same
   if (!result.changed) return { data: { leadId }, error: null };
 
-  // Redis invalidation — fire-and-forget, never blocks the response
-  void Promise.all([
-    redis.del(REDIS_KEYS.leadRowId(leadId)),
-    redis.del(REDIS_KEYS.leadActivities(leadId)),
-  ]).catch(() => {});
+  // Invalidate dossier RSC cache so the server component reflects the new status
+  revalidatePath(`/leads/${(lead.slug as string | null) ?? leadId}`);
+
+  // Redis invalidation — awaited so the next dossier load never reads stale data
+  try {
+    await Promise.all([
+      redis.del(REDIS_KEYS.leadRowId(leadId)),
+      redis.del(REDIS_KEYS.leadActivities(leadId)),
+    ]);
+  } catch (e) {
+    console.warn('[leads-action] redis del failed on status update', e);
+  }
 
   const { assigned_to: assignedTo, domain, first_name, last_name } = result;
 
@@ -882,11 +896,15 @@ export async function addLeadNote(
 
   if (rpcError || !rpcResult) return { data: null, error: formErrors.generic };
 
-  // Redis invalidation — fire-and-forget, never blocks the response
-  void Promise.all([
-    redis.del(REDIS_KEYS.leadNotes(leadId)),
-    redis.del(REDIS_KEYS.leadActivities(leadId)),
-  ]).catch(() => {});
+  // Redis invalidation — awaited so the next dossier load never reads stale data
+  try {
+    await Promise.all([
+      redis.del(REDIS_KEYS.leadNotes(leadId)),
+      redis.del(REDIS_KEYS.leadActivities(leadId)),
+    ]);
+  } catch (e) {
+    console.warn('[leads-action] redis del failed on plain note', e);
+  }
 
   return { data: { noteId: rpcResult.note_id }, error: null };
 }

@@ -13,7 +13,7 @@ import {
   PERFORMANCE_ROSTER_DOMAIN_ORDER,
 } from '@/lib/utils/performance-roster-display';
 import { AgentDetailPanel }                      from './AgentDetailPanel';
-import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
+import type { AgentRosterRow } from '@/lib/types/index';
 import type { AppDomain }                        from '@/lib/types/database';
 import type { PerformancePeriod }                from '@/lib/services/performance-service';
 
@@ -354,15 +354,13 @@ function RosterHeader({
 // ─────────────────────────────────────────────
 
 type Props = {
-  agentRoster:           AgentRosterRow[];
-  domain:                AppDomain;
-  period:                PerformancePeriod;
-  customFrom?:           string;
-  customTo?:             string;
-  initialAgentId?:       string | null;
-  initialDetailMetrics?: AgentDetailMetrics | null;
+  agentRoster:  AgentRosterRow[];
+  domain:       AppDomain;
+  period:       PerformancePeriod;
+  customFrom?:  string;
+  customTo?:    string;
   // When true, roster spans all domains — grouped by domain, filterable by domain.
-  allDomains?:           boolean;
+  allDomains?:  boolean;
 };
 
 export function ManagerPerformancePanel({
@@ -371,13 +369,10 @@ export function ManagerPerformancePanel({
   period,
   customFrom,
   customTo,
-  initialAgentId = null,
-  initialDetailMetrics = null,
   allDomains = false,
 }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(
-    initialAgentId ??
-      getFirstAgentInPerformanceRosterList(agentRoster, { allDomains, domain }),
+    getFirstAgentInPerformanceRosterList(agentRoster, { allDomains, domain }),
   );
   const [domainFilter, setDomainFilter] = useState<AppDomain | null>(null);
   const searchParams                    = useSearchParams();
@@ -553,12 +548,6 @@ export function ManagerPerformancePanel({
                 period={period}
                 customFrom={customFrom}
                 customTo={customTo}
-                initialAgentId={initialAgentId ?? undefined}
-                initialData={
-                  selectedAgent.id === (initialAgentId ?? null)
-                    ? (initialDetailMetrics ?? undefined)
-                    : undefined
-                }
               />
             </motion.div>
           ) : null}
