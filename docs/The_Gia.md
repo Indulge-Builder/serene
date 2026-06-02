@@ -286,6 +286,16 @@ Three adapters handle platform-specific payload shapes:
 
 All adapters produce a typed `NormalizedLeadPayload`. Phone normalisation is wrapped in try/catch — stores raw on failure (defensive fallback; never rejects a lead on invalid phone from webhook). `sanitizeText()` applied to all text fields.
 
+**`adaptMeta` output fields (2026-06-02):**
+
+| Field | Source in `res3` | Notes |
+|-------|-----------------|-------|
+| `utm_medium` | `res3.platform` | Meta placement identifier — `fb` \| `ig` \| `msg` \| `an`. Sanitized with `sanitizeText()`. Null-guarded. |
+| `utm_content` | `res3.adset_name` | Ad set name. Sanitized. May be absent; defaults `null`. |
+| `utm_source` | — | **Not set by `adaptMeta`.** Never hardcoded as `'meta'` — no UTM source unless the raw payload contains it explicitly. |
+
+Human-readable labels for `utm_medium` values: `getMetaMediumLabel()` in `lib/constants/lead-sources.ts` — `fb → Facebook`, `ig → Instagram`, `msg → Messenger`, `an → Audience Network`.
+
 ---
 
 ## 4. Domain Resolution

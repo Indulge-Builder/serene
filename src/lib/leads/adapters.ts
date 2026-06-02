@@ -131,10 +131,10 @@ export function adaptMeta(raw: unknown): NormalizedLeadPayload {
     campaign_id:  str(res3.campaign_id) || null,
     ad_name:      str(res3.ad_name) ? sanitizeText(str(res3.ad_name)) : null,
     domain:       null,  // resolved from utm_campaign in ingestion
-    utm_source:   'meta',
-    utm_medium:   null,
+    utm_source:   null,
+    utm_medium:   res3?.platform ? sanitizeText(str(res3.platform)) : null,
     utm_campaign: str(res3.campaign_name) || null,
-    utm_content:  null,
+    utm_content:  res3?.adset_name ? sanitizeText(str(res3.adset_name)) : null,
     form_data:    formData,
   };
 }

@@ -40,3 +40,22 @@ export const LEAD_SOURCE_OPTIONS = LEAD_SOURCES.map((id) => ({
   id,
   label: LEAD_SOURCE_LABELS[id],
 }));
+
+export const PLATFORM_LABELS: Record<string, string> = {
+  meta:      "Meta",
+  google:    "Google",
+  website:   "Website",
+  whatsapp:  "WhatsApp",
+};
+
+export const META_MEDIUM_LABELS: Record<string, string> = {
+  fb:  "Facebook",
+  ig:  "Instagram",
+  msg: "Messenger",
+  an:  "Audience Network",
+};
+
+export function getMetaMediumLabel(medium: string | null): string | null {
+  if (!medium) return null;
+  return META_MEDIUM_LABELS[medium.toLowerCase()] ?? medium;
+}

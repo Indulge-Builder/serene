@@ -883,6 +883,11 @@ a `[module-action]`-prefixed warning. The `try/catch` keeps Redis failure non-fa
 ensures the cache layer is consistent before the RSC layer is told it can re-render. These two
 requirements are not in conflict.
 
+**Lead row dual-key invariant:** Lead rows are cached under two keys — `leadRowSlug(slug)`
+(primary: hit on every slug-based dossier load) and `leadRowId(leadId)` (hit on UUID fallback
+only). Any action that mutates the lead row must delete both when `slug` is non-null. Deleting
+only `leadRowId` is a silent no-op on normal dossier traffic.
+
 Reference implementation: `updateLeadStatus`, `addLeadCallNote`, `addLeadNote` in
 `src/lib/actions/leads.ts`.
 

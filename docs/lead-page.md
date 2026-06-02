@@ -372,7 +372,7 @@ Idempotency: Trigger.dev key `lead-sla-${leadId}-${ruleCode}`.
 | `getLeadsForAgent` | `agentId: string` | `Promise<Lead[]>` | `assigned_to`, not archived, `created_at DESC` | Legacy |
 | `getLeadsForDomain` | `domain: string` | `Promise<Lead[]>` | `domain`, not archived | Legacy |
 | `getAllLeads` | — | `Promise<Lead[]>` | All non-archived | Legacy |
-| `getLeadsByRole` | `role`, `userId`, `domain`, `filters?` | `Promise<LeadsResult>` | Single query: role constraints → filters → search `.or(ilike…)` → `.range()`; `{ count: 'exact', head: false }` | `LeadsTableAsync` |
+| `getLeadsByRole` | `role`, `userId`, `domain`, `filters?` | `Promise<LeadsResult>` | Single query: explicit column list (no `*`); role constraints → filters → search `.or(ilike…)` → `.range()`; `{ count: 'exact', head: false }`. Returns `LeadListItemWithAssignee[]`, not `LeadWithAssignee[]`. | `LeadsTableAsync` |
 | `getLeadsByRoleCached` | same | `Promise<LeadsResult>` | React `cache(getLeadsByRole)` | Optional dedup per request |
 | `getLeadFilterOptions` | `role`, `callerDomain`, `filterDomain?` | `Promise<LeadFilterOptions>` | Distinct `utm_campaign`; agents from `profiles` | `leads/page.tsx` once |
 | `getLeadActivities` | `leadId` | `Promise<LeadActivity[]>` | No join | Rare |
@@ -395,7 +395,16 @@ Idempotency: Trigger.dev key `lead-sla-${leadId}-${ruleCode}`.
 export type LeadNoteWithAuthor = LeadNote & { author: { full_name: string } };
 export type LeadActivityWithActor = LeadActivity & { actor: { full_name: string } | null };
 export type LeadWithAssignee = Lead & { assignee: { full_name: string } | null };
-export type LeadsResult = { leads: LeadWithAssignee[]; totalCount: number };
+
+// List path only — explicit column subset; form_data, personal_details, deal/SLA columns excluded.
+export type LeadListItem = Pick<Lead,
+  'id' | 'slug' | 'first_name' | 'last_name' | 'phone' | 'email' |
+  'domain' | 'assigned_to' | 'status' | 'lead_intent' | 'platform' |
+  'utm_source' | 'utm_medium' | 'utm_campaign' | 'call_count' |
+  'last_call_outcome' | 'created_at'
+>;
+export type LeadListItemWithAssignee = LeadListItem & { assignee: { full_name: string } | null };
+export type LeadsResult = { leads: LeadListItemWithAssignee[]; totalCount: number };
 ```
 
 ---
@@ -479,7 +488,7 @@ main
 
 **LeadsTableAsync:** `getLeadsByRoleCached(role, userId, domain, filters)` → `{ leads, totalCount }`; passes `hasActiveFilters` to table. Direct child of `<Suspense>`.
 
-**Columns (11):** Registry `src/lib/constants/lead-columns.ts`
+**Columns (13):** Registry `src/lib/constants/lead-columns.ts`
 
 | ID | Label | Default visible | Locked |
 | -- | ----- | --------------- | ------ |
@@ -489,11 +498,15 @@ main
 | `email` | Email | no | no |
 | `campaign` | Campaign | yes | no |
 | `source` | Source | no | no |
+| `platform` | Platform | no | no |
+| `medium` | Medium | no | no |
 | `assigned_to` | Assigned To | no | no |
 | `created_at` | Created | yes | no |
 | `last_call_outcome` | Last Outcome | yes | no |
 | `call_count` | Calls | no | no |
 | `domain` | Domain | no | no |
+
+`platform` renders as a pill (`var(--theme-accent-subtle)` bg, `var(--theme-text-secondary)` text). `medium` renders plain text via `getMetaMediumLabel()` from `lib/constants/lead-sources.ts` — shows `—` when null.
 
 **Column prefs:** `useLeadColumnPreferences(userId)` — key `eia:leads:columns:${userId}:v1`. Locked columns always visible; drag reorder via `@dnd-kit/sortable` in `LeadColumnPicker`; locked columns pinned to front on reorder.
 

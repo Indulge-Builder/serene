@@ -36,7 +36,7 @@ import {
   markSlaTimerFired,
   getSlaTimerForLeadAndRule,
 } from '@/lib/services/sla-service';
-import { getAgentRoutingConfig } from '@/lib/services/agent-routing-service';
+import { getAgentRoutingConfigAdmin } from '@/lib/services/agent-routing-service';
 import { createNotification }                       from '@/lib/services/notifications-service';
 import {
   sendSlaAgentNotification,
@@ -148,7 +148,7 @@ export async function scheduleSlaTimersForLead(input: unknown): Promise<ActionRe
   const fromDate = new Date(assignedAt);
 
   // 6. Resolve agent shift override once (used by all A-rules in this batch)
-  const agentRoutingConfig = await getAgentRoutingConfig(assignedTo);
+  const agentRoutingConfig = await getAgentRoutingConfigAdmin(assignedTo);
   const agentShiftOverride = agentRoutingConfig
     ? buildAgentShiftOverride(
         agentRoutingConfig.shift_start,
@@ -246,7 +246,7 @@ export async function refreshActivitySlaTimers(input: unknown): Promise<ActionRe
   const now        = new Date();
 
   // Resolve agent shift override once (used by all A-rules in this batch)
-  const agentRoutingConfig = await getAgentRoutingConfig(assignedTo);
+  const agentRoutingConfig = await getAgentRoutingConfigAdmin(assignedTo);
   const agentShiftOverride = agentRoutingConfig
     ? buildAgentShiftOverride(
         agentRoutingConfig.shift_start,

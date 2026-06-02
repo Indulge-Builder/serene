@@ -9,6 +9,8 @@ export type LeadColumnId =
   | 'email'
   | 'campaign'
   | 'source'
+  | 'platform'
+  | 'medium'
   | 'assigned_to'
   | 'created_at'
   | 'last_call_outcome'
@@ -29,6 +31,8 @@ export const LEAD_COLUMNS: LeadColumnDef[] = [
   { id: 'email',             label: 'Email',          defaultVisible: false, locked: false },
   { id: 'campaign',          label: 'Campaign',       defaultVisible: true,  locked: false },
   { id: 'source',            label: 'Source',         defaultVisible: false, locked: false },
+  { id: 'platform',          label: 'Platform',       defaultVisible: false, locked: false },
+  { id: 'medium',            label: 'Medium',         defaultVisible: false, locked: false },
   { id: 'assigned_to',       label: 'Assigned To',    defaultVisible: false, locked: false },
   { id: 'created_at',        label: 'Created',        defaultVisible: true,  locked: false },
   { id: 'last_call_outcome', label: 'Last Outcome',   defaultVisible: true,  locked: false },

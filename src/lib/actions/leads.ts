@@ -114,18 +114,20 @@ export async function addLeadCallNote(
   };
 
   // Redis invalidation — awaited so the next dossier load never reads stale data
+  const slug = lead.slug as string | null;
   try {
     await Promise.all([
       redis.del(REDIS_KEYS.leadRowId(leadId)),
+      ...(slug ? [redis.del(REDIS_KEYS.leadRowSlug(slug))] : []),
       redis.del(REDIS_KEYS.leadNotes(leadId)),
       redis.del(REDIS_KEYS.leadActivities(leadId)),
     ]);
   } catch (e) {
-    console.warn('[leads-action] redis del failed on call note', e);
+    console.warn("[leads-action] redis del failed on call note", e);
   }
 
   // Invalidate dossier RSC cache so the server component reflects the new status/note
-  revalidatePath(`/leads/${(lead.slug as string | null) ?? leadId}`);
+  revalidatePath(`/leads/${slug ?? leadId}`);
 
   // 5. SLA side-effects (fire-and-forget, non-fatal — cannot go in the RPC)
   const postStatus = didAutoAdvance ? "touched" : oldStatus;
@@ -218,18 +220,20 @@ export async function updateLeadStatus(
   // RPC returned early — status was already the same
   if (!result.changed) return { data: { leadId }, error: null };
 
-  // Invalidate dossier RSC cache so the server component reflects the new status
-  revalidatePath(`/leads/${(lead.slug as string | null) ?? leadId}`);
-
   // Redis invalidation — awaited so the next dossier load never reads stale data
+  const slug = lead.slug as string | null;
   try {
     await Promise.all([
       redis.del(REDIS_KEYS.leadRowId(leadId)),
+      ...(slug ? [redis.del(REDIS_KEYS.leadRowSlug(slug))] : []),
       redis.del(REDIS_KEYS.leadActivities(leadId)),
     ]);
   } catch (e) {
-    console.warn('[leads-action] redis del failed on status update', e);
+    console.warn("[leads-action] redis del failed on status update", e);
   }
+
+  // Invalidate dossier RSC cache so the server component reflects the new status
+  revalidatePath(`/leads/${slug ?? leadId}`);
 
   const { assigned_to: assignedTo, domain, first_name, last_name } = result;
 
@@ -679,14 +683,24 @@ export async function createManualLead(
   //     Fire-and-forget — a scan failure never blocks the response.
   void (async () => {
     try {
-      const prefix = leadListKeyPrefix(caller.role, caller.domain as string, caller.id);
+      const prefix = leadListKeyPrefix(
+        caller.role,
+        caller.domain as string,
+        caller.id,
+      );
       let cursor = 0;
       do {
-        const [nextCursor, keys] = await redis.scan(cursor, { match: `${prefix}*`, count: 100 });
+        const [nextCursor, keys] = await redis.scan(cursor, {
+          match: `${prefix}*`,
+          count: 100,
+        });
         cursor = Number(nextCursor);
-        if (keys.length > 0) await redis.del(...(keys as [string, ...string[]]));
+        if (keys.length > 0)
+          await redis.del(...(keys as [string, ...string[]]));
       } while (cursor !== 0);
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
   })();
 
   // 12. Return success
@@ -700,9 +714,7 @@ type LeadEditContext = {
   slug: string | null;
 };
 
-async function assertLeadFieldEditAccess(
-  leadId: string,
-): Promise<
+async function assertLeadFieldEditAccess(leadId: string): Promise<
   | { ok: false; error: string }
   | {
       ok: true;
@@ -738,7 +750,8 @@ function revalidateLeadDossier(lead: LeadEditContext) {
   revalidatePath(`/leads/${segment}`);
   // Fire-and-forget Redis invalidation — never blocks the action response
   void redis.del(REDIS_KEYS.leadRowId(lead.id)).catch(() => {});
-  if (lead.slug) void redis.del(REDIS_KEYS.leadRowSlug(lead.slug)).catch(() => {});
+  if (lead.slug)
+    void redis.del(REDIS_KEYS.leadRowSlug(lead.slug)).catch(() => {});
   void redis.del(REDIS_KEYS.leadActivities(lead.id)).catch(() => {});
 }
 
@@ -903,7 +916,7 @@ export async function addLeadNote(
       redis.del(REDIS_KEYS.leadActivities(leadId)),
     ]);
   } catch (e) {
-    console.warn('[leads-action] redis del failed on plain note', e);
+    console.warn("[leads-action] redis del failed on plain note", e);
   }
 
   return { data: { noteId: rpcResult.note_id }, error: null };

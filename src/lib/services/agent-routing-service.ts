@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AgentRoutingConfig, AgentRosterRow, AppDomain } from "@/lib/types/database";
 
-/** Get routing config for a single agent. Returns null if not found. */
+/** Get routing config for a single agent. Returns null if not found. Session client — UI/action use only. */
 export async function getAgentRoutingConfig(
   agentId: string,
 ): Promise<AgentRoutingConfig | null> {
@@ -15,6 +15,24 @@ export async function getAgentRoutingConfig(
     .eq("agent_id", agentId)
     .single();
 
+  if (error || !data) return null;
+  return data as AgentRoutingConfig;
+}
+
+/**
+ * Same as getAgentRoutingConfig but uses adminClient.
+ * Required in webhook and Trigger.dev contexts where no user session exists.
+ * Used by lib/actions/sla.ts to fetch shift config when scheduling SLA timers.
+ */
+export async function getAgentRoutingConfigAdmin(
+  agentId: string,
+): Promise<AgentRoutingConfig | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("agent_routing_config")
+    .select("*")
+    .eq("agent_id", agentId)
+    .single();
   if (error || !data) return null;
   return data as AgentRoutingConfig;
 }

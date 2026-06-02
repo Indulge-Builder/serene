@@ -3,7 +3,6 @@
 import { useState, useTransition, useOptimistic, useRef } from 'react';
 import { Phone, TrendingUp, Leaf, XCircle, Trash2, Trophy, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { RadioGroup } from '@/components/ui/RadioGroup';
 import { useRouter } from 'next/navigation';
 import { updateLeadStatus, recordDeal } from '@/lib/actions/leads';
 import { CalledModal } from './CalledModal';
@@ -470,13 +469,11 @@ function ConfirmModal({
 
 // ─────────────────────────────────────────────
 // Reason modal (Lost / Junk)
-// Uses RadioGroup variant='default' — no portal, no overflow dependency.
-// FilterDropdown was removed because its absolutely-positioned panel clips
-// against overflow:hidden on the modal body (scroll bug).
-// Textarea restored per design-dna §7.4. 'Other' requires textarea before submit.
+// Inline option rows — no portal, no overflow/clipping dependency.
+// FilterDropdown was not suitable here: its absolute panel clips inside modal body.
 // ─────────────────────────────────────────────
-const JUNK_REASON_OPTIONS = JUNK_REASONS.map(({ id, label }) => ({ id, label }));
-const LOST_REASON_OPTIONS = LOST_REASONS.map(({ id, label }) => ({ id, label }));
+const JUNK_REASON_ITEMS  = JUNK_REASONS.map(({ id, label }) => ({ id, label }));
+const LOST_REASON_ITEMS  = LOST_REASONS.map(({ id, label }) => ({ id, label }));
 
 const microLabelStyle: React.CSSProperties = {
   display:       'block',
@@ -507,15 +504,16 @@ function ReasonModal({
   onClose: () => void;
   onConfirm: (reason: string) => void;
 }) {
-  const [selectedReason, setSelectedReason] = useState('');
-  const [noteText, setNoteText]             = useState('');
-  const [localError, setLocalError]         = useState<string | null>(null);
-  const textareaRef                         = useRef<HTMLTextAreaElement>(null);
+  const [selected, setSelected]     = useState<string[]>([]);
+  const [noteText, setNoteText]     = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const textareaRef                 = useRef<HTMLTextAreaElement>(null);
 
-  const reasonOptions = status === 'junk' ? JUNK_REASON_OPTIONS : LOST_REASON_OPTIONS;
-  const isOther       = selectedReason === 'other';
-  const noteRequired  = isOther;
-  const canSubmit     = selectedReason !== '' && (!noteRequired || noteText.trim().length > 0);
+  const reasonItems  = status === 'junk' ? JUNK_REASON_ITEMS : LOST_REASON_ITEMS;
+  const selectedId   = selected[0] ?? '';
+  const isOther      = selectedId === 'other';
+  const noteRequired = isOther;
+  const canSubmit    = selectedId !== '' && (!noteRequired || noteText.trim().length > 0);
 
   function handleTextareaInput(e: React.FormEvent<HTMLTextAreaElement>) {
     const el = e.currentTarget;
@@ -525,7 +523,7 @@ function ReasonModal({
   }
 
   function handleSubmit() {
-    if (!selectedReason) {
+    if (!selectedId) {
       setLocalError(formErrors.required);
       return;
     }
@@ -535,12 +533,12 @@ function ReasonModal({
     }
     setLocalError(null);
 
-    // Compose p_reason: 'other' → freetext; else → label optionally appended with note
+    // Compose p_reason: 'other' → freetext; else → label + optional note
     let composed: string;
     if (isOther) {
       composed = noteText.trim();
     } else {
-      const label = RESOLUTION_REASON_LABELS[selectedReason] ?? selectedReason;
+      const label = RESOLUTION_REASON_LABELS[selectedId] ?? selectedId;
       composed = noteText.trim() ? `${label} — ${noteText.trim()}` : label;
     }
 
@@ -575,17 +573,72 @@ function ReasonModal({
           {description}
         </p>
 
-        {/* Reason picker — RadioGroup, no portal, no overflow dependency */}
+        {/* Reason picker — inline rows, no portal, no overflow clipping */}
         <div style={{ opacity: isPending ? 0.6 : 1, pointerEvents: isPending ? 'none' : 'auto' }}>
           <span style={microLabelStyle}>
             Reason <span style={{ color: 'var(--color-danger)' }}>*</span>
           </span>
-          <RadioGroup
-            options={reasonOptions}
-            value={selectedReason}
-            onChange={setSelectedReason}
-            variant="default"
-          />
+          <div
+            style={{
+              display:       'flex',
+              flexDirection: 'column',
+              gap:           'var(--space-1)',
+            }}
+          >
+            {reasonItems.map((item) => {
+              const active = item.id === selectedId;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelected([item.id])}
+                  style={{
+                    display:      'flex',
+                    alignItems:   'center',
+                    gap:          'var(--space-3)',
+                    width:        '100%',
+                    padding:      'var(--space-2) var(--space-3)',
+                    background:   active ? 'var(--theme-accent-surface)' : 'var(--theme-paper-subtle)',
+                    border:       `1px solid ${active ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
+                    borderRadius: 'var(--radius-sm)',
+                    cursor:       'pointer',
+                    transition:   'var(--transition-hover)',
+                    textAlign:    'left',
+                    fontFamily:   'var(--font-sans)',
+                    fontSize:     'var(--text-sm)',
+                    fontWeight:   'var(--weight-medium)',
+                    color:        active ? 'var(--theme-accent)' : 'var(--theme-text-primary)',
+                  }}
+                >
+                  {/* Radio dot */}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      flexShrink:     0,
+                      width:          16,
+                      height:         16,
+                      borderRadius:   'var(--radius-full)',
+                      border:         `1.5px solid ${active ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
+                      display:        'flex',
+                      alignItems:     'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {active && (
+                      <span style={{
+                        width:        7,
+                        height:       7,
+                        borderRadius: 'var(--radius-full)',
+                        background:   'var(--theme-accent)',
+                        display:      'block',
+                      }} />
+                    )}
+                  </span>
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Textarea — optional unless 'Other' is selected (§7.4 auto-grow spec) */}

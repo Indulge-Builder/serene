@@ -17,6 +17,7 @@ import {
   Flame,
   Snowflake,
   Route,
+  Signal,
   Check,
   ChevronDown,
 } from 'lucide-react';
@@ -25,6 +26,7 @@ import { DOMAIN_LABELS, GIA_DOMAIN_FILTER_ITEMS, type GiaDomain } from '@/lib/co
 import {
   LEAD_SOURCE_OPTIONS,
   getLeadSourceLabel,
+  getMetaMediumLabel,
   type LeadSource,
 } from '@/lib/constants/lead-sources';
 import { DROPDOWN_VARIANTS } from '@/lib/constants/motion';
@@ -215,6 +217,11 @@ export function LeadInfoCard({
               value={getLeadSourceLabel(lead.utm_source)}
             />
           )}
+          <InfoRow
+            icon={Signal}
+            label="Medium"
+            value={getMetaMediumLabel(lead.utm_medium) ?? undefined}
+          />
           {canReassign ? (
             <AssigneeDropdownField
               leadId={lead.id}

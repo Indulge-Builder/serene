@@ -6,6 +6,30 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-02 — perf: leads list query — explicit column SELECT replaces select(*); form_data, personal_details, deal columns, SLA columns excluded from list path
+
+- `src/lib/services/leads-service.ts` — `getLeadsByRole` now selects 18 explicit columns instead of `*`; dossier warming removed (partial objects must not be stored under `leadRowId`/`leadRowSlug` keys — would corrupt `getLeadById`/`getLeadBySlug` reads); `LeadListItem` and `LeadListItemWithAssignee` types exported; `LeadsResult.leads` typed as `LeadListItemWithAssignee[]`.
+- `src/components/leads/LeadsTable.tsx` — prop type updated from `LeadWithAssignee[]` to `LeadListItemWithAssignee[]`.
+
+---
+
+## 2026-06-02 — feat: Meta attribution — utm_medium (placement) and utm_content (adset_name) now captured from adaptMeta; platform and medium columns added to leads table; utm_source no longer hardcoded in webhook adapter
+
+- `src/lib/leads/adapters.ts` — `adaptMeta`: `utm_medium` set from `res3?.platform` (sanitized); `utm_content` set from `res3?.adset_name` (sanitized); `utm_source` removed — no longer hardcoded as `'meta'` since `platform` already identifies the source.
+- `src/lib/constants/lead-sources.ts` — `PLATFORM_LABELS` map (`meta/google/website/whatsapp`), `META_MEDIUM_LABELS` map (`fb/ig/msg/an`), and `getMetaMediumLabel(medium)` helper added.
+- `src/lib/constants/lead-columns.ts` — `platform` and `medium` column definitions added (both default hidden, not locked); `LeadColumnId` union extended.
+- `src/components/leads/LeadsTable.tsx` — `platform` renders as accent-subtle pill via `PLATFORM_LABELS`; `medium` renders plain text via `getMetaMediumLabel()`; both show `—` when null.
+- `src/components/leads/LeadInfoCard.tsx` — read-only "Medium" `InfoRow` (Signal icon) added below Source on the lead dossier card; uses `getMetaMediumLabel()`.
+
+---
+
+## 2026-06-02 — fix: leads — updateLeadStatus + addLeadCallNote now del leadRowSlug(slug) alongside leadRowId; slug key was the only key hit on normal dossier loads
+
+- `src/lib/actions/leads.ts` — `updateLeadStatus` and `addLeadCallNote`: `REDIS_KEYS.leadRowSlug(slug)` added to the `Promise.all` del block when `slug` is non-null. Previous code deleted only `leadRowId(leadId)`, which is only hit on UUID-fallback loads — slug-based dossier URLs (`/leads/name-XXXX`) never read that key, so the stale row persisted for the full 120s TTL on every `router.refresh()`. `addLeadNote` confirmed correct — its RPC does not mutate the lead row, so no row key del is needed there.
+- `/CLAUDE.md` — lead row dual-key invariant added to the `void redis.del` pattern note.
+
+---
+
 ## 2026-06-02 — fix: addLeadCallNote — revalidatePath moved after await redis.del block; ordering now consistent with CLAUDE.md invariant
 
 - `src/lib/actions/leads.ts` — `addLeadCallNote`: `revalidatePath` call moved to after the `try { await Promise.all([redis.del(…)]) } catch` block. No logic change — ordering only. `updateLeadStatus` and `addLeadNote` were already correct and not touched.
