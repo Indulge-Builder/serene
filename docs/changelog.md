@@ -6,6 +6,91 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-02 — fix: DatePicker + TimePicker — zoom-responsive panel positioning (visualViewport correction, measured flip thresholds, dynamic WheelColumn item height) — Phase UI
+
+## 2026-06-02 — feat: agent shift days — per-agent work-day override for SLA deadline computation
+
+- `supabase/migrations/20260602000059_agent_shift_days.sql` — `shift_days integer[] DEFAULT NULL` added to `agent_routing_config`. NULL = use global BUSINESS_HOURS. Min 1 element when set.
+- `src/lib/types/database.ts` — `AgentRoutingConfig.shift_days: number[] | null` and `AgentRosterRow.shift_days: number[] | null` added.
+- `src/lib/utils/sla.ts` — `AgentShiftOverride` interface + `buildAgentShiftOverride()` exported. All four exported functions (`isWithinBusinessHours`, `nextBusinessDeadline`, `businessMinutesBetween`, `advanceToNextBusinessStart`) accept optional `shift?: AgentShiftOverride` trailing parameter. Omitting the parameter is zero-breaking — falls back to BUSINESS_HOURS identically.
+- `src/lib/actions/sla.ts` — `scheduleSlaTimersForLead` and `refreshActivitySlaTimers` now fetch the agent's routing config once per call, build a shift override, and pass it to `nextBusinessDeadline` for A-rules only (SLA-01A, SLA-02A, SLA-03A, SLA-04A). Manager rules (SLA-01B, SLA-02B, SLA-03B, SLA-04B) always use global BUSINESS_HOURS — deliberate asymmetry.
+- `src/lib/services/agent-routing-service.ts` — `getAgentRosterByDomain` select includes `shift_days`; `setAgentShift` gains `shiftDays: number[] | null` third parameter.
+- `src/lib/validations/agent-routing-schema.ts` — `SetAgentShiftSchema` extended with `shiftDays: z.array(...).min(1).nullable().optional()`.
+- `src/lib/actions/agent-routing.ts` — `setAgentShiftAction` passes `shiftDays` to `setAgentShift`.
+- `src/components/settings/AgentSettingsTable.tsx` — `ShiftState` gains `days: number[]`; `WorkDayPicker` inline sub-component (7 pills, Mon→Sat→Sun display order, last-day guard); `handleDaysChange` + `handleClear` updated; clear sends `shiftDays: null` to DB.
+- `src/app/(dashboard)/settings/CLAUDE.md` — `WorkDayPicker` pattern, `shift_days` null contract, and updated grid columns documented.
+
+**SLA asymmetry rule:** agent-rule deadlines (A-rules) use the agent's personal shift. Manager escalation deadlines (B-rules) always use global BUSINESS_HOURS — a manager's window is domain-wide, not personal.
+
+---
+
+## 2026-06-02 — design: deals — summary strip and card amounts use Geist Mono (metrics voice)
+
+- `src/components/deals/DealsSummaryStrip.tsx` — stat values switched from Playfair to `var(--font-mono)` with `tabular-nums` per design-system §Technical voice (metrics).
+- `src/components/deals/DealCard.tsx` — deal amount uses `var(--font-mono)` + `tabular-nums`; lead name stays Playfair italic.
+
+---
+
+## 2026-06-02 — design: auth — brand header reads "Indulge OS"; subtitle removed
+
+- `src/app/(auth)/login/login-form.tsx`, `forgot-password/forgot-password-form.tsx`, `update-password/update-password-form.tsx`, `update-password/page.tsx` — title changed from "Eia" to "Indulge OS"; "Indulge Global" subtitle removed from all cards.
+- `src/app/(auth)/forgot-password/page.tsx`, `update-password/page.tsx` — document `title` metadata updated to "Indulge OS".
+- `src/app/(auth)/CLAUDE.md` — unified brand header spec updated.
+
+---
+
+## 2026-06-02 — design: auth — remove accent drop-shadow from logo on all auth pages
+
+- `src/app/(auth)/login/login-form.tsx`, `forgot-password/forgot-password-form.tsx`, `update-password/update-password-form.tsx`, `update-password/page.tsx` — removed `filter: drop-shadow(...)` from `/logo.webp` brand header so the mark renders at full brightness with no glow overlay.
+
+---
+
+## 2026-06-02 — fix: auth — is_active check moved into loginAction; deactivated users never receive a session cookie
+
+- `src/lib/actions/auth.ts` — after successful `signInWithPassword`, calls `getCurrentProfile()`; if `profile.is_active === false`, immediately calls `supabase.auth.signOut()` and returns `{ error: formErrors.accountDeactivated }`. Dashboard layout gate retained as defence-in-depth.
+- `src/lib/validations/form-errors.ts` — `accountDeactivated` key added: "Your account has been deactivated. Please contact your administrator."
+- `src/app/(auth)/CLAUDE.md` — `is_active` gate section updated to document the two-layer defence (loginAction + dashboard layout).
+
+---
+
+## 2026-06-02 — design: auth pages — dark card redesign, unified branding, Eye/EyeOff on all password fields, strength bar on /update-password, is_active gate on dashboard layout, session-aware root redirect
+
+- `src/app/(auth)/layout.tsx` — removed noise texture div (SVG data URI, parse cost not worth it) and both `.eia-auth-line-1/2` divs; added `backgroundColor: var(--theme-canvas)` on root div to prevent white flash; kept both orb divs and both radial glow divs.
+- `src/app/globals.css` — removed `.eia-auth-line-1` and `.eia-auth-line-2` CSS definitions; added `.eia-auth-card` (dark card shell: `--theme-sidebar-hover-bg` bg, `--theme-sidebar-border` border, `--radius-xl`, `--shadow-3`), `.eia-input-auth` (canvas-surface input for dark card forms; focus ring via `--theme-accent` border + `--theme-accent-surface` glow), `.eia-auth-link` (accent link at 65% opacity at rest, full accent on hover).
+- `src/app/(auth)/login/login-form.tsx` — full rebuild: `.eia-auth-card` card, unified brand header (LiaGlyph 32px breathing + "Eia" Playfair text-3xl + "Indulge Internal" label), `.eia-input-auth` on both fields, Eye/EyeOff on password field, dark-surface danger banner (`--color-danger-dark-*` tokens), `.eia-auth-link` on forgot link, `maxWidth: 26rem`; removed `/logo.webp` and `Image` import entirely.
+- `src/app/(auth)/forgot-password/forgot-password-form.tsx` — same card + input + header treatment; dark danger banner; success state text in `--theme-sidebar-text`; all links use `.eia-auth-link`.
+- `src/app/(auth)/update-password/update-password-form.tsx` — same card + input + header treatment; Eye/EyeOff shared across both password fields (one `showNew` state); new-password field is controlled so `PasswordStrengthBar` can read it; strength bar placed below new-password field; dark danger banner.
+- `src/app/(auth)/update-password/page.tsx` — `InvalidLinkCard` converted to `.eia-auth-card` dark treatment; back-to-sign-in link uses `.eia-auth-link`; `maxWidth: 26rem`.
+- `src/components/ui/PasswordStrengthBar.tsx` — new reusable UI primitive; extracted from `PasswordChangeForm`; props: `password: string`; 4-segment bar with danger/warning/info/success colours; returns null when empty.
+- `src/components/profile/PasswordChangeForm.tsx` — inline strength bar logic replaced with `<PasswordStrengthBar password={next} />`.
+- `src/app/page.tsx` — converted to async server component; calls `createClient()` → `getUser()`; authenticated users redirect to `/dashboard`, unauthenticated to `/login`.
+- `src/app/(dashboard)/layout.tsx` — added `if (!profile.is_active) redirect('/login')` after profile fetch; closes gap where deactivated user with valid cookie could access dashboard.
+- `src/app/(auth)/CLAUDE.md` — created: dark card pattern, new CSS classes, unified brand header spec, error banner dark tokens, Eye/EyeOff rule, `is_active` gate rationale, `PasswordStrengthBar` reference.
+- `CLAUDE.md` — `PasswordStrengthBar` noted under auth-specific primitives.
+
+---
+
+## 2026-06-02 — perf: tasks — updateTaskStatusAction and deleteTaskAction invalidate personalPage1 / giaList / groupSubtasks cache on write
+
+- `src/lib/actions/tasks.ts` — `updateTaskStatusAction`: added `task_category` to the SELECT already fetched for `canMutateTask`; replaced single-branch `group_subtask` del with three-branch fire-and-forget invalidation: `personal` → `task:personal:page1:{callerId}`, `gia_followup` → `task:gia:{callerId}:{role}:{domain}`, `group_subtask` → `task:subtasks:{groupId}:{callerId}`.
+- `src/lib/actions/tasks.ts` — `deleteTaskAction`: added `task_category` to the SELECT already fetched for the auth check; replaced single-branch `group_subtask` del with the same three-branch pattern, applied after the DB DELETE succeeds (Trigger.dev cancel still runs before the delete per invariant 15).
+- Pre-mortem accepted: Gia list del uses `caller.id` / `caller.role` / `caller.domain`, not `task.assigned_to`. When a manager deletes an agent's Gia task, the manager's cache slot is cleared (correct — manager may have the Gia tab open); the agent's slot expires at 60s TTL. No additional DB fetch required.
+
+---
+
+## 2026-06-02 — perf: tasks — Redis cache-aside on tab-load functions + missing invalidations wired
+
+- `src/lib/constants/redis-keys.ts` — `REDIS_KEYS.task` namespace added with five key builders: `subtasks`, `remarks`, `giaList`, `groupList`, `personalPage1`; flat legacy aliases retained for existing callers. TTL constants `TASK_GIA_TTL = 60`, `TASK_GROUP_LIST_TTL = 120`, `TASK_PERSONAL_PAGE1_TTL = 30` added.
+- `src/lib/services/tasks-service.ts` — Redis cache-aside added to three critical-path tab-load functions: `getGiaTasksForUser` (60s, key includes userId+role+domain), `getGroupTasks` unfiltered (120s, key is domain+role — shared slot per role×domain pair; filtered calls bypass cache), `getPersonalTasks` page-1 only (30s, key is userId; pages 2+ bypass cache entirely — cursor params must all be null AND no active filters).
+- `src/lib/services/tasks-service.ts` — `getGroupTasks` signature extended with optional `cacheHint?: { domain: string; role: string }` second param — used for key construction only, never passed to the RPC.
+- `src/app/(dashboard)/tasks/TasksAsync.tsx` — `getGroupTasks({}, { domain: callerDomain, role: callerRole })` — forwards caller identity as cache hint.
+- `src/lib/actions/tasks.ts` — `createPersonalTaskAction` now dels `task:personal:page1:{assignedTo}` after insert; `createGroupTaskAction` now dels `task:group-list:{domain}:{role}` after insert.
+- Pre-existing invalidations (confirmed already present): `createSubtaskAction` dels `taskSubtasks`; `addTaskRemarkAction` dels `taskRemarks`; `suppressTaskRemarkAction` dels `taskRemarks`.
+- `src/app/(dashboard)/tasks/CLAUDE.md` — Redis cache section added: key table, TTL values, page-1-only rule for personal tasks, full invalidation table.
+- `src/lib/CLAUDE.md` — `tasks-service.ts` services registry row updated to reflect all 5 cached functions.
+
+---
+
 ## 2026-06-02 — ux: leads — row prefetch on hover + optimistic status updates in StatusActionPanel
 
 - `src/components/leads/LeadsTable.tsx` — `onMouseEnter` on each table row calls `router.prefetch('/leads/${slug ?? id}')` using the existing `useRouter` instance; no new hook call per row.

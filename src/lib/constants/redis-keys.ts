@@ -26,6 +26,21 @@ export const REDIS_KEYS = {
       `perf:agent-detail:${agentId}:${dateFrom}:${dateTo}`,
   },
 
+  task: {
+    subtasks: (groupId: string, userId: string) =>
+      `task:subtasks:${groupId}:${userId}`,
+    remarks: (taskId: string) =>
+      `task:remarks:${taskId}`,
+    giaList: (userId: string, role: string, domain: string) =>
+      `task:gia:${userId}:${role}:${domain}`,
+    groupList: (domain: string, role: string) =>
+      `task:group-list:${domain}:${role}`,
+    personalPage1: (userId: string) =>
+      `task:personal:page1:${userId}`,
+  },
+
+  // Legacy flat aliases — kept for callers that haven't migrated to task.* yet.
+  // Remove once all call sites use REDIS_KEYS.task.subtasks / task.remarks.
   taskSubtasks: (groupId: string, userId: string) =>
     `task:subtasks:${groupId}:${userId}`,
 
@@ -149,6 +164,10 @@ export const CAMPAIGN_LIST_TTL         = 120;
 export const CAMPAIGN_DETAIL_TTL       = 120;
 export const CAMPAIGN_DISTRIBUTION_TTL = 120;
 export const CAMPAIGN_AD_CREATIVE_TTL  = 300;
+
+export const TASK_GIA_TTL           = 60;
+export const TASK_GROUP_LIST_TTL    = 120;
+export const TASK_PERSONAL_PAGE1_TTL = 30;
 
 export const REDIS_TTL = {
   TASK_SUBTASKS:           30,

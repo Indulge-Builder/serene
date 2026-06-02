@@ -79,6 +79,7 @@ export async function setAgentShiftAction(
     parsed.data.agentId,
     parsed.data.shiftStart,
     parsed.data.shiftEnd,
+    parsed.data.shiftDays ?? null,
   );
   if (result.error) return { data: null, error: formErrors.generic };
 

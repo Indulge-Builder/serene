@@ -340,7 +340,7 @@ Same `filters` object keeps strip and list aligned.
 
 - **Left:** Playfair italic full name; mono phone; domain `status-pill` via `DOMAIN_LABELS`.
 - **Centre:** Deal type chip (membership accent surface); duration chip if membership + `deal_duration`.
-- **Right:** Playfair accent `formatCurrency(deal_amount)`; “Won {formatDate(status_changed_at, 'dd MMM yyyy')}”; assignee `full_name`.
+- **Right:** Geist Mono accent `formatCurrency(deal_amount)` (`tabular-nums`); “Won {formatDate(status_changed_at, 'dd MMM yyyy')}”; assignee `full_name`.
 
 **Link:** `href={/leads/${deal.slug ?? deal.id}}` — dossier route, **never** `/deals/[id]`. `slug ?? id` because slugs were backfilled in migrations 0045–0046; pre-migration or edge rows may have `slug: null`; UUID always works.
 
@@ -352,7 +352,7 @@ Four cells in a horizontal paper strip: **Total Deals**, **Total Revenue**, **Me
 
 - Counts: `formatCount`
 - Revenue: `formatCurrency` (INR `en-IN` default)
-- Values: Playfair, `--theme-accent`; labels: `label-micro`
+- Values: `var(--font-mono)`, `tabular-nums`, `--theme-accent`; labels: `label-micro`
 
 ### 7f. `DealsSkeleton`
 

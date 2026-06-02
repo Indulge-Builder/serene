@@ -1,6 +1,6 @@
 # Tasks Page — Full Intelligence Document
 
-Last verified: 2026-06-01
+Last verified: 2026-06-02
 
 ---
 
@@ -303,16 +303,16 @@ Realtime: **enabled**.
 
 | Action | Zod schema | Auth | DB | Side effects | `adminClient`? |
 | --- | --- | --- | --- | --- | --- |
-| `createPersonalTaskAction` | `CreatePersonalTaskSchema` | Session; manager+ to assign others | INSERT tasks | `task_assigned` notification; `scheduleTaskReminder` if due | Yes |
-| `createGroupTaskAction` | `CreateGroupTaskSchema` | manager+; manager domain locked | INSERT task_groups | `revalidatePath('/tasks')` | Yes |
-| `createSubtaskAction` | `CreateSubtaskSchema` | Group exists; agent domain check | INSERT tasks | notification; reminder; `revalidatePath('/tasks')` | Yes |
-| `updateTaskStatusAction` | `UpdateTaskStatusSchema` | `canMutateTask` | UPDATE status/completed_at | `cancelTaskReminder` on terminal | Yes |
-| `updateTaskAction` | `UpdateTaskSchema` | `canMutateTask` | Partial UPDATE | Reminder reschedule on due change | Yes |
-| `deleteTaskAction` | `DeleteTaskSchema` | Agent: both created_by AND assigned_to; else open | DELETE | **Awaited** `cancelTaskReminder` before delete | Yes |
+| `createPersonalTaskAction` | `CreatePersonalTaskSchema` | Session; manager+ to assign others | INSERT tasks | `task_assigned` notification; `scheduleTaskReminder` if due; del `task:personal:page1:{assignedTo}` | Yes |
+| `createGroupTaskAction` | `CreateGroupTaskSchema` | manager+; manager domain locked | INSERT task_groups | `revalidatePath('/tasks')`; del `task:group-list:{domain}:{role}` | Yes |
+| `createSubtaskAction` | `CreateSubtaskSchema` | Group exists; agent domain check | INSERT tasks | notification; reminder; `revalidatePath('/tasks')`; del `task:subtasks:{groupId}:{callerId}` | Yes |
+| `updateTaskStatusAction` | `UpdateTaskStatusSchema` | `canMutateTask` | UPDATE status/completed_at | `cancelTaskReminder` on terminal; del by `task_category`: `personal` → `task:personal:page1:{callerId}`; `gia_followup` → `task:gia:{callerId}:{role}:{domain}`; `group_subtask` → `task:subtasks:{groupId}:{callerId}` | Yes |
+| `updateTaskAction` | `UpdateTaskSchema` | `canMutateTask` | Partial UPDATE | Reminder reschedule on due change; del `task:subtasks:{groupId}:{callerId}` if group subtask | Yes |
+| `deleteTaskAction` | `DeleteTaskSchema` | Agent: both created_by AND assigned_to; else open | DELETE | **Awaited** `cancelTaskReminder` before delete; del by `task_category` (same three-branch as `updateTaskStatusAction`) | Yes |
 | `updateChecklistAction` | `UpdateChecklistSchema` | `canMutateTask` | UPDATE attachments | Excluded from audit trigger | Yes |
 | `updateTaskTagsAction` | `UpdateTaskTagsSchema` | `canMutateTask` | UPDATE tags | — | Yes |
-| `addTaskRemarkAction` | `AddTaskRemarkSchema` | View = post (tasks SELECT) | RPC `add_task_remark_with_status` | — | Yes (RPC) |
-| `suppressTaskRemarkAction` | `SuppressTaskRemarkSchema` | admin/founder | UPDATE 3 suppression cols only | — | Yes |
+| `addTaskRemarkAction` | `AddTaskRemarkSchema` | View = post (tasks SELECT) | RPC `add_task_remark_with_status` | del `task:remarks:{taskId}` | Yes (RPC) |
+| `suppressTaskRemarkAction` | `SuppressTaskRemarkSchema` | admin/founder | UPDATE 3 suppression cols only | del `task:remarks:{taskId}` | Yes |
 | `getGroupSubtasksAction` | — | Session | read service | — | No |
 | `getPersonalTasksAction` | filters | Session | read service | — | No |
 | `getPersonalTaskTagsAction` | — | Session | read service | — | No |
@@ -322,6 +322,10 @@ Realtime: **enabled**.
 **`adminClient` why:** `tasks` / `task_groups` have no INSERT RLS; writes bypass RLS so the application layer must enforce the same rules RLS would (`canMutateTask`, role checks, view = post gate).
 
 **`canMutateTask`:** admin/founder always; assignee or creator; manager + group in domain.
+
+**Redis invalidation — three-branch rule (2026-06-02):** `updateTaskStatusAction` and `deleteTaskAction` read `task_category` from the task object already fetched by `canMutateTask` (no extra DB round-trip). `personal` → del caller's `personalPage1` key; `gia_followup` → del caller's `giaList` key (uses `caller.id`/`role`/`domain` — not `task.assigned_to`; manager's slot cleared, agent's expires at 60s TTL); `group_subtask` → del caller's `subtasks` key for that group. All dels are fire-and-forget (`void redis.del(...).catch(() => {})`).
+
+**Redis key namespace:** All task keys use `REDIS_KEYS.task.*` builders from `src/lib/constants/redis-keys.ts`. Legacy flat aliases (`REDIS_KEYS.taskSubtasks`, `REDIS_KEYS.taskRemarks`) are kept for backward compatibility but new code must use the namespaced form.
 
 ---
 

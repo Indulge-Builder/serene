@@ -22,7 +22,7 @@
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { redis } from '@/lib/redis';
-import { REDIS_KEYS, REDIS_TTL } from '@/lib/constants/redis-keys';
+import { REDIS_KEYS, REDIS_TTL, TASK_GIA_TTL, TASK_GROUP_LIST_TTL, TASK_PERSONAL_PAGE1_TTL } from '@/lib/constants/redis-keys';
 import type {
   Task,
   TaskGroup,
@@ -126,6 +126,25 @@ export async function getPersonalTasks(
 
   const cursor = filters.cursor ?? null;
 
+  // Cache page 1 only — cursor pages have unstable keys and go straight to DB.
+  // Page 1 = all three cursor params are null (no prior page).
+  const isPage1 =
+    cursor === null &&
+    (filters.status   === undefined || filters.status.length   === 0) &&
+    (filters.priority === undefined || filters.priority.length === 0) &&
+    (filters.tags     === undefined || filters.tags.length     === 0) &&
+    !filters.due_before;
+
+  if (isPage1) {
+    const cacheKey = REDIS_KEYS.task.personalPage1(userId);
+    try {
+      const cached = await redis.get<PersonalTasksResult>(cacheKey);
+      if (cached !== null) return cached;
+    } catch (e) {
+      console.error('[tasks-service] getPersonalTasks Redis get error:', e);
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any).rpc('get_personal_tasks', {
     p_user_id:          userId,
@@ -155,7 +174,19 @@ export async function getPersonalTasks(
     ? { due_at: lastRow.due_at ?? null, id: lastRow.id }
     : null;
 
-  return { tasks: page, hasMore, nextCursor };
+  const result: PersonalTasksResult = { tasks: page, hasMore, nextCursor };
+
+  // Populate page-1 cache on success — non-fatal.
+  if (isPage1) {
+    const cacheKey = REDIS_KEYS.task.personalPage1(userId);
+    try {
+      await redis.setex(cacheKey, TASK_PERSONAL_PAGE1_TTL, result);
+    } catch (e) {
+      console.error('[tasks-service] getPersonalTasks Redis setex error:', e);
+    }
+  }
+
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -192,10 +223,36 @@ type GroupTaskSummaryRaw = {
  * Uses React cache() for per-request memoisation. Cannot use unstable_cache
  * because createClient() calls cookies() which Next.js forbids inside
  * unstable_cache closures. See src/lib/CLAUDE.md § unstable_cache + cookies().
+ *
+ * domain and role are used for the Redis cache key only — they are NOT passed
+ * to the RPC. The RPC derives the caller's domain and role from get_user_domain()
+ * and get_user_role() inside Postgres (SECURITY DEFINER). Passing them here
+ * would allow client-supplied values to influence scoping — never do that.
+ *
+ * Redis cache: 120s, keyed by domain + role (managers in same domain+role share
+ * a slot — correct, since the RPC returns domain-scoped groups). Omit domain and
+ * role when filters are active: filter combinations are too numerous to cache here,
+ * and the group list is rarely filtered in production.
  */
 export const getGroupTasks = cache(async (
   filters: GroupTaskFilters = {},
+  cacheHint?: { domain: string; role: string },
 ): Promise<TaskGroupRow[]> => {
+  // Cache only unfiltered fetches — keyed by domain + role.
+  const isUnfiltered =
+    (filters.status   === undefined || filters.status.length   === 0) &&
+    (filters.priority === undefined || filters.priority.length === 0);
+
+  if (isUnfiltered && cacheHint) {
+    const cacheKey = REDIS_KEYS.task.groupList(cacheHint.domain, cacheHint.role);
+    try {
+      const cached = await redis.get<TaskGroupRow[]>(cacheKey);
+      if (cached !== null) return cached;
+    } catch (e) {
+      console.error('[tasks-service] getGroupTasks Redis get error:', e);
+    }
+  }
+
   const supabase = await createClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -236,7 +293,7 @@ export const getGroupTasks = cache(async (
     }
   }
 
-  return summaries.map((r): TaskGroupRow => {
+  const result = summaries.map((r): TaskGroupRow => {
     // Slice to max 4 assignee previews in the service layer (not in SQL)
     const assignee_previews: AssigneeSlim[] = (r.assignee_ids ?? [])
       .slice(0, 4)
@@ -264,6 +321,18 @@ export const getGroupTasks = cache(async (
       assignee_previews,
     };
   });
+
+  // Populate cache on success — non-fatal. Only when unfiltered + hint present.
+  if (isUnfiltered && cacheHint) {
+    const cacheKey = REDIS_KEYS.task.groupList(cacheHint.domain, cacheHint.role);
+    try {
+      await redis.setex(cacheKey, TASK_GROUP_LIST_TTL, result);
+    } catch (e) {
+      console.error('[tasks-service] getGroupTasks Redis setex error:', e);
+    }
+  }
+
+  return result;
 });
 
 // ─────────────────────────────────────────────
@@ -551,6 +620,16 @@ export async function getGiaTasksForUser(
   role:   string,
   domain: string,
 ): Promise<GiaTask[]> {
+  const cacheKey = REDIS_KEYS.task.giaList(userId, role, domain);
+
+  // Cache-aside: try Redis first, fall through to RPC on any error or miss.
+  try {
+    const cached = await redis.get<GiaTask[]>(cacheKey);
+    if (cached !== null) return cached;
+  } catch (e) {
+    console.error('[tasks-service] getGiaTasksForUser Redis get error:', e);
+  }
+
   const supabase = await createClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -568,7 +647,16 @@ export async function getGiaTasksForUser(
     return [];
   }
 
-  return (data ?? []) as GiaTask[];
+  const result = (data ?? []) as GiaTask[];
+
+  // Populate cache on success — non-fatal.
+  try {
+    await redis.setex(cacheKey, TASK_GIA_TTL, result);
+  } catch (e) {
+    console.error('[tasks-service] getGiaTasksForUser Redis setex error:', e);
+  }
+
+  return result;
 }
 
 // ─────────────────────────────────────────────

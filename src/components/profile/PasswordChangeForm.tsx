@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { Button } from '@/components/ui/Button';
+import { PasswordStrengthBar } from '@/components/ui/PasswordStrengthBar';
 import { createClient } from "@/lib/supabase/client";
 
 type State =
@@ -19,26 +20,6 @@ export function PasswordChangeForm() {
   const [showNext,  setShowNext]  = useState(false);
   const [formState, setFormState] = useState<State>({ status: "idle" });
 
-  // Strength: 0–4 based on length and character classes present.
-  function strength(pw: string): number {
-    if (!pw) return 0;
-    let score = 0;
-    if (pw.length >= 8)  score++;
-    if (pw.length >= 12) score++;
-    if (/[A-Z]/.test(pw)) score++;
-    if (/[0-9!@#$%^&*]/.test(pw)) score++;
-    return score;
-  }
-
-  const strengthScore  = strength(next);
-  const strengthLabels = ["", "Weak", "Fair", "Good", "Strong"];
-  const strengthColors = [
-    "transparent",
-    "var(--color-danger)",
-    "var(--color-warning)",
-    "var(--color-info)",
-    "var(--color-success)",
-  ];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -131,44 +112,7 @@ export function PasswordChangeForm() {
           />
 
           {/* Strength bar */}
-          {next.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-              <div
-                style={{
-                  display: "flex",
-                  gap:     "var(--space-1)",
-                }}
-              >
-                {[1, 2, 3, 4].map((level) => (
-                  <div
-                    key={level}
-                    style={{
-                      flex:         1,
-                      height:       "3px",
-                      borderRadius: "var(--radius-full)",
-                      background:   strengthScore >= level
-                        ? strengthColors[strengthScore]
-                        : "var(--theme-paper-border)",
-                      transition:   "background var(--duration-base) var(--ease-in-out)",
-                    }}
-                  />
-                ))}
-              </div>
-              {strengthScore > 0 && (
-                <p
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize:   "var(--text-xs)",
-                    color:      strengthColors[strengthScore],
-                    margin:     0,
-                    transition: "color var(--duration-base) var(--ease-in-out)",
-                  }}
-                >
-                  {strengthLabels[strengthScore]}
-                </p>
-              )}
-            </div>
-          )}
+          <PasswordStrengthBar password={next} />
         </div>
 
         {/* Confirm new password */}

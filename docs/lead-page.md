@@ -497,6 +497,8 @@ main
 
 **Column prefs:** `useLeadColumnPreferences(userId)` — key `eia:leads:columns:${userId}:v1`. Locked columns always visible; drag reorder via `@dnd-kit/sortable` in `LeadColumnPicker`; locked columns pinned to front on reorder.
 
+**Prefetch on hover:** Each `LeadRow` `<tr>` calls `router.prefetch('/leads/${lead.slug ?? lead.id}')` on `onMouseEnter` — same href as the `onClick` push. Uses the single `useRouter()` instance at the top of `LeadRow`. Next.js deduplicates repeated prefetch calls internally; no debounce needed.
+
 **Empty state:**
 
 - `hasActiveFilters === true`: heading *"Nothing matches these filters."*; sub *"Try adjusting or clearing your filters."*  
@@ -570,6 +572,10 @@ Returns `null` if caller cannot act (same as edit gate for actions).
 
 Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
+**Optimistic status (`useOptimistic`):** The status pill and all button conditionals read from `optimisticStatus` (`useOptimistic(lead.status)`), not `lead.status` directly. Every status-changing path calls `setOptimisticStatus(newStatus)` inside `startTransition` before the action fires, then `throw new Error(result.error)` on failure — the throw is what signals React to revert `optimisticStatus` back to `lead.status` (actions return `{ data, error }` and never throw natively). `isPending` from `useTransition` is the disabled/loading signal for all buttons — no separate `isLoading` state.
+
+**Called button — `new → touched` optimistic advance:** The Called `onClick` checks `lead.status === 'new'` (server truth, not `optimisticStatus`) and if true fires its own `startTransition(() => setOptimisticStatus('touched'))` before opening `CalledModal`. The parent owns this decision; `CalledModal` has no `initialStatus` or callback props. The `add_lead_call_note` RPC always auto-advances `new → touched` — that invariant is what makes the pre-emptive set safe. Using `lead.status` (not `optimisticStatus`) for the guard prevents a double-advance race on mid-transition re-renders.
+
 ### 7c. LeadInfoCard
 
 **Read-only:** Full Name, Phone, Call count, Received, Last modified — not inline-edited (name/phone are not mutable in UI).
@@ -608,7 +614,7 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 **Activities:** `call_logged` `{ outcome, call_count }`; `note_added` `{ call_outcome }`; if status was `new`, also `status_changed` `{ old_status: 'new', new_status: 'touched' }`.
 
-**Status:** Auto `new` → `touched` when first call on `new` lead (in RPC).
+**Status:** Auto `new` → `touched` when first call on `new` lead (in RPC). The optimistic pill update for this transition is handled entirely by `StatusActionPanel` before the modal opens — `CalledModal` has no `initialStatus` or status-callback props.
 
 ### 7g. LeadNotesInput vs LeadNotesSection
 

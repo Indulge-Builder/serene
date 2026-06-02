@@ -27,7 +27,7 @@ import {
   getActivityRefreshRules,
 } from '@/lib/constants/sla';
 import type { SlaRuleCode }                         from '@/lib/constants/sla';
-import { nextBusinessDeadline }                     from '@/lib/utils/sla';
+import { nextBusinessDeadline, buildAgentShiftOverride } from '@/lib/utils/sla';
 import {
   createSlaTimer,
   cancelSlaTimersForLeadInDb,
@@ -36,6 +36,7 @@ import {
   markSlaTimerFired,
   getSlaTimerForLeadAndRule,
 } from '@/lib/services/sla-service';
+import { getAgentRoutingConfig } from '@/lib/services/agent-routing-service';
 import { createNotification }                       from '@/lib/services/notifications-service';
 import {
   sendSlaAgentNotification,
@@ -146,13 +147,25 @@ export async function scheduleSlaTimersForLead(input: unknown): Promise<ActionRe
 
   const fromDate = new Date(assignedAt);
 
-  // 6. Schedule each applicable rule
+  // 6. Resolve agent shift override once (used by all A-rules in this batch)
+  const agentRoutingConfig = await getAgentRoutingConfig(assignedTo);
+  const agentShiftOverride = agentRoutingConfig
+    ? buildAgentShiftOverride(
+        agentRoutingConfig.shift_start,
+        agentRoutingConfig.shift_end,
+        agentRoutingConfig.shift_days,
+      )
+    : null;
+
+  // 7. Schedule each applicable rule
   const { scheduleLeadSlasTask } = await import('@/trigger/lead-sla');
 
   await Promise.allSettled(
     applicableRules.map(async (ruleCode) => {
-      const rule    = SLA_RULES[ruleCode];
-      const fireAt  = nextBusinessDeadline(fromDate, rule.businessMinutes);
+      const rule = SLA_RULES[ruleCode];
+      // Agent rules use agent's personal shift window; manager rules use global BUSINESS_HOURS
+      const shiftOverride = rule.recipient === 'agent' ? (agentShiftOverride ?? undefined) : undefined;
+      const fireAt = nextBusinessDeadline(fromDate, rule.businessMinutes, shiftOverride);
 
       // Create timer row in DB first
       await createSlaTimer(leadId, ruleCode, fireAt);
@@ -232,6 +245,16 @@ export async function refreshActivitySlaTimers(input: unknown): Promise<ActionRe
   const managerIds = managers.map((m) => m.id);
   const now        = new Date();
 
+  // Resolve agent shift override once (used by all A-rules in this batch)
+  const agentRoutingConfig = await getAgentRoutingConfig(assignedTo);
+  const agentShiftOverride = agentRoutingConfig
+    ? buildAgentShiftOverride(
+        agentRoutingConfig.shift_start,
+        agentRoutingConfig.shift_end,
+        agentRoutingConfig.shift_days,
+      )
+    : null;
+
   // Re-schedule only the rules that apply to the current status
   const applicableRefreshRules = refreshRuleCodes.filter((code) =>
     getRulesForStatus(status).includes(code),
@@ -239,8 +262,10 @@ export async function refreshActivitySlaTimers(input: unknown): Promise<ActionRe
 
   await Promise.allSettled(
     applicableRefreshRules.map(async (ruleCode) => {
-      const rule   = SLA_RULES[ruleCode];
-      const fireAt = nextBusinessDeadline(now, rule.businessMinutes);
+      const rule = SLA_RULES[ruleCode];
+      // Agent rules use agent's personal shift window; manager rules use global BUSINESS_HOURS
+      const shiftOverride = rule.recipient === 'agent' ? (agentShiftOverride ?? undefined) : undefined;
+      const fireAt = nextBusinessDeadline(now, rule.businessMinutes, shiftOverride);
 
       await createSlaTimer(leadId, ruleCode, fireAt);
       await scheduleLeadSlasTask(leadId, ruleCode, fireAt, assignedTo, managerIds);

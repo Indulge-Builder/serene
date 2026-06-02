@@ -25,8 +25,79 @@ interface AgentSettingsTableProps {
 interface ShiftState {
   start: string;
   end:   string;
+  days:  number[];
   error: string | null;
 }
+
+// ── WorkDayPicker ────────────────────────────────────────────────────────────
+// Display order: Mon→Sat→Sun. Storage uses raw JS day-of-week values (0=Sun…6=Sat).
+
+const DAY_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const DAY_LABELS: Record<number, string> = {
+  0: "Su", 1: "Mo", 2: "Tu", 3: "We", 4: "Th", 5: "Fr", 6: "Sa",
+};
+
+interface WorkDayPickerProps {
+  days:     number[];
+  onChange: (days: number[]) => void;
+  disabled?: boolean;
+}
+
+function WorkDayPicker({ days, onChange, disabled }: WorkDayPickerProps) {
+  function toggle(day: number) {
+    if (disabled) return;
+    if (days.includes(day)) {
+      // Guard: cannot deselect the last remaining day
+      if (days.length === 1) return;
+      onChange(days.filter((d) => d !== day));
+    } else {
+      onChange([...days, day]);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", gap: "var(--space-1)" }}>
+      {DAY_DISPLAY_ORDER.map((day) => {
+        const selected = days.includes(day);
+        return (
+          <button
+            key={day}
+            type="button"
+            onClick={() => toggle(day)}
+            disabled={disabled}
+            aria-pressed={selected}
+            aria-label={`${selected ? "Deselect" : "Select"} ${DAY_LABELS[day]}`}
+            style={{
+              width:          "26px",
+              height:         "26px",
+              borderRadius:   "var(--radius-xs)",
+              border:         selected
+                ? "1px solid var(--theme-accent)"
+                : "1px solid var(--theme-paper-border)",
+              background:     selected ? "var(--theme-accent-surface)" : "transparent",
+              color:          selected ? "var(--theme-accent)" : "var(--theme-text-tertiary)",
+              fontFamily:     "var(--font-sans)",
+              fontSize:       "var(--text-2xs)",
+              fontWeight:     selected ? "var(--weight-semibold)" : "var(--weight-normal)",
+              cursor:         disabled ? "not-allowed" : "pointer",
+              opacity:        disabled ? 0.4 : 1,
+              padding:        0,
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              transition:     "background var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)",
+              flexShrink:     0,
+            }}
+          >
+            {DAY_LABELS[day]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function computeActiveHours(start: string | null, end: string | null): string {
   if (!start || !end) return "—";
@@ -41,10 +112,14 @@ function computeActiveHours(start: string | null, end: string | null): string {
 
 const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+const DEFAULT_WORK_DAYS = [1, 2, 3, 4, 5, 6]; // Mon–Sat
+
 const POOL_FILTER_ITEMS = [
   { id: "in_pool",  label: "In pool" },
   { id: "out_pool", label: "Out of pool" },
 ] as const;
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 export function AgentSettingsTable({
   initialRoster,
@@ -54,13 +129,13 @@ export function AgentSettingsTable({
   const isPrivileged     = callerRole === "admin" || callerRole === "founder";
   const showDomainFilter = isPrivileged;
 
-  const [roster, setRoster]           = useState<AgentRosterRow[]>(initialRoster);
-  const [search, setSearch]           = useState("");
+  const [roster, setRoster]             = useState<AgentRosterRow[]>(initialRoster);
+  const [search, setSearch]             = useState("");
   const [domainFilter, setDomainFilter] = useState<string>("all");
-  const [poolFilter, setPoolFilter]   = useState<string>("all");
-  const [pendingIds, setPendingIds]  = useState<Set<string>>(new Set());
-  const [savingIds, setSavingIds]    = useState<Set<string>>(new Set());
-  const [, startTransition]          = useTransition();
+  const [poolFilter, setPoolFilter]     = useState<string>("all");
+  const [pendingIds, setPendingIds]     = useState<Set<string>>(new Set());
+  const [savingIds, setSavingIds]       = useState<Set<string>>(new Set());
+  const [, startTransition]             = useTransition();
 
   const [shifts, setShifts] = useState<Record<string, ShiftState>>(() => {
     const map: Record<string, ShiftState> = {};
@@ -68,6 +143,7 @@ export function AgentSettingsTable({
       map[agent.id] = {
         start: normalizeTimeHHMM(agent.shift_start) ?? "",
         end:   normalizeTimeHHMM(agent.shift_end) ?? "",
+        days:  agent.shift_days ?? DEFAULT_WORK_DAYS,
         error: null,
       };
     }
@@ -148,7 +224,7 @@ export function AgentSettingsTable({
   // ── Shift editing ─────────────────────────────────────────────────────────
 
   function handleTimeChange(agent: AgentRosterRow, field: "start" | "end", value: string | null) {
-    const currentState = shifts[agent.id] ?? { start: "", end: "", error: null };
+    const currentState = shifts[agent.id] ?? { start: "", end: "", days: DEFAULT_WORK_DAYS, error: null };
     const normalised = value ? normalizeTimeHHMM(value) : null;
     const next = {
       start: field === "start" ? (normalised ?? "") : currentState.start,
@@ -156,13 +232,22 @@ export function AgentSettingsTable({
     };
     setShifts((prev) => ({
       ...prev,
-      [agent.id]: { ...next, error: null },
+      [agent.id]: { ...prev[agent.id]!, ...next, error: null },
     }));
-    validateAndSave(agent, next.start, next.end);
+    validateAndSave(agent, next.start, next.end, currentState.days);
   }
 
-  function validateAndSave(agent: AgentRosterRow, start: string, end: string) {
-    if (!start && !end) { saveShift(agent.id, null, null); return; }
+  function handleDaysChange(agent: AgentRosterRow, newDays: number[]) {
+    const currentState = shifts[agent.id] ?? { start: "", end: "", days: DEFAULT_WORK_DAYS, error: null };
+    setShifts((prev) => ({
+      ...prev,
+      [agent.id]: { ...prev[agent.id]!, days: newDays, error: null },
+    }));
+    validateAndSave(agent, currentState.start, currentState.end, newDays);
+  }
+
+  function validateAndSave(agent: AgentRosterRow, start: string, end: string, days: number[]) {
+    if (!start && !end) { saveShift(agent.id, null, null, null); return; }
 
     if ((start && !end) || (!start && end)) {
       setShifts((prev) => ({
@@ -188,23 +273,29 @@ export function AgentSettingsTable({
       return;
     }
 
-    saveShift(agent.id, start, end);
+    saveShift(agent.id, start, end, days);
   }
 
   function handleClear(agentId: string) {
     setShifts((prev) => ({
       ...prev,
-      [agentId]: { start: "", end: "", error: null },
+      [agentId]: { start: "", end: "", days: DEFAULT_WORK_DAYS, error: null },
     }));
-    saveShift(agentId, null, null);
+    // Pass null for times and days — DB stores null to mean "use global BUSINESS_HOURS"
+    saveShift(agentId, null, null, null);
   }
 
-  function saveShift(agentId: string, start: string | null, end: string | null) {
+  function saveShift(agentId: string, start: string | null, end: string | null, days: number[] | null) {
     if (savingIds.has(agentId)) return;
     setSavingIds((prev) => new Set(prev).add(agentId));
 
     startTransition(async () => {
-      const result = await setAgentShiftAction({ agentId, shiftStart: start, shiftEnd: end });
+      const result = await setAgentShiftAction({
+        agentId,
+        shiftStart: start,
+        shiftEnd:   end,
+        shiftDays:  days,
+      });
       setSavingIds((prev) => {
         const next = new Set(prev);
         next.delete(agentId);
@@ -332,7 +423,7 @@ export function AgentSettingsTable({
       {filtered.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
           {filtered.map((agent, i) => {
-            const state     = shifts[agent.id] ?? { start: "", end: "", error: null };
+            const state     = shifts[agent.id] ?? { start: "", end: "", days: DEFAULT_WORK_DAYS, error: null };
             const isSaving  = savingIds.has(agent.id);
             const isPending = pendingIds.has(agent.id);
             const hasBoth   = !!state.start && !!state.end;
@@ -458,8 +549,8 @@ export function AgentSettingsTable({
                 )}
 
                 {/* Shift controls group */}
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flex: "0 0 auto" }}>
-                  {/* Shift start label */}
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flex: "0 0 auto", flexWrap: "wrap" }}>
+                  {/* Shift start */}
                   <div>
                     <span className="label-micro" style={{ color: "var(--theme-text-tertiary)", display: "block", marginBottom: "var(--space-1)" }}>
                       Shift Start
@@ -473,6 +564,7 @@ export function AgentSettingsTable({
                     />
                   </div>
 
+                  {/* Shift end */}
                   <div>
                     <span className="label-micro" style={{ color: "var(--theme-text-tertiary)", display: "block", marginBottom: "var(--space-1)" }}>
                       Shift End
@@ -502,6 +594,18 @@ export function AgentSettingsTable({
                     }}>
                       {activeHours ?? "—"}
                     </span>
+                  </div>
+
+                  {/* Work days */}
+                  <div>
+                    <span className="label-micro" style={{ color: "var(--theme-text-tertiary)", display: "block", marginBottom: "var(--space-1)" }}>
+                      Work Days
+                    </span>
+                    <WorkDayPicker
+                      days={state.days}
+                      onChange={(newDays) => handleDaysChange(agent, newDays)}
+                      disabled={isSaving}
+                    />
                   </div>
                 </div>
 

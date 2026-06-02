@@ -50,8 +50,28 @@ Standard paper strip (same chrome as Team / Leads): sliders icon + active-count 
 - Save fires on `onBlur` of either field when both fields are filled and valid.
 - If only one field filled: inline hint "Set both times to save" — no action fired.
 - If `shiftEnd ≤ shiftStart`: inline error "End must be after start" — no action fired.
-- Both fields empty + blur = clear the shift (fires action with `null, null`).
-- Clear button: appears when at least one field is set; fires `setAgentShiftAction(id, null, null)`.
+- Both fields empty + blur = clear the shift (fires action with `null, null, null`).
+- Clear button: appears when at least one field is set; fires `setAgentShiftAction(id, null, null, null)`.
+
+## WorkDayPicker
+
+`WorkDayPicker` is an inline sub-component defined at the top of `AgentSettingsTable.tsx`.
+It renders 7 pill buttons in Mon→Sat→Sun display order (`[1,2,3,4,5,6,0]`).
+
+- Each pill is 26×26px, `--radius-xs`, `--text-2xs`.
+- Selected: `--theme-accent-surface` bg + `--theme-accent` border + accent colour text + semibold.
+- Unselected: transparent bg + `--theme-paper-border` + tertiary text.
+- **Last-day guard:** clicking the only selected pill is a no-op (cannot reach zero selected days).
+- Days are stored as JS day-of-week values (0=Sun…6=Sat) — display order is purely cosmetic.
+- On change, `handleDaysChange` calls `validateAndSave` immediately (same debounce-free save pattern as time pickers).
+
+## shift_days — null means "use global BUSINESS_HOURS"
+
+- DB column: `integer[] DEFAULT NULL` on `agent_routing_config`.
+- `null` = agent uses global BUSINESS_HOURS work days (Mon–Sat by default).
+- Non-null array = agent's personal work days override (min 1 element enforced in Zod + UI).
+- Clear button sends `shiftDays: null` to the DB — the UI resets to `DEFAULT_WORK_DAYS` ([1,2,3,4,5,6]) as the display default, but DB stores `null`.
+- `buildAgentShiftOverride` in `src/lib/utils/sla.ts` returns `null` when `shift_days` is null; callers fall back to BUSINESS_HOURS.
 
 ## Shift time contract
 
@@ -64,8 +84,8 @@ Standard paper strip (same chrome as Team / Leads): sliders icon + active-count 
 
 | Role              | Columns |
 |-------------------|---------|
-| manager           | Agent · Shift Start · Shift End · Active Hours · In Pool · Clear |
-| admin / founder   | Agent · Domain · Shift Start · Shift End · Active Hours · In Pool · Clear |
+| manager           | Agent · Shift Start · Shift End · Active Hours · Work Days · In Pool · Clear |
+| admin / founder   | Agent · Domain · Shift Start · Shift End · Active Hours · Work Days · In Pool · Clear |
 
 ## Security (A-09 two-layer)
 

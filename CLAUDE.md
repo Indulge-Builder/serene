@@ -150,6 +150,9 @@ Before building anything, ask:
 Button, Input, Badge/Pill, Card, Avatar, Modal,
 Table, Toggle, Dropdown/Select, Search Bar, Message Bar, Skeleton
 
+**Auth-specific primitives:**
+`PasswordStrengthBar` (`src/components/ui/PasswordStrengthBar.tsx`) — props: `password: string`; renders 4-segment bar with danger→warning→info→success colours; returns null when empty. Used on `/update-password` and `/profile`.
+
 **Icon library:** `lucide-react` exclusively.
 Default size: `w-4 h-4`, stroke: `1.5`.
 Sidebar nav: `w-[15px] h-[15px]` (intentional exception).

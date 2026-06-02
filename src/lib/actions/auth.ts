@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { formErrors } from "@/lib/validations/form-errors";
 import { forgotPasswordSchema, updatePasswordSchema } from "@/lib/validations/auth";
 
@@ -32,6 +33,13 @@ export async function loginAction(
 
   if (error) {
     return { error: formErrors.invalidCredentials };
+  }
+
+  // Reject deactivated accounts immediately — sign them out before any session cookie persists.
+  const profile = await getCurrentProfile();
+  if (profile && !profile.is_active) {
+    await supabase.auth.signOut();
+    return { error: formErrors.accountDeactivated };
   }
 
   redirect("/dashboard");

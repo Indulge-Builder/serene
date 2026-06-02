@@ -8,6 +8,7 @@ export const formErrors = {
   email:                "Please enter a valid email address.",
   passwordTooShort:     "Password must be at least 8 characters.",
   invalidCredentials:   "The email or password you entered is incorrect.",
+  accountDeactivated:   "Your account has been deactivated. Please contact your administrator.",
   generic:              "Something went wrong. Please try again.",
   rateLimited:          "Too many attempts. Please wait a moment before trying again.",
 

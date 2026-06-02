@@ -24,13 +24,14 @@ function StatCell({ label, value }: StatCellProps) {
     >
       <span
         style={{
-          fontFamily:  'var(--font-serif)',
-          fontSize:    'var(--text-2xl)',
-          fontWeight:  'var(--weight-normal)',
-          color:       'var(--theme-accent)',
-          lineHeight:  1.1,
-          marginBottom:'var(--space-1)',
-          whiteSpace:  'nowrap',
+          fontFamily:         'var(--font-mono)',
+          fontSize:           'var(--text-2xl)',
+          fontWeight:         'var(--weight-normal)',
+          fontVariantNumeric: 'tabular-nums',
+          color:              'var(--theme-accent)',
+          lineHeight:         1.1,
+          marginBottom:       'var(--space-1)',
+          whiteSpace:         'nowrap',
         }}
       >
         {value}

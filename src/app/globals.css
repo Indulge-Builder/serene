@@ -130,40 +130,46 @@ body {
   will-change: transform;
 }
 
-/* Diagonal accent line 1 — upper sweep */
-.eia-auth-line-1 {
-  width: 55%;
-  height: 1px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    color-mix(in srgb, var(--theme-accent) 14%, transparent) 30%,
-    color-mix(in srgb, var(--theme-accent) 14%, transparent) 70%,
-    transparent
-  );
-  top: 22%;
-  left: -5%;
-  transform: rotate(-28deg);
-  transform-origin: center;
-  opacity: 0.6;
+/* Auth dark card — sits on canvas, not paper */
+.eia-auth-card {
+  background: var(--theme-sidebar-hover-bg);
+  border: 1px solid var(--theme-sidebar-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-3);
 }
 
-/* Diagonal accent line 2 — lower sweep, subtler */
-.eia-auth-line-2 {
-  width: 38%;
-  height: 1px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    color-mix(in srgb, var(--theme-accent) 10%, transparent) 35%,
-    color-mix(in srgb, var(--theme-accent) 10%, transparent) 65%,
-    transparent
-  );
-  bottom: 28%;
-  right: 3%;
-  transform: rotate(-28deg);
-  transform-origin: center;
-  opacity: 0.4;
+/* Auth dark input — canvas-surface field for dark card forms */
+.eia-input-auth {
+  background: var(--theme-canvas);
+  border: 1px solid var(--theme-sidebar-border);
+  color: var(--theme-canvas-text);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  width: 100%;
+  outline: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-in-out),
+    box-shadow var(--duration-fast) var(--ease-in-out);
+}
+.eia-input-auth::placeholder {
+  color: var(--theme-sidebar-text);
+}
+.eia-input-auth:focus {
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 3px var(--theme-accent-surface);
+}
+
+/* Auth link — accent-coloured, subtle at rest */
+.eia-auth-link {
+  font-size: var(--text-xs);
+  color: color-mix(in srgb, var(--theme-accent) 65%, transparent);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-in-out);
+}
+.eia-auth-link:hover {
+  color: var(--theme-accent);
 }
 
 /* Paper surface texture — design-dna.md Section 6.6

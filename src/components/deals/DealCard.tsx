@@ -180,13 +180,14 @@ export function DealCard({ deal, index }: DealCardProps) {
         <div style={{ flex: '0 0 auto', textAlign: 'right' }}>
           <p
             style={{
-              fontFamily:  'var(--font-serif)',
-              fontSize:    'var(--text-2xl)',
-              fontWeight:  'var(--weight-normal)',
-              color:       'var(--theme-accent)',
-              margin:      '0 0 var(--space-1)',
-              lineHeight:  1,
-              whiteSpace:  'nowrap',
+              fontFamily:         'var(--font-mono)',
+              fontSize:           'var(--text-2xl)',
+              fontWeight:         'var(--weight-normal)',
+              fontVariantNumeric: 'tabular-nums',
+              color:              'var(--theme-accent)',
+              margin:             '0 0 var(--space-1)',
+              lineHeight:         1,
+              whiteSpace:         'nowrap',
             }}
           >
             {deal.deal_amount !== null ? formatCurrency(deal.deal_amount) : '—'}

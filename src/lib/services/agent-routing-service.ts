@@ -31,7 +31,7 @@ export async function getRoutingConfigsByDomain(
     .eq("profiles.domain", domain as import('@/lib/types/database').AppDomain);
 
   if (error || !data) return [];
-  return data as AgentRoutingConfig[];
+  return data as unknown as AgentRoutingConfig[];
 }
 
 /** Get all active routing configs (for round-robin pool). */
@@ -75,7 +75,8 @@ export async function getAgentRosterByDomain(
         id,
         is_active,
         shift_start,
-        shift_end
+        shift_end,
+        shift_days
       )
     `)
     .eq('role', 'agent')
@@ -105,6 +106,7 @@ export async function getAgentRosterByDomain(
       routing_config_id:  config?.id ?? '',
       shift_start:        config?.shift_start ?? null,
       shift_end:          config?.shift_end ?? null,
+      shift_days:         config?.shift_days ?? null,
     };
   });
 }
@@ -118,11 +120,13 @@ export async function setAgentShift(
   agentId: string,
   shiftStart: string | null,
   shiftEnd: string | null,
+  shiftDays: number[] | null,
 ): Promise<{ data: AgentRoutingConfig | null; error: string | null }> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (admin as any)
     .from('agent_routing_config')
-    .update({ shift_start: shiftStart, shift_end: shiftEnd })
+    .update({ shift_start: shiftStart, shift_end: shiftEnd, shift_days: shiftDays })
     .eq('agent_id', agentId)
     .select()
     .single();

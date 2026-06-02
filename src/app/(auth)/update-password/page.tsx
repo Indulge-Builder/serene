@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LiaGlyph } from "@/components/ui/lia-glyph";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { UpdatePasswordForm } from "./update-password-form";
 
 export const metadata: Metadata = {
-  title: "Set New Password — Eia",
+  title: "Set New Password — Indulge OS",
 };
 
 export default async function UpdatePasswordPage({
@@ -15,14 +15,14 @@ export default async function UpdatePasswordPage({
 }) {
   const params = await searchParams;
 
-  // Callback route set this when the code was missing or already used
   if (params.error) {
     return <InvalidLinkCard expired />;
   }
 
-  // Session must have been established by /api/auth/callback
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return <InvalidLinkCard />;
@@ -35,39 +35,43 @@ function InvalidLinkCard({ expired = false }: { expired?: boolean }) {
   return (
     <div
       className="relative w-full mx-4"
-      style={{ maxWidth: "22rem", zIndex: "var(--z-raised)" }}
+      style={{ maxWidth: "26rem", zIndex: "var(--z-raised)" }}
     >
       <div
-        style={{
-          backgroundColor: "var(--theme-paper)",
-          borderRadius:    "var(--radius-xl)",
-          padding:         "var(--space-10) var(--space-8)",
-          boxShadow:       "var(--shadow-paper)",
-        }}
+        className="eia-auth-card"
+        style={{ padding: "var(--space-10) var(--space-8)" }}
       >
+        {/* Unified brand header */}
         <div className="flex flex-col items-center gap-3 mb-8">
-          <LiaGlyph size={36} breathing={false} style={{ color: "var(--theme-accent)" }} />
+          <Image
+            src="/logo.webp"
+            alt="Indulge"
+            width={48}
+            height={48}
+            style={{ borderRadius: "var(--radius-sm)" }}
+          />
           <h1
             style={{
-              fontFamily:    "var(--font-serif)",
-              fontSize:      "var(--text-2xl)",
-              fontWeight:    "var(--weight-semibold)",
-              letterSpacing: "var(--tracking-tight)",
-              lineHeight:    "var(--leading-tight)",
-              color:         "var(--theme-text-primary)",
-              textAlign:     "center",
+              fontFamily: "var(--font-serif)",
+              fontSize: "var(--text-3xl)",
+              fontWeight: "var(--weight-light)",
+              letterSpacing: "var(--tracking-tighter)",
+              lineHeight: "var(--leading-tight)",
+              color: "var(--theme-canvas-text)",
+              textAlign: "center",
+              margin: 0,
             }}
           >
-            Eia
+            Indulge OS<span className="page-title-dot">.</span>
           </h1>
         </div>
 
         <div className="flex flex-col items-center gap-4 text-center">
           <p
             style={{
-              fontSize:   "var(--text-sm)",
+              fontSize: "var(--text-sm)",
               lineHeight: "var(--leading-relaxed)",
-              color:      "var(--theme-text-secondary)",
+              color: "var(--theme-sidebar-text)",
             }}
           >
             {expired
@@ -77,30 +81,23 @@ function InvalidLinkCard({ expired = false }: { expired?: boolean }) {
           <Link
             href="/forgot-password"
             style={{
-              marginTop:       "var(--space-2)",
-              display:         "block",
+              marginTop: "var(--space-2)",
+              display: "block",
               backgroundColor: "var(--theme-accent)",
-              color:           "var(--theme-accent-fg)",
-              borderRadius:    "var(--radius-sm)",
-              padding:         "var(--space-3) var(--space-4)",
-              fontSize:        "var(--text-sm)",
-              fontWeight:      "var(--weight-semibold)",
-              letterSpacing:   "var(--tracking-wide)",
-              textDecoration:  "none",
-              textAlign:       "center",
-              width:           "100%",
+              color: "var(--theme-accent-fg)",
+              borderRadius: "var(--radius-sm)",
+              padding: "var(--space-3) var(--space-4)",
+              fontSize: "var(--text-sm)",
+              fontWeight: "var(--weight-semibold)",
+              letterSpacing: "var(--tracking-wide)",
+              textDecoration: "none",
+              textAlign: "center",
+              width: "100%",
             }}
           >
             Request New Link
           </Link>
-          <Link
-            href="/login"
-            style={{
-              fontSize:       "var(--text-xs)",
-              color:          "var(--theme-text-tertiary)",
-              textDecoration: "none",
-            }}
-          >
+          <Link href="/login" className="eia-auth-link">
             Back to sign in
           </Link>
         </div>

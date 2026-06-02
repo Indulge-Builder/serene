@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -71,14 +71,18 @@ export function DatePicker({
 
   const panelWidth = showTime ? PANEL_WIDTH_WITH_TIME : PANEL_WIDTH_DATE_ONLY;
 
-  const updatePanelPosition = useCallback(() => {
+  const updatePanelPosition = useCallback((panelW?: number, panelH?: number) => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const flipLeft = rect.left + panelWidth > window.innerWidth - 8;
+    const w = panelW ?? panelWidth;
+    const h = panelH ?? PANEL_HEIGHT;
+    const vvLeft = window.visualViewport?.offsetLeft ?? 0;
+    const vvTop  = window.visualViewport?.offsetTop  ?? 0;
+    const flipLeft = rect.left + w > window.innerWidth - 8;
     const spaceBelow = window.innerHeight - rect.bottom;
-    const flipUp = spaceBelow < PANEL_HEIGHT && rect.top > spaceBelow;
-    const left = flipLeft ? rect.right - panelWidth : rect.left;
-    const top = flipUp ? rect.top - 4 : rect.bottom + 4;
+    const flipUp = spaceBelow < h && rect.top > spaceBelow;
+    const left = (flipLeft ? rect.right - w : rect.left) - vvLeft;
+    const top  = (flipUp ? rect.top - 4 : rect.bottom + 4) - vvTop;
     setPanelPos({ top, left, flipUp });
   }, [panelWidth]);
 
@@ -112,16 +116,32 @@ export function DatePicker({
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setOpen(false);
     }
+    function reposition() { updatePanelPosition(); }
     window.addEventListener('mousedown', handleOutside);
     window.addEventListener('keydown', handleKey);
-    window.addEventListener('scroll', updatePanelPosition, true);
-    window.addEventListener('resize', updatePanelPosition);
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    window.visualViewport?.addEventListener('scroll', reposition);
+    window.visualViewport?.addEventListener('resize', reposition);
     return () => {
       window.removeEventListener('mousedown', handleOutside);
       window.removeEventListener('keydown', handleKey);
-      window.removeEventListener('scroll', updatePanelPosition, true);
-      window.removeEventListener('resize', updatePanelPosition);
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+      window.visualViewport?.removeEventListener('scroll', reposition);
+      window.visualViewport?.removeEventListener('resize', reposition);
     };
+  }, [open, updatePanelPosition]);
+
+  // Re-measure panel after AnimatePresence commits the node to correct any flip error.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      if (!panelRef.current) return;
+      const { width, height } = panelRef.current.getBoundingClientRect();
+      if (width > 0 && height > 0) updatePanelPosition(width, height);
+    });
+    return () => cancelAnimationFrame(frame);
   }, [open, updatePanelPosition]);
 
   // Derive current time-picker state from draftDate (or value, or now).

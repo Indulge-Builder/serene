@@ -18,6 +18,7 @@ export default async function DashboardLayout({
 
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
+  if (!profile.is_active) redirect("/login");
 
   const initialNotifications = await getNotifications(profile.id);
 

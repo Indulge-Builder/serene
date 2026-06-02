@@ -32,6 +32,38 @@ tasks/page.tsx          ← thin orchestrator (session read + URL parse only —
 
 `PersonalTasksTab` (legacy, unmounted) used a lazy-loaded COMPLETED accordion — do not copy that pattern into `MyTasksCalendarView`.
 
+## Redis cache-aside — active on 3 tab-load functions (2026-06-02)
+
+All keys use the `task:` namespace defined in `src/lib/constants/redis-keys.ts`.
+
+| Service function | Cache key | TTL | Scope |
+| --- | --- | --- | --- |
+| `getGiaTasksForUser` | `task:gia:{userId}:{role}:{domain}` | 60s | Per-user + per-role + per-domain |
+| `getGroupTasks` (unfiltered only) | `task:group-list:{domain}:{role}` | 120s | Shared across same role+domain |
+| `getPersonalTasks` (page 1 only) | `task:personal:page1:{userId}` | 30s | Per-user |
+
+**Rules:**
+
+- `getGroupTasks` caches only when `filters.status` and `filters.priority` are both empty/undefined. Filtered calls bypass Redis entirely (too many combinations).
+- `getPersonalTasks` caches only page 1 — defined as: `cursor === null` AND no status/priority/tag filters AND no `due_before`. Pages 2+ bypass Redis entirely.
+- `getGiaTasksForUser` caches every call — it has no cursor pagination. The key includes all three scoping dimensions (userId, role, domain).
+- All cache operations are non-fatal — a Redis error falls through to the RPC, never blocks.
+
+**Invalidation table:**
+
+| Action | Keys deleted |
+| --- | --- |
+| `createPersonalTaskAction` | `task:personal:page1:{assignedTo}` |
+| `createGroupTaskAction` | `task:group-list:{resolvedDomain}:{callerRole}` |
+| `createSubtaskAction` | `task:subtasks:{groupId}:{callerUserId}` |
+| `addTaskRemarkAction` | `task:remarks:{taskId}` |
+| `suppressTaskRemarkAction` | `task:remarks:{taskId}` |
+| `updateTaskStatusAction` (group subtask) | `task:subtasks:{group_id}:{callerUserId}` |
+| `updateTaskAction` (group subtask) | `task:subtasks:{group_id}:{callerUserId}` |
+| `deleteTaskAction` (group subtask) | `task:subtasks:{group_id}:{callerUserId}` |
+
+Note: Gia task list (`task:gia:*`) has no explicit invalidation — TTL-only (60s). Creating a Gia task goes through `createLeadTaskAction` in `leads.ts`, which does not currently del this key. New Gia tasks appear within 60s.
+
 ## getGroupTasks cache
 
 `getGroupTasks` uses React `cache()` for per-request memoisation. It cannot use `unstable_cache`
@@ -39,6 +71,10 @@ because `createClient()` calls `cookies()`, which Next.js forbids inside `unstab
 
 After mutations, `createGroupTaskAction` and `createSubtaskAction` call `revalidatePath('/tasks')`
 to invalidate the RSC cache and trigger a fresh fetch on the next request.
+
+The `cacheHint?: { domain: string; role: string }` optional second parameter carries caller identity
+for the Redis key only. It must NEVER be passed to the RPC — the RPC derives domain/role from
+`get_user_domain()` / `get_user_role()` inside Postgres. `TasksAsync` passes this from its own props.
 
 ## getPersonalTasks sort
 

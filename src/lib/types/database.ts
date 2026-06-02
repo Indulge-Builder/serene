@@ -1503,6 +1503,7 @@ export type AgentRoutingConfig = {
   is_active:   boolean
   shift_start: string | null
   shift_end:   string | null
+  shift_days:  number[] | null
   updated_at:  string
 }
 
@@ -1518,6 +1519,7 @@ export type AgentRosterRow = {
   routing_config_id: string
   shift_start:       string | null
   shift_end:         string | null
+  shift_days:        number[] | null
 }
 
 // Checklist item — stored as JSONB in tasks.attachments

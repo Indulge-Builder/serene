@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import { LiaGlyph } from "@/components/ui/lia-glyph";
+import Image from "next/image";
 import { requestPasswordResetAction } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/Button";
 
@@ -15,36 +15,36 @@ export function ForgotPasswordForm() {
   return (
     <div
       className="relative w-full mx-4"
-      style={{ maxWidth: "22rem", zIndex: "var(--z-raised)" }}
+      style={{ maxWidth: "26rem", zIndex: "var(--z-raised)" }}
     >
       <div
-        style={{
-          backgroundColor: "var(--theme-paper)",
-          borderRadius:    "var(--radius-xl)",
-          padding:         "var(--space-10) var(--space-8)",
-          boxShadow:       "var(--shadow-paper)",
-        }}
+        className="eia-auth-card"
+        style={{ padding: "var(--space-10) var(--space-8)" }}
       >
-        {/* Lia + wordmark */}
+        {/* Unified brand header */}
         <div className="flex flex-col items-center gap-3 mb-10">
-          <LiaGlyph size={36} style={{ color: "var(--theme-accent)" }} />
-          <div className="text-center">
-            <h1
-              style={{
-                fontFamily:    "var(--font-serif)",
-                fontSize:      "var(--text-2xl)",
-                fontWeight:    "var(--weight-semibold)",
-                letterSpacing: "var(--tracking-tight)",
-                lineHeight:    "var(--leading-tight)",
-                color:         "var(--theme-text-primary)",
-              }}
-            >
-              Eia
-            </h1>
-            <p className="label-micro mt-1" style={{ color: "var(--theme-text-tertiary)" }}>
-              Indulge Internal
-            </p>
-          </div>
+          <Image
+            src="/logo.webp"
+            alt="Indulge"
+            width={48}
+            height={48}
+            priority
+            style={{ borderRadius: "var(--radius-sm)" }}
+          />
+          <h1
+            style={{
+              fontFamily: "var(--font-serif)",
+              fontSize: "var(--text-3xl)",
+              fontWeight: "var(--weight-light)",
+              letterSpacing: "var(--tracking-tighter)",
+              lineHeight: "var(--leading-tight)",
+              color: "var(--theme-canvas-text)",
+              textAlign: "center",
+              margin: 0,
+            }}
+          >
+            Indulge OS<span className="page-title-dot">.</span>
+          </h1>
         </div>
 
         {state?.success ? (
@@ -52,9 +52,9 @@ export function ForgotPasswordForm() {
           <div className="flex flex-col items-center gap-4 text-center">
             <p
               style={{
-                fontSize:   "var(--text-sm)",
+                fontSize: "var(--text-sm)",
                 lineHeight: "var(--leading-relaxed)",
-                color:      "var(--theme-text-secondary)",
+                color: "var(--theme-sidebar-text)",
               }}
             >
               If an account exists for that address, we&apos;ve sent a reset
@@ -62,13 +62,8 @@ export function ForgotPasswordForm() {
             </p>
             <Link
               href="/login"
-              style={{
-                marginTop:      "var(--space-2)",
-                fontSize:       "var(--text-xs)",
-                color:          "var(--theme-accent)",
-                textDecoration: "none",
-                fontWeight:     "var(--weight-medium)",
-              }}
+              className="eia-auth-link"
+              style={{ marginTop: "var(--space-2)" }}
             >
               Back to sign in
             </Link>
@@ -79,19 +74,23 @@ export function ForgotPasswordForm() {
             <div className="flex flex-col gap-4">
               <p
                 style={{
-                  fontSize:   "var(--text-sm)",
+                  fontSize: "var(--text-sm)",
                   lineHeight: "var(--leading-relaxed)",
-                  color:      "var(--theme-text-secondary)",
+                  color: "var(--theme-sidebar-text)",
                   marginBottom: "var(--space-2)",
+                  textAlign: "center",
                 }}
               >
-                Enter your email and we&apos;ll send you a link to reset your
-                password.
+                Please enter your registered email.
               </p>
 
               {/* Email */}
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="fp-email" className="label-micro">
+                <label
+                  htmlFor="fp-email"
+                  className="label-micro"
+                  style={{ color: "var(--theme-sidebar-text)" }}
+                >
                   Email
                 </label>
                 <input
@@ -100,7 +99,7 @@ export function ForgotPasswordForm() {
                   type="email"
                   autoComplete="email"
                   placeholder="you@indulge.com"
-                  className="eia-input"
+                  className="eia-input-auth"
                 />
               </div>
 
@@ -109,12 +108,13 @@ export function ForgotPasswordForm() {
                 <p
                   role="alert"
                   style={{
-                    fontSize:        "var(--text-xs)",
-                    lineHeight:      "var(--leading-normal)",
-                    color:           "var(--color-danger-text)",
-                    backgroundColor: "var(--color-danger-light)",
-                    borderRadius:    "var(--radius-xs)",
-                    padding:         "var(--space-2) var(--space-3)",
+                    fontSize: "var(--text-xs)",
+                    lineHeight: "var(--leading-normal)",
+                    color: "var(--color-danger-dark-text)",
+                    backgroundColor: "var(--color-danger-dark-fill)",
+                    border: "1px solid var(--color-danger-dark-border)",
+                    borderRadius: "var(--radius-xs)",
+                    padding: "var(--space-2) var(--space-3)",
                   }}
                 >
                   {state.error}
@@ -127,9 +127,13 @@ export function ForgotPasswordForm() {
                 type="submit"
                 disabled={isPending}
                 loading={isPending}
-                style={{ marginTop: 'var(--space-2)', width: '100%', boxShadow: 'var(--shadow-accent-glow)' }}
+                style={{
+                  marginTop: "var(--space-2)",
+                  width: "100%",
+                  boxShadow: "var(--shadow-accent-glow)",
+                }}
               >
-                {isPending ? 'Sending…' : 'Send Reset Link'}
+                {isPending ? "Sending…" : "Send Reset Link"}
               </Button>
             </div>
           </form>
@@ -138,23 +142,7 @@ export function ForgotPasswordForm() {
         {/* Back to sign in */}
         {!state?.success && (
           <div className="flex justify-center mt-6">
-            <Link
-              href="/login"
-              style={{
-                fontSize:       "var(--text-xs)",
-                color:          "var(--theme-text-tertiary)",
-                textDecoration: "none",
-                transition:     "color var(--duration-fast) var(--ease-in-out)",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLAnchorElement).style.color =
-                  "var(--theme-text-secondary)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLAnchorElement).style.color =
-                  "var(--theme-text-tertiary)";
-              }}
-            >
+            <Link href="/login" className="eia-auth-link">
               Back to sign in
             </Link>
           </div>

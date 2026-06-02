@@ -141,6 +141,9 @@ export async function createPersonalTaskAction(
     scheduleTaskReminder(taskId, new Date(fields.due_at), resolvedAssignedTo).catch(() => {});
   }
 
+  // 7. Invalidate assignee's page-1 personal task cache — fire-and-forget.
+  void redis.del(REDIS_KEYS.task.personalPage1(resolvedAssignedTo)).catch(() => {});
+
   return {
     data: { taskId, assignedTo: resolvedAssignedTo, createdBy: caller.id },
     error: null,
@@ -191,6 +194,9 @@ export async function createGroupTaskAction(
   if (insertError || !group) return { data: null, error: formErrors.generic };
 
   revalidatePath('/tasks');
+
+  // Invalidate group list cache for caller's domain+role — fire-and-forget.
+  void redis.del(REDIS_KEYS.task.groupList(resolvedDomain, caller.role)).catch(() => {});
 
   return { data: { groupId: group.id as string }, error: null };
 }
@@ -326,7 +332,7 @@ export async function updateTaskStatusAction(
     getCurrentProfile(),
     supabase
       .from('tasks')
-      .select('id, assigned_to, created_by, group_id, status, due_at')
+      .select('id, assigned_to, created_by, group_id, status, due_at, task_category')
       .eq('id', taskId)
       .single(),
   ]);
@@ -358,15 +364,16 @@ export async function updateTaskStatusAction(
     cancelTaskReminder(taskId).catch(() => {});
   }
 
-  // Invalidate subtask cache if this is a group subtask — fire-and-forget.
-  if (task.group_id) {
-    void (async () => {
-      try {
-        await redis.del(REDIS_KEYS.taskSubtasks(task.group_id as string, caller.id));
-      } catch (e) {
-        console.error('[tasks] updateTaskStatusAction Redis del error:', e);
-      }
-    })();
+  // 5. Cache invalidation — three branches, fire-and-forget.
+  //    personal   → del caller's page-1 personal list
+  //    gia_followup → del caller's Gia list (caller.id used, not assigned_to — see pre-mortem note)
+  //    group_subtask → del caller's subtask slot for this group
+  if (task.task_category === 'personal') {
+    void redis.del(REDIS_KEYS.task.personalPage1(caller.id)).catch(() => {});
+  } else if (task.task_category === 'gia_followup') {
+    void redis.del(REDIS_KEYS.task.giaList(caller.id, caller.role, caller.domain)).catch(() => {});
+  } else if (task.task_category === 'group_subtask' && task.group_id) {
+    void redis.del(REDIS_KEYS.task.subtasks(task.group_id as string, caller.id)).catch(() => {});
   }
 
   return { data: { taskId }, error: null };
@@ -495,7 +502,7 @@ export async function deleteTaskAction(
   // 3. Fetch task to check authorization
   const { data: task } = await supabase
     .from('tasks')
-    .select('id, assigned_to, created_by, group_id')
+    .select('id, assigned_to, created_by, group_id, task_category')
     .eq('id', taskId)
     .single();
 
@@ -525,15 +532,16 @@ export async function deleteTaskAction(
 
   if (deleteError) return { data: null, error: formErrors.generic };
 
-  // Invalidate subtask cache if this was a group subtask — fire-and-forget.
-  if (task.group_id) {
-    void (async () => {
-      try {
-        await redis.del(REDIS_KEYS.taskSubtasks(task.group_id as string, caller.id));
-      } catch (e) {
-        console.error('[tasks] deleteTaskAction Redis del error:', e);
-      }
-    })();
+  // Cache invalidation — three branches, fire-and-forget.
+  //    personal     → del caller's page-1 personal list
+  //    gia_followup → del caller's Gia list (caller.id, not task.assigned_to — see pre-mortem note)
+  //    group_subtask → del caller's subtask slot for this group
+  if (task.task_category === 'personal') {
+    void redis.del(REDIS_KEYS.task.personalPage1(caller.id)).catch(() => {});
+  } else if (task.task_category === 'gia_followup') {
+    void redis.del(REDIS_KEYS.task.giaList(caller.id, caller.role, caller.domain)).catch(() => {});
+  } else if (task.task_category === 'group_subtask' && task.group_id) {
+    void redis.del(REDIS_KEYS.task.subtasks(task.group_id as string, caller.id)).catch(() => {});
   }
 
   return { data: null, error: null };
