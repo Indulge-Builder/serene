@@ -152,7 +152,12 @@ export default async function LeadDossierPage({ params }: Props) {
           </div>
         </div>
 
-        {/* WhatsApp chat card */}
+        {/* Notes timeline — above journey per UX spec */}
+        <div style={{ marginTop: 'var(--space-6)' }}>
+          <LeadNotesSection notes={notes} />
+        </div>
+
+        {/* WhatsApp chat card — same visual weight as LeadNotesSection */}
         <div style={{ marginTop: 'var(--space-6)' }}>
           <LeadWhatsAppCard
             leadId={lead.id}
@@ -162,11 +167,6 @@ export default async function LeadDossierPage({ params }: Props) {
             initialConversation={initialConversation}
             initialMessages={initialMessages}
           />
-        </div>
-
-        {/* Notes timeline — above journey per UX spec */}
-        <div style={{ marginTop: 'var(--space-6)' }}>
-          <LeadNotesSection notes={notes} />
         </div>
 
         {/* Journey progress */}

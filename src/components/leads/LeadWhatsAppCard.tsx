@@ -200,7 +200,7 @@ export function LeadWhatsAppCard({
         <div
           style={{
             background: "var(--theme-paper-subtle)",
-            padding:    "var(--space-10) var(--space-6)",
+            padding:    "var(--space-12) var(--space-6)",
             textAlign:  "center",
           }}
         >
@@ -236,7 +236,7 @@ export function LeadWhatsAppCard({
         <div
           style={{
             background:    "var(--theme-paper-subtle)",
-            padding:       "var(--space-10) var(--space-6)",
+            padding:       "var(--space-12) var(--space-6)",
             textAlign:     "center",
             display:       "flex",
             flexDirection: "column",
@@ -303,9 +303,10 @@ export function LeadWhatsAppCard({
         style={{
           background:    "var(--theme-paper-subtle)",
           borderRadius:  "var(--radius-sm)",
-          maxHeight:     "360px",
+          minHeight:     "180px",
+          maxHeight:     "320px",
           overflowY:     "auto",
-          padding:       "var(--space-4) var(--space-5)",
+          padding:       "var(--space-5) var(--space-5)",
           display:       "flex",
           flexDirection: "column",
           gap:           "var(--space-3)",
