@@ -248,7 +248,7 @@ function isGupshupDelivered(httpOk: boolean, body: string): boolean {
 // ─────────────────────────────────────────────
 
 async function logNotification(entry: {
-  type:           'agent_assignment' | 'founder_alert';
+  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation';
   leadId?:        string | null;
   recipientId?:   string | null;
   recipientPhone: string;
@@ -319,10 +319,12 @@ export async function sendLeadAssignmentNotification(
       }),
     });
 
-    let res: Response;
-    let responseBody: string;
+    let gupshupStatus = 0;
+    let gupshupBody   = '';
+    let delivered     = false;
+
     try {
-      res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
+      const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
         method:  'POST',
         headers: {
           apikey:         GUPSHUP_API_KEY!,
@@ -330,9 +332,19 @@ export async function sendLeadAssignmentNotification(
         },
         body: params.toString(),
       });
-      responseBody = await res.text();
+      gupshupStatus = res.status;
+      gupshupBody   = await res.text();
+      delivered     = isGupshupDelivered(res.ok, gupshupBody);
     } catch (fetchErr) {
-      console.error(`[whatsapp-api] Lead assignment notification fetch failed for agent ${agentId}:`, fetchErr);
+      gupshupStatus = 0;
+      gupshupBody   = String(fetchErr);
+      delivered     = false;
+    } finally {
+      if (delivered) {
+        console.log(`[whatsapp-api] Lead assignment notification sent to agent ${agentId} (...${destination.slice(-4)})`);
+      } else {
+        console.error(`[whatsapp-api] Lead assignment notification failed: HTTP ${gupshupStatus} body=${gupshupBody.slice(0, 200)} for agent ${agentId}`);
+      }
       void logNotification({
         type:           'agent_assignment',
         recipientId:    agentId,
@@ -340,31 +352,11 @@ export async function sendLeadAssignmentNotification(
         leadName,
         leadPhone,
         domain,
-        gupshupStatus:  0,
-        gupshupBody:    String(fetchErr).slice(0, 2000),
-        delivered:      false,
-      });
-      return;
+        gupshupStatus,
+        gupshupBody,
+        delivered,
+      }).catch(() => {});
     }
-
-    const delivered = isGupshupDelivered(res.ok, responseBody);
-    if (delivered) {
-      console.log(`[whatsapp-api] Lead assignment notification sent to agent ${agentId} (...${destination.slice(-4)})`);
-    } else {
-      console.error(`[whatsapp-api] Lead assignment notification failed: HTTP ${res.status} body=${responseBody.slice(0, 200)} for agent ${agentId}`);
-    }
-
-    void logNotification({
-      type:           'agent_assignment',
-      recipientId:    agentId,
-      recipientPhone: destination,
-      leadName,
-      leadPhone,
-      domain,
-      gupshupStatus:  res.status,
-      gupshupBody:    responseBody,
-      delivered,
-    });
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendLeadAssignmentNotification:', err);
   }
@@ -380,6 +372,7 @@ export async function sendFounderLeadNotification(
   agentName: string,
   leadName:  string,
   leadPhone: string,
+  leadId?:   string | null,
 ): Promise<void> {
   try {
     const admin = createAdminClient();
@@ -411,10 +404,12 @@ export async function sendFounderLeadNotification(
         }),
       });
 
-      let res: Response;
-      let responseBody: string;
+      let gupshupStatus = 0;
+      let gupshupBody   = '';
+      let delivered     = false;
+
       try {
-        res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
+        const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
           method:  'POST',
           headers: {
             apikey:         GUPSHUP_API_KEY!,
@@ -422,43 +417,33 @@ export async function sendFounderLeadNotification(
           },
           body: params.toString(),
         });
-        responseBody = await res.text();
+        gupshupStatus = res.status;
+        gupshupBody   = await res.text();
+        delivered     = isGupshupDelivered(res.ok, gupshupBody);
       } catch (fetchErr) {
-        console.error(`[whatsapp-api] Founder lead notification fetch failed for founder ${founder.id}:`, fetchErr);
+        gupshupStatus = 0;
+        gupshupBody   = String(fetchErr);
+        delivered     = false;
+      } finally {
+        if (delivered) {
+          console.log(`[whatsapp-api] Founder lead notification sent to ${founder.id} (...${destination.slice(-4)})`);
+        } else {
+          console.error(`[whatsapp-api] Founder lead notification failed: HTTP ${gupshupStatus} body=${gupshupBody.slice(0, 200)} for founder ${founder.id}`);
+        }
         void logNotification({
           type:           'founder_alert',
+          leadId,
           recipientId:    founder.id,
           recipientPhone: destination,
           agentName,
           leadName,
           leadPhone,
           domain,
-          gupshupStatus:  0,
-          gupshupBody:    String(fetchErr).slice(0, 2000),
-          delivered:      false,
-        });
-        continue;
+          gupshupStatus,
+          gupshupBody,
+          delivered,
+        }).catch(() => {});
       }
-
-      const delivered = isGupshupDelivered(res.ok, responseBody);
-      if (delivered) {
-        console.log(`[whatsapp-api] Founder lead notification sent to ${founder.id} (...${destination.slice(-4)})`);
-      } else {
-        console.error(`[whatsapp-api] Founder lead notification failed: HTTP ${res.status} body=${responseBody.slice(0, 200)} for founder ${founder.id}`);
-      }
-
-      void logNotification({
-        type:           'founder_alert',
-        recipientId:    founder.id,
-        recipientPhone: destination,
-        agentName,
-        leadName,
-        leadPhone,
-        domain,
-        gupshupStatus:  res.status,
-        gupshupBody:    responseBody,
-        delivered,
-      });
     }
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendFounderLeadNotification:', err);
@@ -505,10 +490,12 @@ export async function sendSlaAgentNotification(
       }),
     });
 
-    let res: Response;
-    let responseBody: string;
+    let gupshupStatus = 0;
+    let gupshupBody   = '';
+    let delivered     = false;
+
     try {
-      res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
+      const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
         method:  'POST',
         headers: {
           apikey:         GUPSHUP_API_KEY!,
@@ -516,39 +503,30 @@ export async function sendSlaAgentNotification(
         },
         body: params.toString(),
       });
-      responseBody = await res.text();
+      gupshupStatus = res.status;
+      gupshupBody   = await res.text();
+      delivered     = isGupshupDelivered(res.ok, gupshupBody);
     } catch (fetchErr) {
-      console.error(`[whatsapp-api] SLA agent notification fetch failed for agent ${agentId}:`, fetchErr);
+      gupshupStatus = 0;
+      gupshupBody   = String(fetchErr);
+      delivered     = false;
+    } finally {
+      if (delivered) {
+        console.log(`[whatsapp-api] SLA agent notification sent to agent ${agentId} (...${destination.slice(-4)})`);
+      } else {
+        console.error(`[whatsapp-api] SLA agent notification failed: HTTP ${gupshupStatus} body=${gupshupBody.slice(0, 200)} for agent ${agentId}`);
+      }
       void logNotification({
-        type:           'agent_assignment',
+        type:           'sla_breach',
         recipientId:    agentId,
         recipientPhone: destination,
         leadName,
         leadPhone,
-        gupshupStatus:  0,
-        gupshupBody:    String(fetchErr).slice(0, 2000),
-        delivered:      false,
-      });
-      return;
+        gupshupStatus,
+        gupshupBody,
+        delivered,
+      }).catch(() => {});
     }
-
-    const delivered = isGupshupDelivered(res.ok, responseBody);
-    if (delivered) {
-      console.log(`[whatsapp-api] SLA agent notification sent to agent ${agentId} (...${destination.slice(-4)})`);
-    } else {
-      console.error(`[whatsapp-api] SLA agent notification failed: HTTP ${res.status} body=${responseBody.slice(0, 200)} for agent ${agentId}`);
-    }
-
-    void logNotification({
-      type:           'agent_assignment',
-      recipientId:    agentId,
-      recipientPhone: destination,
-      leadName,
-      leadPhone,
-      gupshupStatus:  res.status,
-      gupshupBody:    responseBody,
-      delivered,
-    });
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendSlaAgentNotification:', err);
   }
@@ -600,10 +578,12 @@ export async function sendSlaManagerNotification(
         }),
       });
 
-      let res: Response;
-      let responseBody: string;
+      let gupshupStatus = 0;
+      let gupshupBody   = '';
+      let delivered     = false;
+
       try {
-        res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
+        const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
           method:  'POST',
           headers: {
             apikey:         GUPSHUP_API_KEY!,
@@ -611,41 +591,31 @@ export async function sendSlaManagerNotification(
           },
           body: params.toString(),
         });
-        responseBody = await res.text();
+        gupshupStatus = res.status;
+        gupshupBody   = await res.text();
+        delivered     = isGupshupDelivered(res.ok, gupshupBody);
       } catch (fetchErr) {
-        console.error(`[whatsapp-api] SLA manager notification fetch failed for recipient ${recipient.id}:`, fetchErr);
+        gupshupStatus = 0;
+        gupshupBody   = String(fetchErr);
+        delivered     = false;
+      } finally {
+        if (delivered) {
+          console.log(`[whatsapp-api] SLA manager notification sent to ${recipient.id} (...${destination.slice(-4)})`);
+        } else {
+          console.error(`[whatsapp-api] SLA manager notification failed: HTTP ${gupshupStatus} body=${gupshupBody.slice(0, 200)} for recipient ${recipient.id}`);
+        }
         void logNotification({
-          type:           'founder_alert',
+          type:           'sla_breach',
           recipientId:    recipient.id,
           recipientPhone: destination,
           agentName,
           leadName,
           leadPhone,
-          gupshupStatus:  0,
-          gupshupBody:    String(fetchErr).slice(0, 2000),
-          delivered:      false,
-        });
-        continue;
+          gupshupStatus,
+          gupshupBody,
+          delivered,
+        }).catch(() => {});
       }
-
-      const delivered = isGupshupDelivered(res.ok, responseBody);
-      if (delivered) {
-        console.log(`[whatsapp-api] SLA manager notification sent to ${recipient.id} (...${destination.slice(-4)})`);
-      } else {
-        console.error(`[whatsapp-api] SLA manager notification failed: HTTP ${res.status} body=${responseBody.slice(0, 200)} for recipient ${recipient.id}`);
-      }
-
-      void logNotification({
-        type:           'founder_alert',
-        recipientId:    recipient.id,
-        recipientPhone: destination,
-        agentName,
-        leadName,
-        leadPhone,
-        gupshupStatus:  res.status,
-        gupshupBody:    responseBody,
-        delivered,
-      });
     }
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendSlaManagerNotification:', err);
@@ -656,7 +626,7 @@ export async function sendSlaManagerNotification(
 // Send lead initiation message via Gupshup template
 // Params: {{1}} = leadName, {{2}} = agentName
 // CAN THROW — the action layer catches and surfaces to UI.
-// Does NOT call logNotification — whatsapp_notification_logs CHECK does not cover 'lead_initiation'.
+// Re-throws after logging so the action layer still receives the error.
 // ─────────────────────────────────────────────
 
 export async function sendLeadInitiationMessage(
@@ -678,34 +648,56 @@ export async function sendLeadInitiationMessage(
     }),
   });
 
-  const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
-    method:  'POST',
-    headers: {
-      apikey:         GUPSHUP_API_KEY!,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: params.toString(),
-  });
+  let gupshupStatus = 0;
+  let gupshupBody   = '';
+  let delivered     = false;
 
-  const responseBody = await res.text();
-
-  if (!isGupshupDelivered(res.ok, responseBody)) {
-    throw new Error(`[whatsapp-api] sendLeadInitiationMessage failed: HTTP ${res.status} body=${responseBody.slice(0, 200)}`);
-  }
-
-  let messageId = '';
   try {
-    const parsed = JSON.parse(responseBody) as Record<string, unknown>;
-    messageId = (parsed['messageId'] as string | undefined) ?? '';
-  } catch {
-    // non-JSON success body — messageId stays empty
-  }
+    const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
+      method:  'POST',
+      headers: {
+        apikey:         GUPSHUP_API_KEY!,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
 
-  return {
-    messaging_product: 'whatsapp',
-    contacts: [],
-    messages: [{ id: messageId }],
-  };
+    gupshupStatus = res.status;
+    gupshupBody   = await res.text();
+    delivered     = isGupshupDelivered(res.ok, gupshupBody);
+
+    if (!delivered) {
+      throw new Error(`[whatsapp-api] sendLeadInitiationMessage failed: HTTP ${res.status} body=${gupshupBody.slice(0, 200)}`);
+    }
+
+    let messageId = '';
+    try {
+      const parsed = JSON.parse(gupshupBody) as Record<string, unknown>;
+      messageId = (parsed['messageId'] as string | undefined) ?? '';
+    } catch {
+      // non-JSON success body — messageId stays empty
+    }
+
+    return {
+      messaging_product: 'whatsapp',
+      contacts: [],
+      messages: [{ id: messageId }],
+    };
+  } catch (err) {
+    gupshupStatus = gupshupStatus || 0;
+    gupshupBody   = gupshupBody   || String(err);
+    delivered     = false;
+    throw err;
+  } finally {
+    void logNotification({
+      type:           'lead_initiation',
+      recipientPhone: destination,
+      leadPhone:      destination,
+      gupshupStatus,
+      gupshupBody,
+      delivered,
+    }).catch(() => {});
+  }
 }
 
 export { WEBHOOK_VERIFY_TOKEN, BUSINESS_ACCOUNT_ID };

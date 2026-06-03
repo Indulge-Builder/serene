@@ -12,6 +12,7 @@ import {
   UpdateLeadEmailSchema,
   UpdateLeadDomainSchema,
   UpdateLeadSourceSchema,
+  UpdateLeadCitySchema,
   UpdateLeadStatusSchema,
   AssignLeadSchema,
   UpdatePersonalDetailsSchema,
@@ -307,14 +308,23 @@ export async function assignLead(
 
   const admin = createAdminClient();
 
-  // 3. Fetch lead's current status + domain before the update (eliminates post-update SELECT)
-  const { data: existingLead } = await admin
-    .from("leads")
-    .select("status, domain, first_name, last_name, phone")
-    .eq("id", leadId)
-    .single();
+  // 3. Fetch lead + agent name in parallel — eliminates post-update SELECTs
+  const [{ data: existingLead }, { data: assignedAgent }] = await Promise.all([
+    admin
+      .from("leads")
+      .select("status, domain, first_name, last_name, phone")
+      .eq("id", leadId)
+      .single(),
+    admin
+      .from("profiles")
+      .select("full_name")
+      .eq("id", agentId)
+      .single(),
+  ]);
 
   if (!existingLead) return { data: null, error: "Lead not found." };
+
+  const assignedAgentName = assignedAgent?.full_name ?? "Unknown Agent";
 
   // 4. Reassign
   const assignedAt = new Date().toISOString();
@@ -364,17 +374,12 @@ export async function assignLead(
     console.error("[leads] assignment notification failed (non-fatal):", err);
   });
 
-  const { data: assignedAgent } = await admin
-    .from("profiles")
-    .select("full_name")
-    .eq("id", agentId)
-    .single();
-
   void sendFounderLeadNotification(
     existingLead.domain as string,
-    assignedAgent?.full_name ?? "Unknown Agent",
+    assignedAgentName,
     assignLeadName,
     existingLead.phone ?? "",
+    leadId,
   ).catch((err) => {
     console.error("[leads] founder notification failed (non-fatal):", err);
   });
@@ -425,10 +430,12 @@ export async function updatePersonalDetails(
 
   if (!hasAccess) return { data: null, error: formErrors.unauthorized };
 
-  // 3. Merge into existing JSONB — sanitize, strip empty strings, preserve prior keys
+  // 3. Merge into existing JSONB — sanitize, strip empty strings, preserve prior keys.
+  //    city is a dedicated column; never write it into personal_details JSONB.
   const existing = (lead.personal_details ?? {}) as Record<string, string>;
   const merged: Record<string, string> = { ...existing };
   for (const [k, rawV] of Object.entries(details)) {
+    if (k === 'city') continue; // city lives in leads.city, not personal_details
     const v = sanitizeText(String(rawV));
     if (v === "") {
       delete merged[k];
@@ -617,6 +624,7 @@ export async function createManualLead(
       assignedAgentName,
       manualLeadName,
       phone,
+      leadId,
     ).catch((err) => {
       console.error("[leads] founder notification failed (non-fatal):", err);
     });
@@ -824,6 +832,31 @@ export async function updateLeadSource(
     action_type: "note_added",
     details: { type: "lead_source_updated", source },
   });
+
+  revalidateLeadDossier(access.lead);
+  return { data: { leadId }, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: updateLeadCity
+// ─────────────────────────────────────────────
+export async function updateLeadCity(
+  input: unknown,
+): Promise<ActionResult<{ leadId: string }>> {
+  const parsed = UpdateLeadCitySchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  const { leadId, city } = parsed.data;
+  const access = await assertLeadFieldEditAccess(leadId);
+  if (!access.ok) return { data: null, error: access.error };
+
+  const admin = createAdminClient();
+  const { error: updateError } = await admin
+    .from("leads")
+    .update({ city: city ?? null })
+    .eq("id", leadId);
+
+  if (updateError) return { data: null, error: formErrors.generic };
 
   revalidateLeadDossier(access.lead);
   return { data: { leadId }, error: null };

@@ -277,6 +277,7 @@ export type Database = {
           assigned_to: string | null
           attribution: Json | null
           call_count: number
+          city: string | null
           created_at: string
           deal_amount: number | null
           deal_duration: string | null
@@ -307,6 +308,7 @@ export type Database = {
           assigned_to?: string | null
           attribution?: Json | null | Record<string, unknown>
           call_count?: number
+          city?: string | null
           created_at?: string
           deal_amount?: number | null
           deal_duration?: string | null
@@ -337,6 +339,7 @@ export type Database = {
           assigned_to?: string | null
           attribution?: Json | null | Record<string, unknown>
           call_count?: number
+          city?: string | null
           created_at?: string
           deal_amount?: number | null
           deal_duration?: string | null
@@ -962,7 +965,7 @@ export type Database = {
       whatsapp_notification_logs: {
         Row: {
           id:              string
-          type:            'agent_assignment' | 'founder_alert'
+          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation'
           lead_id:         string | null
           recipient_id:    string | null
           recipient_phone: string
@@ -977,7 +980,7 @@ export type Database = {
         }
         Insert: {
           id?:             string
-          type:            'agent_assignment' | 'founder_alert'
+          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation'
           lead_id?:        string | null
           recipient_id?:   string | null
           recipient_phone: string
@@ -1034,6 +1037,7 @@ export type Database = {
           assigned_to: string | null
           attribution: Json | null
           call_count: number
+          city: string | null
           created_at: string
           deal_amount: number | null
           deal_duration: string | null

@@ -20,6 +20,7 @@ import {
   Signal,
   Check,
   ChevronDown,
+  MapPin,
 } from 'lucide-react';
 import type { Lead, AdCreative } from '@/lib/types/database';
 import { DOMAIN_LABELS, GIA_DOMAIN_FILTER_ITEMS, type GiaDomain } from '@/lib/constants/domains';
@@ -185,6 +186,11 @@ export function LeadInfoCard({
             icon={Phone}
             label="Phone"
             value={lead.phone?.trim() ? monoValue(lead.phone.trim()) : undefined}
+          />
+          <InfoRow
+            icon={MapPin}
+            label="City"
+            value={lead.city?.trim() ? lead.city.trim() : undefined}
           />
           <InfoRow
             icon={PhoneCall}

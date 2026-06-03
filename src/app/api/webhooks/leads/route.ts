@@ -133,16 +133,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ).catch((err) => {
       console.error('[webhooks/leads] assignment notification failed (non-fatal):', err);
     });
-
-    void sendFounderLeadNotification(
-      result.domain,
-      result.agent_name ?? 'Unknown Agent',
-      result.lead_name,
-      result.lead_phone,
-    ).catch((err) => {
-      console.error('[webhooks/leads] founder notification failed (non-fatal):', err);
-    });
   }
+
+  void sendFounderLeadNotification(
+    result.domain,
+    result.agent_name ?? 'Unassigned',
+    result.lead_name,
+    result.lead_phone,
+    result.leadId,
+  ).catch((err) => {
+    console.error('[webhooks/leads] founder notification failed (non-fatal):', err);
+  });
 
   return NextResponse.json({ leadId: result.leadId }, { status: 201 });
 }

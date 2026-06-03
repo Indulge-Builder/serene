@@ -147,6 +147,16 @@ export const UpdateLeadSourceSchema = z.object({
 
 export type UpdateLeadSourceInput = z.infer<typeof UpdateLeadSourceSchema>;
 
+export const UpdateLeadCitySchema = z.object({
+  leadId: z.string().uuid("Invalid lead ID"),
+  city: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? sanitizeText(v.trim()) : null)),
+});
+
+export type UpdateLeadCityInput = z.infer<typeof UpdateLeadCitySchema>;
+
 // ─────────────────────────────────────────────
 // Add plain lead note (LeadNotesInput — visible to all team members)
 // ─────────────────────────────────────────────

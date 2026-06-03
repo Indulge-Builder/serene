@@ -6,6 +6,89 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-03 — Fix: WhatsApp notification gaps — 6 issues from ecosystem audit (migration 0067)
+
+Six gaps in the WhatsApp notification layer closed. Migration `20260603000067_extend_whatsapp_notification_log_types.sql` widens the `whatsapp_notification_logs.type` CHECK constraint to include `'sla_breach'` and `'lead_initiation'`.
+
+**Fix 1 — Missing `leadId` in WhatsApp-origin founder alerts** (`src/lib/services/whatsapp-ingestion.ts`)
+`createLeadFromWhatsApp` returns `leadId`. It is now passed as the 5th argument to `sendFounderLeadNotification`. All founder alert log rows written from WhatsApp-origin leads will have a non-null `lead_id`.
+
+**Fix 2 — Redundant profile fetch in `assignLead`** (`src/lib/actions/leads.ts`)
+The action previously fetched the agent profile twice — once implicitly inside `sendLeadAssignmentNotification`, and again explicitly to get the agent name for `sendFounderLeadNotification`. Both fetches are now a single `Promise.all` alongside the lead fetch at the start of the action, eliminating one DB round-trip per manual assignment.
+
+**Fix 3 — Founder not notified when no agent is available**
+Both Pipeline A (`src/app/api/webhooks/leads/route.ts`) and Pipeline B (`src/lib/services/whatsapp-ingestion.ts`) previously gated ALL notifications on `assigned_to` being non-null. `sendFounderLeadNotification` now fires unconditionally after a successful ingest/creation. When no agent is available, `agentName` is passed as `'Unassigned'`.
+
+**Fix 4 — Duplicate re-submission: assigned agent not pinged** (`src/lib/services/lead-ingestion.ts`)
+When `ingestLead` detects an active duplicate by phone, it now fires `sendLeadAssignmentNotification` to the existing lead's assigned agent (if set). The agent is alerted that the same person re-submitted. `sendFounderLeadNotification` is deliberately not fired on duplicates — the founder already received the original alert.
+
+**Fix 5 — SLA notification type misclassified in logs** (`src/lib/services/whatsapp-api.ts`)
+`sendSlaAgentNotification` was logging with `type: 'agent_assignment'` and `sendSlaManagerNotification` with `type: 'founder_alert'`. Both now use `type: 'sla_breach'`. Historical rows written before this migration cannot be reclassified (no reliable discriminator in stored response bodies).
+
+**Fix 6 — Lead initiation has no audit trail** (`src/lib/services/whatsapp-api.ts`)
+`sendLeadInitiationMessage` now wraps its Gupshup call in the standard `try/catch/finally` pattern with `logNotification({ type: 'lead_initiation', ... })` in the `finally` block. The function still re-throws on failure so the action layer can surface the error to the UI — this is the documented exception to the fire-and-forget pattern.
+
+`src/lib/services/CLAUDE.md` updated: documents `sendLeadInitiationMessage` as the re-throw exception; documents the `'Unassigned'` fallback convention for `agentName`.
+`src/lib/actions/CLAUDE.md` updated: founder alert now documented as unconditional (not gated on `assigned_to`); WhatsApp-ingestion added as 4th confirmed call site.
+`src/lib/types/database.ts` updated: `whatsapp_notification_logs.type` union widened to match migration 0067.
+
+---
+
+## 2026-06-03 — Fix: founder alert silent failures now logged; all Gupshup responses and errors written to notification log
+
+Restructured the inner fetch try/catch in all four template send functions in
+`src/lib/services/whatsapp-api.ts` (`sendLeadAssignmentNotification`,
+`sendFounderLeadNotification`, `sendSlaAgentNotification`, `sendSlaManagerNotification`)
+to use a `finally` block for `logNotification`.
+
+**Previous shape (buggy):** `logNotification` was called in two separate places — once in the
+catch block with a `return`/`continue`, and once after the fetch on the success path. Any
+exception thrown between those two points (e.g. by `res.text()`, or a future code path) would
+exit the function with zero log rows written — completely silent.
+
+**New shape:** `gupshupStatus`, `gupshupBody`, `delivered` are declared before the try with
+zero-value defaults. The try block sets them from the response; the catch block sets them from
+the error. The `finally` block calls `logNotification` exactly once per send attempt, with a
+`.catch(() => {})` guard so a DB insert failure cannot propagate. Every exit path now produces
+a log row.
+
+`src/lib/services/CLAUDE.md` created documenting the finally-block as the canonical pattern
+for all future template send functions.
+
+---
+
+## 2026-06-03 — Fix: founder WhatsApp alert lead_id logging corrected
+
+`sendFounderLeadNotification` in `src/lib/services/whatsapp-api.ts` accepted no `leadId`
+parameter, so every `whatsapp_notification_logs` row of type `founder_alert` was written with
+`lead_id = null`. Added `leadId?: string | null` as a 5th parameter and threaded it into both
+`logNotification` calls inside the function (fetch-error path and success path). All three call
+sites updated to pass the correct `leadId`:
+
+- `src/app/api/webhooks/leads/route.ts` — passes `result.leadId` from `ingestLead`
+- `src/lib/actions/leads.ts` `assignLead` — passes `leadId` (schema-parsed UUID)
+- `src/lib/actions/leads.ts` `createManualLead` — passes `leadId` (inserted row UUID)
+
+No migration needed — `lead_id` is nullable on the table (by design for edge cases); this fix
+ensures it is populated whenever the lead UUID is known. `src/lib/actions/CLAUDE.md` created
+with the confirmed call-site pattern for future reference.
+
+---
+
+## 2026-06-03 — leads.city dedicated column (migration 0066)
+
+`city` promoted from `personal_details JSONB` to a top-level `leads.city text` column.
+
+- Migration 0066: `ALTER TABLE leads ADD COLUMN city text`; backfills existing rows from `personal_details->>'city'`; removes the `city` key from `personal_details` JSONB on all existing rows
+- `src/lib/types/database.ts` — `city: string | null` added to `leads` Row/Insert/Update and `get_active_lead_by_phone` RPC return type
+- `src/lib/validations/lead-schema.ts` — `UpdateLeadCitySchema` + `UpdateLeadCityInput` added
+- `src/lib/actions/leads.ts` — `updateLeadCity` action: Zod → auth → adminClient UPDATE; `updatePersonalDetails` now skips the `city` key (never writes it to JSONB)
+- `src/lib/services/lead-ingestion.ts` — webhook ingestion extracts `city` from `form_data` into the dedicated column (removes it from `form_data` to avoid duplication); `createLeadFromWhatsApp` sets `city: null` explicitly
+- `src/components/leads/PersonalDetailsCard.tsx` — city field removed from JSONB fields array; managed as a separate state variable calling `updateLeadCity` in parallel with `updatePersonalDetails` on save
+- `src/components/leads/LeadInfoCard.tsx` — `MapPin` icon imported; city `InfoRow` added after Phone in the contact grid
+
+---
+
 ## 2026-06-03 — fix: createLeadFromWhatsApp now writes source: 'whatsapp' alongside attribution
 
 `src/lib/services/lead-ingestion.ts` line 296: `source` was `null` in the `createLeadFromWhatsApp` INSERT object after the attribution refactor. `attribution: { platform: 'whatsapp' }` was present but `source` (the indexed flat column) was missing, causing every WhatsApp-originated lead to have `source = null` and making `WHERE source = 'whatsapp'` analytics queries return zero rows. Fixed by setting `source: 'whatsapp'` explicitly. These are two separate fields that must always be set together — `source` is the queryable analytics column; `attribution` is the platform-specific JSONB bag. No migration needed.

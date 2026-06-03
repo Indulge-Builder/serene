@@ -19,7 +19,7 @@
 6. [The profiles Foundation](#6-the-profiles-foundation)
 7. [Build Phases — Complete History](#7-build-phases--complete-history)
 8. [Route Map & Page Docs](#8-route-map--page-docs)
-9. [Migration Index — All 65 Migrations](#9-migration-index--all-65-migrations)
+9. [Migration Index — All 66 Migrations](#9-migration-index--all-66-migrations)
 10. [File Map — Where Everything Lives](#10-file-map--where-everything-lives)
 11. [Services Registry](#11-services-registry)
 12. [Actions Registry](#12-actions-registry)
@@ -384,7 +384,7 @@ Every route has a dedicated intelligence document generated during the DRY audit
 
 ---
 
-## 9. Migration Index — All 65 Migrations
+## 9. Migration Index — All 66 Migrations
 
 | # | What it creates / changes |
 | - | ------------------------- |
@@ -453,6 +453,7 @@ Every route has a dedicated intelligence document generated during the DRY audit
 | 0063 | `get_agent_recent_activity(p_role, p_domain, p_user_id)` RPC — single SQL replacing two-step Node.js pattern (SELECT ids → .in()); LEFT JOIN for lead name |
 | 0064 | Two dashboard refresh RPCs for per-widget refresh buttons — `get_lead_status_summary` + `get_campaign_performance`; CTE logic mirrors 0062; DB returns final jsonb shape |
 | 0065 | Attribution refactor — removes `platform`, `campaign_id`, `ad_name`, `utm_content`; renames `utm_source → source`, `utm_medium → medium`; adds `attribution jsonb`; backfills flat columns into JSONB; drops `idx_leads_utm_source`, creates `idx_leads_source` |
+| 0066 | `leads.city text` — dedicated column; backfilled from `personal_details->>'city'`; `city` key removed from `personal_details` JSONB on all existing rows |
 
 ---
 
@@ -606,7 +607,7 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 | `auth.ts` | (sign in/out helpers) |
 | `ad-creatives.ts` | `upsertAdCreative` (admin/founder; normalises campaign_key; 23505 → friendly error), `deleteAdCreative` |
 | `dashboard.ts` | 5 widget refresh actions (all re-verify via `getCurrentProfile()`) |
-| `leads.ts` | `addLeadCallNote`, `addLeadNote`, `updateLeadStatus`, `assignLead`, `createManualLead`, `createLeadTaskAction`, `recordDeal`, `updatePersonalDetails`, `updateScratchpad`, `updateLeadEmail`, `updateLeadDomain`, `updateLeadSource`, `listAgentsForDomain`, `searchLeadsAction` |
+| `leads.ts` | `addLeadCallNote`, `addLeadNote`, `updateLeadStatus`, `assignLead`, `createManualLead`, `createLeadTaskAction`, `recordDeal`, `updatePersonalDetails`, `updateLeadCity`, `updateScratchpad`, `updateLeadEmail`, `updateLeadDomain`, `updateLeadSource`, `listAgentsForDomain`, `searchLeadsAction` |
 | `notifications.ts` | `markNotificationReadAction`, `markAllReadAction` |
 | `performance.ts` | `getAgentPerformanceAction`, `getAgentListForDomainAction` |
 | `profiles.ts` | `createUser`, `updateProfile`, `updateUserAuthorization`, `toggleUserActive`, `inviteUser`, `updateProfileAvatar`, `signOutUser` |
@@ -912,6 +913,7 @@ Every architectural decision that deviates from or extends the rules above.
 | 2026-06-01 | `ComboboxDropdown` removed. | All searchable single-select surfaces use `FilterDropdown`. | Duplicate primitive. One dropdown contract reduces maintenance. |
 | 2026-06-03 | Domain-scoped route authorization. Non-Gia domains had no route restriction — agents could navigate to `/leads` despite having no data there. | `canAccessRoute(profile, pathname)` pure util + `DOMAIN_ROUTE_MAP` constant + server-side layout guard (`redirect('/dashboard')`) + Sidebar nav filter. Admin/founder bypass all domain checks. `/dashboard` and `/profile` are in `ALWAYS_ALLOWED_PREFIXES` — redirect loop impossible. Two independent gates: layout guard redirects before the page renders; Sidebar never renders the link. | Defense-in-depth: neither gate trusts the other. Page-level privilege checks (`isPrivileged`) remain unchanged — `canAccessRoute` is additive, not a replacement. |
 | 2026-06-03 | Attribution refactor (migration 0065): 7 flat ad columns → `source`, `medium`, `utm_campaign` + `attribution jsonb`. `utm_source` renamed `source`; `utm_medium` renamed `medium`; `platform`, `campaign_id`, `ad_name`, `utm_content` folded into `attribution` JSONB. `source` is indexed and queryable (`WHERE source = 'whatsapp'`); `attribution` is the unindexed platform-specific extras bag. `createLeadFromWhatsApp` sets both `source: 'whatsapp'` and `attribution: { platform: 'whatsapp' }`. `updateLeadSource` replaces `updateLeadUtmSource`. URL-param `source` validated against `LEAD_SOURCES` at the route handler before reaching ingestion. | Migration 0065. | Flat columns per ad platform don't scale. JSONB bag absorbs new platforms without schema migrations while `source` stays flat for analytics. |
+| 2026-06-03 | `leads.city` promoted from `personal_details JSONB` to a dedicated `text` column (migration 0066). Backfilled on existing rows. `city` key removed from JSONB. `PersonalDetailsCard` fires `updateLeadCity` in parallel with `updatePersonalDetails` on save. `LeadInfoCard` displays city as an `InfoRow` with `MapPin` icon. Webhook ingestion extracts `city` from `form_data` into the column, removing it from the JSONB bag to avoid duplication. | Migration 0066 + `updateLeadCity` action + `UpdateLeadCitySchema`. | A top-level column is indexable, directly queryable, and displays without JSONB extraction. `personal_details` is a bag for enrichment that doesn't need its own index — `city` clearly does not belong there long-term. |
 
 ---
 

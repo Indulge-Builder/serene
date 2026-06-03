@@ -96,8 +96,11 @@ deal_amount         numeric(12,2)
 -- Agent workspace
 private_scratchpad  text          -- only visible to assigned agent + admin + founder
 
+-- Location
+city                text          -- top-level column; backfilled from personal_details on migration 0066
+
 -- Personal enrichment (JSONB, merged — never overwritten)
-personal_details    jsonb         -- company, occupation, interests, city, notes
+personal_details    jsonb         -- company, occupation, interests, notes (city removed to dedicated column)
 
 -- SLA tracking
 status_changed_at   timestamptz   -- set on every status transition
@@ -467,7 +470,7 @@ Status pill + action buttons. Context-aware — shows different actions per curr
 Contact fields: name and phone are read-only. Email, domain, source (`utm_source`), and assignee each save independently via per-field inline edit when permitted (`canEdit` / `canReassign`). Assignee, domain, and source use `FilterDropdown`. Campaign name opens `CampaignVideoModal` (carousel when multiple `ad_creatives` rows share the key — migration 0058). **Last modified** shows `lead.updated_at`.
 
 **`PersonalDetailsCard`**
-5 enrichment fields (Company, Occupation, Interests, City, Details). Click to activate edit mode. Saved via `updatePersonalDetails` action which merges into `leads.personal_details` JSONB.
+5 enrichment fields (Company, Occupation, Interests, City, Details). Click to activate edit mode. City is a dedicated `leads.city` column saved via `updateLeadCity`; the other four fields are merged into `leads.personal_details` JSONB via `updatePersonalDetails`. Both saves are fired in parallel on submit.
 
 **`AgentScratchpad`**
 Private textarea. Visible only to assigned agent + admin + founder. Auto-saves on 1s debounce via `updateScratchpad`. Not a log — cleared on reassignment.
@@ -1102,10 +1105,11 @@ src/
 │   │   ├── ad-creatives.ts                           ← upsertAdCreative, deleteAdCreative
 │   │   ├── leads.ts                                  ← addLeadCallNote, updateLeadStatus, assignLead,
 │   │   │                                               createManualLead, createLeadTaskAction,
-│   │   │                                               updatePersonalDetails, updateScratchpad,
-│   │   │                                               addLeadNote, recordDeal, updateLeadEmail,
-│   │   │                                               updateLeadDomain, updateLeadUtmSource,
-│   │   │                                               listAgentsForDomain, searchLeadsAction
+│   │   │                                               updatePersonalDetails, updateLeadCity,
+│   │   │                                               updateScratchpad, addLeadNote, recordDeal,
+│   │   │                                               updateLeadEmail, updateLeadDomain,
+│   │   │                                               updateLeadSource, listAgentsForDomain,
+│   │   │                                               searchLeadsAction
 │   │   └── whatsapp.ts                               ← sendWhatsAppMessageAction, resolve/reopen,
 │   │                                                    getConversationsAction, getMessagesAction,
 │   │                                                    searchConversationsAction
@@ -1168,6 +1172,7 @@ supabase/migrations/ — key Gia migrations:
   20260531 0056   get_gia_tasks slug prereq
   20260531 0057   task_type_other (call | whatsapp_message | other)
   20260601 0058   ad_creatives_multi_video (drop UNIQUE on campaign_key)
+  20260603 0066   leads.city — dedicated text column; backfilled from personal_details JSONB; city key removed from JSONB
 ```
 
 ---

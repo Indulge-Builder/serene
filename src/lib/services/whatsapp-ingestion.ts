@@ -119,11 +119,12 @@ export async function processInboundMessage(
     }
 
     // Fire assignment notifications now that we have the full lead row for name/domain
-    if (assignedTo) {
-      const leadName = lead.last_name
-        ? `${lead.first_name} ${lead.last_name}`
-        : lead.first_name;
+    const leadName = lead.last_name
+      ? `${lead.first_name} ${lead.last_name}`
+      : lead.first_name;
 
+    let assignedAgentName = 'Unassigned';
+    if (assignedTo) {
       void sendLeadAssignmentNotification(
         assignedTo,
         leadName,
@@ -139,16 +140,18 @@ export async function processInboundMessage(
         .select('full_name')
         .eq('id', assignedTo)
         .single();
-
-      void sendFounderLeadNotification(
-        lead.domain as string,
-        assignedAgent?.full_name ?? 'Unknown Agent',
-        leadName,
-        normalizedPhone,
-      ).catch((err) => {
-        console.error('[whatsapp-ingestion] founder notification failed (non-fatal):', err);
-      });
+      assignedAgentName = assignedAgent?.full_name ?? 'Unknown Agent';
     }
+
+    void sendFounderLeadNotification(
+      lead.domain as string,
+      assignedAgentName,
+      leadName,
+      normalizedPhone,
+      leadId,
+    ).catch((err) => {
+      console.error('[whatsapp-ingestion] founder notification failed (non-fatal):', err);
+    });
   }
 
   const leadId = lead.id;

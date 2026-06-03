@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { selectAdapter } from '@/lib/leads/adapters';
 import { resolveDomainFromCampaign, DEFAULT_LEAD_DOMAIN } from '@/lib/constants/campaign-domain-map';
 import { getNextRoundRobinAgent } from '@/lib/services/leads-service';
+import { sendLeadAssignmentNotification } from '@/lib/services/whatsapp-api';
 import { LEAD_SOURCES, type LeadSource } from '@/lib/constants/lead-sources';
 import type { Database } from '@/lib/types/database';
 
@@ -116,7 +117,7 @@ export async function ingestLead(
   if (phone) {
     const { data: existingLeads } = await (
       supabase as unknown as {
-        rpc: (fn: string, args: Record<string, string>) => Promise<{ data: { id: string; status: string }[] | null }>;
+        rpc: (fn: string, args: Record<string, string>) => Promise<{ data: { id: string; status: string; assigned_to: string | null; first_name: string; last_name: string | null; phone: string; domain: string }[] | null }>;
       }
     ).rpc('get_active_lead_by_phone', { p_phone: phone });
 
@@ -143,6 +144,19 @@ export async function ingestLead(
             .from('lead_raw_payloads')
             .update({ lead_id: existing.id })
             .eq('id', rawPayloadId);
+        }
+
+        // Notify the assigned agent that the same person submitted again — fire-and-forget
+        if (existing.assigned_to) {
+          const existingLeadName = existing.last_name
+            ? `${existing.first_name} ${existing.last_name}`
+            : existing.first_name;
+          void sendLeadAssignmentNotification(
+            existing.assigned_to,
+            existingLeadName,
+            existing.phone,
+            existing.domain,
+          ).catch(() => {});
         }
 
         return {
@@ -177,6 +191,14 @@ export async function ingestLead(
   }
 
   // 6. Insert lead via admin (service role — bypasses RLS)
+  //    Extract city from form_data if present (Meta forms sometimes include it).
+  //    Remove it from form_data so it isn't duplicated in both places.
+  const formDataRaw = { ...(data.form_data ?? {}) };
+  const cityFromForm = typeof formDataRaw.city === 'string' && formDataRaw.city.trim()
+    ? formDataRaw.city.trim()
+    : null;
+  if (cityFromForm) delete formDataRaw.city;
+
   const leadInsert: LeadInsert = {
     first_name:         data.first_name,
     last_name:          data.last_name ?? null,
@@ -192,7 +214,8 @@ export async function ingestLead(
     medium:             data.medium ?? null,
     utm_campaign:       data.utm_campaign ?? null,
     attribution:        data.attribution ?? null,
-    form_data:          data.form_data,
+    city:               cityFromForm,
+    form_data:          formDataRaw,
     last_call_outcome:  null,
     personal_details:   null,
     archived_at:        null,
@@ -297,6 +320,7 @@ export async function createLeadFromWhatsApp(
       medium:             null,
       utm_campaign:       null,
       attribution:        { platform: 'whatsapp' },
+      city:               null,
       form_data:          {},
       last_call_outcome:  null,
       personal_details:   null,

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { UserCircle, Check } from 'lucide-react';
 import { Spinner } from '@/components/ui/Spinner';
 import { Button } from '@/components/ui/Button';
-import { updatePersonalDetails } from '@/lib/actions/leads';
+import { updatePersonalDetails, updateLeadCity } from '@/lib/actions/leads';
 import type { Lead } from '@/lib/types/database';
 
 type Props = {
@@ -13,32 +13,92 @@ type Props = {
   canEdit: boolean;
 };
 
-// Field definitions — label shown above input, key stored in personal_details JSONB
-const FIELDS: { label: string; key: string; placeholder: string; wide?: boolean }[] = [
-  { label: 'Company',    key: 'company',    placeholder: 'e.g. Tata Group'         },
-  { label: 'Occupation', key: 'occupation', placeholder: 'e.g. Business Owner'     },
-  { label: 'Interests',  key: 'interests',  placeholder: 'e.g. Luxury, Real estate'},
-  { label: 'City',       key: 'city',       placeholder: 'e.g. Mumbai'             },
-  { label: 'Details',    key: 'notes',      placeholder: 'Any additional context…', wide: true },
+// JSONB fields — city is intentionally absent (it lives in leads.city)
+const JSONB_FIELDS: { label: string; key: string; placeholder: string; wide?: boolean }[] = [
+  { label: 'Company',    key: 'company',    placeholder: 'e.g. Tata Group'          },
+  { label: 'Occupation', key: 'occupation', placeholder: 'e.g. Business Owner'      },
+  { label: 'Interests',  key: 'interests',  placeholder: 'e.g. Luxury, Real estate' },
+  { label: 'Details',    key: 'notes',      placeholder: 'Any additional context…',  wide: true },
 ];
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
+const inputStyle: React.CSSProperties = {
+  width:        '100%',
+  height:       '2.25rem',
+  padding:      '0 var(--space-3)',
+  border:       '1px solid var(--theme-paper-border)',
+  borderRadius: 'var(--radius-sm)',
+  background:   'var(--theme-paper)',
+  fontFamily:   'var(--font-sans)',
+  fontSize:     'var(--text-sm)',
+  color:        'var(--theme-text-primary)',
+  outline:      'none',
+  boxSizing:    'border-box',
+};
+
+const textareaStyle: React.CSSProperties = {
+  width:        '100%',
+  padding:      'var(--space-2) var(--space-3)',
+  border:       '1px solid var(--theme-paper-border)',
+  borderRadius: 'var(--radius-sm)',
+  background:   'var(--theme-paper)',
+  fontFamily:   'var(--font-sans)',
+  fontSize:     'var(--text-sm)',
+  color:        'var(--theme-text-primary)',
+  lineHeight:   'var(--leading-relaxed)',
+  resize:       'vertical',
+  outline:      'none',
+  boxSizing:    'border-box',
+};
+
+const labelStyle: React.CSSProperties = {
+  fontSize:      'var(--text-2xs)',
+  fontWeight:    'var(--weight-semibold)',
+  letterSpacing: 'var(--tracking-widest)',
+  textTransform: 'uppercase',
+  color:         'var(--theme-text-tertiary)',
+  margin:        '0 0 var(--space-1) 0',
+};
+
+const readValueStyle = (hasValue: boolean): React.CSSProperties => ({
+  fontFamily: 'var(--font-sans)',
+  fontSize:   'var(--text-sm)',
+  color:      hasValue ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
+  margin:     0,
+  lineHeight: 'var(--leading-normal)',
+  minHeight:  '1.25rem',
+});
+
+function focusAccent(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
+  e.currentTarget.style.borderColor = 'var(--theme-accent)';
+}
+function blurReset(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
+  e.currentTarget.style.borderColor = 'var(--theme-paper-border)';
+}
+
 export function PersonalDetailsCard({ lead, canEdit }: Props) {
-  const router  = useRouter();
+  const router = useRouter();
   const initial = (lead.personal_details ?? {}) as Record<string, string>;
 
-  // `saved` tracks what is confirmed persisted — drives the read-only display
-  const [saved, setSaved]           = useState<Record<string, string>>(initial);
-  const [values, setValues]         = useState<Record<string, string>>(
-    Object.fromEntries(FIELDS.map(({ key }) => [key, initial[key] ?? '']))
+  // JSONB fields state
+  const [saved, setSaved]     = useState<Record<string, string>>(initial);
+  const [values, setValues]   = useState<Record<string, string>>(
+    Object.fromEntries(JSONB_FIELDS.map(({ key }) => [key, initial[key] ?? '']))
   );
+
+  // City — dedicated column, separate state
+  const [savedCity, setSavedCity]   = useState<string>(lead.city ?? '');
+  const [cityValue, setCityValue]   = useState<string>(lead.city ?? '');
+
   const [active, setActive]         = useState(false);
   const [saveState, setSaveState]   = useState<SaveState>('idle');
   const [error, setError]           = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const hasAnyValue = FIELDS.some(({ key }) => (saved[key] ?? '').trim() !== '');
+  const hasAnyValue =
+    JSONB_FIELDS.some(({ key }) => (saved[key] ?? '').trim() !== '') ||
+    savedCity.trim() !== '';
 
   function handleActivate() {
     if (canEdit) setActive(true);
@@ -54,15 +114,20 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
     setSaveState('saving');
 
     startTransition(async () => {
-      const result = await updatePersonalDetails({ leadId: lead.id, details: values });
+      // Run both updates in parallel — city is a separate column
+      const [detailsResult, cityResult] = await Promise.all([
+        updatePersonalDetails({ leadId: lead.id, details: values }),
+        updateLeadCity({ leadId: lead.id, city: cityValue }),
+      ]);
 
-      if (result.error) {
-        setError(result.error);
+      if (detailsResult.error || cityResult.error) {
+        setError(detailsResult.error ?? cityResult.error ?? 'Failed to save.');
         setSaveState('error');
         return;
       }
 
       setSaved({ ...values });
+      setSavedCity(cityValue);
       setSaveState('saved');
       router.refresh();
       setTimeout(() => {
@@ -73,7 +138,8 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
   }
 
   function handleCancel() {
-    setValues(Object.fromEntries(FIELDS.map(({ key }) => [key, saved[key] ?? ''])));
+    setValues(Object.fromEntries(JSONB_FIELDS.map(({ key }) => [key, saved[key] ?? ''])));
+    setCityValue(savedCity);
     setError(null);
     setSaveState('idle');
     setActive(false);
@@ -124,20 +190,10 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
           Personal Details
         </span>
 
-        {/* Save indicator */}
         <span style={{ marginLeft: 'auto' }}>
-          {saveState === 'saving' && (
-            <Spinner size="sm" />
-          )}
+          {saveState === 'saving' && <Spinner size="sm" />}
           {saveState === 'saved' && (
-            <Check
-              style={{
-                width:       '0.75rem',
-                height:      '0.75rem',
-                color:       'var(--color-success)',
-                strokeWidth: 2,
-              }}
-            />
+            <Check style={{ width: '0.75rem', height: '0.75rem', color: 'var(--color-success)', strokeWidth: 2 }} />
           )}
         </span>
       </div>
@@ -147,32 +203,17 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
         <div
           onClick={!active && canEdit ? handleActivate : undefined}
           style={{
-            padding: 'var(--space-5)',
-            display: 'grid',
+            padding:             'var(--space-5)',
+            display:             'grid',
             gridTemplateColumns: '1fr 1fr',
-            gap: 'var(--space-4)',
-            cursor: !active && canEdit ? 'text' : 'default',
+            gap:                 'var(--space-4)',
+            cursor:              !active && canEdit ? 'text' : 'default',
           }}
         >
-          {FIELDS.map(({ label, key, placeholder, wide }) => (
-            <div
-              key={key}
-              style={wide ? { gridColumn: '1 / -1' } : undefined}
-            >
-              <p
-                style={{
-                  fontSize:      'var(--text-2xs)',
-                  fontWeight:    'var(--weight-semibold)',
-                  letterSpacing: 'var(--tracking-widest)',
-                  textTransform: 'uppercase',
-                  color:         'var(--theme-text-tertiary)',
-                  marginBottom:  'var(--space-1)',
-                  margin:        '0 0 var(--space-1) 0',
-                }}
-              >
-                {label}
-              </p>
-
+          {/* JSONB fields */}
+          {JSONB_FIELDS.map(({ label, key, placeholder, wide }) => (
+            <div key={key} style={wide ? { gridColumn: '1 / -1' } : undefined}>
+              <p style={labelStyle}>{label}</p>
               {active && canEdit ? (
                 wide ? (
                   <textarea
@@ -181,28 +222,9 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
                     placeholder={placeholder}
                     disabled={isPending}
                     rows={3}
-                    autoFocus={key === 'city'}
-                    style={{
-                      width:       '100%',
-                      padding:     'var(--space-2) var(--space-3)',
-                      border:      '1px solid var(--theme-paper-border)',
-                      borderRadius:'var(--radius-sm)',
-                      background:  'var(--theme-paper)',
-                      fontFamily:  'var(--font-sans)',
-                      fontSize:    'var(--text-sm)',
-                      color:       'var(--theme-text-primary)',
-                      lineHeight:  'var(--leading-relaxed)',
-                      resize:      'vertical',
-                      outline:     'none',
-                      boxSizing:   'border-box',
-                      opacity:     isPending ? 0.6 : 1,
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--theme-accent)';
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--theme-paper-border)';
-                    }}
+                    style={{ ...textareaStyle, opacity: isPending ? 0.6 : 1 }}
+                    onFocus={focusAccent}
+                    onBlur={blurReset}
                   />
                 ) : (
                   <input
@@ -211,58 +233,42 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
                     onChange={(e) => handleChange(key, e.target.value)}
                     placeholder={placeholder}
                     disabled={isPending}
-                    autoFocus={key === 'city'}
-                    style={{
-                      width:       '100%',
-                      height:      '2.25rem',
-                      padding:     '0 var(--space-3)',
-                      border:      '1px solid var(--theme-paper-border)',
-                      borderRadius:'var(--radius-sm)',
-                      background:  'var(--theme-paper)',
-                      fontFamily:  'var(--font-sans)',
-                      fontSize:    'var(--text-sm)',
-                      color:       'var(--theme-text-primary)',
-                      outline:     'none',
-                      boxSizing:   'border-box',
-                      opacity:     isPending ? 0.6 : 1,
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--theme-accent)';
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--theme-paper-border)';
-                    }}
+                    style={{ ...inputStyle, opacity: isPending ? 0.6 : 1 }}
+                    onFocus={focusAccent}
+                    onBlur={blurReset}
                   />
                 )
               ) : (
-                // Read-only display
-                <p
-                  style={{
-                    fontFamily: 'var(--font-sans)',
-                    fontSize:   'var(--text-sm)',
-                    color:      (saved[key] ?? '').trim()
-                      ? 'var(--theme-text-primary)'
-                      : 'var(--theme-text-tertiary)',
-                    margin:     0,
-                    lineHeight: 'var(--leading-normal)',
-                    minHeight:  '1.25rem',
-                  }}
-                >
+                <p style={readValueStyle((saved[key] ?? '').trim() !== '')}>
                   {(saved[key] ?? '').trim() || '—'}
                 </p>
               )}
             </div>
           ))}
 
+          {/* City — dedicated column */}
+          <div>
+            <p style={labelStyle}>City</p>
+            {active && canEdit ? (
+              <input
+                type="text"
+                value={cityValue}
+                onChange={(e) => setCityValue(e.target.value)}
+                placeholder="e.g. Mumbai"
+                disabled={isPending}
+                style={{ ...inputStyle, opacity: isPending ? 0.6 : 1 }}
+                onFocus={focusAccent}
+                onBlur={blurReset}
+              />
+            ) : (
+              <p style={readValueStyle(savedCity.trim() !== '')}>
+                {savedCity.trim() || '—'}
+              </p>
+            )}
+          </div>
+
           {error && (
-            <p
-              style={{
-                gridColumn: '1 / -1',
-                fontSize:   'var(--text-xs)',
-                color:      'var(--color-danger-text)',
-                margin:     0,
-              }}
-            >
+            <p style={{ gridColumn: '1 / -1', fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)', margin: 0 }}>
               {error}
             </p>
           )}
@@ -275,7 +281,7 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
               display:        'flex',
               justifyContent: 'flex-end',
               alignItems:     'center',
-              gap:             'var(--space-3)',
+              gap:            'var(--space-3)',
               padding:        'var(--space-3) var(--space-5)',
               borderTop:      '1px solid var(--theme-paper-border)',
               background:     'var(--theme-paper-subtle)',
@@ -302,7 +308,6 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
             >
               Cancel
             </button>
-
             <Button
               variant="primary"
               type="submit"
@@ -318,21 +323,8 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
 
         {/* Hint when no data and not active */}
         {!active && !hasAnyValue && canEdit && (
-          <div
-            style={{
-              padding:    '0 var(--space-5) var(--space-4)',
-              marginTop:  'calc(var(--space-4) * -1)',
-            }}
-          >
-            <p
-              style={{
-                fontFamily: 'var(--font-sans)',
-                fontSize:   'var(--text-xs)',
-                color:      'var(--theme-text-tertiary)',
-                margin:     0,
-                fontStyle:  'italic',
-              }}
-            >
+          <div style={{ padding: '0 var(--space-5) var(--space-4)', marginTop: 'calc(var(--space-4) * -1)' }}>
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', margin: 0, fontStyle: 'italic' }}>
               Click any field to add details.
             </p>
           </div>
