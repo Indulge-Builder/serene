@@ -165,3 +165,19 @@ export async function setProfileActive(
   if (error) return { data: null, error: error.message };
   return { data: data as Profile, error: null };
 }
+
+/** Fetch all active non-guest users for the subtask assignee picker (any role, any domain). */
+export async function getAssignableUsers(): Promise<
+  { id: string; full_name: string; avatar_url: string | null; role: UserRole; domain: AppDomain }[]
+> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, avatar_url, role, domain")
+    .eq("is_active", true)
+    .neq("role", "guest")
+    .order("full_name", { ascending: true });
+
+  if (error || !data) return [];
+  return data as { id: string; full_name: string; avatar_url: string | null; role: UserRole; domain: AppDomain }[];
+}

@@ -6,6 +6,12 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-03 — fix: createLeadFromWhatsApp now writes source: 'whatsapp' alongside attribution
+
+`src/lib/services/lead-ingestion.ts` line 296: `source` was `null` in the `createLeadFromWhatsApp` INSERT object after the attribution refactor. `attribution: { platform: 'whatsapp' }` was present but `source` (the indexed flat column) was missing, causing every WhatsApp-originated lead to have `source = null` and making `WHERE source = 'whatsapp'` analytics queries return zero rows. Fixed by setting `source: 'whatsapp'` explicitly. These are two separate fields that must always be set together — `source` is the queryable analytics column; `attribution` is the platform-specific JSONB bag. No migration needed.
+
+---
+
 ## 2026-06-03 — Domain-scoped route authorization — sidebar filtering + layout guard via canAccessRoute
 
 Domain-gated navigation: non-Gia domains (tech, finance, concierge, marketing, b2b) now see only the routes their domain permits. Implemented via a pure `canAccessRoute` util, a `DOMAIN_ROUTE_MAP` constant, a server-side layout guard, and Sidebar filter. Admin/founder roles bypass all domain checks. `/dashboard` and `/profile` are always accessible to every authenticated user.
@@ -31,7 +37,7 @@ Domain-gated navigation: non-Gia domains (tech, finance, concierge, marketing, b
 - `supabase/migrations/20260603000065_attribution_refactor.sql` — migration
 - `src/lib/types/database.ts` — `leads` Row/Insert/Update updated; `get_active_lead_by_phone` RPC return shape updated; `Lead` derived type updated (`attribution: Record<string,unknown>|null`); `LeadPlatform` deprecated (platform now in `attribution.platform`)
 - `src/lib/leads/adapters.ts` — `NormalizedLeadPayload` updated (`source`, `medium`, `attribution`, removed flat ad fields); all three adapters updated; Meta builds `attribution={platform:'meta',campaign_id,ad_name,adset_name}` from `res3`; Google/website build minimal `attribution={platform}` objects; WEBSITE_STANDARD_KEYS pruned
-- `src/lib/services/lead-ingestion.ts` — `leadPayloadSchema` updated; INSERT maps `source`, `medium`, `utm_campaign`, `attribution`; `createLeadFromWhatsApp` inserts `attribution:{platform:'whatsapp'}`
+- `src/lib/services/lead-ingestion.ts` — `leadPayloadSchema` updated; INSERT maps `source`, `medium`, `utm_campaign`, `attribution`; `createLeadFromWhatsApp` inserts `source:'whatsapp'` + `attribution:{platform:'whatsapp'}` (see fix entry below)
 - `src/lib/services/leads-service.ts` — `LeadListItem` Pick updated (`source`, `medium`; removed `platform`); explicit SELECT list in `getLeadsByRole` updated; source filter changed from `.eq("platform",…)` to `.eq("source",…)`
 - `src/lib/validations/lead-schema.ts` — `UpdateLeadUtmSourceSchema` renamed to `UpdateLeadSourceSchema` (field `utm_source → source`); `CreateManualLeadSchema.utm_source` renamed to `source`
 - `src/lib/actions/leads.ts` — `updateLeadUtmSource` renamed to `updateLeadSource` (schema ref + DB field updated); `createManualLead` uses `source` field; activity details type changed `lead_utm_source_updated → lead_source_updated`

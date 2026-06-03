@@ -18,9 +18,11 @@ import {
   User,
   Calendar,
   Eye,
+  MoreHorizontal,
+  Trash2,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
-import { createSubtaskAction, getGroupSubtasksAction, getTaskRemarksAction } from '@/lib/actions/tasks';
+import { createSubtaskAction, getGroupSubtasksAction, getTaskRemarksAction, deleteGroupTaskAction } from '@/lib/actions/tasks';
 import { TaskCompletionCircle } from '@/components/tasks/TaskCompletionCircle';
 import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';
 import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
@@ -330,6 +332,7 @@ interface GroupRowProps {
   assignableUsers:  AssignableUser[];
   index:            number;
   onGroupCountsChange?: (groupId: string, patch: { completedDelta?: number; subtaskDelta?: number }) => void;
+  onGroupDeleted?:      (groupId: string) => void;
 }
 
 const HEADER_CLICK_DELAY_MS = 220;
@@ -345,6 +348,7 @@ function GroupRow({
   assignableUsers,
   index,
   onGroupCountsChange,
+  onGroupDeleted,
 }: GroupRowProps) {
   const router = useRouter();
   const accent   = getAccentForRow(group);
@@ -397,6 +401,36 @@ function GroupRow({
   const [selectedSubtask,        setSelectedSubtask]        = useState<SubtaskWithAssignee | null>(null);
   const [selectedSubtaskRemarks, setSelectedSubtaskRemarks] = useState<TaskRemarkWithAuthor[] | null>(null);
   const [modalOpen,              setModalOpen]              = useState(false);
+
+  const [moreMenuOpen,      setMoreMenuOpen]      = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [isDeleting,        setIsDeleting]        = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close more-menu on outside click
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [moreMenuOpen]);
+
+  async function handleDeleteGroup() {
+    setIsDeleting(true);
+    const result = await deleteGroupTaskAction({ groupId: group.id });
+    setIsDeleting(false);
+    if (result.error) {
+      toast.danger('Failed to delete group task', { message: result.error });
+      return;
+    }
+    toast.success('Group task deleted');
+    setConfirmDeleteOpen(false);
+    onGroupDeleted?.(group.id);
+  }
 
   const defaultAssignee = useMemo(
     () => assignableUsers.find((u) => u.id === currentUserId) ?? null,
@@ -649,8 +683,195 @@ function GroupRow({
 
           {/* Due date chip */}
           {group.due_at && <DueDateChip dueAt={group.due_at} />}
+
+          {/* ⋯ more menu — admin/founder only */}
+          {(callerRole === 'admin' || callerRole === 'founder') && (
+            <div ref={moreMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setMoreMenuOpen((v) => !v); }}
+                aria-label="More options"
+                style={{
+                  display:        'flex',
+                  alignItems:     'center',
+                  justifyContent: 'center',
+                  width:          28,
+                  height:         28,
+                  borderRadius:   'var(--radius-sm)',
+                  border:         '1px solid var(--theme-paper-border)',
+                  background:     moreMenuOpen ? 'var(--theme-paper-subtle)' : 'transparent',
+                  color:          'var(--theme-text-tertiary)',
+                  cursor:         'pointer',
+                  transition:     'var(--transition-hover)',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)'; }}
+                onMouseLeave={(e) => { if (!moreMenuOpen) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                <MoreHorizontal style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
+              </button>
+
+              <AnimatePresence>
+                {moreMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.97 }}
+                    transition={{ duration: 0.15, ease: EASE_OUT_EXPO }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      position:    'absolute',
+                      top:         'calc(100% + 4px)',
+                      right:       0,
+                      zIndex:      'var(--z-dropdown)' as React.CSSProperties['zIndex'],
+                      background:  'var(--theme-paper)',
+                      border:      '1px solid var(--theme-paper-border)',
+                      borderRadius: 'var(--radius-md)',
+                      boxShadow:   'var(--shadow-3)',
+                      minWidth:    148,
+                      padding:     'var(--space-1)',
+                      overflow:    'hidden',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMoreMenuOpen(false);
+                        setConfirmDeleteOpen(true);
+                      }}
+                      style={{
+                        display:        'flex',
+                        alignItems:     'center',
+                        gap:            'var(--space-2)',
+                        width:          '100%',
+                        padding:        'var(--space-2) var(--space-3)',
+                        borderRadius:   'var(--radius-sm)',
+                        border:         'none',
+                        background:     'transparent',
+                        color:          'var(--color-danger-text)',
+                        fontFamily:     'var(--font-sans)',
+                        fontSize:       'var(--text-sm)',
+                        cursor:         'pointer',
+                        textAlign:      'left',
+                        transition:     'var(--transition-hover)',
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-light)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                    >
+                      <Trash2 style={{ width: 14, height: 14, strokeWidth: 1.5, flexShrink: 0 }} />
+                      Delete group
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ── Confirm delete dialog ────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {confirmDeleteOpen && (
+          <>
+            <motion.div
+              key="delete-group-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => { e.stopPropagation(); if (!isDeleting) setConfirmDeleteOpen(false); }}
+              style={{
+                position:   'fixed',
+                inset:      0,
+                background: 'var(--overlay-bg-light)',
+                zIndex:     'var(--z-modal-overlay)' as React.CSSProperties['zIndex'],
+              }}
+            />
+            <motion.div
+              key="delete-group-dialog"
+              initial={{ opacity: 0, y: 8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.97 }}
+              transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position:       'fixed',
+                top:            '50%',
+                left:           '50%',
+                transform:      'translate(-50%, -50%)',
+                zIndex:         'var(--z-modal)' as React.CSSProperties['zIndex'],
+                background:     'var(--theme-paper)',
+                borderRadius:   'var(--radius-lg)',
+                boxShadow:      'var(--shadow-4)',
+                width:          'min(420px, calc(100vw - var(--space-8)))',
+                padding:        'var(--space-6)',
+              }}
+            >
+              <h3
+                style={{
+                  fontFamily:  'var(--font-serif)',
+                  fontSize:    'var(--text-lg)',
+                  fontWeight:  'var(--weight-semibold)',
+                  color:       'var(--theme-text-primary)',
+                  margin:      '0 0 var(--space-2)',
+                }}
+              >
+                Delete group task?
+              </h3>
+              <p
+                style={{
+                  fontFamily: 'var(--font-sans)',
+                  fontSize:   'var(--text-sm)',
+                  color:      'var(--theme-text-secondary)',
+                  margin:     '0 0 var(--space-5)',
+                  lineHeight: 1.5,
+                }}
+              >
+                <strong style={{ color: 'var(--theme-text-primary)' }}>{group.title}</strong> and all its subtasks will be permanently deleted. This cannot be undone.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteOpen(false); }}
+                  disabled={isDeleting}
+                  style={{
+                    padding:      'var(--space-2) var(--space-4)',
+                    borderRadius: 'var(--radius-sm)',
+                    border:       '1px solid var(--theme-paper-border)',
+                    background:   'transparent',
+                    fontFamily:   'var(--font-sans)',
+                    fontSize:     'var(--text-sm)',
+                    color:        'var(--theme-text-secondary)',
+                    cursor:       isDeleting ? 'not-allowed' : 'pointer',
+                    opacity:      isDeleting ? 0.5 : 1,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleDeleteGroup(); }}
+                  disabled={isDeleting}
+                  style={{
+                    padding:      'var(--space-2) var(--space-4)',
+                    borderRadius: 'var(--radius-sm)',
+                    border:       'none',
+                    background:   isDeleting ? 'var(--color-danger-light)' : 'var(--color-danger)',
+                    fontFamily:   'var(--font-sans)',
+                    fontSize:     'var(--text-sm)',
+                    fontWeight:   'var(--weight-semibold)',
+                    color:        isDeleting ? 'var(--color-danger-text)' : 'var(--color-danger-fg, #fff)',
+                    cursor:       isDeleting ? 'not-allowed' : 'pointer',
+                    transition:   'var(--transition-interactive)',
+                  }}
+                >
+                  {isDeleting ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* ── Expanded subtasks ───────────────────────────────────────────────── */}
       <AnimatePresence initial={false}>
@@ -1095,6 +1316,11 @@ export function GroupTasksTab({
     setCreateModalOpen(false);
   }
 
+  const handleGroupDeleted = useCallback((groupId: string) => {
+    setGroupRows((prev) => prev.filter((g) => g.id !== groupId));
+    setExpandedGroupId((prev) => (prev === groupId ? null : prev));
+  }, []);
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -1155,6 +1381,7 @@ export function GroupTasksTab({
             assignableUsers={assignableUsers}
             index={idx}
             onGroupCountsChange={handleGroupCountsChange}
+            onGroupDeleted={handleGroupDeleted}
           />
         ))
       )}

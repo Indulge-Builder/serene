@@ -108,6 +108,15 @@ export const DeleteTaskSchema = z.object({
 export type DeleteTaskInput = z.infer<typeof DeleteTaskSchema>;
 
 // ─────────────────────────────────────────────
+// Delete group task (admin/founder only — RLS enforced)
+// ─────────────────────────────────────────────
+export const DeleteGroupTaskSchema = z.object({
+  groupId: z.string().uuid('Invalid group ID'),
+});
+
+export type DeleteGroupTaskInput = z.infer<typeof DeleteGroupTaskSchema>;
+
+// ─────────────────────────────────────────────
 // Suppress task remark (admin/founder only)
 // ─────────────────────────────────────────────
 export const SuppressTaskRemarkSchema = z.object({

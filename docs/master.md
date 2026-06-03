@@ -5,7 +5,7 @@
 > what it is, how it is built, every rule, every migration, every file.
 > For deep dives into individual surfaces, follow the page-doc links in §8.
 >
-> *Last verified: 2026-06-01. Sources: The_Blueprint.md · The_Profile.md · context.md*
+> *Last verified: 2026-06-03. Sources: The_Blueprint.md · The_Profile.md · context.md · changelog.md*
 
 ---
 
@@ -19,7 +19,7 @@
 6. [The profiles Foundation](#6-the-profiles-foundation)
 7. [Build Phases — Complete History](#7-build-phases--complete-history)
 8. [Route Map & Page Docs](#8-route-map--page-docs)
-9. [Migration Index — All 58 Migrations](#9-migration-index--all-58-migrations)
+9. [Migration Index — All 65 Migrations](#9-migration-index--all-65-migrations)
 10. [File Map — Where Everything Lives](#10-file-map--where-everything-lives)
 11. [Services Registry](#11-services-registry)
 12. [Actions Registry](#12-actions-registry)
@@ -328,6 +328,8 @@ CREATE TABLE agent_routing_config (
 | Admin/Profile Redesign | ✅ Complete | Canonical wide two-column layout, `SectionCard`, `BackButton`, `NewUserClient` |
 | Dashboard v2 | ✅ Complete | Widget resize, domain tab selectors, Lead Volume multi-line chart, role-scoped activity feed |
 | Performance v2 | ✅ Complete | Agent KPI row: 4-across cards + Recharts sparklines + donut outcome breakdown (2026-06-01) |
+| Attribution Refactor | ✅ Complete (2026-06-03) | 7 flat ad columns → `source`, `medium`, `utm_campaign` + `attribution jsonb`; migration 0065 |
+| Domain Route Authorization | ✅ Complete (2026-06-03) | `canAccessRoute`, `DOMAIN_ROUTE_MAP`, layout guard, Sidebar filtering — non-Gia domains see only their permitted routes |
 
 **Current focus:** Lia AI presence, client records (post-won flow).
 
@@ -382,7 +384,7 @@ Every route has a dedicated intelligence document generated during the DRY audit
 
 ---
 
-## 9. Migration Index — All 58 Migrations
+## 9. Migration Index — All 65 Migrations
 
 | # | What it creates / changes |
 | - | ------------------------- |
@@ -395,7 +397,7 @@ Every route has a dedicated intelligence document generated during the DRY audit
 | 0007 | `get_next_round_robin_agent()` — atomic `SELECT FOR UPDATE SKIP LOCKED` |
 | 0008 | Lead dedup by phone — `previous_lead_id` FK, `get_active_lead_by_phone()` |
 | 0009 | `personal_details JSONB` on `leads` |
-| 0010 | Three partial indexes: `idx_leads_utm_source`, `idx_leads_utm_campaign`, `idx_leads_last_call_outcome` |
+| 0010 | Three partial indexes: `idx_leads_utm_campaign`, `idx_leads_last_call_outcome`, and `idx_leads_utm_source` (renamed to `idx_leads_source` in migration 0065) |
 | 0011 | `idx_leads_phone_text` (`text_pattern_ops`) for ILIKE search |
 | 0012 | `ad_creatives` table (campaign_key UNIQUE — later dropped in 0058) |
 | 0013 | Three partial indexes on `lead_activities`, `lead_notes`, `leads` (performance) |
@@ -444,6 +446,13 @@ Every route has a dedicated intelligence document generated during the DRY audit
 | 0056 | `get_gia_tasks` slug prereq — repairs DBs where 0055 ran before 0045 slug column |
 | 0057 | `task_type_other` — backfills `email`/`general_follow_up` → `other`; nurturing auto-task uses `other` |
 | 0058 | `ad_creatives_multi_video` — drops UNIQUE on `campaign_key`; multiple videos per campaign allowed |
+| 0059 | `agent_routing_config.shift_days integer[]` — JS day-of-week array (0=Sun…6=Sat); NULL = use global `BUSINESS_HOURS`; stored/displayed Mon-first |
+| 0060 | `leads.resolution_reason text` column + updated `update_lead_status` RPC to persist `p_reason`; revive path (→ `in_discussion`) sets it to NULL |
+| 0061 | Drop `leads.private_scratchpad` column + `get_lead_scratchpad(uuid)` function |
+| 0062 | `get_dashboard_summary` — adds `p_initial_domain` (4th param, default NULL); agents: only `agent_tasks` + `agent_activity` CTEs execute; managers: scoped to `p_domain` |
+| 0063 | `get_agent_recent_activity(p_role, p_domain, p_user_id)` RPC — single SQL replacing two-step Node.js pattern (SELECT ids → .in()); LEFT JOIN for lead name |
+| 0064 | Two dashboard refresh RPCs for per-widget refresh buttons — `get_lead_status_summary` + `get_campaign_performance`; CTE logic mirrors 0062; DB returns final jsonb shape |
+| 0065 | Attribution refactor — removes `platform`, `campaign_id`, `ad_name`, `utm_content`; renames `utm_source → source`, `utm_medium → medium`; adds `attribution jsonb`; backfills flat columns into JSONB; drops `idx_leads_utm_source`, creates `idx_leads_source` |
 
 ---
 
@@ -480,7 +489,7 @@ eia/
 │   └── design-system.md              ← Full design system reference manual
 │
 ├── src/
-│   ├── proxy.ts                       ← Next.js 16 proxy — session refresh + last_seen_at + webhook exclusion
+│   ├── proxy.ts                       ← Next.js 16 proxy — session refresh + x-pathname header forwarding + webhook exclusion
 │   │
 │   ├── app/
 │   │   ├── CLAUDE.md
@@ -513,7 +522,7 @@ eia/
 │   ├── components/
 │   │   ├── CLAUDE.md
 │   │   ├── ui/                        ← 26+ display-only token-compliant primitives
-│   │   ├── layout/                    ← Sidebar, TopBar
+│   │   ├── layout/                    ← Sidebar (domain-filtered nav), TopBar; CLAUDE.md documents canAccessRoute pattern
 │   │   ├── admin/                     ← UsersTable, CreateUserForm, AdCreativesManager
 │   │   ├── campaigns/                 ← CampaignCard, CampaignFilters, AdCreativeCarousel
 │   │   ├── dashboard/widgets/         ← 5 Gia widgets
@@ -597,7 +606,7 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 | `auth.ts` | (sign in/out helpers) |
 | `ad-creatives.ts` | `upsertAdCreative` (admin/founder; normalises campaign_key; 23505 → friendly error), `deleteAdCreative` |
 | `dashboard.ts` | 5 widget refresh actions (all re-verify via `getCurrentProfile()`) |
-| `leads.ts` | `addLeadCallNote`, `addLeadNote`, `updateLeadStatus`, `assignLead`, `createManualLead`, `createLeadTaskAction`, `recordDeal`, `updatePersonalDetails`, `updateScratchpad`, `updateLeadEmail`, `updateLeadDomain`, `updateLeadUtmSource`, `listAgentsForDomain`, `searchLeadsAction` |
+| `leads.ts` | `addLeadCallNote`, `addLeadNote`, `updateLeadStatus`, `assignLead`, `createManualLead`, `createLeadTaskAction`, `recordDeal`, `updatePersonalDetails`, `updateScratchpad`, `updateLeadEmail`, `updateLeadDomain`, `updateLeadSource`, `listAgentsForDomain`, `searchLeadsAction` |
 | `notifications.ts` | `markNotificationReadAction`, `markAllReadAction` |
 | `performance.ts` | `getAgentPerformanceAction`, `getAgentListForDomainAction` |
 | `profiles.ts` | `createUser`, `updateProfile`, `updateUserAuthorization`, `toggleUserActive`, `inviteUser`, `updateProfileAvatar`, `signOutUser` |
@@ -623,6 +632,7 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 | `lead-statuses.ts` | Status enums + badge config + `LEAD_STATUS_COLORS` |
 | `motion.ts` | `ENTER_DURATION`, `EXIT_DURATION`, `BASE_DURATION`, `FAST_DURATION`, `EASE_OUT_EXPO`, `EASE_IN_EXPO`, `EASE_SPRING`, `EASE_IN_OUT`, `SPRING_CONFIG`, `MODAL_VARIANTS`, `DROPDOWN_VARIANTS`, `FADE_VARIANTS`, `MOTION_BUTTON_DEFAULTS` |
 | `roles.ts` | `USER_ROLES`, `ROLE_LABELS`, `MANAGER_ROLES` |
+| `route-permissions.ts` | `ALWAYS_ALLOWED_PREFIXES` (`['/dashboard', '/profile']`), `DOMAIN_ROUTE_MAP` — domain → permitted route prefixes; GIA domains built programmatically from `GIA_DOMAINS.reduce()` |
 | `sla.ts` | `BUSINESS_HOURS` (IST, Mon–Sat 09:00–19:00), `SLA_RULES` (8 rules), `SLA_AUTO_TASK_TITLES` |
 | `task-constants.ts` | `TASK_PRIORITY`, `TASK_STATUS` (+ pillBg/pillText/remarkBg tokens), `TASK_CATEGORY`, `TASK_REMARK_STATUS_LABELS`, `GROUP_TASK_ACCENT_COLORS`, `GROUP_TASK_ICONS` |
 | `task-types.ts` | `TASK_TYPES` (call / whatsapp_message / other), `TASK_TYPE_LABELS` |
@@ -639,6 +649,7 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 | `filter-params.ts` | `buildFilterParams()`, `dateFromUrlParam()`, `dateToUrlParam()`, `parseGiaDomainParam()` — shared filter URL helpers |
 | `numbers.ts` | `formatCount()`, `formatCompact()`, `formatPercent()`, `formatCurrency()` |
 | `phone.ts` | `normalizeToE164()` — the ONLY phone normalizer |
+| `route-access.ts` | `canAccessRoute(profile, pathname): boolean` — pure util; checks admin/founder bypass → `ALWAYS_ALLOWED_PREFIXES` → `DOMAIN_ROUTE_MAP` prefix match; safe in `'use client'` components |
 | `sanitize.ts` | `sanitizeText()` — the ONLY sanitizer |
 | `scroll.ts` | `scrollToBottom()`, `lockBodyScroll()` |
 | `sla.ts` | `nextBusinessDeadline()`, `isWithinBusinessHours()`, `businessMinutesBetween()` — all IST-aware |
@@ -899,6 +910,8 @@ Every architectural decision that deviates from or extends the rules above.
 | 2026-06-01 | Lead source on `utm_source`. `form_data.manual_source` retired. | `leads.utm_source` is the canonical source field. | Source is attribution data, not form payload — belongs with UTM fields. |
 | 2026-06-01 | Multiple ad creatives per campaign. Migration 0058 drops UNIQUE on `ad_creatives.campaign_key`. | One row per video; `getAdCreativesForCampaign` returns `AdCreative[]` newest-first. | Campaigns run multiple ad variants. |
 | 2026-06-01 | `ComboboxDropdown` removed. | All searchable single-select surfaces use `FilterDropdown`. | Duplicate primitive. One dropdown contract reduces maintenance. |
+| 2026-06-03 | Domain-scoped route authorization. Non-Gia domains had no route restriction — agents could navigate to `/leads` despite having no data there. | `canAccessRoute(profile, pathname)` pure util + `DOMAIN_ROUTE_MAP` constant + server-side layout guard (`redirect('/dashboard')`) + Sidebar nav filter. Admin/founder bypass all domain checks. `/dashboard` and `/profile` are in `ALWAYS_ALLOWED_PREFIXES` — redirect loop impossible. Two independent gates: layout guard redirects before the page renders; Sidebar never renders the link. | Defense-in-depth: neither gate trusts the other. Page-level privilege checks (`isPrivileged`) remain unchanged — `canAccessRoute` is additive, not a replacement. |
+| 2026-06-03 | Attribution refactor (migration 0065): 7 flat ad columns → `source`, `medium`, `utm_campaign` + `attribution jsonb`. `utm_source` renamed `source`; `utm_medium` renamed `medium`; `platform`, `campaign_id`, `ad_name`, `utm_content` folded into `attribution` JSONB. `source` is indexed and queryable (`WHERE source = 'whatsapp'`); `attribution` is the unindexed platform-specific extras bag. `createLeadFromWhatsApp` sets both `source: 'whatsapp'` and `attribution: { platform: 'whatsapp' }`. `updateLeadSource` replaces `updateLeadUtmSource`. URL-param `source` validated against `LEAD_SOURCES` at the route handler before reaching ingestion. | Migration 0065. | Flat columns per ad platform don't scale. JSONB bag absorbs new platforms without schema migrations while `source` stays flat for analytics. |
 
 ---
 
@@ -1073,5 +1086,5 @@ const tokens = useChartTokens(); // re-resolves on data-theme change
 
 ---
 
-*Eia Master Reference — Indulge Global · Last updated: 2026-06-01*
-*Sources: The_Blueprint.md · The_Profile.md · context.md · all page-doc audits*
+*Eia Master Reference — Indulge Global · Last updated: 2026-06-03*
+*Sources: The_Blueprint.md · The_Profile.md · context.md · changelog.md · all page-doc audits*

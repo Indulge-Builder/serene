@@ -337,7 +337,7 @@ All writes bypass RLS. Idempotent on `wa_message_id` for inbound messages.
 
 PostgREST insert does not expose `ON CONFLICT DO NOTHING` cleanly; re-SELECT is the recovery path.
 
-**`createLeadFromWhatsApp`:** Lives in `src/lib/services/lead-ingestion.ts`. Inserts lead with `platform: 'whatsapp'`, default domain, round-robin assign, `lead_created` + optional `agent_assigned` activities. Called from step 4 when phone has no active lead.
+**`createLeadFromWhatsApp`:** Lives in `src/lib/services/lead-ingestion.ts`. Inserts lead with `source: 'whatsapp'` (indexed flat column) and `attribution: { platform: 'whatsapp' }` (JSONB bag), default domain, round-robin assign, `lead_created` + optional `agent_assigned` activities. Called from step 4 when phone has no active lead. Both fields must always be set together — `source` is what `WHERE source = 'whatsapp'` queries hit; `attribution` is the platform-specific extras bag.
 
 **Gupshup path note:** Active webhook returns `200` for `message-event` **without** calling `processStatusUpdate`. Delivery status updates run on the **Meta** branch today. Gupshup delivery receipts are acknowledged but not persisted unless the handler is extended.
 

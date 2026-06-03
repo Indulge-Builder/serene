@@ -13,13 +13,14 @@ import {
   UpdateTaskStatusSchema,
   AddTaskRemarkSchema,
   DeleteTaskSchema,
+  DeleteGroupTaskSchema,
   SuppressTaskRemarkSchema,
   UpdateChecklistSchema,
   UpdateTaskTagsSchema,
 } from '@/lib/validations/task-schemas';
 import { formErrors } from '@/lib/validations/form-errors';
 import { sanitizeText } from '@/lib/utils/sanitize';
-import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { getCurrentProfile, getAssignableUsers } from '@/lib/services/profiles-service';
 import { createNotification } from '@/lib/services/notifications-service';
 import { getTaskRemarks } from '@/lib/services/tasks-service';
 import { scheduleTaskReminder, cancelTaskReminder } from '@/trigger/task-reminders';
@@ -848,6 +849,20 @@ export async function suppressTaskRemarkAction(
 }
 
 // ─────────────────────────────────────────────
+// Action: getAssignableUsersAction
+// Returns all active non-guest users for the subtask assignee picker.
+// ─────────────────────────────────────────────
+export async function getAssignableUsersAction(): Promise<
+  ActionResult<{ id: string; full_name: string; avatar_url: string | null; role: string; domain: string }[]>
+> {
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const users = await getAssignableUsers();
+  return { data: users, error: null };
+}
+
+// ─────────────────────────────────────────────
 // Action: getTaskRemarksAction
 // Client-callable read action for fetching task_remarks.
 // Used when opening a TaskModal from a client component that cannot
@@ -861,4 +876,56 @@ export async function getTaskRemarksAction(
 
   const remarks = await getTaskRemarks(taskId);
   return { data: remarks, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: deleteGroupTaskAction
+// Authorization: admin/founder only — RLS enforces this at DB level.
+//   Deleting a group cascades: tasks (ON DELETE CASCADE) → task_remarks.
+// ─────────────────────────────────────────────
+export async function deleteGroupTaskAction(
+  input: unknown,
+): Promise<ActionResult<null>> {
+  // 1. Zod validation
+  const parsed = DeleteGroupTaskSchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  const { groupId } = parsed.data;
+
+  // 2. Auth — admin/founder only
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+  if (!['admin', 'founder'].includes(caller.role)) {
+    return { data: null, error: formErrors.unauthorized };
+  }
+
+  // 3. Fetch group to verify it exists and get domain for cache invalidation
+  const supabase = await createClient();
+  const { data: group } = await supabase
+    .from('task_groups')
+    .select('id, domain')
+    .eq('id', groupId)
+    .single();
+
+  if (!group) return { data: null, error: 'Group task not found.' };
+
+  // 4. Delete — ON DELETE CASCADE removes all tasks (and their task_remarks) in this group
+  const admin = createAdminClient();
+  const { error: deleteError } = await admin
+    .from('task_groups')
+    .delete()
+    .eq('id', groupId);
+
+  if (deleteError) return { data: null, error: formErrors.generic };
+
+  // 5. Cache invalidation
+  try {
+    await redis.del(REDIS_KEYS.task.groupList(group.domain, caller.role));
+  } catch (e) {
+    console.warn('[deleteGroupTaskAction] redis del failed', e);
+  }
+
+  revalidatePath('/tasks');
+
+  return { data: null, error: null };
 }

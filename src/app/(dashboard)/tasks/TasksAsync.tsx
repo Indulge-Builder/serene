@@ -18,7 +18,7 @@
  */
 
 import { getPersonalTasks, getGroupTasks, getGiaTasksForUser, getPersonalTaskTags } from '@/lib/services/tasks-service';
-import { getAgentsForDomain } from '@/lib/services/leads-service';
+import { getAssignableUsers } from '@/lib/services/profiles-service';
 import type {
   PersonalTasksResult,
   TaskGroupRow,
@@ -46,13 +46,13 @@ const EMPTY_PERSONAL: PersonalTasksResult = {
 const EMPTY_GROUP: TaskGroupRow[] = [];
 const EMPTY_GIA:  GiaTask[]      = [];
 
-// Shape passed across the server→client boundary for assignable agents.
+// Shape passed across the server→client boundary for assignable users.
 // Matches the fields AssigneePickerModal + GroupRow need.
 export type AgentSlim = {
   id:         string;
   full_name:  string;
   avatar_url: string | null;
-  role:       'agent';
+  role:       UserRole;
   domain:     AppDomain;
 };
 
@@ -69,14 +69,12 @@ export async function TasksAsync({
   let groupRows      = EMPTY_GROUP;
   let giaTasks       = EMPTY_GIA;
 
-  // Hoist agents for all tabs (needed by create modals in every tab for manager+).
+  // Hoist assignable users for all tabs (subtask assignee picker is available to all roles).
   // Hoist tags only on the personal tab (tag filter strip is only on My Tasks).
-  const isPrivileged = callerRole === 'manager' || callerRole === 'admin' || callerRole === 'founder';
-  const needsTags    = tab === 'personal' || validTabs.includes('personal');
+  const needsTags = tab === 'personal' || validTabs.includes('personal');
 
-  const [rawAgents, initialTags] = await Promise.all([
-    // Agents — only meaningful for privileged roles; agents never see the picker
-    isPrivileged ? getAgentsForDomain(callerDomain) : Promise.resolve([] as { id: string; full_name: string }[]),
+  const [rawAssignableUsers, initialTags] = await Promise.all([
+    getAssignableUsers(),
     // Tags — only needed when the personal tab is reachable
     needsTags ? getPersonalTaskTags(userId) : Promise.resolve([] as string[]),
   ]);
@@ -89,12 +87,12 @@ export async function TasksAsync({
     giaTasks = await getGiaTasksForUser(userId, callerRole, callerDomain);
   }
 
-  const initialAgents: AgentSlim[] = rawAgents.map((a) => ({
-    id:         a.id,
-    full_name:  a.full_name,
-    avatar_url: null,
-    role:       'agent' as const,
-    domain:     callerDomain,
+  const initialAgents: AgentSlim[] = rawAssignableUsers.map((u) => ({
+    id:         u.id,
+    full_name:  u.full_name,
+    avatar_url: u.avatar_url,
+    role:       u.role,
+    domain:     u.domain,
   }));
 
   return (

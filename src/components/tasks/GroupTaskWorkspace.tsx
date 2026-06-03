@@ -42,6 +42,7 @@ import {
   useState,
   useTransition,
 } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -53,14 +54,16 @@ import {
   ArrowRight,
   CalendarDays,
   ChevronDown,
+  Trash2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
   createSubtaskAction,
   getGroupSubtasksAction,
   getTaskRemarksAction,
+  deleteGroupTaskAction,
+  getAssignableUsersAction,
 } from '@/lib/actions/tasks';
-import { listAgentsForDomain } from '@/lib/actions/leads';
 import { formatRelativeTime, formatDate } from '@/lib/utils/dates';
 import { toast } from '@/lib/toast';
 import { SubTaskModal, type SubTaskModalTaskUpdate } from '@/components/tasks/SubTaskModal';
@@ -221,6 +224,8 @@ export function GroupTaskWorkspace({
   callerRole,
   callerDomain,
 }: GroupTaskWorkspaceProps) {
+  const router = useRouter();
+
   // ── View toggle — default 'list', hydrated from localStorage after mount ──
   const [view, setView]   = useState<WorkspaceView>('list');
   const [hydrated, setHydrated] = useState(false);
@@ -240,6 +245,22 @@ export function GroupTaskWorkspace({
   function handleViewChange(v: WorkspaceView) {
     setView(v);
     try { localStorage.setItem(LS_KEY, v); } catch { /* noop */ }
+  }
+
+  // ── Delete group state ────────────────────────────────────────────────────
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [isDeleting,        setIsDeleting]        = useState(false);
+
+  async function handleDeleteGroup() {
+    setIsDeleting(true);
+    const result = await deleteGroupTaskAction({ groupId: group.id });
+    setIsDeleting(false);
+    if (result.error) {
+      toast.danger('Failed to delete group task', { message: result.error });
+      return;
+    }
+    toast.success('Group task deleted');
+    router.push('/tasks?tab=group');
   }
 
   // ── Subtask state ─────────────────────────────────────────────────────────
@@ -349,22 +370,19 @@ export function GroupTaskWorkspace({
   const [isPending,          startTransition]       = useTransition();
   const addTitleRef = useRef<HTMLInputElement>(null);
 
-  // Load assignable users on first add-panel open (manager+)
+  // Load all assignable users on first add-panel open (all roles can assign subtasks)
   useEffect(() => {
     if (!showAddPanel) return;
-    if (!['manager', 'admin', 'founder'].includes(callerRole)) return;
     if (assignableUsers.length > 0) return;
-    listAgentsForDomain(callerDomain).then((r) => {
+    getAssignableUsersAction().then((r) => {
       if (r.data) {
-        setAssignableUsers(
-          r.data.map((a: { id: string; full_name: string }) => ({
-            id:         a.id,
-            full_name:  a.full_name,
-            avatar_url: null,
-            role:       'agent' as const,
-            domain:     callerDomain,
-          })),
-        );
+        const users = r.data as AssignableUser[];
+        setAssignableUsers(users);
+        // Default to the current user if not already set
+        setAddAssignee((prev) => {
+          if (prev) return prev;
+          return users.find((u) => u.id === currentUserId) ?? null;
+        });
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -379,16 +397,13 @@ export function GroupTaskWorkspace({
       addTitleRef.current?.focus();
       return;
     }
-    if (!addAssignee) {
-      toast.danger('Please pick an assignee first');
-      return;
-    }
+    const assigneeId = addAssignee?.id ?? currentUserId;
     startTransition(async () => {
       const result = await createSubtaskAction({
         group_id:    group.id,
         title:       addTitle.trim(),
         priority:    addPriority,
-        assigned_to: addAssignee.id,
+        assigned_to: assigneeId,
         due_at:      addDueAt ? new Date(addDueAt).toISOString() : undefined,
       });
       if (result.error) {
@@ -406,7 +421,7 @@ export function GroupTaskWorkspace({
         if (r.data) setSubtasks(r.data);
       }).catch(() => {});
     });
-  }, [isPending, addTitle, addPriority, addDueAt, addAssignee, group.id]);
+  }, [isPending, addTitle, addPriority, addDueAt, addAssignee, currentUserId, group.id]);
 
   function handleAddKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter') handleAddSubtask();
@@ -469,8 +484,138 @@ export function GroupTaskWorkspace({
                 {formatDate(group.due_at, 'dd MMM yyyy')}
               </span>
             )}
+
+            {/* Delete button — admin/founder only */}
+            {(callerRole === 'admin' || callerRole === 'founder') && (
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteOpen(true)}
+                title="Delete group task"
+                style={{
+                  display:        'flex',
+                  alignItems:     'center',
+                  justifyContent: 'center',
+                  width:          32,
+                  height:         32,
+                  borderRadius:   'var(--radius-sm)',
+                  border:         '1px solid var(--theme-paper-border)',
+                  background:     'transparent',
+                  color:          'var(--color-danger-text)',
+                  cursor:         'pointer',
+                  transition:     'var(--transition-hover)',
+                  flexShrink:     0,
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-light)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                <Trash2 style={{ width: 15, height: 15, strokeWidth: 1.5 }} />
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Confirm delete dialog */}
+        <AnimatePresence>
+          {confirmDeleteOpen && (
+            <>
+              <motion.div
+                key="ws-delete-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                onClick={() => { if (!isDeleting) setConfirmDeleteOpen(false); }}
+                style={{
+                  position:   'fixed',
+                  inset:      0,
+                  background: 'var(--overlay-bg-light)',
+                  zIndex:     'var(--z-modal-overlay)' as React.CSSProperties['zIndex'],
+                }}
+              />
+              <motion.div
+                key="ws-delete-dialog"
+                initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.97 }}
+                transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+                style={{
+                  position:       'fixed',
+                  top:            '50%',
+                  left:           '50%',
+                  transform:      'translate(-50%, -50%)',
+                  zIndex:         'var(--z-modal)' as React.CSSProperties['zIndex'],
+                  background:     'var(--theme-paper)',
+                  borderRadius:   'var(--radius-lg)',
+                  boxShadow:      'var(--shadow-4)',
+                  width:          'min(420px, calc(100vw - var(--space-8)))',
+                  padding:        'var(--space-6)',
+                }}
+              >
+                <h3
+                  style={{
+                    fontFamily:  'var(--font-serif)',
+                    fontSize:    'var(--text-lg)',
+                    fontWeight:  'var(--weight-semibold)',
+                    color:       'var(--theme-text-primary)',
+                    margin:      '0 0 var(--space-2)',
+                  }}
+                >
+                  Delete group task?
+                </h3>
+                <p
+                  style={{
+                    fontFamily: 'var(--font-sans)',
+                    fontSize:   'var(--text-sm)',
+                    color:      'var(--theme-text-secondary)',
+                    margin:     '0 0 var(--space-5)',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <strong style={{ color: 'var(--theme-text-primary)' }}>{group.title}</strong> and all its subtasks will be permanently deleted. This cannot be undone.
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteOpen(false)}
+                    disabled={isDeleting}
+                    style={{
+                      padding:      'var(--space-2) var(--space-4)',
+                      borderRadius: 'var(--radius-sm)',
+                      border:       '1px solid var(--theme-paper-border)',
+                      background:   'transparent',
+                      fontFamily:   'var(--font-sans)',
+                      fontSize:     'var(--text-sm)',
+                      color:        'var(--theme-text-secondary)',
+                      cursor:       isDeleting ? 'not-allowed' : 'pointer',
+                      opacity:      isDeleting ? 0.5 : 1,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteGroup}
+                    disabled={isDeleting}
+                    style={{
+                      padding:      'var(--space-2) var(--space-4)',
+                      borderRadius: 'var(--radius-sm)',
+                      border:       'none',
+                      background:   isDeleting ? 'var(--color-danger-light)' : 'var(--color-danger)',
+                      fontFamily:   'var(--font-sans)',
+                      fontSize:     'var(--text-sm)',
+                      fontWeight:   'var(--weight-semibold)',
+                      color:        isDeleting ? 'var(--color-danger-text)' : 'var(--color-danger-fg, #fff)',
+                      cursor:       isDeleting ? 'not-allowed' : 'pointer',
+                      transition:   'var(--transition-interactive)',
+                    }}
+                  >
+                    {isDeleting ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
 
         {/* Toolbar: subtask count + view toggle */}
         <div
