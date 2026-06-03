@@ -8,6 +8,7 @@ import {
   GUPSHUP_FOUNDER_LEAD_NOTIFICATION_TEMPLATE_ID,
   GUPSHUP_SLA_AGENT_TEMPLATE_ID,
   GUPSHUP_SLA_MANAGER_TEMPLATE_ID,
+  GUPSHUP_LEAD_INITIATION_TEMPLATE_ID,
 } from '@/lib/constants/whatsapp';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MetaApiResponse, TemplateComponent } from '@/lib/types/whatsapp';
@@ -649,6 +650,62 @@ export async function sendSlaManagerNotification(
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendSlaManagerNotification:', err);
   }
+}
+
+// ─────────────────────────────────────────────
+// Send lead initiation message via Gupshup template
+// Params: {{1}} = leadName, {{2}} = agentName
+// CAN THROW — the action layer catches and surfaces to UI.
+// Does NOT call logNotification — whatsapp_notification_logs CHECK does not cover 'lead_initiation'.
+// ─────────────────────────────────────────────
+
+export async function sendLeadInitiationMessage(
+  to:        string,
+  leadName:  string,
+  agentName: string,
+): Promise<MetaApiResponse> {
+  const source      = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
+  const destination = to.replace(/^\+/, '');
+
+  const params = new URLSearchParams({
+    channel:    'whatsapp',
+    source,
+    destination,
+    'src.name': GUPSHUP_APP_NAME!,
+    template:   JSON.stringify({
+      id:     GUPSHUP_LEAD_INITIATION_TEMPLATE_ID,
+      params: [leadName, agentName],
+    }),
+  });
+
+  const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
+    method:  'POST',
+    headers: {
+      apikey:         GUPSHUP_API_KEY!,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  });
+
+  const responseBody = await res.text();
+
+  if (!isGupshupDelivered(res.ok, responseBody)) {
+    throw new Error(`[whatsapp-api] sendLeadInitiationMessage failed: HTTP ${res.status} body=${responseBody.slice(0, 200)}`);
+  }
+
+  let messageId = '';
+  try {
+    const parsed = JSON.parse(responseBody) as Record<string, unknown>;
+    messageId = (parsed['messageId'] as string | undefined) ?? '';
+  } catch {
+    // non-JSON success body — messageId stays empty
+  }
+
+  return {
+    messaging_product: 'whatsapp',
+    contacts: [],
+    messages: [{ id: messageId }],
+  };
 }
 
 export { WEBHOOK_VERIFY_TOKEN, BUSINESS_ACCOUNT_ID };

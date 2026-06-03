@@ -3,22 +3,15 @@
 import { Plus } from 'lucide-react';
 import { MotionButton, MOTION_BUTTON_DEFAULTS } from '@/components/ui/MotionButton';
 import { useTasksCreate } from '@/components/tasks/TasksCreateContext';
-import type { UserRole } from '@/lib/types/database';
 import type { TaskTab } from '@/app/(dashboard)/tasks/page';
 
 type AddTaskButtonProps = {
-  callerRole: UserRole;
   activeTab:  TaskTab;
   validTabs:  TaskTab[];
 };
 
-export function AddTaskButton({ callerRole, activeTab, validTabs }: AddTaskButtonProps) {
+export function AddTaskButton({ activeTab, validTabs }: AddTaskButtonProps) {
   const { requestCreate } = useTasksCreate();
-
-  const canCreateGroup = ['manager', 'admin', 'founder'].includes(callerRole);
-
-  // Agents on group tab cannot create — hide button
-  if (activeTab === 'group' && !canCreateGroup) return null;
 
   const labelMap: Record<TaskTab, string> = {
     gia:      'Gia Task',

@@ -8,7 +8,9 @@ export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith(WEBHOOK_PREFIX)) {
     return NextResponse.next({ request });
   }
-  return updateSession(request);
+  const response = await updateSession(request);
+  response.headers.set('x-pathname', request.nextUrl.pathname);
+  return response;
 }
 
 export const config = {

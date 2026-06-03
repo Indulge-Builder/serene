@@ -5,10 +5,10 @@ import { BackButton } from '@/components/ui/BackButton';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getLeadBySlug, getLeadById, getLeadNotesFull, getLeadActivitiesFull, getAgentsForDomain } from '@/lib/services/leads-service';
 import { getAdCreativesForCampaign } from '@/lib/services/ad-creatives-service';
+import { getConversationByLeadId, getMessages } from '@/lib/services/whatsapp-service';
 import { LeadInfoCard } from '@/components/leads/LeadInfoCard';
 import { StatusActionPanel } from '@/components/leads/StatusActionPanel';
 import { DynamicFormResponses } from '@/components/leads/DynamicFormResponses';
-import { AgentScratchpad } from '@/components/leads/AgentScratchpad';
 import { LeadNotesInput } from '@/components/leads/LeadNotesInput';
 import { LeadJourneyTimeline } from '@/components/leads/LeadJourneyTimeline';
 import { LeadNotesSection } from '@/components/leads/LeadNotesSection';
@@ -16,6 +16,7 @@ import { LeadTasksAsync } from '@/components/leads/LeadTasksAsync';
 import { LeadTasksCardSkeleton } from '@/components/leads/LeadTasksCardSkeleton';
 import { LeadActivityLog } from '@/components/leads/LeadActivityLog';
 import { PersonalDetailsCard } from '@/components/leads/PersonalDetailsCard';
+import { LeadWhatsAppCard } from '@/components/leads/LeadWhatsAppCard';
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -46,17 +47,17 @@ export default async function LeadDossierPage({ params }: Props) {
     profile.role === 'founder';
 
   // Fetch supporting data in parallel
-  const [notes, activities, adCreatives, agents] = await Promise.all([
-    getLeadNotesFull(id),
-    getLeadActivitiesFull(id),
+  const [notes, activities, adCreatives, agents, initialConversation] = await Promise.all([
+    getLeadNotesFull(lead.id),
+    getLeadActivitiesFull(lead.id),
     lead.utm_campaign ? getAdCreativesForCampaign(lead.utm_campaign) : Promise.resolve([]),
     canReassign ? getAgentsForDomain(lead.domain) : Promise.resolve([]),
+    getConversationByLeadId(lead.id),
   ]);
 
-  const canEditScratchpad =
-    (profile.role === 'agent' && lead.assigned_to === profile.id) ||
-    profile.role === 'admin' ||
-    profile.role === 'founder';
+  const initialMessages = initialConversation
+    ? await getMessages(initialConversation.id, { limit: 30 })
+    : [];
 
   const canEditLeadFields =
     (profile.role === 'agent' && lead.assigned_to === profile.id) ||
@@ -148,12 +149,19 @@ export default async function LeadDossierPage({ params }: Props) {
               leadId={lead.id}
               canAdd={canEditPersonalDetails}
             />
-            <AgentScratchpad
-              leadId={lead.id}
-              initialContent={lead.private_scratchpad ?? ''}
-              canEdit={canEditScratchpad}
-            />
           </div>
+        </div>
+
+        {/* WhatsApp chat card */}
+        <div style={{ marginTop: 'var(--space-6)' }}>
+          <LeadWhatsAppCard
+            leadId={lead.id}
+            leadPhone={lead.phone}
+            leadName={fullName}
+            callerProfile={{ id: profile.id, role: profile.role }}
+            initialConversation={initialConversation}
+            initialMessages={initialMessages}
+          />
         </div>
 
         {/* Notes timeline — above journey per UX spec */}

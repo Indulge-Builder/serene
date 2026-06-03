@@ -8,6 +8,43 @@ Every modal composes `src/components/ui/modal.tsx` — never reimplements chrome
 
 ---
 
+## LeadsFilters — draft → Apply contract
+
+`LeadsFilters.tsx` — `'use client'`
+
+**`FilterDraft` type** (defined in the component file):
+```ts
+type FilterDraft = {
+  status: LeadStatus[];
+  outcome: CallOutcome[];
+  domain: string | null;
+  agent_id: string | null;
+  source: string | null;
+  campaign: string | null;
+  date_from: string | null;
+  date_to: string | null;
+  search: string;
+};
+```
+
+**`draftFromParams(params: URLSearchParams): FilterDraft`** — pure helper that reads all filter keys from the current `URLSearchParams`. Used to initialise state and to sync draft on browser back/forward (`useEffect([params])`).
+
+**`isDirty`** — computed `boolean`. Compares each `draft` field against the live URL param using serialised string comparison (`draft.status.join(',') !== params.get('status') ?? ''` etc.). Never a `useState`. Array reference equality traps will give false positives — always compare serialised strings.
+
+**Two-row layout:**
+- Row 1: `flex + alignItems: center + gap: --space-3`. Icon + badge (`flexShrink: 0`). Search input (`flex: 1`).
+- Row 2: `flex + alignItems: center + gap: --space-2 + flexWrap: nowrap`. Every `FilterDropdown` and date control gets `flexShrink: 0`. A `flex: 1` spacer separates filters from the action buttons. **Never** set `overflow: hidden` or `overflow: auto` on Row 2 — dropdown panels are absolutely positioned and must float above layout unconstrained.
+
+**Apply button:** `Button variant="primary" size="sm"` (not `MotionButton`) wrapped in `AnimatePresence motion.div` (`initial/exit: { opacity: 0, scale: 0.95 }`, 150ms `EASE_OUT_EXPO`). Rendered only when `isDirty`. Calls `applyFilters()` which builds the full URL from all draft keys and fires one `router.push`.
+
+**`committedCount`** — counts active URL params (what the table is showing), **not** draft values. Used for the badge and for showing/hiding the Clear button. Never substitute `isDirty` for `committedCount`.
+
+**Domain change invariant:** `domain` change must atomically clear `agent_id` and `campaign` in the same `setDraft` call. Never use a separate `useEffect` for this.
+
+**Zero `setTimeout` debounce.** Zero per-keystroke `router.push` — including search.
+
+---
+
 ## Component inventory
 
 ### LeadInfoCard
@@ -124,7 +161,7 @@ onNoteAdded?: () => void — optional callback fired after successful note post
 ```
 
 Calls `addLeadNote` action. Submits via button click or ⌘+Enter. Uses `useTransition`.
-Header uses `--color-info-dark-*` tokens to visually distinguish from the scratchpad (which uses `--theme-paper-subtle`). Note has `call_outcome = null` — it does NOT increment `call_count` or change `last_call_outcome`.
+Header uses `--color-info-dark-*` tokens. Note has `call_outcome = null` — it does NOT increment `call_count` or change `last_call_outcome`.
 
 ---
 
@@ -221,6 +258,45 @@ Calls `createLeadTaskAction` on submit. On success calls `onTaskCreated(task)`.
 Inline error below submit button in `var(--color-danger)` on failure.
 
 **Replaced by:** `LeadDossierTasksAsync` is retired; this modal + `LeadTasksCard` together replace it.
+
+---
+
+### LeadWhatsAppCard
+
+`LeadWhatsAppCard.tsx` — `'use client'`
+
+Props:
+
+```text
+leadId:              string
+leadPhone:           string | null
+leadName:            string
+callerProfile:       { id: string; role: string }
+initialConversation: WhatsAppConversation | null
+initialMessages:     WhatsAppMessage[]
+```
+
+Embedded WhatsApp chat card on the lead dossier page. Placed between the 2-col grid and `LeadNotesSection`.
+
+**No-phone guard:** when `leadPhone` is null, renders Playfair italic *"No phone number on file."* — no composer.
+
+**No-conversation guard:** when `initialConversation` is null, renders *"No messages yet."* + subtext. No composer (inbound-only conversation creation).
+
+**Resolved state:** composer replaced by italic banner *"This conversation is resolved."*
+
+**Realtime pattern:**
+
+- Channel name: `wa-messages-${conversationId}-${mountId}` — `useId()` mount suffix required (P-06 / StrictMode safety)
+- `seenIds` ref seeded from `initialMessages` to prevent double-append
+- `optimisticIds` ref tracks pending sends; echo detection replaces the oldest optimistic row
+- Cleanup: `supabase.removeChannel(channel)` — never `channel.unsubscribe()` alone
+- Only subscribes when `initialConversation` is non-null
+
+**Optimistic send:** adds a row with `id: optimistic-${Date.now()}`, replaces on Realtime echo, removes + `toast.danger` on error.
+
+**Initiation state transition:** when `initialConversation` is null and `leadPhone` is non-null, the card renders a "Start Conversation" `Button` instead of the empty state. Clicking calls `initiateWhatsAppConversationAction(leadId)`. On success: `setConversation(data.conversation)` + `setMessages([data.message])`. The Realtime `useEffect` gates on `conversation?.id` (state, not prop), so it automatically subscribes after initiation without any extra wiring.
+
+**Invariant:** imports ONLY from `lib/actions/whatsapp.ts` — never imports `whatsapp-service.ts` directly (server client restriction).
 
 ---
 

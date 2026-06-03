@@ -56,7 +56,6 @@ export function LeadNotesInput({ leadId, canAdd, onNoteAdded }: Props) {
         flex:          1,
       }}
     >
-      {/* Header — accent-surface toned to distinguish from scratchpad */}
       <div
         style={{
           display:      'flex',

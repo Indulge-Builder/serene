@@ -8,7 +8,7 @@ import type { LeadListItemWithAssignee } from '@/lib/services/leads-service';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
 import type { LeadStatus } from '@/lib/types/database';
 import { CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
-import { getLeadSourceLabel, getMetaMediumLabel, PLATFORM_LABELS } from '@/lib/constants/lead-sources';
+import { getLeadSourceLabel, getMetaMediumLabel } from '@/lib/constants/lead-sources';
 import { formatDate } from '@/lib/utils/dates';
 import { LEAD_COLUMN_MAP, type LeadColumnId } from '@/lib/constants/lead-columns';
 import { useLeadColumnPreferences } from '@/hooks/useLeadColumnPreferences';
@@ -311,41 +311,14 @@ function LeadCell({
     case 'source':
       return (
         <td style={{ ...baseCell, fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
-          {getLeadSourceLabel(lead.utm_source ?? lead.platform)}
+          {getLeadSourceLabel(lead.source)}
         </td>
       );
-
-    case 'platform': {
-      const platformLabel = lead.platform ? (PLATFORM_LABELS[lead.platform] ?? lead.platform) : null;
-      return (
-        <td style={{ ...baseCell }}>
-          {platformLabel ? (
-            <span
-              style={{
-                display:      'inline-flex',
-                alignItems:   'center',
-                padding:      '0.125rem 0.5rem',
-                borderRadius: 'var(--radius-full)',
-                background:   'var(--theme-accent-subtle)',
-                color:        'var(--theme-text-secondary)',
-                fontSize:     'var(--text-xs)',
-                fontWeight:   'var(--weight-medium)',
-                whiteSpace:   'nowrap',
-              }}
-            >
-              {platformLabel}
-            </span>
-          ) : (
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>—</span>
-          )}
-        </td>
-      );
-    }
 
     case 'medium':
       return (
         <td style={{ ...baseCell, fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>
-          {getMetaMediumLabel(lead.utm_medium) ?? '—'}
+          {getMetaMediumLabel(lead.medium) ?? '—'}
         </td>
       );
 

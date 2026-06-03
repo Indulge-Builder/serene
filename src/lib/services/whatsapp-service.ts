@@ -160,6 +160,36 @@ export async function getConversation(
 }
 
 // ─────────────────────────────────────────────
+// getConversationByLeadId
+// Finds the single conversation row for a given lead (UNIQUE on lead_id).
+// Returns null when no conversation exists — not an error.
+// ─────────────────────────────────────────────
+
+export async function getConversationByLeadId(
+  leadId: string,
+): Promise<WhatsAppConversation | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = (await createClient()) as any;
+
+  const { data, error } = await supabase
+    .from('whatsapp_conversations')
+    .select(`
+      *,
+      leads!inner (
+        first_name,
+        last_name,
+        phone
+      )
+    `)
+    .eq('lead_id', leadId)
+    .single();
+
+  if (error || !data) return null;
+
+  return mapConversationRow(data as Record<string, unknown>);
+}
+
+// ─────────────────────────────────────────────
 // getMessages
 // Paginated message history, ASC within page (oldest → newest).
 // Cursor = oldest row's created_at (used as `before` — fetch rows older than this).

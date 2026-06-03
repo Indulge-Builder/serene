@@ -31,7 +31,7 @@ type FormValues = {
   last_name:     string;
   phone:         string;
   email:         string;
-  utm_source: string;
+  source: string;
   domain:        string;
   assigned_to:   string;
 };
@@ -135,7 +135,7 @@ export function AddLeadModal({
       last_name:     '',
       phone:         '',
       email:         '',
-      utm_source: '',
+      source: '',
       domain:        callerProfile.domain,
       assigned_to:   callerProfile.id,
     },
@@ -175,7 +175,7 @@ export function AddLeadModal({
         last_name:     '',
         phone:         '',
         email:         '',
-        utm_source: '',
+        source: '',
         domain:        callerProfile.domain,
         assigned_to:   callerProfile.id,
       });
@@ -203,7 +203,7 @@ export function AddLeadModal({
         email:         values.email || undefined,
         domain:        values.domain,
         assigned_to:   values.assigned_to || undefined,
-        utm_source: values.utm_source || undefined,
+        source: values.source || undefined,
       });
 
       if (result.error) {
@@ -399,7 +399,7 @@ export function AddLeadModal({
             <select
               id="al-source"
               disabled={isPending}
-              {...register('utm_source')}
+              {...register('source')}
               style={{
                 ...fieldInput,
                 paddingRight: 'var(--space-8)',

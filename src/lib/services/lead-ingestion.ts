@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { selectAdapter } from '@/lib/leads/adapters';
 import { resolveDomainFromCampaign, DEFAULT_LEAD_DOMAIN } from '@/lib/constants/campaign-domain-map';
 import { getNextRoundRobinAgent } from '@/lib/services/leads-service';
+import { LEAD_SOURCES, type LeadSource } from '@/lib/constants/lead-sources';
 import type { Database } from '@/lib/types/database';
 
 type LeadInsert = Database['public']['Tables']['leads']['Insert'];
@@ -40,19 +41,19 @@ export type IngestionResult =
 // Normalized payload schema — all fields optional; passthrough preserves extras.
 // Adapters guarantee field presence; this schema is a safety net.
 // ─────────────────────────────────────────────
+// source is validated at the webhook route before this is called — use hard enum, not .catch(null).
+const LEAD_SOURCES_TUPLE = LEAD_SOURCES as unknown as [LeadSource, ...LeadSource[]];
+
 const leadPayloadSchema = z.object({
   first_name:   z.string().default('Unknown'),
   last_name:    z.string().nullable().optional(),
   email:        z.string().nullable().optional(),
   phone:        z.string().default(''),
-  platform:     z.enum(['meta', 'google', 'website', 'whatsapp']).optional(),
-  campaign_id:  z.string().nullable().optional(),
-  ad_name:      z.string().nullable().optional(),
-  domain:       z.string().nullable().optional(),
-  utm_source:   z.string().nullable().optional(),
-  utm_medium:   z.string().nullable().optional(),
+  source:       z.enum(LEAD_SOURCES_TUPLE),
+  medium:       z.string().nullable().optional(),
   utm_campaign: z.string().nullable().optional(),
-  utm_content:  z.string().nullable().optional(),
+  domain:       z.string().nullable().optional(),
+  attribution:  z.record(z.string(), z.unknown()).nullable().optional(),
   form_data:    z.record(z.string(), z.unknown()).default({}),
 }).passthrough();
 
@@ -81,16 +82,16 @@ async function markIngestionError(rawPayloadId: string | null, reason: string): 
 // ─────────────────────────────────────────────
 export async function ingestLead(
   rawPayload: unknown,
-  source: string,
+  source: LeadSource,
   rawPayloadId: string | null,
 ): Promise<IngestionResult> {
   const supabase = createAdminClient();
 
-  // 1. Normalize via source adapter
+  // 1. Normalize via source adapter (adapter never sets source — it comes from the URL param)
   const normalized = selectAdapter(source)(rawPayload);
 
-  // 2. Validate
-  const parsed = leadPayloadSchema.safeParse(normalized);
+  // 2. Validate — inject the pre-validated source so the schema can enforce the enum
+  const parsed = leadPayloadSchema.safeParse({ ...normalized, source });
   if (!parsed.success) {
     console.error('[lead-ingestion] Validation failed:', JSON.stringify(parsed.error.issues));
     await markIngestionError(rawPayloadId, 'validation_failed');
@@ -187,16 +188,12 @@ export async function ingestLead(
     assigned_at:        assignedTo ? new Date().toISOString() : null,
     status:             'new',
     lead_intent:        null,
-    platform:           data.platform ?? null,
-    campaign_id:        data.campaign_id ?? null,
-    ad_name:            data.ad_name ?? null,
-    utm_source:         data.utm_source ?? null,
-    utm_medium:         data.utm_medium ?? null,
+    source:             data.source ?? null,
+    medium:             data.medium ?? null,
     utm_campaign:       data.utm_campaign ?? null,
-    utm_content:        data.utm_content ?? null,
+    attribution:        data.attribution ?? null,
     form_data:          data.form_data,
     last_call_outcome:  null,
-    private_scratchpad: null,
     personal_details:   null,
     archived_at:        null,
   };
@@ -296,16 +293,12 @@ export async function createLeadFromWhatsApp(
       assigned_at:        assignedTo ? new Date().toISOString() : null,
       status:             'new',
       lead_intent:        null,
-      platform:           'whatsapp',
-      campaign_id:        null,
-      ad_name:            null,
-      utm_source:         null,
-      utm_medium:         null,
+      source:             'whatsapp',
+      medium:             null,
       utm_campaign:       null,
-      utm_content:        null,
+      attribution:        { platform: 'whatsapp' },
       form_data:          {},
       last_call_outcome:  null,
-      private_scratchpad: null,
       personal_details:   null,
       archived_at:        null,
     })

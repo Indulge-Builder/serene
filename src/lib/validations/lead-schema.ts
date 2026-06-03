@@ -57,16 +57,6 @@ export const AssignLeadSchema = z.object({
 export type AssignLeadInput = z.infer<typeof AssignLeadSchema>;
 
 // ─────────────────────────────────────────────
-// Update private scratchpad
-// ─────────────────────────────────────────────
-export const UpdateScratchpadSchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
-  content: z.string().transform(sanitizeText),
-});
-
-export type UpdateScratchpadInput = z.infer<typeof UpdateScratchpadSchema>;
-
-// ─────────────────────────────────────────────
 // Update personal details (agent-collected enrichment)
 // ─────────────────────────────────────────────
 export const UpdatePersonalDetailsSchema = z.object({
@@ -113,7 +103,7 @@ export const CreateManualLeadSchema = z.object({
     .pipe(z.string().email("Please enter a valid email address.").nullable()),
   domain: z.enum(GIA_DOMAIN_ENUM),
   assigned_to: z.string().uuid("Invalid agent ID").optional().nullable(),
-  utm_source: z.preprocess(
+  source: z.preprocess(
     (v) => {
       if (typeof v !== "string" || !v.trim()) return null;
       return sanitizeText(v.trim().toLowerCase());
@@ -150,12 +140,12 @@ export const UpdateLeadDomainSchema = z.object({
 
 export type UpdateLeadDomainInput = z.infer<typeof UpdateLeadDomainSchema>;
 
-export const UpdateLeadUtmSourceSchema = z.object({
+export const UpdateLeadSourceSchema = z.object({
   leadId: z.string().uuid("Invalid lead ID"),
-  utm_source: z.enum(LEAD_SOURCE_ENUM).nullable(),
+  source: z.enum(LEAD_SOURCE_ENUM).nullable(),
 });
 
-export type UpdateLeadUtmSourceInput = z.infer<typeof UpdateLeadUtmSourceSchema>;
+export type UpdateLeadSourceInput = z.infer<typeof UpdateLeadSourceSchema>;
 
 // ─────────────────────────────────────────────
 // Add plain lead note (LeadNotesInput — visible to all team members)

@@ -636,7 +636,7 @@ A full adoption sweep ran across `src/` replacing inline UI patterns with `src/c
 
 | Pattern | Component adopted | Files |
 | --------- | ------------------ | ------- |
-| `Loader2` inline spinners | `Spinner` | CalledModal, AgentScratchpad, PersonalDetailsCard, ProfileAvatarSection |
+| `Loader2` inline spinners | `Spinner` | CalledModal, PersonalDetailsCard, ProfileAvatarSection |
 | Raw `<button>` primary/secondary | `Button` | All auth forms, all admin forms, profile forms, lead modals, dashboard widgets (refresh buttons) |
 | Custom toggle/switch | `Toggle` | NotificationPreferences, UserStatusControls |
 | Custom avatar/initials fallback | `Avatar` | TaskRemarksPanel, SubTaskModal, PersonalTasksTab, CreateGroupTaskModal, GroupTaskWorkspace, GroupTasksTab, UsersTable |

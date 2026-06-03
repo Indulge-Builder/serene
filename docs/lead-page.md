@@ -35,17 +35,13 @@ The Gia leads module is Indulge’s sales pipeline surface: inbound leads arrive
 | `assigned_at` | `timestamptz` | YES | |
 | `status` | `text` | NOT NULL | Default `'new'`; values in §2d |
 | `lead_intent` | `text` | YES | `hot` \| `cold` (app) |
-| `campaign_id` | `text` | YES | |
-| `ad_name` | `text` | YES | |
-| `platform` | `text` | YES | `meta` \| `google` \| `website` \| `whatsapp` |
-| `utm_source` | `text` | YES | Also stores manual/dossier “Source” |
-| `utm_medium` | `text` | YES | |
+| `source` | `text` | YES | Was `utm_source`. Manual/dossier-editable channel |
+| `medium` | `text` | YES | Was `utm_medium`. fb\|ig\|msg\|an for Meta |
 | `utm_campaign` | `text` | YES | |
-| `utm_content` | `text` | YES | |
+| `attribution` | `jsonb` | YES | `{ platform, campaign_id, ad_name, adset_name }` — platform-specific ad metadata (migration 0065) |
 | `form_data` | `jsonb` | YES | Immutable after insert (convention) |
 | `call_count` | `integer` | NOT NULL | Default `0` |
 | `last_call_outcome` | `text` | YES | Call outcome enum |
-| `private_scratchpad` | `text` | YES | Column SELECT revoked for `authenticated`; see `get_lead_scratchpad` |
 | `created_at` | `timestamptz` | NOT NULL | Default `now()` |
 | `updated_at` | `timestamptz` | NOT NULL | `leads_updated_at` trigger |
 | `archived_at` | `timestamptz` | YES | Soft delete |
@@ -248,7 +244,7 @@ CREATE POLICY "task_gia_meta_select"
 | `idx_leads_phone_active` | `(phone)` | `archived_at IS NULL AND phone IS NOT NULL AND phone <> ''` |
 | `idx_leads_previous_lead_id` | `(previous_lead_id)` | `previous_lead_id IS NOT NULL` |
 | `idx_leads_assigned_to_assigned_at` | `(assigned_to, assigned_at DESC)` | `archived_at IS NULL AND assigned_to IS NOT NULL` |
-| `idx_leads_utm_source` | `(utm_source)` | `archived_at IS NULL` |
+| `idx_leads_source` | `(source)` | `archived_at IS NULL` |
 | `idx_leads_utm_campaign` | `(utm_campaign)` | `archived_at IS NULL` |
 | `idx_leads_last_call_outcome` | `(last_call_outcome)` | `archived_at IS NULL` |
 | `idx_leads_phone_text` | `(phone text_pattern_ops)` | `archived_at IS NULL` |
@@ -275,7 +271,6 @@ Performance indexes on related tables: `idx_lead_activities_actor_status`, `idx_
 | `update_lead_status` | `p_lead_id uuid`, `p_actor_id uuid`, `p_status text`, `p_reason text`, `p_now timestamptz` | Status update + activity; nurturing creates 3-month `gia_followup` task + `task_gia_meta`; returns `jsonb`. | `20260529000031_rpc_update_lead_status.sql` (+ nurturing fix `00039`) |
 | `add_lead_plain_note` | `p_lead_id uuid`, `p_author_id uuid`, `p_content text`, `p_now timestamptz` | Plain note + `last_activity_at` + `note_added` activity; returns `{ note_id }`. | `20260530000040_rpc_add_lead_plain_note.sql` |
 | `create_lead_gia_task` | `p_lead_id`, `p_assigned_to`, `p_created_by`, `p_task_type`, `p_title`, `p_description`, `p_priority`, `p_due_at` | Atomic `tasks` + `task_gia_meta` insert; returns `tasks` row. | `20260531000054_create_lead_gia_task.sql` |
-| `get_lead_scratchpad` | `p_lead_id uuid` | Returns scratchpad text for agent/admin/founder only; NULL for manager. | `20260527000006_scratchpad_rls.sql` |
 | `get_campaign_metrics` | `p_domain app_domain`, `p_date_from`, `p_date_to` | Campaign aggregates for `/campaigns`. | `20260528000014_campaign_analytics.sql` |
 | `get_campaign_detail_metrics` | `p_campaign`, `p_date_from`, `p_date_to` | Single-campaign metrics. | `20260528000015_campaign_detail_metrics.sql` |
 | `get_deals_summary` | (role-scoped args) | Won-lead aggregates for `/deals`. | `20260531000052_get_deals_summary.sql` |
@@ -324,11 +319,11 @@ Performance indexes on related tables: `idx_lead_activities_actor_status`, `idx_
 
 `src/lib/leads/adapters.ts` — `selectAdapter(source)` → `adaptMeta` | `adaptGoogle` | `adaptWebsite`.
 
-| Adapter | Input shape | `platform` | Notes |
-| ------- | ------------- | ------------ | ----- |
-| **meta** | Pabbly `raw_data.res3.field_data` (JSON string or array); `res3.campaign_name`, `ad_name`, `campaign_id` | `meta` | Strips `res2` (page token) in `sanitizeRawPayload`; `utm_source: 'meta'` |
-| **google** | Flat Pabbly key-value | `google` | |
-| **website** | Flat keys | `website` | |
+| Adapter | Input shape | `attribution.platform` | Notes |
+| ------- | ------------- | ---------------------- | ----- |
+| **meta** | Pabbly `raw_data.res3.field_data` (JSON string or array); `res3.campaign_name`, `ad_name`, `campaign_id`, `adset_name` | `'meta'` | Strips `res2`; `source: null`; `medium` from `res3.platform`; builds `attribution={platform,campaign_id,ad_name,adset_name}` |
+| **google** | Flat Pabbly key-value | `'google'` | `source` from `utm_source`\|`'google'`; builds `attribution={platform,campaign_id,ad_name}` |
+| **website** | Flat keys | `'website'` | `source` from `utm_source`\|`'website'`; builds `attribution={platform:'website'}` |
 
 Phone via `normalizeToE164(raw, 'IN')` with raw fallback + warn.
 
@@ -396,11 +391,11 @@ export type LeadNoteWithAuthor = LeadNote & { author: { full_name: string } };
 export type LeadActivityWithActor = LeadActivity & { actor: { full_name: string } | null };
 export type LeadWithAssignee = Lead & { assignee: { full_name: string } | null };
 
-// List path only — explicit column subset; form_data, personal_details, deal/SLA columns excluded.
+// List path only — explicit column subset; form_data, personal_details, attribution, deal/SLA columns excluded.
 export type LeadListItem = Pick<Lead,
   'id' | 'slug' | 'first_name' | 'last_name' | 'phone' | 'email' |
-  'domain' | 'assigned_to' | 'status' | 'lead_intent' | 'platform' |
-  'utm_source' | 'utm_medium' | 'utm_campaign' | 'call_count' |
+  'domain' | 'assigned_to' | 'status' | 'lead_intent' |
+  'source' | 'medium' | 'utm_campaign' | 'call_count' |
   'last_call_outcome' | 'created_at'
 >;
 export type LeadListItemWithAssignee = LeadListItem & { assignee: { full_name: string } | null };
@@ -421,7 +416,7 @@ export type LeadsResult = { leads: LeadListItemWithAssignee[]; totalCount: numbe
 | `createManualLead` | `CreateManualLeadSchema` | Logged in; agent domain locked | Dedup RPC; INSERT lead + activities | Notifications + SLA if assigned | `{ data: { leadId, duplicate? }, error }` |
 | `updateLeadEmail` | `UpdateLeadEmailSchema` | `assertLeadFieldEditAccess` | UPDATE email; activity `note_added` `{type:'lead_email_updated'}` | `revalidatePath` dossier | `{ data: { leadId }, error }` |
 | `updateLeadDomain` | `UpdateLeadDomainSchema` | Same; **blocks agent** | UPDATE domain; activity | `revalidatePath` | `{ data: { leadId }, error }` |
-| `updateLeadUtmSource` | `UpdateLeadUtmSourceSchema` | Field edit access | UPDATE `utm_source`; activity | `revalidatePath` | `{ data: { leadId }, error }` |
+| `updateLeadSource` | `UpdateLeadSourceSchema` | Field edit access | UPDATE `source`; activity `lead_source_updated` | `revalidatePath` dossier | `{ data: { leadId }, error }` |
 | `addLeadNote` | `AddLeadNoteSchema` | Standard lead access | RPC `add_lead_plain_note` | `last_activity_at` only (in RPC) | `{ data: { noteId }, error }` |
 | `recordDeal` | `RecordDealSchema` | Standard lead access | UPDATE deal fields; then `updateLeadStatus({ status: 'won' })` | Won notifications + SLA via nested update | `{ data: { leadId }, error }` |
 | `listAgentsForDomain` | — (domain string) | Logged in | `getAgentsForDomain` or `getActiveUsersForDomain` | None | `{ data: users[], error }` |
@@ -469,7 +464,7 @@ main
 
 | Control | URL param | Options source |
 | ------- | --------- | -------------- |
-| Search | `search` | Local state; 500ms debounce → URL |
+| Search | `search` | Draft state → URL on Apply |
 | Status | `status` | `LEAD_STATUSES` / `LEAD_STATUS_LABELS` |
 | Outcome | `outcome` | `CALL_OUTCOMES` |
 | Source | `source` | `LEAD_SOURCES` |
@@ -480,9 +475,15 @@ main
 
 **`buildParams`:** delegates to `buildFilterParams(current, updates, { resetKeys: ['page'] })` — every filter change deletes `page`.
 
-**Active count:** +1 each for: search, status multi, outcome multi, source, campaign, domain, agent_id, date_from, date_to.
+**FilterDraft:** All filter controls write into a local `FilterDraft` state (type defined in `LeadsFilters.tsx`). The URL is updated only when the user clicks Apply. `isDirty` is a computed boolean comparing `draft` against live `params` — never a `useState`. `committedCount` (badge) counts active URL params, not draft values.
 
-**Domain change:** `push({ domain, agent_id: null, campaign: null })` — clears scoped filters.
+**Two-row layout:** Row 1 has the icon + badge + search input (`flex: 1`). Row 2 has all dropdowns (`flexShrink: 0`) + a `flex: 1` spacer + Apply (animated in/out with `isDirty`) + Clear. Row 2 is `flexWrap: nowrap` — dropdown panels are absolutely positioned and must float above layout unconstrained.
+
+**Apply button:** `Button variant="primary" size="sm"` (not `MotionButton`) wrapped in `AnimatePresence motion.div` for the in/out animation. The button itself is not a standalone repeated-press CTA — the animation lives on the wrapper.
+
+**Active count (badge) vs committed count:** badge shows `committedCount` (URL state). `isDirty` compares draft against URL. Never swap these — the badge must reflect what the table is showing, not what the user has selected but not yet applied.
+
+**Domain change:** atomically sets `domain`, clears `agent_id` and `campaign` in the same `setDraft` call — invariant 17.
 
 ### 6c. LeadsTable + LeadsTableAsync + LeadsTableSkeleton
 
@@ -528,7 +529,7 @@ Playfair italic heading (`var(--font-serif)`). Table has **zero** filter/sort lo
 
 ### 6e. AddLeadModal
 
-**Schema:** `CreateManualLeadSchema` — `first_name`, `last_name?`, `phone` (E.164), `email?`, `domain` (`GIA_DOMAIN_ENUM`), `assigned_to?`, `utm_source?` (`LEAD_SOURCE_ENUM`).
+**Schema:** `CreateManualLeadSchema` — `first_name`, `last_name?`, `phone` (E.164), `email?`, `domain` (`GIA_DOMAIN_ENUM`), `assigned_to?`, `source?` (`LEAD_SOURCE_ENUM`).
 
 **Duplicate:** `createManualLead` → `get_active_lead_by_phone`; returns `{ leadId, duplicate: true }`; banner with link `/leads/${duplicateLeadId}`; modal stays open.
 
@@ -593,7 +594,7 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 **Read-only:** Full Name, Phone, Call count, Received, Last modified — not inline-edited (name/phone are not mutable in UI).
 
-**Inline-editable (`canEdit`):** Email → `updateLeadEmail`; Source (`utm_source`) → `updateLeadUtmSource` via `FilterDropdown` / select pattern.
+**Inline-editable (`canEdit`):** Email → `updateLeadEmail`; Source (`source`) → `updateLeadSource` via inline select pattern.
 
 **Domain (`canEditDomain`):** `updateLeadDomain` — `GIA_DOMAIN_FILTER_ITEMS`; agents cannot.
 
@@ -610,14 +611,6 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 **Edit mode:** Click dormant card → form with Save/Cancel footer.
 
 **Storage:** `leads.personal_details` via `updatePersonalDetails`.
-
-### 7e. AgentScratchpad
-
-**Visibility:** `canEditScratchpad` — assigned agent, admin, founder only (managers do not receive edit on dossier).
-
-**Auto-save:** 1000ms debounce → `updateScratchpad`.
-
-**Cleared on:** `assignLead` sets `private_scratchpad: null` (incoming agent starts blank).
 
 ### 7f. CalledModal
 
@@ -685,8 +678,6 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 | Add call note | Note visible via lead | RPC after access check |
 | Update status | Lead UPDATE | RPC after access check |
 | Assign lead | Lead UPDATE | manager+ only |
-| Scratchpad read | Column revoked; optional `get_lead_scratchpad` | Agent/admin/founder |
-| Scratchpad write | Service role in action | Agent assigned / admin / founder |
 | Plain note | lead_notes SELECT policy | Same as lead access |
 | Gia task create | tasks + meta via service role | Lead access in action |
 | SLA timers SELECT | Scoped by lead | Writes service role only |
@@ -741,11 +732,11 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 4. **Every URL param push that changes a filter or search must delete the `page` param.** Enforced in `buildParams()` via `resetKeys: ['page']`. Never bypass with hand-built `router.push`. Exception: `clearAll()` pushes pathname with no params.
 
-5. **Search lives in `LeadsFilters.tsx` only** — debounced 500ms, URL param `search`. **`LeadsTable.tsx` contains zero filtering, searching, or sorting logic.**
+5. **Search lives in `LeadsFilters.tsx` only** — draft state, URL updated on Apply. **`LeadsTable.tsx` contains zero filtering, searching, or sorting logic.**
 
 6. **`LeadsPagination` absent from DOM when `totalCount <= 30`.** `pageSize` is fixed at 30. Do not add a page size selector.
 
-7. **Search debounce: 500ms** via `useEffect` + `setTimeout`/`clearTimeout`. Never push search on every keystroke.
+7. **Search flows through draft → Apply.** The 500ms debounce is retired. No per-keystroke URL push. Typing into the search field updates `draft.search`; the URL changes only when the user clicks Apply or Clear.
 
 8. **`showAgentFilter`:** `true` → agent dropdown rendered; `false` → **absent from DOM entirely** (not CSS-hidden). `showAgentFilter = profile.role !== 'agent'`.
 
@@ -775,17 +766,15 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 21. **Manual lead duplicate:** `{ data: { leadId, duplicate: true }, error: null }` — never silent insert.
 
-22. **`assignLead` clears `private_scratchpad`** on reassignment.
+22. **Multi-write lead actions use RPCs** (`add_lead_call_note`, `update_lead_status`, `add_lead_plain_note`, `create_lead_gia_task`) — access control stays in actions; SLA/notifications stay out of RPCs.
 
-23. **Multi-write lead actions use RPCs** (`add_lead_call_note`, `update_lead_status`, `add_lead_plain_note`, `create_lead_gia_task`) — access control stays in actions; SLA/notifications stay out of RPCs.
+23. **`create_lead_gia_task` required** for dossier Gia tasks — never insert `tasks` without `task_gia_meta`.
 
-24. **`create_lead_gia_task` required** for dossier Gia tasks — never insert `tasks` without `task_gia_meta`.
+24. **Dossier tasks:** `getAllLeadTasks` — not `getNextLeadTask` on the dossier page (`LeadDossierTasksAsync` retired).
 
-25. **Dossier tasks:** `getAllLeadTasks` — not `getNextLeadTask` on the dossier page (`LeadDossierTasksAsync` retired).
+25. **Column registry IDs** (`lead-columns.ts`) are stable localStorage keys — never rename after shipping.
 
-26. **Column registry IDs** (`lead-columns.ts`) are stable localStorage keys — never rename after shipping.
-
-27. **`useLeadColumnPreferences`:** locked columns always in `visibleColumns`; invalid stored ids dropped on load.
+26. **`useLeadColumnPreferences`:** locked columns always in `visibleColumns`; invalid stored ids dropped on load.
 
 ---
 

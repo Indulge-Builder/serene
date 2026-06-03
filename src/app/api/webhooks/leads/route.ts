@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ingestLead, sanitizeRawPayload } from '@/lib/services/lead-ingestion';
 import { sendLeadAssignmentNotification, sendFounderLeadNotification } from '@/lib/services/whatsapp-api';
+import { LEAD_SOURCES, type LeadSource } from '@/lib/constants/lead-sources';
+
+const LEAD_SOURCES_SET = new Set<string>(LEAD_SOURCES);
 
 // ─────────────────────────────────────────────
 // Rate limiting state (in-memory, per worker)
@@ -69,7 +72,14 @@ export async function GET(): Promise<NextResponse> {
 //   4. Ingest — on failure, mark ingestion_error on the raw log row
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const source = request.nextUrl.searchParams.get('source') ?? 'website';
+  const rawSource = request.nextUrl.searchParams.get('source') ?? 'website';
+  let source: LeadSource;
+  if (LEAD_SOURCES_SET.has(rawSource)) {
+    source = rawSource as LeadSource;
+  } else {
+    console.warn(`[webhook/leads] Unknown source param "${rawSource}", defaulting to "website"`);
+    source = 'website';
+  }
 
   // 1. Rate limit — drop before reading body to avoid amplification
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';

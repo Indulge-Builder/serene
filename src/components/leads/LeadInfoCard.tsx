@@ -27,6 +27,7 @@ import {
   LEAD_SOURCE_OPTIONS,
   getLeadSourceLabel,
   getMetaMediumLabel,
+  PLATFORM_LABELS,
   type LeadSource,
 } from '@/lib/constants/lead-sources';
 import { DROPDOWN_VARIANTS } from '@/lib/constants/motion';
@@ -38,7 +39,7 @@ import {
   assignLead,
   updateLeadEmail,
   updateLeadDomain,
-  updateLeadUtmSource,
+  updateLeadSource,
 } from '@/lib/actions/leads';
 
 type SelectOption = { id: string; label: string };
@@ -75,6 +76,8 @@ export function LeadInfoCard({
   }, [assigneeName]);
 
   const fullName = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
+
+  const resolvedSource = lead.source ?? null;
 
   const campaignLabel = trimmedOrUndefined(lead.utm_campaign);
   const campaignValue = campaignLabel
@@ -207,21 +210,35 @@ export function LeadInfoCard({
           {canEdit ? (
             <SourceDropdownField
               leadId={lead.id}
-              utmSource={lead.utm_source}
+              utmSource={resolvedSource}
               onSaved={() => router.refresh()}
             />
           ) : (
             <InfoRow
               icon={Megaphone}
               label="Source"
-              value={getLeadSourceLabel(lead.utm_source)}
+              value={getLeadSourceLabel(resolvedSource)}
             />
           )}
           <InfoRow
             icon={Signal}
             label="Medium"
-            value={getMetaMediumLabel(lead.utm_medium) ?? undefined}
+            value={getMetaMediumLabel(lead.medium) ?? undefined}
           />
+          {typeof lead.attribution?.platform === 'string' && (
+            <InfoRow
+              icon={Route}
+              label="Platform"
+              value={PLATFORM_LABELS[lead.attribution.platform] ?? lead.attribution.platform}
+            />
+          )}
+          {typeof lead.attribution?.ad_name === 'string' && (
+            <InfoRow
+              icon={Megaphone}
+              label="Ad name"
+              value={lead.attribution.ad_name}
+            />
+          )}
           {canReassign ? (
             <AssigneeDropdownField
               leadId={lead.id}
@@ -619,7 +636,7 @@ function SourceDropdownField({
     if (next === current) return;
     setSaveErr(null);
     setSaving(true);
-    const result = await updateLeadUtmSource({ leadId, utm_source: next });
+    const result = await updateLeadSource({ leadId, source: next });
     setSaving(false);
     if (result.error) {
       setSaveErr(result.error);

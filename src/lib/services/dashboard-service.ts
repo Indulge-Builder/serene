@@ -3,7 +3,17 @@
 //
 // PRIMARY ENTRY POINT: getDashboardSummary() — single cached RPC, all summary widgets.
 // Do not split back into individual service function calls for summary data.
-// Individual functions below are kept for reference and the period-toggle action only.
+// Individual functions below are kept for the period-toggle action and widget refresh buttons.
+//
+// Redis key inventory:
+//   dashboard:agent-tasks:{userId}        — 30s TTL; invalidated by createPersonalTaskAction,
+//                                           updateTaskStatusAction, createLeadTaskAction
+//   dashboard:lead-status:{effectiveDomain} — 60s TTL; invalidated by updateLeadStatus,
+//                                           createManualLead
+//   dashboard:lead-volume:{role}:{domain}:{period} — 120s TTL; invalidated by createManualLead
+//                                           (manager-scoped keys only; multi-domain keys: TTL-only)
+//   dashboard:campaigns:{effectiveDomain} — 120s TTL; invalidated by updateLeadStatus,
+//                                           createManualLead
 
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
@@ -23,13 +33,19 @@ import type { DashboardSummary } from '@/lib/types';
 // ─────────────────────────────────────────────
 
 export const getDashboardSummary = cache(
-  async (role: UserRole, domain: AppDomain, userId: string): Promise<DashboardSummary> => {
+  async (
+    role:          UserRole,
+    domain:        AppDomain,
+    userId:        string,
+    initialDomain?: AppDomain,
+  ): Promise<DashboardSummary> => {
     const supabase = await createClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).rpc('get_dashboard_summary', {
-      p_role:    role,
-      p_domain:  domain,
-      p_user_id: userId,
+      p_role:           role,
+      p_domain:         domain,
+      p_user_id:        userId,
+      p_initial_domain: initialDomain ?? null,
     });
     if (error) throw error;
     return data as DashboardSummary;
@@ -44,9 +60,20 @@ export const getDashboardSummary = cache(
 
 // ─────────────────────────────────────────────
 // Agent Tasks Widget — refresh only (mirrors the RPC CTE shape)
+// Redis cache-aside: dashboard:agent-tasks:{userId}, 30s TTL.
+// Invalidated by createPersonalTaskAction, updateTaskStatusAction, createLeadTaskAction.
 // ─────────────────────────────────────────────
 
 export async function getAgentTasksSummary(agentId: string): Promise<import('@/lib/types').DashboardAgentTask[]> {
+  const cacheKey = REDIS_KEYS.dashboardAgentTasks(agentId);
+
+  try {
+    const cached = await redis.get<import('@/lib/types').DashboardAgentTask[]>(cacheKey);
+    if (cached !== null) return cached;
+  } catch (e) {
+    console.error('[dashboard-service] getAgentTasksSummary Redis get error:', e);
+  }
+
   const supabase = await createClient();
   const now      = new Date().toISOString();
 
@@ -66,7 +93,7 @@ export async function getAgentTasksSummary(agentId: string): Promise<import('@/l
   type Priority     = 'urgent' | 'high' | 'normal';
   type Status       = 'to_do' | 'in_progress' | 'in_review';
 
-  return (taskRows ?? [])
+  const result = (taskRows ?? [])
     .map((row) => {
       const category = row.task_category as TaskCategory;
       const meta     = Array.isArray(row.task_gia_meta) ? row.task_gia_meta[0] : row.task_gia_meta;
@@ -105,6 +132,14 @@ export async function getAgentTasksSummary(agentId: string): Promise<import('@/l
       if (!b.due_at) return -1;
       return a.due_at < b.due_at ? -1 : 1;
     });
+
+  try {
+    await redis.setex(cacheKey, REDIS_TTL.DASHBOARD_AGENT_TASKS, result);
+  } catch (e) {
+    console.error('[dashboard-service] getAgentTasksSummary Redis setex error:', e);
+  }
+
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -131,49 +166,30 @@ export async function getAgentRecentActivity(
   domain?: string,
 ): Promise<AgentActivity[]> {
   const supabase = await createClient();
-
-  // For manager: fetch lead IDs in their domain first, then filter activities.
-  // For admin/founder: no filter. For agent: filter by actor_id.
-  let leadIdFilter: string[] | null = null;
-  if (role === 'manager' && domain) {
-    const { data: domainLeads } = await supabase
-      .from('leads')
-      .select('id')
-      .eq('domain', domain as AppDomain)
-      .is('archived_at', null)
-      .limit(1000);
-    leadIdFilter = (domainLeads ?? []).map((r) => r.id);
-  }
-
-  let query = supabase
-    .from('lead_activities')
-    .select('id, action_type, details, created_at, lead_id, lead:leads!lead_activities_lead_id_fkey(first_name, last_name)')
-    .order('created_at', { ascending: false })
-    .limit(25);
-
-  if (role === 'admin' || role === 'founder') {
-    // no additional filter — all activities visible
-  } else if (role === 'manager' && leadIdFilter) {
-    if (leadIdFilter.length === 0) return [];
-    query = query.in('lead_id', leadIdFilter);
-  } else {
-    query = query.eq('actor_id', agentId);
-  }
-
-  const { data } = await query;
-
-  return (data ?? []).map((row) => {
-    const lead     = row.lead as { first_name: string; last_name: string | null } | null;
-    const leadName = lead ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') : null;
-    return {
-      id:          row.id,
-      action_type: row.action_type as string,
-      details:     row.details as Record<string, unknown> | null,
-      created_at:  row.created_at,
-      lead_id:     row.lead_id,
-      lead_name:   leadName,
-    };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc('get_agent_recent_activity', {
+    p_role:    role ?? 'agent',
+    p_domain:  domain ?? null,
+    p_user_id: agentId,
   });
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{
+    id:          string;
+    action_type: string;
+    details:     Record<string, unknown> | null;
+    created_at:  string;
+    lead_id:     string | null;
+    actor_id:    string | null;
+    lead_name:   string | null;
+  }>;
+  return rows.map((row) => ({
+    id:          row.id,
+    action_type: row.action_type,
+    details:     row.details,
+    created_at:  row.created_at,
+    lead_id:     row.lead_id,
+    lead_name:   row.lead_name,
+  }));
 }
 
 // ─────────────────────────────────────────────
@@ -204,9 +220,8 @@ export async function getLeadStatusSummary(
   domain: AppDomain,
   targetDomain?: AppDomain,
 ): Promise<LeadStatusSummary> {
-  // Role is not in the key — managers/admins/founders in the same domain see
-  // identical lead status data. Manager uses `domain`; admin/founder use `targetDomain`
-  // (which, when set, narrows to the same domain). Result is domain-equivalent.
+  // Key uses effectiveDomain so managers and admin/founder scoped to the same domain
+  // share a cache entry. targetDomain narrows admin/founder to a specific domain.
   const effectiveDomain = (role === 'manager' ? domain : targetDomain ?? domain) as string;
   const cacheKey = REDIS_KEYS.dashboardLeadStatus(effectiveDomain);
 
@@ -217,59 +232,26 @@ export async function getLeadStatusSummary(
     console.error('[dashboard-service] getLeadStatusSummary Redis get error:', e);
   }
 
+  // Use the effective role/domain for the RPC call.
+  // Admin/founder scoped to targetDomain: pass role='manager' so the RPC applies the domain filter.
+  // Admin/founder with no targetDomain: pass role='admin' so the RPC skips the domain filter.
+  const rpcRole   = (role === 'manager' || targetDomain) ? 'manager' : role;
+  const rpcDomain = (role === 'manager' ? domain : targetDomain ?? domain) as AppDomain;
+
   const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc('get_lead_pipeline_refresh', {
+    p_role:   rpcRole,
+    p_domain: rpcDomain,
+  });
 
-  // Fetch all active leads with assigned agent and status in one query
-  let query = supabase
-    .from('leads')
-    .select('status, assigned_to, assignee:profiles!leads_assigned_to_fkey(full_name)')
-    .is('archived_at', null);
+  if (error) throw error;
 
-  if (role === 'manager') {
-    query = query.eq('domain', domain);
-  } else if (targetDomain) {
-    query = query.eq('domain', targetDomain);
-  }
-
-  const { data } = await query;
-  const rows = (data ?? []) as Array<{
-    status:     string;
-    assigned_to: string | null;
-    assignee:   { full_name: string } | null;
-  }>;
-
-  // Aggregate totals
-  const totalMap: Partial<Record<LeadStatus, number>> = {};
-  for (const row of rows) {
-    const s = row.status as LeadStatus;
-    totalMap[s] = (totalMap[s] ?? 0) + 1;
-  }
-
-  const statusOrder: LeadStatus[] = ['new', 'touched', 'in_discussion', 'nurturing', 'won', 'lost', 'junk'];
-  const totals: LeadStatusCount[] = statusOrder
-    .map((s) => ({ status: s, count: totalMap[s] ?? 0 }))
-    .filter((s) => s.count > 0);
-
-  // Per-agent breakdown
-  const agentMap: Record<string, AgentStatusBreakdown> = {};
-  for (const row of rows) {
-    if (!row.assigned_to) continue;
-    if (!agentMap[row.assigned_to]) {
-      agentMap[row.assigned_to] = {
-        agent_id:   row.assigned_to,
-        agent_name: row.assignee?.full_name ?? 'Unknown',
-        counts:     {},
-        total:      0,
-      };
-    }
-    const s = row.status as LeadStatus;
-    agentMap[row.assigned_to].counts[s] = (agentMap[row.assigned_to].counts[s] ?? 0) + 1;
-    agentMap[row.assigned_to].total += 1;
-  }
-
-  const byAgent = Object.values(agentMap).sort((a, b) => b.total - a.total);
-
-  const result: LeadStatusSummary = { totals, byAgent };
+  const rpcData = data as { totals: LeadStatusCount[]; byAgent: AgentStatusBreakdown[] };
+  const result: LeadStatusSummary = {
+    totals:  rpcData.totals  ?? [],
+    byAgent: rpcData.byAgent ?? [],
+  };
 
   try {
     await redis.setex(cacheKey, REDIS_TTL.DASHBOARD_LEAD_STATUS, result);
@@ -525,36 +507,19 @@ export async function getLeadsByCampaign(
     console.error('[dashboard-service] getLeadsByCampaign Redis get error:', e);
   }
 
+  const rpcRole   = (role === 'manager' || targetDomain) ? 'manager' : role;
+  const rpcDomain = (role === 'manager' ? domain : targetDomain ?? domain) as AppDomain;
+
   const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc('get_campaign_pipeline_refresh', {
+    p_role:   rpcRole,
+    p_domain: rpcDomain,
+  });
 
-  let query = supabase
-    .from('leads')
-    .select('utm_campaign, status')
-    .is('archived_at', null)
-    .not('utm_campaign', 'is', null);
+  if (error) throw error;
 
-  if (role === 'manager') {
-    query = query.eq('domain', domain);
-  } else if (targetDomain) {
-    query = query.eq('domain', targetDomain);
-  }
-
-  const { data } = await query;
-  const rows = (data ?? []) as Array<{ utm_campaign: string | null; status: string }>;
-
-  const campaignMap: Record<string, CampaignStatusMix> = {};
-  for (const row of rows) {
-    const campaign = row.utm_campaign;
-    if (!campaign) continue;
-    if (!campaignMap[campaign]) {
-      campaignMap[campaign] = { campaign, total: 0, mix: {} };
-    }
-    const s = row.status as LeadStatus;
-    campaignMap[campaign].mix[s] = (campaignMap[campaign].mix[s] ?? 0) + 1;
-    campaignMap[campaign].total += 1;
-  }
-
-  const result = Object.values(campaignMap).sort((a, b) => b.total - a.total).slice(0, 12);
+  const result = (data ?? []) as CampaignStatusMix[];
 
   try {
     await redis.setex(cacheKey, REDIS_TTL.DASHBOARD_CAMPAIGNS, result);

@@ -272,12 +272,11 @@ export type Database = {
       }
       leads: {
         Row: {
-          ad_name: string | null
           archived_at: string | null
           assigned_at: string | null
           assigned_to: string | null
+          attribution: Json | null
           call_count: number
-          campaign_id: string | null
           created_at: string
           deal_amount: number | null
           deal_duration: string | null
@@ -291,27 +290,23 @@ export type Database = {
           last_call_outcome: string | null
           last_name: string | null
           lead_intent: string | null
+          medium: string | null
           personal_details: Json | null
           phone: string | null
-          platform: string | null
           previous_lead_id: string | null
-          private_scratchpad: string | null
           slug: string | null
+          source: string | null
           status: string
           status_changed_at: string | null
           updated_at: string
           utm_campaign: string | null
-          utm_content: string | null
-          utm_medium: string | null
-          utm_source: string | null
         }
         Insert: {
-          ad_name?: string | null
           archived_at?: string | null
           assigned_at?: string | null
           assigned_to?: string | null
+          attribution?: Json | null | Record<string, unknown>
           call_count?: number
-          campaign_id?: string | null
           created_at?: string
           deal_amount?: number | null
           deal_duration?: string | null
@@ -325,27 +320,23 @@ export type Database = {
           last_call_outcome?: string | null
           last_name?: string | null
           lead_intent?: string | null
+          medium?: string | null
           personal_details?: Json | null | Record<string, string>
           phone?: string | null
-          platform?: string | null
           previous_lead_id?: string | null
-          private_scratchpad?: string | null
           slug?: string | null
+          source?: string | null
           status?: string
           status_changed_at?: string | null
           updated_at?: string
           utm_campaign?: string | null
-          utm_content?: string | null
-          utm_medium?: string | null
-          utm_source?: string | null
         }
         Update: {
-          ad_name?: string | null
           archived_at?: string | null
           assigned_at?: string | null
           assigned_to?: string | null
+          attribution?: Json | null | Record<string, unknown>
           call_count?: number
-          campaign_id?: string | null
           created_at?: string
           deal_amount?: number | null
           deal_duration?: string | null
@@ -359,19 +350,16 @@ export type Database = {
           last_call_outcome?: string | null
           last_name?: string | null
           lead_intent?: string | null
+          medium?: string | null
           personal_details?: Json | null
           phone?: string | null
-          platform?: string | null
           previous_lead_id?: string | null
-          private_scratchpad?: string | null
           slug?: string | null
+          source?: string | null
           status?: string
           status_changed_at?: string | null
           updated_at?: string
           utm_campaign?: string | null
-          utm_content?: string | null
-          utm_medium?: string | null
-          utm_source?: string | null
         }
         Relationships: [
           {
@@ -1041,12 +1029,11 @@ export type Database = {
       get_active_lead_by_phone: {
         Args: { p_phone: string }
         Returns: {
-          ad_name: string | null
           archived_at: string | null
           assigned_at: string | null
           assigned_to: string | null
+          attribution: Json | null
           call_count: number
-          campaign_id: string | null
           created_at: string
           deal_amount: number | null
           deal_duration: string | null
@@ -1060,18 +1047,16 @@ export type Database = {
           last_call_outcome: string | null
           last_name: string | null
           lead_intent: string | null
+          medium: string | null
           personal_details: Json | null
           phone: string | null
-          platform: string | null
           previous_lead_id: string | null
-          private_scratchpad: string | null
+          slug: string | null
+          source: string | null
           status: string
           status_changed_at: string | null
           updated_at: string
           utm_campaign: string | null
-          utm_content: string | null
-          utm_medium: string | null
-          utm_source: string | null
         }[]
         SetofOptions: {
           from: "*"
@@ -1146,7 +1131,6 @@ export type Database = {
           updated_at: string
         }[]
       }
-      get_lead_scratchpad: { Args: { p_lead_id: string }; Returns: string }
       get_next_round_robin_agent: {
         Args: { p_domain: string }
         Returns: string
@@ -1406,6 +1390,7 @@ export type CallOutcome =
   | 'conversing'
   | 'other'
 
+/** @deprecated platform is now in lead.attribution.platform — kept for any legacy references */
 export type LeadPlatform = 'meta' | 'google' | 'website' | 'whatsapp'
 
 export type TaskType     = 'call' | 'whatsapp_message' | 'other'
@@ -1466,16 +1451,16 @@ export type TaskGroup = Omit<
 export type TaskRemark = Database['public']['Tables']['task_remarks']['Row']
 
 // Lead — typed-up version with narrower field types than the raw Row
-// (the generated Row uses `string` for status/platform/outcome columns)
+// (the generated Row uses `string` for status/outcome columns)
 export type Lead = Omit<
   Database['public']['Tables']['leads']['Row'],
-  'status' | 'last_call_outcome' | 'platform' | 'personal_details' | 'form_data' | 'tags' | 'domain' | 'deal_type' | 'deal_duration'
+  'status' | 'last_call_outcome' | 'personal_details' | 'form_data' | 'tags' | 'domain' | 'deal_type' | 'deal_duration' | 'attribution'
 > & {
   status:             LeadStatus
   last_call_outcome:  CallOutcome | null
-  platform:           LeadPlatform | null
   personal_details:   Record<string, string> | null
   form_data:          Record<string, unknown> | null
+  attribution:        Record<string, unknown> | null
   tags?:              string[]
   domain:             AppDomain
   deal_type:          import('@/lib/constants/deal-types').DealType | null

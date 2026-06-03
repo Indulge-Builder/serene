@@ -51,7 +51,7 @@ export default async function TasksPage({
           <h1 className="type-page-title m-0">
             Tasks<span className="page-title-dot">.</span>
           </h1>
-          <AddTaskButton callerRole={profile.role} activeTab={tab} validTabs={validTabs} />
+          <AddTaskButton activeTab={tab} validTabs={validTabs} />
         </div>
 
         <Suspense fallback={<TasksSkeleton tab={tab} />}>

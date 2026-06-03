@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { redis } from '@/lib/redis';
-import { REDIS_KEYS } from '@/lib/constants/redis-keys';
+import { REDIS_KEYS, REDIS_TTL } from '@/lib/constants/redis-keys';
 import {
   CreatePersonalTaskSchema,
   CreateGroupTaskSchema,
@@ -144,6 +144,14 @@ export async function createPersonalTaskAction(
   // 7. Invalidate assignee's page-1 personal task cache — fire-and-forget.
   void redis.del(REDIS_KEYS.task.personalPage1(resolvedAssignedTo)).catch(() => {});
 
+  // 8. Invalidate caller's dashboard agent-tasks widget cache (30s TTL).
+  //    Caller's id is server-verified — never a client-supplied value.
+  try {
+    await redis.del(REDIS_KEYS.dashboardAgentTasks(caller.id));
+  } catch (e) {
+    console.warn('[dashboard-invalidation] redis del failed on createPersonalTask', e);
+  }
+
   return {
     data: { taskId, assignedTo: resolvedAssignedTo, createdBy: caller.id },
     error: null,
@@ -163,16 +171,13 @@ export async function createGroupTaskAction(
 
   const fields = parsed.data;
 
-  // 2. Auth — only manager+ can create group tasks
+  // 2. Auth
   const caller = await getCurrentProfile();
   if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (!['manager', 'admin', 'founder'].includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
-  }
 
-  // 3. Domain enforcement — manager locked to own domain
+  // 3. Domain enforcement — non-privileged callers locked to own domain
   const resolvedDomain =
-    caller.role === 'manager' ? caller.domain : fields.domain;
+    ['admin', 'founder'].includes(caller.role) ? fields.domain : caller.domain;
 
   const admin = createAdminClient();
 
@@ -374,6 +379,13 @@ export async function updateTaskStatusAction(
     void redis.del(REDIS_KEYS.task.giaList(caller.id, caller.role, caller.domain)).catch(() => {});
   } else if (task.task_category === 'group_subtask' && task.group_id) {
     void redis.del(REDIS_KEYS.task.subtasks(task.group_id as string, caller.id)).catch(() => {});
+  }
+
+  // 6. Invalidate caller's dashboard agent-tasks widget cache.
+  try {
+    await redis.del(REDIS_KEYS.dashboardAgentTasks(caller.id));
+  } catch (e) {
+    console.warn('[dashboard-invalidation] redis del failed on updateTaskStatus', e);
   }
 
   return { data: { taskId }, error: null };

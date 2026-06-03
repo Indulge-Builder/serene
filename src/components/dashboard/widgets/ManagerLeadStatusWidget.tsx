@@ -153,15 +153,21 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
 
   useEffect(() => {
     let cancelled = false;
-    // Manager: use seeded data if available; else fetch all
     if (isManagerRole) {
+      // Manager: use seeded data if available; else fetch
       if (seed !== null) return;
       startTransition(async () => {
         const result = await getLeadStatusSummaryAction(role, domain);
         if (!cancelled && result.data) { setData(result.data); setLoaded(true); }
       });
     } else {
-      // Admin/founder: always fetch onboarding on mount (seed is "all", we want domain slice)
+      // Admin/founder: page seeds initialData with onboarding-scoped pipeline data
+      // (p_initial_domain='onboarding' passed from dashboard/page.tsx).
+      // Use the seed directly when activeDomain matches the seeded domain — zero POST on initial paint.
+      if (seed !== null && domainMode === DEFAULT_GIA_DOMAIN) {
+        setLoaded(true);
+        return;
+      }
       startTransition(async () => {
         const result = await getLeadStatusForDomainAction(DEFAULT_GIA_DOMAIN);
         if (!cancelled && result.data) { setData(result.data); setLoaded(true); }

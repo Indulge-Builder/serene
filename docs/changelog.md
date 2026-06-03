@@ -6,6 +6,113 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-03 — Domain-scoped route authorization — sidebar filtering + layout guard via canAccessRoute
+
+Domain-gated navigation: non-Gia domains (tech, finance, concierge, marketing, b2b) now see only the routes their domain permits. Implemented via a pure `canAccessRoute` util, a `DOMAIN_ROUTE_MAP` constant, a server-side layout guard, and Sidebar filter. Admin/founder roles bypass all domain checks. `/dashboard` and `/profile` are always accessible to every authenticated user.
+
+- `src/lib/constants/route-permissions.ts` — `ALWAYS_ALLOWED_PREFIXES` + `DOMAIN_ROUTE_MAP`
+- `src/lib/utils/route-access.ts` — `canAccessRoute(profile, pathname)`
+- `src/proxy.ts` — forwards `x-pathname` header to the dashboard layout
+- `src/app/(dashboard)/layout.tsx` — server-side redirect when domain denies the route
+- `src/components/layout/Sidebar.tsx` — nav items filtered per domain using `canAccessRoute`
+- `src/components/layout/CLAUDE.md` — created; documents the pattern
+
+---
+
+## 2026-06-03 — Attribution refactor: 7 flat columns → source, medium, utm_campaign + attribution JSONB (migration 0065)
+
+7 flat ad/attribution columns consolidated. The table now holds `source` (manual/dossier-editable channel), `medium` (fb|ig|…), `utm_campaign` (unchanged — has 4 indexes and drives campaign analytics), and `attribution jsonb` (all platform-specific extras: `platform`, `campaign_id`, `ad_name`, `adset_name`). Existing rows backfilled.
+
+**Columns removed:** `platform`, `campaign_id`, `ad_name`, `utm_content`  
+**Columns renamed:** `utm_source → source`, `utm_medium → medium`  
+**Column added:** `attribution jsonb`  
+**Index:** `idx_leads_utm_source` dropped; `idx_leads_source` created
+
+- `supabase/migrations/20260603000065_attribution_refactor.sql` — migration
+- `src/lib/types/database.ts` — `leads` Row/Insert/Update updated; `get_active_lead_by_phone` RPC return shape updated; `Lead` derived type updated (`attribution: Record<string,unknown>|null`); `LeadPlatform` deprecated (platform now in `attribution.platform`)
+- `src/lib/leads/adapters.ts` — `NormalizedLeadPayload` updated (`source`, `medium`, `attribution`, removed flat ad fields); all three adapters updated; Meta builds `attribution={platform:'meta',campaign_id,ad_name,adset_name}` from `res3`; Google/website build minimal `attribution={platform}` objects; WEBSITE_STANDARD_KEYS pruned
+- `src/lib/services/lead-ingestion.ts` — `leadPayloadSchema` updated; INSERT maps `source`, `medium`, `utm_campaign`, `attribution`; `createLeadFromWhatsApp` inserts `attribution:{platform:'whatsapp'}`
+- `src/lib/services/leads-service.ts` — `LeadListItem` Pick updated (`source`, `medium`; removed `platform`); explicit SELECT list in `getLeadsByRole` updated; source filter changed from `.eq("platform",…)` to `.eq("source",…)`
+- `src/lib/validations/lead-schema.ts` — `UpdateLeadUtmSourceSchema` renamed to `UpdateLeadSourceSchema` (field `utm_source → source`); `CreateManualLeadSchema.utm_source` renamed to `source`
+- `src/lib/actions/leads.ts` — `updateLeadUtmSource` renamed to `updateLeadSource` (schema ref + DB field updated); `createManualLead` uses `source` field; activity details type changed `lead_utm_source_updated → lead_source_updated`
+- `src/lib/constants/lead-columns.ts` — `platform` column entry removed (stored localStorage id silently dropped by validator on next load)
+- `src/components/leads/LeadsTable.tsx` — `source` case reads `lead.source`; `medium` case reads `lead.medium`; `platform` case removed; unused `PLATFORM_LABELS`/`resolveLeadSource` imports cleaned up
+- `src/components/leads/LeadInfoCard.tsx` — `resolvedSource = lead.source`; `SourceDropdownField` calls `updateLeadSource({source})`; medium row reads `lead.medium`; Platform + Ad name attribution InfoRows added (display-only, shown when `attribution` has values); `resolveLeadSource` import removed
+- `src/components/leads/LeadActivityLog.tsx` — `note_added` handler now matches both `lead_source_updated` (new) and `lead_utm_source_updated` (legacy rows); reads `d.source ?? d.utm_source`
+- `src/components/leads/LeadsFilters.tsx` — no change needed; was already using `source` URL param
+
+---
+
+## 2026-06-03 — Dashboard: domain line colours migrated to CSS tokens; quarter period exposed
+
+- `src/styles/design-tokens.css` — nine `--domain-*` tokens added to `:root` (mid-tone hue-wheel palette: steel blue, amber, jade, orchid, terracotta, sea glass, soft violet, warm ochre, muted sage). All legible on every `--theme-paper` surface. No per-theme overrides needed.
+- `src/lib/constants/domain-colors.ts` — new file; `DOMAIN_LINE_COLORS: Record<AppDomain, string>` mapping all nine domains to `var(--domain-*)` CSS variable strings.
+- `src/components/dashboard/widgets/ManagerLeadVolumeWidget.tsx` — removed every hardcoded hex colour (`#F5A623`, `#4A90D9`, `#8B6FD4`, `#E05C4B`, `FALLBACK_COLORS`). Replaced with `resolvedDomainColors` state populated via `resolveColorMap(DOMAIN_LINE_COLORS)` with a MutationObserver re-resolve on theme switch. Added "Quarter" to `PERIODS` — the period tab now shows Month / Week / Today / Quarter. All service, action, and schema support was already present.
+- `docs/design-dna.md` — §16.10 added documenting `--domain-*` tokens, `DOMAIN_LINE_COLORS`, and the mandatory `resolveColorMap` resolution pattern for Recharts strokes.
+- `CLAUDE.md` — `domain-colors.ts` added to File Locations table.
+
+---
+
+## 2026-06-03 — Dashboard client: seed fix, rAF ticker, role filter in sanitizeStored, error resilience
+
+- `src/app/(dashboard)/dashboard/page.tsx` — admin/founder now pass `p_initial_domain='onboarding'` to `getDashboardSummary`; `getLeadVolumeByPeriod` is skipped for admin/founder (`Promise.resolve(null)`); entire `Promise.all` wrapped in `try/catch` that logs `[dashboard/page]` and renders zeroed `initialData` on RPC failure (no redirect, no throw). `DashboardSummary.lead_volume` widened to `| null` in `src/lib/types/index.ts`.
+- `src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx` — admin/founder mount effect now checks `seed !== null && domainMode === DEFAULT_GIA_DOMAIN` and uses the seed directly, skipping `getLeadStatusForDomainAction`. Zero mount POSTs on initial paint when seed is present. Tab switches still fire the action.
+- `src/components/dashboard/widgets/AgentActivityWidget.tsx` — ticker loop replaced: `setTimeout(tick, 16)` → `requestAnimationFrame(tick)`; `rafRef.current` typed as `number`; `visibilitychange` listener cancels rAF on `document.hidden = true` and restarts on visible — prevents CPU burn on inactive tabs during an 8-hour agent shift. All hover-pause, offset, and `willChange` logic unchanged.
+- `src/hooks/useDashboardLayout.ts` — `sanitizeStored` now filters placements on both `isValidWidgetId(id)` AND `WIDGET_MAP[id].roles.includes(role)`. Placements failing the role check are silently dropped — an agent with manager widgets in localStorage loses them on next hydration.
+
+---
+
+## 2026-06-03 — LeadsFilters: draft → Apply pattern, two-row layout, layout-shift fix
+
+`src/components/leads/LeadsFilters.tsx` rewritten. All filter controls now write into a local `FilterDraft` state; the URL is updated only when the user clicks Apply (one `router.push`). Search no longer pushes on every keystroke — the 500ms debounce is retired entirely. `isDirty` is a computed boolean (no `useState`). `committedCount` badge reflects URL state, not draft. Row 2 is `flexWrap: nowrap` so dropdown panels (absolutely positioned) never reflow the row when open. Domain change atomically clears `agent_id` and `campaign` in the same `setDraft` call. `docs/lead-page.md` invariant 7 updated; `src/components/leads/CLAUDE.md` updated with `FilterDraft` type, `draftFromParams` helper, `isDirty` computed rule, two-row layout contract, and `committedCount` vs draft distinction.
+
+## 2026-06-03 — Dashboard refresh paths: RPCs, Redis cache-aside, and invalidation
+
+- `supabase/migrations/20260603000064_dashboard_refresh_rpcs.sql` — two new STABLE SECURITY DEFINER RPCs: `get_lead_pipeline_refresh(p_role, p_domain)` returns `{totals, byAgent}` jsonb (identical shape to `DashboardLeadStatusSummary`); `get_campaign_pipeline_refresh(p_role, p_domain)` returns campaign mix array (identical shape to `DashboardCampaignStatusMix[]`). Both eliminate Node-side aggregation over full `leads` rows.
+- `src/lib/services/dashboard-service.ts` — `getLeadStatusSummary`: replaced full-row select + Node aggregation with `.rpc('get_lead_pipeline_refresh', ...)`. `getLeadsByCampaign`: same, replaced with `.rpc('get_campaign_pipeline_refresh', ...)`. `getAgentTasksSummary`: added Redis cache-aside (`dashboard:agent-tasks:{userId}`, 30s TTL). Header comment updated with full Redis key inventory.
+- `src/lib/constants/redis-keys.ts` — `REDIS_KEYS.dashboardAgentTasks(userId)` key added; `REDIS_TTL.DASHBOARD_AGENT_TASKS = 30` added.
+- `src/lib/actions/leads.ts` — `updateLeadStatus`: adds `dashboard:lead-status:{domain}` and `dashboard:campaigns:{domain}` to the existing awaited `Promise.all` del before `revalidatePath`. `createManualLead`: adds new awaited `Promise.all` del for lead-status, campaigns, and four volume period keys (manager-scoped) before return.
+- `src/lib/actions/tasks.ts` — `createPersonalTaskAction`, `updateTaskStatusAction`: each adds an awaited `try/catch` del of `dashboard:agent-tasks:{caller.id}` after existing cache invalidation. All dels use `caller.id` (server-verified profile), never a client-supplied value.
+- `src/lib/actions/leads.ts` — `createLeadTaskAction`: adds awaited `try/catch` del of `dashboard:agent-tasks:{caller.id}`.
+
+---
+
+## 2026-06-03 — Lead dossier: WhatsApp conversation initiation — `sendLeadInitiationMessage` (whatsapp-api), `initiateWhatsAppConversationAction`; template `7aee2a33`; no migration; state-driven Realtime in `LeadWhatsAppCard`
+
+## 2026-06-03 — Dashboard RPC: role-branch, p_initial_domain, get_agent_recent_activity
+
+- `supabase/migrations/20260603000062_get_dashboard_summary_role_branch.sql` — drops 3-param overload; recreates `get_dashboard_summary(p_role, p_domain, p_user_id, p_initial_domain DEFAULT NULL)` with role-branch: `agent` role computes only `agent_tasks` + `agent_activity` CTEs and returns immediately with empty stubs for `lead_status` / `campaigns`; manager/admin/founder compute all 4 CTEs; `lead_status` + `campaigns` domain-scoping: manager → `p_domain`, admin/founder + `p_initial_domain` → that domain, admin/founder + NULL → no filter (all-org). Only one 4-param overload remains.
+- `supabase/migrations/20260603000063_get_agent_recent_activity.sql` — new `get_agent_recent_activity(p_role, p_domain, p_user_id)` RPC; single `lead_activities LEFT JOIN leads` query with CASE role filter (admin/founder: all, manager: `leads.domain = p_domain`, agent: `actor_id = p_user_id`); returns jsonb array of 25; STABLE SECURITY DEFINER; GRANT EXECUTE to authenticated.
+- `src/lib/services/dashboard-service.ts` — `getDashboardSummary` gains optional 4th param `initialDomain?: AppDomain`, passed as `p_initial_domain` to RPC (null when absent). `getAgentRecentActivity` rewritten to call `get_agent_recent_activity` RPC — eliminates the two-step `SELECT id FROM leads LIMIT 1000 → .in('lead_id', ids)` pattern; now a single RPC call for all three roles.
+- `src/app/(dashboard)/CLAUDE.md` — new 4-param signature, role-branch behaviour, and `get_agent_recent_activity` RPC documented.
+
+---
+
+## 2026-06-03 — fix: activity history and notes empty on lead dossier for slug-based URLs
+
+- `src/app/(dashboard)/leads/[id]/page.tsx` — `getLeadNotesFull` and `getLeadActivitiesFull` were called with the URL slug string (`id`) instead of `lead.id` (UUID). Both functions query by `lead_id` UUID foreign key, so passing a slug returned empty arrays and the Activity History card always showed "No activity yet." regardless of actual history. Fixed both calls to use `lead.id`.
+
+---
+
+## 2026-06-03 — fix: activity timeline — field-edit events and duplicate submissions now visible
+
+- `src/components/leads/LeadActivityLog.tsx` — three bugs fixed:
+  1. **Over-broad filter:** `note_added` rows with a `details.type` sub-key (field-edit events) are no longer dropped. Only bare `note_added` rows (call-paired) are filtered. `updateLeadEmail`, `updateLeadDomain`, and `updateLeadUtmSource` activities now appear in the timeline.
+  2. **Missing `describeActivity` cases:** Added handlers for `lead_email_updated` ("Email updated"), `lead_domain_updated` ("Domain changed to …" via `DOMAIN_LABELS`), `lead_utm_source_updated` ("Source changed to …" via `getLeadSourceLabel`), and `duplicate_submission` ("Duplicate submission detected"). All previously returned `''` and rendered as blank or invisible entries.
+  3. **Icon function:** `activityIcon` now takes the full `LeadActivityWithActor` rather than just `action_type`; `note_added` field-edit rows show a `Pencil` icon, `duplicate_submission` shows a `Copy` icon.
+
+---
+
+## 2026-06-03 — Lead dossier: embedded WhatsApp chat card (`LeadWhatsAppCard`) — reuses `MessageBubble`, `sendWhatsAppMessage`, Realtime pattern from `ConversationPanel`; `getConversationByLeadId` added to `whatsapp-service.ts`; `getConversationByLeadIdAction` added to `whatsapp.ts`; fetched in existing `Promise.all` on the dossier page; channel name `wa-messages-${conversationId}-${mountId}` with `useId()` StrictMode guard
+
+## 2026-06-03 — fix: lead dossier Source field blank for webhook leads — `LeadInfoCard` now resolves display via `resolveLeadSource(utm_source, platform)` (matches `LeadsTable`); `adaptMeta` intentionally leaves `utm_source` null since channel lives on `platform`
+
+- `src/lib/constants/lead-sources.ts` — `resolveLeadSource()` helper exported.
+- `src/components/leads/LeadInfoCard.tsx` — Source row and inline editor use resolved value.
+- `src/components/leads/LeadsTable.tsx` — source column uses `resolveLeadSource()` (no behaviour change).
+
+## 2026-06-02 — remove: private scratchpad concept removed from every layer — migration 0061 drops `leads.private_scratchpad` column and `get_lead_scratchpad` function; `AgentScratchpad.tsx` deleted; `updateScratchpad` action and `UpdateScratchpadSchema` removed; `assignLead` no longer clears scratchpad on reassignment; `database.ts` types updated; `docs/lead-page.md` updated (§2a, §2c RPCs, §7e, §8 access control, invariant 22 removed and renumbered)
+
 ## 2026-06-02 — perf: leads list query — explicit column SELECT replaces select(*); form_data, personal_details, deal columns, SLA columns excluded from list path
 
 - `src/lib/services/leads-service.ts` — `getLeadsByRole` now selects 18 explicit columns instead of `*`; dossier warming removed (partial objects must not be stored under `leadRowId`/`leadRowSlug` keys — would corrupt `getLeadById`/`getLeadBySlug` reads); `LeadListItem` and `LeadListItemWithAssignee` types exported; `LeadsResult.leads` typed as `LeadListItemWithAssignee[]`.

@@ -38,8 +38,8 @@ export type LeadWithAssignee = Lead & {
 export type LeadListItem = Pick<
   Lead,
   | 'id' | 'slug' | 'first_name' | 'last_name' | 'phone' | 'email'
-  | 'domain' | 'assigned_to' | 'status' | 'lead_intent' | 'platform'
-  | 'utm_source' | 'utm_medium' | 'utm_campaign' | 'call_count'
+  | 'domain' | 'assigned_to' | 'status' | 'lead_intent'
+  | 'source' | 'medium' | 'utm_campaign' | 'call_count'
   | 'last_call_outcome' | 'created_at'
 >;
 export type LeadListItemWithAssignee = LeadListItem & {
@@ -221,7 +221,7 @@ export async function getLeadsByRole(
     .from("leads")
     .select(
       `id, slug, first_name, last_name, phone, email, domain, assigned_to,
-       status, lead_intent, platform, utm_source, utm_medium, utm_campaign,
+       status, lead_intent, source, medium, utm_campaign,
        call_count, last_call_outcome, created_at,
        assignee:profiles!leads_assigned_to_fkey(full_name)`,
       { count: "exact", head: false },
@@ -258,7 +258,7 @@ export async function getLeadsByRole(
   }
 
   if (filters.source) {
-    query = query.eq("platform", filters.source);
+    query = query.eq("source", filters.source);
   }
 
   if (filters.campaign) {

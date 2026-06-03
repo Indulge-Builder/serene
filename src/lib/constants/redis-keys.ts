@@ -59,6 +59,9 @@ export const REDIS_KEYS = {
   dashboardCampaigns: (domain: string) =>
     `dashboard:campaigns:${domain}`,
 
+  dashboardAgentTasks: (userId: string) =>
+    `dashboard:agent-tasks:${userId}`,
+
   // Canonical shape: lead:list:{role}:{callerDomain}:{userId}:{filterHash}
   // role and userId each appear exactly once. callerDomain is the session-verified
   // profile domain — not filters.domain — so cross-domain bleed is impossible.
@@ -172,6 +175,7 @@ export const TASK_PERSONAL_PAGE1_TTL = 30;
 export const REDIS_TTL = {
   TASK_SUBTASKS:           30,
   TASK_REMARKS:            30,
+  DASHBOARD_AGENT_TASKS:   30,
   DASHBOARD_LEAD_STATUS:   60,
   DASHBOARD_LEAD_VOLUME:  120,
   DASHBOARD_CAMPAIGNS:    120,

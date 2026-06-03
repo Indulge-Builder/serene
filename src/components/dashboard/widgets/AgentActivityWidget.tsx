@@ -173,7 +173,6 @@ function ActivityItem({ activity }: { activity: DashboardAgentActivity }) {
 const ACTIVITY_CAP = 25;
 const ROW_HEIGHT = 48; // px — matches ActivityItem padding + content
 const SCROLL_SPEED = 0.11; // px per frame (~9px/s at 60fps)
-const FRAME_INTERVAL = 16; // ms (~60fps)
 
 export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: WidgetProps) {
   const rawSeed = initialData?.agent_activity ?? null;
@@ -189,7 +188,7 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
   const viewportRef = useRef<HTMLDivElement>(null);
   const offsetRef = useRef(0); // current translateY (negative = scrolled down)
   const pausedRef = useRef(false); // true while hovered
-  const rafIdRef = useRef<number>(0);
+  const rafRef = useRef<number>(0);
   const channelRef = useRef<ReturnType<
     ReturnType<typeof createClient>["channel"]
   > | null>(null);
@@ -212,7 +211,7 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  // Auto-scroll ticker — transform-only, GPU-safe
+  // Auto-scroll ticker — rAF-driven, GPU-safe, pauses on hidden tab
   useEffect(() => {
     if (!loaded) return;
 
@@ -228,11 +227,25 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
           innerRef.current.style.transform = `translateY(${offsetRef.current}px)`;
         }
       }
-      rafIdRef.current = window.setTimeout(tick, FRAME_INTERVAL);
+      rafRef.current = requestAnimationFrame(tick);
     };
 
-    rafIdRef.current = window.setTimeout(tick, FRAME_INTERVAL);
-    return () => window.clearTimeout(rafIdRef.current);
+    rafRef.current = requestAnimationFrame(tick);
+
+    // Pause loop when tab is hidden; resume when visible — prevents CPU burn on long shifts
+    const handleVisibility = () => {
+      if (document.hidden) {
+        cancelAnimationFrame(rafRef.current);
+      } else {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [loaded, activities.length]);
 
   // Realtime subscription — scoped by role (P-06 compliance)

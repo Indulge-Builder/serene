@@ -35,7 +35,7 @@ Thin server orchestrator. Parallel fetch: lead (slug then UUID fallback), notes,
 
 **Ad creatives:** pass `adCreatives[]` to `LeadInfoCard` + `CampaignVideoModal`. Service: `getAdCreativesForCampaign` (plural array, migration 0058 multi-video).
 
-**Access gates** at page level mirror action-level checks (`canEdit`, `canReassign`, `canEditDomain`, scratchpad, notes).
+**Access gates** at page level mirror action-level checks (`canEdit`, `canReassign`, `canEditDomain`, notes).
 
 ---
 
@@ -267,7 +267,7 @@ This is the service's responsibility, not the component's.
 
 Three partial indexes on `leads` (all `WHERE archived_at IS NULL`):
 
-- `idx_leads_utm_source`
+- `idx_leads_source` (was `idx_leads_utm_source` before attribution refactor — migration 0065)
 - `idx_leads_utm_campaign`
 - `idx_leads_last_call_outcome`
 

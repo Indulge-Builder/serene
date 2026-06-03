@@ -26,6 +26,14 @@ export const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
   events:   "Events",
 };
 
+/** Webhook leads store channel on `platform`; manual/dossier edits use `utm_source`. */
+export function resolveLeadSource(
+  utmSource: string | null | undefined,
+  platform: string | null | undefined,
+): string | null {
+  return utmSource ?? platform ?? null;
+}
+
 export function getLeadSourceLabel(
   source: string | null | undefined,
 ): string {

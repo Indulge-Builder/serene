@@ -6,14 +6,12 @@ export type NormalizedLeadPayload = {
   last_name:    string | null;
   email:        string | null;
   phone:        string;
-  platform:     'meta' | 'google' | 'website' | 'whatsapp';
-  campaign_id:  string | null;
-  ad_name:      string | null;
-  domain:       string | null;
-  utm_source:   string | null;
-  utm_medium:   string | null;
+  /** `utm_medium` column — fb|ig|msg|an for Meta; null for other platforms */
+  medium:       string | null;
   utm_campaign: string | null;
-  utm_content:  string | null;
+  domain:       string | null;
+  /** Platform-specific ad metadata — stored in leads.attribution JSONB */
+  attribution:  Record<string, unknown> | null;
   form_data:    Record<string, unknown>;
 };
 
@@ -122,19 +120,25 @@ export function adaptMeta(raw: unknown): NormalizedLeadPayload {
     }
   }
 
+  // attribution: platform-specific ad metadata
+  const campaignId = str(res3.campaign_id) || null;
+  const adName     = str(res3.ad_name) ? sanitizeText(str(res3.ad_name)) : null;
+  const adsetName  = str(res3.adset_name) ? sanitizeText(str(res3.adset_name)) : null;
+
+  const attributionObj: Record<string, unknown> = { platform: 'meta' };
+  if (campaignId)  attributionObj.campaign_id = campaignId;
+  if (adName)      attributionObj.ad_name = adName;
+  if (adsetName)   attributionObj.adset_name = adsetName;
+
   return {
     first_name:   sanitizeText(firstName) || 'Unknown',
     last_name:    lastName ? sanitizeText(lastName) : null,
     email:        get('email', 'email_address') || null,
     phone:        normalizePhone(get('phone', 'phone_number', 'mobile_number')),
-    platform:     'meta',
-    campaign_id:  str(res3.campaign_id) || null,
-    ad_name:      str(res3.ad_name) ? sanitizeText(str(res3.ad_name)) : null,
-    domain:       null,  // resolved from utm_campaign in ingestion
-    utm_source:   null,
-    utm_medium:   res3?.platform ? sanitizeText(str(res3.platform)) : null,
+    medium:       res3?.platform ? sanitizeText(str(res3.platform)) : null,
     utm_campaign: str(res3.campaign_name) || null,
-    utm_content:  res3?.adset_name ? sanitizeText(str(res3.adset_name)) : null,
+    domain:       null,  // resolved from utm_campaign in ingestion
+    attribution:  attributionObj,
     form_data:    formData,
   };
 }
@@ -156,19 +160,22 @@ export function adaptGoogle(raw: unknown): NormalizedLeadPayload {
     lastName = lastName ?? ln;
   }
 
+  const campaignId = get('campaign_id') || null;
+  const adName     = get('ad_name') ? sanitizeText(get('ad_name')) : null;
+
+  const attributionObj: Record<string, unknown> = { platform: 'google' };
+  if (campaignId) attributionObj.campaign_id = campaignId;
+  if (adName)     attributionObj.ad_name = adName;
+
   return {
     first_name:   sanitizeText(firstName) || 'Unknown',
     last_name:    lastName ? sanitizeText(lastName) : null,
     email:        get('email') || null,
     phone:        normalizePhone(get('phone') || get('phone_number')),
-    platform:     'google',
-    campaign_id:  get('campaign_id') || null,
-    ad_name:      get('ad_name') ? sanitizeText(get('ad_name')) : null,
-    domain:       get('domain') || null,
-    utm_source:   get('utm_source') || 'google',
-    utm_medium:   get('utm_medium') || null,
+    medium:       get('utm_medium') || null,
     utm_campaign: get('utm_campaign') || null,
-    utm_content:  get('utm_content') || null,
+    domain:       get('domain') || null,
+    attribution:  attributionObj,
     form_data:    {},
   };
 }
@@ -180,8 +187,8 @@ export function adaptGoogle(raw: unknown): NormalizedLeadPayload {
 const WEBSITE_STANDARD_KEYS = new Set([
   'first_name', 'firstName', 'last_name', 'lastName',
   'full_name', 'fullName', 'email', 'mail',
-  'phone', 'phoneNumber', 'campaign_id', 'ad_name', 'domain',
-  'utm_source', 'utm_medium', 'utm_campaign', 'utm_content',
+  'phone', 'phoneNumber', 'domain',
+  'utm_medium', 'utm_campaign',
 ]);
 
 export function adaptWebsite(raw: unknown): NormalizedLeadPayload {
@@ -213,14 +220,10 @@ export function adaptWebsite(raw: unknown): NormalizedLeadPayload {
     last_name:    lastName ? sanitizeText(lastName) : null,
     email:        pick('email', 'mail') || null,
     phone:        normalizePhone(pick('phone', 'phoneNumber')),
-    platform:     'website',
-    campaign_id:  pick('campaign_id') || null,
-    ad_name:      pick('ad_name') ? sanitizeText(pick('ad_name')) : null,
-    domain:       pick('domain') || null,
-    utm_source:   pick('utm_source') || 'website',
-    utm_medium:   pick('utm_medium') || null,
+    medium:       pick('utm_medium') || null,
     utm_campaign: pick('utm_campaign') || null,
-    utm_content:  pick('utm_content') || null,
+    domain:       pick('domain') || null,
+    attribution:  { platform: 'website' },
     form_data:    formData,
   };
 }

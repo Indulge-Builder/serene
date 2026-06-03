@@ -1,7 +1,9 @@
-import { Activity, Phone, UserCheck, ArrowRight, PlusCircle } from 'lucide-react';
+import { Activity, Phone, UserCheck, ArrowRight, PlusCircle, Pencil, Copy } from 'lucide-react';
 import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
 import { CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
-import type { LeadStatus, CallOutcome } from '@/lib/types/database';
+import { DOMAIN_LABELS } from '@/lib/constants/domains';
+import { getLeadSourceLabel } from '@/lib/constants/lead-sources';
+import type { LeadStatus, CallOutcome, AppDomain } from '@/lib/types/database';
 import type { LeadActivityWithActor } from '@/lib/services/leads-service';
 
 type Props = {
@@ -21,8 +23,22 @@ function describeActivity(act: LeadActivityWithActor): string {
       return `Called — ${label}`;
     }
     case 'note_added': {
-      // note_added is always paired with call_logged; skip to avoid duplication
+      const d = act.details as { type?: string; domain?: string; utm_source?: string; source?: string } | null;
+      if (d?.type === 'lead_email_updated') return 'Email updated';
+      if (d?.type === 'lead_domain_updated') {
+        const label = d.domain ? (DOMAIN_LABELS[d.domain as AppDomain] ?? d.domain) : '';
+        return label ? `Domain changed to ${label}` : 'Domain updated';
+      }
+      if (d?.type === 'lead_source_updated' || d?.type === 'lead_utm_source_updated') {
+        const raw = d.source ?? d.utm_source;
+        const label = raw ? getLeadSourceLabel(raw) : '';
+        return label ? `Source changed to ${label}` : 'Source updated';
+      }
+      // Plain notes are paired with call_logged — skipped at the filter step
       return '';
+    }
+    case 'duplicate_submission': {
+      return 'Duplicate submission detected';
     }
     case 'status_changed': {
       const d = act.details as { old_status?: string; new_status?: string; reason?: string } | null;
@@ -44,14 +60,16 @@ function describeActivity(act: LeadActivityWithActor): string {
   }
 }
 
-function activityIcon(actionType: string): React.ReactNode {
+function activityIcon(act: LeadActivityWithActor): React.ReactNode {
   const style = { width: '0.75rem', height: '0.75rem', strokeWidth: 1.5 };
-  switch (actionType) {
-    case 'lead_created':   return <PlusCircle  {...style} />;
-    case 'call_logged':    return <Phone       {...style} />;
-    case 'status_changed': return <ArrowRight  {...style} />;
-    case 'agent_assigned': return <UserCheck   {...style} />;
-    default:               return <Activity    {...style} />;
+  switch (act.action_type) {
+    case 'lead_created':        return <PlusCircle  {...style} />;
+    case 'call_logged':         return <Phone       {...style} />;
+    case 'status_changed':      return <ArrowRight  {...style} />;
+    case 'agent_assigned':      return <UserCheck   {...style} />;
+    case 'duplicate_submission':return <Copy        {...style} />;
+    case 'note_added':          return <Pencil      {...style} />;
+    default:                    return <Activity    {...style} />;
   }
 }
 
@@ -68,8 +86,13 @@ function formatTimestamp(iso: string): string {
 }
 
 export function LeadActivityLog({ activities }: Props) {
-  // Service returns newest first; skip note_added (duplicates call_logged)
-  const visible = activities.filter((a) => a.action_type !== 'note_added');
+  // Skip plain note_added rows (they duplicate call_logged).
+  // Field-edit note_added rows carry a details.type key — keep those.
+  const visible = activities.filter((a) => {
+    if (a.action_type !== 'note_added') return true;
+    const d = a.details as { type?: string } | null;
+    return !!d?.type;
+  });
 
   return (
     <div
@@ -190,7 +213,7 @@ export function LeadActivityLog({ activities }: Props) {
                       marginTop:      '2px',
                     }}
                   >
-                    {activityIcon(act.action_type)}
+                    {activityIcon(act)}
                   </div>
                   {/* Connector line */}
                   {!isLast && (

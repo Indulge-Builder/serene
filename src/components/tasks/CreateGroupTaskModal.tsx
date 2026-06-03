@@ -543,7 +543,7 @@ export function CreateGroupTaskModal({
   const [isPending, startTransition] = useTransition();
   const [phase, setPhase] = useState<'idle' | 'creating-group' | 'creating-subtasks'>('idle');
 
-  const isManagerLocked = callerRole === 'manager';
+  const isManagerLocked = !['admin', 'founder'].includes(callerRole);
 
   // Fetch agents when domain changes (or on open for managers)
   useEffect(() => {
@@ -606,6 +606,7 @@ export function CreateGroupTaskModal({
   }
 
   const canSubmit = title.trim().length > 0 && (isManagerLocked || domain !== '') && !isPending;
+
 
   const handleSubmit = useCallback(() => {
     if (!canSubmit) return;

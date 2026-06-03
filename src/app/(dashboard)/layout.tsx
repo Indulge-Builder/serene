@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { getNotifications } from "@/lib/services/notifications-service";
+import { canAccessRoute } from "@/lib/utils/route-access";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ThemeInitializer } from "@/components/layout/ThemeInitializer";
 import { ToastProvider } from "@/components/ui/toast-provider";
@@ -19,6 +21,9 @@ export default async function DashboardLayout({
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
   if (!profile.is_active) redirect("/login");
+
+  const pathname = (await headers()).get('x-pathname') ?? '/';
+  if (!canAccessRoute(profile, pathname)) redirect('/dashboard');
 
   const initialNotifications = await getNotifications(profile.id);
 

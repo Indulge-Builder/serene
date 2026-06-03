@@ -106,5 +106,6 @@ export type DashboardSummary = {
   agent_activity: DashboardAgentActivity[];
   lead_status:    DashboardLeadStatusSummary;
   campaigns:      DashboardCampaignStatusMix[];
-  lead_volume:    DashboardLeadVolumeSummary;
+  // null for admin/founder (volume skipped in RSC; multi-domain fetch fires on mount)
+  lead_volume:    DashboardLeadVolumeSummary | null;
 };

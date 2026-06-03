@@ -6290,6 +6290,63 @@ Use a `useEffect` that listens to the `data-theme` attribute mutation
 and calls `getChartTokens()` to refresh.
 Without this, switching from Earth to Cosmos leaves gold charts on violet canvas.
 
+---
+
+## 16.10 — Domain Line Colours
+
+When multiple domains are plotted simultaneously on a line chart, each domain
+needs a stable, distinct colour that is not a semantic token and not the accent.
+
+### Token definitions
+
+Nine tokens, defined in `src/styles/design-tokens.css` under `:root`:
+
+```css
+--domain-concierge:   #4a8fc9;   /* steel blue   */
+--domain-onboarding:  #d4a017;   /* amber        */
+--domain-finance:     #3dab7a;   /* jade green   */
+--domain-marketing:   #c45cb4;   /* orchid       */
+--domain-tech:        #e07840;   /* terracotta   */
+--domain-shop:        #5cb8c4;   /* sea glass    */
+--domain-b2b:         #8868c8;   /* soft violet  */
+--domain-house:       #c48840;   /* warm ochre   */
+--domain-legacy:      #6a8c6a;   /* muted sage   */
+```
+
+These are mid-tone values chosen across the hue wheel.
+They are readable against all five `--theme-paper` backgrounds.
+They are distinguishable from each other and from any `--theme-accent` value.
+
+### Canonical constant
+
+`src/lib/constants/domain-colors.ts` exports `DOMAIN_LINE_COLORS: Record<AppDomain, string>`
+where every value is `'var(--domain-*)'`.
+
+### Resolution rule
+
+**Never pass `var(--domain-*)` strings directly to a Recharts `stroke` prop.**
+SVG attributes do not resolve CSS custom properties in all browsers (notably older Safari).
+Always resolve first via `resolveColorMap(DOMAIN_LINE_COLORS)` from
+`src/components/ui/charts/useChartTokens.ts`. Wrap in a `useEffect` with a
+`MutationObserver` on `data-theme` so colours update on theme switch.
+
+```typescript
+const [resolvedDomainColors, setResolvedDomainColors] = useState(
+  () => resolveColorMap(DOMAIN_LINE_COLORS),
+);
+useEffect(() => {
+  setResolvedDomainColors(resolveColorMap(DOMAIN_LINE_COLORS));
+  const observer = new MutationObserver(() => {
+    setResolvedDomainColors(resolveColorMap(DOMAIN_LINE_COLORS));
+  });
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  return () => observer.disconnect();
+}, []);
+// then: stroke={resolvedDomainColors[domain]}
+```
+
+Reference implementation: `src/components/dashboard/widgets/ManagerLeadVolumeWidget.tsx`.
+
 ## Design DNA — Addendum A
 
 ## Three Sections Completed

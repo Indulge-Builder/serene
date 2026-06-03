@@ -11,10 +11,9 @@ import {
   AddLeadNoteSchema,
   UpdateLeadEmailSchema,
   UpdateLeadDomainSchema,
-  UpdateLeadUtmSourceSchema,
+  UpdateLeadSourceSchema,
   UpdateLeadStatusSchema,
   AssignLeadSchema,
-  UpdateScratchpadSchema,
   UpdatePersonalDetailsSchema,
   CreateManualLeadSchema,
   RecordDealSchema,
@@ -221,15 +220,18 @@ export async function updateLeadStatus(
   if (!result.changed) return { data: { leadId }, error: null };
 
   // Redis invalidation — awaited so the next dossier load never reads stale data
-  const slug = lead.slug as string | null;
+  const slug       = lead.slug as string | null;
+  const leadDomain = lead.domain as string;
   try {
     await Promise.all([
       redis.del(REDIS_KEYS.leadRowId(leadId)),
       ...(slug ? [redis.del(REDIS_KEYS.leadRowSlug(slug))] : []),
       redis.del(REDIS_KEYS.leadActivities(leadId)),
+      redis.del(REDIS_KEYS.dashboardLeadStatus(leadDomain)),
+      redis.del(REDIS_KEYS.dashboardCampaigns(leadDomain)),
     ]);
   } catch (e) {
-    console.warn("[leads-action] redis del failed on status update", e);
+    console.warn("[dashboard-invalidation] redis del failed on status update", e);
   }
 
   // Invalidate dossier RSC cache so the server component reflects the new status
@@ -314,14 +316,13 @@ export async function assignLead(
 
   if (!existingLead) return { data: null, error: "Lead not found." };
 
-  // 4. Reassign + clear scratchpad (per spec: incoming agent starts blank)
+  // 4. Reassign
   const assignedAt = new Date().toISOString();
   await admin
     .from("leads")
     .update({
       assigned_to: agentId,
       assigned_at: assignedAt,
-      private_scratchpad: null,
       status_changed_at: assignedAt,
       last_activity_at: assignedAt,
     })
@@ -388,48 +389,6 @@ export async function assignLead(
   }).catch(() => {});
 
   return { data: { leadId }, error: null };
-}
-
-// ─────────────────────────────────────────────
-// Action: updateScratchpad (debounced auto-save)
-// ─────────────────────────────────────────────
-export async function updateScratchpad(
-  input: unknown,
-): Promise<ActionResult<null>> {
-  // 1. Validate
-  const parsed = UpdateScratchpadSchema.safeParse(input);
-  if (!parsed.success) return { data: null, error: formErrors.generic };
-
-  const { leadId, content } = parsed.data;
-
-  // 2. Auth — only assigned agent, admin, founder
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-
-  const supabase = await createClient();
-
-  const { data: lead } = await supabase
-    .from("leads")
-    .select("assigned_to")
-    .eq("id", leadId)
-    .single();
-
-  if (!lead) return { data: null, error: "Lead not found." };
-
-  const canEdit =
-    (caller.role === "agent" && lead.assigned_to === caller.id) ||
-    caller.role === "admin" ||
-    caller.role === "founder";
-
-  if (!canEdit) return { data: null, error: formErrors.unauthorized };
-
-  const admin = createAdminClient();
-  await admin
-    .from("leads")
-    .update({ private_scratchpad: content })
-    .eq("id", leadId);
-
-  return { data: null, error: null };
 }
 
 // ─────────────────────────────────────────────
@@ -554,7 +513,7 @@ export async function createManualLead(
 
   // 5. sanitizeText on text fields (already done by Zod transforms in schema)
   //    normalizeToE164 on phone (already done by Zod transform in schema)
-  const { first_name, last_name, phone, email, utm_source } = fields;
+  const { first_name, last_name, phone, email, source } = fields;
 
   // 6. Duplicate check via get_active_lead_by_phone (Rule S-09 / dedup spec)
   //    Cast through unknown: RPC function not yet in generated DB types
@@ -574,7 +533,7 @@ export async function createManualLead(
     };
   }
 
-  // 7. INSERT lead — utm_source from modal when set; form_data empty for manual leads
+  // 7. INSERT lead — source from modal when set; form_data empty for manual leads
   const now = new Date().toISOString();
   const { data: inserted, error: insertError } = await admin
     .from("leads")
@@ -590,16 +549,12 @@ export async function createManualLead(
       status_changed_at: assignedTo ? now : null,
       last_activity_at: assignedTo ? now : null,
       lead_intent: null,
-      platform: null,
-      campaign_id: null,
-      ad_name: null,
-      utm_source: utm_source ?? null,
-      utm_medium: null,
+      source: source ?? null,
+      medium: null,
       utm_campaign: null,
-      utm_content: null,
+      attribution: null,
       form_data: {},
       last_call_outcome: null,
-      private_scratchpad: null,
       personal_details: null,
       archived_at: null,
     })
@@ -619,7 +574,7 @@ export async function createManualLead(
     action_type: "lead_created",
     details: {
       source: "manual",
-      utm_source: utm_source ?? null,
+      lead_source: source ?? null,
       domain: resolvedDomain,
     },
   });
@@ -703,7 +658,22 @@ export async function createManualLead(
     }
   })();
 
-  // 12. Return success
+  // 12. Invalidate dashboard pipeline + volume caches for the lead's domain.
+  //     Awaited before return so widgets see fresh data on the next refresh click.
+  try {
+    await Promise.all([
+      redis.del(REDIS_KEYS.dashboardLeadStatus(resolvedDomain as string)),
+      redis.del(REDIS_KEYS.dashboardCampaigns(resolvedDomain as string)),
+      redis.del(REDIS_KEYS.dashboardLeadVolume('manager', resolvedDomain as string, 'today')),
+      redis.del(REDIS_KEYS.dashboardLeadVolume('manager', resolvedDomain as string, 'week')),
+      redis.del(REDIS_KEYS.dashboardLeadVolume('manager', resolvedDomain as string, 'month')),
+      redis.del(REDIS_KEYS.dashboardLeadVolume('manager', resolvedDomain as string, 'quarter')),
+    ]);
+  } catch (e) {
+    console.warn("[dashboard-invalidation] redis del failed on manual lead create", e);
+  }
+
+  // 13. Return success
   return { data: { leadId }, error: null };
 }
 
@@ -828,22 +798,22 @@ export async function updateLeadDomain(
 }
 
 // ─────────────────────────────────────────────
-// Action: updateLeadUtmSource
+// Action: updateLeadSource
 // ─────────────────────────────────────────────
-export async function updateLeadUtmSource(
+export async function updateLeadSource(
   input: unknown,
 ): Promise<ActionResult<{ leadId: string }>> {
-  const parsed = UpdateLeadUtmSourceSchema.safeParse(input);
+  const parsed = UpdateLeadSourceSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: formErrors.generic };
 
-  const { leadId, utm_source } = parsed.data;
+  const { leadId, source } = parsed.data;
   const access = await assertLeadFieldEditAccess(leadId);
   if (!access.ok) return { data: null, error: access.error };
 
   const admin = createAdminClient();
   const { error: updateError } = await admin
     .from("leads")
-    .update({ utm_source })
+    .update({ source })
     .eq("id", leadId);
 
   if (updateError) return { data: null, error: formErrors.generic };
@@ -852,7 +822,7 @@ export async function updateLeadUtmSource(
     lead_id: leadId,
     actor_id: access.caller.id,
     action_type: "note_added",
-    details: { type: "lead_utm_source_updated", utm_source },
+    details: { type: "lead_source_updated", source },
   });
 
   revalidateLeadDossier(access.lead);
@@ -1075,6 +1045,15 @@ export async function createLeadTaskAction(
   // 8. Invalidate dossier RSC cache so LeadTasksAsync refetches after router.refresh()
   const dossierSegment = (lead.slug as string | null) ?? leadId;
   revalidatePath(`/leads/${dossierSegment}`);
+
+  // 9. Invalidate assignee's dashboard agent-tasks widget cache.
+  //    Uses caller.id (server-verified) — caller is the person acting, and if they
+  //    assigned to themselves the widget must refresh immediately.
+  try {
+    await redis.del(REDIS_KEYS.dashboardAgentTasks(caller.id));
+  } catch (e) {
+    console.warn("[dashboard-invalidation] redis del failed on createLeadTask", e);
+  }
 
   return { data: task, error: null };
 }

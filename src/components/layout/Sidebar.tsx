@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
+import { canAccessRoute } from "@/lib/utils/route-access";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import type { Profile, Notification } from "@/lib/types/database";
 
@@ -262,7 +263,7 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
           overflowY: "auto",
         }}
       >
-        {MAIN_NAV.map(({ href, label, icon }) => (
+        {MAIN_NAV.filter((item) => canAccessRoute(profile, item.href)).map(({ href, label, icon }) => (
           <NavLink
             key={href}
             href={href}
@@ -276,7 +277,7 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
           <>
             <NavSection label="Analytics" />
             {ANALYTICS_NAV.filter(
-              (item) => isManager || item.href === "/performance",
+              (item) => (isManager || item.href === "/performance") && canAccessRoute(profile, item.href),
             ).map(({ href, label, icon }) => (
               <NavLink
                 key={href}
@@ -292,7 +293,7 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
         {isManager && (
           <>
             <NavSection label="Configuration" />
-            {getConfigurationNav(isPrivileged).map(({ href, label, icon }) => (
+            {getConfigurationNav(isPrivileged).filter((item) => canAccessRoute(profile, item.href)).map(({ href, label, icon }) => (
               <NavLink
                 key={href}
                 href={href}

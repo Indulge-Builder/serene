@@ -3,10 +3,23 @@
 ## What currently renders at `/dashboard`
 
 `src/app/(dashboard)/dashboard/page.tsx` — server component.
-Fetches `getCurrentProfile()`, then `Promise.all([getDashboardSummary(role, domain, userId), getLeadVolumeByPeriod(..., 'week')])`.
-Merges into `initialData` and passes to `<DashboardCanvas>` with `userId`, `role`, `domain`, `initialData`, `greeting`, `firstName`.
+Fetches `getCurrentProfile()`, then a `try/catch`-wrapped `Promise.all` of `getDashboardSummary` + (manager only) `getLeadVolumeByPeriod`. On RPC error: logs with `[dashboard/page]` prefix and renders zeroed `initialData` — no redirect, no throw. Widgets have empty states that handle this gracefully.
+
+**`getDashboardSummary` signature (4-param):** `getDashboardSummary(role, domain, userId, initialDomain?)`
+- `role = 'agent'` → only `agent_tasks` + `agent_activity` CTEs execute. `lead_status` and `campaigns` are empty stubs — no DB work done.
+- `role = 'manager'` → all 4 CTEs; `lead_status` + `campaigns` scoped to `domain`.
+- `role IN ('admin','founder')` → page always passes `initialDomain = 'onboarding'`; `lead_status` + `campaigns` scoped to `onboarding` on first paint.
+- `role IN ('admin','founder')` + no `initialDomain` → no domain filter (all-org view, used by domain tab "All").
+
+**Admin/founder volume skip:** `getLeadVolumeByPeriod` is NOT called for admin/founder in the RSC (`Promise.resolve(null)` instead). `initialData.lead_volume` is `null` for admin/founder — `ManagerLeadVolumeWidget` treats `null` identically to `undefined` and fires its own multi-domain fetch on mount.
+
+**`get_agent_recent_activity` RPC:** `getAgentRecentActivity(agentId, role?, domain?)` now calls the `get_agent_recent_activity(p_role, p_domain, p_user_id)` RPC — single SQL query. The old two-step pattern (SELECT ids FROM leads LIMIT 1000 → .in('lead_id', ids)) is gone. No `SELECT id FROM leads WHERE domain` anywhere in this service function.
 
 **RSC rule (perf-01):** Summary widgets must not POST on initial load. `AgentTasksWidget`, `AgentActivityWidget`, `ManagerLeadStatusWidget`, `ManagerCampaignWidget` skip mount fetch when `initialData` is present; refresh buttons still call server actions. `ManagerLeadVolumeWidget` keeps its own period-toggle fetch (volume excluded from RPC).
+
+**Invariant 12 — sanitizeStored:** filters on BOTH `isValidWidgetId(id)` AND `WIDGET_MAP[id].roles.includes(role)`. Placements failing the role check are silently dropped — an agent demoted from manager loses manager-only widgets on next hydration.
+
+**Invariant 13 — admin/founder seed:** `p_initial_domain='onboarding'` always passed from page.tsx for admin/founder. `lead_volume` is `null` in `initialData` for admin/founder. Page-level `Promise.all` wrapped in `try/catch`; on error renders zeroed `initialData` (never throws, never redirects).
 
 ---
 

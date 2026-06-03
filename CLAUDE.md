@@ -62,6 +62,9 @@ src/lib/utils/scroll.ts             ← scrollToBottom(), lockBodyScroll() etc.
 src/lib/services/dashboard-service.ts ← ALL dashboard widget queries (never extend leads-service.ts)
 src/lib/actions/dashboard.ts         ← ALL dashboard server actions (widget data refresh)
 src/lib/constants/dashboard-widgets.ts ← widget registry (pure data, no component refs)
+src/lib/constants/route-permissions.ts ← ALWAYS_ALLOWED_PREFIXES + DOMAIN_ROUTE_MAP (domain → permitted route prefixes)
+src/lib/constants/domain-colors.ts    ← DOMAIN_LINE_COLORS record, one entry per AppDomain; values are var(--domain-*) strings resolved via resolveColorMap() before Recharts use
+src/lib/utils/route-access.ts         ← canAccessRoute(profile, pathname) — pure function, safe in 'use client' components
 src/hooks/useDashboardLayout.ts       ← localStorage layout hook (key: eia:dashboard:layout:${userId}:v1)
 src/components/dashboard/            ← DashboardCanvas, DashboardWidgetSlot, WidgetSkeleton, widgets/
 src/components/ui/                  ← shadcn primitives, zero feature imports
@@ -444,6 +447,21 @@ Profile page + theme system fully operational.
 - `src/components/layout/Sidebar.tsx` — footer user block converted to `<Link href="/profile">` with active-state styling
 
 Avatar upload requires: Supabase Storage bucket `avatars`, public read, authenticated write, RLS path `{user_id}`.
+
+---
+
+### Attribution refactor (2026-06-03)
+
+7 flat ad/attribution columns consolidated. Migration `20260603000065_attribution_refactor.sql`.
+
+- **Removed:** `platform`, `campaign_id`, `ad_name`, `utm_content`
+- **Renamed:** `utm_source → source`, `utm_medium → medium`
+- **Added:** `attribution jsonb` — stores `{ platform, campaign_id, ad_name, adset_name }` for webhook leads
+- `utm_campaign` unchanged — has 4 indexes, drives campaign analytics RPC.
+- `leads.source` is the manual/dossier-editable field. Action: `updateLeadSource`.
+- `leads.attribution.platform` replaces the flat `platform` column. Display-only in `LeadInfoCard`.
+- `LeadListItem` no longer includes `platform`; `attribution` is dossier-only (not in list SELECT).
+- `idx_leads_utm_source` dropped; `idx_leads_source` created.
 
 ---
 

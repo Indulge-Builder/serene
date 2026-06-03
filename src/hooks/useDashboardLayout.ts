@@ -58,7 +58,11 @@ function sanitizeStored(raw: unknown, role: UserRole): StoredLayout {
 
   const placements: WidgetPlacement[] = (obj.placements as unknown[])
     .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
-    .filter((p) => typeof p.widgetId === 'string' && isValidWidgetId(p.widgetId))
+    .filter((p) =>
+      typeof p.widgetId === 'string' &&
+      isValidWidgetId(p.widgetId) &&
+      WIDGET_MAP[p.widgetId].roles.includes(role),
+    )
     .map((p) => ({
       widgetId: p.widgetId as string,
       col:      typeof p.col === 'number' ? p.col : 0,

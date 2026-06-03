@@ -86,6 +86,21 @@
   /* Overlay backdrops — theme-invariant */
   --overlay-bg:       rgba(0, 0, 0, 0.5);
   --overlay-bg-light: rgba(0, 0, 0, 0.35);
+
+  /* ── Domain line colours — data visualisation only ──────────────────
+     Mid-tone palette, hue-wheel spread. Readable on --theme-paper
+     across all five themes. Never use --theme-accent or semantic tokens.
+     Resolved via resolveColorMap() before passing to Recharts stroke.
+     ────────────────────────────────────────────────────────────────── */
+  --domain-concierge:   #4a8fc9;   /* steel blue   */
+  --domain-onboarding:  #d4a017;   /* amber        */
+  --domain-finance:     #3dab7a;   /* jade green   */
+  --domain-marketing:   #c45cb4;   /* orchid       */
+  --domain-tech:        #e07840;   /* terracotta   */
+  --domain-shop:        #5cb8c4;   /* sea glass    */
+  --domain-b2b:         #8868c8;   /* soft violet  */
+  --domain-house:       #c48840;   /* warm ochre   */
+  --domain-legacy:      #6a8c6a;   /* muted sage   */
 }
 
 

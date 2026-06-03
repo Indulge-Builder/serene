@@ -1095,7 +1095,6 @@ export function GroupTasksTab({
     setCreateModalOpen(false);
   }
 
-  const canCreate = ['manager', 'admin', 'founder'].includes(callerRole);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -1135,7 +1134,7 @@ export function GroupTasksTab({
               marginBottom: 0,
             }}
           >
-            {groupRows.length === 0 && canCreate
+            {groupRows.length === 0
               ? 'Use the button above to create one.'
               : hasActiveFilters
                 ? 'Try adjusting your search or filters.'
