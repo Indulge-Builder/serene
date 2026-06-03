@@ -6,6 +6,22 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-03 — Fix: `lead_id` now logged on all `agent_assignment` notification rows
+
+`sendLeadAssignmentNotification` gained an optional 5th parameter `leadId?: string | null`. It is threaded into the `logNotification` call inside the `finally` block, so every `agent_assignment` row in `whatsapp_notification_logs` now carries a non-null `lead_id`.
+
+All five call sites updated:
+
+- `src/app/api/webhooks/leads/route.ts` → `result.leadId`
+- `src/lib/services/whatsapp-ingestion.ts` → `newLeadId`
+- `src/lib/services/lead-ingestion.ts` → `existing.id` (duplicate re-submission path)
+- `src/lib/actions/leads.ts` `assignLead` → `leadId`
+- `src/lib/actions/leads.ts` `createManualLead` → `leadId`
+
+Parameter is optional (`?: string | null`) — any future call site that omits it compiles without error and logs `null` rather than crashing.
+
+---
+
 ## 2026-06-03 — Fix: WhatsApp notification gaps — 6 issues from ecosystem audit (migration 0067)
 
 Six gaps in the WhatsApp notification layer closed. Migration `20260603000067_extend_whatsapp_notification_log_types.sql` widens the `whatsapp_notification_logs.type` CHECK constraint to include `'sla_breach'` and `'lead_initiation'`.

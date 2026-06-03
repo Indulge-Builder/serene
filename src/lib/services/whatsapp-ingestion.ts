@@ -119,6 +119,7 @@ export async function processInboundMessage(
     }
 
     // Fire assignment notifications now that we have the full lead row for name/domain
+    const newLeadId = lead.id;
     const leadName = lead.last_name
       ? `${lead.first_name} ${lead.last_name}`
       : lead.first_name;
@@ -130,6 +131,7 @@ export async function processInboundMessage(
         leadName,
         normalizedPhone,
         lead.domain as string,
+        newLeadId,
       ).catch((err) => {
         console.error('[whatsapp-ingestion] assignment notification failed (non-fatal):', err);
       });
@@ -148,7 +150,7 @@ export async function processInboundMessage(
       assignedAgentName,
       leadName,
       normalizedPhone,
-      leadId,
+      newLeadId,
     ).catch((err) => {
       console.error('[whatsapp-ingestion] founder notification failed (non-fatal):', err);
     });

@@ -290,6 +290,7 @@ export async function sendLeadAssignmentNotification(
   leadName:  string,
   leadPhone: string,
   domain?:   string | null,
+  leadId?:   string | null,
 ): Promise<void> {
   try {
     const admin = createAdminClient();
@@ -347,6 +348,7 @@ export async function sendLeadAssignmentNotification(
       }
       void logNotification({
         type:           'agent_assignment',
+        leadId:         leadId ?? null,
         recipientId:    agentId,
         recipientPhone: destination,
         leadName,

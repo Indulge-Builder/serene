@@ -156,6 +156,7 @@ export async function ingestLead(
             existingLeadName,
             existing.phone,
             existing.domain,
+            existing.id,
           ).catch(() => {});
         }
 

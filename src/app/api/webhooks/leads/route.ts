@@ -130,6 +130,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       result.lead_name,
       result.lead_phone,
       result.domain,
+      result.leadId,
     ).catch((err) => {
       console.error('[webhooks/leads] assignment notification failed (non-fatal):', err);
     });
