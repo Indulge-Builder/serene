@@ -38,8 +38,9 @@ export default async function DashboardLayout({
     <div
       className="layout-shell flex"
       style={{
-        gap:        "var(--space-3)",
-        minHeight:  "100dvh",
+        gap:      "var(--space-3)",
+        height:   "100dvh",
+        overflow: "hidden",
       }}
     >
       <Sidebar profile={profile} initialNotifications={initialNotifications} />
@@ -52,7 +53,7 @@ export default async function DashboardLayout({
         style={{
           flex:           1,
           minWidth:       0,
-          minHeight:      "100dvh",
+          height:         "100dvh",
           display:        "flex",
           flexDirection:  "column",
           padding:        "12px 12px 12px 0",

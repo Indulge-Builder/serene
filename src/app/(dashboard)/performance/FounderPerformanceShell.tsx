@@ -1,36 +1,84 @@
-// FounderPerformanceShell — server component.
-// Delegates to ManagerPerformanceAsync with allDomains (full roster).
-// Domain filtering is client-side in ManagerPerformancePanel (agent list header).
-// The domain prop is unused when allDomains is true; DEFAULT_GIA_DOMAIN is passed as a placeholder.
+'use client';
 
-import { Suspense } from "react";
-import type { PerformancePeriod } from "@/lib/services/performance-service";
-import { ManagerPerformanceAsync } from "./ManagerPerformanceAsync";
-import { ManagerPerformanceSkeleton } from "./ManagerPerformanceSkeleton";
-import type { AppDomain } from "@/lib/types/database";
+// FounderPerformanceShell — client component.
+// Owns the Agents / Domains tab state (never written to URL — Invariant 14).
+// agentsSlot is a server-rendered subtree passed as a prop (RSC composition pattern).
+// Both tabs share the same period/customFrom/customTo from URL params.
+
+import { useState } from 'react';
+import type { PerformancePeriod } from '@/lib/services/performance-service';
+import { DomainOverviewPanel } from '@/components/performance/DomainOverviewPanel';
+import type { DomainHealthCard } from '@/lib/types/index';
+import type { AppDomain } from '@/lib/types/database';
+
+type Tab = 'agents' | 'domains';
 
 type Props = {
-  domain: AppDomain;
-  period: PerformancePeriod;
-  customFrom?: string;
-  customTo?: string;
+  domain:              AppDomain;
+  period:              PerformancePeriod;
+  customFrom?:         string;
+  customTo?:           string;
+  initialDomainHealth: DomainHealthCard[];
+  agentsSlot:          React.ReactNode;
 };
 
-export async function FounderPerformanceShell({
-  domain,
+export function FounderPerformanceShell({
   period,
   customFrom,
   customTo,
+  initialDomainHealth,
+  agentsSlot,
 }: Props) {
+  const [activeTab, setActiveTab] = useState<Tab>('agents');
+
   return (
-    <Suspense fallback={<ManagerPerformanceSkeleton />}>
-      <ManagerPerformanceAsync
-        domain={domain}
-        period={period}
-        customFrom={customFrom}
-        customTo={customTo}
-        allDomains={true}
-      />
-    </Suspense>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+      {/* Tab switcher */}
+      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        {(['agents', 'domains'] as Tab[]).map((tab) => {
+          const isActive = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              style={{
+                display:      'inline-flex',
+                alignItems:   'center',
+                padding:      '5px 14px',
+                borderRadius: 'var(--radius-full)',
+                border:       '1px solid transparent',
+                fontFamily:   'var(--font-sans)',
+                fontSize:     'var(--text-sm)',
+                fontWeight:   isActive ? 'var(--weight-semibold)' : 'var(--weight-normal)',
+                cursor:       'pointer',
+                transition:   'background 150ms ease, color 150ms ease, border-color 150ms ease',
+                background:   isActive ? 'var(--theme-accent-surface)' : 'transparent',
+                color:        isActive ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
+                borderColor:  isActive
+                  ? 'color-mix(in srgb, var(--theme-accent) 22%, transparent)'
+                  : 'transparent',
+              }}
+            >
+              {tab === 'agents' ? 'Agents' : 'Domains'}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab content — agentsSlot is a server-rendered subtree */}
+      <div style={{ display: activeTab === 'agents' ? 'block' : 'none' }}>
+        {agentsSlot}
+      </div>
+
+      {activeTab === 'domains' && (
+        <DomainOverviewPanel
+          initialData={initialDomainHealth}
+          period={period}
+          customFrom={customFrom}
+          customTo={customTo}
+        />
+      )}
+    </div>
   );
 }

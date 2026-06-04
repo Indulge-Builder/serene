@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { UploadCloud, Film } from "lucide-react";
+import { UploadCloud, Film, ChevronDown } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -36,6 +36,27 @@ const inputBase: React.CSSProperties = {
   fontSize:     "var(--text-sm)",
   color:        "var(--theme-text-primary)",
   outline:      "none",
+};
+
+const selectBase: React.CSSProperties = {
+  ...inputBase,
+  appearance:       "none",
+  WebkitAppearance: "none",
+  paddingRight:     "var(--space-8)",
+  cursor:           "pointer",
+};
+
+const chevronStyle: React.CSSProperties = {
+  position:      "absolute",
+  right:         "var(--space-3)",
+  top:           "50%",
+  transform:     "translateY(-50%)",
+  width:         "1rem",
+  height:        "1rem",
+  strokeWidth:   1.5,
+  pointerEvents: "none",
+  color:         "var(--theme-text-tertiary)",
+  flexShrink:    0,
 };
 
 export function AdCreativeFormModal({
@@ -193,22 +214,25 @@ export function AdCreativeFormModal({
           <label htmlFor="ac-campaign" className="label-micro block mb-2">
             Campaign <span style={{ color: "var(--color-danger)" }}>*</span>
           </label>
-          <select
-            id="ac-campaign"
-            value={campaignKey}
-            onChange={(e) => setCampaignKey(e.target.value)}
-            disabled={!!editing}
-            style={{ ...inputBase, cursor: editing ? "not-allowed" : "pointer", opacity: editing ? 0.6 : 1 }}
-          >
-            <option value="">Select a campaign…</option>
-            {/* When editing, the stored key may not be in the active campaign list — show it regardless. */}
-            {editing && !campaignKeys.includes(editing.campaign_key) && (
-              <option value={editing.campaign_key}>{beautifyCampaignTitle(editing.campaign_key)}</option>
-            )}
-            {campaignKeys.map((k) => (
-              <option key={k} value={k}>{beautifyCampaignTitle(k)}</option>
-            ))}
-          </select>
+          <div style={{ position: "relative" }}>
+            <select
+              id="ac-campaign"
+              value={campaignKey}
+              onChange={(e) => setCampaignKey(e.target.value)}
+              disabled={!!editing}
+              style={{ ...selectBase, cursor: editing ? "not-allowed" : "pointer", opacity: editing ? 0.6 : 1 }}
+            >
+              <option value="">Select a campaign…</option>
+              {/* When editing, the stored key may not be in the active campaign list — show it regardless. */}
+              {editing && !campaignKeys.includes(editing.campaign_key) && (
+                <option value={editing.campaign_key}>{beautifyCampaignTitle(editing.campaign_key)}</option>
+              )}
+              {campaignKeys.map((k) => (
+                <option key={k} value={k}>{beautifyCampaignTitle(k)}</option>
+              ))}
+            </select>
+            <ChevronDown style={chevronStyle} />
+          </div>
           {editing && (
             <p style={{ fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)", margin: "var(--space-1) 0 0" }}>
               Campaign cannot be changed after creation. Delete and re-add to relink.

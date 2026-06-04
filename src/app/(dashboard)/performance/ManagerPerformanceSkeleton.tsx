@@ -1,8 +1,7 @@
 // Skeleton for the manager / founder performance view.
 // Two-column layout mirrors ManagerPerformancePanel.
 // Left: 4 agent card skeletons (avatar + two line shimmer each), stagger 0/80/160/240ms §11.4.
-// Right: 2×2 grid of domain health card skeletons matching DomainHealthGrid initial state.
-// All shimmer uses the same .skeleton class pattern as PerformanceSkeleton.tsx.
+// Right: empty-state panel placeholder (min-height matches PerformanceRosterEmptyState).
 
 const STAGGER = [0, 80, 160, 240];
 
@@ -19,7 +18,6 @@ function AgentCardSkeleton({ delay }: { delay: number }) {
         border:     "1px solid var(--theme-paper-border)",
       }}
     >
-      {/* Avatar circle */}
       <div
         className="skeleton"
         style={{
@@ -30,7 +28,6 @@ function AgentCardSkeleton({ delay }: { delay: number }) {
           animationDelay: `${delay}ms`,
         }}
       />
-      {/* Name + conversion pill */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
         <div
           className="skeleton"
@@ -55,7 +52,6 @@ function AgentCardSkeleton({ delay }: { delay: number }) {
   );
 }
 
-
 export function ManagerPerformanceSkeleton() {
   return (
     <div
@@ -65,7 +61,6 @@ export function ManagerPerformanceSkeleton() {
         minHeight: "600px",
       }}
     >
-      {/* Left column — agent list */}
       <div
         style={{
           width:        "280px",
@@ -81,7 +76,6 @@ export function ManagerPerformanceSkeleton() {
           alignSelf:     "flex-start",
         }}
       >
-        {/* Roster label */}
         <div
           className="skeleton"
           style={{ width: "80px", height: "10px", borderRadius: "var(--radius-xs)", marginBottom: "var(--space-2)" }}
@@ -91,56 +85,35 @@ export function ManagerPerformanceSkeleton() {
         ))}
       </div>
 
-      {/* Right column — domain health overview skeleton (2×2 grid) */}
       <div
         style={{
-          flex:                1,
-          minWidth:            0,
-          display:             "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
-          gap:                 "var(--space-4)",
-          alignContent:        "start",
+          flex:           1,
+          minWidth:       0,
+          minHeight:      "600px",
+          borderRadius:   "var(--radius-lg)",
+          border:         "1px solid var(--theme-paper-border)",
+          background:     "var(--theme-paper-subtle)",
+          boxShadow:      "var(--shadow-1)",
+          display:        "flex",
+          flexDirection:  "column",
+          alignItems:     "center",
+          justifyContent: "center",
+          gap:            "var(--space-4)",
+          padding:        "var(--space-8)",
         }}
       >
-        {[0, 80, 160, 240].map((delay, i) => (
-          <div
-            key={i}
-            style={{
-              background:   "var(--theme-paper)",
-              border:       "1px solid var(--theme-paper-border)",
-              borderRadius: "var(--radius-lg)",
-              boxShadow:    "var(--shadow-1)",
-              padding:      "var(--space-5)",
-              display:      "flex",
-              flexDirection: "column",
-              gap:          "var(--space-4)",
-            }}
-          >
-            {/* Eyebrow + pip */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div className="skeleton" style={{ width: "72px", height: "10px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
-              <div className="skeleton" style={{ width: "8px",  height: "8px",  borderRadius: "var(--radius-full)", animationDelay: `${delay}ms` }} />
-            </div>
-            {/* Primary stat */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <div className="skeleton" style={{ width: "56px", height: "36px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
-              <div className="skeleton" style={{ width: "64px", height: "10px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
-            </div>
-            {/* Secondary */}
-            <div style={{ display: "flex", gap: "var(--space-5)" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <div className="skeleton" style={{ width: "40px", height: "14px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
-                <div className="skeleton" style={{ width: "60px", height: "10px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <div className="skeleton" style={{ width: "40px", height: "14px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
-                <div className="skeleton" style={{ width: "72px", height: "10px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
-              </div>
-            </div>
-            {/* Badge */}
-            <div className="skeleton" style={{ width: "80px", height: "22px", borderRadius: "var(--radius-full)", animationDelay: `${delay}ms` }} />
-          </div>
-        ))}
+        <div
+          className="skeleton"
+          style={{ width: "64px", height: "64px", borderRadius: "var(--radius-xl)" }}
+        />
+        <div
+          className="skeleton"
+          style={{ width: "160px", height: "22px", borderRadius: "var(--radius-xs)" }}
+        />
+        <div
+          className="skeleton"
+          style={{ width: "220px", height: "14px", borderRadius: "var(--radius-xs)" }}
+        />
       </div>
     </div>
   );

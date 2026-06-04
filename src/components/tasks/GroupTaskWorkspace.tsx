@@ -1203,17 +1203,18 @@ export function GroupTaskWorkspace({
                     value={addPriority}
                     onChange={(e) => setAddPriority(e.target.value as TaskPriority)}
                     style={{
-                      appearance:   'none',
-                      width:        '100%',
-                      padding:      'var(--space-2) var(--space-5) var(--space-2) var(--space-2)',
-                      borderRadius: 'var(--radius-sm)',
-                      border:       '1px solid var(--theme-paper-border)',
-                      background:   'var(--theme-paper-subtle)',
-                      fontFamily:   'var(--font-sans)',
-                      fontSize:     'var(--text-xs)',
-                      color:        'var(--theme-text-primary)',
-                      cursor:       'pointer',
-                      outline:      'none',
+                      appearance:       'none',
+                      WebkitAppearance: 'none',
+                      width:            '100%',
+                      padding:          'var(--space-2) var(--space-5) var(--space-2) var(--space-2)',
+                      borderRadius:     'var(--radius-sm)',
+                      border:           '1px solid var(--theme-paper-border)',
+                      background:       'var(--theme-paper-subtle)',
+                      fontFamily:       'var(--font-sans)',
+                      fontSize:         'var(--text-xs)',
+                      color:            'var(--theme-text-primary)',
+                      cursor:           'pointer',
+                      outline:          'none',
                     }}
                   >
                     {(['urgent', 'high', 'normal'] as TaskPriority[]).map((p) => (

@@ -66,6 +66,20 @@ export function formatPercent(
 }
 
 /**
+ * Compact currency — for stat cards and chart axes.
+ * Combines formatCompact magnitude with a currency symbol prefix.
+ * null → "—"
+ */
+export function formatCurrencyCompact(
+  value: number | null | undefined,
+  currency: 'INR' | 'USD' = 'INR',
+): string {
+  if (value === null || value === undefined) return '—';
+  const symbol = currency === 'INR' ? '₹' : '$';
+  return `${symbol}${formatCompact(value)}`;
+}
+
+/**
  * Currency — INR uses Indian numbering (1,00,000). USD uses Western.
  * Always shows the symbol. null → "—"
  */

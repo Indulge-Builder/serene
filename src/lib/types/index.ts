@@ -98,14 +98,16 @@ export type AgentDetailMetrics = {
 // conversionRate is computed in the service layer (null when won + lost = 0).
 
 export type DomainHealthCard = {
-  domain:         AppDomain;
-  totalLeads:     number;
-  leadsWon:       number;
-  leadsLost:      number;
-  callsLogged:    number;
-  inDiscussion:   number;
-  nurturing:      number;
-  conversionRate: number | null;
+  domain:          AppDomain;
+  totalLeads:      number;
+  leadsWon:        number;
+  leadsLost:       number;
+  callsLogged:     number;
+  inDiscussion:    number;
+  nurturing:       number;
+  conversionRate:  number | null;
+  totalCallsMade:  number;
+  totalRevenue:    number;
 };
 
 /**

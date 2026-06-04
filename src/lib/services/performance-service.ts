@@ -215,8 +215,13 @@ export function getPreviousPeriodDateRange(
 export async function getCoreFourMetrics(
   agentId: string,
   period: PerformancePeriod,
+  customFrom?: string,
+  customTo?: string,
 ): Promise<CoreFourMetrics> {
-  return _getCoreFourMetricsForRange(agentId, getPeriodDateRange(period));
+  const range = getPeriodDateRange(period);
+  const from = (period === 'custom' && customFrom) ? customFrom : range.from;
+  const to   = (period === 'custom' && customTo)   ? customTo   : range.to;
+  return _getCoreFourMetricsForRange(agentId, { from, to });
 }
 
 /** Shared inner implementation — accepts a computed DateRange directly. */
@@ -328,9 +333,13 @@ export async function getPreviousPeriodCoreMetrics(
 export async function getEffortMetrics(
   agentId: string,
   period: PerformancePeriod,
+  customFrom?: string,
+  customTo?: string,
 ): Promise<EffortMetrics> {
   const supabase = await createClient();
-  const { from, to } = getPeriodDateRange(period);
+  const range = getPeriodDateRange(period);
+  const from = (period === 'custom' && customFrom) ? customFrom : range.from;
+  const to   = (period === 'custom' && customTo)   ? customTo   : range.to;
 
   const [
     { count: callsLogged },
@@ -386,9 +395,13 @@ export async function getEffortMetrics(
 export async function getCallOutcomeBreakdown(
   agentId: string,
   period: PerformancePeriod,
+  customFrom?: string,
+  customTo?: string,
 ): Promise<OutcomeBreakdownItem[]> {
   const supabase = await createClient();
-  const { from, to } = getPeriodDateRange(period);
+  const range = getPeriodDateRange(period);
+  const from = (period === 'custom' && customFrom) ? customFrom : range.from;
+  const to   = (period === 'custom' && customTo)   ? customTo   : range.to;
 
   const { data } = await supabase
     .from("lead_notes")
@@ -452,6 +465,8 @@ export async function getCallOutcomeBreakdown(
 export async function getTeamBenchmarks(
   callerDomain: AppDomain,
   period: PerformancePeriod,
+  customFrom?: string,
+  customTo?: string,
 ): Promise<TeamBenchmarks> {
   const supabase = await createClient();
 
@@ -477,7 +492,9 @@ export async function getTeamBenchmarks(
     };
   }
 
-  const { from, to } = getPeriodDateRange(period);
+  const range = getPeriodDateRange(period);
+  const from = (period === 'custom' && customFrom) ? customFrom : range.from;
+  const to   = (period === 'custom' && customTo)   ? customTo   : range.to;
 
   // ── 2–4. Touch, closed, response — all independent, run in parallel ──────
   const [
@@ -754,7 +771,7 @@ export async function getAgentRosterPerformance(
 // Agent Detail Metrics
 // All metrics for a single agent in a given date range.
 // Single Promise.all internally — never sequential awaits.
-// callsToday uses IST midnight boundary via getPeriodDateRange('today' workalike).
+// All metrics scoped to dateFrom/dateTo — no IST-today override.
 // ─────────────────────────────────────────────
 
 export async function getAgentDetailMetrics(
@@ -765,20 +782,12 @@ export async function getAgentDetailMetrics(
 ): Promise<AgentDetailMetrics> {
   const supabase = await createClient();
 
-  // callsToday: use IST midnight boundary (same logic as getPeriodDateRange('this_week'))
-  const nowIst = new Date(new Date().getTime() + IST_OFFSET_MS);
-  nowIst.setUTCHours(0, 0, 0, 0);
-  const todayStart = new Date(nowIst.getTime() - IST_OFFSET_MS).toISOString();
-
   const [
     leadsData,
     wonLeadsData,
-    callsTodayData,
-    totalLeadsData,
-    totalCallsMadeData,
-    notesData,
+    allAssignedData,
   ] = await Promise.all([
-    // All leads created in the period — for cohort metrics (pipeline breakdown)
+    // Cohort: leads created in the period — drives totalLeads and pipeline breakdown
     supabase
       .from("leads")
       .select("id, status, deal_amount, form_data")
@@ -798,46 +807,24 @@ export async function getAgentDetailMetrics(
       .gte("status_changed_at", dateFrom)
       .lte("status_changed_at", dateTo),
 
-    // callsToday: call notes by this agent since IST midnight
-    supabase
-      .from("lead_notes")
-      .select("id", { count: "exact", head: true })
-      .eq("author_id", agentId)
-      .not("call_outcome", "is", null)
-      .gte("created_at", todayStart),
-
-    // totalLeads: all leads ever assigned — live snapshot, no period filter
+    // Cohort leads with call data — same date filter, drives totalCallsMade and breakdown
     supabase
       .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("assigned_to", agentId)
-      .is("archived_at", null),
-
-    // totalCallsMade: sum of call_count on cohort leads (created in period)
-    supabase
-      .from("leads")
-      .select("call_count")
+      .select("call_count, last_call_outcome")
       .eq("assigned_to", agentId)
       .is("archived_at", null)
       .gte("created_at", dateFrom)
       .lte("created_at", dateTo),
-
-    // call outcome breakdown
-    supabase
-      .from("lead_notes")
-      .select("call_outcome")
-      .eq("author_id", agentId)
-      .not("call_outcome", "is", null)
-      .gte("created_at", dateFrom)
-      .lte("created_at", dateTo),
   ]);
 
-  const leads = leadsData.data ?? [];
-  const wonLeads = wonLeadsData.data ?? [];
-  const callsTd = callsTodayData.count ?? 0;
-  const notes = notesData.data ?? [];
-  const totalLeads = totalLeadsData.count ?? 0;
-  const totalCallsMade = (totalCallsMadeData.data ?? []).reduce(
+  const leads        = leadsData.data ?? [];
+  const wonLeads     = wonLeadsData.data ?? [];
+  const allAssigned  = allAssignedData.data ?? [];
+
+  // totalLeads: cohort count — leads created in the selected period
+  const totalLeads = leads.length;
+  // totalCallsMade: SUM of call_count on cohort leads (created in period)
+  const totalCallsMade = allAssigned.reduce(
     (s, l) => s + ((l.call_count ?? 0) as number),
     0,
   );
@@ -876,11 +863,12 @@ export async function getAgentDetailMetrics(
     ([status, count]) => ({ status, count }),
   );
 
-  // call outcome breakdown
+  // Call outcome breakdown — latest outcome per lead (last_call_outcome column),
+  // across all assigned leads. Groups by current outcome state, not historical notes.
   type CO = import("@/lib/types/database").CallOutcome;
   const countMap: Partial<Record<CO, number>> = {};
-  for (const row of notes) {
-    const outcome = row.call_outcome as CO | null;
+  for (const row of allAssigned) {
+    const outcome = row.last_call_outcome as CO | null;
     if (!outcome) continue;
     countMap[outcome] = (countMap[outcome] ?? 0) + 1;
   }
@@ -892,7 +880,7 @@ export async function getAgentDetailMetrics(
   );
 
   return {
-    callsToday: callsTd,
+    callsToday: totalCallsMade,
     totalLeads,
     totalCallsMade,
     leadsWon,
@@ -939,18 +927,20 @@ export async function getDomainHealthMetrics(
   if (error || !data) return [];
 
   return (data as Record<string, unknown>[]).map((row) => {
-    const won  = Number(row.leads_won  ?? 0);
-    const lost = Number(row.leads_lost ?? 0);
+    const won    = Number(row.leads_won  ?? 0);
+    const lost   = Number(row.leads_lost ?? 0);
     const closed = won + lost;
     return {
       domain:         row.domain as AppDomain,
-      totalLeads:     Number(row.total_leads   ?? 0),
+      totalLeads:     Number(row.total_leads        ?? 0),
       leadsWon:       won,
       leadsLost:      lost,
-      callsLogged:    Number(row.calls_logged  ?? 0),
-      inDiscussion:   Number(row.in_discussion ?? 0),
-      nurturing:      Number(row.nurturing     ?? 0),
+      callsLogged:    Number(row.calls_logged       ?? 0),
+      inDiscussion:   Number(row.in_discussion      ?? 0),
+      nurturing:      Number(row.nurturing          ?? 0),
       conversionRate: closed > 0 ? (won / closed) * 100 : null,
+      totalCallsMade: Number(row.total_calls_made   ?? 0),
+      totalRevenue:   Number(row.total_revenue      ?? 0),
     };
   });
 }

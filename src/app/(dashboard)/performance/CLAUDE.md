@@ -51,14 +51,22 @@ performance/page.tsx              ← role = manager
 ```text
 performance/page.tsx              ← role = founder | admin
   │  filter bar: period, search, custom dates (no domain selector in bar)
+  │  fetches initialDomainHealth server-side via getDomainHealthMetrics(GIA_DOMAINS, from, to)
   │
   ├── <PerformanceFilters showSearch />
   │
-  └── <FounderPerformanceShell period customFrom customTo />
-        <ManagerPerformanceAsync allDomains={true} />
-              Roster: all agents across Gia domains, sorted A-Z within domain groups
-              Domain filter: client-side popover in ManagerPerformancePanel roster header
-              Detail metrics: per-agent (no domain restriction on fetch)
+  └── <FounderPerformanceShell period customFrom customTo initialDomainHealth agentsSlot />
+        'use client' — owns activeTab: 'agents' | 'domains' (useState, never URL)
+        │
+        ├── Agents tab: agentsSlot = <Suspense><ManagerPerformanceAsync allDomains={true} /></Suspense>
+        │     Roster: all agents across Gia domains, sorted A-Z within domain groups
+        │     Domain filter: client-side popover in ManagerPerformancePanel roster header
+        │     Detail metrics: per-agent (no domain restriction on fetch)
+        │
+        └── Domains tab: <DomainOverviewPanel initialData period customFrom customTo />
+              Four domain cards (2×2 grid): Total Leads, Total Calls, Total Revenue per GIA domain
+              Comparative BarChart with metric toggle (Leads | Calls | Revenue)
+              Refetches via getManagerRosterAction on period/date change
 ```
 
 ## Domain filter placement — 2026-05-31
@@ -120,7 +128,7 @@ Exported functions:
 
 `ManagerPerformancePanel` initialises `selectedId` to `null`. No agent is pre-selected.
 
-- `selectedId === null` → right panel shows `<DomainHealthGrid>` with domain health cards.
+- `selectedId === null` → right panel shows `<PerformanceRosterEmptyState>` (select-an-agent prompt).
 - `selectedId !== null` → right panel shows `<AgentDetailPanel>` for that agent.
 - Clicking an agent row sets `selectedId`; `AnimatePresence mode="wait"` cross-fades the panels.
 - When domain/search filters narrow the visible roster and the selected agent is no longer visible, `selectedId` resets to `null` (back to overview).
@@ -129,22 +137,11 @@ Exported functions:
 
 `key={period}` is NOT set on `ManagerPerformancePanel` — period flows through props. Do not add `key={period}` here (invariant 8 from the task spec).
 
-## DomainHealthGrid
+## PerformanceRosterEmptyState
 
-`src/components/performance/DomainHealthGrid.tsx` — pure presentational, no `'use client'` needed.
+`src/components/performance/PerformanceRosterEmptyState.tsx` — `'use client'`; right panel when `selectedId === null` on the Agents tab (manager + founder). Accent radial wash on `paper-subtle`, Playfair italic heading, sans secondary line. `minHeight: 600px` aligned with roster column.
 
-Props: `cards: DomainHealthCard[]; period: PerformancePeriod`
-
-Layout: `grid-cols-2` for 2+ cards; `grid-cols-1` for a single-domain (manager) view.
-
-Per card:
-- Eyebrow: domain label, `--text-2xs`, `--theme-text-tertiary`
-- Health pip: `8px` `--radius-full` dot, colour from conversion rate (success ≥40%, warning ≥15%, danger <15%, tertiary when null)
-- Primary: Leads Won in Playfair `--text-3xl`
-- Secondary row: Calls Logged + Active Pipeline (in_discussion + nurturing)
-- Bottom: conversion rate badge — success/warning/danger/neutral variant
-
-`DomainHealthGridSkeleton` exported inline — same 2×2 grid with animate-pulse shimmer blocks.
+`DomainHealthGrid` (`src/components/performance/DomainHealthGrid.tsx`) is retained but not mounted on the Agents tab — domain aggregates live on the founder **Domains** tab via `DomainOverviewPanel`.
 
 ## getDomainHealthMetrics
 
@@ -255,9 +252,12 @@ Manager role: `caller.domain !== domain` → 403. Domain never trusted from clie
 | `CallOutcomeBar`             | `src/components/performance/` (reused in detail panel)                  |
 | `ManagerPerformancePanel`    | `src/components/performance/` — roster domain popover + URL `search`    |
 | `AgentDetailPanel`           | `src/components/performance/`                                           |
+| `PerformanceRosterEmptyState`| `src/components/performance/` — null-selection prompt on Agents tab       |
+| `DomainHealthGrid`           | `src/components/performance/` — legacy card grid (not on Agents tab)      |
+| `DomainOverviewPanel`        | `src/components/performance/` — founder Domains tab (cards + bar chart) |
 | `PerformanceAsync`           | `src/app/(dashboard)/performance/`                                      |
 | `ManagerPerformanceAsync`    | `src/app/(dashboard)/performance/`                                      |
-| `FounderPerformanceShell`    | `src/app/(dashboard)/performance/`                                      |
+| `FounderPerformanceShell`    | `src/app/(dashboard)/performance/` — `'use client'`; tab state          |
 | `PerformanceSkeleton`        | `src/app/(dashboard)/performance/`                                      |
 | `ManagerPerformanceSkeleton` | `src/app/(dashboard)/performance/`                                      |
 

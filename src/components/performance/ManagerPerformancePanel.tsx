@@ -11,9 +11,10 @@ import {
   buildPerformanceRosterGroups,
   PERFORMANCE_ROSTER_DOMAIN_ORDER,
 } from '@/lib/utils/performance-roster-display';
-import { AgentDetailPanel }                      from './AgentDetailPanel';
-import { DomainHealthGrid }                      from './DomainHealthGrid';
-import type { AgentRosterRow, DomainHealthCard } from '@/lib/types/index';
+import { getManagerRosterAction }                from '@/lib/actions/performance';
+import { AgentDetailPanel }              from './AgentDetailPanel';
+import { PerformanceRosterEmptyState }   from './PerformanceRosterEmptyState';
+import type { AgentRosterRow }           from '@/lib/types/index';
 import type { AppDomain }                        from '@/lib/types/database';
 import type { PerformancePeriod }                from '@/lib/services/performance-service';
 
@@ -83,20 +84,6 @@ function AgentCard({
         {agent.full_name}
       </p>
 
-      {/* Total leads — right side */}
-      <span
-        style={{
-          fontFamily:    'var(--font-mono)',
-          fontSize:      'var(--text-xs)',
-          fontWeight:    'var(--weight-medium)',
-          color:         isHighlighted ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
-          flexShrink:    0,
-          letterSpacing: '-0.01em',
-          transition:    'color var(--duration-fast) var(--ease-in-out)',
-        }}
-      >
-        {agent.totalLeads}
-      </span>
     </motion.button>
   );
 }
@@ -354,35 +341,61 @@ function RosterHeader({
 // ─────────────────────────────────────────────
 
 type Props = {
-  agentRoster:  AgentRosterRow[];
-  domainHealth: DomainHealthCard[];
-  domain:       AppDomain;
-  period:       PerformancePeriod;
-  customFrom?:  string;
-  customTo?:    string;
+  agentRoster: AgentRosterRow[];
+  domain:      AppDomain;
+  period:      PerformancePeriod;
+  customFrom?: string;
+  customTo?:   string;
   // When true, roster spans all domains — grouped by domain, filterable by domain.
-  allDomains?:  boolean;
+  allDomains?: boolean;
 };
 
 export function ManagerPerformancePanel({
-  agentRoster,
-  domainHealth,
+  agentRoster: initialRoster,
   domain,
   period,
   customFrom,
   customTo,
   allDomains = false,
 }: Props) {
-  // null = no agent selected → show domain health overview
-  const [selectedId, setSelectedId]   = useState<string | null>(null);
+  const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [domainFilter, setDomainFilter] = useState<AppDomain | null>(null);
+  const [agentRoster, setAgentRoster]   = useState<AgentRosterRow[]>(initialRoster);
+  const [isRefetching, setIsRefetching] = useState(false);
   const searchParams                    = useSearchParams();
   const searchTerm                      = (searchParams.get('search') ?? '').trim().toLowerCase();
 
+  // Skip the first mount — we already have server-fetched initial data.
+  const hasMounted = useRef(false);
+
+  // Refetch roster client-side when period changes — avoids Suspense re-suspending
+  // (which would reset selectedId) while the detail panel stays mounted.
+  useEffect(() => {
+    if (!hasMounted.current) {
+      hasMounted.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    setIsRefetching(true);
+
+    getManagerRosterAction(period, allDomains, customFrom, customTo)
+      .then((result) => {
+        if (cancelled) return;
+        setIsRefetching(false);
+        if (result.data) setAgentRoster(result.data);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsRefetching(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [period, customFrom, customTo, allDomains]);
+
   const selectedAgent = selectedId ? (agentRoster.find((a) => a.id === selectedId) ?? null) : null;
 
-  // When filters narrow the visible agents and the selected agent is no longer visible,
-  // reset to null (return to domain health overview) rather than keeping a stale selection.
+  // When filters hide the selected agent, clear selection (empty state on the right).
   useEffect(() => {
     if (!selectedId) return;
     const stillVisible = agentRoster.filter((a) => {
@@ -446,11 +459,39 @@ export function ManagerPerformancePanel({
   }
 
   return (
+    <div style={{ position: 'relative' }}>
+      {/* Thin accent bar during roster refetch */}
+      <AnimatePresence>
+        {isRefetching && (
+          <motion.div
+            key="roster-refetch-bar"
+            initial={{ scaleX: 0, opacity: 1 }}
+            animate={{ scaleX: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.9, ease: [0.4, 0, 0.2, 1] }}
+            style={{
+              position:        'absolute',
+              top:             0,
+              left:            0,
+              right:           0,
+              height:          '2px',
+              background:      'var(--theme-accent)',
+              borderRadius:    'var(--radius-full)',
+              transformOrigin: 'left center',
+              zIndex:          2,
+              pointerEvents:   'none',
+            }}
+          />
+        )}
+      </AnimatePresence>
     <div
       style={{
-        display:    'flex',
-        gap:        'var(--space-5)',
-        alignItems: 'flex-start',
+        display:       'flex',
+        gap:           'var(--space-5)',
+        alignItems:    'flex-start',
+        opacity:       isRefetching ? 0.6 : 1,
+        transition:    'opacity 200ms var(--ease-in-out)',
+        pointerEvents: isRefetching ? 'none' : undefined,
       }}
     >
       {/* ── Left: agent roster ──────────────────────────────────────── */}
@@ -530,18 +571,18 @@ export function ManagerPerformancePanel({
         </div>
       </div>
 
-      {/* ── Right: domain health overview OR agent detail ─────────── */}
+      {/* ── Right: empty prompt OR agent detail ───────────────────── */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <AnimatePresence mode="wait">
           {selectedAgent === null ? (
             <motion.div
-              key="domain-overview"
+              key="roster-empty"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
             >
-              <DomainHealthGrid cards={domainHealth} period={period} />
+              <PerformanceRosterEmptyState />
             </motion.div>
           ) : (
             <motion.div
@@ -562,6 +603,7 @@ export function ManagerPerformancePanel({
           )}
         </AnimatePresence>
       </div>
+    </div>
     </div>
   );
 }

@@ -1,13 +1,14 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
-import { DEFAULT_GIA_DOMAIN } from "@/lib/constants/domains";
+import { DEFAULT_GIA_DOMAIN, GIA_DOMAINS } from "@/lib/constants/domains";
 import type { PerformancePeriod } from "@/lib/services/performance-service";
 import { ManagerPerformanceSkeleton } from "./ManagerPerformanceSkeleton";
 import { ManagerPerformanceAsync } from "./ManagerPerformanceAsync";
 import { FounderPerformanceShell } from "./FounderPerformanceShell";
 import { PerformanceFilters } from "@/components/performance/PerformanceFilters";
 import { AgentPerformanceShell } from "@/components/performance/AgentPerformanceShell";
+import type { AppDomain } from "@/lib/types/database";
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
@@ -193,6 +194,17 @@ export default async function PerformancePage({
 
   // ── Founder / admin view ────────────────────────────────────────────────
   // All domains in one roster; domain filtering is client-side in ManagerPerformancePanel.
+  // Fetch domain health server-side so the Domains tab has initial data on first paint.
+  const { getDomainHealthMetrics, getPeriodDateRange } = await import("@/lib/services/performance-service");
+  const founderRange = getPeriodDateRange(period);
+  const founderFrom  = (period === 'custom' && rawFrom) ? rawFrom : founderRange.from;
+  const founderTo    = (period === 'custom' && rawTo)   ? rawTo   : founderRange.to;
+  const initialDomainHealth = await getDomainHealthMetrics(
+    [...GIA_DOMAINS] as AppDomain[],
+    founderFrom,
+    founderTo,
+  );
+
   return (
     <main style={{ flex: 1, padding: "var(--space-8)", minWidth: 0 }}>
       <div style={{ marginBottom: "var(--space-6)" }}>
@@ -215,6 +227,18 @@ export default async function PerformancePage({
         period={period}
         customFrom={rawFrom}
         customTo={rawTo}
+        initialDomainHealth={initialDomainHealth}
+        agentsSlot={
+          <Suspense fallback={<ManagerPerformanceSkeleton />}>
+            <ManagerPerformanceAsync
+              domain={DEFAULT_GIA_DOMAIN}
+              period={period}
+              customFrom={rawFrom}
+              customTo={rawTo}
+              allDomains={true}
+            />
+          </Suspense>
+        }
       />
     </main>
   );

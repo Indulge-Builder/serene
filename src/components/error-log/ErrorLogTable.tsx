@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Search, ChevronDown, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { LeadRawPayload } from '@/lib/types/database';
 import { formatDate } from '@/lib/utils/dates';
 
@@ -256,10 +256,11 @@ export function ErrorLogTable({ rows }: ErrorLogTableProps) {
               background:   'var(--theme-paper-subtle)',
               fontSize:     'var(--text-sm)',
               color:        'var(--theme-text-primary)',
-              appearance:   'none',
-              cursor:       'pointer',
-              outline:      'none',
-              transition:   'var(--transition-hover)',
+              appearance:       'none',
+              WebkitAppearance: 'none',
+              cursor:           'pointer',
+              outline:          'none',
+              transition:       'var(--transition-hover)',
             }}
           >
             {sources.map((s) => (
@@ -268,12 +269,12 @@ export function ErrorLogTable({ rows }: ErrorLogTableProps) {
               </option>
             ))}
           </select>
-          <ChevronRight
+          <ChevronDown
             style={{
               position:      'absolute',
               right:         'var(--space-2)',
               top:           '50%',
-              transform:     'translateY(-50%) rotate(90deg)',
+              transform:     'translateY(-50%)',
               width:         '0.875rem',
               height:        '0.875rem',
               color:         'var(--theme-text-tertiary)',

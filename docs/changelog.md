@@ -6,6 +6,37 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-04 — Performance — roster empty state replaces domain health grid
+
+- `PerformanceRosterEmptyState` (`src/components/performance/PerformanceRosterEmptyState.tsx`) — Playfair italic prompt on `paper-subtle` with accent radial wash; shown when no agent is selected on manager/founder Agents tab
+- `ManagerPerformancePanel` — removed `DomainHealthGrid` from null-selection right panel; `domainHealth` prop and client refetch of health metrics dropped
+- `ManagerPerformanceAsync` — roster-only server fetch (domain metrics remain on founder Domains tab via `page.tsx` + `DomainOverviewPanel`)
+- `getManagerRosterAction` — returns `AgentRosterRow[]` only; new `getDomainHealthMetricsAction` for `DomainOverviewPanel` period refetch
+- `ManagerPerformanceSkeleton` — right column matches empty-state layout
+
+---
+
+## 2026-06-04 — Performance — Founder view enhancement: Domains tab + violation fixes
+
+- **Migration 0068:** `get_domain_health_metrics` RPC extended — adds `total_calls_made` (SUM of call_count on cohort leads by `created_at`) and `total_revenue` (SUM of deal_value on won leads by `status_changed_at` — Critical Date-Field Rule invariant 1 honoured); `CREATE OR REPLACE` replaces 0066 in place
+- `DomainHealthCard` type (`src/lib/types/index.ts`) — `totalCallsMade: number` and `totalRevenue: number` fields added
+- `getDomainHealthMetrics` (`src/lib/services/performance-service.ts`) — maps `total_calls_made` and `total_revenue` from RPC row
+- `formatCurrencyCompact` added to `src/lib/utils/numbers.ts` — compact currency (₹/$ prefix + K/M magnitude)
+- **`DomainOverviewPanel`** (`src/components/performance/DomainOverviewPanel.tsx`) — new `'use client'` component for the founder Domains tab; props: `initialData`, `period`, `customFrom?`, `customTo?`; top section: 2×2 grid of domain cards (Total Leads, Total Calls, Total Revenue per GIA domain); domain label pill uses `DOMAIN_LINE_COLORS` dot; bottom: horizontal `BarChart` with metric toggle (Leads / Calls / Revenue); accent bar on period refetch; `getManagerRosterAction` for re-fetch on period change; skip-first-mount ref prevents double-fetch; all chart colours resolved via `useChartTokens()` — zero raw `var(--)` in Recharts fill
+- **`FounderPerformanceShell`** converted from server to `'use client'` component; adds `activeTab: 'agents' | 'domains'` state (never URL); tab switcher ghost pills (active: accent-surface + semibold); `agentsSlot: React.ReactNode` prop carries the server-rendered `<Suspense><ManagerPerformanceAsync /></Suspense>` subtree; Domains tab renders `DomainOverviewPanel`
+- `page.tsx` founder branch — fetches `initialDomainHealth` via `getDomainHealthMetrics(GIA_DOMAINS, from, to)` server-side; passes as prop to `FounderPerformanceShell`; passes `agentsSlot` with full `ManagerPerformanceAsync` Suspense boundary
+- **`AgentDetailPanel` violation fixes:** `STAT_PALETTES` hex values → `var(--color-success/info/warning/neutral-light)` tokens (V-01); `DetailSkeleton` dead-code function removed; stat palette reduced 5→4; "Calls Today" label → **"Total Calls"** (`totalCallsMade` field); stat card comment updated
+- **`PerformanceFilters` violation fixes:** active-count badge `fontSize: '10px'` → `var(--text-2xs)`; period dropdown: removed "All Time", added "Today"; order: Today · This Week · This Month · Previous Month · Custom (`all_time` type and service logic unchanged)
+- `src/app/(dashboard)/performance/CLAUDE.md` — Founder view architecture updated, `DomainOverviewPanel` props/data flow documented, component map updated, "Total Calls" rename noted
+
+---
+
+## 2026-06-04 — Dashboard — Lead Pipeline domain tabs fit widget width
+
+- `ManagerLeadStatusWidget` — domain picker uses full-width connected tabs with `flex: 1`, `minWidth: 0`, smaller padding, and ellipsis on long labels (matches Lead Volume widget pattern); prevents Onboarding / Indulge Legacy / All from overflowing the single-column widget
+
+---
+
 ## 2026-06-04 — Performance — Domain health overview grid on initial load; null selectedId; filter wiring verified
 
 - Migration 0066: `get_domain_health_metrics(p_domains, p_date_from, p_date_to)` RPC — one row per domain always (UNNEST driving source); five CTEs (cohort, closures, pipeline, calls); all `WHERE archived_at IS NULL`; `SECURITY DEFINER STABLE`; `GRANT EXECUTE TO authenticated`

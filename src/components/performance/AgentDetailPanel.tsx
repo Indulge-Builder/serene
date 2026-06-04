@@ -43,17 +43,16 @@ function Skel({ w, h, radius = 'var(--radius-sm)' }: { w: string; h: string; rad
 }
 
 // ─────────────────────────────────────────────
-// Stat card palette — soft pastels, fixed.
-// Not theme tokens — intentionally independent
-// so the row reads as a colourful data strip.
+// Stat card palette — semantic tokens.
+// bg/border resolved at render from CSS vars;
+// label/value use theme text tokens.
 // ─────────────────────────────────────────────
 
 const STAT_PALETTES = [
-  { bg: '#eef3ee', border: '#d4e4d4', label: '#7a9a7a', value: '#2d4a2d' }, // sage
-  { bg: '#f0edf8', border: '#ddd4f0', label: '#8878b0', value: '#3a2d6e' }, // lavender
-  { bg: '#fdf0e8', border: '#f0daca', label: '#b07850', value: '#6a3a18' }, // amber
-  { bg: '#eaf4f6', border: '#cce4ea', label: '#6090a0', value: '#1e4858' }, // slate-teal
-  { bg: '#f8eeee', border: '#ecdada', label: '#a07878', value: '#5a2828' }, // dusty rose
+  { bg: 'var(--color-success-light)', border: 'var(--color-success)', label: 'var(--color-success-text)', value: 'var(--theme-text-primary)' },
+  { bg: 'var(--color-info-light)',    border: 'var(--color-info)',    label: 'var(--color-info-text)',    value: 'var(--theme-text-primary)' },
+  { bg: 'var(--color-warning-light)', border: 'var(--color-warning)', label: 'var(--color-warning-text)', value: 'var(--theme-text-primary)' },
+  { bg: 'var(--color-neutral-light)', border: 'var(--color-neutral)', label: 'var(--theme-text-secondary)', value: 'var(--theme-text-primary)' },
 ] as const;
 
 // ─────────────────────────────────────────────
@@ -230,92 +229,6 @@ function PipelineSection({ breakdown }: { breakdown: { status: string; count: nu
             </div>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Loading skeleton — matches the real layout
-// ─────────────────────────────────────────────
-
-function DetailSkeleton() {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-      {/* Identity zone skeleton */}
-      <div
-        style={{
-          background:   'var(--theme-paper-subtle)',
-          borderRadius: 'var(--radius-lg)',
-          border:       '1px solid var(--theme-paper-border)',
-          padding:      'var(--space-6)',
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-5)',
-        }}
-      >
-        <div className="skeleton" style={{ width: '72px', height: '72px', borderRadius: 'var(--radius-md)', flexShrink: 0 }} />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-          <Skel w="55%" h="28px" radius="var(--radius-sm)" />
-          <Skel w="30%" h="20px" radius="var(--radius-full)" />
-        </div>
-      </div>
-
-      {/* Stats row skeleton */}
-      <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-        {STAT_PALETTES.map((p, i) => (
-          <div
-            key={i}
-            style={{
-              flex:         '1 1 0',
-              height:       '68px',
-              borderRadius: 'var(--radius-lg)',
-              background:   p.bg,
-              border:       `1px solid ${p.border}`,
-              opacity:      0.4,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Pipeline skeleton */}
-      <div
-        style={{
-          background:   'var(--theme-paper)',
-          border:       '1px solid var(--theme-paper-border)',
-          borderRadius: 'var(--radius-lg)',
-          padding:      'var(--space-5)',
-        }}
-      >
-        <Skel w="120px" h="11px" radius="var(--radius-xs)" />
-        <div style={{ marginTop: 'var(--space-4)' }}>
-          <Skel w="100%" h="10px" radius="var(--radius-full)" />
-        </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-4)', flexWrap: 'wrap' }}>
-          {[60, 45, 70, 50].map((w, i) => (
-            <Skel key={i} w={`${w}px`} h="24px" radius="var(--radius-full)" />
-          ))}
-        </div>
-      </div>
-
-      {/* Call outcome skeleton */}
-      <div
-        style={{
-          background:   'var(--theme-paper)',
-          border:       '1px solid var(--theme-paper-border)',
-          borderRadius: 'var(--radius-lg)',
-          padding:      'var(--space-5)',
-        }}
-      >
-        <Skel w="160px" h="11px" radius="var(--radius-xs)" />
-        <div style={{ marginTop: 'var(--space-4)' }}>
-          <Skel w="100%" h="28px" radius="var(--radius-md)" />
-        </div>
-        <div style={{ display: 'flex', gap: 'var(--space-4)', marginTop: 'var(--space-3)', flexWrap: 'wrap' }}>
-          {[80, 60, 90, 55].map((w, i) => (
-            <Skel key={i} w={`${w}px`} h="16px" radius="var(--radius-xs)" />
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -551,50 +464,9 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
           </div>
         </div>
 
-        {/* Conversion rate — right side accent badge */}
-        {agent.conversionRate !== null && (
-          <div
-            style={{
-              display:       'flex',
-              flexDirection: 'column',
-              alignItems:    'flex-end',
-              gap:           '2px',
-              flexShrink:    0,
-            }}
-          >
-            <span
-              style={{
-                fontFamily: 'var(--font-serif)',
-                fontSize:   'var(--text-2xl)',
-                fontWeight: 'var(--weight-light)',
-                color:      agent.conversionRate >= 40
-                  ? 'var(--color-success-text)'
-                  : agent.conversionRate >= 20
-                    ? 'var(--color-warning-text)'
-                    : 'var(--color-danger-text)',
-                lineHeight: '1',
-                letterSpacing: '-0.01em',
-              }}
-            >
-              {Math.round(agent.conversionRate)}%
-            </span>
-            <span
-              style={{
-                fontFamily:    'var(--font-sans)',
-                fontSize:      'var(--text-2xs)',
-                fontWeight:    'var(--weight-medium)',
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color:         'var(--theme-text-tertiary)',
-              }}
-            >
-              conv. rate
-            </span>
-          </div>
-        )}
       </motion.div>
 
-      {/* ── Stats row — 5 pastel cards in one line ────────────────── */}
+      {/* ── Stats row — 4 semantic cards in one line ─────────────── */}
       <AnimatePresence mode="wait">
         {metrics ? (
           <motion.div
@@ -605,11 +477,10 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             transition={{ duration: 0.15 }}
             style={{ display: 'flex', gap: 'var(--space-3)' }}
           >
-            <StatAtom label="Calls Today"  value={String(metrics.callsToday)}            paletteIndex={0} delay={0}   />
-            <StatAtom label="Total Leads"  value={String(metrics.totalLeads)}             paletteIndex={1} delay={40}  />
-            <StatAtom label="Total Calls"  value={String(metrics.totalCallsMade)}         paletteIndex={2} delay={80}  />
-            <StatAtom label="Leads Won"    value={String(metrics.leadsWon)}               paletteIndex={3} delay={120} />
-            <StatAtom label="Revenue"      value={formatCurrency(metrics.totalDealAmount)} paletteIndex={4} delay={160} />
+            <StatAtom label="Total Calls" value={String(metrics.totalCallsMade)}        paletteIndex={0} delay={0}   />
+            <StatAtom label="Leads"       value={String(metrics.totalLeads)}           paletteIndex={1} delay={40}  />
+            <StatAtom label="Won"         value={String(metrics.leadsWon)}             paletteIndex={2} delay={80}  />
+            <StatAtom label="Revenue"     value={formatCurrency(metrics.totalDealAmount)} paletteIndex={3} delay={120} />
           </motion.div>
         ) : (
           <motion.div

@@ -402,10 +402,11 @@ export function AddLeadModal({
               {...register('source')}
               style={{
                 ...fieldInput,
-                paddingRight: 'var(--space-8)',
-                appearance:   'none',
-                cursor:       isPending ? 'not-allowed' : 'pointer',
-                opacity:      isPending ? 0.6 : 1,
+                paddingRight:     'var(--space-8)',
+                appearance:       'none',
+                WebkitAppearance: 'none',
+                cursor:           isPending ? 'not-allowed' : 'pointer',
+                opacity:          isPending ? 0.6 : 1,
               }}
               onFocus={focusOn}
               onBlur={focusOff}
@@ -444,10 +445,11 @@ export function AddLeadModal({
                 {...register('domain')}
                 style={{
                   ...fieldInput,
-                  paddingRight: 'var(--space-8)',
-                  appearance:   'none',
-                  cursor:       isPending ? 'not-allowed' : 'pointer',
-                  opacity:      isPending ? 0.6 : 1,
+                  paddingRight:     'var(--space-8)',
+                  appearance:       'none',
+                  WebkitAppearance: 'none',
+                  cursor:           isPending ? 'not-allowed' : 'pointer',
+                  opacity:          isPending ? 0.6 : 1,
                 }}
                 onFocus={focusOn}
                 onBlur={focusOff}
@@ -491,9 +493,10 @@ export function AddLeadModal({
                 {...register('assigned_to')}
                 style={{
                   ...fieldInput,
-                  paddingRight: 'var(--space-8)',
-                  appearance:   'none',
-                  cursor:       isPending || agents.length === 0 ? 'not-allowed' : 'pointer',
+                  paddingRight:     'var(--space-8)',
+                  appearance:       'none',
+                  WebkitAppearance: 'none',
+                  cursor:           isPending || agents.length === 0 ? 'not-allowed' : 'pointer',
                   opacity:      isPending ? 0.6 : 1,
                 }}
                 onFocus={focusOn}

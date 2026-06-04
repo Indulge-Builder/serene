@@ -262,7 +262,7 @@ export function LeadInfoCard({
           <InfoRow
             icon={Calendar}
             label="Received"
-            value={monoValue(formatDate(lead.created_at, 'dd MMM yyyy, hh:mm a'))}
+            value={monoValue(formatDate(lead.created_at, 'dd MMM yyyy, h:mm a'))}
           />
           <InfoRow
             icon={Route}
@@ -272,7 +272,7 @@ export function LeadInfoCard({
           <InfoRow
             icon={Clock}
             label="Last modified"
-            value={monoValue(formatDate(lead.updated_at, 'dd MMM yyyy, hh:mm a'))}
+            value={monoValue(formatDate(lead.updated_at, 'dd MMM yyyy, h:mm a'))}
           />
         </div>
       </div>

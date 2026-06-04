@@ -332,7 +332,7 @@ function LeadCell({
     case 'created_at':
       return (
         <td style={{ ...baseCell, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--theme-text-tertiary)' }}>
-          {formatDate(lead.created_at, 'dd MMM, hh:mm a')}
+          {formatDate(lead.created_at, 'dd MMM, h:mm a')}
         </td>
       );
 

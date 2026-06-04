@@ -449,24 +449,57 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
 
       {/* ── Domain tabs — pinned to bottom, admin/founder only ── */}
       {!isManagerRole && (
-        <div style={{ paddingTop: "var(--space-3)", borderTop: "1px solid var(--theme-paper-border)", flexShrink: 0 }}>
+        <div
+          style={{
+            paddingTop: "var(--space-3)",
+            borderTop: "1px solid var(--theme-paper-border)",
+            flexShrink: 0,
+            minWidth: 0,
+            width: "100%",
+          }}
+        >
           <Tabs
             value={domainMode}
             onValueChange={(v) => handleDomainChange(v as DomainMode)}
             variant="connected"
             indicatorLayoutId="lead-status-domain"
             style={{
+              width: "100%",
               opacity: isPending ? 0.6 : 1,
               pointerEvents: isPending ? "none" : undefined,
             }}
           >
-            <TabsList>
-              {GIA_DOMAINS.map((d) => (
-                <TabsTrigger key={d} value={d}>
-                  {DOMAIN_LABELS[d]}
-                </TabsTrigger>
-              ))}
-              <TabsTrigger value="all">All</TabsTrigger>
+            <TabsList style={{ width: "100%" }}>
+              {([...GIA_DOMAINS, "all"] as DomainMode[]).map((mode) => {
+                const isActive = domainMode === mode;
+                const label = mode === "all" ? "All" : DOMAIN_LABELS[mode];
+                return (
+                  <TabsTrigger
+                    key={mode}
+                    value={mode}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      padding: "6px 4px",
+                      fontSize: "var(--text-2xs)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        maxWidth: "100%",
+                        color: isActive
+                          ? "var(--theme-text-primary)"
+                          : "var(--theme-text-secondary)",
+                      }}
+                    >
+                      {label}
+                    </span>
+                  </TabsTrigger>
+                );
+              })}
             </TabsList>
           </Tabs>
         </div>

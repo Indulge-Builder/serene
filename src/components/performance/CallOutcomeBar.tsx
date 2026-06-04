@@ -203,37 +203,6 @@ export function CallOutcomeBar({ breakdown }: Props) {
           })}
         </div>
 
-        {/* Total */}
-        <div
-          style={{
-            marginTop:   'var(--space-3)',
-            paddingTop:  'var(--space-2)',
-            borderTop:   '1px solid var(--theme-paper-border)',
-            display:     'flex',
-            alignItems:  'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <span
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize:   'var(--text-xs)',
-              color:      'var(--theme-text-tertiary)',
-            }}
-          >
-            Total calls logged
-          </span>
-          <span
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize:   'var(--text-sm)',
-              fontWeight: 'var(--weight-semibold)',
-              color:      'var(--theme-text-primary)',
-            }}
-          >
-            {total}
-          </span>
-        </div>
       </div>
 
       {/* Right: Donut chart */}

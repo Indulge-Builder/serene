@@ -206,13 +206,11 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
     <aside
       style={{
         width: "240px",
-        minHeight: "100dvh",
+        height: "100dvh",
         background: "var(--theme-sidebar-bg)",
         boxShadow: "var(--shadow-sidebar)",
         display: "flex",
         flexDirection: "column",
-        position: "sticky",
-        top: 0,
         flexShrink: 0,
         zIndex: "var(--z-sidebar)" as React.CSSProperties["zIndex"],
       }}

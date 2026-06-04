@@ -12,10 +12,10 @@ import { buildFilterParams } from '@/lib/utils/filter-params';
 import type { PerformancePeriod } from '@/lib/services/performance-service';
 
 const PERIOD_ITEMS = [
+  { id: 'today',      label: 'Today' },
   { id: 'this_week',  label: 'This Week' },
   { id: 'this_month', label: 'This Month' },
-  { id: 'last_month', label: 'Last Month' },
-  { id: 'all_time',   label: 'All Time' },
+  { id: 'last_month', label: 'Previous Month' },
   { id: 'custom',     label: 'Custom' },
 ];
 
@@ -147,7 +147,7 @@ export function PerformanceFilters({
               borderRadius:   'var(--radius-full)',
               background:     'var(--theme-accent)',
               color:          'var(--theme-accent-fg)',
-              fontSize:       '10px',
+              fontSize:       'var(--text-2xs)',
               fontWeight:     'var(--weight-medium)',
               lineHeight:     1,
             }}
