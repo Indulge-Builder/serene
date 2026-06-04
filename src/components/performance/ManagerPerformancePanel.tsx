@@ -9,11 +9,11 @@ import { ENTER_DURATION, EASE_OUT_EXPO, BASE_DURATION } from '@/lib/constants/mo
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import {
   buildPerformanceRosterGroups,
-  getFirstAgentInPerformanceRosterList,
   PERFORMANCE_ROSTER_DOMAIN_ORDER,
 } from '@/lib/utils/performance-roster-display';
 import { AgentDetailPanel }                      from './AgentDetailPanel';
-import type { AgentRosterRow } from '@/lib/types/index';
+import { DomainHealthGrid }                      from './DomainHealthGrid';
+import type { AgentRosterRow, DomainHealthCard } from '@/lib/types/index';
 import type { AppDomain }                        from '@/lib/types/database';
 import type { PerformancePeriod }                from '@/lib/services/performance-service';
 
@@ -355,6 +355,7 @@ function RosterHeader({
 
 type Props = {
   agentRoster:  AgentRosterRow[];
+  domainHealth: DomainHealthCard[];
   domain:       AppDomain;
   period:       PerformancePeriod;
   customFrom?:  string;
@@ -365,21 +366,23 @@ type Props = {
 
 export function ManagerPerformancePanel({
   agentRoster,
+  domainHealth,
   domain,
   period,
   customFrom,
   customTo,
   allDomains = false,
 }: Props) {
-  const [selectedId, setSelectedId] = useState<string | null>(
-    getFirstAgentInPerformanceRosterList(agentRoster, { allDomains, domain }),
-  );
+  // null = no agent selected → show domain health overview
+  const [selectedId, setSelectedId]   = useState<string | null>(null);
   const [domainFilter, setDomainFilter] = useState<AppDomain | null>(null);
   const searchParams                    = useSearchParams();
   const searchTerm                      = (searchParams.get('search') ?? '').trim().toLowerCase();
 
-  const selectedAgent = agentRoster.find((a) => a.id === selectedId) ?? null;
+  const selectedAgent = selectedId ? (agentRoster.find((a) => a.id === selectedId) ?? null) : null;
 
+  // When filters narrow the visible agents and the selected agent is no longer visible,
+  // reset to null (return to domain health overview) rather than keeping a stale selection.
   useEffect(() => {
     if (!selectedId) return;
     const stillVisible = agentRoster.filter((a) => {
@@ -388,11 +391,9 @@ export function ManagerPerformancePanel({
       return true;
     });
     if (!stillVisible.find((a) => a.id === selectedId)) {
-      setSelectedId(
-        getFirstAgentInPerformanceRosterList(stillVisible, { allDomains, domain }),
-      );
+      setSelectedId(null);
     }
-  }, [searchTerm, domainFilter, agentRoster, selectedId, allDomains, domain]);
+  }, [searchTerm, domainFilter, agentRoster, selectedId]);
 
   // Unique domains that actually have agents, in roster display order
   const presentDomains = PERFORMANCE_ROSTER_DOMAIN_ORDER.filter((d) =>
@@ -476,9 +477,7 @@ export function ManagerPerformancePanel({
               return true;
             });
             if (selectedId && !stillVisible.find((a) => a.id === selectedId)) {
-              setSelectedId(
-                getFirstAgentInPerformanceRosterList(stillVisible, { allDomains, domain }),
-              );
+              setSelectedId(null);
             }
           }}
         />
@@ -531,10 +530,20 @@ export function ManagerPerformancePanel({
         </div>
       </div>
 
-      {/* ── Right: agent detail panel ─────────────────────────────── */}
+      {/* ── Right: domain health overview OR agent detail ─────────── */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <AnimatePresence mode="wait">
-          {selectedAgent ? (
+          {selectedAgent === null ? (
+            <motion.div
+              key="domain-overview"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
+            >
+              <DomainHealthGrid cards={domainHealth} period={period} />
+            </motion.div>
+          ) : (
             <motion.div
               key={selectedAgent.id}
               initial={{ opacity: 0, y: 6 }}
@@ -550,7 +559,7 @@ export function ManagerPerformancePanel({
                 customTo={customTo}
               />
             </motion.div>
-          ) : null}
+          )}
         </AnimatePresence>
       </div>
     </div>

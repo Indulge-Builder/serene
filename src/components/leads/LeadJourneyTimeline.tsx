@@ -1,5 +1,6 @@
 import { CheckCircle2, Circle, Clock, XCircle, AlertCircle } from 'lucide-react';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants/lead-statuses';
+import { formatDate } from '@/lib/utils/dates';
 import type { Lead, LeadStatus } from '@/lib/types/database';
 import type { LeadActivityWithActor } from '@/lib/services/leads-service';
 
@@ -366,5 +367,5 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
 }
 
 function formatLocalDate(date: Date): string {
-  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+  return formatDate(date, 'd MMM');
 }

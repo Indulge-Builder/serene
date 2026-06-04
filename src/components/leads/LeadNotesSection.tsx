@@ -194,7 +194,7 @@ export function LeadNotesSection({ notes }: Props) {
                           color:      'var(--theme-text-tertiary)',
                         }}
                       >
-                        {formatDate(note.created_at, 'dd MMM yyyy, hh:mm a')}
+                        {formatDate(note.created_at, 'dd MMM yyyy, h:mm a')}
                       </span>
                     </div>
 

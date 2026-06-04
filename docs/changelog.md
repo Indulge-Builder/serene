@@ -6,6 +6,19 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-04 — Performance — Domain health overview grid on initial load; null selectedId; filter wiring verified
+
+- Migration 0066: `get_domain_health_metrics(p_domains, p_date_from, p_date_to)` RPC — one row per domain always (UNNEST driving source); five CTEs (cohort, closures, pipeline, calls); all `WHERE archived_at IS NULL`; `SECURITY DEFINER STABLE`; `GRANT EXECUTE TO authenticated`
+- `DomainHealthCard` type added to `src/lib/types/index.ts` — `conversionRate: number | null` computed in service, never SQL
+- `getDomainHealthMetrics(domains, dateFrom, dateTo)` added to `src/lib/services/performance-service.ts` — single RPC call; all bigint fields through `Number()`; reuses existing `GIA_DOMAINS` constant (no new constant file)
+- `src/components/performance/DomainHealthGrid.tsx` — new pure presentational component; 2×2 grid for founder/admin, 1-col for manager single-domain; health pip + conversion badge with semantic colour tokens only; `DomainHealthGridSkeleton` exported inline
+- `ManagerPerformanceAsync` — `getDomainHealthMetrics` called in parallel with `getAgentRosterPerformance` via `Promise.all`; `healthDomains = allDomains ? GIA_DOMAINS : [domain]`; `domainHealth` prop forwarded to `ManagerPerformancePanel`
+- `ManagerPerformancePanel` — `selectedId` initial state changed from first-agent to `null`; right panel is exclusively `DomainHealthGrid` when `selectedId === null`, exclusively `AgentDetailPanel` when non-null; `AnimatePresence mode="wait"` keyed `"domain-overview"` / agent id; filter resets to `null` (not first agent) when selected agent leaves visible set; `customFrom`/`customTo` forwarded to `AgentDetailPanel`
+- `ManagerPerformanceSkeleton` — right-side updated from agent-detail shimmer to 2×2 domain health card grid matching the new initial state
+- `src/app/(dashboard)/performance/CLAUDE.md` — `DomainHealthGrid`, `getDomainHealthMetrics`, null-selectedId pattern, migration 0066 documented
+
+---
+
 ## 2026-06-04 — Lead list instant refresh + dashboard 30s auto-poll
 
 **Change 1 — `revalidatePath('/leads')` on all lead mutations**

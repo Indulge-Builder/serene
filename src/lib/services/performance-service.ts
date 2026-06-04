@@ -10,7 +10,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { AppDomain, CallOutcome } from "@/lib/types/database";
-import type { AgentRosterRow, AgentDetailMetrics } from "@/lib/types/index";
+import type { AgentRosterRow, AgentDetailMetrics, DomainHealthCard } from "@/lib/types/index";
 
 // ─────────────────────────────────────────────
 // Types
@@ -908,6 +908,52 @@ export async function getAgentDetailMetrics(
 // Returns only domains that have ≥1 lead in the period.
 // Used by FounderPerformanceShell to show only active domain tabs.
 // ─────────────────────────────────────────────
+
+// ─────────────────────────────────────────────
+// Domain Health Metrics
+// Single RPC call — one row per domain regardless of lead count.
+// p_domains drives the row set (UNNEST); zero-lead domains return all zeros.
+// conversionRate is computed here: won + lost > 0 ? won / (won + lost) : null.
+// All bigint fields cast through Number() before return (Q-09).
+// ─────────────────────────────────────────────
+
+export async function getDomainHealthMetrics(
+  domains: AppDomain[],
+  dateFrom: string,
+  dateTo: string,
+): Promise<DomainHealthCard[]> {
+  if (domains.length === 0) return [];
+
+  const supabase = await createClient();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc(
+    "get_domain_health_metrics",
+    {
+      p_domains:   domains,
+      p_date_from: dateFrom,
+      p_date_to:   dateTo,
+    },
+  );
+
+  if (error || !data) return [];
+
+  return (data as Record<string, unknown>[]).map((row) => {
+    const won  = Number(row.leads_won  ?? 0);
+    const lost = Number(row.leads_lost ?? 0);
+    const closed = won + lost;
+    return {
+      domain:         row.domain as AppDomain,
+      totalLeads:     Number(row.total_leads   ?? 0),
+      leadsWon:       won,
+      leadsLost:      lost,
+      callsLogged:    Number(row.calls_logged  ?? 0),
+      inDiscussion:   Number(row.in_discussion ?? 0),
+      nurturing:      Number(row.nurturing     ?? 0),
+      conversionRate: closed > 0 ? (won / closed) * 100 : null,
+    };
+  });
+}
 
 export async function getDomainsWithLeads(
   dateFrom: string,

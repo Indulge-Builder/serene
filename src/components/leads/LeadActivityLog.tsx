@@ -3,6 +3,7 @@ import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
 import { CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import { getLeadSourceLabel } from '@/lib/constants/lead-sources';
+import { formatDate } from '@/lib/utils/dates';
 import type { LeadStatus, CallOutcome, AppDomain } from '@/lib/types/database';
 import type { LeadActivityWithActor } from '@/lib/services/leads-service';
 
@@ -74,15 +75,7 @@ function activityIcon(act: LeadActivityWithActor): React.ReactNode {
 }
 
 function formatTimestamp(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString('en-IN', {
-    day:    '2-digit',
-    month:  'short',
-    year:   'numeric',
-    hour:   '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
+  return formatDate(iso, 'dd MMM yyyy, h:mm a');
 }
 
 export function LeadActivityLog({ activities }: Props) {

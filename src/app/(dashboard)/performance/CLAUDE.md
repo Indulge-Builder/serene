@@ -116,11 +116,51 @@ Exported functions:
 - **Founder/admin (`allDomains`):** `PERFORMANCE_ROSTER_DOMAIN_ORDER` (Gia domains first), A–Z by name within each domain
 - **Manager (single domain):** A–Z by name
 
-## ManagerPerformancePanel — default agent selection
+## ManagerPerformancePanel — default agent selection (null = overview)
 
-`ManagerPerformancePanel` calls `getFirstAgentInPerformanceRosterList(agentRoster, { allDomains, domain })` directly to seed `useState(selectedId)`. There are no seed-prefetch props — the detail panel always fetches client-side.
+`ManagerPerformancePanel` initialises `selectedId` to `null`. No agent is pre-selected.
 
-`key={period}` is set on `ManagerPerformancePanel` in `ManagerPerformanceAsync` so a period change forces a clean remount — resetting roster state and triggering a fresh detail fetch.
+- `selectedId === null` → right panel shows `<DomainHealthGrid>` with domain health cards.
+- `selectedId !== null` → right panel shows `<AgentDetailPanel>` for that agent.
+- Clicking an agent row sets `selectedId`; `AnimatePresence mode="wait"` cross-fades the panels.
+- When domain/search filters narrow the visible roster and the selected agent is no longer visible, `selectedId` resets to `null` (back to overview).
+
+`getFirstAgentInPerformanceRosterList` is no longer called from `ManagerPerformancePanel`. It remains in `performance-roster-display.ts` as a utility.
+
+`key={period}` is NOT set on `ManagerPerformancePanel` — period flows through props. Do not add `key={period}` here (invariant 8 from the task spec).
+
+## DomainHealthGrid
+
+`src/components/performance/DomainHealthGrid.tsx` — pure presentational, no `'use client'` needed.
+
+Props: `cards: DomainHealthCard[]; period: PerformancePeriod`
+
+Layout: `grid-cols-2` for 2+ cards; `grid-cols-1` for a single-domain (manager) view.
+
+Per card:
+- Eyebrow: domain label, `--text-2xs`, `--theme-text-tertiary`
+- Health pip: `8px` `--radius-full` dot, colour from conversion rate (success ≥40%, warning ≥15%, danger <15%, tertiary when null)
+- Primary: Leads Won in Playfair `--text-3xl`
+- Secondary row: Calls Logged + Active Pipeline (in_discussion + nurturing)
+- Bottom: conversion rate badge — success/warning/danger/neutral variant
+
+`DomainHealthGridSkeleton` exported inline — same 2×2 grid with animate-pulse shimmer blocks.
+
+## getDomainHealthMetrics
+
+`src/lib/services/performance-service.ts`
+
+```typescript
+getDomainHealthMetrics(domains: AppDomain[], dateFrom: string, dateTo: string): Promise<DomainHealthCard[]>
+```
+
+Calls `get_domain_health_metrics` RPC (migration 0066). One round-trip regardless of domain count.
+`conversionRate` computed in service layer: `won + lost > 0 ? (won / (won + lost)) * 100 : null`.
+All bigint fields pass through `Number()` before return.
+
+`healthDomains` in `ManagerPerformanceAsync`:
+- `allDomains=true` (founder/admin): `[...GIA_DOMAINS]` — all 4 Gia domains
+- `allDomains=false` (manager): `[domain]` — single domain, renders 1-col grid
 
 ## Redis cache-aside — performance service (2026-06-01)
 

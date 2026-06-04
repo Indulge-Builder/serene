@@ -1,7 +1,7 @@
 // Skeleton for the manager / founder performance view.
 // Two-column layout mirrors ManagerPerformancePanel.
 // Left: 4 agent card skeletons (avatar + two line shimmer each), stagger 0/80/160/240ms §11.4.
-// Right: header (large circle + two lines) + 5-col stat strip + two bar skeletons.
+// Right: 2×2 grid of domain health card skeletons matching DomainHealthGrid initial state.
 // All shimmer uses the same .skeleton class pattern as PerformanceSkeleton.tsx.
 
 const STAGGER = [0, 80, 160, 240];
@@ -55,33 +55,6 @@ function AgentCardSkeleton({ delay }: { delay: number }) {
   );
 }
 
-function StatStripSkeleton() {
-  return (
-    <div
-      style={{
-        display:             "grid",
-        gridTemplateColumns: "repeat(5, 1fr)",
-        borderBottom:        "1px solid var(--theme-paper-border)",
-        paddingBottom:       "var(--space-5)",
-        marginBottom:        "var(--space-5)",
-        gap:                 "var(--space-2)",
-      }}
-    >
-      {[0, 1, 2, 3, 4].map((i) => (
-        <div key={i} style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center" }}>
-          <div
-            className="skeleton"
-            style={{ width: "48px", height: "28px", borderRadius: "var(--radius-xs)", animationDelay: `${i * 60}ms` }}
-          />
-          <div
-            className="skeleton"
-            style={{ width: "64px", height: "10px", borderRadius: "var(--radius-xs)", animationDelay: `${i * 60}ms` }}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export function ManagerPerformanceSkeleton() {
   return (
@@ -118,44 +91,56 @@ export function ManagerPerformanceSkeleton() {
         ))}
       </div>
 
-      {/* Right column — detail panel */}
+      {/* Right column — domain health overview skeleton (2×2 grid) */}
       <div
         style={{
-          flex:          1,
-          minWidth:      0,
-          background:    "var(--theme-paper)",
-          border:        "1px solid var(--theme-paper-border)",
-          borderRadius:  "var(--radius-lg)",
-          padding:       "var(--space-6)",
-          boxShadow:     "var(--shadow-1)",
+          flex:                1,
+          minWidth:            0,
+          display:             "grid",
+          gridTemplateColumns: "repeat(2, 1fr)",
+          gap:                 "var(--space-4)",
+          alignContent:        "start",
         }}
       >
-        {/* Header row: large avatar + name lines */}
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", marginBottom: "var(--space-6)" }}>
+        {[0, 80, 160, 240].map((delay, i) => (
           <div
-            className="skeleton"
-            style={{ width: "72px", height: "72px", borderRadius: "var(--radius-md)", flexShrink: 0 }}
-          />
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <div className="skeleton" style={{ width: "180px", height: "24px", borderRadius: "var(--radius-xs)" }} />
-            <div className="skeleton" style={{ width: "96px", height: "12px", borderRadius: "var(--radius-xs)" }} />
+            key={i}
+            style={{
+              background:   "var(--theme-paper)",
+              border:       "1px solid var(--theme-paper-border)",
+              borderRadius: "var(--radius-lg)",
+              boxShadow:    "var(--shadow-1)",
+              padding:      "var(--space-5)",
+              display:      "flex",
+              flexDirection: "column",
+              gap:          "var(--space-4)",
+            }}
+          >
+            {/* Eyebrow + pip */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div className="skeleton" style={{ width: "72px", height: "10px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
+              <div className="skeleton" style={{ width: "8px",  height: "8px",  borderRadius: "var(--radius-full)", animationDelay: `${delay}ms` }} />
+            </div>
+            {/* Primary stat */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div className="skeleton" style={{ width: "56px", height: "36px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
+              <div className="skeleton" style={{ width: "64px", height: "10px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
+            </div>
+            {/* Secondary */}
+            <div style={{ display: "flex", gap: "var(--space-5)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div className="skeleton" style={{ width: "40px", height: "14px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
+                <div className="skeleton" style={{ width: "60px", height: "10px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div className="skeleton" style={{ width: "40px", height: "14px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
+                <div className="skeleton" style={{ width: "72px", height: "10px", borderRadius: "var(--radius-xs)", animationDelay: `${delay}ms` }} />
+              </div>
+            </div>
+            {/* Badge */}
+            <div className="skeleton" style={{ width: "80px", height: "22px", borderRadius: "var(--radius-full)", animationDelay: `${delay}ms` }} />
           </div>
-        </div>
-
-        {/* 5-col stat strip */}
-        <StatStripSkeleton />
-
-        {/* Two bar skeletons */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-          <div
-            className="skeleton"
-            style={{ width: "100%", height: "80px", borderRadius: "var(--radius-md)" }}
-          />
-          <div
-            className="skeleton"
-            style={{ width: "100%", height: "80px", borderRadius: "var(--radius-md)" }}
-          />
-        </div>
+        ))}
       </div>
     </div>
   );

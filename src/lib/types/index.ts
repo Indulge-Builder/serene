@@ -93,6 +93,21 @@ export type AgentDetailMetrics = {
   callOutcomeBreakdown: OutcomeBreakdownItem[];
 };
 
+// ─── Performance — domain health overview ────────────────────────────────────
+// Used by DomainHealthGrid and getDomainHealthMetrics.
+// conversionRate is computed in the service layer (null when won + lost = 0).
+
+export type DomainHealthCard = {
+  domain:         AppDomain;
+  totalLeads:     number;
+  leadsWon:       number;
+  leadsLost:      number;
+  callsLogged:    number;
+  inDiscussion:   number;
+  nurturing:      number;
+  conversionRate: number | null;
+};
+
 /**
  * Assembled by dashboard/page.tsx from getDashboardSummary() (RPC) +
  * getLeadVolumeByPeriod() (separate call for the week default).
