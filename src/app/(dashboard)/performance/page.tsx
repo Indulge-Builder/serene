@@ -142,9 +142,9 @@ export default async function PerformancePage({
     };
 
     return (
-      <main style={{ flex: 1, padding: "var(--space-8)", maxWidth: "1280px", minWidth: 0 }}>
-        <div style={{ marginBottom: "var(--space-6)" }}>
-          <h1 className="type-page-title" style={{ margin: 0 }}>
+      <main className="flex-1 min-w-0 p-8">
+        <div className="mb-6">
+          <h1 className="type-page-title m-0">
             Your Performance<span className="page-title-dot">.</span>
           </h1>
         </div>
@@ -166,13 +166,13 @@ export default async function PerformancePage({
   // domain is always read from the server-verified profile — never from URL params
   if (profile.role === "manager") {
     return (
-      <main style={{ flex: 1, padding: "var(--space-8)", minWidth: 0 }}>
-        <div style={{ marginBottom: "var(--space-6)" }}>
-          <h1 className="type-page-title" style={{ margin: 0 }}>
+      <main className="flex-1 min-w-0 p-8">
+        <div className="mb-6">
+          <h1 className="type-page-title m-0">
             Team Performance<span className="page-title-dot">.</span>
           </h1>
         </div>
-        <div className="px-5 py-4 mb-6 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
+        <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
           <PerformanceFilters
             period={period}
             customFrom={rawFrom ?? null}
@@ -206,14 +206,14 @@ export default async function PerformancePage({
   );
 
   return (
-    <main style={{ flex: 1, padding: "var(--space-8)", minWidth: 0 }}>
-      <div style={{ marginBottom: "var(--space-6)" }}>
-        <h1 className="type-page-title" style={{ margin: 0 }}>
+    <main className="flex-1 min-w-0 p-8">
+      <div className="mb-6">
+        <h1 className="type-page-title m-0">
           Performance<span className="page-title-dot">.</span>
         </h1>
       </div>
 
-      <div className="px-5 py-4 mb-6 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
+      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
         <PerformanceFilters
           period={period}
           customFrom={rawFrom ?? null}

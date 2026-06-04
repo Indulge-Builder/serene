@@ -58,7 +58,7 @@ export function ManagerPerformanceSkeleton() {
       style={{
         display: "flex",
         gap:     "var(--space-6)",
-        minHeight: "600px",
+        alignItems: "flex-start",
       }}
     >
       <div
@@ -89,7 +89,7 @@ export function ManagerPerformanceSkeleton() {
         style={{
           flex:           1,
           minWidth:       0,
-          minHeight:      "600px",
+          minHeight:      "min(320px, 40vh)",
           borderRadius:   "var(--radius-lg)",
           border:         "1px solid var(--theme-paper-border)",
           background:     "var(--theme-paper-subtle)",

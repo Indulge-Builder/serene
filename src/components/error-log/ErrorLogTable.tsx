@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { LeadRawPayload } from '@/lib/types/database';
 import { formatDate } from '@/lib/utils/dates';
 

@@ -6,6 +6,42 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-04 — Global Dashboard Date Filter
+
+Adds a single date filter at the top of `/dashboard`. Changing it re-scopes **Lead Pipeline**, **Lead Volume**, and **Campaign Performance** for the chosen window. **My Tasks** and **Recent Activity** always show live data and are unaffected.
+
+**Date semantics:** all three filtered widgets filter by `leads.created_at` (intake/cohort date), i.e. "leads that came in during this window." This is the Critical Date-Field Rule invariant — see Decision Log entry in `The_Rules.md`.
+
+**New files:**
+- `src/lib/utils/date-range.ts` — pure IST date-range util: `DatePreset` union, `resolvePresetToRange()`, `rangeFromUrlParams()`, `DATE_PRESET_LABELS`
+- `src/components/dashboard/DashboardDateFilter.tsx` — filter button with preset list (Today / This Week / This Month / This Quarter) + custom DatePicker range panel; writes `?dash_preset=&dash_from=&dash_to=` URL params
+
+**Changed files:**
+- `supabase/migrations/20260604000069_dashboard_date_filter.sql` — extends `get_dashboard_summary`, `get_lead_pipeline_refresh`, `get_campaign_pipeline_refresh` with nullable `p_date_from`/`p_date_to timestamptz` params (backwards-compatible DEFAULT NULL); date filter applied to `created_at` on `lead_status` + `campaigns` CTEs only; `agent_tasks`/`agent_activity` unaffected
+- `src/lib/types/index.ts` — re-exports `DateRange`, `DatePreset` from `date-range.ts`
+- `src/lib/constants/redis-keys.ts` — all four dashboard cache keys (`dashboardLeadStatus`, `dashboardLeadVolume`, `dashboardLeadVolumeMulti`, `dashboardCampaigns`) now include `:{from}:{to}` segment ('all' when no filter); different ranges produce different cache slots
+- `src/lib/services/dashboard-service.ts` — `getDashboardSummary` accepts optional `dateRange`; `getLeadStatusSummary` + `getLeadsByCampaign` accept optional `dateRange`; `getLeadVolumeByPeriod` + `getLeadVolumeByDomains` replaced by `getLeadVolumeByRange` + `getLeadVolumeByDomains` (both accept `DateRange`); `getLeadVolumeForDomain` added; bucket granularity inferred from span (≤2d→hourly, ≤60d→daily, ≤1y→weekly, else monthly) — zero-filled buckets always present
+- `src/lib/actions/dashboard.ts` — rewritten: `getLeadStatusSummaryAction`, `getLeadsByCampaignAction`, `getLeadStatusForDomainAction`, `getLeadsByCampaignForDomainAction` accept optional `from?/to?` strings (Zod-validated); `getLeadVolumeByRangeAction`, `getLeadVolumeByDomainsAction`, `getLeadVolumeForDomainAction` replace period-based actions (all accept ISO datetime from/to)
+- `src/components/dashboard/DashboardWidgetSlot.tsx` — `dateRange?: DateRange` added to `WidgetProps`
+- `src/components/dashboard/DashboardCanvas.tsx` — `DashboardDateFilter` rendered in header (manager/admin/founder only); `dateRange` prop threaded to all widgets
+- `src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx` — reads `dateRange` prop; refetches on `dateRange.from/to` change; passes range to all action calls
+- `src/components/dashboard/widgets/ManagerLeadVolumeWidget.tsx` — local period tabs (Today/Week/Month/Quarter) removed; reads `dateRange` from props; default to "week" when no prop provided; domain tabs (admin/founder) retained
+- `src/components/dashboard/widgets/ManagerCampaignWidget.tsx` — reads `dateRange` prop; refetches on `dateRange.from/to` change; passes range to all action calls
+- `src/components/dashboard/widgets/AgentTasksWidget.tsx` — "Live" badge added to header
+- `src/components/dashboard/widgets/AgentActivityWidget.tsx` — "Live" badge added to header
+- `src/app/(dashboard)/dashboard/page.tsx` — reads `dash_preset`, `dash_from`, `dash_to` from `searchParams`; resolves `DateRange` server-side via `resolvePresetToRange`/`rangeFromUrlParams`; passes range to `getDashboardSummary` + `getLeadVolumeByRange`; default preset: `week`
+
+---
+
+## 2026-06-04 — Performance — page scroll layout aligned with Leads/Tasks
+
+- `performance/page.tsx` — all role branches use canonical `<main className="flex-1 min-w-0 p-8">` (was inline padding + agent `maxWidth: 1280px`); title/filter rows use `mb-6` / `mb-4` Tailwind classes matching the list-page contract
+- `ManagerPerformancePanel` — removed roster `maxHeight: 600px` + nested `overflowY: auto`; agent list grows with content and scrolls in the dashboard paper shell like other pages
+- `PerformanceRosterEmptyState` + `ManagerPerformanceSkeleton` — dropped fixed `600px` min-heights; empty/skeleton right column uses `min(320px, 40vh)`
+- `AgentPerformanceShell` — filter strip `mb-6` → `mb-4`
+
+---
+
 ## 2026-06-04 — Performance — roster empty state replaces domain health grid
 
 - `PerformanceRosterEmptyState` (`src/components/performance/PerformanceRosterEmptyState.tsx`) — Playfair italic prompt on `paper-subtle` with accent radial wash; shown when no agent is selected on manager/founder Agents tab

@@ -5,15 +5,16 @@
 // Do not split back into individual service function calls for summary data.
 // Individual functions below are kept for the period-toggle action and widget refresh buttons.
 //
-// Redis key inventory:
-//   dashboard:agent-tasks:{userId}        — 30s TTL; invalidated by createPersonalTaskAction,
-//                                           updateTaskStatusAction, createLeadTaskAction
-//   dashboard:lead-status:{effectiveDomain} — 60s TTL; invalidated by updateLeadStatus,
-//                                           createManualLead
-//   dashboard:lead-volume:{role}:{domain}:{period} — 120s TTL; invalidated by createManualLead
-//                                           (manager-scoped keys only; multi-domain keys: TTL-only)
-//   dashboard:campaigns:{effectiveDomain} — 120s TTL; invalidated by updateLeadStatus,
-//                                           createManualLead
+// Redis key inventory (all date-range namespaced — from/to in key, 'all' when no filter):
+//   dashboard:agent-tasks:{userId}                    — 30s TTL
+//   dashboard:lead-status:{domain}:{from}:{to}        — 60s TTL
+//   dashboard:lead-volume:{role}:{domain}:{from}:{to} — 120s TTL
+//   dashboard:lead-volume:multi:{domains}:{from}:{to} — 120s TTL
+//   dashboard:campaigns:{domain}:{from}:{to}          — 120s TTL
+//
+// Invalidation: TTL-only for dashboard data. A new lead bumps the TTL-based stale window.
+// For lead-status and campaigns: any date range with the same domain shares a slot —
+// changing the range produces a new key, so no cross-range bleed.
 
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
@@ -21,6 +22,7 @@ import { redis } from '@/lib/redis';
 import { REDIS_KEYS, REDIS_TTL } from '@/lib/constants/redis-keys';
 import type { AppDomain, LeadStatus, UserRole } from '@/lib/types/database';
 import type { DashboardSummary } from '@/lib/types';
+import type { DateRange } from '@/lib/utils/date-range';
 
 // ─────────────────────────────────────────────
 // getDashboardSummary — single RPC, per-request memoised
@@ -30,6 +32,9 @@ import type { DashboardSummary } from '@/lib/types';
 // which cannot be called inside an unstable_cache closure (Next.js constraint).
 // React cache() deduplicates within a single RSC render pass — the RPC fires once
 // even if multiple components call getDashboardSummary with the same arguments.
+//
+// dateRange is passed through to the lead_status + campaigns CTEs only.
+// agent_tasks and agent_activity are always "live" and ignore the range.
 // ─────────────────────────────────────────────
 
 export const getDashboardSummary = cache(
@@ -38,6 +43,7 @@ export const getDashboardSummary = cache(
     domain:        AppDomain,
     userId:        string,
     initialDomain?: AppDomain,
+    dateRange?:    DateRange,
   ): Promise<DashboardSummary> => {
     const supabase = await createClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,6 +52,8 @@ export const getDashboardSummary = cache(
       p_domain:         domain,
       p_user_id:        userId,
       p_initial_domain: initialDomain ?? null,
+      p_date_from:      dateRange?.from ?? null,
+      p_date_to:        dateRange?.to   ?? null,
     });
     if (error) throw error;
     return data as DashboardSummary;
@@ -194,8 +202,8 @@ export async function getAgentRecentActivity(
 
 // ─────────────────────────────────────────────
 // Manager Lead Status Widget
-// Leads grouped by status — one query with GROUP BY simulation via Supabase.
 // Returns total per status + per-agent breakdown.
+// dateRange filters by leads.created_at (intake/cohort date).
 // ─────────────────────────────────────────────
 
 export type LeadStatusCount = {
@@ -216,14 +224,13 @@ export type LeadStatusSummary = {
 };
 
 export async function getLeadStatusSummary(
-  role: string,
-  domain: AppDomain,
+  role:          string,
+  domain:        AppDomain,
   targetDomain?: AppDomain,
+  dateRange?:    DateRange,
 ): Promise<LeadStatusSummary> {
-  // Key uses effectiveDomain so managers and admin/founder scoped to the same domain
-  // share a cache entry. targetDomain narrows admin/founder to a specific domain.
   const effectiveDomain = (role === 'manager' ? domain : targetDomain ?? domain) as string;
-  const cacheKey = REDIS_KEYS.dashboardLeadStatus(effectiveDomain);
+  const cacheKey = REDIS_KEYS.dashboardLeadStatus(effectiveDomain, dateRange?.from, dateRange?.to);
 
   try {
     const cached = await redis.get<LeadStatusSummary>(cacheKey);
@@ -232,17 +239,16 @@ export async function getLeadStatusSummary(
     console.error('[dashboard-service] getLeadStatusSummary Redis get error:', e);
   }
 
-  // Use the effective role/domain for the RPC call.
-  // Admin/founder scoped to targetDomain: pass role='manager' so the RPC applies the domain filter.
-  // Admin/founder with no targetDomain: pass role='admin' so the RPC skips the domain filter.
   const rpcRole   = (role === 'manager' || targetDomain) ? 'manager' : role;
   const rpcDomain = (role === 'manager' ? domain : targetDomain ?? domain) as AppDomain;
 
   const supabase = await createClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any).rpc('get_lead_pipeline_refresh', {
-    p_role:   rpcRole,
-    p_domain: rpcDomain,
+    p_role:      rpcRole,
+    p_domain:    rpcDomain,
+    p_date_from: dateRange?.from ?? null,
+    p_date_to:   dateRange?.to   ?? null,
   });
 
   if (error) throw error;
@@ -264,11 +270,10 @@ export async function getLeadStatusSummary(
 
 // ─────────────────────────────────────────────
 // Manager Lead Volume Widget
-// Incoming leads count over a time period.
-// Returns both total count and a daily/weekly time series.
+// Incoming leads count over a time window (defined by DateRange, not a preset).
+// Granularity is inferred from the span so chart labels are always meaningful.
+// dateRange filters by leads.created_at.
 // ─────────────────────────────────────────────
-
-export type VolumePeriod = 'today' | 'week' | 'month' | 'quarter';
 
 export type VolumeDataPoint = {
   label: string;
@@ -280,63 +285,49 @@ export type LeadVolumeSummary = {
   series: VolumeDataPoint[];
 };
 
-function getPeriodBounds(period: VolumePeriod): { from: Date; to: Date; bucketMs: number } {
-  const now = new Date();
-  const to  = new Date(now);
-  to.setHours(23, 59, 59, 999);
+// Keep VolumePeriod for backwards compat — actions/widgets no longer use it for the
+// global date filter, but the type may still be referenced elsewhere.
+export type VolumePeriod = 'today' | 'week' | 'month' | 'quarter';
 
-  switch (period) {
-    case 'today': {
-      const from = new Date(now);
-      from.setHours(0, 0, 0, 0);
-      return { from, to, bucketMs: 3_600_000 }; // 1hr buckets
-    }
-    case 'week': {
-      const from = new Date(now);
-      from.setDate(from.getDate() - 6);
-      from.setHours(0, 0, 0, 0);
-      return { from, to, bucketMs: 86_400_000 }; // 1d buckets
-    }
-    case 'month': {
-      const from = new Date(now);
-      from.setDate(from.getDate() - 29);
-      from.setHours(0, 0, 0, 0);
-      return { from, to, bucketMs: 86_400_000 }; // 1d buckets
-    }
-    case 'quarter': {
-      const from = new Date(now);
-      from.setDate(from.getDate() - 89);
-      from.setHours(0, 0, 0, 0);
-      return { from, to, bucketMs: 86_400_000 * 7 }; // 7d buckets
-    }
-  }
+function inferBucketMs(from: Date, to: Date): number {
+  const spanMs = to.getTime() - from.getTime();
+  const day    = 86_400_000;
+  if (spanMs <= 2 * day)     return 3_600_000;    // ≤ 2 days  → hourly
+  if (spanMs <= 60 * day)    return day;           // ≤ 60 days → daily
+  if (spanMs <= 366 * day)   return 7 * day;       // ≤ 1 year  → weekly
+  return 30 * day;                                 // else      → ~monthly
 }
 
-function formatBucketLabel(date: Date, period: VolumePeriod): string {
-  if (period === 'today') {
+function formatBucketLabel(date: Date, bucketMs: number): string {
+  if (bucketMs <= 3_600_000) {
+    // Hourly — show HH:MM AM/PM
     return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  }
+  if (bucketMs >= 30 * 86_400_000) {
+    // Monthly
+    return date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
   }
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-export async function getLeadVolumeByPeriod(
-  role: string,
-  domain: AppDomain,
-  period: VolumePeriod,
+export async function getLeadVolumeByRange(
+  role:      string,
+  domain:    AppDomain,
+  dateRange: DateRange,
 ): Promise<LeadVolumeSummary> {
-  // Role IS in the key — manager domain-locks the query; admin/founder may receive
-  // a different scope (no domain restriction).
-  const cacheKey = REDIS_KEYS.dashboardLeadVolume(role, domain as string, period);
+  const cacheKey = REDIS_KEYS.dashboardLeadVolume(role, domain as string, dateRange.from, dateRange.to);
 
   try {
     const cached = await redis.get<LeadVolumeSummary>(cacheKey);
     if (cached !== null) return cached;
   } catch (e) {
-    console.error('[dashboard-service] getLeadVolumeByPeriod Redis get error:', e);
+    console.error('[dashboard-service] getLeadVolumeByRange Redis get error:', e);
   }
 
-  const supabase        = await createClient();
-  const { from, to, bucketMs } = getPeriodBounds(period);
+  const supabase = await createClient();
+  const from     = new Date(dateRange.from);
+  const to       = new Date(dateRange.to);
+  const bucketMs = inferBucketMs(from, to);
 
   let query = supabase
     .from('leads')
@@ -352,13 +343,11 @@ export async function getLeadVolumeByPeriod(
   const { data } = await query;
   const rows = data ?? [];
 
-  // Build time buckets
+  // Build zero-filled time buckets
   const bucketMap: Record<string, number> = {};
   const cursor = new Date(from);
-
   while (cursor <= to) {
-    const key = cursor.toISOString();
-    bucketMap[key] = 0;
+    bucketMap[cursor.toISOString()] = 0;
     cursor.setTime(cursor.getTime() + bucketMs);
   }
 
@@ -374,7 +363,7 @@ export async function getLeadVolumeByPeriod(
   }
 
   const series: VolumeDataPoint[] = Object.entries(bucketMap).map(([key, count]) => ({
-    label: formatBucketLabel(new Date(key), period),
+    label: formatBucketLabel(new Date(key), bucketMs),
     count,
   }));
 
@@ -383,21 +372,20 @@ export async function getLeadVolumeByPeriod(
   try {
     await redis.setex(cacheKey, REDIS_TTL.DASHBOARD_LEAD_VOLUME, result);
   } catch (e) {
-    console.error('[dashboard-service] getLeadVolumeByPeriod Redis setex error:', e);
+    console.error('[dashboard-service] getLeadVolumeByRange Redis setex error:', e);
   }
 
   return result;
 }
 
 // ─────────────────────────────────────────────
-// Multi-domain Lead Volume
-// Returns per-domain series so the widget can render 4 lines.
-// Used by admin/founder domain-picker view; manager uses single-domain above.
+// Multi-domain Lead Volume (admin/founder)
+// dateRange filters by leads.created_at.
 // ─────────────────────────────────────────────
 
 export type MultiDomainVolumePoint = {
   label:       string;
-  [domain: string]: number | string; // domain keys are dynamic
+  [domain: string]: number | string;
 };
 
 export type MultiDomainVolumeSummary = {
@@ -407,10 +395,10 @@ export type MultiDomainVolumeSummary = {
 };
 
 export async function getLeadVolumeByDomains(
-  domains: AppDomain[],
-  period: VolumePeriod,
+  domains:   AppDomain[],
+  dateRange: DateRange,
 ): Promise<MultiDomainVolumeSummary> {
-  const cacheKey = REDIS_KEYS.dashboardLeadVolumeMulti(domains as string[], period);
+  const cacheKey = REDIS_KEYS.dashboardLeadVolumeMulti(domains as string[], dateRange.from, dateRange.to);
 
   try {
     const cached = await redis.get<MultiDomainVolumeSummary>(cacheKey);
@@ -420,7 +408,9 @@ export async function getLeadVolumeByDomains(
   }
 
   const supabase = await createClient();
-  const { from, to, bucketMs } = getPeriodBounds(period);
+  const from     = new Date(dateRange.from);
+  const to       = new Date(dateRange.to);
+  const bucketMs = inferBucketMs(from, to);
 
   const { data } = await supabase
     .from('leads')
@@ -432,7 +422,6 @@ export async function getLeadVolumeByDomains(
 
   const rows = (data ?? []) as { created_at: string; domain: string }[];
 
-  // Build bucket keys
   const bucketKeys: string[] = [];
   const cursor = new Date(from);
   while (cursor <= to) {
@@ -440,7 +429,6 @@ export async function getLeadVolumeByDomains(
     cursor.setTime(cursor.getTime() + bucketMs);
   }
 
-  // Per-domain bucket maps
   const domainMaps: Record<string, Record<string, number>> = {};
   for (const d of domains) {
     domainMaps[d] = Object.fromEntries(bucketKeys.map((k) => [k, 0]));
@@ -459,7 +447,7 @@ export async function getLeadVolumeByDomains(
   }
 
   const series: MultiDomainVolumePoint[] = bucketKeys.map((key) => {
-    const point: MultiDomainVolumePoint = { label: formatBucketLabel(new Date(key), period) };
+    const point: MultiDomainVolumePoint = { label: formatBucketLabel(new Date(key), bucketMs) };
     for (const d of domains) {
       point[d] = domainMaps[d][key] ?? 0;
     }
@@ -481,9 +469,18 @@ export async function getLeadVolumeByDomains(
   return result;
 }
 
+// Single-domain volume for admin/founder drill-down tab
+export async function getLeadVolumeForDomain(
+  domain:    AppDomain,
+  dateRange: DateRange,
+): Promise<LeadVolumeSummary> {
+  // Reuse getLeadVolumeByRange scoped to a single domain (role='manager' applies the filter)
+  return getLeadVolumeByRange('manager', domain, dateRange);
+}
+
 // ─────────────────────────────────────────────
 // Manager Campaign Widget
-// Leads per utm_campaign, with status mix.
+// dateRange filters by leads.created_at.
 // ─────────────────────────────────────────────
 
 export type CampaignStatusMix = {
@@ -493,12 +490,13 @@ export type CampaignStatusMix = {
 };
 
 export async function getLeadsByCampaign(
-  role: string,
-  domain: AppDomain,
+  role:          string,
+  domain:        AppDomain,
   targetDomain?: AppDomain,
+  dateRange?:    DateRange,
 ): Promise<CampaignStatusMix[]> {
   const effectiveDomain = (role === 'manager' ? domain : targetDomain ?? domain) as string;
-  const cacheKey = REDIS_KEYS.dashboardCampaigns(effectiveDomain);
+  const cacheKey = REDIS_KEYS.dashboardCampaigns(effectiveDomain, dateRange?.from, dateRange?.to);
 
   try {
     const cached = await redis.get<CampaignStatusMix[]>(cacheKey);
@@ -513,8 +511,10 @@ export async function getLeadsByCampaign(
   const supabase = await createClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any).rpc('get_campaign_pipeline_refresh', {
-    p_role:   rpcRole,
-    p_domain: rpcDomain,
+    p_role:      rpcRole,
+    p_domain:    rpcDomain,
+    p_date_from: dateRange?.from ?? null,
+    p_date_to:   dateRange?.to   ?? null,
   });
 
   if (error) throw error;

@@ -12,7 +12,7 @@ import {
   Legend,
 } from "recharts";
 import {
-  getLeadVolumeByPeriodAction,
+  getLeadVolumeByRangeAction,
   getLeadVolumeByDomainsAction,
   getLeadVolumeForDomainAction,
 } from "@/lib/actions/dashboard";
@@ -22,7 +22,6 @@ import { useChartTokens, resolveColorMap } from "@/components/ui/charts/useChart
 import type {
   LeadVolumeSummary,
   MultiDomainVolumeSummary,
-  VolumePeriod,
 } from "@/lib/services/dashboard-service";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import { DOMAIN_LINE_COLORS } from "@/lib/constants/domain-colors";
@@ -30,14 +29,8 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { AppDomain } from "@/lib/types/database";
 import { DOMAIN_LABELS, GIA_DOMAINS } from "@/lib/constants/domains";
 import type { GiaDomain } from '@/lib/constants/domains';
-
-// Period tabs: Month | Week (default) | Today | Quarter
-const PERIODS: { value: VolumePeriod; label: string }[] = [
-  { value: "month",   label: "Month"   },
-  { value: "week",    label: "Week"    },
-  { value: "today",   label: "Today"   },
-  { value: "quarter", label: "Quarter" },
-];
+import type { DateRange } from "@/lib/utils/date-range";
+import { resolvePresetToRange } from "@/lib/utils/date-range";
 
 type DomainMode = "all" | GiaDomain;
 
@@ -136,25 +129,23 @@ export function ManagerLeadVolumeWidget({
   domain,
   initialData,
   size = 'lg',
-}: WidgetProps) {
+  dateRange: dateRangeProp,
+}: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
 
-  // For managers: seed from RSC initial data. For admin/founder: always fetch multi on mount.
-  const seed = isManagerRole ? (initialData?.lead_volume ?? null) : null;
+  // Resolve dateRange: use prop if provided, else default to "week"
+  const dateRange: DateRange = dateRangeProp ?? resolvePresetToRange('week');
 
-  const [period, setPeriod] = useState<VolumePeriod>("week");
+  // For managers: seed from RSC initial data only when no date filter is active (default week).
+  const seed = isManagerRole && !dateRangeProp ? (initialData?.lead_volume ?? null) : null;
+
   const [domainMode, setDomainMode] = useState<DomainMode>("all");
   const [singleData, setSingleData] = useState<LeadVolumeSummary | null>(seed);
-  const [multiData, setMultiData] = useState<MultiDomainVolumeSummary | null>(
-    null,
-  );
+  const [multiData, setMultiData] = useState<MultiDomainVolumeSummary | null>(null);
   const [loaded, setLoaded] = useState(seed !== null);
   const [isPending, startTransition] = useTransition();
-  const { series: chartColors } = useChartTokens(); // used for single-domain manager line
+  const { series: chartColors } = useChartTokens();
 
-  // Resolve domain CSS variable strings to computed hex values for Recharts stroke props.
-  // SVG stroke attributes cannot resolve CSS custom properties — resolveColorMap handles this.
-  // Re-resolves on theme switch via the MutationObserver inside useChartTokens.
   const [resolvedDomainColors, setResolvedDomainColors] = useState<Record<string, string>>(
     () => resolveColorMap(DOMAIN_LINE_COLORS),
   );
@@ -168,72 +159,53 @@ export function ManagerLeadVolumeWidget({
     return () => observer.disconnect();
   }, []);
 
-  // Initial load — standard cancelled-flag pattern (Strict Mode safe)
+  // Fetch whenever dateRange changes (global filter) or on mount
   useEffect(() => {
     let cancelled = false;
 
     if (isManagerRole) {
-      if (seed !== null) return; // seeded from RSC, no fetch needed
+      // Seeded from RSC (default week, no date filter)
+      if (seed !== null && !dateRangeProp) return;
       startTransition(async () => {
-        const result = await getLeadVolumeByPeriodAction(role, domain, "week");
+        const result = await getLeadVolumeByRangeAction(dateRange.from, dateRange.to);
         if (!cancelled && result.data) {
           setSingleData(result.data);
           setLoaded(true);
         }
       });
     } else {
-      startTransition(async () => {
-        const result = await getLeadVolumeByDomainsAction(
-          "week",
-          [...GIA_DOMAINS],
-        );
-        if (!cancelled && result.data) {
-          setMultiData(result.data);
-          setLoaded(true);
-        }
-      });
+      // Admin/founder: always fetch multi-domain for "all" tab
+      if (domainMode === "all") {
+        startTransition(async () => {
+          const result = await getLeadVolumeByDomainsAction(dateRange.from, dateRange.to, [...GIA_DOMAINS]);
+          if (!cancelled && result.data) {
+            setMultiData(result.data);
+            setLoaded(true);
+          }
+        });
+      } else {
+        startTransition(async () => {
+          const result = await getLeadVolumeForDomainAction(dateRange.from, dateRange.to, domainMode as AppDomain);
+          if (!cancelled && result.data) {
+            setSingleData(result.data);
+            setLoaded(true);
+          }
+        });
+      }
     }
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handlePeriodChange(p: VolumePeriod) {
-    setPeriod(p);
-    startTransition(async () => {
-      if (isManagerRole) {
-        const result = await getLeadVolumeByPeriodAction(role, domain, p);
-        if (result.data) setSingleData(result.data);
-      } else if (domainMode === "all") {
-        const result = await getLeadVolumeByDomainsAction(p, [...GIA_DOMAINS]);
-        if (result.data) setMultiData(result.data);
-      } else {
-        // Specific domain tab selected — use the domain-aware action
-        const result = await getLeadVolumeForDomainAction(
-          p,
-          domainMode as AppDomain,
-        );
-        if (result.data) setSingleData(result.data);
-      }
-    });
-  }
+  }, [dateRange.from, dateRange.to]);
 
   function handleDomainChange(mode: DomainMode) {
     setDomainMode(mode);
     startTransition(async () => {
       if (mode === "all") {
-        const result = await getLeadVolumeByDomainsAction(
-          period,
-          [...GIA_DOMAINS],
-        );
+        const result = await getLeadVolumeByDomainsAction(dateRange.from, dateRange.to, [...GIA_DOMAINS]);
         if (result.data) setMultiData(result.data);
       } else {
-        const result = await getLeadVolumeForDomainAction(
-          period,
-          mode as AppDomain,
-        );
+        const result = await getLeadVolumeForDomainAction(dateRange.from, dateRange.to, mode as AppDomain);
         if (result.data) setSingleData(result.data);
       }
     });
@@ -244,26 +216,13 @@ export function ManagerLeadVolumeWidget({
   const multiSeries = multiData?.series ?? [];
   const singleSeries = singleData?.series ?? [];
 
-  // Compute chart height dynamically from the size prop so the chart fills the
-  // available space as the user resizes the widget.
-  //
-  // Fixed chrome that never changes:
-  //   padding:    20px top + 20px bottom = 40px
-  //   header row: 36px  (title + period tab pill)
-  //   gap×2:      16px × 2 = 32px  (header→chart, chart→domain tabs or end)
-  //
-  // For admin/founder the domain tabs row adds:
-  //   domain tabs: 36px
-  //   extra gap:   16px
-  //
-  // We parse the pixel value from WIDGET_HEIGHT_BY_SIZE (e.g. "420px" → 420).
   const totalPx = parseInt(WIDGET_HEIGHT_BY_SIZE[size], 10);
-  const PADDING   = 40; // 20px × 2
+  const PADDING   = 40;
   const HEADER    = 36;
   const GAP       = 16;
-  const DOMAIN_ROW = isManagerRole ? 0 : 36 + GAP; // domain tabs + extra gap
+  const DOMAIN_ROW = isManagerRole ? 0 : 36 + GAP;
   const chartHeight = Math.max(
-    120, // never collapse below 120px regardless of size
+    120,
     totalPx - PADDING - HEADER - GAP * 2 - DOMAIN_ROW,
   );
 
@@ -310,26 +269,18 @@ export function ManagerLeadVolumeWidget({
           Lead Volume<span className="page-title-dot">.</span>
         </p>
 
-        {/* Period tabs — This Month | This Week (default) | Today */}
-        <Tabs
-          value={period}
-          onValueChange={(v) => handlePeriodChange(v as VolumePeriod)}
-          variant="pill"
-          indicatorLayoutId="lead-volume-period"
-          style={{
-            flexShrink: 0,
-            opacity: isPending ? 0.6 : 1,
-            pointerEvents: isPending ? "none" : undefined,
-          }}
-        >
-          <TabsList>
-            {PERIODS.map((p) => (
-              <TabsTrigger key={p.value} value={p.value}>
-                {p.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        {/* Pending indicator — dims while loading */}
+        {isPending && (
+          <span
+            style={{
+              fontSize:   'var(--text-2xs)',
+              color:      'var(--theme-text-tertiary)',
+              flexShrink: 0,
+            }}
+          >
+            Updating…
+          </span>
+        )}
       </div>
 
       {/* ── Chart — fills remaining space dynamically ── */}

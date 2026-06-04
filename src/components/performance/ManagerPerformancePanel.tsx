@@ -523,13 +523,7 @@ export function ManagerPerformancePanel({
           }}
         />
 
-        <div
-          style={{
-            padding:   'var(--space-1)',
-            maxHeight: '600px',
-            overflowY: 'auto',
-          }}
-        >
+        <div style={{ padding: 'var(--space-1)' }}>
           {groups.map((group) => (
             <div key={group.domain}>
               {/* Domain section label — only when showing all domains and more than one domain present */}

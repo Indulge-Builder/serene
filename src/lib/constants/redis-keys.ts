@@ -19,17 +19,19 @@ export const REDIS_KEYS = {
       `task:personal:page1:${userId}`,
   },
 
-  dashboardLeadStatus: (domain: string) =>
-    `dashboard:lead-status:${domain}`,
+  // Range-namespaced keys — include from:to so different date windows don't share a slot.
+  // When p_date_from/p_date_to are null (all-time), the segment is 'all'.
+  dashboardLeadStatus: (domain: string, from?: string | null, to?: string | null) =>
+    `dashboard:lead-status:${domain}:${from ?? 'all'}:${to ?? 'all'}`,
 
-  dashboardLeadVolume: (role: string, domain: string, period: string) =>
-    `dashboard:lead-volume:${role}:${domain}:${period}`,
+  dashboardLeadVolume: (role: string, domain: string, from?: string | null, to?: string | null) =>
+    `dashboard:lead-volume:${role}:${domain}:${from ?? 'all'}:${to ?? 'all'}`,
 
-  dashboardLeadVolumeMulti: (domains: string[], period: string) =>
-    `dashboard:lead-volume:multi:${[...domains].sort().join(',')}:${period}`,
+  dashboardLeadVolumeMulti: (domains: string[], from?: string | null, to?: string | null) =>
+    `dashboard:lead-volume:multi:${[...domains].sort().join(',')}:${from ?? 'all'}:${to ?? 'all'}`,
 
-  dashboardCampaigns: (domain: string) =>
-    `dashboard:campaigns:${domain}`,
+  dashboardCampaigns: (domain: string, from?: string | null, to?: string | null) =>
+    `dashboard:campaigns:${domain}:${from ?? 'all'}:${to ?? 'all'}`,
 
   dashboardAgentTasks: (userId: string) =>
     `dashboard:agent-tasks:${userId}`,

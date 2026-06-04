@@ -12,7 +12,7 @@ export function PerformanceRosterEmptyState() {
       transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
       style={{
         position:       'relative',
-        minHeight:      '600px',
+        minHeight:      'min(320px, 40vh)',
         borderRadius:   'var(--radius-lg)',
         border:         '1px solid var(--theme-paper-border)',
         background:     'var(--theme-paper-subtle)',

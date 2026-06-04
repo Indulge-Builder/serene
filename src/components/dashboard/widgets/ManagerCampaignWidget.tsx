@@ -17,6 +17,7 @@ import type { AppDomain, LeadStatus } from "@/lib/types/database";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import type { DashboardCampaignStatusMix } from "@/lib/types";
 import type { WidgetProps } from "../DashboardWidgetSlot";
+import type { DateRange } from "@/lib/utils/date-range";
 
 type DomainMode = "all" | GiaDomain;
 
@@ -51,7 +52,8 @@ export function ManagerCampaignWidget({
   domain,
   initialData,
   size = 'xl',
-}: WidgetProps) {
+  dateRange,
+}: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
   const seed = initialData?.campaigns ?? null;
   const [campaigns, setCampaigns] = useState<DashboardCampaignStatusMix[]>(
@@ -61,33 +63,30 @@ export function ManagerCampaignWidget({
   const [domainMode, setDomainMode] = useState<DomainMode>("all");
   const [isPending, startTransition] = useTransition();
 
-  // Only fetch on mount when no server-provided initialData
+  // Fetch on mount (when no seed) and whenever dateRange changes
   useEffect(() => {
-    if (seed !== null) return;
+    // Use seeded data only on first render when no date filter is active
+    if (seed !== null && !dateRange) { setLoaded(true); return; }
     let cancelled = false;
     startTransition(async () => {
-      const result = await getLeadsByCampaignAction(role, domain);
+      const result = await getLeadsByCampaignAction(role, domain, dateRange?.from, dateRange?.to);
       if (!cancelled && result.data) {
         setCampaigns(result.data);
         setLoaded(true);
       }
     });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dateRange?.from, dateRange?.to]);
 
   function handleDomainChange(mode: DomainMode) {
     setDomainMode(mode);
     startTransition(async () => {
       if (mode === "all") {
-        const result = await getLeadsByCampaignAction(role, domain);
+        const result = await getLeadsByCampaignAction(role, domain, dateRange?.from, dateRange?.to);
         if (result.data) setCampaigns(result.data);
       } else {
-        const result = await getLeadsByCampaignForDomainAction(
-          mode as AppDomain,
-        );
+        const result = await getLeadsByCampaignForDomainAction(mode as AppDomain, dateRange?.from, dateRange?.to);
         if (result.data) setCampaigns(result.data);
       }
     });
@@ -96,12 +95,10 @@ export function ManagerCampaignWidget({
   function handleRefresh() {
     startTransition(async () => {
       if (domainMode === "all") {
-        const result = await getLeadsByCampaignAction(role, domain);
+        const result = await getLeadsByCampaignAction(role, domain, dateRange?.from, dateRange?.to);
         if (result.data) setCampaigns(result.data);
       } else {
-        const result = await getLeadsByCampaignForDomainAction(
-          domainMode as AppDomain,
-        );
+        const result = await getLeadsByCampaignForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
         if (result.data) setCampaigns(result.data);
       }
     });
@@ -113,12 +110,10 @@ export function ManagerCampaignWidget({
       let cancelled = false;
       startTransition(async () => {
         if (domainMode === "all") {
-          const result = await getLeadsByCampaignAction(role, domain);
+          const result = await getLeadsByCampaignAction(role, domain, dateRange?.from, dateRange?.to);
           if (!cancelled && result.data) setCampaigns(result.data);
         } else {
-          const result = await getLeadsByCampaignForDomainAction(
-            domainMode as AppDomain,
-          );
+          const result = await getLeadsByCampaignForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
           if (!cancelled && result.data) setCampaigns(result.data);
         }
       });
@@ -126,7 +121,7 @@ export function ManagerCampaignWidget({
     }, 30_000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [domainMode, role, domain]);
+  }, [domainMode, role, domain, dateRange?.from, dateRange?.to]);
 
 
   // Keep the full campaign name in data — label wrapping is handled by the

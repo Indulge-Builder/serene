@@ -23,6 +23,7 @@ import type {
   DashboardAgentStatusBreakdown,
 } from "@/lib/types";
 import type { WidgetProps } from "../DashboardWidgetSlot";
+import type { DateRange } from "@/lib/utils/date-range";
 
 type DomainMode = "all" | GiaDomain;
 
@@ -139,7 +140,7 @@ function StackedBar({ mix, total }: { mix: Partial<Record<LeadStatus, number>>; 
   );
 }
 
-export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg' }: WidgetProps) {
+export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg', dateRange }: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
 
   // Admin/founder default to onboarding; managers see their own domain (no picker)
@@ -151,31 +152,30 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
   const [domainMode, setDomainMode] = useState<DomainMode>(initialMode);
   const [isPending, startTransition] = useTransition();
 
+  // Refetch when dateRange changes (global filter changed) or on initial mount
   useEffect(() => {
     let cancelled = false;
     if (isManagerRole) {
-      // Manager: use seeded data if available; else fetch
-      if (seed !== null) return;
+      // Manager: use seeded data on first render only when no date filter is active
+      if (seed !== null && !dateRange) { setLoaded(true); return; }
       startTransition(async () => {
-        const result = await getLeadStatusSummaryAction(role, domain);
+        const result = await getLeadStatusSummaryAction(role, domain, dateRange?.from, dateRange?.to);
         if (!cancelled && result.data) { setData(result.data); setLoaded(true); }
       });
     } else {
       // Admin/founder: page seeds initialData with onboarding-scoped pipeline data
-      // (p_initial_domain='onboarding' passed from dashboard/page.tsx).
-      // Use the seed directly when activeDomain matches the seeded domain — zero POST on initial paint.
-      if (seed !== null && domainMode === DEFAULT_GIA_DOMAIN) {
+      if (seed !== null && domainMode === DEFAULT_GIA_DOMAIN && !dateRange) {
         setLoaded(true);
         return;
       }
       startTransition(async () => {
-        const result = await getLeadStatusForDomainAction(DEFAULT_GIA_DOMAIN);
+        const result = await getLeadStatusForDomainAction(DEFAULT_GIA_DOMAIN, dateRange?.from, dateRange?.to);
         if (!cancelled && result.data) { setData(result.data); setLoaded(true); }
       });
     }
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dateRange?.from, dateRange?.to]);
 
   const totals   = data?.totals ?? [];
   const byAgent  = data?.byAgent ?? [];
@@ -186,10 +186,10 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
     setDomainMode(mode);
     startTransition(async () => {
       if (mode === "all") {
-        const result = await getLeadStatusSummaryAction(role, domain);
+        const result = await getLeadStatusSummaryAction(role, domain, dateRange?.from, dateRange?.to);
         if (result.data) setData(result.data);
       } else {
-        const result = await getLeadStatusForDomainAction(mode as AppDomain);
+        const result = await getLeadStatusForDomainAction(mode as AppDomain, dateRange?.from, dateRange?.to);
         if (result.data) setData(result.data);
       }
     });
@@ -198,10 +198,10 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
   function handleRefresh() {
     startTransition(async () => {
       if (domainMode === "all") {
-        const result = await getLeadStatusSummaryAction(role, domain);
+        const result = await getLeadStatusSummaryAction(role, domain, dateRange?.from, dateRange?.to);
         if (result.data) setData(result.data);
       } else {
-        const result = await getLeadStatusForDomainAction(domainMode as AppDomain);
+        const result = await getLeadStatusForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
         if (result.data) setData(result.data);
       }
     });
@@ -213,10 +213,10 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
       let cancelled = false;
       startTransition(async () => {
         if (domainMode === "all") {
-          const result = await getLeadStatusSummaryAction(role, domain);
+          const result = await getLeadStatusSummaryAction(role, domain, dateRange?.from, dateRange?.to);
           if (!cancelled && result.data) setData(result.data);
         } else {
-          const result = await getLeadStatusForDomainAction(domainMode as AppDomain);
+          const result = await getLeadStatusForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
           if (!cancelled && result.data) setData(result.data);
         }
       });
@@ -224,7 +224,7 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
     }, 30_000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [domainMode, role, domain]);
+  }, [domainMode, role, domain, dateRange?.from, dateRange?.to]);
 
   return (
     <div

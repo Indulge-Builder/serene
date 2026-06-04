@@ -85,9 +85,11 @@ Founder/admin **do not** use `?domain=` or a filter-bar domain control. Domain s
 **Never read `?domain=` from URL params.** Manager path uses `profile.domain` only.
 Founder/admin path fetches the full cross-domain roster server-side; domain narrowing is the roster popover only.
 
-## Agent self-view layout (2026-06-01)
+## Page shell layout (2026-06-04)
 
-- Page shell: `maxWidth: 1280px` on `<main>` (`performance/page.tsx`).
+All role branches use the canonical list-page shell: `<main className="flex-1 min-w-0 p-8">` inside the dashboard paper scroll container (`layout.tsx` → `overflowY: auto`). **Never** add nested scroll regions with fixed `maxHeight` on the manager roster or a page-level `maxWidth` cap — content scrolls in the paper like `/leads` and `/tasks`.
+
+## Agent self-view layout (2026-06-01)
 - **CoreFourGrid:** single row of 4 KPI cards (Leads Won, Conversion Rate, Avg Response Time, In Discussion) with Lucide header icons, inline period delta, Recharts sparkline (`AreaChart` + `useChartTokens`), team benchmark line when `benchmarks` non-null.
 - **CallOutcomeBar:** donut chart (Recharts `PieChart`) replacing the legacy horizontal bar for agent view.
 - **EffortGrid:** unchanged 4-col compact cards below KPI row.
@@ -139,7 +141,7 @@ Exported functions:
 
 ## PerformanceRosterEmptyState
 
-`src/components/performance/PerformanceRosterEmptyState.tsx` — `'use client'`; right panel when `selectedId === null` on the Agents tab (manager + founder). Accent radial wash on `paper-subtle`, Playfair italic heading, sans secondary line. `minHeight: 600px` aligned with roster column.
+`src/components/performance/PerformanceRosterEmptyState.tsx` — `'use client'`; right panel when `selectedId === null` on the Agents tab (manager + founder). Accent radial wash on `paper-subtle`, Playfair italic heading, sans secondary line. `minHeight: min(320px, 40vh)` — no fixed 600px column lock.
 
 `DomainHealthGrid` (`src/components/performance/DomainHealthGrid.tsx`) is retained but not mounted on the Agents tab — domain aggregates live on the founder **Domains** tab via `DomainOverviewPanel`.
 

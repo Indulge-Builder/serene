@@ -12,6 +12,7 @@ import {
 import { WidgetSkeleton } from "./WidgetSkeleton";
 import type { UserRole, AppDomain } from "@/lib/types/database";
 import type { DashboardSummary } from "@/lib/types";
+import type { DateRange } from "@/lib/utils/date-range";
 
 // Static dynamic import map — never use require() from a string.
 // Each widget is code-split independently. Roles that cannot see a widget
@@ -55,6 +56,12 @@ export type WidgetProps = {
   initialData?: DashboardSummary;
   /** Current size tier — widgets use this for their container height. */
   size?: WidgetSize;
+  /**
+   * Active date range from the global dashboard date filter.
+   * Pipeline, Volume, and Campaigns widgets use this to scope their data.
+   * Agent Tasks and Recent Activity always ignore it (they are "live / now").
+   */
+  dateRange?: DateRange;
 };
 
 type DashboardWidgetSlotProps = WidgetProps & {
@@ -290,6 +297,7 @@ export function DashboardWidgetSlot({
   role,
   domain,
   initialData,
+  dateRange,
 }: DashboardWidgetSlotProps) {
   const definition = WIDGET_MAP[widgetId];
   const Component = WIDGET_COMPONENTS[widgetId];
@@ -363,6 +371,7 @@ export function DashboardWidgetSlot({
             domain={domain}
             initialData={initialData}
             size={size}
+            dateRange={dateRange}
           />
         </MinSkeletonBoundary>
       </Suspense>

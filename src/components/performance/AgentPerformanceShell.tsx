@@ -440,7 +440,7 @@ export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props)
     <div>
       {/* ── Filter bar ──────────────────────────────────────────────── */}
       <div
-        className="px-5 py-4 mb-6 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"
+        className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"
         style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap' }}
       >
         <PeriodSelector

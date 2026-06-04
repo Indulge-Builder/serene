@@ -22,6 +22,8 @@ import { GripVertical, LayoutDashboard, RotateCcw } from 'lucide-react';
 import { useDashboardLayout } from '@/hooks/useDashboardLayout';
 import { WIDGET_MAP, type WidgetSize, type WidgetColSpan } from '@/lib/constants/dashboard-widgets';
 import { DashboardWidgetSlot, type WidgetProps } from './DashboardWidgetSlot';
+import { DashboardDateFilter } from './DashboardDateFilter';
+import type { DatePreset, DateRange } from '@/lib/utils/date-range';
 
 /*
  * Bento grid — 12 equal columns.
@@ -76,6 +78,7 @@ function SortableWidget({
   role,
   domain,
   initialData,
+  dateRange,
 }: SortableWidgetProps) {
   const {
     attributes,
@@ -133,14 +136,20 @@ function SortableWidget({
         role={role}
         domain={domain}
         initialData={initialData}
+        dateRange={dateRange}
       />
     </div>
   );
 }
 
 type DashboardCanvasProps = WidgetProps & {
-  greeting:  string;
-  firstName: string;
+  greeting:     string;
+  firstName:    string;
+  activePreset: DatePreset;
+  fromParam:    string | null;
+  toParam:      string | null;
+  /** Resolved DateRange (from the RSC, computed from preset/params). */
+  dateRange:    DateRange;
 };
 
 export function DashboardCanvas({
@@ -150,6 +159,10 @@ export function DashboardCanvas({
   initialData,
   greeting,
   firstName,
+  activePreset,
+  fromParam,
+  toParam,
+  dateRange,
 }: DashboardCanvasProps) {
   const { layout, removeWidget, resizePlacement, reorderWidgets, resetToDefaults } =
     useDashboardLayout(userId, role);
@@ -186,7 +199,7 @@ export function DashboardCanvas({
       <style>{GRID_CSS}</style>
 
       {/* Page header */}
-      <div className="flex items-center justify-between gap-4 mb-6">
+      <div className="flex items-center justify-between gap-4 mb-4">
         <h1 className="type-page-title m-0">
           {greeting},{' '}
           <span style={{ color: 'var(--theme-accent)' }}>{firstName}</span>
@@ -194,6 +207,15 @@ export function DashboardCanvas({
         </h1>
 
         <div className="flex shrink-0 items-center gap-2">
+          {/* Global date filter — only shown to manager/admin/founder roles */}
+          {(role === 'manager' || role === 'admin' || role === 'founder') && (
+            <DashboardDateFilter
+              activePreset={activePreset}
+              fromParam={fromParam}
+              toParam={toParam}
+            />
+          )}
+
           {editMode && (
             <button
               type="button"
@@ -260,6 +282,7 @@ export function DashboardCanvas({
                 role={role}
                 domain={domain}
                 initialData={initialData}
+                dateRange={dateRange}
               />
             ))}
           </div>

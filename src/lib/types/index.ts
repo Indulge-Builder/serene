@@ -1,4 +1,5 @@
 export type { Profile, ProfileAuditLog, AgentRoutingConfig, UserRole, AppDomain, Database, CallOutcome } from "./database";
+export type { DateRange, DatePreset } from "@/lib/utils/date-range";
 
 /** Shared action response shape — Rule 10 */
 export type ActionResult<T = null> = {

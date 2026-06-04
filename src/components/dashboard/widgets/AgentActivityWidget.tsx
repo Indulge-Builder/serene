@@ -322,7 +322,7 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
       }}
     >
       {/* Header */}
-      <div style={{ textAlign: "center", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <p
           style={{
             fontSize: "var(--text-md)",
@@ -342,6 +342,22 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
             </>
           )}
         </p>
+        <span
+          title="Always shows live data — not affected by date filter"
+          style={{
+            fontSize:     "var(--text-2xs)",
+            fontWeight:   "var(--weight-medium)",
+            color:        "var(--color-success-text)",
+            background:   "var(--color-success-light)",
+            border:       "1px solid var(--color-success-text)",
+            borderRadius: "var(--radius-full)",
+            padding:      "1px 6px",
+            letterSpacing: "0.03em",
+            flexShrink:   0,
+          }}
+        >
+          Live
+        </span>
       </div>
 
       {/* Ticker viewport — flex-fills remaining space, overflow hidden, fades at edges */}

@@ -7,18 +7,38 @@ import {
   getAgentRecentActivity,
   getLeadStatusSummary,
   getLeadsByCampaign,
-  getLeadVolumeByPeriod,
+  getLeadVolumeByRange,
   getLeadVolumeByDomains,
+  getLeadVolumeForDomain,
   type AgentActivity,
   type LeadStatusSummary,
   type CampaignStatusMix,
   type LeadVolumeSummary,
   type MultiDomainVolumeSummary,
-  type VolumePeriod,
 } from '@/lib/services/dashboard-service';
 import type { DashboardAgentTask } from '@/lib/types';
 import type { AppDomain } from '@/lib/types/database';
+import type { DateRange } from '@/lib/utils/date-range';
+import { resolvePresetToRange } from '@/lib/utils/date-range';
 import { GIA_DOMAIN_ENUM, GIA_DOMAINS } from '@/lib/constants/domains';
+
+// ─────────────────────────────────────────────
+// Shared date-range validation schema
+// Accepts from/to as ISO strings; validates ordering; rejects inverted ranges.
+// ─────────────────────────────────────────────
+const DateRangeSchema = z.object({
+  from: z.string().datetime({ message: 'Invalid from date.' }),
+  to:   z.string().datetime({ message: 'Invalid to date.'   }),
+}).refine(
+  ({ from, to }) => new Date(from) < new Date(to),
+  { message: 'Date range is invalid: from must be before to.' },
+);
+
+function parseDateRange(from: string | null | undefined, to: string | null | undefined): DateRange | undefined {
+  if (!from || !to) return undefined;
+  const parsed = DateRangeSchema.safeParse({ from, to });
+  return parsed.success ? parsed.data : undefined;
+}
 
 // ─────────────────────────────────────────────
 // Agent Tasks
@@ -29,7 +49,6 @@ export async function getAgentTasksSummaryAction(
   const profile = await getCurrentProfile();
   if (!profile) return { data: null, error: 'Not authenticated.' };
 
-  // Always use verified profile id — never trust client-supplied agentId
   const data = await getAgentTasksSummary(profile.id);
   return { data, error: null };
 }
@@ -43,7 +62,6 @@ export async function getAgentRecentActivityAction(
   const profile = await getCurrentProfile();
   if (!profile) return { data: null, error: 'Not authenticated.' };
 
-  // Always use verified profile id/role/domain — never trust client-supplied agentId
   const data = await getAgentRecentActivity(profile.id, profile.role, profile.domain);
   return { data, error: null };
 }
@@ -51,10 +69,24 @@ export async function getAgentRecentActivityAction(
 // ─────────────────────────────────────────────
 // Lead Status Summary (manager widget)
 // ─────────────────────────────────────────────
+const LeadStatusInputSchema = z.object({
+  from: z.string().datetime().nullable().optional(),
+  to:   z.string().datetime().nullable().optional(),
+}).superRefine((val, ctx) => {
+  if (val.from && val.to && new Date(val.from) >= new Date(val.to)) {
+    ctx.addIssue({ code: 'custom', message: 'from must be before to.' });
+  }
+});
+
 export async function getLeadStatusSummaryAction(
-  _role: string,
+  _role:   string,
   _domain: string,
+  from?:   string | null,
+  to?:     string | null,
 ): Promise<{ data: LeadStatusSummary | null; error: string | null }> {
+  const parsed = LeadStatusInputSchema.safeParse({ from, to });
+  if (!parsed.success) return { data: null, error: 'Invalid date range.' };
+
   const profile = await getCurrentProfile();
   if (!profile) return { data: null, error: 'Not authenticated.' };
 
@@ -62,7 +94,8 @@ export async function getLeadStatusSummaryAction(
     return { data: null, error: 'Unauthorized.' };
   }
 
-  const data = await getLeadStatusSummary(profile.role, profile.domain as AppDomain);
+  const dateRange = parseDateRange(from, to);
+  const data = await getLeadStatusSummary(profile.role, profile.domain as AppDomain, undefined, dateRange);
   return { data, error: null };
 }
 
@@ -70,9 +103,14 @@ export async function getLeadStatusSummaryAction(
 // Campaign breakdown (manager widget)
 // ─────────────────────────────────────────────
 export async function getLeadsByCampaignAction(
-  _role: string,
+  _role:   string,
   _domain: string,
+  from?:   string | null,
+  to?:     string | null,
 ): Promise<{ data: CampaignStatusMix[] | null; error: string | null }> {
+  const parsed = LeadStatusInputSchema.safeParse({ from, to });
+  if (!parsed.success) return { data: null, error: 'Invalid date range.' };
+
   const profile = await getCurrentProfile();
   if (!profile) return { data: null, error: 'Not authenticated.' };
 
@@ -80,7 +118,8 @@ export async function getLeadsByCampaignAction(
     return { data: null, error: 'Unauthorized.' };
   }
 
-  const data = await getLeadsByCampaign(profile.role, profile.domain as AppDomain);
+  const dateRange = parseDateRange(from, to);
+  const data = await getLeadsByCampaign(profile.role, profile.domain as AppDomain, undefined, dateRange);
   return { data, error: null };
 }
 
@@ -89,13 +128,21 @@ export async function getLeadsByCampaignAction(
 // ─────────────────────────────────────────────
 const LeadStatusDomainSchema = z.object({
   domain: z.enum(GIA_DOMAIN_ENUM),
+  from:   z.string().datetime().nullable().optional(),
+  to:     z.string().datetime().nullable().optional(),
+}).superRefine((val, ctx) => {
+  if (val.from && val.to && new Date(val.from) >= new Date(val.to)) {
+    ctx.addIssue({ code: 'custom', message: 'from must be before to.' });
+  }
 });
 
 export async function getLeadStatusForDomainAction(
   targetDomain: AppDomain,
+  from?:        string | null,
+  to?:          string | null,
 ): Promise<{ data: LeadStatusSummary | null; error: string | null }> {
-  const parsed = LeadStatusDomainSchema.safeParse({ domain: targetDomain });
-  if (!parsed.success) return { data: null, error: 'Invalid domain.' };
+  const parsed = LeadStatusDomainSchema.safeParse({ domain: targetDomain, from, to });
+  if (!parsed.success) return { data: null, error: 'Invalid domain or date range.' };
 
   const profile = await getCurrentProfile();
   if (!profile) return { data: null, error: 'Not authenticated.' };
@@ -104,12 +151,12 @@ export async function getLeadStatusForDomainAction(
     return { data: null, error: 'Unauthorized.' };
   }
 
-  // Managers are locked to their own domain regardless of targetDomain
   const effectiveDomain = profile.role === 'manager'
     ? (profile.domain as AppDomain)
     : parsed.data.domain;
 
-  const data = await getLeadStatusSummary(profile.role, profile.domain as AppDomain, effectiveDomain);
+  const dateRange = parseDateRange(from, to);
+  const data = await getLeadStatusSummary(profile.role, profile.domain as AppDomain, effectiveDomain, dateRange);
   return { data, error: null };
 }
 
@@ -118,13 +165,21 @@ export async function getLeadStatusForDomainAction(
 // ─────────────────────────────────────────────
 const CampaignDomainSchema = z.object({
   domain: z.enum(GIA_DOMAIN_ENUM),
+  from:   z.string().datetime().nullable().optional(),
+  to:     z.string().datetime().nullable().optional(),
+}).superRefine((val, ctx) => {
+  if (val.from && val.to && new Date(val.from) >= new Date(val.to)) {
+    ctx.addIssue({ code: 'custom', message: 'from must be before to.' });
+  }
 });
 
 export async function getLeadsByCampaignForDomainAction(
   targetDomain: AppDomain,
+  from?:        string | null,
+  to?:          string | null,
 ): Promise<{ data: CampaignStatusMix[] | null; error: string | null }> {
-  const parsed = CampaignDomainSchema.safeParse({ domain: targetDomain });
-  if (!parsed.success) return { data: null, error: 'Invalid domain.' };
+  const parsed = CampaignDomainSchema.safeParse({ domain: targetDomain, from, to });
+  if (!parsed.success) return { data: null, error: 'Invalid domain or date range.' };
 
   const profile = await getCurrentProfile();
   if (!profile) return { data: null, error: 'Not authenticated.' };
@@ -133,31 +188,32 @@ export async function getLeadsByCampaignForDomainAction(
     return { data: null, error: 'Unauthorized.' };
   }
 
-  // Managers are locked to their own domain regardless of targetDomain
   const effectiveDomain = profile.role === 'manager'
     ? (profile.domain as AppDomain)
     : parsed.data.domain;
 
-  const data = await getLeadsByCampaign(profile.role, profile.domain as AppDomain, effectiveDomain);
+  const dateRange = parseDateRange(from, to);
+  const data = await getLeadsByCampaign(profile.role, profile.domain as AppDomain, effectiveDomain, dateRange);
   return { data, error: null };
 }
 
 // ─────────────────────────────────────────────
-// Lead Volume (manager widget — period toggle)
+// Lead Volume (manager widget) — date range
 // ─────────────────────────────────────────────
-const VolumePeriodSchema = z.object({
-  period: z.enum(['today', 'week', 'month', 'quarter']),
-});
+const VolumeRangeSchema = z.object({
+  from: z.string().datetime({ message: 'Invalid from date.' }),
+  to:   z.string().datetime({ message: 'Invalid to date.'   }),
+}).refine(
+  ({ from, to }) => new Date(from) < new Date(to),
+  { message: 'from must be before to.' },
+);
 
-export async function getLeadVolumeByPeriodAction(
-  _role: string,
-  _domain: string,
-  period: VolumePeriod,
+export async function getLeadVolumeByRangeAction(
+  from: string,
+  to:   string,
 ): Promise<{ data: LeadVolumeSummary | null; error: string | null }> {
-  const parsed = VolumePeriodSchema.safeParse({ period });
-  if (!parsed.success) {
-    return { data: null, error: 'Invalid period.' };
-  }
+  const parsed = VolumeRangeSchema.safeParse({ from, to });
+  if (!parsed.success) return { data: null, error: 'Invalid date range.' };
 
   const profile = await getCurrentProfile();
   if (!profile) return { data: null, error: 'Not authenticated.' };
@@ -166,10 +222,10 @@ export async function getLeadVolumeByPeriodAction(
     return { data: null, error: 'Unauthorized.' };
   }
 
-  const data = await getLeadVolumeByPeriod(
+  const data = await getLeadVolumeByRange(
     profile.role,
     profile.domain as AppDomain,
-    parsed.data.period,
+    parsed.data,
   );
   return { data, error: null };
 }
@@ -178,15 +234,17 @@ export async function getLeadVolumeByPeriodAction(
 // Multi-domain Lead Volume (admin/founder domain-picker)
 // ─────────────────────────────────────────────
 const DomainsVolumeSchema = z.object({
-  period:  z.enum(['today', 'week', 'month', 'quarter']),
+  from:    z.string().datetime(),
+  to:      z.string().datetime(),
   domains: z.array(z.enum(GIA_DOMAIN_ENUM)).min(1).max(GIA_DOMAINS.length),
-});
+}).refine(({ from, to }) => new Date(from) < new Date(to), { message: 'from must be before to.' });
 
 export async function getLeadVolumeByDomainsAction(
-  period: VolumePeriod,
+  from:    string,
+  to:      string,
   domains: AppDomain[],
 ): Promise<{ data: MultiDomainVolumeSummary | null; error: string | null }> {
-  const parsed = DomainsVolumeSchema.safeParse({ period, domains });
+  const parsed = DomainsVolumeSchema.safeParse({ from, to, domains });
   if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
 
   const profile = await getCurrentProfile();
@@ -196,23 +254,28 @@ export async function getLeadVolumeByDomainsAction(
     return { data: null, error: 'Unauthorized.' };
   }
 
-  const data = await getLeadVolumeByDomains(parsed.data.domains as AppDomain[], parsed.data.period);
-return { data, error: null };
+  const data = await getLeadVolumeByDomains(
+    parsed.data.domains as AppDomain[],
+    { from: parsed.data.from, to: parsed.data.to },
+  );
+  return { data, error: null };
 }
 
 // ─────────────────────────────────────────────
 // Single-domain Lead Volume for a specific domain (admin/founder domain tab drill-down)
 // ─────────────────────────────────────────────
 const SingleDomainVolumeSchema = z.object({
-  period: z.enum(['today', 'week', 'month', 'quarter']),
+  from:   z.string().datetime(),
+  to:     z.string().datetime(),
   domain: z.enum(GIA_DOMAIN_ENUM),
-});
+}).refine(({ from, to }) => new Date(from) < new Date(to), { message: 'from must be before to.' });
 
 export async function getLeadVolumeForDomainAction(
-  period: VolumePeriod,
+  from:         string,
+  to:           string,
   targetDomain: AppDomain,
 ): Promise<{ data: LeadVolumeSummary | null; error: string | null }> {
-  const parsed = SingleDomainVolumeSchema.safeParse({ period, domain: targetDomain });
+  const parsed = SingleDomainVolumeSchema.safeParse({ from, to, domain: targetDomain });
   if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
 
   const profile = await getCurrentProfile();
@@ -222,12 +285,14 @@ export async function getLeadVolumeForDomainAction(
     return { data: null, error: 'Unauthorized.' };
   }
 
-  // Managers are locked to their own domain regardless of targetDomain
   const effectiveDomain = profile.role === 'manager'
     ? (profile.domain as AppDomain)
     : parsed.data.domain;
 
-  // Pass 'manager' role so getLeadVolumeByPeriod always applies the domain filter
-  const data = await getLeadVolumeByPeriod('manager', effectiveDomain, parsed.data.period);
+  const data = await getLeadVolumeForDomain(effectiveDomain, { from: parsed.data.from, to: parsed.data.to });
   return { data, error: null };
 }
+
+// Re-export resolvePresetToRange so client components can call it for default range labels
+// without importing from lib/utils directly (which is fine for client — no server deps there).
+export { resolvePresetToRange };

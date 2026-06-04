@@ -256,17 +256,35 @@ export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetPro
             justifyContent: "space-between",
           }}
         >
-          <p
-            style={{
-              fontSize: "var(--text-md)",
-              fontFamily: "var(--font-serif)",
-              fontStyle: "italic",
-              color: "var(--theme-text-primary)",
-              margin: 0,
-            }}
-          >
-            My Tasks<span className="page-title-dot">.</span>
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+            <p
+              style={{
+                fontSize: "var(--text-md)",
+                fontFamily: "var(--font-serif)",
+                fontStyle: "italic",
+                color: "var(--theme-text-primary)",
+                margin: 0,
+              }}
+            >
+              My Tasks<span className="page-title-dot">.</span>
+            </p>
+            <span
+              title="Always shows live data — not affected by date filter"
+              style={{
+                fontSize:     "var(--text-2xs)",
+                fontWeight:   "var(--weight-medium)",
+                color:        "var(--color-success-text)",
+                background:   "var(--color-success-light)",
+                border:       "1px solid var(--color-success-text)",
+                borderRadius: "var(--radius-full)",
+                padding:      "1px 6px",
+                letterSpacing: "0.03em",
+                flexShrink:   0,
+              }}
+            >
+              Live
+            </span>
+          </div>
           <Button
             variant="ghost"
             onClick={handleRefresh}
