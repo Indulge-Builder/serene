@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useCallback, useState, useTransition, useEffect } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -16,41 +16,29 @@ import {
   getLeadVolumeByDomainsAction,
   getLeadVolumeForDomainAction,
 } from "@/lib/actions/dashboard";
-import { formatCompact, formatCount } from "@/lib/utils/numbers";
+import { formatCompact } from "@/lib/utils/numbers";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/TabSelector";
 import { useChartTokens, resolveColorMap } from "@/components/ui/charts/useChartTokens";
 import type {
   LeadVolumeSummary,
   MultiDomainVolumeSummary,
 } from "@/lib/services/dashboard-service";
+import type {
+  DashboardLeadVolumeSummary,
+  DashboardMultiDomainVolumeSummary,
+} from "@/lib/types";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import { DOMAIN_LINE_COLORS } from "@/lib/constants/domain-colors";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { AppDomain } from "@/lib/types/database";
-import { DOMAIN_LABELS, GIA_DOMAINS } from "@/lib/constants/domains";
+import { DEFAULT_GIA_DOMAIN, DOMAIN_LABELS, GIA_DOMAINS } from "@/lib/constants/domains";
 import type { GiaDomain } from '@/lib/constants/domains';
 import type { DateRange } from "@/lib/utils/date-range";
 import { resolvePresetToRange } from "@/lib/utils/date-range";
+import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
 
 type DomainMode = "all" | GiaDomain;
 
-function grandTotalFromMulti(multi: MultiDomainVolumeSummary): number {
-  return GIA_DOMAINS.reduce((sum, d) => sum + (multi.totals[d] ?? 0), 0);
-}
-
-function domainTabCount(
-  mode: DomainMode,
-  activeMode: DomainMode,
-  multi: MultiDomainVolumeSummary | null,
-  single: LeadVolumeSummary | null,
-): number | undefined {
-  if (mode === "all") {
-    if (multi) return grandTotalFromMulti(multi);
-    return activeMode !== "all" ? single?.total : undefined;
-  }
-  if (activeMode === mode && single) return single.total;
-  return multi?.totals[mode as AppDomain];
-}
 
 function MultiLineTooltip({
   active,
@@ -133,18 +121,47 @@ export function ManagerLeadVolumeWidget({
 }: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
 
-  // Resolve dateRange: use prop if provided, else default to "week"
   const dateRange: DateRange = dateRangeProp ?? resolvePresetToRange('week');
 
-  // For managers: seed from RSC initial data only when no date filter is active (default week).
-  const seed = isManagerRole && !dateRangeProp ? (initialData?.lead_volume ?? null) : null;
+  const managerSeed = isManagerRole
+    ? (initialData?.lead_volume as DashboardLeadVolumeSummary | null) ?? null
+    : null;
+  const multiSeed = !isManagerRole
+    ? (initialData?.lead_volume_multi as DashboardMultiDomainVolumeSummary | null) ?? null
+    : null;
 
   const [domainMode, setDomainMode] = useState<DomainMode>("all");
-  const [singleData, setSingleData] = useState<LeadVolumeSummary | null>(seed);
-  const [multiData, setMultiData] = useState<MultiDomainVolumeSummary | null>(null);
-  const [loaded, setLoaded] = useState(seed !== null);
+  const [singleData, setSingleData] = useState<LeadVolumeSummary | null>(managerSeed);
+  const [multiData, setMultiData] = useState<MultiDomainVolumeSummary | null>(multiSeed);
+  const [loaded, setLoaded] = useState(managerSeed !== null || multiSeed !== null);
   const [isPending, startTransition] = useTransition();
   const { series: chartColors } = useChartTokens();
+
+  const applyManagerVolume = useCallback((next: LeadVolumeSummary) => {
+    setSingleData(next);
+    setMultiData(null);
+    setLoaded(true);
+  }, []);
+
+  const applyMultiVolume = useCallback((next: MultiDomainVolumeSummary) => {
+    setMultiData(next);
+    setSingleData(null);
+    setLoaded(true);
+  }, []);
+
+  useDashboardCohortSync(
+    managerSeed,
+    dateRange,
+    isManagerRole,
+    applyManagerVolume,
+  );
+
+  useDashboardCohortSync(
+    multiSeed,
+    dateRange,
+    !isManagerRole && domainMode === "all",
+    applyMultiVolume,
+  );
 
   const [resolvedDomainColors, setResolvedDomainColors] = useState<Record<string, string>>(
     () => resolveColorMap(DOMAIN_LINE_COLORS),
@@ -159,54 +176,40 @@ export function ManagerLeadVolumeWidget({
     return () => observer.disconnect();
   }, []);
 
-  // Fetch whenever dateRange changes (global filter) or on mount
+  // Single-domain tab (admin/founder) — not seeded by the page RSC.
   useEffect(() => {
+    if (isManagerRole || domainMode === "all") return;
     let cancelled = false;
-
-    if (isManagerRole) {
-      // Seeded from RSC (default week, no date filter)
-      if (seed !== null && !dateRangeProp) return;
-      startTransition(async () => {
-        const result = await getLeadVolumeByRangeAction(dateRange.from, dateRange.to);
-        if (!cancelled && result.data) {
-          setSingleData(result.data);
-          setLoaded(true);
-        }
-      });
-    } else {
-      // Admin/founder: always fetch multi-domain for "all" tab
-      if (domainMode === "all") {
-        startTransition(async () => {
-          const result = await getLeadVolumeByDomainsAction(dateRange.from, dateRange.to, [...GIA_DOMAINS]);
-          if (!cancelled && result.data) {
-            setMultiData(result.data);
-            setLoaded(true);
-          }
-        });
-      } else {
-        startTransition(async () => {
-          const result = await getLeadVolumeForDomainAction(dateRange.from, dateRange.to, domainMode as AppDomain);
-          if (!cancelled && result.data) {
-            setSingleData(result.data);
-            setLoaded(true);
-          }
-        });
+    startTransition(async () => {
+      const result = await getLeadVolumeForDomainAction(
+        dateRange.from,
+        dateRange.to,
+        domainMode as AppDomain,
+      );
+      if (!cancelled && result.data) {
+        setSingleData(result.data);
+        setMultiData(null);
+        setLoaded(true);
       }
-    }
-
+    });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange.from, dateRange.to]);
+  }, [dateRange.from, dateRange.to, domainMode, isManagerRole]);
 
   function handleDomainChange(mode: DomainMode) {
     setDomainMode(mode);
     startTransition(async () => {
       if (mode === "all") {
         const result = await getLeadVolumeByDomainsAction(dateRange.from, dateRange.to, [...GIA_DOMAINS]);
-        if (result.data) setMultiData(result.data);
+        if (result.data) {
+          setMultiData(result.data);
+          setSingleData(null);
+        }
       } else {
         const result = await getLeadVolumeForDomainAction(dateRange.from, dateRange.to, mode as AppDomain);
-        if (result.data) setSingleData(result.data);
+        if (result.data) {
+          setSingleData(result.data);
+          setMultiData(null);
+        }
       }
     });
   }
@@ -252,24 +255,37 @@ export function ManagerLeadVolumeWidget({
           overflow: "hidden",
         }}
       >
-        <p
-          style={{
-            fontSize: "var(--text-md)",
-            fontFamily: "var(--font-serif)",
-            fontStyle: "italic",
-            color: "var(--theme-text-primary)",
-            margin: 0,
-            lineHeight: 1.2,
-            minWidth: 0,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Lead Volume<span className="page-title-dot">.</span>
-        </p>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p
+            style={{
+              fontSize: "var(--text-md)",
+              fontFamily: "var(--font-serif)",
+              fontStyle: "italic",
+              color: "var(--theme-text-primary)",
+              margin: 0,
+              lineHeight: 1.2,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Lead Volume<span className="page-title-dot">.</span>
+          </p>
+          {loaded && (
+            <p
+              style={{
+                margin: "2px 0 0",
+                fontSize: "var(--text-2xs)",
+                color: "var(--theme-text-tertiary)",
+              }}
+            >
+              {isMultiMode
+                ? `${Object.values(multiData?.totals ?? {}).reduce((s, n) => s + n, 0).toLocaleString()} leads in range`
+                : `${(singleData?.total ?? 0).toLocaleString()} leads in range`}
+            </p>
+          )}
+        </div>
 
-        {/* Pending indicator — dims while loading */}
         {isPending && (
           <span
             style={{
@@ -440,58 +456,15 @@ export function ManagerLeadVolumeWidget({
           }}
         >
           <TabsList style={{ width: "100%" }}>
-            {(["all", ...GIA_DOMAINS] as DomainMode[]).map((mode) => {
-              const isActive = domainMode === mode;
-              const count = loaded
-                ? domainTabCount(mode, domainMode, multiData, singleData)
-                : undefined;
-
-              return (
-                <TabsTrigger
-                  key={mode}
-                  value={mode}
-                  style={{
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: "2px",
-                    padding: "4px 8px",
-                    minWidth: 0,
-                    flex: 1,
-                  }}
-                >
-                  {count !== undefined && (
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: "var(--text-sm)",
-                        fontWeight: "var(--weight-semibold)",
-                        fontVariantNumeric: "tabular-nums",
-                        color: isActive
-                          ? "var(--theme-text-primary)"
-                          : "var(--theme-text-secondary)",
-                        lineHeight: 1,
-                      }}
-                    >
-                      {formatCount(count)}
-                    </span>
-                  )}
-                  <span
-                    style={{
-                      fontSize: "var(--text-2xs)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      maxWidth: "100%",
-                      color: isActive
-                        ? "var(--theme-text-primary)"
-                        : "var(--theme-text-tertiary)",
-                    }}
-                  >
-                    {mode === "all" ? "All" : DOMAIN_LABELS[mode]}
-                  </span>
-                </TabsTrigger>
-              );
-            })}
+            {(["all", ...GIA_DOMAINS] as DomainMode[]).map((mode) => (
+              <TabsTrigger
+                key={mode}
+                value={mode}
+                style={{ flex: 1, minWidth: 0, padding: "6px 4px", fontSize: "var(--text-2xs)" }}
+              >
+                {mode === "all" ? "All" : DOMAIN_LABELS[mode]}
+              </TabsTrigger>
+            ))}
           </TabsList>
         </Tabs>
       )}

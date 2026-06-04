@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { BarChart } from "@/components/ui/charts/BarChart";
@@ -11,13 +11,14 @@ import {
 } from "@/lib/actions/dashboard";
 import { formatCompact } from "@/lib/utils/numbers";
 import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
-import { DOMAIN_LABELS, GIA_DOMAINS, type GiaDomain } from "@/lib/constants/domains";
+import { DEFAULT_GIA_DOMAIN, DOMAIN_LABELS, GIA_DOMAINS, type GiaDomain } from "@/lib/constants/domains";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/TabSelector";
 import type { AppDomain, LeadStatus } from "@/lib/types/database";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import type { DashboardCampaignStatusMix } from "@/lib/types";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { DateRange } from "@/lib/utils/date-range";
+import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
 
 type DomainMode = "all" | GiaDomain;
 
@@ -55,29 +56,39 @@ export function ManagerCampaignWidget({
   dateRange,
 }: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
-  const seed = initialData?.campaigns ?? null;
+  const rscCampaigns = initialData?.campaigns ?? null;
   const [campaigns, setCampaigns] = useState<DashboardCampaignStatusMix[]>(
-    seed ?? [],
+    rscCampaigns ?? [],
   );
-  const [loaded, setLoaded] = useState(seed !== null);
-  const [domainMode, setDomainMode] = useState<DomainMode>("all");
+  const [loaded, setLoaded] = useState(rscCampaigns !== null);
+  const [domainMode, setDomainMode] = useState<DomainMode>(
+    isManagerRole ? "all" : DEFAULT_GIA_DOMAIN,
+  );
   const [isPending, startTransition] = useTransition();
 
-  // Fetch on mount (when no seed) and whenever dateRange changes
+  const applyRscCampaigns = useCallback((next: DashboardCampaignStatusMix[]) => {
+    setCampaigns(next);
+    setLoaded(true);
+  }, []);
+
+  const rscMatchesView = isManagerRole || domainMode === DEFAULT_GIA_DOMAIN;
+  useDashboardCohortSync(rscCampaigns, dateRange, rscMatchesView, applyRscCampaigns);
+
   useEffect(() => {
-    // Use seeded data only on first render when no date filter is active
-    if (seed !== null && !dateRange) { setLoaded(true); return; }
+    if (isManagerRole || domainMode === DEFAULT_GIA_DOMAIN) return;
     let cancelled = false;
     startTransition(async () => {
-      const result = await getLeadsByCampaignAction(role, domain, dateRange?.from, dateRange?.to);
+      const result =
+        domainMode === "all"
+          ? await getLeadsByCampaignAction(role, domain, dateRange?.from, dateRange?.to)
+          : await getLeadsByCampaignForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
       if (!cancelled && result.data) {
         setCampaigns(result.data);
         setLoaded(true);
       }
     });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange?.from, dateRange?.to]);
+  }, [dateRange?.from, dateRange?.to, domainMode, isManagerRole, role, domain]);
 
   function handleDomainChange(mode: DomainMode) {
     setDomainMode(mode);
@@ -103,26 +114,6 @@ export function ManagerCampaignWidget({
       }
     });
   }
-
-  // Silent 30s auto-poll — mirrors handleRefresh, no loading state
-  useEffect(() => {
-    const id = setInterval(() => {
-      let cancelled = false;
-      startTransition(async () => {
-        if (domainMode === "all") {
-          const result = await getLeadsByCampaignAction(role, domain, dateRange?.from, dateRange?.to);
-          if (!cancelled && result.data) setCampaigns(result.data);
-        } else {
-          const result = await getLeadsByCampaignForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
-          if (!cancelled && result.data) setCampaigns(result.data);
-        }
-      });
-      return () => { cancelled = true; };
-    }, 30_000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [domainMode, role, domain, dateRange?.from, dateRange?.to]);
-
 
   // Keep the full campaign name in data — label wrapping is handled by the
   // custom XAxis tick renderer below, not by slicing the string here.

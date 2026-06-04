@@ -6,6 +6,41 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-04 — Dashboard date filter: stop duplicate POST storm
+
+**Root cause:** Changing `dash_preset` navigates the page and re-fetches all cohort data on the server, but Lead Pipeline, Campaign Performance, and Lead Volume widgets also fired their own server actions on every `dateRange` change (plus 30s auto-poll on cohort widgets). That doubled work and spammed `POST /dashboard` in dev.
+
+**Changed files:**
+- `src/hooks/useDashboardCohortSync.ts` — apply RSC `initialData` when the date filter changes; no client fetch when the payload matches the active view
+- `src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx` — sync from `initialData.lead_status` for manager + default domain tab; client fetch only for org-wide / other domain tabs; removed 30s poll
+- `src/components/dashboard/widgets/ManagerCampaignWidget.tsx` — same pattern for campaigns; admin default tab aligned to `DEFAULT_GIA_DOMAIN` (matches RSC `p_initial_domain`); removed 30s poll
+- `src/components/dashboard/widgets/ManagerLeadVolumeWidget.tsx` — sync manager `lead_volume` and admin `lead_volume_multi` from RSC; client fetch only for single-domain drill-down tab
+
+---
+
+## 2026-06-04 — Lead Volume widget alignment + data correctness
+
+**Root causes:** (1) RSC fetched volume on the server but the widget skipped the seed whenever `dateRange` was passed (always), forcing a redundant client fetch and a blank chart on first paint. (2) Volume queries used `created_at <= to` while Lead Pipeline uses `created_at < to` (half-open), so counts diverged for the same filter. (3) Bucket assignment dropped leads when the computed bucket key was missing from the pre-built map. (4) PostgREST’s 1000-row default cap silently truncated high-volume ranges.
+
+**Changed files:**
+- `src/lib/services/dashboard-service.ts` — shared `fetchVolumeLeads` (paginated), `buildBucketKeys` / `bucketKey`, `buildVolumeSeries`; intake window `gte(from)` + `lt(to)` aligned with pipeline RPCs
+- `src/app/(dashboard)/dashboard/page.tsx` — admin/founder RSC seeds `lead_volume_multi` via `getLeadVolumeByDomains`
+- `src/lib/types/index.ts` — `DashboardMultiDomainVolumeSummary` + `lead_volume_multi` on `DashboardSummary`
+- `src/components/dashboard/widgets/ManagerLeadVolumeWidget.tsx` — `seedConsumedRef` pattern (matches Lead Pipeline); domain tab clears stale series; header shows total in range
+
+---
+
+## 2026-06-04 — Lead Pipeline per-agent stacked bars fix
+
+**Root cause:** `agent_counts` in `get_dashboard_summary` / `get_lead_pipeline_refresh` used `COUNT(*)` on per-status subquery rows (number of status buckets, 1–7) instead of `SUM(cnt)` (actual lead count). Stacked bar widths divided by the wrong denominator, so segments exceeded 100% and the colour breakdown did not render correctly.
+
+**Changed files:**
+- `supabase/migrations/20260604000070_fix_pipeline_agent_total.sql` — `SUM(cnt)::int AS total` in `agent_counts` and `campaign_agg` for all three dashboard RPCs
+- `src/lib/services/dashboard-service.ts` — `normalizeLeadStatusSummary()` coerces jsonb counts to numbers and recomputes each agent's `total` from `counts` (covers stale Redis until TTL)
+- `src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx` — `StackedBar` derives bar width denominator from segment counts
+
+---
+
 ## 2026-06-04 — Global Dashboard Date Filter
 
 Adds a single date filter at the top of `/dashboard`. Changing it re-scopes **Lead Pipeline**, **Lead Volume**, and **Campaign Performance** for the chosen window. **My Tasks** and **Recent Activity** always show live data and are unaffected.

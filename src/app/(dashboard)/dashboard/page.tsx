@@ -3,7 +3,9 @@ import { getCurrentProfile } from "@/lib/services/profiles-service";
 import {
   getDashboardSummary,
   getLeadVolumeByRange,
+  getLeadVolumeByDomains,
 } from "@/lib/services/dashboard-service";
+import { GIA_DOMAINS } from "@/lib/constants/domains";
 import { DashboardCanvas } from "@/components/dashboard/DashboardCanvas";
 import { pickDashboardGreeting } from "@/lib/constants/dashboard-greetings";
 import type { AppDomain, UserRole } from "@/lib/types/database";
@@ -15,7 +17,7 @@ import {
   type DateRange,
 } from "@/lib/utils/date-range";
 
-const VALID_PRESETS: DatePreset[] = ['today', 'week', 'month', 'quarter', 'custom'];
+const VALID_PRESETS: DatePreset[] = ['today', 'week', 'month', 'last_month', 'quarter', 'custom'];
 
 export default async function DashboardPage({
   searchParams,
@@ -59,8 +61,10 @@ export default async function DashboardPage({
   // getDashboardSummary returns all summary data in one RPC call.
   let initialData: DashboardSummary;
 
+  const isManagerPlus = role === "manager" || role === "admin" || role === "founder";
+
   try {
-    const [rpcData, rangeVolume] = await Promise.all([
+    const [rpcData, managerVolume, multiVolume] = await Promise.all([
       getDashboardSummary(
         role,
         domain,
@@ -71,8 +75,15 @@ export default async function DashboardPage({
       isManager
         ? getLeadVolumeByRange(role, domain, dateRange)
         : Promise.resolve(null),
+      isManagerPlus && !isManager
+        ? getLeadVolumeByDomains([...GIA_DOMAINS], dateRange)
+        : Promise.resolve(null),
     ]);
-    initialData = { ...rpcData, lead_volume: rangeVolume };
+    initialData = {
+      ...rpcData,
+      lead_volume:       managerVolume,
+      lead_volume_multi: multiVolume,
+    };
   } catch (e) {
     console.error("[dashboard/page] RPC failed, rendering with empty initial data:", e);
     initialData = {
@@ -80,7 +91,8 @@ export default async function DashboardPage({
       agent_activity: [],
       lead_status:    { totals: [], byAgent: [] },
       campaigns:      [],
-      lead_volume:    null,
+      lead_volume:       null,
+      lead_volume_multi: null,
     };
   }
 

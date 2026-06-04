@@ -10,10 +10,10 @@ import { DATE_PRESET_LABELS, type DatePreset } from '@/lib/utils/date-range';
 import { DROPDOWN_VARIANTS } from '@/lib/constants/motion';
 
 const PRESETS: { value: Exclude<DatePreset, 'custom'>; label: string }[] = [
-  { value: 'today',   label: DATE_PRESET_LABELS.today   },
-  { value: 'week',    label: DATE_PRESET_LABELS.week     },
-  { value: 'month',   label: DATE_PRESET_LABELS.month    },
-  { value: 'quarter', label: DATE_PRESET_LABELS.quarter  },
+  { value: 'today',      label: DATE_PRESET_LABELS.today      },
+  { value: 'week',       label: DATE_PRESET_LABELS.week       },
+  { value: 'month',      label: DATE_PRESET_LABELS.month      },
+  { value: 'last_month', label: DATE_PRESET_LABELS.last_month },
 ];
 
 interface DashboardDateFilterProps {
@@ -39,7 +39,10 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
   useEffect(() => {
     if (!open) return;
     function handleOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (containerRef.current && !containerRef.current.contains(target)) {
+        // DatePicker portals its calendar panel to document.body — ignore clicks inside it.
+        if ((target as Element).closest?.('[data-datepicker-panel]')) return;
         setOpen(false);
       }
     }

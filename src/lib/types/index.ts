@@ -68,6 +68,17 @@ export type DashboardLeadVolumeSummary = {
   series: DashboardVolumeDataPoint[];
 };
 
+export type DashboardMultiDomainVolumePoint = {
+  label: string;
+  [domain: string]: number | string;
+};
+
+export type DashboardMultiDomainVolumeSummary = {
+  domains: AppDomain[];
+  totals:  Record<AppDomain, number>;
+  series:  DashboardMultiDomainVolumePoint[];
+};
+
 // ─── Performance — manager / founder view types ───────────────────────────
 import type { OutcomeBreakdownItem } from "@/lib/services/performance-service";
 
@@ -113,8 +124,8 @@ export type DomainHealthCard = {
 
 /**
  * Assembled by dashboard/page.tsx from getDashboardSummary() (RPC) +
- * getLeadVolumeByPeriod() (separate call for the week default).
- * lead_volume is NOT in the RPC — time-bucketing is too period-dependent.
+ * getLeadVolumeByRange() / getLeadVolumeByDomains() for the active date filter.
+ * Volume is NOT in the RPC — bucket granularity is computed in the service layer.
  */
 /** @deprecated — agent_tasks is now DashboardAgentTask[] directly on DashboardSummary */
 // DashboardAgentTasksSummary removed — shape flattened into DashboardSummary.agent_tasks
@@ -124,6 +135,8 @@ export type DashboardSummary = {
   agent_activity: DashboardAgentActivity[];
   lead_status:    DashboardLeadStatusSummary;
   campaigns:      DashboardCampaignStatusMix[];
-  // null for admin/founder (volume skipped in RSC; multi-domain fetch fires on mount)
-  lead_volume:    DashboardLeadVolumeSummary | null;
+  /** Manager: single-domain line chart for profile.domain */
+  lead_volume:       DashboardLeadVolumeSummary | null;
+  /** Admin/founder: multi-domain "All" tab — seeded on first paint */
+  lead_volume_multi: DashboardMultiDomainVolumeSummary | null;
 };

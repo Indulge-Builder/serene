@@ -8,7 +8,7 @@
  * IST offset: UTC+05:30 = 330 minutes ahead of UTC.
  */
 
-export type DatePreset = 'today' | 'week' | 'month' | 'quarter' | 'custom';
+export type DatePreset = 'today' | 'week' | 'month' | 'last_month' | 'quarter' | 'custom';
 
 export type DateRange = {
   from: string; // ISO 8601 UTC, e.g. "2026-06-01T18:30:00.000Z"
@@ -73,6 +73,23 @@ export function resolvePresetToRange(preset: Exclude<DatePreset, 'custom'>): Dat
       return { from: fromUtc.toISOString(), to: now.toISOString() };
     }
 
+    case 'last_month': {
+      const istNow = new Date(now.getTime() + IST_OFFSET_MS);
+      // First day of current month in IST
+      const firstThisMonth = new Date(istNow);
+      firstThisMonth.setUTCDate(1);
+      firstThisMonth.setUTCHours(0, 0, 0, 0);
+      // Last moment of previous month = 1ms before first of this month
+      const lastPrevIst = new Date(firstThisMonth.getTime() - 1);
+      // First day of previous month in IST
+      const firstPrevIst = new Date(lastPrevIst);
+      firstPrevIst.setUTCDate(1);
+      firstPrevIst.setUTCHours(0, 0, 0, 0);
+      const fromUtc = new Date(firstPrevIst.getTime() - IST_OFFSET_MS);
+      const toUtc   = toISTEndOfDay(new Date(lastPrevIst.getTime() - IST_OFFSET_MS));
+      return { from: fromUtc.toISOString(), to: toUtc.toISOString() };
+    }
+
     case 'quarter': {
       // 90 days back from IST midnight today
       const fromDate = toISTMidnight(now);
@@ -104,9 +121,10 @@ export function rangeFromUrlParams(from: string | null, to: string | null): Date
  * Human-readable label for a preset. Used in the filter button and chart axis.
  */
 export const DATE_PRESET_LABELS: Record<DatePreset, string> = {
-  today:   'Today',
-  week:    'This Week',
-  month:   'This Month',
-  quarter: 'This Quarter',
-  custom:  'Custom Range',
+  today:      'Today',
+  week:       'This Week',
+  month:      'This Month',
+  last_month: 'Previous Month',
+  quarter:    'This Quarter',
+  custom:     'Custom Range',
 };

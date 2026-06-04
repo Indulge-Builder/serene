@@ -56,7 +56,11 @@ export const getDashboardSummary = cache(
       p_date_to:        dateRange?.to   ?? null,
     });
     if (error) throw error;
-    return data as DashboardSummary;
+    const summary = data as DashboardSummary;
+    return {
+      ...summary,
+      lead_status: normalizeLeadStatusSummary(summary.lead_status),
+    };
   },
 );
 
@@ -223,6 +227,31 @@ export type LeadStatusSummary = {
   byAgent:  AgentStatusBreakdown[];
 };
 
+/** Coerce jsonb counts to numbers and derive agent totals from status mix (RPC SUM fix + stale Redis). */
+export function normalizeLeadStatusSummary(raw: LeadStatusSummary): LeadStatusSummary {
+  const totals = (raw.totals ?? []).map((t) => ({
+    status: t.status,
+    count:  Number(t.count),
+  }));
+
+  const byAgent = (raw.byAgent ?? [])
+    .map((agent) => {
+      const counts = Object.fromEntries(
+        Object.entries(agent.counts ?? {}).map(([status, n]) => [status, Number(n)]),
+      ) as Partial<Record<LeadStatus, number>>;
+      const total = Object.values(counts).reduce((sum, n) => sum + (Number.isFinite(n) ? n : 0), 0);
+      return {
+        agent_id:   agent.agent_id,
+        agent_name: agent.agent_name,
+        counts,
+        total,
+      };
+    })
+    .sort((a, b) => b.total - a.total);
+
+  return { totals, byAgent };
+}
+
 export async function getLeadStatusSummary(
   role:          string,
   domain:        AppDomain,
@@ -234,7 +263,7 @@ export async function getLeadStatusSummary(
 
   try {
     const cached = await redis.get<LeadStatusSummary>(cacheKey);
-    if (cached !== null) return cached;
+    if (cached !== null) return normalizeLeadStatusSummary(cached);
   } catch (e) {
     console.error('[dashboard-service] getLeadStatusSummary Redis get error:', e);
   }
@@ -254,10 +283,10 @@ export async function getLeadStatusSummary(
   if (error) throw error;
 
   const rpcData = data as { totals: LeadStatusCount[]; byAgent: AgentStatusBreakdown[] };
-  const result: LeadStatusSummary = {
+  const result = normalizeLeadStatusSummary({
     totals:  rpcData.totals  ?? [],
     byAgent: rpcData.byAgent ?? [],
-  };
+  });
 
   try {
     await redis.setex(cacheKey, REDIS_TTL.DASHBOARD_LEAD_STATUS, result);
@@ -310,6 +339,95 @@ function formatBucketLabel(date: Date, bucketMs: number): string {
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
+/** Align a timestamp to the start of its bucket (same math for init + assignment). */
+function bucketStartMs(fromMs: number, bucketMs: number, tsMs: number): number {
+  return fromMs + Math.floor((tsMs - fromMs) / bucketMs) * bucketMs;
+}
+
+function bucketKey(fromMs: number, bucketMs: number, tsMs: number): string {
+  return new Date(bucketStartMs(fromMs, bucketMs, tsMs)).toISOString();
+}
+
+/** Chronological bucket keys from `from` through `to` (inclusive of the bucket containing `to`). */
+function buildBucketKeys(fromMs: number, toMs: number, bucketMs: number): string[] {
+  const keys: string[] = [];
+  let ms = fromMs;
+  while (ms <= toMs) {
+    keys.push(new Date(ms).toISOString());
+    ms += bucketMs;
+  }
+  const endKey = bucketKey(fromMs, bucketMs, toMs);
+  if (!keys.includes(endKey)) keys.push(endKey);
+  return keys;
+}
+
+const LEAD_VOLUME_PAGE_SIZE = 1000;
+
+type VolumeLeadRow = { created_at: string; domain?: string };
+
+/** Paginate past PostgREST's default 1000-row cap — same intake window as pipeline RPCs. */
+async function fetchVolumeLeads(
+  dateRange: DateRange,
+  opts: { role: string; domain?: AppDomain; domains?: AppDomain[] },
+): Promise<VolumeLeadRow[]> {
+  const supabase = await createClient();
+  const rows: VolumeLeadRow[] = [];
+  let offset = 0;
+
+  while (true) {
+    let query = supabase
+      .from('leads')
+      .select('created_at, domain')
+      .is('archived_at', null)
+      .gte('created_at', dateRange.from)
+      .lt('created_at', dateRange.to)
+      .order('created_at', { ascending: true })
+      .range(offset, offset + LEAD_VOLUME_PAGE_SIZE - 1);
+
+    if (opts.role === 'manager' && opts.domain) {
+      query = query.eq('domain', opts.domain);
+    }
+    if (opts.domains?.length) {
+      query = query.in('domain', opts.domains);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    const page = (data ?? []) as VolumeLeadRow[];
+    rows.push(...page);
+    if (page.length < LEAD_VOLUME_PAGE_SIZE) break;
+    offset += LEAD_VOLUME_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
+function buildVolumeSeries(
+  rows: VolumeLeadRow[],
+  fromMs: number,
+  toMs: number,
+  bucketMs: number,
+): { total: number; series: VolumeDataPoint[] } {
+  const bucketKeys = buildBucketKeys(fromMs, toMs, bucketMs);
+  const bucketMap = Object.fromEntries(bucketKeys.map((k) => [k, 0]));
+
+  for (const row of rows) {
+    const tsMs = new Date(row.created_at).getTime();
+    if (tsMs < fromMs || tsMs >= toMs) continue;
+    const key = bucketKey(fromMs, bucketMs, tsMs);
+    bucketMap[key] = (bucketMap[key] ?? 0) + 1;
+  }
+
+  const series: VolumeDataPoint[] = bucketKeys
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+    .map((key) => ({
+      label: formatBucketLabel(new Date(key), bucketMs),
+      count: bucketMap[key] ?? 0,
+    }));
+
+  return { total: rows.length, series };
+}
+
 export async function getLeadVolumeByRange(
   role:      string,
   domain:    AppDomain,
@@ -324,50 +442,18 @@ export async function getLeadVolumeByRange(
     console.error('[dashboard-service] getLeadVolumeByRange Redis get error:', e);
   }
 
-  const supabase = await createClient();
   const from     = new Date(dateRange.from);
   const to       = new Date(dateRange.to);
+  const fromMs   = from.getTime();
+  const toMs     = to.getTime();
   const bucketMs = inferBucketMs(from, to);
 
-  let query = supabase
-    .from('leads')
-    .select('created_at')
-    .is('archived_at', null)
-    .gte('created_at', from.toISOString())
-    .lte('created_at', to.toISOString());
+  const rows = await fetchVolumeLeads(dateRange, {
+    role,
+    domain: role === 'manager' ? domain : undefined,
+  });
 
-  if (role === 'manager') {
-    query = query.eq('domain', domain);
-  }
-
-  const { data } = await query;
-  const rows = data ?? [];
-
-  // Build zero-filled time buckets
-  const bucketMap: Record<string, number> = {};
-  const cursor = new Date(from);
-  while (cursor <= to) {
-    bucketMap[cursor.toISOString()] = 0;
-    cursor.setTime(cursor.getTime() + bucketMs);
-  }
-
-  for (const row of rows) {
-    const ts        = new Date(row.created_at).getTime();
-    const fromMs    = from.getTime();
-    const bucketIdx = Math.floor((ts - fromMs) / bucketMs);
-    const bucketStart = new Date(fromMs + bucketIdx * bucketMs);
-    const key       = bucketStart.toISOString();
-    if (key in bucketMap) {
-      bucketMap[key] += 1;
-    }
-  }
-
-  const series: VolumeDataPoint[] = Object.entries(bucketMap).map(([key, count]) => ({
-    label: formatBucketLabel(new Date(key), bucketMs),
-    count,
-  }));
-
-  const result: LeadVolumeSummary = { total: rows.length, series };
+  const result: LeadVolumeSummary = buildVolumeSeries(rows, fromMs, toMs, bucketMs);
 
   try {
     await redis.setex(cacheKey, REDIS_TTL.DASHBOARD_LEAD_VOLUME, result);
@@ -407,27 +493,15 @@ export async function getLeadVolumeByDomains(
     console.error('[dashboard-service] getLeadVolumeByDomains Redis get error:', e);
   }
 
-  const supabase = await createClient();
   const from     = new Date(dateRange.from);
   const to       = new Date(dateRange.to);
+  const fromMs   = from.getTime();
+  const toMs     = to.getTime();
   const bucketMs = inferBucketMs(from, to);
 
-  const { data } = await supabase
-    .from('leads')
-    .select('created_at, domain')
-    .is('archived_at', null)
-    .gte('created_at', from.toISOString())
-    .lte('created_at', to.toISOString())
-    .in('domain', domains);
+  const rows = await fetchVolumeLeads(dateRange, { role: 'admin', domains });
 
-  const rows = (data ?? []) as { created_at: string; domain: string }[];
-
-  const bucketKeys: string[] = [];
-  const cursor = new Date(from);
-  while (cursor <= to) {
-    bucketKeys.push(cursor.toISOString());
-    cursor.setTime(cursor.getTime() + bucketMs);
-  }
+  const bucketKeys = buildBucketKeys(fromMs, toMs, bucketMs);
 
   const domainMaps: Record<string, Record<string, number>> = {};
   for (const d of domains) {
@@ -435,24 +509,22 @@ export async function getLeadVolumeByDomains(
   }
 
   for (const row of rows) {
-    if (!domainMaps[row.domain]) continue;
-    const ts        = new Date(row.created_at).getTime();
-    const fromMs    = from.getTime();
-    const bucketIdx = Math.floor((ts - fromMs) / bucketMs);
-    const bucketStart = new Date(fromMs + bucketIdx * bucketMs);
-    const key       = bucketStart.toISOString();
-    if (key in domainMaps[row.domain]) {
-      domainMaps[row.domain][key] += 1;
-    }
+    if (!row.domain || !domainMaps[row.domain]) continue;
+    const tsMs = new Date(row.created_at).getTime();
+    if (tsMs < fromMs || tsMs >= toMs) continue;
+    const key = bucketKey(fromMs, bucketMs, tsMs);
+    domainMaps[row.domain][key] = (domainMaps[row.domain][key] ?? 0) + 1;
   }
 
-  const series: MultiDomainVolumePoint[] = bucketKeys.map((key) => {
-    const point: MultiDomainVolumePoint = { label: formatBucketLabel(new Date(key), bucketMs) };
-    for (const d of domains) {
-      point[d] = domainMaps[d][key] ?? 0;
-    }
-    return point;
-  });
+  const series: MultiDomainVolumePoint[] = bucketKeys
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+    .map((key) => {
+      const point: MultiDomainVolumePoint = { label: formatBucketLabel(new Date(key), bucketMs) };
+      for (const d of domains) {
+        point[d] = domainMaps[d][key] ?? 0;
+      }
+      return point;
+    });
 
   const totals = Object.fromEntries(
     domains.map((d) => [d, rows.filter((r) => r.domain === d).length]),

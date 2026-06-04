@@ -210,6 +210,7 @@ export function DatePicker({
           }}
         >
           <div
+            data-datepicker-panel="true"
             style={{
               display:    'flex',
               flexDirection: 'row',

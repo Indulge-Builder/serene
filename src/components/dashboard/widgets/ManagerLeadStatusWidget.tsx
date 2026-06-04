@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { RefreshCcw } from "lucide-react";
 import {
   getLeadStatusSummaryAction,
@@ -8,7 +8,7 @@ import {
 } from "@/lib/actions/dashboard";
 import { Button } from "@/components/ui/Button";
 import { formatCompact } from "@/lib/utils/numbers";
-import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from "@/lib/constants/lead-statuses";
+import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/TabSelector";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import {
@@ -24,11 +24,12 @@ import type {
 } from "@/lib/types";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { DateRange } from "@/lib/utils/date-range";
+import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
 
 type DomainMode = "all" | GiaDomain;
 
-// Text colours for chip labels and agent stat numbers
-const STATUS_COLORS: Record<LeadStatus, string> = {
+// Chip surfaces — semantic token system, theme-aware.
+const STATUS_TEXT: Record<LeadStatus, string> = {
   new:           "var(--status-new-text)",
   touched:       "var(--status-touched-text)",
   in_discussion: "var(--status-in-discussion-text)",
@@ -38,7 +39,6 @@ const STATUS_COLORS: Record<LeadStatus, string> = {
   junk:          "var(--status-junk-text)",
 };
 
-// Chip background colours — soft pastels for the 5 stat chips only
 const STATUS_BG: Record<LeadStatus, string> = {
   new:           "var(--status-new-light)",
   touched:       "var(--status-touched-light)",
@@ -49,7 +49,23 @@ const STATUS_BG: Record<LeadStatus, string> = {
   junk:          "var(--status-junk-light)",
 };
 
-// Distinct saturated colours for the agent stacked bar segments
+const STATUS_BORDER: Record<LeadStatus, string> = {
+  new:           "var(--status-new-border)",
+  touched:       "var(--status-touched-border)",
+  in_discussion: "var(--status-in-discussion-border)",
+  nurturing:     "var(--status-nurturing-border)",
+  won:           "var(--status-won-border)",
+  lost:          "var(--status-lost-border)",
+  junk:          "var(--status-junk-border)",
+};
+
+// Saturated fill colours for stacked bar segments and legend dots.
+// Exception to Rule 01 (no hardcoded hex in components): these are data-visualisation
+// fills on SVG-equivalent divs where CSS vars cannot be resolved by the rendering engine
+// in the same way chart libraries resolve them. The colours are intentionally distinct
+// so each status is instantly distinguishable in a compact stacked bar.
+// Do not replace with --status-*-text tokens — those muted tones are indistinguishable
+// at small bar widths and defeat the purpose of the visualisation.
 const BAR_COLORS: Record<LeadStatus, string> = {
   new:           "#F5A623",
   touched:       "#4A90D9",
@@ -91,16 +107,45 @@ function StackedBar({ mix, total }: { mix: Partial<Record<LeadStatus, number>>; 
     );
   }
 
-  const segments = STATUS_ORDER.map((s) => ({ s, count: mix[s] ?? 0 })).filter((x) => x.count > 0);
+  // Coerce counts to numbers — jsonb values can arrive as strings in some JS runtimes.
+  const segments = STATUS_ORDER
+    .map((s) => ({ s, count: Number(mix[s] ?? 0) }))
+    .filter((x) => x.count > 0);
+
+  // Widths must use the sum of segment counts, not a separate total field (RPC used to
+  // return COUNT of status buckets instead of SUM of leads, which broke proportions).
+  const barTotal = segments.reduce((sum, x) => sum + x.count, 0) || Number(total) || 0;
+  if (barTotal === 0) {
+    return (
+      <div
+        style={{
+          height: "10px",
+          borderRadius: "var(--radius-full)",
+          background: "var(--theme-paper-border)",
+          width: "100%",
+        }}
+      />
+    );
+  }
+
+  // Compute precise pixel-percentage widths. Give the last segment the remainder
+  // so floating-point rounding never causes total to fall short of 100%.
+  const pcts = segments.map((seg, i) => {
+    if (i === segments.length - 1) {
+      const sumSoFar = segments.slice(0, i).reduce((acc, x) => acc + Math.floor((x.count / barTotal) * 1000) / 10, 0);
+      return Math.max(0, 100 - sumSoFar);
+    }
+    return Math.floor((seg.count / barTotal) * 1000) / 10; // one decimal place
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "3px", width: "100%" }}>
-      {/* Numbers above each segment */}
+      {/* Count labels above each segment */}
       <div style={{ display: "flex", width: "100%" }}>
-        {segments.map(({ s, count }) => (
+        {segments.map(({ s, count }, i) => (
           <div
             key={s}
-            style={{ width: `${(count / total) * 100}%`, display: "flex", justifyContent: "center", overflow: "hidden" }}
+            style={{ width: `${pcts[i]}%`, display: "flex", justifyContent: "center", overflow: "hidden", minWidth: 0 }}
           >
             <span
               style={{
@@ -117,22 +162,21 @@ function StackedBar({ mix, total }: { mix: Partial<Record<LeadStatus, number>>; 
           </div>
         ))}
       </div>
-      {/* Bar */}
+      {/* Bar — no gap so percentages fill edge-to-edge without overflow clip eating a segment */}
       <div
         style={{
           display: "flex",
           height: "10px",
           borderRadius: "var(--radius-full)",
           overflow: "hidden",
-          gap: "1px",
-          background: "var(--theme-paper-border)",
+          width: "100%",
         }}
       >
-        {segments.map(({ s, count }) => (
+        {segments.map(({ s }, i) => (
           <div
             key={s}
-            title={`${LEAD_STATUS_LABELS[s]}: ${count}`}
-            style={{ width: `${(count / total) * 100}%`, background: BAR_COLORS[s], flexShrink: 0 }}
+            title={`${LEAD_STATUS_LABELS[s]}: ${segments[i].count}`}
+            style={{ width: `${pcts[i]}%`, background: BAR_COLORS[s], flexShrink: 0, minWidth: 0 }}
           />
         ))}
       </div>
@@ -142,44 +186,43 @@ function StackedBar({ mix, total }: { mix: Partial<Record<LeadStatus, number>>; 
 
 export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg', dateRange }: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
-
-  // Admin/founder default to onboarding; managers see their own domain (no picker)
   const initialMode: DomainMode = isManagerRole ? "all" : DEFAULT_GIA_DOMAIN;
 
-  const seed = initialData?.lead_status ?? null;
-  const [data, setData] = useState<StatusData | null>(seed);
-  const [loaded, setLoaded] = useState(seed !== null);
+  const rscLeadStatus = initialData?.lead_status ?? null;
+  const [data, setData] = useState<StatusData | null>(rscLeadStatus);
+  const [loaded, setLoaded] = useState(rscLeadStatus !== null);
   const [domainMode, setDomainMode] = useState<DomainMode>(initialMode);
   const [isPending, startTransition] = useTransition();
 
-  // Refetch when dateRange changes (global filter changed) or on initial mount
-  useEffect(() => {
-    let cancelled = false;
-    if (isManagerRole) {
-      // Manager: use seeded data on first render only when no date filter is active
-      if (seed !== null && !dateRange) { setLoaded(true); return; }
-      startTransition(async () => {
-        const result = await getLeadStatusSummaryAction(role, domain, dateRange?.from, dateRange?.to);
-        if (!cancelled && result.data) { setData(result.data); setLoaded(true); }
-      });
-    } else {
-      // Admin/founder: page seeds initialData with onboarding-scoped pipeline data
-      if (seed !== null && domainMode === DEFAULT_GIA_DOMAIN && !dateRange) {
-        setLoaded(true);
-        return;
-      }
-      startTransition(async () => {
-        const result = await getLeadStatusForDomainAction(DEFAULT_GIA_DOMAIN, dateRange?.from, dateRange?.to);
-        if (!cancelled && result.data) { setData(result.data); setLoaded(true); }
-      });
-    }
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange?.from, dateRange?.to]);
+  const applyRscStatus = useCallback((next: StatusData) => {
+    setData(next);
+    setLoaded(true);
+  }, []);
 
-  const totals   = data?.totals ?? [];
-  const byAgent  = data?.byAgent ?? [];
-  const mixMap   = Object.fromEntries(totals.map((t) => [t.status, t.count])) as Partial<Record<LeadStatus, number>>;
+  // RSC scopes admin/founder pipeline to onboarding on first paint — same as DEFAULT_GIA_DOMAIN tab.
+  const rscMatchesView = isManagerRole || domainMode === DEFAULT_GIA_DOMAIN;
+  useDashboardCohortSync(rscLeadStatus, dateRange, rscMatchesView, applyRscStatus);
+
+  // Client fetch when RSC payload does not match the active domain tab.
+  useEffect(() => {
+    if (isManagerRole || domainMode === DEFAULT_GIA_DOMAIN) return;
+    let cancelled = false;
+    startTransition(async () => {
+      const result =
+        domainMode === "all"
+          ? await getLeadStatusSummaryAction(role, domain, dateRange?.from, dateRange?.to)
+          : await getLeadStatusForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
+      if (!cancelled && result.data) {
+        setData(result.data);
+        setLoaded(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [dateRange?.from, dateRange?.to, domainMode, isManagerRole, role, domain]);
+
+  const totals    = data?.totals ?? [];
+  const byAgent   = data?.byAgent ?? [];
+  const mixMap    = Object.fromEntries(totals.map((t) => [t.status, t.count])) as Partial<Record<LeadStatus, number>>;
   const grandTotal = totals.reduce((s, t) => s + t.count, 0);
 
   function handleDomainChange(mode: DomainMode) {
@@ -207,24 +250,8 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
     });
   }
 
-  // Silent 30s auto-poll — mirrors handleRefresh, no loading state
-  useEffect(() => {
-    const id = setInterval(() => {
-      let cancelled = false;
-      startTransition(async () => {
-        if (domainMode === "all") {
-          const result = await getLeadStatusSummaryAction(role, domain, dateRange?.from, dateRange?.to);
-          if (!cancelled && result.data) setData(result.data);
-        } else {
-          const result = await getLeadStatusForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
-          if (!cancelled && result.data) setData(result.data);
-        }
-      });
-      return () => { cancelled = true; };
-    }, 30_000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [domainMode, role, domain, dateRange?.from, dateRange?.to]);
+  // Active statuses present in the data (for legend — skip zeros)
+  const activeStatuses = STATUS_ORDER.filter((s) => (mixMap[s] ?? 0) > 0);
 
   return (
     <div
@@ -242,7 +269,7 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
       }}
     >
       {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <p
           style={{
             fontSize: "var(--text-md)",
@@ -275,187 +302,181 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
           gap: "var(--space-4)",
           scrollbarWidth: "none",
           minHeight: 0,
+          opacity: isPending ? 0.5 : 1,
+          transition: "opacity 200ms",
         }}
       >
-
-      {/* ── Status stat chips ── */}
-      {loaded && grandTotal > 0 && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(5, 1fr)",
-            gap: "var(--space-2)",
-            opacity: isPending ? 0.5 : 1,
-            transition: "opacity 200ms",
-          }}
-        >
-          {CHIP_STATUSES.map((s) => {
-            const count = mixMap[s] ?? 0;
-            return (
-              <div
-                key={s}
-                style={{
-                  background: STATUS_BG[s],
-                  borderRadius: "var(--radius-md)",
-                  padding: "var(--space-3) var(--space-2)",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: "var(--space-1)",
-                  border: "1px solid var(--theme-paper-border)",
-                }}
-              >
-                <span
+        {/* ── Status stat chips ── */}
+        {loaded && grandTotal > 0 && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(5, 1fr)",
+              gap: "var(--space-2)",
+            }}
+          >
+            {CHIP_STATUSES.map((s) => {
+              const count = mixMap[s] ?? 0;
+              return (
+                <div
+                  key={s}
                   style={{
-                    fontSize: "var(--text-xl)",
-                    fontFamily: "var(--font-mono)",
-                    fontWeight: "var(--weight-semibold)",
-                    color: STATUS_COLORS[s],
-                    lineHeight: 1,
-                    fontVariantNumeric: "tabular-nums",
+                    background:   STATUS_BG[s],
+                    borderRadius: "var(--radius-md)",
+                    padding:      "var(--space-3) var(--space-2)",
+                    display:      "flex",
+                    flexDirection:"column",
+                    alignItems:   "center",
+                    gap:          "var(--space-1)",
+                    border:       `1px solid ${STATUS_BORDER[s]}`,
                   }}
                 >
-                  {formatCompact(count)}
-                </span>
-                <span
+                  <span
+                    style={{
+                      fontSize:           "var(--text-xl)",
+                      fontFamily:         "var(--font-mono)",
+                      fontWeight:         "var(--weight-semibold)",
+                      color:              STATUS_TEXT[s],
+                      lineHeight:         1,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {formatCompact(count)}
+                  </span>
+                  <span
+                    style={{
+                      fontSize:  "var(--text-2xs)",
+                      color:     STATUS_TEXT[s],
+                      textAlign: "center",
+                      whiteSpace:"nowrap",
+                      opacity:   0.8,
+                    }}
+                  >
+                    {LEAD_STATUS_LABELS[s]}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Legend (left) + Total leads (right) on one line ── */}
+        {loaded && grandTotal > 0 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)", flexWrap: "wrap" }}>
+            {/* Legend pills */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)", flex: 1, minWidth: 0 }}>
+              {activeStatuses.map((s) => (
+                <div
+                  key={s}
                   style={{
-                    fontSize: "var(--text-2xs)",
-                    color: "var(--theme-text-secondary)",
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
+                    display:      "flex",
+                    alignItems:   "center",
+                    gap:          "4px",
+                    padding:      "2px var(--space-2)",
+                    borderRadius: "var(--radius-full)",
+                    background:   STATUS_BG[s],
+                    border:       `1px solid ${STATUS_BORDER[s]}`,
                   }}
                 >
-                  {LEAD_STATUS_LABELS[s]}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                  <span
+                    style={{
+                      width:        "6px",
+                      height:       "6px",
+                      borderRadius: "var(--radius-full)",
+                      background:   BAR_COLORS[s],
+                      flexShrink:   0,
+                    }}
+                  />
+                  <span style={{ fontSize: "var(--text-2xs)", color: STATUS_TEXT[s], whiteSpace: "nowrap" }}>
+                    {LEAD_STATUS_LABELS[s]}
+                  </span>
+                </div>
+              ))}
+            </div>
 
-      {/* ── Legend ── */}
-      {loaded && grandTotal > 0 && (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "var(--space-2)",
-          }}
-        >
-          {STATUS_ORDER.filter((s) => s !== "nurturing").map((s) => (
-            <div
-              key={s}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-                padding: "2px var(--space-2)",
-                borderRadius: "var(--radius-full)",
-                background: "var(--theme-paper-subtle)",
-              }}
-            >
+            {/* Total count — right-aligned */}
+            <div style={{ display: "flex", alignItems: "baseline", gap: "5px", flexShrink: 0 }}>
+              <span style={{ fontSize: "var(--text-2xs)", color: "var(--theme-text-tertiary)", whiteSpace: "nowrap" }}>
+                Total leads
+              </span>
               <span
                 style={{
-                  width: "6px",
-                  height: "6px",
-                  borderRadius: "var(--radius-full)",
-                  background: BAR_COLORS[s],
-                  flexShrink: 0,
-                }}
-              />
-              <span
-                style={{
-                  fontSize: "var(--text-2xs)",
-                  color: "var(--theme-text-tertiary)",
-                  whiteSpace: "nowrap",
-                  letterSpacing: "0.02em",
+                  fontSize:           "var(--text-sm)",
+                  fontFamily:         "var(--font-mono)",
+                  fontWeight:         "var(--weight-semibold)",
+                  fontVariantNumeric: "tabular-nums",
+                  color:              "var(--theme-text-primary)",
+                  lineHeight:         1,
                 }}
               >
-                {LEAD_STATUS_LABELS[s]}
+                {grandTotal.toLocaleString()}
               </span>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* ── Per-agent scorecard ── */}
-      {loaded && byAgent.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-
-          {byAgent.slice(0, 6).map((agent) => {
-            return (
+        {/* ── Per-agent scorecard — all agents, sorted by total DESC ── */}
+        {loaded && byAgent.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+            {byAgent.map((agent) => (
               <div
                 key={agent.agent_id}
                 style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", paddingBottom: "var(--space-2)" }}
               >
-                {/* Name + total + win rate — all inline, fixed width */}
-                <div style={{ flexShrink: 0, width: "80px", display: "flex", alignItems: "baseline", gap: "4px", overflow: "hidden" }}>
+                {/* Agent name only */}
+                <div style={{ flexShrink: 0, width: "72px", overflow: "hidden" }}>
                   <span
                     style={{
-                      fontSize: "var(--text-xs)",
-                      fontWeight: "var(--weight-medium)",
-                      color: "var(--theme-text-primary)",
-                      overflow: "hidden",
+                      fontSize:     "var(--text-xs)",
+                      fontWeight:   "var(--weight-medium)",
+                      color:        "var(--theme-text-primary)",
+                      overflow:     "hidden",
                       textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      flexShrink: 1,
+                      whiteSpace:   "nowrap",
+                      display:      "block",
                     }}
                   >
                     {agent.agent_name.split(" ")[0]}
                   </span>
-                  <span
-                    style={{
-                      fontSize: "var(--text-2xs)",
-                      color: "var(--theme-text-tertiary)",
-                      fontFamily: "var(--font-mono)",
-                      fontVariantNumeric: "tabular-nums",
-                      flexShrink: 0,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {formatCompact(agent.total)}
-                  </span>
                 </div>
 
-                {/* Bar — fills remaining width */}
+                {/* Stacked bar — fills remaining width */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <StackedBar mix={agent.counts} total={agent.total} />
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
 
-      {/* ── Empty state ── */}
-      {loaded && grandTotal === 0 && (
-        <p
-          style={{
-            fontFamily: "var(--font-serif)",
-            fontStyle: "italic",
-            fontSize: "var(--text-sm)",
-            color: "var(--theme-text-tertiary)",
-            textAlign: "center",
-            padding: "var(--space-6) 0",
-            margin: 0,
-            flex: 1,
-          }}
-        >
-          No leads in your pipeline yet.
-        </p>
-      )}
-
-      </div>{/* end scrollable body */}
+        {/* ── Empty state ── */}
+        {loaded && grandTotal === 0 && (
+          <p
+            style={{
+              fontFamily: "var(--font-serif)",
+              fontStyle:  "italic",
+              fontSize:   "var(--text-sm)",
+              color:      "var(--theme-text-tertiary)",
+              textAlign:  "center",
+              padding:    "var(--space-6) 0",
+              margin:     0,
+              flex:       1,
+            }}
+          >
+            No leads for this period.
+          </p>
+        )}
+      </div>
 
       {/* ── Domain tabs — pinned to bottom, admin/founder only ── */}
       {!isManagerRole && (
         <div
           style={{
             paddingTop: "var(--space-3)",
-            borderTop: "1px solid var(--theme-paper-border)",
+            borderTop:  "1px solid var(--theme-paper-border)",
             flexShrink: 0,
-            minWidth: 0,
-            width: "100%",
+            minWidth:   0,
+            width:      "100%",
           }}
         >
           <Tabs
@@ -464,42 +485,30 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
             variant="connected"
             indicatorLayoutId="lead-status-domain"
             style={{
-              width: "100%",
-              opacity: isPending ? 0.6 : 1,
+              width:         "100%",
+              opacity:       isPending ? 0.6 : 1,
               pointerEvents: isPending ? "none" : undefined,
             }}
           >
             <TabsList style={{ width: "100%" }}>
-              {([...GIA_DOMAINS, "all"] as DomainMode[]).map((mode) => {
-                const isActive = domainMode === mode;
-                const label = mode === "all" ? "All" : DOMAIN_LABELS[mode];
-                return (
-                  <TabsTrigger
-                    key={mode}
-                    value={mode}
+              {([...GIA_DOMAINS, "all"] as DomainMode[]).map((mode) => (
+                <TabsTrigger
+                  key={mode}
+                  value={mode}
+                  style={{ flex: 1, minWidth: 0, padding: "6px 4px", fontSize: "var(--text-2xs)" }}
+                >
+                  <span
                     style={{
-                      flex: 1,
-                      minWidth: 0,
-                      padding: "6px 4px",
-                      fontSize: "var(--text-2xs)",
+                      overflow:     "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace:   "nowrap",
+                      maxWidth:     "100%",
                     }}
                   >
-                    <span
-                      style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        maxWidth: "100%",
-                        color: isActive
-                          ? "var(--theme-text-primary)"
-                          : "var(--theme-text-secondary)",
-                      }}
-                    >
-                      {label}
-                    </span>
-                  </TabsTrigger>
-                );
-              })}
+                    {mode === "all" ? "All" : DOMAIN_LABELS[mode]}
+                  </span>
+                </TabsTrigger>
+              ))}
             </TabsList>
           </Tabs>
         </div>
