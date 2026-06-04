@@ -3,21 +3,38 @@
 import { z }                         from 'zod';
 import { getCurrentProfile }         from '@/lib/services/profiles-service';
 import {
+  getCoreFourMetrics,
+  getEffortMetrics,
+  getCallOutcomeBreakdown,
+  getPreviousPeriodCoreMetrics,
+  getTeamBenchmarks,
   getAgentDetailMetrics,
   getPeriodDateRange,
   type PerformancePeriod,
+  type CoreFourMetrics,
+  type EffortMetrics,
+  type OutcomeBreakdownItem,
+  type TeamBenchmarks,
 } from '@/lib/services/performance-service';
 import type { ActionResult, AgentDetailMetrics } from '@/lib/types/index';
 import type { AppDomain }            from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
-// Schema
+// Schemas
 // ─────────────────────────────────────────────
+
+const PERIOD_VALUES = ['today', 'this_week', 'this_month', 'last_month', 'all_time', 'custom'] as const;
 
 const GetAgentDetailSchema = z.object({
   agentId:    z.string().uuid(),
   domain:     z.string().min(1).nullable().optional(),
   period:     z.enum(['this_week', 'this_month', 'last_month', 'all_time', 'custom']),
+  customFrom: z.string().datetime().optional(),
+  customTo:   z.string().datetime().optional(),
+});
+
+const GetAgentSelfSchema = z.object({
+  period:     z.enum(PERIOD_VALUES),
   customFrom: z.string().datetime().optional(),
   customTo:   z.string().datetime().optional(),
 });
@@ -63,5 +80,44 @@ export async function getAgentDetailMetricsAction(
     return { data: metrics, error: null };
   } catch {
     return { data: null, error: 'Failed to load agent metrics.' };
+  }
+}
+
+// ─────────────────────────────────────────────
+// Action: getAgentSelfMetricsAction
+// Agent self-view only. Returns all data needed for the performance shell.
+// ─────────────────────────────────────────────
+
+export type AgentSelfMetrics = {
+  core:       CoreFourMetrics;
+  previous:   CoreFourMetrics | null;
+  effort:     EffortMetrics;
+  outcomes:   OutcomeBreakdownItem[];
+  benchmarks: TeamBenchmarks;
+};
+
+export async function getAgentSelfMetricsAction(
+  period:      PerformancePeriod,
+  customFrom?: string,
+  customTo?:   string,
+): Promise<ActionResult<AgentSelfMetrics>> {
+  const parsed = GetAgentSelfSchema.safeParse({ period, customFrom, customTo });
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: 'Not authenticated.' };
+  if (caller.role !== 'agent') return { data: null, error: 'Access denied.' };
+
+  try {
+    const [core, effort, outcomes, previous, benchmarks] = await Promise.all([
+      getCoreFourMetrics(caller.id, period),
+      getEffortMetrics(caller.id, period),
+      getCallOutcomeBreakdown(caller.id, period),
+      getPreviousPeriodCoreMetrics(caller.id, period),
+      getTeamBenchmarks(caller.domain, period),
+    ]);
+    return { data: { core, previous: previous ?? null, effort, outcomes, benchmarks }, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load performance data.' };
   }
 }

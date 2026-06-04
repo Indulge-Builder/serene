@@ -9,8 +9,6 @@
 // round trips regardless of domain size. Never loops over agents.
 
 import { createClient } from "@/lib/supabase/server";
-import { redis } from "@/lib/redis";
-import { REDIS_KEYS, PERF_CORE_FOUR_TTL, PERF_EFFORT_TTL, PERF_OUTCOME_TTL, PERF_BENCHMARKS_TTL, PERF_ROSTER_TTL, PERF_AGENT_DETAIL_TTL } from "@/lib/constants/redis-keys";
 import type { AppDomain, CallOutcome } from "@/lib/types/database";
 import type { AgentRosterRow, AgentDetailMetrics } from "@/lib/types/index";
 
@@ -19,6 +17,7 @@ import type { AgentRosterRow, AgentDetailMetrics } from "@/lib/types/index";
 // ─────────────────────────────────────────────
 
 export type PerformancePeriod =
+  | "today"
   | "this_week"
   | "this_month"
   | "last_month"
@@ -94,6 +93,11 @@ export function getPeriodDateRange(period: PerformancePeriod): DateRange {
   const now = new Date();
 
   switch (period) {
+    case "today": {
+      const from = toISTMidnight(now);
+      return { from: from.toISOString(), to: now.toISOString() };
+    }
+
     case "this_week": {
       const from = getISTMondayStart(now);
       return { from: from.toISOString(), to: now.toISOString() };
@@ -148,6 +152,14 @@ export function getPreviousPeriodDateRange(
   const now = new Date();
 
   switch (period) {
+    case "today": {
+      // Yesterday IST
+      const todayStart = toISTMidnight(now);
+      const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+      const yesterdayEnd = new Date(todayStart.getTime() - 1);
+      return { from: yesterdayStart.toISOString(), to: yesterdayEnd.toISOString() };
+    }
+
     case "this_week": {
       const thisMonday = getISTMondayStart(now);
       const prevMonday = new Date(
@@ -212,16 +224,6 @@ export async function _getCoreFourMetricsForRange(
   agentId: string,
   range: DateRange,
 ): Promise<CoreFourMetrics> {
-  const cacheKey = REDIS_KEYS.perf.coreFour(
-    agentId,
-    range.from.slice(0, 10),
-    range.to.slice(0, 10),
-  );
-  try {
-    const hit = await redis.get<CoreFourMetrics>(cacheKey);
-    if (hit) return hit;
-  } catch { /* fall through to DB */ }
-
   const supabase = await createClient();
   const { from, to } = range;
 
@@ -298,15 +300,12 @@ export async function _getCoreFourMetricsForRange(
   const closed_count = won_count + lost_count;
   const conversionRate = closed_count > 0 ? (won_count / closed_count) * 100 : null;
 
-  const result: CoreFourMetrics = {
+  return {
     leadsWon: leadsWon ?? 0,
     touchRate,
     avgResponseTimeMinutes,
     conversionRate,
   };
-
-  redis.set(cacheKey, JSON.stringify(result), { ex: PERF_CORE_FOUR_TTL }).catch(() => {});
-  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -330,13 +329,6 @@ export async function getEffortMetrics(
   agentId: string,
   period: PerformancePeriod,
 ): Promise<EffortMetrics> {
-  const today = new Date().toISOString().slice(0, 10);
-  const cacheKey = REDIS_KEYS.perf.effort(agentId, period, today);
-  try {
-    const hit = await redis.get<EffortMetrics>(cacheKey);
-    if (hit) return hit;
-  } catch { /* fall through to DB */ }
-
   const supabase = await createClient();
   const { from, to } = getPeriodDateRange(period);
 
@@ -379,15 +371,12 @@ export async function getEffortMetrics(
       .is("archived_at", null),
   ]);
 
-  const result: EffortMetrics = {
+  return {
     callsLogged: callsLogged ?? 0,
     notesWritten: notesWritten ?? 0,
     inDiscussionCount: inDiscussionCount ?? 0,
     nurturingCount: nurturingCount ?? 0,
   };
-
-  redis.set(cacheKey, JSON.stringify(result), { ex: PERF_EFFORT_TTL }).catch(() => {});
-  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -398,13 +387,6 @@ export async function getCallOutcomeBreakdown(
   agentId: string,
   period: PerformancePeriod,
 ): Promise<OutcomeBreakdownItem[]> {
-  const today = new Date().toISOString().slice(0, 10);
-  const cacheKey = REDIS_KEYS.perf.outcome(agentId, period, today);
-  try {
-    const hit = await redis.get<OutcomeBreakdownItem[]>(cacheKey);
-    if (hit) return hit;
-  } catch { /* fall through to DB */ }
-
   const supabase = await createClient();
   const { from, to } = getPeriodDateRange(period);
 
@@ -425,13 +407,10 @@ export async function getCallOutcomeBreakdown(
     countMap[outcome] = (countMap[outcome] ?? 0) + 1;
   }
 
-  const result = Object.entries(countMap).map(([outcome, count]) => ({
+  return Object.entries(countMap).map(([outcome, count]) => ({
     outcome: outcome as CallOutcome,
     count: count as number,
   }));
-
-  redis.set(cacheKey, JSON.stringify(result), { ex: PERF_OUTCOME_TTL }).catch(() => {});
-  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -474,13 +453,6 @@ export async function getTeamBenchmarks(
   callerDomain: AppDomain,
   period: PerformancePeriod,
 ): Promise<TeamBenchmarks> {
-  const today = new Date().toISOString().slice(0, 10);
-  const cacheKey = REDIS_KEYS.perf.benchmarks(callerDomain, period, today);
-  try {
-    const hit = await redis.get<TeamBenchmarks>(cacheKey);
-    if (hit) return hit;
-  } catch { /* fall through to DB */ }
-
   const supabase = await createClient();
 
   // ── 1. Peer pool: all active agents in the domain (roster count) ─────────
@@ -607,15 +579,12 @@ export async function getTeamBenchmarks(
       ? agentResponseAvgs.reduce((a, b) => a + b, 0) / agentResponseAvgs.length
       : null;
 
-  const result: TeamBenchmarks = {
+  return {
     avgTouchRate,
     avgConversionRate,
     avgResponseTimeMinutes,
     agentCount,
   };
-
-  redis.set(cacheKey, JSON.stringify(result), { ex: PERF_BENCHMARKS_TTL }).catch(() => {});
-  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -630,16 +599,6 @@ export async function getAgentRosterPerformance(
   dateFrom: string,
   dateTo: string,
 ): Promise<AgentRosterRow[]> {
-  const cacheKey = REDIS_KEYS.perf.roster(
-    domain ?? 'all',
-    dateFrom.slice(0, 10),
-    dateTo.slice(0, 10),
-  );
-  try {
-    const hit = await redis.get<AgentRosterRow[]>(cacheKey);
-    if (hit) return hit;
-  } catch { /* fall through to DB */ }
-
   const supabase = await createClient();
 
   // ── 1. Agent roster ──────────────────────────────────────────────────────
@@ -788,7 +747,6 @@ export async function getAgentRosterPerformance(
     return bRate - aRate;
   });
 
-  redis.set(cacheKey, JSON.stringify(rows), { ex: PERF_ROSTER_TTL }).catch(() => {});
   return rows;
 }
 
@@ -805,17 +763,6 @@ export async function getAgentDetailMetrics(
   dateFrom: string,
   dateTo: string,
 ): Promise<AgentDetailMetrics> {
-  // domain is auth-only — does not filter the query result — excluded from cache key
-  const cacheKey = REDIS_KEYS.perf.agentDetail(
-    agentId,
-    dateFrom.slice(0, 10),
-    dateTo.slice(0, 10),
-  );
-  try {
-    const hit = await redis.get<AgentDetailMetrics>(cacheKey);
-    if (hit) return hit;
-  } catch { /* fall through to DB */ }
-
   const supabase = await createClient();
 
   // callsToday: use IST midnight boundary (same logic as getPeriodDateRange('this_week'))
@@ -827,10 +774,11 @@ export async function getAgentDetailMetrics(
     leadsData,
     wonLeadsData,
     callsTodayData,
-    followUpsData,
+    totalLeadsData,
+    totalCallsMadeData,
     notesData,
   ] = await Promise.all([
-    // All leads created in the period — for cohort metrics (touch rate, pipeline)
+    // All leads created in the period — for cohort metrics (pipeline breakdown)
     supabase
       .from("leads")
       .select("id, status, deal_amount, form_data")
@@ -858,12 +806,19 @@ export async function getAgentDetailMetrics(
       .not("call_outcome", "is", null)
       .gte("created_at", todayStart),
 
-    // followUpsCompleted: call notes on leads that were already touched/nurturing
+    // totalLeads: all leads ever assigned — live snapshot, no period filter
     supabase
-      .from("lead_notes")
-      .select("id, lead:leads!lead_notes_lead_id_fkey(status)")
-      .eq("author_id", agentId)
-      .not("call_outcome", "is", null)
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("assigned_to", agentId)
+      .is("archived_at", null),
+
+    // totalCallsMade: sum of call_count on cohort leads (created in period)
+    supabase
+      .from("leads")
+      .select("call_count")
+      .eq("assigned_to", agentId)
+      .is("archived_at", null)
       .gte("created_at", dateFrom)
       .lte("created_at", dateTo),
 
@@ -880,25 +835,12 @@ export async function getAgentDetailMetrics(
   const leads = leadsData.data ?? [];
   const wonLeads = wonLeadsData.data ?? [];
   const callsTd = callsTodayData.count ?? 0;
-  const followRows = followUpsData.data ?? [];
   const notes = notesData.data ?? [];
-
-  // newLeadsAttended: leads created in the period that moved past 'new'
-  const newLeadsAttended = leads.filter((l) => l.status !== "new").length;
-
-  // followUpsCompleted: calls on leads already in touched/nurturing at time of note
-  let followUpsCompleted = 0;
-  for (const row of followRows) {
-    const lead = Array.isArray(row.lead) ? row.lead[0] : row.lead;
-    if (
-      lead &&
-      (lead.status === "touched" ||
-        lead.status === "nurturing" ||
-        lead.status === "in_discussion")
-    ) {
-      followUpsCompleted += 1;
-    }
-  }
+  const totalLeads = totalLeadsData.count ?? 0;
+  const totalCallsMade = (totalCallsMadeData.data ?? []).reduce(
+    (s, l) => s + ((l.call_count ?? 0) as number),
+    0,
+  );
 
   // won / deal amount — from the status_changed_at-filtered won leads query
   const leadsWon = wonLeads.length;
@@ -949,19 +891,16 @@ export async function getAgentDetailMetrics(
     }),
   );
 
-  const result: AgentDetailMetrics = {
+  return {
     callsToday: callsTd,
-    newLeadsAttended,
-    followUpsCompleted,
+    totalLeads,
+    totalCallsMade,
     leadsWon,
     totalDealAmount,
     dealTypeBreakdown,
     pipelineBreakdown,
     callOutcomeBreakdown,
   };
-
-  redis.set(cacheKey, JSON.stringify(result), { ex: PERF_AGENT_DETAIL_TTL }).catch(() => {});
-  return result;
 }
 
 // ─────────────────────────────────────────────

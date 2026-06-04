@@ -6,6 +6,122 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-04 — Lead list instant refresh + dashboard 30s auto-poll
+
+**Change 1 — `revalidatePath('/leads')` on all lead mutations**
+
+Six server actions now tell Next.js to bust the `/leads` RSC segment in addition to the dossier page. Before this change, the agent's lead list stayed stale until manual navigation; mutations only revalidated the dossier (`/leads/[slug]`).
+
+Actions that gained `revalidatePath('/leads')`:
+- `addLeadCallNote` — status may advance (new→touched), call_count and last_call_outcome change
+- `updateLeadStatus` — status changes
+- `assignLead` — assigned_to changes
+- `createManualLead` — new row appears in list
+- `revalidateLeadDossier` helper (covers `updateLeadEmail`, `updateLeadDomain`, `updateLeadSource`, `updateLeadCity`)
+
+`createLeadTaskAction` intentionally excluded — creating a task on a dossier does not change any list-visible field.
+
+File: `src/lib/actions/leads.ts`
+
+**Change 2 — 30s silent auto-poll on three dashboard widgets**
+
+`AgentTasksWidget`, `ManagerLeadStatusWidget`, and `ManagerCampaignWidget` now poll their server action every 30 seconds using a `setInterval` inside a `useEffect`. No loading state is shown; data swaps in silently via `startTransition`. The interval is cancelled on unmount and re-created if the domain mode or userId dependency changes.
+
+`AgentActivityWidget` is intentionally excluded — it already has a Supabase Realtime subscription on `lead_activities` that delivers inserts live. Polling would be redundant.
+
+Pattern per widget: `setInterval` → `let cancelled = false` → `startTransition(async () => { fetch; if (!cancelled && data) setState })` → cleanup returns `clearInterval`. Same cancelled-flag pattern used by the existing mount-fetch `useEffect` (see 2026-05-28 post-ship fix).
+
+Files: `src/components/dashboard/widgets/AgentTasksWidget.tsx`, `ManagerLeadStatusWidget.tsx`, `ManagerCampaignWidget.tsx`
+
+---
+
+## 2026-06-04 — Performance · Agent self-view redesign: smart period tabs + dual content tabs
+
+**Period selector:** FilterDropdown removed. Replaced with flat chevron-style pill row: Today → This Week → This Month → Custom. Active button gets --theme-paper bg + --shadow-1. Custom reveals DatePicker fields inline via AnimatePresence.
+
+**Content tabs:** "Overview" and "Today" sit above the content area. Today tab: hero Calls Today + Notes Today in large serif, call outcome donut, live pipeline cards (Won / In Discussion / Nurturing). Overview tab: always shows a today snapshot strip (calls/notes/won since midnight IST) then CoreFourGrid → EffortGrid → CallOutcomeBar for the selected period. When period = Today, tabs collapse to one view.
+
+**Architecture:** Agent self-view is now fully client-driven via AgentPerformanceShell. No URL params, no Suspense boundary. page.tsx fetches this_month as initialData for instant first paint. Period changes dim with progress-bar via getAgentSelfMetricsAction.
+
+**New:** today added to PerformancePeriod. getAgentSelfMetricsAction added to actions/performance.ts.
+
+---
+
+## 2026-06-04 — Redis cache audit: dead caches removed, version-counter invalidation
+
+Complete overhaul of the Redis cache layer. 10 key families removed, 4 bugs fixed, list invalidation upgraded from O(N) SCAN to O(1) atomic INCR.
+
+**Removed caches (TTL-only, no invalidation path — safer to hit DB):**
+- `perf:*` — all 6 performance-service namespaces removed. Performance data is retrospective; DB queries have proper indexes; managers/founders don't refresh constantly. `redis` import + all 6 TTL constants deleted from `performance-service.ts`.
+- `campaign:list/detail/distribution` — campaign analytics removed from `leads-service.ts`. Manager/admin use only; RPC queries are fast enough raw.
+- `campaign:ad-creative` — removed from `ad-creatives-service.ts` and `ad-creatives.ts` action. `void redis.del` after upsert/delete was a bug pattern (CLAUDE.md §void-redis-del); simpler to drop the cache entirely.
+- `task:group-list` — removed from `tasks-service.ts` (getGroupTasks) and `tasks.ts` action. Manager-only workbench, infrequent access.
+- `task:subtasks` — removed from `tasks-service.ts` (getGroupSubtasks) and all action call sites. Workspace feature, low traffic.
+- `task:remarks` — removed from `tasks-service.ts` (getTaskRemarks) and `addTaskRemarkAction` / `suppressTaskRemarkAction`. Low value, Realtime already refreshes the UI.
+
+**Bug fixes in kept caches:**
+- `assignLead`: was `void Promise.all([...]).catch()` — replaced with `await Promise.all` inside `try/catch`. Also added missing `leadRowSlug` del (Bug 3 from the audit plan) and two INCR calls.
+- `revalidateLeadDossier` (covers `updateLeadEmail`, `updateLeadDomain`, `updateLeadSource`, `updateLeadCity`): was three separate `void redis.del().catch()` calls — replaced with a single `await Promise.all` + `leadRowSlug` del was already present but `leadActivities` was missing; now all three keys await correctly.
+- `addLeadCallNote`: added two INCR calls for `agent` and `manager` list version (call notes can auto-advance status, changing list-visible `status` field).
+- `updateLeadStatus`: added two INCR calls for `agent` and `manager` list version.
+
+**Version counter pattern for lead list cache (replaces SCAN):**
+- New key: `lead:list:v:{role}:{domain}` — persists without TTL. Every lead mutation does `INCR` on the relevant role+domain combos.
+- `buildLeadListKey` now requires a `version: number` argument and embeds it as `:v{N}` suffix.
+- `getLeadsByRole` reads the current version with a fast `GET` before building the cache key. Old versioned keys self-expire at LEAD_LIST_TTL (30s).
+- `createManualLead`: the O(N) Redis SCAN loop is completely replaced with two `INCR` calls. 6 dashboard volume period keys now deleted in the same `Promise.all` (all periods × roles).
+
+**`redis-keys.ts` cleanup:**
+- Added `REDIS_KEYS.leadListVersion(role, domain)` builder.
+- `REDIS_KEYS.leadList` now takes `version: number` as 5th arg.
+- Removed: `REDIS_KEYS.perf.*`, `REDIS_KEYS.campaign.*`, `REDIS_KEYS.task.subtasks`, `REDIS_KEYS.task.remarks`, `REDIS_KEYS.task.groupList`, legacy `taskSubtasks` / `taskRemarks` flat aliases.
+- Removed: `leadListKeyPrefix` export (SCAN pattern retired).
+- Removed TTL constants: all 6 `PERF_*_TTL`, all 4 `CAMPAIGN_*_TTL`, `TASK_GROUP_LIST_TTL`, `REDIS_TTL.TASK_SUBTASKS`, `REDIS_TTL.TASK_REMARKS`.
+
+**Files changed:** `src/lib/constants/redis-keys.ts`, `src/lib/services/performance-service.ts`, `src/lib/services/leads-service.ts`, `src/lib/services/ad-creatives-service.ts`, `src/lib/services/tasks-service.ts`, `src/lib/actions/leads.ts`, `src/lib/actions/tasks.ts`, `src/lib/actions/ad-creatives.ts`
+
+---
+
+## 2026-06-04 — Dashboard shell: flat canvas gutter matches sidebar (no wash below paper)
+
+The margin strips around the floating paper card (top, right, and especially below the card) showed `.layout-canvas` grain + Earth radial gradients + `--shadow-paper` bleed — visually different from the flat sidebar even though both use `#0d0c0a` on Earth. Root cause: the paper used `height: calc(100dvh - 24px)` + margins inside a textured flex row, leaving dead canvas below the card when the row was taller than the paper box.
+
+- `src/app/(dashboard)/layout.tsx` — outer shell uses `layout-shell` (flat `--theme-canvas`). Right column is a full-height canvas wrapper with `padding: 12px 12px 12px 0`; paper is `flex: 1` so it fills the column with no gap underneath.
+- `src/app/globals.css` — `.layout-shell` added (flat canvas only). `.layout-canvas` kept for optional atmosphere elsewhere. `html`/`body` use `var(--theme-canvas)` so theme switches stay in sync.
+
+---
+
+## 2026-06-04 — Performance · Manager view: selected agent preserved across period/date filter changes
+
+`ManagerPerformanceAsync` removed `key={period}` from `ManagerPerformancePanel`. Previously, every period change forced a full remount of the panel — resetting the selected agent back to the alphabetical first and wiping the user's selection. The agent roster now stays mounted across period changes; `AgentDetailPanel.useEffect` already re-fetches when `period`/`customFrom`/`customTo` change, so no data regression.
+
+`AgentDetailPanel` now distinguishes agent-switch (full skeleton) from period-change (graceful dim). A `metricsAgentId` ref tracks which agent the live metrics belong to. On period change for the same agent: `setMetrics(null)` is NOT called, so the existing data stays visible at 45% opacity while the refetch is in flight. A thin 2px accent progress bar (`scaleX 0→1`, 900ms) appears at the top of the panel to signal the refresh. On agent switch: full skeleton as before.
+
+**Two invariants now enforced:**
+
+- `ManagerPerformancePanel` must never carry `key={period}` — period state flows through props, not remount.
+- `AgentDetailPanel.metricsAgentId` ref must be reset to `null` on agent switch before the fetch fires, so the agent-switch skeleton path is always taken for a new agent regardless of in-flight state.
+
+---
+
+## 2026-06-04 — UI: SearchBar clear (×) vertical alignment; Leads date-range clear aligned to picker row
+
+`SearchBar` clear control: outer flex anchor centers the hit target; Framer Motion `scale` no longer fights `translateY(-50%)`. Clear icon size follows `iconSize` per size variant; `right`/`paddingRight` use `--space-3` (§5.10). `LeadsFilters` date dropdown: panel `alignItems: flex-end`; clear button is `2.25rem` square (matches `DatePicker` trigger); removed `marginTop` hack on × and arrow.
+
+---
+
+## 2026-06-03 — Performance · AgentDetailPanel scorecards corrected: totalLeads (all-time assigned count), totalCallsMade (SUM call_count on cohort leads), callsToday verified — Phase 9
+
+`AgentDetailMetrics` fields renamed: `newLeadsAttended` → `totalLeads` (all-time assigned leads, no period filter), `followUpsCompleted` → `totalCallsMade` (SUM(call_count) on leads created in the period, COALESCE 0). `callsToday` filter confirmed correct — `call_outcome IS NOT NULL` was already present. Service queries updated in `getAgentDetailMetrics`; `AgentDetailPanel` stat card labels updated to "Total Leads" and "Total Calls". `tsc --noEmit` passes with zero errors.
+
+---
+
+## 2026-06-03 — Leads search: 350ms keystroke debounce, SearchBar component wired, useDebounce hook created
+
+Search in `LeadsFilters` now pushes to `?search=` automatically 350ms after the user stops typing — no Apply click required. `FilterDraft` no longer contains `search`. `SearchBar` from `src/components/ui/SearchBar.tsx` replaces the inline input. `useDebounce<T>` created at `src/hooks/useDebounce.ts` — the one and only debounce utility in the codebase.
+
+---
+
 ## 2026-06-03 — Fix: `lead_id` now logged on all `agent_assignment` notification rows
 
 `sendLeadAssignmentNotification` gained an optional 5th parameter `leadId?: string | null`. It is threaded into the `logNotification` call inside the `finally` block, so every `agent_assignment` row in `whatsapp_notification_logs` now carries a non-null `lead_id`.

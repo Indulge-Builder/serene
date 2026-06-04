@@ -212,6 +212,20 @@ export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetPro
     });
   }
 
+  // Silent 30s auto-poll — no loading state, no flash
+  useEffect(() => {
+    const id = setInterval(() => {
+      let cancelled = false;
+      startTransition(async () => {
+        const result = await getAgentTasksSummaryAction(userId);
+        if (!cancelled && result.data) setTasks(result.data);
+      });
+      return () => { cancelled = true; };
+    }, 30_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   const overdue = tasks.filter((t) => t.is_overdue);
   const active = tasks.filter((t) => !t.is_overdue);
 

@@ -36,9 +36,10 @@ export default async function DashboardLayout({
       {/* Sets data-theme on <html> before the browser paints — no flash. */}
       <ThemeInitializer theme={safeTheme} />
     <div
-      className="layout-canvas min-h-screen flex"
+      className="layout-shell flex"
       style={{
-        gap: "var(--space-3)",
+        gap:        "var(--space-3)",
+        minHeight:  "100dvh",
       }}
     >
       <Sidebar profile={profile} initialNotifications={initialNotifications} />
@@ -46,22 +47,33 @@ export default async function DashboardLayout({
       {/* Toast stack — portal-like, sits at root of dashboard shell, outside scroll */}
       <ToastProvider />
 
-      {/* Paper card — the floating content surface */}
+      {/* Flat canvas gutter (matches sidebar) — paper fills the padded area */}
       <div
         style={{
-          flex:          1,
-          display:       "flex",
-          flexDirection: "column",
-          height:        "calc(100dvh - 24px)",
-          margin:        "12px 12px 12px 0",
-          background:    "var(--theme-paper)",
-          borderRadius:  "var(--radius-xl)",
-          boxShadow:     "var(--shadow-paper)",
-          overflowY:     "auto",
-          overflowX:     "hidden",
+          flex:           1,
+          minWidth:       0,
+          minHeight:      "100dvh",
+          display:        "flex",
+          flexDirection:  "column",
+          padding:        "12px 12px 12px 0",
+          background:     "var(--theme-canvas)",
         }}
       >
-        {children}
+        <div
+          style={{
+            flex:           1,
+            minHeight:      0,
+            display:        "flex",
+            flexDirection:  "column",
+            background:     "var(--theme-paper)",
+            borderRadius:   "var(--radius-xl)",
+            boxShadow:      "var(--shadow-paper)",
+            overflowY:      "auto",
+            overflowX:      "hidden",
+          }}
+        >
+          {children}
+        </div>
       </div>
     </div>
     </>

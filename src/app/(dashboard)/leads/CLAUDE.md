@@ -87,7 +87,7 @@ query = query.or(
 
 ## Search Placement Rule
 
-Search lives in **`LeadsFilters.tsx`** only. It is debounced 500ms and stored as the `search` URL param.
+Search lives in **`LeadsFilters.tsx`** only. It is debounced **350ms** and stored as the `search` URL param.
 
 **`LeadsTable.tsx` contains zero filtering, searching, or sorting logic.** It receives pre-filtered rows from the server via props and renders them directly. There is no `useState` for search, no `useMemo` filter, no `.filter()`, no `.sort()` on the `leads` array inside `LeadsTable`. The component is display-only.
 
@@ -155,18 +155,14 @@ When `totalCount <= 30`, pagination is **absent from the DOM entirely**. One pag
 
 ## Debounce Rule
 
-Search input in `LeadsFilters` debounces **500ms** before pushing to URL params.
-Implementation: `useEffect` + `setTimeout`/`clearTimeout`. No library.
+Search input in `LeadsFilters` debounces **350ms** before pushing to URL params.
+Implementation: `useDebounce` hook at `src/hooks/useDebounce.ts` — the canonical debounce utility. Do not recreate it inline or add an alternative.
 
-```typescript
-useEffect(() => {
-  const timer = setTimeout(() => { ... push to URL ... }, 500);
-  return () => clearTimeout(timer);
-}, [searchInput]);
-```
+`FilterDraft` no longer contains `search`. Search lives in a separate `searchInput` state + `debouncedSearch` derived value; the `useEffect` keyed on `debouncedSearch` guards against the mount no-op and the `clearAll` no-op via an equality check against the live URL param before pushing.
 
 - When search changes, `buildParams` deletes `page` → resets to page 1 automatically.
-- When clear X is clicked, `search=null` and `page` deletion happen in the same `router.push`.
+- `clearAll` calls `setSearchInput("")` immediately so the input clears without waiting 350ms.
+- `SearchBar` (`src/components/ui/SearchBar.tsx`) renders the search input — do not re-implement the input inline.
 
 **Never push search on every keystroke** — every push triggers a `LeadsTableAsync` re-render.
 
@@ -249,7 +245,7 @@ This is the service's responsibility, not the component's.
 
 | Filter          | URL param   | Type                    |
 |-----------------|-------------|-------------------------|
-| search          | `search`    | string (debounced 500ms)|
+| search          | `search`    | string (debounced 350ms)|
 | status          | `status`    | comma-separated values  |
 | outcome         | `outcome`   | comma-separated values  |
 | source          | `source`    | single string           |

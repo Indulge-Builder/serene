@@ -303,10 +303,9 @@ export function LeadWhatsAppCard({
         style={{
           background:    "var(--theme-paper-subtle)",
           borderRadius:  "var(--radius-sm)",
-          minHeight:     "180px",
-          maxHeight:     "320px",
+          maxHeight:     "300px",
           overflowY:     "auto",
-          padding:       "var(--space-5) var(--space-5)",
+          padding:       "var(--space-4) var(--space-4)",
           display:       "flex",
           flexDirection: "column",
           gap:           "var(--space-3)",

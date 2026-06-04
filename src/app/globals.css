@@ -8,13 +8,13 @@
 }
 
 html {
-  background-color: #0d0c0a; /* match Earth canvas — prevents flash before layout mounts */
+  background-color: var(--theme-canvas);
   color-scheme: dark;
   min-height: 100%;
 }
 
 body {
-  background-color: #0d0c0a;
+  background-color: var(--theme-canvas);
   color: rgb(255 255 255 / 0.9);
   min-height: 100vh;
   font-family: var(--font-sans);
@@ -22,9 +22,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Dashboard shell canvas — grain + theme-scoped radial washes via CSS vars.
-   Grain SVG opacity (0.055) is hardcoded in the data URI; cannot use
-   --theme-canvas-grain-opacity. Other themes omit gradient tokens → flat canvas. */
+/* Dashboard shell — flat canvas matching sidebar (--theme-sidebar-bg uses same token).
+   Gutter strips around the paper card must not use grain/gradients; those read as
+   a mismatched wash next to the flat sidebar. */
+.layout-shell {
+  background-color: var(--theme-canvas);
+}
+
+/* Optional atmosphere (auth, marketing). Not used on the dashboard shell. */
 .layout-canvas {
   background-color: var(--theme-canvas);
   background-image:

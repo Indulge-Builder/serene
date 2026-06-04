@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence }             from 'framer-motion';
 import { Avatar }                              from '@/components/ui/Avatar';
 import { CallOutcomeBar }                      from './CallOutcomeBar';
@@ -382,9 +382,20 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
   const [error, setError]         = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Track which agent the current metrics belong to, so we know when to show
+  // the full skeleton (new agent) vs the graceful dim overlay (same agent, new period).
+  const metricsAgentId = useRef<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
-    setMetrics(null);
+
+    const isAgentSwitch = metricsAgentId.current !== agent.id;
+
+    // Clear metrics only on agent switch — preserves existing data during period-change refetch
+    if (isAgentSwitch) {
+      setMetrics(null);
+      metricsAgentId.current = null;
+    }
     setError(null);
     setIsLoading(true);
 
@@ -395,6 +406,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
         if (result.error || !result.data) {
           setError(result.error ?? 'Failed to load.');
         } else {
+          metricsAgentId.current = agent.id;
           setMetrics(result.data);
         }
       })
@@ -407,14 +419,44 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
     return () => { cancelled = true; };
   }, [agent.id, domain, period, customFrom, customTo]);
 
+  // When re-fetching for the same agent (period changed), dim the panel instead of showing skeleton.
+  // When fetching for a new agent, show skeleton (metrics is null).
+  const isRefetching = isLoading && metrics !== null;
+
   return (
+    <div style={{ position: 'relative' }}>
+      {/* ── Period-change loading bar — thin accent pulse at the top ── */}
+      <AnimatePresence>
+        {isRefetching && (
+          <motion.div
+            key="refetch-bar"
+            initial={{ scaleX: 0, opacity: 1 }}
+            animate={{ scaleX: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.9, ease: [0.4, 0, 0.2, 1] }}
+            style={{
+              position:        'absolute',
+              top:             0,
+              left:            0,
+              right:           0,
+              height:          '2px',
+              background:      'var(--theme-accent)',
+              borderRadius:    'var(--radius-full)',
+              transformOrigin: 'left center',
+              zIndex:          2,
+            }}
+          />
+        )}
+      </AnimatePresence>
+
     <div
       style={{
         display:        'flex',
         flexDirection:  'column',
         gap:            'var(--space-4)',
-        opacity:        (isLoading && !!metrics) ? 0.55 : 1,
-        transition:     'opacity var(--duration-base) var(--ease-in-out)',
+        opacity:        isRefetching ? 0.45 : 1,
+        transition:     'opacity 200ms var(--ease-in-out)',
+        pointerEvents:  isRefetching ? 'none' : undefined,
       }}
     >
       {/* ── Identity zone ──────────────────────────────────────────── */}
@@ -564,8 +606,8 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             style={{ display: 'flex', gap: 'var(--space-3)' }}
           >
             <StatAtom label="Calls Today"  value={String(metrics.callsToday)}            paletteIndex={0} delay={0}   />
-            <StatAtom label="New Leads"    value={String(metrics.newLeadsAttended)}       paletteIndex={1} delay={40}  />
-            <StatAtom label="Follow-ups"   value={String(metrics.followUpsCompleted)}     paletteIndex={2} delay={80}  />
+            <StatAtom label="Total Leads"  value={String(metrics.totalLeads)}             paletteIndex={1} delay={40}  />
+            <StatAtom label="Total Calls"  value={String(metrics.totalCallsMade)}         paletteIndex={2} delay={80}  />
             <StatAtom label="Leads Won"    value={String(metrics.leadsWon)}               paletteIndex={3} delay={120} />
             <StatAtom label="Revenue"      value={formatCurrency(metrics.totalDealAmount)} paletteIndex={4} delay={160} />
           </motion.div>
@@ -735,6 +777,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
           {error}
         </p>
       )}
+    </div>
     </div>
   );
 }

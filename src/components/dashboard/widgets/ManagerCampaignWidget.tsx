@@ -107,6 +107,28 @@ export function ManagerCampaignWidget({
     });
   }
 
+  // Silent 30s auto-poll — mirrors handleRefresh, no loading state
+  useEffect(() => {
+    const id = setInterval(() => {
+      let cancelled = false;
+      startTransition(async () => {
+        if (domainMode === "all") {
+          const result = await getLeadsByCampaignAction(role, domain);
+          if (!cancelled && result.data) setCampaigns(result.data);
+        } else {
+          const result = await getLeadsByCampaignForDomainAction(
+            domainMode as AppDomain,
+          );
+          if (!cancelled && result.data) setCampaigns(result.data);
+        }
+      });
+      return () => { cancelled = true; };
+    }, 30_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domainMode, role, domain]);
+
+
   // Keep the full campaign name in data — label wrapping is handled by the
   // custom XAxis tick renderer below, not by slicing the string here.
   const chartData = campaigns.map((c) => ({

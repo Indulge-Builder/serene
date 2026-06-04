@@ -1,16 +1,16 @@
 # Performance Page — Full Intelligence Document
 
-Last verified: 2026-06-01
+Last verified: 2026-06-04
 
 ---
 
 ## 1. Module Overview
 
-**Route:** `/performance` — one URL, three role-specific layouts. All views share the same filter bar component (`PerformanceFilters`) for period (and optionally search / custom dates). Data never crosses feature folders; everything flows through `src/lib/services/performance-service.ts` and `src/lib/actions/performance.ts`.
+**Route:** `/performance` — one URL, three role-specific layouts.
 
-| Role | View | Primary async shell | Redirect if unauthorized |
+| Role | View | Primary shell | Redirect if unauthorized |
 | ------ | ------ | --------------------- | ------------------------- |
-| `agent` | Self-view: Core Four KPIs, effort cards, call-outcome donut, motivational footer | `PerformanceAsync` | — |
+| `agent` | Self-view: period tabs, Overview + Today content tabs, motivational footer | `AgentPerformanceShell` (client) | — |
 | `manager` | Team view: agent roster (left) + agent detail (right) | `ManagerPerformanceAsync` | — |
 | `founder` / `admin` | Same team UI as manager, all domains; domain narrowing is client-side on roster only | `FounderPerformanceShell` → `ManagerPerformanceAsync` with `allDomains={true}` | — |
 | `guest` | — | — | `redirect('/dashboard')` |
@@ -19,7 +19,7 @@ Last verified: 2026-06-01
 
 1. `getCurrentProfile()` — no profile → `redirect('/login')`
 2. `profile.role === 'guest'` → `redirect('/dashboard')`
-3. `profile.role === 'agent'` → agent layout (`maxWidth: 1280px`, `showSearch={false}`)
+3. `profile.role === 'agent'` → agent layout — fetches `this_month` initialData server-side, renders `AgentPerformanceShell`
 4. `profile.role === 'manager'` → manager layout (`domain={profile.domain}`)
 5. Else (founder / admin) → `FounderPerformanceShell` with `DEFAULT_GIA_DOMAIN` placeholder domain prop
 
@@ -33,11 +33,9 @@ File: `supabase/migrations/20260528000013_performance_indexes.sql`
 
 | Index name | Columns | Partial condition | Queries benefited |
 | ------------ | --------- | ------------------- | ------------------- |
-| `idx_lead_activities_actor_status` | `lead_activities(actor_id, action_type, created_at DESC)` | none (full table) | First-touch / response-time lookups: `lead_activities` filtered by `actor_id`, `action_type = 'status_changed'`, `details->>new_status = 'touched'`, date range on `created_at` (`_getCoreFourMetricsForRange`, `getTeamBenchmarks`, `getAgentRosterPerformance`, `getAgentDetailMetrics` response query) |
-| `idx_lead_notes_author_outcome` | `lead_notes(author_id, created_at DESC)` | none | `getEffortMetrics` (calls + all notes), `getCallOutcomeBreakdown`, `getAgentDetailMetrics` (calls today, follow-ups, outcome breakdown) |
-| `idx_leads_assigned_status_created` | `leads(assigned_to, status, created_at DESC)` | `WHERE archived_at IS NULL` | Cohort queries on `leads` by `assigned_to` + `created_at` (touch rate, pipeline breakdown, roster cohort totals) |
-
-**Note:** Won/lost and conversion metrics filter on `status_changed_at`, not `created_at`. Those queries benefit from general `leads` indexes elsewhere; migration 0013 optimizes the cohort and activity shapes above.
+| `idx_lead_activities_actor_status` | `lead_activities(actor_id, action_type, created_at DESC)` | none | First-touch / response-time lookups |
+| `idx_lead_notes_author_outcome` | `lead_notes(author_id, created_at DESC)` | none | `getEffortMetrics`, `getCallOutcomeBreakdown`, `getAgentDetailMetrics` |
+| `idx_leads_assigned_status_created` | `leads(assigned_to, status, created_at DESC)` | `WHERE archived_at IS NULL` | Cohort queries by `assigned_to` + `created_at` |
 
 ---
 
@@ -49,6 +47,7 @@ Defined in `src/lib/services/performance-service.ts`:
 
 ```typescript
 export type PerformancePeriod =
+  | 'today'
   | 'this_week'
   | 'this_month'
   | 'last_month'
@@ -56,22 +55,21 @@ export type PerformancePeriod =
   | 'custom';
 ```
 
-**`custom` fallback in `getPeriodDateRange`:** The `custom` case falls through to `return getPeriodDateRange('this_month')`. Any caller that invokes `getPeriodDateRange('custom')` without supplying explicit `from`/`to` strings gets **this month** (IST boundaries). That is intentional: custom bounds are always passed by the orchestrator (`ManagerPerformanceAsync`, `getAgentDetailMetricsAction`) as ISO datetimes; `getPeriodDateRange` is only a safe default for code paths that forget custom params.
+**`'today'`** was added 2026-06-04. It returns IST midnight → now via `toISTMidnight(now)`. Previous period for `'today'` is yesterday IST (midnight–midnight).
 
-**`getPreviousPeriodDateRange('custom')`:** Returns `null`. There is no well-defined “previous” window for an arbitrary user-selected range, so period-over-period deltas are omitted (agent view: `getPreviousPeriodCoreMetrics` returns `null`; Core Four delta lines absent).
+**`custom` fallback in `getPeriodDateRange`:** Falls through to `return getPeriodDateRange('this_month')`. Custom bounds are always passed by the orchestrator as ISO strings; this is a safe fallback only.
 
-**`TeamBenchmarks` in types:** `TeamBenchmarks` is exported from `performance-service.ts`, not `src/lib/types/index.ts`. `AgentRosterRow` and `AgentDetailMetrics` live in `src/lib/types/index.ts`.
+**`getPreviousPeriodDateRange('custom')`:** Returns `null` — no well-defined previous window.
+
+**`TeamBenchmarks`** is exported from `performance-service.ts`, not `src/lib/types/index.ts`. `AgentRosterRow` and `AgentDetailMetrics` live in `src/lib/types/index.ts`.
 
 ### 3b. IST period boundaries
 
-**Function:** `getPeriodDateRange(period)` and `getPreviousPeriodDateRange(period)` in `performance-service.ts`.
-
-**Why IST:** Agents and lead operations are India-based. Day/week/month boundaries use **UTC+05:30** (`IST_OFFSET_MS = 5.5 * 60 * 60 * 1000`). Helpers: `toISTMidnight`, `toISTEndOfDay`, `getISTMondayStart`.
-
-**Return shape:** `{ from: string; to: string }` — ISO 8601 UTC strings representing IST boundary instants.
+**IST offset:** `IST_OFFSET_MS = 5.5 * 60 * 60 * 1000`. Helpers: `toISTMidnight`, `toISTEndOfDay`, `getISTMondayStart`.
 
 | Period | `from` | `to` |
 | -------- | -------- | ------ |
+| `today` | IST midnight today | `now` |
 | `this_week` | IST Monday 00:00:00 of current week | `now` |
 | `this_month` | IST 1st of current month 00:00:00 | `now` |
 | `last_month` | IST 1st of previous month 00:00:00 | IST last moment of previous month |
@@ -80,12 +78,13 @@ export type PerformancePeriod =
 
 **Previous period** (`getPreviousPeriodDateRange`):
 
+- `today` → yesterday IST (midnight to midnight)
 - `this_week` → prior Mon–Sun (IST)
 - `this_month` → `getPeriodDateRange('last_month')`
-- `last_month` → calendar month before last month (IST)
+- `last_month` → calendar month before last (IST)
 - `all_time` / `custom` → `null`
 
-**`callsToday` boundary** (separate from period presets): IST midnight today via:
+**`callsToday` boundary** (separate from period presets — used in `getAgentDetailMetrics`): IST midnight today via:
 
 ```typescript
 const nowIst = new Date(new Date().getTime() + IST_OFFSET_MS);
@@ -93,151 +92,111 @@ nowIst.setUTCHours(0, 0, 0, 0);
 const todayStart = new Date(nowIst.getTime() - IST_OFFSET_MS).toISOString();
 ```
 
-Never use bare `new Date()` at UTC midnight for “today” — that is wrong for IST agents.
+Never use bare `new Date()` at UTC midnight for "today" — wrong for IST agents.
 
 ### 3c. Custom date range
 
-**URL params:** `?period=custom&from=<ISO datetime>&to=<ISO datetime>`
-
-**Writer:** `PerformanceFilters` — when period is `custom`, `AnimatePresence` reveals two `DatePicker` fields. `handleFromChange` / `handleToChange` push `period: 'custom'`, `from`, `to` via `buildFilterParams`. Leaving a preset period clears `from` and `to`.
+**Writer:** `AgentPerformanceShell` (agent) or `PerformanceFilters` (manager/founder) — `AnimatePresence` reveals two `DatePicker` fields. Custom params pushed as ISO strings.
 
 **Readers:**
 
-- `page.tsx` — reads `params.from`, `params.to` as strings; passes to `PerformanceFilters` and manager/founder shells.
-- `ManagerPerformanceAsync` — `from = (period === 'custom' && customFrom) ? customFrom : range.from`; same for `to`.
+- `AgentPerformanceShell` — passes `customFrom?.toISOString()` / `customTo?.toISOString()` to `getAgentSelfMetricsAction`.
+- `page.tsx` — reads `params.from`, `params.to`; passes to manager/founder shells.
+- `ManagerPerformanceAsync` — overrides range when `period === 'custom' && customFrom`.
 - `getAgentDetailMetricsAction` — same override before calling `getAgentDetailMetrics`.
-
-**Agent self-view gap (document as-is):** `PerformanceAsync` receives only `period`, not `customFrom`/`customTo`. If an agent selects Custom in the filter bar, service calls still use `getPeriodDateRange(period)` which falls back to **this month** until agent async is wired to pass explicit bounds. Manager/founder paths are correct.
 
 ---
 
 ## 4. The Critical Date-Field Rule
 
-**Decision record — do not regress.**
+**Do not regress.**
 
-### The production bug
+1. **`leadsWon`:** Filter by `status_changed_at` where `status = 'won'`.
+2. **`conversionRate`:** Denominator = leads with `status IN ('won','lost')`, filtered by `status_changed_at`.
+3. **`touchRate`:** **Intentionally remains on `created_at`** — "of leads created in the period, what % moved past `new`?" This is not the same bug as (1–2). Do not change without an explicit product decision.
+4. **`getAgentRosterPerformance`:** Cohort `totalLeads` from `created_at`; won/lost/deal from `status_changed_at`.
+5. **`getAgentDetailMetrics`:** `leadsWon`/revenue from `status_changed_at`; pipeline/cohort from `created_at`.
+6. **`callsToday`:** IST today start, not period `from`/`to`.
 
-All performance queries originally filtered won/lost (and conversion) by `leads.created_at`. Agents often close leads that were **created in an earlier period**. Example: lead created in March, marked won in May → **invisible** in “This Month” won count → showed **0** wins despite real activity.
-
-### The fix — numbered invariants
-
-1. **`leadsWon` (count of won leads in period):** Filter by `status_changed_at` where `status = 'won'`, plus `archived_at IS NULL` and assignee/actor scope as required.
-2. **`conversionRate` (won ÷ closed):** Denominator = leads with `status IN ('won','lost')` closed in the period → filter by **`status_changed_at`**, not `created_at`.
-3. **`touchRate`:** **Intentionally remains on `created_at`.** Cohort definition: “of leads **assigned/created in the period**, what % moved past `new`?” This measures responsiveness on **new-period intake**, not closure timing. **This is not the same bug as (1–2).** Do not “fix” touch rate to `status_changed_at` without an explicit product change.
-4. **`getAgentRosterPerformance`:** **Two queries** — (a) cohort `totalLeads` from `created_at` in range; (b) won/lost counts and deal amount from **`status_changed_at`** in range on `won`/`lost` rows.
-5. **`getAgentDetailMetrics`:** **`leadsWon` / revenue** from a dedicated query on won leads filtered by **`status_changed_at`**; **`pipelineBreakdown` / `newLeadsAttended`** from cohort query filtered by **`created_at`**.
-6. **`callsToday`:** Filter `lead_notes` from **IST today start** (`todayStart`), not period `from`/`to`.
-
-### Rule for new metrics
-
-Before adding any performance query, answer explicitly:
-
-- **Outcome / closure metric** → `status_changed_at`
-- **Cohort / intake / pipeline snapshot metric** → `created_at` (or no date filter for live pipeline counts)
-- **Activity metric** (calls, notes) → `lead_notes.created_at` or `lead_activities.created_at` as appropriate
+**Rule for new metrics:** outcome/closure → `status_changed_at`. Cohort/intake → `created_at`. Activity (calls, notes) → `lead_notes.created_at` or `lead_activities.created_at`.
 
 ---
 
 ## 5. Service Functions — `performance-service.ts`
 
-### `getPeriodDateRange(period: PerformancePeriod): DateRange`
+### `getPeriodDateRange(period)` / `getPreviousPeriodDateRange(period)`
 
-- **DB:** none (pure IST math).
-- **Date columns:** N/A.
-- **Called by:** Every function that needs preset bounds; `ManagerPerformanceAsync`; `getAgentDetailMetricsAction` (base range before custom override); `getTeamBenchmarks`; `getEffortMetrics`; `getCallOutcomeBreakdown`; `getCoreFourMetrics`.
+Pure IST math — no DB call.
 
-### `getPreviousPeriodDateRange(period: PerformancePeriod): DateRange | null`
+### `_getCoreFourMetricsForRange(agentId, range)`
 
-- **DB:** none.
-- **Date columns:** N/A.
-- **`custom` / `all_time`:** `null`.
-- **Called by:** `getPreviousPeriodCoreMetrics`.
+Private helper. `leadsWon` / `conversionRate` → `status_changed_at`. Touch cohort → `created_at`. Response time → `lead_activities.created_at`. Called by `getCoreFourMetrics` and `getPreviousPeriodCoreMetrics`.
 
-### `_getCoreFourMetricsForRange(agentId: string, range: DateRange): Promise<CoreFourMetrics>`
+### `getCoreFourMetrics(agentId, period)`
 
-- **Leading underscore:** private helper; not exported for actions. Shared by current and previous period.
-- **Tables / date columns:**
-  - `leads` — `leadsWon`: `status_changed_at`; touch cohort: `created_at`; conversion closed set: `status_changed_at`
-  - `lead_activities` — response time: `created_at` on activity; joined lead `created_at`
-- **Returns:** `{ leadsWon, touchRate, avgResponseTimeMinutes, conversionRate }` — last three nullable per contract.
-- **Called by:** `getCoreFourMetrics`, `getPreviousPeriodCoreMetrics`.
+Wraps `_getCoreFourMetricsForRange(agentId, getPeriodDateRange(period))`.
 
-### `getCoreFourMetrics(agentId: string, period: PerformancePeriod): Promise<CoreFourMetrics>`
+### `getPreviousPeriodCoreMetrics(agentId, period)`
 
-- Wraps `_getCoreFourMetricsForRange(agentId, getPeriodDateRange(period))`.
-- **Called by:** `PerformanceAsync`; `page.tsx` (footer prefetch).
+Previous range via `getPreviousPeriodDateRange`; `null` if no previous period.
 
-### `getPreviousPeriodCoreMetrics(agentId: string, period: PerformancePeriod): Promise<CoreFourMetrics | null>`
+### `getEffortMetrics(agentId, period)`
 
-- Previous range via `getPreviousPeriodDateRange`; `null` if no previous period.
-- **Called by:** `PerformanceAsync` → `CoreFourGrid` deltas.
+`callsLogged` / `notesWritten` from `lead_notes.created_at` in period. `inDiscussionCount` / `nurturingCount` — **no period filter** (live pipeline snapshot).
 
-### `getEffortMetrics(agentId: string, period: PerformancePeriod): Promise<EffortMetrics>`
+### `getCallOutcomeBreakdown(agentId, period)`
 
-- **Tables / date columns:**
-  - `lead_notes` — `callsLogged`, `notesWritten`: `created_at` in period
-  - `leads` — `inDiscussionCount`, `nurturingCount`: **no period filter** (live pipeline snapshot)
-- **Called by:** `PerformanceAsync`; `page.tsx` (footer).
+`lead_notes` where `call_outcome IS NOT NULL`, `created_at` in period.
 
-### `getCallOutcomeBreakdown(agentId: string, period: PerformancePeriod): Promise<OutcomeBreakdownItem[]>`
+### `getTeamBenchmarks(callerDomain, period)`
 
-- **Table:** `lead_notes` — `call_outcome` not null, `created_at` in period.
-- **Called by:** `PerformanceAsync`; `AgentDetailPanel` (via detail metrics).
+3 flat queries — never N+1. `agentCount < 2` → all averages `null`. `leadsWon` excluded by design. Unweighted mean of per-agent means.
 
-### `getTeamBenchmarks(callerDomain: AppDomain, period: PerformancePeriod): Promise<TeamBenchmarks>`
+### `getAgentRosterPerformance(domain, dateFrom, dateTo)`
 
-- **Peer scope:** `profiles` where `domain = callerDomain`, `role = 'agent'`, `is_active = true`.
-- **`agentCount < 2` guard:** Returns `{ avgTouchRate: null, avgConversionRate: null, avgResponseTimeMinutes: null, agentCount }` — **all null averages, not zero**. Benchmark UI omits lines entirely.
-- **`leadsWon`:** Excluded by design (absolute count, not a rate).
-- **Query strategy:** 3 flat queries (profiles + touch cohort + closed + activities) — **never N+1 per agent**.
-- **Averaging:** Unweighted mean of per-agent means (documented in file header — not pool-wide weighted average).
-- **Date columns:**
-  - Touch: `leads.created_at` (cohort, same intent as agent touch rate)
-  - Conversion: `leads.status_changed_at` on won/lost
-  - Response: `lead_activities.created_at` with touched transition
-- **Called by:** `PerformanceAsync` → `CoreFourGrid`.
+`domain === null` → all active agents (founder/admin). Cohort `created_at`; won/lost `status_changed_at`. Sort: `leadsWon DESC`, `conversionRate DESC` (null → `-Infinity` — never floats above real data). Sidebar display order is separate (see `performance-roster-display.ts`).
 
-### `getAgentRosterPerformance(domain: AppDomain | null, dateFrom: string, dateTo: string): Promise<AgentRosterRow[]>`
+### `getAgentDetailMetrics(agentId, domain, dateFrom, dateTo)`
 
-- **`domain === null`:** All active agents (founder/admin). Else filter `profiles.domain`.
-- **Tables / date columns:**
-  - Cohort leads: `created_at` between `dateFrom`/`dateTo`
-  - Won/lost: `status_changed_at` between `dateFrom`/`dateTo`
-  - Response times: `lead_activities.created_at` in range
-- **Sort (API order):** Primary `leadsWon DESC` (`null` → `0`); secondary `conversionRate DESC` with **`null → -Infinity`** so agents with **no closed leads** never rank above agents with real conversion data.
-- **Sidebar display order is separate** — see `performance-roster-display.ts` (A–Z within domain groups).
-- **Called by:** `ManagerPerformanceAsync`.
+6 Supabase queries via `Promise.all`. Cohort → `created_at`; won → `status_changed_at`; `callsToday` IST boundary.
 
-### `getAgentDetailMetrics(agentId: string, domain: AppDomain | null, dateFrom: string, dateTo: string): Promise<AgentDetailMetrics>`
+### `getDomainsWithLeads(dateFrom, dateTo)`
 
-- **Internal `Promise.all` of 6 Supabase queries** (plus unused `responseData` fetch).
-- **Date columns:** cohort `leads.created_at`; won `leads.status_changed_at`; notes/activities as above; `callsToday` IST boundary.
-- **`domain` param:** Passed through for action auth; not used to filter queries inside service (agent scoped by `agentId`).
-- **Called by:** `ManagerPerformanceAsync` (zero-flash seed); `getAgentDetailMetricsAction`.
-
-### `getDomainsWithLeads(dateFrom: string, dateTo: string): Promise<AppDomain[]>`
-
-- **Table:** `leads` — `created_at` in range, `archived_at IS NULL`.
-- **Usage:** Legacy helper for domain tabs; **founder view no longer uses URL domain tabs** — roster popover uses domains present in roster rows instead.
-- **Not called** from current performance page shell (retained in service).
+Legacy helper — retained but not called from current shells.
 
 ---
 
 ## 6. Server Actions — `performance.ts`
 
+### `getAgentSelfMetricsAction(period, customFrom?, customTo?)`
+
+Added 2026-06-04. Agent self-view only.
+
+| Step | Behaviour |
+| ------ | ---------- |
+| Zod | `GetAgentSelfSchema`: `period` enum (all 6 values including `today`); optional ISO `customFrom`/`customTo` |
+| Auth | `getCurrentProfile()` — missing → error |
+| Role | `caller.role !== 'agent'` → `'Access denied.'` |
+| Data | `Promise.all` of 5 service calls (core, effort, outcomes, previous, benchmarks) |
+| Return | `ActionResult<AgentSelfMetrics>` |
+
+**`AgentSelfMetrics` shape:**
+
+```typescript
+type AgentSelfMetrics = {
+  core:       CoreFourMetrics;
+  previous:   CoreFourMetrics | null;
+  effort:     EffortMetrics;
+  outcomes:   OutcomeBreakdownItem[];
+  benchmarks: TeamBenchmarks;
+};
+```
+
+**Called by:** `AgentPerformanceShell` on period change.
+
 ### `getAgentDetailMetricsAction(agentId, domain, period, customFrom?, customTo?)`
 
-| Step | Behavior |
-| ------ | ---------- |
-| Zod | `GetAgentDetailSchema`: `agentId` uuid; `domain` string min 1 **nullable optional**; `period` enum including `custom`; optional ISO `customFrom`/`customTo` |
-| Auth | `getCurrentProfile()` — missing → `'Not authenticated.'` |
-| Role | `agent` / `guest` → `'Access denied.'` |
-| Manager guard | `caller.role === 'manager'` → requires `domain` truthy **and** `caller.domain === domain` — **403 if null or mismatch** |
-| Founder/admin | May pass `domain: null` for all-domains detail fetch — guard skipped |
-| Range | `getPeriodDateRange(period)` then override `from`/`to` when `period === 'custom'` and custom params present |
-| Return | `ActionResult<AgentDetailMetrics>` — `{ data, error }`, never throws |
-
-**Called by:** `AgentDetailPanel` on agent change (skips when seed guard matches); refresh path always callable from UI if added.
+Manager/founder only. Manager must pass matching `domain`. Agent/guest denied. Returns `ActionResult<AgentDetailMetrics>`. Called by `AgentDetailPanel`.
 
 ---
 
@@ -245,93 +204,110 @@ Before adding any performance query, answer explicitly:
 
 ### 7a. `page.tsx`
 
-| Role | Title | `PerformanceFilters` | Content | Notes |
-| ------ | ------- | ---------------------- | --------- | ------- |
-| Agent | “Your Performance.” | `showSearch={false}` | `Suspense` → `PerformanceAsync` + `PerformanceMotivationalFooter` | `maxWidth: 1280px` for 4-card KPI row |
-| Manager | “Team Performance.” | `showSearch` | `Suspense` → `ManagerPerformanceAsync domain={profile.domain}` | Domain **only** from `profile.domain` |
-| Founder/admin | “Performance.” | `showSearch` | `FounderPerformanceShell` | No `?domain=` param |
+| Role | Title | Filter | Content |
+| ------ | ------- | -------- | --------- |
+| Agent | "Your Performance." | none (filter bar is inside `AgentPerformanceShell`) | `AgentPerformanceShell` with `initialData` + `PerformanceMotivationalFooter` |
+| Manager | "Team Performance." | `PerformanceFilters showSearch` | `Suspense` → `ManagerPerformanceAsync domain={profile.domain}` |
+| Founder/admin | "Performance." | `PerformanceFilters showSearch` | `FounderPerformanceShell` |
 
-**Manager domain rule:** `domain={profile.domain}` is server-verified from `getCurrentProfile()`. **Never** read `searchParams.domain`. Prevents cross-domain roster leakage via URL tampering.
+**Agent branch** (changed 2026-06-04): Page fetches `this_month` data via `Promise.all` of 5 service calls. Passes as `initialData` to `AgentPerformanceShell`. No `Suspense` boundary, no `PerformanceFilters`, no URL params for the agent view. `PerformanceMotivationalFooter` always uses `'this_month'` period label (footer is server-rendered with the initial fetch).
 
-**Default period:** `parsePeriod` → invalid/missing → `'this_month'`.
+**Manager domain rule:** `domain={profile.domain}` is server-verified. **Never** read `searchParams.domain`.
 
-**Agent footer:** Page-level `Promise.all` of `getCoreFourMetrics` + `getEffortMetrics` for footer copy (separate from `PerformanceAsync` Suspense child).
+**Default period (manager/founder):** `parsePeriod` → invalid/missing → `'this_month'`.
 
 ### 7b. `PerformanceFilters`
 
-**Location:** `src/components/performance/PerformanceFilters.tsx` (`'use client'`).
+Used by manager and founder views only. Agent view no longer uses this component.
 
-| Control | Behavior |
+| Control | Behaviour |
 | --------- | ---------- |
 | Sliders icon + badge | `activeCount` = non-default period + search + custom dates |
-| `SearchBar` | Only if `showSearch` — manager/founder/admin; debounce **500ms**; URL param `search`; filters roster client-side in `ManagerPerformancePanel` |
+| `SearchBar` | `showSearch` only; debounce **500ms**; URL `?search=`; filters roster client-side |
 | Period `FilterDropdown` | Single select: week / month / last month / all time / custom |
 | Custom dates | `AnimatePresence` slide-in `DatePicker` pair when `period === 'custom'` |
-| `buildFilterParams` | `src/lib/utils/filter-params.ts` — merges updates, deletes keys when `null` |
-| Clear | Shown when `activeCount > 0`; `router.push(pathname)` strips all params; danger hover via tertiary → primary text |
-
-**Clear visibility (actual code):** `period !== 'this_month'` OR `search` OR `customFrom` OR `customTo`. There is **no URL domain filter** (founder domain is roster popover state only).
+| Clear | Shown when `activeCount > 0`; `router.push(pathname)` |
 
 ---
 
 ## 8. Agent Self-View
 
-### 8a. `PerformanceAsync`
+### 8a. `AgentPerformanceShell` (new 2026-06-04)
 
-**Props:** `agentId`, `domain` (for benchmarks), `period`.
+**Location:** `src/components/performance/AgentPerformanceShell.tsx` (`'use client'`)
 
-**`Promise.all` (5 service calls):**
+**Props:**
 
-1. `getCoreFourMetrics(agentId, period)` → `CoreFourMetrics`
-2. `getEffortMetrics(agentId, period)` → `EffortMetrics`
-3. `getCallOutcomeBreakdown(agentId, period)` → `OutcomeBreakdownItem[]`
-4. `getPreviousPeriodCoreMetrics(agentId, period)` → `CoreFourMetrics | null`
-5. `getTeamBenchmarks(domain, period)` → `TeamBenchmarks`
+```typescript
+{
+  agentId:     string;
+  agentDomain: string;
+  initialData: AgentSelfMetrics;   // fetched server-side for 'this_month'
+}
+```
 
-**`domain` prop:** From `profile.domain` on page — **never URL**. Benchmarks are domain-scoped to the agent’s Gia domain.
+**State owned:**
 
-**Renders:** Three sections with micro-labels — KPI row, effort row, call outcomes.
+- `period: PerformancePeriod` — initialised to `'this_month'`
+- `activeTab: 'overview' | 'today'`
+- `data: AgentSelfMetrics` — initialised from `initialData`
+- `isLoading: boolean`
+- `customFrom / customTo: Date | null`
 
-### 8b. `PerformanceSkeleton`
+**Period selector:** Flat inline pill row with `ChevronRight` separators:
 
-| Tier | Layout | Stagger |
-| ------ | -------- | --------- |
-| 1 | Section label + **4** KPI cards in one flex row (icon, value, sparkline, delta, benchmark strip placeholders) | 0 / 60 / 120 / 180 ms |
-| 2 | Section label + **4** compact effort cards | same stagger |
-| 3 | Outcome card: legend column + circular donut placeholder | inner legend rows 0/40/80 ms |
+```text
+[ Today ] › [ This Week ] › [ This Month ] › [ Custom ]
+```
 
-Suspense parent enforces ≥150ms visibility (V-08).
+Active button: `--theme-paper` bg + `--shadow-1`. Inactive: transparent + tertiary text. Custom reveals `DatePicker` fields inline via `AnimatePresence`. Entire selector dims + `pointer-events: none` while loading.
 
-### 8c. `CoreFourGrid` (rebuilt 2026-06-01)
+**Loading UX:** When period changes, a 2px accent bar (`scaleX 0→1`, 900ms) appears at the top of the content area and the panel dims to 50% opacity. No skeleton flash — the previous data stays visible during the refetch.
 
-- **Layout:** Single **flex row** of 4 cards (not 2×2).
-- **Per card:** Uppercase eyebrow; accent-surface icon chip (Lucide); Playfair `--text-3xl` value; synthetic **AreaChart** sparkline (`MiniSparkline`); period delta with ↑/↓/−; optional benchmark strip in bottom border area; tertiary sub-label.
-- **Sparkline colours** (`useChartTokens().series`): index 0 Leads Won → accent; 1 Touch Rate → info; 2 Avg Response Time → warning; 3 Conversion Rate → success.
-- **`useChartTokens` / `resolveVar`:** Recharts SVG `stroke`/`fill` need computed colours. Hook uses `getComputedStyle` + `MutationObserver` on `data-theme`. `CallOutcomeBar` uses local `resolveVar()` for `var(--color-*)` strings.
-- **Benchmarks:** When `benchmarks.avg*` are `null` (`agentCount < 2`), **benchmark strip omitted** — not `"—"`.
-- **Accent pip:** Shown when agent beats domain average; **inverse for response time** (`lowerIsBetter` → pip when value **<** benchmark).
-- **Null contract:** `avgResponseTimeMinutes` and `conversionRate` render **"—"** via `formatDuration` / `formatPct` — never `0m` / `0%`.
+**`useEffect` skip rule:** On first mount, if `period === 'this_month'`, the effect skips the fetch (server-already provided `initialData`). Subsequent period changes always fetch.
 
-### 8d. `EffortGrid` (rebuilt 2026-06-01)
+**Content tabs:** Two tabs — "Overview" and "Today" — rendered as an underline tab bar. When `period === 'today'`, the tab bar hides and the view goes directly to the Today layout.
 
-- **Layout:** 4 compact cards in one flex row.
-- **Cards:** Calls Logged (success), Notes Written (accent), In Discussion (info), Nurturing (warning) — semantic icon chip colours.
-- **Values:** `--text-2xl`, light weight.
-- **Fill bars:** Framer Motion width 0→% on mount; **only** Calls and Notes — `maxValue = max(callsLogged, notesWritten, 1)` so both bars normalize against the larger of the two.
-- **In Discussion / Nurturing:** No fill bar (`maxValue: null`) — live pipeline counts, not period activity.
+**Switching period to 'today'** also forces `activeTab` to `'today'` automatically.
 
-### 8e. `CallOutcomeBar` (rebuilt 2026-06-01)
+### 8b. Overview tab
 
-- **Layout:** Left legend (pill rows: dot, label, count, %) + right **PieChart** donut (innerRadius 56, outerRadius 82).
-- **Donut centre:** Top outcome label + % (first in `OUTCOME_ORDER` with count > 0).
-- **Colours:** `resolveVar()` on semantic tokens — SVG cannot use raw `var(--*)` reliably.
-- **Empty:** Playfair italic — “No calls logged this period.” (`--theme-text-tertiary`).
+Always shows a **today snapshot strip** at the top regardless of the selected period: `callsLogged` / `notesWritten` / `core.leadsWon` since IST midnight. This gives the agent instant context even when browsing a historical period.
 
-### 8f. `PerformanceMotivationalFooter`
+Below the strip: `CoreFourGrid` → `EffortGrid` → `CallOutcomeBar` — all scoped to the active period.
 
-- **Server component** in `page.tsx` — Playfair italic, Lia tone, **no glyph**.
-- **When:** Always below agent `Suspense` content.
-- **Copy:** If `leadsWon > 0` → closed count for period; else if `inDiscussionCount > 0` → “almost there”; else → “Every expert was once a beginner.”
+When `period === 'today'`, the today strip is hidden (the Today tab already shows this data).
+
+### 8c. Today tab
+
+- Hero 2-column grid: **Calls Today** + **Notes Today** (large Playfair serif values, `--text-5xl`).
+- Call outcome donut (`CallOutcomeBar`) for today's range.
+- Three live pipeline cards: Won / In Discussion / Nurturing (tinted `--color-*-light` backgrounds).
+
+### 8d. `CoreFourGrid`
+
+- **Layout:** Single flex row of 4 cards.
+- **Per card:** Eyebrow; accent-surface icon chip; Playfair `--text-3xl` value; synthetic `AreaChart` sparkline; period delta with ↑/↓/−; optional benchmark strip; tertiary sub-label.
+- **Sparkline colours** (`useChartTokens().series`): index 0 → accent (Won); 1 → info (Touch); 2 → warning (Response); 3 → success (Conversion).
+- **Benchmarks:** `agentCount < 2` → all averages `null` → strip omitted entirely (not "—").
+- **Response time benchmark:** Lower is better — accent pip when agent value **<** domain average.
+- **Null contract:** `avgResponseTimeMinutes` and `conversionRate` render **"—"** — never `0m` / `0%`.
+
+### 8e. `EffortGrid`
+
+4 compact flex cards. Calls Logged (success), Notes Written (accent), In Discussion (info), Nurturing (warning). Fill bars on Calls + Notes only (`maxValue = max(callsLogged, notesWritten, 1)`). In Discussion / Nurturing: no bar (live pipeline counts, not period activity).
+
+### 8f. `CallOutcomeBar`
+
+Left legend (pill rows: dot, label, count, %) + right `PieChart` donut (innerRadius 56, outerRadius 82). Donut centre: top outcome label + %. Empty: Playfair italic "No calls logged this period." Uses `resolveVar()` for SVG fills.
+
+### 8g. `PerformanceMotivationalFooter`
+
+Server component in `page.tsx`. Playfair italic, no glyph. Always renders below agent content. Copy: if `leadsWon > 0` → closed count; else if `inDiscussionCount > 0` → "almost there"; else → "Every expert was once a beginner."
+
+### 8h. `PerformanceSkeleton` (still exists, no longer used for agent view)
+
+Used if the Suspense pattern is reintroduced. Tier 1: 4 KPI skeletons. Tier 2: 4 effort skeletons. Tier 3: outcome skeleton.
 
 ---
 
@@ -340,56 +316,52 @@ Suspense parent enforces ≥150ms visibility (V-08).
 ### 9a. `ManagerPerformanceAsync`
 
 1. Resolve `from`/`to` (custom override or `getPeriodDateRange(period)`).
-2. `getAgentRosterPerformance(rosterDomain, from, to)` where `rosterDomain = allDomains ? null : domain`.
-3. `getFirstAgentInPerformanceRosterList(roster, { allDomains, domain })` — **display order**, not API sort order.
-4. **Zero-flash:** If `firstAgentId` set → `getAgentDetailMetrics(firstAgentId, detailDomain, from, to)` where `detailDomain = allDomains ? null : domain`.
-5. Render `ManagerPerformancePanel` with `key={period}`, `initialAgentId`, `initialDetailMetrics`.
+2. `getAgentRosterPerformance(rosterDomain, from, to)`.
+3. Render `ManagerPerformancePanel` — **no `key={period}`** (removed 2026-06-04).
 
-**Empty roster:** Step 4 skipped — `initialDetailMetrics = null`.
+**`key={period}` removal (2026-06-04):** The `key` was forcing a full remount on every period change, resetting `selectedId` back to the first agent alphabetically and losing the user's selection. The period already flows through props to `AgentDetailPanel.useEffect`, which re-fetches correctly. The `key` was unnecessary and harmful.
 
-**`key={period}`:** Forces full remount when period changes so `initialAgentId` / seed guard cannot pair new period with stale prefetched detail (same class of bug as dashboard **perf-01**).
-
-**`allDomains`:** When `true`, roster query has no domain filter; detail metrics fetch passes `domain: null` to service/action.
+**Invariant:** `ManagerPerformancePanel` must **never** carry `key={period}`. Period state flows through props, not remount.
 
 ### 9b. `ManagerPerformanceSkeleton`
 
-- **Left:** 280px column — “Agents” label + **4** agent card skeletons, stagger **0 / 80 / 160 / 240 ms**.
-- **Right:** Avatar + name lines, **5-column** stat strip skeleton, two bar blocks.
+Left: 280px column — "Agents" label + 4 agent card skeletons, stagger 0/80/160/240ms. Right: avatar + name lines, 5-column stat strip, two bar blocks.
 
 ### 9c. `ManagerPerformancePanel`
 
-**Props:** `agentRoster`, `domain`, `period`, `customFrom?`, `customTo?`, `initialAgentId?`, `initialDetailMetrics?`, `allDomains?`.
+**Props:** `agentRoster`, `domain`, `period`, `customFrom?`, `customTo?`, `allDomains?`.
 
 **Left — roster:**
 
-- Header: “Agents” + **SlidersHorizontal** filter ( **`allDomains` only** ).
-- **Domain popover:** Client-side `domainFilter` state — no refetch; domains with agents only; “All domains” reset; Check icon on active row.
-- **Grouping:** `buildPerformanceRosterGroups` — founder: canonical `PERFORMANCE_ROSTER_DOMAIN_ORDER`, A–Z within group; manager: single domain group A–Z.
-- **Section labels:** Shown when `allDomains && groups.length > 1`.
-- **`AgentCard`:** `motion.button`, entrance `x: -8 → 0`; stagger `Math.min(index * 35, 280)` ms cap; active/hover: semibold name, accent mono **total leads** count, `Avatar` `selected` ring — **no background fill, no left border strip**.
-- **Search:** `useSearchParams().search` — client filter on `full_name`.
-- **Scroll:** `maxHeight: 600px`.
-- **Empty roster:** Playfair “No agents in this domain yet.” Filtered empty: “Nothing matches these filters.”
+- Header: "Agents" + domain filter icon (`allDomains` only).
+- Domain popover: client-side `domainFilter` state — no refetch.
+- Grouping: `buildPerformanceRosterGroups` — founder: `PERFORMANCE_ROSTER_DOMAIN_ORDER`, A–Z within group; manager: single domain A–Z.
+- `AgentCard`: `motion.button`, entrance `x: -8 → 0`; stagger `Math.min(index * 35, 280)` ms.
+- Search: `useSearchParams().search` — client filter.
+- Selected agent persists across period changes (no remount).
 
 **Right:** `AgentDetailPanel` inside `AnimatePresence mode="wait"` keyed by `selectedAgent.id`.
 
-### 9d. `AgentDetailPanel`
+### 9d. `AgentDetailPanel` (updated 2026-06-04)
 
-**Zero-flash (perf-01 pattern):** Accepts `initialData`, `initialAgentId`. In `useEffect`, if `agent.id === initialAgentId && initialData` → **skip** `getAgentDetailMetricsAction`. Matches dashboard RSC consolidation: server data on first paint, no POST on mount for default agent.
+**`metricsAgentId` ref:** Tracks which agent the current `metrics` state belongs to. Distinguishes two loading modes:
 
-Selecting another agent clears guard and fetches via action. Changing period remounts parent (`key={period}`) so seed realigns.
+- **Agent switch** (`metricsAgentId.current !== agent.id`): `setMetrics(null)` is called — full skeleton shown.
+- **Period change** (same agent): `setMetrics(null)` is NOT called — existing data stays visible at 45% opacity. A 2px accent bar (`scaleX 0→1`) appears at the top of the panel. `pointer-events: none` during load.
 
-**Identity:** `Avatar` `lg` + `selected` ring; success **live pip**; Playfair name; accent-surface domain badge; mono lead count; conversion % badge (success / warning / danger thresholds 40% / 20%).
+**Fetch pattern:** Plain Promise `.then()/.catch()` with `cancelled` ref. Never `startTransition` (would defer `setMetrics(null)` and prevent skeleton).
 
-**Stats:** Five `StatAtom` cards in one flex row (pastel palettes — intentional non-token colours): Calls Today, New Leads, Follow-ups, Leads Won, Revenue (`formatCurrency`). Values use `--text-xl` in current implementation.
+**`isLoading` initialises to `true`** so skeleton renders on first paint without a micro-flash.
 
-**Pipeline:** `SectionCard` — 10px `--radius-full` segmented bar; chip legend on `--theme-paper-subtle` + border.
+**`metricsAgentId` invariant:** Must be reset to `null` before the fetch on agent switch. Ensures the agent-switch skeleton path is always taken for a new agent regardless of any in-flight state.
 
-**Loading:** `AnimatePresence mode="wait"` per block — skeletons mirror layout.
+**Identity zone:** `Avatar lg` + `selected` ring; success live pip; Playfair name; accent-surface domain badge; mono lead count; conversion % badge (success/warning/danger at 40%/20%).
 
-**Error:** `--color-danger-light` background + `--color-danger` border.
+**Stats:** Five `StatAtom` cards (pastel palettes — intentional non-token colours): Calls Today, Total Leads, Total Calls, Leads Won, Revenue.
 
-**`SectionCard`:** `--theme-paper`, `--shadow-1`, `--radius-lg`.
+**Pipeline:** Segmented bar + chip legend on `--theme-paper-subtle`.
+
+**Error:** `--color-danger-light` background.
 
 ---
 
@@ -397,105 +369,114 @@ Selecting another agent clears guard and fetches via action. Changing period rem
 
 ### 10a. `FounderPerformanceShell`
 
-- **Fetches:** Nothing itself — wraps `Suspense` + `ManagerPerformanceAsync`.
-- **Passes:** `domain={DEFAULT_GIA_DOMAIN}` (placeholder when `allDomains`), `period`, `customFrom`, `customTo`, **`allDomains={true}`**.
+Wraps `Suspense` + `ManagerPerformanceAsync allDomains={true}`. Passes `domain={DEFAULT_GIA_DOMAIN}` (placeholder when allDomains).
 
 ### 10b. Differences from manager view
 
 | Aspect | Manager | Founder / admin |
 | -------- | --------- | ----------------- |
 | Roster scope | `profile.domain` | All agents (`rosterDomain = null`) |
-| Service `domain` arg | Caller domain | `null` on detail fetch |
-| Domain filter | N/A (single domain) | Client popover on roster header |
-| `getAgentDetailMetricsAction` | Manager guard: domain must match | No domain guard; `domain: null` allowed |
-| Page title | “Team Performance.” | “Performance.” |
+| Domain filter | N/A | Client popover on roster header |
+| `getAgentDetailMetricsAction` | Domain must match caller | No domain guard; `domain: null` allowed |
+| Page title | "Team Performance." | "Performance." |
 | URL `?domain=` | **Never used** | **Never used** |
 
 ---
 
 ## 11. Access Control Summary
 
-| Role | Sees | Domain scope | View other agents’ detail |
+| Role | Sees | Domain scope | View other agents' detail |
 | ------ | ------ | -------------- | --------------------------- |
-| Agent | Own KPIs, effort, outcomes | `profile.domain` for benchmarks only | No (own id only) |
-| Manager | Team roster + detail | **`profile.domain` only** — page + action | Yes, same domain only |
-| Admin | All domains roster + detail | All (server); roster filter client-side | Yes, any agent |
+| Agent | Own KPIs, effort, outcomes | `profile.domain` for benchmarks only | No |
+| Manager | Team roster + detail | `profile.domain` only | Yes, same domain only |
+| Admin | All domains roster + detail | All | Yes, any agent |
 | Founder | Same as admin | All | Yes, any agent |
 | Guest | — | — | Redirect `/dashboard` |
 
 **Enforcement layers:**
 
 1. **Page:** Role branch; manager `domain={profile.domain}`; guest redirect.
-2. **Action:** `getAgentDetailMetricsAction` — manager must pass matching domain; agents denied.
-3. **Never** trust client-supplied domain for manager authorization.
+2. **Action `getAgentDetailMetricsAction`:** Manager must pass matching domain; agents denied.
+3. **Action `getAgentSelfMetricsAction`:** Agent-only; all other roles denied.
+4. Never trust client-supplied domain for manager authorization.
 
 ---
 
 ## 12. Known Invariants (must never be violated)
 
-1. **Date-field rule:** `leadsWon` and `conversionRate` (closed won/lost) use **`status_changed_at`**. **`touchRate`** uses **`created_at`** cohort — intentional, not a bug.
-2. **Manager domain** always from **`profile.domain`**, never from URL `?domain=`.
-3. **`agentCount < 2`** for team benchmarks → all average fields **`null`**, not `0`.
-4. **`leadsWon`** is excluded from `TeamBenchmarks` by design.
-5. **Response time benchmark:** Lower is better — accent pip when agent value **<** domain average.
-6. **Roster API sort:** `conversionRate` null sorts as **`-Infinity`**, not `0`, so zero-closed agents do not float to the top on ties.
-7. **Recharts colours:** Use **`useChartTokens()`** or **`resolveVar()`** for SVG fills — never raw `var(--*)` in Recharts `Cell`/`stroke` without resolution.
-8. **Zero-flash:** `ManagerPerformancePanel` **`key={period}`** must stay — prevents stale `initialDetailMetrics` after period change (dashboard **perf-01** class).
-9. **Seed skip:** `AgentDetailPanel` only skips fetch when `agent.id === initialAgentId && initialData`.
-10. **IST boundaries** for period presets and `callsToday` — never UTC midnight for “today”.
-11. **Null metrics:** `avgResponseTimeMinutes` and `conversionRate` display **"—"**, not zero.
-12. **Performance queries** stay in **`performance-service.ts`** only.
-13. **Sidebar order** uses **`performance-roster-display.ts`** (A–Z / domain groups), not `getAgentRosterPerformance` sort order.
-14. **Founder domain filter** is **client-side popover only** — not filter bar tabs, not `?domain=`.
+1. **Date-field rule:** `leadsWon` / `conversionRate` use `status_changed_at`. `touchRate` uses `created_at` cohort — intentional.
+2. **Manager domain** always from `profile.domain`, never from URL.
+3. **`agentCount < 2`** → all benchmark averages `null`, not `0`.
+4. **`leadsWon`** excluded from `TeamBenchmarks` by design.
+5. **Response time benchmark:** Lower is better — accent pip when agent < domain average.
+6. **Roster API sort:** `conversionRate` null → `-Infinity`, not `0`.
+7. **Recharts colours:** `useChartTokens()` or `resolveVar()` for SVG fills — never raw `var(--)` in Recharts without resolution.
+8. **`ManagerPerformancePanel` must never carry `key={period}`** — period flows through props. Remount loses selected agent.
+9. **`AgentDetailPanel.metricsAgentId`** must be reset on agent switch before fetch. Ensures skeleton on new agent regardless of in-flight state.
+10. **IST boundaries** for all period presets and `callsToday` — never UTC midnight.
+11. **Null metrics:** `avgResponseTimeMinutes` / `conversionRate` display `"—"`, not zero.
+12. **Performance queries** stay in `performance-service.ts` only.
+13. **Sidebar order** uses `performance-roster-display.ts` (A–Z / domain groups), not API sort order.
+14. **Founder domain filter** is client-side popover only — never URL param, never filter bar control.
+15. **Agent period selector** is client state inside `AgentPerformanceShell` — never URL params, never `PerformanceFilters`.
+16. **`AgentPerformanceShell` skip rule:** First mount with `period === 'this_month'` skips fetch — `initialData` is already the correct data.
 
 ---
 
-## Component inventory — `src/components/performance/`
+## Component inventory
+
+### `src/components/performance/`
 
 | File | Role |
 | ------ | ------ |
-| `PerformanceFilters.tsx` | Unified filter bar |
+| `AgentPerformanceShell.tsx` | Agent self-view: period selector, content tabs, client-driven fetch |
+| `PerformanceFilters.tsx` | Filter bar for manager/founder views only |
 | `CoreFourGrid.tsx` | Agent KPI row + sparklines |
 | `EffortGrid.tsx` | Agent effort cards |
-| `CallOutcomeBar.tsx` | Donut + legend (agent + detail) |
+| `CallOutcomeBar.tsx` | Donut + legend (agent self-view + manager detail panel) |
 | `ManagerPerformancePanel.tsx` | Two-column team shell |
-| `AgentDetailPanel.tsx` | Manager/founder detail |
+| `AgentDetailPanel.tsx` | Manager/founder agent detail |
 
-## Route inventory — `src/app/(dashboard)/performance/`
+### `src/app/(dashboard)/performance/`
 
 | File | Role |
 | ------ | ------ |
-| `page.tsx` | Role branch orchestrator |
-| `PerformanceAsync.tsx` | Agent data shell |
-| `PerformanceSkeleton.tsx` | Agent loading |
-| `ManagerPerformanceAsync.tsx` | Team data shell + zero-flash prefetch |
+| `page.tsx` | Role branch orchestrator; fetches `this_month` initialData for agent |
+| `PerformanceAsync.tsx` | Legacy agent data shell — no longer used in active path |
+| `PerformanceSkeleton.tsx` | Legacy agent loading skeleton — no longer used in active path |
+| `ManagerPerformanceAsync.tsx` | Team data shell |
 | `ManagerPerformanceSkeleton.tsx` | Team loading |
 | `FounderPerformanceShell.tsx` | Founder/admin Suspense wrapper |
+
+### `src/lib/actions/performance.ts`
+
+| Action | Caller | Auth |
+| -------- | -------- | ------ |
+| `getAgentSelfMetricsAction` | `AgentPerformanceShell` | agent only |
+| `getAgentDetailMetricsAction` | `AgentDetailPanel` | manager (own domain), admin, founder |
+
+---
 
 ## Shared utilities
 
 ### `buildFilterParams` — `src/lib/utils/filter-params.ts`
 
-```typescript
-export function buildFilterParams(
-  current: URLSearchParams,
-  updates: Record<string, string | null>,
-  options?: { resetKeys?: string[] },
-): URLSearchParams
-```
-
-Clones `current`, applies updates (`null` or `''` deletes key). Optional `resetKeys` deletes additional keys (not used by `PerformanceFilters` today).
+Used by `PerformanceFilters` (manager/founder). Not used by agent view.
 
 ### `formatDuration` — `src/lib/utils/dates.ts`
 
-```typescript
-export function formatDuration(minutes: number | null): string
-// null → "—"; < 60 → "48m"; else "2h 34m" style
-```
+`null → "—"`, `< 60 → "48m"`, `≥ 60 → "2h 34m"`.
 
 ### `useChartTokens` / `resolveColorMap` — `src/components/ui/charts/useChartTokens.ts`
 
-Resolves `--theme-accent`, `--color-info`, etc. via `getComputedStyle`. Re-subscribes on `data-theme` `MutationObserver`. `resolveColorMap` generalizes the same pattern for status-colour maps.
+Resolves CSS tokens via `getComputedStyle`. Re-subscribes on `data-theme` MutationObserver. `resolveColorMap` for record-shaped colour maps.
+
+### `resolveVar` (local in `CallOutcomeBar.tsx`)
+
+```typescript
+function resolveVar(name: string): string
+// Resolves 'var(--token)' to computed hex/rgb for Recharts SVG fills.
+```
 
 ---
 
@@ -503,4 +484,4 @@ Resolves `--theme-accent`, `--color-info`, etc. via `getComputedStyle`. Re-subsc
 
 - `PERFORMANCE_ROSTER_DOMAIN_ORDER` — Gia domains first, then remaining `APP_DOMAINS`.
 - `buildPerformanceRosterGroups(agents, { allDomains, domain })` — sidebar structure.
-- `getFirstAgentInPerformanceRosterList(...)` — first visible agent for zero-flash seed (not `roster[0]` from API sort).
+- `getFirstAgentInPerformanceRosterList(...)` — first visible agent for default selection (not `roster[0]` from API sort).

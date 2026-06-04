@@ -84,8 +84,8 @@ export type AgentRosterRow = {
 
 export type AgentDetailMetrics = {
   callsToday:           number;
-  newLeadsAttended:     number;
-  followUpsCompleted:   number;
+  totalLeads:           number;
+  totalCallsMade:       number;
   leadsWon:             number;
   totalDealAmount:      number;
   dealTypeBreakdown:    { dealType: string; count: number; totalAmount: number }[];

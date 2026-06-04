@@ -22,7 +22,7 @@
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { redis } from '@/lib/redis';
-import { REDIS_KEYS, REDIS_TTL, TASK_GIA_TTL, TASK_GROUP_LIST_TTL, TASK_PERSONAL_PAGE1_TTL } from '@/lib/constants/redis-keys';
+import { REDIS_KEYS, TASK_GIA_TTL, TASK_PERSONAL_PAGE1_TTL } from '@/lib/constants/redis-keys';
 import type {
   Task,
   TaskGroup,
@@ -238,21 +238,6 @@ export const getGroupTasks = cache(async (
   filters: GroupTaskFilters = {},
   cacheHint?: { domain: string; role: string },
 ): Promise<TaskGroupRow[]> => {
-  // Cache only unfiltered fetches — keyed by domain + role.
-  const isUnfiltered =
-    (filters.status   === undefined || filters.status.length   === 0) &&
-    (filters.priority === undefined || filters.priority.length === 0);
-
-  if (isUnfiltered && cacheHint) {
-    const cacheKey = REDIS_KEYS.task.groupList(cacheHint.domain, cacheHint.role);
-    try {
-      const cached = await redis.get<TaskGroupRow[]>(cacheKey);
-      if (cached !== null) return cached;
-    } catch (e) {
-      console.error('[tasks-service] getGroupTasks Redis get error:', e);
-    }
-  }
-
   const supabase = await createClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -322,16 +307,6 @@ export const getGroupTasks = cache(async (
     };
   });
 
-  // Populate cache on success — non-fatal. Only when unfiltered + hint present.
-  if (isUnfiltered && cacheHint) {
-    const cacheKey = REDIS_KEYS.task.groupList(cacheHint.domain, cacheHint.role);
-    try {
-      await redis.setex(cacheKey, TASK_GROUP_LIST_TTL, result);
-    } catch (e) {
-      console.error('[tasks-service] getGroupTasks Redis setex error:', e);
-    }
-  }
-
   return result;
 });
 
@@ -355,16 +330,6 @@ export const getGroupTasks = cache(async (
  * Key design (groupId + userId) prevents cross-user cache bleed. See redis-keys.ts.
  */
 export const getGroupSubtasks = cache(async (groupId: string, userId: string): Promise<SubtaskWithAssignee[]> => {
-  const cacheKey = REDIS_KEYS.taskSubtasks(groupId, userId);
-
-  // Cache-aside: try Redis first, fall through to DB on any error or miss.
-  try {
-    const cached = await redis.get<SubtaskWithAssignee[]>(cacheKey);
-    if (cached !== null) return cached;
-  } catch (e) {
-    console.error('[tasks-service] getGroupSubtasks Redis get error:', e);
-  }
-
   const supabase = await createClient();
 
   const { data: subtasks, error } = await supabase
@@ -404,19 +369,10 @@ export const getGroupSubtasks = cache(async (groupId: string, userId: string): P
     }
   }
 
-  const result = (subtasks as Task[]).map((task): SubtaskWithAssignee => ({
+  return (subtasks as Task[]).map((task): SubtaskWithAssignee => ({
     ...task,
     assignee: task.assigned_to ? (profileMap.get(task.assigned_to) ?? null) : null,
   }));
-
-  // Populate cache on success — non-fatal.
-  try {
-    await redis.setex(cacheKey, REDIS_TTL.TASK_SUBTASKS, result);
-  } catch (e) {
-    console.error('[tasks-service] getGroupSubtasks Redis setex error:', e);
-  }
-
-  return result;
 });
 
 // ─────────────────────────────────────────────
@@ -464,16 +420,6 @@ export async function getTaskById(taskId: string): Promise<TaskWithMessages | nu
 export const getTaskRemarks = cache(async (
   taskId: string,
 ): Promise<TaskRemarkWithAuthor[]> => {
-  const cacheKey = REDIS_KEYS.taskRemarks(taskId);
-
-  // Cache-aside: try Redis first, fall through to DB on any error or miss.
-  try {
-    const cached = await redis.get<TaskRemarkWithAuthor[]>(cacheKey);
-    if (cached !== null) return cached;
-  } catch (e) {
-    console.error('[tasks-service] getTaskRemarks Redis get error:', e);
-  }
-
   const supabase = await createClient();
 
   const { data: remarks, error } = await supabase
@@ -511,19 +457,10 @@ export const getTaskRemarks = cache(async (
     }
   }
 
-  const result = (remarks as TaskRemark[]).map((remark) => ({
+  return (remarks as TaskRemark[]).map((remark) => ({
     ...remark,
     author: profileMap.get(remark.author_id) ?? null,
   }));
-
-  // Populate cache on success — non-fatal.
-  try {
-    await redis.setex(cacheKey, REDIS_TTL.TASK_REMARKS, result);
-  } catch (e) {
-    console.error('[tasks-service] getTaskRemarks Redis setex error:', e);
-  }
-
-  return result;
 });
 
 // ─────────────────────────────────────────────

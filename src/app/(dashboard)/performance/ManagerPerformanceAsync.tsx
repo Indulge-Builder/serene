@@ -32,7 +32,6 @@ export async function ManagerPerformanceAsync({ domain, period, customFrom, cust
 
   return (
     <ManagerPerformancePanel
-      key={period}
       agentRoster={agentRoster}
       domain={domain}
       period={period}

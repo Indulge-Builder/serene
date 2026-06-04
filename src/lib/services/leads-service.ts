@@ -7,9 +7,6 @@ import {
   REDIS_KEYS,
   REDIS_TTL,
   buildLeadListKey,
-  CAMPAIGN_LIST_TTL,
-  CAMPAIGN_DETAIL_TTL,
-  CAMPAIGN_DISTRIBUTION_TTL,
 } from "@/lib/constants/redis-keys";
 import type {
   Lead,
@@ -199,10 +196,18 @@ export async function getLeadsByRole(
     pageSize: 30,
   },
 ): Promise<LeadsResult> {
-  // Redis cache-aside: try cache first; DB on miss; warm individual dossier caches after DB hit
-  // domain (caller's verified profile domain) is always the second segment so managers in
-  // different domains with identical filter args never share a cache slot.
-  const listKey = buildLeadListKey(role, domain, userId, filters);
+  // Redis cache-aside with version counter: read the domain version first so we
+  // can build the correct versioned key. A version miss (null) defaults to 0,
+  // which is a valid cache slot — the first INCR will bump it to 1.
+  let version = 0;
+  try {
+    const v = await redis.get<number>(REDIS_KEYS.leadListVersion(role, domain));
+    if (v !== null) version = v;
+  } catch {
+    /* Redis unavailable — version stays 0, fall through to DB */
+  }
+
+  const listKey = buildLeadListKey(role, domain, userId, filters, version);
   try {
     const cached = await redis.get<LeadsResult>(listKey);
     if (cached) return cached;
@@ -574,28 +579,7 @@ export async function getCampaignMetrics(
   const effectiveDomain: string | null =
     role === "manager" ? callerDomain : (filters.domain ?? null);
 
-  const normalizedDateFrom = filters.date_from ?? "";
-  const normalizedDateTo = filters.date_to ?? "";
-
-  const cacheKey = REDIS_KEYS.campaign.campaignList(
-    effectiveDomain ?? "all",
-    normalizedDateFrom,
-    normalizedDateTo,
-  );
-
-  let rows: CampaignMetrics[];
-
-  try {
-    const cached = await redis.get<CampaignMetrics[]>(cacheKey);
-    if (cached) {
-      rows = cached;
-    } else {
-      rows = await fetchCampaignMetricsFromRpc(effectiveDomain, filters);
-      void redis.setex(cacheKey, CAMPAIGN_LIST_TTL, rows).catch(() => {});
-    }
-  } catch {
-    rows = await fetchCampaignMetricsFromRpc(effectiveDomain, filters);
-  }
+  const rows = await fetchCampaignMetricsFromRpc(effectiveDomain, filters);
 
   if (!filters.search) return rows;
 
@@ -667,28 +651,10 @@ async function fetchCampaignMetricsFromRpc(
 // Called only from the [id] detail page. Never from the list page.
 // Returns null when the campaign has no matching leads.
 // ─────────────────────────────────────────────
-type CampaignDetailCacheEntry = { payload: CampaignDetailMetrics | null };
-
 export async function getCampaignDetailMetrics(
   campaignName: string,
   filters: Pick<CampaignFilters, "date_from" | "date_to">,
 ): Promise<CampaignDetailMetrics | null> {
-  const campaignKey = campaignName.toLowerCase().trim();
-  const normalizedDateFrom = filters.date_from ?? "";
-  const normalizedDateTo = filters.date_to ?? "";
-  const cacheKey = REDIS_KEYS.campaign.campaignDetail(
-    campaignKey,
-    normalizedDateFrom,
-    normalizedDateTo,
-  );
-
-  try {
-    const cached = await redis.get<CampaignDetailCacheEntry>(cacheKey);
-    if (cached !== null && cached !== undefined) return cached.payload;
-  } catch {
-    /* fall through to DB */
-  }
-
   const supabase = await createClient();
 
   const dateTo = filters.date_to
@@ -747,12 +713,6 @@ export async function getCampaignDetailMetrics(
     };
   }
 
-  void redis
-    .setex(cacheKey, CAMPAIGN_DETAIL_TTL, {
-      payload: result,
-    } satisfies CampaignDetailCacheEntry)
-    .catch(() => {});
-
   return result;
 }
 
@@ -766,22 +726,6 @@ export async function getCampaignAgentDistribution(
   campaignName: string,
   filters: Pick<CampaignFilters, "date_from" | "date_to">,
 ): Promise<AgentDistributionRow[]> {
-  const campaignKey = campaignName.toLowerCase().trim();
-  const normalizedDateFrom = filters.date_from ?? "";
-  const normalizedDateTo = filters.date_to ?? "";
-  const cacheKey = REDIS_KEYS.campaign.campaignDistribution(
-    campaignKey,
-    normalizedDateFrom,
-    normalizedDateTo,
-  );
-
-  try {
-    const cached = await redis.get<AgentDistributionRow[]>(cacheKey);
-    if (cached) return cached;
-  } catch {
-    /* fall through to DB */
-  }
-
   const supabase = await createClient();
 
   const dateTo = filters.date_to
@@ -812,8 +756,6 @@ export async function getCampaignAgentDistribution(
           full_name: row.full_name,
           lead_count: Number(row.lead_count),
         }));
-
-  void redis.setex(cacheKey, CAMPAIGN_DISTRIBUTION_TTL, result).catch(() => {});
 
   return result;
 }

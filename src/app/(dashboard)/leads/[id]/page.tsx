@@ -149,24 +149,20 @@ export default async function LeadDossierPage({ params }: Props) {
               leadId={lead.id}
               canAdd={canEditPersonalDetails}
             />
+            <LeadWhatsAppCard
+              leadId={lead.id}
+              leadPhone={lead.phone}
+              leadName={fullName}
+              callerProfile={{ id: profile.id, role: profile.role }}
+              initialConversation={initialConversation}
+              initialMessages={initialMessages}
+            />
           </div>
         </div>
 
         {/* Notes timeline — above journey per UX spec */}
         <div style={{ marginTop: 'var(--space-6)' }}>
           <LeadNotesSection notes={notes} />
-        </div>
-
-        {/* WhatsApp chat card — same visual weight as LeadNotesSection */}
-        <div style={{ marginTop: 'var(--space-6)' }}>
-          <LeadWhatsAppCard
-            leadId={lead.id}
-            leadPhone={lead.phone}
-            leadName={fullName}
-            callerProfile={{ id: profile.id, role: profile.role }}
-            initialConversation={initialConversation}
-            initialMessages={initialMessages}
-          />
         </div>
 
         {/* Journey progress */}

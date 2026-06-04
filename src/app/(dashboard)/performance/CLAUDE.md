@@ -171,9 +171,9 @@ export type AgentRosterRow = {
 
 ```typescript
 export type AgentDetailMetrics = {
-  callsToday: number; // IST midnight boundary
-  newLeadsAttended: number; // leads that moved past 'new'
-  followUpsCompleted: number; // calls on touched/nurturing leads
+  callsToday: number;      // IST midnight boundary; only notes with call_outcome IS NOT NULL
+  totalLeads: number;      // all-time assigned leads, no period filter, live snapshot
+  totalCallsMade: number;  // SUM(call_count) on cohort leads (created_at in period); COALESCE 0
   leadsWon: number;
   totalDealAmount: number;
   dealTypeBreakdown: { dealType: string; count: number; totalAmount: number }[];

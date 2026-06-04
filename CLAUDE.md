@@ -65,6 +65,7 @@ src/lib/constants/dashboard-widgets.ts ← widget registry (pure data, no compon
 src/lib/constants/route-permissions.ts ← ALWAYS_ALLOWED_PREFIXES + DOMAIN_ROUTE_MAP (domain → permitted route prefixes)
 src/lib/constants/domain-colors.ts    ← DOMAIN_LINE_COLORS record, one entry per AppDomain; values are var(--domain-*) strings resolved via resolveColorMap() before Recharts use
 src/lib/utils/route-access.ts         ← canAccessRoute(profile, pathname) — pure function, safe in 'use client' components
+src/hooks/useDebounce.ts              ← useDebounce<T>(value, delay) — the ONLY debounce utility; never recreate inline
 src/hooks/useDashboardLayout.ts       ← localStorage layout hook (key: eia:dashboard:layout:${userId}:v1)
 src/components/dashboard/            ← DashboardCanvas, DashboardWidgetSlot, WidgetSkeleton, widgets/
 src/components/ui/                  ← shadcn primitives, zero feature imports

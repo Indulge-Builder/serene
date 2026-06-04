@@ -23,9 +23,16 @@ type FilterDraft = {
   campaign: string | null;
   date_from: string | null;
   date_to: string | null;
-  search: string;
+  // search is NOT in FilterDraft — it has its own searchInput state + useDebounce
 };
 ```
+
+**Search state** is managed separately from the dropdown/date draft:
+- `searchInput: string` — controlled display value, updates on every keystroke.
+- `debouncedSearch` — `useDebounce(searchInput, 350)` from `src/hooks/useDebounce.ts`.
+- A `useEffect` keyed on `debouncedSearch` guards with `trimmed === (params.get('search') ?? '')` before pushing.
+- `clearAll` calls `setSearchInput('')` immediately (no 350ms wait).
+- `SearchBar` from `src/components/ui/SearchBar.tsx` renders the input — never re-implement inline.
 
 **`draftFromParams(params: URLSearchParams): FilterDraft`** — pure helper that reads all filter keys from the current `URLSearchParams`. Used to initialise state and to sync draft on browser back/forward (`useEffect([params])`).
 

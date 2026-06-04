@@ -3,17 +3,17 @@ import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { DEFAULT_GIA_DOMAIN } from "@/lib/constants/domains";
 import type { PerformancePeriod } from "@/lib/services/performance-service";
-import { PerformanceAsync } from "./PerformanceAsync";
-import { PerformanceSkeleton } from "./PerformanceSkeleton";
 import { ManagerPerformanceSkeleton } from "./ManagerPerformanceSkeleton";
 import { ManagerPerformanceAsync } from "./ManagerPerformanceAsync";
 import { FounderPerformanceShell } from "./FounderPerformanceShell";
 import { PerformanceFilters } from "@/components/performance/PerformanceFilters";
+import { AgentPerformanceShell } from "@/components/performance/AgentPerformanceShell";
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
 
 const VALID_PERIODS: PerformancePeriod[] = [
+  "today",
   "this_week",
   "this_month",
   "last_month",
@@ -22,6 +22,7 @@ const VALID_PERIODS: PerformancePeriod[] = [
 ];
 
 const PERIOD_LABELS: Record<PerformancePeriod, string> = {
+  today: "Today",
   this_week: "This Week",
   this_month: "This Month",
   last_month: "Last Month",
@@ -112,13 +113,32 @@ export default async function PerformancePage({
   const rawTo = typeof params.to === "string" ? params.to : undefined;
 
   // ── Agent view ──────────────────────────────────────────────────────────
+  // Fully client-driven shell — period state lives in the component, no URL params.
+  // We fetch initial data server-side for 'this_month' so first paint is instant.
   if (profile.role === "agent") {
-    const { getCoreFourMetrics, getEffortMetrics } =
-      await import("@/lib/services/performance-service");
-    const [coreForFooter, effortForFooter] = await Promise.all([
-      getCoreFourMetrics(profile.id, period),
-      getEffortMetrics(profile.id, period),
+    const {
+      getCoreFourMetrics,
+      getEffortMetrics,
+      getCallOutcomeBreakdown,
+      getPreviousPeriodCoreMetrics,
+      getTeamBenchmarks,
+    } = await import("@/lib/services/performance-service");
+
+    const [core, effort, outcomes, previous, benchmarks] = await Promise.all([
+      getCoreFourMetrics(profile.id, "this_month"),
+      getEffortMetrics(profile.id, "this_month"),
+      getCallOutcomeBreakdown(profile.id, "this_month"),
+      getPreviousPeriodCoreMetrics(profile.id, "this_month"),
+      getTeamBenchmarks(profile.domain, "this_month"),
     ]);
+
+    const initialData = {
+      core,
+      previous:   previous ?? null,
+      effort,
+      outcomes,
+      benchmarks,
+    };
 
     return (
       <main style={{ flex: 1, padding: "var(--space-8)", maxWidth: "1280px", minWidth: 0 }}>
@@ -127,25 +147,15 @@ export default async function PerformancePage({
             Your Performance<span className="page-title-dot">.</span>
           </h1>
         </div>
-        <div className="px-5 py-4 mb-6 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-          <PerformanceFilters
-            period={period}
-            customFrom={rawFrom ?? null}
-            customTo={rawTo ?? null}
-            showSearch={false}
-          />
-        </div>
-        <Suspense fallback={<PerformanceSkeleton />}>
-          <PerformanceAsync
-            period={period}
-            agentId={profile.id}
-            domain={profile.domain}
-          />
-        </Suspense>
+        <AgentPerformanceShell
+          agentId={profile.id}
+          agentDomain={profile.domain}
+          initialData={initialData}
+        />
         <PerformanceMotivationalFooter
-          leadsWon={coreForFooter.leadsWon}
-          inDiscussionCount={effortForFooter.inDiscussionCount}
-          period={period}
+          leadsWon={core.leadsWon}
+          inDiscussionCount={effort.inDiscussionCount}
+          period="this_month"
         />
       </main>
     );

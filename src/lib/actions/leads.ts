@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
-import { REDIS_KEYS, leadListKeyPrefix } from "@/lib/constants/redis-keys";
+import { REDIS_KEYS } from "@/lib/constants/redis-keys";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import {
   AddCallNoteSchema,
@@ -114,20 +114,24 @@ export async function addLeadCallNote(
   };
 
   // Redis invalidation — awaited so the next dossier load never reads stale data
-  const slug = lead.slug as string | null;
+  const slug       = lead.slug as string | null;
+  const callDomain = lead.domain as string;
   try {
     await Promise.all([
       redis.del(REDIS_KEYS.leadRowId(leadId)),
       ...(slug ? [redis.del(REDIS_KEYS.leadRowSlug(slug))] : []),
       redis.del(REDIS_KEYS.leadNotes(leadId)),
       redis.del(REDIS_KEYS.leadActivities(leadId)),
+      redis.incr(REDIS_KEYS.leadListVersion('agent', callDomain)),
+      redis.incr(REDIS_KEYS.leadListVersion('manager', callDomain)),
     ]);
   } catch (e) {
-    console.warn("[leads-action] redis del failed on call note", e);
+    console.warn("[leads-action:addLeadCallNote] redis invalidation failed", e);
   }
 
-  // Invalidate dossier RSC cache so the server component reflects the new status/note
+  // Invalidate dossier + list RSC cache
   revalidatePath(`/leads/${slug ?? leadId}`);
+  revalidatePath("/leads");
 
   // 5. SLA side-effects (fire-and-forget, non-fatal — cannot go in the RPC)
   const postStatus = didAutoAdvance ? "touched" : oldStatus;
@@ -230,13 +234,16 @@ export async function updateLeadStatus(
       redis.del(REDIS_KEYS.leadActivities(leadId)),
       redis.del(REDIS_KEYS.dashboardLeadStatus(leadDomain)),
       redis.del(REDIS_KEYS.dashboardCampaigns(leadDomain)),
+      redis.incr(REDIS_KEYS.leadListVersion('agent', leadDomain)),
+      redis.incr(REDIS_KEYS.leadListVersion('manager', leadDomain)),
     ]);
   } catch (e) {
-    console.warn("[dashboard-invalidation] redis del failed on status update", e);
+    console.warn("[leads-action:updateLeadStatus] redis invalidation failed", e);
   }
 
-  // Invalidate dossier RSC cache so the server component reflects the new status
+  // Invalidate dossier + list RSC cache
   revalidatePath(`/leads/${slug ?? leadId}`);
+  revalidatePath("/leads");
 
   const { assigned_to: assignedTo, domain, first_name, last_name } = result;
 
@@ -312,7 +319,7 @@ export async function assignLead(
   const [{ data: existingLead }, { data: assignedAgent }] = await Promise.all([
     admin
       .from("leads")
-      .select("status, domain, first_name, last_name, phone")
+      .select("status, domain, slug, first_name, last_name, phone")
       .eq("id", leadId)
       .single(),
     admin
@@ -346,11 +353,20 @@ export async function assignLead(
     details: { assigned_to: agentId, method: "manual" },
   });
 
-  // Redis invalidation — fire-and-forget, never blocks the response
-  void Promise.all([
-    redis.del(REDIS_KEYS.leadRowId(leadId)),
-    redis.del(REDIS_KEYS.leadActivities(leadId)),
-  ]).catch(() => {});
+  // Redis invalidation — awaited so the next load never reads stale data
+  const assignSlug = (existingLead.slug as string | null) ?? null;
+  const assignDomain = existingLead.domain as string;
+  try {
+    await Promise.all([
+      redis.del(REDIS_KEYS.leadRowId(leadId)),
+      ...(assignSlug ? [redis.del(REDIS_KEYS.leadRowSlug(assignSlug))] : []),
+      redis.del(REDIS_KEYS.leadActivities(leadId)),
+      redis.incr(REDIS_KEYS.leadListVersion('agent', assignDomain)),
+      redis.incr(REDIS_KEYS.leadListVersion('manager', assignDomain)),
+    ]);
+  } catch (e) {
+    console.warn('[leads-action:assignLead] redis invalidation failed', e);
+  }
 
   // 6. Notify the receiving agent — fire-and-forget, non-fatal
   createNotification({
@@ -393,6 +409,8 @@ export async function assignLead(
     assignedTo: agentId,
     domain: existingLead.domain as string,
   }).catch(() => {});
+
+  revalidatePath("/leads");
 
   return { data: { leadId }, error: null };
 }
@@ -643,47 +661,30 @@ export async function createManualLead(
     }).catch(() => {}); // fire-and-forget, non-fatal
   }
 
-  // 11. Invalidate list cache for this caller so the new lead appears immediately.
-  //     Scans all cached page keys for this role+domain+userId triple and deletes them.
-  //     Fire-and-forget — a scan failure never blocks the response.
-  void (async () => {
-    try {
-      const prefix = leadListKeyPrefix(
-        caller.role,
-        caller.domain as string,
-        caller.id,
-      );
-      let cursor = 0;
-      do {
-        const [nextCursor, keys] = await redis.scan(cursor, {
-          match: `${prefix}*`,
-          count: 100,
-        });
-        cursor = Number(nextCursor);
-        if (keys.length > 0)
-          await redis.del(...(keys as [string, ...string[]]));
-      } while (cursor !== 0);
-    } catch {
-      /* non-fatal */
-    }
-  })();
-
-  // 12. Invalidate dashboard pipeline + volume caches for the lead's domain.
-  //     Awaited before return so widgets see fresh data on the next refresh click.
+  // 11. Invalidate list + dashboard caches.
+  //     Two INCR calls atomically void all cached pages for agent + manager roles
+  //     in this domain — replaces the former O(N) SCAN approach.
+  //     Volume keys cover all periods that could be stale after a new lead insert.
+  const manualDomain = resolvedDomain as string;
+  const periods = ['today', 'week', 'month', 'last_month'] as const;
+  const roles   = ['agent', 'manager'] as const;
   try {
     await Promise.all([
-      redis.del(REDIS_KEYS.dashboardLeadStatus(resolvedDomain as string)),
-      redis.del(REDIS_KEYS.dashboardCampaigns(resolvedDomain as string)),
-      redis.del(REDIS_KEYS.dashboardLeadVolume('manager', resolvedDomain as string, 'today')),
-      redis.del(REDIS_KEYS.dashboardLeadVolume('manager', resolvedDomain as string, 'week')),
-      redis.del(REDIS_KEYS.dashboardLeadVolume('manager', resolvedDomain as string, 'month')),
-      redis.del(REDIS_KEYS.dashboardLeadVolume('manager', resolvedDomain as string, 'quarter')),
+      redis.incr(REDIS_KEYS.leadListVersion('agent', manualDomain)),
+      redis.incr(REDIS_KEYS.leadListVersion('manager', manualDomain)),
+      redis.del(REDIS_KEYS.dashboardLeadStatus(manualDomain)),
+      redis.del(REDIS_KEYS.dashboardCampaigns(manualDomain)),
+      ...periods.flatMap((p) =>
+        roles.map((r) => redis.del(REDIS_KEYS.dashboardLeadVolume(r, manualDomain, p))),
+      ),
     ]);
   } catch (e) {
-    console.warn("[dashboard-invalidation] redis del failed on manual lead create", e);
+    console.warn("[leads-action:createManualLead] redis invalidation failed", e);
   }
 
-  // 13. Return success
+  revalidatePath("/leads");
+
+  // 12. Return success
   return { data: { leadId }, error: null };
 }
 
@@ -725,14 +726,19 @@ async function assertLeadFieldEditAccess(leadId: string): Promise<
   return { ok: true, caller, lead };
 }
 
-function revalidateLeadDossier(lead: LeadEditContext) {
+async function revalidateLeadDossier(lead: LeadEditContext) {
   const segment = lead.slug ?? lead.id;
+  try {
+    await Promise.all([
+      redis.del(REDIS_KEYS.leadRowId(lead.id)),
+      ...(lead.slug ? [redis.del(REDIS_KEYS.leadRowSlug(lead.slug))] : []),
+      redis.del(REDIS_KEYS.leadActivities(lead.id)),
+    ]);
+  } catch (e) {
+    console.warn('[leads-action:dossier] redis del failed', e);
+  }
   revalidatePath(`/leads/${segment}`);
-  // Fire-and-forget Redis invalidation — never blocks the action response
-  void redis.del(REDIS_KEYS.leadRowId(lead.id)).catch(() => {});
-  if (lead.slug)
-    void redis.del(REDIS_KEYS.leadRowSlug(lead.slug)).catch(() => {});
-  void redis.del(REDIS_KEYS.leadActivities(lead.id)).catch(() => {});
+  revalidatePath("/leads");
 }
 
 // ─────────────────────────────────────────────
@@ -767,7 +773,7 @@ export async function updateLeadEmail(
     details: { type: "lead_email_updated" },
   });
 
-  revalidateLeadDossier(access.lead);
+  await revalidateLeadDossier(access.lead);
   return { data: { leadId }, error: null };
 }
 
@@ -803,7 +809,7 @@ export async function updateLeadDomain(
     details: { type: "lead_domain_updated", domain },
   });
 
-  revalidateLeadDossier(access.lead);
+  await revalidateLeadDossier(access.lead);
   return { data: { leadId }, error: null };
 }
 
@@ -835,7 +841,7 @@ export async function updateLeadSource(
     details: { type: "lead_source_updated", source },
   });
 
-  revalidateLeadDossier(access.lead);
+  await revalidateLeadDossier(access.lead);
   return { data: { leadId }, error: null };
 }
 
@@ -860,7 +866,7 @@ export async function updateLeadCity(
 
   if (updateError) return { data: null, error: formErrors.generic };
 
-  revalidateLeadDossier(access.lead);
+  await revalidateLeadDossier(access.lead);
   return { data: { leadId }, error: null };
 }
 

@@ -207,6 +207,25 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
     });
   }
 
+  // Silent 30s auto-poll — mirrors handleRefresh, no loading state
+  useEffect(() => {
+    const id = setInterval(() => {
+      let cancelled = false;
+      startTransition(async () => {
+        if (domainMode === "all") {
+          const result = await getLeadStatusSummaryAction(role, domain);
+          if (!cancelled && result.data) setData(result.data);
+        } else {
+          const result = await getLeadStatusForDomainAction(domainMode as AppDomain);
+          if (!cancelled && result.data) setData(result.data);
+        }
+      });
+      return () => { cancelled = true; };
+    }, 30_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domainMode, role, domain]);
+
   return (
     <div
       style={{

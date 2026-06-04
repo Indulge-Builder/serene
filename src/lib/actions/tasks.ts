@@ -201,9 +201,6 @@ export async function createGroupTaskAction(
 
   revalidatePath('/tasks');
 
-  // Invalidate group list cache for caller's domain+role — fire-and-forget.
-  void redis.del(REDIS_KEYS.task.groupList(resolvedDomain, caller.role)).catch(() => {});
-
   return { data: { groupId: group.id as string }, error: null };
 }
 
@@ -282,16 +279,6 @@ export async function createSubtaskAction(
   }
 
   revalidatePath('/tasks');
-
-  // Invalidate caller's subtask cache — fire-and-forget, never blocks the response.
-  // Only the caller's cache is invalidated; other users' 30s TTL handles staleness.
-  void (async () => {
-    try {
-      await redis.del(REDIS_KEYS.taskSubtasks(fields.group_id, caller.id));
-    } catch (e) {
-      console.error('[tasks] createSubtaskAction Redis del error:', e);
-    }
-  })();
 
   // 7. Notify assignee — fire-and-forget, non-fatal (always notify for subtasks)
   if (fields.assigned_to !== caller.id) {
@@ -378,8 +365,6 @@ export async function updateTaskStatusAction(
     void redis.del(REDIS_KEYS.task.personalPage1(caller.id)).catch(() => {});
   } else if (task.task_category === 'gia_followup') {
     void redis.del(REDIS_KEYS.task.giaList(caller.id, caller.role, caller.domain)).catch(() => {});
-  } else if (task.task_category === 'group_subtask' && task.group_id) {
-    void redis.del(REDIS_KEYS.task.subtasks(task.group_id as string, caller.id)).catch(() => {});
   }
 
   // 6. Invalidate caller's dashboard agent-tasks widget cache.
@@ -476,17 +461,6 @@ export async function updateTaskAction(
     cancelTaskReminder(taskId).catch(() => {});
   }
 
-  // Invalidate subtask cache if this is a group subtask — fire-and-forget.
-  if (existing.group_id) {
-    void (async () => {
-      try {
-        await redis.del(REDIS_KEYS.taskSubtasks(existing.group_id as string, caller.id));
-      } catch (e) {
-        console.error('[tasks] updateTaskAction Redis del error:', e);
-      }
-    })();
-  }
-
   return { data: { taskId }, error: null };
 }
 
@@ -553,8 +527,6 @@ export async function deleteTaskAction(
     void redis.del(REDIS_KEYS.task.personalPage1(caller.id)).catch(() => {});
   } else if (task.task_category === 'gia_followup') {
     void redis.del(REDIS_KEYS.task.giaList(caller.id, caller.role, caller.domain)).catch(() => {});
-  } else if (task.task_category === 'group_subtask' && task.group_id) {
-    void redis.del(REDIS_KEYS.task.subtasks(task.group_id as string, caller.id)).catch(() => {});
   }
 
   return { data: null, error: null };
@@ -771,15 +743,6 @@ export async function addTaskRemarkAction(
 
   if (!remark) return { data: null, error: formErrors.generic };
 
-  // Invalidate remarks cache — fire-and-forget, never blocks the response.
-  void (async () => {
-    try {
-      await redis.del(REDIS_KEYS.taskRemarks(taskId));
-    } catch (e) {
-      console.error('[tasks] addTaskRemarkAction Redis del error:', e);
-    }
-  })();
-
   return { data: remark as TaskRemark, error: null };
 }
 
@@ -835,15 +798,6 @@ export async function suppressTaskRemarkAction(
     .eq('id', remarkId);
 
   if (updateError) return { data: null, error: formErrors.generic };
-
-  // Invalidate remarks cache — fire-and-forget, never blocks the response.
-  void (async () => {
-    try {
-      await redis.del(REDIS_KEYS.taskRemarks(existing.task_id as string));
-    } catch (e) {
-      console.error('[tasks] suppressTaskRemarkAction Redis del error:', e);
-    }
-  })();
 
   return { data: { remarkId }, error: null };
 }
@@ -917,13 +871,6 @@ export async function deleteGroupTaskAction(
     .eq('id', groupId);
 
   if (deleteError) return { data: null, error: formErrors.generic };
-
-  // 5. Cache invalidation
-  try {
-    await redis.del(REDIS_KEYS.task.groupList(group.domain, caller.role));
-  } catch (e) {
-    console.warn('[deleteGroupTaskAction] redis del failed', e);
-  }
 
   revalidatePath('/tasks');
 

@@ -11,8 +11,6 @@ import {
 } from "@/lib/validations/ad-creative-schema";
 import type { ActionResult } from "@/lib/types";
 import type { AdCreative } from "@/lib/types/database";
-import { redis } from "@/lib/redis";
-import { REDIS_KEYS } from "@/lib/constants/redis-keys";
 
 const ADMIN_ROLES = ["admin", "founder"];
 
@@ -70,10 +68,6 @@ export async function upsertAdCreative(
 
     if (error || !data) return { data: null, error: formErrors.generic };
 
-    void redis
-      .del(REDIS_KEYS.campaign.campaignAdCreative(normalisedKey))
-      .catch(() => {});
-
     revalidatePath("/admin/ad-creatives");
     revalidatePath("/campaigns");
     return { data: data as AdCreative, error: null };
@@ -92,10 +86,6 @@ export async function upsertAdCreative(
     }
     return { data: null, error: formErrors.generic };
   }
-
-  void redis
-    .del(REDIS_KEYS.campaign.campaignAdCreative(normalisedKey))
-    .catch(() => {});
 
   revalidatePath("/admin/ad-creatives");
   revalidatePath("/campaigns");
@@ -133,10 +123,6 @@ export async function deleteAdCreative(
     .maybeSingle();
 
   if (error || !deleted) return { data: null, error: formErrors.generic };
-
-  void redis
-    .del(REDIS_KEYS.campaign.campaignAdCreative(deleted.campaign_key))
-    .catch(() => {});
 
   revalidatePath("/admin/ad-creatives");
   revalidatePath("/campaigns");
