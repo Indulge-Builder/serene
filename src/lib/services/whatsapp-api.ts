@@ -389,10 +389,12 @@ export async function sendFounderLeadNotification(
 
     const source = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
 
-    for (const founder of founders) {
+    // Send to all founders in parallel — sequential sends meant the second founder
+    // was only attempted after the first fetch completed, risking timeout mid-loop.
+    await Promise.all(founders.map(async (founder) => {
       if (!founder.phone) {
         console.warn(`[whatsapp-api] Founder ${founder.id} (${founder.full_name}) has no phone — skipping lead notification`);
-        continue;
+        return;
       }
 
       const destination = founder.phone.replace(/^\+/, '');
@@ -448,7 +450,7 @@ export async function sendFounderLeadNotification(
           delivered,
         }).catch(() => {});
       }
-    }
+    }));
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendFounderLeadNotification:', err);
   }

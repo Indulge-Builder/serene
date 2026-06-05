@@ -55,6 +55,14 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-05 — WhatsApp notifications: fix second founder not receiving alert
+
+### Bug fix — sequential founder loop replaced with parallel `Promise.all`
+
+- `src/lib/services/whatsapp-api.ts` `sendFounderLeadNotification` — the `for...of` loop sent to each founder **sequentially** (`await fetch` per iteration). With two founders, the second fetch only started after the first completed. If the first was slow, the second could be skipped by a timeout or the function could be killed mid-loop. Changed to `await Promise.all(founders.map(...))` so both Gupshup API calls are dispatched simultaneously. Each founder's `try/catch/finally` block remains independent — one failure does not prevent the other from logging or delivering.
+
+---
+
 ## 2026-06-05 — Webhook lead ingestion: fix WhatsApp notification not firing
 
 ### Bug fix — `void` fire-and-forget killed before completion on Vercel
