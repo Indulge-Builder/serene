@@ -296,7 +296,7 @@ export async function sendLeadAssignmentNotification(
     const admin = createAdminClient();
     const { data: agent } = await admin
       .from('profiles')
-      .select('phone')
+      .select('phone, full_name')
       .eq('id', agentId)
       .single();
 
@@ -305,8 +305,9 @@ export async function sendLeadAssignmentNotification(
       return;
     }
 
-    const source      = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
-    const destination = agent.phone.replace(/^\+/, '');
+    const agentFirstName = agent.full_name?.trim().split(/\s+/)[0] || 'there';
+    const source         = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
+    const destination    = agent.phone.replace(/^\+/, '');
 
     const params = new URLSearchParams({
       channel:    'whatsapp',
@@ -315,8 +316,8 @@ export async function sendLeadAssignmentNotification(
       'src.name': GUPSHUP_APP_NAME!,
       template:   JSON.stringify({
         id:     GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID,
-        // Gupshup {{1}} = lead name, {{2}} = lead phone
-        params: [leadName, leadPhone || 'not provided'],
+        // Gupshup {{1}} = agent first name, {{2}} = lead full name, {{3}} = lead phone
+        params: [agentFirstName, leadName, leadPhone || 'not provided'],
       }),
     });
 
@@ -351,6 +352,7 @@ export async function sendLeadAssignmentNotification(
         leadId:         leadId ?? null,
         recipientId:    agentId,
         recipientPhone: destination,
+        agentName:      agent.full_name ?? null,
         leadName,
         leadPhone,
         domain,

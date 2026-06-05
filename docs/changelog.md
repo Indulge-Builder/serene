@@ -6,6 +6,77 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-05 — Lead dossier notes card header simplified
+
+- `src/components/leads/LeadNotesInput.tsx` — card header label renamed from "Team Notes" to "Notes"; "Visible to all" subtitle removed. Icon unchanged.
+
+---
+
+## 2026-06-05 — MessageBar primitive + WhatsApp composer alignment fix
+
+**Problem:** The WhatsApp page composer and the lead dossier `LeadWhatsAppCard` composer both used inline textarea + send-button markup with `alignItems: flex-end` and `--leading-relaxed` line height. The 32px send button forced extra vertical space and the placeholder sat above centre.
+
+**New file:**
+
+- `src/components/ui/MessageBar.tsx` — canonical §5.11 message bar primitive. `alignItems: center` layout; 20px line height + 6px vertical padding so text and placeholder align with the 32px send button; 16px Send icon; auto-grow textarea; `default` and `nested` variants.
+
+**Updated:**
+
+- `src/components/whatsapp/ConversationPanel.tsx` — inline composer replaced with `<MessageBar variant="default" />`.
+- `src/components/leads/LeadWhatsAppCard.tsx` — inline composer replaced with `<MessageBar variant="nested" />`.
+
+---
+
+## 2026-06-05 — Lead assignment side-effects consolidated into single orchestrator
+
+**Problem:** Four entry points (webhook route, `assignLead`, `createManualLead`, WhatsApp ingestion) each independently implemented the same four side-effects: agent WhatsApp, founder WhatsApp, in-app `lead_assigned` notification, and SLA timer scheduling. They had already drifted — the webhook and WhatsApp paths were missing the in-app inbox row, the WhatsApp path had a redundant second `profiles` fetch, and `null` was reaching the `lead_id` column of WhatsApp founder alert log rows.
+
+**New file:**
+
+- `src/lib/services/lead-assignment-notify.ts` — `notifyLeadAssigned(input: LeadAssignedNotifyInput)`: orchestrates agent WhatsApp → founder WhatsApp → in-app notification → SLA timers in that order. Each side-effect is individually wrapped; one failure never prevents the others. Founder alert suppressed for duplicates (`isDuplicate: true`). In-app notification suppressed when `actorId === assignedTo` (no self-notify). SLA scheduling suppressed when `scheduleSla: false`. Accepts `leadStatus` and `assignedAt` for re-assignment paths that need non-`'new'` status.
+
+**Rewired call sites:**
+
+- `src/app/api/webhooks/leads/route.ts` — two inline `void send...()` blocks replaced with one `notifyLeadAssigned` call. Adds the previously missing in-app `lead_assigned` row for webhook-ingested leads.
+- `src/lib/services/whatsapp-ingestion.ts` — inline WhatsApp + SLA block replaced with one `notifyLeadAssigned` call. The `lead_id` column in founder alert log rows is now always non-null (fixes null `lead_id` on WhatsApp founder alerts). The redundant second `profiles` fetch (for `assignedAgentName`) is retained as a single pre-orchestrator fetch so `agentName` can be passed in.
+- `src/lib/actions/leads.ts` → `assignLead` — WhatsApp + founder + in-app + SLA block replaced with one `notifyLeadAssigned` call. The `profiles.select('full_name')` fetch that was already in the parallel `Promise.all` at step 3 supplies `agentName` — no second fetch needed.
+- `src/lib/actions/leads.ts` → `createManualLead` — same consolidation; `actorId: caller.id` enables the self-notify suppression.
+- `sendLeadAssignmentNotification` and `sendFounderLeadNotification` imports removed from `leads.ts` (no longer called directly).
+
+**Bugs closed:**
+
+1. Webhook-ingested leads never produced an in-app `lead_assigned` row — now fixed.
+2. WhatsApp founder alert `lead_id` was null in `whatsapp_notification_logs` — now always non-null.
+3. `assignLead` issued a second `profiles` SELECT for agent name after the parallel fetch at step 3 already had it — removed.
+
+---
+
+## 2026-06-05 — WhatsApp lead assignment template params updated
+
+**Changed files:**
+
+- `src/lib/services/whatsapp-api.ts` — `sendLeadAssignmentNotification` now sends three Gupshup template params on the same `GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID`: `{{1}}` agent first name (derived from profile `full_name`), `{{2}}` lead full name, `{{3}}` lead phone. Agent profile fetch extended to `phone, full_name`; `logNotification` now records `agent_name`.
+- `src/lib/constants/whatsapp.ts` — param contract documented inline on `GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID`.
+
+Call sites unchanged — they already pass lead full name as the second argument.
+
+---
+
+## 2026-06-05 — Lead ingestion: notification fixes + SLA wiring for WhatsApp leads
+
+**Changes:**
+
+- `src/lib/services/lead-ingestion.ts` — `IngestionResult` success shape gains `is_duplicate: boolean`; duplicate path returns `true`, fresh-lead path returns `false`. Also `createLeadFromWhatsApp` now returns `{ assignedAt, domain }` alongside `{ leadId, assignedTo }` so callers have everything needed for SLA scheduling without re-fetching.
+- `src/app/api/webhooks/leads/route.ts` — `sendFounderLeadNotification` is now gated on `!result.is_duplicate`. On duplicate submissions the agent is still notified (existing behaviour), but the founder alert is suppressed — no new lead entered the system, nothing for the founder to act on.
+- `src/lib/services/whatsapp-ingestion.ts` — three fixes:
+  1. `sendLeadAssignmentNotification` and `sendFounderLeadNotification` now use `newLeadDomain` (returned from `createLeadFromWhatsApp`) instead of `lead.domain as string`, eliminating the unsafe cast introduced after migration 0041.
+  2. `scheduleSlaTimersForLead` is now called (via dynamic import of `lib/actions/sla`) after a new WhatsApp lead is created and assigned. All leads — Meta webhook, manual, and WhatsApp — now follow the same SLA timer config.
+  3. SLA scheduling is fire-and-forget non-fatal: errors are logged with `[whatsapp-ingestion]` prefix but never surface to the webhook response.
+
+**Decision recorded (WhatsApp domain hardcoding):** All inbound WhatsApp leads are permanently assigned `domain = DEFAULT_LEAD_DOMAIN` (`"onboarding"`). This is intentional — WhatsApp leads carry no UTM/campaign data, so campaign-based domain resolution is impossible. If multi-domain WhatsApp routing is ever needed, `createLeadFromWhatsApp` must be extended to accept a `domain` parameter and the webhook routing logic updated accordingly. See note in `src/lib/services/lead-ingestion.ts`.
+
+---
+
 ## 2026-06-04 — Dashboard date filter: stop duplicate POST storm
 
 **Root cause:** Changing `dash_preset` navigates the page and re-fetches all cohort data on the server, but Lead Pipeline, Campaign Performance, and Lead Volume widgets also fired their own server actions on every `dateRange` change (plus 30s auto-poll on cohort widgets). That doubled work and spammed `POST /dashboard` in dev.

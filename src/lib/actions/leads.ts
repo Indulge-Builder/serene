@@ -35,10 +35,6 @@ import {
   cancelSlaTimersForLead,
   refreshActivitySlaTimers,
 } from "@/lib/actions/sla";
-import {
-  sendLeadAssignmentNotification,
-  sendFounderLeadNotification,
-} from "@/lib/services/whatsapp-api";
 import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
 import { scheduleTaskReminder } from "@/trigger/task-reminders";
 import type { ActionResult } from "@/lib/types/index";
@@ -368,47 +364,30 @@ export async function assignLead(
     console.warn('[leads-action:assignLead] redis invalidation failed', e);
   }
 
-  // 6. Notify the receiving agent — fire-and-forget, non-fatal
-  createNotification({
-    recipient_id: agentId,
-    type: "lead_assigned",
-    title: "New lead assigned to you",
-    body: `Assigned by ${caller.full_name}`,
-    action_url: `/leads/${leadId}`,
-  }).catch(() => {});
-
   const assignLeadName = existingLead.last_name
     ? `${existingLead.first_name} ${existingLead.last_name}`
     : existingLead.first_name;
 
-  void sendLeadAssignmentNotification(
-    agentId,
-    assignLeadName,
-    existingLead.phone ?? "",
-    existingLead.domain as string,
+  // 6–7. All assignment side-effects via shared orchestrator
+  const { notifyLeadAssigned } = await import(
+    "@/lib/services/lead-assignment-notify"
+  );
+  void notifyLeadAssigned({
     leadId,
-  ).catch((err) => {
-    console.error("[leads] assignment notification failed (non-fatal):", err);
-  });
-
-  void sendFounderLeadNotification(
-    existingLead.domain as string,
-    assignedAgentName,
-    assignLeadName,
-    existingLead.phone ?? "",
-    leadId,
-  ).catch((err) => {
-    console.error("[leads] founder notification failed (non-fatal):", err);
-  });
-
-  // 7. SLA: schedule timers using the pre-fetched status + domain (no post-update SELECT)
-  scheduleSlaTimersForLead({
-    leadId,
-    status: existingLead.status as string,
+    assignedTo:  agentId,
+    agentName:   assignedAgentName,
+    leadName:    assignLeadName,
+    leadPhone:   existingLead.phone ?? "",
+    domain:      existingLead.domain as string,
+    isNew:       false,
+    isDuplicate: false,
+    actorId:     caller.id,
+    scheduleSla: true,
+    leadStatus:  existingLead.status as string,
     assignedAt,
-    assignedTo: agentId,
-    domain: existingLead.domain as string,
-  }).catch(() => {});
+  }).catch((err) => {
+    console.error("[leads:assignLead] notifyLeadAssigned failed (non-fatal):", err);
+  });
 
   revalidatePath("/leads");
 
@@ -614,51 +593,29 @@ export async function createManualLead(
       details: { assigned_to: assignedTo, method: "manual" },
     });
 
-    // Notify the assigned agent (only when it differs from the caller)
-    if (assignedTo !== caller.id) {
-      createNotification({
-        recipient_id: assignedTo,
-        type: "lead_assigned",
-        title: "New lead assigned to you",
-        body: `Manually added by ${caller.full_name}`,
-        action_url: `/leads/${leadId}`,
-      }).catch(() => {});
-    }
-
-    const manualLeadName = last_name
-      ? `${first_name} ${last_name}`
-      : first_name;
-
-    void sendLeadAssignmentNotification(
-      assignedTo,
-      manualLeadName,
-      phone,
-      resolvedDomain as string,
-      leadId,
-    ).catch((err) => {
-      console.error("[leads] assignment notification failed (non-fatal):", err);
-    });
-
-    void sendFounderLeadNotification(
-      resolvedDomain as string,
-      assignedAgentName,
-      manualLeadName,
-      phone,
-      leadId,
-    ).catch((err) => {
-      console.error("[leads] founder notification failed (non-fatal):", err);
-    });
   }
 
-  // 10. SLA: schedule timers for new lead if assigned
+  // 10. All assignment side-effects (WhatsApp, in-app, SLA) via shared orchestrator
+  const manualLeadName = last_name ? `${first_name} ${last_name}` : first_name;
   if (assignedTo) {
-    scheduleSlaTimersForLead({
+    const { notifyLeadAssigned } = await import(
+      "@/lib/services/lead-assignment-notify"
+    );
+    void notifyLeadAssigned({
       leadId,
-      status: "new",
-      assignedAt: now,
       assignedTo,
-      domain: resolvedDomain as string,
-    }).catch(() => {}); // fire-and-forget, non-fatal
+      agentName:   assignedAgentName,
+      leadName:    manualLeadName,
+      leadPhone:   phone,
+      domain:      resolvedDomain as string,
+      isNew:       true,
+      isDuplicate: false,
+      actorId:     caller.id,
+      scheduleSla: true,
+      assignedAt:  now,
+    }).catch((err) => {
+      console.error("[leads:createManualLead] notifyLeadAssigned failed (non-fatal):", err);
+    });
   }
 
   // 11. Invalidate list + dashboard caches.

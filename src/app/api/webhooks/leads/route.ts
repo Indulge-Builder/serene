@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ingestLead, sanitizeRawPayload } from '@/lib/services/lead-ingestion';
-import { sendLeadAssignmentNotification, sendFounderLeadNotification } from '@/lib/services/whatsapp-api';
+import { notifyLeadAssigned } from '@/lib/services/lead-assignment-notify';
 import { LEAD_SOURCES, type LeadSource } from '@/lib/constants/lead-sources';
 
 const LEAD_SOURCES_SET = new Set<string>(LEAD_SOURCES);
@@ -124,26 +124,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  if (result.assigned_to) {
-    void sendLeadAssignmentNotification(
-      result.assigned_to,
-      result.lead_name,
-      result.lead_phone,
-      result.domain,
-      result.leadId,
-    ).catch((err) => {
-      console.error('[webhooks/leads] assignment notification failed (non-fatal):', err);
-    });
-  }
-
-  void sendFounderLeadNotification(
-    result.domain,
-    result.agent_name ?? 'Unassigned',
-    result.lead_name,
-    result.lead_phone,
-    result.leadId,
-  ).catch((err) => {
-    console.error('[webhooks/leads] founder notification failed (non-fatal):', err);
+  void notifyLeadAssigned({
+    leadId:      result.leadId,
+    assignedTo:  result.assigned_to,
+    agentName:   result.agent_name,
+    leadName:    result.lead_name,
+    leadPhone:   result.lead_phone,
+    domain:      result.domain,
+    isNew:       !result.is_duplicate,
+    isDuplicate: result.is_duplicate,
+    actorId:     null,
+    scheduleSla: !result.is_duplicate,
+  }).catch((err) => {
+    console.error('[webhooks/leads] notifyLeadAssigned failed (non-fatal):', err);
   });
 
   return NextResponse.json({ leadId: result.leadId }, { status: 201 });

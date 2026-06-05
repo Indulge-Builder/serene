@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
-import { MessageCircle, Send } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -10,8 +10,8 @@ import {
   initiateWhatsAppConversationAction,
 } from "@/lib/actions/whatsapp";
 import { MessageBubble } from "@/components/whatsapp/MessageBubble";
+import { MessageBar } from "@/components/ui/MessageBar";
 import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner"; // used in send button loading state
 import { toast } from "@/lib/toast";
 import { formatDate } from "@/lib/utils/dates";
 import type { WhatsAppConversation, WhatsAppMessage } from "@/lib/types/whatsapp";
@@ -53,7 +53,6 @@ export function LeadWhatsAppCard({
   const [isSendPending, startSendTransition]           = useTransition();
   const [isInitiatePending, startInitiateTransition]   = useTransition();
   const bodyRef                                        = useRef<HTMLDivElement>(null);
-  const textareaRef                                    = useRef<HTMLTextAreaElement>(null);
   const seenIds                                        = useRef<Set<string>>(new Set(initialMessages.map((m) => m.id)));
   const optimisticIds                                  = useRef<Set<string>>(new Set());
 
@@ -122,14 +121,6 @@ export function LeadWhatsAppCard({
       supabase.removeChannel(channel);
     };
   }, [conversation?.id, mountId]);
-
-  // Auto-grow textarea
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = `${ta.scrollHeight}px`;
-  }, [draft]);
 
   function handleSend() {
     if (!draft.trim() || !conversation) return;
@@ -378,79 +369,19 @@ export function LeadWhatsAppCard({
             This conversation is resolved.
           </p>
         ) : (
-          <div
-            style={{
-              display:      "flex",
-              alignItems:   "flex-end",
-              gap:          "var(--space-2)",
-              background:   "var(--theme-paper-subtle)",
-              borderRadius: "var(--radius-md)",
-              padding:      "var(--space-2) var(--space-3)",
+          <MessageBar
+            value={draft}
+            onChange={setDraft}
+            onSend={handleSend}
+            loading={isSendPending}
+            variant="nested"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                handleSend();
+              }
             }}
-          >
-            <textarea
-              ref={textareaRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Type a message…"
-              rows={1}
-              style={{
-                flex:       "1",
-                background: "transparent",
-                border:     "none",
-                outline:    "none",
-                resize:     "none",
-                fontFamily: "var(--font-sans)",
-                fontSize:   "var(--text-sm)",
-                color:      "var(--theme-text-primary)",
-                caretColor: "var(--theme-accent)",
-                lineHeight: "var(--leading-relaxed)",
-                maxHeight:  "96px",
-                overflowY:  "auto",
-              }}
-            />
-            <button
-              onClick={handleSend}
-              disabled={!draft.trim() || isSendPending}
-              style={{
-                display:        "flex",
-                alignItems:     "center",
-                justifyContent: "center",
-                width:          "32px",
-                height:         "32px",
-                borderRadius:   "var(--radius-full)",
-                border:         "none",
-                cursor:         draft.trim() && !isSendPending ? "pointer" : "not-allowed",
-                background:     draft.trim() && !isSendPending
-                  ? "var(--theme-accent)"
-                  : "var(--theme-paper-border)",
-                transition:     "background var(--duration-fast) var(--ease-in-out)",
-                flexShrink:     0,
-              }}
-              aria-label="Send message"
-            >
-              {isSendPending ? (
-                <Spinner size="sm" />
-              ) : (
-                <Send
-                  style={{
-                    width:       "14px",
-                    height:      "14px",
-                    strokeWidth: 2,
-                    color:       draft.trim()
-                      ? "var(--theme-accent-fg)"
-                      : "var(--theme-text-tertiary)",
-                  }}
-                />
-              )}
-            </button>
-          </div>
+          />
         )}
       </div>
     </div>

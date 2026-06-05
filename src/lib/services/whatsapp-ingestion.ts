@@ -11,8 +11,9 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { normalizeToE164 } from '@/lib/utils/phone';
 import { sanitizeText } from '@/lib/utils/sanitize';
-import { getMediaDownloadUrl, sendLeadAssignmentNotification, sendFounderLeadNotification } from '@/lib/services/whatsapp-api';
+import { getMediaDownloadUrl } from '@/lib/services/whatsapp-api';
 import { createLeadFromWhatsApp } from '@/lib/services/lead-ingestion';
+import { notifyLeadAssigned } from '@/lib/services/lead-assignment-notify';
 import type { MetaWebhookPayload, MetaInboundMessage, MetaStatusUpdate, WhatsAppConversation, MetaMediaObject } from '@/lib/types/whatsapp';
 import type { Lead } from '@/lib/types/database';
 
@@ -104,7 +105,7 @@ export async function processInboundMessage(
 
   // 4. If no lead → create from WhatsApp
   if (!lead) {
-    const { leadId, assignedTo } = await createLeadFromWhatsApp(waId, normalizedPhone, senderName ?? null);
+    const { leadId, assignedTo, assignedAt, domain: newLeadDomain } = await createLeadFromWhatsApp(waId, normalizedPhone, senderName ?? null);
     // Re-fetch so we have the full Lead row (createAdminClient returns typed client for leads)
     const adminClient = createAdminClient();
     const { data: created } = await adminClient
@@ -118,41 +119,38 @@ export async function processInboundMessage(
       return;
     }
 
-    // Fire assignment notifications now that we have the full lead row for name/domain
+    // Fire all assignment side-effects via the shared orchestrator
     const newLeadId = lead.id;
     const leadName = lead.last_name
       ? `${lead.first_name} ${lead.last_name}`
       : lead.first_name;
 
-    let assignedAgentName = 'Unassigned';
+    // Fetch agent name for founder alert — one query, non-fatal if absent
+    let assignedAgentName: string | null = null;
     if (assignedTo) {
-      void sendLeadAssignmentNotification(
-        assignedTo,
-        leadName,
-        normalizedPhone,
-        lead.domain as string,
-        newLeadId,
-      ).catch((err) => {
-        console.error('[whatsapp-ingestion] assignment notification failed (non-fatal):', err);
-      });
-
-      const adminForFounder = createAdminClient();
-      const { data: assignedAgent } = await adminForFounder
+      const adminForAgent = createAdminClient();
+      const { data: assignedAgent } = await adminForAgent
         .from('profiles')
         .select('full_name')
         .eq('id', assignedTo)
         .single();
-      assignedAgentName = assignedAgent?.full_name ?? 'Unknown Agent';
+      assignedAgentName = assignedAgent?.full_name ?? null;
     }
 
-    void sendFounderLeadNotification(
-      lead.domain as string,
-      assignedAgentName,
+    void notifyLeadAssigned({
+      leadId:      newLeadId,
+      assignedTo,
+      agentName:   assignedAgentName,
       leadName,
-      normalizedPhone,
-      newLeadId,
-    ).catch((err) => {
-      console.error('[whatsapp-ingestion] founder notification failed (non-fatal):', err);
+      leadPhone:   normalizedPhone,
+      domain:      newLeadDomain,
+      isNew:       true,
+      isDuplicate: false,
+      actorId:     null,
+      scheduleSla: true,
+      assignedAt:  assignedAt ?? undefined,
+    }).catch((err) => {
+      console.error('[whatsapp-ingestion] notifyLeadAssigned failed (non-fatal):', err);
     });
   }
 

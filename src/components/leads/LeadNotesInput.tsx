@@ -85,16 +85,7 @@ export function LeadNotesInput({ leadId, canAdd, onNoteAdded }: Props) {
             color:         'var(--theme-accent)',
           }}
         >
-          Team Notes
-        </span>
-        <span
-          style={{
-            marginLeft: 'auto',
-            fontSize:   'var(--text-xs)',
-            color:      'var(--theme-accent-muted)',
-          }}
-        >
-          Visible to all
+          Notes
         </span>
       </div>
 

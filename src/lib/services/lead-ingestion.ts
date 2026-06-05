@@ -3,7 +3,6 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { selectAdapter } from '@/lib/leads/adapters';
 import { resolveDomainFromCampaign, DEFAULT_LEAD_DOMAIN } from '@/lib/constants/campaign-domain-map';
 import { getNextRoundRobinAgent } from '@/lib/services/leads-service';
-import { sendLeadAssignmentNotification } from '@/lib/services/whatsapp-api';
 import { LEAD_SOURCES, type LeadSource } from '@/lib/constants/lead-sources';
 import type { Database } from '@/lib/types/database';
 
@@ -35,7 +34,7 @@ export function sanitizeRawPayload(payload: unknown): unknown {
 }
 
 export type IngestionResult =
-  | { success: true; leadId: string; rawPayloadId: string; assigned_to: string | null; agent_name: string | null; domain: string; lead_name: string; lead_phone: string }
+  | { success: true; leadId: string; rawPayloadId: string; assigned_to: string | null; agent_name: string | null; domain: string; lead_name: string; lead_phone: string; is_duplicate: boolean }
   | { success: false; error: string; status: 400 | 401 | 422 | 500 };
 
 // ─────────────────────────────────────────────
@@ -146,29 +145,16 @@ export async function ingestLead(
             .eq('id', rawPayloadId);
         }
 
-        // Notify the assigned agent that the same person submitted again — fire-and-forget
-        if (existing.assigned_to) {
-          const existingLeadName = existing.last_name
-            ? `${existing.first_name} ${existing.last_name}`
-            : existing.first_name;
-          void sendLeadAssignmentNotification(
-            existing.assigned_to,
-            existingLeadName,
-            existing.phone,
-            existing.domain,
-            existing.id,
-          ).catch(() => {});
-        }
-
         return {
           success:      true,
           leadId:       existing.id,
           rawPayloadId: rawPayloadId ?? '',
-          assigned_to:  null,
+          assigned_to:  existing.assigned_to,
           agent_name:   null,
           domain,
           lead_name:    data.last_name ? `${data.first_name} ${data.last_name}` : data.first_name,
           lead_phone:   phone,
+          is_duplicate: true,
         };
       }
 
@@ -283,23 +269,31 @@ export async function ingestLead(
     domain,
     lead_name:    ingestionLeadName,
     lead_phone:   data.phone,
+    is_duplicate: false,
   };
 }
 
 // ─────────────────────────────────────────────
 // WhatsApp lead creation
 // Called by whatsapp-ingestion.ts when an inbound message arrives from an unknown number.
-// Domain defaults to concierge — WhatsApp leads carry no UTM data for campaign resolution.
+//
+// DOMAIN DECISION (2026-06-05, intentional): all WhatsApp leads are hardcoded to
+// DEFAULT_LEAD_DOMAIN ("onboarding"). WhatsApp messages carry no UTM/campaign data,
+// so campaign-based domain resolution (resolveDomainFromCampaign) is impossible here.
+// If multi-domain WhatsApp routing is ever needed, extend this function to accept a
+// domain parameter and update the webhook routing logic in whatsapp-ingestion.ts.
+//
 // Dedup is the caller's responsibility: this function always inserts.
 // ─────────────────────────────────────────────
 export async function createLeadFromWhatsApp(
   waId:        string,
   phone:       string,
   senderName?: string | null,
-): Promise<{ leadId: string; assignedTo: string | null }> {
+): Promise<{ leadId: string; assignedTo: string | null; assignedAt: string | null; domain: string }> {
   const supabase = createAdminClient();
   const domain   = DEFAULT_LEAD_DOMAIN;
   const assignedTo = await getNextRoundRobinAgent(domain);
+  const assignedAt = assignedTo ? new Date().toISOString() : null;
 
   const nameParts  = senderName?.split(' ') ?? [];
   const first_name = nameParts[0] ?? phone;
@@ -314,7 +308,7 @@ export async function createLeadFromWhatsApp(
       phone,
       domain,
       assigned_to:        assignedTo ?? null,
-      assigned_at:        assignedTo ? new Date().toISOString() : null,
+      assigned_at:        assignedAt,
       status:             'new',
       lead_intent:        null,
       source:             'whatsapp',
@@ -352,5 +346,5 @@ export async function createLeadFromWhatsApp(
     });
   }
 
-  return { leadId, assignedTo };
+  return { leadId, assignedTo, assignedAt, domain };
 }

@@ -9,9 +9,9 @@ import {
   useState,
   useTransition,
 } from "react";
-import { Send } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
+import { MessageBar } from "@/components/ui/MessageBar";
 import { Spinner } from "@/components/ui/Spinner";
 import { MessageBubble } from "@/components/whatsapp/MessageBubble";
 import { createClient } from "@/lib/supabase/client";
@@ -49,7 +49,6 @@ export function ConversationPanel({
 }: ConversationPanelProps) {
   const mountId       = useId();
   const listRef       = useRef<HTMLDivElement>(null);
-  const textareaRef   = useRef<HTMLTextAreaElement>(null);
   const seenIds       = useRef<Set<string>>(new Set());
   const optimisticIds = useRef<Set<string>>(new Set());
   // Tracks scrollTop before "load earlier" prepend so we can restore it
@@ -146,17 +145,6 @@ export function ConversationPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation.id]);
 
-  // ── Auto-resize textarea ─────────────────────────────────────────────────────
-
-  function handleDraftChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    const value = e.target.value;
-    if (value.length > MAX_CHARS) return;
-    setDraft(value);
-    const el = e.target;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 96)}px`; // max 4 lines ≈ 96px
-  }
-
   // ── Send message ─────────────────────────────────────────────────────────────
 
   const handleSend = useCallback(() => {
@@ -189,9 +177,6 @@ export function ConversationPanel({
 
     setMessages((prev) => [...prev, optimistic]);
     setDraft("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
 
     startSendTransition(async () => {
       const result = await sendWhatsAppMessage({
@@ -253,7 +238,6 @@ export function ConversationPanel({
   }
 
   const canManage  = MANAGER_ROLES.includes(callerProfile.role);
-  const canSend    = draft.trim().length > 0 && !isSending && convStatus === "open";
   const showCharCount = draft.length > WARN_CHARS;
 
   // Group messages by date
@@ -464,86 +448,15 @@ export function ConversationPanel({
             flexShrink: 0,
           }}
         >
-          <div
-            style={{
-              display:      "flex",
-              alignItems:   "flex-end",
-              gap:          "var(--space-2)",
-              background:   "var(--theme-paper)",
-              border:       "1px solid var(--theme-paper-border)",
-              borderRadius: "var(--radius-lg)",
-              padding:      "var(--space-2) var(--space-3)",
-              boxShadow:    "var(--shadow-2)",
-              transition:   "border-color var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out)",
-            }}
-            onFocus={(e) => {
-              (e.currentTarget as HTMLDivElement).style.borderColor = "var(--theme-accent)";
-              (e.currentTarget as HTMLDivElement).style.boxShadow   = "var(--shadow-accent-ring)";
-            }}
-            onBlur={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                (e.currentTarget as HTMLDivElement).style.borderColor = "";
-                (e.currentTarget as HTMLDivElement).style.boxShadow   = "var(--shadow-2)";
-              }
-            }}
-          >
-            <textarea
-              ref={textareaRef}
-              value={draft}
-              onChange={handleDraftChange}
-              onKeyDown={handleKeyDown}
-              placeholder="Type a message…"
-              rows={1}
-              style={{
-                flex:       1,
-                border:     "none",
-                outline:    "none",
-                background: "transparent",
-                resize:     "none",
-                fontFamily: "var(--font-sans)",
-                fontSize:   "var(--text-sm)",
-                color:      "var(--theme-text-primary)",
-                lineHeight: "var(--leading-relaxed)",
-                minHeight:  "24px",
-                maxHeight:  "96px",
-                overflowY:  "auto",
-                caretColor: "var(--theme-accent)",
-              }}
-            />
-
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={!canSend}
-              aria-label="Send message"
-              style={{
-                width:          "32px",
-                height:         "32px",
-                borderRadius:   "var(--radius-sm)",
-                border:         "none",
-                cursor:         canSend ? "pointer" : "not-allowed",
-                display:        "flex",
-                alignItems:     "center",
-                justifyContent: "center",
-                flexShrink:     0,
-                background:     canSend ? "var(--theme-accent)" : "var(--theme-paper-border)",
-                transition:     "background var(--duration-fast) var(--ease-in-out)",
-              }}
-            >
-              {isSending ? (
-                <Spinner size="sm" />
-              ) : (
-                <Send
-                  style={{
-                    width:       "14px",
-                    height:      "14px",
-                    strokeWidth: 1.5,
-                    color:       canSend ? "var(--theme-accent-fg)" : "var(--theme-text-tertiary)",
-                  }}
-                />
-              )}
-            </button>
-          </div>
+          <MessageBar
+            value={draft}
+            onChange={setDraft}
+            onSend={handleSend}
+            onKeyDown={handleKeyDown}
+            loading={isSending}
+            maxLength={MAX_CHARS}
+            maxHeight={96}
+          />
 
           {/* Character count warning */}
           {showCharCount && (
