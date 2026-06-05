@@ -17,7 +17,6 @@ import {
   AssignLeadSchema,
   UpdatePersonalDetailsSchema,
   CreateManualLeadSchema,
-  RecordDealSchema,
   CreateLeadTaskSchema,
   SearchLeadsSchema,
 } from "@/lib/validations/lead-schema";
@@ -892,61 +891,12 @@ export async function addLeadNote(
 
 // ─────────────────────────────────────────────
 // Action: recordDeal
-// Called after Won confirmation. Writes deal_type, deal_duration, deal_amount
-// then fires updateLeadStatus('won') atomically — both succeed or both fail.
+// Thin wrapper — canonical implementation lives in deals.ts.
+// "use server" files cannot use re-export syntax; async wrapper is required.
 // ─────────────────────────────────────────────
-export async function recordDeal(
-  input: unknown,
-): Promise<ActionResult<{ leadId: string }>> {
-  // 1. Validate
-  const parsed = RecordDealSchema.safeParse(input);
-  if (!parsed.success) {
-    const first = parsed.error.issues[0];
-    return { data: null, error: first?.message ?? formErrors.generic };
-  }
-
-  const { leadId, deal_type, deal_duration, deal_amount } = parsed.data;
-
-  // 2. Auth check
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-
-  const supabase = await createClient();
-
-  // 3. Fetch lead for access check
-  const { data: lead } = await supabase
-    .from("leads")
-    .select("id, status, assigned_to, domain")
-    .eq("id", leadId)
-    .single();
-
-  if (!lead) return { data: null, error: "Lead not found." };
-
-  const hasAccess =
-    (caller.role === "agent" && lead.assigned_to === caller.id) ||
-    (caller.role === "manager" && lead.domain === (caller.domain as string)) ||
-    caller.role === "admin" ||
-    caller.role === "founder";
-
-  if (!hasAccess) return { data: null, error: formErrors.unauthorized };
-
-  const admin = createAdminClient();
-
-  // 4. Write deal fields — must succeed before status change
-  const { error: dealError } = await admin
-    .from("leads")
-    .update({
-      deal_type,
-      deal_duration:
-        deal_type === "membership" ? (deal_duration ?? null) : null,
-      deal_amount,
-    })
-    .eq("id", leadId);
-
-  if (dealError) return { data: null, error: formErrors.generic };
-
-  // 5. Mark Won — delegates to updateLeadStatus which handles notifications + SLA
-  return updateLeadStatus({ leadId, status: "won" });
+export async function recordDeal(input: unknown): Promise<ActionResult<{ leadId: string }>> {
+  const { recordDeal: _recordDeal } = await import("@/lib/actions/deals");
+  return _recordDeal(input);
 }
 
 // ─────────────────────────────────────────────

@@ -1471,6 +1471,34 @@ export type Lead = Omit<
   deal_duration:      import('@/lib/constants/deal-types').DealDuration | null
 }
 
+// Deal — first-class deals table row (migration 0072)
+// deal_type and deal_duration are narrowed from raw text to typed unions
+export type Deal = {
+  id:            string
+  lead_id:       string | null        // null for walk-in deals (no lead lifecycle)
+  client_id:     string | null        // reserved for clients module; always null for now
+  contact_name:  string
+  contact_phone: string               // E.164
+  contact_email: string | null
+  domain:        AppDomain
+  deal_amount:   number
+  deal_type:     import('@/lib/constants/deal-types').DealType
+  deal_duration: import('@/lib/constants/deal-types').DealDuration | null
+  assigned_to:   string | null
+  source:        string | null
+  won_at:        string               // immutable after insert
+  archived_at:   string | null
+  created_at:    string
+  updated_at:    string
+}
+
+// DealWithRelations — Deal + optional joined lead slug and assignee name
+// lead is null for walk-in deals; assignee may be null if unassigned
+export type DealWithRelations = Deal & {
+  lead:     { slug: string | null } | null
+  assignee: { full_name: string } | null
+}
+
 // ─────────────────────────────────────────────
 // Hand-written composite types
 // Not raw table rows — shaped by service query contracts

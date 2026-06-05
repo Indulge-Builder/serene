@@ -124,7 +124,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  void notifyLeadAssigned({
+  // await so the serverless function stays alive until notifications fire.
+  // void + fire-and-forget is killed when the response is sent on Vercel.
+  await notifyLeadAssigned({
     leadId:      result.leadId,
     assignedTo:  result.assigned_to,
     agentName:   result.agent_name,

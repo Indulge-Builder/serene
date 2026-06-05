@@ -158,30 +158,14 @@ export const UpdateLeadCitySchema = z.object({
 export type UpdateLeadCityInput = z.infer<typeof UpdateLeadCitySchema>;
 
 // ─────────────────────────────────────────────
+// Record deal (WonDealModal — fired when marking a lead Won)
+// Canonical schema lives in deal-schema.ts; re-exported here for back-compat.
+// ─────────────────────────────────────────────
+export { RecordDealSchema, type RecordDealInput } from '@/lib/validations/deal-schema';
+
+// ─────────────────────────────────────────────
 // Add plain lead note (LeadNotesInput — visible to all team members)
 // ─────────────────────────────────────────────
-// ─────────────────────────────────────────────
-// Record deal (WonDealModal — fired when marking a lead Won)
-// ─────────────────────────────────────────────
-export const RecordDealSchema = z
-  .object({
-    leadId: z.string().uuid("Invalid lead ID"),
-    deal_type: z.enum(["membership", "retail"]),
-    deal_duration: z
-      .enum(["3_months", "6_months", "1_year"])
-      .nullable()
-      .optional(),
-    deal_amount: z
-      .number({ message: "Please enter a valid amount." })
-      .positive("Amount must be greater than zero.")
-      .max(100_000_000, "Amount seems too large."),
-  })
-  .refine((d) => d.deal_type !== "membership" || d.deal_duration != null, {
-    message: "Please select a membership duration.",
-    path: ["deal_duration"],
-  });
-
-export type RecordDealInput = z.infer<typeof RecordDealSchema>;
 
 export const AddLeadNoteSchema = z.object({
   leadId: z.string().uuid("Invalid lead ID"),

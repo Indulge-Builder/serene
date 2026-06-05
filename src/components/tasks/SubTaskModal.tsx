@@ -29,6 +29,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -63,6 +64,7 @@ import {
   updateChecklistAction,
 } from "@/lib/actions/tasks";
 import { formatDate } from "@/lib/utils/dates";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { toast } from "@/lib/toast";
 import { TASK_STATUS, TASK_PRIORITY } from "@/lib/constants/task-constants";
 import { TaskRemarksPanel, type TaskRemarkWithAuthor } from "@/components/tasks/TaskRemarksPanel";
@@ -82,11 +84,12 @@ import type {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type SubTaskModalTaskUpdate = {
-  id:          string;
-  status?:     TaskStatus;
-  priority?:   TaskPriority;
-  title?:      string;
+  id:           string;
+  status?:      TaskStatus;
+  priority?:    TaskPriority;
+  title?:       string;
   description?: string | null;
+  due_at?:      string | null;
 };
 
 export interface SubTaskModalProps {
@@ -520,6 +523,7 @@ export function SubTaskModal({
   // ── Local state ───────────────────────────────────────────────────────────
   const [title,       setTitle]       = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
+  const [dueAt,       setDueAt]       = useState<string | null>(task.due_at ?? null);
   const [status,      setStatus]      = useState<TaskStatus>(task.status);
   const [priority,    setPriority]    = useState<TaskPriority>(task.priority);
   const [checklist,   setChecklist]   = useState<ChecklistItem[]>(task.attachments ?? []);
@@ -529,13 +533,15 @@ export function SubTaskModal({
   const [showPriorityMenu,  setShowPriorityMenu]  = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const [editTitle, setEditTitle]       = useState(task.title);
-  const [editDesc,  setEditDesc]        = useState(task.description ?? "");
-  const [editItems, setEditItems]       = useState<ChecklistItem[]>(task.attachments ?? []);
+  const [editTitle,  setEditTitle]  = useState(task.title);
+  const [editDesc,   setEditDesc]   = useState(task.description ?? "");
+  const [editDueAt,  setEditDueAt]  = useState<Date | null>(task.due_at ? new Date(task.due_at) : null);
+  const [editItems,  setEditItems]  = useState<ChecklistItem[]>(task.attachments ?? []);
   const [newItemText, setNewItemText]   = useState("");
   const [checklistExpanded, setChecklistExpanded] = useState(false);
 
   const [, startTransition] = useTransition();
+  const router = useRouter();
 
   // Unique id for aria
   const titleId = useId();
@@ -638,6 +644,7 @@ export function SubTaskModal({
   function enterEditMode() {
     setEditTitle(title);
     setEditDesc(description);
+    setEditDueAt(dueAt ? new Date(dueAt) : null);
     setEditItems([...checklist]);
     setEditMode(true);
   }
@@ -653,6 +660,9 @@ export function SubTaskModal({
       if (editDesc.trim() !== (task.description ?? "")) {
         updateFields.description = editDesc.trim() || null;
       }
+      const newDueAtIso = editDueAt ? editDueAt.toISOString() : null;
+      const oldDueAtIso = task.due_at ?? null;
+      if (newDueAtIso !== oldDueAtIso) updateFields.due_at = newDueAtIso;
 
       // Save task fields
       if (Object.keys(updateFields).length > 1) {
@@ -663,12 +673,14 @@ export function SubTaskModal({
         }
         setTitle(trimmedTitle);
         setDescription(editDesc.trim());
+        if (newDueAtIso !== oldDueAtIso) setDueAt(newDueAtIso);
         emitTaskUpdate({
           id: task.id,
           ...(trimmedTitle !== task.title ? { title: trimmedTitle } : {}),
           ...(editDesc.trim() !== (task.description ?? "")
             ? { description: editDesc.trim() || null }
             : {}),
+          ...(newDueAtIso !== oldDueAtIso ? { due_at: newDueAtIso } : {}),
         });
       }
 
@@ -689,6 +701,7 @@ export function SubTaskModal({
 
       setEditMode(false);
       toast.success("Brief updated.");
+      router.refresh();
     });
   }
 
@@ -1510,9 +1523,16 @@ export function SubTaskModal({
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
                       <CalendarDays style={{ width: 13, height: 13, strokeWidth: 1.5, color: "var(--theme-text-tertiary)", flexShrink: 0 }} />
                       <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)", flexShrink: 0, minWidth: "60px" }}>Deadline</span>
-                      {task.due_at ? (
+                      {editMode ? (
+                        <DatePicker
+                          value={editDueAt}
+                          onChange={setEditDueAt}
+                          showTime
+                          placeholder="Set deadline"
+                        />
+                      ) : dueAt ? (
                         <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--theme-text-primary)" }}>
-                          {formatDate(task.due_at, "dd MMM yyyy, HH:mm")}
+                          {formatDate(dueAt, "dd MMM yyyy, HH:mm")}
                         </span>
                       ) : (
                         <span style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "var(--text-sm)", color: "var(--theme-text-tertiary)" }}>

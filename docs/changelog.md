@@ -6,6 +6,132 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-05 — Webhook lead ingestion: fix WhatsApp notification not firing
+
+### Bug fix — `void` fire-and-forget killed before completion on Vercel
+
+- `src/app/api/webhooks/leads/route.ts` — changed `void notifyLeadAssigned(...)` to `await notifyLeadAssigned(...)` before `NextResponse.json(...)` is returned. On Vercel's serverless runtime, the function process is frozen/killed as soon as the HTTP response is sent; any unawaited `void` promises are silently dropped. Manual lead creation worked because it runs inside a Server Action (Next.js keeps the action alive until all awaited work completes). The webhook route is a plain route handler — it has no such guarantee, so the `notifyLeadAssigned` call (which spawns the Gupshup template sends) was being killed before it could dispatch. The `.catch()` wrapper is preserved so a notification failure never blocks the `201` response to the webhook caller.
+
+---
+
+## 2026-06-05 — Tasks page: deadline editing, delete fix, date range picker
+
+### SubTaskModal — deadline editing in edit mode
+
+- `SubTaskModalTaskUpdate` type extended with `due_at?: string | null` so parent list components receive deadline changes after save.
+- `dueAt: string | null` display state added (mirrors pattern of `title`, `description`, `status`, `priority`). Read-only deadline row now reads from this state, not the immutable `task` prop — no refresh needed after save.
+- `editDueAt: Date | null` edit state added; seeded from `dueAt` state on `enterEditMode`.
+- `DatePicker showTime` rendered in place of the read-only span when edit mode is active. Clears/sets deadline with full date+time precision.
+- `handleSaveBrief` includes `due_at` in `updateTaskAction` when changed, calls `setDueAt(newDueAtIso)` on success, emits `due_at` to parent via `onTaskUpdated`, and calls `router.refresh()` to sync RSC data.
+- `useRouter` imported; `router.refresh()` added after every successful `handleSaveBrief` call (covers all field saves, not just deadline).
+
+### GroupTasksTab — delete dialog and ⋯ dropdown portaling
+
+- `⋯ dropdown` portaled to `document.body` via `createPortal`. `moreButtonRef` + `menuRect` state capture the button's `getBoundingClientRect()` at open time; panel positions with `position: fixed`. Fixes clipping caused by card `overflow: hidden`.
+- Confirm delete dialog portaled to `document.body`. Fixes the backdrop (z-index 61) covering the dialog panel (z-index 60) — the Framer Motion card `transform` was creating a new containing block for `position: fixed` children, trapping the dialog inside the card's painted area.
+- Confirm delete dialog backdrop changed from `--z-modal-overlay` (61) to `--z-overlay` (50); dialog panel stays at `--z-modal` (60). Backdrop now correctly sits below the dialog.
+
+### GroupTaskWorkspace — delete dialog z-index fix
+
+- Same z-index inversion fixed: backdrop `--z-modal-overlay` → `--z-overlay`.
+
+### GroupTaskWorkspace — add-subtask due date picker
+
+- `addDueAt` state changed from `string` (raw `YYYY-MM-DD`) to `Date | null`.
+- Native `<input type="date">` in the add-subtask FAB panel replaced with `DatePicker showTime`.
+- `DatePicker` imported.
+
+### TasksFilters — Gia tab date range picker
+
+- Two raw `<input type="date">` fields (From / To) replaced with the same "Range" trigger button + portal panel pattern used on the leads filter bar.
+- Portal panel contains two `DatePicker` components with `minDate`/`maxDate` cross-constraints and a clear × button. Positioned via `getBoundingClientRect()` + `visualViewport` offset correction. Closes on outside pointer-down.
+- `dateFromUrlParam` / `dateToUrlParam` from `filter-params.ts` used for `Date ↔ YYYY-MM-DD` conversion.
+- Imports added: `useCallback`, `useEffect`, `useLayoutEffect`, `useRef`, `useState`, `createPortal`, `motion`, `AnimatePresence`, `DatePicker`, `dateFromUrlParam`, `dateToUrlParam`, `DROPDOWN_VARIANTS`.
+
+---
+
+## 2026-06-05 — Group task delete fix (portal escape)
+
+**Bug:** Clicking "Delete group" on the group task list showed the confirm dialog as "washed out" and unresponsive. Root cause: `position: fixed` children rendered inside a Framer Motion `motion.div` card. The card's entrance animation applies a CSS `transform`, which creates a new stacking context **and** a new containing block for `position: fixed` descendants. The dialog was trapped inside the card's painted area — visually dimmed by the card's own background and its `pointer-events` were blocked.
+
+**Secondary bug:** The ⋯ dropdown was clipped by the card's `overflow: hidden` when the row was collapsed.
+
+**Fix:** Both the ⋯ dropdown menu and the confirm delete dialog are now portaled to `document.body` via `createPortal`. The dropdown records its trigger button's `getBoundingClientRect()` at open time and positions itself with `position: fixed` from `document.body`, bypassing all ancestor transforms and overflow clipping.
+
+- `src/components/tasks/GroupTasksTab.tsx` — `moreButtonRef` + `menuRect` state added; ⋯ dropdown portaled to body with `fixed` positioning; confirm delete dialog portaled to body (was inline inside the card).
+
+---
+
+## 2026-06-05 — Deals promoted to first-class table
+
+**Decision reversal:** The 2026-05-31 "no deals table" decision is reversed. `public.deals` is
+now a first-class table. Reason: one lead has one terminal `won` and cannot hold repeat/renewal
+deals; walk-in sales have no lead lifecycle at all. Both are now real requirements.
+
+Decision Log entry added to `docs/master.md` and `The_Rules.md`.
+
+### Migrations
+
+- `20260605000072_create_deals_table.sql` — `public.deals` table (RLS enabled; three SELECT
+  policies: agent/manager/admin-founder; no INSERT/UPDATE/DELETE for regular users; soft-delete
+  only via `archived_at`). `won_at` is immutable after insert. `client_id` column reserved (FK
+  deferred to clients module). Indexes: domain, assigned_to, won_at DESC, lead_id, contact_phone.
+- `20260605000073_backfill_deals_from_won_leads.sql` — idempotent backfill; every
+  `status='won' AND deal_amount IS NOT NULL` lead row copied to `deals`; NOT EXISTS guard
+  prevents double-insert.
+- `20260605000074_get_deals_summary_over_deals.sql` — `CREATE OR REPLACE` of
+  `get_deals_summary` RPC; source table is now `public.deals`; structural WHERE collapses to
+  `archived_at IS NULL`; date filters apply to `won_at` (was `status_changed_at`); two-domain
+  parameter split (p_caller_domain / p_filter_domain) preserved.
+
+### Application layer
+
+- `src/lib/validations/deal-schema.ts` (new) — `RecordDealSchema` + `CreateWalkInDealSchema`;
+  `lead-schema.ts` re-exports `RecordDealSchema` for back-compat.
+- `src/lib/actions/deals.ts` (new) — `recordDeal` (lead → deal path, inserts deals row then
+  delegates `updateLeadStatus('won')`), `createWalkInDeal` (no lead; agent domain-locked
+  server-side), `listAgentsForDealDomain` (read action for NewDealModal picker).
+- `src/lib/actions/leads.ts` — `recordDeal` now re-exported from `deals.ts`; old inline
+  implementation removed.
+- `src/lib/services/deals-service.ts` — rewritten to query `public.deals`; joins
+  `lead(slug)` and `assignee(full_name)`; date filters now on `won_at`; search on
+  `contact_name/contact_phone/contact_email`.
+- `src/lib/types/database.ts` — `Deal` type + `DealWithRelations` (replaces `DealWithAssignee`).
+
+### UI
+
+- `src/components/deals/DealCard.tsx` — handles nullable `lead_id`; walk-in deals render as
+  non-link card with "Walk-in" pill (no coloured edge border per Never-Do list); lead-sourced
+  deals link to `/leads/${slug ?? lead_id}`; uses `won_at` for "Won {date}" line.
+- `src/components/deals/NewDealModal.tsx` (new) — two-step modal (Contact → Details);
+  composes `ui/modal.tsx`; agent domain/assignee locked server-side; `createWalkInDeal` action.
+- `src/components/deals/AddDealButton.tsx` (new) — thin client wrapper holding modal open state.
+- `src/app/(dashboard)/deals/page.tsx` — New Deal button added to page header (all roles
+  except guest); `/deals` is no longer read-only.
+- `src/app/(dashboard)/deals/DealsAsync.tsx` — updated to use `DealWithRelations`.
+
+---
+
+## 2026-06-05 — Tasks: fix deleteTaskAction aborting on Trigger.dev cancel failure
+
+- `src/lib/actions/tasks.ts` `deleteTaskAction` — `cancelTaskReminder` is now wrapped in
+  try/catch; a cancel failure (no runs found, SDK/network error) logs the error but no
+  longer aborts the delete. A missed reminder cancel is recoverable; a broken delete UX
+  is not. Adds a `console.log` of `task_category` after the auth check to aid debugging
+  of cache invalidation issues.
+
+---
+
+## 2026-06-05 — Tasks: fix create modal opening on tab switch
+
+- `src/hooks/useCreateTriggerModal.ts` — new hook; opens create modal only when
+  `createTrigger` increments, not when a tab mounts with a stale counter left over
+  from a prior header-button click.
+- `MyTasksCalendarView`, `GroupTasksTab`, `PersonalTasksTab`, `TasksShell` — replaced
+  `createTrigger > 0` mount effects with `useCreateTriggerModal`.
+
+---
+
 ## 2026-06-05 — Profile: settings UX pass + avatars bucket migration
 
 - `/profile` left column reworked: Personal Details migrated to canonical field anatomy

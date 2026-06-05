@@ -639,30 +639,39 @@ export async function getAgentRosterPerformance(
   const agentIds = agents.map((a) => a.id as string);
 
   // ── 2. All leads assigned to any agent in the domain in the period ───────
-  // Uses created_at for the cohort (touch rate denominator) and status_changed_at
-  // for won/lost counts. We fetch with created_at here to cover the full cohort;
-  // won/lost aggregation below also re-queries by status_changed_at for accuracy.
+  // Uses created_at for the cohort (touch rate denominator).
   const { data: leadRows } = await supabase
     .from("leads")
-    .select("id, assigned_to, status, deal_amount")
+    .select("id, assigned_to, status")
     .in("assigned_to", agentIds)
     .is("archived_at", null)
     .gte("created_at", dateFrom)
     .lte("created_at", dateTo);
 
-  // Won/lost leads in the period — filter by status_changed_at so leads closed
-  // during the period count regardless of when they were originally created.
+  // Won/lost leads closed in the period — filtered by status_changed_at.
+  // Used for conversion rate (lead lifecycle metric — stays on leads).
   const { data: closedRows } = await supabase
     .from("leads")
-    .select("id, assigned_to, status, deal_amount")
+    .select("id, assigned_to, status")
     .in("assigned_to", agentIds)
     .is("archived_at", null)
     .in("status", ["won", "lost"])
     .gte("status_changed_at", dateFrom)
     .lte("status_changed_at", dateTo);
 
+  // Deal revenue — read from public.deals filtered by won_at.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: dealRows } = await (supabase as any)
+    .from("deals")
+    .select("assigned_to, deal_amount")
+    .in("assigned_to", agentIds)
+    .is("archived_at", null)
+    .gte("won_at", dateFrom)
+    .lte("won_at", dateTo);
+
   const leads = leadRows ?? [];
   const closed = closedRows ?? [];
+  const deals = (dealRows ?? []) as { assigned_to: string; deal_amount: number }[];
 
   // ── 3. First-touch response times for all agents ─────────────────────────
   const { data: responseRows } = await supabase
@@ -707,18 +716,24 @@ export async function getAgentRosterPerformance(
     agg[aid].total += 1;
   }
 
-  // Won/lost — leads closed in the period (status_changed_at filter)
+  // Won/lost — leads closed in the period (status_changed_at filter, lead lifecycle)
   for (const lead of closed) {
     const aid = lead.assigned_to as string;
     if (!agg[aid]) continue;
     if (lead.status === "won") {
       agg[aid].won += 1;
       agg[aid].wonCount += 1;
-      agg[aid].dealAmount += (lead.deal_amount ?? 0) as number;
     }
     if (lead.status === "lost") {
       agg[aid].lostCount += 1;
     }
+  }
+
+  // Deal revenue — from public.deals filtered by won_at
+  for (const deal of deals) {
+    const aid = deal.assigned_to as string;
+    if (!agg[aid]) continue;
+    agg[aid].dealAmount += (deal.deal_amount ?? 0) as number;
   }
 
   for (const row of responseRows ?? []) {
@@ -784,28 +799,28 @@ export async function getAgentDetailMetrics(
 
   const [
     leadsData,
-    wonLeadsData,
+    wonDealsData,
     allAssignedData,
   ] = await Promise.all([
     // Cohort: leads created in the period — drives totalLeads and pipeline breakdown
     supabase
       .from("leads")
-      .select("id, status, deal_amount, form_data")
+      .select("id, status")
       .eq("assigned_to", agentId)
       .is("archived_at", null)
       .gte("created_at", dateFrom)
       .lte("created_at", dateTo),
 
-    // Won leads closed in the period — filtered by status_changed_at
-    // so leads won during the period count regardless of when they were created.
-    supabase
-      .from("leads")
-      .select("id, status, deal_amount, form_data")
+    // Won deals closed in the period — from public.deals filtered by won_at.
+    // deal_type lives on the deal row directly (no form_data needed).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from("deals")
+      .select("deal_amount, deal_type")
       .eq("assigned_to", agentId)
-      .eq("status", "won")
       .is("archived_at", null)
-      .gte("status_changed_at", dateFrom)
-      .lte("status_changed_at", dateTo),
+      .gte("won_at", dateFrom)
+      .lte("won_at", dateTo),
 
     // Cohort leads with call data — same date filter, drives totalCallsMade and breakdown
     supabase
@@ -817,9 +832,9 @@ export async function getAgentDetailMetrics(
       .lte("created_at", dateTo),
   ]);
 
-  const leads        = leadsData.data ?? [];
-  const wonLeads     = wonLeadsData.data ?? [];
-  const allAssigned  = allAssignedData.data ?? [];
+  const leads       = leadsData.data ?? [];
+  const wonDeals    = (wonDealsData.data ?? []) as { deal_amount: number; deal_type: string }[];
+  const allAssigned = allAssignedData.data ?? [];
 
   // totalLeads: cohort count — leads created in the selected period
   const totalLeads = leads.length;
@@ -829,22 +844,21 @@ export async function getAgentDetailMetrics(
     0,
   );
 
-  // won / deal amount — from the status_changed_at-filtered won leads query
-  const leadsWon = wonLeads.length;
-  const totalDealAmount = wonLeads.reduce(
-    (s, l) => s + ((l.deal_amount ?? 0) as number),
+  // won / deal amount — from public.deals filtered by won_at
+  const leadsWon = wonDeals.length;
+  const totalDealAmount = wonDeals.reduce(
+    (s, d) => s + ((d.deal_amount ?? 0) as number),
     0,
   );
 
-  // deal type breakdown from form_data.deal_type (if present)
+  // deal type breakdown — deal_type is a direct column on public.deals
   const dealTypeMap: Record<string, { count: number; totalAmount: number }> =
     {};
-  for (const l of wonLeads) {
-    const fd = l.form_data as Record<string, unknown> | null;
-    const dt = (fd?.deal_type as string | undefined) ?? "Other";
+  for (const d of wonDeals) {
+    const dt = (d.deal_type as string | undefined) ?? "Other";
     if (!dealTypeMap[dt]) dealTypeMap[dt] = { count: 0, totalAmount: 0 };
     dealTypeMap[dt].count += 1;
-    dealTypeMap[dt].totalAmount += (l.deal_amount ?? 0) as number;
+    dealTypeMap[dt].totalAmount += (d.deal_amount ?? 0) as number;
   }
   const dealTypeBreakdown = Object.entries(dealTypeMap).map(
     ([dealType, v]) => ({

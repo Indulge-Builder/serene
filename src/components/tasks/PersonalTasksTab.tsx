@@ -52,6 +52,7 @@ import {
   getTaskRemarksAction,
 } from '@/lib/actions/tasks';
 import { TaskCompletionCircle } from '@/components/tasks/TaskCompletionCircle';
+import { useCreateTriggerModal } from '@/hooks/useCreateTriggerModal';
 import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';
 import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
 import { formatRelativeTime } from '@/lib/utils/dates';
@@ -219,10 +220,7 @@ export function PersonalTasksTab({
   // ── Create task modal ─────────────────────────────────────────────────────
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
-  // Open modal when parent header button fires (createTrigger increments)
-  useEffect(() => {
-    if (createTrigger > 0) setCreateModalOpen(true);
-  }, [createTrigger]);
+  useCreateTriggerModal(createTrigger, () => setCreateModalOpen(true));
 
   // ── Quick-add row state ──────────────────────────────────────────────────
   const [showQuickAdd,       setShowQuickAdd]       = useState(false);

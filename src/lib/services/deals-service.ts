@@ -1,16 +1,15 @@
 import { createClient } from '@/lib/supabase/server';
 import { isGiaDomain } from '@/lib/constants/domains';
-import type { UserRole, AppDomain, DealFilters } from '@/lib/types/database';
-import type { LeadWithAssignee } from '@/lib/services/leads-service';
+import type { UserRole, AppDomain, DealFilters, DealWithRelations } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
 // Result types
 // ─────────────────────────────────────────────
 
-export type DealWithAssignee = LeadWithAssignee;
+export type { DealWithRelations };
 
 export type DealsResult = {
-  deals:      DealWithAssignee[];
+  deals:      DealWithRelations[];
   totalCount: number;
 };
 
@@ -22,17 +21,17 @@ export type DealsSummary = {
 };
 
 // ─────────────────────────────────────────────
-// getDealsByRole — role-scoped won leads with deal_amount
+// getDealsByRole — role-scoped deal rows from public.deals
 //
-// Security contract (mirrors getLeadsByRole exactly):
+// Security contract:
 //   - agent: assigned_to = auth.uid() applied first, DealFilters.agent_id ignored
 //   - manager: domain constraint applied before any filter
 //   - admin/founder: optional domain/agent_id from DealFilters
 //
 // Structural constraints (never conditional):
-//   - status = 'won'
-//   - deal_amount IS NOT NULL
+//   - archived_at IS NULL (every deal row IS a deal — no status gate needed)
 //
+// Joins: lead(slug) — nullable (walk-ins have no lead); assignee(full_name) — nullable.
 // Count: { count: 'exact', head: false } — one round trip, never two queries.
 // ─────────────────────────────────────────────
 export async function getDealsByRole(
@@ -56,13 +55,15 @@ export async function getDealsByRole(
   const pageSize = Math.max(1, Math.min(200, filters.pageSize ?? 50));
   const offset   = (page - 1) * pageSize;
 
-  let query = supabase
-    .from('leads')
-    .select('*, assignee:profiles!leads_assigned_to_fkey(full_name)', { count: 'exact', head: false })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (supabase as any)
+    .from('deals')
+    .select(
+      '*, lead:leads!deals_lead_id_fkey(slug), assignee:profiles!deals_assigned_to_fkey(full_name)',
+      { count: 'exact', head: false },
+    )
     .is('archived_at', null)
-    .eq('status', 'won')
-    .not('deal_amount', 'is', null)
-    .order('status_changed_at', { ascending: false });
+    .order('won_at', { ascending: false });
 
   // Role-level constraints — applied before any filter, cannot be overridden
   if (role === 'agent') {
@@ -89,19 +90,19 @@ export async function getDealsByRole(
   }
 
   if (filters.date_from) {
-    query = query.gte('status_changed_at', filters.date_from);
+    query = query.gte('won_at', filters.date_from);
   }
 
   if (filters.date_to) {
     const endOfDay = filters.date_to.replace(/T.*$/, 'T23:59:59.999Z');
-    query = query.lte('status_changed_at', endOfDay);
+    query = query.lte('won_at', endOfDay);
   }
 
   if (filters.search) {
     const term = filters.search.trim().toLowerCase();
     if (term) {
       query = query.or(
-        `first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`,
+        `contact_name.ilike.%${term}%,contact_phone.ilike.%${term}%,contact_email.ilike.%${term}%`,
       );
     }
   }
@@ -111,13 +112,14 @@ export async function getDealsByRole(
 
   const { data, error, count } = await query;
   if (error || !data) return { deals: [], totalCount: 0 };
-  return { deals: data as DealWithAssignee[], totalCount: count ?? 0 };
+  return { deals: data as unknown as DealWithRelations[], totalCount: count ?? 0 };
 }
 
 // ─────────────────────────────────────────────
-// getDealsSummary — calls get_deals_summary RPC
+// getDealsSummary — calls get_deals_summary RPC (migrated to public.deals in 0074)
 //
 // Same role+filter constraints as getDealsByRole — the RPC mirrors them exactly.
+// Date range applied to won_at.
 // Returns aggregate counts for the DealsSummaryStrip.
 // ─────────────────────────────────────────────
 export async function getDealsSummary(
@@ -129,7 +131,7 @@ export async function getDealsSummary(
   const supabase = await createClient();
 
   // p_caller_domain — always the server-verified profile domain.
-  // Used by the RPC for the manager role-gate: l.domain = p_caller_domain.
+  // Used by the RPC for the manager role-gate: d.domain = p_caller_domain.
   // Never derived from filters — a tampered filter.domain cannot redirect this.
   const rpcCallerDomain: string = domain;
 

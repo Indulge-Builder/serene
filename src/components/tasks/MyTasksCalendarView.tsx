@@ -27,6 +27,7 @@ import {
   getTaskRemarksAction,
 } from '@/lib/actions/tasks';
 import { TaskCompletionCircle } from '@/components/tasks/TaskCompletionCircle';
+import { useCreateTriggerModal } from '@/hooks/useCreateTriggerModal';
 import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';
 import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
 import { formatDate } from '@/lib/utils/dates';
@@ -203,7 +204,7 @@ export function MyTasksCalendarView({
 
   // ── Create modal ───────────────────────────────────────────────────────────
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  useEffect(() => { if (createTrigger > 0) setCreateModalOpen(true); }, [createTrigger]);
+  useCreateTriggerModal(createTrigger, () => setCreateModalOpen(true));
 
   // ── Quick-add ──────────────────────────────────────────────────────────────
   const [showQuickAdd,       setShowQuickAdd]       = useState(false);

@@ -322,7 +322,7 @@ CREATE TABLE agent_routing_config (
 | Perf | ✅ Complete | DB indexes, RPC consolidation (leads, tasks, dashboard), Suspense streaming, cursor pagination |
 | WhatsApp | ✅ Complete | Gupshup v1, `whatsapp_conversations/messages/reads/notification_logs`, `/whatsapp` page, 4 notification templates, `get_wa_unread_count` RPC |
 | Lead Hardening | ✅ Complete | Inline reassignment, team notes, junk revival, won deal capture, lead slug URLs, domain enum normalization, per-field `LeadInfoCard` edits |
-| Gia Deals | ✅ Complete | `/deals` page, `get_deals_summary` RPC (0052–0053), role-scoped filters, summary strip |
+| Gia Deals | ✅ Complete | `/deals` page, `get_deals_summary` RPC (0052–0053), role-scoped filters, summary strip. **2026-06-05:** `public.deals` first-class table (0072–0074); walk-in deal creation; `DealWithRelations`; `recordDeal` now inserts deals row before status flip |
 | Gia Lead Tasks | ✅ Complete | Dossier `LeadTasksCard` + `create_lead_gia_task` RPC (0054); `/tasks` Gia tab (0055–0056) |
 | Ad Creatives Admin | ✅ Complete | `/admin/ad-creatives`, Storage bucket `ad-creatives`, multi-video per campaign (0058), carousel |
 | Admin/Profile Redesign | ✅ Complete | Canonical wide two-column layout, `SectionCard`, `BackButton`, `NewUserClient` |
@@ -384,7 +384,7 @@ Every route has a dedicated intelligence document generated during the DRY audit
 
 ---
 
-## 9. Migration Index — All 66 Migrations
+## 9. Migration Index — All 69 Migrations
 
 | # | What it creates / changes |
 | - | ------------------------- |
@@ -454,6 +454,12 @@ Every route has a dedicated intelligence document generated during the DRY audit
 | 0064 | Two dashboard refresh RPCs for per-widget refresh buttons — `get_lead_status_summary` + `get_campaign_performance`; CTE logic mirrors 0062; DB returns final jsonb shape |
 | 0065 | Attribution refactor — removes `platform`, `campaign_id`, `ad_name`, `utm_content`; renames `utm_source → source`, `utm_medium → medium`; adds `attribution jsonb`; backfills flat columns into JSONB; drops `idx_leads_utm_source`, creates `idx_leads_source` |
 | 0066 | `leads.city text` — dedicated column; backfilled from `personal_details->>'city'`; `city` key removed from `personal_details` JSONB on all existing rows |
+| 0067 | `whatsapp_notification_logs.type` CHECK extended with `lead_initiation`; `sendLeadInitiationMessage` now always logs |
+| 0068 | Various migrations between 0066 and 0071 (domain health metrics, dashboard date filter, pipeline agent total fix) |
+| 0069 | *(avatars_storage_bucket)* — public `avatars` bucket + RLS policies (`avatars_public_read`, `avatars_insert_own`, `avatars_update_own`, `avatars_delete_own`) |
+| 0072 | `public.deals` first-class table — `lead_id` nullable (walk-ins), `contact_name/phone/email`, `domain app_domain`, `deal_amount/type/duration`, `assigned_to`, `won_at` immutable, `client_id` reserved; RLS 3 SELECT policies; 5 indexes; no write policies (admin client only) |
+| 0073 | Idempotent backfill: `status='won' AND deal_amount IS NOT NULL` leads → `public.deals`; NOT EXISTS guard |
+| 0074 | `CREATE OR REPLACE get_deals_summary` — source now `public.deals`; structural WHERE → `archived_at IS NULL` only; date filters on `won_at`; two-domain split preserved |
 
 ---
 
@@ -527,7 +533,7 @@ eia/
 │   │   ├── admin/                     ← UsersTable, CreateUserForm, AdCreativesManager
 │   │   ├── campaigns/                 ← CampaignCard, CampaignFilters, AdCreativeCarousel
 │   │   ├── dashboard/widgets/         ← 5 Gia widgets
-│   │   ├── deals/                     ← DealsFilters, DealCard, DealsSummaryStrip
+│   │   ├── deals/                     ← DealsFilters, DealCard, DealsSummaryStrip, AddDealButton, NewDealModal
 │   │   ├── leads/                     ← LeadsTable, LeadsFilters, all dossier components
 │   │   ├── notifications/             ← NotificationBell, NotificationPanel
 │   │   ├── performance/               ← CoreFourGrid, EffortGrid, CallOutcomeBar
@@ -583,7 +589,7 @@ All queries go through `src/lib/services/`. **No raw Supabase calls in component
 | `ad-creatives-service.ts` | `getAdCreativesForCampaign`, `getAdCreativesForCampaigns` (batch → `Map<key, AdCreative[]>`), `getAllAdCreatives` |
 | `agent-routing-service.ts` | `getAgentRoutingConfig`, `getActiveRoutingConfigs`, `setRoutingActive`, `getAgentRosterByDomain` (adminClient — RLS blocks cross-domain manager reads), `setAgentShift` |
 | `dashboard-service.ts` | `getDashboardSummary` (React `cache()` — per-request memoisation), `getLeadVolumeByPeriod` |
-| `deals-service.ts` | `getDealsByRole`, `getDealsSummary` (RPC wrapper) |
+| `deals-service.ts` | `getDealsByRole` (queries `public.deals`, joins `lead(slug)` + `assignee(full_name)`), `getDealsSummary` (RPC wrapper); exports `DealWithRelations` |
 | `lead-ingestion.ts` | `ingestLead`, `validateAndSanitizeWebhookPayload`, `resolveDomainFromCampaign`, `assignLeadRoundRobin`, `createLeadFromWhatsApp` |
 | `leads-service.ts` | `getLeadById`, `getLeadBySlug`, `getLeadsByRole` (returns `{leads, totalCount}`), `getLeadsByRoleCached`, `getLeadFilterOptions`, `getLeadNotesFull`, `getLeadActivitiesFull`, `getCampaignMetrics`, `getCampaignDetailMetrics`, `getCampaignAgentDistribution`, `getAgentsForDomain`, `searchLeadsForTask` |
 | `notifications-service.ts` | `getUnreadNotifications`, `getNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `createNotification` |
@@ -607,7 +613,8 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 | `auth.ts` | (sign in/out helpers) |
 | `ad-creatives.ts` | `upsertAdCreative` (admin/founder; normalises campaign_key; 23505 → friendly error), `deleteAdCreative` |
 | `dashboard.ts` | 5 widget refresh actions (all re-verify via `getCurrentProfile()`) |
-| `leads.ts` | `addLeadCallNote`, `addLeadNote`, `updateLeadStatus`, `assignLead`, `createManualLead`, `createLeadTaskAction`, `recordDeal`, `updatePersonalDetails`, `updateLeadCity`, `updateScratchpad`, `updateLeadEmail`, `updateLeadDomain`, `updateLeadSource`, `listAgentsForDomain`, `searchLeadsAction` |
+| `deals.ts` | `recordDeal` (canonical — inserts `public.deals` row then delegates `updateLeadStatus('won')`), `createWalkInDeal` (walk-in / direct sales; `lead_id=null`; agent domain-locked server-side), `listAgentsForDealDomain` |
+| `leads.ts` | `addLeadCallNote`, `addLeadNote`, `updateLeadStatus`, `assignLead`, `createManualLead`, `createLeadTaskAction`, `recordDeal` (re-export from `deals.ts`), `updatePersonalDetails`, `updateLeadCity`, `updateScratchpad`, `updateLeadEmail`, `updateLeadDomain`, `updateLeadSource`, `listAgentsForDomain`, `searchLeadsAction` |
 | `notifications.ts` | `markNotificationReadAction`, `markAllReadAction` |
 | `performance.ts` | `getAgentPerformanceAction`, `getAgentListForDomainAction` |
 | `profiles.ts` | `createUser`, `updateProfile`, `updateUserAuthorization`, `toggleUserActive`, `inviteUser`, `updateProfileAvatar`, `signOutUser` |
@@ -905,7 +912,8 @@ Every architectural decision that deviates from or extends the rules above.
 | 2026-05-30 | Lead slugs (migrations 0045–0046): collision resolved by appending `-2`, `-3`, etc. | Numeric suffix. Backfill ordered `created_at ASC` so earliest lead wins the undecorated slug. | Numeric suffixes are human-readable and URL-safe. UUID suffixes defeat the readability purpose of slugs. |
 | 2026-05-30 | `app_domain` enum cast rule codified. Any RLS policy comparing `get_user_domain()` to a `text` column must cast `get_user_domain()::text`. | Explicit `::text` cast at every comparison site. | PostgreSQL does not implicitly cast enum to text. Root cause of 42883 in migrations 0042–0044. |
 | 2026-05-31 | `add_task_remark_with_status` auth: view = post. Migration 0051 removed the broken inline `auth.uid()` gate (NULL under service-role). | Action-layer SELECT check + RPC via `adminClient`. | `auth.uid()` is NULL when the action uses `adminClient`; RLS on the pre-flight SELECT is the real gate. |
-| 2026-05-31 | Deals page without a `deals` table. | `/deals` lists won `leads` rows where `deal_amount IS NOT NULL`; aggregates via `get_deals_summary` RPC. | Deal fields live on `leads` (migration 0049). A separate table adds join complexity with no benefit at current scale. |
+| 2026-05-31 | ~~Deals page without a `deals` table.~~ **REVERSED 2026-06-05 — see entry below.** | ~~`/deals` lists won `leads` rows; aggregates via `get_deals_summary` RPC over `leads`.~~ | Reversed: one lead has one terminal `won` and cannot hold repeat/renewal deals; walk-in sales have no lead lifecycle at all. |
+| 2026-06-05 | `public.deals` promoted to a first-class table (reverses 2026-05-31 entry above). | `public.deals` is the source of truth for all closed deals. `lead_id` nullable — walk-ins have no lead. `won_at` immutable after insert. `client_id` column reserved; FK deferred to the clients module. `/deals` gains a New Deal write path (`createWalkInDeal`). `recordDeal` now inserts a `deals` row before delegating `updateLeadStatus('won')`. `get_deals_summary` RPC rewritten over `public.deals` (migration 0074). `DealWithAssignee` replaced by `DealWithRelations` (includes nullable `lead.slug`). | One lead has exactly one terminal `won`; it cannot hold repeat/renewal deals. Walk-in sales (shop purchases) have no lead lifecycle. Both are now real requirements. The clients table will own these deals next — `client_id` is the hook. |
 | 2026-05-31 | Lead Gia tasks via `create_lead_gia_task` RPC — atomic two-INSERT. | Two-INSERT transaction (`tasks` + `task_gia_meta`). | Orphan `tasks` rows without `task_gia_meta` are invisible on all Gia surfaces. |
 | 2026-06-01 | `task_type` narrowed to call / whatsapp_message / other. Migration 0057 backfills legacy values. | Three options matching agent workflow. | Legacy types `email` and `general_follow_up` were unused in practice. |
 | 2026-06-01 | Lead source on `utm_source`. `form_data.manual_source` retired. | `leads.utm_source` is the canonical source field. | Source is attribution data, not form payload — belongs with UTM fields. |
@@ -1038,10 +1046,14 @@ Import from `src/lib/constants/motion.ts`. **Never re-declare inline.**
 | `--z-dropdown` | 20 | Dropdowns, popovers, tooltips |
 | `--z-sticky` | 30 | TopBar, sticky section headers |
 | `--z-sidebar` | 40 | Sidebar |
-| `--z-overlay` | 50 | Modal backdrops |
-| `--z-modal` | 60 | Modals, drawers |
+| `--z-overlay` | 50 | **Standalone confirm dialog backdrops** (sits below `--z-modal`) |
+| `--z-modal` | 60 | Modals, drawers, confirm dialog panels |
+| `--z-modal-overlay` | 61 | Backdrop of a **nested** modal stacked above an existing `--z-modal` |
+| `--z-modal-nested` | 62 | Nested modal panel (e.g. `AssigneePickerModal` above `SubTaskModal`) |
 | `--z-toast` | 70 | Toasts, notifications |
 | `--z-cursor` | 80 | Lia floating cursor, drag handles |
+
+**Confirm dialog stacking rule:** standalone confirm dialogs (not nested inside another modal) use `--z-overlay` (50) for the backdrop and `--z-modal` (60) for the panel. This ensures the backdrop is always below the panel. `--z-modal-overlay` (61) is reserved for the backdrop of a dialog that itself sits above an existing modal.
 
 ### Realtime Channel Pattern
 

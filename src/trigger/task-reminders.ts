@@ -47,27 +47,28 @@
  * can find and cancel without needing to store the run ID.
  */
 
-import { task, tasks, runs } from '@trigger.dev/sdk/v3';
+import { task, tasks, runs } from "@trigger.dev/sdk/v3";
 
 // ─────────────────────────────────────────────
 // Task definition — must be exported for Trigger.dev scan
 // ─────────────────────────────────────────────
 
 export const sendTaskReminderTask = task({
-  id: 'send-task-reminder',
+  id: "send-task-reminder",
   retry: { maxAttempts: 3 },
   run: async (payload: { taskId: string; assignedTo: string }) => {
     // Dynamic import to avoid SSR import of server-only modules at module level.
     // The notification is fire-and-forget — a failed reminder never fails the job.
-    const { createNotification } = await import('@/lib/services/notifications-service');
+    const { createNotification } =
+      await import("@/lib/services/notifications-service");
     await createNotification({
       recipient_id: payload.assignedTo,
-      type:         'task_due',
-      title:        'Task due now',
-      body:         'A task assigned to you is due.',
-      action_url:   `/tasks`,
+      type: "task_due",
+      title: "Task due now",
+      body: "A task assigned to you is due.",
+      action_url: `/tasks`,
     }).catch((err: unknown) => {
-      console.error('[send-task-reminder] notification failed:', err);
+      console.error("[send-task-reminder] notification failed:", err);
     });
   },
 });
@@ -78,8 +79,8 @@ export const sendTaskReminderTask = task({
 // ─────────────────────────────────────────────
 
 export async function scheduleTaskReminder(
-  taskId:     string,
-  dueAt:      Date,
+  taskId: string,
+  dueAt: Date,
   assignedTo: string,
 ): Promise<void> {
   if (dueAt <= new Date()) {
@@ -88,12 +89,12 @@ export async function scheduleTaskReminder(
   }
 
   await tasks.trigger(
-    'send-task-reminder',
+    "send-task-reminder",
     { taskId, assignedTo },
     {
-      delay:          dueAt,
+      delay: dueAt,
       idempotencyKey: `task-reminder-${taskId}`,
-      tags:           [`task-reminder-${taskId}`],
+      tags: [`task-reminder-${taskId}`],
     },
   );
 }
@@ -104,8 +105,8 @@ export async function scheduleTaskReminder(
 // ─────────────────────────────────────────────
 
 export async function cancelTaskReminder(taskId: string): Promise<void> {
-  const tag    = `task-reminder-${taskId}`;
-  const page   = await runs.list({ tag, status: ['DELAYED', 'QUEUED'] });
+  const tag = `task-reminder-${taskId}`;
+  const page = await runs.list({ tag, status: ["DELAYED", "QUEUED"] });
   const runIds = page.data.map((r) => r.id);
 
   if (runIds.length === 0) return;

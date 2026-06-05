@@ -1,0 +1,202 @@
+"use server";
+
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { getAgentsForDomain } from "@/lib/services/leads-service";
+import { RecordDealSchema, CreateWalkInDealSchema } from "@/lib/validations/deal-schema";
+import { formErrors } from "@/lib/validations/form-errors";
+import { sanitizeText } from "@/lib/utils/sanitize";
+import { normalizeToE164 } from "@/lib/utils/phone";
+import { updateLeadStatus } from "@/lib/actions/leads";
+import type { ActionResult } from "@/lib/types/index";
+import type { AppDomain } from "@/lib/types/database";
+import { isGiaDomain } from "@/lib/constants/domains";
+
+// ─────────────────────────────────────────────
+// Action: recordDeal (lead → deal path)
+//
+// Called by StatusActionPanel after Won confirmation (WonDealModal).
+// Flow: validate → fetch lead + access check → INSERT deals row (admin client) →
+//       updateLeadStatus('won') which handles all side-effects.
+// Order guarantee: deal insert must succeed before status flip. If insert fails,
+// status is NOT flipped. If status flip fails, the orphaned deal row is harmless
+// (no lead is marked won, so it won't appear on /deals via the role-scoped query).
+// ─────────────────────────────────────────────
+export async function recordDeal(
+  input: unknown,
+): Promise<ActionResult<{ leadId: string }>> {
+  // S-01: Zod validation first line
+  const parsed = RecordDealSchema.safeParse(input);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return { data: null, error: first?.message ?? formErrors.generic };
+  }
+
+  const { leadId, deal_type, deal_duration, deal_amount } = parsed.data;
+
+  // S-06: auth + access check
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  const admin = createAdminClient();
+
+  // Fetch lead for access check + contact data
+  const { data: lead } = await admin
+    .from("leads")
+    .select("id, status, assigned_to, domain, first_name, last_name, phone, email, slug")
+    .eq("id", leadId)
+    .single();
+
+  if (!lead) return { data: null, error: "Lead not found." };
+
+  const hasAccess =
+    (caller.role === "agent" && lead.assigned_to === caller.id) ||
+    (caller.role === "manager" && lead.domain === (caller.domain as string)) ||
+    caller.role === "admin" ||
+    caller.role === "founder";
+
+  if (!hasAccess) return { data: null, error: formErrors.unauthorized };
+
+  // S-02: sanitise free text; S-03: phone is already E.164 on the lead row
+  const contactName = sanitizeText(
+    [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || "Unknown",
+  );
+
+  // Step 1: Insert deals row (must succeed before status flip)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error: insertError } = await (admin as any).from("deals").insert({
+    lead_id:       leadId,
+    contact_name:  contactName,
+    contact_phone: lead.phone ?? "",
+    contact_email: lead.email ?? null,
+    domain:        lead.domain as AppDomain,
+    deal_amount,
+    deal_type,
+    deal_duration: deal_type === "membership" ? (deal_duration ?? null) : null,
+    assigned_to:   lead.assigned_to ?? null,
+    won_at:        new Date().toISOString(),
+  });
+
+  if (insertError) return { data: null, error: formErrors.generic };
+
+  // Step 2: Flip lead to won — delegates all side-effects (notifications, SLA, Redis, revalidation)
+  return updateLeadStatus({ leadId, status: "won" });
+}
+
+// ─────────────────────────────────────────────
+// Action: createWalkInDeal (no lead — direct / walk-in sales)
+//
+// Creates a standalone deals row with lead_id = null.
+// Agent: domain + assigned_to always forced to caller's own values (server-side, like createManualLead).
+// Manager+: may pick domain (within Gia domains) and assignee.
+// ─────────────────────────────────────────────
+export async function createWalkInDeal(
+  input: unknown,
+): Promise<ActionResult<{ dealId: string }>> {
+  // S-01: Zod validation first line
+  const parsed = CreateWalkInDealSchema.safeParse(input);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return { data: null, error: first?.message ?? formErrors.generic };
+  }
+
+  const data = parsed.data;
+
+  // S-06: auth
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  // Domain + assignee enforcement (mirrors createManualLead rule)
+  let finalDomain     = data.domain as AppDomain;
+  let finalAssignedTo = data.assigned_to ?? null;
+
+  if (caller.role === "agent") {
+    // Agent: always locked to own domain and assigned to self
+    finalDomain     = caller.domain;
+    finalAssignedTo = caller.id;
+  } else if (caller.role === "manager") {
+    // Manager: domain locked to their own domain
+    finalDomain = caller.domain;
+    // assigned_to may be any agent in their domain — verify
+    if (finalAssignedTo) {
+      const agents = await getAgentsForDomain(caller.domain);
+      if (!agents.some((a) => a.id === finalAssignedTo)) {
+        return { data: null, error: "Selected agent is not in your domain." };
+      }
+    }
+  } else {
+    // Admin/founder: validate domain is a Gia domain
+    if (!isGiaDomain(finalDomain)) {
+      return { data: null, error: "Invalid domain." };
+    }
+    // Verify assignee is in the chosen domain if provided
+    if (finalAssignedTo) {
+      const agents = await getAgentsForDomain(finalDomain);
+      if (!agents.some((a) => a.id === finalAssignedTo)) {
+        return { data: null, error: "Selected agent is not in the chosen domain." };
+      }
+    }
+  }
+
+  // S-03: normalise phone to E.164
+  let normalizedPhone: string;
+  try {
+    normalizedPhone = normalizeToE164(data.contact_phone);
+  } catch {
+    return { data: null, error: "Please enter a valid phone number in international format." };
+  }
+
+  const admin = createAdminClient();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: inserted, error: insertError } = await (admin as any)
+    .from("deals")
+    .insert({
+      lead_id:       null,
+      client_id:     null,
+      contact_name:  data.contact_name,
+      contact_phone: normalizedPhone,
+      contact_email: data.contact_email ?? null,
+      domain:        finalDomain,
+      source:        data.source ?? null,
+      deal_amount:   data.deal_amount,
+      deal_type:     data.deal_type,
+      deal_duration: data.deal_type === "membership" ? (data.deal_duration ?? null) : null,
+      assigned_to:   finalAssignedTo,
+      won_at:        data.won_at ?? new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !inserted) return { data: null, error: formErrors.generic };
+
+  return { data: { dealId: (inserted as { id: string }).id }, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Read action: list active agents for a domain (for NewDealModal assignee picker)
+// Thin wrapper — client components import the action, never the service (A-15).
+// ─────────────────────────────────────────────
+export async function listAgentsForDealDomain(
+  domain: string,
+): Promise<ActionResult<{ id: string; full_name: string }[]>> {
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  if (!isGiaDomain(domain as AppDomain)) {
+    return { data: null, error: "Invalid domain." };
+  }
+
+  // Agent: may only see their own domain's agents
+  if (caller.role === "agent" && domain !== caller.domain) {
+    return { data: null, error: formErrors.unauthorized };
+  }
+
+  // Manager: may only see their own domain's agents
+  if (caller.role === "manager" && domain !== caller.domain) {
+    return { data: null, error: formErrors.unauthorized };
+  }
+
+  const agents = await getAgentsForDomain(domain as AppDomain);
+  return { data: agents, error: null };
+}

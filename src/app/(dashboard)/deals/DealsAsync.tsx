@@ -24,7 +24,7 @@ export async function DealsAsync({
     getDealsSummary(role, userId, domain, filters),
   ]);
 
-  const page           = filters.page ?? 1;
+  const page             = filters.page ?? 1;
   const hasActiveFilters =
     !!(filters.search || filters.domain || filters.deal_type || filters.agent_id || filters.date_from || filters.date_to);
 
@@ -35,9 +35,8 @@ export async function DealsAsync({
       {deals.length === 0 ? (
         <div
           style={{
-            padding:    'var(--space-16) var(--space-8)',
-            textAlign:  'center',
-            color:      'var(--theme-text-tertiary)',
+            padding:   'var(--space-16) var(--space-8)',
+            textAlign: 'center',
           }}
         >
           <p

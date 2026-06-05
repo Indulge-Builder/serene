@@ -1,10 +1,10 @@
-'use server';
+"use server";
 
-import { revalidatePath } from 'next/cache';
-import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
-import { redis } from '@/lib/redis';
-import { REDIS_KEYS, REDIS_TTL } from '@/lib/constants/redis-keys';
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { redis } from "@/lib/redis";
+import { REDIS_KEYS, REDIS_TTL } from "@/lib/constants/redis-keys";
 import {
   CreatePersonalTaskSchema,
   CreateGroupTaskSchema,
@@ -17,19 +17,34 @@ import {
   SuppressTaskRemarkSchema,
   UpdateChecklistSchema,
   UpdateTaskTagsSchema,
-} from '@/lib/validations/task-schemas';
-import { formErrors } from '@/lib/validations/form-errors';
-import { sanitizeText } from '@/lib/utils/sanitize';
-import { getCurrentProfile, getAssignableUsers } from '@/lib/services/profiles-service';
-import { createNotification } from '@/lib/services/notifications-service';
-import { getTaskRemarks } from '@/lib/services/tasks-service';
-import { scheduleTaskReminder, cancelTaskReminder } from '@/trigger/task-reminders';
-import type { ActionResult } from '@/lib/types/index';
-import type { Task, TaskStatus, TaskPriority, TaskRemark, ChecklistItem } from '@/lib/types/database';
-import type { TaskRemarkWithAuthor, SubtaskWithAssignee } from '@/lib/services/tasks-service';
+} from "@/lib/validations/task-schemas";
+import { formErrors } from "@/lib/validations/form-errors";
+import { sanitizeText } from "@/lib/utils/sanitize";
+import {
+  getCurrentProfile,
+  getAssignableUsers,
+} from "@/lib/services/profiles-service";
+import { createNotification } from "@/lib/services/notifications-service";
+import { getTaskRemarks } from "@/lib/services/tasks-service";
+import {
+  scheduleTaskReminder,
+  cancelTaskReminder,
+} from "@/trigger/task-reminders";
+import type { ActionResult } from "@/lib/types/index";
+import type {
+  Task,
+  TaskStatus,
+  TaskPriority,
+  TaskRemark,
+  ChecklistItem,
+} from "@/lib/types/database";
+import type {
+  TaskRemarkWithAuthor,
+  SubtaskWithAssignee,
+} from "@/lib/services/tasks-service";
 
 // Terminal statuses — no reminders needed beyond these
-const TERMINAL_STATUSES: TaskStatus[] = ['completed', 'cancelled', 'error'];
+const TERMINAL_STATUSES: TaskStatus[] = ["completed", "cancelled", "error"];
 
 // ─────────────────────────────────────────────
 // Authorization helper — canMutateTask (A-09)
@@ -45,8 +60,8 @@ const TERMINAL_STATUSES: TaskStatus[] = ['completed', 'cancelled', 'error'];
 type CallerProfile = { id: string; role: string; domain: string };
 type TaskMutationTarget = {
   assigned_to: string | null;
-  created_by:  string | null;
-  group_id:    string | null;
+  created_by: string | null;
+  group_id: string | null;
 };
 
 async function canMutateTask(
@@ -54,18 +69,19 @@ async function canMutateTask(
   task: TaskMutationTarget,
 ): Promise<boolean> {
   // admin and founder are unrestricted
-  if (caller.role === 'admin' || caller.role === 'founder') return true;
+  if (caller.role === "admin" || caller.role === "founder") return true;
 
   // Direct ownership — applies to every role
-  if (task.assigned_to === caller.id || task.created_by === caller.id) return true;
+  if (task.assigned_to === caller.id || task.created_by === caller.id)
+    return true;
 
   // Manager: additionally permitted on group subtasks in their own domain
-  if (caller.role === 'manager' && task.group_id) {
+  if (caller.role === "manager" && task.group_id) {
     const supabase = await createClient();
     const { data: group } = await supabase
-      .from('task_groups')
-      .select('domain')
-      .eq('id', task.group_id)
+      .from("task_groups")
+      .select("domain")
+      .eq("id", task.group_id)
       .single();
     if (group?.domain === caller.domain) return true;
   }
@@ -80,7 +96,9 @@ async function canMutateTask(
 // ─────────────────────────────────────────────
 export async function createPersonalTaskAction(
   input: unknown,
-): Promise<ActionResult<{ taskId: string; assignedTo: string; createdBy: string }>> {
+): Promise<
+  ActionResult<{ taskId: string; assignedTo: string; createdBy: string }>
+> {
   // 1. Zod validation — first, always (Rule S-01)
   const parsed = CreatePersonalTaskSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: formErrors.generic };
@@ -95,7 +113,7 @@ export async function createPersonalTaskAction(
 
   // 3. If assigning to another user, verify they exist (only manager+ can do this)
   if (resolvedAssignedTo !== caller.id) {
-    if (!['manager', 'admin', 'founder'].includes(caller.role)) {
+    if (!["manager", "admin", "founder"].includes(caller.role)) {
       return { data: null, error: formErrors.unauthorized };
     }
   }
@@ -104,22 +122,22 @@ export async function createPersonalTaskAction(
 
   // 4. Insert task
   const { data: task, error: insertError } = await admin
-    .from('tasks')
+    .from("tasks")
     .insert({
-      assigned_to:   resolvedAssignedTo,
-      created_by:    caller.id,
-      module:        'gia',              // personal tasks default to gia module
-      task_type:     'other',
-      task_category: 'personal',
-      title:         fields.title,
-      description:   fields.description ?? null,
-      priority:      fields.priority,
-      status:        'to_do',
-      due_at:        fields.due_at ?? null,
-      group_id:      null,
-      tags:          fields.tags ?? [],
+      assigned_to: resolvedAssignedTo,
+      created_by: caller.id,
+      module: "gia", // personal tasks default to gia module
+      task_type: "other",
+      task_category: "personal",
+      title: fields.title,
+      description: fields.description ?? null,
+      priority: fields.priority,
+      status: "to_do",
+      due_at: fields.due_at ?? null,
+      group_id: null,
+      tags: fields.tags ?? [],
     })
-    .select('id')
+    .select("id")
     .single();
 
   if (insertError || !task) return { data: null, error: formErrors.generic };
@@ -130,27 +148,36 @@ export async function createPersonalTaskAction(
   if (resolvedAssignedTo !== caller.id) {
     createNotification({
       recipient_id: resolvedAssignedTo,
-      type:         'task_assigned',
-      title:        `New task: ${fields.title}`,
-      body:         `Assigned to you by ${caller.full_name}`,
-      action_url:   `/tasks`,
+      type: "task_assigned",
+      title: `New task: ${fields.title}`,
+      body: `Assigned to you by ${caller.full_name}`,
+      action_url: `/tasks`,
     }).catch(() => {});
   }
 
   // 6. Schedule reminder if due_at is set
   if (fields.due_at) {
-    scheduleTaskReminder(taskId, new Date(fields.due_at), resolvedAssignedTo).catch(() => {});
+    scheduleTaskReminder(
+      taskId,
+      new Date(fields.due_at),
+      resolvedAssignedTo,
+    ).catch(() => {});
   }
 
   // 7. Invalidate assignee's page-1 personal task cache — fire-and-forget.
-  void redis.del(REDIS_KEYS.task.personalPage1(resolvedAssignedTo)).catch(() => {});
+  void redis
+    .del(REDIS_KEYS.task.personalPage1(resolvedAssignedTo))
+    .catch(() => {});
 
   // 8. Invalidate caller's dashboard agent-tasks widget cache (30s TTL).
   //    Caller's id is server-verified — never a client-supplied value.
   try {
     await redis.del(REDIS_KEYS.dashboardAgentTasks(caller.id));
   } catch (e) {
-    console.warn('[dashboard-invalidation] redis del failed on createPersonalTask', e);
+    console.warn(
+      "[dashboard-invalidation] redis del failed on createPersonalTask",
+      e,
+    );
   }
 
   return {
@@ -177,29 +204,30 @@ export async function createGroupTaskAction(
   if (!caller) return { data: null, error: formErrors.unauthorized };
 
   // 3. Domain enforcement — non-privileged callers locked to own domain
-  const resolvedDomain =
-    ['admin', 'founder'].includes(caller.role) ? fields.domain : caller.domain;
+  const resolvedDomain = ["admin", "founder"].includes(caller.role)
+    ? fields.domain
+    : caller.domain;
 
   const admin = createAdminClient();
 
   // 4. Insert task_group
   const { data: group, error: insertError } = await admin
-    .from('task_groups')
+    .from("task_groups")
     .insert({
-      title:       fields.title,
+      title: fields.title,
       description: fields.description ?? null,
-      priority:    fields.priority,
-      status:      'to_do',
-      due_at:      fields.due_at ?? null,
-      created_by:  caller.id,
-      domain:      resolvedDomain,
+      priority: fields.priority,
+      status: "to_do",
+      due_at: fields.due_at ?? null,
+      created_by: caller.id,
+      domain: resolvedDomain,
     })
-    .select('id')
+    .select("id")
     .single();
 
   if (insertError || !group) return { data: null, error: formErrors.generic };
 
-  revalidatePath('/tasks');
+  revalidatePath("/tasks");
 
   return { data: { groupId: group.id as string }, error: null };
 }
@@ -226,18 +254,15 @@ export async function createSubtaskAction(
 
   // 3. Verify the group exists and caller has access
   const { data: group } = await supabase
-    .from('task_groups')
-    .select('id, domain, created_by')
-    .eq('id', fields.group_id)
+    .from("task_groups")
+    .select("id, domain, created_by")
+    .eq("id", fields.group_id)
     .single();
 
-  if (!group) return { data: null, error: 'Task group not found.' };
+  if (!group) return { data: null, error: "Task group not found." };
 
   // 4. Domain check — agents cannot create subtasks in groups outside their domain
-  if (
-    caller.role === 'agent' &&
-    group.domain !== caller.domain
-  ) {
+  if (caller.role === "agent" && group.domain !== caller.domain) {
     return { data: null, error: formErrors.unauthorized };
   }
 
@@ -245,21 +270,21 @@ export async function createSubtaskAction(
 
   // 5. Insert subtask — select full row for local prepend on the client
   const { data: task, error: insertError } = await admin
-    .from('tasks')
+    .from("tasks")
     .insert({
-      assigned_to:   fields.assigned_to,
-      created_by:    caller.id,
-      module:        'gia',
-      task_type:     'other',
-      task_category: 'group_subtask',
-      title:         fields.title,
-      description:   fields.description ?? null,
-      priority:      fields.priority,
-      status:        'to_do',
-      due_at:        fields.due_at ?? null,
-      group_id:      fields.group_id,
+      assigned_to: fields.assigned_to,
+      created_by: caller.id,
+      module: "gia",
+      task_type: "other",
+      task_category: "group_subtask",
+      title: fields.title,
+      description: fields.description ?? null,
+      priority: fields.priority,
+      status: "to_do",
+      due_at: fields.due_at ?? null,
+      group_id: fields.group_id,
     })
-    .select('*')
+    .select("*")
     .single();
 
   if (insertError || !task) return { data: null, error: formErrors.generic };
@@ -268,32 +293,40 @@ export async function createSubtaskAction(
 
   // 6. Fetch assignee profile in the same action — one extra query, zero extra round-trips
   //    from the component. Failure is non-fatal; assignee renders as null (avatar falls back).
-  let assignee: SubtaskWithAssignee['assignee'] = null;
+  let assignee: SubtaskWithAssignee["assignee"] = null;
   const { data: profile } = await supabase
-    .from('profiles')
-    .select('id, full_name, avatar_url')
-    .eq('id', fields.assigned_to)
+    .from("profiles")
+    .select("id, full_name, avatar_url")
+    .eq("id", fields.assigned_to)
     .single();
   if (profile) {
-    assignee = { id: profile.id, full_name: profile.full_name, avatar_url: profile.avatar_url };
+    assignee = {
+      id: profile.id,
+      full_name: profile.full_name,
+      avatar_url: profile.avatar_url,
+    };
   }
 
-  revalidatePath('/tasks');
+  revalidatePath("/tasks");
 
   // 7. Notify assignee — fire-and-forget, non-fatal (always notify for subtasks)
   if (fields.assigned_to !== caller.id) {
     createNotification({
       recipient_id: fields.assigned_to,
-      type:         'task_assigned',
-      title:        `New task: ${fields.title}`,
-      body:         `Assigned to you by ${caller.full_name}`,
-      action_url:   `/tasks`,
+      type: "task_assigned",
+      title: `New task: ${fields.title}`,
+      body: `Assigned to you by ${caller.full_name}`,
+      action_url: `/tasks`,
     }).catch(() => {});
   }
 
   // 8. Schedule reminder if due_at is set
   if (fields.due_at) {
-    scheduleTaskReminder(taskId, new Date(fields.due_at), fields.assigned_to).catch(() => {});
+    scheduleTaskReminder(
+      taskId,
+      new Date(fields.due_at),
+      fields.assigned_to,
+    ).catch(() => {});
   }
 
   const subtaskWithAssignee: SubtaskWithAssignee = {
@@ -324,14 +357,16 @@ export async function updateTaskStatusAction(
   const [caller, { data: task }] = await Promise.all([
     getCurrentProfile(),
     supabase
-      .from('tasks')
-      .select('id, assigned_to, created_by, group_id, status, due_at, task_category')
-      .eq('id', taskId)
+      .from("tasks")
+      .select(
+        "id, assigned_to, created_by, group_id, status, due_at, task_category",
+      )
+      .eq("id", taskId)
       .single(),
   ]);
 
   if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (!task)   return { data: null, error: 'Task not found.' };
+  if (!task) return { data: null, error: "Task not found." };
 
   // 3. Application-layer authorization check (A-09 — layer 2)
   const allowed = await canMutateTask(caller, task as TaskMutationTarget);
@@ -343,12 +378,14 @@ export async function updateTaskStatusAction(
   const admin = createAdminClient();
 
   const { error: updateError } = await admin
-    .from('tasks')
+    .from("tasks")
     .update({
       status,
-      ...(status === 'completed' ? { completed_at: new Date().toISOString() } : {}),
+      ...(status === "completed"
+        ? { completed_at: new Date().toISOString() }
+        : {}),
     })
-    .eq('id', taskId);
+    .eq("id", taskId);
 
   if (updateError) return { data: null, error: formErrors.generic };
 
@@ -361,17 +398,22 @@ export async function updateTaskStatusAction(
   //    personal   → del caller's page-1 personal list
   //    gia_followup → del caller's Gia list (caller.id used, not assigned_to — see pre-mortem note)
   //    group_subtask → del caller's subtask slot for this group
-  if (task.task_category === 'personal') {
+  if (task.task_category === "personal") {
     void redis.del(REDIS_KEYS.task.personalPage1(caller.id)).catch(() => {});
-  } else if (task.task_category === 'gia_followup') {
-    void redis.del(REDIS_KEYS.task.giaList(caller.id, caller.role, caller.domain)).catch(() => {});
+  } else if (task.task_category === "gia_followup") {
+    void redis
+      .del(REDIS_KEYS.task.giaList(caller.id, caller.role, caller.domain))
+      .catch(() => {});
   }
 
   // 6. Invalidate caller's dashboard agent-tasks widget cache.
   try {
     await redis.del(REDIS_KEYS.dashboardAgentTasks(caller.id));
   } catch (e) {
-    console.warn('[dashboard-invalidation] redis del failed on updateTaskStatus', e);
+    console.warn(
+      "[dashboard-invalidation] redis del failed on updateTaskStatus",
+      e,
+    );
   }
 
   return { data: { taskId }, error: null };
@@ -396,14 +438,14 @@ export async function updateTaskAction(
   const [caller, { data: existing }] = await Promise.all([
     getCurrentProfile(),
     supabase
-      .from('tasks')
-      .select('id, assigned_to, created_by, group_id, due_at, status')
-      .eq('id', taskId)
+      .from("tasks")
+      .select("id, assigned_to, created_by, group_id, due_at, status")
+      .eq("id", taskId)
       .single(),
   ]);
 
-  if (!caller)   return { data: null, error: formErrors.unauthorized };
-  if (!existing) return { data: null, error: 'Task not found.' };
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+  if (!existing) return { data: null, error: "Task not found." };
 
   // 3. Application-layer authorization check (A-09 — layer 2)
   const allowed = await canMutateTask(caller, existing as TaskMutationTarget);
@@ -412,30 +454,35 @@ export async function updateTaskAction(
   const admin = createAdminClient();
 
   // 4. Build typed update payload — only include defined fields
-  const due_at_changed = 'due_at' in fields;
+  const due_at_changed = "due_at" in fields;
 
   const updatePayload: {
-    title?:        string;
-    description?:  string | null;
-    priority?:     TaskPriority;
-    status?:       TaskStatus;
-    assigned_to?:  string;
-    due_at?:       string | null;
+    title?: string;
+    description?: string | null;
+    priority?: TaskPriority;
+    status?: TaskStatus;
+    assigned_to?: string;
+    due_at?: string | null;
     completed_at?: string | null;
   } = {};
 
-  if (fields.title       !== undefined) updatePayload.title       = fields.title;
-  if (fields.description !== undefined) updatePayload.description = fields.description;
-  if (fields.priority    !== undefined) updatePayload.priority    = fields.priority as TaskPriority;
-  if (fields.status      !== undefined) updatePayload.status      = fields.status as TaskStatus;
-  if (fields.assigned_to !== undefined) updatePayload.assigned_to = fields.assigned_to;
-  if (due_at_changed)                   updatePayload.due_at      = fields.due_at ?? null;
-  if (fields.status === 'completed')    updatePayload.completed_at = new Date().toISOString();
+  if (fields.title !== undefined) updatePayload.title = fields.title;
+  if (fields.description !== undefined)
+    updatePayload.description = fields.description;
+  if (fields.priority !== undefined)
+    updatePayload.priority = fields.priority as TaskPriority;
+  if (fields.status !== undefined)
+    updatePayload.status = fields.status as TaskStatus;
+  if (fields.assigned_to !== undefined)
+    updatePayload.assigned_to = fields.assigned_to;
+  if (due_at_changed) updatePayload.due_at = fields.due_at ?? null;
+  if (fields.status === "completed")
+    updatePayload.completed_at = new Date().toISOString();
 
   const { error: updateError } = await admin
-    .from('tasks')
+    .from("tasks")
     .update(updatePayload)
-    .eq('id', taskId);
+    .eq("id", taskId);
 
   if (updateError) return { data: null, error: formErrors.generic };
 
@@ -488,34 +535,41 @@ export async function deleteTaskAction(
 
   // 3. Fetch task to check authorization
   const { data: task } = await supabase
-    .from('tasks')
-    .select('id, assigned_to, created_by, group_id, task_category')
-    .eq('id', taskId)
+    .from("tasks")
+    .select("id, assigned_to, created_by, group_id, task_category")
+    .eq("id", taskId)
     .single();
 
-  if (!task) return { data: null, error: 'Task not found.' };
+  if (!task) return { data: null, error: "Task not found." };
 
   // 4. Authorization check
-  if (caller.role === 'agent') {
+  if (caller.role === "agent") {
     const isOwner =
       task.created_by === caller.id && task.assigned_to === caller.id;
     if (!isOwner) return { data: null, error: formErrors.unauthorized };
   }
   // manager/admin/founder have unrestricted delete access
 
-  // 5. Cancel Trigger.dev reminder BEFORE DB delete — if cancel fails, abort.
+  console.log(
+    `[deleteTaskAction] task_category=${task.task_category} taskId=${taskId} caller=${caller.id}`,
+  );
+
+  // 5. Cancel Trigger.dev reminder BEFORE DB delete.
+  //    A cancel failure (no runs found, SDK error, network) is non-fatal —
+  //    log it and continue. A missed reminder cancel is recoverable;
+  //    a broken delete UX is not.
   try {
     await cancelTaskReminder(taskId);
-  } catch {
-    return { data: null, error: 'Could not cancel the scheduled reminder. Please try again.' };
+  } catch (e) {
+    console.error("[deleteTaskAction] cancelTaskReminder failed (non-fatal):", e);
   }
 
   // 6. Delete task — cascade removes task_remarks (ON DELETE CASCADE on task_remarks.task_id)
   const admin = createAdminClient();
   const { error: deleteError } = await admin
-    .from('tasks')
+    .from("tasks")
     .delete()
-    .eq('id', taskId);
+    .eq("id", taskId);
 
   if (deleteError) return { data: null, error: formErrors.generic };
 
@@ -523,10 +577,12 @@ export async function deleteTaskAction(
   //    personal     → del caller's page-1 personal list
   //    gia_followup → del caller's Gia list (caller.id, not task.assigned_to — see pre-mortem note)
   //    group_subtask → del caller's subtask slot for this group
-  if (task.task_category === 'personal') {
+  if (task.task_category === "personal") {
     void redis.del(REDIS_KEYS.task.personalPage1(caller.id)).catch(() => {});
-  } else if (task.task_category === 'gia_followup') {
-    void redis.del(REDIS_KEYS.task.giaList(caller.id, caller.role, caller.domain)).catch(() => {});
+  } else if (task.task_category === "gia_followup") {
+    void redis
+      .del(REDIS_KEYS.task.giaList(caller.id, caller.role, caller.domain))
+      .catch(() => {});
   }
 
   return { data: null, error: null };
@@ -554,14 +610,14 @@ export async function updateChecklistAction(
   const [caller, { data: task }] = await Promise.all([
     getCurrentProfile(),
     supabase
-      .from('tasks')
-      .select('id, assigned_to, created_by, group_id')
-      .eq('id', taskId)
+      .from("tasks")
+      .select("id, assigned_to, created_by, group_id")
+      .eq("id", taskId)
       .single(),
   ]);
 
   if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (!task)   return { data: null, error: 'Task not found.' };
+  if (!task) return { data: null, error: "Task not found." };
 
   // 3. Application-layer authorization check (A-09 — layer 2)
   const allowed = await canMutateTask(caller, task as TaskMutationTarget);
@@ -571,9 +627,9 @@ export async function updateChecklistAction(
   //    (application-layer access check above provides the security equivalent)
   const admin = createAdminClient();
   const { error: updateError } = await admin
-    .from('tasks')
+    .from("tasks")
     .update({ attachments: items })
-    .eq('id', taskId);
+    .eq("id", taskId);
 
   if (updateError) return { data: null, error: formErrors.generic };
 
@@ -601,14 +657,14 @@ export async function updateTaskTagsAction(
   const [caller, { data: task }] = await Promise.all([
     getCurrentProfile(),
     supabase
-      .from('tasks')
-      .select('id, assigned_to, created_by, group_id')
-      .eq('id', taskId)
+      .from("tasks")
+      .select("id, assigned_to, created_by, group_id")
+      .eq("id", taskId)
       .single(),
   ]);
 
   if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (!task)   return { data: null, error: 'Task not found.' };
+  if (!task) return { data: null, error: "Task not found." };
 
   // 3. Application-layer authorization check (A-09 — layer 2)
   const allowed = await canMutateTask(caller, task as TaskMutationTarget);
@@ -617,9 +673,9 @@ export async function updateTaskTagsAction(
   // 4. Write new tags array
   const admin = createAdminClient();
   const { error: updateError } = await admin
-    .from('tasks')
+    .from("tasks")
     .update({ tags })
-    .eq('id', taskId);
+    .eq("id", taskId);
 
   if (updateError) return { data: null, error: formErrors.generic };
 
@@ -637,18 +693,18 @@ import {
   getPersonalTasks,
   getPersonalTaskTags,
   getTaskGroupById,
-} from '@/lib/services/tasks-service';
+} from "@/lib/services/tasks-service";
 import type {
   PersonalTaskFilters,
   PersonalTasksResult,
-} from '@/lib/services/tasks-service';
-import type { TaskGroup } from '@/lib/types/database';
+} from "@/lib/services/tasks-service";
+import type { TaskGroup } from "@/lib/types/database";
 
 export async function getGroupSubtasksAction(
   groupId: string,
 ): Promise<ActionResult<SubtaskWithAssignee[]>> {
   const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: 'Unauthorized.' };
+  if (!caller) return { data: null, error: "Unauthorized." };
 
   const rows = await getGroupSubtasks(groupId, caller.id);
   return { data: rows, error: null };
@@ -658,15 +714,17 @@ export async function getPersonalTasksAction(
   filters: PersonalTaskFilters = {},
 ): Promise<ActionResult<PersonalTasksResult>> {
   const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: 'Unauthorized.' };
+  if (!caller) return { data: null, error: "Unauthorized." };
 
   const result = await getPersonalTasks(caller.id, filters);
   return { data: result, error: null };
 }
 
-export async function getPersonalTaskTagsAction(): Promise<ActionResult<string[]>> {
+export async function getPersonalTaskTagsAction(): Promise<
+  ActionResult<string[]>
+> {
   const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: 'Unauthorized.' };
+  if (!caller) return { data: null, error: "Unauthorized." };
 
   const tags = await getPersonalTaskTags(caller.id);
   return { data: tags, error: null };
@@ -676,10 +734,10 @@ export async function getTaskGroupByIdAction(
   groupId: string,
 ): Promise<ActionResult<TaskGroup>> {
   const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: 'Unauthorized.' };
+  if (!caller) return { data: null, error: "Unauthorized." };
 
   const group = await getTaskGroupById(groupId);
-  if (!group) return { data: null, error: 'Group not found.' };
+  if (!group) return { data: null, error: "Group not found." };
   return { data: group, error: null };
 }
 
@@ -714,9 +772,9 @@ export async function addTaskRemarkAction(
 
   const supabase = await createClient();
   const { data: task } = await supabase
-    .from('tasks')
-    .select('id')
-    .eq('id', taskId)
+    .from("tasks")
+    .select("id")
+    .eq("id", taskId)
     .single();
 
   if (!task) return { data: null, error: formErrors.unauthorized };
@@ -726,18 +784,20 @@ export async function addTaskRemarkAction(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: remark, error: rpcError } = await (admin as any).rpc(
-    'add_task_remark_with_status',
+    "add_task_remark_with_status",
     {
-      p_task_id:      taskId,
-      p_author_id:    caller.id,
-      p_content:      sanitizedContent,
+      p_task_id: taskId,
+      p_author_id: caller.id,
+      p_content: sanitizedContent,
       p_status_change: statusChange ?? null,
     },
   );
 
   if (rpcError) {
-    if (rpcError.message?.includes('task_not_found')) return { data: null, error: 'Task not found.' };
-    if (rpcError.message?.includes('unauthorized'))   return { data: null, error: formErrors.unauthorized };
+    if (rpcError.message?.includes("task_not_found"))
+      return { data: null, error: "Task not found." };
+    if (rpcError.message?.includes("unauthorized"))
+      return { data: null, error: formErrors.unauthorized };
     return { data: null, error: formErrors.generic };
   }
 
@@ -769,7 +829,7 @@ export async function suppressTaskRemarkAction(
   // 2. Auth — admin and founder only
   const caller = await getCurrentProfile();
   if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (!['admin', 'founder'].includes(caller.role)) {
+  if (!["admin", "founder"].includes(caller.role)) {
     return { data: null, error: formErrors.unauthorized };
   }
 
@@ -777,25 +837,25 @@ export async function suppressTaskRemarkAction(
 
   // 3. Verify remark exists (Rule S-06 — never trust client IDs)
   const { data: existing } = await admin
-    .from('task_remarks')
-    .select('id, task_id, is_suppressed')
-    .eq('id', remarkId)
+    .from("task_remarks")
+    .select("id, task_id, is_suppressed")
+    .eq("id", remarkId)
     .single();
 
-  if (!existing) return { data: null, error: 'Remark not found.' };
+  if (!existing) return { data: null, error: "Remark not found." };
 
   // Idempotent — no-op if already suppressed
   if (existing.is_suppressed) return { data: { remarkId }, error: null };
 
   // 4. Write only the three suppression columns (column restriction at action layer)
   const { error: updateError } = await admin
-    .from('task_remarks')
+    .from("task_remarks")
     .update({
       is_suppressed: true,
       suppressed_by: caller.id,
       suppressed_at: new Date().toISOString(),
     })
-    .eq('id', remarkId);
+    .eq("id", remarkId);
 
   if (updateError) return { data: null, error: formErrors.generic };
 
@@ -807,7 +867,15 @@ export async function suppressTaskRemarkAction(
 // Returns all active non-guest users for the subtask assignee picker.
 // ─────────────────────────────────────────────
 export async function getAssignableUsersAction(): Promise<
-  ActionResult<{ id: string; full_name: string; avatar_url: string | null; role: string; domain: string }[]>
+  ActionResult<
+    {
+      id: string;
+      full_name: string;
+      avatar_url: string | null;
+      role: string;
+      domain: string;
+    }[]
+  >
 > {
   const caller = await getCurrentProfile();
   if (!caller) return { data: null, error: formErrors.unauthorized };
@@ -849,30 +917,30 @@ export async function deleteGroupTaskAction(
   // 2. Auth — admin/founder only
   const caller = await getCurrentProfile();
   if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (!['admin', 'founder'].includes(caller.role)) {
+  if (!["admin", "founder"].includes(caller.role)) {
     return { data: null, error: formErrors.unauthorized };
   }
 
   // 3. Fetch group to verify it exists and get domain for cache invalidation
   const supabase = await createClient();
   const { data: group } = await supabase
-    .from('task_groups')
-    .select('id, domain')
-    .eq('id', groupId)
+    .from("task_groups")
+    .select("id, domain")
+    .eq("id", groupId)
     .single();
 
-  if (!group) return { data: null, error: 'Group task not found.' };
+  if (!group) return { data: null, error: "Group task not found." };
 
   // 4. Delete — ON DELETE CASCADE removes all tasks (and their task_remarks) in this group
   const admin = createAdminClient();
   const { error: deleteError } = await admin
-    .from('task_groups')
+    .from("task_groups")
     .delete()
-    .eq('id', groupId);
+    .eq("id", groupId);
 
   if (deleteError) return { data: null, error: formErrors.generic };
 
-  revalidatePath('/tasks');
+  revalidatePath("/tasks");
 
   return { data: null, error: null };
 }

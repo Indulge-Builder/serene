@@ -1,6 +1,6 @@
 # Tasks Page — Full Intelligence Document
 
-Last verified: 2026-06-02
+Last verified: 2026-06-05
 
 ---
 
@@ -467,7 +467,9 @@ Uses `MotionButton` + `requestCreate()`.
 | --- | --- |
 | **My Tasks** | Search (title + description), Tags (multi), Status (multi), Priority (multi) |
 | **Group Tasks** | Search (title), Status, Priority, Domain (admin/founder only, options from roster), Progress (`in_progress` / `complete` / `empty`) |
-| **Gia Tasks** | Search (lead name + task fields), Task Type (multi), Date From / Date To (`YYYY-MM-DD`; tasks without `due_at` hidden when either date bound set) |
+| **Gia Tasks** | Search (lead name + task fields), Task Type (multi), **Range** date picker (trigger button + portal panel — matches `LeadsFilters` pattern; `dateFromUrlParam`/`dateToUrlParam` bridge `Date ↔ YYYY-MM-DD`; tasks without `due_at` hidden when either bound is set) |
+
+**Gia date range picker pattern:** a "Range" trigger button opens a `motion.div` portal panel (portaled to `document.body`; positioned via `getBoundingClientRect()` + `visualViewport` offset correction; closes on outside `pointerdown`). Panel contains two `DatePicker` components (From / To) with cross-constraints (`minDate`/`maxDate`) and a clear × button. Active state shown via accent border + count badge. State lives in `giaFilters.dateFrom` / `giaFilters.dateTo` as `YYYY-MM-DD` strings (empty string = no bound).
 
 **Result count:** `{resultCount} {resultNoun}` from active tab's `onFilteredCountChange`.
 
@@ -587,6 +589,15 @@ Accordion (one expanded); progress bar; avatar stack (max 4); **Open** → `/tas
 
 Lazy `getGroupSubtasksAction` on first expand; `createSubtaskAction` append; `listAgentsForDomain` **once** at tab level → all `GroupRow`s.
 
+### Delete group — portal pattern
+
+The ⋯ dropdown menu and confirm delete dialog are both portaled to `document.body` via `createPortal`. This escapes two constraints:
+
+1. Card `overflow: hidden` clips the dropdown when the row is collapsed — portal bypasses it.
+2. Framer Motion's entrance `transform` on the card creates a new containing block for `position: fixed` children, trapping the dialog inside the card. Portal + `--z-overlay` backdrop / `--z-modal` dialog at `document.body` level fix both.
+
+`moreButtonRef` captures `getBoundingClientRect()` at open time → `menuRect` state positions the dropdown with `position: fixed`. Confirm dialog backdrop uses `--z-overlay` (50); panel uses `--z-modal` (60) — backdrop is below the panel.
+
 ### Callbacks
 
 - `onTaskUpdated` / `onTaskDeleted` on `SubTaskModal` — patch subtask row + adjust `completed_count` / `subtask_count` without `router.refresh()`
@@ -673,7 +684,7 @@ Action returns `{ taskId, assignedTo, createdBy }`. Synthetic `Task` uses **`res
 
 **Realtime:** channel `` `workspace-subtasks-${groupId}-${mountId}` `` — INSERT/UPDATE merge into `subtasks` state.
 
-**FAB:** title + assignee + priority + due → `createSubtaskAction` → refetch/merge on success.
+**FAB:** title + assignee + priority + `DatePicker showTime` due date → `createSubtaskAction` → refetch/merge on success. `addDueAt` state is `Date | null` (was `string`); `.toISOString()` passed to action. Native `<input type="date">` is replaced — `DatePicker` is the only date input in this panel.
 
 **Modal:** `getTaskRemarksAction` gate; `SubTaskModal` with `onTaskUpdated` / `onTaskDeleted`.
 
@@ -699,7 +710,14 @@ Action returns `{ taskId, assignedTo, createdBy }`. Synthetic `Task` uses **`res
 
 ### Edit mode (Zone A only)
 
-Save → `updateTaskAction` + `updateChecklistAction` if changed — **no remark**.
+Save → `updateTaskAction` (title + description + **due_at**) + `updateChecklistAction` if changed — **no remark**. `router.refresh()` called after every successful save to sync RSC data.
+
+**Deadline editing in edit mode:**
+
+- `dueAt: string | null` — display state, seeded from `task.due_at` on mount. Read-only deadline row reads from this, not from `task.due_at` (which is an immutable prop). Updated via `setDueAt(newDueAtIso)` on save success.
+- `editDueAt: Date | null` — edit state, seeded from `dueAt` state on `enterEditMode`. Bound to `DatePicker showTime` which replaces the read-only span when `editMode` is true.
+- On save: `editDueAt?.toISOString()` compared against `task.due_at ?? null`; `due_at` included in `updateTaskAction` payload only when changed; `onTaskUpdated` emits `due_at` to parent.
+- `SubTaskModalTaskUpdate` type includes `due_at?: string | null`.
 
 ### `ActionItemAddRow`
 
@@ -722,7 +740,7 @@ Blocking `cancelTaskReminder` then `deleteTaskAction`.
 
 ### `onTaskUpdated`
 
-`SubTaskModalTaskUpdate`: `{ id, status?, priority?, title?, description? }`.
+`SubTaskModalTaskUpdate`: `{ id, status?, priority?, title?, description?, due_at? }`.
 
 ### Remarks gate
 

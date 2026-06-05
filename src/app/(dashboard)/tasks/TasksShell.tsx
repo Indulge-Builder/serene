@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useTransition, useMemo, useEffect } from "react";
+import { useCallback, useState, useTransition, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
 import { MyTasksCalendarView } from "@/components/tasks/MyTasksCalendarView";
 import { GroupTasksTab } from "@/components/tasks/GroupTasksTab";
@@ -10,6 +10,7 @@ import { CreateGiaTaskModal } from "@/components/tasks/CreateGiaTaskModal";
 import { TasksFilters } from "@/components/tasks/TasksFilters";
 import { TabSelector, type TabItem } from "@/components/ui/TabSelector";
 import { useTasksCreate } from "@/components/tasks/TasksCreateContext";
+import { useCreateTriggerModal } from "@/hooks/useCreateTriggerModal";
 import { getPersonalTaskTagsAction } from "@/lib/actions/tasks";
 import { DOMAIN_LABELS, compareDomainDisplayOrder } from "@/lib/constants/domains";
 import type { AgentSlim } from "./TasksAsync";
@@ -96,12 +97,10 @@ export function TasksShell({
     [groupRows],
   );
 
-  // Open Gia modal when createTrigger fires on the gia tab
-  useEffect(() => {
-    if (activeTab === "gia" && createTrigger > 0) {
-      setGiaCreateOpen(true);
-    }
-  }, [createTrigger, activeTab]);
+  const openGiaCreateIfActive = useCallback(() => {
+    if (activeTab === "gia") setGiaCreateOpen(true);
+  }, [activeTab]);
+  useCreateTriggerModal(createTrigger, openGiaCreateIfActive);
 
   function setTab(tab: TaskTab) {
     const params = new URLSearchParams(searchParams.toString());

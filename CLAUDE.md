@@ -912,6 +912,39 @@ Reference implementation: `updateLeadStatus`, `addLeadCallNote`, `addLeadNote` i
 
 ---
 
+### Confirm dialog stacking — `--z-overlay` backdrop, `--z-modal` panel
+
+Standalone confirm dialogs (not nested inside another modal) use:
+
+- Backdrop: `--z-overlay` (50)
+- Panel: `--z-modal` (60)
+
+This keeps the backdrop below the panel. **`--z-modal-overlay` (61) is reserved for the backdrop of a nested modal** that itself sits above an existing `--z-modal` surface (e.g. `AssigneePickerModal` above `SubTaskModal`).
+
+The bug of backdrop covering the panel happens when `--z-modal-overlay` (61) is accidentally used for a standalone dialog backdrop — it then sits above the panel at `--z-modal` (60) and blocks all clicks.
+
+---
+
+### Framer Motion `transform` + `position: fixed` — portal escape
+
+Framer Motion entrance animations apply CSS `transform` to the animated element. A `transform` on an ancestor creates a new **containing block** for `position: fixed` descendants and a new **stacking context**. This means:
+
+- `position: fixed` children are no longer fixed to the viewport — they are fixed to the transformed ancestor's paint area.
+- `z-index` on the fixed children is evaluated within the ancestor's stacking context, not the document root.
+
+**Result:** dialogs and dropdowns rendered inside a `motion.div` card appear clipped, washed out, or unresponsive even with correct z-index values.
+
+**Fix:** portal overlays and dropdowns to `document.body` using `createPortal`. Capture the trigger element's position with `getBoundingClientRect()` at open time and position the portaled panel with `position: fixed` from `document.body`.
+
+**Reference implementations:**
+
+- `GroupTasksTab.tsx` — ⋯ dropdown and confirm delete dialog both portaled
+- `GroupTaskWorkspace.tsx` — confirm delete dialog portaled (same bug, same fix)
+- `LeadsFilters.tsx` — date range panel portaled (canonical reference)
+- `TasksFilters.tsx` — Gia date range panel portaled (matches LeadsFilters pattern)
+
+---
+
 ## When in Doubt
 
 1. Check `docs/design-dna.md` for the full spec on any section.
