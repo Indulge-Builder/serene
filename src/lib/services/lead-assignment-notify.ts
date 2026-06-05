@@ -85,7 +85,7 @@ export async function notifyLeadAssigned(input: LeadAssignedNotifyInput): Promis
       recipient_id: assignedTo,
       type: 'lead_assigned',
       title: 'New lead assigned to you',
-      body: actorId ? null : 'Assigned automatically',
+      body: actorId ? undefined : 'Assigned automatically',
       action_url: `/leads/${leadId}`,
     }).catch(() => {});
   }
