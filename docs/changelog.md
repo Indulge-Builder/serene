@@ -6,6 +6,16 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-05 — Page-level loading.tsx skeletons added (remaining routes)
+
+- `/performance` — loading.tsx skeleton added (filter bar + two-column roster + detail panel).
+- `/campaigns` — loading.tsx skeleton added (filter bar + 5 campaign card rows).
+- `/settings` — loading.tsx skeleton added (filter bar + agent roster table with shift/toggle columns).
+- `/admin/users` — loading.tsx skeleton added (header + filter bar + 6 user table rows).
+- `/admin/ad-creatives` — loading.tsx skeleton added (header + search + 3-col video card grid).
+
+---
+
 ## 2026-06-05 — Lead Volume widget: count moved to header right
 
 - `ManagerLeadVolumeWidget` — removed "N leads in range" subtitle; total now sits top-right as mono count with a slow accent dot pulse (`eia-page-dot-blink`); fades while refetching.
