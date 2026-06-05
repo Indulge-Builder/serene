@@ -32,6 +32,18 @@ export const formErrors = {
   unauthorized:         "You don't have permission to perform this action.",
   userNotFound:         "User not found.",
   phoneInvalid:         "Please enter a valid phone number.",
+
+  // Avatar upload
+  avatarTooLarge:       "Image must be 2 MB or smaller.",
+  avatarInvalidType:    "Please select an image file (JPEG, PNG, WebP, etc.).",
+  avatarUploadFailed:   "Upload failed. Please check your connection and try again.",
+  avatarProfileFailed:  "Image uploaded but profile update failed. Please try again.",
+
+  // Password change
+  passwordCurrentIncorrect: "Current password is incorrect.",
+  passwordSameAsCurrent:    "New password must differ from your current password.",
+  passwordConfirmMismatch:  "Passwords do not match.",
+  passwordSessionExpired:   "Session expired. Please sign in again.",
 } as const;
 
 export type FormError = (typeof formErrors)[keyof typeof formErrors];

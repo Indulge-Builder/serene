@@ -5,6 +5,7 @@ import { Camera } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { createClient }        from "@/lib/supabase/client";
 import { updateProfileAvatar } from "@/lib/actions/profiles";
+import { formErrors }          from "@/lib/validations/form-errors";
 import type { Profile }        from "@/lib/types/database";
 
 function getInitials(name: string): string {
@@ -36,11 +37,11 @@ export function ProfileAvatarSection({ profile }: Props) {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setUploadError("Please select an image file.");
+      setUploadError(formErrors.avatarInvalidType);
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      setUploadError("Image must be 2 MB or smaller.");
+      setUploadError(formErrors.avatarTooLarge);
       return;
     }
 
@@ -56,7 +57,7 @@ export function ProfileAvatarSection({ profile }: Props) {
         .upload(storagePath, file, { upsert: true, contentType: file.type });
 
       if (storageError) {
-        setUploadError("Upload failed. Please try again.");
+        setUploadError(formErrors.avatarUploadFailed);
         return;
       }
 
@@ -76,12 +77,12 @@ export function ProfileAvatarSection({ profile }: Props) {
       );
 
       if (result.error) {
-        setUploadError("Saved upload but failed to update profile.");
+        setUploadError(formErrors.avatarProfileFailed);
       } else {
         setAvatarUrl(freshUrl);
       }
     } catch {
-      setUploadError("Something went wrong. Please try again.");
+      setUploadError(formErrors.avatarUploadFailed);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

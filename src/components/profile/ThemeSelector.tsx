@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { Check } from "lucide-react";
 import { updateProfile } from "@/lib/actions/profiles";
+import { Toggle } from "@/components/ui/Toggle";
+import { useNotificationSound } from "@/hooks/useNotificationSound";
 
 const THEMES = [
   { key: "earth",  label: "Earth"  },
@@ -22,6 +24,7 @@ type Props = {
 export function ThemeSelector({ currentTheme, profileId }: Props) {
   const [active,    setActive]    = useState<ThemeKey>(currentTheme);
   const [isPending, startTransition] = useTransition();
+  const sound = useNotificationSound();
 
   function handleThemeChange(theme: ThemeKey) {
     if (theme === active) return;
@@ -108,15 +111,15 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
                 <div
                   data-theme={theme.key}
                   style={{
-                    width:        "72px",
-                    height:       "48px",
-                    borderRadius: "var(--radius-md)",
-                    background:   "var(--theme-canvas)",
-                    display:      "flex",
-                    alignItems:   "center",
+                    width:          "72px",
+                    height:         "48px",
+                    borderRadius:   "var(--radius-md)",
+                    background:     "var(--theme-canvas)",
+                    display:        "flex",
+                    alignItems:     "center",
                     justifyContent: "center",
-                    position:     "relative",
-                    overflow:     "hidden",
+                    position:       "relative",
+                    overflow:       "hidden",
                   }}
                 >
                   {/* Paper surface hint */}
@@ -199,12 +202,29 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
             fontFamily: "var(--font-sans)",
             fontSize:   "var(--text-xs)",
             color:      "var(--theme-text-tertiary)",
-            marginTop:  "var(--space-3)",
             margin:     "var(--space-3) 0 0",
           }}
         >
           Saving preference…
         </p>
+      )}
+
+      {/* Sound toggle — relocated from Notifications card. Hidden until hydrated. */}
+      {sound.enabled !== null && (
+        <div
+          style={{
+            marginTop:  "var(--space-5)",
+            paddingTop: "var(--space-5)",
+            borderTop:  "1px solid var(--theme-paper-border)",
+          }}
+        >
+          <Toggle
+            checked={sound.enabled}
+            onChange={sound.setEnabled}
+            label="Notification sound"
+            description="A short chime when new notifications arrive."
+          />
+        </div>
       )}
     </div>
   );

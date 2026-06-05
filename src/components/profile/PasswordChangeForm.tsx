@@ -1,43 +1,54 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
-import { Button } from '@/components/ui/Button';
-import { PasswordStrengthBar } from '@/components/ui/PasswordStrengthBar';
+import { Eye, EyeOff, Check } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/Button";
+import { PasswordStrengthBar } from "@/components/ui/PasswordStrengthBar";
 import { createClient } from "@/lib/supabase/client";
+import { formErrors } from "@/lib/validations/form-errors";
+import { FAST_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 
-type State =
+type FormStatus =
   | { status: "idle" }
   | { status: "pending" }
   | { status: "success" }
   | { status: "error"; message: string };
 
-export function PasswordChangeForm() {
-  const [current,   setCurrent]   = useState("");
-  const [next,      setNext]      = useState("");
-  const [confirm,   setConfirm]   = useState("");
-  const [showCur,   setShowCur]   = useState(false);
-  const [showNext,  setShowNext]  = useState(false);
-  const [formState, setFormState] = useState<State>({ status: "idle" });
+interface Requirement {
+  id:    string;
+  label: string;
+  met:   (pw: string) => boolean;
+}
 
+const REQUIREMENTS: Requirement[] = [
+  { id: "len",    label: "At least 8 characters",   met: (pw) => pw.length >= 8 },
+  { id: "number", label: "Contains a number",        met: (pw) => /\d/.test(pw) },
+  { id: "symbol", label: "Contains a symbol",        met: (pw) => /[^a-zA-Z0-9]/.test(pw) },
+  { id: "case",   label: "Mixed upper and lowercase", met: (pw) => /[a-z]/.test(pw) && /[A-Z]/.test(pw) },
+];
+
+export function PasswordChangeForm() {
+  const [current,    setCurrent]    = useState("");
+  const [next,       setNext]       = useState("");
+  const [confirm,    setConfirm]    = useState("");
+  const [showCur,    setShowCur]    = useState(false);
+  const [showNext,   setShowNext]   = useState(false);
+  const [formState,  setFormState]  = useState<FormStatus>({ status: "idle" });
+  // Only show confirm mismatch after user has typed something in the confirm field
+  const [confirmTouched, setConfirmTouched] = useState(false);
+
+  const isPending = formState.status === "pending";
+
+  const allRequirementsMet = REQUIREMENTS.every((r) => r.met(next));
+  const confirmMatches     = confirm === next;
+  const canSubmit          = !isPending && current.length > 0 && allRequirementsMet && confirmMatches && confirm.length > 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!current || !next || !confirm) {
-      setFormState({ status: "error", message: "All fields are required." });
-      return;
-    }
-    if (next.length < 8) {
-      setFormState({ status: "error", message: "New password must be at least 8 characters." });
-      return;
-    }
-    if (next !== confirm) {
-      setFormState({ status: "error", message: "New passwords do not match." });
-      return;
-    }
     if (next === current) {
-      setFormState({ status: "error", message: "New password must differ from the current password." });
+      setFormState({ status: "error", message: formErrors.passwordSameAsCurrent });
       return;
     }
 
@@ -45,10 +56,9 @@ export function PasswordChangeForm() {
 
     const supabase = createClient();
 
-    // Re-authenticate with the current password to verify it before changing.
     const { data: { user } } = await supabase.auth.getUser();
     if (!user?.email) {
-      setFormState({ status: "error", message: "Session expired. Please sign in again." });
+      setFormState({ status: "error", message: formErrors.passwordSessionExpired });
       return;
     }
 
@@ -58,19 +68,14 @@ export function PasswordChangeForm() {
     });
 
     if (signInError) {
-      setFormState({ status: "error", message: "Current password is incorrect." });
+      setFormState({ status: "error", message: formErrors.passwordCurrentIncorrect });
       return;
     }
 
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: next,
-    });
+    const { error: updateError } = await supabase.auth.updateUser({ password: next });
 
     if (updateError) {
-      setFormState({
-        status:  "error",
-        message: updateError.message ?? "Failed to update password. Please try again.",
-      });
+      setFormState({ status: "error", message: formErrors.generic });
       return;
     }
 
@@ -78,9 +83,13 @@ export function PasswordChangeForm() {
     setCurrent("");
     setNext("");
     setConfirm("");
+    setConfirmTouched(false);
   }
 
-  const isPending = formState.status === "pending";
+  const confirmError =
+    confirmTouched && confirm.length > 0 && !confirmMatches
+      ? formErrors.passwordConfirmMismatch
+      : undefined;
 
   return (
     <form onSubmit={handleSubmit}>
@@ -98,8 +107,8 @@ export function PasswordChangeForm() {
           disabled={isPending}
         />
 
-        {/* New password + strength bar */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+        {/* New password + requirements + strength bar */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
           <PasswordField
             id="pw_next"
             label="New Password"
@@ -111,6 +120,75 @@ export function PasswordChangeForm() {
             disabled={isPending}
           />
 
+          {/* Live requirements list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+            {REQUIREMENTS.map((req) => {
+              const met = req.met(next);
+              return (
+                <div
+                  key={req.id}
+                  style={{
+                    display:    "flex",
+                    alignItems: "center",
+                    gap:        "var(--space-2)",
+                  }}
+                >
+                  <span
+                    style={{
+                      display:        "flex",
+                      alignItems:     "center",
+                      justifyContent: "center",
+                      width:          "14px",
+                      height:         "14px",
+                      flexShrink:     0,
+                      color:          met ? "var(--color-success)" : "var(--theme-text-tertiary)",
+                      transition:     `color ${FAST_DURATION}s var(--ease-in-out)`,
+                    }}
+                  >
+                    <AnimatePresence mode="wait" initial={false}>
+                      {met ? (
+                        <motion.span
+                          key="met"
+                          initial={{ scale: 0.6, opacity: 0 }}
+                          animate={{ scale: 1,   opacity: 1 }}
+                          exit={{    scale: 0.6, opacity: 0 }}
+                          transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+                          style={{ display: "flex" }}
+                        >
+                          <Check style={{ width: "12px", height: "12px", strokeWidth: 2.5 }} aria-hidden="true" />
+                        </motion.span>
+                      ) : (
+                        <motion.span
+                          key="unmet"
+                          initial={{ scale: 0.6, opacity: 0 }}
+                          animate={{ scale: 1,   opacity: 1 }}
+                          exit={{    scale: 0.6, opacity: 0 }}
+                          transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+                          style={{ display: "flex" }}
+                        >
+                          {/* Small circle placeholder */}
+                          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                            <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                          </svg>
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </span>
+                  <span
+                    style={{
+                      fontFamily:  "var(--font-sans)",
+                      fontSize:    "var(--text-xs)",
+                      color:       met ? "var(--color-success)" : "var(--theme-text-tertiary)",
+                      transition:  `color ${FAST_DURATION}s var(--ease-in-out)`,
+                    }}
+                  >
+                    {req.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
           {/* Strength bar */}
           <PasswordStrengthBar password={next} />
         </div>
@@ -120,12 +198,16 @@ export function PasswordChangeForm() {
           id="pw_confirm"
           label="Confirm New Password"
           value={confirm}
-          onChange={setConfirm}
+          onChange={(v) => {
+            setConfirm(v);
+            if (!confirmTouched && v.length > 0) setConfirmTouched(true);
+          }}
           show={showNext}
           onToggleShow={() => setShowNext((v) => !v)}
           autoComplete="new-password"
           disabled={isPending}
-          error={confirm.length > 0 && confirm !== next ? "Passwords do not match." : undefined}
+          error={confirmError}
+          matchSuccess={confirmTouched && confirm.length > 0 && confirmMatches}
         />
 
         {/* Feedback */}
@@ -174,9 +256,9 @@ export function PasswordChangeForm() {
           <Button
             variant="primary"
             type="submit"
-            disabled={isPending}
+            disabled={!canSubmit}
             loading={isPending}
-            style={{ boxShadow: isPending ? 'none' : 'var(--shadow-accent-glow)' }}
+            style={{ boxShadow: canSubmit && !isPending ? "var(--shadow-accent-glow)" : "none" }}
           >
             {isPending ? "Updating…" : "Update Password"}
           </Button>
@@ -198,23 +280,23 @@ type PasswordFieldProps = {
   autoComplete?:  string;
   disabled?:      boolean;
   error?:         string;
+  matchSuccess?:  boolean;
 };
 
 function PasswordField({
-  id, label, value, onChange, show, onToggleShow, autoComplete, disabled, error,
+  id, label, value, onChange, show, onToggleShow, autoComplete, disabled, error, matchSuccess,
 }: PasswordFieldProps) {
+  const borderColor = error
+    ? "var(--color-danger)"
+    : matchSuccess
+    ? "var(--color-success)"
+    : "var(--theme-paper-border)";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
       <label
         htmlFor={id}
-        style={{
-          fontFamily:    "var(--font-sans)",
-          fontSize:      "var(--text-2xs)",
-          fontWeight:    "var(--weight-semibold)",
-          letterSpacing: "var(--tracking-widest)",
-          textTransform: "uppercase",
-          color:         "var(--theme-text-tertiary)",
-        }}
+        className="label-micro"
       >
         {label}
       </label>
@@ -227,32 +309,28 @@ function PasswordField({
           onChange={(e) => onChange(e.target.value)}
           autoComplete={autoComplete}
           disabled={disabled}
+          className="eia-input"
           style={{
-            width:        "100%",
-            height:       "36px",
-            padding:      "0 var(--space-10) 0 var(--space-3)",
-            background:   "var(--theme-paper-subtle)",
-            border:       `1px solid ${error ? "var(--color-danger)" : "var(--theme-paper-border)"}`,
-            borderRadius: "var(--radius-sm)",
-            fontFamily:   "var(--font-sans)",
-            fontSize:     "var(--text-sm)",
-            color:        "var(--theme-text-primary)",
-            outline:      "none",
-            boxSizing:    "border-box",
-            transition:   "border-color var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out)",
-            opacity:      disabled ? 0.6 : 1,
+            height:     "36px",
+            padding:    "0 var(--space-10) 0 var(--space-3)",
+            borderColor,
+            opacity:    disabled ? 0.6 : 1,
           }}
           onFocus={(e) => {
-            e.currentTarget.style.borderColor = error ? "var(--color-danger)" : "var(--theme-accent)";
-            e.currentTarget.style.boxShadow   = error
+            e.currentTarget.style.borderColor = error
+              ? "var(--color-danger)"
+              : matchSuccess
+              ? "var(--color-success)"
+              : "var(--theme-accent)";
+            e.currentTarget.style.boxShadow = error
               ? "0 0 0 3px var(--color-danger-light)"
               : "var(--shadow-focus)";
-            e.currentTarget.style.background  = "var(--theme-paper)";
+            e.currentTarget.style.background = "var(--theme-paper)";
           }}
           onBlur={(e) => {
-            e.currentTarget.style.borderColor = error ? "var(--color-danger)" : "var(--theme-paper-border)";
+            e.currentTarget.style.borderColor = borderColor;
             e.currentTarget.style.boxShadow   = "none";
-            e.currentTarget.style.background  = "var(--theme-paper-subtle)";
+            e.currentTarget.style.background   = "var(--theme-paper-subtle)";
           }}
         />
         <button
@@ -294,6 +372,18 @@ function PasswordField({
           }}
         >
           {error}
+        </p>
+      )}
+      {!error && matchSuccess && (
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize:   "var(--text-xs)",
+            color:      "var(--color-success)",
+            margin:     0,
+          }}
+        >
+          Passwords match.
         </p>
       )}
     </div>

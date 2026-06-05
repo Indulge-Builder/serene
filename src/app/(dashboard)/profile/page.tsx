@@ -5,7 +5,6 @@ import { ProfileAvatarSection } from "@/components/profile/ProfileAvatarSection"
 import { ProfileDetailsForm }   from "@/components/profile/ProfileDetailsForm";
 import { ThemeSelector }         from "@/components/profile/ThemeSelector";
 import { PasswordChangeForm }    from "@/components/profile/PasswordChangeForm";
-import { NotificationPreferences } from "@/components/profile/NotificationPreferences";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
@@ -54,10 +53,7 @@ export default async function ProfilePage() {
       >
         {/* Left column — editable sections */}
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
-          <SectionCard
-            title="Personal Details"
-            description="Your name, contact info, and how the team finds you."
-          >
+          <SectionCard title="Personal Details">
             <ProfileDetailsForm profile={profile} />
           </SectionCard>
 
@@ -68,18 +64,8 @@ export default async function ProfilePage() {
             <ThemeSelector currentTheme={profile.theme} profileId={profile.id} />
           </SectionCard>
 
-          <SectionCard
-            title="Security"
-            description="Update your password. Sign out of this device."
-          >
+          <SectionCard title="Security">
             <PasswordChangeForm />
-          </SectionCard>
-
-          <SectionCard
-            title="Notifications"
-            description="Choose how you'd like Eia to reach you."
-          >
-            <NotificationPreferences />
           </SectionCard>
         </div>
 

@@ -6,6 +6,40 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-05 — Profile: settings UX pass + avatars bucket migration
+
+- `/profile` left column reworked: Personal Details migrated to canonical field anatomy
+  (`.eia-input` + `.label-micro`, Required pill replaces `*`, two-part E.164 phone with
+  +91 country-code prefix display and `normalizeToE164` on blur); Appearance now hosts the
+  relocated notification-sound toggle (below swatches, separated by hairline); Security rebuilt
+  with a live requirements checklist + confirm-match indicator (re-auth + browser-client-only
+  flow unchanged; submit disabled until all requirements met and confirm matches).
+  Notifications card and `NotificationPreferences.tsx` removed.
+- New migration `20260605000071_avatars_storage_bucket.sql` provisions the public `avatars`
+  bucket + own-object RLS policies (`avatars_public_read`, `avatars_insert_own`,
+  `avatars_update_own`, `avatars_delete_own`). Fixes avatar upload failing where the bucket
+  was never hand-created. `ProfileAvatarSection` now returns specific size/type/network error
+  copy via `form-errors.ts` (new keys: `avatarTooLarge`, `avatarInvalidType`,
+  `avatarUploadFailed`, `avatarProfileFailed`). New password error keys also added:
+  `passwordCurrentIncorrect`, `passwordSameAsCurrent`, `passwordConfirmMismatch`,
+  `passwordSessionExpired`.
+
+---
+
+## 2026-06-05 — FilterDropdown portal + Add Lead modal layout
+
+- `src/components/ui/FilterDropdown.tsx` — `menuPortal` renders the menu via `createPortal` at `--z-modal-nested` (no modal-body clipping); `fullWidth` stretches the trigger; `hideCountBadge` for form selects. Repositions on scroll/resize/visualViewport. Long item lists cap at 240px with internal scroll so flip-up positioning stays consistent across triggers on the same row (fixes Assign-to opening above while Source/Domain open below).
+- `src/components/leads/AddLeadModal.tsx` — Source, Domain, and Assign to on one 3-column row (2-column for agents: Source + read-only assignee chip). All dropdowns use `menuPortal` + `fullWidth`.
+
+---
+
+## 2026-06-05 — Profile details form hint copy removed
+
+- `src/components/profile/ProfileDetailsForm.tsx` — removed helper text under Phone Number ("Stored as E.164 — India default.") and Username ("Lowercase, numbers, underscores only."). Email read-only hint unchanged.
+- `src/app/(dashboard)/profile/page.tsx` — removed section card descriptions on Personal Details and Security.
+
+---
+
 ## 2026-06-05 — Lead dossier notes card header simplified
 
 - `src/components/leads/LeadNotesInput.tsx` — card header label renamed from "Team Notes" to "Notes"; "Visible to all" subtitle removed. Icon unchanged.

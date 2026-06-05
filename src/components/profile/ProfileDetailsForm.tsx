@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 import { updateProfile }  from "@/lib/actions/profiles";
 import { Button } from "@/components/ui/Button";
+import { normalizeToE164 } from "@/lib/utils/phone";
 import type { Profile }   from "@/lib/types/database";
 import type { ActionResult } from "@/lib/types";
 
@@ -10,26 +11,55 @@ type Props = { profile: Profile };
 
 const initialState: ActionResult<Profile> = { data: null, error: null };
 
+/** Strip the leading +91 (or whatever country code) for display in the number input. */
+function stripCountryCode(phone: string | null | undefined): string {
+  if (!phone) return "";
+  // If stored as E.164 +91XXXXXXXXXX, show just the local digits
+  const match = phone.match(/^\+91(\d+)$/);
+  return match ? (match[1] ?? "") : phone;
+}
+
 export function ProfileDetailsForm({ profile }: Props) {
   const [state, formAction, isPending] = useActionState(updateProfile, initialState);
+  const phoneNumberRef = useRef<HTMLInputElement>(null);
+  const phoneHiddenRef = useRef<HTMLInputElement>(null);
 
   const succeeded = state.data !== null;
+
+  function normalizePhoneOnBlur() {
+    const raw = phoneNumberRef.current?.value ?? "";
+    if (!raw.trim()) {
+      if (phoneHiddenRef.current) phoneHiddenRef.current.value = "";
+      return;
+    }
+    // Prepend +91 if user only typed local digits
+    const withCode = raw.startsWith("+") ? raw : `+91${raw}`;
+    try {
+      const e164 = normalizeToE164(withCode, "IN");
+      if (phoneHiddenRef.current) phoneHiddenRef.current.value = e164;
+    } catch {
+      // Leave hidden value as-is; server Zod will surface phoneInvalid
+      if (phoneHiddenRef.current) phoneHiddenRef.current.value = withCode;
+    }
+  }
 
   return (
     <form action={formAction}>
       <input type="hidden" name="id" value={profile.id} />
+      {/* Phone is normalised to E.164 on blur; hidden input carries the canonical value */}
+      <input ref={phoneHiddenRef} type="hidden" name="phone"
+        defaultValue={profile.phone ?? ""} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
 
-        {/* Name + Phone — two columns on wider layouts */}
-        <div
-          style={{
-            display:             "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap:                 "var(--space-4)",
-          }}
-        >
-          <Field label="Full Name" htmlFor="pf_full_name" required>
+        {/* Row 1 — Full Name + Phone */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}
+          className="profile-two-col">
+          <Field
+            label="Full Name"
+            htmlFor="pf_full_name"
+            required
+          >
             <input
               id="pf_full_name"
               name="full_name"
@@ -37,39 +67,54 @@ export function ProfileDetailsForm({ profile }: Props) {
               defaultValue={profile.full_name}
               required
               autoComplete="name"
-              style={inputStyle}
-              onFocus={focusStyle}
-              onBlur={blurStyle}
+              className="eia-input"
+              style={{ height: "36px", padding: "0 var(--space-3)" }}
             />
           </Field>
 
           <Field
             label="Phone Number"
-            htmlFor="pf_phone"
-            hint="Stored as E.164 — India default."
+            htmlFor="pf_phone_number"
           >
-            <input
-              id="pf_phone"
-              name="phone"
-              type="tel"
-              defaultValue={profile.phone ?? ""}
-              placeholder="+91 98765 43210"
-              autoComplete="tel"
-              style={inputStyle}
-              onFocus={focusStyle}
-              onBlur={blurStyle}
-            />
+            <div style={{ display: "flex", gap: "var(--space-2)" }}>
+              {/* Country code — read-only display */}
+              <div
+                style={{
+                  display:        "flex",
+                  alignItems:     "center",
+                  height:         "36px",
+                  padding:        "0 var(--space-3)",
+                  background:     "var(--theme-paper-subtle)",
+                  border:         "1px solid var(--theme-paper-border)",
+                  borderRadius:   "var(--radius-sm)",
+                  fontFamily:     "var(--font-sans)",
+                  fontSize:       "var(--text-sm)",
+                  color:          "var(--theme-text-tertiary)",
+                  flexShrink:     0,
+                  whiteSpace:     "nowrap",
+                  userSelect:     "none",
+                }}
+              >
+                +91
+              </div>
+              <input
+                id="pf_phone_number"
+                ref={phoneNumberRef}
+                type="tel"
+                defaultValue={stripCountryCode(profile.phone)}
+                placeholder="98765 43210"
+                autoComplete="tel-national"
+                className="eia-input"
+                style={{ height: "36px", padding: "0 var(--space-3)", flex: 1 }}
+                onBlur={normalizePhoneOnBlur}
+              />
+            </div>
           </Field>
         </div>
 
-        {/* Job title + Username — two columns */}
-        <div
-          style={{
-            display:             "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap:                 "var(--space-4)",
-          }}
-        >
+        {/* Row 2 — Job Title + Username */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}
+          className="profile-two-col">
           <Field label="Job Title" htmlFor="pf_job_title">
             <input
               id="pf_job_title"
@@ -77,16 +122,14 @@ export function ProfileDetailsForm({ profile }: Props) {
               type="text"
               defaultValue={profile.job_title ?? ""}
               placeholder="e.g. Senior Concierge Agent"
-              style={inputStyle}
-              onFocus={focusStyle}
-              onBlur={blurStyle}
+              className="eia-input"
+              style={{ height: "36px", padding: "0 var(--space-3)" }}
             />
           </Field>
 
           <Field
             label="Username"
             htmlFor="pf_username"
-            hint="Lowercase, numbers, underscores only."
           >
             <input
               id="pf_username"
@@ -95,32 +138,38 @@ export function ProfileDetailsForm({ profile }: Props) {
               defaultValue={profile.username ?? ""}
               placeholder="e.g. priya_sharma"
               autoComplete="username"
-              style={inputStyle}
-              onFocus={focusStyle}
-              onBlur={blurStyle}
+              className="eia-input"
+              style={{ height: "36px", padding: "0 var(--space-3)" }}
             />
           </Field>
         </div>
 
-        {/* Email — read-only */}
+        {/* Email — read-only, full width */}
         <Field
           label="Email Address"
           htmlFor="pf_email"
           hint="Email changes require contacting your administrator."
         >
-          <input
+          <div
             id="pf_email"
-            type="email"
-            value={profile.email}
-            readOnly
             aria-readonly="true"
             style={{
-              ...inputStyle,
-              color:      "var(--theme-text-tertiary)",
-              cursor:     "default",
-              userSelect: "all",
+              height:       "36px",
+              display:      "flex",
+              alignItems:   "center",
+              padding:      "0 var(--space-3)",
+              background:   "var(--theme-paper-subtle)",
+              border:       "1px solid var(--theme-paper-border)",
+              borderRadius: "var(--radius-sm)",
+              fontFamily:   "var(--font-sans)",
+              fontSize:     "var(--text-sm)",
+              color:        "var(--theme-text-tertiary)",
+              userSelect:   "all",
+              cursor:       "text",
             }}
-          />
+          >
+            {profile.email}
+          </div>
         </Field>
 
         {/* Feedback */}
@@ -171,9 +220,9 @@ export function ProfileDetailsForm({ profile }: Props) {
             type="submit"
             disabled={isPending}
             loading={isPending}
-            style={{ boxShadow: isPending ? 'none' : 'var(--shadow-accent-glow)' }}
+            style={{ boxShadow: isPending ? "none" : "var(--shadow-accent-glow)" }}
           >
-            {isPending ? 'Saving…' : 'Save Changes'}
+            {isPending ? "Saving…" : "Save Changes"}
           </Button>
         </div>
       </div>
@@ -196,22 +245,31 @@ function Field({ label, htmlFor, required, hint, children }: FieldProps) {
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
       <label
         htmlFor={htmlFor}
+        className="label-micro"
         style={{
-          fontFamily:    "var(--font-sans)",
-          fontSize:      "var(--text-2xs)",
-          fontWeight:    "var(--weight-semibold)",
-          letterSpacing: "var(--tracking-widest)",
-          textTransform: "uppercase",
-          color:         "var(--theme-text-tertiary)",
-          display:       "flex",
-          gap:           "var(--space-1)",
-          alignItems:    "center",
+          display:    "flex",
+          alignItems: "center",
+          gap:        "var(--space-2)",
         }}
       >
         {label}
         {required && (
-          <span aria-hidden="true" style={{ color: "var(--color-danger)", lineHeight: 1 }}>
-            *
+          <span
+            style={{
+              fontSize:     "var(--text-2xs)",
+              fontWeight:   "var(--weight-medium)",
+              background:   "var(--theme-paper-subtle)",
+              border:       "1px solid var(--theme-paper-border)",
+              borderRadius: "var(--radius-full)",
+              padding:      "0 var(--space-2)",
+              lineHeight:   "1.6",
+              color:        "var(--theme-text-tertiary)",
+              textTransform: "none",
+              letterSpacing: "0",
+              marginLeft:   "auto",
+            }}
+          >
+            Required
           </span>
         )}
       </label>
@@ -230,33 +288,4 @@ function Field({ label, htmlFor, required, hint, children }: FieldProps) {
       )}
     </div>
   );
-}
-
-// ─── Shared input styles ──────────────────────────────────
-
-const inputStyle: React.CSSProperties = {
-  width:        "100%",
-  height:       "36px",
-  padding:      "0 var(--space-3)",
-  background:   "var(--theme-paper-subtle)",
-  border:       "1px solid var(--theme-paper-border)",
-  borderRadius: "var(--radius-sm)",
-  fontFamily:   "var(--font-sans)",
-  fontSize:     "var(--text-sm)",
-  color:        "var(--theme-text-primary)",
-  outline:      "none",
-  boxSizing:    "border-box",
-  transition:   "border-color var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out)",
-};
-
-function focusStyle(e: React.FocusEvent<HTMLInputElement>) {
-  e.currentTarget.style.borderColor = "var(--theme-accent)";
-  e.currentTarget.style.boxShadow   = "var(--shadow-focus)";
-  e.currentTarget.style.background  = "var(--theme-paper)";
-}
-
-function blurStyle(e: React.FocusEvent<HTMLInputElement>) {
-  e.currentTarget.style.borderColor = "var(--theme-paper-border)";
-  e.currentTarget.style.boxShadow   = "none";
-  e.currentTarget.style.background  = "var(--theme-paper-subtle)";
 }

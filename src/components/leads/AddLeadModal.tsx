@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useTransition, useEffect } from 'react';
+import { useState, useTransition, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { FilterDropdown } from '@/components/ui/FilterDropdown';
 import { Modal } from '@/components/ui/modal';
 import { createManualLead, listAgentsForDomain } from '@/lib/actions/leads';
 import { CreateManualLeadSchema } from '@/lib/validations/lead-schema';
-import { DOMAIN_LABELS, GIA_DOMAINS } from '@/lib/constants/domains';
+import { DOMAIN_LABELS, GIA_DOMAIN_FILTER_ITEMS } from '@/lib/constants/domains';
 import { LEAD_SOURCE_OPTIONS } from '@/lib/constants/lead-sources';
 import type { AppDomain, UserRole } from '@/lib/types/database';
 
@@ -82,23 +83,6 @@ const fieldError: React.CSSProperties = {
   marginTop: 'var(--space-1)',
 };
 
-function useFocusHandlers(ref: React.RefObject<HTMLInputElement | HTMLSelectElement | null>) {
-  return {
-    onFocus: () => {
-      if (ref.current) {
-        ref.current.style.borderColor = 'var(--theme-accent)';
-        ref.current.style.boxShadow   = 'var(--shadow-focus)';
-      }
-    },
-    onBlur: () => {
-      if (ref.current) {
-        ref.current.style.borderColor = 'var(--theme-paper-border)';
-        ref.current.style.boxShadow   = 'none';
-      }
-    },
-  };
-}
-
 // ─────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────
@@ -141,7 +125,30 @@ export function AddLeadModal({
     },
   });
 
-  const watchedDomain = watch('domain');
+  const watchedSource     = watch('source');
+  const watchedDomain     = watch('domain');
+  const watchedAssignedTo = watch('assigned_to');
+
+  const sourceLabel = useMemo(() => {
+    if (!watchedSource) return 'Select source…';
+    return LEAD_SOURCE_OPTIONS.find((o) => o.id === watchedSource)?.label ?? watchedSource;
+  }, [watchedSource]);
+
+  const domainLabel = useMemo(
+    () => DOMAIN_LABELS[watchedDomain as AppDomain] ?? watchedDomain,
+    [watchedDomain],
+  );
+
+  const agentItems = useMemo(
+    () => agents.map((a) => ({ id: a.id, label: a.full_name })),
+    [agents],
+  );
+
+  const assigneeLabel = useMemo(() => {
+    if (agents.length === 0) return 'No active agents in this domain';
+    const match = agents.find((a) => a.id === watchedAssignedTo);
+    return match?.full_name ?? 'Select agent…';
+  }, [agents, watchedAssignedTo]);
 
   // When domain changes (manager/admin/founder), refetch agents for the new domain.
   // This is the only permitted useEffect + data refetch as per spec.
@@ -227,14 +234,19 @@ export function AddLeadModal({
   // ─────────────────────────────────────────────
   // Shared input focus style handlers (inline)
   // ─────────────────────────────────────────────
-  function focusOn(e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) {
+  function focusOn(e: React.FocusEvent<HTMLInputElement>) {
     e.currentTarget.style.borderColor = 'var(--theme-accent)';
     e.currentTarget.style.boxShadow   = 'var(--shadow-focus)';
   }
-  function focusOff(e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) {
+  function focusOff(e: React.FocusEvent<HTMLInputElement>) {
     e.currentTarget.style.borderColor = 'var(--theme-paper-border)';
     e.currentTarget.style.boxShadow   = 'none';
   }
+
+  const dropdownWrapStyle = {
+    opacity:       isPending ? 0.6 : 1,
+    pointerEvents: isPending ? 'none' as const : 'auto' as const,
+  };
 
   return (
     <Modal
@@ -390,165 +402,105 @@ export function AddLeadModal({
           )}
         </div>
 
-        {/* Row 4: Source */}
-        <div>
-          <label htmlFor="al-source" style={fieldLabel}>
-            Source
-          </label>
-          <div style={{ position: 'relative' }}>
-            <select
-              id="al-source"
-              disabled={isPending}
-              {...register('source')}
-              style={{
-                ...fieldInput,
-                paddingRight:     'var(--space-8)',
-                appearance:       'none',
-                WebkitAppearance: 'none',
-                cursor:           isPending ? 'not-allowed' : 'pointer',
-                opacity:          isPending ? 0.6 : 1,
-              }}
-              onFocus={focusOn}
-              onBlur={focusOff}
-            >
-              <option value="">— Select source —</option>
-              {LEAD_SOURCE_OPTIONS.map(({ id, label }) => (
-                <option key={id} value={id}>{label}</option>
-              ))}
-            </select>
-            <ChevronDown
-              style={{
-                position:      'absolute',
-                right:         'var(--space-3)',
-                top:           '50%',
-                transform:     'translateY(-50%)',
-                width:         '0.875rem',
-                height:        '0.875rem',
-                color:         'var(--theme-text-tertiary)',
-                pointerEvents: 'none',
-                strokeWidth:   1.5,
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Row 5: Domain (manager/admin/founder only) */}
-        {canChangeDomain && (
-          <div>
-            <label htmlFor="al-domain" style={fieldLabel}>
-              Domain
-            </label>
-            <div style={{ position: 'relative' }}>
-              <select
-                id="al-domain"
-                disabled={isPending}
-                {...register('domain')}
-                style={{
-                  ...fieldInput,
-                  paddingRight:     'var(--space-8)',
-                  appearance:       'none',
-                  WebkitAppearance: 'none',
-                  cursor:           isPending ? 'not-allowed' : 'pointer',
-                  opacity:          isPending ? 0.6 : 1,
-                }}
-                onFocus={focusOn}
-                onBlur={focusOff}
-              >
-                {GIA_DOMAINS.map((d) => (
-                  <option key={d} value={d}>
-                    {DOMAIN_LABELS[d]}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                style={{
-                  position:      'absolute',
-                  right:         'var(--space-3)',
-                  top:           '50%',
-                  transform:     'translateY(-50%)',
-                  width:         '0.875rem',
-                  height:        '0.875rem',
-                  color:         'var(--theme-text-tertiary)',
-                  pointerEvents: 'none',
-                  strokeWidth:   1.5,
-                }}
+        {/* Row 4: Source · Domain · Assign to */}
+        <div
+          style={{
+            display:             'grid',
+            gridTemplateColumns: canChangeDomain
+              ? 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)'
+              : 'minmax(0, 1fr) minmax(0, 1fr)',
+            gap:                 'var(--space-4)',
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <span id="al-source-label" style={fieldLabel}>
+              Source
+            </span>
+            <div aria-labelledby="al-source-label" style={dropdownWrapStyle}>
+              <FilterDropdown
+                label={sourceLabel}
+                items={LEAD_SOURCE_OPTIONS}
+                selected={watchedSource ? [watchedSource] : []}
+                onChange={(next) => setValue('source', next[0] ?? '')}
+                fullWidth
+                menuPortal
+                hideCountBadge
               />
             </div>
-            {errors.domain && (
-              <p style={fieldError}>{errors.domain.message}</p>
+          </div>
+
+          {canChangeDomain && (
+            <div style={{ minWidth: 0 }}>
+              <span id="al-domain-label" style={fieldLabel}>
+                Domain
+              </span>
+              <div aria-labelledby="al-domain-label" style={dropdownWrapStyle}>
+                <FilterDropdown
+                  label={domainLabel}
+                  items={GIA_DOMAIN_FILTER_ITEMS}
+                  selected={watchedDomain ? [watchedDomain] : []}
+                  onChange={(next) => setValue('domain', next[0] ?? callerProfile.domain)}
+                  fullWidth
+                  menuPortal
+                  hideCountBadge
+                />
+              </div>
+              {errors.domain && (
+                <p style={fieldError}>{errors.domain.message}</p>
+              )}
+            </div>
+          )}
+
+          <div style={{ minWidth: 0 }}>
+            <span id="al-assigned-to-label" style={fieldLabel}>
+              Assign to
+            </span>
+            {canChangeAssignee ? (
+              <div
+                aria-labelledby="al-assigned-to-label"
+                style={{
+                  ...dropdownWrapStyle,
+                  pointerEvents: isPending || agents.length === 0 ? 'none' : dropdownWrapStyle.pointerEvents,
+                  opacity:       isPending || agents.length === 0 ? 0.6 : dropdownWrapStyle.opacity,
+                }}
+              >
+                <FilterDropdown
+                  label={assigneeLabel}
+                  items={agentItems}
+                  selected={watchedAssignedTo ? [watchedAssignedTo] : []}
+                  onChange={(next) => setValue('assigned_to', next[0] ?? '')}
+                  fullWidth
+                  menuPortal
+                  hideCountBadge
+                />
+              </div>
+            ) : (
+              <div
+                style={{
+                  display:      'inline-flex',
+                  alignItems:   'center',
+                  height:       '2.25rem',
+                  paddingLeft:  'var(--space-3)',
+                  paddingRight: 'var(--space-3)',
+                  borderRadius: 'var(--radius-md)',
+                  border:       '1px solid var(--theme-paper-border)',
+                  background:   'var(--theme-paper-subtle)',
+                  fontSize:     'var(--text-sm)',
+                  color:        'var(--theme-text-secondary)',
+                  fontWeight:   'var(--weight-medium)',
+                  maxWidth:     '100%',
+                  overflow:     'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace:   'nowrap',
+                }}
+              >
+                {callerProfile.full_name}
+              </div>
+            )}
+            {errors.assigned_to && (
+              <p style={fieldError}>{errors.assigned_to.message}</p>
             )}
           </div>
-        )}
-
-        {/* Row 6: Assign to */}
-        <div>
-          <label htmlFor="al-assigned-to" style={fieldLabel}>
-            Assign to
-          </label>
-          {canChangeAssignee ? (
-            <div style={{ position: 'relative' }}>
-              <select
-                id="al-assigned-to"
-                disabled={isPending || agents.length === 0}
-                {...register('assigned_to')}
-                style={{
-                  ...fieldInput,
-                  paddingRight:     'var(--space-8)',
-                  appearance:       'none',
-                  WebkitAppearance: 'none',
-                  cursor:           isPending || agents.length === 0 ? 'not-allowed' : 'pointer',
-                  opacity:      isPending ? 0.6 : 1,
-                }}
-                onFocus={focusOn}
-                onBlur={focusOff}
-              >
-                {agents.length === 0 ? (
-                  <option value="">No active agents in this domain</option>
-                ) : (
-                  agents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.full_name}
-                    </option>
-                  ))
-                )}
-              </select>
-              <ChevronDown
-                style={{
-                  position:      'absolute',
-                  right:         'var(--space-3)',
-                  top:           '50%',
-                  transform:     'translateY(-50%)',
-                  width:         '0.875rem',
-                  height:        '0.875rem',
-                  color:         'var(--theme-text-tertiary)',
-                  pointerEvents: 'none',
-                  strokeWidth:   1.5,
-                }}
-              />
-            </div>
-          ) : (
-            /* Agent: read-only display chip */
-            <div
-              style={{
-                display:      'inline-flex',
-                alignItems:   'center',
-                height:       '2rem',
-                paddingLeft:  'var(--space-3)',
-                paddingRight: 'var(--space-3)',
-                borderRadius: 'var(--radius-full)',
-                border:       '1px solid var(--theme-paper-border)',
-                background:   'var(--theme-paper-subtle)',
-                fontSize:     'var(--text-sm)',
-                color:        'var(--theme-text-secondary)',
-                fontWeight:   'var(--weight-medium)',
-              }}
-            >
-              {callerProfile.full_name}
-            </div>
-          )}
-          {errors.assigned_to && (
-            <p style={fieldError}>{errors.assigned_to.message}</p>
-          )}
         </div>
 
         {/* Server error */}
