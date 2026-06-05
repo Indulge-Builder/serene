@@ -17,6 +17,8 @@ Fetches `getCurrentProfile()`, then a `try/catch`-wrapped `Promise.all` of `getD
 
 **RSC rule (perf-01):** Summary widgets must not POST on initial load. `AgentTasksWidget`, `AgentActivityWidget`, `ManagerLeadStatusWidget`, `ManagerCampaignWidget` skip mount fetch when `initialData` is present; refresh buttons still call server actions. `ManagerLeadVolumeWidget` keeps its own period-toggle fetch (volume excluded from RPC).
 
+**`initialData` null-coercion (invariant):** `page.tsx` always coerces `rpcData.agent_tasks ?? []`, `rpcData.agent_activity ?? []`, and `rpcData.campaigns ?? []` before spreading into `initialData`. PostgreSQL's `jsonb_agg()` returns NULL on zero matching rows (e.g. an agent with no active tasks). The current RPC uses `COALESCE(jsonb_agg(...), '[]'::jsonb)` which prevents null today, but the page-layer coercion is the authoritative defence — a widget's `seed !== null` guard would fail on `null`, firing a POST on initial load. `lead_status` is exempt: its `jsonb_build_object(...)` wrapper means it is always an object, never null. Always pass an empty array for the three array keys — never `null` or `undefined`.
+
 **Invariant 12 — sanitizeStored:** filters on BOTH `isValidWidgetId(id)` AND `WIDGET_MAP[id].roles.includes(role)`. Placements failing the role check are silently dropped — an agent demoted from manager loses manager-only widgets on next hydration.
 
 **Invariant 13 — admin/founder seed:** `p_initial_domain='onboarding'` always passed from page.tsx for admin/founder. `lead_volume` is `null` in `initialData` for admin/founder. Page-level `Promise.all` wrapped in `try/catch`; on error renders zeroed `initialData` (never throws, never redirects).

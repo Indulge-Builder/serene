@@ -30,6 +30,8 @@ export interface FilterDropdownProps {
   menuPortal?: boolean;
   /** Hide the numeric active-count badge on the trigger (form selects) */
   hideCountBadge?: boolean;
+  /** When false, open state does not switch trigger border to accent (filter bars). */
+  accentBorderOnOpen?: boolean;
 }
 
 const MENU_ITEM_HEIGHT = 36;
@@ -50,6 +52,7 @@ export function FilterDropdown({
   fullWidth = false,
   menuPortal = false,
   hideCountBadge = false,
+  accentBorderOnOpen = true,
 }: FilterDropdownProps) {
   const [open, setOpen] = React.useState(false);
   const [mounted, setMounted] = useState(false);
@@ -148,6 +151,8 @@ export function FilterDropdown({
 
   const activeCount = selected.length;
   const showCountBadge = activeCount > 0 && !hideCountBadge;
+  const triggerAccentBorder =
+    activeCount > 0 || (accentBorderOnOpen && open);
 
   const menuPanelStyle: React.CSSProperties = menuPortal
     ? {
@@ -358,7 +363,7 @@ export function FilterDropdown({
           height:         '2.25rem',
           padding:        'var(--space-1) var(--space-3)',
           background:     activeCount > 0 ? 'var(--theme-accent-surface)' : 'var(--theme-paper-subtle)',
-          border:         `1px solid ${(open || activeCount > 0) ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
+          border:         `1px solid ${triggerAccentBorder ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
           borderRadius:   'var(--radius-md)',
           fontSize:       'var(--text-sm)',
           fontFamily:     'var(--font-sans)',

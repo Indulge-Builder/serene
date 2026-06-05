@@ -68,6 +68,12 @@ body {
   box-shadow: var(--shadow-focus);
 }
 
+/* Filter bars — keep paper border on focus (LeadsFilters passes this class) */
+.eia-input.eia-input--no-focus-ring:focus-visible {
+  border-color: var(--theme-paper-border);
+  box-shadow: none;
+}
+
 /* ================================================================
    AUTH CANVAS ATMOSPHERE
    GPU-composited only: transform + opacity.

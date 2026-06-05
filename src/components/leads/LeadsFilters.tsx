@@ -345,14 +345,16 @@ export function LeadsFilters({
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-      {/* Row 1 — search + action buttons */}
+    <>
       <div
         style={{
-          display:     "flex",
-          alignItems:  "center",
-          gap:         "var(--space-3)",
-          flexWrap:    "nowrap",
+          display:                 "flex",
+          alignItems:              "center",
+          gap:                     "var(--space-2)",
+          flexWrap:                "nowrap",
+          overflowX:               "auto",
+          scrollbarWidth:          "none",
+          WebkitOverflowScrolling: "touch",
         }}
       >
         {/* Filter icon + committed count badge */}
@@ -382,72 +384,28 @@ export function LeadsFilters({
           )}
         </div>
 
-        {/* Search — grows to fill */}
         <SearchBar
           value={searchInput}
           onChange={setSearchInput}
           placeholder="Search name, phone, email…"
           size="sm"
-          style={{ flex: 1, minWidth: 0 }}
+          suppressFocusAccent
+          style={{ flex: "1 1 180px", maxWidth: "280px" }}
         />
 
-        {/* Apply button — animated in/out when isDirty toggles */}
-        <AnimatePresence>
-          {isDirty && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.15, ease: EASE_OUT_EXPO }}
-              style={{ flexShrink: 0 }}
-            >
-              <Button variant="primary" size="sm" onClick={applyFilters}>
-                Apply
-              </Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div
+          style={{
+            width:      1,
+            height:     "1.25rem",
+            flexShrink: 0,
+            background: "var(--theme-paper-border)",
+          }}
+        />
 
-        {/* Clear all — reflects committed state, not draft */}
-        {committedCount > 0 && (
-          <button
-            type="button"
-            onClick={clearAll}
-            style={{
-              display:    "inline-flex",
-              alignItems: "center",
-              gap:        "var(--space-1)",
-              height:     "2.25rem",
-              padding:    "0 var(--space-2)",
-              border:     "none",
-              background: "transparent",
-              color:      "var(--theme-text-tertiary)",
-              fontSize:   "var(--text-sm)",
-              fontFamily: "var(--font-sans)",
-              cursor:     "pointer",
-              transition: "color var(--duration-fast) var(--ease-in-out)",
-              flexShrink: 0,
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--theme-text-primary)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--theme-text-tertiary)"; }}
-          >
-            <X style={{ width: "0.875rem", height: "0.875rem", strokeWidth: 1.5 }} />
-            <span>Clear</span>
-          </button>
-        )}
-      </div>
-
-      {/* Row 2 — filter dropdowns (flexWrap: nowrap so panels float above layout) */}
-      <div
-        style={{
-          display:    "flex",
-          alignItems: "center",
-          gap:        "var(--space-2)",
-          flexWrap:   "nowrap",
-        }}
-      >
         {/* Status — multi-select */}
         <FilterDropdown
+          menuPortal
+          accentBorderOnOpen={false}
           style={{ flexShrink: 0 }}
           label="Status"
           items={statusItems}
@@ -458,6 +416,8 @@ export function LeadsFilters({
 
         {/* Outcome — multi-select */}
         <FilterDropdown
+          menuPortal
+          accentBorderOnOpen={false}
           style={{ flexShrink: 0 }}
           label="Outcome"
           items={outcomeItems}
@@ -466,9 +426,48 @@ export function LeadsFilters({
           onChange={(next) => setDraft((d) => ({ ...d, outcome: next as CallOutcome[] }))}
         />
 
+        {/* Source — single select */}
+        <FilterDropdown
+          menuPortal
+          accentBorderOnOpen={false}
+          style={{ flexShrink: 0 }}
+          label="Source"
+          items={sourceItems}
+          selected={draft.source ? [draft.source] : []}
+          onChange={(next) => setDraft((d) => ({ ...d, source: next[0] ?? null }))}
+        />
+
+        {/* Campaign — single select, only when options exist */}
+        {campaignItems.length > 0 && (
+          <FilterDropdown
+            menuPortal
+            accentBorderOnOpen={false}
+            style={{ flexShrink: 0 }}
+            label="Campaign"
+            items={campaignItems}
+            selected={draft.campaign ? [draft.campaign] : []}
+            onChange={(next) => setDraft((d) => ({ ...d, campaign: next[0] ?? null }))}
+          />
+        )}
+
+        {/* Agent — single select, absent for agent role */}
+        {showAgentFilter && agentItems.length > 0 && (
+          <FilterDropdown
+            menuPortal
+            accentBorderOnOpen={false}
+            style={{ flexShrink: 0 }}
+            label="Agent"
+            items={agentItems}
+            selected={draft.agent_id ? [draft.agent_id] : []}
+            onChange={(next) => setDraft((d) => ({ ...d, agent_id: next[0] ?? null }))}
+          />
+        )}
+
         {/* Domain — single select, admin/founder only */}
         {showDomainFilter && (
           <FilterDropdown
+            menuPortal
+            accentBorderOnOpen={false}
             style={{ flexShrink: 0 }}
             label="Domain"
             items={GIA_DOMAIN_FILTER_ITEMS}
@@ -481,37 +480,6 @@ export function LeadsFilters({
                 campaign: null,
               }))
             }
-          />
-        )}
-
-        {/* Source — single select */}
-        <FilterDropdown
-          style={{ flexShrink: 0 }}
-          label="Source"
-          items={sourceItems}
-          selected={draft.source ? [draft.source] : []}
-          onChange={(next) => setDraft((d) => ({ ...d, source: next[0] ?? null }))}
-        />
-
-        {/* Campaign — single select, only when options exist */}
-        {campaignItems.length > 0 && (
-          <FilterDropdown
-            style={{ flexShrink: 0 }}
-            label="Campaign"
-            items={campaignItems}
-            selected={draft.campaign ? [draft.campaign] : []}
-            onChange={(next) => setDraft((d) => ({ ...d, campaign: next[0] ?? null }))}
-          />
-        )}
-
-        {/* Agent — single select, absent for agent role */}
-        {showAgentFilter && agentItems.length > 0 && (
-          <FilterDropdown
-            style={{ flexShrink: 0 }}
-            label="Agent"
-            items={agentItems}
-            selected={draft.agent_id ? [draft.agent_id] : []}
-            onChange={(next) => setDraft((d) => ({ ...d, agent_id: next[0] ?? null }))}
           />
         )}
 
@@ -530,7 +498,7 @@ export function LeadsFilters({
               height:       "2.25rem",
               padding:      "var(--space-1) var(--space-3)",
               background:   rangeActive ? "var(--theme-accent-surface)" : "var(--theme-paper-subtle)",
-              border:       `1px solid ${(rangeOpen || rangeActive) ? "var(--theme-accent)" : "var(--theme-paper-border)"}`,
+              border:       `1px solid ${rangeActive ? "var(--theme-accent)" : "var(--theme-paper-border)"}`,
               borderRadius: "var(--radius-md)",
               fontSize:     "var(--text-sm)",
               fontFamily:   "var(--font-sans)",
@@ -575,13 +543,63 @@ export function LeadsFilters({
             />
           </button>
         </div>
+
+        {/* Apply button — animated in/out when isDirty toggles */}
+        <AnimatePresence>
+          {isDirty && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.15, ease: EASE_OUT_EXPO }}
+              style={{ flexShrink: 0 }}
+            >
+              <Button
+                variant="primary"
+                size="sm"
+                suppressFocusRing
+                onClick={applyFilters}
+              >
+                Apply
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Clear all — reflects committed state, not draft */}
+        {committedCount > 0 && (
+          <button
+            type="button"
+            onClick={clearAll}
+            style={{
+              display:    "inline-flex",
+              alignItems: "center",
+              gap:        "var(--space-1)",
+              height:     "2.25rem",
+              padding:    "0 var(--space-2)",
+              border:     "none",
+              background: "transparent",
+              color:      "var(--theme-text-tertiary)",
+              fontSize:   "var(--text-sm)",
+              fontFamily: "var(--font-sans)",
+              cursor:     "pointer",
+              transition: "color var(--duration-fast) var(--ease-in-out)",
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--theme-text-primary)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--theme-text-tertiary)"; }}
+          >
+            <X style={{ width: "0.875rem", height: "0.875rem", strokeWidth: 1.5 }} />
+            <span>Clear</span>
+          </button>
+        )}
       </div>
 
       {/* Range panel portal */}
       {mounted && typeof document !== "undefined"
         ? createPortal(rangePanel, document.body)
         : null}
-    </div>
+    </>
   );
 }
 

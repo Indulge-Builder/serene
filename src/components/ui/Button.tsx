@@ -14,6 +14,8 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   iconLeft?: LucideIcon;
   iconRight?: LucideIcon;
   children?: React.ReactNode;
+  /** When true, focus does not add --shadow-focus (filter bar actions). */
+  suppressFocusRing?: boolean;
 }
 
 // ✓ spec — design-dna.md §5.01 size table
@@ -141,6 +143,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
     disabled,
     children,
     style,
+    suppressFocusRing = false,
     ...rest
   },
   ref,
@@ -200,20 +203,30 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
         }
         rest.onMouseLeave?.(e);
       }}
-      onFocus={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.boxShadow = 'var(--shadow-focus)';
-        rest.onFocus?.(e);
-      }}
-      onBlur={(e) => {
-        const el = e.currentTarget as HTMLButtonElement;
-        const restShadow = (variantStyle.rest as Record<string, string | undefined>).boxShadow;
-        if (restShadow) {
-          el.style.boxShadow = restShadow;
-        } else {
-          el.style.removeProperty('box-shadow');
-        }
-        rest.onBlur?.(e);
-      }}
+      onFocus={
+        suppressFocusRing
+          ? rest.onFocus
+          : (e) => {
+              (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                'var(--shadow-focus)';
+              rest.onFocus?.(e);
+            }
+      }
+      onBlur={
+        suppressFocusRing
+          ? rest.onBlur
+          : (e) => {
+              const el = e.currentTarget as HTMLButtonElement;
+              const restShadow = (variantStyle.rest as Record<string, string | undefined>)
+                .boxShadow;
+              if (restShadow) {
+                el.style.boxShadow = restShadow;
+              } else {
+                el.style.removeProperty('box-shadow');
+              }
+              rest.onBlur?.(e);
+            }
+      }
     >
       {loading ? (
         <Spinner size="sm" canvas={variant === 'primary'} /> // ✓ spec — width preserved, replaces iconLeft slot

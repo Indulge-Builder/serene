@@ -81,6 +81,9 @@ export default async function DashboardPage({
     ]);
     initialData = {
       ...rpcData,
+      agent_tasks:       rpcData.agent_tasks    ?? [],
+      agent_activity:    rpcData.agent_activity ?? [],
+      campaigns:         rpcData.campaigns      ?? [],
       lead_volume:       managerVolume,
       lead_volume_multi: multiVolume,
     };

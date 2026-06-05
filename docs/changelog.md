@@ -6,6 +6,41 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-05 — Lead Volume widget: count moved to header right
+
+- `ManagerLeadVolumeWidget` — removed "N leads in range" subtitle; total now sits top-right as mono count with a slow accent dot pulse (`eia-page-dot-blink`); fades while refetching.
+
+---
+
+## 2026-06-05 — Page-level loading.tsx skeletons added (perceived navigation fix)
+
+- `/dashboard` — loading.tsx skeleton added (bento grid outline, 4 widget blocks).
+- `/leads` — loading.tsx skeleton added (filter bar strip + 8 table row skeletons).
+- `/tasks` — loading.tsx skeleton added (header + tab selector + calendar + task list).
+- `/deals` — loading.tsx skeleton added (filter bar + summary strip + 6 card rows).
+
+---
+
+## 2026-06-05 — Dashboard: fix AgentTasksWidget mount POST regression
+
+- Dashboard — fix AgentTasksWidget mount POST regression; `page.tsx` now coerces `rpcData.agent_tasks ?? []`, `rpcData.agent_activity ?? []`, and `rpcData.campaigns ?? []` before spreading into `initialData`. PostgreSQL's `jsonb_agg()` returns NULL on zero matching rows; the RPC's `COALESCE` guards against this, but the page-layer coercion makes the null-safety explicit and resilient to any future RPC revision that drops a `COALESCE`.
+
+---
+
+## 2026-06-05 — Dashboard: remove Live pill from My Tasks widget
+
+- `AgentTasksWidget` — removed the green "Live" status pill from the widget header; unused `eia-tasks-live-pulse` keyframe dropped.
+
+---
+
+## 2026-06-05 — LeadsFilters: single horizontal row (layout pass)
+
+- LeadsFilters: two-row layout collapsed to single horizontal row with search/chip divider and trailing Apply/Clear — 2026-06-05, layout pass.
+- LeadsFilters: `menuPortal` on all `FilterDropdown` chips — fixes filter menus clipped by horizontal scroll container.
+- Leads filter bar: suppress focus accent ring on search, filter chips (`accentBorderOnOpen={false}`), Range open state, and Apply (`suppressFocusAccent` / `suppressFocusRing`).
+
+---
+
 ## 2026-06-05 — Tasks · group visibility flattened to creator + subtask assignee for all roles; Gia agents unblocked from Group tab; migration 0058.
 
 ---

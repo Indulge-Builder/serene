@@ -38,9 +38,16 @@ type FilterDraft = {
 
 **`isDirty`** — computed `boolean`. Compares each `draft` field against the live URL param using serialised string comparison (`draft.status.join(',') !== params.get('status') ?? ''` etc.). Never a `useState`. Array reference equality traps will give false positives — always compare serialised strings.
 
-**Two-row layout:**
-- Row 1: `flex + alignItems: center + gap: --space-3`. Icon + badge (`flexShrink: 0`). Search input (`flex: 1`).
-- Row 2: `flex + alignItems: center + gap: --space-2 + flexWrap: nowrap`. Every `FilterDropdown` and date control gets `flexShrink: 0`. A `flex: 1` spacer separates filters from the action buttons. **Never** set `overflow: hidden` or `overflow: auto` on Row 2 — dropdown panels are absolutely positioned and must float above layout unconstrained.
+**Single-row layout** (left → right):
+- Container: `display: flex`, `alignItems: center`, `gap: var(--space-2)`, `flexWrap: nowrap`, `overflowX: auto`, `scrollbarWidth: none` (inline), `WebkitOverflowScrolling: touch` (inline). Horizontal scroll on narrow viewports; chips stay on one line.
+- Order: Sliders icon + `committedCount` badge → `SearchBar` → 1px vertical divider → Status → Outcome → Source → Campaign? → Agent? → Domain? → Range → Apply? → Clear.
+- **Search:** `suppressFocusAccent` — paper border + no `--shadow-focus` on focus. `style={{ flex: '1 1 180px', maxWidth: '280px' }}` — grows modestly but never dominates wide viewports (without `maxWidth`, chips scroll off-screen).
+- **Filter chips:** `menuPortal` + `accentBorderOnOpen={false}` — accent border only when the chip has a committed selection count, not when the menu is open.
+- **Apply:** `suppressFocusRing` on `Button` — no focus glow on tab/click.
+- **Range:** accent border only when dates are set (`rangeActive`), not when the panel is open.
+- **Divider:** inline `div`, `width: 1`, `height: 1.25rem`, `background: var(--theme-paper-border)`, `flexShrink: 0` — separates search from filter chips.
+- Every `FilterDropdown` and the Range trigger: `flexShrink: 0`.
+- **Dropdown panels:** every `FilterDropdown` must pass `menuPortal` (menus render `position: fixed` on `document.body`). Without it, `overflowX: auto` on the row clips the absolutely positioned menu and options are unreachable. Range date panel uses its own `createPortal` — same rule.
 
 **Apply button:** `Button variant="primary" size="sm"` (not `MotionButton`) wrapped in `AnimatePresence motion.div` (`initial/exit: { opacity: 0, scale: 0.95 }`, 150ms `EASE_OUT_EXPO`). Rendered only when `isDirty`. Calls `applyFilters()` which builds the full URL from all draft keys and fires one `router.push`.
 

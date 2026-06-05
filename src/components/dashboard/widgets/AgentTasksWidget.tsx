@@ -22,11 +22,6 @@ const DOT_PULSE_CSS = `
   0%, 100% { transform: scale(1);    opacity: 1;    }
   50%       { transform: scale(1.55); opacity: 0.55; }
 }
-@keyframes eia-tasks-live-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.55), 0 0 0 0 rgba(34,197,94,0.6); }
-  60%  { box-shadow: 0 0 0 6px rgba(255,255,255,0),  0 0 0 10px rgba(34,197,94,0); }
-  100% { box-shadow: 0 0 0 0 rgba(255,255,255,0),    0 0 0 0 rgba(34,197,94,0);   }
-}
 `;
 
 function CategoryDot({
@@ -256,35 +251,17 @@ export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetPro
             justifyContent: "space-between",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-            <p
-              style={{
-                fontSize: "var(--text-md)",
-                fontFamily: "var(--font-serif)",
-                fontStyle: "italic",
-                color: "var(--theme-text-primary)",
-                margin: 0,
-              }}
-            >
-              My Tasks<span className="page-title-dot">.</span>
-            </p>
-            <span
-              title="Always shows live data — not affected by date filter"
-              style={{
-                fontSize:     "var(--text-2xs)",
-                fontWeight:   "var(--weight-medium)",
-                color:        "var(--color-success-text)",
-                background:   "var(--color-success-light)",
-                border:       "1px solid var(--color-success-text)",
-                borderRadius: "var(--radius-full)",
-                padding:      "1px 6px",
-                letterSpacing: "0.03em",
-                flexShrink:   0,
-              }}
-            >
-              Live
-            </span>
-          </div>
+          <p
+            style={{
+              fontSize: "var(--text-md)",
+              fontFamily: "var(--font-serif)",
+              fontStyle: "italic",
+              color: "var(--theme-text-primary)",
+              margin: 0,
+            }}
+          >
+            My Tasks<span className="page-title-dot">.</span>
+          </p>
           <Button
             variant="ghost"
             onClick={handleRefresh}

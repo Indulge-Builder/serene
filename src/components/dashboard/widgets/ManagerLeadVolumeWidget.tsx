@@ -16,7 +16,7 @@ import {
   getLeadVolumeByDomainsAction,
   getLeadVolumeForDomainAction,
 } from "@/lib/actions/dashboard";
-import { formatCompact } from "@/lib/utils/numbers";
+import { formatCompact, formatCount } from "@/lib/utils/numbers";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/TabSelector";
 import { useChartTokens, resolveColorMap } from "@/components/ui/charts/useChartTokens";
 import type {
@@ -218,6 +218,9 @@ export function ManagerLeadVolumeWidget({
   const isMultiMode = !isManagerRole && domainMode === "all";
   const multiSeries = multiData?.series ?? [];
   const singleSeries = singleData?.series ?? [];
+  const totalInRange = isMultiMode
+    ? Object.values(multiData?.totals ?? {}).reduce((s, n) => s + n, 0)
+    : (singleData?.total ?? 0);
 
   const totalPx = parseInt(WIDGET_HEIGHT_BY_SIZE[size], 10);
   const PADDING   = 40;
@@ -255,47 +258,61 @@ export function ManagerLeadVolumeWidget({
           overflow: "hidden",
         }}
       >
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <p
+        <p
+          style={{
+            fontSize: "var(--text-md)",
+            fontFamily: "var(--font-serif)",
+            fontStyle: "italic",
+            color: "var(--theme-text-primary)",
+            margin: 0,
+            lineHeight: 1.2,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
+          Lead Volume<span className="page-title-dot">.</span>
+        </p>
+
+        {loaded && (
+          <div
+            aria-label={`${totalInRange} leads in selected range`}
             style={{
-              fontSize: "var(--text-md)",
-              fontFamily: "var(--font-serif)",
-              fontStyle: "italic",
-              color: "var(--theme-text-primary)",
-              margin: 0,
-              lineHeight: 1.2,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+              flexShrink: 0,
+              opacity: isPending ? 0.45 : 1,
+              transition: "opacity 200ms",
             }}
           >
-            Lead Volume<span className="page-title-dot">.</span>
-          </p>
-          {loaded && (
-            <p
+            <span
+              aria-hidden
               style={{
-                margin: "2px 0 0",
-                fontSize: "var(--text-2xs)",
-                color: "var(--theme-text-tertiary)",
+                display: "inline-block",
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: "var(--theme-accent)",
+                animation: "eia-page-dot-blink 2.4s ease-in-out infinite",
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--text-sm)",
+                fontWeight: "var(--weight-semibold)",
+                color: "var(--theme-text-primary)",
+                letterSpacing: "-0.02em",
+                fontVariantNumeric: "tabular-nums",
               }}
             >
-              {isMultiMode
-                ? `${Object.values(multiData?.totals ?? {}).reduce((s, n) => s + n, 0).toLocaleString()} leads in range`
-                : `${(singleData?.total ?? 0).toLocaleString()} leads in range`}
-            </p>
-          )}
-        </div>
-
-        {isPending && (
-          <span
-            style={{
-              fontSize:   'var(--text-2xs)',
-              color:      'var(--theme-text-tertiary)',
-              flexShrink: 0,
-            }}
-          >
-            Updating…
-          </span>
+              {formatCount(totalInRange)}
+            </span>
+          </div>
         )}
       </div>
 
