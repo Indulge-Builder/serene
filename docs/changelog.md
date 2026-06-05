@@ -6,6 +6,10 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-05 — Tasks · group visibility flattened to creator + subtask assignee for all roles; Gia agents unblocked from Group tab; migration 0058.
+
+---
+
 ## 2026-06-05 — Webhook lead ingestion: fix WhatsApp notification not firing
 
 ### Bug fix — `void` fire-and-forget killed before completion on Vercel

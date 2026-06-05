@@ -22,7 +22,7 @@
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { redis } from '@/lib/redis';
-import { REDIS_KEYS, TASK_GIA_TTL, TASK_PERSONAL_PAGE1_TTL } from '@/lib/constants/redis-keys';
+import { REDIS_KEYS, TASK_GIA_TTL, TASK_PERSONAL_PAGE1_TTL, TASK_GROUP_LIST_TTL } from '@/lib/constants/redis-keys';
 import type {
   Task,
   TaskGroup,
@@ -215,8 +215,8 @@ type GroupTaskSummaryRaw = {
 };
 
 /**
- * Returns task_groups for the caller's domain with subtask counts and
- * up to 4 unique assignee avatars per group.
+ * Returns task_groups visible to the caller (groups they created or are assigned
+ * a subtask in) with subtask counts and up to 4 unique assignee avatars per group.
  * No subtask rows are returned — list view only.
  * Exactly 2 DB round-trips: one RPC + one profile batch fetch.
  *
@@ -224,21 +224,34 @@ type GroupTaskSummaryRaw = {
  * because createClient() calls cookies() which Next.js forbids inside
  * unstable_cache closures. See src/lib/CLAUDE.md § unstable_cache + cookies().
  *
- * domain and role are used for the Redis cache key only — they are NOT passed
- * to the RPC. The RPC derives the caller's domain and role from get_user_domain()
- * and get_user_role() inside Postgres (SECURITY DEFINER). Passing them here
- * would allow client-supplied values to influence scoping — never do that.
+ * userId is used for the Redis cache key only — it is NOT passed to the RPC.
+ * The RPC derives visibility from auth.uid() inside Postgres (SECURITY DEFINER).
+ * Visibility is user-specific (creator OR subtask assignee); the old domain+role
+ * key was wrong after the flat-visibility migration (0058).
  *
- * Redis cache: 120s, keyed by domain + role (managers in same domain+role share
- * a slot — correct, since the RPC returns domain-scoped groups). Omit domain and
- * role when filters are active: filter combinations are too numerous to cache here,
- * and the group list is rarely filtered in production.
+ * Redis cache: 120s, keyed by userId only (unfiltered calls only — filtered calls
+ * bypass Redis because filter combinations are too numerous to cache).
  */
 export const getGroupTasks = cache(async (
   filters: GroupTaskFilters = {},
-  cacheHint?: { domain: string; role: string },
+  cacheHint?: { userId: string },
 ): Promise<TaskGroupRow[]> => {
   const supabase = await createClient();
+
+  // Redis read — unfiltered calls only (migration 0058: key is per-user)
+  const isUnfiltered =
+    (filters.status   === undefined || filters.status.length   === 0) &&
+    (filters.priority === undefined || filters.priority.length === 0);
+
+  if (isUnfiltered && cacheHint?.userId) {
+    const cacheKey = REDIS_KEYS.task.groupList(cacheHint.userId);
+    try {
+      const cached = await redis.get<TaskGroupRow[]>(cacheKey);
+      if (cached !== null) return cached;
+    } catch (e) {
+      console.error('[tasks-service] getGroupTasks Redis get error:', e);
+    }
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: rows, error } = await (supabase as any).rpc('get_group_task_summaries', {
@@ -306,6 +319,16 @@ export const getGroupTasks = cache(async (
       assignee_previews,
     };
   });
+
+  // Redis write — unfiltered calls only, non-fatal
+  if (isUnfiltered && cacheHint?.userId) {
+    const cacheKey = REDIS_KEYS.task.groupList(cacheHint.userId);
+    try {
+      await redis.setex(cacheKey, TASK_GROUP_LIST_TTL, result);
+    } catch (e) {
+      console.error('[tasks-service] getGroupTasks Redis setex error:', e);
+    }
+  }
 
   return result;
 });

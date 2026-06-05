@@ -82,7 +82,7 @@ export async function TasksAsync({
   if (tab === 'personal') {
     personalResult = await getPersonalTasks(userId);
   } else if (tab === 'group') {
-    groupRows = await getGroupTasks({}, { domain: callerDomain, role: callerRole });
+    groupRows = await getGroupTasks({}, { userId });
   } else {
     giaTasks = await getGiaTasksForUser(userId, callerRole, callerDomain);
   }

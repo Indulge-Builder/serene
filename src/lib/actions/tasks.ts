@@ -189,6 +189,8 @@ export async function createPersonalTaskAction(
 // ─────────────────────────────────────────────
 // Action: createGroupTaskAction
 // Creates a task_group row only (no subtasks).
+// Any authenticated non-guest user may create a group task.
+// Domain locked to caller's domain except for admin/founder.
 // ─────────────────────────────────────────────
 export async function createGroupTaskAction(
   input: unknown,
@@ -199,9 +201,10 @@ export async function createGroupTaskAction(
 
   const fields = parsed.data;
 
-  // 2. Auth
+  // 2. Auth — any non-guest authenticated user may create a group task
   const caller = await getCurrentProfile();
   if (!caller) return { data: null, error: formErrors.unauthorized };
+  if (caller.role === "guest") return { data: null, error: formErrors.unauthorized };
 
   // 3. Domain enforcement — non-privileged callers locked to own domain
   const resolvedDomain = ["admin", "founder"].includes(caller.role)
@@ -226,6 +229,13 @@ export async function createGroupTaskAction(
     .single();
 
   if (insertError || !group) return { data: null, error: formErrors.generic };
+
+  // 5. Invalidate creator's group list cache (user-scoped key per migration 0058)
+  try {
+    await redis.del(REDIS_KEYS.task.groupList(caller.id));
+  } catch (e) {
+    console.warn("[tasks-action] redis del failed on createGroupTask", e);
+  }
 
   revalidatePath("/tasks");
 
@@ -305,6 +315,19 @@ export async function createSubtaskAction(
       full_name: profile.full_name,
       avatar_url: profile.avatar_url,
     };
+  }
+
+  // 6b. Invalidate group list cache for caller and assignee (migration 0058: user-scoped key).
+  //     Assignee's cache must refresh so they see the parent group they've just been assigned in.
+  //     Caller's cache also refreshes to show the updated subtask count on their group.
+  const keysToInvalidate = [REDIS_KEYS.task.groupList(caller.id)];
+  if (fields.assigned_to !== caller.id) {
+    keysToInvalidate.push(REDIS_KEYS.task.groupList(fields.assigned_to));
+  }
+  try {
+    await Promise.all(keysToInvalidate.map((k) => redis.del(k)));
+  } catch (e) {
+    console.warn("[tasks-action] redis del failed on createSubtask group lists", e);
   }
 
   revalidatePath("/tasks");

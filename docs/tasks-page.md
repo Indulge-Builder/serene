@@ -1,6 +1,6 @@
 # Tasks Page — Full Intelligence Document
 
-Last verified: 2026-06-05
+Last verified: 2026-06-05 (migration 0058 — flat group visibility)
 
 ---
 
@@ -101,16 +101,18 @@ No INSERT/DELETE RLS on `tasks` — mutations use `adminClient` in actions with 
 | `domain` | app_domain | NOT NULL | — | Enum after migration 0041 |
 | `created_at` / `updated_at` | timestamptz | NOT NULL | `now()` | |
 
-**Indexes:** `idx_task_groups_domain` (partial active), `idx_task_groups_created_by`
+**Indexes:** `idx_task_groups_domain` (partial active), `idx_task_groups_created_by`, `idx_tasks_group_assignee` on `tasks(group_id, assigned_to)` WHERE `group_subtask` (migration 0058 — speeds EXISTS subquery)
 
-**RLS (migration 0018, domain via `get_user_domain()` after 0041):**
+**RLS (migration 0058 — flat visibility; replaces 0018/0041 role-branched model):**
 
 | Policy | Command | Rule |
 | --- | --- | --- |
-| `task_groups_select` | SELECT | `created_by = auth.uid()` OR admin/founder OR (`manager` AND `domain = get_user_domain()`) |
+| `task_groups_select` | SELECT | `created_by = auth.uid()` OR EXISTS subtask WHERE `assigned_to = auth.uid()` AND `group_subtask` |
 | `task_groups_insert` | INSERT | `auth.uid() IS NOT NULL` |
-| `task_groups_update` | UPDATE | Same visibility as SELECT (USING + WITH CHECK) |
-| `task_groups_delete` | DELETE | admin/founder only |
+| `task_groups_update` | UPDATE | Same two-condition rule as SELECT (USING + WITH CHECK) |
+| `task_groups_delete` | DELETE | `created_by = auth.uid()` only — orphaned group cleanup is service-role |
+
+No `get_user_role()` / `get_user_domain()` calls anywhere in the SELECT, UPDATE, or DELETE policies.
 
 Realtime: **not enabled** on `task_groups`.
 
@@ -220,7 +222,7 @@ Realtime: **enabled**.
 
 ---
 
-### 3b. `get_group_task_summaries` (migration 0020, fixed 0042)
+### 3b. `get_group_task_summaries` (migration 0020, fixed 0042, rewritten 0058)
 
 | Parameter | Purpose |
 | --- | --- |
@@ -228,7 +230,7 @@ Realtime: **enabled**.
 
 **Returns per row:** All `task_groups` columns + `subtask_total`, `subtask_completed`, `assignee_ids uuid[]`
 
-**Domain scoping:** Inside RPC — `get_user_domain()` for managers; never caller-supplied domain. Replicates 0018 SELECT: creator OR admin/founder OR manager in domain.
+**Visibility (post-0058 flat model):** `tg.created_by = auth.uid()` OR EXISTS subtask where `assigned_to = auth.uid()` AND `group_subtask`. No `get_user_role()` / `get_user_domain()` calls. `auth.uid()` resolves from the calling session JWT even inside `SECURITY DEFINER` — consistent with how `created_by = auth.uid()` already worked in the previous version.
 
 **Avatar preview:** `assignee_ids` aggregated in SQL; service slices to **max 4** and batch-fetches profiles.
 
@@ -284,7 +286,7 @@ Realtime: **enabled**.
 | Function | Parameters | Return | Query pattern | Called by |
 | --- | --- | --- | --- | --- |
 | `getPersonalTasks` | `userId`, `filters?` | `PersonalTasksResult` | RPC `get_personal_tasks` only | `getPersonalTasksAction`, `TasksAsync` (personal tab) |
-| `getGroupTasks` | `filters?` | `TaskGroupRow[]` | RPC + batch profiles; React `cache()` | `TasksAsync` (group tab) |
+| `getGroupTasks` | `filters?`, `cacheHint?: { userId }` | `TaskGroupRow[]` | Redis 120s → RPC + batch profiles; React `cache()`. `userId` scopes cache key — user-specific after migration 0058. | `TasksAsync` (group tab) |
 | `getGroupSubtasks` | `groupId`, `userId` | `SubtaskWithAssignee[]` | Redis 30s → PostgREST + batch assignees; React `cache()`. `userId` scopes cache key — prevents cross-user bleed. | `getGroupSubtasksAction`, `WorkspaceAsync` |
 | `getTaskById` | `taskId` | `TaskWithMessages \| null` | Parallel task + remarks | (modal/detail paths) |
 | `getTaskRemarks` | `taskId` | `TaskRemarkWithAuthor[]` | Redis 30s → PostgREST ASC + batch authors; React `cache()` | `getTaskRemarksAction` |
@@ -304,8 +306,8 @@ Realtime: **enabled**.
 | Action | Zod schema | Auth | DB | Side effects | `adminClient`? |
 | --- | --- | --- | --- | --- | --- |
 | `createPersonalTaskAction` | `CreatePersonalTaskSchema` | Session; manager+ to assign others | INSERT tasks | `task_assigned` notification; `scheduleTaskReminder` if due; del `task:personal:page1:{assignedTo}` | Yes |
-| `createGroupTaskAction` | `CreateGroupTaskSchema` | manager+; manager domain locked | INSERT task_groups | `revalidatePath('/tasks')`; del `task:group-list:{domain}:{role}` | Yes |
-| `createSubtaskAction` | `CreateSubtaskSchema` | Group exists; agent domain check | INSERT tasks | notification; reminder; `revalidatePath('/tasks')`; del `task:subtasks:{groupId}:{callerId}` | Yes |
+| `createGroupTaskAction` | `CreateGroupTaskSchema` | Any non-guest; domain locked to own unless admin/founder | INSERT task_groups | `revalidatePath('/tasks')`; **await** del `task:group-list:{callerId}` | Yes |
+| `createSubtaskAction` | `CreateSubtaskSchema` | Group exists; agent domain check | INSERT tasks | notification; reminder; `revalidatePath('/tasks')`; **await** del `task:group-list:{callerId}` + `task:group-list:{assignedTo}` (if different); del `task:subtasks:{groupId}:{callerId}` | Yes |
 | `updateTaskStatusAction` | `UpdateTaskStatusSchema` | `canMutateTask` | UPDATE status/completed_at | `cancelTaskReminder` on terminal; del by `task_category`: `personal` → `task:personal:page1:{callerId}`; `gia_followup` → `task:gia:{callerId}:{role}:{domain}`; `group_subtask` → `task:subtasks:{groupId}:{callerId}` | Yes |
 | `updateTaskAction` | `UpdateTaskSchema` | `canMutateTask` | Partial UPDATE | Reminder reschedule on due change; del `task:subtasks:{groupId}:{callerId}` if group subtask | Yes |
 | `deleteTaskAction` | `DeleteTaskSchema` | Agent: both created_by AND assigned_to; else open | DELETE | **Awaited** `cancelTaskReminder` before delete; del by `task_category` (same three-branch as `updateTaskStatusAction`) | Yes |
@@ -420,15 +422,16 @@ Task list payloads are loaded once per tab via RSC (`TasksAsync`). Tab switches 
 - **Listeners:** `useEffect` in `MyTasksCalendarView`, `GroupTasksTab`, `TasksShell` (gia → `setGiaCreateOpen(true)`)
 - **Why context:** Header button and tab modals are siblings under `page.tsx`; context avoids prop drilling through `TasksShell` only for the counter
 
-### 8b. `page.tsx` — domain-aware tabs
+### 8b. `page.tsx` — domain-aware tabs (updated migration 0058)
 
 `isGiaDomain = GIA_DOMAINS.includes(profile.domain)`
 
 | Caller | `validTabs` | Default (`?tab` invalid) |
 | --- | --- | --- |
-| Gia **agent** | `['gia', 'personal']` | `gia` |
-| Gia **manager / admin / founder** | `['gia', 'personal', 'group']` | `gia` |
+| Gia domain (any role) | `['gia', 'personal', 'group']` | `gia` |
 | Non-Gia (any role) | `['personal', 'group']` | `personal` |
+
+All non-guest roles now receive the Group Tasks tab. The old `profile.role === 'agent'` exclusion that gave Gia agents only `['gia', 'personal']` was removed in migration 0058.
 
 `?tab=gia` for non-Gia callers → resolves to `validTabs[0]` (`personal`) — silent, no error.
 
@@ -457,7 +460,9 @@ Passes serialisable props to `TasksShell` only.
 | --- | --- | --- |
 | gia | `Gia Task` | — |
 | personal | `My Task` | — |
-| group | `Group Task` | `callerRole === 'agent'` |
+| group | `Group Task` | — |
+
+The `callerRole === 'agent'` hidden condition was removed. All roles that can reach the Group tab (all non-guest roles after migration 0058) see the button.
 
 Uses `MotionButton` + `requestCreate()`.
 
@@ -830,7 +835,7 @@ Calendar sidebar or inline row → `createPersonalTaskAction` → prepend — no
 
 ### D. Create group task
 
-Manager+ **+ Group Task** → `CreateGroupTaskModal` → `createGroupTaskAction` (+ optional parallel `createSubtaskAction` for drafts) → prepend `TaskGroupRow` locally.
+Any non-guest **+ Group Task** → `CreateGroupTaskModal` → `createGroupTaskAction` (+ optional parallel `createSubtaskAction` for drafts) → prepend `TaskGroupRow` locally. Domain locked to caller's own domain unless admin/founder.
 
 ### E. Create subtask
 
@@ -880,19 +885,23 @@ Displayed: Gia tab (`get_gia_tasks`), dashboard widget, lead task cards (`getAll
 | Operation | Agent | Manager | Admin/Founder |
 | --- | --- | --- | --- |
 | Create personal task | ✓ (own domain assign rules) | ✓ | ✓ |
-| Create group task | ✗ | ✓ (own domain) | ✓ |
+| Create group task | ✓ (own domain, migration 0058) | ✓ (own domain) | ✓ |
 | Create subtask | ✓ (domain) | ✓ (domain) | ✓ |
 | Toggle complete (own assignment) | ✓ if assigned | ✓ | ✓ |
 | Edit brief / checklist / remark | own assignee or creator | + domain group subtasks | ✓ |
 | Suppress remark | ✗ | ✗ | ✓ |
 | Delete personal task | both ownership fields | ✓ | ✓ |
-| Delete group / subtask | ✗ subtask: ✗ group | ✓ subtask | ✓ |
-| View group workspace | own subtasks only in group list | domain | ✓ |
+| Delete group | own groups only (RLS: `created_by = auth.uid()`) | own groups only | service-role op |
+| Delete subtask | ✗ | ✓ | ✓ |
+| View group list | groups created by OR assigned a subtask in | same (migration 0058) | same (migration 0058) |
+| View group workspace | own subtasks only in group list | same (migration 0058) | same (migration 0058) |
 | View audit log | ✗ | ✓ | ✓ |
 
-**RLS note:** Agents SELECT tasks where `assigned_to = auth.uid()` OR `created_by = auth.uid()`. `canMutateTask` also allows creator mutations when assignee differs.
+**RLS note (migration 0058):** `task_groups` visibility is now purely data-driven — creator OR subtask assignee. No role/domain branching. `get_user_role()` / `get_user_domain()` are absent from all group policies and the `get_group_task_summaries` RPC.
 
-**Group subtask visibility:** Agents do not see colleagues' subtasks in the same group (by design).
+**RLS note (tasks):** Agents SELECT tasks where `assigned_to = auth.uid()` OR `created_by = auth.uid()`. `canMutateTask` also allows creator mutations when assignee differs.
+
+**Group subtask visibility (unchanged):** Agents do not see colleagues' subtasks in the same group. Each agent sees only their own assigned subtasks — the group appears in their list only because they are assigned at least one subtask in it.
 
 ---
 
@@ -924,6 +933,7 @@ Displayed: Gia tab (`get_gia_tasks`), dashboard widget, lead task cards (`getAll
 | 0055 | `20260531000055_get_gia_tasks.sql` | `get_gia_tasks` for Gia tab |
 | 0056 | `20260531000056_get_gia_tasks_slug_prereq.sql` | `leads.slug` + RPC recreate |
 | 0057 | `20260531000057_task_type_other.sql` | `task_type` CHECK: call / whatsapp_message / other |
+| 0058 | `20260605000058_task_groups_flat_visibility.sql` | Flat group visibility: creator OR subtask assignee for all roles; drops `get_user_role()`/`get_user_domain()` from RLS + RPC; agents unblocked from Group tab; `idx_tasks_group_assignee`; `task:group-list:{userId}` Redis key |
 
 ---
 
@@ -937,7 +947,7 @@ Displayed: Gia tab (`get_gia_tasks`), dashboard widget, lead task cards (`getAll
 
 4. **`getPersonalTasks` return shape:** `{ tasks, hasMore, nextCursor }` — never `Task[]` alone. `hasMore` from `LIMIT pageSize+1`, never a second COUNT query.
 
-5. **`getGroupTasks` cache:** Uses React `cache()` for per-request memoisation. Cannot use `unstable_cache` because `createClient()` calls `cookies()`, which Next.js forbids inside `unstable_cache` closures. After mutations, `createGroupTaskAction` and `createSubtaskAction` call `revalidatePath('/tasks')`.
+5. **`getGroupTasks` cache:** Uses React `cache()` for per-request memoisation + Redis 120s (key `task:group-list:{userId}`, unfiltered calls only). Cannot use `unstable_cache` because `createClient()` calls `cookies()`, which Next.js forbids inside `unstable_cache` closures. Cache key is user-scoped since migration 0058 (visibility is creator OR subtask assignee — two users in the same domain see different sets). `createGroupTaskAction` awaits `redis.del(task:group-list:{callerId})`; `createSubtaskAction` awaits del for both `callerId` and `assignedTo`. Both also call `revalidatePath('/tasks')`.
 
 6. **Client-side filtering:** All filtering is client-side via `src/lib/utils/task-client-filters.ts`. Never add server refetches for filter changes.
 
@@ -1014,4 +1024,4 @@ Exports used by tasks UI: `TASK_PRIORITY`, `TASK_STATUS` (incl. `pillBg`/`pillTe
 
 ---
 
-*End of document. Source of truth: migrations, `tasks-service.ts`, `actions/tasks.ts`, route files, and components as of 2026-06-01.*
+*End of document. Source of truth: migrations, `tasks-service.ts`, `actions/tasks.ts`, route files, and components as of 2026-06-05 (migration 0058).*

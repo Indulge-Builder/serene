@@ -17,6 +17,11 @@ export const REDIS_KEYS = {
       `task:gia:${userId}:${role}:${domain}`,
     personalPage1: (userId: string) =>
       `task:personal:page1:${userId}`,
+    // Visibility is now user-specific (creator OR subtask assignee).
+    // Domain/role are NOT part of the key — two users in the same domain
+    // see different sets of groups depending on what they created or are assigned in.
+    groupList: (userId: string) =>
+      `task:group-list:${userId}`,
   },
 
   // Range-namespaced keys — include from:to so different date windows don't share a slot.
@@ -121,6 +126,7 @@ export function buildLeadListKey(
 // TTL values in seconds — never milliseconds.
 export const TASK_GIA_TTL            = 60;
 export const TASK_PERSONAL_PAGE1_TTL = 30;
+export const TASK_GROUP_LIST_TTL     = 120;
 
 export const REDIS_TTL = {
   DASHBOARD_AGENT_TASKS:   30,

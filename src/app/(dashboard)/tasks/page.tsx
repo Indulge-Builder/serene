@@ -25,17 +25,11 @@ export default async function TasksPage({
   // GIA_DOMAINS agents/managers see the Gia Tasks tab; others do not.
   const isGiaDomain = (GIA_DOMAINS as readonly string[]).includes(profile.domain);
 
-  let validTabs: TaskTab[];
-  if (isGiaDomain) {
-    if (profile.role === 'agent') {
-      validTabs = ['gia', 'personal'];
-    } else {
-      // manager / admin / founder in a Gia domain
-      validTabs = ['gia', 'personal', 'group'];
-    }
-  } else {
-    validTabs = ['personal', 'group'];
-  }
+  // All non-guest roles get the Group Tasks tab.
+  // Gia domain adds the Gia tab regardless of role.
+  const validTabs: TaskTab[] = isGiaDomain
+    ? ['gia', 'personal', 'group']
+    : ['personal', 'group'];
 
   // Resolve ?tab= against valid tabs — fall back to first valid tab.
   const resolvedParams = await searchParams;

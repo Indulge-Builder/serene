@@ -316,4 +316,4 @@ Current call sites in `src/lib/actions/leads.ts`:
 `src/lib/actions/tasks.ts`:
 
 - `createPersonalTaskAction`: fires `task_assigned` notification to assignee when `assigned_to ≠ auth.uid()` (fire-and-forget).
-- `createSubtaskAction`: always fires `task_assigned` notification to assignee when `assigned_to ≠ auth.uid()` (fire-and-forget).
+- `createSubtaskAction`: always fires `task_assigned` notification to assignee when `assigned_to ≠ auth.uid()` (fire-and-forget). Also invalidates `task:group-list:{callerId}` AND `task:group-list:{assignedTo}` (when different) so the assignee's group list refreshes to show the parent group they've just been given visibility into (migration 0058 flat-visibility model).
