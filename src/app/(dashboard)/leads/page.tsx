@@ -30,12 +30,6 @@ function parseFilters(searchParams: Awaited<SearchParams>): LeadFilters {
   const page     = Math.max(1, parseInt(getString('page') ?? '1', 10) || 1);
   const pageSize = 30;
 
-  const rawHealth = getString('health');
-  const validHealth = ['healthy', 'needs_attention', 'at_risk'] as const;
-  const health = validHealth.includes(rawHealth as typeof validHealth[number])
-    ? (rawHealth as typeof validHealth[number])
-    : null;
-
   return {
     status:            getMulti<LeadStatus>('status'),
     last_call_outcome: getMulti<CallOutcome>('outcome'),
@@ -46,7 +40,6 @@ function parseFilters(searchParams: Awaited<SearchParams>): LeadFilters {
     date_from:         getString('date_from'),
     date_to:           getString('date_to'),
     search:            getString('search'),
-    health,
     going_cold:        searchParams.going_cold === 'true' ? true : undefined,
     sort_order:        (searchParams.sort_order === 'asc' || searchParams.sort_order === 'desc')
                          ? searchParams.sort_order

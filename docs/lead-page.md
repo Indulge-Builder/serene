@@ -53,7 +53,6 @@ The Gia leads module is Indulge’s sales pipeline surface: inbound leads arrive
 | `deal_amount` | `numeric(12,2)` | YES | (`20260531000049_leads_deal_duration.sql`) |
 | `deal_type` | `text` | YES | CHECK `membership` \| `retail` |
 | `deal_duration` | `text` | YES | CHECK `3_months` \| `6_months` \| `1_year` or NULL |
-| `lead_health` | `text` | YES | CHECK `healthy` \| `needs_attention` \| `at_risk`; NULL = terminal status or not yet evaluated (migration 077) |
 
 **FK:** `assigned_to` → `profiles(id)`; `previous_lead_id` → `leads(id)`.
 
@@ -251,7 +250,6 @@ CREATE POLICY "task_gia_meta_select"
 | `idx_leads_phone_text` | `(phone text_pattern_ops)` | `archived_at IS NULL` |
 | `idx_leads_slug` | `(slug)` UNIQUE | `slug IS NOT NULL` |
 | `idx_leads_status_changed_at` | `(status_changed_at)` | `archived_at IS NULL` |
-| `idx_leads_health` | `(lead_health, assigned_to)` | `archived_at IS NULL` |
 | `idx_leads_last_activity_at` | `(last_activity_at)` | `archived_at IS NULL` |
 | `idx_lead_activities_lead_id` | `(lead_id, created_at DESC)` | — |
 | `idx_lead_notes_lead_id` | `(lead_id, created_at DESC)` | — |
@@ -273,7 +271,7 @@ Performance indexes on related tables: `idx_lead_activities_actor_status`, `idx_
 | `update_lead_status` | `p_lead_id uuid`, `p_actor_id uuid`, `p_status text`, `p_reason text`, `p_now timestamptz` | Status update + activity; nurturing creates 3-month `gia_followup` task + `task_gia_meta`; returns `jsonb`. | `20260529000031_rpc_update_lead_status.sql` (+ nurturing fix `00039`) |
 | `add_lead_plain_note` | `p_lead_id uuid`, `p_author_id uuid`, `p_content text`, `p_now timestamptz` | Plain note + `last_activity_at` + `note_added` activity; returns `{ note_id }`. | `20260530000040_rpc_add_lead_plain_note.sql` |
 | `create_lead_gia_task` | `p_lead_id`, `p_assigned_to`, `p_created_by`, `p_task_type`, `p_title`, `p_description`, `p_priority`, `p_due_at` | Atomic `tasks` + `task_gia_meta` insert; returns `tasks` row. | `20260531000054_create_lead_gia_task.sql` |
-| `get_leads_status_counts` | `p_agent_id uuid`, `p_date_from timestamptz`, `p_date_to timestamptz`, `p_campaign text`, `p_search text`, `p_health text`, `p_source text`, `p_outcomes text[]`, `p_statuses text[]` (all DEFAULT NULL) | Returns `TABLE(status text, cnt bigint)` for the full filtered dataset; role/domain self-enforced via `get_user_role()`/`get_user_domain()`; all params optional; empty array treated as "no filter". | `20260606000080_get_leads_status_counts.sql` |
+| `get_leads_status_counts` | `p_agent_id uuid`, `p_date_from timestamptz`, `p_date_to timestamptz`, `p_campaign text`, `p_search text`, `p_source text`, `p_outcomes text[]`, `p_statuses text[]` (all DEFAULT NULL) | Returns `TABLE(status text, cnt bigint)` for the full filtered dataset; role/domain self-enforced via `get_user_role()`/`get_user_domain()`; all params optional; empty array treated as "no filter". | `20260608000083_status_counts_drop_health.sql` (supersedes `...080`; `p_health` removed) |
 | `get_campaign_metrics` | `p_domain app_domain`, `p_date_from`, `p_date_to` | Campaign aggregates for `/campaigns`. | `20260528000014_campaign_analytics.sql` |
 | `get_campaign_detail_metrics` | `p_campaign`, `p_date_from`, `p_date_to` | Single-campaign metrics. | `20260528000015_campaign_detail_metrics.sql` |
 | `get_deals_summary` | (role-scoped args) | Won-lead aggregates for `/deals`. | `20260531000052_get_deals_summary.sql` |
@@ -463,7 +461,6 @@ export type LeadsResult = {
 | `date_from` | always present on load (30-day redirect ensures this); YYYY-MM-DD |
 | `date_to` | `date_to`; absent = no upper bound |
 | `search` | `search` |
-| `health` | `'healthy'` \| `'needs_attention'` \| `'at_risk'`; invalid values → null |
 | `going_cold` | `'true'` → `true`; absent → `undefined` |
 | `sort_order` | `'asc'` or `'desc'`; default `'desc'` |
 | `page` | `page`, default `1` |
@@ -812,7 +809,7 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 29. **`latest_note` is fetched via a single batch query — never per-row.**
 
-30. **`lead_health = NULL` for terminal statuses (`won`/`lost`/`junk`) — never `'healthy'`.** The RPC hooks and the hourly refresh both set NULL for terminal leads. Any code that sets a tier value on a terminal status is a correctness bug — health is meaningless for closed leads. `getLatestNotesForLeads(leadIds, supabase)` (private, not exported) runs one `.in('lead_id', leadIds)` query ordered `created_at DESC`. The `Map<leadId, LatestNote>` is built by iterating the result once, skipping duplicate `lead_id` keys (first = latest). Empty `leadIds` returns an empty Map without querying. Any loop or per-lead call against `lead_notes` in `getLeadsByRole` is a violation of this invariant.
+30. **Latest-note batch fetch — one query, never per-row.** `getLatestNotesForLeads(leadIds, supabase)` (private, not exported) runs one `.in('lead_id', leadIds)` query ordered `created_at DESC`. The `Map<leadId, LatestNote>` is built by iterating the result once, skipping duplicate `lead_id` keys (first = latest). Empty `leadIds` returns an empty Map without querying. Any loop or per-lead call against `lead_notes` in `getLeadsByRole` is a violation of this invariant.
 
 31. **Status pill counts come only from `statusCounts` prop — never from `leads[]`.** `LeadsTable` receives `statusCounts: Partial<Record<LeadStatus, number>>` from `LeadsTableAsync`. The `useMemo` that counted from `leads[]` is deleted. Any reintroduction of counting logic inside `LeadsTable` is a violation.
 

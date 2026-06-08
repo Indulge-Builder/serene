@@ -5,7 +5,7 @@
 > what it is, how it is built, every rule, every migration, every file.
 > For deep dives into individual surfaces, follow the page-doc links in §8.
 >
-> *Last verified: 2026-06-03. Sources: The_Blueprint.md · The_Profile.md · context.md · changelog.md*
+> *Last verified: 2026-06-08 against the live codebase. Sources: The_Blueprint.md · The_Profile.md · context.md · changelog.md · CLAUDE.md (root + lib + app) · The_Rules.md · `package.json` · `supabase/migrations/`*
 
 ---
 
@@ -19,7 +19,7 @@
 6. [The profiles Foundation](#6-the-profiles-foundation)
 7. [Build Phases — Complete History](#7-build-phases--complete-history)
 8. [Route Map & Page Docs](#8-route-map--page-docs)
-9. [Migration Index — All 69 Migrations](#9-migration-index--all-69-migrations)
+9. [Migration Index — 84 Migrations](#9-migration-index--84-migrations-ordered-by-timestamp-prefix)
 10. [File Map — Where Everything Lives](#10-file-map--where-everything-lives)
 11. [Services Registry](#11-services-registry)
 12. [Actions Registry](#12-actions-registry)
@@ -32,6 +32,8 @@
 19. [Decision Log](#19-decision-log)
 20. [How to Fix Anything](#20-how-to-fix-anything)
 21. [Design System Quick Reference](#21-design-system-quick-reference)
+22. [Redis Caching Layer](#22-redis-caching-layer)
+23. [Export System (CSV / XLSX)](#23-export-system-csv--xlsx)
 
 ---
 
@@ -51,20 +53,26 @@ The previous build had too many things wired together incorrectly. This build st
 
 | Layer | Tool | Version / Notes |
 | ----- | ---- | --------------- |
-| Framework | Next.js App Router | 16 |
+| Framework | Next.js App Router | 16 — proxy (`src/proxy.ts`), **not** `middleware.ts` |
 | Language | TypeScript | 5 — strict mode, no `any` |
 | Styling | Tailwind CSS | v4 |
 | UI primitives | shadcn/ui | latest |
 | Database | Supabase (PostgreSQL) | 17 |
 | Auth | Supabase Auth | — |
 | Realtime | Supabase Realtime | — |
-| Animation | Framer Motion | 11 |
-| Forms | React Hook Form + Zod | — |
-| Async jobs | Trigger.dev | v3 |
+| Caching | Upstash Redis | `@upstash/redis` ^1.38 — cache-aside layer (see §22) |
+| Animation | Framer Motion | ^12.40 |
+| Charts | Recharts | ^3.8 — always via `useChartTokens()`, never raw CSS vars |
+| Icons | lucide-react | ^1.16 — exclusive icon library |
+| Forms | React Hook Form (^7.76) + Zod (^4.4) | — |
+| Spreadsheet export | `xlsx` (SheetJS) | ^0.18 — client-side XLSX/CSV (see §23) |
+| Async jobs | Trigger.dev | `@trigger.dev/sdk` ^4.4 (**v4**, not v3) |
 | Deployment | Vercel | — |
 | Package manager | pnpm | — |
-| Drag-to-reorder | @dnd-kit | canonical — use everywhere |
+| Drag-to-reorder | @dnd-kit | ^6 core / ^10 sortable — canonical, use everywhere |
 | WhatsApp | Gupshup v1 | BSP provider |
+
+> **No React Query, no Sentry, no virtualization library are dependencies.** Data fetching is Server-Components-first, with a Server-Action-in-`useEffect` pattern for client widgets (Q-15). Server logging is `[module]`-prefixed `console.warn`/`console.error`. Large lists use server-side `.range()` / cursor pagination. Do not assume any of these three libraries exist.
 
 ---
 
@@ -215,7 +223,7 @@ CREATE INDEX idx_profiles_domain_active ON profiles(domain) WHERE is_active = tr
 - `phone` — E.164. `normalizeToE164()` before any write.
 - `role` and `domain` — never updatable by the user themselves. Admin/founder only, enforced by `WITH CHECK`.
 - `theme` — stored in DB (syncs across devices). Not localStorage. Default: `earth`.
-- `last_seen_at` — updated by middleware on every authenticated request, max once per minute per user.
+- `last_seen_at` — updated by the proxy (`src/proxy.ts`) on every authenticated request, max once per minute per user.
 
 ### RLS Policies
 
@@ -384,7 +392,9 @@ Every route has a dedicated intelligence document generated during the DRY audit
 
 ---
 
-## 9. Migration Index — All 69 Migrations
+## 9. Migration Index — 84 Migrations (ordered by timestamp prefix)
+
+> **Numbering caveat:** migrations are applied in **filename-timestamp order** (`YYYYMMDD…`), not by the trailing serial. Two serials were reused on different days — `0058` (`ad_creatives_multi_video` on 06-01 **and** `task_groups_flat_visibility` on 06-05) and `0066` (`leads_city_column` on 06-03 **and** `domain_health_metrics` on 06-04). Always trust the date prefix, never the serial. The authoritative file list is `supabase/migrations/`.
 
 | # | What it creates / changes |
 | - | ------------------------- |
@@ -453,13 +463,28 @@ Every route has a dedicated intelligence document generated during the DRY audit
 | 0063 | `get_agent_recent_activity(p_role, p_domain, p_user_id)` RPC — single SQL replacing two-step Node.js pattern (SELECT ids → .in()); LEFT JOIN for lead name |
 | 0064 | Two dashboard refresh RPCs for per-widget refresh buttons — `get_lead_status_summary` + `get_campaign_performance`; CTE logic mirrors 0062; DB returns final jsonb shape |
 | 0065 | Attribution refactor — removes `platform`, `campaign_id`, `ad_name`, `utm_content`; renames `utm_source → source`, `utm_medium → medium`; adds `attribution jsonb`; backfills flat columns into JSONB; drops `idx_leads_utm_source`, creates `idx_leads_source` |
-| 0066 | `leads.city text` — dedicated column; backfilled from `personal_details->>'city'`; `city` key removed from `personal_details` JSONB on all existing rows |
-| 0067 | `whatsapp_notification_logs.type` CHECK extended with `lead_initiation`; `sendLeadInitiationMessage` now always logs |
-| 0068 | Various migrations between 0066 and 0071 (domain health metrics, dashboard date filter, pipeline agent total fix) |
-| 0069 | *(avatars_storage_bucket)* — public `avatars` bucket + RLS policies (`avatars_public_read`, `avatars_insert_own`, `avatars_update_own`, `avatars_delete_own`) |
-| 0072 | `public.deals` first-class table — `lead_id` nullable (walk-ins), `contact_name/phone/email`, `domain app_domain`, `deal_amount/type/duration`, `assigned_to`, `won_at` immutable, `client_id` reserved; RLS 3 SELECT policies; 5 indexes; no write policies (admin client only) |
-| 0073 | Idempotent backfill: `status='won' AND deal_amount IS NOT NULL` leads → `public.deals`; NOT EXISTS guard |
-| 0074 | `CREATE OR REPLACE get_deals_summary` — source now `public.deals`; structural WHERE → `archived_at IS NULL` only; date filters on `won_at`; two-domain split preserved |
+| 0066a | *(06-03 `leads_city_column`)* `leads.city text` — dedicated column; backfilled from `personal_details->>'city'`; `city` key removed from `personal_details` JSONB on all existing rows |
+| 0067 | *(06-03)* `whatsapp_notification_logs.type` CHECK extended with `lead_initiation`; `sendLeadInitiationMessage` now always logs |
+| 0066b | *(06-04 `domain_health_metrics`)* domain-health aggregates RPC — per-domain lead/conversion metrics for founder/admin domain-health view |
+| 0068 | *(06-04 `domain_health_add_calls_revenue`)* extends domain-health RPC with call volume + revenue columns |
+| 0069 | *(06-04 `dashboard_date_filter`)* dashboard date-range filtering — Pipeline/Campaign/Volume scoped by `leads.created_at` cohort window (see Decision Log 2026-06-04) |
+| 0070 | *(06-04 `fix_pipeline_agent_total`)* corrects agent-total double-count in the pipeline widget aggregate |
+| 0058b | *(06-05 `task_groups_flat_visibility`)* flat group visibility — a user sees a group if they created it **or** are assigned a subtask in it; `task:group-list` key becomes user-scoped (not domain/role) |
+| 0071 | *(06-05 `avatars_storage_bucket`)* public `avatars` Storage bucket + RLS (`avatars_public_read`, `avatars_insert_own`, `avatars_update_own`, `avatars_delete_own`) |
+| 0072 | *(06-05)* `public.deals` first-class table — `lead_id` nullable (walk-ins), `contact_name/phone/email`, `domain app_domain`, `deal_amount/type/duration`, `assigned_to`, `won_at` immutable, `client_id` reserved; RLS 3 SELECT policies; 5 indexes; no write policies (admin client only) |
+| 0073 | *(06-05)* idempotent backfill: `status='won' AND deal_amount IS NOT NULL` leads → `public.deals`; NOT EXISTS guard |
+| 0074 | *(06-05)* `CREATE OR REPLACE get_deals_summary` — source now `public.deals`; structural WHERE → `archived_at IS NULL` only; date filters on `won_at`; two-domain split preserved |
+| 0075 | *(06-05 `deals_add_source`)* `deals.source` column — attribution carried onto the deal row at close time |
+| 0076 | *(06-05 `domain_health_revenue_from_deals`)* domain-health revenue now reads `public.deals` (not `leads.deal_amount`) — single source of truth for revenue |
+| 0077 | *(06-06 `lead_health_column`)* `leads.lead_health` column — precomputed health score **[reverted by 0082]** |
+| 0078 | *(06-06 `lead_health_rpc_hooks`)* RPC hooks to populate `lead_health` on mutation **[reverted by 0082]** |
+| 0079 | *(06-06 `refresh_lead_health_rpc`)* batch refresh RPC for `lead_health` **[reverted by 0082]** |
+| 0080 | *(06-06 `get_leads_status_counts`)* `get_leads_status_counts` RPC — status-bucket counts for the leads filter bar / dashboard |
+| 0081 | *(06-06 `dashboard_cold_leads`)* dashboard cold-leads widget query — leads with no activity past threshold |
+| 0082 | *(06-06 `revert_lead_health`)* **reverts 0077–0079** — drops the `lead_health` column, index, and refresh RPC; restores `add_lead_call_note` / `add_lead_plain_note` / `update_lead_status` to their pre-health bodies |
+| 0083 | *(06-08 `status_counts_drop_health`)* removes the `p_health` param + `l.lead_health` predicate from `get_leads_status_counts` (the last DB remnant of the reverted feature); drops the 9-param overload, recreates with 8 params |
+
+> **`lead_health` is fully removed (2026-06-08).** It was built as a stored DB column + refresh job + performance health-strip + leads filter (0077–0079), then the DB column was reverted (0082), and finally the entire feature — column, RPC param, util, trigger, performance strip, and leads filter — was deleted from code and docs (0083). There is **no** `lead_health` column, no `computeLeadHealth()` util, no `LeadHealthStrip`, no `health` lead filter. Any reference you find to any of these is stale and should be removed. (Unrelated: **Domain Health** — `DomainHealthCard` / `getDomainHealthMetrics` — is a separate, live feature and was not touched.)
 
 ---
 
@@ -568,12 +593,13 @@ eia/
 │   ├── styles/
 │   │   └── design-tokens.css          ← ALL CSS variables, all five themes
 │   │
+│   ├── lib/redis.ts                  ← `redis = Redis.fromEnv()` — the ONLY Upstash client instance (§22)
 │   └── trigger/
-│       ├── lead-sla.ts                ← fireLeadSlaTask, scheduleLeadSlasTask
+│       ├── lead-sla.ts                ← fireLeadSlaTask, scheduleLeadSlasTask, cancelLeadSlasByLeadTask
 │       └── task-reminders.ts          ← scheduleTaskReminder, cancelTaskReminder
 │
 └── supabase/
-    ├── migrations/                    ← 58 migrations (0001–0058)
+    ├── migrations/                    ← 84 migrations (0001–0082; see §9 — numbering is by timestamp, two serials reused)
     │   └── CLAUDE.md
     └── config.toml
 ```
@@ -584,12 +610,15 @@ eia/
 
 All queries go through `src/lib/services/`. **No raw Supabase calls in components or actions.**
 
+> **Redis cache-aside is live across most read services** (leads, dashboard, performance, tasks, ad-creatives). Per-function TTLs, key schemas, and invalidation sites are documented in `src/lib/CLAUDE.md` (services registry) and §22 below. The exhaustive per-function TTL list is in `src/lib/CLAUDE.md`; this table lists exports only.
+
 | File | Key Exports |
 | ---- | ----------- |
 | `ad-creatives-service.ts` | `getAdCreativesForCampaign`, `getAdCreativesForCampaigns` (batch → `Map<key, AdCreative[]>`), `getAllAdCreatives` |
 | `agent-routing-service.ts` | `getAgentRoutingConfig`, `getActiveRoutingConfigs`, `setRoutingActive`, `getAgentRosterByDomain` (adminClient — RLS blocks cross-domain manager reads), `setAgentShift` |
 | `dashboard-service.ts` | `getDashboardSummary` (React `cache()` — per-request memoisation), `getLeadVolumeByPeriod` |
 | `deals-service.ts` | `getDealsByRole` (queries `public.deals`, joins `lead(slug)` + `assignee(full_name)`), `getDealsSummary` (RPC wrapper); exports `DealWithRelations` |
+| `lead-assignment-notify.ts` | `notifyLeadAssigned` — the canonical WhatsApp-notification orchestrator for lead assignment; awaits Gupshup sends via `Promise.allSettled` and awaits the `logNotification` write in each `finally`. **Always invoked via `after()` (A-16), never `void`.** |
 | `lead-ingestion.ts` | `ingestLead`, `validateAndSanitizeWebhookPayload`, `resolveDomainFromCampaign`, `assignLeadRoundRobin`, `createLeadFromWhatsApp` |
 | `leads-service.ts` | `getLeadById`, `getLeadBySlug`, `getLeadsByRole` (returns `{leads, totalCount}`), `getLeadsByRoleCached`, `getLeadFilterOptions`, `getLeadNotesFull`, `getLeadActivitiesFull`, `getCampaignMetrics`, `getCampaignDetailMetrics`, `getCampaignAgentDistribution`, `getAgentsForDomain`, `searchLeadsForTask` |
 | `notifications-service.ts` | `getUnreadNotifications`, `getNotifications`, `markNotificationRead`, `markAllNotificationsRead`, `createNotification` |
@@ -632,12 +661,19 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 | ---- | -------- |
 | `call-outcomes.ts` | `CALL_OUTCOMES`, `CallOutcome`, outcome labels |
 | `campaign-domain-map.ts` | `CAMPAIGN_DOMAIN_MAP` (prefix → domain), `DEFAULT_LEAD_DOMAIN = 'onboarding'`, `resolveDomainFromCampaign()` |
+| `dashboard-greetings.ts` | Time-of-day greeting strings for the dashboard header |
 | `dashboard-widgets.ts` | Widget registry (5 entries), `DEFAULT_LAYOUT_BY_ROLE`, `WIDGET_MAP`, `isValidWidgetId`, `WIDGET_HEIGHT_BY_SIZE`, `WIDGET_SIZE_LABELS` |
 | `deal-types.ts` | `DEAL_TYPES`, `DealType`, `DEAL_TYPE_LABELS`, `DEAL_DURATIONS`, `DealDuration`, `DEAL_DURATION_LABELS` |
+| `domain-colors.ts` | `DOMAIN_LINE_COLORS` — one `var(--domain-*)` entry per `AppDomain`; resolved via `resolveColorMap()` before Recharts use (V-12) |
+| `domain-icons.ts` | `DOMAIN_ICONS` — lucide icon per domain (sidebar, domain-health, pickers) |
 | `domains.ts` | `APP_DOMAINS`, `GIA_DOMAINS` (6 Gia-enabled), `DOMAIN_LABELS`, `GIA_DOMAIN_FILTER_ITEMS` |
+| `export-columns.ts` | `LEAD_EXPORT_HEADERS`, `ACTIVITY_EXPORT_HEADERS`, `NOTE_EXPORT_HEADERS` — column maps for CSV/XLSX export (§23) |
 | `lead-columns.ts` | `LEAD_COLUMNS` (11 columns), `DEFAULT_COLUMN_ORDER`, `LEAD_COLUMN_MAP` — `status` and `name` are locked |
+| `lead-resolution-reasons.ts` | Lost/junk resolution reason enums + labels (persisted to `leads.resolution_reason`, migration 0060) |
 | `lead-sources.ts` | `LEAD_SOURCES` (meta, google, website, whatsapp, referral, ypo, events), `LEAD_SOURCE_LABELS`, `LEAD_SOURCE_OPTIONS`, `getLeadSourceLabel()` |
 | `lead-statuses.ts` | Status enums + badge config + `LEAD_STATUS_COLORS` |
+| `leads.ts` | Shared leads-domain constants (page sizes, default filter shape) |
+| `redis-keys.ts` | **`REDIS_KEYS`** (the ONLY source of Redis key strings), `buildLeadListKey()`, `REDIS_TTL`, `TASK_*_TTL`, `PERF_*_TTL`. No inline key strings or magic TTLs anywhere else (§22) |
 | `motion.ts` | `ENTER_DURATION`, `EXIT_DURATION`, `BASE_DURATION`, `FAST_DURATION`, `EASE_OUT_EXPO`, `EASE_IN_EXPO`, `EASE_SPRING`, `EASE_IN_OUT`, `SPRING_CONFIG`, `MODAL_VARIANTS`, `DROPDOWN_VARIANTS`, `FADE_VARIANTS`, `MOTION_BUTTON_DEFAULTS` |
 | `roles.ts` | `USER_ROLES`, `ROLE_LABELS`, `MANAGER_ROLES` |
 | `route-permissions.ts` | `ALWAYS_ALLOWED_PREFIXES` (`['/dashboard', '/profile']`), `DOMAIN_ROUTE_MAP` — domain → permitted route prefixes; GIA domains built programmatically from `GIA_DOMAINS.reduce()` |
@@ -652,10 +688,13 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 | ---- | ----------- |
 | `assert-never.ts` | `assertNever(x: never): never` — canonical Q-11 exhaustive switch helper |
 | `campaigns.ts` | `beautifyCampaignTitle(raw)` — the ONLY campaign-title decorator |
-| `chart-tokens.ts` | `getChartTokens()` — MutationObserver-driven Recharts bridge; resolves CSS vars to computed hex |
+| `chart-tokens.ts` | `getChartTokens()` — MutationObserver-driven Recharts bridge; resolves CSS vars to computed hex (V-12) |
+| `date-range.ts` | Date-range presets + IST-aware range helpers for the dashboard/leads date filters |
 | `dates.ts` | `formatDate()`, `toUTC()`, `formatRelativeTime()`, `formatDuration()`, `normalizeTimeHHMM()` |
+| `export.ts` | **CLIENT-SIDE ONLY.** `buildCSV()`, `buildLeadsCSV()`, `buildXLSXWorkbook()` (async — lazy-imports `xlsx`), `triggerBrowserDownload()`. Never import from server actions/services (§23) |
 | `filter-params.ts` | `buildFilterParams()`, `dateFromUrlParam()`, `dateToUrlParam()`, `parseGiaDomainParam()` — shared filter URL helpers |
 | `numbers.ts` | `formatCount()`, `formatCompact()`, `formatPercent()`, `formatCurrency()` |
+| `performance-roster-display.ts` | Display/formatting helpers for the performance agent-roster table |
 | `phone.ts` | `normalizeToE164()` — the ONLY phone normalizer |
 | `route-access.ts` | `canAccessRoute(profile, pathname): boolean` — pure util; checks admin/founder bypass → `ALWAYS_ALLOWED_PREFIXES` → `DOMAIN_ROUTE_MAP` prefix match; safe in `'use client'` components |
 | `sanitize.ts` | `sanitizeText()` — the ONLY sanitizer |
@@ -672,8 +711,12 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 | `useDashboardLayout` | `eia:dashboard:layout:${userId}:v1` | Widget order + size + colSpan per user |
 | `useLeadColumnPreferences` | `eia:leads:columns:${userId}:v1` | 11 columns, status+name locked |
 | `useNotifications` | — | All notification state + Realtime subscription |
+| `useNotificationSound` | — | Plays the notification chime on new inbound notification |
 | `useTaskCompletionToggle` | — | Optimistic completion circle toggle |
 | `useToast` | — | Thin re-export of toast singleton |
+| `useDebounce` | — | `useDebounce<T>(value, delay)` — the ONLY debounce utility; never recreate inline |
+| `useDashboardCohortSync` | — | Syncs the dashboard global date-cohort filter across widgets (URL ↔ state) |
+| `useCreateTriggerModal` | — | Open/close + draft state for the create-trigger modal flow |
 
 ---
 
@@ -891,6 +934,14 @@ NEVER  put Supabase Realtime channels without a useId() mount nonce
        — Strict Mode double-mounts will collide on bare channel names
 NEVER  use SVG fill/stroke directly with CSS variables in Recharts
        — use useChartTokens() (MutationObserver-driven, resolves via getComputedStyle)
+NEVER  fire an outward network send (WhatsApp/Gupshup, external fetch) as void fn().catch()
+       in a route or action — use after() from next/server with an awaited send inside (A-16)
+NEVER  void redis.del().catch() before revalidatePath — await it in try/catch first;
+       delete BOTH lead cache keys (slug + id) when slug is non-null (P-08, §22)
+NEVER  recreate src/middleware.ts — the proxy is src/proxy.ts (Next.js 16)
+NEVER  add React Query / @tanstack or assume Sentry exists — neither is a dependency
+NEVER  use a coloured one-edge border as a category/status indicator
+       — use pills, dots, icons, or semantic badges instead
 ```
 
 ---
@@ -922,6 +973,11 @@ Every architectural decision that deviates from or extends the rules above.
 | 2026-06-03 | Domain-scoped route authorization. Non-Gia domains had no route restriction — agents could navigate to `/leads` despite having no data there. | `canAccessRoute(profile, pathname)` pure util + `DOMAIN_ROUTE_MAP` constant + server-side layout guard (`redirect('/dashboard')`) + Sidebar nav filter. Admin/founder bypass all domain checks. `/dashboard` and `/profile` are in `ALWAYS_ALLOWED_PREFIXES` — redirect loop impossible. Two independent gates: layout guard redirects before the page renders; Sidebar never renders the link. | Defense-in-depth: neither gate trusts the other. Page-level privilege checks (`isPrivileged`) remain unchanged — `canAccessRoute` is additive, not a replacement. |
 | 2026-06-03 | Attribution refactor (migration 0065): 7 flat ad columns → `source`, `medium`, `utm_campaign` + `attribution jsonb`. `utm_source` renamed `source`; `utm_medium` renamed `medium`; `platform`, `campaign_id`, `ad_name`, `utm_content` folded into `attribution` JSONB. `source` is indexed and queryable (`WHERE source = 'whatsapp'`); `attribution` is the unindexed platform-specific extras bag. `createLeadFromWhatsApp` sets both `source: 'whatsapp'` and `attribution: { platform: 'whatsapp' }`. `updateLeadSource` replaces `updateLeadUtmSource`. URL-param `source` validated against `LEAD_SOURCES` at the route handler before reaching ingestion. | Migration 0065. | Flat columns per ad platform don't scale. JSONB bag absorbs new platforms without schema migrations while `source` stays flat for analytics. |
 | 2026-06-03 | `leads.city` promoted from `personal_details JSONB` to a dedicated `text` column (migration 0066). Backfilled on existing rows. `city` key removed from JSONB. `PersonalDetailsCard` fires `updateLeadCity` in parallel with `updatePersonalDetails` on save. `LeadInfoCard` displays city as an `InfoRow` with `MapPin` icon. Webhook ingestion extracts `city` from `form_data` into the column, removing it from the JSONB bag to avoid duplication. | Migration 0066 + `updateLeadCity` action + `UpdateLeadCitySchema`. | A top-level column is indexable, directly queryable, and displays without JSONB extraction. `personal_details` is a bag for enrichment that doesn't need its own index — `city` clearly does not belong there long-term. |
+| 2026-06-04 | Domain Health metrics (migrations 0066b/0068/0076). Per-domain founder/admin view of lead volume, conversion, calls, and revenue. Revenue source moved to `public.deals` (0076). | Dedicated domain-health RPC + `getDomainHealth` in `performance-service.ts` + `domain-colors.ts` / `domain-icons.ts`. | Founders needed a cross-domain health snapshot; revenue must read the deals table (single source of truth), not `leads.deal_amount`. |
+| 2026-06-05 | Redis cache-aside layer adopted (Upstash). | Read-through caching on leads, dashboard, performance, tasks, ad-creatives. `src/lib/redis.ts` single client; `redis-keys.ts` sole key/TTL source; version-counter invalidation for lead lists; dual-key invalidation for lead rows; P-08 `await del` before revalidate. | Agents live in the app 8–12h/day; repeated list/dossier/dashboard reads were hitting Postgres every time. Cache-aside cuts read latency while Postgres stays the source of truth (cold cache always correct). |
+| 2026-06-06 | Export system (CSV / XLSX) via SheetJS (`xlsx`). | `src/lib/utils/export.ts` (client-only) + `export-columns.ts`; `buildXLSXWorkbook` lazy-imports `xlsx` to keep it out of the initial bundle. | Managers/founders need to pull leads/activity/notes into spreadsheets. Client-side keeps PII off any export endpoint and offloads work to the browser. |
+| 2026-06-06 | `lead_health` precompute built (migrations 0077–0079), then the DB column reverted (0082). | Stored column + hourly refresh job abandoned. | A trigger-refreshed health column added write-path complexity and staleness for a value cheaply derivable at read time. |
+| 2026-06-08 | **`lead_health` feature removed entirely** (migration 0083 + code/doc sweep). | Deleted: `lead_health` column remnant in `get_leads_status_counts` (0083), `computeLeadHealth()` util, `refresh-lead-health.ts` trigger, `LeadHealthStrip` component, `getAgentLeadHealthBreakdown` service + `getAgentLeadHealthAction`, the performance health strip, and the `health` leads filter (UI + URL param + schema + service + types). | The reverted column left dead UI/filter/RPC code querying a non-existent column. The feature was dropped from the product; the half-removed state was a correctness hazard. **Domain Health is a separate feature and was untouched.** |
 
 ---
 
@@ -1102,5 +1158,61 @@ Always Playfair italic heading. Never "No data available."
 
 ---
 
-*Eia Master Reference — Indulge Global · Last updated: 2026-06-03*
-*Sources: The_Blueprint.md · The_Profile.md · context.md · changelog.md · all page-doc audits*
+## 22. Redis Caching Layer
+
+> **Provider:** Upstash Redis (`@upstash/redis`). **Client:** `src/lib/redis.ts` exports a single `redis = Redis.fromEnv()` — the only instance. **Key + TTL schema:** `src/lib/constants/redis-keys.ts` is the **only** source of key strings and TTL values. No inline key strings, no magic TTL numbers anywhere else. Per-service TTL detail lives in `src/lib/CLAUDE.md`.
+
+### The pattern — cache-aside, read-through
+
+Read services check Redis first; on a miss they query Postgres, write the result back with a TTL, and return it. The cache is **never** the source of truth — Postgres is. A cold cache is always correct, just slower.
+
+### What is cached (by namespace)
+
+| Namespace | Service | TTL | Invalidation |
+| --------- | ------- | --- | ------------ |
+| `lead:list:*` | `leads-service.getLeadsByRole` | 30s | **Version counter** — `INCR lead:list:v:{role}:{domain}` on any lead mutation atomically voids all list pages (no SCAN). Key includes `role + callerDomain + userId + filterHash + v{N}` |
+| `lead:row:id` / `lead:row:slug` | `getLeadById` / `getLeadBySlug` | 120s | **Explicit `del` of BOTH keys** on every lead-row mutation when slug is non-null (dual-key invariant) |
+| `lead:notes` / `lead:activities` | `getLeadNotesFull` / `getLeadActivitiesFull` | 120s | Explicit `del` on note/activity write |
+| `lead:filter-options` | `getLeadFilterOptions` | 300s | TTL-only |
+| `dashboard:*` | `dashboard-service` (status, volume, multi, campaigns, agent-tasks) | 30–120s | TTL-only; keys are date-range-namespaced (`from:to`) |
+| `perf:*` | `performance-service` (all 6 fns) | 30–120s | TTL-only; `domain` excluded from `perf:agent-detail` (auth-only) |
+| `task:*` | `tasks-service` (gia, group-list, personal page-1, subtasks, remarks) | 30–120s | Explicit `del` on task writes; `task:group-list` is user-scoped (flat-visibility 0058b) |
+| `campaign:ad-creative` | `ad-creatives-service` | 300s | Explicit `del` on upsert/delete |
+
+### Non-negotiable rules
+
+- **P-08 — `del` before revalidate:** every `redis.del` in a Server Action is `await`-ed inside a `try/catch` that logs a `[module-action]` warning, **before** `revalidatePath`/`revalidateTag`. A `void redis.del().catch()` races the cache revalidation and can evict a fresh entry (see Decision Log + `CLAUDE.md` Pattern Notes).
+- **Lead dual-key invariant:** lead rows are cached under `leadRowSlug(slug)` (primary, hit on every dossier load) **and** `leadRowId(leadId)` (UUID fallback). Any action mutating the lead row deletes **both** when slug is non-null. Deleting only `leadRowId` is a silent no-op on normal traffic.
+- **Domain in every scoped key (Q-16 sibling):** a manager in `concierge` must never receive a cached response built for `finance`. List keys use the **session-verified `callerDomain`**, not `filters.domain`.
+- **Redis failure is non-fatal:** every Redis call is wrapped so a cache outage degrades to direct Postgres reads, never an error to the user.
+- **Reference implementations:** `getLeadsByRole` (version-counter list cache), `updateLeadStatus` / `addLeadCallNote` (dual-key `del` + version `INCR`), `buildLeadListKey` (deterministic key construction).
+
+---
+
+## 23. Export System (CSV / XLSX)
+
+> **All export code is client-side only.** `src/lib/utils/export.ts` and `src/lib/constants/export-columns.ts` must **never** be imported from a server action or service — they run in the browser and trigger a file download from the user's machine.
+
+### Building blocks
+
+| Export | Function (`src/lib/utils/export.ts`) | Format |
+| ------ | ------------------------------------ | ------ |
+| Generic CSV | `buildCSV(rows, headers)` | string |
+| Leads CSV | `buildLeadsCSV(leads)` | string (uses `LEAD_EXPORT_HEADERS`) |
+| XLSX workbook | `buildXLSXWorkbook(...)` — **async**, lazy-imports `xlsx` so SheetJS isn't in the initial bundle | Blob |
+| Download trigger | `triggerBrowserDownload(content, filename, mime)` | — |
+
+### Column maps (`src/lib/constants/export-columns.ts`)
+
+`LEAD_EXPORT_HEADERS`, `ACTIVITY_EXPORT_HEADERS`, `NOTE_EXPORT_HEADERS` — the single source of export column order/labels. Add or reorder columns here, never inline at the call site.
+
+### Rules
+
+- Never import `export.ts` server-side (it has no `'use server'` and assumes browser APIs for the download).
+- `buildXLSXWorkbook` is `async` because `xlsx` is dynamically imported — `await` it.
+- Export respects the user's current filter/scope: export what the table currently shows, not the whole table.
+
+---
+
+*Eia Master Reference — Indulge Global · Last updated: 2026-06-08*
+*Sources: The_Blueprint.md · The_Profile.md · context.md · changelog.md · CLAUDE.md (root + lib + app) · The_Rules.md · all page-doc audits + live codebase verification*

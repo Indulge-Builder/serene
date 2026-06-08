@@ -148,10 +148,6 @@ Previous range via `getPreviousPeriodDateRange`; `null` if no previous period.
 
 `lead_notes` where `call_outcome IS NOT NULL`, `created_at` in period.
 
-### `getAgentLeadHealthBreakdown(agentId)`
-
-Single query on `leads` grouped by `lead_health`. Excludes: `archived_at IS NOT NULL`, `status IN ('won','lost','junk')`, `lead_health IS NULL`. Returns `LeadHealthBreakdown = { healthy: number; needs_attention: number; at_risk: number }`. Count cast via `Number()` (Q-09). No period parameter — health is a live pipeline snapshot, not a period metric.
-
 ### `getTeamBenchmarks(callerDomain, period)`
 
 3 flat queries — never N+1. `agentCount < 2` → all averages `null`. `leadsWon` excluded by design. Unweighted mean of per-agent means.
@@ -363,10 +359,6 @@ Left: 280px column — "Agents" label + 4 agent card skeletons, stagger 0/80/160
 
 **Stats:** Five `StatAtom` cards (pastel palettes — intentional non-token colours): Calls Today, Total Leads, Total Calls, Leads Won, Revenue.
 
-**Lead Health strip:** Rendered between the stats row and the deal breakdown section. Three inline pill chips (at_risk / needs_attention / healthy) from `LeadHealthStrip`. Each chip deep-links `/leads?assigned_to={agentId}&health={tier}`. Fetched by a separate `useEffect` keyed on `[agent.id, domain]` only — never period-triggered. While loading: three skeleton chips. `healthData` + `isHealthLoading` states; `cancelled` ref (Q-15 pattern).
-
-**Health fetch invariant:** The health `useEffect` must NOT include `period`, `customFrom`, or `customTo` in its deps. Health is a pipeline snapshot, not a period metric. Tying it to period causes unnecessary refetches and flickers on every period tab click.
-
 **Pipeline:** Segmented bar + chip legend on `--theme-paper-subtle`.
 
 **Error:** `--color-danger-light` background.
@@ -442,7 +434,6 @@ Wraps `Suspense` + `ManagerPerformanceAsync allDomains={true}`. Passes `domain={
 | `PerformanceFilters.tsx` | Filter bar for manager/founder views only |
 | `CoreFourGrid.tsx` | Agent KPI row + sparklines |
 | `EffortGrid.tsx` | Agent effort cards |
-| `LeadHealthStrip.tsx` | Three-chip health strip for AgentDetailPanel; deep-links to /leads?health={tier} |
 | `CallOutcomeBar.tsx` | Donut + legend (agent self-view + manager detail panel) |
 | `ManagerPerformancePanel.tsx` | Two-column team shell |
 | `AgentDetailPanel.tsx` | Manager/founder agent detail |

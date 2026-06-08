@@ -56,7 +56,6 @@ src/lib/utils/sanitize.ts           ← sanitizeText() — the only sanitizer
 src/lib/utils/phone.ts              ← normalizeToE164() — the only normalizer
 src/lib/utils/dates.ts              ← formatDate() — the only date formatter
 src/lib/utils/numbers.ts            ← formatCount(), formatCurrency() etc.
-src/lib/utils/lead-health.ts        ← computeLeadHealth() — pure function, no DB imports; LeadHealth type
 src/lib/utils/export.ts             ← buildCSV(), buildLeadsCSV(), buildXLSXWorkbook(), triggerBrowserDownload() — CLIENT-SIDE ONLY; never import from server actions or services
 src/lib/utils/chart-tokens.ts       ← getChartTokens() — Recharts bridge
 src/lib/utils/campaigns.ts          ← beautifyCampaignTitle() — the only campaign-title decorator

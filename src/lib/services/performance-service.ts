@@ -959,42 +959,6 @@ export async function getDomainHealthMetrics(
   });
 }
 
-// ─────────────────────────────────────────────
-// Agent Lead Health Breakdown
-// Single query grouped by lead_health for one agent.
-// Excludes: archived leads, terminal statuses, null health (not yet evaluated).
-// Performance boundary: this service owns this query. Never add to leads-service.ts.
-// ─────────────────────────────────────────────
-
-export type LeadHealthBreakdown = {
-  healthy:          number;
-  needs_attention:  number;
-  at_risk:          number;
-};
-
-export async function getAgentLeadHealthBreakdown(
-  agentId: string,
-): Promise<LeadHealthBreakdown> {
-  const supabase = await createClient();
-
-  const { data } = await supabase
-    .from('leads')
-    .select('lead_health')
-    .eq('assigned_to', agentId)
-    .is('archived_at', null)
-    .not('status', 'in', '(won,lost,junk)')
-    .not('lead_health', 'is', null);
-
-  const rows = data ?? [];
-
-  const result: LeadHealthBreakdown = { healthy: 0, needs_attention: 0, at_risk: 0 };
-  for (const row of rows) {
-    const h = row.lead_health as keyof LeadHealthBreakdown | null;
-    if (h && h in result) result[h] = Number(result[h]) + 1;
-  }
-  return result;
-}
-
 export async function getDomainsWithLeads(
   dateFrom: string,
   dateTo: string,

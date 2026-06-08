@@ -124,7 +124,7 @@ const { leads, totalCount, statusCounts } = await getLeadsByRoleCached(role, use
 
 `statusCounts` is produced by the `get_leads_status_counts` RPC, called in `Promise.all` alongside the paginated query. It reflects the **full filtered dataset** — not just the current page slice. On RPC error it is `{}` (empty object). `LeadsTable` receives it as a prop and uses `statusCounts[status] ?? 0` as the **only** source of truth for toolbar pill counts. Zero reads from `leads[]` for count display.
 
-**Param-sync rule:** the RPC params in `getLeadsByRole` (`p_agent_id`, `p_date_from`, `p_date_to`, `p_campaign`, `p_search`, `p_health`, `p_source`, `p_outcomes`, `p_statuses`) must stay in sync with the filter chain applied to the paginated query. When a new filter is added to `LeadFilters`, update both the paginated query and the RPC call simultaneously.
+**Param-sync rule:** the RPC params in `getLeadsByRole` (`p_agent_id`, `p_date_from`, `p_date_to`, `p_campaign`, `p_search`, `p_source`, `p_outcomes`, `p_statuses`) must stay in sync with the filter chain applied to the paginated query. When a new filter is added to `LeadFilters`, update both the paginated query and the RPC call simultaneously.
 
 ---
 
@@ -289,7 +289,7 @@ Column-header click sort is not implemented and must not be added without a spec
 
 **Threshold constant:** `COLD_LEAD_THRESHOLD_DAYS = 5` in `src/lib/constants/leads.ts`.
 
-**Service logic:** `last_activity_at < (now - 5 days)` AND `status NOT IN ('won','lost','junk')`. Applied in `getLeadsByRole` and `getLeadsForExport` after the `health` filter, before `.range()`.
+**Service logic:** `last_activity_at < (now - 5 days)` AND `status NOT IN ('won','lost','junk')`. Applied in `getLeadsByRole` and `getLeadsForExport` after the search filter, before `.range()`.
 
 **NULL `last_activity_at` leads are intentionally excluded** by PostgreSQL `<` semantics — NULL is never less than a timestamp. Those leads (never updated since backfill) are handled by SLA-01A.
 

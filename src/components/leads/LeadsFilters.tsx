@@ -41,8 +41,6 @@ type LeadsFiltersProps = {
 
 // ─── FilterDraft ──────────────────────────────────────────────────────────────
 
-type LeadHealthTier = 'healthy' | 'needs_attention' | 'at_risk';
-
 type FilterDraft = {
   status: LeadStatus[];
   outcome: CallOutcome[];
@@ -52,15 +50,8 @@ type FilterDraft = {
   campaign: string | null;
   date_from: string | null;
   date_to: string | null;
-  health: LeadHealthTier | null;
   // going_cold + sort_order are NOT in draft — they commit immediately via router.push
 };
-
-const HEALTH_ITEMS: { id: LeadHealthTier; label: string }[] = [
-  { id: 'healthy',          label: 'Healthy' },
-  { id: 'needs_attention',  label: 'Needs Attention' },
-  { id: 'at_risk',          label: 'At Risk' },
-];
 
 function parseMulti<T extends string>(
   params: URLSearchParams,
@@ -72,11 +63,6 @@ function parseMulti<T extends string>(
 }
 
 function draftFromParams(params: URLSearchParams): FilterDraft {
-  const rawHealth = params.get("health");
-  const validHealthValues: LeadHealthTier[] = ['healthy', 'needs_attention', 'at_risk'];
-  const health = validHealthValues.includes(rawHealth as LeadHealthTier)
-    ? (rawHealth as LeadHealthTier)
-    : null;
   return {
     status:     parseMulti<LeadStatus>(params, "status"),
     outcome:    parseMulti<CallOutcome>(params, "outcome"),
@@ -86,7 +72,6 @@ function draftFromParams(params: URLSearchParams): FilterDraft {
     campaign:   params.get("campaign"),
     date_from:  params.get("date_from"),
     date_to:    params.get("date_to"),
-    health,
   };
 }
 
@@ -214,8 +199,7 @@ export function LeadsFilters({
     (draft.source ?? "") !== (params.get("source") ?? "") ||
     (draft.campaign ?? "") !== (params.get("campaign") ?? "") ||
     (draft.date_from ?? "") !== (params.get("date_from") ?? "") ||
-    (draft.date_to ?? "") !== (params.get("date_to") ?? "") ||
-    (draft.health ?? "") !== (params.get("health") ?? "");
+    (draft.date_to ?? "") !== (params.get("date_to") ?? "");
 
   // ── committedCount: reflects what the table is currently showing ──
   const committedCount =
@@ -228,7 +212,6 @@ export function LeadsFilters({
     (params.get("agent_id") ? 1 : 0) +
     (params.get("date_from") ? 1 : 0) +
     (params.get("date_to") ? 1 : 0) +
-    (params.get("health") ? 1 : 0) +
     (params.get("going_cold") === "true" ? 1 : 0);
 
   function applyFilters() {
@@ -241,7 +224,6 @@ export function LeadsFilters({
       campaign:   draft.campaign,
       date_from:  draft.date_from,
       date_to:    draft.date_to,
-      health:     draft.health,
     });
     startTransition(() => {
       router.push(`${pathname}?${next.toString()}`);
@@ -258,7 +240,6 @@ export function LeadsFilters({
       campaign:   null,
       date_from:  null,
       date_to:    null,
-      health:     null,
     });
     setSearchInput("");
     startTransition(() => router.push(pathname));
@@ -509,17 +490,6 @@ export function LeadsFilters({
             }
           />
         )}
-
-        {/* Health — single select */}
-        <FilterDropdown
-          menuPortal
-          accentBorderOnOpen={false}
-          style={{ flexShrink: 0 }}
-          label="Health"
-          items={HEALTH_ITEMS}
-          selected={draft.health ? [draft.health] : []}
-          onChange={(next) => setDraft((d) => ({ ...d, health: (next[0] as LeadHealthTier) ?? null }))}
-        />
 
         {/* Going Cold — immediate-commit preset chip; bypasses draft → Apply */}
         {(() => {

@@ -6,6 +6,32 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-08 — Lead Health feature removed entirely (reverses the 2026-06-06 build below)
+
+**Decision:** The lead-health system (per-lead `healthy` / `needs_attention` / `at_risk` tier) is dropped from the product. The DB column had already been reverted (migration 0082, 2026-06-06), which left dead application code querying a column that no longer exists — a correctness hazard. This change removes every remaining trace.
+
+> **Not touched:** *Domain Health* (`DomainHealthCard`, `getDomainHealthMetrics`, the founder/admin domain-health overview) is a separate feature and remains fully intact.
+
+**Removed:**
+
+- `supabase/migrations/20260608000083_status_counts_drop_health.sql` — drops the old 9-param `get_leads_status_counts` overload (with `p_health`) and recreates it with 8 params, removing the `l.lead_health` predicate (the last DB remnant; the column itself went in 0082)
+- `src/lib/utils/lead-health.ts` — deleted (`computeLeadHealth()`, `LeadHealth` type)
+- `src/trigger/refresh-lead-health.ts` — deleted (`refreshLeadHealthTask` hourly cron; was already orphaned after 0082)
+- `src/components/performance/LeadHealthStrip.tsx` — deleted
+- `src/lib/services/performance-service.ts` — `getAgentLeadHealthBreakdown` + `LeadHealthBreakdown` type removed
+- `src/lib/actions/performance.ts` — `getAgentLeadHealthAction` + `GetAgentLeadHealthSchema` removed
+- `src/components/performance/AgentDetailPanel.tsx` — health strip JSX, `healthData`/`isHealthLoading` state, and the `[agent.id, domain]` health `useEffect` removed; imports of `getAgentLeadHealthAction` / `LeadHealthStrip` / `LeadHealthBreakdown` dropped
+- `src/components/leads/LeadsFilters.tsx` — `LeadHealthTier` type, `HEALTH_ITEMS`, the Health `FilterDropdown`, and `health` from `FilterDraft` / `draftFromParams` / `isDirty` / `committedCount` / `applyFilters` / `clearAll` removed
+- `src/lib/services/leads-service.ts` — `.eq('lead_health', filters.health)` removed from both `getLeadsByRole` and `getLeadsForExport`; `p_health` dropped from the `get_leads_status_counts` RPC call
+- `src/app/(dashboard)/leads/page.tsx` — `health` URL-param parsing removed from `parseLeadFilters`
+- `src/components/leads/ExportButton.tsx` + `src/lib/actions/leads.ts` — `health` dropped from the export filter payload
+- `src/lib/validations/lead-schema.ts` — `health` enum removed from the export filters schema
+- `src/lib/types/database.ts` — `lead_health` removed from `leads` Row/Insert/Update; `health?` removed from `LeadFilters`
+
+`pnpm tsc --noEmit` clean. Docs updated: `master.md` (migration index + decision log + registries), `lead-page.md`, `performance-page.md`, `src/app/(dashboard)/leads/CLAUDE.md`.
+
+---
+
 ## 2026-06-08 — WhatsApp lead notifications — fix silent intermittent loss on Vercel (root cause: orphaned fire-and-forget sends)
 
 **Problem:** Only a few WhatsApp lead-assignment / founder notifications were delivered per day even though lead ingestion via the API worked perfectly. Every row in `whatsapp_notification_logs` showed `gupshup_status: 202`, `status: submitted`, `delivered: true` — i.e. Gupshup accepted 100% of what reached it. The missing notifications left **no log row at all** (missing rows, not error rows).

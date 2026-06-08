@@ -290,7 +290,6 @@ export type Database = {
           last_activity_at: string | null
           last_call_outcome: string | null
           last_name: string | null
-          lead_health: 'healthy' | 'needs_attention' | 'at_risk' | null
           lead_intent: string | null
           medium: string | null
           personal_details: Json | null
@@ -322,7 +321,6 @@ export type Database = {
           last_activity_at?: string | null
           last_call_outcome?: string | null
           last_name?: string | null
-          lead_health?: 'healthy' | 'needs_attention' | 'at_risk' | null
           lead_intent?: string | null
           medium?: string | null
           personal_details?: Json | null | Record<string, string>
@@ -354,7 +352,6 @@ export type Database = {
           last_activity_at?: string | null
           last_call_outcome?: string | null
           last_name?: string | null
-          lead_health?: 'healthy' | 'needs_attention' | 'at_risk' | null
           lead_intent?: string | null
           medium?: string | null
           personal_details?: Json | null
@@ -1574,7 +1571,6 @@ export type LeadFilters = {
   date_from:         string | null
   date_to:           string | null
   search:            string | null
-  health?:           'healthy' | 'needs_attention' | 'at_risk' | null
   going_cold?:       boolean
   sort_order?:       'asc' | 'desc'
   page:              number

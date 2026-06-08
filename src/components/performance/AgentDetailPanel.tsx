@@ -4,15 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence }             from 'framer-motion';
 import { Avatar }                              from '@/components/ui/Avatar';
 import { CallOutcomeBar }                      from './CallOutcomeBar';
-import { getAgentDetailMetricsAction, getAgentLeadHealthAction } from '@/lib/actions/performance';
-import { LeadHealthStrip }                        from './LeadHealthStrip';
+import { getAgentDetailMetricsAction }         from '@/lib/actions/performance';
 import { formatCompact, formatCurrency, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { StatAtom, STAT_PALETTES }             from '@/components/performance/StatAtom';
 import { DOMAIN_LABELS }                       from '@/lib/constants/domains';
 import { LEAD_STATUS_LABELS }                  from '@/lib/constants/lead-statuses';
 import { ENTER_DURATION, EASE_OUT_EXPO }       from '@/lib/constants/motion';
 import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
-import type { LeadHealthBreakdown } from '@/lib/services/performance-service';
 import type { AppDomain }                      from '@/lib/types/database';
 import type { PerformancePeriod }              from '@/lib/services/performance-service';
 
@@ -216,11 +214,6 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
   const [error, setError]         = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Lead health — separate state, keyed on agent.id only (not period).
-  // Never tied to period: health is a snapshot of the pipeline, not period activity.
-  const [healthData, setHealthData]           = useState<LeadHealthBreakdown | null>(null);
-  const [isHealthLoading, setIsHealthLoading] = useState(true);
-
   // Track which agent the current metrics belong to, so we know when to show
   // the full skeleton (new agent) vs the graceful dim overlay (same agent, new period).
   const metricsAgentId = useRef<string | null>(null);
@@ -257,28 +250,6 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
 
     return () => { cancelled = true; };
   }, [agent.id, domain, period, customFrom, customTo]);
-
-  // Health fetch — agent-switch triggered only (never period-triggered).
-  // Invariant: this effect must NOT include period/customFrom/customTo in its deps.
-  useEffect(() => {
-    let cancelled = false;
-
-    setHealthData(null);
-    setIsHealthLoading(true);
-
-    getAgentLeadHealthAction(agent.id, domain)
-      .then((result) => {
-        if (cancelled) return;
-        setIsHealthLoading(false);
-        if (result.data) setHealthData(result.data);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setIsHealthLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [agent.id, domain]);
 
   // When re-fetching for the same agent (period changed), dim the panel instead of showing skeleton.
   // When fetching for a new agent, show skeleton (metrics is null).
@@ -454,54 +425,6 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             ))}
           </motion.div>
         )}
-      </AnimatePresence>
-
-      {/* ── Lead health strip ─────────────────────────────────────── */}
-      <AnimatePresence mode="wait">
-        {isHealthLoading ? (
-          <motion.div
-            key="health-skel"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            style={{
-              background:   'var(--theme-paper)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-lg)',
-              padding:      'var(--space-5)',
-            }}
-          >
-            <Skel w="80px" h="11px" radius="var(--radius-xs)" />
-            <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
-              <Skel w="88px" h="26px" radius="var(--radius-full)" />
-              <Skel w="120px" h="26px" radius="var(--radius-full)" />
-              <Skel w="72px" h="26px" radius="var(--radius-full)" />
-            </div>
-          </motion.div>
-        ) : healthData ? (
-          <motion.div
-            key="health-data"
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: ENTER_DURATION, delay: 0.16, ease: EASE_OUT_EXPO }}
-            style={{
-              background:   'var(--theme-paper)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-lg)',
-              padding:      'var(--space-5)',
-              boxShadow:    'var(--shadow-1)',
-            }}
-          >
-            <LeadHealthStrip
-              healthy={healthData.healthy}
-              needs_attention={healthData.needs_attention}
-              at_risk={healthData.at_risk}
-              agentId={agent.id}
-            />
-          </motion.div>
-        ) : null}
       </AnimatePresence>
 
       {/* ── Deal type breakdown (conditional) ─────────────────────── */}

@@ -1089,7 +1089,6 @@ export async function exportLeadsAction(
     date_from:         filters.date_from ?? null,
     date_to:           filters.date_to ?? null,
     search:            filters.search ?? null,
-    health:            filters.health ?? null,
     sort_order:        filters.sort_order ?? "desc",
     page:              1,
     pageSize:          5000,

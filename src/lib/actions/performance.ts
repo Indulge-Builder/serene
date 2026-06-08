@@ -11,56 +11,15 @@ import {
   getAgentDetailMetrics,
   getAgentRosterPerformance,
   getDomainHealthMetrics,
-  getAgentLeadHealthBreakdown,
   getPeriodDateRange,
   type PerformancePeriod,
   type CoreFourMetrics,
   type EffortMetrics,
   type OutcomeBreakdownItem,
   type TeamBenchmarks,
-  type LeadHealthBreakdown,
 } from '@/lib/services/performance-service';
 import { GIA_DOMAINS }               from '@/lib/constants/domains';
 import type { ActionResult, AgentDetailMetrics, AgentRosterRow, DomainHealthCard } from '@/lib/types/index';
-
-// ─────────────────────────────────────────────
-// Action: getAgentLeadHealthAction
-// Manager/founder only — same auth guard as getAgentDetailMetricsAction.
-// Agents are denied: the health strip is on the manager/founder detail panel only.
-// Returns the health tier breakdown for a single agent's active pipeline.
-// ─────────────────────────────────────────────
-
-const GetAgentLeadHealthSchema = z.object({
-  agentId: z.string().uuid(),
-  domain:  z.string().min(1).nullable().optional(),
-});
-
-export async function getAgentLeadHealthAction(
-  agentId: string,
-  domain:  AppDomain | null,
-): Promise<ActionResult<LeadHealthBreakdown>> {
-  const parsed = GetAgentLeadHealthSchema.safeParse({ agentId, domain });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
-
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: 'Not authenticated.' };
-
-  if (caller.role === 'agent' || caller.role === 'guest') {
-    return { data: null, error: 'Access denied.' };
-  }
-  if (caller.role === 'manager') {
-    if (!domain || caller.domain !== domain) {
-      return { data: null, error: 'Access denied.' };
-    }
-  }
-
-  try {
-    const breakdown = await getAgentLeadHealthBreakdown(agentId);
-    return { data: breakdown, error: null };
-  } catch {
-    return { data: null, error: 'Failed to load health data.' };
-  }
-}
 import type { AppDomain }            from '@/lib/types/database';
 
 // ─────────────────────────────────────────────

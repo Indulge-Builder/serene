@@ -334,10 +334,6 @@ export async function getLeadsByRole(
     }
   }
 
-  if (filters.health) {
-    query = query.eq('lead_health', filters.health);
-  }
-
   if (filters.going_cold) {
     // Threshold: last_activity_at older than COLD_LEAD_THRESHOLD_DAYS ago.
     // NULL last_activity_at leads are intentionally excluded by lt() — those are
@@ -365,7 +361,6 @@ export async function getLeadsByRole(
         : null,
       p_campaign:    filters.campaign ?? null,
       p_search:      filters.search ? filters.search.trim().toLowerCase() || null : null,
-      p_health:      filters.health ?? null,
       p_going_cold:  filters.going_cold
         ? new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString()
         : null,
@@ -1085,9 +1080,6 @@ export async function getLeadsForExport(
           `first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%,city.ilike.%${term}%`,
         );
       }
-    }
-    if (filters.health) {
-      query = query.eq("lead_health", filters.health);
     }
     if (filters.going_cold) {
       const threshold = new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString();
