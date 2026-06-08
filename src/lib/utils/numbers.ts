@@ -2,7 +2,7 @@
 // Number formatting utilities — design-dna.md §8.2
 //
 // formatCount    — exact integers with commas. null → "—"
-// formatCompact  — K/M abbreviation for stat cards. null → "—"
+// formatCompact  — K/L/Cr (Indian) for stat cards. null → "—"
 // formatPercent  — ratio (0–1) → "74.2%". null → "—"
 // formatCurrency — INR / USD with locale-correct separators. null → "—"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -15,10 +15,12 @@ export function formatCount(value: number | null | undefined): string {
 
 /**
  * Compact — for stat cards, dashboard metrics, and Recharts tickFormatters.
- * Below 1,000:  full number  → "847"
- * 1,000–9,999:  1 decimal K  → "1.2K"
- * 10,000–999,999: no decimal K → "12K"
- * 1,000,000+:  1 decimal M  → "1.2M"
+ * Indian market ladder (design-dna.md §8.2):
+ *   Below 1,000:       full number → "847"
+ *   1,000–9,999:       1 decimal K → "1.2K"
+ *   10,000–99,999:     whole K     → "12K"
+ *   1,00,000–99,99,999: L (lakh)   → "12.5L"
+ *   1,00,00,000+:      Cr (crore)  → "1.2Cr"
  * null / undefined → "—"
  * string input (Recharts categorical axis labels) → parsed as number; if NaN, returned as-is
  */
@@ -28,13 +30,34 @@ export function formatCompact(value: number | string | null | undefined): string
   // Non-numeric string (e.g. a Recharts category label like "Jan") → pass through unchanged
   if (isNaN(n)) return String(value);
   const abs = Math.abs(n);
+  if (abs >= 1_00_00_000) {
+    const cr = n / 1_00_00_000;
+    return Number.isInteger(cr) ? `${cr}Cr` : `${cr.toFixed(1)}Cr`;
+  }
+  if (abs >= 1_00_000) {
+    const l = n / 1_00_000;
+    return Number.isInteger(l) ? `${l}L` : `${l.toFixed(1)}L`;
+  }
+  if (abs >= 10_000) {
+    const k = Math.round(n / 1_000);
+    return `${k}K`;
+  }
+  if (abs >= 1_000) {
+    const k = n / 1_000;
+    return Number.isInteger(k) ? `${k}K` : `${k.toFixed(1)}K`;
+  }
+  return String(n);
+}
+
+/** Western K/M ladder — USD compact currency only */
+function formatCompactWestern(n: number): string {
+  const abs = Math.abs(n);
   if (abs >= 1_000_000) {
     const m = n / 1_000_000;
     return Number.isInteger(m) ? `${m}M` : `${m.toFixed(1)}M`;
   }
   if (abs >= 10_000) {
-    const k = Math.round(n / 1_000);
-    return `${k}K`;
+    return `${Math.round(n / 1_000)}K`;
   }
   if (abs >= 1_000) {
     const k = n / 1_000;
@@ -67,7 +90,7 @@ export function formatPercent(
 
 /**
  * Compact currency — for stat cards and chart axes.
- * Combines formatCompact magnitude with a currency symbol prefix.
+ * INR: ₹ + K/L/Cr (never M). USD: $ + K/M.
  * null → "—"
  */
 export function formatCurrencyCompact(
@@ -76,7 +99,9 @@ export function formatCurrencyCompact(
 ): string {
   if (value === null || value === undefined) return '—';
   const symbol = currency === 'INR' ? '₹' : '$';
-  return `${symbol}${formatCompact(value)}`;
+  const magnitude =
+    currency === 'INR' ? formatCompact(value) : formatCompactWestern(value);
+  return `${symbol}${magnitude}`;
 }
 
 /**

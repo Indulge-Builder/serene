@@ -14,12 +14,19 @@ type Props = {
 };
 
 // JSONB fields — city is intentionally absent (it lives in leads.city)
-const JSONB_FIELDS: { label: string; key: string; placeholder: string; wide?: boolean }[] = [
+const JSONB_GRID_FIELDS: { label: string; key: string; placeholder: string }[] = [
   { label: 'Company',    key: 'company',    placeholder: 'e.g. Tata Group'          },
   { label: 'Occupation', key: 'occupation', placeholder: 'e.g. Business Owner'      },
   { label: 'Interests',  key: 'interests',  placeholder: 'e.g. Luxury, Real estate' },
-  { label: 'Details',    key: 'notes',      placeholder: 'Any additional context…',  wide: true },
 ];
+
+const DETAILS_FIELD = {
+  label:       'Details',
+  key:         'notes',
+  placeholder: 'Any additional context…',
+} as const;
+
+const JSONB_FIELD_KEYS = [...JSONB_GRID_FIELDS.map((f) => f.key), DETAILS_FIELD.key];
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -84,7 +91,7 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
   // JSONB fields state
   const [saved, setSaved]     = useState<Record<string, string>>(initial);
   const [values, setValues]   = useState<Record<string, string>>(
-    Object.fromEntries(JSONB_FIELDS.map(({ key }) => [key, initial[key] ?? '']))
+    Object.fromEntries(JSONB_FIELD_KEYS.map((key) => [key, initial[key] ?? '']))
   );
 
   // City — dedicated column, separate state
@@ -97,7 +104,7 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
   const [isPending, startTransition] = useTransition();
 
   const hasAnyValue =
-    JSONB_FIELDS.some(({ key }) => (saved[key] ?? '').trim() !== '') ||
+    JSONB_FIELD_KEYS.some((key) => (saved[key] ?? '').trim() !== '') ||
     savedCity.trim() !== '';
 
   function handleActivate() {
@@ -138,7 +145,7 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
   }
 
   function handleCancel() {
-    setValues(Object.fromEntries(JSONB_FIELDS.map(({ key }) => [key, saved[key] ?? ''])));
+    setValues(Object.fromEntries(JSONB_FIELD_KEYS.map((key) => [key, saved[key] ?? ''])));
     setCityValue(savedCity);
     setError(null);
     setSaveState('idle');
@@ -210,34 +217,21 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
             cursor:              !active && canEdit ? 'text' : 'default',
           }}
         >
-          {/* JSONB fields */}
-          {JSONB_FIELDS.map(({ label, key, placeholder, wide }) => (
-            <div key={key} style={wide ? { gridColumn: '1 / -1' } : undefined}>
+          {/* JSONB grid fields */}
+          {JSONB_GRID_FIELDS.map(({ label, key, placeholder }) => (
+            <div key={key}>
               <p style={labelStyle}>{label}</p>
               {active && canEdit ? (
-                wide ? (
-                  <textarea
-                    value={values[key] ?? ''}
-                    onChange={(e) => handleChange(key, e.target.value)}
-                    placeholder={placeholder}
-                    disabled={isPending}
-                    rows={3}
-                    style={{ ...textareaStyle, opacity: isPending ? 0.6 : 1 }}
-                    onFocus={focusAccent}
-                    onBlur={blurReset}
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    value={values[key] ?? ''}
-                    onChange={(e) => handleChange(key, e.target.value)}
-                    placeholder={placeholder}
-                    disabled={isPending}
-                    style={{ ...inputStyle, opacity: isPending ? 0.6 : 1 }}
-                    onFocus={focusAccent}
-                    onBlur={blurReset}
-                  />
-                )
+                <input
+                  type="text"
+                  value={values[key] ?? ''}
+                  onChange={(e) => handleChange(key, e.target.value)}
+                  placeholder={placeholder}
+                  disabled={isPending}
+                  style={{ ...inputStyle, opacity: isPending ? 0.6 : 1 }}
+                  onFocus={focusAccent}
+                  onBlur={blurReset}
+                />
               ) : (
                 <p style={readValueStyle((saved[key] ?? '').trim() !== '')}>
                   {(saved[key] ?? '').trim() || '—'}
@@ -246,7 +240,7 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
             </div>
           ))}
 
-          {/* City — dedicated column */}
+          {/* City — dedicated column, above Details */}
           <div>
             <p style={labelStyle}>City</p>
             {active && canEdit ? (
@@ -263,6 +257,27 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
             ) : (
               <p style={readValueStyle(savedCity.trim() !== '')}>
                 {savedCity.trim() || '—'}
+              </p>
+            )}
+          </div>
+
+          {/* Details — full width below City */}
+          <div style={{ gridColumn: '1 / -1' }}>
+            <p style={labelStyle}>{DETAILS_FIELD.label}</p>
+            {active && canEdit ? (
+              <textarea
+                value={values[DETAILS_FIELD.key] ?? ''}
+                onChange={(e) => handleChange(DETAILS_FIELD.key, e.target.value)}
+                placeholder={DETAILS_FIELD.placeholder}
+                disabled={isPending}
+                rows={3}
+                style={{ ...textareaStyle, opacity: isPending ? 0.6 : 1 }}
+                onFocus={focusAccent}
+                onBlur={blurReset}
+              />
+            ) : (
+              <p style={readValueStyle((saved[DETAILS_FIELD.key] ?? '').trim() !== '')}>
+                {(saved[DETAILS_FIELD.key] ?? '').trim() || '—'}
               </p>
             )}
           </div>

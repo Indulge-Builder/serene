@@ -73,6 +73,14 @@ Pure data — no component references. Each entry:
 | `manager-lead-status` | Lead Pipeline | manager, admin, founder | lg |
 | `manager-lead-volume` | Lead Volume | manager, admin, founder | lg |
 | `manager-campaigns` | Campaign Performance | manager, admin, founder | xl |
+| `manager-cold-leads` | Going Cold | manager, admin, founder | sm |
+
+**`manager-cold-leads` widget rules:**
+- `initialData.cold_leads_count` is the only data source. No `useEffect` fetch, no server action, no refresh button.
+- `cold_leads_count` is provided by the `get_dashboard_summary` RPC (migration 0081) — scalar int, always present for manager/admin/founder.
+- Agent role: RPC returns `cold_leads_count: 0` via early-return branch — widget is not in agent default layout.
+- Widget is a `Link` to `/leads?going_cold=true`. No `&domain=` param — service layer enforces role/domain scoping.
+- count > 0 → number colour `var(--color-warning)`. count === 0 → `var(--theme-text-secondary)`.
 
 ---
 

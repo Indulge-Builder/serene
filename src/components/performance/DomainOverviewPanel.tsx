@@ -14,10 +14,12 @@ import {
 } from 'recharts';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import { DOMAIN_LINE_COLORS } from '@/lib/constants/domain-colors';
+import { getDomainIcon } from '@/lib/constants/domain-icons';
 import { getDomainHealthMetricsAction } from '@/lib/actions/performance';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
 import { formatCompact, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { useChartTokens, resolveColorMap } from '@/components/ui/charts/useChartTokens';
+import { StatAtom } from '@/components/performance/StatAtom';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import type { DomainHealthCard } from '@/lib/types/index';
 import type { PerformancePeriod } from '@/lib/services/performance-service';
@@ -40,132 +42,90 @@ type Props = {
 // Domain card
 // ─────────────────────────────────────────────
 
-function DomainStatCard({ card, resolvedDotColors }: { card: DomainHealthCard; resolvedDotColors: Record<string, string> }) {
-  const dotColor = resolvedDotColors[card.domain] ?? 'var(--theme-accent)';
+function DomainStatCard({
+  card,
+  resolvedDotColors,
+  index,
+}: {
+  card:              DomainHealthCard;
+  resolvedDotColors: Record<string, string>;
+  index:             number;
+}) {
+  const domainColor = resolvedDotColors[card.domain] ?? 'var(--theme-accent)';
+  const domainLabel = DOMAIN_LABELS[card.domain] ?? card.domain;
+  const DomainIcon  = getDomainIcon(card.domain);
+  const baseDelay   = index * 60;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
+      transition={{ duration: ENTER_DURATION, delay: baseDelay / 1000, ease: EASE_OUT_EXPO }}
       style={{
-        background:    'var(--theme-paper-subtle)',
+        background:    'var(--theme-paper)',
         border:        '1px solid var(--theme-paper-border)',
-        borderRadius:  'var(--radius-md)',
+        borderRadius:  'var(--radius-lg)',
         boxShadow:     'var(--shadow-1)',
         padding:       'var(--space-5)',
         display:       'flex',
         flexDirection: 'column',
-        gap:           'var(--space-3)',
+        gap:           'var(--space-4)',
       }}
     >
-      {/* Domain label pill */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-        <span
+      {/* Domain header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+        <DomainIcon
           aria-hidden="true"
           style={{
-            display:      'inline-block',
-            width:        '6px',
-            height:       '6px',
-            borderRadius: 'var(--radius-full)',
-            background:   dotColor,
-            flexShrink:   0,
+            width:       '20px',
+            height:      '20px',
+            color:       domainColor,
+            strokeWidth: 1.5,
+            flexShrink:  0,
           }}
         />
-        <span
+
+        <h2
           style={{
-            display:      'inline-flex',
-            alignItems:   'center',
-            padding:      '2px 8px',
-            borderRadius: 'var(--radius-full)',
-            background:   'var(--theme-accent-surface)',
-            fontFamily:   'var(--font-sans)',
-            fontSize:     'var(--text-xs)',
-            fontWeight:   'var(--weight-medium)',
-            color:        'var(--theme-text-primary)',
-            letterSpacing: '0.02em',
+            fontFamily:    'var(--font-serif)',
+            fontSize:      'var(--text-xl)',
+            fontWeight:    'var(--weight-light)',
+            color:         'var(--theme-text-primary)',
+            margin:        0,
+            lineHeight:    'var(--leading-snug)',
+            letterSpacing: 'var(--tracking-tighter)',
+            whiteSpace:    'nowrap',
+            textOverflow:  'ellipsis',
+            overflow:      'hidden',
+            flex:          1,
+            minWidth:      0,
+            paddingBlock:  '1px',
           }}
         >
-          {DOMAIN_LABELS[card.domain] ?? card.domain}
-        </span>
+          {domainLabel}
+        </h2>
       </div>
 
-      {/* Stats grid — 3 stats */}
-      <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
-        <div style={{ flex: 1 }}>
-          <p
-            style={{
-              fontFamily: 'var(--font-serif)',
-              fontSize:   'var(--text-2xl)',
-              fontWeight: 'var(--weight-light)',
-              color:      'var(--theme-text-primary)',
-              margin:     0,
-              lineHeight: 1,
-            }}
-          >
-            {formatCompact(card.totalLeads)}
-          </p>
-          <p
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize:   'var(--text-2xs)',
-              color:      'var(--theme-text-tertiary)',
-              margin:     '3px 0 0',
-            }}
-          >
-            Total Leads
-          </p>
-        </div>
-
-        <div style={{ flex: 1 }}>
-          <p
-            style={{
-              fontFamily: 'var(--font-serif)',
-              fontSize:   'var(--text-2xl)',
-              fontWeight: 'var(--weight-light)',
-              color:      'var(--theme-text-primary)',
-              margin:     0,
-              lineHeight: 1,
-            }}
-          >
-            {formatCompact(card.totalCallsMade)}
-          </p>
-          <p
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize:   'var(--text-2xs)',
-              color:      'var(--theme-text-tertiary)',
-              margin:     '3px 0 0',
-            }}
-          >
-            Total Calls
-          </p>
-        </div>
-
-        <div style={{ flex: 1 }}>
-          <p
-            style={{
-              fontFamily: 'var(--font-serif)',
-              fontSize:   'var(--text-2xl)',
-              fontWeight: 'var(--weight-light)',
-              color:      'var(--theme-text-primary)',
-              margin:     0,
-              lineHeight: 1,
-            }}
-          >
-            {formatCurrencyCompact(card.totalRevenue)}
-          </p>
-          <p
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize:   'var(--text-2xs)',
-              color:      'var(--theme-text-tertiary)',
-              margin:     '3px 0 0',
-            }}
-          >
-            Total Revenue
-          </p>
-        </div>
+      {/* Stats row */}
+      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <StatAtom
+          label="Total Leads"
+          value={formatCompact(card.totalLeads)}
+          paletteIndex={0}
+          delay={baseDelay + 40}
+        />
+        <StatAtom
+          label="Total Calls"
+          value={formatCompact(card.totalCallsMade)}
+          paletteIndex={1}
+          delay={baseDelay + 80}
+        />
+        <StatAtom
+          label="Total Revenue"
+          value={formatCurrencyCompact(card.totalRevenue)}
+          paletteIndex={3}
+          delay={baseDelay + 120}
+        />
       </div>
     </motion.div>
   );
@@ -342,7 +302,7 @@ export function DomainOverviewPanel({ initialData, period, customFrom, customTo 
             marginBottom:        'var(--space-6)',
           }}
         >
-          {(GIA_DOMAINS as readonly AppDomain[]).map((domain) => {
+          {(GIA_DOMAINS as readonly AppDomain[]).map((domain, index) => {
             const card = data.find((c) => c.domain === domain) ?? {
               domain,
               totalLeads:     0,
@@ -360,6 +320,7 @@ export function DomainOverviewPanel({ initialData, period, customFrom, customTo 
                 key={domain}
                 card={card}
                 resolvedDotColors={resolvedDotColors}
+                index={index}
               />
             );
           })}

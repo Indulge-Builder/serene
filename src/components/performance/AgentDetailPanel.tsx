@@ -4,12 +4,15 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence }             from 'framer-motion';
 import { Avatar }                              from '@/components/ui/Avatar';
 import { CallOutcomeBar }                      from './CallOutcomeBar';
-import { getAgentDetailMetricsAction }         from '@/lib/actions/performance';
-import { formatCurrency }                      from '@/lib/utils/numbers';
+import { getAgentDetailMetricsAction, getAgentLeadHealthAction } from '@/lib/actions/performance';
+import { LeadHealthStrip }                        from './LeadHealthStrip';
+import { formatCompact, formatCurrency, formatCurrencyCompact } from '@/lib/utils/numbers';
+import { StatAtom, STAT_PALETTES }             from '@/components/performance/StatAtom';
 import { DOMAIN_LABELS }                       from '@/lib/constants/domains';
 import { LEAD_STATUS_LABELS }                  from '@/lib/constants/lead-statuses';
 import { ENTER_DURATION, EASE_OUT_EXPO }       from '@/lib/constants/motion';
 import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
+import type { LeadHealthBreakdown } from '@/lib/services/performance-service';
 import type { AppDomain }                      from '@/lib/types/database';
 import type { PerformancePeriod }              from '@/lib/services/performance-service';
 
@@ -39,88 +42,6 @@ function Skel({ w, h, radius = 'var(--radius-sm)' }: { w: string; h: string; rad
       className="skeleton"
       style={{ width: w, height: h, borderRadius: radius, flexShrink: 0 }}
     />
-  );
-}
-
-// ─────────────────────────────────────────────
-// Stat card palette — semantic tokens.
-// bg/border resolved at render from CSS vars;
-// label/value use theme text tokens.
-// ─────────────────────────────────────────────
-
-const STAT_PALETTES = [
-  { bg: 'var(--color-success-light)', border: 'var(--color-success)', label: 'var(--color-success-text)', value: 'var(--theme-text-primary)' },
-  { bg: 'var(--color-info-light)',    border: 'var(--color-info)',    label: 'var(--color-info-text)',    value: 'var(--theme-text-primary)' },
-  { bg: 'var(--color-warning-light)', border: 'var(--color-warning)', label: 'var(--color-warning-text)', value: 'var(--theme-text-primary)' },
-  { bg: 'var(--color-neutral-light)', border: 'var(--color-neutral)', label: 'var(--theme-text-secondary)', value: 'var(--theme-text-primary)' },
-] as const;
-
-// ─────────────────────────────────────────────
-// StatAtom — single KPI card, one row of 5
-// ─────────────────────────────────────────────
-
-function StatAtom({
-  label,
-  value,
-  paletteIndex,
-  delay,
-}: {
-  label:        string;
-  value:        string;
-  paletteIndex: number;
-  delay:        number;
-}) {
-  const p = STAT_PALETTES[paletteIndex % STAT_PALETTES.length];
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 5 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: ENTER_DURATION, delay: delay / 1000, ease: EASE_OUT_EXPO }}
-      style={{
-        flex:           '1 1 0',
-        display:        'flex',
-        flexDirection:  'column',
-        justifyContent: 'space-between',
-        gap:            'var(--space-2)',
-        padding:        'var(--space-3) var(--space-4)',
-        background:     p.bg,
-        borderRadius:   'var(--radius-lg)',
-        border:         `1px solid ${p.border}`,
-        minWidth:       0,
-        overflow:       'hidden',
-      }}
-    >
-      <span
-        style={{
-          fontFamily:    'var(--font-sans)',
-          fontSize:      'var(--text-2xs)',
-          fontWeight:    'var(--weight-medium)',
-          letterSpacing: '0.10em',
-          textTransform: 'uppercase',
-          color:         p.label,
-          lineHeight:    1,
-          whiteSpace:    'nowrap',
-          overflow:      'hidden',
-          textOverflow:  'ellipsis',
-        }}
-      >
-        {label}
-      </span>
-      <span
-        style={{
-          fontFamily:    'var(--font-serif)',
-          fontSize:      'var(--text-xl)',
-          fontWeight:    'var(--weight-light)',
-          color:         p.value,
-          lineHeight:    '1',
-          letterSpacing: '-0.01em',
-          whiteSpace:    'nowrap',
-        }}
-      >
-        {value}
-      </span>
-    </motion.div>
   );
 }
 
@@ -295,6 +216,11 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
   const [error, setError]         = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Lead health — separate state, keyed on agent.id only (not period).
+  // Never tied to period: health is a snapshot of the pipeline, not period activity.
+  const [healthData, setHealthData]           = useState<LeadHealthBreakdown | null>(null);
+  const [isHealthLoading, setIsHealthLoading] = useState(true);
+
   // Track which agent the current metrics belong to, so we know when to show
   // the full skeleton (new agent) vs the graceful dim overlay (same agent, new period).
   const metricsAgentId = useRef<string | null>(null);
@@ -331,6 +257,28 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
 
     return () => { cancelled = true; };
   }, [agent.id, domain, period, customFrom, customTo]);
+
+  // Health fetch — agent-switch triggered only (never period-triggered).
+  // Invariant: this effect must NOT include period/customFrom/customTo in its deps.
+  useEffect(() => {
+    let cancelled = false;
+
+    setHealthData(null);
+    setIsHealthLoading(true);
+
+    getAgentLeadHealthAction(agent.id, domain)
+      .then((result) => {
+        if (cancelled) return;
+        setIsHealthLoading(false);
+        if (result.data) setHealthData(result.data);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsHealthLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [agent.id, domain]);
 
   // When re-fetching for the same agent (period changed), dim the panel instead of showing skeleton.
   // When fetching for a new agent, show skeleton (metrics is null).
@@ -477,10 +425,10 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             transition={{ duration: 0.15 }}
             style={{ display: 'flex', gap: 'var(--space-3)' }}
           >
-            <StatAtom label="Total Calls" value={String(metrics.totalCallsMade)}        paletteIndex={0} delay={0}   />
-            <StatAtom label="Leads"       value={String(metrics.totalLeads)}           paletteIndex={1} delay={40}  />
-            <StatAtom label="Won"         value={String(metrics.leadsWon)}             paletteIndex={2} delay={80}  />
-            <StatAtom label="Revenue"     value={formatCurrency(metrics.totalDealAmount)} paletteIndex={3} delay={120} />
+            <StatAtom label="Total Calls" value={formatCompact(metrics.totalCallsMade)}     paletteIndex={0} delay={0}   />
+            <StatAtom label="Leads"       value={formatCompact(metrics.totalLeads)}         paletteIndex={1} delay={40}  />
+            <StatAtom label="Won"         value={formatCompact(metrics.leadsWon)}           paletteIndex={2} delay={80}  />
+            <StatAtom label="Revenue"     value={formatCurrencyCompact(metrics.totalDealAmount)} paletteIndex={3} delay={120} />
           </motion.div>
         ) : (
           <motion.div
@@ -506,6 +454,54 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             ))}
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* ── Lead health strip ─────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {isHealthLoading ? (
+          <motion.div
+            key="health-skel"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              background:   'var(--theme-paper)',
+              border:       '1px solid var(--theme-paper-border)',
+              borderRadius: 'var(--radius-lg)',
+              padding:      'var(--space-5)',
+            }}
+          >
+            <Skel w="80px" h="11px" radius="var(--radius-xs)" />
+            <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
+              <Skel w="88px" h="26px" radius="var(--radius-full)" />
+              <Skel w="120px" h="26px" radius="var(--radius-full)" />
+              <Skel w="72px" h="26px" radius="var(--radius-full)" />
+            </div>
+          </motion.div>
+        ) : healthData ? (
+          <motion.div
+            key="health-data"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: ENTER_DURATION, delay: 0.16, ease: EASE_OUT_EXPO }}
+            style={{
+              background:   'var(--theme-paper)',
+              border:       '1px solid var(--theme-paper-border)',
+              borderRadius: 'var(--radius-lg)',
+              padding:      'var(--space-5)',
+              boxShadow:    'var(--shadow-1)',
+            }}
+          >
+            <LeadHealthStrip
+              healthy={healthData.healthy}
+              needs_attention={healthData.needs_attention}
+              at_risk={healthData.at_risk}
+              agentId={agent.id}
+            />
+          </motion.div>
+        ) : null}
       </AnimatePresence>
 
       {/* ── Deal type breakdown (conditional) ─────────────────────── */}

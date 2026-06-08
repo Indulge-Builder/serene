@@ -15,17 +15,20 @@ Every modal composes `src/components/ui/modal.tsx` — never reimplements chrome
 **`FilterDraft` type** (defined in the component file):
 ```ts
 type FilterDraft = {
-  status: LeadStatus[];
-  outcome: CallOutcome[];
-  domain: string | null;
-  agent_id: string | null;
-  source: string | null;
-  campaign: string | null;
-  date_from: string | null;
-  date_to: string | null;
+  status:     LeadStatus[];
+  outcome:    CallOutcome[];
+  domain:     string | null;
+  agent_id:   string | null;
+  source:     string | null;
+  campaign:   string | null;
+  date_from:  string | null;
+  date_to:    string | null;
   // search is NOT in FilterDraft — it has its own searchInput state + useDebounce
+  // sort_order is NOT in FilterDraft — see LeadsTable toolbar toggle
 };
 ```
+
+**Sort order toggle** lives in `LeadsTable.tsx` toolbar, immediately left of the Columns button — not in `LeadsFilters`. Cycles `'desc' → 'asc' → 'desc'` on click; commits immediately to the URL via `buildFilterParams` (resets `page`). Labels: "Newest first" (default, `desc`) / "Oldest first" (`asc`). `sort_order=asc` is the only value written to the URL; default `desc` omits the param. `clearAll()` in `LeadsFilters` pushes bare `pathname`, which also clears `sort_order`.
 
 **Search state** is managed separately from the dropdown/date draft:
 - `searchInput: string` — controlled display value, updates on every keystroke.

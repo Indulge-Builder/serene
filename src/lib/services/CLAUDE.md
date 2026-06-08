@@ -22,9 +22,17 @@ try {
   delivered     = false;
 } finally {
   if (delivered) { console.log(...) } else { console.error(...) }
-  void logNotification({ ..., gupshupStatus, gupshupBody, delivered }).catch(() => {});
+  await logNotification({ ..., gupshupStatus, gupshupBody, delivered });
 }
 ```
+
+**Why `await logNotification` (Vercel):** the log insert must complete before the send function
+resolves. These send functions are awaited up the chain (via `notifyLeadAssigned` → `after()`),
+and Vercel keeps the lambda alive only until the awaited chain settles. A `void logNotification()`
+in `finally` would let the send function resolve before the row is written, so the lambda could
+freeze and drop the log insert — producing exactly the silent gap (missing rows, not error rows)
+this whole pattern exists to prevent. `logNotification` swallows its own errors internally, so
+awaiting it never throws.
 
 **Why finally, not a split try/catch:**
 The previous pattern called `logNotification` separately in the catch block (with `return`/`continue`)
@@ -41,10 +49,11 @@ regardless of how control exits the try.
 5. The outer function-level try/catch (which wraps the profile fetch + the inner try/finally) remains.
    It catches setup failures (admin client, profiles query) and logs them. It does not call
    `logNotification` — at that point we have no `destination` to log against.
-6. Never `await logNotification` — always `void fn().catch(() => {})` to preserve fire-and-forget.
+6. Always `await logNotification` inside `finally` (see Vercel note above). The send function must
+   not resolve until the log row is durably written, or the lambda may freeze and drop the insert.
 
 **`sendLeadInitiationMessage` — re-throw exception to the finally-block pattern:**
-It uses the same `gupshupStatus/gupshupBody/delivered` variables and `finally { void logNotification(...) }`
+It uses the same `gupshupStatus/gupshupBody/delivered` variables and `finally { await logNotification(...) }`
 structure, but with two differences:
 1. **Re-throws after logging** — the error propagates to the action layer, which surfaces it to the UI.
    Do not remove the `throw err` inside the catch block.

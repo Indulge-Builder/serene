@@ -87,6 +87,16 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     colSpan:     2,
     module:      'gia',
   },
+  {
+    id:          'manager-cold-leads',
+    label:       'Going Cold',
+    description: 'Leads with no activity in the last 5 days.',
+    roles:       ['manager', 'admin', 'founder'],
+    domains:     '*',
+    defaultSize: 'sm',
+    colSpan:     1,
+    module:      'gia',
+  },
 ];
 
 export const WIDGET_MAP: Record<string, WidgetDefinition> = Object.fromEntries(
@@ -105,6 +115,7 @@ export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
     'manager-lead-status',
     'manager-lead-volume',
     'manager-campaigns',
+    'manager-cold-leads',
   ],
   admin: [
     'agent-tasks',
@@ -112,6 +123,7 @@ export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
     'manager-lead-status',
     'manager-lead-volume',
     'manager-campaigns',
+    'manager-cold-leads',
   ],
   manager: [
     'agent-tasks',
@@ -119,6 +131,7 @@ export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
     'manager-lead-status',
     'manager-lead-volume',
     'manager-campaigns',
+    'manager-cold-leads',
   ],
   agent: [
     'agent-tasks',

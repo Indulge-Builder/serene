@@ -30,11 +30,21 @@ export interface LeadAssignedNotifyInput {
 
 // ─────────────────────────────────────────────
 // notifyLeadAssigned
-// Fires four side-effects in order. Each is fire-and-forget; none blocks the caller.
+// Fires four side-effects. The two outward WhatsApp sends are AWAITED so this
+// function does not resolve until Gupshup has accepted (or rejected) each message.
+//
+// WHY AWAITED (Vercel): on serverless, the function instance is frozen/killed the
+// instant the HTTP response is flushed. A `void fetch().catch()` here would be
+// orphaned mid-flight — the message never reaches Gupshup and logNotification
+// never runs (no log row written). Callers MUST run this inside `after()` (Next 16)
+// so the response is sent immediately while Vercel keeps the lambda alive until
+// these awaited sends settle. Awaiting without `after()` would delay the response;
+// `after()` without awaiting here would kill the sends. Both halves are required.
+//
 // Order:
-//   1. Agent WhatsApp  — only when assignedTo is set
-//   2. Founder WhatsApp — always on new leads; suppressed for duplicates
-//   3. In-app notification — only when assignedTo is set AND assignedTo !== actorId
+//   1. Agent WhatsApp  — only when assignedTo is set                (awaited)
+//   2. Founder WhatsApp — always on new leads; suppressed for dups  (awaited)
+//   3. In-app notification — only when assignedTo is set AND !== actorId
 //   4. SLA timers — only when scheduleSla is true AND assignedTo is set
 // ─────────────────────────────────────────────
 
@@ -53,30 +63,46 @@ export async function notifyLeadAssigned(input: LeadAssignedNotifyInput): Promis
     assignedAt,
   } = input;
 
-  // 1. Agent WhatsApp
+  // 1 + 2. Outward WhatsApp sends — AWAITED so they complete before this function
+  // resolves (see header note: required for survival inside Vercel `after()`).
+  // Run in parallel; allSettled isolates failures so one send never aborts the other.
+  // Each send function already swallows its own errors and logs internally, so a
+  // rejection here is unexpected — log it but never throw.
+  const whatsappSends: Promise<unknown>[] = [];
+
+  // 1. Agent WhatsApp — only when an agent was assigned
   if (assignedTo) {
-    void sendLeadAssignmentNotification(
-      assignedTo,
-      leadName,
-      leadPhone,
-      domain,
-      leadId,
-    ).catch((err) => {
-      console.error('[lead-assignment-notify] agent WhatsApp failed (non-fatal):', err);
-    });
+    whatsappSends.push(
+      sendLeadAssignmentNotification(
+        assignedTo,
+        leadName,
+        leadPhone,
+        domain,
+        leadId,
+      ),
+    );
   }
 
-  // 2. Founder WhatsApp — suppressed for duplicates (no new lead entered the system)
+  // 2. Founder WhatsApp — always on new leads; suppressed for duplicates
   if (!isDuplicate) {
-    void sendFounderLeadNotification(
-      domain,
-      agentName ?? 'Unassigned',
-      leadName,
-      leadPhone,
-      leadId,
-    ).catch((err) => {
-      console.error('[lead-assignment-notify] founder WhatsApp failed (non-fatal):', err);
-    });
+    whatsappSends.push(
+      sendFounderLeadNotification(
+        domain,
+        agentName ?? 'Unassigned',
+        leadName,
+        leadPhone,
+        leadId,
+      ),
+    );
+  }
+
+  if (whatsappSends.length > 0) {
+    const results = await Promise.allSettled(whatsappSends);
+    for (const r of results) {
+      if (r.status === 'rejected') {
+        console.error('[lead-assignment-notify] WhatsApp send rejected (non-fatal):', r.reason);
+      }
+    }
   }
 
   // 3. In-app notification — skip self-notify (actor assigning to themselves)

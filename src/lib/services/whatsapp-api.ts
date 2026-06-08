@@ -347,7 +347,7 @@ export async function sendLeadAssignmentNotification(
       } else {
         console.error(`[whatsapp-api] Lead assignment notification failed: HTTP ${gupshupStatus} body=${gupshupBody.slice(0, 200)} for agent ${agentId}`);
       }
-      void logNotification({
+      await logNotification({
         type:           'agent_assignment',
         leadId:         leadId ?? null,
         recipientId:    agentId,
@@ -359,7 +359,7 @@ export async function sendLeadAssignmentNotification(
         gupshupStatus,
         gupshupBody,
         delivered,
-      }).catch(() => {});
+      });
     }
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendLeadAssignmentNotification:', err);
@@ -436,7 +436,7 @@ export async function sendFounderLeadNotification(
         } else {
           console.error(`[whatsapp-api] Founder lead notification failed: HTTP ${gupshupStatus} body=${gupshupBody.slice(0, 200)} for founder ${founder.id}`);
         }
-        void logNotification({
+        await logNotification({
           type:           'founder_alert',
           leadId,
           recipientId:    founder.id,
@@ -448,7 +448,7 @@ export async function sendFounderLeadNotification(
           gupshupStatus,
           gupshupBody,
           delivered,
-        }).catch(() => {});
+        });
       }
     }));
   } catch (err) {
@@ -522,7 +522,7 @@ export async function sendSlaAgentNotification(
       } else {
         console.error(`[whatsapp-api] SLA agent notification failed: HTTP ${gupshupStatus} body=${gupshupBody.slice(0, 200)} for agent ${agentId}`);
       }
-      void logNotification({
+      await logNotification({
         type:           'sla_breach',
         recipientId:    agentId,
         recipientPhone: destination,
@@ -531,7 +531,7 @@ export async function sendSlaAgentNotification(
         gupshupStatus,
         gupshupBody,
         delivered,
-      }).catch(() => {});
+      });
     }
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendSlaAgentNotification:', err);
@@ -610,7 +610,7 @@ export async function sendSlaManagerNotification(
         } else {
           console.error(`[whatsapp-api] SLA manager notification failed: HTTP ${gupshupStatus} body=${gupshupBody.slice(0, 200)} for recipient ${recipient.id}`);
         }
-        void logNotification({
+        await logNotification({
           type:           'sla_breach',
           recipientId:    recipient.id,
           recipientPhone: destination,
@@ -620,7 +620,7 @@ export async function sendSlaManagerNotification(
           gupshupStatus,
           gupshupBody,
           delivered,
-        }).catch(() => {});
+        });
       }
     }
   } catch (err) {
@@ -695,14 +695,14 @@ export async function sendLeadInitiationMessage(
     delivered     = false;
     throw err;
   } finally {
-    void logNotification({
+    await logNotification({
       type:           'lead_initiation',
       recipientPhone: destination,
       leadPhone:      destination,
       gupshupStatus,
       gupshupBody,
       delivered,
-    }).catch(() => {});
+    });
   }
 }
 

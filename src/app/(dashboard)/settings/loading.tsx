@@ -1,12 +1,12 @@
-// Skeleton — settings page chrome.
-// Mirrors settings/page.tsx: p-8, header row, filter bar strip, then agent roster table.
-// Table rows: avatar + name/domain + shift pickers + toggle columns.
-// 6 agent row skeletons with stagger per §11.4.
+// Skeleton — settings page.
+// AgentSettingsTable renders: filter bar (paper strip) + card list (one card per agent).
+// Each agent card is a flex row: avatar + name/domain | shift pickers | work-day pills | toggle.
+// Mirrors the motion.div card shape with gap --space-4, padding --space-4 --space-5.
 
 export default function SettingsLoading() {
   return (
     <main className="flex-1 p-8">
-      {/* Row 1 — Page header */}
+      {/* Page header */}
       <div
         style={{
           display:        'flex',
@@ -22,97 +22,70 @@ export default function SettingsLoading() {
         />
       </div>
 
-      {/* Row 2 — Filter bar */}
+      {/* Filter bar — matches AgentSettingsTable filter strip */}
       <div
         style={{
-          padding:      'var(--space-4) var(--space-5)',
-          marginBottom: 'var(--space-4)',
-          borderRadius: 'var(--radius-md)',
-          border:       '1px solid var(--theme-paper-border)',
-          background:   'var(--theme-paper)',
-          boxShadow:    'var(--shadow-1)',
           display:      'flex',
           alignItems:   'center',
           gap:          'var(--space-3)',
-        }}
-      >
-        <div
-          className="skeleton"
-          style={{ width: '200px', height: '36px', borderRadius: 'var(--radius-sm)', flexShrink: 0 }}
-        />
-        {[96, 120].map((w, i) => (
-          <div
-            key={i}
-            className="skeleton"
-            style={{
-              width:          `${w}px`,
-              height:         '36px',
-              borderRadius:   'var(--radius-md)',
-              flexShrink:     0,
-              animationDelay: `${i * 40}ms`,
-            }}
-          />
-        ))}
-        <div
-          className="skeleton"
-          style={{ width: '60px', height: '10px', borderRadius: 'var(--radius-xs)', marginLeft: 'auto', flexShrink: 0 }}
-        />
-      </div>
-
-      {/* Row 3 — Agent table */}
-      <div
-        style={{
+          padding:      'var(--space-4) var(--space-5)',
+          marginBottom: 'var(--space-4)',
           background:   'var(--theme-paper)',
           border:       '1px solid var(--theme-paper-border)',
           borderRadius: 'var(--radius-md)',
           boxShadow:    'var(--shadow-1)',
-          overflow:     'hidden',
+          flexWrap:     'wrap',
         }}
       >
-        {/* Table header */}
+        {/* Sliders icon placeholder */}
         <div
-          style={{
-            display:      'grid',
-            gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 60px 40px',
-            gap:          'var(--space-4)',
-            alignItems:   'center',
-            padding:      'var(--space-3) var(--space-5)',
-            borderBottom: '1px solid var(--theme-paper-border)',
-            background:   'var(--theme-paper-subtle)',
-          }}
-        >
-          {['Agent', 'Shift Start', 'Shift End', 'Active Hrs', 'Work Days', 'In Pool', ''].map((_, i) => (
-            <div
-              key={i}
-              className="skeleton"
-              style={{ height: '10px', borderRadius: 'var(--radius-xs)', width: i === 6 ? '0' : undefined }}
-            />
-          ))}
-        </div>
+          className="skeleton"
+          style={{ width: '16px', height: '16px', borderRadius: 'var(--radius-xs)', flexShrink: 0 }}
+        />
+        {/* Search bar */}
+        <div
+          className="skeleton"
+          style={{ flex: '1 1 200px', height: '34px', borderRadius: 'var(--radius-sm)', minWidth: '160px' }}
+        />
+        {/* Pool filter chip */}
+        <div
+          className="skeleton"
+          style={{ width: '80px', height: '34px', borderRadius: 'var(--radius-md)', flexShrink: 0 }}
+        />
+        {/* Agent count */}
+        <div
+          className="skeleton"
+          style={{ width: '56px', height: '12px', borderRadius: 'var(--radius-xs)', marginLeft: 'auto', flexShrink: 0 }}
+        />
+      </div>
 
-        {/* Agent rows */}
-        {[0, 80, 160, 240, 320, 320].map((delay, i) => (
+      {/* Agent card list — 5 cards matching motion.div card shape */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        {[0, 80, 160, 240, 320].map((delay, i) => (
           <div
             key={i}
             style={{
-              display:      'grid',
-              gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 60px 40px',
-              gap:          'var(--space-4)',
+              display:      'flex',
               alignItems:   'center',
+              gap:          'var(--space-4)',
+              flexWrap:     'wrap',
               padding:      'var(--space-4) var(--space-5)',
-              borderBottom: i < 5 ? '1px solid var(--theme-paper-border)' : 'none',
+              background:   'var(--theme-paper)',
+              border:       '1px solid var(--theme-paper-border)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow:    'var(--shadow-1)',
             }}
           >
-            {/* Agent cell: avatar + name */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            {/* Avatar + name/domain */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flex: '1 1 200px', minWidth: 0 }}>
               <div
                 className="skeleton"
-                style={{ width: '32px', height: '32px', borderRadius: 'var(--radius-md)', flexShrink: 0, animationDelay: `${delay}ms` }}
+                style={{ width: '36px', height: '36px', borderRadius: 'var(--radius-md)', flexShrink: 0, animationDelay: `${delay}ms` }}
               />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', minWidth: 0 }}>
                 <div
                   className="skeleton"
-                  style={{ width: '110px', height: '13px', borderRadius: 'var(--radius-xs)', animationDelay: `${delay}ms` }}
+                  style={{ width: '120px', height: '13px', borderRadius: 'var(--radius-xs)', animationDelay: `${delay}ms` }}
                 />
                 <div
                   className="skeleton"
@@ -120,23 +93,27 @@ export default function SettingsLoading() {
                 />
               </div>
             </div>
-            {/* Shift Start */}
+
+            {/* Shift Start time picker */}
             <div
               className="skeleton"
-              style={{ height: '36px', borderRadius: 'var(--radius-sm)', animationDelay: `${delay}ms` }}
+              style={{ width: '110px', height: '34px', borderRadius: 'var(--radius-sm)', flexShrink: 0, animationDelay: `${delay}ms` }}
             />
-            {/* Shift End */}
+
+            {/* Shift End time picker */}
             <div
               className="skeleton"
-              style={{ height: '36px', borderRadius: 'var(--radius-sm)', animationDelay: `${delay}ms` }}
+              style={{ width: '110px', height: '34px', borderRadius: 'var(--radius-sm)', flexShrink: 0, animationDelay: `${delay}ms` }}
             />
-            {/* Active Hours */}
+
+            {/* Active hours label */}
             <div
               className="skeleton"
-              style={{ width: '48px', height: '13px', borderRadius: 'var(--radius-xs)', animationDelay: `${delay}ms` }}
+              style={{ width: '48px', height: '13px', borderRadius: 'var(--radius-xs)', flexShrink: 0, animationDelay: `${delay}ms` }}
             />
-            {/* Work Days pills */}
-            <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+
+            {/* Work-day pills (7 × 26px squares) */}
+            <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
               {Array.from({ length: 7 }).map((_, d) => (
                 <div
                   key={d}
@@ -145,15 +122,11 @@ export default function SettingsLoading() {
                 />
               ))}
             </div>
-            {/* Toggle */}
+
+            {/* In-Pool toggle */}
             <div
               className="skeleton"
-              style={{ width: '40px', height: '22px', borderRadius: 'var(--radius-full)', animationDelay: `${delay}ms` }}
-            />
-            {/* Clear button */}
-            <div
-              className="skeleton"
-              style={{ width: '24px', height: '24px', borderRadius: 'var(--radius-xs)', animationDelay: `${delay}ms` }}
+              style={{ width: '40px', height: '22px', borderRadius: 'var(--radius-full)', flexShrink: 0, animationDelay: `${delay}ms` }}
             />
           </div>
         ))}

@@ -2,6 +2,7 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isGiaDomain, type GiaDomain } from "@/lib/constants/domains";
+import { COLD_LEAD_THRESHOLD_DAYS } from "@/lib/constants/leads";
 import { redis } from "@/lib/redis";
 import {
   REDIS_KEYS,
@@ -16,6 +17,7 @@ import type {
   Task,
   UserRole,
   AppDomain,
+  LeadStatus,
   LeadFilters,
   CampaignFilters,
   CampaignMetrics,
@@ -32,13 +34,15 @@ export type LeadWithAssignee = Lead & {
   assignee: { full_name: string } | null;
 };
 
+type LatestNote = { content: string; created_at: string; author_name: string | null };
+
 export type LeadListItem = Pick<
   Lead,
   | 'id' | 'slug' | 'first_name' | 'last_name' | 'phone' | 'email'
   | 'domain' | 'assigned_to' | 'status' | 'lead_intent'
   | 'source' | 'medium' | 'utm_campaign' | 'call_count'
   | 'last_call_outcome' | 'created_at'
->;
+> & { latest_note: LatestNote | null };
 export type LeadListItemWithAssignee = LeadListItem & {
   assignee: { full_name: string } | null;
 };
@@ -157,6 +161,39 @@ export async function getAllLeads(): Promise<Lead[]> {
 }
 
 // ─────────────────────────────────────────────
+// Private helper: latest note per lead — single batch query, never per-row.
+// Uses idx_lead_notes_lead_id (lead_id, created_at DESC) — first row per lead_id
+// is the most recent because the query is ordered DESC and we skip duplicates.
+// ─────────────────────────────────────────────
+async function getLatestNotesForLeads(
+  leadIds: string[],
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<Map<string, LatestNote>> {
+  if (leadIds.length === 0) return new Map();
+
+  const { data } = await supabase
+    .from("lead_notes")
+    .select("lead_id, content, created_at, author:profiles!lead_notes_author_id_fkey(full_name)")
+    .in("lead_id", leadIds)
+    .order("created_at", { ascending: false });
+
+  const map = new Map<string, LatestNote>();
+  if (!data) return map;
+
+  for (const row of data) {
+    if (map.has(row.lead_id)) continue; // first occurrence = latest (DESC order)
+    const author = row.author as { full_name: string } | null;
+    map.set(row.lead_id, {
+      content:    row.content,
+      created_at: row.created_at,
+      author_name: author?.full_name ?? null,
+    });
+  }
+
+  return map;
+}
+
+// ─────────────────────────────────────────────
 // Query: role-aware lead list with server-side filters + pagination
 //
 // Security contract:
@@ -174,8 +211,9 @@ export async function getAllLeads(): Promise<Lead[]> {
 //   Never two separate queries.
 // ─────────────────────────────────────────────
 export type LeadsResult = {
-  leads: LeadListItemWithAssignee[];
-  totalCount: number;
+  leads:        LeadListItemWithAssignee[];
+  totalCount:   number;
+  statusCounts: Partial<Record<LeadStatus, number>>;
 };
 
 export async function getLeadsByRole(
@@ -232,7 +270,7 @@ export async function getLeadsByRole(
       { count: "exact", head: false },
     )
     .is("archived_at", null)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: filters.sort_order === "asc" });
 
   // Role-level constraints — applied before any filter, cannot be overridden
   if (role === "agent") {
@@ -271,7 +309,13 @@ export async function getLeadsByRole(
   }
 
   if (filters.date_from) {
-    query = query.gte("created_at", filters.date_from);
+    // IST midnight transform: bare YYYY-MM-DD → YYYY-MM-DDT00:00:00+05:30
+    // Without this, PostgREST treats the bare date as UTC midnight, which is
+    // 5.5 hours into the IST calendar day — leads created before 05:30 IST are excluded.
+    const startOfDayIST = /T/.test(filters.date_from)
+      ? filters.date_from
+      : `${filters.date_from}T00:00:00+05:30`;
+    query = query.gte("created_at", startOfDayIST);
   }
 
   if (filters.date_to) {
@@ -285,20 +329,80 @@ export async function getLeadsByRole(
     const term = filters.search.trim().toLowerCase();
     if (term) {
       query = query.or(
-        `first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`,
+        `first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%,city.ilike.%${term}%`,
       );
     }
+  }
+
+  if (filters.health) {
+    query = query.eq('lead_health', filters.health);
+  }
+
+  if (filters.going_cold) {
+    // Threshold: last_activity_at older than COLD_LEAD_THRESHOLD_DAYS ago.
+    // NULL last_activity_at leads are intentionally excluded by lt() — those are
+    // handled by SLA-01A (never-contacted leads), not the going-cold preset.
+    const threshold = new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString();
+    query = query
+      .lt("last_activity_at", threshold)
+      .not("status", "in", `("won","lost","junk")`);
   }
 
   // Pagination — always applied, never conditional
   query = query.range(offset, offset + pageSize - 1);
 
-  const { data, error, count } = await query;
-  if (error || !data) return { leads: [], totalCount: 0 };
+  // Params mirror getLeadsByRole filter application — keep in sync.
+  // When a new filter is added to LeadFilters, update both this RPC call and
+  // the filter chain above simultaneously.
+  const [queryResult, statusCountsResult] = await Promise.all([
+    query,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as unknown as any).rpc("get_leads_status_counts", {
+      p_agent_id:    role === "agent" ? userId : (filters.agent_id ?? null),
+      p_date_from:   filters.date_from ?? null,
+      p_date_to:     filters.date_to
+        ? filters.date_to.replace(/T.*$/, "T23:59:59.999Z")
+        : null,
+      p_campaign:    filters.campaign ?? null,
+      p_search:      filters.search ? filters.search.trim().toLowerCase() || null : null,
+      p_health:      filters.health ?? null,
+      p_going_cold:  filters.going_cold
+        ? new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString()
+        : null,
+      p_source:      filters.source ?? null,
+      p_outcomes:    (filters.last_call_outcome && filters.last_call_outcome.length > 0)
+        ? filters.last_call_outcome
+        : null,
+      p_statuses:    (filters.status && filters.status.length > 0)
+        ? filters.status
+        : null,
+    }),
+  ]);
+
+  const { data, error, count } = queryResult;
+  if (error || !data) return { leads: [], totalCount: 0, statusCounts: {} };
+
+  // Reduce RPC rows into Partial<Record<LeadStatus, number>>.
+  // On error, return {} — pills show no counts rather than crashing (Q-09).
+  const statusCounts: Partial<Record<LeadStatus, number>> = {};
+  if (!statusCountsResult.error && Array.isArray(statusCountsResult.data)) {
+    for (const row of statusCountsResult.data as { status: string; cnt: unknown }[]) {
+      statusCounts[row.status as LeadStatus] = Number(row.cnt);
+    }
+  }
+
+  // Batch-fetch latest note per lead — one extra query, never per-row (Invariant 29)
+  const leadIds = (data as { id: string }[]).map((l) => l.id);
+  const notesMap = await getLatestNotesForLeads(leadIds, supabase);
+
+  const leads = (data as (Omit<LeadListItemWithAssignee, 'latest_note'> & { assignee: { full_name: string } | null })[]).map(
+    (l) => ({ ...l, latest_note: notesMap.get(l.id) ?? null }),
+  );
 
   const result: LeadsResult = {
-    leads: data as LeadListItemWithAssignee[],
-    totalCount: count ?? 0,
+    leads,
+    totalCount:   count ?? 0,
+    statusCounts,
   };
 
   // Cache the list result only — dossier row keys (leadRowId/leadRowSlug) are NOT
@@ -882,4 +986,158 @@ export async function searchLeadsForTask(
   }
 
   return (data ?? []) as LeadSearchResult[];
+}
+
+// ─────────────────────────────────────────────
+// Export: full unpapered lead list — mirrors getLeadsByRole filter logic
+// exactly, but with no .range() call and a hard server-side cap of 5000 rows.
+// NEVER called from a client component (A-15).
+// ─────────────────────────────────────────────
+export type LeadExportItem = Pick<Lead,
+  | 'id' | 'slug' | 'first_name' | 'last_name' | 'phone' | 'email'
+  | 'domain' | 'assigned_to' | 'status' | 'lead_intent'
+  | 'source' | 'medium' | 'utm_campaign' | 'call_count'
+  | 'last_call_outcome' | 'created_at' | 'status_changed_at'
+  | 'deal_amount' | 'deal_type' | 'deal_duration' | 'personal_details'
+> & { assignee: { full_name: string } | null };
+
+export type ExportResult = {
+  leads: LeadExportItem[];
+  totalCount: number;
+};
+
+export async function getLeadsForExport(
+  role: UserRole,
+  userId: string,
+  domain: AppDomain,
+  filters: LeadFilters,
+  selectedIds?: string[],
+): Promise<ExportResult> {
+  const supabase = await createClient();
+
+  let query = supabase
+    .from("leads")
+    .select(
+      `id, slug, first_name, last_name, phone, email, domain, assigned_to,
+       status, lead_intent, source, medium, utm_campaign,
+       call_count, last_call_outcome, created_at, status_changed_at,
+       deal_amount, deal_type, deal_duration, personal_details,
+       assignee:profiles!leads_assigned_to_fkey(full_name)`,
+      { count: "exact", head: false },
+    )
+    .is("archived_at", null)
+    .order("created_at", { ascending: filters.sort_order === "asc" })
+    .limit(5000);
+
+  // When specific IDs are provided, ignore all other filters
+  if (selectedIds && selectedIds.length > 0) {
+    // Still enforce role-level access — agent can only export their own leads
+    if (role === "agent") {
+      query = query.eq("assigned_to", userId);
+    } else if (role === "manager") {
+      query = query.eq("domain", domain);
+    }
+    query = query.in("id", selectedIds);
+  } else {
+    // Role-level constraints — mirrors getLeadsByRole exactly
+    if (role === "agent") {
+      query = query.eq("assigned_to", userId);
+    } else if (role === "manager") {
+      query = query.eq("domain", domain);
+      if (filters.agent_id) {
+        query = query.eq("assigned_to", filters.agent_id);
+      }
+    } else {
+      if (filters.domain && isGiaDomain(filters.domain)) {
+        query = query.eq("domain", filters.domain);
+      }
+      if (filters.agent_id) {
+        query = query.eq("assigned_to", filters.agent_id);
+      }
+    }
+
+    if (filters.status && filters.status.length > 0) {
+      query = query.in("status", filters.status);
+    }
+    if (filters.last_call_outcome && filters.last_call_outcome.length > 0) {
+      query = query.in("last_call_outcome", filters.last_call_outcome);
+    }
+    if (filters.source) {
+      query = query.eq("source", filters.source);
+    }
+    if (filters.campaign) {
+      query = query.eq("utm_campaign", filters.campaign);
+    }
+    if (filters.date_from) {
+      const startOfDayIST = /T/.test(filters.date_from)
+        ? filters.date_from
+        : `${filters.date_from}T00:00:00+05:30`;
+      query = query.gte("created_at", startOfDayIST);
+    }
+    if (filters.date_to) {
+      const endOfDay = filters.date_to.replace(/T.*$/, "T23:59:59.999Z");
+      query = query.lte("created_at", endOfDay);
+    }
+    if (filters.search) {
+      const term = filters.search.trim().toLowerCase();
+      if (term) {
+        query = query.or(
+          `first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%,city.ilike.%${term}%`,
+        );
+      }
+    }
+    if (filters.health) {
+      query = query.eq("lead_health", filters.health);
+    }
+    if (filters.going_cold) {
+      const threshold = new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString();
+      query = query
+        .lt("last_activity_at", threshold)
+        .not("status", "in", `("won","lost","junk")`);
+    }
+  }
+
+  const { data, error, count } = await query;
+  if (error || !data) return { leads: [], totalCount: 0 };
+
+  return {
+    leads: data as LeadExportItem[],
+    totalCount: count ?? 0,
+  };
+}
+
+// ─────────────────────────────────────────────
+// Export: activities + notes for a set of lead IDs
+// Single IN query on each table — never per-row.
+// NEVER called from a client component (A-15).
+// ─────────────────────────────────────────────
+export type ExportActivitiesAndNotes = {
+  activities: LeadActivityWithActor[];
+  notes: LeadNoteWithAuthor[];
+};
+
+export async function getActivitiesAndNotesForExport(
+  leadIds: string[],
+): Promise<ExportActivitiesAndNotes> {
+  if (leadIds.length === 0) return { activities: [], notes: [] };
+
+  const supabase = await createClient();
+
+  const [activitiesResult, notesResult] = await Promise.all([
+    supabase
+      .from("lead_activities")
+      .select("*, actor:profiles!lead_activities_actor_id_fkey(full_name)")
+      .in("lead_id", leadIds)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("lead_notes")
+      .select("*, author:profiles!lead_notes_author_id_fkey(full_name)")
+      .in("lead_id", leadIds)
+      .order("created_at", { ascending: true }),
+  ]);
+
+  return {
+    activities: (activitiesResult.data ?? []) as LeadActivityWithActor[],
+    notes: (notesResult.data ?? []) as LeadNoteWithAuthor[],
+  };
 }

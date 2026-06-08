@@ -31,12 +31,12 @@ export default async function TasksPage({
     ? ['gia', 'personal', 'group']
     : ['personal', 'group'];
 
-  // Resolve ?tab= against valid tabs — fall back to first valid tab.
+  // Resolve ?tab= against valid tabs — default is always 'personal' (My Tasks).
   const resolvedParams = await searchParams;
   const rawTab = typeof resolvedParams.tab === 'string' ? resolvedParams.tab : '';
   const tab = (validTabs as string[]).includes(rawTab)
     ? (rawTab as TaskTab)
-    : validTabs[0];
+    : 'personal';
 
   return (
     <main className="flex-1 p-8">

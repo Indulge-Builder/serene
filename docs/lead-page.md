@@ -1,6 +1,6 @@
 # Lead Page — Full Intelligence Document
 
-Last verified: 2026-06-01
+Last verified: 2026-06-06
 
 ## 1. Module Overview
 
@@ -53,6 +53,7 @@ The Gia leads module is Indulge’s sales pipeline surface: inbound leads arrive
 | `deal_amount` | `numeric(12,2)` | YES | (`20260531000049_leads_deal_duration.sql`) |
 | `deal_type` | `text` | YES | CHECK `membership` \| `retail` |
 | `deal_duration` | `text` | YES | CHECK `3_months` \| `6_months` \| `1_year` or NULL |
+| `lead_health` | `text` | YES | CHECK `healthy` \| `needs_attention` \| `at_risk`; NULL = terminal status or not yet evaluated (migration 077) |
 
 **FK:** `assigned_to` → `profiles(id)`; `previous_lead_id` → `leads(id)`.
 
@@ -250,6 +251,7 @@ CREATE POLICY "task_gia_meta_select"
 | `idx_leads_phone_text` | `(phone text_pattern_ops)` | `archived_at IS NULL` |
 | `idx_leads_slug` | `(slug)` UNIQUE | `slug IS NOT NULL` |
 | `idx_leads_status_changed_at` | `(status_changed_at)` | `archived_at IS NULL` |
+| `idx_leads_health` | `(lead_health, assigned_to)` | `archived_at IS NULL` |
 | `idx_leads_last_activity_at` | `(last_activity_at)` | `archived_at IS NULL` |
 | `idx_lead_activities_lead_id` | `(lead_id, created_at DESC)` | — |
 | `idx_lead_notes_lead_id` | `(lead_id, created_at DESC)` | — |
@@ -271,6 +273,7 @@ Performance indexes on related tables: `idx_lead_activities_actor_status`, `idx_
 | `update_lead_status` | `p_lead_id uuid`, `p_actor_id uuid`, `p_status text`, `p_reason text`, `p_now timestamptz` | Status update + activity; nurturing creates 3-month `gia_followup` task + `task_gia_meta`; returns `jsonb`. | `20260529000031_rpc_update_lead_status.sql` (+ nurturing fix `00039`) |
 | `add_lead_plain_note` | `p_lead_id uuid`, `p_author_id uuid`, `p_content text`, `p_now timestamptz` | Plain note + `last_activity_at` + `note_added` activity; returns `{ note_id }`. | `20260530000040_rpc_add_lead_plain_note.sql` |
 | `create_lead_gia_task` | `p_lead_id`, `p_assigned_to`, `p_created_by`, `p_task_type`, `p_title`, `p_description`, `p_priority`, `p_due_at` | Atomic `tasks` + `task_gia_meta` insert; returns `tasks` row. | `20260531000054_create_lead_gia_task.sql` |
+| `get_leads_status_counts` | `p_agent_id uuid`, `p_date_from timestamptz`, `p_date_to timestamptz`, `p_campaign text`, `p_search text`, `p_health text`, `p_source text`, `p_outcomes text[]`, `p_statuses text[]` (all DEFAULT NULL) | Returns `TABLE(status text, cnt bigint)` for the full filtered dataset; role/domain self-enforced via `get_user_role()`/`get_user_domain()`; all params optional; empty array treated as "no filter". | `20260606000080_get_leads_status_counts.sql` |
 | `get_campaign_metrics` | `p_domain app_domain`, `p_date_from`, `p_date_to` | Campaign aggregates for `/campaigns`. | `20260528000014_campaign_analytics.sql` |
 | `get_campaign_detail_metrics` | `p_campaign`, `p_date_from`, `p_date_to` | Single-campaign metrics. | `20260528000015_campaign_detail_metrics.sql` |
 | `get_deals_summary` | (role-scoped args) | Won-lead aggregates for `/deals`. | `20260531000052_get_deals_summary.sql` |
@@ -367,8 +370,8 @@ Idempotency: Trigger.dev key `lead-sla-${leadId}-${ruleCode}`.
 | `getLeadsForAgent` | `agentId: string` | `Promise<Lead[]>` | `assigned_to`, not archived, `created_at DESC` | Legacy |
 | `getLeadsForDomain` | `domain: string` | `Promise<Lead[]>` | `domain`, not archived | Legacy |
 | `getAllLeads` | — | `Promise<Lead[]>` | All non-archived | Legacy |
-| `getLeadsByRole` | `role`, `userId`, `domain`, `filters?` | `Promise<LeadsResult>` | Single query: explicit column list (no `*`); role constraints → filters → search `.or(ilike…)` → `.range()`; `{ count: 'exact', head: false }`. Returns `LeadListItemWithAssignee[]`, not `LeadWithAssignee[]`. | `LeadsTableAsync` |
-| `getLeadsByRoleCached` | same | `Promise<LeadsResult>` | React `cache(getLeadsByRole)` | Optional dedup per request |
+| `getLeadsByRole` | `role`, `userId`, `domain`, `filters?` | `Promise<LeadsResult>` | Single query: explicit column list (no `*`); role constraints → filters → search `.or(ilike…)` → `.range()`; `{ count: 'exact', head: false }`. Runs `get_leads_status_counts` RPC in `Promise.all` alongside the paginated query. Returns `LeadListItemWithAssignee[]`, not `LeadWithAssignee[]`. | `LeadsTableAsync` |
+| `getLeadsByRoleCached` | same | `Promise<LeadsResult>` | React `cache(getLeadsByRole)` | `LeadsTableAsync` (primary) |
 | `getLeadFilterOptions` | `role`, `callerDomain`, `filterDomain?` | `Promise<LeadFilterOptions>` | Distinct `utm_campaign`; agents from `profiles` | `leads/page.tsx` once |
 | `getLeadActivities` | `leadId` | `Promise<LeadActivity[]>` | No join | Rare |
 | `getLeadNotes` | `leadId` | `Promise<LeadNote[]>` | No join | Rare |
@@ -391,16 +394,25 @@ export type LeadNoteWithAuthor = LeadNote & { author: { full_name: string } };
 export type LeadActivityWithActor = LeadActivity & { actor: { full_name: string } | null };
 export type LeadWithAssignee = Lead & { assignee: { full_name: string } | null };
 
+// Local type (not exported) — shape of the batch-fetched latest note per lead.
+type LatestNote = { content: string; created_at: string; author_name: string | null };
+
 // List path only — explicit column subset; form_data, personal_details, attribution, deal/SLA columns excluded.
 export type LeadListItem = Pick<Lead,
   'id' | 'slug' | 'first_name' | 'last_name' | 'phone' | 'email' |
   'domain' | 'assigned_to' | 'status' | 'lead_intent' |
   'source' | 'medium' | 'utm_campaign' | 'call_count' |
   'last_call_outcome' | 'created_at'
->;
+> & { latest_note: LatestNote | null };
 export type LeadListItemWithAssignee = LeadListItem & { assignee: { full_name: string } | null };
-export type LeadsResult = { leads: LeadListItemWithAssignee[]; totalCount: number };
+export type LeadsResult = {
+  leads:        LeadListItemWithAssignee[];
+  totalCount:   number;
+  statusCounts: Partial<Record<LeadStatus, number>>;  // from get_leads_status_counts RPC; {} on error
+};
 ```
+
+**`date_from` IST midnight transform:** A bare `YYYY-MM-DD` `date_from` is suffixed to `YYYY-MM-DDT00:00:00+05:30` before the `.gte()` query. Strings already containing `T` are passed through unchanged. Without this, PostgREST treats the bare date as UTC midnight — 5.5 hours into the IST calendar day, silently excluding early-morning leads. Same fix applied in `getLeadsForExport`.
 
 ---
 
@@ -434,6 +446,10 @@ export type LeadsResult = { leads: LeadListItemWithAssignee[]; totalCount: numbe
 - `getLeadFilterOptions(profile.role, profile.domain, filters.domain if Gia)` — once per page load.  
 - `getActiveUsersForDomain(profile.domain)` if admin/founder else `getAgentsForDomain(profile.domain)` for Add Lead modal.
 
+**30-day soft default:** before `parseFilters` runs, `page.tsx` checks whether `date_from` is absent from `searchParams`. If absent → `redirect('/leads?date_from=<30-days-ago-IST>')`. IST offset computed inline (`IST_OFFSET_MS = 5.5 * 60 * 60 * 1000`); not imported from `date-range.ts`. Fires on every cold load and after `clearAll()` (which strips all params). All-time path: clear From in the Range panel and Apply — `date_from: null` strips the param, redirect fires, 30-day window reapplied. There is intentionally no "show all-time" one-click.
+
+**`date_from` IST midnight fix (service layer):** `getLeadsByRole` (and `getLeadsForExport`) transform a bare `YYYY-MM-DD` `date_from` to `YYYY-MM-DDT00:00:00+05:30` before `.gte()`. Without this, PostgREST treats the bare date as UTC midnight — 5.5 h into the IST calendar day, silently excluding leads created before 05:30 IST. The transform guards against strings that already contain `T`.
+
 **`parseFilters(searchParams)` → `LeadFilters`:**
 
 | Field | URL / default |
@@ -444,8 +460,12 @@ export type LeadsResult = { leads: LeadListItemWithAssignee[]; totalCount: numbe
 | `agent_id` | `agent_id` |
 | `source` | `source` |
 | `campaign` | `campaign` |
-| `date_from` / `date_to` | ISO dates |
+| `date_from` | always present on load (30-day redirect ensures this); YYYY-MM-DD |
+| `date_to` | `date_to`; absent = no upper bound |
 | `search` | `search` |
+| `health` | `'healthy'` \| `'needs_attention'` \| `'at_risk'`; invalid values → null |
+| `going_cold` | `'true'` → `true`; absent → `undefined` |
+| `sort_order` | `'asc'` or `'desc'`; default `'desc'` |
 | `page` | `page`, default `1` |
 | `pageSize` | fixed `30` |
 
@@ -462,34 +482,41 @@ main
 
 ### 6b. LeadsFilters
 
-| Control | URL param | Options source |
-| ------- | --------- | -------------- |
-| Search | `search` | Draft state → URL on Apply |
-| Status | `status` | `LEAD_STATUSES` / `LEAD_STATUS_LABELS` |
-| Outcome | `outcome` | `CALL_OUTCOMES` |
-| Source | `source` | `LEAD_SOURCES` |
-| Domain | `domain` | `GIA_DOMAIN_FILTER_ITEMS` — only if `showDomainFilter` |
-| Campaign | `campaign` | `options.campaigns` from page |
-| Agent | `agent_id` | `options.agents` — only if `showAgentFilter` |
-| Date from / to | `date_from`, `date_to` | `DatePicker` |
+| Control | URL param | Options source | Commit path |
+| ------- | --------- | -------------- | ----------- |
+| Search | `search` | Draft state, 350ms debounce | URL on debounce |
+| Status | `status` | `LEAD_STATUSES` / `LEAD_STATUS_LABELS` | Draft → Apply |
+| Outcome | `outcome` | `CALL_OUTCOMES` | Draft → Apply |
+| Source | `source` | `LEAD_SOURCES` | Draft → Apply |
+| Campaign | `campaign` | `options.campaigns` from page | Draft → Apply |
+| Agent | `agent_id` | `options.agents` — only if `showAgentFilter` | Draft → Apply |
+| Domain | `domain` | `GIA_DOMAIN_FILTER_ITEMS` — only if `showDomainFilter` | Draft → Apply |
+| Health | `health` | `healthy` / `needs_attention` / `at_risk` | Draft → Apply |
+| Going Cold | `going_cold` | — | Immediate commit (bypasses draft/Apply) |
+| Date from / to | `date_from`, `date_to` | `DatePicker` in portaled Range panel | Draft → Apply |
+| Sort order | `sort_order` | Toggle in filter bar | Draft → Apply |
 
 **`buildParams`:** delegates to `buildFilterParams(current, updates, { resetKeys: ['page'] })` — every filter change deletes `page`.
 
-**FilterDraft:** All filter controls write into a local `FilterDraft` state (type defined in `LeadsFilters.tsx`). The URL is updated only when the user clicks Apply. `isDirty` is a computed boolean comparing `draft` against live `params` — never a `useState`. `committedCount` (badge) counts active URL params, not draft values.
+**FilterDraft:** All filter controls (except search and Going Cold) write into a local `FilterDraft` state. URL updated only on Apply. `isDirty` is a computed boolean comparing `draft` against live `params` — never a `useState`. `committedCount` (badge) counts active URL params, not draft values. `date_from` is always active on load (30-day redirect), so `committedCount` is always ≥ 1.
 
-**Two-row layout:** Row 1 has the icon + badge + search input (`flex: 1`). Row 2 has all dropdowns (`flexShrink: 0`) + a `flex: 1` spacer + Apply (animated in/out with `isDirty`) + Clear. Row 2 is `flexWrap: nowrap` — dropdown panels are absolutely positioned and must float above layout unconstrained.
+**Search:** `searchInput` state debounced 350ms via `useDebounce`. URL pushed on debounce (not on Apply). `clearAll()` calls `setSearchInput('')` immediately without waiting for debounce.
 
-**Apply button:** `Button variant="primary" size="sm"` (not `MotionButton`) wrapped in `AnimatePresence motion.div` for the in/out animation. The button itself is not a standalone repeated-press CTA — the animation lives on the wrapper.
+**Going Cold chip:** immediate-commit — `router.push` fires directly; clears `status` and `outcome` from URL when activating. Bypasses `FilterDraft` entirely. Active when `params.get('going_cold') === 'true'`.
 
-**Active count (badge) vs committed count:** badge shows `committedCount` (URL state). `isDirty` compares draft against URL. Never swap these — the badge must reflect what the table is showing, not what the user has selected but not yet applied.
+**Single-row layout:** `flexWrap: nowrap`, `overflowX: auto`. Left to right: SlidersHorizontal icon + `committedCount` badge → `SearchBar` (flex 1, max 280px) → 1px divider → Status → Outcome → Source → Campaign (if options exist) → Agent (if `showAgentFilter`) → Domain (if `showDomainFilter`) → Health → Going Cold → Range trigger → Sort order toggle → Apply (animated, `isDirty` only) → Clear. All `FilterDropdown` chips use `menuPortal` so menus render `position: fixed` on `document.body` — required by `overflowX: auto` parent.
+
+**Apply button:** `Button variant="primary" size="sm"` (not `MotionButton`) wrapped in `AnimatePresence motion.div` (`scale 0.95→1`, 150ms). Rendered only when `isDirty`.
+
+**Active count (badge) vs committed count:** badge shows `committedCount` (URL state). `isDirty` compares draft against URL. Never swap these.
 
 **Domain change:** atomically sets `domain`, clears `agent_id` and `campaign` in the same `setDraft` call — invariant 17.
 
 ### 6c. LeadsTable + LeadsTableAsync + LeadsTableSkeleton
 
-**LeadsTableAsync:** `getLeadsByRoleCached(role, userId, domain, filters)` → `{ leads, totalCount }`; passes `hasActiveFilters` to table. Direct child of `<Suspense>`.
+**LeadsTableAsync:** `getLeadsByRoleCached(role, userId, domain, filters)` → `{ leads, totalCount, statusCounts }`; passes all three to `LeadsTable` alongside `hasActiveFilters`. Direct child of `<Suspense>`.
 
-**Columns (13):** Registry `src/lib/constants/lead-columns.ts`
+**Columns (14):** Registry `src/lib/constants/lead-columns.ts`
 
 | ID | Label | Default visible | Locked |
 | -- | ----- | --------------- | ------ |
@@ -506,6 +533,7 @@ main
 | `last_call_outcome` | Last Outcome | yes | no |
 | `call_count` | Calls | no | no |
 | `domain` | Domain | no | no |
+| `latest_note` | Latest Note | no | no |
 
 `platform` renders as a pill (`var(--theme-accent-subtle)` bg, `var(--theme-text-secondary)` text). `medium` renders plain text via `getMetaMediumLabel()` from `lib/constants/lead-sources.ts` — shows `—` when null.
 
@@ -518,7 +546,9 @@ main
 - `hasActiveFilters === true`: heading *"Nothing matches these filters."*; sub *"Try adjusting or clearing your filters."*  
 - `hasActiveFilters === false`: heading *"No leads yet."*; sub *"Leads will appear here once the webhook receives its first submission."*
 
-Playfair italic heading (`var(--font-serif)`). Table has **zero** filter/sort logic.
+Playfair italic heading (`var(--font-serif)`). Table has **zero** filter/sort/count logic.
+
+**Status pills (toolbar):** Derived exclusively from the `statusCounts` prop (`Partial<Record<LeadStatus, number>>`), which comes from the `get_leads_status_counts` RPC via `LeadsTableAsync`. Counts reflect the full filtered dataset, not just the current page slice. Pills are hidden when count is 0. `LeadsTable` never reads `leads[]` for count display.
 
 ### 6d. LeadsPagination
 
@@ -726,21 +756,21 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 1. **`LeadsTableAsync` MUST be the direct child of `<Suspense>`.** If it is a sibling of the skeleton, the boundary does nothing.
 
-2. **`getLeadsByRole` returns `Promise<LeadsResult>` — never `Lead[]` alone.** Every call site destructures `{ leads, totalCount }`.
+2. **`getLeadsByRole` returns `Promise<LeadsResult>` — never `Lead[]` alone.** Every call site destructures `{ leads, totalCount, statusCounts }`.
 
 3. **`totalCount` comes from `{ count: 'exact', head: false }` on the same query builder** that has all role constraints, filters, and search applied. A second `SELECT COUNT(*)` is a bug.
 
 4. **Every URL param push that changes a filter or search must delete the `page` param.** Enforced in `buildParams()` via `resetKeys: ['page']`. Never bypass with hand-built `router.push`. Exception: `clearAll()` pushes pathname with no params.
 
-5. **Search lives in `LeadsFilters.tsx` only** — draft state, URL updated on Apply. **`LeadsTable.tsx` contains zero filtering, searching, or sorting logic.**
+5. **Search lives in `LeadsFilters.tsx` only** — debounced 350ms, URL pushed on debounce. **`LeadsTable.tsx` contains zero filtering, searching, sorting, or counting logic.**
 
 6. **`LeadsPagination` absent from DOM when `totalCount <= 30`.** `pageSize` is fixed at 30. Do not add a page size selector.
 
-7. **Search flows through draft → Apply.** The 500ms debounce is retired. No per-keystroke URL push. Typing into the search field updates `draft.search`; the URL changes only when the user clicks Apply or Clear.
+7. **Search is debounced 350ms and pushed directly to URL** (not gated behind Apply). `searchInput` state + `useDebounce` + `useEffect` guarded by equality check. `clearAll()` calls `setSearchInput('')` immediately.
 
 8. **`showAgentFilter`:** `true` → agent dropdown rendered; `false` → **absent from DOM entirely** (not CSS-hidden). `showAgentFilter = profile.role !== 'agent'`.
 
-9. **`date_to` end-of-day:** `filters.date_to.replace(/T.*$/, 'T23:59:59.999Z')` in `leads-service.ts` only.
+9. **`date_to` end-of-day:** `filters.date_to.replace(/T.*$/, 'T23:59:59.999Z')` in `leads-service.ts` only. **`date_from` IST midnight:** bare `YYYY-MM-DD` suffixed to `T00:00:00+05:30` in `leads-service.ts` only.
 
 10. **`getLeadFilterOptions` called once in `leads/page.tsx`.** Never inside `LeadsTableAsync` or filter components.
 
@@ -775,6 +805,22 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 25. **Column registry IDs** (`lead-columns.ts`) are stable localStorage keys — never rename after shipping.
 
 26. **`useLeadColumnPreferences`:** locked columns always in `visibleColumns`; invalid stored ids dropped on load.
+
+27. **Sort order (`sort_order`):** `LeadFilters.sort_order?: 'asc' | 'desc'` (default `'desc'`). Authored in `LeadsFilters.tsx` draft. URL param `sort_order=asc` written by Apply; omitted when default. `getLeadsByRole` applies `.order('created_at', { ascending: filters.sort_order === 'asc' })`. `LeadsTable.tsx` owns zero sort logic.
+
+28. **`LeadsTable.tsx` has zero sort logic.** No sort props, no column-header click handlers, no `.sort()` on the `leads` array. Sort is entirely service-layer via `sort_order` filter.
+
+29. **`latest_note` is fetched via a single batch query — never per-row.**
+
+30. **`lead_health = NULL` for terminal statuses (`won`/`lost`/`junk`) — never `'healthy'`.** The RPC hooks and the hourly refresh both set NULL for terminal leads. Any code that sets a tier value on a terminal status is a correctness bug — health is meaningless for closed leads. `getLatestNotesForLeads(leadIds, supabase)` (private, not exported) runs one `.in('lead_id', leadIds)` query ordered `created_at DESC`. The `Map<leadId, LatestNote>` is built by iterating the result once, skipping duplicate `lead_id` keys (first = latest). Empty `leadIds` returns an empty Map without querying. Any loop or per-lead call against `lead_notes` in `getLeadsByRole` is a violation of this invariant.
+
+31. **Status pill counts come only from `statusCounts` prop — never from `leads[]`.** `LeadsTable` receives `statusCounts: Partial<Record<LeadStatus, number>>` from `LeadsTableAsync`. The `useMemo` that counted from `leads[]` is deleted. Any reintroduction of counting logic inside `LeadsTable` is a violation.
+
+32. **`statusCounts` and the paginated query run in `Promise.all` — never sequentially.** The `get_leads_status_counts` RPC params must mirror the filter chain in `getLeadsByRole` exactly. When a new filter is added to `LeadFilters`, update both the paginated query and the RPC call simultaneously. On RPC error, `statusCounts` is `{}` — pills show no counts rather than crashing.
+
+33. **`/leads` always has `date_from` in the URL on page load.** `page.tsx` redirects to `/leads?date_from=<30-days-ago-IST>` when `date_from` is absent. "Clear" resets to the 30-day default, not all-time. The redirect only fires when `date_from` is absent — never on any present value.
+
+34. **`getLeadsForExport` never calls `.range()`.** It mirrors `getLeadsByRole` filter and role-constraint logic exactly but with no pagination and a hard `.limit(5000)`. Never modify `getLeadsByRole` to skip `.range()` — pagination is a structural invariant of that function.
 
 ---
 

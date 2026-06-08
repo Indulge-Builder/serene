@@ -137,7 +137,11 @@ export async function processInboundMessage(
       assignedAgentName = assignedAgent?.full_name ?? null;
     }
 
-    void notifyLeadAssigned({
+    // Awaited (not void): processInboundMessage runs inside the whatsapp route's
+    // after(), which keeps the lambda alive only for promises it can track. A bare
+    // void here would detach the send from that tracked chain and Vercel would
+    // freeze the lambda before Gupshup is reached. await keeps it in the chain.
+    await notifyLeadAssigned({
       leadId:      newLeadId,
       assignedTo,
       agentName:   assignedAgentName,

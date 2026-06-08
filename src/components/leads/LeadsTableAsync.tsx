@@ -19,7 +19,7 @@ export async function LeadsTableAsync({
   domain,
   filters,
 }: LeadsTableAsyncProps) {
-  const { leads, totalCount } = await getLeadsByRoleCached(role, userId, domain, filters);
+  const { leads, totalCount, statusCounts } = await getLeadsByRoleCached(role, userId, domain, filters);
 
   const pageSize = filters.pageSize ?? 30;
   const page     = filters.page ?? 1;
@@ -34,7 +34,8 @@ export async function LeadsTableAsync({
       filters.campaign ||
       filters.date_from ||
       filters.date_to ||
-      filters.search
+      filters.search ||
+      filters.going_cold
     );
 
   return (
@@ -43,6 +44,8 @@ export async function LeadsTableAsync({
         leads={leads}
         userId={userId}
         hasActiveFilters={hasActiveFilters}
+        goingCold={!!filters.going_cold}
+        statusCounts={statusCounts}
       />
 
       {/* Pagination — absent when all results fit on one page */}

@@ -14,6 +14,11 @@ import type { MetaInboundMessage, MetaWebhookPayload } from '@/lib/types/whatsap
 
 const GUPSHUP_WEBHOOK_SECRET = process.env.GUPSHUP_WEBHOOK_SECRET ?? '';
 
+// processInboundMessage runs inside after() and now awaits notifyLeadAssigned's
+// Gupshup sends. Give the lambda headroom (default Vercel timeout can be 10–15s)
+// so a new-number lead's agent + founder notifications complete before freeze.
+export const maxDuration = 60;
+
 // ─────────────────────────────────────────────
 // Timing-safe Gupshup secret check
 // ─────────────────────────────────────────────

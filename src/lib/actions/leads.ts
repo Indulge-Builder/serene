@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
@@ -19,6 +20,7 @@ import {
   CreateManualLeadSchema,
   CreateLeadTaskSchema,
   SearchLeadsSchema,
+  ExportLeadsSchema,
 } from "@/lib/validations/lead-schema";
 import { formErrors } from "@/lib/validations/form-errors";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -26,7 +28,12 @@ import {
   getAgentsForDomain,
   getActiveUsersForDomain,
   searchLeadsForTask,
+  getLeadsForExport,
+  getActivitiesAndNotesForExport,
   type LeadSearchResult,
+  type LeadExportItem,
+  type LeadActivityWithActor,
+  type LeadNoteWithAuthor,
 } from "@/lib/services/leads-service";
 import { createNotification } from "@/lib/services/notifications-service";
 import {
@@ -371,22 +378,27 @@ export async function assignLead(
   const { notifyLeadAssigned } = await import(
     "@/lib/services/lead-assignment-notify"
   );
-  void notifyLeadAssigned({
-    leadId,
-    assignedTo:  agentId,
-    agentName:   assignedAgentName,
-    leadName:    assignLeadName,
-    leadPhone:   existingLead.phone ?? "",
-    domain:      existingLead.domain as string,
-    isNew:       false,
-    isDuplicate: false,
-    actorId:     caller.id,
-    scheduleSla: true,
-    leadStatus:  existingLead.status as string,
-    assignedAt,
-  }).catch((err) => {
-    console.error("[leads:assignLead] notifyLeadAssigned failed (non-fatal):", err);
-  });
+  // after(): the action returns to the client immediately while Vercel keeps the
+  // lambda alive until notifyLeadAssigned's awaited Gupshup sends settle. A bare
+  // void here would be orphaned when the lambda freezes after the action returns.
+  after(
+    notifyLeadAssigned({
+      leadId,
+      assignedTo:  agentId,
+      agentName:   assignedAgentName,
+      leadName:    assignLeadName,
+      leadPhone:   existingLead.phone ?? "",
+      domain:      existingLead.domain as string,
+      isNew:       false,
+      isDuplicate: false,
+      actorId:     caller.id,
+      scheduleSla: true,
+      leadStatus:  existingLead.status as string,
+      assignedAt,
+    }).catch((err) => {
+      console.error("[leads:assignLead] notifyLeadAssigned failed (non-fatal):", err);
+    }),
+  );
 
   revalidatePath("/leads");
 
@@ -600,21 +612,25 @@ export async function createManualLead(
     const { notifyLeadAssigned } = await import(
       "@/lib/services/lead-assignment-notify"
     );
-    void notifyLeadAssigned({
-      leadId,
-      assignedTo,
-      agentName:   assignedAgentName,
-      leadName:    manualLeadName,
-      leadPhone:   phone,
-      domain:      resolvedDomain as string,
-      isNew:       true,
-      isDuplicate: false,
-      actorId:     caller.id,
-      scheduleSla: true,
-      assignedAt:  now,
-    }).catch((err) => {
-      console.error("[leads:createManualLead] notifyLeadAssigned failed (non-fatal):", err);
-    });
+    // after(): action returns immediately; Vercel keeps the lambda alive until the
+    // awaited Gupshup sends inside notifyLeadAssigned settle. void would orphan them.
+    after(
+      notifyLeadAssigned({
+        leadId,
+        assignedTo,
+        agentName:   assignedAgentName,
+        leadName:    manualLeadName,
+        leadPhone:   phone,
+        domain:      resolvedDomain as string,
+        isNew:       true,
+        isDuplicate: false,
+        actorId:     caller.id,
+        scheduleSla: true,
+        assignedAt:  now,
+      }).catch((err) => {
+        console.error("[leads:createManualLead] notifyLeadAssigned failed (non-fatal):", err);
+      }),
+    );
   }
 
   // 11. Invalidate list + dashboard caches.
@@ -1032,4 +1048,74 @@ export async function searchLeadsAction(
   );
 
   return { data: results, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: exportLeadsAction
+// Returns plain JSON data — XLSX/CSV building happens entirely client-side.
+// Never imports xlsx here; never builds a file buffer server-side.
+// ─────────────────────────────────────────────
+export type ExportPayload = {
+  leads:      LeadExportItem[];
+  activities: LeadActivityWithActor[];
+  notes:      LeadNoteWithAuthor[];
+  totalCount: number;
+};
+
+export async function exportLeadsAction(
+  input: unknown,
+): Promise<ActionResult<ExportPayload>> {
+  "use server";
+
+  const parsed = ExportLeadsSchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  const caller = await getCurrentProfile();
+  if (!caller) return { data: null, error: formErrors.unauthorized };
+
+  // Guest role cannot export
+  if (caller.role === "guest") return { data: null, error: formErrors.unauthorized };
+
+  const { filters, selectedIds } = parsed.data;
+
+  // Cast to LeadFilters — safe because ExportLeadsSchema mirrors the shape
+  const leadsFilters = {
+    status:            (filters.status as string[] | null) ?? null,
+    last_call_outcome: (filters.last_call_outcome as string[] | null) ?? null,
+    domain:            (filters.domain as string | null) ?? null,
+    agent_id:          filters.agent_id ?? null,
+    source:            filters.source ?? null,
+    campaign:          filters.campaign ?? null,
+    date_from:         filters.date_from ?? null,
+    date_to:           filters.date_to ?? null,
+    search:            filters.search ?? null,
+    health:            filters.health ?? null,
+    sort_order:        filters.sort_order ?? "desc",
+    page:              1,
+    pageSize:          5000,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+
+  const { leads, totalCount } = await getLeadsForExport(
+    caller.role,
+    caller.id,
+    caller.domain,
+    leadsFilters,
+    selectedIds,
+  );
+
+  if (totalCount > 5000) {
+    return {
+      data:  null,
+      error: "Export exceeds 5,000 leads. Apply filters to narrow the set.",
+    };
+  }
+
+  const leadIds = leads.map((l) => l.id);
+  const { activities, notes } = await getActivitiesAndNotesForExport(leadIds);
+
+  return {
+    data: { leads, activities, notes, totalCount },
+    error: null,
+  };
 }

@@ -6,6 +6,199 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-08 — WhatsApp lead notifications — fix silent intermittent loss on Vercel (root cause: orphaned fire-and-forget sends)
+
+**Problem:** Only a few WhatsApp lead-assignment / founder notifications were delivered per day even though lead ingestion via the API worked perfectly. Every row in `whatsapp_notification_logs` showed `gupshup_status: 202`, `status: submitted`, `delivered: true` — i.e. Gupshup accepted 100% of what reached it. The missing notifications left **no log row at all** (missing rows, not error rows).
+
+**Root cause:** The entire notification stack used `void fn().catch()` fire-and-forget under the belief notifications must never block the response. On Vercel the serverless function is frozen/killed the instant the HTTP response (or server-action return) is flushed, so in-flight Gupshup `fetch()` calls — and the `logNotification` inserts that follow them — were orphaned mid-execution. An `await notifyLeadAssigned()` had been added at the leads webhook route, but it was defeated because `notifyLeadAssigned` itself used `void send().catch()` internally and resolved before any fetch began. Delivery succeeded only when the lambda happened to stay warm long enough — hence "2–3 a day."
+
+**Fix (after() + await):**
+
+- `src/lib/services/lead-assignment-notify.ts` — the two outward WhatsApp sends (agent + founder) are now collected and **awaited** via `Promise.allSettled` so `notifyLeadAssigned` does not resolve until Gupshup has accepted/rejected each message. Failures isolated; never throws.
+- `src/lib/services/whatsapp-api.ts` — all 5 `logNotification` calls in the send functions' `finally` blocks changed from `void logNotification().catch()` to `await logNotification()` so the log row is durably written before the send function resolves (same orphaning bug at the log layer).
+- `src/app/api/webhooks/leads/route.ts` — notification call moved from bare `await` to `after(notifyLeadAssigned(...))`; Pabbly still gets an instant 201 while Vercel keeps the lambda alive until the awaited sends settle. Added `export const maxDuration = 60`.
+- `src/lib/actions/leads.ts` `assignLead` + `createManualLead` — `void notifyLeadAssigned()` → `after(notifyLeadAssigned(...))`; added `import { after } from 'next/server'`.
+- `src/lib/services/whatsapp-ingestion.ts` — `void notifyLeadAssigned()` → `await` (it already runs inside the whatsapp route's `after()`; void detached it from the tracked chain).
+- `src/app/api/webhooks/whatsapp/route.ts` — added `export const maxDuration = 60` (its `after()` now carries the awaited notify chain).
+- `src/lib/actions/sla.ts` — `void sendSlaAgentNotification` / `void sendSlaManagerNotification` → `await` (same risk inside Trigger.dev runs).
+- `src/lib/actions/CLAUDE.md`, `src/lib/services/CLAUDE.md` — reversed the now-incorrect "always void, never await" / "never await logNotification" rules; documented the Vercel lifecycle and the `after()` + await pattern.
+
+**Industry-standard note:** `after()` is the correct primitive for post-response work on serverless (keeps the lambda alive until the promise settles), replacing orphaned `void`. A bare `await` would delay the webhook ack; a bare `void` loses the work on freeze — `after()` satisfies both.
+
+---
+
+## 2026-06-06 — Leads table — sort order toggle moved from filter bar to table toolbar
+
+- `src/components/leads/LeadsTable.tsx` — "Newest first" / "Oldest first" toggle added to table toolbar, immediately left of Columns; reads `sort_order` from URL and commits on click via `buildFilterParams` (resets `page`)
+- `src/components/leads/LeadsFilters.tsx` — `sort_order` removed from `FilterDraft`, `isDirty`, `committedCount`, and Apply; no longer rendered in the filter row
+- `src/components/leads/CLAUDE.md`, `src/app/(dashboard)/leads/CLAUDE.md` — sort toggle ownership and Invariant 28 updated
+
+---
+
+## 2026-06-06 — Leads page — remove 30-day soft default date redirect
+
+- `src/app/(dashboard)/leads/page.tsx` — removed IST-aware redirect that forced `date_from=<30-days-ago>` when the param was absent; `/leads` now loads with no date filter by default
+- `src/app/(dashboard)/leads/CLAUDE.md` — removed 30-day soft default section; kept `date_from` IST midnight service-layer note
+
+---
+
+## 2026-06-06 — Leads page — 30-day soft default date window via IST-aware redirect in page.tsx; date_from always present in URL on load
+
+- `src/app/(dashboard)/leads/page.tsx` — before `parseFilters`, checks `resolvedParams['date_from']`; if absent, computes 30-days-ago in IST (UTC arithmetic with `IST_OFFSET_MS = 5.5 * 60 * 60 * 1000`) and `redirect('/leads?date_from=YYYY-MM-DD')`; fires only when `date_from` is absent — any present value (including historical) is left untouched
+- `src/lib/services/leads-service.ts` — `getLeadsByRole` and `getLeadsForExport`: bare `YYYY-MM-DD` `date_from` now suffixed to `T00:00:00+05:30` before `.gte()` query; fixes IST midnight misalignment (PostgREST treated bare date as UTC midnight = 05:30 IST, excluding leads created before that time)
+- `src/app/(dashboard)/leads/CLAUDE.md` — 30-day soft default, redirect mechanic, "Clear = reset to default" contract, all-time path, and IST midnight fix documented
+
+---
+
+## 2026-06-06 — Cold Leads dashboard widget for manager/admin/founder
+
+- **Migration `20260606000081_dashboard_cold_leads.sql`** — `CREATE OR REPLACE FUNCTION get_dashboard_summary` adds `cold_leads` CTE (5-day threshold, non-terminal statuses, role/domain-scoped); `cold_leads_count int` key in final `jsonb_build_object`; agent early-return branch returns `cold_leads_count: 0`; `GRANT EXECUTE` re-applied
+- `src/lib/types/index.ts` — `DashboardSummary.cold_leads_count?: number` added
+- `src/components/dashboard/widgets/ManagerColdLeadsWidget.tsx` — new widget; stat card layout; mono count number; warning colour when count > 0; entire card is a `Link` to `/leads?going_cold=true`; data from `initialData?.cold_leads_count` only — no mount fetch, no server action
+- `src/lib/constants/dashboard-widgets.ts` — `manager-cold-leads` entry (`sm`, `colSpan: 1`, manager/admin/founder); added to `DEFAULT_LAYOUT_BY_ROLE` for all three roles
+- `src/components/dashboard/DashboardWidgetSlot.tsx` — `React.lazy` entry for `ManagerColdLeadsWidget`
+- `src/app/(dashboard)/CLAUDE.md` — widget table and no-client-fetch rule documented
+
+---
+
+## 2026-06-06 — Going Cold filter preset on /leads page
+
+- `src/lib/constants/leads.ts` — new file; `COLD_LEAD_THRESHOLD_DAYS = 5`
+- `src/lib/types/database.ts` — `LeadFilters.going_cold?: boolean` added
+- `src/lib/services/leads-service.ts` — `getLeadsByRole` and `getLeadsForExport` apply `going_cold` branch: `last_activity_at < threshold AND status NOT IN (won/lost/junk)`; `COLD_LEAD_THRESHOLD_DAYS` imported; `p_going_cold` param passed to `get_leads_status_counts` RPC
+- `src/app/(dashboard)/leads/page.tsx` — `parseFilters` maps `going_cold=true` URL param
+- `src/components/leads/LeadsFilters.tsx` — "Going Cold" immediate-commit chip (Clock icon; warning tokens when active); `committedCount` includes `going_cold`; chip click clears `status`/`outcome` URL params on activate
+- `src/components/leads/LeadsTableAsync.tsx` — `going_cold` counted in `hasActiveFilters`; `goingCold` prop passed to `LeadsTable`
+- `src/components/leads/LeadsTable.tsx` — `goingCold` prop; empty state: "No cold leads." / "All leads have had recent activity."
+- `src/app/(dashboard)/leads/CLAUDE.md` — Going Cold filter section + URL param table updated
+
+---
+
+## 2026-06-06 — Leads status pills — counts now reflect full filtered dataset via get_leads_status_counts RPC; Promise.all parallel fetch
+
+- **Migration `20260606000080_get_leads_status_counts.sql`** — `get_leads_status_counts` RPC; STABLE SECURITY DEFINER; role/domain self-enforced via `get_user_role()` / `get_user_domain()`; 9 optional filter params mirroring `getLeadsByRole`; empty-array guard on outcomes/statuses; GRANT EXECUTE to authenticated
+- `src/lib/types/database.ts` — `LeadStatusCount` type added; `LeadsResult` extended with `statusCounts: Partial<Record<LeadStatus, number>>`
+- `src/lib/services/leads-service.ts` — `getLeadsByRole` now runs paginated query and `get_leads_status_counts` RPC in `Promise.all` (never sequentially); RPC result reduced to `Partial<Record<LeadStatus, number>>` with `Number()` cast (Q-09); `{}` on RPC error (non-fatal); `LeadStatus` added to type imports
+- `src/components/leads/LeadsTableAsync.tsx` — destructures `statusCounts` from `getLeadsByRoleCached`; passes as prop to `LeadsTable`
+- `src/components/leads/LeadsTable.tsx` — `statusCounts?: Partial<Record<LeadStatus, number>>` prop added (default `{}`); `useMemo` count-from-`leads[]` removed entirely; toolbar pills read `statusCounts[status] ?? 0` exclusively
+- `src/app/(dashboard)/leads/CLAUDE.md` — `LeadsResult` spec updated with `statusCounts`; RPC name, param-sync rule, and `Promise.all` pattern documented
+- `supabase/migrations/CLAUDE.md` — migration 0080 added to inventory
+
+---
+
+## 2026-06-06 — Lead export — CSV + XLSX, checkbox selection toolbar, filter-level export
+
+- **Package:** `xlsx` (SheetJS) `0.18.5` added — CSV + XLSX workbook generation (Q-05)
+- `src/lib/services/leads-service.ts` — `getLeadsForExport` (mirrors `getLeadsByRole` filter logic, no `.range()`, hard cap 5000); `getActivitiesAndNotesForExport` (parallel IN queries for activities + notes); exports `LeadExportItem`, `ExportResult`, `ExportActivitiesAndNotes` types
+- `src/lib/validations/lead-schema.ts` — `ExportLeadsSchema` + `ExportLeadsInput` added
+- `src/lib/actions/leads.ts` — `exportLeadsAction`; `ExportPayload` type; returns `{ leads, activities, notes, totalCount }` plain JSON — never imports xlsx server-side; hard error when `totalCount > 5000`
+- `src/lib/constants/export-columns.ts` — `LEAD_EXPORT_HEADERS`, `ACTIVITY_EXPORT_HEADERS`, `NOTE_EXPORT_HEADERS` flat column maps; `ExportHeader` type
+- `src/lib/utils/export.ts` — **CLIENT-SIDE ONLY**; `buildCSV`, `buildLeadsCSV`, `buildXLSXWorkbook` (dynamic `import('xlsx')`), `triggerBrowserDownload`; never import from server actions or services
+- `src/components/leads/ExportModal.tsx` — composes `ui/modal.tsx`; format pills CSV / XLSX; `max-w-sm`; zero hardcoded colours
+- `src/components/leads/ExportButton.tsx` — ghost button in filter bar; opens `ExportModal`; calls `exportLeadsAction` then triggers browser download
+- `src/components/leads/LeadsSelectionToolbar.tsx` — `AnimatePresence` enter/exit; "Export CSV" + "Export XLSX" + "Clear"; `--theme-accent-surface` background; renders above table when selection non-empty
+- `src/components/leads/LeadsTable.tsx` — checkbox column (not in `lead-columns.ts` registry); header indeterminate via ref; row checkbox with `onClick stopPropagation`; `selectedLeadIds` `Set<string>` state; clears on `leads` prop change (page nav / filter change); renders `LeadsSelectionToolbar`
+- `src/components/leads/LeadsFilters.tsx` — `filters: LeadFilters` prop added; `ExportButton` rendered at trailing end of filter bar
+- `src/app/(dashboard)/leads/page.tsx` — `filters` passed to `LeadsFilters`
+
+---
+
+## 2026-06-06 — Lead Health — persisted column, RPC hooks, hourly refresh job, AgentDetailPanel health strip, leads list health filter
+
+- `supabase/migrations/20260606000077_lead_health_column.sql` — `lead_health text CHECK (... 'healthy' | 'needs_attention' | 'at_risk')` column on `leads`; no default (NULL = not yet evaluated or terminal); `idx_leads_health (lead_health, assigned_to) WHERE archived_at IS NULL`
+- `supabase/migrations/20260606000078_lead_health_rpc_hooks.sql` — `CREATE OR REPLACE` for three RPCs: `add_lead_call_note` → `lead_health = 'healthy'`; `add_lead_plain_note` → `lead_health = 'healthy'`; `update_lead_status` → `NULL` for terminal statuses, else `'healthy'`; all signatures, return shapes, SECURITY DEFINER, search_path, and GRANT preserved exactly
+- `supabase/migrations/20260606000079_refresh_lead_health_rpc.sql` — `refresh_lead_health_bulk()` SECURITY DEFINER RPC; single UPDATE with CASE expression mirroring `computeLeadHealth()`; at_risk checked before needs_attention; correlated EXISTS on `tasks + task_gia_meta` for overdue follow-up detection; returns row count
+- `src/lib/utils/lead-health.ts` — `computeLeadHealth()` pure function; `LeadHealth` type; first-match CASE logic matching the SQL exactly; null for terminal statuses
+- `src/trigger/refresh-lead-health.ts` — `refreshLeadHealthTask` (`schedules.task`); cron `0 * * * *`; calls `refresh_lead_health_bulk()` RPC via `createAdminClient()`; logs in non-production only (P-07)
+- `src/lib/services/performance-service.ts` — `getAgentLeadHealthBreakdown(agentId)` added; single query grouped by `lead_health`; excludes archived, terminal statuses, null health; `LeadHealthBreakdown` type exported
+- `src/lib/actions/performance.ts` — `getAgentLeadHealthAction(agentId, domain)` added; auth guard identical to `getAgentDetailMetricsAction` (manager domain-scoped, agent/guest denied); `GetAgentLeadHealthSchema` Zod validation
+- `src/components/performance/LeadHealthStrip.tsx` — new component; three inline pill chips (at_risk / needs_attention / healthy); bg + text use semantic token pairs (`--color-danger-light`/`-text`, `--color-warning-light`/`-text`, `--color-success-light`/`-text`); 6px dot per chip; V-10 section micro-label; each chip deep-links `/leads?assigned_to={agentId}&health={tier}` via Next.js `Link`; zero hardcoded hex; no coloured border on container
+- `src/components/performance/AgentDetailPanel.tsx` — second `useEffect` keyed on `[agent.id, domain]` only (never period) for health data; `healthData` + `isHealthLoading` states; `cancelled` ref pattern (Q-15); three skeleton chips while loading; `LeadHealthStrip` rendered between stats row and deal breakdown; health never re-fetches on period change
+- `src/lib/types/database.ts` — `lead_health: 'healthy' | 'needs_attention' | 'at_risk' | null` added to `leads` Row, Insert, Update; `LeadFilters.health?: 'healthy' | 'needs_attention' | 'at_risk' | null` added
+- `src/lib/services/leads-service.ts` — `getLeadsByRole` applies `.eq('lead_health', filters.health)` when present
+- `src/app/(dashboard)/leads/page.tsx` — `parseFilters` reads and validates `health` URL param
+- `src/components/leads/LeadsFilters.tsx` — `LeadHealthTier` type; `HEALTH_ITEMS` constant; `health` field added to `FilterDraft`, `draftFromParams`, `isDirty`, `committedCount`, `applyFilters`, `clearAll`; Health `FilterDropdown` (single-select, portal) added after Domain
+
+---
+
+## 2026-06-06 — Leads table: Latest Note column
+
+- `src/lib/services/leads-service.ts` — `LatestNote` type (local, non-exported); `LeadListItem` extended with `latest_note: LatestNote | null`; private `getLatestNotesForLeads(leadIds, supabase)` helper (one `.in()` query, `Map` reduce, empty-array guard); called in `getLeadsByRole` after main query resolves — two sequential queries total, never per-row
+- `src/lib/constants/lead-columns.ts` — `'latest_note'` added to `LeadColumnId` union and `LEAD_COLUMNS` registry (`defaultVisible: false`, `locked: false`)
+- `src/components/leads/LeadsTable.tsx` — `latest_note` case added to `LeadCell` switch: content line (truncated, `--theme-text-secondary`), micro-label line (author · date, `--theme-text-tertiary`); null renders `—`; no new component file
+
+---
+
+## 2026-06-06 — Lead column picker: portal + scrollable list
+
+- `src/components/leads/LeadColumnPicker.tsx` — panel portals to `document.body` with `fixed` positioning (mirrors `FilterDropdown` / `LeadsFilters` date range); right-aligns to the Columns trigger; scroll region capped at 240px with footer pinned outside; `anchorRef` prop required; native checkboxes replaced with themed `ColumnCheckbox` (design-dna §7.5 — accent fill, `--theme-accent-fg` check, spring snap)
+- `src/components/leads/LeadsTable.tsx` — passes `pickerAnchorRef` to `LeadColumnPicker` (fixes clipping from table card `overflow: hidden`)
+
+---
+
+## 2026-06-06 — Leads: created_at sort toggle (asc/desc)
+
+- `src/lib/types/database.ts` — `LeadFilters.sort_order?: 'asc' | 'desc'` added
+- `src/lib/constants/redis-keys.ts` — `buildLeadListKey` includes `sort_order` in cache key hash
+- `src/lib/services/leads-service.ts` — `getLeadsByRole` uses `.order('created_at', { ascending: filters.sort_order === 'asc' })`; default `'desc'` (newest first) preserves existing behaviour
+- `src/app/(dashboard)/leads/page.tsx` — `parseFilters` reads `sort_order` param; invalid/absent values default to `'desc'`
+- `src/components/leads/LeadsFilters.tsx` — `sort_order` added to `FilterDraft`; compact toggle button (ArrowDownUp icon, "Newest first" / "Oldest first") renders between Range and Apply; URL param only written when `'asc'`; `clearAll` resets to `'desc'`; `LeadsTable.tsx` unchanged
+
+---
+
+## 2026-06-06 — Personal details card: City above Details
+
+- `src/components/leads/PersonalDetailsCard.tsx` — field order: Company, Occupation, Interests, City, then Details textarea (full width).
+
+---
+
+## 2026-06-06 — Lead dossier: personal details below form responses
+
+- `src/app/(dashboard)/leads/[id]/page.tsx` — left column order: `LeadInfoCard` → `DynamicFormResponses` → `PersonalDetailsCard`.
+
+---
+
+## 2026-06-06 — Indian compact numbers (K/L/Cr) + mono stat values
+
+- `src/lib/utils/numbers.ts` — `formatCompact` uses K → L (lakh) → Cr (crore) instead of M; `formatCurrencyCompact` INR follows design-dna (e.g. `₹12.5L`, `₹1Cr`); USD keeps K/M via internal `formatCompactWestern`.
+- `src/components/performance/StatAtom.tsx` — stat values use `--font-mono` + `tabular-nums` (matches `DealsSummaryStrip`).
+- `src/components/performance/DomainOverviewPanel.tsx` + `AgentDetailPanel.tsx` — revenue stat uses `formatCurrencyCompact`.
+- `src/components/performance/DomainOverviewPanel.tsx` — domain title `line-height` relaxed (`--leading-snug`) so Playfair descenders are not clipped.
+
+---
+
+## 2026-06-06 — Domain icons on performance Domains tab
+
+- `src/lib/constants/domain-icons.ts` — `DOMAIN_ICONS` / `GIA_DOMAIN_ICONS` / `getDomainIcon()` (Lucide marks per `app_domain`).
+- `src/components/performance/DomainOverviewPanel.tsx` — domain card header uses bare domain icon (no tile background), tinted via `DOMAIN_LINE_COLORS`.
+
+---
+
+## 2026-06-06 — Performance Domains tab: StatAtom cards + number formatting
+
+- `src/components/performance/StatAtom.tsx` — extracted shared semantic KPI card from `AgentDetailPanel` (palette backgrounds, uppercase micro-label, Playfair value).
+- `src/components/performance/DomainOverviewPanel.tsx` — domain cards redesigned: single paper card per domain (header + `StatAtom` row); conversion % line removed; leads/calls use `formatCompact`, revenue uses `formatCurrency` (Indian grouping).
+- `src/components/performance/AgentDetailPanel.tsx` — imports shared `StatAtom`; stat row uses `formatCompact` for counts and `formatCurrency` for revenue.
+
+---
+
+## 2026-06-05 — loading.tsx skeleton fixes + tasks default tab
+
+- `/tasks` loading.tsx — rewritten to import `TasksSkeleton` directly; eliminates the double-skeleton that occurred because loading.tsx and the page's Suspense fallback both showed a skeleton.
+- `/tasks` — default tab changed from `validTabs[0]` (Gia for Gia-domain users) to always `'personal'` (My Tasks); `?tab=` param still overrides.
+- `/performance` loading.tsx — rewritten to import `PerformanceSkeleton`; now shows the correct agent-view KPI/effort/outcome shape with no filter bar instead of the wrong manager two-column shape.
+- `/settings` loading.tsx — corrected from table layout to card-list layout matching `AgentSettingsTable`'s real render output.
+- `/admin/users` loading.tsx — corrected from table layout to card-list layout matching `UsersTable`'s real `UserCard` flex structure.
+
+---
+
+## 2026-06-05 — Leads range filter: fix calendar month-nav closing panel
+
+- `LeadsFilters` — range panel outside-click handler now ignores clicks inside portaled `DatePicker` calendars (`[data-datepicker-panel]`); month arrows no longer dismiss the range card.
+- `TasksFilters`, `DealsFilters`, `CampaignFilters` — same fix (shared range + portaled DatePicker pattern).
+
+---
+
 ## 2026-06-05 — Page-level loading.tsx skeletons added (remaining routes)
 
 - `/performance` — loading.tsx skeleton added (filter bar + two-column roster + detail panel).
@@ -299,6 +492,7 @@ Call sites unchanged — they already pass lead full name as the second argument
 **Root cause:** Changing `dash_preset` navigates the page and re-fetches all cohort data on the server, but Lead Pipeline, Campaign Performance, and Lead Volume widgets also fired their own server actions on every `dateRange` change (plus 30s auto-poll on cohort widgets). That doubled work and spammed `POST /dashboard` in dev.
 
 **Changed files:**
+
 - `src/hooks/useDashboardCohortSync.ts` — apply RSC `initialData` when the date filter changes; no client fetch when the payload matches the active view
 - `src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx` — sync from `initialData.lead_status` for manager + default domain tab; client fetch only for org-wide / other domain tabs; removed 30s poll
 - `src/components/dashboard/widgets/ManagerCampaignWidget.tsx` — same pattern for campaigns; admin default tab aligned to `DEFAULT_GIA_DOMAIN` (matches RSC `p_initial_domain`); removed 30s poll
@@ -311,6 +505,7 @@ Call sites unchanged — they already pass lead full name as the second argument
 **Root causes:** (1) RSC fetched volume on the server but the widget skipped the seed whenever `dateRange` was passed (always), forcing a redundant client fetch and a blank chart on first paint. (2) Volume queries used `created_at <= to` while Lead Pipeline uses `created_at < to` (half-open), so counts diverged for the same filter. (3) Bucket assignment dropped leads when the computed bucket key was missing from the pre-built map. (4) PostgREST’s 1000-row default cap silently truncated high-volume ranges.
 
 **Changed files:**
+
 - `src/lib/services/dashboard-service.ts` — shared `fetchVolumeLeads` (paginated), `buildBucketKeys` / `bucketKey`, `buildVolumeSeries`; intake window `gte(from)` + `lt(to)` aligned with pipeline RPCs
 - `src/app/(dashboard)/dashboard/page.tsx` — admin/founder RSC seeds `lead_volume_multi` via `getLeadVolumeByDomains`
 - `src/lib/types/index.ts` — `DashboardMultiDomainVolumeSummary` + `lead_volume_multi` on `DashboardSummary`
@@ -323,6 +518,7 @@ Call sites unchanged — they already pass lead full name as the second argument
 **Root cause:** `agent_counts` in `get_dashboard_summary` / `get_lead_pipeline_refresh` used `COUNT(*)` on per-status subquery rows (number of status buckets, 1–7) instead of `SUM(cnt)` (actual lead count). Stacked bar widths divided by the wrong denominator, so segments exceeded 100% and the colour breakdown did not render correctly.
 
 **Changed files:**
+
 - `supabase/migrations/20260604000070_fix_pipeline_agent_total.sql` — `SUM(cnt)::int AS total` in `agent_counts` and `campaign_agg` for all three dashboard RPCs
 - `src/lib/services/dashboard-service.ts` — `normalizeLeadStatusSummary()` coerces jsonb counts to numbers and recomputes each agent's `total` from `counts` (covers stale Redis until TTL)
 - `src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx` — `StackedBar` derives bar width denominator from segment counts
@@ -336,10 +532,12 @@ Adds a single date filter at the top of `/dashboard`. Changing it re-scopes **Le
 **Date semantics:** all three filtered widgets filter by `leads.created_at` (intake/cohort date), i.e. "leads that came in during this window." This is the Critical Date-Field Rule invariant — see Decision Log entry in `The_Rules.md`.
 
 **New files:**
+
 - `src/lib/utils/date-range.ts` — pure IST date-range util: `DatePreset` union, `resolvePresetToRange()`, `rangeFromUrlParams()`, `DATE_PRESET_LABELS`
 - `src/components/dashboard/DashboardDateFilter.tsx` — filter button with preset list (Today / This Week / This Month / This Quarter) + custom DatePicker range panel; writes `?dash_preset=&dash_from=&dash_to=` URL params
 
 **Changed files:**
+
 - `supabase/migrations/20260604000069_dashboard_date_filter.sql` — extends `get_dashboard_summary`, `get_lead_pipeline_refresh`, `get_campaign_pipeline_refresh` with nullable `p_date_from`/`p_date_to timestamptz` params (backwards-compatible DEFAULT NULL); date filter applied to `created_at` on `lead_status` + `campaigns` CTEs only; `agent_tasks`/`agent_activity` unaffected
 - `src/lib/types/index.ts` — re-exports `DateRange`, `DatePreset` from `date-range.ts`
 - `src/lib/constants/redis-keys.ts` — all four dashboard cache keys (`dashboardLeadStatus`, `dashboardLeadVolume`, `dashboardLeadVolumeMulti`, `dashboardCampaigns`) now include `:{from}:{to}` segment ('all' when no filter); different ranges produce different cache slots
@@ -416,6 +614,7 @@ Adds a single date filter at the top of `/dashboard`. Changing it re-scopes **Le
 Six server actions now tell Next.js to bust the `/leads` RSC segment in addition to the dossier page. Before this change, the agent's lead list stayed stale until manual navigation; mutations only revalidated the dossier (`/leads/[slug]`).
 
 Actions that gained `revalidatePath('/leads')`:
+
 - `addLeadCallNote` — status may advance (new→touched), call_count and last_call_outcome change
 - `updateLeadStatus` — status changes
 - `assignLead` — assigned_to changes
@@ -426,7 +625,7 @@ Actions that gained `revalidatePath('/leads')`:
 
 File: `src/lib/actions/leads.ts`
 
-**Change 2 — 30s silent auto-poll on three dashboard widgets**
+### Change 2 — 30s silent auto-poll on three dashboard widgets
 
 `AgentTasksWidget`, `ManagerLeadStatusWidget`, and `ManagerCampaignWidget` now poll their server action every 30 seconds using a `setInterval` inside a `useEffect`. No loading state is shown; data swaps in silently via `startTransition`. The interval is cancelled on unmount and re-created if the domain mode or userId dependency changes.
 
@@ -455,6 +654,7 @@ Files: `src/components/dashboard/widgets/AgentTasksWidget.tsx`, `ManagerLeadStat
 Complete overhaul of the Redis cache layer. 10 key families removed, 4 bugs fixed, list invalidation upgraded from O(N) SCAN to O(1) atomic INCR.
 
 **Removed caches (TTL-only, no invalidation path — safer to hit DB):**
+
 - `perf:*` — all 6 performance-service namespaces removed. Performance data is retrospective; DB queries have proper indexes; managers/founders don't refresh constantly. `redis` import + all 6 TTL constants deleted from `performance-service.ts`.
 - `campaign:list/detail/distribution` — campaign analytics removed from `leads-service.ts`. Manager/admin use only; RPC queries are fast enough raw.
 - `campaign:ad-creative` — removed from `ad-creatives-service.ts` and `ad-creatives.ts` action. `void redis.del` after upsert/delete was a bug pattern (CLAUDE.md §void-redis-del); simpler to drop the cache entirely.
@@ -463,18 +663,21 @@ Complete overhaul of the Redis cache layer. 10 key families removed, 4 bugs fixe
 - `task:remarks` — removed from `tasks-service.ts` (getTaskRemarks) and `addTaskRemarkAction` / `suppressTaskRemarkAction`. Low value, Realtime already refreshes the UI.
 
 **Bug fixes in kept caches:**
+
 - `assignLead`: was `void Promise.all([...]).catch()` — replaced with `await Promise.all` inside `try/catch`. Also added missing `leadRowSlug` del (Bug 3 from the audit plan) and two INCR calls.
 - `revalidateLeadDossier` (covers `updateLeadEmail`, `updateLeadDomain`, `updateLeadSource`, `updateLeadCity`): was three separate `void redis.del().catch()` calls — replaced with a single `await Promise.all` + `leadRowSlug` del was already present but `leadActivities` was missing; now all three keys await correctly.
 - `addLeadCallNote`: added two INCR calls for `agent` and `manager` list version (call notes can auto-advance status, changing list-visible `status` field).
 - `updateLeadStatus`: added two INCR calls for `agent` and `manager` list version.
 
 **Version counter pattern for lead list cache (replaces SCAN):**
+
 - New key: `lead:list:v:{role}:{domain}` — persists without TTL. Every lead mutation does `INCR` on the relevant role+domain combos.
 - `buildLeadListKey` now requires a `version: number` argument and embeds it as `:v{N}` suffix.
 - `getLeadsByRole` reads the current version with a fast `GET` before building the cache key. Old versioned keys self-expire at LEAD_LIST_TTL (30s).
 - `createManualLead`: the O(N) Redis SCAN loop is completely replaced with two `INCR` calls. 6 dashboard volume period keys now deleted in the same `Promise.all` (all periods × roles).
 
 **`redis-keys.ts` cleanup:**
+
 - Added `REDIS_KEYS.leadListVersion(role, domain)` builder.
 - `REDIS_KEYS.leadList` now takes `version: number` as 5th arg.
 - Removed: `REDIS_KEYS.perf.*`, `REDIS_KEYS.campaign.*`, `REDIS_KEYS.task.subtasks`, `REDIS_KEYS.task.remarks`, `REDIS_KEYS.task.groupList`, legacy `taskSubtasks` / `taskRemarks` flat aliases.

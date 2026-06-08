@@ -1,10 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ingestLead, sanitizeRawPayload } from '@/lib/services/lead-ingestion';
 import { notifyLeadAssigned } from '@/lib/services/lead-assignment-notify';
 import { LEAD_SOURCES, type LeadSource } from '@/lib/constants/lead-sources';
 
 const LEAD_SOURCES_SET = new Set<string>(LEAD_SOURCES);
+
+// after() keeps the lambda alive for the WhatsApp notification work AFTER the 201
+// is flushed, but only up to maxDuration. The default Vercel timeout can be as low
+// as 10–15s; 60s gives ample headroom for the agent + founder Gupshup sends and
+// their log inserts without risking the lambda being killed mid-send.
+export const maxDuration = 60;
 
 // ─────────────────────────────────────────────
 // Rate limiting state (in-memory, per worker)
@@ -124,22 +130,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  // await so the serverless function stays alive until notifications fire.
-  // void + fire-and-forget is killed when the response is sent on Vercel.
-  await notifyLeadAssigned({
-    leadId:      result.leadId,
-    assignedTo:  result.assigned_to,
-    agentName:   result.agent_name,
-    leadName:    result.lead_name,
-    leadPhone:   result.lead_phone,
-    domain:      result.domain,
-    isNew:       !result.is_duplicate,
-    isDuplicate: result.is_duplicate,
-    actorId:     null,
-    scheduleSla: !result.is_duplicate,
-  }).catch((err) => {
-    console.error('[webhooks/leads] notifyLeadAssigned failed (non-fatal):', err);
-  });
+  // Notifications run in after(): the 201 is flushed to Pabbly immediately while
+  // Vercel keeps the lambda alive until notifyLeadAssigned's awaited Gupshup sends
+  // settle. A bare `await` here would delay the webhook response by the send time;
+  // a bare `void`/fire-and-forget would be killed when the lambda freezes. after()
+  // is the only construct that satisfies both. notifyLeadAssigned awaits its sends
+  // internally (see lead-assignment-notify.ts header), so this captures completion.
+  after(
+    notifyLeadAssigned({
+      leadId:      result.leadId,
+      assignedTo:  result.assigned_to,
+      agentName:   result.agent_name,
+      leadName:    result.lead_name,
+      leadPhone:   result.lead_phone,
+      domain:      result.domain,
+      isNew:       !result.is_duplicate,
+      isDuplicate: result.is_duplicate,
+      actorId:     null,
+      scheduleSla: !result.is_duplicate,
+    }).catch((err) => {
+      console.error('[webhooks/leads] notifyLeadAssigned failed (non-fatal):', err);
+    }),
+  );
 
   return NextResponse.json({ leadId: result.leadId }, { status: 201 });
 }

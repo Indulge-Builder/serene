@@ -95,24 +95,36 @@ If you find yourself adding a filter or search inside `LeadsTable.tsx`, stop. Th
 
 ---
 
+## date_from IST midnight fix (service layer)
+
+`getLeadsByRole` (and `getLeadsForExport`) transform
+a bare `YYYY-MM-DD` `date_from` to `YYYY-MM-DDT00:00:00+05:30` before the `.gte()` query. Without
+this, PostgREST treats the bare date as UTC midnight — 5.5 hours into the IST calendar day, excluding
+leads created before 05:30 IST. The transform guards against strings that already contain `T`.
+
+---
+
 ## getLeadsByRole Return Shape
 
 `getLeadsByRole` returns `Promise<LeadsResult>` — **never `Lead[]` alone**:
 
 ```typescript
 export type LeadsResult = {
-  leads:      LeadWithAssignee[];  // Lead + assignee: { full_name } from profiles join
-  totalCount: number;
+  leads:        LeadListItemWithAssignee[];
+  totalCount:   number;
+  statusCounts: Partial<Record<LeadStatus, number>>;
 };
 ```
 
-**Every call site destructures both fields:**
+**Every call site destructures all three fields (or passes them through):**
 
 ```typescript
-const { leads, totalCount } = await getLeadsByRole(role, userId, domain, filters);
+const { leads, totalCount, statusCounts } = await getLeadsByRoleCached(role, userId, domain, filters);
 ```
 
-Never destructure only `leads` and discard `totalCount`. If you don't need pagination at a call site, pass `totalCount` through anyway — it may be needed by a child component.
+`statusCounts` is produced by the `get_leads_status_counts` RPC, called in `Promise.all` alongside the paginated query. It reflects the **full filtered dataset** — not just the current page slice. On RPC error it is `{}` (empty object). `LeadsTable` receives it as a prop and uses `statusCounts[status] ?? 0` as the **only** source of truth for toolbar pill counts. Zero reads from `leads[]` for count display.
+
+**Param-sync rule:** the RPC params in `getLeadsByRole` (`p_agent_id`, `p_date_from`, `p_date_to`, `p_campaign`, `p_search`, `p_health`, `p_source`, `p_outcomes`, `p_statuses`) must stay in sync with the filter chain applied to the paginated query. When a new filter is added to `LeadFilters`, update both the paginated query and the RPC call simultaneously.
 
 ---
 
@@ -241,19 +253,53 @@ This is the service's responsibility, not the component's.
 
 ---
 
+## Invariant 28 — LeadsTable.tsx has no client-side sort
+
+`LeadsTable.tsx` must never `.sort()` or reorder the `leads` array — rows render in server order only. Sort is driven by:
+
+1. `LeadFilters.sort_order` (`'asc' | 'desc'`, default `'desc'`) — parsed from `sort_order` URL param in `leads/page.tsx`
+2. `getLeadsByRole` — applies `.order('created_at', { ascending: filters.sort_order === 'asc' })`
+3. `LeadsTable.tsx` toolbar — "Newest first" / "Oldest first" toggle left of Columns; reads `sort_order` from URL and commits immediately on click (not part of `LeadsFilters` draft/Apply)
+
+Column-header click sort is not implemented and must not be added without a spec change.
+
+---
+
 ## URL Param Keys
 
-| Filter          | URL param   | Type                    |
-|-----------------|-------------|-------------------------|
-| search          | `search`    | string (debounced 350ms)|
-| status          | `status`    | comma-separated values  |
-| outcome         | `outcome`   | comma-separated values  |
-| source          | `source`    | single string           |
-| campaign        | `campaign`  | single string           |
-| agent           | `agent_id`  | UUID string             |
-| date from       | `date_from` | ISO date string         |
-| date to         | `date_to`   | ISO date string         |
-| page            | `page`      | integer (default 1)     |
+| Filter          | URL param    | Type                    |
+|-----------------|--------------|-------------------------|
+| search          | `search`     | string (debounced 350ms)|
+| status          | `status`     | comma-separated values  |
+| outcome         | `outcome`    | comma-separated values  |
+| source          | `source`     | single string           |
+| campaign        | `campaign`   | single string           |
+| agent           | `agent_id`   | UUID string             |
+| date from       | `date_from`  | ISO date string         |
+| date to         | `date_to`    | ISO date string         |
+| going cold      | `going_cold` | `'true'` only (omitted = off) |
+| sort order      | `sort_order` | `'asc'` only (omitted = `'desc'`) |
+| page            | `page`       | integer (default 1)     |
+
+---
+
+## Going Cold filter
+
+**URL param:** `going_cold=true`
+
+**Threshold constant:** `COLD_LEAD_THRESHOLD_DAYS = 5` in `src/lib/constants/leads.ts`.
+
+**Service logic:** `last_activity_at < (now - 5 days)` AND `status NOT IN ('won','lost','junk')`. Applied in `getLeadsByRole` and `getLeadsForExport` after the `health` filter, before `.range()`.
+
+**NULL `last_activity_at` leads are intentionally excluded** by PostgreSQL `<` semantics — NULL is never less than a timestamp. Those leads (never updated since backfill) are handled by SLA-01A.
+
+**Immediate-commit:** clicking the chip fires `router.push` directly — does NOT go through draft → Apply. On activate, also clears `status` and `outcome` from the URL (going cold is logically incompatible with status/outcome filtering). On deactivate, removes `going_cold` from URL only.
+
+**`committedCount` badge:** `going_cold=true` counts as +1, same as any other active filter.
+
+**`clearAll()`:** removes `going_cold` because it pushes `pathname` with no params.
+
+**Empty state:** `goingCold=true` prop on `LeadsTable` triggers heading "No cold leads." / sub "All leads have had recent activity." — takes priority over the generic `hasActiveFilters` empty state.
 
 ---
 
@@ -425,3 +471,54 @@ if (watchedDomain === initialDomain) {
 - When the user changes domain back to `initialDomain`, the guard fires and restores `initialAgents` without a network call.
 - `initialDomain` and `initialAgents` are never added to the `useEffect` dependency array — they are stable props for the lifetime of the modal.
 - Agent role: effect still returns immediately on `canChangeDomain === false` (checked first, before the guard).
+
+---
+
+## Export System
+
+### exportLeadsAction (`lib/actions/leads.ts`)
+
+```typescript
+exportLeadsAction(input: {
+  filters:     LeadFiltersSchema shape,
+  selectedIds?: string[],   // UUIDs — bypasses filter logic, still enforces role constraints
+}) → Promise<ActionResult<ExportPayload>>
+
+ExportPayload = {
+  leads:      LeadExportItem[];
+  activities: LeadActivityWithActor[];
+  notes:      LeadNoteWithAuthor[];
+  totalCount: number;
+}
+```
+
+Hard limit: returns `{ data: null, error: 'Export exceeds 5,000 leads.' }` when `totalCount > 5000`.
+Never imports `xlsx`. Returns plain JSON — file building is entirely client-side.
+
+### getLeadsForExport (`lib/services/leads-service.ts`)
+
+Mirrors `getLeadsByRole` filter and role-constraint logic exactly, but with **no `.range()` call** and a `.limit(5000)` cap. A separate function — **never modify `getLeadsByRole` to skip `.range()`**. Invariant 18 (`getLeadsByRole` always paginates) stays intact.
+
+### export.ts (`lib/utils/export.ts`) — CLIENT-SIDE ONLY
+
+Never import from server actions or service files. Three entry points:
+
+- `buildLeadsCSV(leads)` — CSV string, UTF-8, lead sheet only
+- `buildXLSXWorkbook(leads, activities, notes)` — dynamically imports `xlsx`; returns `ArrayBuffer`; three sheets: Leads, Activities, Notes
+- `triggerBrowserDownload(filename, content, mimeType)` — Blob + `URL.createObjectURL` + programmatic `<a>` click
+
+### Checkbox selection
+
+`LeadsTable.tsx` owns `selectedLeadIds: Set<string>` state. The checkbox column is a fixed first column — **not in the `lead-columns.ts` registry**, never appears in the column picker.
+
+Header checkbox is indeterminate when some (not all) rows are selected. Row checkbox `onClick` stops propagation to prevent row navigation.
+
+`selectedLeadIds` is cleared in a `useEffect` keyed on the `leads` prop — clears automatically on page navigation and filter changes.
+
+`LeadsSelectionToolbar` is shown via `AnimatePresence` when `selectedLeadIds.size > 0`. It receives `selectedIds: string[]` and calls `exportLeadsAction({ filters: {}, selectedIds })` — the empty `filters` object is intentional; role constraints still apply server-side.
+
+### ExportButton placement
+
+`ExportButton` lives at the **trailing end** of the `LeadsFilters` bar. It is always visible (not conditional on filter state). Receives the resolved `filters: LeadFilters` prop from `LeadsFilters`. Opens `ExportModal` which shows format toggle (CSV / XLSX) before triggering the action.
+
+Never use `MotionButton` for `ExportButton` — it is a filter-area utility button, not a primary CTA.

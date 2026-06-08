@@ -384,7 +384,11 @@ export async function fireSlaBreachHandler(
       action_url:   `/leads/${leadId}`,
     }).catch(() => {}); // fire-and-forget, non-fatal
 
-    void sendSlaAgentNotification(
+    // Awaited so the WhatsApp send completes before this handler (and the
+    // Trigger.dev run that invokes it) finishes. A bare void could let the run be
+    // marked complete and the worker move on before the Gupshup fetch settles.
+    // sendSlaAgentNotification swallows its own errors, so this never throws.
+    await sendSlaAgentNotification(
       assignedTo,
       leadName,
       leadPhone,
@@ -466,7 +470,9 @@ export async function fireSlaBreachHandler(
       agentName = (agentProfile?.full_name as string | null) ?? 'Unassigned';
     }
 
-    void sendSlaManagerNotification(
+    // Awaited so the send completes before the Trigger.dev run finishes (see note
+    // on sendSlaAgentNotification above). Swallows its own errors; never throws.
+    await sendSlaManagerNotification(
       managerIds,
       leadName,
       leadPhone,

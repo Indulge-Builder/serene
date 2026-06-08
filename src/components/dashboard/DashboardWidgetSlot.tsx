@@ -46,6 +46,11 @@ const WIDGET_COMPONENTS: Record<
       default: m.ManagerCampaignWidget,
     })),
   ),
+  "manager-cold-leads": lazy(() =>
+    import("./widgets/ManagerColdLeadsWidget").then((m) => ({
+      default: m.ManagerColdLeadsWidget,
+    })),
+  ),
 };
 
 export type WidgetProps = {

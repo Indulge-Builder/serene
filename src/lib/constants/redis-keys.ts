@@ -100,6 +100,7 @@ export function buildLeadListKey(
     search?:            string | null;
     date_from?:         string | null;
     date_to?:           string | null;
+    sort_order?:        string | null;
   },
   version: number,
 ): string {
@@ -116,8 +117,9 @@ export function buildLeadListKey(
     filters.campaign ?? '',
     filters.agent_id ?? '',
     filters.search   ?? '',
-    filters.date_from ?? '',
-    filters.date_to   ?? '',
+    filters.date_from  ?? '',
+    filters.date_to    ?? '',
+    filters.sort_order ?? 'desc',
   ].join(':');
 
   return REDIS_KEYS.leadList(role, callerDomain, userId, filterHash, version);

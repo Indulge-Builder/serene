@@ -14,7 +14,8 @@ export type LeadColumnId =
   | 'created_at'
   | 'last_call_outcome'
   | 'call_count'
-  | 'domain';
+  | 'domain'
+  | 'latest_note';
 
 export type LeadColumnDef = {
   id: LeadColumnId;
@@ -36,6 +37,7 @@ export const LEAD_COLUMNS: LeadColumnDef[] = [
   { id: 'last_call_outcome', label: 'Last Outcome',   defaultVisible: true,  locked: false },
   { id: 'call_count',        label: 'Calls',          defaultVisible: false, locked: false },
   { id: 'domain',            label: 'Domain',         defaultVisible: false, locked: false },
+  { id: 'latest_note',      label: 'Latest Note',    defaultVisible: false, locked: false },
 ];
 
 // Stable ordered list of all column ids (default order)

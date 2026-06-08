@@ -79,6 +79,7 @@ export function DealsFilters({
       const t = e.target as Node;
       if (rangeTriggerRef.current?.contains(t)) return;
       if (rangePanelRef.current?.contains(t)) return;
+      if (t instanceof Element && t.closest('[data-datepicker-panel]')) return;
       setRangeOpen(false);
     }
     function reposition() { updateRangePos(); }

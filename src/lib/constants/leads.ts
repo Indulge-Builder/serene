@@ -1,0 +1,1 @@
+export const COLD_LEAD_THRESHOLD_DAYS = 5;

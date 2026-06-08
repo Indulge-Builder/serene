@@ -18,10 +18,13 @@ import { LeadActivityLog } from '@/components/leads/LeadActivityLog';
 import { PersonalDetailsCard } from '@/components/leads/PersonalDetailsCard';
 import { LeadWhatsAppCard } from '@/components/leads/LeadWhatsAppCard';
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> };
 
-export default async function LeadDossierPage({ params }: Props) {
+export default async function LeadDossierPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const sp = await searchParams;
+  const rawFrom = sp.from ? decodeURIComponent(sp.from) : null;
+  const backHref = rawFrom?.startsWith('/leads') ? rawFrom : '/leads';
 
   // Try slug first; fall back to UUID for any un-slugged rows (backfill window)
   const [profile, lead] = await Promise.all([
@@ -87,7 +90,7 @@ export default async function LeadDossierPage({ params }: Props) {
             marginBottom: 'var(--space-6)',
           }}
         >
-          <BackButton href="/leads" label="Back to Leads" />
+          <BackButton href={backHref} label="Back to Leads" />
 
           <div style={{ minWidth: 0 }}>
             <h1
@@ -134,10 +137,10 @@ export default async function LeadDossierPage({ params }: Props) {
               canReassign={canReassign}
               agents={agents}
             />
-            <PersonalDetailsCard lead={lead} canEdit={canEditPersonalDetails} />
             {lead.form_data && Object.keys(lead.form_data).length > 0 && (
               <DynamicFormResponses formData={lead.form_data} />
             )}
+            <PersonalDetailsCard lead={lead} canEdit={canEditPersonalDetails} />
           </div>
 
           {/* Right column — stretches to match left column height */}

@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useTransition, useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, SlidersHorizontal, ChevronDown } from "lucide-react";
+import { X, SlidersHorizontal, ChevronDown, Clock } from "lucide-react";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { useDebounce } from "@/hooks/useDebounce";
 import { motion, AnimatePresence } from "framer-motion";
@@ -28,15 +28,20 @@ import {
   dateToUrlParam,
 } from "@/lib/utils/filter-params";
 import { EASE_OUT_EXPO, DROPDOWN_VARIANTS } from "@/lib/constants/motion";
+import { ExportButton } from "@/components/leads/ExportButton";
+import type { LeadFilters } from "@/lib/types/database";
 
 type LeadsFiltersProps = {
   role: UserRole;
   options: LeadFilterOptions;
   showAgentFilter: boolean;
   showDomainFilter: boolean;
+  filters: LeadFilters;
 };
 
 // ─── FilterDraft ──────────────────────────────────────────────────────────────
+
+type LeadHealthTier = 'healthy' | 'needs_attention' | 'at_risk';
 
 type FilterDraft = {
   status: LeadStatus[];
@@ -47,7 +52,15 @@ type FilterDraft = {
   campaign: string | null;
   date_from: string | null;
   date_to: string | null;
+  health: LeadHealthTier | null;
+  // going_cold + sort_order are NOT in draft — they commit immediately via router.push
 };
+
+const HEALTH_ITEMS: { id: LeadHealthTier; label: string }[] = [
+  { id: 'healthy',          label: 'Healthy' },
+  { id: 'needs_attention',  label: 'Needs Attention' },
+  { id: 'at_risk',          label: 'At Risk' },
+];
 
 function parseMulti<T extends string>(
   params: URLSearchParams,
@@ -59,15 +72,21 @@ function parseMulti<T extends string>(
 }
 
 function draftFromParams(params: URLSearchParams): FilterDraft {
+  const rawHealth = params.get("health");
+  const validHealthValues: LeadHealthTier[] = ['healthy', 'needs_attention', 'at_risk'];
+  const health = validHealthValues.includes(rawHealth as LeadHealthTier)
+    ? (rawHealth as LeadHealthTier)
+    : null;
   return {
-    status: parseMulti<LeadStatus>(params, "status"),
-    outcome: parseMulti<CallOutcome>(params, "outcome"),
-    domain: params.get("domain"),
-    agent_id: params.get("agent_id"),
-    source: params.get("source"),
-    campaign: params.get("campaign"),
-    date_from: params.get("date_from"),
-    date_to: params.get("date_to"),
+    status:     parseMulti<LeadStatus>(params, "status"),
+    outcome:    parseMulti<CallOutcome>(params, "outcome"),
+    domain:     params.get("domain"),
+    agent_id:   params.get("agent_id"),
+    source:     params.get("source"),
+    campaign:   params.get("campaign"),
+    date_from:  params.get("date_from"),
+    date_to:    params.get("date_to"),
+    health,
   };
 }
 
@@ -84,6 +103,7 @@ export function LeadsFilters({
   options,
   showAgentFilter,
   showDomainFilter,
+  filters,
 }: LeadsFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -133,6 +153,8 @@ export function LeadsFilters({
       const target = e.target as Node;
       if (rangeTriggerRef.current?.contains(target)) return;
       if (rangePanelRef.current?.contains(target)) return;
+      // DatePicker portals its calendar to document.body — month nav must not close the range panel.
+      if (target instanceof Element && target.closest('[data-datepicker-panel]')) return;
       setRangeOpen(false);
     }
     function reposition() { updateRangePos(); }
@@ -192,7 +214,8 @@ export function LeadsFilters({
     (draft.source ?? "") !== (params.get("source") ?? "") ||
     (draft.campaign ?? "") !== (params.get("campaign") ?? "") ||
     (draft.date_from ?? "") !== (params.get("date_from") ?? "") ||
-    (draft.date_to ?? "") !== (params.get("date_to") ?? "");
+    (draft.date_to ?? "") !== (params.get("date_to") ?? "") ||
+    (draft.health ?? "") !== (params.get("health") ?? "");
 
   // ── committedCount: reflects what the table is currently showing ──
   const committedCount =
@@ -204,18 +227,21 @@ export function LeadsFilters({
     (params.get("domain") ? 1 : 0) +
     (params.get("agent_id") ? 1 : 0) +
     (params.get("date_from") ? 1 : 0) +
-    (params.get("date_to") ? 1 : 0);
+    (params.get("date_to") ? 1 : 0) +
+    (params.get("health") ? 1 : 0) +
+    (params.get("going_cold") === "true" ? 1 : 0);
 
   function applyFilters() {
     const next = buildParams(params, {
-      status: draft.status.length > 0 ? draft.status.join(",") : null,
-      outcome: draft.outcome.length > 0 ? draft.outcome.join(",") : null,
-      domain: draft.domain,
-      agent_id: draft.agent_id,
-      source: draft.source,
-      campaign: draft.campaign,
-      date_from: draft.date_from,
-      date_to: draft.date_to,
+      status:     draft.status.length > 0 ? draft.status.join(",") : null,
+      outcome:    draft.outcome.length > 0 ? draft.outcome.join(",") : null,
+      domain:     draft.domain,
+      agent_id:   draft.agent_id,
+      source:     draft.source,
+      campaign:   draft.campaign,
+      date_from:  draft.date_from,
+      date_to:    draft.date_to,
+      health:     draft.health,
     });
     startTransition(() => {
       router.push(`${pathname}?${next.toString()}`);
@@ -224,14 +250,15 @@ export function LeadsFilters({
 
   function clearAll() {
     setDraft({
-      status: [],
-      outcome: [],
-      domain: null,
-      agent_id: null,
-      source: null,
-      campaign: null,
-      date_from: null,
-      date_to: null,
+      status:     [],
+      outcome:    [],
+      domain:     null,
+      agent_id:   null,
+      source:     null,
+      campaign:   null,
+      date_from:  null,
+      date_to:    null,
+      health:     null,
     });
     setSearchInput("");
     startTransition(() => router.push(pathname));
@@ -483,6 +510,71 @@ export function LeadsFilters({
           />
         )}
 
+        {/* Health — single select */}
+        <FilterDropdown
+          menuPortal
+          accentBorderOnOpen={false}
+          style={{ flexShrink: 0 }}
+          label="Health"
+          items={HEALTH_ITEMS}
+          selected={draft.health ? [draft.health] : []}
+          onChange={(next) => setDraft((d) => ({ ...d, health: (next[0] as LeadHealthTier) ?? null }))}
+        />
+
+        {/* Going Cold — immediate-commit preset chip; bypasses draft → Apply */}
+        {(() => {
+          const isActive = params.get("going_cold") === "true";
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                if (isActive) {
+                  startTransition(() => {
+                    router.push(`${pathname}?${buildParams(params, { going_cold: null }).toString()}`);
+                  });
+                } else {
+                  // Commit immediately — clears status + outcome from URL, resets page
+                  startTransition(() => {
+                    setDraft((d) => ({ ...d, status: [], outcome: [] }));
+                    router.push(
+                      `${pathname}?${buildParams(params, {
+                        going_cold: "true",
+                        status:     null,
+                        outcome:    null,
+                      }).toString()}`,
+                    );
+                  });
+                }
+              }}
+              style={{
+                display:      "inline-flex",
+                alignItems:   "center",
+                gap:          "var(--space-1)",
+                height:       "2.25rem",
+                padding:      "var(--space-1) var(--space-3)",
+                background:   isActive ? "var(--color-warning-subtle)" : "transparent",
+                border:       `1px solid ${isActive ? "var(--color-warning)" : "var(--theme-paper-border)"}`,
+                borderRadius: "var(--radius-md)",
+                fontSize:     "var(--text-sm)",
+                fontFamily:   "var(--font-sans)",
+                fontWeight:   "var(--weight-medium)",
+                color:        isActive ? "var(--color-warning-text)" : "var(--theme-text-secondary)",
+                cursor:       "pointer",
+                transition:   "var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)",
+                whiteSpace:   "nowrap",
+                flexShrink:   0,
+                outline:      "none",
+              }}
+            >
+              <Clock
+                style={{ width: "0.875rem", height: "0.875rem", strokeWidth: 1.5 }}
+                aria-hidden="true"
+              />
+              <span>Going Cold</span>
+            </button>
+          );
+        })()}
+
         {/* Range — trigger only; panel portaled to document.body */}
         <div ref={rangeRef} style={{ flexShrink: 0 }}>
           <button
@@ -593,6 +685,9 @@ export function LeadsFilters({
             <span>Clear</span>
           </button>
         )}
+
+        {/* Export button — always visible at trailing end */}
+        <ExportButton filters={filters} />
       </div>
 
       {/* Range panel portal */}

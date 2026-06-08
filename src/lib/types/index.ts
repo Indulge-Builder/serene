@@ -139,4 +139,6 @@ export type DashboardSummary = {
   lead_volume:       DashboardLeadVolumeSummary | null;
   /** Admin/founder: multi-domain "All" tab — seeded on first paint */
   lead_volume_multi: DashboardMultiDomainVolumeSummary | null;
+  /** Count of non-terminal leads with no activity in 5+ days. Agent role: always 0. */
+  cold_leads_count?: number;
 };

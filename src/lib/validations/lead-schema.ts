@@ -211,3 +211,27 @@ export const SearchLeadsSchema = z.object({
 });
 
 export type SearchLeadsInput = z.infer<typeof SearchLeadsSchema>;
+
+// ─────────────────────────────────────────────
+// Export leads (ExportButton / LeadsSelectionToolbar)
+// ─────────────────────────────────────────────
+export const ExportLeadsSchema = z.object({
+  filters: z.object({
+    status:            z.array(z.string()).nullable().optional(),
+    last_call_outcome: z.array(z.string()).nullable().optional(),
+    domain:            z.string().nullable().optional(),
+    agent_id:          z.string().uuid().nullable().optional(),
+    source:            z.string().nullable().optional(),
+    campaign:          z.string().nullable().optional(),
+    date_from:         z.string().nullable().optional(),
+    date_to:           z.string().nullable().optional(),
+    search:            z.string().nullable().optional(),
+    health:            z.enum(['healthy', 'needs_attention', 'at_risk']).nullable().optional(),
+    sort_order:        z.enum(['asc', 'desc']).optional(),
+    page:              z.number().optional(),
+    pageSize:          z.number().optional(),
+  }),
+  selectedIds: z.array(z.string().uuid()).optional(),
+});
+
+export type ExportLeadsInput = z.infer<typeof ExportLeadsSchema>;

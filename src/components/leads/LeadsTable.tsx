@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { Columns } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect, useTransition } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowDownUp, Columns } from 'lucide-react';
+import { buildFilterParams } from '@/lib/utils/filter-params';
 import type { LeadListItemWithAssignee } from '@/lib/services/leads-service';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
 import type { LeadStatus } from '@/lib/types/database';
@@ -13,16 +14,44 @@ import { formatDate } from '@/lib/utils/dates';
 import { LEAD_COLUMN_MAP, type LeadColumnId } from '@/lib/constants/lead-columns';
 import { useLeadColumnPreferences } from '@/hooks/useLeadColumnPreferences';
 import { LeadColumnPicker } from '@/components/leads/LeadColumnPicker';
+import { LeadsSelectionToolbar } from '@/components/leads/LeadsSelectionToolbar';
 
 type LeadsTableProps = {
   leads:            LeadListItemWithAssignee[];
   userId:           string;
   hasActiveFilters?: boolean;
+  goingCold?:       boolean;
+  statusCounts?:    Partial<Record<LeadStatus, number>>;
 };
 
-export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTableProps) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const pickerAnchorRef             = useRef<HTMLDivElement>(null);
+export function LeadsTable({ leads, userId, hasActiveFilters = false, goingCold = false, statusCounts = {} }: LeadsTableProps) {
+  const router       = useRouter();
+  const pathname     = usePathname();
+  const params       = useSearchParams();
+  const [, startTransition] = useTransition();
+
+  const sortOrder = params.get('sort_order') === 'asc' ? 'asc' : 'desc';
+
+  function toggleSortOrder() {
+    const nextOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+    const next = buildFilterParams(
+      params,
+      { sort_order: nextOrder === 'asc' ? 'asc' : null },
+      { resetKeys: ['page'] },
+    );
+    startTransition(() => {
+      router.push(`${pathname}?${next.toString()}`);
+    });
+  }
+
+  const [pickerOpen, setPickerOpen]           = useState(false);
+  const pickerAnchorRef                       = useRef<HTMLDivElement>(null);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+
+  // Clear selection when the leads array changes (page nav / filter change)
+  useEffect(() => {
+    setSelectedLeadIds(new Set());
+  }, [leads]);
 
   const { visibleColumns, columnOrder, toggleColumn, reorderColumns, resetToDefaults } =
     useLeadColumnPreferences(userId);
@@ -33,18 +62,42 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
     [columnOrder, visibleColumns],
   );
 
-  const statusCounts = useMemo(() => {
-    const counts = {} as Record<LeadStatus, number>;
-    for (const status of LEAD_STATUSES) counts[status] = 0;
-    for (const lead of leads) counts[lead.status] += 1;
-    return counts;
-  }, [leads]);
+  const allPageIds     = leads.map((l) => l.id);
+  const allSelected    = allPageIds.length > 0 && allPageIds.every((id) => selectedLeadIds.has(id));
+  const someSelected   = !allSelected && allPageIds.some((id) => selectedLeadIds.has(id));
 
-  const hasStatusPills = LEAD_STATUSES.some((s) => statusCounts[s] > 0);
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedLeadIds(new Set());
+    } else {
+      setSelectedLeadIds(new Set(allPageIds));
+    }
+  }
+
+  function toggleOne(id: string) {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  // statusCounts is the only source of truth for pill counts.
+  // It reflects the full filtered dataset, not just the current page slice.
+  const hasStatusPills = LEAD_STATUSES.some((s) => (statusCounts[s] ?? 0) > 0);
 
   // Section 11.5: content enters opacity 0→1 + y 4px→0 at 250ms ease-out-expo
   // with 100ms delay (overlap with skeleton exit at 150ms ease-in)
   return (
+    <>
+    <AnimatePresence>
+      {selectedLeadIds.size > 0 && (
+        <LeadsSelectionToolbar
+          selectedIds={Array.from(selectedLeadIds)}
+          onClear={() => setSelectedLeadIds(new Set())}
+        />
+      )}
+    </AnimatePresence>
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
@@ -74,7 +127,7 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
             aria-label="Lead status summary"
           >
             {LEAD_STATUSES.map((status) => {
-              const count = statusCounts[status];
+              const count = statusCounts[status] ?? 0;
               if (count === 0) return null;
               return (
                 <StatusBadge
@@ -89,6 +142,45 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
         )}
 
         <div style={{ flex: 1, minWidth: 0 }} aria-hidden="true" />
+
+        {/* Sort order — commits immediately to URL (not part of filter draft) */}
+        <button
+          type="button"
+          onClick={toggleSortOrder}
+          title={sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}
+          aria-pressed={sortOrder === 'asc'}
+          style={{
+            display:      'inline-flex',
+            alignItems:   'center',
+            gap:          'var(--space-1)',
+            height:       '2.25rem',
+            padding:      '0 var(--space-3)',
+            background:   sortOrder === 'asc' ? 'var(--theme-paper-subtle)' : 'transparent',
+            border:       `1px solid ${sortOrder === 'asc' ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
+            borderRadius: 'var(--radius-sm)',
+            fontSize:     'var(--text-sm)',
+            fontFamily:   'var(--font-sans)',
+            fontWeight:   'var(--weight-medium)',
+            color:        sortOrder === 'asc' ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
+            cursor:       'pointer',
+            transition:   'var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
+            whiteSpace:   'nowrap',
+            flexShrink:   0,
+            outline:      'none',
+          }}
+        >
+          <ArrowDownUp
+            style={{
+              width:       '0.875rem',
+              height:      '0.875rem',
+              strokeWidth: 1.5,
+              transform:   sortOrder === 'asc' ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition:  'transform 200ms ease-out',
+            }}
+            aria-hidden="true"
+          />
+          <span>{sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}</span>
+        </button>
 
         {/* Column picker trigger */}
         <div ref={pickerAnchorRef} style={{ position: 'relative', flexShrink: 0 }}>
@@ -118,6 +210,7 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
           <LeadColumnPicker
             open={pickerOpen}
             onClose={() => setPickerOpen(false)}
+            anchorRef={pickerAnchorRef}
             visibleColumns={visibleColumns}
             columnOrder={columnOrder}
             toggleColumn={toggleColumn}
@@ -133,6 +226,21 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: 'var(--theme-paper-subtle)' }}>
+              {/* Fixed checkbox column — not in lead-columns.ts registry */}
+              <th
+                style={{
+                  width:        '2.5rem',
+                  padding:      'var(--space-3) var(--space-3) var(--space-3) var(--space-4)',
+                  borderBottom: '1px solid var(--theme-paper-border)',
+                }}
+              >
+                <CheckboxCell
+                  checked={allSelected}
+                  indeterminate={someSelected}
+                  onChange={toggleAll}
+                  label="Select all"
+                />
+              </th>
               {orderedVisible.map((colId) => (
                 <th
                   key={colId}
@@ -157,7 +265,7 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
             {leads.length === 0 ? (
               <tr>
                 <td
-                  colSpan={orderedVisible.length}
+                  colSpan={orderedVisible.length + 1}
                   style={{
                     padding:   'var(--space-16) var(--space-4)',
                     textAlign: 'center',
@@ -172,9 +280,11 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
                       fontWeight: 'var(--weight-normal)',
                     }}
                   >
-                    {hasActiveFilters
-                      ? 'Nothing matches these filters.'
-                      : 'No leads yet.'}
+                    {goingCold
+                      ? 'No cold leads.'
+                      : hasActiveFilters
+                        ? 'Nothing matches these filters.'
+                        : 'No leads yet.'}
                   </p>
                   <p
                     style={{
@@ -183,9 +293,11 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
                       color:     'var(--theme-text-tertiary)',
                     }}
                   >
-                    {hasActiveFilters
-                      ? 'Try adjusting or clearing your filters.'
-                      : 'Leads will appear here once the webhook receives its first submission.'}
+                    {goingCold
+                      ? 'All leads have had recent activity.'
+                      : hasActiveFilters
+                        ? 'Try adjusting or clearing your filters.'
+                        : 'Leads will appear here once the webhook receives its first submission.'}
                   </p>
                 </td>
               </tr>
@@ -195,6 +307,8 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
                   key={lead.id}
                   lead={lead}
                   visibleColumns={orderedVisible}
+                  selected={selectedLeadIds.has(lead.id)}
+                  onToggleSelect={toggleOne}
                 />
               ))
             )}
@@ -202,6 +316,58 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
         </table>
       </div>
     </motion.div>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Checkbox cell — indeterminate support via ref
+// ─────────────────────────────────────────────
+function CheckboxCell({
+  checked,
+  indeterminate,
+  onChange,
+  label,
+}: {
+  checked:       boolean;
+  indeterminate?: boolean;
+  onChange:      () => void;
+  label:         string;
+}) {
+  const active = checked || (indeterminate ?? false);
+  return (
+    <div
+      role="checkbox"
+      aria-checked={indeterminate ? 'mixed' : checked}
+      aria-label={label}
+      tabIndex={0}
+      onClick={(e) => { e.stopPropagation(); onChange(); }}
+      onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onChange(); } }}
+      style={{
+        width:        '1rem',
+        height:       '1rem',
+        borderRadius: 'var(--radius-xs)',
+        border:       `1.5px solid ${active ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
+        background:   active ? 'var(--theme-accent)' : 'transparent',
+        cursor:       'pointer',
+        display:      'flex',
+        alignItems:   'center',
+        justifyContent: 'center',
+        flexShrink:   0,
+        transition:   'background var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out)',
+      }}
+    >
+      {indeterminate && !checked && (
+        <svg width="8" height="2" viewBox="0 0 8 2" fill="none">
+          <rect x="0" y="0" width="8" height="2" rx="1" fill="var(--theme-accent-fg)" />
+        </svg>
+      )}
+      {checked && (
+        <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+          <path d="M1 3L3 5L7 1" stroke="var(--theme-accent-fg)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </div>
   );
 }
 
@@ -211,28 +377,51 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false }: LeadsTab
 function LeadRow({
   lead,
   visibleColumns,
+  selected,
+  onToggleSelect,
 }: {
-  lead: LeadListItemWithAssignee;
+  lead:           LeadListItemWithAssignee;
   visibleColumns: LeadColumnId[];
+  selected:       boolean;
+  onToggleSelect: (id: string) => void;
 }) {
   const router       = useRouter();
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
   const [hovered, setHovered] = useState(false);
   const badgeVariant = LEAD_STATUS_BADGE[lead.status];
   const fullName     = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
 
+  const fromUrl = searchParams.toString()
+    ? `${pathname}?${searchParams.toString()}`
+    : pathname;
+  const href = `/leads/${lead.slug ?? lead.id}?from=${encodeURIComponent(fromUrl)}`;
+
   return (
     <tr
-      onClick={() => router.push(`/leads/${lead.slug ?? lead.id}`)}
+      onClick={() => router.push(href)}
       onMouseEnter={() => {
         setHovered(true);
-        router.prefetch(`/leads/${lead.slug ?? lead.id}`);
+        router.prefetch(href);
       }}
       onMouseLeave={() => setHovered(false)}
       style={{
         borderBottom: '1px solid var(--theme-paper-border)',
         cursor:       'pointer',
+        background:   selected ? 'var(--theme-accent-surface)' : undefined,
       }}
     >
+      {/* Checkbox cell — stopPropagation prevents row nav on click */}
+      <td
+        style={{ padding: 'var(--space-3) var(--space-3) var(--space-3) var(--space-4)', width: '2.5rem' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <CheckboxCell
+          checked={selected}
+          onChange={() => onToggleSelect(lead.id)}
+          label={`Select ${fullName}`}
+        />
+      </td>
       {visibleColumns.map((colId) => (
         <LeadCell
           key={colId}
@@ -356,6 +545,48 @@ function LeadCell({
           {lead.domain}
         </td>
       );
+
+    case 'latest_note': {
+      const note = lead.latest_note;
+      if (!note) {
+        return (
+          <td style={{ ...baseCell, fontSize: 'var(--text-sm)', color: 'var(--theme-text-tertiary)' }}>
+            {'—'}
+          </td>
+        );
+      }
+      return (
+        <td style={{ ...baseCell, whiteSpace: 'normal', maxWidth: '20rem', verticalAlign: 'top' }}>
+          <div
+            style={{
+              overflow:     'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace:   'nowrap',
+              maxWidth:     '280px',
+              fontSize:     'var(--text-sm)',
+              color:        'var(--theme-text-secondary)',
+            }}
+          >
+            {note.content}
+          </div>
+          <div
+            style={{
+              marginTop:     '2px',
+              fontSize:      '10px',
+              fontWeight:    'var(--weight-medium)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+              color:         'var(--theme-text-tertiary)',
+              whiteSpace:    'nowrap',
+            }}
+          >
+            {[note.author_name, formatDate(note.created_at, 'dd MMM, h:mm a')]
+              .filter(Boolean)
+              .join(' · ')}
+          </div>
+        </td>
+      );
+    }
 
     default:
       return null;

@@ -25,7 +25,8 @@
 | A-10 | All `SECURITY DEFINER` functions must have `SET search_path = public`. |
 | A-11 | Log and activity tables are **append-only**. No `UPDATE` or `DELETE`. Ever. |
 | A-12 | All async work exceeding 3 seconds or requiring retry logic runs in Trigger.dev. Never in route handlers. |
-| A-13 | Every dashboard route is protected by middleware. No authenticated page renders without a verified session. |
+| A-13 | Every dashboard route is protected at three layers: `src/proxy.ts` (Next.js 16 proxy — session refresh, replaces `middleware.ts`), the `(dashboard)/layout.tsx` server guard, and `canAccessRoute()` domain gating via `DOMAIN_ROUTE_MAP`. No authenticated page renders without a verified session. There is **no** `src/middleware.ts` — never recreate it. |
+| A-16 | **Outward network sends that must complete (WhatsApp/Gupshup, any external `fetch`) use `after()` from `next/server` with an `await`-ed send inside — never `void fetch().catch()`.** On Vercel the lambda is frozen the instant the response/action-return is flushed, orphaning any in-flight `void` promise (silent, intermittent data loss — no error, no log row). Routes carrying network sends in `after()` export `maxDuration`. Reference: `notifyLeadAssigned`, `src/app/api/webhooks/leads/route.ts`. |
 | A-14 | Never edit a migration that has already run in production. Write a new one. |
 | A-15 | `'use client'` components must never import value symbols from `lib/services/`. Service modules import the server Supabase client (`next/headers`), which hard-errors in the client bundle. Client components that need lazy or paginated data must call a Server Action in `lib/actions/` instead. `import type` from services is safe — type imports are erased at compile time. |
 
@@ -39,14 +40,14 @@
 | S-02 | All user-supplied text passes through `sanitizeText()` before any DB write. Lives in `lib/utils/sanitize.ts`. |
 | S-03 | All phone numbers stored as E.164. `normalizeToE164()` called on every phone field before any DB write. Lives in `lib/utils/phone.ts`. |
 | S-04 | Never spread a raw request body or client-supplied object into a DB insert. Always whitelist fields via Zod schema. |
-| S-05 | Never expose raw Postgres errors, stack traces, or Zod validation details to the UI. Log to Sentry server-side. Return a safe, human-readable message to the user. |
+| S-05 | Never expose raw Postgres errors, stack traces, or Zod validation details to the UI. Log server-side with a `[module-action]`-prefixed `console.warn`/`console.error`; return a safe, human-readable message to the user. (Sentry is not yet wired — when it lands, server logging routes there. Do not assume a Sentry client exists today.) |
 | S-06 | Never trust client-supplied IDs without verifying ownership. Always confirm the requesting user has access to the record. |
 | S-07 | Sequential integer IDs are never exposed in URLs. UUIDs only. |
 | S-08 | Sensitive data never appears in URL query parameters. |
 | S-09 | Auth error messages never reveal whether an email address exists in the system. |
 | S-10 | Session tokens, auth codes, and secrets are never written to any log. |
 | S-11 | `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, and any variable ending in `_KEY`, `_SECRET`, or `_TOKEN` are server-only. Never in client code. Prefix with `NEXT_PUBLIC_` only if the value is genuinely public. |
-| S-12 | Every webhook endpoint validates its signature before processing the payload. Reject with 401 before reading anything. |
+| S-12 | Every webhook endpoint validates its auth credential before processing the payload — reject before reading the body. Current credentials: `/api/webhooks/leads` = Bearer token; `/api/webhooks/whatsapp` = `x-gupshup-secret` header. (The whatsapp route still returns 200 on auth-pass-but-bad-payload so Meta/Gupshup do not retry — see whatsapp invariants.) |
 | S-13 | No `dangerouslySetInnerHTML` anywhere. |
 | S-14 | Users cannot update their own `role` or `domain`. These fields are server-controlled only. |
 | S-15 | No single role can both perform a sensitive action and audit that same action. `admin` and `founder` have distinct, non-overlapping privileges. |
@@ -72,13 +73,14 @@
 
 | # | Rule |
 | --- | --- |
-| P-01 | No `useEffect` for data fetching. Use Server Components or React Query. |
-| P-02 | No API routes except `/api/webhooks/`. All data mutations go through Server Actions. |
-| P-03 | Any list that can exceed 100 items uses virtual rendering. Never render the full DOM. |
+| P-01 | Data fetching is Server-Components-first. Client widgets that need lazy/paginated/refreshable data fetch via a Server Action inside `useEffect` (the Q-15 pattern) — never a bare `useEffect` fetch against Supabase, and never React Query (not a dependency; do not add it). |
+| P-02 | No API routes except `/api/webhooks/` (leads, whatsapp) and the auth callback. All data mutations go through Server Actions. |
+| P-03 | Any list that can exceed ~100 rows is bounded server-side — `.range()` pagination (leads = 50/page) or a cursor RPC (`get_personal_tasks`). Never `SELECT *` the full table into the DOM. (`Table.tsx` dev-warns above 100 unvirtualised rows; a virtualization library is a future option, not a current dependency.) |
 | P-04 | Images in scroll containers use `loading="lazy"`. |
 | P-05 | No scroll event listeners for UI logic. Use `IntersectionObserver`. |
-| P-06 | Supabase Realtime subscriptions always include a filter. Never subscribe to a full table. Always clean up subscriptions on component unmount. |
-| P-07 | No `console.log`, `console.error`, or `console.warn` in production. Use Sentry only. |
+| P-06 | Supabase Realtime subscriptions always include a filter and a mount-scoped `useId()` nonce in the channel name (Q-14). Never subscribe to a full table. Always clean up on unmount. |
+| P-07 | No stray debug `console.log` left in shipped code. Permitted: deliberate `[module-action]`-prefixed `console.warn`/`console.error` for non-fatal server-side failures (Redis del, notification sends, ingestion errors) — this is the codified logging pattern until Sentry is wired. Never log PII (D-04). |
+| P-08 | Every `redis.del` in a Server Action is `await`-ed inside a `try/catch` that logs a `[module-action]` warning, **before** `revalidatePath`/`revalidateTag`. A `void redis.del().catch()` races the cache revalidation and can evict a fresh entry. Lead rows are dual-keyed (`leadRowSlug` + `leadRowId`) — delete both when `slug` is non-null. Reference: `updateLeadStatus`, `addLeadCallNote`. |
 
 ---
 
@@ -91,11 +93,13 @@
 | V-03 | No animation over 500ms except `liaBreathe` (3s, ambient). |
 | V-04 | No `font-bold`. `--weight-semibold` (600) is the maximum weight in Eia. |
 | V-05 | No `z-index` values outside the `--z-*` token scale defined in `design-tokens.css`. |
-| V-06 | No `backdrop-filter` / blur except on three sanctioned surfaces: TopBar (sticky), mobile sidebar overlay, command palette overlay. |
+| V-06 | No `backdrop-filter` / blur except on three sanctioned surfaces: TopBar (sticky), mobile sidebar overlay, command palette overlay (palette is a forward contract — not yet built). Never on cards, dropdowns, or modals. |
 | V-07 | No mixing radius values within a single component. One radius per component. |
 | V-08 | No skeleton shown for less than 150ms. Fast skeletons that flash look more broken than no skeleton. |
 | V-09 | Empty states always use Playfair italic heading. Never "No data available." |
 | V-10 | Micro labels are always: `text-[10px] font-medium uppercase tracking-[0.12em] text-[--theme-text-tertiary]`. Never deviate. |
+| V-11 | Never use a coloured border on one edge of a card, row, or column (`borderLeft`/`borderTop`/`borderRight`/`borderBottom` accent strips) as a category/status indicator. Use pills, dots, icons, or semantic badges instead. |
+| V-12 | Never pass a CSS variable directly to a Recharts `fill`/`stroke` prop — SVG attributes do not resolve `var(--…)` reliably. Use `getChartTokens()` / `useChartTokens()` (`src/lib/utils/chart-tokens.ts`), which resolves vars to computed hex via `getComputedStyle` and re-resolves on `data-theme` change. Exception: `BAR_COLORS` in `ManagerLeadStatusWidget` (Decision Log 2026-06-04). |
 
 ---
 
@@ -188,6 +192,13 @@ NEVER  import a value symbol from lib/services/ inside a 'use client' component 
 NEVER  pass --theme-accent or any CSS variable directly to a Recharts fill/stroke prop — use useChartTokens() via getComputedStyle
 NEVER  use text-gray-* or bg-gray-* or bg-white in Tailwind — use CSS variable tokens
 NEVER  place backdrop-filter/blur on anything other than TopBar, mobile sidebar overlay, or command palette
+NEVER  fire an outward network send (WhatsApp/Gupshup, external fetch) as void fn().catch() in a route or action — use after() from next/server with an awaited send inside (A-16)
+NEVER  void redis.del().catch() before revalidatePath — await it in try/catch first; delete both lead cache keys when slug is non-null (P-08)
+NEVER  recreate src/middleware.ts — the proxy is src/proxy.ts (Next.js 16) (A-13)
+NEVER  add React Query / @tanstack — it is not a dependency; fetch via Server Actions in useEffect (P-01, Q-15)
+NEVER  assume Sentry exists — server logging is [module]-prefixed console.warn/error until Sentry is wired (P-07)
+NEVER  pass a CSS variable to a Recharts fill/stroke prop — use useChartTokens()/getChartTokens() (V-12)
+NEVER  use a coloured one-edge border as a category/status indicator — use pills, dots, icons, badges (V-11)
 ```
 
 ---
@@ -212,3 +223,11 @@ A rule changed without a log entry is not a rule change. It is a violation.
 | 2026-06-01 | —     | —   | Gia `task_type` vocabulary                                           | `call`, `whatsapp_message`, `other` only in UI and new writes                                      | Migration 0057 backfill |
 | 2026-06-04 | Rule 01 | CSS vars only | **Exception: `BAR_COLORS` in `ManagerLeadStatusWidget.tsx`** — hardcoded hex is intentional. These are data-visualisation fills for stacked bar segments where each status must be instantly distinguishable at small widths. The `--status-*-text` CSS tokens are all muted tones that look identical in a 10px-tall bar, defeating the purpose. Any future pipeline bar chart that needs per-status segment fills must use this same map rather than recreating it. | — |
 | 2026-06-04 | —     | —   | Dashboard global date filter: Lead Pipeline + Campaign Performance + Lead Volume filter by `leads.created_at` (intake/cohort date) — not `status_changed_at`. Pipeline/Campaign snapshots are now date-scoped cohort views, not all-time counts. Default range: This Week (IST). My Tasks and Recent Activity always show live data and are never date-filtered. | Managers asked "which leads came in this week" not "which leads changed status"; cohort semantics are correct for intake analytics; matches Critical Date-Field Rule for intake windows | — |
+| 2026-06-03 | —     | —   | Attribution refactor (migration 0065): 7 flat ad columns → `source`, `medium`, `utm_campaign` + `attribution jsonb`. `utm_source → source`, `utm_medium → medium`; `platform`/`campaign_id`/`ad_name`/`utm_content` folded into `attribution` JSONB. `updateLeadSource` replaces `updateLeadUtmSource`. | Flat per-platform columns don't scale; JSONB bag absorbs new platforms while `source` stays flat+indexed for analytics. | — |
+| 2026-06-03 | A-13  | —   | Domain-scoped route authorization: `canAccessRoute()` + `DOMAIN_ROUTE_MAP` + `(dashboard)/layout.tsx` server guard + Sidebar nav filter. Admin/founder bypass; `/dashboard` + `/profile` always allowed. | Non-Gia domains could navigate to `/leads` with no data. Defense-in-depth — neither gate trusts the other. | — |
+| 2026-06-03 | —     | —   | `leads.city` promoted from `personal_details` JSONB to a dedicated `text` column (migration 0066), backfilled; `city` key removed from JSONB. `updateLeadCity` action. | Top-level column is indexable and queryable; JSONB is for enrichment that needs no index. | — |
+| 2026-06-05 | —     | —   | `public.deals` promoted to a first-class table (migrations 0072–0074), reversing the 2026-05-31 "deals = won leads" decision. `lead_id` nullable (walk-ins); `won_at` immutable; `client_id` reserved. `recordDeal` inserts a deals row before `updateLeadStatus('won')`. `get_deals_summary` rewritten over `public.deals`. | One lead has exactly one terminal `won` and cannot hold repeat/renewal deals; walk-in sales have no lead lifecycle. | — |
+| 2026-06-08 | A-16  | —   | Outward network sends use `after()` + awaited send, never `void fetch().catch()`. | Vercel freezes the lambda on response flush, orphaning in-flight `void` promises — silent intermittent WhatsApp notification loss (no error, no log row). | — |
+| 2026-06-08 | P-08  | —   | `redis.del` in actions is `await`-ed in try/catch before `revalidatePath`; lead rows dual-keyed (`leadRowSlug` + `leadRowId`). | `void redis.del().catch()` races revalidation and can evict a fresh cache entry, extending the stale-serving window. | — |
+| 2026-06-08 | P-07/S-05 | "Use Sentry only" | Server logging is `[module]`-prefixed `console.warn`/`console.error` until Sentry is wired; no Sentry dependency exists today. | Doc named a tool that isn't installed; the real, enforced pattern is structured console logging. | — |
+| 2026-06-08 | P-01/P-03 | React Query / virtual rendering | P-01 → Server Components + Server-Action-in-`useEffect`; P-03 → server-side `.range()`/cursor pagination. | Neither React Query nor a virtualization library is a dependency; the doc described tools the codebase never adopted. | — |

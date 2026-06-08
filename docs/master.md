@@ -19,7 +19,7 @@
 6. [The profiles Foundation](#6-the-profiles-foundation)
 7. [Build Phases — Complete History](#7-build-phases--complete-history)
 8. [Route Map & Page Docs](#8-route-map--page-docs)
-9. [Migration Index — All 66 Migrations](#9-migration-index--all-66-migrations)
+9. [Migration Index — All 69 Migrations](#9-migration-index--all-69-migrations)
 10. [File Map — Where Everything Lives](#10-file-map--where-everything-lives)
 11. [Services Registry](#11-services-registry)
 12. [Actions Registry](#12-actions-registry)
@@ -691,7 +691,7 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 
 **All three share one `tasks` table and one `task_remarks` table.**
 
-### Tables
+### Task Tables
 
 - **`tasks`** — status: `to_do | in_progress | in_review | completed | error | cancelled` (old values `pending` and `done` do not exist); priority: `urgent | high | normal`; attachments: JSONB checklist array; tags: `text[]`
 - **`task_groups`** — domain-scoped; manager RLS enforced
@@ -709,7 +709,7 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 | `get_gia_tasks` | 0055, 0056 | Gia tab on `/tasks`; role-scoped; returns task columns + joined lead identity |
 | `create_lead_gia_task` | 0054 | Atomic `tasks` + `task_gia_meta` two-INSERT; prevents orphaned tasks |
 
-### Critical Invariants
+### Task Critical Invariants
 
 - `task_remarks` is append-only — the **ONLY** mutation allowed is the suppression UPDATE by admin/founder
 - `task_remarks.status_change` CHECK is coupled to `tasks.status` — a new status requires a migration on **both**
@@ -726,7 +726,7 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 
 **Provider:** Gupshup v1 (BSP). Auth: `x-gupshup-secret` header. Inbound: dual-format parser (Gupshup v2 active; Meta v3 dormant). Outbound: `sendTextMessage()` in `whatsapp-api.ts`.
 
-### Tables
+### WhatsApp Tables
 
 | Table | Purpose |
 | ----- | ------- |
@@ -752,7 +752,7 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 | SLA breach (agent) | Agent | `54d5dd55` | 4: leadName, leadPhone, status, lastUpdatedAt |
 | SLA breach (manager) | Manager | `682fd320` | 5: + agentName |
 
-### Critical Invariants
+### WhatsApp Critical Invariants
 
 - Webhook route always returns 200 — non-200 causes Meta retries
 - `/api/webhooks/*` excluded from Next.js proxy session refresh
@@ -860,7 +860,7 @@ All server actions live in `src/lib/actions/`. **Every action: Zod first → `ge
 
 ## 18. The Never-Do List
 
-```
+```text
 NEVER  hardcode a colour value in a component
 NEVER  use text-gray-* or bg-gray-* or bg-white — use tokens
 NEVER  use z-index values not in the --z-* scale
@@ -937,7 +937,7 @@ Every architectural decision that deviates from or extends the rules above.
 
 **The five authority files to read first, every session:**
 
-```
+```text
 1. /CLAUDE.md              ← root rules, file locations, never-do list
 2. /docs/The_Rules.md      ← all non-negotiable rules (A-· S-· P-· V-· Q-· D-·)
 3. /docs/The_Blueprint.md  ← architecture, stack, RBAC model
@@ -1079,7 +1079,9 @@ const tokens = useChartTokens(); // re-resolves on data-theme change
 
 ### Empty States
 
-**Always Playfair italic heading. Never "No data available."**
+#### Copy rules
+
+Always Playfair italic heading. Never "No data available."
 
 ```jsx
 <div className="flex flex-col items-center py-12 text-center">
