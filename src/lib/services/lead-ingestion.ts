@@ -114,11 +114,9 @@ export async function ingestLead(
   let previousLeadId: string | null = null;
 
   if (phone) {
-    const { data: existingLeads } = await (
-      supabase as unknown as {
-        rpc: (fn: string, args: Record<string, string>) => Promise<{ data: { id: string; status: string; assigned_to: string | null; first_name: string; last_name: string | null; phone: string; domain: string }[] | null }>;
-      }
-    ).rpc('get_active_lead_by_phone', { p_phone: phone });
+    const { data: existingLeads } = await supabase.rpc('get_active_lead_by_phone', {
+      p_phone: phone,
+    });
 
     if (existingLeads && existingLeads.length > 0) {
       const existing = existingLeads[0];

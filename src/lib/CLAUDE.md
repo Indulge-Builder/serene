@@ -169,6 +169,20 @@ The three cursor RPC params (`p_cursor_id`, `p_cursor_due_at`, `p_cursor_has_due
 - No PostgREST `.order()`, `.or()`, `.lte()`, `.in()` chain inside `getPersonalTasks`.
 - No split-path `if (!cursor)` with different query strategies for cursor vs no-cursor pages.
 
+## tasks — write paths and RLS (migration 0094)
+
+`tasks-service.ts` is read-only. All writes go through `src/lib/actions/tasks.ts` or lead RPCs.
+
+| Category | Write path | Client | Direct RLS INSERT/DELETE |
+| --- | --- | --- | --- |
+| `personal` | `createPersonalTaskAction` | `adminClient` today; `tasks_insert` allows user-scoped self-assign insert | `tasks_delete` (agent, `to_do`/`in_progress` only); `tasks_delete_privileged` (manager+) |
+| `group_subtask` | `createSubtaskAction` | `adminClient` only | No INSERT policy — blocked on user client |
+| `gia_followup` | `create_lead_gia_task` RPC, `update_lead_status` RPC (nurturing) | RPC / `adminClient` | No INSERT policy — blocked on user client |
+
+**Rule:** Never add a user-scoped `.insert()` for `gia_followup` or `group_subtask`. Gia and group subtasks must stay on SECURITY DEFINER RPCs or service-role actions.
+
+**Deals:** No INSERT/DELETE RLS policies (intentional). All writes use `adminClient` in `recordDeal` / `createWalkInDeal` — see `COMMENT ON TABLE public.deals` in migration 0094.
+
 ## RPC pattern for aggregated list queries
 
 When a list query requires per-row aggregates (counts, array_agg) that would otherwise demand an in-memory reduce over child rows, move the aggregation into a Postgres RPC function and call it from the service layer.

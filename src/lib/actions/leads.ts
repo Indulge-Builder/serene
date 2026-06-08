@@ -532,15 +532,9 @@ export async function createManualLead(
   const { first_name, last_name, phone, email, source } = fields;
 
   // 6. Duplicate check via get_active_lead_by_phone (Rule S-09 / dedup spec)
-  //    Cast through unknown: RPC function not yet in generated DB types
-  const { data: existingLeads } = await (
-    admin as unknown as {
-      rpc: (
-        fn: string,
-        args: Record<string, string>,
-      ) => Promise<{ data: { id: string }[] | null }>;
-    }
-  ).rpc("get_active_lead_by_phone", { p_phone: phone });
+  const { data: existingLeads } = await admin.rpc("get_active_lead_by_phone", {
+    p_phone: phone,
+  });
 
   if (existingLeads && existingLeads.length > 0) {
     return {

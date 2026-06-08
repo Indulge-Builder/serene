@@ -6,6 +6,98 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-08 — DB migration 0094: explicit tasks INSERT/DELETE policies; documented deals write-via-RPC-only intent
+
+**DB:** Migration `20260608000094_explicit_insert_delete_policies.sql` — `tasks_insert` (personal, self-assigned only); `tasks_delete` (agent, personal, non-terminal); `tasks_delete_privileged` (manager/admin/founder, any task). No INSERT/DELETE policies on `deals` — intentional gap documented via `COMMENT ON TABLE public.deals`.
+
+**Docs:** `src/lib/CLAUDE.md` — tasks write-path table (which categories allow direct RLS insert vs RPC-only).
+
+---
+
+## 2026-06-08 — DB migration 0093: remove duplicate avatar storage policies (quoted-name variants superseded by snake_case set)
+
+**DB:** Migration `20260608000093_remove_duplicate_avatar_policies.sql` — DROP `"Users can delete their own avatar"`, `"Users can update their own avatar"`, and `"Users can upload their own avatar"` on `storage.objects`. Canonical policies from migration 0071 unchanged: `avatars_public_read`, `avatars_insert_own`, `avatars_update_own`, `avatars_delete_own`.
+
+---
+
+## 2026-06-08 — DB migration 0092: ad-creatives storage bucket insert/delete restricted to admin and founder roles
+
+**DB:** Migration `20260608000092_fix_ad_creatives_storage_rls.sql` — DROP permissive `"Ad Creative Modal insert"` / `"Ad Creative Modal delete"` policies on `storage.objects`; recreate as `ad_creatives_storage_insert` / `ad_creatives_storage_delete` with inline `profiles.role` check (`admin` | `founder` only), matching `ad_creatives` table RLS. SELECT unchanged — public bucket read for campaign/lead dossier UIs.
+
+---
+
+## 2026-06-08 — DB migration 0091: leads_update RLS policy now requires archived_at IS NULL — archived leads are immutable
+
+**DB:** Migration `20260608000091_fix_leads_update_policy.sql` — DROP + recreate `leads_update` on `public.leads`; `USING` clause adds `archived_at IS NULL` alongside the InitPlan-hoisted role/domain guards from migration 0088. Direct UPDATE on an archived row returns 0 rows affected (RLS silent deny). Un-archive or other archived-row mutations must go through `SECURITY DEFINER` RPCs or service-role client.
+
+---
+
+## 2026-06-08 — DB migration 0090: get_active_lead_by_phone now returns explicit column list instead of SELECT *
+
+**DB:** Migration `20260608000090_fix_select_star_rpcs.sql` — `DROP` + `CREATE OR REPLACE get_active_lead_by_phone(p_phone text)` with `RETURNS TABLE(id, first_name, last_name, phone, status, assigned_to, domain, slug, archived_at)` and explicit `SELECT l.id, …` projection. `get_personal_tasks` unchanged (`SETOF tasks` still requires full row).
+
+**Types:** `src/lib/types/database.ts` — narrowed `get_active_lead_by_phone` RPC return shape (removed `SetofOptions` / full `leads` row).
+
+**Services:** `src/lib/services/lead-ingestion.ts` — typed `.rpc('get_active_lead_by_phone')` (drops manual cast).
+
+**Actions:** `src/lib/actions/leads.ts` `createManualLead` — same typed RPC call.
+
+---
+
+## 2026-06-08 — DB migration 0089: drop dead overloads of get_dashboard_summary (4-param) and get_campaign_pipeline_refresh (2-param)
+
+**DB:** Migration `20260608000089_drop_dead_rpc_overloads.sql` — `DROP FUNCTION IF EXISTS` on the pre–date-filter overloads. Live signatures unchanged: `get_dashboard_summary(text, app_domain, uuid, app_domain, timestamptz, timestamptz)` and `get_campaign_pipeline_refresh(text, app_domain, timestamptz, timestamptz)`. All call sites in `dashboard-service.ts` already pass date params.
+
+---
+
+## 2026-06-08 — DB migration 0088: wrap get_user_role() / get_user_domain() in InitPlan scalar subquery across all RLS policies — prevents N subqueries to profiles on table scans
+
+**DB:** Migration `20260608000088_rls_initplan_hoist.sql` — DROP + recreate 30 RLS policies on `leads`, `lead_notes`, `lead_activities`, `lead_sla_timers`, `deals`, `tasks`, `task_gia_meta`, `task_remarks`, `whatsapp_conversations`, `whatsapp_messages`, `profile_audit_log`, `task_audit_log`, `lead_raw_payloads`. Every bare `public.get_user_role()` / `public.get_user_domain()` call wrapped in `(SELECT …)` so Postgres hoists to a single InitPlan per statement. `ad_creatives`, `notifications`, and `agent_routing_config` policies untouched.
+
+---
+
+## 2026-06-08 — DB migration 0087: fix avg_hours_to_first_touch — wrong JSON key 'to' corrected to 'new_status'
+
+**DB:** Migration `20260608000087_fix_campaign_first_touch_key.sql` — `CREATE OR REPLACE get_campaign_detail_metrics()`; lateral join on `lead_activities` now filters `details->>'new_status' = 'touched'` (matches `update_lead_status` jsonb) instead of the never-matching `details->>'to'`.
+
+---
+
+## 2026-06-08 — DB migration 0086: fix tasks.status DEFAULT from invalid 'pending' to 'to_do'
+
+**DB:** Migration `20260608000086_fix_tasks_status_default.sql` — `ALTER TABLE public.tasks ALTER COLUMN status SET DEFAULT 'to_do'`. Migration 0017 replaced the status CHECK vocabulary but never updated the column default; inserts omitting `status` received `'pending'` and failed the constraint. CHECK constraint unchanged.
+
+**Pre-apply audit:** `SELECT COUNT(*) FROM tasks WHERE status = 'pending';` — if non-zero, those rows predate the CHECK and need individual review (do not bulk-update).
+
+---
+
+## 2026-06-08 — DB migration 0084: complete lead_health removal from production (column, constraint, index, function, RPC SET statements)
+
+---
+
+## 2026-06-08 — Fix: get_wa_unread_count passed conversation id instead of lead_id to can_access_wa_conversation — unread badge always returned 0
+
+**DB:** Migration `20260608000085_fix_wa_unread_count.sql` — `CREATE OR REPLACE get_wa_unread_count()`; `can_access_wa_conversation(wc.id)` → `can_access_wa_conversation(wc.lead_id)` (function signature expects `p_lead_id uuid`).
+
+---
+
+## 2026-06-08 — Leads filter bar: remove selection count badges
+
+**UI:** Removed numeric count badges from `LeadsFilters` — slider summary badge, `FilterDropdown` triggers (`hideCountBadge`), and Range date count. Active filters still show via accent border/surface tint; `committedCount` retained only for Clear visibility.
+
+---
+
+## 2026-06-08 — Leads filter bar: Apply button always visible
+
+**UI:** `LeadsFilters` Apply button is permanently rendered (disabled when draft matches URL) instead of animating in via `AnimatePresence` when `isDirty` — prevents filter-bar layout shift.
+
+---
+
+## 2026-06-08 — Leads table toolbar: export + going cold moved from filter bar
+
+**UI:** `ExportButton` and the Going Cold preset chip removed from `LeadsFilters` and placed in `LeadsTable` toolbar. Going Cold sits left (first control); Newest first, Columns, and Export stay grouped on the right. `LeadsTable` receives `filters: LeadFilters` from `LeadsTableAsync` for export. Going Cold still commits immediately to the URL (clears `status` + `outcome` on activate); `committedCount` in `LeadsFilters` still counts `going_cold=true`.
+
+---
+
 ## 2026-06-08 — Lead Health feature removed entirely (reverses the 2026-06-06 build below)
 
 **Decision:** The lead-health system (per-lead `healthy` / `needs_attention` / `at_risk` tier) is dropped from the product. The DB column had already been reverted (migration 0082, 2026-06-06), which left dead application code querying a column that no longer exists — a correctness hazard. This change removes every remaining trace.
@@ -1930,7 +2022,7 @@ All performance metrics (`leadsWon`, `conversionRate`, `touchRate`) were showing
 
 **Fix (`src/lib/services/performance-service.ts`):**
 
-- `leadsWon`: now filters by `status_changed_at` (when the lead _became_ won), not `created_at`
+- `leadsWon`: now filters by `status_changed_at` (when the lead *became* won), not `created_at`
 - `conversionRate`: now filters closed leads (won + lost) by `status_changed_at`
 - `touchRate`: intentionally kept on `created_at` — it measures what % of new-period leads were touched (cohort metric)
 - `getAgentRosterPerformance`: split into two queries — cohort total via `created_at`, won/lost via `status_changed_at`
@@ -1948,7 +2040,7 @@ When marking a lead as Won, the user now goes through a two-step modal instead o
 - Adds `leads_deal_type_check` CHECK constraint (`membership | retail`) if absent
 - Adds `leads_deal_duration_check` CHECK constraint (`3_months | 6_months | 1_year | NULL`)
 
-**`src/lib/constants/deal-types.ts`** _(new)_
+**`src/lib/constants/deal-types.ts`** *(new)*
 
 - `DEAL_TYPES`, `DealType`, `DEAL_TYPE_LABELS`
 - `DEAL_DURATIONS`, `DealDuration`, `DEAL_DURATION_LABELS`
@@ -1966,7 +2058,7 @@ When marking a lead as Won, the user now goes through a two-step modal instead o
 
 - `recordDeal` — Zod → auth → access check → UPDATE deal fields → calls `updateLeadStatus('won')`
 
-**`src/components/leads/WonDealModal.tsx`** _(new)_
+**`src/components/leads/WonDealModal.tsx`** *(new)*
 
 - Two-step modal: type selection slide → details slide (duration chips + amount input)
 - Composes `ui/modal.tsx`. Zero hardcoded colours. All tokens.

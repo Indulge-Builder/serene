@@ -43,6 +43,7 @@ export async function LeadsTableAsync({
       <LeadsTable
         leads={leads}
         userId={userId}
+        filters={filters}
         hasActiveFilters={hasActiveFilters}
         goingCold={!!filters.going_cold}
         statusCounts={statusCounts}

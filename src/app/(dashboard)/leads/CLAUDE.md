@@ -267,19 +267,19 @@ Column-header click sort is not implemented and must not be added without a spec
 
 ## URL Param Keys
 
-| Filter          | URL param    | Type                    |
-|-----------------|--------------|-------------------------|
-| search          | `search`     | string (debounced 350ms)|
-| status          | `status`     | comma-separated values  |
-| outcome         | `outcome`    | comma-separated values  |
-| source          | `source`     | single string           |
-| campaign        | `campaign`   | single string           |
-| agent           | `agent_id`   | UUID string             |
-| date from       | `date_from`  | ISO date string         |
-| date to         | `date_to`    | ISO date string         |
-| going cold      | `going_cold` | `'true'` only (omitted = off) |
-| sort order      | `sort_order` | `'asc'` only (omitted = `'desc'`) |
-| page            | `page`       | integer (default 1)     |
+| Filter          | URL param    | Type                                    |
+|-----------------|--------------|-----------------------------------------|
+| search          | `search`     | string (debounced 350ms)                |
+| status          | `status`     | comma-separated values                  |
+| outcome         | `outcome`    | comma-separated values                  |
+| source          | `source`     | single string                           |
+| campaign        | `campaign`   | single string                           |
+| agent           | `agent_id`   | UUID string                             |
+| date from       | `date_from`  | ISO date string                         |
+| date to         | `date_to`    | ISO date string                         |
+| going cold      | `going_cold` | `'true'` only (omitted = off)           |
+| sort order      | `sort_order` | `'asc'` only (omitted = `'desc'`)       |
+| page            | `page`       | integer (default 1)                     |
 
 ---
 
@@ -293,9 +293,11 @@ Column-header click sort is not implemented and must not be added without a spec
 
 **NULL `last_activity_at` leads are intentionally excluded** by PostgreSQL `<` semantics — NULL is never less than a timestamp. Those leads (never updated since backfill) are handled by SLA-01A.
 
-**Immediate-commit:** clicking the chip fires `router.push` directly — does NOT go through draft → Apply. On activate, also clears `status` and `outcome` from the URL (going cold is logically incompatible with status/outcome filtering). On deactivate, removes `going_cold` from URL only.
+**Immediate-commit:** clicking the chip in `LeadsTable` toolbar fires `router.push` directly — does NOT go through draft → Apply. On activate, also clears `status` and `outcome` from the URL (going cold is logically incompatible with status/outcome filtering). On deactivate, removes `going_cold` from URL only.
 
-**`committedCount` badge:** `going_cold=true` counts as +1, same as any other active filter.
+**Placement:** left side of `LeadsTable` toolbar (first control), before status summary pills. Not in `LeadsFilters`.
+
+**`committedCount` badge:** `going_cold=true` counts as +1 in `LeadsFilters`, same as any other active filter.
 
 **`clearAll()`:** removes `going_cold` because it pushes `pathname` with no params.
 
@@ -519,6 +521,6 @@ Header checkbox is indeterminate when some (not all) rows are selected. Row chec
 
 ### ExportButton placement
 
-`ExportButton` lives at the **trailing end** of the `LeadsFilters` bar. It is always visible (not conditional on filter state). Receives the resolved `filters: LeadFilters` prop from `LeadsFilters`. Opens `ExportModal` which shows format toggle (CSV / XLSX) before triggering the action.
+`ExportButton` lives in the **`LeadsTable` toolbar** — right of the Columns picker, alongside the sort-order toggle. It is always visible (not conditional on filter state). Receives the resolved `filters: LeadFilters` prop from `LeadsTableAsync`. Opens `ExportModal` which shows format toggle (CSV / XLSX) before triggering the action.
 
-Never use `MotionButton` for `ExportButton` — it is a filter-area utility button, not a primary CTA.
+Never use `MotionButton` for `ExportButton` — it is a table-toolbar utility button, not a primary CTA.

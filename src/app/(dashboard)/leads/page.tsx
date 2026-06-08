@@ -102,7 +102,6 @@ export default async function LeadsPage({
             options={filterOptions}
             showAgentFilter={showAgentFilter}
             showDomainFilter={showDomainFilter}
-            filters={filters}
           />
         </div>
 

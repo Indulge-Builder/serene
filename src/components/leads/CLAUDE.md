@@ -13,6 +13,7 @@ Every modal composes `src/components/ui/modal.tsx` — never reimplements chrome
 `LeadsFilters.tsx` — `'use client'`
 
 **`FilterDraft` type** (defined in the component file):
+
 ```ts
 type FilterDraft = {
   status:     LeadStatus[];
@@ -28,9 +29,12 @@ type FilterDraft = {
 };
 ```
 
-**Sort order toggle** lives in `LeadsTable.tsx` toolbar, immediately left of the Columns button — not in `LeadsFilters`. Cycles `'desc' → 'asc' → 'desc'` on click; commits immediately to the URL via `buildFilterParams` (resets `page`). Labels: "Newest first" (default, `desc`) / "Oldest first" (`asc`). `sort_order=asc` is the only value written to the URL; default `desc` omits the param. `clearAll()` in `LeadsFilters` pushes bare `pathname`, which also clears `sort_order`.
+**Sort order toggle** lives in `LeadsTable.tsx` toolbar (right cluster), immediately left of the Columns button — not in `LeadsFilters`. Cycles `'desc' → 'asc' → 'desc'` on click; commits immediately to the URL via `buildFilterParams` (resets `page`). Labels: "Newest first" (default, `desc`) / "Oldest first" (`asc`). `sort_order=asc` is the only value written to the URL; default `desc` omits the param. `clearAll()` in `LeadsFilters` pushes bare `pathname`, which also clears `sort_order`.
+
+**Going Cold chip** lives in `LeadsTable.tsx` toolbar (left cluster, first control) — not in `LeadsFilters`. Immediate-commit via `buildFilterParams`; on activate clears `status` + `outcome` from URL. `committedCount` in `LeadsFilters` still counts `going_cold=true`.
 
 **Search state** is managed separately from the dropdown/date draft:
+
 - `searchInput: string` — controlled display value, updates on every keystroke.
 - `debouncedSearch` — `useDebounce(searchInput, 350)` from `src/hooks/useDebounce.ts`.
 - A `useEffect` keyed on `debouncedSearch` guards with `trimmed === (params.get('search') ?? '')` before pushing.
@@ -42,19 +46,20 @@ type FilterDraft = {
 **`isDirty`** — computed `boolean`. Compares each `draft` field against the live URL param using serialised string comparison (`draft.status.join(',') !== params.get('status') ?? ''` etc.). Never a `useState`. Array reference equality traps will give false positives — always compare serialised strings.
 
 **Single-row layout** (left → right):
+
 - Container: `display: flex`, `alignItems: center`, `gap: var(--space-2)`, `flexWrap: nowrap`, `overflowX: auto`, `scrollbarWidth: none` (inline), `WebkitOverflowScrolling: touch` (inline). Horizontal scroll on narrow viewports; chips stay on one line.
-- Order: Sliders icon + `committedCount` badge → `SearchBar` → 1px vertical divider → Status → Outcome → Source → Campaign? → Agent? → Domain? → Range → Apply? → Clear.
+- Order: Sliders icon → `SearchBar` → 1px vertical divider → Status → Outcome → Source → Campaign? → Agent? → Domain? → Range → Apply → Clear?.
 - **Search:** `suppressFocusAccent` — paper border + no `--shadow-focus` on focus. `style={{ flex: '1 1 180px', maxWidth: '280px' }}` — grows modestly but never dominates wide viewports (without `maxWidth`, chips scroll off-screen).
-- **Filter chips:** `menuPortal` + `accentBorderOnOpen={false}` — accent border only when the chip has a committed selection count, not when the menu is open.
+- **Filter chips:** `menuPortal` + `hideCountBadge` + `accentBorderOnOpen={false}` — no numeric count on triggers (prevents width shift); accent border/tint when the chip has a selection, not when the menu is open.
 - **Apply:** `suppressFocusRing` on `Button` — no focus glow on tab/click.
 - **Range:** accent border only when dates are set (`rangeActive`), not when the panel is open.
 - **Divider:** inline `div`, `width: 1`, `height: 1.25rem`, `background: var(--theme-paper-border)`, `flexShrink: 0` — separates search from filter chips.
 - Every `FilterDropdown` and the Range trigger: `flexShrink: 0`.
 - **Dropdown panels:** every `FilterDropdown` must pass `menuPortal` (menus render `position: fixed` on `document.body`). Without it, `overflowX: auto` on the row clips the absolutely positioned menu and options are unreachable. Range date panel uses its own `createPortal` — same rule.
 
-**Apply button:** `Button variant="primary" size="sm"` (not `MotionButton`) wrapped in `AnimatePresence motion.div` (`initial/exit: { opacity: 0, scale: 0.95 }`, 150ms `EASE_OUT_EXPO`). Rendered only when `isDirty`. Calls `applyFilters()` which builds the full URL from all draft keys and fires one `router.push`.
+**Apply button:** `Button variant="primary" size="sm"` (not `MotionButton`), always visible, `disabled={!isDirty}`. Calls `applyFilters()` which builds the full URL from all draft keys and fires one `router.push`. Permanent placement avoids filter-bar layout shift.
 
-**`committedCount`** — counts active URL params (what the table is showing), **not** draft values. Used for the badge and for showing/hiding the Clear button. Never substitute `isDirty` for `committedCount`.
+**`committedCount`** — counts active URL params (what the table is showing), **not** draft values. Used only for showing/hiding the Clear button — no numeric badge in the bar. Never substitute `isDirty` for `committedCount`.
 
 **Domain change invariant:** `domain` change must atomically clear `agent_id` and `campaign` in the same `setDraft` call. Never use a separate `useEffect` for this.
 

@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect, useTransition } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowDownUp, Columns } from 'lucide-react';
+import { ArrowDownUp, Clock, Columns } from 'lucide-react';
 import { buildFilterParams } from '@/lib/utils/filter-params';
 import type { LeadListItemWithAssignee } from '@/lib/services/leads-service';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
@@ -15,22 +15,43 @@ import { LEAD_COLUMN_MAP, type LeadColumnId } from '@/lib/constants/lead-columns
 import { useLeadColumnPreferences } from '@/hooks/useLeadColumnPreferences';
 import { LeadColumnPicker } from '@/components/leads/LeadColumnPicker';
 import { LeadsSelectionToolbar } from '@/components/leads/LeadsSelectionToolbar';
+import { ExportButton } from '@/components/leads/ExportButton';
+import type { LeadFilters } from '@/lib/types/database';
 
 type LeadsTableProps = {
   leads:            LeadListItemWithAssignee[];
   userId:           string;
+  filters:          LeadFilters;
   hasActiveFilters?: boolean;
   goingCold?:       boolean;
   statusCounts?:    Partial<Record<LeadStatus, number>>;
 };
 
-export function LeadsTable({ leads, userId, hasActiveFilters = false, goingCold = false, statusCounts = {} }: LeadsTableProps) {
+export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, goingCold = false, statusCounts = {} }: LeadsTableProps) {
   const router       = useRouter();
   const pathname     = usePathname();
   const params       = useSearchParams();
   const [, startTransition] = useTransition();
 
   const sortOrder = params.get('sort_order') === 'asc' ? 'asc' : 'desc';
+
+  function toggleGoingCold() {
+    if (goingCold) {
+      const next = buildFilterParams(params, { going_cold: null }, { resetKeys: ['page'] });
+      startTransition(() => {
+        router.push(`${pathname}?${next.toString()}`);
+      });
+    } else {
+      const next = buildFilterParams(
+        params,
+        { going_cold: 'true', status: null, outcome: null },
+        { resetKeys: ['page'] },
+      );
+      startTransition(() => {
+        router.push(`${pathname}?${next.toString()}`);
+      });
+    }
+  }
 
   function toggleSortOrder() {
     const nextOrder = sortOrder === 'asc' ? 'desc' : 'asc';
@@ -109,7 +130,7 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false, goingCold 
         boxShadow:    'var(--shadow-1)',
       }}
     >
-      {/* Table toolbar — status pills | column picker + row count */}
+      {/* Table toolbar — going cold + status pills | sort + columns + export */}
       <div
         style={{
           display:      'flex',
@@ -121,6 +142,37 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false, goingCold 
           flexWrap:     'nowrap',
         }}
       >
+        <button
+          type="button"
+          onClick={toggleGoingCold}
+          aria-pressed={goingCold}
+          style={{
+            display:      'inline-flex',
+            alignItems:   'center',
+            gap:          'var(--space-1)',
+            height:       '2.25rem',
+            padding:      '0 var(--space-3)',
+            background:   goingCold ? 'var(--color-warning-subtle)' : 'transparent',
+            border:       `1px solid ${goingCold ? 'var(--color-warning)' : 'var(--theme-paper-border)'}`,
+            borderRadius: 'var(--radius-sm)',
+            fontSize:     'var(--text-sm)',
+            fontFamily:   'var(--font-sans)',
+            fontWeight:   'var(--weight-medium)',
+            color:        goingCold ? 'var(--color-warning-text)' : 'var(--theme-text-secondary)',
+            cursor:       'pointer',
+            transition:   'var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
+            whiteSpace:   'nowrap',
+            flexShrink:   0,
+            outline:      'none',
+          }}
+        >
+          <Clock
+            style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }}
+            aria-hidden="true"
+          />
+          <span>Going Cold</span>
+        </button>
+
         {hasStatusPills && (
           <div
             className="hidden md:flex items-center gap-2 shrink-0"
@@ -218,6 +270,8 @@ export function LeadsTable({ leads, userId, hasActiveFilters = false, goingCold 
             resetToDefaults={resetToDefaults}
           />
         </div>
+
+        <ExportButton filters={filters} />
 
       </div>
 

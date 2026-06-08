@@ -1033,41 +1033,15 @@ export type Database = {
         Args: { p_phone: string }
         Returns: {
           archived_at: string | null
-          assigned_at: string | null
           assigned_to: string | null
-          attribution: Json | null
-          call_count: number
-          city: string | null
-          created_at: string
-          deal_amount: number | null
-          deal_duration: string | null
-          deal_type: string | null
-          domain: string
-          email: string | null
+          domain: Database["public"]["Enums"]["app_domain"]
           first_name: string
-          form_data: Json | null
           id: string
-          last_activity_at: string | null
-          last_call_outcome: string | null
           last_name: string | null
-          lead_intent: string | null
-          medium: string | null
-          personal_details: Json | null
           phone: string | null
-          previous_lead_id: string | null
           slug: string | null
-          source: string | null
           status: string
-          status_changed_at: string | null
-          updated_at: string
-          utm_campaign: string | null
         }[]
-        SetofOptions: {
-          from: "*"
-          to: "leads"
-          isOneToOne: false
-          isSetofReturn: true
-        }
       }
       get_campaign_agent_distribution: {
         Args: { p_campaign: string; p_date_from?: string; p_date_to?: string }

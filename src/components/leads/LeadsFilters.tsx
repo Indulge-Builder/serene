@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useTransition, useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, SlidersHorizontal, ChevronDown, Clock } from "lucide-react";
+import { X, SlidersHorizontal, ChevronDown } from "lucide-react";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { useDebounce } from "@/hooks/useDebounce";
 import { motion, AnimatePresence } from "framer-motion";
@@ -27,16 +27,12 @@ import {
   dateFromUrlParam,
   dateToUrlParam,
 } from "@/lib/utils/filter-params";
-import { EASE_OUT_EXPO, DROPDOWN_VARIANTS } from "@/lib/constants/motion";
-import { ExportButton } from "@/components/leads/ExportButton";
-import type { LeadFilters } from "@/lib/types/database";
-
+import { DROPDOWN_VARIANTS } from "@/lib/constants/motion";
 type LeadsFiltersProps = {
   role: UserRole;
   options: LeadFilterOptions;
   showAgentFilter: boolean;
   showDomainFilter: boolean;
-  filters: LeadFilters;
 };
 
 // ─── FilterDraft ──────────────────────────────────────────────────────────────
@@ -50,7 +46,7 @@ type FilterDraft = {
   campaign: string | null;
   date_from: string | null;
   date_to: string | null;
-  // going_cold + sort_order are NOT in draft — they commit immediately via router.push
+  // sort_order is NOT in draft — commits immediately in LeadsTable toolbar
 };
 
 function parseMulti<T extends string>(
@@ -88,7 +84,6 @@ export function LeadsFilters({
   options,
   showAgentFilter,
   showDomainFilter,
-  filters,
 }: LeadsFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -365,32 +360,10 @@ export function LeadsFilters({
           WebkitOverflowScrolling: "touch",
         }}
       >
-        {/* Filter icon + committed count badge */}
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
-          <SlidersHorizontal
-            style={{ width: "1rem", height: "1rem", color: "var(--theme-text-tertiary)", strokeWidth: 1.5 }}
-          />
-          {committedCount > 0 && (
-            <span
-              style={{
-                display:        "inline-flex",
-                alignItems:     "center",
-                justifyContent: "center",
-                minWidth:       "1.25rem",
-                height:         "1.25rem",
-                padding:        "0 0.25rem",
-                borderRadius:   "var(--radius-full)",
-                background:     "var(--theme-accent)",
-                color:          "var(--theme-accent-fg)",
-                fontSize:       "10px",
-                fontWeight:     "var(--weight-medium)",
-                lineHeight:     1,
-              }}
-            >
-              {committedCount}
-            </span>
-          )}
-        </div>
+        <SlidersHorizontal
+          style={{ width: "1rem", height: "1rem", color: "var(--theme-text-tertiary)", strokeWidth: 1.5, flexShrink: 0 }}
+          aria-hidden="true"
+        />
 
         <SearchBar
           value={searchInput}
@@ -413,6 +386,7 @@ export function LeadsFilters({
         {/* Status — multi-select */}
         <FilterDropdown
           menuPortal
+          hideCountBadge
           accentBorderOnOpen={false}
           style={{ flexShrink: 0 }}
           label="Status"
@@ -425,6 +399,7 @@ export function LeadsFilters({
         {/* Outcome — multi-select */}
         <FilterDropdown
           menuPortal
+          hideCountBadge
           accentBorderOnOpen={false}
           style={{ flexShrink: 0 }}
           label="Outcome"
@@ -437,6 +412,7 @@ export function LeadsFilters({
         {/* Source — single select */}
         <FilterDropdown
           menuPortal
+          hideCountBadge
           accentBorderOnOpen={false}
           style={{ flexShrink: 0 }}
           label="Source"
@@ -449,6 +425,7 @@ export function LeadsFilters({
         {campaignItems.length > 0 && (
           <FilterDropdown
             menuPortal
+            hideCountBadge
             accentBorderOnOpen={false}
             style={{ flexShrink: 0 }}
             label="Campaign"
@@ -462,6 +439,7 @@ export function LeadsFilters({
         {showAgentFilter && agentItems.length > 0 && (
           <FilterDropdown
             menuPortal
+            hideCountBadge
             accentBorderOnOpen={false}
             style={{ flexShrink: 0 }}
             label="Agent"
@@ -475,6 +453,7 @@ export function LeadsFilters({
         {showDomainFilter && (
           <FilterDropdown
             menuPortal
+            hideCountBadge
             accentBorderOnOpen={false}
             style={{ flexShrink: 0 }}
             label="Domain"
@@ -490,60 +469,6 @@ export function LeadsFilters({
             }
           />
         )}
-
-        {/* Going Cold — immediate-commit preset chip; bypasses draft → Apply */}
-        {(() => {
-          const isActive = params.get("going_cold") === "true";
-          return (
-            <button
-              type="button"
-              onClick={() => {
-                if (isActive) {
-                  startTransition(() => {
-                    router.push(`${pathname}?${buildParams(params, { going_cold: null }).toString()}`);
-                  });
-                } else {
-                  // Commit immediately — clears status + outcome from URL, resets page
-                  startTransition(() => {
-                    setDraft((d) => ({ ...d, status: [], outcome: [] }));
-                    router.push(
-                      `${pathname}?${buildParams(params, {
-                        going_cold: "true",
-                        status:     null,
-                        outcome:    null,
-                      }).toString()}`,
-                    );
-                  });
-                }
-              }}
-              style={{
-                display:      "inline-flex",
-                alignItems:   "center",
-                gap:          "var(--space-1)",
-                height:       "2.25rem",
-                padding:      "var(--space-1) var(--space-3)",
-                background:   isActive ? "var(--color-warning-subtle)" : "transparent",
-                border:       `1px solid ${isActive ? "var(--color-warning)" : "var(--theme-paper-border)"}`,
-                borderRadius: "var(--radius-md)",
-                fontSize:     "var(--text-sm)",
-                fontFamily:   "var(--font-sans)",
-                fontWeight:   "var(--weight-medium)",
-                color:        isActive ? "var(--color-warning-text)" : "var(--theme-text-secondary)",
-                cursor:       "pointer",
-                transition:   "var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)",
-                whiteSpace:   "nowrap",
-                flexShrink:   0,
-                outline:      "none",
-              }}
-            >
-              <Clock
-                style={{ width: "0.875rem", height: "0.875rem", strokeWidth: 1.5 }}
-                aria-hidden="true"
-              />
-              <span>Going Cold</span>
-            </button>
-          );
-        })()}
 
         {/* Range — trigger only; panel portaled to document.body */}
         <div ref={rangeRef} style={{ flexShrink: 0 }}>
@@ -573,26 +498,6 @@ export function LeadsFilters({
             }}
           >
             Range
-            {rangeActive && (
-              <span
-                style={{
-                  display:        "inline-flex",
-                  alignItems:     "center",
-                  justifyContent: "center",
-                  minWidth:       18,
-                  height:         18,
-                  padding:        "0 var(--space-1)",
-                  borderRadius:   "var(--radius-full)",
-                  background:     "var(--theme-accent)",
-                  color:          "var(--theme-accent-fg)",
-                  fontSize:       "var(--text-2xs)",
-                  fontWeight:     "var(--weight-semibold)",
-                  lineHeight:     1,
-                }}
-              >
-                {(draft.date_from ? 1 : 0) + (draft.date_to ? 1 : 0)}
-              </span>
-            )}
             <ChevronDown
               style={{
                 width:      14,
@@ -606,27 +511,16 @@ export function LeadsFilters({
           </button>
         </div>
 
-        {/* Apply button — animated in/out when isDirty toggles */}
-        <AnimatePresence>
-          {isDirty && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.15, ease: EASE_OUT_EXPO }}
-              style={{ flexShrink: 0 }}
-            >
-              <Button
-                variant="primary"
-                size="sm"
-                suppressFocusRing
-                onClick={applyFilters}
-              >
-                Apply
-              </Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <Button
+          variant="primary"
+          size="sm"
+          suppressFocusRing
+          disabled={!isDirty}
+          onClick={applyFilters}
+          style={{ flexShrink: 0 }}
+        >
+          Apply
+        </Button>
 
         {/* Clear all — reflects committed state, not draft */}
         {committedCount > 0 && (
@@ -656,8 +550,6 @@ export function LeadsFilters({
           </button>
         )}
 
-        {/* Export button — always visible at trailing end */}
-        <ExportButton filters={filters} />
       </div>
 
       {/* Range panel portal */}

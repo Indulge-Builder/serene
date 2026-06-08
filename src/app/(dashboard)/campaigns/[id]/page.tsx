@@ -75,6 +75,7 @@ async function CampaignLeadsAsync({
       <LeadsTable
         leads={leads}
         userId={userId}
+        filters={filters}
         hasActiveFilters={!!campaignName}
       />
       {totalCount > pageSize && (
