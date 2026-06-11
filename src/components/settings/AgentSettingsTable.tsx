@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useMemo } from "react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { X, SlidersHorizontal } from "lucide-react";
 import { DOMAIN_LABELS, compareDomainDisplayOrder } from "@/lib/constants/domains";
 import { Avatar } from "@/components/ui/Avatar";

@@ -66,9 +66,7 @@
  */
 
 import { BUSINESS_HOURS } from '@/lib/constants/sla';
-
-// IST offset in minutes: UTC+5:30 = 330 minutes
-const IST_OFFSET_MINUTES = 330;
+import { toIst, istToUtc } from '@/lib/utils/ist';
 
 // ─── AgentShiftOverride ───────────────────────────────────────────────────────
 
@@ -102,32 +100,7 @@ export function buildAgentShiftOverride(
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
-
-/**
- * Returns an object representing the IST wall-clock time for a UTC Date.
- */
-function toIst(utcDate: Date): { year: number; month: number; day: number; hour: number; minute: number; dayOfWeek: number } {
-  const istMs = utcDate.getTime() + IST_OFFSET_MINUTES * 60_000;
-  const d = new Date(istMs);
-  return {
-    year:      d.getUTCFullYear(),
-    month:     d.getUTCMonth(),    // 0-indexed
-    day:       d.getUTCDate(),
-    hour:      d.getUTCHours(),
-    minute:    d.getUTCMinutes(),
-    dayOfWeek: d.getUTCDay(),      // 0 = Sunday
-  };
-}
-
-/**
- * Given an IST day-of-week and hour offset, builds a UTC Date representing
- * that moment at a specific IST hour/minute.
- */
-function istToUtc(year: number, month: number, day: number, hour: number, minute: number): Date {
-  // Construct as if UTC, then subtract IST offset to get real UTC
-  const pseudoUtcMs = Date.UTC(year, month, day, hour, minute, 0, 0);
-  return new Date(pseudoUtcMs - IST_OFFSET_MINUTES * 60_000);
-}
+// (toIst / istToUtc wall-clock conversions come from lib/utils/ist.ts)
 
 function resolveStart(shift?: AgentShiftOverride): { hour: number; minute: number } {
   return {

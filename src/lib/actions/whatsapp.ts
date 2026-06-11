@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { requireProfile } from "@/lib/actions/_auth";
 import { sendTextMessage, sendLeadInitiationMessage } from "@/lib/services/whatsapp-api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -42,8 +42,9 @@ export async function sendWhatsAppMessage(
     return { data: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const profile = await getCurrentProfile();
-  if (!profile) return { data: null, error: "Unauthorised" };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const profile = auth.profile;
 
   const { conversationId, content } = parsed.data;
 
@@ -123,8 +124,8 @@ export async function markConversationAsRead(
     return { data: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const profile = await getCurrentProfile();
-  if (!profile) return { data: null, error: "Unauthorised" };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
 
   await markConversationRead(parsed.data.conversationId);
   return { data: null, error: null };
@@ -140,11 +141,8 @@ export async function resolveConversation(
     return { data: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const profile = await getCurrentProfile();
-  if (!profile) return { data: null, error: "Unauthorised" };
-
-  const allowed: string[] = ["manager", "admin", "founder"];
-  if (!allowed.includes(profile.role)) return { data: null, error: "Unauthorised" };
+  const auth = await requireProfile(["manager", "admin", "founder"]);
+  if (!auth.ok) return auth.result;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = (await createClient()) as any;
@@ -167,11 +165,8 @@ export async function reopenConversation(
     return { data: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const profile = await getCurrentProfile();
-  if (!profile) return { data: null, error: "Unauthorised" };
-
-  const allowed: string[] = ["manager", "admin", "founder"];
-  if (!allowed.includes(profile.role)) return { data: null, error: "Unauthorised" };
+  const auth = await requireProfile(["manager", "admin", "founder"]);
+  if (!auth.ok) return auth.result;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = (await createClient()) as any;
@@ -196,8 +191,8 @@ export async function getConversationsAction(
     return { conversations: [], nextCursor: null };
   }
 
-  const profile = await getCurrentProfile();
-  if (!profile) return { conversations: [], nextCursor: null };
+  const auth = await requireProfile();
+  if (!auth.ok) return { conversations: [], nextCursor: null };
 
   const { period, customFrom, customTo, limit, cursor } = parsed.data;
   return serviceGetConversations({
@@ -213,8 +208,8 @@ export async function getMessagesAction(
   conversationId: string,
   options: { limit?: number; before?: string } = {},
 ): Promise<WhatsAppMessage[]> {
-  const profile = await getCurrentProfile();
-  if (!profile) return [];
+  const auth = await requireProfile();
+  if (!auth.ok) return [];
   const uuidResult = z.string().uuid().safeParse(conversationId);
   if (!uuidResult.success) return [];
   return serviceGetMessages(conversationId, options);
@@ -226,8 +221,9 @@ export async function initiateWhatsAppConversationAction(
   const uuidResult = z.string().uuid().safeParse(leadId);
   if (!uuidResult.success) return { data: null, error: "Invalid lead ID" };
 
-  const profile = await getCurrentProfile();
-  if (!profile) return { data: null, error: "Unauthorised" };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const profile = auth.profile;
 
   // Access check via RLS — session client SELECT will return null if caller lacks access
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -385,8 +381,8 @@ export async function getConversationByLeadIdAction(
   const uuidResult = z.string().uuid().safeParse(leadId);
   if (!uuidResult.success) return { data: null, error: "Invalid lead ID" };
 
-  const profile = await getCurrentProfile();
-  if (!profile) return { data: null, error: "Unauthorised" };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
 
   const conversation = await serviceGetConversationByLeadId(leadId);
   return { data: conversation, error: null };
@@ -398,8 +394,8 @@ export async function searchConversationsAction(
   const parsed = WhatsAppSearchFilterSchema.safeParse(input);
   if (!parsed.success) return [];
 
-  const profile = await getCurrentProfile();
-  if (!profile) return [];
+  const auth = await requireProfile();
+  if (!auth.ok) return [];
 
   const { query, period, customFrom, customTo } = parsed.data;
   return serviceSearchConversations(query, period

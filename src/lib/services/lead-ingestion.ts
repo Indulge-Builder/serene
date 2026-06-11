@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { selectAdapter } from '@/lib/leads/adapters';
 import { resolveDomainFromCampaign, DEFAULT_LEAD_DOMAIN } from '@/lib/constants/campaign-domain-map';
 import { getNextRoundRobinAgent } from '@/lib/services/leads-service';
-import { LEAD_SOURCES, type LeadSource } from '@/lib/constants/lead-sources';
+import { LEAD_SOURCE_ENUM, type LeadSource } from '@/lib/constants/lead-sources';
 import type { Database } from '@/lib/types/database';
 
 type LeadInsert = Database['public']['Tables']['leads']['Insert'];
@@ -42,14 +42,12 @@ export type IngestionResult =
 // Adapters guarantee field presence; this schema is a safety net.
 // ─────────────────────────────────────────────
 // source is validated at the webhook route before this is called — use hard enum, not .catch(null).
-const LEAD_SOURCES_TUPLE = LEAD_SOURCES as unknown as [LeadSource, ...LeadSource[]];
-
 const leadPayloadSchema = z.object({
   first_name:   z.string().default('Unknown'),
   last_name:    z.string().nullable().optional(),
   email:        z.string().nullable().optional(),
   phone:        z.string().default(''),
-  source:       z.enum(LEAD_SOURCES_TUPLE),
+  source:       z.enum(LEAD_SOURCE_ENUM),
   medium:       z.string().nullable().optional(),
   utm_campaign: z.string().nullable().optional(),
   domain:       z.string().nullable().optional(),
@@ -184,6 +182,19 @@ export async function ingestLead(
     : null;
   if (cityFromForm) delete formDataRaw.city;
 
+  // attribution: full UTM/platform snapshot, written exactly once at INSERT and
+  // never updated (see COMMENT on public.leads.attribution, migration 0096).
+  // Built only from fields present on NormalizedLeadPayload — the adapter-built
+  // `attribution` object (platform, campaign_id, ad_name, adset_name) plus the
+  // top-level UTM columns the payload carries (utm_medium via `medium`,
+  // utm_campaign). Absent fields are stored as null, not omitted, so the JSONB
+  // shape is consistent across every source. Minimum value is {} — never SQL NULL.
+  const attributionSnapshot: Record<string, unknown> = {
+    ...(data.attribution ?? {}),
+    utm_medium:   data.medium ?? null,
+    utm_campaign: data.utm_campaign ?? null,
+  };
+
   const leadInsert: LeadInsert = {
     first_name:         data.first_name,
     last_name:          data.last_name ?? null,
@@ -198,7 +209,7 @@ export async function ingestLead(
     source:             data.source ?? null,
     medium:             data.medium ?? null,
     utm_campaign:       data.utm_campaign ?? null,
-    attribution:        data.attribution ?? null,
+    attribution:        attributionSnapshot,
     city:               cityFromForm,
     form_data:          formDataRaw,
     last_call_outcome:  null,

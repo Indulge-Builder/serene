@@ -15,6 +15,7 @@ import {
 } from '@/lib/constants/whatsapp';
 import type { WhatsAppPeriod } from '@/lib/constants/whatsapp-period';
 import { getWhatsAppPeriodRange } from '@/lib/utils/whatsapp-period';
+import { mapRows } from '@/lib/utils/rows';
 import type { WhatsAppConversation, WhatsAppMessage } from '@/lib/types/whatsapp';
 
 export type WhatsAppConversationListFilters = {
@@ -23,22 +24,30 @@ export type WhatsAppConversationListFilters = {
   customTo?:   string | null;
 };
 
-function mapConversationRow(row: Record<string, unknown>): WhatsAppConversation {
-  const lead = row['leads'] as { first_name: string; last_name: string | null; phone: string };
+// Query row shapes — the DB columns of the app types + the joined relation
+// (dry-audit L-6: one declared row type per query, no Record<string, unknown>).
+type WaConversationRow = Omit<WhatsAppConversation, 'lead_name' | 'lead_phone' | 'unread_count'> & {
+  leads: { first_name: string; last_name: string | null; phone: string };
+};
+type WaMessageRow = Omit<WhatsAppMessage, 'sender_name' | 'sender_avatar_url'> & {
+  sender: { full_name: string; avatar_url: string | null } | null;
+};
+
+function mapConversationRow(row: WaConversationRow): WhatsAppConversation {
+  const { leads, ...conversation } = row;
   return {
-    id:              row['id'] as string,
-    lead_id:         row['lead_id'] as string,
-    wa_id:           row['wa_id'] as string,
-    phone:           row['phone'] as string,
-    status:          row['status'] as 'open' | 'resolved',
-    last_message_at: row['last_message_at'] as string | null,
-    bot_active:      row['bot_active'] as boolean,
-    bot_paused_by:   row['bot_paused_by'] as string | null,
-    bot_paused_at:   row['bot_paused_at'] as string | null,
-    created_at:      row['created_at'] as string,
-    updated_at:      row['updated_at'] as string,
-    lead_name:  [lead.first_name, lead.last_name].filter(Boolean).join(' '),
-    lead_phone: lead.phone,
+    ...conversation,
+    lead_name:  [leads.first_name, leads.last_name].filter(Boolean).join(' '),
+    lead_phone: leads.phone,
+  };
+}
+
+function mapMessageRow(row: WaMessageRow): WhatsAppMessage {
+  const { sender, ...message } = row;
+  return {
+    ...message,
+    sender_name:       sender?.full_name,
+    sender_avatar_url: sender?.avatar_url ?? undefined,
   };
 }
 
@@ -103,7 +112,8 @@ export async function getConversations(options: {
 
   if (error || !data) return { conversations: [], nextCursor: null };
 
-  const conversations: WhatsAppConversation[] = (data as Record<string, unknown>[]).map(
+  const conversations = mapRows<WaConversationRow, WhatsAppConversation>(
+    data,
     mapConversationRow,
   );
 
@@ -140,23 +150,7 @@ export async function getConversation(
 
   if (error || !data) return null;
 
-  const row  = data as Record<string, unknown>;
-  const lead = row['leads'] as { first_name: string; last_name: string | null; phone: string };
-  return {
-    id:              row['id'] as string,
-    lead_id:         row['lead_id'] as string,
-    wa_id:           row['wa_id'] as string,
-    phone:           row['phone'] as string,
-    status:          row['status'] as 'open' | 'resolved',
-    last_message_at: row['last_message_at'] as string | null,
-    bot_active:      row['bot_active'] as boolean,
-    bot_paused_by:   row['bot_paused_by'] as string | null,
-    bot_paused_at:   row['bot_paused_at'] as string | null,
-    created_at:      row['created_at'] as string,
-    updated_at:      row['updated_at'] as string,
-    lead_name:  [lead.first_name, lead.last_name].filter(Boolean).join(' '),
-    lead_phone: lead.phone,
-  };
+  return mapConversationRow(data as WaConversationRow);
 }
 
 // ─────────────────────────────────────────────
@@ -186,7 +180,7 @@ export async function getConversationByLeadId(
 
   if (error || !data) return null;
 
-  return mapConversationRow(data as Record<string, unknown>);
+  return mapConversationRow(data as WaConversationRow);
 }
 
 // ─────────────────────────────────────────────
@@ -228,28 +222,7 @@ export async function getMessages(
 
   if (error || !data) return [];
 
-  return (data as Record<string, unknown>[]).map((row): WhatsAppMessage => {
-    const sender = row['sender'] as { full_name: string; avatar_url: string | null } | null;
-    return {
-      id:              row['id'] as string,
-      conversation_id: row['conversation_id'] as string,
-      lead_id:         row['lead_id'] as string,
-      direction:       row['direction'] as 'inbound' | 'outbound',
-      sender_type:     row['sender_type'] as 'lead' | 'agent' | 'bot',
-      sender_id:       row['sender_id'] as string | null,
-      wa_message_id:   row['wa_message_id'] as string | null,
-      message_type:    row['message_type'] as WhatsAppMessage['message_type'],
-      content:         row['content'] as string | null,
-      media_url:       row['media_url'] as string | null,
-      media_mime_type: row['media_mime_type'] as string | null,
-      status:          row['status'] as WhatsAppMessage['status'],
-      status_at:       row['status_at'] as string | null,
-      is_bot:          row['is_bot'] as boolean,
-      created_at:      row['created_at'] as string,
-      sender_name:       sender?.full_name,
-      sender_avatar_url: sender?.avatar_url ?? undefined,
-    };
-  });
+  return mapRows<WaMessageRow, WhatsAppMessage>(data, mapMessageRow);
 }
 
 // ─────────────────────────────────────────────
@@ -325,5 +298,5 @@ export async function searchConversations(
 
   if (error || !data) return [];
 
-  return (data as Record<string, unknown>[]).map(mapConversationRow);
+  return mapRows<WaConversationRow, WhatsAppConversation>(data, mapConversationRow);
 }

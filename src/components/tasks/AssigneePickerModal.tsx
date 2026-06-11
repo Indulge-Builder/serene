@@ -18,16 +18,16 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import { X, Search } from "lucide-react";
 import { DOMAIN_LABELS, GIA_DOMAINS } from "@/lib/constants/domains";
 import { ROLE_LABELS } from "@/lib/constants/roles";
-import type { Profile, AppDomain } from "@/lib/types/database";
+import { getInitials } from "@/lib/utils/strings";
+import type { AppDomain } from "@/lib/types/database";
+import type { AssignableUser } from "@/lib/types";
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-export type AssignableUser = Pick<Profile, "id" | "full_name" | "avatar_url" | "role" | "domain">;
 
 interface AssigneePickerModalProps {
   open:          boolean;
@@ -38,12 +38,6 @@ interface AssigneePickerModalProps {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(" ");
-  if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
 
 const ROLE_BADGE_COLORS: Record<string, { bg: string; text: string }> = {
   founder: { bg: "var(--color-warning)",      text: "var(--color-warning-text)" },

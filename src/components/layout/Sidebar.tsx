@@ -1,7 +1,10 @@
 "use client";
 
+import { Suspense, use } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { m as motion, useReducedMotion } from "framer-motion";
+import { SPRING_CONFIG, BASE_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 import {
   LayoutDashboard,
   UserRound,
@@ -15,10 +18,12 @@ import {
   Settings,
   MessageCircle,
   Film,
+  Bell,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import { canAccessRoute } from "@/lib/utils/route-access";
+import { getInitials } from "@/lib/utils/strings";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import type { Profile, Notification } from "@/lib/types/database";
 
@@ -64,16 +69,6 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/users", label: "User Management", icon: Shield },
 ];
 
-// ─── Helpers ──────────────────────────────────────────────
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return (parts[0]?.[0] ?? "?").toUpperCase();
-  return (
-    (parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")
-  ).toUpperCase();
-}
-
 // ─── NavLink ──────────────────────────────────────────────
 
 function NavLink({
@@ -82,6 +77,7 @@ function NavLink({
   icon: Icon,
   isActive,
 }: NavItem & { isActive: boolean }) {
+  const reduceMotion = useReducedMotion();
   return (
     <Link
       href={href}
@@ -105,30 +101,35 @@ function NavLink({
         letterSpacing: "var(--tracking-wide)",
         textDecoration: "none",
         transition:
-          "color var(--duration-fast) var(--ease-in-out), background var(--duration-fast) var(--ease-in-out)",
+          "color var(--duration-fast) var(--ease-in-out), background var(--duration-fast) var(--ease-in-out), transform var(--duration-base) var(--ease-spring)",
       }}
       onMouseEnter={(e) => {
         if (!isActive) {
           e.currentTarget.style.background = "var(--theme-sidebar-hover-bg)";
           e.currentTarget.style.color = "var(--theme-canvas-text)";
+          // design-dna §6.3 — nav item hover nudge, x: 2
+          if (!reduceMotion) e.currentTarget.style.transform = "translateX(2px)";
         }
       }}
       onMouseLeave={(e) => {
         if (!isActive) {
           e.currentTarget.style.background = "transparent";
           e.currentTarget.style.color = "var(--theme-sidebar-text)";
+          e.currentTarget.style.transform = "translateX(0)";
         }
       }}
     >
-      {/* Active left pill */}
+      {/* Active left pill — design-dna §5.99 #01: it does not toggle, it travels.
+          top is offset-positioned (not translateY) so Framer owns transform. */}
       {isActive && (
-        <span
+        <motion.span
+          layoutId="sidebar-active-pill"
           aria-hidden="true"
+          transition={reduceMotion ? { duration: 0 } : SPRING_CONFIG}
           style={{
             position: "absolute",
             left: 0,
-            top: "50%",
-            transform: "translateY(-50%)",
+            top: "calc(50% - 8px)",
             width: "3px",
             height: "16px",
             borderRadius: "0 var(--radius-full) var(--radius-full) 0",
@@ -148,10 +149,15 @@ function NavLink({
       <span style={{ flex: 1 }}>{label}</span>
 
       {isActive && (
-        <ChevronRight
+        <motion.span
           aria-hidden="true"
-          style={{ width: "12px", height: "12px", flexShrink: 0, opacity: 0.5 }}
-        />
+          initial={reduceMotion ? false : { opacity: 0, x: -4 }}
+          animate={{ opacity: 0.5, x: 0 }}
+          transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
+          style={{ display: "flex", flexShrink: 0 }}
+        >
+          <ChevronRight style={{ width: "12px", height: "12px" }} />
+        </motion.span>
       )}
     </Link>
   );
@@ -186,14 +192,53 @@ function NavSection({ label }: { label: string }) {
   );
 }
 
+// ─── Notification bell seed (streamed) ────────────────────
+
+// The layout starts getNotifications() without awaiting and passes the
+// promise down — the shell paints immediately and the seed streams into
+// this Suspense boundary. getNotifications never rejects (returns [] on
+// error), so use() here cannot throw.
+function SeededNotificationBell({
+  userId,
+  promise,
+}: {
+  userId: string;
+  promise: Promise<Notification[]>;
+}) {
+  const initialData = use(promise);
+  return (
+    <NotificationBell userId={userId} initialData={initialData} variant="sidebar" />
+  );
+}
+
+// Static, same-size stand-in while the seed streams — no layout shift.
+function BellFallback() {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "center",
+        width:          "32px",
+        height:         "32px",
+        color:          "var(--theme-sidebar-text)",
+        flexShrink:     0,
+      }}
+    >
+      <Bell style={{ width: "14px", height: "14px", strokeWidth: 1.5 }} />
+    </div>
+  );
+}
+
 // ─── Sidebar ──────────────────────────────────────────────
 
 type SidebarProps = {
   profile: Profile;
-  initialNotifications?: Notification[];
+  notificationsPromise: Promise<Notification[]>;
 };
 
-export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
+export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
   const pathname = usePathname();
   const isPrivileged = profile.role === "admin" || profile.role === "founder";
   const isManager = profile.role === "manager" || isPrivileged;
@@ -337,12 +382,13 @@ export function Sidebar({ profile, initialNotifications = [] }: SidebarProps) {
             gap: "var(--space-2)",
           }}
         >
-          {/* Notification bell */}
-          <NotificationBell
-            userId={profile.id}
-            initialData={initialNotifications}
-            variant="sidebar"
-          />
+          {/* Notification bell — seed streams in without blocking the shell */}
+          <Suspense fallback={<BellFallback />}>
+            <SeededNotificationBell
+              userId={profile.id}
+              promise={notificationsPromise}
+            />
+          </Suspense>
 
           {/* User info — links to profile settings */}
           <Link

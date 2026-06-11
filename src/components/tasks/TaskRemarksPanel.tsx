@@ -31,10 +31,12 @@ import {
   useState,
   useTransition,
 } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
+import { EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "@/components/ui/Avatar";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { addTaskRemarkAction } from "@/lib/actions/tasks";
 import { formatRelativeTime } from "@/lib/utils/dates";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -342,18 +344,7 @@ export function TaskRemarksPanel({
                 flex:           1,
               }}
             >
-              <p
-                style={{
-                  fontFamily: "var(--font-serif)",
-                  fontStyle:  "italic",
-                  fontSize:   "var(--text-sm)",
-                  color:      "var(--theme-text-tertiary)",
-                  margin:     0,
-                  textAlign:  "center",
-                }}
-              >
-                No updates yet.
-              </p>
+              <EmptyState title="No updates yet." style={{ padding: 0 }} />
             </div>
           ) : (
             <AnimatePresence initial={false}>
@@ -362,7 +353,7 @@ export function TaskRemarksPanel({
                   key={remark.id}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: optimisticIds.current.has(remark.id) ? 0.5 : 1, y: 0 }}
-                  transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                  transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
                 >
                   {/* Status chip — shown when remark recorded a transition */}
                   {remark.status_change && (() => {
@@ -556,6 +547,7 @@ export function TaskRemarksPanel({
               onClick={postRemark}
               disabled={!canPost}
               aria-label="Send update"
+              className="eia-pressable eia-icon-lift-hover"
               style={{
                 width:          `${COMPOSER_SEND_SIZE}px`,
                 height:         `${COMPOSER_SEND_SIZE}px`,

@@ -1,50 +1,22 @@
 'use client';
 
-import { useState, useTransition, useCallback, useRef, useEffect } from 'react';
+import { useState, useTransition, useCallback, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/Button';
-import { DatePicker } from '@/components/ui/DatePicker';
-import { TASK_TYPES, TASK_TYPE_LABELS } from '@/lib/constants/task-types';
+import {
+  FieldLabel,
+  FieldError,
+  PriorityChipRow,
+  DueDateField,
+  TaskTypeField,
+} from '@/components/ui/TaskFormFields';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import { searchLeadsAction, createLeadTaskAction } from '@/lib/actions/leads';
 import type { GiaTask } from '@/lib/services/tasks-service';
 import type { LeadSearchResult } from '@/lib/services/leads-service';
 import type { TaskType, TaskPriority, UserRole } from '@/lib/types/database';
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function PriorityChip({
-  label,
-  active,
-  onClick,
-}: {
-  label:   string;
-  active:  boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding:      'var(--space-1) var(--space-3)',
-        borderRadius: 'var(--radius-full)',
-        border:       active
-          ? '1px solid var(--theme-accent)'
-          : '1px solid var(--theme-paper-border)',
-        background:   active ? 'var(--theme-accent-surface)' : 'transparent',
-        color:        active ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
-        fontSize:     'var(--text-xs)',
-        fontWeight:   'var(--weight-medium)',
-        cursor:       'pointer',
-        transition:   'all var(--duration-fast) var(--ease-in-out)',
-      }}
-    >
-      {label}
-    </button>
-  );
-}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -73,7 +45,7 @@ export function CreateGiaTaskModal({
   const [searchResults, setSearchResults] = useState<LeadSearchResult[]>([]);
   const [searchOpen, setSearchOpen]       = useState(false);
   const [isSearching, setIsSearching]     = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   const [isPending, startTransition] = useTransition();
 
@@ -92,25 +64,35 @@ export function CreateGiaTaskModal({
     }
   }, [open]);
 
-  // Debounced lead search
+  // Debounced lead search (300ms via useDebounce)
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    // Clearing the input closes results immediately — never waits for the debounce.
     if (!value.trim()) {
       setSearchResults([]);
       setSearchOpen(false);
-      return;
     }
-    debounceRef.current = setTimeout(async () => {
-      setIsSearching(true);
-      const result = await searchLeadsAction(value);
-      setIsSearching(false);
-      if (result.data) {
-        setSearchResults(result.data);
-        setSearchOpen(true);
-      }
-    }, 300);
   }, []);
+
+  useEffect(() => {
+    const trimmed = debouncedSearchQuery.trim();
+    if (!trimmed) return;
+    let cancelled = false;
+    setIsSearching(true);
+    searchLeadsAction(trimmed)
+      .then((result) => {
+        if (cancelled) return;
+        setIsSearching(false);
+        if (result.data) {
+          setSearchResults(result.data);
+          setSearchOpen(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setIsSearching(false);
+      });
+    return () => { cancelled = true; };
+  }, [debouncedSearchQuery]);
 
   function selectLead(lead: LeadSearchResult) {
     setSelectedLead(lead);
@@ -194,17 +176,7 @@ export function CreateGiaTaskModal({
 
         {/* 1. Lead search */}
         <div>
-          <label
-            style={{
-              display:      'block',
-              fontSize:     'var(--text-xs)',
-              fontWeight:   'var(--weight-medium)',
-              color:        'var(--theme-text-secondary)',
-              marginBottom: 'var(--space-2)',
-            }}
-          >
-            Lead
-          </label>
+          <FieldLabel style={{ marginBottom: 'var(--space-2)' }}>Lead</FieldLabel>
 
           {selectedLead ? (
             <div
@@ -375,105 +347,28 @@ export function CreateGiaTaskModal({
 
         {/* 2. Task type */}
         <div>
-          <label
-            style={{
-              display:      'block',
-              fontSize:     'var(--text-xs)',
-              fontWeight:   'var(--weight-medium)',
-              color:        'var(--theme-text-secondary)',
-              marginBottom: 'var(--space-2)',
-            }}
-          >
-            Task Type
-          </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-            {TASK_TYPES.map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setTaskType(type)}
-                style={{
-                  display:      'flex',
-                  alignItems:   'center',
-                  gap:          'var(--space-2)',
-                  padding:      'var(--space-2) var(--space-3)',
-                  borderRadius: 'var(--radius-md)',
-                  border:       taskType === type
-                    ? '1px solid var(--theme-accent)'
-                    : '1px solid var(--theme-paper-border)',
-                  background:   taskType === type ? 'var(--theme-accent-surface)' : 'transparent',
-                  color:        taskType === type ? 'var(--theme-accent)' : 'var(--theme-text-primary)',
-                  fontSize:     'var(--text-sm)',
-                  cursor:       'pointer',
-                  textAlign:    'left',
-                  transition:   'all var(--duration-fast) var(--ease-in-out)',
-                }}
-              >
-                {TASK_TYPE_LABELS[type]}
-              </button>
-            ))}
-          </div>
+          <FieldLabel style={{ marginBottom: 'var(--space-2)' }}>Task Type</FieldLabel>
+          <TaskTypeField value={taskType} onChange={setTaskType} disabled={isPending} />
         </div>
 
         {/* 3. Priority */}
         <div>
-          <label
-            style={{
-              display:      'block',
-              fontSize:     'var(--text-xs)',
-              fontWeight:   'var(--weight-medium)',
-              color:        'var(--theme-text-secondary)',
-              marginBottom: 'var(--space-2)',
-            }}
-          >
-            Priority
-          </label>
-          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            {(['urgent', 'high', 'normal'] as TaskPriority[]).map((p) => (
-              <PriorityChip
-                key={p}
-                label={p.charAt(0).toUpperCase() + p.slice(1)}
-                active={priority === p}
-                onClick={() => setPriority(p)}
-              />
-            ))}
-          </div>
+          <FieldLabel style={{ marginBottom: 'var(--space-2)' }}>Priority</FieldLabel>
+          <PriorityChipRow value={priority} onChange={setPriority} disabled={isPending} />
         </div>
 
         {/* 4. Due date + time */}
-        <div>
-          <label
-            style={{
-              display:      'block',
-              fontSize:     'var(--text-xs)',
-              fontWeight:   'var(--weight-medium)',
-              color:        'var(--theme-text-secondary)',
-              marginBottom: 'var(--space-2)',
-            }}
-          >
-            Due Date &amp; Time
-          </label>
-          <DatePicker
-            value={dueAt}
-            onChange={setDueAt}
-            showTime
-            placeholder="Pick date and time"
-          />
-        </div>
+        <DueDateField
+          label="Due Date & Time"
+          date={dueAt}
+          onDateChange={setDueAt}
+          placeholder="Pick date and time"
+          disabled={isPending}
+        />
 
         {/* 5. Notes */}
         <div>
-          <label
-            style={{
-              display:      'block',
-              fontSize:     'var(--text-xs)',
-              fontWeight:   'var(--weight-medium)',
-              color:        'var(--theme-text-secondary)',
-              marginBottom: 'var(--space-2)',
-            }}
-          >
-            Notes <span style={{ fontWeight: 'var(--weight-normal)', color: 'var(--theme-text-tertiary)' }}>(optional)</span>
-          </label>
+          <FieldLabel style={{ marginBottom: 'var(--space-2)' }} optional>Notes</FieldLabel>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -498,11 +393,7 @@ export function CreateGiaTaskModal({
         </div>
 
         {/* Error */}
-        {error && (
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger)', margin: 0 }}>
-            {error}
-          </p>
-        )}
+        <FieldError message={error} />
       </div>
     </Modal>
   );

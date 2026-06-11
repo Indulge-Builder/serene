@@ -1,63 +1,22 @@
 // Skeleton — deals page chrome: header + filter bar + summary strip + deal card rows.
-// Mirrors deals/page.tsx: p-8, header row, filter bar, then DealsSkeleton shape.
+// Header/filter blocks come from the shared scaffold (PageSkeletons); the summary
+// strip and flat deal rows are page-specific.
+
+import {
+  PageHeaderSkeleton,
+  FilterBarSkeleton,
+  Shimmer,
+  skeletonStagger,
+} from '@/components/ui/PageSkeletons';
 
 export default function DealsLoading() {
   return (
     <main className="flex-1 p-8">
-      {/* Row 1 — Page header */}
-      <div
-        style={{
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: 'space-between',
-          gap:            'var(--space-4)',
-          marginBottom:   'var(--space-6)',
-        }}
-      >
-        <div
-          className="skeleton"
-          style={{ width: '72px', height: '36px', borderRadius: 'var(--radius-sm)' }}
-        />
-        <div
-          className="skeleton"
-          style={{ width: '110px', height: '36px', borderRadius: 'var(--radius-sm)' }}
-        />
-      </div>
+      <PageHeaderSkeleton titleWidth={72} actionWidth={110} />
 
-      {/* Row 2 — Filter bar */}
-      <div
-        style={{
-          padding:      'var(--space-4) var(--space-5)',
-          marginBottom: 'var(--space-4)',
-          borderRadius: 'var(--radius-md)',
-          border:       '1px solid var(--theme-paper-border)',
-          background:   'var(--theme-paper)',
-          boxShadow:    'var(--shadow-1)',
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-3)',
-        }}
-      >
-        <div
-          className="skeleton"
-          style={{ width: '220px', height: '36px', borderRadius: 'var(--radius-sm)', flexShrink: 0 }}
-        />
-        {[88, 96, 80].map((w, i) => (
-          <div
-            key={i}
-            className="skeleton"
-            style={{
-              width:          `${w}px`,
-              height:         '36px',
-              borderRadius:   'var(--radius-md)',
-              flexShrink:     0,
-              animationDelay: `${i * 40}ms`,
-            }}
-          />
-        ))}
-      </div>
+      <FilterBarSkeleton chips={[88, 96, 80]} />
 
-      {/* Row 3 — Summary strip (4 stat chips) */}
+      {/* Summary strip (4 stat chips) — page-specific */}
       <div
         style={{
           display:      'flex',
@@ -85,30 +44,16 @@ export default function DealsLoading() {
               borderRight:    i < 3 ? '1px solid var(--theme-paper-border)' : 'none',
             }}
           >
-            <div
-              className="skeleton"
-              style={{ width: '80px', height: '28px', borderRadius: 'var(--radius-sm)', animationDelay: `${i * 40}ms` }}
-            />
-            <div
-              className="skeleton"
-              style={{ width: '60px', height: '10px', borderRadius: 'var(--radius-sm)', animationDelay: `${i * 40}ms` }}
-            />
+            <Shimmer w={80} h={28} delay={i * 40} />
+            <Shimmer w={60} h={10} delay={i * 40} />
           </div>
         ))}
       </div>
 
-      {/* Row 4 — Deal card rows */}
+      {/* Deal card rows */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <div
-            key={i}
-            className="skeleton"
-            style={{
-              height:         '80px',
-              borderRadius:   'var(--radius-md)',
-              animationDelay: `${Math.min(i * 80, 320)}ms`,
-            }}
-          />
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Shimmer key={i} h={80} r="var(--radius-md)" delay={skeletonStagger(i)} />
         ))}
       </div>
     </main>

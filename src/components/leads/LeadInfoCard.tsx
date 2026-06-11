@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import {
   User,
   Phone,

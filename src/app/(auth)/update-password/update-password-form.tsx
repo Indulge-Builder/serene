@@ -24,14 +24,16 @@ export function UpdatePasswordForm() {
       >
         {/* Unified brand header */}
         <div className="flex flex-col items-center gap-3 mb-10">
-          <Image
-            src="/logo.webp"
-            alt="Indulge"
-            width={48}
-            height={48}
-            priority
-            style={{ borderRadius: "var(--radius-sm)" }}
-          />
+          <div className="eia-auth-logo-medallion">
+            <Image
+              src="/logo.webp"
+              alt="Indulge"
+              width={48}
+              height={48}
+              priority
+              style={{ borderRadius: "var(--radius-sm)" }}
+            />
+          </div>
           <h1
             style={{
               fontFamily: "var(--font-serif)",

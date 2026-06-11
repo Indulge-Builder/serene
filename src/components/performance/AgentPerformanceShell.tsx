@@ -1,15 +1,40 @@
 'use client';
 
 import { useState, useEffect, useRef, useTransition } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import dynamic from 'next/dynamic';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { DatePicker } from '@/components/ui/DatePicker';
-import { CoreFourGrid } from './CoreFourGrid';
 import { EffortGrid } from './EffortGrid';
-import { CallOutcomeBar } from './CallOutcomeBar';
 import { getAgentSelfMetricsAction, type AgentSelfMetrics } from '@/lib/actions/performance';
-import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
 import type { PerformancePeriod } from '@/lib/services/performance-service';
+
+// Recharts stays out of the /performance initial chunk (perf audit G-3): the
+// shell, period selector, and effort cards hydrate first; the two chart panels
+// stream in behind same-shape placeholders (the MetricsSkeleton row shapes).
+const CoreFourGrid = dynamic(
+  () => import('./CoreFourGrid').then((mod) => mod.CoreFourGrid),
+  { loading: () => <KpiRowFallback /> },
+);
+const CallOutcomeBar = dynamic(
+  () => import('./CallOutcomeBar').then((mod) => mod.CallOutcomeBar),
+  { loading: () => <OutcomeBarFallback /> },
+);
+
+function KpiRowFallback() {
+  return (
+    <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="skeleton" style={{ flex: 1, height: '168px', borderRadius: 'var(--radius-lg)' }} />
+      ))}
+    </div>
+  );
+}
+
+function OutcomeBarFallback() {
+  return <div className="skeleton" style={{ height: '200px', borderRadius: 'var(--radius-lg)' }} />;
+}
 
 // ─────────────────────────────────────────────
 // Types
@@ -164,11 +189,7 @@ function MetricsSkeleton() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
       {/* 4 KPI cards */}
-      <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
-        {[1,2,3,4].map((i) => (
-          <div key={i} className="skeleton" style={{ flex: 1, height: '168px', borderRadius: 'var(--radius-lg)' }} />
-        ))}
-      </div>
+      <KpiRowFallback />
       {/* 4 effort cards */}
       <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
         {[1,2,3,4].map((i) => (
@@ -176,7 +197,7 @@ function MetricsSkeleton() {
         ))}
       </div>
       {/* outcome bar */}
-      <div className="skeleton" style={{ height: '200px', borderRadius: 'var(--radius-lg)' }} />
+      <OutcomeBarFallback />
     </div>
   );
 }
@@ -225,7 +246,7 @@ function TodayTab({
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-medium)', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--theme-text-tertiary)' }}>
             Calls Today
           </span>
-          <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-5xl)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
+          <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-display)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
             {callsToday}
           </span>
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
@@ -249,7 +270,7 @@ function TodayTab({
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-medium)', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--theme-text-tertiary)' }}>
             Notes Today
           </span>
-          <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-5xl)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
+          <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-display)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
             {notesToday}
           </span>
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
@@ -490,7 +511,7 @@ export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props)
               initial={{ scaleX: 0, opacity: 1 }}
               animate={{ scaleX: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.9, ease: [0.4, 0, 0.2, 1] }}
+              transition={{ duration: PAGE_DURATION, ease: EASE_IN_OUT }}
               style={{
                 position:        'absolute',
                 top:             0,

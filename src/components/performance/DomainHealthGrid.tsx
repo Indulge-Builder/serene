@@ -3,6 +3,7 @@
 // Layout: 2-col grid for 2+ cards; 1-col for a single-domain (manager) view.
 
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
+import { formatPercent } from '@/lib/utils/numbers';
 import type { DomainHealthCard } from '@/lib/types/index';
 import type { PerformancePeriod } from '@/lib/services/performance-service';
 
@@ -40,9 +41,7 @@ function DomainCard({ card }: { card: DomainHealthCard }) {
   const badgeBg    = conversionBadgeBg(card.conversionRate);
   const badgeText  = conversionBadgeText(card.conversionRate);
   const pipeline   = card.inDiscussion + card.nurturing;
-  const rateLabel  = card.conversionRate !== null
-    ? `${card.conversionRate.toFixed(0)}%`
-    : '—';
+  const rateLabel  = formatPercent(card.conversionRate, { multiplied: true, decimals: 0 });
 
   return (
     <div

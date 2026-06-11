@@ -1,5 +1,53 @@
 # Actions CLAUDE.md
 
+## requireProfile — THE session/role guard (Rule 09 / A-18)
+
+Every session-based action begins with the guard from `_auth.ts` — never a hand-written
+`getCurrentProfile()` + role-`includes` block:
+
+```ts
+import { requireProfile } from "@/lib/actions/_auth";
+
+const auth = await requireProfile(["manager", "admin", "founder"]); // roles optional
+if (!auth.ok) return auth.result;            // { data: null, error: formErrors.unauthorized }
+const caller = auth.profile;                 // only when the action uses it
+```
+
+- `auth.result` is assignable to any `ActionResult<T>`. Actions returning bare arrays /
+  custom shapes ignore it and return their own empty value on `!auth.ok`.
+- Both failure modes (no session, role denied) return the same unified
+  `formErrors.unauthorized` copy — never reveal which check failed.
+- Per-resource access checks (lead `hasAccess`, `canMutateTask`, manager-domain checks)
+  stay in the action after the guard — the guard only answers "who is calling, and is
+  their role allowed at all".
+
+**Exceptions — do NOT migrate these onto requireProfile:**
+
+| Site | Why |
+|---|---|
+| `sla.ts` (all actions) | Trigger.dev context — no session exists; correctly uses `createAdminClient()` (dry-audit Corrections #1) |
+| `auth.ts` `loginAction` | reads the profile for the post-login `is_active` check, not authorization |
+| `tasks.ts` `updateTaskStatusAction` / `updateTaskAction` / `updateChecklistAction` / `updateTaskTagsAction` | fetch profile + task in one parallel `Promise.all` — the guard would serialize two independent round-trips |
+
+## Lead cache invalidation — invalidateLeadCaches (P-08)
+
+Every lead-mutating action invalidates Redis via `invalidateLeadCaches(site, lead, scope)`
+from `src/lib/services/lead-cache.ts` (awaited, before `revalidatePath`). The dual-key row
+invariant and the await-inside-try/catch convention live in the helper — never hand-assemble
+a `redis.del` block in a lead action. See the helper header and root `CLAUDE.md` Pattern Notes.
+
+## Assignable users — one pipeline (dry-audit M-11)
+
+`getAssignableUsersAction(domain?)` in `actions/profiles.ts` is THE client-callable
+"who can I assign this to?" read. It wraps `getAssignableUsers({ domain?, agentsOnly? })`
+(`lib/services/profiles-service.ts`) and returns the canonical `AssignableUser` type from
+`lib/types`. No domain → all active non-guest users, any role/domain (subtask pickers, all
+roles). With domain → admin/founder get every active user in that domain; everyone else gets
+that domain's agents only. The old forks (`listAgentsForDomain` in `leads.ts`, a second
+`getAssignableUsersAction` in `tasks.ts`, `getAgentsForDomain`/`getActiveUsersForDomain` in
+`leads-service.ts`) are deleted — never re-add a parallel agents/users list; extend the
+options instead. RSC call sites (leads pages, `TasksAsync`) call the service directly.
+
 ## Founder WhatsApp alert — call-site pattern
 
 `sendFounderLeadNotification(domain, agentName, leadName, leadPhone, leadId?)` must be called

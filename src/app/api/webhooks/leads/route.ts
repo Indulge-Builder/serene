@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createRateLimiter, getClientIp, readJsonBody, safeSecretCompare } from '@/lib/utils/webhook';
 import { ingestLead, sanitizeRawPayload } from '@/lib/services/lead-ingestion';
 import { notifyLeadAssigned } from '@/lib/services/lead-assignment-notify';
 import { LEAD_SOURCES, type LeadSource } from '@/lib/constants/lead-sources';
@@ -12,23 +13,8 @@ const LEAD_SOURCES_SET = new Set<string>(LEAD_SOURCES);
 // their log inserts without risking the lambda being killed mid-send.
 export const maxDuration = 60;
 
-// ─────────────────────────────────────────────
-// Rate limiting state (in-memory, per worker)
-// ─────────────────────────────────────────────
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 100;
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > RATE_LIMIT_MAX;
-}
+// Rate limiting — in-memory, per worker (shared factory in utils/webhook.ts)
+const isRateLimited = createRateLimiter({ windowMs: 60_000, max: 100 });
 
 // Logs the raw payload immediately, before any auth or processing.
 // Returns the raw log row id so ingestLead can backfill lead_id or mark an error.
@@ -88,18 +74,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // 1. Rate limit — drop before reading body to avoid amplification
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  if (isRateLimited(ip)) {
+  if (isRateLimited(getClientIp(request))) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
   }
 
   // 2. Parse body — log immediately so no payload is ever lost, even on auth failure
-  let rawPayload: unknown;
-  try {
-    rawPayload = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
+  const parsed = await readJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const rawPayload = parsed.body;
 
   const rawPayloadId = await logRawPayload(rawPayload, source);
 
@@ -111,7 +93,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const authHeader = request.headers.get('authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token || token !== webhookSecret) {
+  if (!safeSecretCompare(token, webhookSecret)) {
     // Payload is already logged — mark it so it's distinguishable from a success
     if (rawPayloadId) {
       const supabase = createAdminClient();

@@ -1,3 +1,8 @@
+// Pulse: the canonical `.skeleton` class via <Shimmer> (eia-skeleton-pulse,
+// design-tokens.css §11.1) — never a private keyframe (design audit M-10).
+
+import { Shimmer, skeletonStagger } from '@/components/ui/PageSkeletons';
+
 export function ErrorLogTableSkeleton() {
   // Rule V-08: skeleton never shown for less than 150ms — enforced by the parent Suspense boundary.
   const rows     = Array.from({ length: 6 });
@@ -23,16 +28,13 @@ export function ErrorLogTableSkeleton() {
           background:   'var(--theme-paper-subtle)',
         }}
       >
-        {[{ w: '14rem' }, { w: '8rem' }].map(({ w }, i) => (
-          <div
+        {['14rem', '8rem'].map((w, i) => (
+          <Shimmer
             key={i}
-            style={{
-              width:        w,
-              height:       '2.25rem',
-              borderRadius: 'var(--radius-sm)',
-              background:   'var(--theme-paper-border)',
-              animation:    'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            }}
+            w={w}
+            h="2.25rem"
+            delay={skeletonStagger(i)}
+            style={{ background: 'var(--theme-paper-border)' }}
           />
         ))}
       </div>
@@ -48,15 +50,13 @@ export function ErrorLogTableSkeleton() {
         }}
       >
         {colWidths.map((w, i) => (
-          <div
+          <Shimmer
             key={i}
-            style={{
-              width:        w,
-              height:       '0.625rem',
-              borderRadius: 'var(--radius-full)',
-              background:   'var(--theme-paper-border)',
-              animation:    'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            }}
+            w={w}
+            h="0.625rem"
+            r="var(--radius-full)"
+            delay={skeletonStagger(i)}
+            style={{ background: 'var(--theme-paper-border)' }}
           />
         ))}
       </div>
@@ -82,27 +82,17 @@ export function ErrorLogTableSkeleton() {
             `${55 + (rowIdx % 3) * 9}%`,
             `${40 + (rowIdx % 4) * 6}%`,
           ].map((pct, colIdx) => (
-            <div
+            <Shimmer
               key={colIdx}
-              style={{
-                width:        colWidths[colIdx],
-                maxWidth:     pct,
-                height:       '1rem',
-                borderRadius: 'var(--radius-full)',
-                background:   'var(--theme-paper-subtle)',
-                animation:    'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              }}
+              w={colWidths[colIdx]}
+              h="1rem"
+              r="var(--radius-full)"
+              delay={skeletonStagger(rowIdx)}
+              style={{ maxWidth: pct }}
             />
           ))}
         </div>
       ))}
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50%       { opacity: 0.5; }
-        }
-      `}</style>
     </div>
   );
 }

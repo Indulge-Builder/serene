@@ -1,6 +1,65 @@
 @import "../styles/design-tokens.css";
 @import "tailwindcss";
 
+/* ── Tailwind v4 default-theme isolation (design audit §3.3 / Phase 4.2) ──────
+   Tailwind's default @theme emits variables that collide with — or silently
+   gap-fill — namespaces Eia owns (an off-scale `var(--text-4xl)` once rendered
+   only because Tailwind defined it; audit H-04). For the namespaces Eia owns,
+   the Tailwind defaults are wiped and re-registered from Eia's scale below, so:
+   - utilities like `text-xs` / `rounded-md` resolve from Eia's tokens, with no
+     mismatched Tailwind line-height companions; and
+   - a `var(--…)` name outside Eia's scale has no silent Tailwind fallback —
+     the declaration drops, and `npm run check:tokens` fails it in CI.
+   Values MIRROR design-tokens.css — that file stays the source of truth; if a
+   step changes there, change it here too. (The un-layered design-tokens.css
+   definitions win the cascade either way; this block exists for utility
+   generation and namespace hygiene, not for resolution.) */
+@theme {
+  --text-*: initial;
+  --leading-*: initial;
+  --tracking-*: initial;
+  --radius-*: initial;
+
+  /* Type scale (design-tokens.css §8) */
+  --text-2xs: 0.625rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-md: 1.125rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 1.875rem;
+  --text-3xl: 2.25rem;
+  --text-display: 3rem;
+  --text-giant: 4rem;
+
+  /* Line height */
+  --leading-none: 1;
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+  --leading-loose: 1.8;
+
+  /* Letter spacing */
+  --tracking-tighter: -0.03em;
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.04em;
+  --tracking-wider: 0.08em;
+  --tracking-widest: 0.14em;
+
+  /* Radius scale (design-tokens.css §10) */
+  --radius-none: 0;
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+  --radius-full: 9999px;
+}
+
 *,
 *::before,
 *::after {
@@ -15,7 +74,7 @@ html {
 
 body {
   background-color: var(--theme-canvas);
-  color: rgb(255 255 255 / 0.9);
+  color: var(--theme-canvas-text);
   min-height: 100vh;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -29,7 +88,7 @@ body {
   background-color: var(--theme-canvas);
 }
 
-/* Optional atmosphere (auth, marketing). Not used on the dashboard shell. */
+/* Atmosphere (mounted on the auth shell; marketing later). Never the dashboard shell. */
 .layout-canvas {
   background-color: var(--theme-canvas);
   background-image:
@@ -85,26 +144,26 @@ body {
 @keyframes eia-orb-float-a {
   0%,
   100% {
-    transform: translate(0px, 0px);
+    transform: translate(0px, 0px) scale(1);
   }
   33% {
-    transform: translate(28px, -22px);
+    transform: translate(28px, -22px) scale(1.05);
   }
   66% {
-    transform: translate(-18px, 26px);
+    transform: translate(-18px, 26px) scale(0.96);
   }
 }
 
 @keyframes eia-orb-float-b {
   0%,
   100% {
-    transform: translate(0px, 0px);
+    transform: translate(0px, 0px) scale(1);
   }
   40% {
-    transform: translate(-32px, 20px);
+    transform: translate(-32px, 20px) scale(0.95);
   }
   80% {
-    transform: translate(20px, -26px);
+    transform: translate(20px, -26px) scale(1.04);
   }
 }
 
@@ -141,12 +200,175 @@ body {
   will-change: transform;
 }
 
-/* Auth dark card — sits on canvas, not paper */
+/* Engraved mandala — 8-fold Seed-of-Life rosette under lamplight.
+   Eight circles of radius 290, centres on a ring of radius 290 at 45°
+   steps: every circle's edge passes exactly through the common central
+   point (no drawn central circle), forming eight symmetrical petals.
+   The point of convergence sits hidden behind the card — the visible
+   petal arcs frame it on every side. An outer ring at 2r closes the torus.
+   The geometry is an SVG alpha mask shared by two layers (black strokes =
+   alpha only, so colour stays token-driven): the static layer paints it in
+   quiet accent; the lit layer holds a conic beam that rotates INSIDE the
+   statically-masked element — an 8-fold pattern is not rotation-invariant,
+   so the mask must never rotate. The light moves; the geometry never does.
+   Wrapper owns the radial fade-out; transform + opacity only. */
+.eia-auth-mandala-wrap {
+  width: 1200px;
+  height: 1200px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  mask-image: radial-gradient(
+    circle,
+    rgba(0, 0, 0, 0.95) 0%,
+    rgba(0, 0, 0, 0.5) 50%,
+    transparent 80%
+  );
+  animation: eia-auth-fade-in 1.6s var(--ease-out-soft) both;
+}
+
+.eia-auth-mandala,
+.eia-auth-mandala-lit {
+  position: absolute;
+  inset: 0;
+  mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 1200'><g fill='none' stroke='black' stroke-width='2.25'><circle cx='890' cy='600' r='290'/><circle cx='805' cy='805' r='290'/><circle cx='600' cy='890' r='290'/><circle cx='395' cy='805' r='290'/><circle cx='310' cy='600' r='290'/><circle cx='395' cy='395' r='290'/><circle cx='600' cy='310' r='290'/><circle cx='805' cy='395' r='290'/><circle cx='600' cy='600' r='580' stroke-opacity='0.55'/></g></svg>");
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+}
+
+.eia-auth-mandala {
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+}
+
+/* Beam child overflows symmetrically (inset -22%) so the rotating square
+   always covers the inscribed rosette; mask-clip border-box on the parent
+   crops the overflow for free. */
+.eia-auth-mandala-beam {
+  position: absolute;
+  inset: -22%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    color-mix(in srgb, var(--theme-accent) 30%, transparent) 26deg,
+    transparent 82deg
+  );
+  animation: eia-mandala-sweep 120s linear infinite;
+  will-change: transform;
+}
+
+@keyframes eia-mandala-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes eia-auth-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Card entrance — the scene composes itself: atmosphere develops over 1.6s,
+   the card rises into place once. Page-level entrance, so --duration-page. */
+@keyframes eia-auth-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+}
+
+/* Auth dark card — the jewel box at the centre of the mandala.
+   Border: gradient hairline, accent-kissed at the top arc, falling to the
+   plain sidebar border — light from above, painted border-box under a
+   transparent border (this is a lighting treatment on the full ring, not
+   a single-edge category strip).
+   Surface: lamplight wash at top centre where the brand lives.
+   Shadow: --shadow-3 plus a wide accent bloom beneath — the card sits in
+   the mandala's light, not pasted over it. */
 .eia-auth-card {
-  background: var(--theme-sidebar-hover-bg);
-  border: 1px solid var(--theme-sidebar-border);
+  background:
+    radial-gradient(
+        ellipse 130% 55% at 50% -10%,
+        color-mix(in srgb, var(--theme-accent) 7%, transparent),
+        transparent 60%
+      )
+      padding-box,
+    linear-gradient(var(--theme-sidebar-hover-bg), var(--theme-sidebar-hover-bg))
+      padding-box,
+    linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--theme-accent) 32%, var(--theme-sidebar-border)),
+        var(--theme-sidebar-border) 45%
+      )
+      border-box;
+  border: 1px solid transparent;
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-3);
+  box-shadow:
+    var(--shadow-3),
+    0 30px 90px -30px color-mix(in srgb, var(--theme-accent) 18%, transparent);
+  animation: eia-auth-card-enter var(--duration-page) var(--ease-out-expo) both;
+}
+
+/* Entrance choreography — the card rises, its contents settle just after.
+   Direct children only (brand header, form, footer link); 60ms steps,
+   everything at rest by ~600ms. */
+.eia-auth-card > * {
+  animation: eia-auth-child-enter var(--duration-enter) var(--ease-out-expo) both;
+}
+.eia-auth-card > *:nth-child(1) {
+  animation-delay: 80ms;
+}
+.eia-auth-card > *:nth-child(2) {
+  animation-delay: 140ms;
+}
+.eia-auth-card > *:nth-child(3) {
+  animation-delay: 200ms;
+}
+
+@keyframes eia-auth-child-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Logo medallion — the mandala's innermost ring, made tangible. The
+   rosette's point of convergence hides behind the card; this ring is
+   its echo on the surface. */
+.eia-auth-logo-medallion {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  background: radial-gradient(
+    circle at 50% 35%,
+    color-mix(in srgb, var(--theme-accent) 10%, transparent),
+    transparent 72%
+  );
+  box-shadow: 0 0 28px color-mix(in srgb, var(--theme-accent) 12%, transparent);
+}
+
+/* Reduced motion: kill movement, keep the comprehension-aiding fades.
+   Must follow the base rules above — equal specificity, cascade decides. */
+@media (prefers-reduced-motion: reduce) {
+  .eia-auth-orb-a,
+  .eia-auth-orb-b,
+  .eia-auth-mandala-beam {
+    animation: none;
+  }
+  .eia-auth-card {
+    animation: eia-auth-fade-in var(--duration-base) var(--ease-in-out) both;
+  }
+  .eia-auth-card > * {
+    animation: none;
+  }
 }
 
 /* Auth dark input — canvas-surface field for dark card forms */
@@ -170,6 +392,11 @@ body {
 .eia-input-auth:focus {
   border-color: var(--theme-accent);
   box-shadow: 0 0 0 3px var(--theme-accent-surface);
+}
+@media (hover: hover) and (pointer: fine) {
+  .eia-input-auth:hover:not(:focus) {
+    border-color: color-mix(in srgb, var(--theme-accent) 18%, var(--theme-sidebar-border));
+  }
 }
 
 /* Auth link — accent-coloured, subtle at rest */

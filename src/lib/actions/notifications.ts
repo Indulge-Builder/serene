@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { requireProfile } from "@/lib/actions/_auth";
 import {
   markNotificationRead,
   markAllNotificationsRead,
@@ -37,10 +37,9 @@ export async function markNotificationReadAction(
   }
 
   // Session auth — Rule 09
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return { data: null, error: "Not authenticated." };
-  }
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const profile = auth.profile;
 
   const { error } = await markNotificationRead(parsed.data.id, profile.id);
   if (error) return { data: null, error };
@@ -60,10 +59,9 @@ export async function markAllReadAction(): Promise<ActionResult<{ success: true 
   }
 
   // Session auth — Rule 09
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return { data: null, error: "Not authenticated." };
-  }
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const profile = auth.profile;
 
   const { error } = await markAllNotificationsRead(profile.id);
   if (error) return { data: null, error };

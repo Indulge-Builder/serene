@@ -11,9 +11,11 @@ tasks/page.tsx          ← thin orchestrator (session read + URL parse only —
 
 **`page.tsx` rule:** Zero data-fetching calls in the page component body. Only `getCurrentProfile()` and `searchParams` parse. If this rule is violated, the Suspense boundary is broken and the skeleton never renders.
 
-**`TasksAsync.tsx`:** Async server component — the ONLY component in the tasks tree allowed to call `getPersonalTasks`, `getGroupTasks`, `getAgentsForDomain`, or `getPersonalTaskTags`. Returns serialisable plain objects to `TasksShell` (no service references, no Promises, no class instances cross the server→client boundary).
+**`TasksAsync.tsx`:** Async server component — the ONLY component in the tasks tree allowed to call `getPersonalTasks`, `getGroupTasks`, `getAssignableUsers`, or `getPersonalTaskTags`. Returns serialisable plain objects to `TasksShell` (no service references, no Promises, no class instances cross the server→client boundary).
 
-**SSR hoists (perf — 2026-06-01):** `TasksAsync` fetches `initialAgents` (from `getAgentsForDomain`) and `initialTags` (from `getPersonalTaskTags`) in parallel with the active tab data. These are passed as props to `TasksShell`, then threaded to `GroupTasksTab` and `MyTasksCalendarView`. Neither component calls `listAgentsForDomain` or `getPersonalTaskTagsAction` on mount — the SSR data is always present. The `onTagsMayHaveChanged` callback in `TasksShell` still calls `getPersonalTaskTagsAction` for post-create tag refresh, which is correct — that is a user-triggered update, not a mount fetch.
+**SSR hoists (perf — 2026-06-01, single-wave 2026-06-11):** `TasksAsync` fetches `initialAgents` (from `getAssignableUsers()` in profiles-service), `initialTags` (from `getPersonalTaskTags` — **personal tab only**, perf audit E-2), and the active tab's data in ONE `Promise.all` (perf audit E-1) — never re-split into sequential waves. These are passed as props to `TasksShell`, then threaded to `GroupTasksTab` and `MyTasksCalendarView`. Neither component calls `getAssignableUsersAction` or `getPersonalTaskTagsAction` on mount — the SSR data is always present. The `onTagsMayHaveChanged` callback in `TasksShell` still calls `getPersonalTaskTagsAction` for post-create tag refresh, which is correct — that is a user-triggered update, not a mount fetch.
+
+**`personalTagItems` re-seed effect (required by E-2):** `TasksShell` never remounts on tab switches (per-tab filter state must survive), so its mount-time `useState(initialTags)` seed alone would freeze the tag filter at `[]` for a user who lands on gia/group and switches to My Tasks. A `useEffect` re-seeds `personalTagItems` from the `initialTags` prop whenever `initialTab === 'personal'`. Do not remove it, and do not widen the tags fetch back to all tabs to "fix" stale tags — the effect is the fix.
 
 **`TasksSkeleton.tsx`:** `<Suspense>` fallback. Two variants: `personal` (3 priority sections × 5 task rows) and `group` (4 group cards). Stagger delays: 0/80/160/240/320ms per §11.4. Uses `var(--theme-paper-subtle)` for shimmer — never hardcoded colours.
 
@@ -30,7 +32,7 @@ tasks/page.tsx          ← thin orchestrator (session read + URL parse only —
 
 `MyTasksCalendarView` (active UI) does **not** show completed tasks in the main list or calendar dots. Completing a task removes it from the active set via `useTaskCompletionToggle` + local state.
 
-`PersonalTasksTab` (legacy, unmounted) used a lazy-loaded COMPLETED accordion — do not copy that pattern into `MyTasksCalendarView`.
+The legacy `PersonalTasksTab` (deleted 2026-06-11, design-audit Phase 3) used a lazy-loaded COMPLETED accordion — do not recreate that pattern in `MyTasksCalendarView`.
 
 ## Redis cache-aside — active on 3 tab-load functions (2026-06-02)
 
@@ -67,7 +69,7 @@ Note: Gia task list (`task:gia:*`) has no explicit invalidation — TTL-only (60
 ## getGroupTasks cache
 
 `getGroupTasks` uses React `cache()` for per-request memoisation. It cannot use `unstable_cache`
-because `createClient()` calls `cookies()`, which Next.js forbids inside `unstable_cache` closures.
+because `createClient()` calls `cookies()`, which Next.js forbids inside `unstable_cache` closures (P-09).
 
 After mutations, `createGroupTaskAction` and `createSubtaskAction` call `revalidatePath('/tasks')`
 to invalidate the RSC cache and trigger a fresh fetch on the next request.
@@ -151,14 +153,14 @@ All shell components (`TasksAsync`, `TasksShell`, `AddTaskButton`, `TasksSkeleto
 
 | Prop | Type | Source | Consumer |
 | --- | --- | --- | --- |
-| `initialAgents` | `AgentSlim[]` | `getAgentsForDomain(callerDomain)` in `TasksAsync` | `GroupTasksTab`, `MyTasksCalendarView` |
+| `initialAgents` | `AssignableUser[]` | `getAssignableUsers()` in `TasksAsync` | `GroupTasksTab`, `MyTasksCalendarView` |
 | `initialTags` | `string[]` | `getPersonalTaskTags(userId)` in `TasksAsync` (personal tab only) | `personalTagItems` state seed |
 
-`AgentSlim` is exported from `TasksAsync.tsx`: `{ id: string; full_name: string; avatar_url: string | null; role: 'agent'; domain: AppDomain }`.
+`AssignableUser` is the canonical type from `@/lib/types` (dry-audit M-4): `Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'role' | 'domain'>`. The old `AgentSlim` export on `TasksAsync.tsx` is gone.
 
 **Rules:**
 
-- `GroupTasksTab` and `MyTasksCalendarView` must NOT call `listAgentsForDomain` on mount. They receive `initialAgents` as a prop.
+- `GroupTasksTab` and `MyTasksCalendarView` must NOT call `getAssignableUsersAction` on mount. They receive `initialAgents` as a prop.
 - `getPersonalTaskTagsAction` is still called from `onTagsMayHaveChanged` (post-create tag refresh) — this is a user-triggered update, not a mount fetch. Do not remove it.
 - `getPersonalTaskTagsAction` import in `TasksShell` is retained for the `onTagsMayHaveChanged` callback only.
 

@@ -14,15 +14,16 @@ import {
 } from "@/lib/validations/profile-schema";
 import { formErrors } from "@/lib/validations/form-errors";
 import {
-  getCurrentProfile,
   updateProfileFields,
   updateAuthorization,
   setProfileActive,
   isUsernameTaken,
+  getAssignableUsers,
 } from "@/lib/services/profiles-service";
+import { requireProfile } from "@/lib/actions/_auth";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { normalizeToE164 } from "@/lib/utils/phone";
-import type { ActionResult, Profile } from "@/lib/types";
+import type { ActionResult, Profile, AppDomain, AssignableUser } from "@/lib/types";
 import { ROLES_CAN_CREATE_USER } from "@/lib/constants/roles";
 
 // ─────────────────────────────────────────────────────────
@@ -51,10 +52,8 @@ export async function createUser(
   }
 
   // Rule 09 — authorization reads from public.profiles only.
-  const caller = await getCurrentProfile();
-  if (!caller || !ROLES_CAN_CREATE_USER.includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
-  }
+  const auth = await requireProfile(ROLES_CAN_CREATE_USER);
+  if (!auth.ok) return auth.result;
 
   const { full_name, email, password, role, domain, job_title, phone } = parsed.data;
 
@@ -133,8 +132,9 @@ export async function updateProfile(
     return { data: null, error: mapProfileError(code) };
   }
 
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const isOwnProfile = caller.id === parsed.data.id;
   const isPrivileged = ["admin", "founder"].includes(caller.role);
@@ -200,10 +200,8 @@ export async function updateUserAuthorization(
     return { data: null, error: mapProfileError(code) };
   }
 
-  const caller = await getCurrentProfile();
-  if (!caller || !["admin", "founder"].includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
-  }
+  const auth = await requireProfile(["admin", "founder"]);
+  if (!auth.ok) return auth.result;
 
   const result = await updateAuthorization(
     parsed.data.id,
@@ -235,10 +233,8 @@ export async function toggleUserActive(
     return { data: null, error: formErrors.generic };
   }
 
-  const caller = await getCurrentProfile();
-  if (!caller || !["admin", "founder"].includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
-  }
+  const auth = await requireProfile(["admin", "founder"]);
+  if (!auth.ok) return auth.result;
 
   const result = await setProfileActive(parsed.data.id, parsed.data.is_active);
   if (result.error) return { data: null, error: formErrors.generic };
@@ -270,10 +266,8 @@ export async function inviteUser(
     return { data: null, error: mapProfileError(code) };
   }
 
-  const caller = await getCurrentProfile();
-  if (!caller || !ROLES_CAN_CREATE_USER.includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
-  }
+  const auth = await requireProfile(ROLES_CAN_CREATE_USER);
+  if (!auth.ok) return auth.result;
 
   const { full_name, email, role, domain, job_title } = parsed.data;
 
@@ -323,8 +317,9 @@ export async function updateProfileAvatar(
     return { data: null, error: formErrors.generic };
   }
 
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const isOwnProfile = caller.id === parsed.data.id;
   const isPrivileged = ["admin", "founder"].includes(caller.role);
@@ -340,6 +335,27 @@ export async function updateProfileAvatar(
 
   revalidatePath("/profile");
   return { data: result.data, error: null };
+}
+
+// ─────────────────────────────────────────────────────────
+// getAssignableUsersAction
+// THE client-callable assignable-users read (dry-audit M-11).
+// No domain → all active non-guest users, any role, any domain
+// (subtask assignee pickers — available to all roles).
+// With domain → admin/founder get every active user in that domain;
+// everyone else gets that domain's agents only (assignment pools).
+// ─────────────────────────────────────────────────────────
+export async function getAssignableUsersAction(
+  domain?: AppDomain,
+): Promise<ActionResult<AssignableUser[]>> {
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+
+  const agentsOnly =
+    domain !== undefined && !["admin", "founder"].includes(auth.profile.role);
+
+  const users = await getAssignableUsers(domain ? { domain, agentsOnly } : {});
+  return { data: users, error: null };
 }
 
 // ─────────────────────────────────────────────────────────

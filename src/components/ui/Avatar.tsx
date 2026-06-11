@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { getInitials, hashString } from '@/lib/utils/strings';
 
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
@@ -43,28 +44,14 @@ const AVATAR_COLOUR_PAIRS: [string, string][] = [
   ['var(--color-neutral-light)', 'var(--color-neutral-text)'],
 ];
 
-function nameHash(name: string): number {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) {
-    h = (h * 31 + name.charCodeAt(i)) & 0xffff;
-  }
-  return h;
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-}
-
 export function Avatar({ src, alt, name = '', size = 'md', selected = false, className, style }: AvatarProps) {
   const px = SIZE_PX[size];
   const [imgError, setImgError] = React.useState(false);
+  const [imgLoaded, setImgLoaded] = React.useState(false);
 
   const showFallback = !src || imgError;
   const initials = getInitials(name);
-  const [bgColor, textColor] = AVATAR_COLOUR_PAIRS[nameHash(name) % AVATAR_COLOUR_PAIRS.length];
+  const [bgColor, textColor] = AVATAR_COLOUR_PAIRS[hashString(name) % AVATAR_COLOUR_PAIRS.length];
 
   // Compose box-shadow layers: caller shadow + selected ring must both paint.
   // CSS box-shadow accepts comma-separated layers — prepend caller's shadow so
@@ -98,7 +85,20 @@ export function Avatar({ src, alt, name = '', size = 'md', selected = false, cla
           src={src!}
           alt={alt ?? name}
           loading="lazy"
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          // Cached / pre-hydration images never fire onLoad after mount — the
+          // ref check covers them so the photo can't be stuck invisible.
+          ref={(el) => {
+            if (el?.complete && el.naturalWidth > 0) setImgLoaded(true);
+          }}
+          onLoad={() => setImgLoaded(true)}
+          style={{
+            width:      '100%',
+            height:     '100%',
+            objectFit:  'cover',
+            display:    'block',
+            opacity:    imgLoaded ? 1 : 0,
+            transition: 'opacity var(--duration-slow) var(--ease-in-out)',
+          }}
           onError={() => setImgError(true)}
         />
       ) : (

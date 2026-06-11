@@ -1,14 +1,16 @@
 'use client';
 
 import {
+  memo,
   useCallback,
   useEffect,
   useRef,
   useState,
   useTransition,
 } from 'react';
+import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight,
   User,
@@ -19,6 +21,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Calendar } from '@/components/ui/Calendar';
+import { CollapseReveal } from '@/components/ui/CollapseReveal';
 import type { TaskDotMeta } from '@/components/ui/Calendar';
 import { DatePicker } from '@/components/ui/DatePicker';
 import {
@@ -32,8 +35,8 @@ import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';
 import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
 import { formatDate } from '@/lib/utils/dates';
 import { toast } from '@/lib/toast';
-import { SubTaskModal } from '@/components/tasks/SubTaskModal';
-import { AssigneePickerModal, type AssignableUser } from '@/components/tasks/AssigneePickerModal';
+import { AssigneePickerModal } from '@/components/tasks/AssigneePickerModal';
+import type { AssignableUser } from '@/lib/types';
 import { CreatePersonalTaskModal } from '@/components/tasks/CreatePersonalTaskModal';
 import { Avatar } from '@/components/ui/Avatar';
 import { Spinner } from '@/components/ui/Spinner';
@@ -44,6 +47,14 @@ import {
   resolvePersonalTaskAssignee,
   type PersonalTaskFiltersState,
 } from '@/lib/utils/task-client-filters';
+
+// Load-on-intent (perf audit G-1): SubTaskModal (1,672 lines) stays out of the
+// /tasks route chunk until a task row is first opened (the call site already
+// conditional-renders it behind the remarks fetch).
+const SubTaskModal = dynamic(
+  () => import('@/components/tasks/SubTaskModal').then((m) => m.SubTaskModal),
+  { ssr: false },
+);
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -264,14 +275,15 @@ export function MyTasksCalendarView({
   }, [hasMore, isLoadingMore, nextCursor]);
 
   // ── Row click → pre-fetch remarks then open modal ──────────────────────────
-  function handleRowClick(task: Task) {
+  // Stable identity so memo(CalendarTaskRow) skips untouched rows (G-4)
+  const handleRowClick = useCallback((task: Task) => {
     setSelectedTask(task);
     setSelectedTaskRemarks(null);
     getTaskRemarksAction(task.id)
       .then((r) => setSelectedTaskRemarks(r.data ?? []))
       .catch(() => setSelectedTaskRemarks([]));
     setTaskModalOpen(true);
-  }
+  }, []);
 
   // ── Calendar date click ────────────────────────────────────────────────────
   function handleCalendarSelect(date: Date) {
@@ -438,14 +450,7 @@ export function MyTasksCalendarView({
         {/* Body: task rows or empty state */}
         <AnimatePresence initial={false}>
           {(!isCollapsed) && (
-            <motion.div
-              key="body"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
-              style={{ overflow: 'hidden' }}
-            >
+            <CollapseReveal key="body">
               {isEmpty ? (
                 /* Empty state — for today or a selected date with no tasks */
                 <div style={{
@@ -470,105 +475,24 @@ export function MyTasksCalendarView({
                   </p>
                 </div>
               ) : (
-                section.tasks.map((task, idx) => {
-                  const effectiveStatus = optimisticStatus[task.id] ?? task.status;
-                  const isComplete      = effectiveStatus === 'completed';
-                  const canComplete     = canToggleTaskComplete(task, caller);
-                  const dueDateColor    = getDueDateColor(task.due_at, effectiveStatus);
-                  const overdue         = isOverdueDate(task.due_at) && !isComplete;
-
-                  return (
-                    <motion.div
-                      key={task.id}
-                      initial={{ opacity: 0, y: 3 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.18, delay: Math.min(idx * 40, 200) / 1000, ease: EASE_OUT_EXPO }}
-                      style={{
-                        display:      'flex',
-                        alignItems:   'center',
-                        gap:          'var(--space-3)',
-                        padding:      'var(--space-3) var(--space-4)',
-                        borderBottom: idx < section.tasks.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
-                        background:   'var(--theme-paper)',
-                      }}
-                      onMouseEnter={() => setHoveredTaskId(task.id)}
-                      onMouseLeave={() => setHoveredTaskId(null)}
-                    >
-                      <TaskCompletionCircle
-                        checked={isComplete}
-                        disabled={!canComplete}
-                        highlighted={hoveredTaskId === task.id}
-                        onToggle={(e) => handleToggle(e, task)}
-                      />
-
-                      <div
-                        style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0, cursor: 'pointer' }}
-                        role="button" tabIndex={0}
-                        onClick={() => handleRowClick(task)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleRowClick(task); }}
-                      >
-                        <span style={{
-                          fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)',
-                          fontWeight: 'var(--weight-medium)',
-                          color:      isComplete ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)',
-                          textDecoration: isComplete ? 'line-through' : 'none',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          flex: 1, minWidth: 0,
-                        }}>
-                          {task.title}
-                        </span>
-                        {task.assigned_to && task.assigned_to !== currentUserId && (
-                          <div title="Assigned to someone else" style={{
-                            width: 'var(--space-5)', height: 'var(--space-5)',
-                            borderRadius: 'var(--radius-xs)',
-                            background: 'var(--theme-accent-surface)',
-                            border: '1px solid var(--theme-paper-border)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                          }}>
-                            <User style={{ width: 10, height: 10, strokeWidth: 1.5, color: 'var(--theme-accent)' }} />
-                          </div>
-                        )}
-                      </div>
-
-                      {task.due_at && !sIsToday && (
-                        <span style={{
-                          fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-                          color:      dueDateColor,
-                          fontWeight: overdue ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                          flexShrink: 0, whiteSpace: 'nowrap',
-                        }}>
-                          {overdue ? 'Overdue' : formatDate(new Date(task.due_at), 'd MMM')}
-                        </span>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => handleRowClick(task)}
-                        aria-label="Open task details"
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          width: 'var(--space-6)', height: 'var(--space-6)',
-                          borderRadius: 'var(--radius-xs)',
-                          border: '1px solid var(--theme-paper-border)',
-                          background: 'transparent', color: 'var(--theme-text-tertiary)',
-                          cursor: 'pointer', flexShrink: 0, transition: 'var(--transition-hover)',
-                        }}
-                        onMouseEnter={(e) => {
-                          (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)';
-                          (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-accent)';
-                        }}
-                        onMouseLeave={(e) => {
-                          (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)';
-                          (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
-                        }}
-                      >
-                        <ArrowRight style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
-                      </button>
-                    </motion.div>
-                  );
-                })
+                section.tasks.map((task, idx) => (
+                  <CalendarTaskRow
+                    key={task.id}
+                    task={task}
+                    idx={idx}
+                    isLast={idx === section.tasks.length - 1}
+                    effectiveStatus={optimisticStatus[task.id] ?? task.status}
+                    canComplete={canToggleTaskComplete(task, caller)}
+                    highlighted={hoveredTaskId === task.id}
+                    showDue={!sIsToday}
+                    currentUserId={currentUserId}
+                    onHoverChange={setHoveredTaskId}
+                    onToggle={handleToggle}
+                    onOpen={handleRowClick}
+                  />
+                ))
               )}
-            </motion.div>
+            </CollapseReveal>
           )}
         </AnimatePresence>
       </div>
@@ -605,7 +529,7 @@ export function MyTasksCalendarView({
                 onClick={goToToday}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  width: '100%', padding: 'var(--space-1-5) 0',
+                  width: '100%', padding: 'var(--space-2) 0',
                   background: 'transparent', border: 'none',
                   fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
                   fontWeight: 'var(--weight-semibold)', letterSpacing: 'var(--tracking-wide)',
@@ -682,14 +606,7 @@ export function MyTasksCalendarView({
         {/* Quick-add row */}
         <AnimatePresence>
           {showQuickAdd && (
-            <motion.div
-              key="quick-add"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
-              style={{ overflow: 'hidden', marginBottom: 'var(--space-2)' }}
-            >
+            <CollapseReveal key="quick-add" style={{ marginBottom: 'var(--space-2)' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
                 padding: 'var(--space-3) var(--space-4)',
@@ -775,7 +692,7 @@ export function MyTasksCalendarView({
                 <UserCircle style={{ display: 'inline', width: 12, height: 12, strokeWidth: 1.5, marginRight: 4 }} />
                 Press Enter to save · Esc to cancel
               </p>
-            </motion.div>
+            </CollapseReveal>
           )}
         </AnimatePresence>
 
@@ -870,6 +787,133 @@ export function MyTasksCalendarView({
     </div>
   );
 }
+
+// ─── Single task row ───────────────────────────────────────────────────────────
+// memo (G-4): hover state lives in the parent (`hoveredTaskId`), so without
+// memo every mouseenter re-rendered every row in every section. All props are
+// primitives, the stable task object, or useCallback'd handlers — only the two
+// rows whose `highlighted` flag changes re-render on hover.
+
+interface CalendarTaskRowProps {
+  task:            Task;
+  idx:             number;
+  isLast:          boolean;
+  effectiveStatus: TaskStatus;
+  canComplete:     boolean;
+  highlighted:     boolean;
+  showDue:         boolean;   // due chip hidden in the Today section
+  currentUserId:   string;
+  onHoverChange:   (taskId: string | null) => void;
+  onToggle:        (e: React.MouseEvent, task: { id: string; status: TaskStatus }) => void;
+  onOpen:          (task: Task) => void;
+}
+
+const CalendarTaskRow = memo(function CalendarTaskRow({
+  task,
+  idx,
+  isLast,
+  effectiveStatus,
+  canComplete,
+  highlighted,
+  showDue,
+  currentUserId,
+  onHoverChange,
+  onToggle,
+  onOpen,
+}: CalendarTaskRowProps) {
+  const isComplete   = effectiveStatus === 'completed';
+  const dueDateColor = getDueDateColor(task.due_at, effectiveStatus);
+  const overdue      = isOverdueDate(task.due_at) && !isComplete;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 3 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, delay: Math.min(idx * 40, 200) / 1000, ease: EASE_OUT_EXPO }}
+      style={{
+        display:      'flex',
+        alignItems:   'center',
+        gap:          'var(--space-3)',
+        padding:      'var(--space-3) var(--space-4)',
+        borderBottom: !isLast ? '1px solid var(--theme-paper-border)' : 'none',
+        background:   'var(--theme-paper)',
+      }}
+      onMouseEnter={() => onHoverChange(task.id)}
+      onMouseLeave={() => onHoverChange(null)}
+    >
+      <TaskCompletionCircle
+        checked={isComplete}
+        disabled={!canComplete}
+        highlighted={highlighted}
+        onToggle={(e) => onToggle(e, task)}
+      />
+
+      <div
+        style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0, cursor: 'pointer' }}
+        role="button" tabIndex={0}
+        onClick={() => onOpen(task)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(task); }}
+      >
+        <span style={{
+          fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)',
+          fontWeight: 'var(--weight-medium)',
+          color:      isComplete ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)',
+          textDecoration: isComplete ? 'line-through' : 'none',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          flex: 1, minWidth: 0,
+        }}>
+          {task.title}
+        </span>
+        {task.assigned_to && task.assigned_to !== currentUserId && (
+          <div title="Assigned to someone else" style={{
+            width: 'var(--space-5)', height: 'var(--space-5)',
+            borderRadius: 'var(--radius-xs)',
+            background: 'var(--theme-accent-surface)',
+            border: '1px solid var(--theme-paper-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <User style={{ width: 10, height: 10, strokeWidth: 1.5, color: 'var(--theme-accent)' }} />
+          </div>
+        )}
+      </div>
+
+      {task.due_at && showDue && (
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+          color:      dueDateColor,
+          fontWeight: overdue ? 'var(--weight-semibold)' : 'var(--weight-normal)',
+          flexShrink: 0, whiteSpace: 'nowrap',
+        }}>
+          {overdue ? 'Overdue' : formatDate(new Date(task.due_at), 'd MMM')}
+        </span>
+      )}
+
+      <button
+        type="button"
+        onClick={() => onOpen(task)}
+        aria-label="Open task details"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 'var(--space-6)', height: 'var(--space-6)',
+          borderRadius: 'var(--radius-xs)',
+          border: '1px solid var(--theme-paper-border)',
+          background: 'transparent', color: 'var(--theme-text-tertiary)',
+          cursor: 'pointer', flexShrink: 0, transition: 'var(--transition-hover)',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)';
+          (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-accent)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)';
+          (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
+        }}
+      >
+        <ArrowRight style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
+      </button>
+    </motion.div>
+  );
+});
 
 // ─── Small stat row helper ─────────────────────────────────────────────────────
 

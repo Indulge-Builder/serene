@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import { GiaDaySection } from '@/components/tasks/GiaDaySection';
 import { GiaTaskRow } from '@/components/tasks/GiaTaskRow';
 import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';

@@ -56,6 +56,12 @@ export function LeadWhatsAppCard({
   const seenIds                                        = useRef<Set<string>>(new Set(initialMessages.map((m) => m.id)));
   const optimisticIds                                  = useRef<Set<string>>(new Set());
 
+  // Initial thread renders static; only messages appended after mount animate in.
+  const arrivedAfterMount = useRef(false);
+  useEffect(() => {
+    arrivedAfterMount.current = true;
+  }, []);
+
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     const el = bodyRef.current;
@@ -340,6 +346,7 @@ export function LeadWhatsAppCard({
                 <MessageBubble
                   message={msg}
                   isOptimistic={optimisticIds.current.has(msg.id)}
+                  entrance={arrivedAfterMount.current}
                 />
               </div>
             );

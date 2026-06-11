@@ -2,6 +2,10 @@
 
 All components in this folder are **display-only**. They receive data via props.
 Zero DB calls. Zero business logic. Zero service imports.
+**Sole exception — the `*Async.tsx` server components** (`LeadTasksAsync`, `LeadInfoCardAsync`,
+`LeadDealCardAsync`, `LeadNotesSectionAsync`, `LeadActivitiesAsync`, `LeadWhatsAppCardAsync`):
+each is a direct child of a `<Suspense>` boundary on the dossier page, is the *only* place its
+service function is called from the dossier, and delegates all rendering to a display component.
 
 Cross-feature data flows through `lib/` only.
 Every modal composes `src/components/ui/modal.tsx` — never reimplements chrome.
@@ -24,7 +28,7 @@ type FilterDraft = {
   campaign:   string | null;
   date_from:  string | null;
   date_to:    string | null;
-  // search is NOT in FilterDraft — it has its own searchInput state + useDebounce
+  // search is NOT in FilterDraft — it lives in useUrlFilters (debounced, immediate-commit)
   // sort_order is NOT in FilterDraft — see LeadsTable toolbar toggle
 };
 ```
@@ -33,13 +37,14 @@ type FilterDraft = {
 
 **Going Cold chip** lives in `LeadsTable.tsx` toolbar (left cluster, first control) — not in `LeadsFilters`. Immediate-commit via `buildFilterParams`; on activate clears `status` + `outcome` from URL. `committedCount` in `LeadsFilters` still counts `going_cold=true`.
 
-**Search state** is managed separately from the dropdown/date draft:
+**Shell composition:** the bar chrome (icon, search, divider, Range trigger + panel, Apply, Clear) is `<FilterBar>` from `src/components/ui/FilterBar.tsx` with `layout="scroll"`, `showCountBadge={false}`, `dateRange.trigger="chevron"`, `apply={{ disabled: !isDirty, onClick: applyFilters }}`. This file owns only the draft model + the six `FilterDropdown`s.
+
+**Search state** is managed separately from the dropdown/date draft — owned by `useUrlFilters({ resetKeys: ['page'] })` from `src/hooks/useUrlFilters.ts`:
 
 - `searchInput: string` — controlled display value, updates on every keystroke.
-- `debouncedSearch` — `useDebounce(searchInput, 350)` from `src/hooks/useDebounce.ts`.
-- A `useEffect` keyed on `debouncedSearch` guards with `trimmed === (params.get('search') ?? '')` before pushing.
-- `clearAll` calls `setSearchInput('')` immediately (no 350ms wait).
-- `SearchBar` from `src/components/ui/SearchBar.tsx` renders the input — never re-implement inline.
+- Debounced 350ms via `useDebounce` inside the hook; the push effect guards with `trimmed === (params.get('search') ?? '')`.
+- `clearAll` (hook) calls `setSearchInput('')` immediately (no 350ms wait).
+- `SearchBar` renders inside `<FilterBar>` — never re-implement inline.
 
 **`draftFromParams(params: URLSearchParams): FilterDraft`** — pure helper that reads all filter keys from the current `URLSearchParams`. Used to initialise state and to sync draft on browser back/forward (`useEffect([params])`).
 
@@ -47,7 +52,7 @@ type FilterDraft = {
 
 **Single-row layout** (left → right):
 
-- Container: `display: flex`, `alignItems: center`, `gap: var(--space-2)`, `flexWrap: nowrap`, `overflowX: auto`, `scrollbarWidth: none` (inline), `WebkitOverflowScrolling: touch` (inline). Horizontal scroll on narrow viewports; chips stay on one line.
+- Container: `<FilterBar layout="scroll">` — `flexWrap: nowrap`, `gap: var(--space-2)`, `overflowX: auto`, hidden scrollbar. Horizontal scroll on narrow viewports; chips stay on one line.
 - Order: Sliders icon → `SearchBar` → 1px vertical divider → Status → Outcome → Source → Campaign? → Agent? → Domain? → Range → Apply → Clear?.
 - **Search:** `suppressFocusAccent` — paper border + no `--shadow-focus` on focus. `style={{ flex: '1 1 180px', maxWidth: '280px' }}` — grows modestly but never dominates wide viewports (without `maxWidth`, chips scroll off-screen).
 - **Filter chips:** `menuPortal` + `hideCountBadge` + `accentBorderOnOpen={false}` — no numeric count on triggers (prevents width shift); accent border/tint when the chip has a selection, not when the menu is open.
@@ -55,7 +60,7 @@ type FilterDraft = {
 - **Range:** accent border only when dates are set (`rangeActive`), not when the panel is open.
 - **Divider:** inline `div`, `width: 1`, `height: 1.25rem`, `background: var(--theme-paper-border)`, `flexShrink: 0` — separates search from filter chips.
 - Every `FilterDropdown` and the Range trigger: `flexShrink: 0`.
-- **Dropdown panels:** every `FilterDropdown` must pass `menuPortal` (menus render `position: fixed` on `document.body`). Without it, `overflowX: auto` on the row clips the absolutely positioned menu and options are unreachable. Range date panel uses its own `createPortal` — same rule.
+- **Dropdown panels:** every `FilterDropdown` must pass `menuPortal` (menus render `position: fixed` on `document.body`). Without it, `overflowX: auto` on the row clips the absolutely positioned menu and options are unreachable. The Range date panel lives inside `<FilterBar>` (`usePortalAnchor()` + `<FloatingPanel>` + `<DateRangeFields>` — see `src/components/CLAUDE.md` Overlays) — same rule, owned structurally.
 
 **Apply button:** `Button variant="primary" size="sm"` (not `MotionButton`), always visible, `disabled={!isDirty}`. Calls `applyFilters()` which builds the full URL from all draft keys and fires one `router.push`. Permanent placement avoids filter-bar layout shift.
 
@@ -79,16 +84,16 @@ Props:
 lead:            Lead
 assigneeName:    string | null
 adCreatives?:    AdCreative[]         — all videos for the lead's campaign (newest first); resolved by the dossier page
-canEdit?:        boolean              — inline edit for email + source (`utm_source`) (assigned agent, manager in-domain, admin, founder)
+canEdit?:        boolean              — inline edit for email + source (`leads.source`, renamed from `utm_source` in the 0065 attribution refactor) (assigned agent, manager in-domain, admin, founder)
 canEditDomain?:  boolean              — Gia domain inline select menu (manager+ with access; agents never)
 canReassign?:    boolean              — inline assignee select menu (manager/admin/founder)
-agents?:         { id: string; full_name: string }[]   — active agents for the lead's domain; pre-fetched by dossier page
+agents?:         { id: string; full_name: string }[]   — active agents for the lead's domain; fetched by LeadInfoCardAsync
 ```
 
 Renders the left-column contact card on the lead dossier page.
 Campaign (`utm_campaign`) is an `InfoRow` after Received; opens `CampaignVideoModal` when `adCreatives.length > 0`.
 `Last modified` shows `lead.updated_at` (read-only).
-Name and phone are always read-only `InfoRow`s. Email: click → inline text input. Domain, source (`utm_source`), assignee: identical to `InfoRow` at rest; click opens a simple themed option menu (no `FilterDropdown`, no search). No card-wide edit mode.
+Name and phone are always read-only `InfoRow`s. Email: click → inline text input. Domain, source (`leads.source`), assignee: identical to `InfoRow` at rest; click opens a simple themed option menu (no `FilterDropdown`, no search). No card-wide edit mode.
 
 **Reassignment rules:**
 
@@ -98,7 +103,7 @@ Name and phone are always read-only `InfoRow`s. Email: click → inline text inp
 - On click: a dropdown opens with a search input (auto-focused) and a list of agents from the `agents` prop.
 - Selecting an agent calls `assignLead` from `lib/actions/leads.ts`, optimistically updates `currentAssigneeName` in local state, and shows a `Check` tick for 2 seconds. No page reload needed.
 - `canReassign` is derived server-side from `profile.role` — never computed in the component.
-- `agents` is fetched once in the dossier page via `getAgentsForDomain(lead.domain)` and is `[]` for agent-role callers (the field falls back to read-only `InfoRow`).
+- `agents` is fetched once in `LeadInfoCardAsync` via `getAssignableUsers({ domain: lead.domain, agentsOnly: true })` and is `[]` for agent-role callers (the field falls back to read-only `InfoRow`).
 
 **Ad creative trigger rules:**
 
@@ -129,6 +134,31 @@ Returns `null` when `adCreatives` is empty. The carousel owns the `<video>` elem
 
 ---
 
+### LeadDealCard
+
+`LeadDealCard.tsx` — `'use client'`
+
+Props:
+
+```text
+deal: Deal     — the closed deal a won lead generated (from public.deals)
+```
+
+Dossier-only summary card rendered for won leads (`LeadDealCardAsync` resolves the `Deal` row
+behind a `<Suspense fallback={null}>` and passes it in). Wraps the whole card in
+`<Link href="/deals">` — there is **no per-deal route**, so `/deals` is the correct target.
+
+- **Distinct from `DealCard`** (`src/components/deals/DealCard.tsx`, the deals-list row). Different
+  shape, link target, and density. Never import or extend `DealCard` here.
+- Trophy glyph + "Closed Deal" micro-label · mono `deal_amount` in accent · type chip
+  (`DEAL_TYPE_LABELS`) · membership duration chip (`DEAL_DURATION_LABELS`) · "Won {date}".
+- Labels come from `src/lib/constants/deal-types.ts`; currency via `formatCurrency`; date via `formatDate`.
+- Framer Motion opacity-only fade-in (`BASE_DURATION`, `EASE_OUT_EXPO`).
+- Chrome is a flat neutral `1px --theme-paper-border` card (no single-edge accent strip — the
+  Trophy glyph + accent-coloured amount carry the "won" signal per the Side-edge-accent rule).
+
+---
+
 ### AddLeadModal
 
 `AddLeadModal.tsx` — `'use client'`
@@ -144,8 +174,9 @@ onSuccess:     (leadId: string) => void
 ```
 
 Fields: First name, Last name, Phone, Email, Source, Domain (manager+), Assign to.
-Source optional select → `leads.utm_source` (values from `lib/constants/lead-sources.ts`). `lead_intent` always null on manual leads.
+Source optional select → `leads.source` (values from `lib/constants/lead-sources.ts`). `lead_intent` always null on manual leads.
 Duplicate detection server-side; inline banner with dossier link on dup — modal stays open.
+Loaded via `next/dynamic` in `AddLeadButton` behind `useMountOnFirstOpen` (perf G-1) — never statically import it into a route chunk.
 
 ---
 
@@ -167,6 +198,7 @@ resetToDefaults: () => void
 
 Drag-to-reorder via `@dnd-kit/sortable`. Locked columns (status, name) show `Lock` icon — not toggleable.
 Entrance animation: `opacity 0→1, y -4→0`, 200ms, ease-out-expo.
+Loaded via `next/dynamic` in `LeadsTable` behind `useMountOnFirstOpen` (perf G-1) — keeps the @dnd-kit chain out of the /leads chunk; the latch preserves the internal exit animation. `LeadRow` in the same file is `memo()`-ised (perf G-4) — keep its props primitive/stable (`selected` boolean + `useCallback`'d `onToggleSelect`, never the `Set`).
 
 ---
 
@@ -226,7 +258,7 @@ initialTasks: Task[]    — pre-fetched by LeadTasksAsync (server component)
 ```
 
 Shows all gia_followup tasks for a lead (replaces `LeadDossierTasksAsync` which showed only the next task).
-Header right slot: small `+` ghost icon button → opens `CreateLeadTaskModal`.
+Header right slot: small `+` ghost icon button → opens `CreateLeadTaskModal` (loaded via `next/dynamic`, perf G-1 — the existing call-site `AnimatePresence` conditional already defers the chunk; no latch needed).
 Uses `TaskCompletionCircle` + `useTaskCompletionToggle` for completion toggles.
 After successful task creation, prepends new task to local state (no full refetch).
 Overdue `due_at` renders in `var(--color-danger-text)` via `formatTaskDueAt()` (`h:mm a, d MMM`, IST).
@@ -246,12 +278,37 @@ Passes result to `<LeadTasksCard>`.
 
 ---
 
+### Dossier async children (perf audit 2026-06-11 item B)
+
+All follow the `LeadTasksAsync` pattern — async server component, direct child of `<Suspense>`,
+the only dossier call site for its service function, delegates rendering to a display component.
+
+| Component | Props | Fetches | Renders |
+| --------- | ----- | ------- | ------- |
+| `LeadInfoCardAsync` | `lead: LeadWithAssignee`, `canEdit`, `canEditDomain`, `canReassign` | `Promise.all`: `getAdCreativesForCampaign(utm_campaign)` (when present) + `getAssignableUsers({ domain, agentsOnly: true })` (when `canReassign`) | `<LeadInfoCard>` (derives `assigneeName` from `lead.assignee`) |
+| `LeadDealCardAsync` | `leadId` | `getLeadDeal(leadId)` | `<LeadDealCard>` in a `--space-6` top-margin wrapper; `null` when no deal — pair with `fallback={null}` |
+| `LeadNotesSectionAsync` | `leadId` | `getLeadNotesFull(leadId)` | `<LeadNotesSection>` |
+| `LeadActivitiesAsync` | `lead: Lead` | `getLeadActivitiesFull(lead.id)` **once** | `<LeadJourneyTimeline>` + `<LeadActivityLog>` (owns both sections' margins — never split into two boundaries) |
+| `LeadWhatsAppCardAsync` | `leadId`, `leadPhone`, `leadName`, `callerProfile: { id, role }` | `getConversationByLeadId(leadId)` then serial `getMessages(conversation.id, { limit: 30 })` — the serial hop stays **inside** this boundary | `<LeadWhatsAppCard>` |
+
+---
+
 ### LeadTasksCardSkeleton
 
 `LeadTasksCardSkeleton.tsx` — server-component-safe skeleton
 
 Two rows at `TaskCompletionCircle` height. Widths: 80% / 60%.
 Used as `fallback` for the `<Suspense>` wrapping `<LeadTasksAsync>` on the dossier page.
+
+---
+
+### LeadDossierSkeletons
+
+`LeadDossierSkeletons.tsx` — exports `DossierCardSkeleton({ headerWidth?, rows? })`,
+server-component-safe. The generic dossier paper-card fallback (subtle header strip + shimmer
+rows, same chrome as `LeadTasksCardSkeleton`) composed from `Shimmer`/`skeletonStagger`
+(`ui/PageSkeletons`). Used by every dossier `<Suspense>` fallback and `leads/[id]/loading.tsx` —
+never hand-roll a new dossier card skeleton.
 
 ---
 
@@ -268,12 +325,12 @@ leadId:        string
 onTaskCreated: (task: Task) => void
 ```
 
-Composes `src/components/ui/modal.tsx`. Four fields only:
+Composes `src/components/ui/modal.tsx`. Fields compose `src/components/ui/TaskFormFields.tsx` (dry-audit H-3). Four fields only:
 
-1. Task type — RadioGroup-style list using `TASK_TYPES` / `TASK_TYPE_LABELS` from `task-types.ts`
-2. Priority — three chip buttons (Urgent / High / Normal), default Normal
-3. Due date & time — `DatePicker` with `showTime=true` from `src/components/ui/DatePicker.tsx`
-4. Notes (description) — optional `<textarea>` max 1000 chars
+1. Task type — `TaskTypeField` (RadioGroup-style list over `TASK_TYPES` / `TASK_TYPE_LABELS`)
+2. Priority — `PriorityChipRow` (Urgent / High / Normal), default Normal
+3. Due date & time — `DueDateField` (no presets) wrapping `DatePicker` with `showTime`
+4. Notes (description) — optional `<textarea>` max 1000 chars; inline `FieldError` on failure
 
 Title derived from `TASK_TYPE_LABELS[taskType]` — never hardcoded.
 Calls `createLeadTaskAction` on submit. On success calls `onTaskCreated(task)`.
@@ -326,8 +383,15 @@ Embedded WhatsApp chat card on the lead dossier page. Placed between the 2-col g
 
 | Component             | Service used (via prop, not import)                                                                  |
 | --------------------- | ---------------------------------------------------------------------------------------------------- |
-| LeadInfoCard          | `getAdCreativesForCampaign` on dossier page → `ad-creatives-service.ts`                              |
-| AddLeadModal          | `createManualLead` action, `listAgentsForDomain` action                                              |
+| LeadInfoCard          | none — props only (`adCreatives` + `agents` resolved by `LeadInfoCardAsync`)                         |
+| LeadInfoCardAsync     | `getAdCreativesForCampaign` (`ad-creatives-service.ts`) + `getAssignableUsers` (`profiles-service.ts`) — server only |
+| LeadDealCard          | none — props only (`Deal` resolved by `LeadDealCardAsync` via `deals-service.ts`)                    |
+| LeadDealCardAsync     | `getLeadDeal` from `deals-service.ts` (server only)                                                  |
+| LeadNotesSectionAsync | `getLeadNotesFull` from `leads-service.ts` (server only)                                             |
+| LeadActivitiesAsync   | `getLeadActivitiesFull` from `leads-service.ts` (server only)                                        |
+| LeadWhatsAppCardAsync | `getConversationByLeadId` + `getMessages` from `whatsapp-service.ts` (server only)                   |
+| LeadDossierSkeletons  | none                                                                                                  |
+| AddLeadModal          | `createManualLead` action, `getAssignableUsersAction` (`lib/actions/profiles.ts`)                                              |
 | LeadColumnPicker      | none — props only                                                                                    |
 | CampaignVideoModal    | none — props only                                                                                    |
 | LeadTasksCard         | `TaskCompletionCircle` + `useTaskCompletionToggle`; `createLeadTaskAction` via `CreateLeadTaskModal` |

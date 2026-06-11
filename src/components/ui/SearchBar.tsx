@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Search, X } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import { FAST_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 
 export type SearchBarSize = "sm" | "md" | "lg";

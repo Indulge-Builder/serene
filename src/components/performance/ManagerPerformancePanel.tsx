@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect }          from 'react';
 import { useSearchParams }                      from 'next/navigation';
-import { motion, AnimatePresence }               from 'framer-motion';
+import { m as motion, AnimatePresence }               from 'framer-motion';
 import { SlidersHorizontal, Check }              from 'lucide-react';
 import { Avatar }                                from '@/components/ui/Avatar';
-import { ENTER_DURATION, EASE_OUT_EXPO, BASE_DURATION } from '@/lib/constants/motion';
+import { EmptyState }                            from '@/components/ui/EmptyState';
+import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT, BASE_DURATION } from '@/lib/constants/motion';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import {
   buildPerformanceRosterGroups,
@@ -154,7 +155,7 @@ function DomainFilterPopover({
         position:     'absolute',
         top:          'calc(100% + 6px)',
         right:        0,
-        zIndex:       50,
+        zIndex:       'var(--z-dropdown)' as React.CSSProperties['zIndex'],
         background:   'var(--theme-paper)',
         border:       '1px solid var(--theme-paper-border)',
         borderRadius: 'var(--radius-md)',
@@ -437,18 +438,7 @@ export function ManagerPerformancePanel({
           boxShadow:    'var(--shadow-1)',
         }}
       >
-        <p
-          style={{
-            fontFamily: 'var(--font-serif)',
-            fontStyle:  'italic',
-            fontSize:   'var(--text-lg)',
-            fontWeight: 'var(--weight-light)',
-            color:      'var(--theme-text-tertiary)',
-            margin:     0,
-          }}
-        >
-          No agents in this domain yet.
-        </p>
+        <EmptyState title="No agents in this domain yet." size="lg" style={{ padding: 0 }} />
       </div>
     );
   }
@@ -468,7 +458,7 @@ export function ManagerPerformancePanel({
             initial={{ scaleX: 0, opacity: 1 }}
             animate={{ scaleX: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.9, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: PAGE_DURATION, ease: EASE_IN_OUT }}
             style={{
               position:        'absolute',
               top:             0,
@@ -548,19 +538,7 @@ export function ManagerPerformancePanel({
           ))}
 
           {visibleAgents.length === 0 && agentRoster.length > 0 && (
-            <p
-              style={{
-                fontFamily: 'var(--font-serif)',
-                fontStyle:  'italic',
-                fontSize:   'var(--text-sm)',
-                color:      'var(--theme-text-tertiary)',
-                textAlign:  'center',
-                padding:    'var(--space-6) var(--space-4)',
-                margin:     0,
-              }}
-            >
-              Nothing matches these filters.
-            </p>
+            <EmptyState title="Nothing matches these filters." />
           )}
         </div>
       </div>

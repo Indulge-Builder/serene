@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import { EASE_SPRING, SLOW_DURATION } from '@/lib/constants/motion';
 
 export type ProgressBarIntent = 'success' | 'warning' | 'danger' | 'accent' | 'neutral';
@@ -87,14 +87,17 @@ export function ProgressBar({
           overflow:     'hidden',
         }}
       >
+        {/* Full-width fill scaled by transform — never animate width (DNA M-06) */}
         <motion.div
-          initial={{ width: '0%' }}
-          animate={{ width: `${pct}%` }}
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: pct / 100 }}
           transition={{ duration: SLOW_DURATION, ease: EASE_SPRING }}
           style={{
-            height:       '100%',
-            background:   fillColor,
-            borderRadius: 'var(--radius-full)',
+            width:           '100%',
+            height:          '100%',
+            background:      fillColor,
+            borderRadius:    'var(--radius-full)',
+            transformOrigin: 'left center',
           }}
         />
       </div>

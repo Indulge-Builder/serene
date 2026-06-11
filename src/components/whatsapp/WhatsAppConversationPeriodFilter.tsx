@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import { Check, SlidersHorizontal } from "lucide-react";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { EASE_OUT_EXPO } from "@/lib/constants/motion";
@@ -187,7 +187,7 @@ export function WhatsAppConversationPeriodFilter() {
               position: "absolute",
               top: "calc(100% + 6px)",
               right: 0,
-              zIndex: 50,
+              zIndex: "var(--z-dropdown)" as React.CSSProperties["zIndex"],
               background: "var(--theme-paper)",
               border: "1px solid var(--theme-paper-border)",
               borderRadius: "var(--radius-md)",

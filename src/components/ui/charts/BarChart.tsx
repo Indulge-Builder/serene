@@ -9,11 +9,11 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer,
   Cell,
 } from 'recharts';
 import { useChartTokens, resolveColorMap } from './useChartTokens';
 import { ChartSkeleton } from './ChartSkeleton';
+import { ChartFrame, cartesianDefaults, CARTESIAN_MARGIN } from './CartesianChartFrame';
 import type {
   XAxisProps,
   YAxisProps,
@@ -119,64 +119,28 @@ export function BarChart({
   const effectiveColorMap = resolvedColorMap ?? colorMap;
   const hasColorMap = !!effectiveColorMap;
 
+  const defaults = cartesianDefaults(tokens);
+
   const chartMargin = {
-    top:    margin?.top    ?? 8,
-    right:  margin?.right  ?? 8,
-    bottom: margin?.bottom ?? 0,
-    left:   margin?.left   ?? 0,
+    top:    margin?.top    ?? CARTESIAN_MARGIN.top,
+    right:  margin?.right  ?? CARTESIAN_MARGIN.right,
+    bottom: margin?.bottom ?? CARTESIAN_MARGIN.bottom,
+    left:   margin?.left   ?? CARTESIAN_MARGIN.left,
   };
 
   return (
-    <div
-      className={className}
-      style={{
-        background:   'var(--theme-paper)',
-        borderRadius: 'var(--radius-md)',
-        ...style,
-      }}
-    >
-      <ResponsiveContainer width="100%" height={height as number | `${number}%`}>
+    <ChartFrame height={height} className={className} style={style}>
         <RechartsBarChart
           data={data}
           margin={chartMargin}
           {...(barCategoryGap !== undefined ? { barCategoryGap } : {})}
         >
-          <CartesianGrid
-            stroke={tokens.grid}
-            strokeDasharray="3 3"
-            vertical={false}
-            {...gridProps}
-          />
-          <XAxis
-            dataKey={xKey}
-            tick={{ fill: tokens.axisLabel, fontSize: 10, fontFamily: 'var(--font-sans)' }}
-            axisLine={false}
-            tickLine={false}
-            {...xAxisProps}
-          />
-          <YAxis
-            tick={{ fill: tokens.axisLabel, fontSize: 10, fontFamily: 'var(--font-sans)' }}
-            axisLine={false}
-            tickLine={false}
-            {...yAxisProps}
-          />
-          <Tooltip
-            contentStyle={{
-              background:   tokens.tooltipBg,
-              border:       `1px solid ${tokens.tooltipBorder}`,
-              borderRadius: 'var(--radius-md)',
-              boxShadow:    'var(--shadow-2)',
-              fontSize:     12,
-              fontFamily:   'var(--font-sans)',
-            }}
-            {...tooltipProps}
-          />
+          <CartesianGrid {...defaults.grid} {...gridProps} />
+          <XAxis dataKey={xKey} {...defaults.axis} {...xAxisProps} />
+          <YAxis {...defaults.axis} {...yAxisProps} />
+          <Tooltip {...defaults.tooltip} {...tooltipProps} />
           {/* Suppress built-in legend when caller provides colorMap (caller owns legend) */}
-          {series.length > 1 && !hasColorMap && (
-            <Legend
-              wrapperStyle={{ fontSize: 11, fontFamily: 'var(--font-sans)', color: tokens.axisLabel }}
-            />
-          )}
+          {series.length > 1 && !hasColorMap && <Legend {...defaults.legend} />}
           {series.map((s, i) => {
             const positionalColor = tokens.series[(s.colorIndex ?? i) % tokens.series.length];
             const color = effectiveColorMap?.[s.key] ?? positionalColor;
@@ -218,7 +182,6 @@ export function BarChart({
             );
           })}
         </RechartsBarChart>
-      </ResponsiveContainer>
-    </div>
+    </ChartFrame>
   );
 }

@@ -11,24 +11,36 @@
 
 ## Architecture
 
-### Agent view (unchanged)
+### Agent view — single RPC round trip (perf audit D-2, 2026-06-11)
 
 ```text
 performance/page.tsx              ← Server component (thin orchestrator)
-  │  reads searchParams.period, defaults to 'this_month'
-  │  role = agent → renders agent layout below
+  │  role = agent → fetches initialData server-side for 'this_month'
+  │  via ONE getAgentPerformanceSummary() call → get_agent_performance RPC
+  │  (core four + previous period + effort + outcomes + team benchmarks)
   │
-  ├── <PerformanceFilters period customFrom customTo showSearch={false} />
-  │     'use client' — unified filter bar (no search on self-view)
-  │
-  ├── <Suspense fallback={<PerformanceSkeleton />}>
-  │     <PerformanceAsync period={period} agentId={profile.id} />
-  │           Async server component — calls all 5 service functions in Promise.all
-  │           Renders: CoreFourGrid + EffortGrid + CallOutcomeBar
+  ├── <AgentPerformanceShell agentId agentDomain initialData />
+  │     'use client' — owns period state (no URL params); refetches on period
+  │     change via getAgentSelfMetricsAction → the same single RPC
+  │     Renders: CoreFourGrid + EffortGrid + CallOutcomeBar
   │
   └── <PerformanceMotivationalFooter leadsWon inDiscussionCount period />
         Server component — Lia's quiet sentence. Playfair italic. No glyph.
 ```
+
+The RPC is **self-scoped**: the agent is always `auth.uid()` and the benchmark
+domain is always `get_user_domain()` inside the function — no identity params
+exist, so an agent can never read another agent's metrics through it. Never
+reintroduce per-metric service functions that ship cohort rows to Node — the
+old 5-function fan-out was ~17 queries per load (migration 0101).
+
+**Benchmarks correctness note:** the pre-RPC implementation queried under the
+agent's session client, so leads RLS silently reduced the "team benchmark" to
+the agent's own rows. The SECURITY DEFINER RPC computes true domain-wide
+averages — only the four aggregate numbers are exposed, never per-agent rows.
+
+`PerformanceAsync.tsx` is deleted (it was mounted nowhere — the shell above is
+the real agent view). `PerformanceSkeleton` remains: `loading.tsx` uses it.
 
 ### Manager view
 
@@ -96,26 +108,39 @@ All role branches use the canonical list-page shell: `<main className="flex-1 mi
 
 Do not revert agent view to 2×2 KPI grid without an explicit spec change.
 
+## Recharts splitting (perf audit G-3, 2026-06-11)
+
+The three Recharts importers load via `next/dynamic` at their call sites so the
+chart library never sits in the `/performance` initial chunk: `CoreFourGrid` +
+`CallOutcomeBar` in `AgentPerformanceShell` (same-shape `.skeleton` placeholders
+mirroring `MetricsSkeleton` rows), `CallOutcomeBar` in `AgentDetailPanel` (chunk
+loads in parallel with the panel's own metrics fetch), `DomainOverviewPanel` in
+`FounderPerformanceShell` (fetched on first Domains-tab click). Never reintroduce
+a static import of a Recharts-consuming component into a shell on this route.
+
 ## Service File
 
 `src/lib/services/performance-service.ts` — single responsibility.
 Never add performance queries to `leads-service.ts` or `dashboard-service.ts`.
 
-Exported functions:
+Exported functions (post D-2 — the per-metric query functions
+`getCoreFourMetrics` / `getEffortMetrics` / `getCallOutcomeBreakdown` /
+`getPreviousPeriodCoreMetrics` / `_getCoreFourMetricsForRange` /
+`getTeamBenchmarks` are deleted; their types remain):
 
-| Function                                                   | Returns                  |
-| ---------------------------------------------------------- | ------------------------ |
-| `getCoreFourMetrics(id, period)`                           | `CoreFourMetrics`        |
-| `getEffortMetrics(id, period)`                             | `EffortMetrics`          |
-| `getCallOutcomeBreakdown(id, period)`                      | `OutcomeBreakdownItem[]` |
-| `getPreviousPeriodCoreMetrics(id, period)`                 | `CoreFourMetrics`        |
-| `getPeriodDateRange(period)`                               | `DateRange`              |
-| `getPreviousPeriodDateRange(period)`                       | `DateRange`              |
-| `_getCoreFourMetricsForRange(id, range)`                   | `CoreFourMetrics`        |
-| `getTeamBenchmarks(domain, period)`                        | `TeamBenchmarks`         |
-| `getAgentRosterPerformance(domain, dateFrom, dateTo)`      | `AgentRosterRow[]`       |
-| `getAgentDetailMetrics(agentId, domain, dateFrom, dateTo)` | `AgentDetailMetrics`     |
-| `getDomainsWithLeads(dateFrom, dateTo)`                    | `AppDomain[]`            |
+| Function | Returns | Backing |
+| --- | --- | --- |
+| `getAgentPerformanceSummary(period, from?, to?)` | `AgentPerformanceSummary` | `get_agent_performance` RPC (0101); React `cache()`-wrapped |
+| `getAgentRosterPerformance(domain, dateFrom, dateTo)` | `AgentRosterRow[]` | `get_agent_roster_performance` RPC (0101) |
+| `getAgentDetailMetrics(agentId, domain, dateFrom, dateTo)` | `AgentDetailMetrics` | 3 parallel queries (unchanged) |
+| `getDomainHealthMetrics(domains, dateFrom, dateTo)` | `DomainHealthCard[]` | `get_domain_health_metrics` RPC (0066) |
+| `getDomainsWithLeads(dateFrom, dateTo)` | `AppDomain[]` | plain query |
+| `getPeriodDateRange(period)` | `DateRange` | pure (IST math via `lib/utils/ist`) |
+| `getPreviousPeriodDateRange(period)` | `DateRange \| null` | pure; null for `all_time`/`custom` |
+
+Rate math (touched/total, won/closed → percentages, null-vs-zero) lives in the
+service mappers, NOT in SQL — the RPCs return raw counts. Keep it that way so
+the null contract stays in one visible place.
 
 ## Roster sort order
 
@@ -161,24 +186,14 @@ All bigint fields pass through `Number()` before return.
 - `allDomains=true` (founder/admin): `[...GIA_DOMAINS]` — all 4 Gia domains
 - `allDomains=false` (manager): `[domain]` — single domain, renders 1-col grid
 
-## Redis cache-aside — performance service (2026-06-01)
+## No Redis on the performance service (corrected 2026-06-11)
 
-All six service functions have Redis cache-aside active. Miss → DB, hit → return parsed JSON. Redis failure never blocks (try/catch swallows, falls through to DB).
-
-| Function | Key namespace | TTL |
-| --- | --- | --- |
-| `_getCoreFourMetricsForRange` | `perf:core-four:{agentId}:{from.slice(0,10)}:{to.slice(0,10)}` | 60s |
-| `getEffortMetrics` | `perf:effort:{agentId}:{period}:{today}` | 30s (live pipeline counts) |
-| `getCallOutcomeBreakdown` | `perf:outcome:{agentId}:{period}:{today}` | 60s |
-| `getTeamBenchmarks` | `perf:benchmarks:{callerDomain}:{period}:{today}` | 120s |
-| `getAgentRosterPerformance` | `perf:roster:{domain\|'all'}:{dateFrom.slice(0,10)}:{dateTo.slice(0,10)}` | 120s |
-| `getAgentDetailMetrics` | `perf:agent-detail:{agentId}:{dateFrom.slice(0,10)}:{dateTo.slice(0,10)}` | 30s (callsToday live) |
-
-`today` = `new Date().toISOString().slice(0, 10)` — normalises intraday calls, auto-invalidates at UTC midnight.
-
-`domain` is NOT in the `perf:agent-detail` key — domain is auth-only and does not filter the query result. Two callers with different domains requesting the same agent receive identical data correctly.
-
-Key builders + TTL constants are in `src/lib/constants/redis-keys.ts` (`REDIS_KEYS.perf.*`, `PERF_*_TTL`).
+The performance service has **no Redis cache-aside** — a previous version of
+this file documented a `perf:*` key namespace that does not exist in
+`redis-keys.ts` or the service (stale doc). With D-2 the cold path is one RPC
+round trip per view, so there is nothing slow enough to justify cache-aside's
+2×RTT-on-miss cost. Do not add Redis here without measuring first, and do not
+re-document keys that have no code.
 
 ## AgentDetailPanel — fetch contract
 
@@ -198,9 +213,10 @@ export type AgentRosterRow = {
   id: string;
   full_name: string;
   avatar_url: string | null;
+  domain: AppDomain;             // used for founder/admin roster domain grouping
   totalLeads: number;
   leadsWon: number;
-  conversionRate: number | null; // null when totalLeads = 0
+  conversionRate: number | null; // null when no won+lost leads closed in period
   totalDealAmount: number;
   avgResponseTimeMinutes: number | null;
 };
@@ -257,7 +273,7 @@ Manager role: `caller.domain !== domain` → 403. Domain never trusted from clie
 | `PerformanceRosterEmptyState`| `src/components/performance/` — null-selection prompt on Agents tab       |
 | `DomainHealthGrid`           | `src/components/performance/` — legacy card grid (not on Agents tab)      |
 | `DomainOverviewPanel`        | `src/components/performance/` — founder Domains tab (cards + bar chart) |
-| `PerformanceAsync`           | `src/app/(dashboard)/performance/`                                      |
+| `AgentPerformanceShell`      | `src/components/performance/` — `'use client'`; agent self-view shell   |
 | `ManagerPerformanceAsync`    | `src/app/(dashboard)/performance/`                                      |
 | `FounderPerformanceShell`    | `src/app/(dashboard)/performance/` — `'use client'`; tab state          |
 | `PerformanceSkeleton`        | `src/app/(dashboard)/performance/`                                      |
@@ -324,20 +340,24 @@ receives these nulls and omits all benchmark lines — renders nothing, not `"�
 
 ```typescript
 export type PerformancePeriod =
+  | "today"
   | "this_week"
   | "this_month"
   | "last_month"
-  | "all_time";
+  | "all_time"
+  | "custom";
 ```
 
 ## Period Date Range — IST Offset
 
 IST = UTC+05:30.
 
+- `today`: 00:00 IST today → now
 - `this_week`: Monday 00:00 IST → now
 - `this_month`: 1st of month 00:00 IST → now
 - `last_month`: 1st of previous month 00:00 IST → last day 23:59:59 IST
 - `all_time`: 2024-01-01T00:00:00Z → now
+- `custom`: caller-supplied from/to; falls back to `this_month` when params missing
 
 ## Null Handling Contract
 

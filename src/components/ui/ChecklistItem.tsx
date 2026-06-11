@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { CheckSquare2, Square } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import { FAST_DURATION, EASE_OUT_EXPO, EASE_SPRING } from '@/lib/constants/motion';
 
 export interface ChecklistItemProps {

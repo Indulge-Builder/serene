@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useId } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m as motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import {
   ENTER_DURATION,
@@ -76,7 +76,6 @@ export function Dialog({
             style={{
               position:   'fixed',
               inset:      0,
-              background: 'rgba(var(--theme-canvas, 10 10 10) / 0.72)',
               backgroundColor: 'color-mix(in srgb, var(--theme-canvas) 72%, transparent)',
               zIndex:     isFull
                 ? ('var(--z-overlay)' as React.CSSProperties['zIndex'])
@@ -161,6 +160,7 @@ export function Dialog({
                       type="button"
                       onClick={onClose}
                       aria-label="Close dialog"
+                      className="eia-pressable eia-icon-rotate-hover"
                       style={{
                         display:        'flex',
                         alignItems:     'center',
@@ -172,7 +172,7 @@ export function Dialog({
                         background:     'transparent',
                         color:          'var(--theme-text-tertiary)',
                         cursor:         'pointer',
-                        transition:     'var(--transition-hover)',
+                        transition:     'var(--transition-hover), transform var(--duration-instant) var(--ease-spring)',
                         flexShrink:     0,
                         marginLeft:     'var(--space-4)',
                       }}

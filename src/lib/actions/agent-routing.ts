@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { formErrors } from "@/lib/validations/form-errors";
-import { getCurrentProfile, getProfileById } from "@/lib/services/profiles-service";
+import { getProfileById } from "@/lib/services/profiles-service";
+import { requireProfile } from "@/lib/actions/_auth";
 import { setRoutingActive, setAgentShift } from "@/lib/services/agent-routing-service";
 import { SetAgentShiftSchema } from "@/lib/validations/agent-routing-schema";
 import type { ActionResult, AgentRoutingConfig } from "@/lib/types";
@@ -32,9 +33,16 @@ export async function toggleAgentRouting(
   }
 
   // Rule 09 — authorization reads from public.profiles only.
-  const caller = await getCurrentProfile();
-  if (!caller || !["manager", "admin", "founder"].includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile(["manager", "admin", "founder"]);
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
+
+  // Rule S-06 — verify ownership/domain for manager (audit F-2).
+  if (caller.role === "manager") {
+    const agentProfile = await getProfileById(parsed.data.agent_id);
+    if (!agentProfile || agentProfile.domain !== caller.domain) {
+      return { data: null, error: formErrors.unauthorized };
+    }
   }
 
   const result = await setRoutingActive(parsed.data.agent_id, parsed.data.is_active);
@@ -62,10 +70,9 @@ export async function setAgentShiftAction(
   }
 
   // Rule 09 — authorization reads from public.profiles only.
-  const caller = await getCurrentProfile();
-  if (!caller || !["manager", "admin", "founder"].includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
-  }
+  const auth = await requireProfile(["manager", "admin", "founder"]);
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   // Rule S-06 — verify ownership/domain for manager.
   if (caller.role === "manager") {

@@ -28,7 +28,7 @@
 :root {
   /* Canvas */
   --theme-canvas:            #0d0c0a;
-  --theme-canvas-glow:       rgba(212, 175, 55, 0.08);
+  --theme-canvas-glow:       rgba(201, 165, 83, 0.08);
   --theme-canvas-text:       rgba(255, 255, 255, 0.85);
   /* Earth-specific canvas texture — other themes define their own when enhanced */
   --theme-canvas-grain-opacity: 0.055;
@@ -49,9 +49,9 @@
   );
 
   /* Paper */
-  --theme-paper:             #ffffff;
-  --theme-paper-subtle:      #f9f9f6;
-  --theme-paper-border:      #e5e4df;
+  --theme-paper:             #fcfbf6;
+  --theme-paper-subtle:      #f5f2e9;
+  --theme-paper-border:      #e7e2d4;
 
   /* Tab pill (on paper) — soft pastel chip; accent-muted washed into paper */
   --theme-tab-pill-active-bg:     color-mix(in srgb, var(--theme-accent-muted) 18%, var(--theme-paper-subtle));
@@ -59,15 +59,15 @@
   --theme-tab-pill-active-text:   var(--theme-accent-muted);
 
   /* Accent */
-  --theme-accent:            #d4af37;
-  --theme-accent-hover:      #a88b25;
-  --theme-accent-muted:      #7a6b5d;
-  --theme-accent-surface:    rgba(212, 175, 55, 0.10);
-  --theme-accent-fg:         #0a0a0a;
+  --theme-accent:            #c9a553;
+  --theme-accent-hover:      #a98741;
+  --theme-accent-muted:      #665739;
+  --theme-accent-surface:    rgba(201, 165, 83, 0.10);
+  --theme-accent-fg:         #201808;
 
   /* Text */
-  --theme-text-primary:      #1a1a1a;
-  --theme-text-secondary:    #6b6b6b;
+  --theme-text-primary:      #211e17;
+  --theme-text-secondary:    #6e675a;
   --theme-text-tertiary:     #b5a99a;
   --theme-text-inverse:      #ffffff;
 
@@ -75,10 +75,10 @@
   --theme-sidebar-bg:              #0d0c0a;
   --theme-sidebar-border:          #2a2a2a;
   --theme-sidebar-text:            rgba(255, 255, 255, 0.55);
-  --theme-sidebar-active:          #d4af37;
+  --theme-sidebar-active:          #d6b46a;
   --theme-sidebar-hover-bg:        #1a1a1a;
-  --theme-sidebar-active-bg:       #1e1a0a;
-  --theme-sidebar-active-pill:     #d4af37;
+  --theme-sidebar-active-bg:       #211b0d;
+  --theme-sidebar-active-pill:     #d6b46a;
 
   /* Shadow colour primitive — warm black for Earth */
   --shadow-color: 10 8 2;
@@ -86,6 +86,7 @@
   /* Overlay backdrops — theme-invariant */
   --overlay-bg:       rgba(0, 0, 0, 0.5);
   --overlay-bg-light: rgba(0, 0, 0, 0.35);
+  --overlay-scrim:    rgba(0, 0, 0, 0.52); /* image scrims (avatar hover/upload) — theme-invariant */
 
   /* ── Domain line colours — data visualisation only ──────────────────
      Mid-tone palette, hue-wheel spread. Readable on --theme-paper
@@ -114,7 +115,7 @@
 
 [data-theme="earth"] {
   --theme-canvas:            #0d0c0a;
-  --theme-canvas-glow:       rgba(212, 175, 55, 0.08);
+  --theme-canvas-glow:       rgba(201, 165, 83, 0.08);
   --theme-canvas-text:       rgba(255, 255, 255, 0.85);
   --theme-canvas-grain-opacity: 0.055;
   --theme-canvas-gradient-1: radial-gradient(
@@ -133,28 +134,28 @@
     transparent 100%
   );
 
-  --theme-paper:             #ffffff;
-  --theme-paper-subtle:      #f9f9f6;
-  --theme-paper-border:      #e5e4df;
+  --theme-paper:             #fcfbf6;
+  --theme-paper-subtle:      #f5f2e9;
+  --theme-paper-border:      #e7e2d4;
 
-  --theme-accent:            #d4af37;
-  --theme-accent-hover:      #a88b25;
-  --theme-accent-muted:      #7a6b5d;
-  --theme-accent-surface:    rgba(212, 175, 55, 0.10);
-  --theme-accent-fg:         #0a0a0a;
+  --theme-accent:            #c9a553;
+  --theme-accent-hover:      #a98741;
+  --theme-accent-muted:      #665739;
+  --theme-accent-surface:    rgba(201, 165, 83, 0.10);
+  --theme-accent-fg:         #201808;
 
-  --theme-text-primary:      #1a1a1a;
-  --theme-text-secondary:    #6b6b6b;
+  --theme-text-primary:      #211e17;
+  --theme-text-secondary:    #6e675a;
   --theme-text-tertiary:     #b5a99a;
   --theme-text-inverse:      #ffffff;
 
   --theme-sidebar-bg:              #0d0c0a;
   --theme-sidebar-border:          #2a2a2a;
   --theme-sidebar-text:            rgba(255, 255, 255, 0.55);
-  --theme-sidebar-active:          #d4af37;
+  --theme-sidebar-active:          #d6b46a;
   --theme-sidebar-hover-bg:        #1a1a1a;
-  --theme-sidebar-active-bg:       #1e1a0a;
-  --theme-sidebar-active-pill:     #d4af37;
+  --theme-sidebar-active-bg:       #211b0d;
+  --theme-sidebar-active-pill:     #d6b46a;
 
   --shadow-color: 10 8 2;
 }
@@ -166,31 +167,38 @@
 
 [data-theme="air"] {
   --theme-canvas:            #07090f;
-  --theme-canvas-glow:       rgba(148, 174, 214, 0.07);
+  --theme-canvas-glow:       rgba(132, 162, 204, 0.07);
   --theme-canvas-text:       rgba(255, 255, 255, 0.82);
+  /* Canvas atmosphere — flat per DNA §3.5 until Air's own washes are designed.
+     `none` is required: :root defines Earth's washes on the same <html> element,
+     so omission would inherit Earth, not fall to initial (design audit H-02). */
+  --theme-canvas-grain-opacity: 0.055; /* documentation value — baked into the shared SVG URI */
+  --theme-canvas-gradient-1: none;
+  --theme-canvas-gradient-2: none;
+  --theme-canvas-gradient-3: none;
 
   --theme-paper:             #f7f8fc;
   --theme-paper-subtle:      #eef0f6;
   --theme-paper-border:      #dde0ea;
 
-  --theme-accent:            #7b9fc4;
-  --theme-accent-hover:      #5a80a8;
-  --theme-accent-muted:      #a4bcd4;
-  --theme-accent-surface:    rgba(123, 159, 196, 0.10);
+  --theme-accent:            #54769e;
+  --theme-accent-hover:      #425f85;
+  --theme-accent-muted:      #46596f;
+  --theme-accent-surface:    rgba(84, 118, 158, 0.10);
   --theme-accent-fg:         #ffffff;
 
   --theme-text-primary:      #111827;
-  --theme-text-secondary:    #64748b;
+  --theme-text-secondary:    #5d6c84;
   --theme-text-tertiary:     #a8b4c4;
   --theme-text-inverse:      #f7f8fc;
 
   --theme-sidebar-bg:              #07090f;
   --theme-sidebar-border:          #181d28;
   --theme-sidebar-text:            rgba(255, 255, 255, 0.48);
-  --theme-sidebar-active:          #94aed6;
+  --theme-sidebar-active:          #9bb4d6;
   --theme-sidebar-hover-bg:        rgba(255, 255, 255, 0.05);
-  --theme-sidebar-active-bg:       rgba(123, 159, 196, 0.12);
-  --theme-sidebar-active-pill:     #7b9fc4;
+  --theme-sidebar-active-bg:       rgba(84, 118, 158, 0.13);
+  --theme-sidebar-active-pill:     #54769e;
 
   --shadow-color: 8 12 20;
 }
@@ -202,17 +210,22 @@
 
 [data-theme="water"] {
   --theme-canvas:            #060d0f;
-  --theme-canvas-glow:       rgba(56, 178, 172, 0.07);
+  --theme-canvas-glow:       rgba(46, 164, 150, 0.07);
   --theme-canvas-text:       rgba(255, 255, 255, 0.83);
+  /* Canvas atmosphere — flat per DNA §3.5 until Water's own washes are designed (H-02). */
+  --theme-canvas-grain-opacity: 0.055;
+  --theme-canvas-gradient-1: none;
+  --theme-canvas-gradient-2: none;
+  --theme-canvas-gradient-3: none;
 
   --theme-paper:             #f4fafa;
   --theme-paper-subtle:      #e8f4f4;
   --theme-paper-border:      #cde4e4;
 
-  --theme-accent:            #2a9d8f;
-  --theme-accent-hover:      #1f7a6e;
-  --theme-accent-muted:      #6abfb8;
-  --theme-accent-surface:    rgba(42, 157, 143, 0.10);
+  --theme-accent:            #1e7d72;
+  --theme-accent-hover:      #155f56;
+  --theme-accent-muted:      #35635c;
+  --theme-accent-surface:    rgba(30, 125, 114, 0.10);
   --theme-accent-fg:         #ffffff;
 
   --theme-text-primary:      #0d1f1e;
@@ -223,10 +236,10 @@
   --theme-sidebar-bg:              #060d0f;
   --theme-sidebar-border:          #0f2020;
   --theme-sidebar-text:            rgba(255, 255, 255, 0.46);
-  --theme-sidebar-active:          #4dbdb5;
+  --theme-sidebar-active:          #54c2b4;
   --theme-sidebar-hover-bg:        rgba(255, 255, 255, 0.05);
-  --theme-sidebar-active-bg:       rgba(42, 157, 143, 0.12);
-  --theme-sidebar-active-pill:     #2a9d8f;
+  --theme-sidebar-active-bg:       rgba(30, 125, 114, 0.13);
+  --theme-sidebar-active-pill:     #1e7d72;
 
   --shadow-color: 4 18 18;
 }
@@ -238,17 +251,22 @@
 
 [data-theme="fire"] {
   --theme-canvas:            #0c0905;
-  --theme-canvas-glow:       rgba(224, 107, 28, 0.10);
+  --theme-canvas-glow:       rgba(214, 104, 46, 0.10);
   --theme-canvas-text:       rgba(255, 255, 255, 0.87);
+  /* Canvas atmosphere — flat per DNA §3.5 until Fire's own washes are designed (H-02). */
+  --theme-canvas-grain-opacity: 0.055;
+  --theme-canvas-gradient-1: none;
+  --theme-canvas-gradient-2: none;
+  --theme-canvas-gradient-3: none;
 
   --theme-paper:             #fdf8f3;
   --theme-paper-subtle:      #f5ede2;
   --theme-paper-border:      #e8d5bf;
 
-  --theme-accent:            #e05c1a;
-  --theme-accent-hover:      #c04510;
-  --theme-accent-muted:      #d4875a;
-  --theme-accent-surface:    rgba(224, 92, 26, 0.10);
+  --theme-accent:            #c25022;
+  --theme-accent-hover:      #a23e15;
+  --theme-accent-muted:      #7f4527;
+  --theme-accent-surface:    rgba(194, 80, 34, 0.10);
   --theme-accent-fg:         #ffffff;
 
   --theme-text-primary:      #1a0f08;
@@ -259,10 +277,10 @@
   --theme-sidebar-bg:              #0c0905;
   --theme-sidebar-border:          #261408;
   --theme-sidebar-text:            rgba(255, 235, 210, 0.45);
-  --theme-sidebar-active:          #f07840;
+  --theme-sidebar-active:          #e8845c;
   --theme-sidebar-hover-bg:        rgba(255, 200, 150, 0.06);
-  --theme-sidebar-active-bg:       rgba(224, 92, 26, 0.13);
-  --theme-sidebar-active-pill:     #e05c1a;
+  --theme-sidebar-active-bg:       rgba(194, 80, 34, 0.13);
+  --theme-sidebar-active-pill:     #c25022;
 
   --shadow-color: 18 8 2;
 }
@@ -274,17 +292,22 @@
 
 [data-theme="cosmos"] {
   --theme-canvas:            #07060f;
-  --theme-canvas-glow:       rgba(139, 92, 246, 0.09);
+  --theme-canvas-glow:       rgba(134, 106, 224, 0.09);
   --theme-canvas-text:       rgba(255, 255, 255, 0.88);
+  /* Canvas atmosphere — flat per DNA §3.5 until Cosmos's own washes are designed (H-02). */
+  --theme-canvas-grain-opacity: 0.055;
+  --theme-canvas-gradient-1: none;
+  --theme-canvas-gradient-2: none;
+  --theme-canvas-gradient-3: none;
 
   --theme-paper:             #f8f7fe;
   --theme-paper-subtle:      #f0eefb;
   --theme-paper-border:      #dddaf4;
 
-  --theme-accent:            #8b6fd4;
-  --theme-accent-hover:      #6d50b8;
-  --theme-accent-muted:      #b09ee0;
-  --theme-accent-surface:    rgba(139, 111, 212, 0.10);
+  --theme-accent:            #7a5fc0;
+  --theme-accent-hover:      #624aa4;
+  --theme-accent-muted:      #615484;
+  --theme-accent-surface:    rgba(122, 95, 192, 0.10);
   --theme-accent-fg:         #ffffff;
 
   --theme-text-primary:      #0f0d1a;
@@ -295,10 +318,10 @@
   --theme-sidebar-bg:              #07060f;
   --theme-sidebar-border:          #14102a;
   --theme-sidebar-text:            rgba(220, 215, 255, 0.42);
-  --theme-sidebar-active:          #a98fe8;
-  --theme-sidebar-hover-bg:        rgba(139, 111, 212, 0.07);
-  --theme-sidebar-active-bg:       rgba(139, 111, 212, 0.14);
-  --theme-sidebar-active-pill:     #8b6fd4;
+  --theme-sidebar-active:          #ab95e4;
+  --theme-sidebar-hover-bg:        rgba(122, 95, 192, 0.07);
+  --theme-sidebar-active-bg:       rgba(122, 95, 192, 0.14);
+  --theme-sidebar-active-pill:     #7a5fc0;
 
   --shadow-color: 8 6 18;
 }
@@ -313,16 +336,25 @@
   --color-success:            #3a7d52;
   --color-success-light:      #eaf5ee;
   --color-success-text:       #2a6040;
+  --color-success-fg:         #ffffff;
 
   /* Warning */
   --color-warning:            #b87a10;
   --color-warning-light:      #fef5dc;
   --color-warning-text:       #8a5c08;
+  --color-warning-fg:         #ffffff;
 
   /* Danger */
   --color-danger:             #b83a28;
   --color-danger-light:       #faecea;
   --color-danger-text:        #8a2c1c;
+  --color-danger-fg:          #ffffff;
+
+  /* The -fg tier is the LABEL colour on a saturated semantic fill
+     (--color-success / -warning / -danger backgrounds). The -text tier is the
+     label colour on a -light fill only — never use -text on a saturated fill,
+     and never use --theme-text-inverse for this job.
+     (Decision Log 2026-06-11.) */
 
   /* Info */
   --color-info:               #2860a0;
@@ -393,6 +425,19 @@
   --status-junk-light:         #faecea;
   --status-junk-border:        #e0a098;
 
+  /* Saturated tier — data-visualisation fills (stacked bars, legend dots).
+     The -text tokens are muted label tones and read identically at ~10px bar
+     heights; this tier exists so compact per-status visualisations stay
+     distinguishable WITHOUT hardcoding hex in components.
+     (Decision Log 2026-06-11 — supersedes the 2026-06-04 BAR_COLORS exception.) */
+  --status-new-solid:           #F5A623;
+  --status-touched-solid:       #4A90D9;
+  --status-in-discussion-solid: #27AE8F;
+  --status-nurturing-solid:     #8B6FD4;
+  --status-won-solid:           #27AE60;
+  --status-lost-solid:          #E05C4B;
+  --status-junk-solid:          #B0B0B0;
+
   /* Focus and selection */
   --color-focus-ring:     color-mix(in srgb, var(--theme-accent) 40%, transparent);
   --color-selection-bg:   color-mix(in srgb, var(--theme-accent) 18%, transparent);
@@ -405,7 +450,7 @@
   --color-warning-light:  #faf4e8;
   --color-info-light:     #e4eef8;
   --color-neutral-light:  #edf0f5;
-  --color-neutral:        #64748b;
+  --color-neutral:        #5d6c84;
   --color-neutral-text:   #475569;
 }
 
@@ -595,12 +640,16 @@
     0 8px 32px  color-mix(in srgb, var(--theme-accent) 12%, transparent);
 }
 
-/* Earth-only gold shimmer — activated under earth theme */
-[data-theme="earth"],
+/* Earth-only gold shimmer — activates ONLY under the earth theme.
+   :root default is `none` so non-Earth consumers degrade to no shadow
+   instead of an invalid (dropped) declaration. */
 :root {
+  --shadow-gold-shimmer: none;
+}
+[data-theme="earth"] {
   --shadow-gold-shimmer:
-    inset 0 1px 0 rgba(212, 175, 55, 0.12),
-    0 0 0 1px     rgba(212, 175, 55, 0.06);
+    inset 0 1px 0 rgba(201, 165, 83, 0.12),
+    0 0 0 1px     rgba(201, 165, 83, 0.06);
 }
 
 
@@ -664,12 +713,6 @@
     transform var(--duration-exit) var(--ease-in-expo),
     opacity   var(--duration-exit) var(--ease-in-expo);
 
-  --transition-layout:
-    width   var(--duration-slow) var(--ease-out-soft),
-    height  var(--duration-slow) var(--ease-out-soft),
-    padding var(--duration-slow) var(--ease-out-soft),
-    margin  var(--duration-slow) var(--ease-out-soft);
-
   --transition-theme:
     background-color var(--duration-slow) var(--ease-in-out),
     color            var(--duration-slow) var(--ease-in-out),
@@ -729,10 +772,13 @@
   50%       { opacity: 0; }
 }
 
-/* Warning toast depletion bar — linear timing is intentional (maps time to real time) */
+/* Warning toast depletion bar — linear timing is intentional (maps time to
+   real time). scaleX, never width: the bar runs for the toast's whole
+   lifetime and must stay on the compositor (consumer sets width: 100% +
+   transform-origin: left). */
 @keyframes toast-deplete {
-  from { width: 100%; }
-  to   { width: 0%; }
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
 }
 
 /* Page title dot — slow accent blink on the trailing period */
@@ -750,6 +796,29 @@
 @keyframes eia-subtask-pulse {
   0%,  100% { opacity: 1;    transform: scale(1);    }
   50%        { opacity: 0.45; transform: scale(0.72); }
+}
+
+/* Row arrival — tables fade in row by row (design-dna §6.2 M-04).
+   Consumers apply .eia-row-enter to the first 8 rows only, with an inline
+   animation-delay step of 30ms per row; rows beyond 8 render instantly. */
+@keyframes eia-row-enter {
+  from { opacity: 0; }
+}
+
+/* Checkbox tick — the check stroke draws itself in (dasharray = path length) */
+@keyframes eia-check-draw {
+  from { stroke-dashoffset: 9; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Phone receiver ring — decaying wiggle, pivots near the earpiece */
+@keyframes eia-phone-ring {
+  0%   { transform: rotate(0deg);   }
+  20%  { transform: rotate(-13deg); }
+  40%  { transform: rotate(10deg);  }
+  60%  { transform: rotate(-7deg);  }
+  80%  { transform: rotate(4deg);   }
+  100% { transform: rotate(0deg);   }
 }
 
 /* Utility animation classes */
@@ -775,6 +844,161 @@
 .page-title-dot {
   color:     var(--theme-accent);
   animation: eia-page-dot-blink 2.4s ease-in-out infinite;
+}
+
+/* ── Button variant chrome (§5.01) ──────────────────────────────────
+   Rest + hover live HERE, not in Button.tsx JS mouse handlers, so
+   :hover is gated to real pointers (no sticky hover after a tap on
+   touch) and press feedback beats hover by cascade order instead of
+   !important. Button.tsx owns layout/size inline; consumers may still
+   override rest values via the style prop (inline wins by design). */
+.eia-btn-primary {
+  background: var(--theme-accent);
+  color:      var(--theme-accent-fg);
+  border:     1px solid transparent;
+  box-shadow: var(--shadow-accent-glow);
+}
+.eia-btn-secondary {
+  background: var(--theme-paper-subtle);
+  color:      var(--theme-text-primary);
+  border:     1px solid var(--theme-paper-border);
+  box-shadow: var(--shadow-1);
+}
+.eia-btn-ghost {
+  background: transparent;
+  color:      var(--theme-text-primary);
+  border:     1px solid transparent;
+}
+/* danger/success: soft-default rest → saturated on hover (Button.tsx note) */
+.eia-btn-danger {
+  background: var(--color-danger-light);
+  color:      var(--color-danger-text);
+  border:     1px solid var(--color-danger-light);
+}
+.eia-btn-success {
+  background: var(--color-success-light);
+  color:      var(--color-success-text);
+  border:     1px solid var(--color-success-light);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .eia-btn-primary:hover:not(:disabled) {
+    background: var(--theme-accent-hover);
+    box-shadow: var(--shadow-accent-lift);
+    transform:  translateY(-1px);
+  }
+  .eia-btn-secondary:hover:not(:disabled) {
+    border-color: var(--theme-accent-muted);
+  }
+  .eia-btn-ghost:hover:not(:disabled) {
+    background: var(--theme-paper-subtle);
+  }
+  .eia-btn-danger:hover:not(:disabled) {
+    background:   var(--color-danger);
+    color:        var(--theme-text-inverse);
+    border-color: var(--color-danger);
+  }
+  .eia-btn-success:hover:not(:disabled) {
+    background:   var(--color-success);
+    color:        var(--theme-text-inverse);
+    border-color: var(--color-success);
+  }
+}
+
+/* Keyboard focus ring — :focus-visible only (a mouse click no longer
+   flashes the ring). suppressFocusRing → .eia-btn-no-ring. */
+.eia-pressable:focus-visible:not(.eia-btn-no-ring) {
+  box-shadow: var(--shadow-focus);
+}
+
+/* Press feedback — the key pressing down (design-dna §6.3 button press).
+   CSS-only so plain Button keeps zero Framer cost. Declared AFTER the
+   hover rules so press beats the primary hover lift by cascade order;
+   disabled buttons set pointer-events: none, so :active never fires on them. */
+.eia-pressable:active {
+  transform: scale(0.97);
+}
+
+/* Row arrival — `backwards` keeps delayed rows invisible until their turn */
+.eia-row-enter {
+  animation: eia-row-enter var(--duration-base) var(--ease-out-expo) backwards;
+}
+
+/* Checkbox tick draw — applied to the check <path> (length ≈ 9) */
+.eia-check-draw {
+  stroke-dasharray: 9;
+  animation: eia-check-draw var(--duration-fast) var(--ease-out-expo) both;
+}
+
+/* ── Icon micro-interaction family ──────────────────────────────────
+   ONE vocabulary, defined once, reused everywhere. Put the class on
+   the BUTTON (or Link) — it targets the child svg. Unhurried by
+   design: --duration-slow + --ease-spring. Gated to real pointers and
+   no-preference in one query (no touch false-positives; reduced
+   motion never sees them). Each variant maps to a semantic gesture —
+   never add a variant without a live consumer:
+     rotate → quarter turn      close ×, Plus CTAs (lands identical)
+     lift   → up-right takeoff  Send composers, ArrowUpRight "Open"
+     drop   → settles downward  Download / export
+     ring   → receiver wiggle   Phone (Called)
+   Buttons opt in via the typed `iconMotion` prop on ui/Button. */
+.eia-icon-rotate-hover svg,
+.eia-icon-lift-hover   svg,
+.eia-icon-drop-hover   svg {
+  transition: transform var(--duration-slow) var(--ease-spring);
+}
+.eia-icon-ring-hover svg {
+  transform-origin: 50% 35%;
+}
+
+/* travel-back — the arrow continues on its journey: on hover the primary
+   arrow exits left (clipped by the button), a twin flows in from the right
+   and settles in its place. Markup contract: the clipping class goes on the
+   button/link (which must clip — overflow: hidden), the stage wraps TWO
+   copies of the icon; the second is position:absolute / inset:0 inline and
+   aria-hidden. All transforms live here — never inline. Consumer: BackButton. */
+.eia-icon-travel-back-hover .eia-icon-travel-stage {
+  position: relative;
+  display: inline-flex;
+}
+.eia-icon-travel-back-hover .eia-icon-travel-stage svg {
+  /* Softer + longer than the rest of the family — the travel is a full
+     exit-and-arrival journey; spring at 350ms read as rushed. 500ms is
+     the §10.1 motion ceiling; --ease-out-soft is the "unhurried" curve. */
+  transition: transform var(--duration-page) var(--ease-out-soft);
+}
+.eia-icon-travel-back-hover .eia-icon-travel-stage svg + svg {
+  transform: translateX(200%);
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .eia-icon-rotate-hover:hover:not(:disabled) svg { transform: rotate(90deg); }
+  .eia-icon-lift-hover:hover:not(:disabled)   svg { transform: translate(1px, -1px); }
+  .eia-icon-drop-hover:hover:not(:disabled)   svg { transform: translateY(2px); }
+  .eia-icon-ring-hover:hover:not(:disabled)   svg { animation: eia-phone-ring 700ms var(--ease-in-out); }
+  .eia-icon-travel-back-hover:hover .eia-icon-travel-stage svg:first-of-type { transform: translateX(-200%); }
+  .eia-icon-travel-back-hover:hover .eia-icon-travel-stage svg + svg         { transform: translateX(0); }
+}
+
+/* Theme switch cross-dissolve — ThemeSelector puts this class on <html> for
+   the recolour window (~400ms) while writing data-theme, then removes it.
+   The whole palette dissolves via --transition-theme instead of hard-snapping.
+   !important so it wins over component-level transitions during the window;
+   never present at boot (ThemeInitializer sets the attribute classlessly). */
+@media (prefers-reduced-motion: no-preference) {
+  html.eia-theme-transition,
+  html.eia-theme-transition *,
+  html.eia-theme-transition *::before,
+  html.eia-theme-transition *::after {
+    transition: var(--transition-theme) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eia-pressable:active { transform: none !important; }
+  .eia-btn-primary:hover:not(:disabled) { transform: none; }
+  .eia-row-enter        { animation: none; }
+  .eia-check-draw       { animation: none; stroke-dashoffset: 0; }
 }
 
 

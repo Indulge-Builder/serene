@@ -3,10 +3,14 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import { Calendar } from './Calendar';
 import { TimePickerWheelPanel, type Meridiem } from './TimePicker';
-import { DROPDOWN_VARIANTS } from '@/lib/constants/motion';
+import {
+  DROPDOWN_VARIANTS,
+  DROPDOWN_VARIANTS_UP,
+  FLIP_UP_TRANSFORM_TEMPLATE,
+} from '@/lib/constants/motion';
 import { toUTC, formatDate } from '@/lib/utils/dates';
 
 export interface DatePickerProps {
@@ -192,15 +196,17 @@ export function DatePicker({
           key="datepicker-popover"
           role="dialog"
           aria-label="Calendar"
-          variants={DROPDOWN_VARIANTS}
+          variants={panelPos.flipUp ? DROPDOWN_VARIANTS_UP : DROPDOWN_VARIANTS}
           initial="hidden"
           animate="visible"
           exit="exit"
+          // flip-up shift via transformTemplate — a style.transform string
+          // would be clobbered by the animated y (see motion.ts)
+          transformTemplate={panelPos.flipUp ? FLIP_UP_TRANSFORM_TEMPLATE : undefined}
           style={{
             position:     'fixed',
             top:          panelPos.top,
             left:         panelPos.left,
-            transform:    panelPos.flipUp ? 'translateY(-100%)' : undefined,
             zIndex:       'var(--z-modal-nested)' as React.CSSProperties['zIndex'],
             boxShadow:    'var(--shadow-3)',
             borderRadius: 'var(--radius-md)',

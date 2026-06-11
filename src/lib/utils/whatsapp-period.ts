@@ -2,37 +2,17 @@ import {
   isWhatsAppPeriod,
   type WhatsAppPeriod,
 } from '@/lib/constants/whatsapp-period';
+import {
+  toISTMidnight,
+  toISTEndOfDay,
+  getISTMondayStart,
+  getISTMonthStart,
+} from '@/lib/utils/ist';
 
 export type WhatsAppPeriodRange = {
   from: string;
   to:   string;
 };
-
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-
-function toISTMidnight(d: Date): Date {
-  const istMs   = d.getTime() + IST_OFFSET_MS;
-  const istDate = new Date(istMs);
-  istDate.setUTCHours(0, 0, 0, 0);
-  return new Date(istDate.getTime() - IST_OFFSET_MS);
-}
-
-function toISTEndOfDay(d: Date): Date {
-  const istMs   = d.getTime() + IST_OFFSET_MS;
-  const istDate = new Date(istMs);
-  istDate.setUTCHours(23, 59, 59, 999);
-  return new Date(istDate.getTime() - IST_OFFSET_MS);
-}
-
-function getISTMondayStart(now: Date): Date {
-  const istMs   = now.getTime() + IST_OFFSET_MS;
-  const istDate = new Date(istMs);
-  const dow     = istDate.getUTCDay();
-  const daysBack = dow === 0 ? 6 : dow - 1;
-  istDate.setUTCDate(istDate.getUTCDate() - daysBack);
-  istDate.setUTCHours(0, 0, 0, 0);
-  return new Date(istDate.getTime() - IST_OFFSET_MS);
-}
 
 /** Preset ranges in IST. Custom requires at least one bound. */
 export function getWhatsAppPeriodRange(
@@ -56,11 +36,7 @@ export function getWhatsAppPeriodRange(
       };
 
     case 'this_month': {
-      const istNow = new Date(now.getTime() + IST_OFFSET_MS);
-      const first  = new Date(istNow);
-      first.setUTCDate(1);
-      first.setUTCHours(0, 0, 0, 0);
-      const fromUtc = new Date(first.getTime() - IST_OFFSET_MS);
+      const fromUtc = getISTMonthStart(now);
       return { from: fromUtc.toISOString(), to: now.toISOString() };
     }
 

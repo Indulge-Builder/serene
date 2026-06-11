@@ -155,8 +155,8 @@ This keeps bundle splitting clean — a widget not visible to a role is never lo
 
 - All dashboard data goes through `src/lib/services/dashboard-service.ts` — never `leads-service.ts`
 - All client-side fetches go through server actions in `src/lib/actions/dashboard.ts`
-- Server actions always call `getCurrentProfile()` and use the verified profile — never trust client-supplied role/domain/userId
-- Widgets receive `userId`, `role`, `domain` as props from the canvas — but server actions re-verify via `getCurrentProfile()`
+- Server actions authorize via `requireProfile()` from `lib/actions/_auth.ts` (A-18) and use the verified profile — never trust client-supplied role/domain/userId
+- Widgets receive `userId`, `role`, `domain` as props from the canvas — but server actions re-verify via `requireProfile()`
 
 ---
 
@@ -221,7 +221,7 @@ Filters live in `TasksFilters` / `TasksShell` (`task-client-filters.ts` — all 
 - `createTrigger` opens `CreatePersonalTaskModal` (wired from header `AddTaskButton` via `TasksCreateProvider`).
 - `AssigneePickerModal` portaled to `document.body`.
 
-`PersonalTasksTab.tsx` is **not mounted** — do not document new behaviour there.
+`PersonalTasksTab.tsx` was **deleted** (2026-06-11, design-audit Phase 3) — `MyTasksCalendarView` is the only My Tasks UI; never recreate it.
 
 ### GroupTasksTab
 
@@ -233,14 +233,14 @@ Filters live in `TasksFilters` / `TasksShell` (`task-client-filters.ts` — all 
 - Subtask rows: title + status pill + assignee avatar. Click → `SubTaskModal`.
 - "Add subtask" row at bottom. `AssigneePickerModal` portaled to `document.body`.
 - Subtask data loaded on first expand (`getGroupSubtasks`) — not on mount.
-- **Agent list fetch:** `listAgentsForDomain` is called **once on mount** in `GroupTasksTab` (manager+ only) and the result is stored as `assignableUsers` state. This is passed as a prop to every `GroupRow`. `GroupRow` must never call `listAgentsForDomain` independently — doing so would fire one DB call per expanded group.
+- **Agent list:** `GroupTasksTab` receives `assignableUsers` via the SSR-hoisted `initialAgents` prop (`getAssignableUsers()` in `TasksAsync`). This is passed as a prop to every `GroupRow`. `GroupRow` must never fetch assignable users independently — doing so would fire one DB call per expanded group.
 
 ### Group Task Workspace — `/tasks/[id]`
 
 **Page:** `src/app/(dashboard)/tasks/[id]/page.tsx` — Server Component.
 
 - `WorkspaceAsync` fetches `getTaskGroupById(groupId)` + `getGroupSubtasks(groupId, userId)` in parallel.
-- `userId` is the second param — used only for Redis cache key scoping. RLS on the Supabase query is unchanged. See `docs/tasks-page.md` §4.
+- `userId` is the second param — used only for Redis cache key scoping. RLS on the Supabase query is unchanged. See `docs/pages/tasks.md`.
 - Null group (RLS blocks access or not found) → `redirect('/tasks?tab=group')`. No 404.
 - Passes `group`, `initialSubtasks`, `currentUserId`, `currentUserName`, `callerRole`, `callerDomain` as props.
 

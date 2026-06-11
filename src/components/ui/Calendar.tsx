@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import { SLOW_DURATION, EASE_SPRING, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 export interface TaskDotMeta {
@@ -79,7 +79,7 @@ function YearMonthPicker({ year, month, onPick, onClose }: PickerProps) {
         inset:         0,
         background:    'var(--theme-paper)',
         borderRadius:  'inherit',
-        zIndex:        10,
+        zIndex:        'var(--z-raised)' as React.CSSProperties['zIndex'],
         display:       'flex',
         flexDirection: 'column',
         overflow:      'hidden',
@@ -474,19 +474,24 @@ export function Calendar({
               >
                 {date.getDate()}
 
-                {/* Task dot */}
+                {/* Task dot — centring lives on Framer's `x` (a style.transform
+                    string would be clobbered by the animated scale); entrance
+                    from scale 0.5 + opacity, never scale(0). */}
                 {hasTaskDot && (
                   <motion.span
                     key={`dot-${localDateKey(date)}`}
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
+                    initial={{ x: '-50%', scale: 0.5, opacity: 0 }}
+                    animate={{
+                      x: '-50%',
+                      scale: 1,
+                      opacity: isAccented ? 0.7 : taskMeta!.count >= 3 ? 1 : 0.65,
+                    }}
                     transition={{ duration: 0.15, ease: EASE_SPRING }}
                     aria-hidden="true"
                     style={{
                       position:     'absolute',
                       bottom:       5,
                       left:         '50%',
-                      transform:    'translateX(-50%)',
                       width:        3,
                       height:       3,
                       borderRadius: 'var(--radius-full)',
@@ -495,7 +500,6 @@ export function Calendar({
                         : isAccented
                         ? 'var(--theme-accent-fg)'
                         : 'var(--theme-accent)',
-                      opacity:      isAccented ? 0.7 : taskMeta!.count >= 3 ? 1 : 0.65,
                       zIndex:       1,
                     }}
                   />

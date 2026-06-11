@@ -6,10 +6,31 @@
 // Both tabs share the same period/customFrom/customTo from URL params.
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import type { PerformancePeriod } from '@/lib/services/performance-service';
-import { DomainOverviewPanel } from '@/components/performance/DomainOverviewPanel';
 import type { DomainHealthCard } from '@/lib/types/index';
 import type { AppDomain } from '@/lib/types/database';
+
+// Loaded on intent (perf audit G-3): the Domains tab is the only Recharts
+// consumer in the founder shell, so its chunk is fetched on first tab click
+// instead of shipping in the /performance initial chunk.
+const DomainOverviewPanel = dynamic(
+  () => import('@/components/performance/DomainOverviewPanel').then((mod) => mod.DomainOverviewPanel),
+  { loading: () => <DomainsTabFallback /> },
+);
+
+function DomainsTabFallback() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-4)' }}>
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="skeleton" style={{ height: '120px', borderRadius: 'var(--radius-lg)' }} />
+        ))}
+      </div>
+      <div className="skeleton" style={{ height: '300px', borderRadius: 'var(--radius-lg)' }} />
+    </div>
+  );
+}
 
 type Tab = 'agents' | 'domains';
 

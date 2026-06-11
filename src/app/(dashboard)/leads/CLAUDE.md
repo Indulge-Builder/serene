@@ -27,15 +27,26 @@ If it is a sibling of the skeleton, the boundary does nothing.
 
 ---
 
-## Lead dossier (`leads/[id]/page.tsx`)
+## Lead dossier (`leads/[id]/page.tsx`) — streamed (perf audit 2026-06-11 item B)
 
-Thin server orchestrator. Parallel fetch: lead (slug then UUID fallback), notes, activities, assignee, agents, `getAdCreativesForCampaign(utm_campaign)` when present.
+Thin server orchestrator. **The page blocks only on wave 1:** `Promise.all(getCurrentProfile(), getLeadBySlug(id) ?? getLeadById(id))`. The header, `StatusActionPanel`, `PersonalDetailsCard`, `DynamicFormResponses`, and `LeadNotesInput` need only wave 1 and paint immediately. Everything else is a self-fetching async server component (direct child of its own `<Suspense>`, all in `src/components/leads/`):
 
-**Tasks column:** `<Suspense fallback={<LeadTasksCardSkeleton />}><LeadTasksAsync leadId={lead.id} /></Suspense>` — calls `getAllLeadTasks` (not `getNextLeadTask`). `LeadDossierTasksAsync` is retired.
+| Boundary | Child | Fetches | Fallback |
+| -------- | ----- | ------- | -------- |
+| Info card | `LeadInfoCardAsync` | ad creatives (when `utm_campaign`) + reassign agents (when `canReassign`) in `Promise.all` | `DossierCardSkeleton` |
+| Deal card | `LeadDealCardAsync` | `getLeadDeal(lead.id)`; renders nothing when null | `null` — no skeleton, most leads have no deal |
+| Tasks | `LeadTasksAsync` | `getAllLeadTasks` (not `getNextLeadTask`; `LeadDossierTasksAsync` retired) | `LeadTasksCardSkeleton` |
+| WhatsApp | `LeadWhatsAppCardAsync` | conversation → messages **serially inside the boundary** — never re-hoist `getMessages` into a page-level wave | `DossierCardSkeleton` |
+| Notes timeline | `LeadNotesSectionAsync` | `getLeadNotesFull(lead.id)` | `DossierCardSkeleton` |
+| Journey + activity log | `LeadActivitiesAsync` | `getLeadActivitiesFull(lead.id)` **once** for both sections — never split into two boundaries (same data, double query) | two `DossierCardSkeleton`s mirroring its margins |
 
-**Ad creatives:** pass `adCreatives[]` to `LeadInfoCard` + `CampaignVideoModal`. Service: `getAdCreativesForCampaign` (plural array, migration 0058 multi-video).
+**Do not regress:** never add a page-level `Promise.all` of dossier section data back into `page.tsx` — section data belongs inside the section's async child. All fetches key on `lead.id` (UUID), never the URL param (may be a slug).
 
-**Access gates** at page level mirror action-level checks (`canEdit`, `canReassign`, `canEditDomain`, notes).
+**`leads/[id]/loading.tsx`** is the dossier-shaped navigation skeleton (back-link header, status strip, two-column cards) composed from `Shimmer` + `DossierCardSkeleton` — without it, navigation showed the parent *list* skeleton (wrong shape).
+
+**Closed-deal card:** `LeadDealCardAsync` renders `<LeadDealCard deal={deal} />` (links to `/deals`) only for won leads with a `public.deals` row. See `src/components/leads/CLAUDE.md` § LeadDealCard.
+
+**Access gates** at page level mirror action-level checks (`canEdit`, `canReassign`, `canEditDomain`, notes) — computed in wave 1 and passed to the async children as props; children never call `getCurrentProfile()` themselves.
 
 ---
 
@@ -53,7 +64,7 @@ export type LeadFilters = {
   campaign:          string | null;
   date_from:         string | null;
   date_to:           string | null;
-  search:            string | null;   // server-side ilike across name/phone/email
+  search:            string | null;   // server-side ILIKE on leads.search_text (generated column)
   page:              number;          // default 1
   pageSize:          number;          // default 30, fixed — not user-configurable
 };
@@ -70,18 +81,23 @@ URL param key for search: `search`. Trimmed in the service before query — neve
 
 ## Server-Side Search
 
-`getLeadsByRole` applies search via a single `.or()` call chained onto the existing query builder:
+`getLeadsByRole` applies search as a single ILIKE on the **generated column
+`leads.search_text`** (migration 0098 — `first_name + last_name + email + city + phone`,
+kept in sync by Postgres):
 
 ```typescript
-query = query.or(
-  `first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`
-);
+query = query.filter("search_text", "ilike", `%${term}%`);
 ```
 
 - Applied after role constraints, before `.range()`.
 - `term` is trimmed and lowercased in the service — never trust raw client input.
 - Searches across ALL pages — not just the current page.
-- Supported by `idx_leads_phone_text` partial index (`text_pattern_ops`) on phone.
+- Served by `idx_leads_search_trgm` (pg_trgm GIN, partial on `archived_at IS NULL`).
+- The same column backs `getLeadsForExport`, `searchLeadsForTask`, and the
+  `get_leads_status_counts` RPC — **never reintroduce a per-column `.or()` ILIKE
+  chain**: it bypasses the index and lets the table drift from the count pills.
+- Multi-word names match ("john doe" spans the first/last name boundary in the
+  concatenated column — the old per-column OR could never match it).
 
 ---
 
@@ -124,28 +140,29 @@ const { leads, totalCount, statusCounts } = await getLeadsByRoleCached(role, use
 
 `statusCounts` is produced by the `get_leads_status_counts` RPC, called in `Promise.all` alongside the paginated query. It reflects the **full filtered dataset** — not just the current page slice. On RPC error it is `{}` (empty object). `LeadsTable` receives it as a prop and uses `statusCounts[status] ?? 0` as the **only** source of truth for toolbar pill counts. Zero reads from `leads[]` for count display.
 
-**Param-sync rule:** the RPC params in `getLeadsByRole` (`p_agent_id`, `p_date_from`, `p_date_to`, `p_campaign`, `p_search`, `p_source`, `p_outcomes`, `p_statuses`) must stay in sync with the filter chain applied to the paginated query. When a new filter is added to `LeadFilters`, update both the paginated query and the RPC call simultaneously.
+**Param-sync rule:** the RPC params in `getLeadsByRole` (`p_agent_id`, `p_date_from`, `p_date_to`, `p_campaign`, `p_search`, `p_source`, `p_outcomes`, `p_statuses`, `p_domain`, `p_going_cold`) must stay in sync with the filter chain applied to the paginated query. `getLeadsByRole` hoists every filter value (`dateFrom`, `dateTo`, `searchTerm`, `goingColdThreshold`, `domainSlice`) into one block used by **both** sides so the bounds cannot drift. When a new filter is added to `LeadFilters`, update both the paginated query and the RPC call simultaneously — and migration the RPC.
 
 ---
 
-## Single-Query Count Rule
+## Single-Scan Count Rule (perf audit C-1)
 
-`totalCount` is obtained via `{ count: 'exact', head: false }` on the **same query builder** that has all role constraints, filters, and search applied — in one round trip:
+`totalCount` is the **sum of the `get_leads_status_counts` rows** — the RPC scans the
+filter predicate exactly once and both the pills and the total derive from it. The
+paginated query selects rows only:
 
 ```typescript
-let query = supabase
-  .from('leads')
-  .select('*', { count: 'exact', head: false })
-  // ... role constraints, filters, search, .range() applied to this same query
-  ;
-
-const { data, error, count } = await query;
-// count === filtered result count, not the full table
+// in Promise.all with the RPC:
+let query = supabase.from('leads').select('id, slug, …')  // NO count option
+// totalCount accumulated while reducing the RPC rows into statusCounts
 ```
 
-**A separate `SELECT COUNT(*)` is a bug** — it will return the wrong number when any filter is active, because it runs against a different query scope.
-
-If you see two Supabase calls for leads in the same `getLeadsByRole` execution, that is a violation. One query. Always.
+- **Never re-add `{ count: 'exact' }` to the paginated query** — it forces a second
+  full scan of the matching set on every page/filter change (the pre-C-1 behaviour).
+- **Never issue a separate `SELECT COUNT(*)`** — different query scope, wrong number.
+- On RPC error, `totalCount` degrades to `offset + data.length` (a floor): the pager
+  hides rather than lies, pills go empty, and a `[leads-service]` warning is logged.
+- This only stays correct while the RPC predicate mirrors the query predicate —
+  see the param-sync rule above.
 
 ---
 
@@ -469,7 +486,7 @@ if (watchedDomain === initialDomain) {
 
 **Invariants:**
 
-- `listAgentsForDomain` is only called when the selected domain differs from `initialDomain`.
+- `getAssignableUsersAction(domain)` is only called when the selected domain differs from `initialDomain`.
 - When the user changes domain back to `initialDomain`, the guard fires and restores `initialAgents` without a network call.
 - `initialDomain` and `initialAgents` are never added to the `useEffect` dependency array — they are stable props for the lifetime of the modal.
 - Agent role: effect still returns immediately on `canChangeDomain === false` (checked first, before the guard).

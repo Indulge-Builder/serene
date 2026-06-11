@@ -8,42 +8,20 @@
  * IST offset: UTC+05:30 = 330 minutes ahead of UTC.
  */
 
+import {
+  toISTMidnight,
+  toISTEndOfDay,
+  getISTMondayStart,
+  getISTMonthStart,
+  getISTPrevMonthRange,
+} from '@/lib/utils/ist';
+
 export type DatePreset = 'today' | 'week' | 'month' | 'last_month' | 'quarter' | 'custom';
 
 export type DateRange = {
   from: string; // ISO 8601 UTC, e.g. "2026-06-01T18:30:00.000Z"
   to:   string; // ISO 8601 UTC
 };
-
-// IST offset in milliseconds
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // 330 minutes
-
-/** Returns the UTC Date corresponding to IST midnight of the given date. */
-function toISTMidnight(d: Date): Date {
-  const istMs   = d.getTime() + IST_OFFSET_MS;
-  const istDate = new Date(istMs);
-  istDate.setUTCHours(0, 0, 0, 0);
-  return new Date(istDate.getTime() - IST_OFFSET_MS);
-}
-
-/** Returns the UTC Date corresponding to 23:59:59.999 IST of the given date. */
-function toISTEndOfDay(d: Date): Date {
-  const istMs   = d.getTime() + IST_OFFSET_MS;
-  const istDate = new Date(istMs);
-  istDate.setUTCHours(23, 59, 59, 999);
-  return new Date(istDate.getTime() - IST_OFFSET_MS);
-}
-
-/** Most recent Monday at IST midnight. */
-function getISTMondayStart(now: Date): Date {
-  const istMs   = now.getTime() + IST_OFFSET_MS;
-  const istDate = new Date(istMs);
-  const dow     = istDate.getUTCDay(); // 0=Sun … 6=Sat
-  const daysBack = dow === 0 ? 6 : dow - 1;
-  istDate.setUTCDate(istDate.getUTCDate() - daysBack);
-  istDate.setUTCHours(0, 0, 0, 0);
-  return new Date(istDate.getTime() - IST_OFFSET_MS);
-}
 
 /**
  * Resolve a named preset to an absolute UTC ISO date range.
@@ -65,29 +43,13 @@ export function resolvePresetToRange(preset: Exclude<DatePreset, 'custom'>): Dat
     }
 
     case 'month': {
-      const istNow   = new Date(now.getTime() + IST_OFFSET_MS);
-      const first    = new Date(istNow);
-      first.setUTCDate(1);
-      first.setUTCHours(0, 0, 0, 0);
-      const fromUtc  = new Date(first.getTime() - IST_OFFSET_MS);
+      const fromUtc = getISTMonthStart(now);
       return { from: fromUtc.toISOString(), to: now.toISOString() };
     }
 
     case 'last_month': {
-      const istNow = new Date(now.getTime() + IST_OFFSET_MS);
-      // First day of current month in IST
-      const firstThisMonth = new Date(istNow);
-      firstThisMonth.setUTCDate(1);
-      firstThisMonth.setUTCHours(0, 0, 0, 0);
-      // Last moment of previous month = 1ms before first of this month
-      const lastPrevIst = new Date(firstThisMonth.getTime() - 1);
-      // First day of previous month in IST
-      const firstPrevIst = new Date(lastPrevIst);
-      firstPrevIst.setUTCDate(1);
-      firstPrevIst.setUTCHours(0, 0, 0, 0);
-      const fromUtc = new Date(firstPrevIst.getTime() - IST_OFFSET_MS);
-      const toUtc   = toISTEndOfDay(new Date(lastPrevIst.getTime() - IST_OFFSET_MS));
-      return { from: fromUtc.toISOString(), to: toUtc.toISOString() };
+      const { from, to } = getISTPrevMonthRange(now);
+      return { from: from.toISOString(), to: to.toISOString() };
     }
 
     case 'quarter': {

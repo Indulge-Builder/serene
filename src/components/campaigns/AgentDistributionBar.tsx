@@ -1,16 +1,20 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
+import { PAGE_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { formatCompact } from '@/lib/utils/numbers';
 import type { AgentDistributionRow } from '@/lib/types/database';
 
-// Segment colour cycle — CSS tokens only, no hex
+// Segment colour cycle — non-semantic mid-tones from the --domain-* palette.
+// Agents are categorical data (V-01/V-03): never rotate semantic
+// success/warning/danger colours positionally — agent #5 reading as
+// "danger red" is a false signal.
 const SEGMENT_COLORS = [
-  'var(--theme-accent)',
-  'var(--color-info)',
-  'var(--color-success)',
-  'var(--color-warning)',
-  'var(--color-danger)',
+  'var(--domain-concierge)',  /* steel blue  */
+  'var(--domain-finance)',    /* jade green  */
+  'var(--domain-marketing)',  /* orchid      */
+  'var(--domain-tech)',       /* terracotta  */
+  'var(--domain-b2b)',        /* soft violet */
 ];
 
 type AgentDistributionBarProps = {
@@ -31,33 +35,41 @@ export function AgentDistributionBar({ distribution, total }: AgentDistributionB
         Agent Distribution
       </p>
 
-      {/* Stacked bar — h-2, radius-full, overflow-hidden */}
+      {/* Stacked bar — h-2, radius-full, overflow-hidden.
+          Segments are static flex-basis slices; the entrance is one scaleX
+          on the inner container — never animate width (DNA M-06). */}
       <div
         style={{
-          display:      'flex',
           height:       '8px',
           borderRadius: 'var(--radius-full)',
           overflow:     'hidden',
           background:   'var(--theme-paper-subtle)',
         }}
       >
-        {distribution.map((agent, i) => {
-          const pct = (agent.lead_count / total) * 100;
-          return (
-            <motion.div
-              key={agent.agent_id}
-              layoutId={`dist-seg-${agent.agent_id}`}
-              initial={{ width: 0 }}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 0.5, delay: i * 0.05, ease: [0.16, 1, 0.3, 1] }}
-              style={{
-                background: SEGMENT_COLORS[i % SEGMENT_COLORS.length],
-                height:     '100%',
-                flexShrink: 0,
-              }}
-            />
-          );
-        })}
+        <motion.div
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: 1 }}
+          transition={{ duration: PAGE_DURATION, ease: EASE_OUT_EXPO }}
+          style={{
+            display:         'flex',
+            height:          '100%',
+            transformOrigin: 'left center',
+          }}
+        >
+          {distribution.map((agent, i) => {
+            const pct = (agent.lead_count / total) * 100;
+            return (
+              <div
+                key={agent.agent_id}
+                style={{
+                  flex:       `0 0 ${pct}%`,
+                  background: SEGMENT_COLORS[i % SEGMENT_COLORS.length],
+                  height:     '100%',
+                }}
+              />
+            );
+          })}
+        </motion.div>
       </div>
 
       {/* Legend */}

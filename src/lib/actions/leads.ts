@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
 import { REDIS_KEYS } from "@/lib/constants/redis-keys";
-import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { requireProfile } from "@/lib/actions/_auth";
+import { invalidateLeadCaches } from "@/lib/services/lead-cache";
 import {
   AddCallNoteSchema,
   AddLeadNoteSchema,
@@ -25,8 +26,6 @@ import {
 import { formErrors } from "@/lib/validations/form-errors";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import {
-  getAgentsForDomain,
-  getActiveUsersForDomain,
   searchLeadsForTask,
   getLeadsForExport,
   getActivitiesAndNotesForExport,
@@ -43,7 +42,7 @@ import {
 } from "@/lib/actions/sla";
 import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
 import { scheduleTaskReminder } from "@/trigger/task-reminders";
-import type { ActionResult } from "@/lib/types/index";
+import type { ActionResult, Profile } from "@/lib/types/index";
 import type { LeadStatus, AppDomain, Task } from "@/lib/types/database";
 
 // ─────────────────────────────────────────────
@@ -61,8 +60,9 @@ export async function addLeadCallNote(
   const { leadId, content, callOutcome } = parsed.data;
 
   // 2. Auth check
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const supabase = await createClient();
 
@@ -116,20 +116,12 @@ export async function addLeadCallNote(
   };
 
   // Redis invalidation — awaited so the next dossier load never reads stale data
-  const slug       = lead.slug as string | null;
-  const callDomain = lead.domain as string;
-  try {
-    await Promise.all([
-      redis.del(REDIS_KEYS.leadRowId(leadId)),
-      ...(slug ? [redis.del(REDIS_KEYS.leadRowSlug(slug))] : []),
-      redis.del(REDIS_KEYS.leadNotes(leadId)),
-      redis.del(REDIS_KEYS.leadActivities(leadId)),
-      redis.incr(REDIS_KEYS.leadListVersion('agent', callDomain)),
-      redis.incr(REDIS_KEYS.leadListVersion('manager', callDomain)),
-    ]);
-  } catch (e) {
-    console.warn("[leads-action:addLeadCallNote] redis invalidation failed", e);
-  }
+  const slug = lead.slug as string | null;
+  await invalidateLeadCaches(
+    "addLeadCallNote",
+    { leadId, slug, domain: lead.domain as string },
+    { row: true, notes: true, activities: true, lists: true },
+  );
 
   // Invalidate dossier + list RSC cache
   revalidatePath(`/leads/${slug ?? leadId}`);
@@ -173,8 +165,9 @@ export async function updateLeadStatus(
   const { leadId, status, reason } = parsed.data;
 
   // 2. Auth check
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const supabase = await createClient();
 
@@ -227,21 +220,12 @@ export async function updateLeadStatus(
   if (!result.changed) return { data: { leadId }, error: null };
 
   // Redis invalidation — awaited so the next dossier load never reads stale data
-  const slug       = lead.slug as string | null;
-  const leadDomain = lead.domain as string;
-  try {
-    await Promise.all([
-      redis.del(REDIS_KEYS.leadRowId(leadId)),
-      ...(slug ? [redis.del(REDIS_KEYS.leadRowSlug(slug))] : []),
-      redis.del(REDIS_KEYS.leadActivities(leadId)),
-      redis.del(REDIS_KEYS.dashboardLeadStatus(leadDomain)),
-      redis.del(REDIS_KEYS.dashboardCampaigns(leadDomain)),
-      redis.incr(REDIS_KEYS.leadListVersion('agent', leadDomain)),
-      redis.incr(REDIS_KEYS.leadListVersion('manager', leadDomain)),
-    ]);
-  } catch (e) {
-    console.warn("[leads-action:updateLeadStatus] redis invalidation failed", e);
-  }
+  const slug = lead.slug as string | null;
+  await invalidateLeadCaches(
+    "updateLeadStatus",
+    { leadId, slug, domain: lead.domain as string },
+    { row: true, activities: true, lists: true, dashboard: true },
+  );
 
   // Invalidate dossier + list RSC cache
   revalidatePath(`/leads/${slug ?? leadId}`);
@@ -309,11 +293,9 @@ export async function assignLead(
   const { leadId, agentId } = parsed.data;
 
   // 2. Auth — only manager, admin, founder can manually assign
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (!["manager", "admin", "founder"].includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
-  }
+  const auth = await requireProfile(["manager", "admin", "founder"]);
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const admin = createAdminClient();
 
@@ -326,12 +308,31 @@ export async function assignLead(
       .single(),
     admin
       .from("profiles")
-      .select("full_name")
+      .select("full_name, domain, is_active")
       .eq("id", agentId)
       .single(),
   ]);
 
   if (!existingLead) return { data: null, error: "Lead not found." };
+
+  // Rule S-06 — a manager may only reassign leads inside their own domain,
+  // and only to an active agent of the lead's domain (audit F-3).
+  // Admin/founder remain unrestricted.
+  if (caller.role === "manager") {
+    if (existingLead.domain !== caller.domain) {
+      return { data: null, error: formErrors.unauthorized };
+    }
+    if (
+      !assignedAgent ||
+      assignedAgent.domain !== existingLead.domain ||
+      !assignedAgent.is_active
+    ) {
+      return {
+        data: null,
+        error: "The selected user is not available in this domain.",
+      };
+    }
+  }
 
   const assignedAgentName = assignedAgent?.full_name ?? "Unknown Agent";
 
@@ -356,19 +357,11 @@ export async function assignLead(
   });
 
   // Redis invalidation — awaited so the next load never reads stale data
-  const assignSlug = (existingLead.slug as string | null) ?? null;
-  const assignDomain = existingLead.domain as string;
-  try {
-    await Promise.all([
-      redis.del(REDIS_KEYS.leadRowId(leadId)),
-      ...(assignSlug ? [redis.del(REDIS_KEYS.leadRowSlug(assignSlug))] : []),
-      redis.del(REDIS_KEYS.leadActivities(leadId)),
-      redis.incr(REDIS_KEYS.leadListVersion('agent', assignDomain)),
-      redis.incr(REDIS_KEYS.leadListVersion('manager', assignDomain)),
-    ]);
-  } catch (e) {
-    console.warn('[leads-action:assignLead] redis invalidation failed', e);
-  }
+  await invalidateLeadCaches(
+    "assignLead",
+    { leadId, slug: existingLead.slug as string | null, domain: existingLead.domain as string },
+    { row: true, activities: true, lists: true },
+  );
 
   const assignLeadName = existingLead.last_name
     ? `${existingLead.first_name} ${existingLead.last_name}`
@@ -418,8 +411,9 @@ export async function updatePersonalDetails(
   const { leadId, details } = parsed.data;
 
   // 2. Auth — assigned agent, manager, admin, founder
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const supabase = await createClient();
 
@@ -479,8 +473,9 @@ export async function createManualLead(
   const fields = parsed.data;
 
   // 2. Auth check (Rule A-01)
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   // 3. Domain enforcement: agents cannot submit to any domain other than their own (Rule S-06, S-14)
   const resolvedDomain =
@@ -627,26 +622,15 @@ export async function createManualLead(
     );
   }
 
-  // 11. Invalidate list + dashboard caches.
-  //     Two INCR calls atomically void all cached pages for agent + manager roles
-  //     in this domain — replaces the former O(N) SCAN approach.
-  //     Volume keys cover all periods that could be stale after a new lead insert.
-  const manualDomain = resolvedDomain as string;
-  const periods = ['today', 'week', 'month', 'last_month'] as const;
-  const roles   = ['agent', 'manager'] as const;
-  try {
-    await Promise.all([
-      redis.incr(REDIS_KEYS.leadListVersion('agent', manualDomain)),
-      redis.incr(REDIS_KEYS.leadListVersion('manager', manualDomain)),
-      redis.del(REDIS_KEYS.dashboardLeadStatus(manualDomain)),
-      redis.del(REDIS_KEYS.dashboardCampaigns(manualDomain)),
-      ...periods.flatMap((p) =>
-        roles.map((r) => redis.del(REDIS_KEYS.dashboardLeadVolume(r, manualDomain, p))),
-      ),
-    ]);
-  } catch (e) {
-    console.warn("[leads-action:createManualLead] redis invalidation failed", e);
-  }
+  // 11. Invalidate list + dashboard caches. Two INCR calls atomically void all
+  //     cached list pages for agent + manager roles in this domain. Volume keys
+  //     are deliberately not deleted — their read-side keys embed an ISO from:to
+  //     range a del cannot enumerate; freshness is TTL-only (120s).
+  await invalidateLeadCaches(
+    "createManualLead",
+    { domain: resolvedDomain as string },
+    { lists: true, dashboard: true },
+  );
 
   revalidatePath("/leads");
 
@@ -665,12 +649,13 @@ async function assertLeadFieldEditAccess(leadId: string): Promise<
   | { ok: false; error: string }
   | {
       ok: true;
-      caller: NonNullable<Awaited<ReturnType<typeof getCurrentProfile>>>;
+      caller: Profile;
       lead: LeadEditContext;
     }
 > {
-  const caller = await getCurrentProfile();
-  if (!caller) return { ok: false, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return { ok: false, error: auth.result.error };
+  const caller = auth.profile;
 
   const supabase = await createClient();
   const { data: lead } = await supabase
@@ -694,15 +679,11 @@ async function assertLeadFieldEditAccess(leadId: string): Promise<
 
 async function revalidateLeadDossier(lead: LeadEditContext) {
   const segment = lead.slug ?? lead.id;
-  try {
-    await Promise.all([
-      redis.del(REDIS_KEYS.leadRowId(lead.id)),
-      ...(lead.slug ? [redis.del(REDIS_KEYS.leadRowSlug(lead.slug))] : []),
-      redis.del(REDIS_KEYS.leadActivities(lead.id)),
-    ]);
-  } catch (e) {
-    console.warn('[leads-action:dossier] redis del failed', e);
-  }
+  await invalidateLeadCaches(
+    "dossier",
+    { leadId: lead.id, slug: lead.slug, domain: lead.domain },
+    { row: true, activities: true },
+  );
   revalidatePath(`/leads/${segment}`);
   revalidatePath("/leads");
 }
@@ -849,8 +830,9 @@ export async function addLeadNote(
 
   const { leadId, content } = parsed.data;
 
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const supabase = await createClient();
 
@@ -887,14 +869,11 @@ export async function addLeadNote(
   if (rpcError || !rpcResult) return { data: null, error: formErrors.generic };
 
   // Redis invalidation — awaited so the next dossier load never reads stale data
-  try {
-    await Promise.all([
-      redis.del(REDIS_KEYS.leadNotes(leadId)),
-      redis.del(REDIS_KEYS.leadActivities(leadId)),
-    ]);
-  } catch (e) {
-    console.warn("[leads-action] redis del failed on plain note", e);
-  }
+  await invalidateLeadCaches(
+    "addLeadNote",
+    { leadId },
+    { notes: true, activities: true },
+  );
 
   return { data: { noteId: rpcResult.note_id }, error: null };
 }
@@ -907,23 +886,6 @@ export async function addLeadNote(
 export async function recordDeal(input: unknown): Promise<ActionResult<{ leadId: string }>> {
   const { recordDeal: _recordDeal } = await import("@/lib/actions/deals");
   return _recordDeal(input);
-}
-
-// ─────────────────────────────────────────────
-// Read action: list active agents for a domain
-// Called by AddLeadModal when domain select changes (manager/admin/founder)
-// ─────────────────────────────────────────────
-export async function listAgentsForDomain(
-  domain: string,
-): Promise<ActionResult<{ id: string; full_name: string }[]>> {
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-
-  const users =
-    caller.role === "admin" || caller.role === "founder"
-      ? await getActiveUsersForDomain(domain)
-      : await getAgentsForDomain(domain);
-  return { data: users, error: null };
 }
 
 // ─────────────────────────────────────────────
@@ -943,8 +905,9 @@ export async function createLeadTaskAction(
   const { leadId, taskType, description, priority, dueAt } = parsed.data;
 
   // 2. Auth
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const supabase = await createClient();
 
@@ -1031,8 +994,9 @@ export async function searchLeadsAction(
     return { data: null, error: "Search query is required." };
   }
 
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const results = await searchLeadsForTask(
     parsed.data.query,
@@ -1064,11 +1028,10 @@ export async function exportLeadsAction(
   const parsed = ExportLeadsSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: formErrors.generic };
 
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-
   // Guest role cannot export
-  if (caller.role === "guest") return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile(["agent", "manager", "admin", "founder"]);
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const { filters, selectedIds } = parsed.data;
 

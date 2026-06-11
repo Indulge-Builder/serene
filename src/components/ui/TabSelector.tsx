@@ -5,8 +5,8 @@ import React, {
   useContext,
   useState,
 } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { SPRING_CONFIG, BASE_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
+import { SPRING_CONFIG, FAST_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -343,10 +343,12 @@ export function TabsContent({
           {isActive && (
             <motion.div
               key={value}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
+              // Tab switching is a high-frequency action: enter is a fast
+              // opacity-only fade, exit is instant — mode="wait" + the old
+              // 200ms-out/200ms-in slide cost ~400ms per switch.
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1, transition: { duration: FAST_DURATION, ease: EASE_OUT_EXPO } }}
+              exit={{ opacity: 0, transition: { duration: 0 } }}
             >
               {children}
             </motion.div>

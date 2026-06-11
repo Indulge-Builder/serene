@@ -10,8 +10,12 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { Clock } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { DROPDOWN_VARIANTS } from "@/lib/constants/motion";
+import { m as motion, AnimatePresence } from "framer-motion";
+import {
+  DROPDOWN_VARIANTS,
+  DROPDOWN_VARIANTS_UP,
+  FLIP_UP_TRANSFORM_TEMPLATE,
+} from "@/lib/constants/motion";
 import { normalizeTimeHHMM } from "@/lib/utils/dates";
 
 export interface TimePickerProps {
@@ -592,15 +596,17 @@ export function TimePicker({
           key="timepicker-panel"
           role="dialog"
           aria-label="Time picker"
-          variants={DROPDOWN_VARIANTS}
+          variants={panelPos.flipUp ? DROPDOWN_VARIANTS_UP : DROPDOWN_VARIANTS}
           initial="hidden"
           animate="visible"
           exit="exit"
+          // flip-up shift via transformTemplate — a style.transform string
+          // would be clobbered by the animated y (see motion.ts)
+          transformTemplate={panelPos.flipUp ? FLIP_UP_TRANSFORM_TEMPLATE : undefined}
           style={{
             position: "fixed",
             top: panelPos.top,
             left: panelPos.left,
-            transform: panelPos.flipUp ? "translateY(-100%)" : undefined,
             zIndex: "var(--z-modal-nested)" as React.CSSProperties["zIndex"],
             background: "var(--theme-paper)",
             border: "1px solid var(--theme-paper-border)",

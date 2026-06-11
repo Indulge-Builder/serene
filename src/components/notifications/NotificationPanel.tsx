@@ -9,8 +9,9 @@
  */
 
 import { useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import { NotificationItem } from "@/components/notifications/NotificationItem";
+import { EmptyState } from "@/components/ui/EmptyState";
 import {
   ENTER_DURATION,
   EXIT_DURATION,
@@ -132,8 +133,8 @@ export function NotificationPanel({
             style={{
               position:   "fixed",
               inset:      0,
-              background: "rgba(0,0,0,0.4)",
-              zIndex:     "calc(var(--z-dropdown) - 1)",
+              background: "var(--overlay-bg-light)",
+              zIndex:     "var(--z-raised)",
               display:    "none",
             }}
           />
@@ -209,24 +210,10 @@ export function NotificationPanel({
               style={{ maxHeight: "480px" }}
             >
               {notifications.length === 0 ? (
-                <div
-                  style={{
-                    padding:   "var(--space-8) var(--space-4)",
-                    textAlign: "center",
-                  }}
-                >
-                  <p
-                    style={{
-                      fontFamily: "var(--font-serif)",
-                      fontStyle:  "italic",
-                      fontSize:   "var(--text-sm)",
-                      color:      "var(--theme-text-tertiary)",
-                      margin:     0,
-                    }}
-                  >
-                    {"You're all caught up."}
-                  </p>
-                </div>
+                <EmptyState
+                  title="You're all caught up."
+                  style={{ padding: "var(--space-8) var(--space-4)" }}
+                />
               ) : (
                 <motion.div layout style={{ padding: "var(--space-1) 0" }}>
                   <AnimatePresence initial={false}>

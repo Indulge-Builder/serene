@@ -22,6 +22,8 @@ Thin orchestrators in `src/app/`. Data fetching lives in async children (`*Async
 ## Cross-cutting rules
 
 - **Auth:** every `(dashboard)` layout child assumes session; pages call `getCurrentProfile()` and `redirect` when missing.
+- **Route guard stays in the layout** (perf audit A-3): the `(dashboard)` layout reads `x-pathname` via `headers()` for `canAccessRoute` — this keeps the layout fully dynamic, which is correct (everything is per-user) and not a hot cost (soft navigations don't re-run it). Do not "optimise" the guard into individual pages.
+- **Proxy session check is local-CPU** (perf audit A-1 follow-up): `updateSession` uses `auth.getClaims()` — ES256 signature verified against a process-cached JWKS, expired sessions still refreshed via its internal `getSession()`. Never revert to `getUser()` there (a ~50–150ms auth-server round trip per request), and never weaken `getCurrentProfile()` to claims-only — it is the authoritative Rule 09 / A-01 check (`requireProfile` wraps it for actions, A-18).
 - **Suspense:** list pages use filter bar (client) + `<Suspense><*Async /></Suspense>` (server). Never fetch table data inside the filter component.
 - **Webhooks only** under `app/api/` — no other API routes (see root CLAUDE).
 - **Feature CLAUDE.md** files hold invariants; this file is the index only.

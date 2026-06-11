@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Avatar } from "@/components/ui/Avatar";
 import { ENTER_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { formatRelativeTime } from "@/lib/utils/dates";

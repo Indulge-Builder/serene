@@ -2,6 +2,8 @@
 
 import { useState, useTransition, useOptimistic, useRef } from 'react';
 import { Phone, TrendingUp, Leaf, XCircle, Trash2, Trophy, Zap } from 'lucide-react';
+import { m as motion, AnimatePresence } from 'framer-motion';
+import { FAST_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { Button } from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
 import { updateLeadStatus, recordDeal } from '@/lib/actions/leads';
@@ -92,7 +94,8 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
           flexWrap:     'wrap',
         }}
       >
-        {/* Status pill — prominent, anchored left */}
+        {/* Status pill — prominent, anchored left. Status changes transition:
+            colours dissolve via CSS, the label crossfades (M-04 — data never flashes). */}
         <div
           style={{
             display:      'inline-flex',
@@ -109,6 +112,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
             letterSpacing: 'var(--tracking-wide)',
             boxShadow:    'var(--shadow-1)',
             flexShrink:   0,
+            transition:   'background var(--duration-slow) var(--ease-in-out), border-color var(--duration-slow) var(--ease-in-out), color var(--duration-slow) var(--ease-in-out)',
           }}
         >
           {/* Colored dot */}
@@ -120,9 +124,20 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
               background:   badgeStyle.text,
               flexShrink:   0,
               opacity:      0.7,
+              transition:   'background var(--duration-slow) var(--ease-in-out)',
             }}
           />
-          {LEAD_STATUS_LABELS[optimisticStatus]}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={optimisticStatus}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+            >
+              {LEAD_STATUS_LABELS[optimisticStatus]}
+            </motion.span>
+          </AnimatePresence>
         </div>
 
         {/* Vertical divider after status pill */}
@@ -216,11 +231,12 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
           }}
         />
 
-        {/* Called — always on the far right */}
+        {/* Called — always on the far right; phone icon rings on approach */}
         <ActionButton
           icon={<Phone style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
           label="Called"
           variant="primary"
+          className="eia-icon-ring-hover"
           disabled={isPending || isTerminal}
           onClick={() => {
             if (lead.status === 'new') {
@@ -333,7 +349,7 @@ const VARIANT_STYLES: Record<ButtonVariant, React.CSSProperties> = {
   },
   success: {
     background: 'var(--color-success)',
-    color:      'var(--theme-text-inverse)',
+    color:      'var(--color-success-fg)',
     border:     '1px solid var(--color-success)',
     boxShadow:  '0 0 0 1px color-mix(in srgb, var(--color-success) 40%, transparent), 0 2px 8px color-mix(in srgb, var(--color-success) 25%, transparent)',
   },
@@ -366,12 +382,14 @@ function ActionButton({
   variant,
   disabled,
   onClick,
+  className,
 }: {
   icon: React.ReactNode;
   label: string;
   variant: ButtonVariant;
   disabled: boolean;
   onClick: () => void;
+  className?: string;
 }) {
   const base = VARIANT_STYLES[variant];
   return (
@@ -379,6 +397,7 @@ function ActionButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
+      className={className ? `eia-pressable ${className}` : 'eia-pressable'}
       style={{
         display:        'inline-flex',
         alignItems:     'center',
@@ -427,8 +446,8 @@ function ConfirmModal({
   onConfirm: () => void;
 }) {
   const confirmStyle: React.CSSProperties =
-    confirmVariant === 'success' ? { background: 'var(--color-success)',      color: 'var(--theme-text-inverse)'  } :
-    confirmVariant === 'revive'  ? { background: 'var(--color-warning)',       color: 'var(--color-warning-text)' } :
+    confirmVariant === 'success' ? { background: 'var(--color-success)',      color: 'var(--color-success-fg)'   } :
+    confirmVariant === 'revive'  ? { background: 'var(--color-warning)',       color: 'var(--color-warning-fg)'  } :
                                    { background: 'var(--theme-accent)',        color: 'var(--theme-accent-fg)'    };
 
   return (

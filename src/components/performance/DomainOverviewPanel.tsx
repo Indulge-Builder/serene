@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useTransition } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import {
   BarChart,
   Bar,
@@ -20,7 +20,7 @@ import { GIA_DOMAINS } from '@/lib/constants/domains';
 import { formatCompact, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { useChartTokens, resolveColorMap } from '@/components/ui/charts/useChartTokens';
 import { StatAtom } from '@/components/performance/StatAtom';
-import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
 import type { DomainHealthCard } from '@/lib/types/index';
 import type { PerformancePeriod } from '@/lib/services/performance-service';
 import type { AppDomain } from '@/lib/types/database';
@@ -270,7 +270,7 @@ export function DomainOverviewPanel({ initialData, period, customFrom, customTo 
             initial={{ scaleX: 0, opacity: 1 }}
             animate={{ scaleX: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.9, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: PAGE_DURATION, ease: EASE_IN_OUT }}
             style={{
               position:        'absolute',
               top:             0,

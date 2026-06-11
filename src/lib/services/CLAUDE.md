@@ -1,64 +1,61 @@
 # Services CLAUDE.md
 
-## Template send functions in whatsapp-api.ts — canonical finally-block pattern
+## Template sends in whatsapp-api.ts — `sendGupshupTemplate()` is the only pipeline
 
-Every Gupshup template send function (`sendLeadAssignmentNotification`,
-`sendFounderLeadNotification`, `sendSlaAgentNotification`, `sendSlaManagerNotification`)
-uses this structure for the HTTP call and its log:
+All five template senders (`sendLeadAssignmentNotification`, `sendFounderLeadNotification`,
+`sendSlaAgentNotification`, `sendSlaManagerNotification`, `sendLeadInitiationMessage`) are thin
+wrappers over one internal core, **`sendGupshupTemplate(opts)`** (dry-audit H-8). The core owns,
+in exactly one place:
+
+- `'+'`-stripping of source + destination, `URLSearchParams` assembly, the
+  `https://api.gupshup.io/wa/api/v1/template/msg` fetch
+- the `gupshupStatus / gupshupBody / delivered` capture (zero-value defaults; on throw,
+  `gupshupBody` keeps any partial body, else `String(err)`)
+- `isGupshupDelivered()` interpretation (Gupshup returns HTTP 200 for app-level errors)
+- the success/failure console line
+- the **one-log-row-per-attempt finally contract**: `await logNotification(...)` in `finally`,
+  with `recipientPhone` derived from the stripped destination
 
 ```ts
-let gupshupStatus = 0;
-let gupshupBody   = '';
-let delivered     = false;
-
-try {
-  const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', { ... });
-  gupshupStatus = res.status;
-  gupshupBody   = await res.text();
-  delivered     = isGupshupDelivered(res.ok, gupshupBody);
-} catch (fetchErr) {
-  gupshupStatus = 0;
-  gupshupBody   = String(fetchErr);
-  delivered     = false;
-} finally {
-  if (delivered) { console.log(...) } else { console.error(...) }
-  await logNotification({ ..., gupshupStatus, gupshupBody, delivered });
-}
+await sendGupshupTemplate({
+  templateId:     GUPSHUP_…_TEMPLATE_ID,
+  destination:    profile.phone,                 // '+' stripped inside
+  templateParams: [a, b, c],
+  label:          'Lead assignment notification', // console + thrown-error prefix
+  logRecipient:   `agent ${agentId}`,             // console suffix
+  log: { type: 'agent_assignment', leadId, recipientId, agentName, leadName, leadPhone, domain },
+  throwOnError?:  true,                           // only sendLeadInitiationMessage
+});
 ```
+
+**Never** call `fetch` on `/template/msg` outside `sendGupshupTemplate`. A new template
+(call-intelligence is on the roadmap) = a new ~25-line wrapper that resolves recipients,
+assembles `templateParams`, and supplies `log` metadata — nothing else.
+
+**Throw/swallow contract:** with `throwOnError` unset the core never throws — wrappers stay
+fire-and-forget safe (their outer try/catch covers only setup: admin client, profiles query;
+at that point there is no `destination` to log against, so no `logNotification` there).
+`sendLeadInitiationMessage` passes `throwOnError: true` — the core re-throws **after** the
+finally log, so the action layer still receives the error and every initiation attempt still
+gets a log row (`type: 'lead_initiation'`, CHECK constraint added in migration 0067).
 
 **Why `await logNotification` (Vercel):** the log insert must complete before the send function
 resolves. These send functions are awaited up the chain (via `notifyLeadAssigned` → `after()`),
 and Vercel keeps the lambda alive only until the awaited chain settles. A `void logNotification()`
 in `finally` would let the send function resolve before the row is written, so the lambda could
 freeze and drop the log insert — producing exactly the silent gap (missing rows, not error rows)
-this whole pattern exists to prevent. `logNotification` swallows its own errors internally, so
-awaiting it never throws.
+the 2026-06-08 outage exposed. `logNotification` swallows its own errors internally, so awaiting
+it never throws.
 
-**Why finally, not a split try/catch:**
-The previous pattern called `logNotification` separately in the catch block (with `return`/`continue`)
-and again after the fetch on the success path. Any new failure mode that bypassed both branches
-(e.g. an exception thrown by `res.text()` itself) would exit with zero log rows written —
+**Why finally, not a split try/catch:** any failure mode that bypasses both a success path and a
+catch-path log call (e.g. `res.text()` itself throwing) would exit with zero log rows written —
 completely silent. The `finally` block guarantees exactly one log row per send attempt,
 regardless of how control exits the try.
 
-**Rules for any new template send function:**
-1. Declare `gupshupStatus`, `gupshupBody`, `delivered` before the try block with zero-value defaults.
-2. Populate all three inside try; set `gupshupStatus = 0`, `gupshupBody = String(err)`, `delivered = false` inside catch.
-3. Call `logNotification` only inside `finally` — never in try or catch separately.
-4. Guard `logNotification` with `.catch(() => {})` — a DB insert failure must never propagate.
-5. The outer function-level try/catch (which wraps the profile fetch + the inner try/finally) remains.
-   It catches setup failures (admin client, profiles query) and logs them. It does not call
-   `logNotification` — at that point we have no `destination` to log against.
-6. Always `await logNotification` inside `finally` (see Vercel note above). The send function must
-   not resolve until the log row is durably written, or the lambda may freeze and drop the insert.
-
-**`sendLeadInitiationMessage` — re-throw exception to the finally-block pattern:**
-It uses the same `gupshupStatus/gupshupBody/delivered` variables and `finally { await logNotification(...) }`
-structure, but with two differences:
-1. **Re-throws after logging** — the error propagates to the action layer, which surfaces it to the UI.
-   Do not remove the `throw err` inside the catch block.
-2. **`type: 'lead_initiation'`** — migration 0067 added this value to the CHECK constraint on
-   `whatsapp_notification_logs.type`. Every initiation attempt now has a log row.
+**Recipient fan-out stays in the wrappers:** founder sends run in parallel (`Promise.all` —
+sequential sends risked timeout mid-loop); SLA manager sends stay sequential (small lists,
+Trigger.dev context, not a response-bound lambda). Null-phone guards + warn lines also stay
+in the wrappers — they are recipient-resolution concerns, not pipeline concerns.
 
 **`agentName = 'Unassigned'` fallback convention:**
 When no agent is available from the round-robin pool, `result.agent_name` is `null`.

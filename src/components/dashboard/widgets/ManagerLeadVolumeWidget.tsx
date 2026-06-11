@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useTransition, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -12,7 +12,6 @@ import {
   Legend,
 } from "recharts";
 import {
-  getLeadVolumeByRangeAction,
   getLeadVolumeByDomainsAction,
   getLeadVolumeForDomainAction,
 } from "@/lib/actions/dashboard";
@@ -36,9 +35,14 @@ import type { GiaDomain } from '@/lib/constants/domains';
 import type { DateRange } from "@/lib/utils/date-range";
 import { resolvePresetToRange } from "@/lib/utils/date-range";
 import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
+import { useWidgetData } from "@/hooks/useWidgetData";
+import type { WidgetDomainMode as DomainMode } from "@/lib/utils/widget-scope";
 
-type DomainMode = "all" | GiaDomain;
-
+// One state slot for both chart modes — exactly one side is non-null at a time.
+type VolumeView = {
+  single: LeadVolumeSummary | null;
+  multi: MultiDomainVolumeSummary | null;
+};
 
 function MultiLineTooltip({
   active,
@@ -114,7 +118,6 @@ function MultiLineTooltip({
 
 export function ManagerLeadVolumeWidget({
   role,
-  domain,
   initialData,
   size = 'lg',
   dateRange: dateRangeProp,
@@ -129,25 +132,48 @@ export function ManagerLeadVolumeWidget({
   const multiSeed = !isManagerRole
     ? (initialData?.lead_volume_multi as DashboardMultiDomainVolumeSummary | null) ?? null
     : null;
+  const seed: VolumeView | null = managerSeed
+    ? { single: managerSeed, multi: null }
+    : multiSeed
+      ? { single: null, multi: multiSeed }
+      : null;
 
   const [domainMode, setDomainMode] = useState<DomainMode>("all");
-  const [singleData, setSingleData] = useState<LeadVolumeSummary | null>(managerSeed);
-  const [multiData, setMultiData] = useState<MultiDomainVolumeSummary | null>(multiSeed);
-  const [loaded, setLoaded] = useState(managerSeed !== null || multiSeed !== null);
-  const [isPending, startTransition] = useTransition();
   const { series: chartColors } = useChartTokens();
 
-  const applyManagerVolume = useCallback((next: LeadVolumeSummary) => {
-    setSingleData(next);
-    setMultiData(null);
-    setLoaded(true);
-  }, []);
+  // The ONE fetcher — the "all" tab uses the multi-domain action (different
+  // return shape), domain tabs use the single-domain action.
+  const loadVolume = useCallback(
+    async (mode: DomainMode): Promise<{ data: VolumeView | null }> => {
+      if (mode === "all") {
+        const result = await getLeadVolumeByDomainsAction(dateRange.from, dateRange.to, [...GIA_DOMAINS]);
+        return { data: result.data ? { single: null, multi: result.data } : null };
+      }
+      const result = await getLeadVolumeForDomainAction(dateRange.from, dateRange.to, mode as AppDomain);
+      return { data: result.data ? { single: result.data, multi: null } : null };
+    },
+    [dateRange.from, dateRange.to],
+  );
 
-  const applyMultiVolume = useCallback((next: MultiDomainVolumeSummary) => {
-    setMultiData(next);
-    setSingleData(null);
-    setLoaded(true);
-  }, []);
+  const { data, loaded, isPending, refetch, apply } = useWidgetData<VolumeView>({
+    seed,
+    fetcher: () => loadVolume(domainMode),
+    // Manager + admin/founder "all" views are RSC-seeded; single-domain tabs are not.
+    autoFetch: !isManagerRole && domainMode !== "all",
+    deps: [dateRange.from, dateRange.to, domainMode],
+  });
+  const singleData = data?.single ?? null;
+  const multiData = data?.multi ?? null;
+
+  const applyManagerVolume = useCallback(
+    (next: LeadVolumeSummary) => apply({ single: next, multi: null }),
+    [apply],
+  );
+
+  const applyMultiVolume = useCallback(
+    (next: MultiDomainVolumeSummary) => apply({ single: null, multi: next }),
+    [apply],
+  );
 
   useDashboardCohortSync(
     managerSeed,
@@ -176,42 +202,9 @@ export function ManagerLeadVolumeWidget({
     return () => observer.disconnect();
   }, []);
 
-  // Single-domain tab (admin/founder) — not seeded by the page RSC.
-  useEffect(() => {
-    if (isManagerRole || domainMode === "all") return;
-    let cancelled = false;
-    startTransition(async () => {
-      const result = await getLeadVolumeForDomainAction(
-        dateRange.from,
-        dateRange.to,
-        domainMode as AppDomain,
-      );
-      if (!cancelled && result.data) {
-        setSingleData(result.data);
-        setMultiData(null);
-        setLoaded(true);
-      }
-    });
-    return () => { cancelled = true; };
-  }, [dateRange.from, dateRange.to, domainMode, isManagerRole]);
-
   function handleDomainChange(mode: DomainMode) {
     setDomainMode(mode);
-    startTransition(async () => {
-      if (mode === "all") {
-        const result = await getLeadVolumeByDomainsAction(dateRange.from, dateRange.to, [...GIA_DOMAINS]);
-        if (result.data) {
-          setMultiData(result.data);
-          setSingleData(null);
-        }
-      } else {
-        const result = await getLeadVolumeForDomainAction(dateRange.from, dateRange.to, mode as AppDomain);
-        if (result.data) {
-          setSingleData(result.data);
-          setMultiData(null);
-        }
-      }
-    });
+    refetch(() => loadVolume(mode));
   }
 
   // Derived

@@ -1,6 +1,7 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
+import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { AdCreativeCarousel } from './AdCreativeCarousel';
 import type { AdCreative } from '@/lib/types/database';
@@ -22,7 +23,7 @@ export function CampaignAdCard({ adCreatives }: CampaignAdCardProps) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
       style={{ marginBottom: 'var(--space-6)' }}
     >
       <SectionCard

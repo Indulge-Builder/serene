@@ -20,10 +20,8 @@ import {
 } from "@/lib/validations/task-schemas";
 import { formErrors } from "@/lib/validations/form-errors";
 import { sanitizeText } from "@/lib/utils/sanitize";
-import {
-  getCurrentProfile,
-  getAssignableUsers,
-} from "@/lib/services/profiles-service";
+import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { requireProfile } from "@/lib/actions/_auth";
 import { createNotification } from "@/lib/services/notifications-service";
 import { getTaskRemarks } from "@/lib/services/tasks-service";
 import {
@@ -106,8 +104,9 @@ export async function createPersonalTaskAction(
   const fields = parsed.data;
 
   // 2. Auth check
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const resolvedAssignedTo = fields.assigned_to ?? caller.id;
 
@@ -202,9 +201,9 @@ export async function createGroupTaskAction(
   const fields = parsed.data;
 
   // 2. Auth — any non-guest authenticated user may create a group task
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (caller.role === "guest") return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile(["agent", "manager", "admin", "founder"]);
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   // 3. Domain enforcement — non-privileged callers locked to own domain
   const resolvedDomain = ["admin", "founder"].includes(caller.role)
@@ -257,8 +256,9 @@ export async function createSubtaskAction(
   const fields = parsed.data;
 
   // 2. Auth check
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const supabase = await createClient();
 
@@ -551,8 +551,9 @@ export async function deleteTaskAction(
   const { taskId } = parsed.data;
 
   // 2. Auth check
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const supabase = await createClient();
 
@@ -726,8 +727,9 @@ import type { TaskGroup } from "@/lib/types/database";
 export async function getGroupSubtasksAction(
   groupId: string,
 ): Promise<ActionResult<SubtaskWithAssignee[]>> {
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: "Unauthorized." };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const rows = await getGroupSubtasks(groupId, caller.id);
   return { data: rows, error: null };
@@ -736,8 +738,9 @@ export async function getGroupSubtasksAction(
 export async function getPersonalTasksAction(
   filters: PersonalTaskFilters = {},
 ): Promise<ActionResult<PersonalTasksResult>> {
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: "Unauthorized." };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const result = await getPersonalTasks(caller.id, filters);
   return { data: result, error: null };
@@ -746,8 +749,9 @@ export async function getPersonalTasksAction(
 export async function getPersonalTaskTagsAction(): Promise<
   ActionResult<string[]>
 > {
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: "Unauthorized." };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const tags = await getPersonalTaskTags(caller.id);
   return { data: tags, error: null };
@@ -756,8 +760,8 @@ export async function getPersonalTaskTagsAction(): Promise<
 export async function getTaskGroupByIdAction(
   groupId: string,
 ): Promise<ActionResult<TaskGroup>> {
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: "Unauthorized." };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
 
   const group = await getTaskGroupById(groupId);
   if (!group) return { data: null, error: "Group not found." };
@@ -790,8 +794,9 @@ export async function addTaskRemarkAction(
   const sanitizedContent = sanitizeText(content);
 
   // 2. Auth — session required; task must be visible under tasks RLS (view = post)
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const supabase = await createClient();
   const { data: task } = await supabase
@@ -850,11 +855,9 @@ export async function suppressTaskRemarkAction(
   const { messageId: remarkId } = parsed.data;
 
   // 2. Auth — admin and founder only
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (!["admin", "founder"].includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
-  }
+  const auth = await requireProfile(["admin", "founder"]);
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const admin = createAdminClient();
 
@@ -886,38 +889,16 @@ export async function suppressTaskRemarkAction(
 }
 
 // ─────────────────────────────────────────────
-// Action: getAssignableUsersAction
-// Returns all active non-guest users for the subtask assignee picker.
-// ─────────────────────────────────────────────
-export async function getAssignableUsersAction(): Promise<
-  ActionResult<
-    {
-      id: string;
-      full_name: string;
-      avatar_url: string | null;
-      role: string;
-      domain: string;
-    }[]
-  >
-> {
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-
-  const users = await getAssignableUsers();
-  return { data: users, error: null };
-}
-
-// ─────────────────────────────────────────────
 // Action: getTaskRemarksAction
 // Client-callable read action for fetching task_remarks.
-// Used when opening a TaskModal from a client component that cannot
-// call the service layer directly (e.g. GroupTaskWorkspace, PersonalTasksTab).
+// Used when opening a SubTaskModal from a client component that cannot
+// call the service layer directly (e.g. GroupTaskWorkspace, MyTasksCalendarView).
 // ─────────────────────────────────────────────
 export async function getTaskRemarksAction(
   taskId: string,
 ): Promise<ActionResult<TaskRemarkWithAuthor[]>> {
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
 
   const remarks = await getTaskRemarks(taskId);
   return { data: remarks, error: null };
@@ -938,11 +919,8 @@ export async function deleteGroupTaskAction(
   const { groupId } = parsed.data;
 
   // 2. Auth — admin/founder only
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (!["admin", "founder"].includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
-  }
+  const auth = await requireProfile(["admin", "founder"]);
+  if (!auth.ok) return auth.result;
 
   // 3. Fetch group to verify it exists and get domain for cache invalidation
   const supabase = await createClient();

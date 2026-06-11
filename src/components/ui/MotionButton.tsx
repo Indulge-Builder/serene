@@ -13,7 +13,7 @@
  *   transition: spring, stiffness 400, damping 30, duration INSTANT_DURATION
  */
 
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import { Button } from './Button';
 import { INSTANT_DURATION, EASE_SPRING } from '@/lib/constants/motion';
 

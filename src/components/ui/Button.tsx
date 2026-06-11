@@ -6,6 +6,8 @@ import { Spinner } from './Spinner';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
+/** Icon micro-interaction family (design-tokens.css) — hover gesture on the child svg. */
+export type ButtonIconMotion = 'rotate' | 'lift' | 'drop' | 'ring';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -16,6 +18,9 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   children?: React.ReactNode;
   /** When true, focus does not add --shadow-focus (filter bar actions). */
   suppressFocusRing?: boolean;
+  /** Opt-in icon hover gesture — maps to the .eia-icon-*-hover utilities.
+   *  rotate: Plus CTAs / close ×. lift: send. drop: download. ring: phone. */
+  iconMotion?: ButtonIconMotion;
 }
 
 // ✓ spec — design-dna.md §5.01 size table
@@ -53,85 +58,13 @@ const ICON_SIZE: Record<ButtonSize, number> = {
   lg: 18,
 };
 
-interface VariantStyle {
-  rest: React.CSSProperties;
-  hover: React.CSSProperties;
-}
-
-// ✓ spec — design-dna.md §5.01 variant table
-function getVariantStyle(variant: ButtonVariant): VariantStyle {
-  switch (variant) {
-    case 'primary':
-      return {
-        rest: {
-          background: 'var(--theme-accent)',
-          color:      'var(--theme-accent-fg)',
-          border:     '1px solid transparent',
-          boxShadow:  'var(--shadow-accent-glow)',
-        },
-        hover: {
-          background: 'var(--theme-accent-hover)',
-          boxShadow:  'var(--shadow-accent-lift)',
-          transform:  'translateY(-1px)',
-        },
-      };
-    case 'secondary':
-      return {
-        rest: {
-          background: 'var(--theme-paper-subtle)',
-          color:      'var(--theme-text-primary)',
-          border:     '1px solid var(--theme-paper-border)',
-          boxShadow:  'var(--shadow-1)',
-        },
-        hover: {
-          background:  'var(--theme-paper-subtle)',
-          borderColor: 'var(--theme-accent-muted)',
-        },
-      };
-    case 'ghost':
-      return {
-        rest: {
-          background: 'transparent',
-          color:      'var(--theme-text-primary)',
-          border:     '1px solid transparent',
-        },
-        hover: {
-          background: 'var(--theme-paper-subtle)',
-          color:      'var(--theme-text-primary)',
-        },
-      };
-    case 'danger':
-      // Soft-default variant — matches current codebase behaviour. design-dna.md §5.01
-      // shows the saturated alternative; switching would visually break 5+ existing consumers
-      // (task pre-mortem: "Must not break any existing consumer"). Reported in changelog.
-      return {
-        rest: {
-          background: 'var(--color-danger-light)',
-          color:      'var(--color-danger-text)',
-          border:     '1px solid var(--color-danger-light)',
-        },
-        hover: {
-          background: 'var(--color-danger)',
-          color:      'var(--theme-text-inverse)',
-          borderColor:'var(--color-danger)',
-        },
-      };
-    case 'success':
-      // Soft-default variant — see danger note above.
-      return {
-        rest: {
-          background: 'var(--color-success-light)',
-          color:      'var(--color-success-text)',
-          border:     '1px solid var(--color-success-light)',
-        },
-        hover: {
-          background: 'var(--color-success)',
-          color:      'var(--theme-text-inverse)',
-          borderColor:'var(--color-success)',
-        },
-      };
-  }
-}
+// ✓ spec — design-dna.md §5.01 variant table. Rest + hover chrome lives in
+// design-tokens.css (`.eia-btn-*`): :hover is gated to real pointers there
+// (no sticky hover after a tap on touch), the focus ring is :focus-visible,
+// and press feedback (.eia-pressable:active) beats hover by cascade order.
+// danger/success stay soft-default at rest → saturated on hover (intentional
+// drift from the §5.01 saturated default; switching would visually break
+// 5+ existing consumers).
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
@@ -143,19 +76,30 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
     disabled,
     children,
     style,
+    className,
     suppressFocusRing = false,
+    iconMotion,
     ...rest
   },
   ref,
 ) {
   const iconPx = ICON_SIZE[size];
   const isDisabled = disabled || loading;
-  const variantStyle = getVariantStyle(variant);
+  const classes = [
+    'eia-pressable',
+    `eia-btn-${variant}`,
+    suppressFocusRing && 'eia-btn-no-ring',
+    iconMotion && `eia-icon-${iconMotion}-hover`,
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <button
       ref={ref}
       disabled={isDisabled}
+      className={classes}
       {...rest}
       style={{
         display:        'inline-flex',
@@ -172,61 +116,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
         lineHeight:     'var(--leading-none)',
         outline:        'none',
         ...SIZE_STYLES[size],
-        ...variantStyle.rest,
         ...style,
       }}
-      onMouseEnter={(e) => {
-        if (!isDisabled) {
-          const el = e.currentTarget as HTMLButtonElement;
-          Object.entries(variantStyle.hover).forEach(([k, v]) => {
-            el.style.setProperty(
-              k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`),
-              String(v),
-            );
-          });
-        }
-        rest.onMouseEnter?.(e);
-      }}
-      onMouseLeave={(e) => {
-        if (!isDisabled) {
-          const el = e.currentTarget as HTMLButtonElement;
-          // Restore rest values for every property the hover touched.
-          Object.keys(variantStyle.hover).forEach((k) => {
-            const cssKey = k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
-            const restValue = (variantStyle.rest as Record<string, string | undefined>)[k];
-            if (restValue !== undefined) {
-              el.style.setProperty(cssKey, restValue);
-            } else {
-              el.style.removeProperty(cssKey);
-            }
-          });
-        }
-        rest.onMouseLeave?.(e);
-      }}
-      onFocus={
-        suppressFocusRing
-          ? rest.onFocus
-          : (e) => {
-              (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                'var(--shadow-focus)';
-              rest.onFocus?.(e);
-            }
-      }
-      onBlur={
-        suppressFocusRing
-          ? rest.onBlur
-          : (e) => {
-              const el = e.currentTarget as HTMLButtonElement;
-              const restShadow = (variantStyle.rest as Record<string, string | undefined>)
-                .boxShadow;
-              if (restShadow) {
-                el.style.boxShadow = restShadow;
-              } else {
-                el.style.removeProperty('box-shadow');
-              }
-              rest.onBlur?.(e);
-            }
-      }
     >
       {loading ? (
         <Spinner size="sm" canvas={variant === 'primary'} /> // ✓ spec — width preserved, replaces iconLeft slot

@@ -30,7 +30,7 @@ import {
   useTransition,
 } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import {
   X,
   ChevronRight,
@@ -64,13 +64,14 @@ import {
   updateChecklistAction,
 } from "@/lib/actions/tasks";
 import { formatDate } from "@/lib/utils/dates";
+import { CollapseReveal } from "@/components/ui/CollapseReveal";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { toast } from "@/lib/toast";
 import { TASK_STATUS, TASK_PRIORITY } from "@/lib/constants/task-constants";
 import { TaskRemarksPanel, type TaskRemarkWithAuthor } from "@/components/tasks/TaskRemarksPanel";
 import { TaskStatusIcon } from "@/components/tasks/TaskStatusIcon";
 import { Avatar } from "@/components/ui/Avatar";
-import { EASE_OUT_EXPO, FAST_DURATION } from '@/lib/constants/motion';
+import { EASE_OUT_EXPO, FAST_DURATION, PAGE_DURATION } from '@/lib/constants/motion';
 import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
 import type {
   Task,
@@ -123,7 +124,7 @@ function iconButtonStyles(
     height:         "30px",
     borderRadius:   "var(--radius-sm)",
     cursor:         "pointer",
-    transition:     "var(--transition-hover)",
+    transition:     "var(--transition-hover), transform var(--duration-instant) var(--ease-spring)",
     flexShrink:     0,
   };
 
@@ -181,6 +182,7 @@ function IconButton({
       onClick={onClick}
       aria-label={label}
       title={label}
+      className={variant === "close" ? "eia-pressable eia-icon-rotate-hover" : "eia-pressable"}
       style={iconButtonStyles(variant, active, danger)}
     >
       {children}
@@ -827,7 +829,7 @@ export function SubTaskModal({
         style={{
           position:   "fixed",
           inset:      0,
-          background: "rgba(0,0,0,0.72)",
+          background: "color-mix(in srgb, var(--theme-canvas) 72%, transparent)",
           zIndex:     "var(--z-overlay)" as React.CSSProperties["zIndex"],
         }}
       />
@@ -1230,13 +1232,7 @@ export function SubTaskModal({
             {/* Delete confirm banner — slides in */}
             <AnimatePresence>
               {showDeleteConfirm && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
-                  style={{ overflow: "hidden" }}
-                >
+                <CollapseReveal>
                   <div
                     style={{
                       display:        "flex",
@@ -1282,8 +1278,8 @@ export function SubTaskModal({
                           padding:      "var(--space-1) var(--space-3)",
                           borderRadius: "var(--radius-sm)",
                           border:       "none",
-                          background:   "var(--color-danger-text)",
-                          color:        "#ffffff",
+                          background:   "var(--color-danger)",
+                          color:        "var(--color-danger-fg)",
                           fontFamily:   "var(--font-sans)",
                           fontSize:     "var(--text-sm)",
                           fontWeight:   "var(--weight-semibold)",
@@ -1294,7 +1290,7 @@ export function SubTaskModal({
                       </button>
                     </div>
                   </div>
-                </motion.div>
+                </CollapseReveal>
               )}
             </AnimatePresence>
             </div>
@@ -1395,13 +1391,16 @@ export function SubTaskModal({
 
                     {/* Progress bar */}
                     {totalCount > 0 && (
-                      <div style={{ height: "2px", background: "var(--theme-paper-border)" }}>
+                      <div style={{ height: "2px", background: "var(--theme-paper-border)", overflow: "hidden" }}>
+                        {/* Full-width fill scaled by transform — never animate width (DNA M-06) */}
                         <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${progressPct}%` }}
-                          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                          initial={{ scaleX: 0 }}
+                          animate={{ scaleX: progressPct / 100 }}
+                          transition={{ duration: PAGE_DURATION, ease: EASE_OUT_EXPO }}
                           style={{
-                            height:     "100%",
+                            width:           "100%",
+                            height:          "100%",
+                            transformOrigin: "left center",
                             background: progressPct === 100 ? "var(--color-success)" : "var(--theme-accent)",
                           }}
                         />

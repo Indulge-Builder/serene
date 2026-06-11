@@ -8,7 +8,7 @@
  */
 
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { UserPlus, Trophy, Clock, CheckSquare, AtSign, Info, AlertTriangle } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils/dates";
 import { assertNever } from "@/lib/utils/assert-never";

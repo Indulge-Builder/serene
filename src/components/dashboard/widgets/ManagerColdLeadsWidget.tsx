@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { EXIT_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 import type { WidgetProps } from "@/components/dashboard/DashboardWidgetSlot";
 
@@ -31,7 +31,7 @@ export function ManagerColdLeadsWidget({ initialData }: WidgetProps) {
           transition:     "background var(--duration-fast) var(--ease-in-out)",
         }}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.background = "var(--theme-paper-hover)";
+          (e.currentTarget as HTMLElement).style.background = "var(--theme-paper-subtle)";
         }}
         onMouseLeave={(e) => {
           (e.currentTarget as HTMLElement).style.background = "var(--theme-paper)";
@@ -40,7 +40,7 @@ export function ManagerColdLeadsWidget({ initialData }: WidgetProps) {
         <p
           style={{
             fontFamily:  "var(--font-mono)",
-            fontSize:    "var(--text-4xl)",
+            fontSize:    "var(--text-3xl)",
             fontWeight:  "var(--weight-semibold)",
             lineHeight:  1,
             color:       count > 0 ? "var(--color-warning)" : "var(--theme-text-secondary)",

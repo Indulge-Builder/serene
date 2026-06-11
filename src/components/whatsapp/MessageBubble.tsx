@@ -1,13 +1,18 @@
 "use client";
 
 import { Check, CheckCheck, X, FileText, ImageIcon, Video, Mic } from "lucide-react";
+import { m as motion } from "framer-motion";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatRelativeTime } from "@/lib/utils/dates";
+import { EASE_OUT_EXPO } from "@/lib/constants/motion";
 import type { WhatsAppMessage } from "@/lib/types/whatsapp";
 
 interface MessageBubbleProps {
   message: WhatsAppMessage;
   isOptimistic?: boolean;
+  /** Animate arrival — pass true only for messages appended after mount;
+   *  the initial thread renders static (design-dna §6.4 liaMessageArrive). */
+  entrance?: boolean;
 }
 
 function DeliveryIcon({ status }: { status: WhatsAppMessage["status"] }) {
@@ -125,19 +130,20 @@ function MediaPlaceholder({ message }: { message: WhatsAppMessage }) {
   );
 }
 
-export function MessageBubble({ message, isOptimistic = false }: MessageBubbleProps) {
+export function MessageBubble({ message, isOptimistic = false, entrance = false }: MessageBubbleProps) {
   const isOutbound = message.direction === "outbound";
   const isMedia    = ["image", "video", "document", "audio"].includes(message.message_type);
   const senderName = message.sender_name ?? (isOutbound ? "You" : "Lead");
 
   return (
-    <div
+    <motion.div
+      initial={entrance ? { opacity: 0, y: 6 } : false}
+      animate={{ opacity: isOptimistic ? 0.6 : 1, y: 0 }}
+      transition={{ duration: 0.3, ease: EASE_OUT_EXPO }}
       style={{
         display:        "flex",
         flexDirection:  "column",
         alignItems:     isOutbound ? "flex-end" : "flex-start",
-        opacity:        isOptimistic ? 0.6 : 1,
-        transition:     "opacity 0.2s ease",
       }}
     >
       {/* Inbound sender row: avatar + name */}
@@ -241,7 +247,7 @@ export function MessageBubble({ message, isOptimistic = false }: MessageBubblePr
           {isOutbound && <DeliveryIcon status={message.status} />}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

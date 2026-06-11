@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect, useTransition } from 'react';
+import { useState, useMemo, useRef, useEffect, useTransition, useCallback, memo } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
+import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { ArrowDownUp, Clock, Columns } from 'lucide-react';
 import { buildFilterParams } from '@/lib/utils/filter-params';
 import type { LeadListItemWithAssignee } from '@/lib/services/leads-service';
@@ -13,10 +15,17 @@ import { getLeadSourceLabel, getMetaMediumLabel } from '@/lib/constants/lead-sou
 import { formatDate } from '@/lib/utils/dates';
 import { LEAD_COLUMN_MAP, type LeadColumnId } from '@/lib/constants/lead-columns';
 import { useLeadColumnPreferences } from '@/hooks/useLeadColumnPreferences';
-import { LeadColumnPicker } from '@/components/leads/LeadColumnPicker';
+import { useMountOnFirstOpen } from '@/hooks/useMountOnFirstOpen';
 import { LeadsSelectionToolbar } from '@/components/leads/LeadsSelectionToolbar';
 import { ExportButton } from '@/components/leads/ExportButton';
 import type { LeadFilters } from '@/lib/types/database';
+
+// Load-on-intent (perf audit G-1): the picker (@dnd-kit chain) stays out of the
+// /leads route chunk until the Columns button is first clicked.
+const LeadColumnPicker = dynamic(
+  () => import('@/components/leads/LeadColumnPicker').then((m) => m.LeadColumnPicker),
+  { ssr: false },
+);
 
 type LeadsTableProps = {
   leads:            LeadListItemWithAssignee[];
@@ -66,6 +75,7 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
   }
 
   const [pickerOpen, setPickerOpen]           = useState(false);
+  const mountPicker                           = useMountOnFirstOpen(pickerOpen);
   const pickerAnchorRef                       = useRef<HTMLDivElement>(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
 
@@ -95,13 +105,14 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
     }
   }
 
-  function toggleOne(id: string) {
+  // Stable identity so memo(LeadRow) skips the 29 untouched rows on a toggle (G-4)
+  const toggleOne = useCallback((id: string) => {
     setSelectedLeadIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  }
+  }, []);
 
   // statusCounts is the only source of truth for pill counts.
   // It reflects the full filtered dataset, not just the current page slice.
@@ -122,7 +133,7 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.25, delay: 0.1, ease: EASE_OUT_EXPO }}
       style={{
         border:       '1px solid var(--theme-paper-border)',
         borderRadius: 'var(--radius-md)',
@@ -152,7 +163,7 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
             gap:          'var(--space-1)',
             height:       '2.25rem',
             padding:      '0 var(--space-3)',
-            background:   goingCold ? 'var(--color-warning-subtle)' : 'transparent',
+            background:   goingCold ? 'var(--color-warning-light)' : 'transparent',
             border:       `1px solid ${goingCold ? 'var(--color-warning)' : 'var(--theme-paper-border)'}`,
             borderRadius: 'var(--radius-sm)',
             fontSize:     'var(--text-sm)',
@@ -227,7 +238,7 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
               height:      '0.875rem',
               strokeWidth: 1.5,
               transform:   sortOrder === 'asc' ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition:  'transform 200ms ease-out',
+              transition:  'transform var(--duration-base) var(--ease-spring)',
             }}
             aria-hidden="true"
           />
@@ -259,16 +270,18 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
             <span>Columns</span>
           </button>
 
-          <LeadColumnPicker
-            open={pickerOpen}
-            onClose={() => setPickerOpen(false)}
-            anchorRef={pickerAnchorRef}
-            visibleColumns={visibleColumns}
-            columnOrder={columnOrder}
-            toggleColumn={toggleColumn}
-            reorderColumns={reorderColumns}
-            resetToDefaults={resetToDefaults}
-          />
+          {mountPicker && (
+            <LeadColumnPicker
+              open={pickerOpen}
+              onClose={() => setPickerOpen(false)}
+              anchorRef={pickerAnchorRef}
+              visibleColumns={visibleColumns}
+              columnOrder={columnOrder}
+              toggleColumn={toggleColumn}
+              reorderColumns={reorderColumns}
+              resetToDefaults={resetToDefaults}
+            />
+          )}
         </div>
 
         <ExportButton filters={filters} />
@@ -356,10 +369,11 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
                 </td>
               </tr>
             ) : (
-              leads.map((lead) => (
+              leads.map((lead, index) => (
                 <LeadRow
                   key={lead.id}
                   lead={lead}
+                  index={index}
                   visibleColumns={orderedVisible}
                   selected={selectedLeadIds.has(lead.id)}
                   onToggleSelect={toggleOne}
@@ -418,7 +432,7 @@ function CheckboxCell({
       )}
       {checked && (
         <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
-          <path d="M1 3L3 5L7 1" stroke="var(--theme-accent-fg)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path className="eia-check-draw" d="M1 3L3 5L7 1" stroke="var(--theme-accent-fg)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )}
     </div>
@@ -426,15 +440,20 @@ function CheckboxCell({
 }
 
 // ─────────────────────────────────────────────
-// Single table row — renders only visible cells in the stored order
+// Single table row — renders only visible cells in the stored order.
+// memo (G-4): props are a stable lead object, the memoised visibleColumns
+// array, a primitive selected flag, and the useCallback'd toggle — so a
+// selection toggle re-renders only the affected row, not all 30.
 // ─────────────────────────────────────────────
-function LeadRow({
+const LeadRow = memo(function LeadRow({
   lead,
+  index,
   visibleColumns,
   selected,
   onToggleSelect,
 }: {
   lead:           LeadListItemWithAssignee;
+  index:          number;
   visibleColumns: LeadColumnId[];
   selected:       boolean;
   onToggleSelect: (id: string) => void;
@@ -451,6 +470,10 @@ function LeadRow({
     : pathname;
   const href = `/leads/${lead.slug ?? lead.id}?from=${encodeURIComponent(fromUrl)}`;
 
+  // Row-by-row arrival (design-dna M-04) — first 8 rows only, 30ms steps;
+  // animation runs once on DOM insertion, so persisting rows never replay.
+  const entering = index < 8;
+
   return (
     <tr
       onClick={() => router.push(href)}
@@ -459,10 +482,12 @@ function LeadRow({
         router.prefetch(href);
       }}
       onMouseLeave={() => setHovered(false)}
+      className={entering ? 'eia-row-enter' : undefined}
       style={{
-        borderBottom: '1px solid var(--theme-paper-border)',
-        cursor:       'pointer',
-        background:   selected ? 'var(--theme-accent-surface)' : undefined,
+        borderBottom:   '1px solid var(--theme-paper-border)',
+        cursor:         'pointer',
+        background:     selected ? 'var(--theme-accent-surface)' : undefined,
+        animationDelay: entering ? `${index * 30}ms` : undefined,
       }}
     >
       {/* Checkbox cell — stopPropagation prevents row nav on click */}
@@ -488,7 +513,7 @@ function LeadRow({
       ))}
     </tr>
   );
-}
+});
 
 // ─────────────────────────────────────────────
 // Individual cell renderer — exhaustive switch keeps column logic co-located

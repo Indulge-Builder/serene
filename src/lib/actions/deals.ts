@@ -1,8 +1,8 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentProfile } from "@/lib/services/profiles-service";
-import { getAgentsForDomain } from "@/lib/services/leads-service";
+import { requireProfile } from "@/lib/actions/_auth";
+import { getAssignableUsers } from "@/lib/services/profiles-service";
 import { RecordDealSchema, CreateWalkInDealSchema } from "@/lib/validations/deal-schema";
 import { formErrors } from "@/lib/validations/form-errors";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -35,8 +35,9 @@ export async function recordDeal(
   const { leadId, deal_type, deal_duration, deal_amount } = parsed.data;
 
   // S-06: auth + access check
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   const admin = createAdminClient();
 
@@ -103,8 +104,9 @@ export async function createWalkInDeal(
   const data = parsed.data;
 
   // S-06: auth
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   // Domain + assignee enforcement (mirrors createManualLead rule)
   let finalDomain     = data.domain as AppDomain;
@@ -119,7 +121,7 @@ export async function createWalkInDeal(
     finalDomain = caller.domain;
     // assigned_to may be any agent in their domain — verify
     if (finalAssignedTo) {
-      const agents = await getAgentsForDomain(caller.domain);
+      const agents = await getAssignableUsers({ domain: caller.domain, agentsOnly: true });
       if (!agents.some((a) => a.id === finalAssignedTo)) {
         return { data: null, error: "Selected agent is not in your domain." };
       }
@@ -131,7 +133,7 @@ export async function createWalkInDeal(
     }
     // Verify assignee is in the chosen domain if provided
     if (finalAssignedTo) {
-      const agents = await getAgentsForDomain(finalDomain);
+      const agents = await getAssignableUsers({ domain: finalDomain, agentsOnly: true });
       if (!agents.some((a) => a.id === finalAssignedTo)) {
         return { data: null, error: "Selected agent is not in the chosen domain." };
       }
@@ -180,8 +182,9 @@ export async function createWalkInDeal(
 export async function listAgentsForDealDomain(
   domain: string,
 ): Promise<ActionResult<{ id: string; full_name: string }[]>> {
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: formErrors.unauthorized };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   if (!isGiaDomain(domain as AppDomain)) {
     return { data: null, error: "Invalid domain." };
@@ -197,6 +200,6 @@ export async function listAgentsForDealDomain(
     return { data: null, error: formErrors.unauthorized };
   }
 
-  const agents = await getAgentsForDomain(domain as AppDomain);
+  const agents = await getAssignableUsers({ domain: domain as AppDomain, agentsOnly: true });
   return { data: agents, error: null };
 }

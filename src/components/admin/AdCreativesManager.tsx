@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Plus, Pencil, Trash2, Film, SlidersHorizontal } from "lucide-react";
 import { MotionButton, MOTION_BUTTON_DEFAULTS } from "@/components/ui/MotionButton";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { Spinner } from "@/components/ui/Spinner";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { AdCreativeFormModal } from "./AdCreativeFormModal";
 import { deleteAdCreative } from "@/lib/actions/ad-creatives";
 import { useToast } from "@/hooks/useToast";
@@ -36,6 +37,7 @@ export function AdCreativesManager({ initialCreatives, campaignKeys }: AdCreativ
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing]     = useState<AdCreative | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<AdCreative | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
@@ -73,9 +75,6 @@ export function AdCreativesManager({ initialCreatives, campaignKeys }: AdCreativ
   }
 
   function handleDelete(row: AdCreative) {
-    if (!window.confirm(`Delete this creative for "${beautifyCampaignTitle(row.campaign_key)}"? This cannot be undone.`)) {
-      return;
-    }
     setDeletingId(row.id);
     startTransition(async () => {
       const fd = new FormData();
@@ -88,6 +87,7 @@ export function AdCreativesManager({ initialCreatives, campaignKeys }: AdCreativ
         toast.success("Creative deleted.");
       }
       setDeletingId(null);
+      setConfirmTarget(null);
     });
   }
 
@@ -102,6 +102,7 @@ export function AdCreativesManager({ initialCreatives, campaignKeys }: AdCreativ
           {...MOTION_BUTTON_DEFAULTS}
           variant="primary"
           type="button"
+          iconMotion="rotate"
           onClick={openCreate}
           style={{ boxShadow: "var(--shadow-accent-glow)", whiteSpace: "nowrap", flexShrink: 0 }}
         >
@@ -188,7 +189,7 @@ export function AdCreativesManager({ initialCreatives, campaignKeys }: AdCreativ
               index={i}
               isDeleting={isPending && deletingId === row.id}
               onEdit={() => openEdit(row)}
-              onDelete={() => handleDelete(row)}
+              onDelete={() => setConfirmTarget(row)}
             />
           ))}
         </div>
@@ -200,6 +201,29 @@ export function AdCreativesManager({ initialCreatives, campaignKeys }: AdCreativ
         editing={editing}
         campaignKeys={campaignKeys}
         onSaved={handleSaved}
+      />
+
+      <ConfirmDialog
+        open={confirmTarget !== null}
+        dialogKey="delete-creative"
+        title="Delete creative?"
+        body={
+          confirmTarget ? (
+            <>
+              The creative for{" "}
+              <strong style={{ color: "var(--theme-text-primary)" }}>
+                {beautifyCampaignTitle(confirmTarget.campaign_key)}
+              </strong>{" "}
+              will be permanently deleted. This cannot be undone.
+            </>
+          ) : null
+        }
+        confirmLabel="Delete"
+        pendingLabel="Deleting…"
+        danger
+        pending={isPending && deletingId !== null}
+        onConfirm={() => confirmTarget && handleDelete(confirmTarget)}
+        onCancel={() => setConfirmTarget(null)}
       />
     </>
   );

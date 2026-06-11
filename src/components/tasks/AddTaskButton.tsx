@@ -29,6 +29,7 @@ export function AddTaskButton({ activeTab, validTabs }: AddTaskButtonProps) {
       {...MOTION_BUTTON_DEFAULTS}
       variant="primary"
       type="button"
+      iconMotion="rotate"
       onClick={requestCreate}
       style={{ boxShadow: 'var(--shadow-accent-glow)', whiteSpace: 'nowrap', flexShrink: 0 }}
     >

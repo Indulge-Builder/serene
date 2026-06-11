@@ -11,8 +11,8 @@
  *   - This component may import from lib/services — TasksShell may not.
  *
  * SSR hoists (perf):
- *   - initialAgents: agents for callerDomain fetched here so GroupTasksTab and
- *     MyTasksCalendarView never need to POST listAgentsForDomain on mount.
+ *   - initialAgents: assignable users fetched here so GroupTasksTab and
+ *     MyTasksCalendarView never need to POST getAssignableUsersAction on mount.
  *   - initialTags: personal task tags fetched here (personal tab only) so
  *     TasksShell never needs to POST getPersonalTaskTagsAction on mount.
  */
@@ -25,6 +25,7 @@ import type {
   GiaTask,
 } from '@/lib/services/tasks-service';
 import type { UserRole, AppDomain } from '@/lib/types/database';
+import type { AssignableUser } from '@/lib/types';
 import type { TaskTab } from './page';
 import { TasksShell } from './TasksShell';
 
@@ -46,16 +47,6 @@ const EMPTY_PERSONAL: PersonalTasksResult = {
 const EMPTY_GROUP: TaskGroupRow[] = [];
 const EMPTY_GIA:  GiaTask[]      = [];
 
-// Shape passed across the server→client boundary for assignable users.
-// Matches the fields AssigneePickerModal + GroupRow need.
-export type AgentSlim = {
-  id:         string;
-  full_name:  string;
-  avatar_url: string | null;
-  role:       UserRole;
-  domain:     AppDomain;
-};
-
 export async function TasksAsync({
   tab,
   validTabs,
@@ -64,36 +55,27 @@ export async function TasksAsync({
   callerDomain,
   callerName,
 }: TasksAsyncProps) {
-  // Fetch only the active tab's data. Inactive tabs receive empty sentinels.
-  let personalResult = EMPTY_PERSONAL;
-  let groupRows      = EMPTY_GROUP;
-  let giaTasks       = EMPTY_GIA;
-
-  // Hoist assignable users for all tabs (subtask assignee picker is available to all roles).
-  // Hoist tags only on the personal tab (tag filter strip is only on My Tasks).
-  const needsTags = tab === 'personal' || validTabs.includes('personal');
-
-  const [rawAssignableUsers, initialTags] = await Promise.all([
+  // One wave: hoisted agents + tags + the active tab's data all run in
+  // parallel — none of them depend on each other. Inactive tabs receive
+  // empty sentinels (TasksShell only mounts the active panel).
+  // Tags are fetched ONLY on the personal tab — TasksShell re-seeds its
+  // tag state from the prop on every personal-tab RSC pass, so a user
+  // landing on gia/group and switching later still gets fresh tags.
+  const [initialAgents, initialTags, personalResult, groupRows, giaTasks]: [
+    AssignableUser[],
+    string[],
+    PersonalTasksResult,
+    TaskGroupRow[],
+    GiaTask[],
+  ] = await Promise.all([
     getAssignableUsers(),
-    // Tags — only needed when the personal tab is reachable
-    needsTags ? getPersonalTaskTags(userId) : Promise.resolve([] as string[]),
+    tab === 'personal' ? getPersonalTaskTags(userId) : Promise.resolve([] as string[]),
+    tab === 'personal' ? getPersonalTasks(userId) : Promise.resolve(EMPTY_PERSONAL),
+    tab === 'group' ? getGroupTasks({}, { userId }) : Promise.resolve(EMPTY_GROUP),
+    tab === 'gia'
+      ? getGiaTasksForUser(userId, callerRole, callerDomain)
+      : Promise.resolve(EMPTY_GIA),
   ]);
-
-  if (tab === 'personal') {
-    personalResult = await getPersonalTasks(userId);
-  } else if (tab === 'group') {
-    groupRows = await getGroupTasks({}, { userId });
-  } else {
-    giaTasks = await getGiaTasksForUser(userId, callerRole, callerDomain);
-  }
-
-  const initialAgents: AgentSlim[] = rawAssignableUsers.map((u) => ({
-    id:         u.id,
-    full_name:  u.full_name,
-    avatar_url: u.avatar_url,
-    role:       u.role,
-    domain:     u.domain,
-  }));
 
   return (
     <TasksShell

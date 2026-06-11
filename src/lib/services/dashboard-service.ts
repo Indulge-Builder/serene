@@ -18,6 +18,7 @@
 
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { redis } from '@/lib/redis';
 import { REDIS_KEYS, REDIS_TTL } from '@/lib/constants/redis-keys';
 import type { AppDomain, LeadStatus, UserRole } from '@/lib/types/database';
@@ -28,10 +29,9 @@ import type { DateRange } from '@/lib/utils/date-range';
 // getDashboardSummary — single RPC, per-request memoised
 // Replaces 4 individual queries (agent_tasks, agent_activity, lead_status, campaigns).
 //
-// Uses React cache() (not unstable_cache) because createClient() reads cookies(),
-// which cannot be called inside an unstable_cache closure (Next.js constraint).
-// React cache() deduplicates within a single RSC render pass — the RPC fires once
-// even if multiple components call getDashboardSummary with the same arguments.
+// Uses React cache() for per-request dedup — the RPC fires once even if multiple
+// components call getDashboardSummary with the same arguments in one RSC pass.
+// (unstable_cache stays off the table: the result is per-user, not shareable.)
 //
 // dateRange is passed through to the lead_status + campaigns CTEs only.
 // agent_tasks and agent_activity are always "live" and ignore the range.
@@ -45,7 +45,10 @@ export const getDashboardSummary = cache(
     initialDomain?: AppDomain,
     dateRange?:    DateRange,
   ): Promise<DashboardSummary> => {
-    const supabase = await createClient();
+    // get_dashboard_summary trusts p_role/p_domain — EXECUTE revoked from
+    // `authenticated` (migration 0102, audit F-1). Admin client only; every
+    // caller passes session-derived scope (Q-13: the caller is the trust boundary).
+    const supabase = createAdminClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).rpc('get_dashboard_summary', {
       p_role:           role,
@@ -177,7 +180,9 @@ export async function getAgentRecentActivity(
   role?: string,
   domain?: string,
 ): Promise<AgentActivity[]> {
-  const supabase = await createClient();
+  // EXECUTE revoked from `authenticated` (0102, F-1) — admin client; scope args
+  // are session-derived by the dashboard action/page (Q-13).
+  const supabase = createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any).rpc('get_agent_recent_activity', {
     p_role:    role ?? 'agent',
@@ -271,7 +276,9 @@ export async function getLeadStatusSummary(
   const rpcRole   = (role === 'manager' || targetDomain) ? 'manager' : role;
   const rpcDomain = (role === 'manager' ? domain : targetDomain ?? domain) as AppDomain;
 
-  const supabase = await createClient();
+  // EXECUTE revoked from `authenticated` (0102, F-1) — admin client; scope args
+  // are session-derived by the dashboard action/page (Q-13).
+  const supabase = createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any).rpc('get_lead_pipeline_refresh', {
     p_role:      rpcRole,
@@ -580,7 +587,9 @@ export async function getLeadsByCampaign(
   const rpcRole   = (role === 'manager' || targetDomain) ? 'manager' : role;
   const rpcDomain = (role === 'manager' ? domain : targetDomain ?? domain) as AppDomain;
 
-  const supabase = await createClient();
+  // EXECUTE revoked from `authenticated` (0102, F-1) — admin client; scope args
+  // are session-derived by the dashboard action/page (Q-13).
+  const supabase = createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any).rpc('get_campaign_pipeline_refresh', {
     p_role:      rpcRole,

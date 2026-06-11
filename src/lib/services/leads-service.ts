@@ -25,14 +25,11 @@ import type {
   AgentDistributionRow,
   Profile,
 } from "@/lib/types/database";
+import type { WithAuthor, WithAssignee, WithActor } from "@/lib/types";
 
-export type LeadNoteWithAuthor = LeadNote & { author: { full_name: string } };
-export type LeadActivityWithActor = LeadActivity & {
-  actor: { full_name: string } | null;
-};
-export type LeadWithAssignee = Lead & {
-  assignee: { full_name: string } | null;
-};
+export type LeadNoteWithAuthor   = WithAuthor<LeadNote>;
+export type LeadActivityWithActor = WithActor<LeadActivity>;
+export type LeadWithAssignee     = WithAssignee<Lead>;
 
 type LatestNote = { content: string; created_at: string; author_name: string | null };
 
@@ -43,9 +40,7 @@ export type LeadListItem = Pick<
   | 'source' | 'medium' | 'utm_campaign' | 'call_count'
   | 'last_call_outcome' | 'created_at'
 > & { latest_note: LatestNote | null };
-export type LeadListItemWithAssignee = LeadListItem & {
-  assignee: { full_name: string } | null;
-};
+export type LeadListItemWithAssignee = WithAssignee<LeadListItem>;
 export type LeadTaskForDossier = Task & { task_type: Task["task_type"] };
 
 // ─────────────────────────────────────────────
@@ -204,17 +199,24 @@ async function getLatestNotesForLeads(
 //   - admin / founder: no pre-constraint.
 //
 // Pagination: .range() is always applied, regardless of filter presence.
-//   Default page=1, pageSize=50. An unfiltered first load fetches exactly
-//   50 rows — never the full table.
+//   Default page=1, pageSize=30. An unfiltered first load fetches exactly
+//   30 rows — never the full table.
 //
-// Count: returned in the same round trip via { count: 'exact', head: false }.
-//   Never two separate queries.
+// Count: totalCount = sum of get_leads_status_counts rows (perf audit C-1) —
+//   the RPC runs the identical predicate once, in Promise.all with the
+//   paginated query. The paginated query carries NO count option; never
+//   re-add { count: 'exact' } (second full scan) or a separate COUNT(*).
 // ─────────────────────────────────────────────
 export type LeadsResult = {
   leads:        LeadListItemWithAssignee[];
   totalCount:   number;
   statusCounts: Partial<Record<LeadStatus, number>>;
 };
+
+// Envelope stored at the lead-list key (perf audit C-3): `v` is the
+// leadListVersion counter value the entry was written under. A read is a hit
+// only when `v` matches the live counter fetched in the same MGET.
+type VersionedLeadsResult = { v: number; result: LeadsResult };
 
 export async function getLeadsByRole(
   role: UserRole,
@@ -234,23 +236,23 @@ export async function getLeadsByRole(
     pageSize: 30,
   },
 ): Promise<LeadsResult> {
-  // Redis cache-aside with version counter: read the domain version first so we
-  // can build the correct versioned key. A version miss (null) defaults to 0,
-  // which is a valid cache slot — the first INCR will bump it to 1.
+  // Redis cache-aside, version-validated (perf audit C-3): ONE MGET fetches the
+  // role+domain version counter and the list entry together — Upstash is HTTP,
+  // so the old version-read-then-list-read shape paid 2×RTT on every load.
+  // A hit requires the entry's stored `v` to match the live counter, so an INCR
+  // in lead-cache.ts still atomically voids all prior pages. A version miss
+  // (null) defaults to 0 — the first INCR bumps it to 1 and voids v:0 entries.
   let version = 0;
+  const listKey = buildLeadListKey(role, domain, userId, filters);
   try {
-    const v = await redis.get<number>(REDIS_KEYS.leadListVersion(role, domain));
+    const [v, cached] = await redis.mget<[number | null, VersionedLeadsResult | null]>(
+      REDIS_KEYS.leadListVersion(role, domain),
+      listKey,
+    );
     if (v !== null) version = v;
+    if (cached && cached.v === version) return cached.result;
   } catch {
     /* Redis unavailable — version stays 0, fall through to DB */
-  }
-
-  const listKey = buildLeadListKey(role, domain, userId, filters, version);
-  try {
-    const cached = await redis.get<LeadsResult>(listKey);
-    if (cached) return cached;
-  } catch {
-    /* Redis unavailable — fall through to DB */
   }
 
   const supabase = await createClient();
@@ -259,7 +261,35 @@ export async function getLeadsByRole(
   const pageSize = Math.max(1, Math.min(200, filters.pageSize ?? 30));
   const offset = (page - 1) * pageSize;
 
-  // Use count: 'exact' to get total matching rows in the same round trip
+  // Filter values computed ONCE and shared verbatim by the paginated query and
+  // the get_leads_status_counts RPC below. totalCount is derived from the RPC
+  // (sum of per-status counts), so the two predicates must never drift — any
+  // new filter must be applied to both in the same change.
+  //
+  // date_from IST midnight transform: bare YYYY-MM-DD → YYYY-MM-DDT00:00:00+05:30.
+  // Without this, PostgREST treats the bare date as UTC midnight, which is
+  // 5.5 hours into the IST calendar day — leads created before 05:30 IST are excluded.
+  const dateFrom = filters.date_from
+    ? (/T/.test(filters.date_from) ? filters.date_from : `${filters.date_from}T00:00:00+05:30`)
+    : null;
+  // End-of-day transform: include all leads up to 23:59:59.999 on date_to
+  const dateTo = filters.date_to
+    ? filters.date_to.replace(/T.*$/, "T23:59:59.999Z")
+    : null;
+  // Trim and lowercase in the service — never trust raw client input
+  const searchTerm = filters.search ? filters.search.trim().toLowerCase() || null : null;
+  // Going-cold threshold: last_activity_at older than COLD_LEAD_THRESHOLD_DAYS ago.
+  const goingColdThreshold = filters.going_cold
+    ? new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString()
+    : null;
+  // Admin/founder Gia domain slice — agent/manager scoping never comes from filters
+  const domainSlice =
+    role !== "agent" && role !== "manager" && filters.domain && isGiaDomain(filters.domain)
+      ? filters.domain
+      : null;
+
+  // totalCount comes from the status-counts RPC (one predicate scan) — never
+  // re-add { count: 'exact' } here, it forces a second full scan per load (C-1)
   let query = supabase
     .from("leads")
     .select(
@@ -267,7 +297,6 @@ export async function getLeadsByRole(
        status, lead_intent, source, medium, utm_campaign,
        call_count, last_call_outcome, created_at,
        assignee:profiles!leads_assigned_to_fkey(full_name)`,
-      { count: "exact", head: false },
     )
     .is("archived_at", null)
     .order("created_at", { ascending: filters.sort_order === "asc" });
@@ -283,8 +312,8 @@ export async function getLeadsByRole(
     }
   } else {
     // admin / founder — optional domain slice (Gia domains only); agent_id honoured
-    if (filters.domain && isGiaDomain(filters.domain)) {
-      query = query.eq("domain", filters.domain);
+    if (domainSlice) {
+      query = query.eq("domain", domainSlice);
     }
     if (filters.agent_id) {
       query = query.eq("assigned_to", filters.agent_id);
@@ -308,39 +337,26 @@ export async function getLeadsByRole(
     query = query.eq("utm_campaign", filters.campaign);
   }
 
-  if (filters.date_from) {
-    // IST midnight transform: bare YYYY-MM-DD → YYYY-MM-DDT00:00:00+05:30
-    // Without this, PostgREST treats the bare date as UTC midnight, which is
-    // 5.5 hours into the IST calendar day — leads created before 05:30 IST are excluded.
-    const startOfDayIST = /T/.test(filters.date_from)
-      ? filters.date_from
-      : `${filters.date_from}T00:00:00+05:30`;
-    query = query.gte("created_at", startOfDayIST);
+  if (dateFrom) {
+    query = query.gte("created_at", dateFrom);
   }
 
-  if (filters.date_to) {
-    // End-of-day transform: include all leads up to 23:59:59.999 on date_to
-    const endOfDay = filters.date_to.replace(/T.*$/, "T23:59:59.999Z");
-    query = query.lte("created_at", endOfDay);
+  if (dateTo) {
+    query = query.lte("created_at", dateTo);
   }
 
-  if (filters.search) {
-    // Trim and lowercase in the service — never trust raw client input
-    const term = filters.search.trim().toLowerCase();
-    if (term) {
-      query = query.or(
-        `first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%,city.ilike.%${term}%`,
-      );
-    }
+  if (searchTerm) {
+    // Single ILIKE over the generated search_text column (migration 0098) —
+    // served by idx_leads_search_trgm. Never revert to a per-column .or()
+    // ILIKE chain: it bypasses the index and drifts from the count RPC.
+    query = query.filter("search_text", "ilike", `%${searchTerm}%`);
   }
 
-  if (filters.going_cold) {
-    // Threshold: last_activity_at older than COLD_LEAD_THRESHOLD_DAYS ago.
+  if (goingColdThreshold) {
     // NULL last_activity_at leads are intentionally excluded by lt() — those are
     // handled by SLA-01A (never-contacted leads), not the going-cold preset.
-    const threshold = new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString();
     query = query
-      .lt("last_activity_at", threshold)
+      .lt("last_activity_at", goingColdThreshold)
       .not("status", "in", `("won","lost","junk")`);
   }
 
@@ -349,21 +365,19 @@ export async function getLeadsByRole(
 
   // Params mirror getLeadsByRole filter application — keep in sync.
   // When a new filter is added to LeadFilters, update both this RPC call and
-  // the filter chain above simultaneously.
+  // the filter chain above simultaneously (the hoisted values above exist so
+  // both sides receive identical bounds).
   const [queryResult, statusCountsResult] = await Promise.all([
     query,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as unknown as any).rpc("get_leads_status_counts", {
       p_agent_id:    role === "agent" ? userId : (filters.agent_id ?? null),
-      p_date_from:   filters.date_from ?? null,
-      p_date_to:     filters.date_to
-        ? filters.date_to.replace(/T.*$/, "T23:59:59.999Z")
-        : null,
+      p_date_from:   dateFrom,
+      p_date_to:     dateTo,
       p_campaign:    filters.campaign ?? null,
-      p_search:      filters.search ? filters.search.trim().toLowerCase() || null : null,
-      p_going_cold:  filters.going_cold
-        ? new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString()
-        : null,
+      p_search:      searchTerm,
+      p_going_cold:  goingColdThreshold,
+      p_domain:      domainSlice,
       p_source:      filters.source ?? null,
       p_outcomes:    (filters.last_call_outcome && filters.last_call_outcome.length > 0)
         ? filters.last_call_outcome
@@ -374,16 +388,28 @@ export async function getLeadsByRole(
     }),
   ]);
 
-  const { data, error, count } = queryResult;
+  const { data, error } = queryResult;
   if (error || !data) return { leads: [], totalCount: 0, statusCounts: {} };
 
-  // Reduce RPC rows into Partial<Record<LeadStatus, number>>.
-  // On error, return {} — pills show no counts rather than crashing (Q-09).
+  // Reduce RPC rows into Partial<Record<LeadStatus, number>> and derive
+  // totalCount as their sum — the RPC scans the identical predicate once,
+  // replacing the second { count: 'exact' } scan (perf audit C-1).
+  // On RPC error: pills show no counts (Q-09) and totalCount degrades to a
+  // floor derived from the fetched page (pagination hides rather than lies).
   const statusCounts: Partial<Record<LeadStatus, number>> = {};
+  let totalCount = 0;
   if (!statusCountsResult.error && Array.isArray(statusCountsResult.data)) {
     for (const row of statusCountsResult.data as { status: string; cnt: unknown }[]) {
-      statusCounts[row.status as LeadStatus] = Number(row.cnt);
+      const n = Number(row.cnt);
+      statusCounts[row.status as LeadStatus] = n;
+      totalCount += n;
     }
+  } else {
+    console.warn(
+      "[leads-service] get_leads_status_counts failed — totalCount degraded to page floor",
+      statusCountsResult.error,
+    );
+    totalCount = offset + (data as unknown[]).length;
   }
 
   // Batch-fetch latest note per lead — one extra query, never per-row (Invariant 29)
@@ -396,15 +422,17 @@ export async function getLeadsByRole(
 
   const result: LeadsResult = {
     leads,
-    totalCount:   count ?? 0,
+    totalCount,
     statusCounts,
   };
 
   // Cache the list result only — dossier row keys (leadRowId/leadRowSlug) are NOT
   // warmed here because this query selects a subset of columns. Storing a partial
   // object under those keys would corrupt getLeadById / getLeadBySlug reads.
+  // `v` is the counter read before the DB query: if a mutation INCRed it while we
+  // were querying, the entry is born stale-marked and the next read misses (C-3).
   try {
-    await redis.setex(listKey, REDIS_TTL.LEAD_LIST, result);
+    await redis.setex(listKey, REDIS_TTL.LEAD_LIST, { v: version, result } satisfies VersionedLeadsResult);
   } catch {
     /* non-fatal: list cache failure never blocks the response */
   }
@@ -627,41 +655,6 @@ export async function getErroredPayloads(): Promise<LeadRawPayload[]> {
 }
 
 // ─────────────────────────────────────────────
-// Query: active agents in a domain (for assignment dropdown)
-// ─────────────────────────────────────────────
-export async function getAgentsForDomain(
-  domain: string,
-): Promise<{ id: string; full_name: string }[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, full_name")
-    .eq("role", "agent")
-    .eq("domain", domain as AppDomain)
-    .eq("is_active", true)
-    .order("full_name", { ascending: true });
-
-  if (error || !data) return [];
-  return data as { id: string; full_name: string }[];
-}
-
-export async function getActiveUsersForDomain(
-  domain: string,
-): Promise<{ id: string; full_name: string; role: string }[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, role")
-    .eq("domain", domain as AppDomain)
-    .eq("is_active", true)
-    .neq("role", "guest")
-    .order("full_name", { ascending: true });
-
-  if (error || !data) return [];
-  return data as { id: string; full_name: string; role: string }[];
-}
-
-// ─────────────────────────────────────────────
 // Query: campaign analytics — single RPC call, one round trip
 //
 // Security contract (mirrors getLeadsByRole):
@@ -692,7 +685,11 @@ async function fetchCampaignMetricsFromRpc(
   effectiveDomain: string | null,
   filters: Pick<CampaignFilters, "date_from" | "date_to">,
 ): Promise<CampaignMetrics[]> {
-  const supabase = await createClient();
+  // get_campaign_metrics has no internal scope gate (p_domain=NULL → all
+  // domains) — EXECUTE revoked from `authenticated` (migration 0102, audit
+  // F-1). Admin client only; getCampaignMetrics pins managers to their own
+  // domain before calling (Q-13: the caller is the trust boundary).
+  const supabase = createAdminClient();
 
   // date_to end-of-day transform — same rule as getLeadsByRole
   const dateTo = filters.date_to
@@ -754,7 +751,10 @@ export async function getCampaignDetailMetrics(
   campaignName: string,
   filters: Pick<CampaignFilters, "date_from" | "date_to">,
 ): Promise<CampaignDetailMetrics | null> {
-  const supabase = await createClient();
+  // No internal scope gate (filters only by utm_campaign) — EXECUTE revoked
+  // from `authenticated` (0102, F-1). Admin client; reachable only via the
+  // auth-gated campaign detail page (Q-13).
+  const supabase = createAdminClient();
 
   const dateTo = filters.date_to
     ? filters.date_to.replace(/T.*$/, "T23:59:59.999Z")
@@ -825,7 +825,10 @@ export async function getCampaignAgentDistribution(
   campaignName: string,
   filters: Pick<CampaignFilters, "date_from" | "date_to">,
 ): Promise<AgentDistributionRow[]> {
-  const supabase = await createClient();
+  // No internal scope gate (filters only by utm_campaign) — EXECUTE revoked
+  // from `authenticated` (0102, F-1). Admin client; reachable only via the
+  // auth-gated campaign detail page (Q-13).
+  const supabase = createAdminClient();
 
   const dateTo = filters.date_to
     ? filters.date_to.replace(/T.*$/, "T23:59:59.999Z")
@@ -962,7 +965,9 @@ export async function searchLeadsForTask(
   let q = supabase
     .from("leads")
     .select("id, slug, first_name, last_name, phone, domain")
-    .or(`first_name.ilike.${term},last_name.ilike.${term},phone.ilike.${term}`)
+    // search_text (migration 0098) — indexed, and immune to .or() syntax
+    // injection from commas/parens in the typed query
+    .filter("search_text", "ilike", term)
     .is("archived_at", null)
     .limit(8);
 
@@ -993,7 +998,7 @@ export type LeadExportItem = Pick<Lead,
   | 'domain' | 'assigned_to' | 'status' | 'lead_intent'
   | 'source' | 'medium' | 'utm_campaign' | 'call_count'
   | 'last_call_outcome' | 'created_at' | 'status_changed_at'
-  | 'deal_amount' | 'deal_type' | 'deal_duration' | 'personal_details'
+  | 'personal_details'
 > & { assignee: { full_name: string } | null };
 
 export type ExportResult = {
@@ -1016,7 +1021,7 @@ export async function getLeadsForExport(
       `id, slug, first_name, last_name, phone, email, domain, assigned_to,
        status, lead_intent, source, medium, utm_campaign,
        call_count, last_call_outcome, created_at, status_changed_at,
-       deal_amount, deal_type, deal_duration, personal_details,
+       personal_details,
        assignee:profiles!leads_assigned_to_fkey(full_name)`,
       { count: "exact", head: false },
     )
@@ -1076,9 +1081,9 @@ export async function getLeadsForExport(
     if (filters.search) {
       const term = filters.search.trim().toLowerCase();
       if (term) {
-        query = query.or(
-          `first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%,city.ilike.%${term}%`,
-        );
+        // Same search_text predicate as getLeadsByRole (migration 0098) —
+        // the export must return exactly the rows the filtered list shows.
+        query = query.filter("search_text", "ilike", `%${term}%`);
       }
     }
     if (filters.going_cold) {

@@ -1,18 +1,26 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence }             from 'framer-motion';
+import dynamic from 'next/dynamic';
+import { m as motion, AnimatePresence }             from 'framer-motion';
 import { Avatar }                              from '@/components/ui/Avatar';
-import { CallOutcomeBar }                      from './CallOutcomeBar';
 import { getAgentDetailMetricsAction }         from '@/lib/actions/performance';
 import { formatCompact, formatCurrency, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { StatAtom, STAT_PALETTES }             from '@/components/performance/StatAtom';
 import { DOMAIN_LABELS }                       from '@/lib/constants/domains';
 import { LEAD_STATUS_LABELS }                  from '@/lib/constants/lead-statuses';
-import { ENTER_DURATION, EASE_OUT_EXPO }       from '@/lib/constants/motion';
+import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
 import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
 import type { AppDomain }                      from '@/lib/types/database';
 import type { PerformancePeriod }              from '@/lib/services/performance-service';
+
+// Recharts chunk loads in parallel with the panel's own metrics fetch (perf
+// audit G-3) — the donut only renders once metrics resolve, so the placeholder
+// is rarely visible. Keeps Recharts out of the /performance initial chunk.
+const CallOutcomeBar = dynamic(
+  () => import('./CallOutcomeBar').then((mod) => mod.CallOutcomeBar),
+  { loading: () => <div className="skeleton" style={{ height: '200px', borderRadius: 'var(--radius-lg)' }} /> },
+);
 
 // ─────────────────────────────────────────────
 // Pipeline status colour tokens (§16.4)
@@ -265,7 +273,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             initial={{ scaleX: 0, opacity: 1 }}
             animate={{ scaleX: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.9, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: PAGE_DURATION, ease: EASE_IN_OUT }}
             style={{
               position:        'absolute',
               top:             0,

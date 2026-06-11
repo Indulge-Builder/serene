@@ -73,6 +73,7 @@ export function ExportButton({ filters }: ExportButtonProps) {
     <>
       <button
         onClick={() => setOpen(true)}
+        className="eia-pressable eia-icon-drop-hover"
         style={{
           display:      'inline-flex',
           alignItems:   'center',
@@ -86,7 +87,7 @@ export function ExportButton({ filters }: ExportButtonProps) {
           fontSize:     'var(--text-sm)',
           cursor:       'pointer',
           flexShrink:   0,
-          transition:   'background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
+          transition:   'background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out), transform var(--duration-instant) var(--ease-spring)',
         }}
         onMouseEnter={(e) => {
           (e.currentTarget as HTMLButtonElement).style.background = 'var(--theme-paper-subtle)';

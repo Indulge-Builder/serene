@@ -1,9 +1,9 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Phone, FileText, MessageSquare, Leaf } from "lucide-react";
 import type { EffortMetrics } from "@/lib/services/performance-service";
-import { EXIT_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EXIT_DURATION, PAGE_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 
 type CardProps = {
   eyebrow: string;
@@ -124,14 +124,17 @@ function EffortCard({
             overflow: "hidden",
           }}
         >
+          {/* Full-width fill scaled by transform — never animate width (DNA M-06) */}
           <motion.div
-            initial={{ width: "0%" }}
-            animate={{ width: `${fillPct}%` }}
-            transition={{ duration: 0.6, delay: delay / 1000 + 0.15, ease: EASE_OUT_EXPO }}
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: fillPct / 100 }}
+            transition={{ duration: PAGE_DURATION, delay: delay / 1000 + 0.15, ease: EASE_OUT_EXPO }}
             style={{
+              width: "100%",
               height: "100%",
               background: accent,
               borderRadius: "var(--radius-full)",
+              transformOrigin: "left center",
             }}
           />
         </div>

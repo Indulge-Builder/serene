@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { RefreshCcw } from "lucide-react";
 import { getAgentTasksSummaryAction } from "@/lib/actions/dashboard";
@@ -14,6 +14,7 @@ import {
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import type { DashboardAgentTask } from "@/lib/types";
 import type { WidgetProps } from "../DashboardWidgetSlot";
+import { useWidgetData } from "@/hooks/useWidgetData";
 
 // Keyframe injected once — GPU-only pulse on the category dot.
 // scale + opacity only, no layout properties.
@@ -180,46 +181,22 @@ function TaskRow({ task }: { task: DashboardAgentTask }) {
 
 export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetProps) {
   const seed = initialData?.agent_tasks ?? null;
-  const [tasks, setTasks] = useState<DashboardAgentTask[]>(seed ?? []);
-  const [loaded, setLoaded] = useState(seed !== null);
-  const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    if (seed !== null) return;
-    let cancelled = false;
-    startTransition(async () => {
-      const result = await getAgentTasksSummaryAction(userId);
-      if (!cancelled && result.data) {
-        setTasks(result.data);
-        setLoaded(true);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  const { data, loaded, isPending, refetch } = useWidgetData<DashboardAgentTask[]>({
+    seed,
+    fetcher: () => getAgentTasksSummaryAction(userId),
+    deps: [userId],
+  });
+  const tasks = data ?? [];
 
   function handleRefresh() {
-    startTransition(async () => {
-      const result = await getAgentTasksSummaryAction(userId);
-      if (result.data) setTasks(result.data);
-    });
+    refetch();
   }
 
   // Silent 30s auto-poll — no loading state, no flash
   useEffect(() => {
-    const id = setInterval(() => {
-      let cancelled = false;
-      startTransition(async () => {
-        const result = await getAgentTasksSummaryAction(userId);
-        if (!cancelled && result.data) setTasks(result.data);
-      });
-      return () => { cancelled = true; };
-    }, 30_000);
+    const id = setInterval(() => refetch(), 30_000);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [refetch]);
 
   const overdue = tasks.filter((t) => t.is_overdue);
   const active = tasks.filter((t) => !t.is_overdue);
@@ -265,7 +242,7 @@ export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetPro
           <Button
             variant="ghost"
             onClick={handleRefresh}
-            disabled={isPending}
+            loading={isPending}
             title="Refresh"
             style={{
               width: 28,

@@ -4,6 +4,7 @@ import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { DEFAULT_GIA_DOMAIN, GIA_DOMAINS } from "@/lib/constants/domains";
 import type { PerformancePeriod } from "@/lib/services/performance-service";
 import { ManagerPerformanceSkeleton } from "./ManagerPerformanceSkeleton";
+import { PerformanceSkeleton } from "./PerformanceSkeleton";
 import { ManagerPerformanceAsync } from "./ManagerPerformanceAsync";
 import { FounderPerformanceShell } from "./FounderPerformanceShell";
 import { PerformanceFilters } from "@/components/performance/PerformanceFilters";
@@ -89,6 +90,43 @@ function PerformanceMotivationalFooter({
 }
 
 // ─────────────────────────────────────────────
+// Agent view async subtree — streams behind PerformanceSkeleton so the
+// header paints as soon as the role is known instead of blocking on the RPC
+// (loading.tsx renders the manager/founder chrome; this keeps the agent's
+// exposure to it down to the profile-fetch window).
+// ─────────────────────────────────────────────
+
+async function AgentPerformanceAsync({
+  agentId,
+  agentDomain,
+}: {
+  agentId: string;
+  agentDomain: AppDomain;
+}) {
+  // One self-scoped RPC round trip (perf audit D-2) — replaces the previous
+  // 5-function / ~17-query fan-out. The RPC reads auth.uid() internally.
+  const { getAgentPerformanceSummary } = await import(
+    "@/lib/services/performance-service"
+  );
+  const initialData = await getAgentPerformanceSummary("this_month");
+
+  return (
+    <>
+      <AgentPerformanceShell
+        agentId={agentId}
+        agentDomain={agentDomain}
+        initialData={initialData}
+      />
+      <PerformanceMotivationalFooter
+        leadsWon={initialData.core.leadsWon}
+        inDiscussionCount={initialData.effort.inDiscussionCount}
+        period="this_month"
+      />
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────
 
@@ -117,30 +155,6 @@ export default async function PerformancePage({
   // Fully client-driven shell — period state lives in the component, no URL params.
   // We fetch initial data server-side for 'this_month' so first paint is instant.
   if (profile.role === "agent") {
-    const {
-      getCoreFourMetrics,
-      getEffortMetrics,
-      getCallOutcomeBreakdown,
-      getPreviousPeriodCoreMetrics,
-      getTeamBenchmarks,
-    } = await import("@/lib/services/performance-service");
-
-    const [core, effort, outcomes, previous, benchmarks] = await Promise.all([
-      getCoreFourMetrics(profile.id, "this_month"),
-      getEffortMetrics(profile.id, "this_month"),
-      getCallOutcomeBreakdown(profile.id, "this_month"),
-      getPreviousPeriodCoreMetrics(profile.id, "this_month"),
-      getTeamBenchmarks(profile.domain, "this_month"),
-    ]);
-
-    const initialData = {
-      core,
-      previous:   previous ?? null,
-      effort,
-      outcomes,
-      benchmarks,
-    };
-
     return (
       <main className="flex-1 min-w-0 p-8">
         <div className="mb-6">
@@ -148,16 +162,9 @@ export default async function PerformancePage({
             Your Performance<span className="page-title-dot">.</span>
           </h1>
         </div>
-        <AgentPerformanceShell
-          agentId={profile.id}
-          agentDomain={profile.domain}
-          initialData={initialData}
-        />
-        <PerformanceMotivationalFooter
-          leadsWon={core.leadsWon}
-          inDiscussionCount={effort.inDiscussionCount}
-          period="this_month"
-        />
+        <Suspense fallback={<PerformanceSkeleton />}>
+          <AgentPerformanceAsync agentId={profile.id} agentDomain={profile.domain} />
+        </Suspense>
       </main>
     );
   }

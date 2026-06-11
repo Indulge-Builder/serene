@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Pencil, ChevronDown, SlidersHorizontal } from "lucide-react";
 import type { Profile } from "@/lib/types/database";
 import { ROLE_LABELS, USER_ROLES } from "@/lib/constants/roles";

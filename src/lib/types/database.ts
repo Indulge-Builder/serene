@@ -279,9 +279,6 @@ export type Database = {
           call_count: number
           city: string | null
           created_at: string
-          deal_amount: number | null
-          deal_duration: string | null
-          deal_type: string | null
           domain: string
           email: string | null
           first_name: string
@@ -310,9 +307,6 @@ export type Database = {
           call_count?: number
           city?: string | null
           created_at?: string
-          deal_amount?: number | null
-          deal_duration?: string | null
-          deal_type?: string | null
           domain: string
           email?: string | null
           first_name: string
@@ -341,9 +335,6 @@ export type Database = {
           call_count?: number
           city?: string | null
           created_at?: string
-          deal_amount?: number | null
-          deal_duration?: string | null
-          deal_type?: string | null
           domain?: string
           email?: string | null
           first_name?: string
@@ -1432,7 +1423,7 @@ export type TaskRemark = Database['public']['Tables']['task_remarks']['Row']
 // (the generated Row uses `string` for status/outcome columns)
 export type Lead = Omit<
   Database['public']['Tables']['leads']['Row'],
-  'status' | 'last_call_outcome' | 'personal_details' | 'form_data' | 'tags' | 'domain' | 'deal_type' | 'deal_duration' | 'attribution'
+  'status' | 'last_call_outcome' | 'personal_details' | 'form_data' | 'tags' | 'domain' | 'attribution'
 > & {
   status:             LeadStatus
   last_call_outcome:  CallOutcome | null
@@ -1441,8 +1432,6 @@ export type Lead = Omit<
   attribution:        Record<string, unknown> | null
   tags?:              string[]
   domain:             AppDomain
-  deal_type:          import('@/lib/constants/deal-types').DealType | null
-  deal_duration:      import('@/lib/constants/deal-types').DealDuration | null
 }
 
 // Deal — first-class deals table row (migration 0072)

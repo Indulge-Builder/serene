@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
+import { MotionProvider } from "@/components/layout/MotionProvider";
 import "./globals.css";
 
 const inter = Inter({
@@ -35,7 +36,9 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${inter.variable} ${playfairDisplay.variable}`}
     >
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <MotionProvider>{children}</MotionProvider>
+      </body>
     </html>
   );
 }

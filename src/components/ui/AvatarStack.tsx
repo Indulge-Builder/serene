@@ -1,8 +1,8 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import { Avatar, type AvatarSize } from './Avatar';
-import { EASE_SPRING } from '@/lib/constants/motion';
+import { SPRING_CONFIG } from '@/lib/constants/motion';
 
 export interface AvatarStackUser {
   id:       string;
@@ -33,7 +33,6 @@ const FONT_SIZE: Record<AvatarSize, string> = {
   xl: 'var(--text-xl)',
 };
 
-const SPRING = { type: 'spring' as const, stiffness: 400, damping: 30, ease: EASE_SPRING };
 
 export function AvatarStack({
   users,
@@ -62,7 +61,7 @@ export function AvatarStack({
             rest:    { x: 0 },
             hovered: { x: i * (overlap / 2) },
           }}
-          transition={SPRING}
+          transition={SPRING_CONFIG}
           style={{
             marginLeft: i === 0 ? 0 : -overlap,
             zIndex:     visible.length - i,
@@ -89,7 +88,7 @@ export function AvatarStack({
             rest:    { x: 0 },
             hovered: { x: visible.length * (overlap / 2) },
           }}
-          transition={SPRING}
+          transition={SPRING_CONFIG}
           style={{
             width:          px,
             height:         px,

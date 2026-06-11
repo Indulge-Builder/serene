@@ -1,6 +1,6 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 // Semantic stat-card palettes — shared by AgentDetailPanel and DomainOverviewPanel.

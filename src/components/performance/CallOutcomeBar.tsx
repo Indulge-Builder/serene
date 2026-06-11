@@ -1,11 +1,11 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import type { OutcomeBreakdownItem } from '@/lib/services/performance-service';
 import type { CallOutcome } from '@/lib/types/database';
 import { EXIT_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
-import { useChartTokens } from '@/components/ui/charts/useChartTokens';
+import { useChartTokens, resolveColorMap } from '@/components/ui/charts/useChartTokens';
 
 // ─────────────────────────────────────────────
 // Outcome config — colour tokens, display labels
@@ -29,13 +29,15 @@ const OUTCOME_ORDER: CallOutcome[] = ['conversing', 'rnr', 'switched_off', 'wron
 // before ResizeObserver fires — use explicit pixels (see ManagerCampaignWidget).
 const DONUT_SIZE = 180;
 
-// CSS var → resolved hex (needed for Recharts SVG fills)
-function resolveVar(name: string): string {
-  if (typeof window === 'undefined') return '#888';
-  const val = name.match(/^var\((--[\w-]+)\)$/)?.[1];
-  if (!val) return name;
-  return getComputedStyle(document.documentElement).getPropertyValue(val).trim() || '#888';
-}
+// CSS var strings for the donut fills — resolved to computed hex via the
+// canonical resolveColorMap() bridge (Recharts SVG fills can't take var()).
+const OUTCOME_COLOR_VARS: Record<CallOutcome, string> = {
+  conversing:   OUTCOME_CONFIG.conversing.color,
+  rnr:          OUTCOME_CONFIG.rnr.color,
+  switched_off: OUTCOME_CONFIG.switched_off.color,
+  wrong_number: OUTCOME_CONFIG.wrong_number.color,
+  other:        OUTCOME_CONFIG.other.color,
+};
 
 type Props = {
   breakdown: OutcomeBreakdownItem[];
@@ -83,11 +85,13 @@ export function CallOutcomeBar({ breakdown }: Props) {
     .filter((o) => (countMap[o] ?? 0) > 0)
     .map((o) => ({ outcome: o, count: countMap[o] ?? 0 }));
 
-  // Recharts pie data with resolved fill colours
+  // Recharts pie data with resolved fill colours. `tokens` (useChartTokens)
+  // re-renders this component on theme change, so the map re-resolves too.
+  const resolvedColors = resolveColorMap(OUTCOME_COLOR_VARS);
   const pieData = orderedItems.map(({ outcome, count }) => ({
     name: OUTCOME_CONFIG[outcome].label,
     value: count,
-    color: resolveVar(OUTCOME_CONFIG[outcome].color),
+    color: resolvedColors[outcome],
     outcome,
   }));
 

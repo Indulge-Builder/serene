@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Eye, EyeOff, Check } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { PasswordStrengthBar } from "@/components/ui/PasswordStrengthBar";
 import { createClient } from "@/lib/supabase/client";

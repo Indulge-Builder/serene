@@ -51,6 +51,13 @@ export function ConversationPanel({
   const listRef       = useRef<HTMLDivElement>(null);
   const seenIds       = useRef<Set<string>>(new Set());
   const optimisticIds = useRef<Set<string>>(new Set());
+
+  // Initial thread renders static; only messages appended after mount animate
+  // in (the panel remounts per conversation via key={activeConversation.id}).
+  const arrivedAfterMount = useRef(false);
+  useEffect(() => {
+    arrivedAfterMount.current = true;
+  }, []);
   // Tracks scrollTop before "load earlier" prepend so we can restore it
   const savedScrollTop = useRef<number>(0);
 
@@ -408,6 +415,7 @@ export function ConversationPanel({
                     key={msg.id}
                     message={msg}
                     isOptimistic={optimisticIds.current.has(msg.id)}
+                    entrance={arrivedAfterMount.current}
                   />
                 ))}
               </div>

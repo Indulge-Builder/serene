@@ -2,12 +2,13 @@
 // during pagination (pre-mortem: skeleton shorter than content = layout jump).
 // Section 11.3: header skeleton-lines at 20%/35%/20%/15%, h-2.5
 //               rows same column structure, h-3 per cell, py-3 = 48px total
+// Pulse: the canonical `.skeleton` class via <Shimmer> (eia-skeleton-pulse,
+// design-tokens.css §11.1) — never a private keyframe (design audit M-10).
+
+import { Shimmer, skeletonStagger } from '@/components/ui/PageSkeletons';
 
 const ROWS = 50;
 const COL_WIDTHS = ['4rem', '7rem', '7rem', '8rem', '5rem'];
-
-// Section 11.4: stagger delays — 0/80/160/240/320ms, cap at 400ms
-const STAGGER_DELAYS = [0, 80, 160, 240, 320];
 
 export function LeadsTableSkeleton() {
   return (
@@ -32,28 +33,19 @@ export function LeadsTableSkeleton() {
         }}
       >
         {['6rem', '5.5rem', '5rem', '5rem', '5rem', '10rem'].map((w, i) => (
-          <div
+          <Shimmer
             key={i}
-            style={{
-              width:          w,
-              height:         '2.25rem',
-              borderRadius:   'var(--radius-sm)',
-              background:     'var(--theme-paper-border)',
-              animationDelay: `${STAGGER_DELAYS[Math.min(i, STAGGER_DELAYS.length - 1)]}ms`,
-              animation:      `skelPulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) ${STAGGER_DELAYS[Math.min(i, STAGGER_DELAYS.length - 1)]}ms infinite`,
-            }}
+            w={w}
+            h="2.25rem"
+            delay={skeletonStagger(i)}
+            style={{ background: 'var(--theme-paper-border)' }}
           />
         ))}
         {/* Column picker trigger skeleton */}
-        <div
-          style={{
-            width:        '5.5rem',
-            height:       '2.25rem',
-            borderRadius: 'var(--radius-sm)',
-            background:   'var(--theme-paper-border)',
-            marginLeft:   'var(--space-3)',
-            animation:    'skelPulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) 0ms infinite',
-          }}
+        <Shimmer
+          w="5.5rem"
+          h="2.25rem"
+          style={{ background: 'var(--theme-paper-border)', marginLeft: 'var(--space-3)' }}
         />
       </div>
 
@@ -68,16 +60,13 @@ export function LeadsTableSkeleton() {
         }}
       >
         {COL_WIDTHS.map((w, i) => (
-          <div
+          <Shimmer
             key={i}
-            style={{
-              width:        w,
-              maxWidth:     ['20%', '35%', '20%', '15%', '10%'][i],
-              height:       '0.625rem',
-              borderRadius: 'var(--radius-full)',
-              background:   'var(--theme-paper-border)',
-              animation:    `skelPulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) ${STAGGER_DELAYS[Math.min(i, STAGGER_DELAYS.length - 1)]}ms infinite`,
-            }}
+            w={w}
+            h="0.625rem"
+            r="var(--radius-full)"
+            delay={skeletonStagger(i)}
+            style={{ maxWidth: ['20%', '35%', '20%', '15%', '10%'][i], background: 'var(--theme-paper-border)' }}
           />
         ))}
       </div>
@@ -101,28 +90,17 @@ export function LeadsTableSkeleton() {
             `${60 + (rowIdx % 3) * 9}%`,
             `${50 + (rowIdx % 4) * 6}%`,
           ].map((fillW, colIdx) => (
-            <div
+            <Shimmer
               key={colIdx}
-              style={{
-                width:        COL_WIDTHS[colIdx],
-                maxWidth:     fillW,
-                height:       '0.75rem',
-                borderRadius: 'var(--radius-full)',
-                background:   'var(--theme-paper-subtle)',
-                // Section 11.4: row delay + col offset, capped at 400ms total
-                animation:    `skelPulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) ${Math.min(STAGGER_DELAYS[rowIdx] ?? 320, 400)}ms infinite`,
-              }}
+              w={COL_WIDTHS[colIdx]}
+              h="0.75rem"
+              r="var(--radius-full)"
+              delay={skeletonStagger(rowIdx)}
+              style={{ maxWidth: fillW }}
             />
           ))}
         </div>
       ))}
-
-      <style>{`
-        @keyframes skelPulse {
-          0%, 100% { opacity: 1; }
-          50%       { opacity: 0.45; }
-        }
-      `}</style>
     </div>
   );
 }

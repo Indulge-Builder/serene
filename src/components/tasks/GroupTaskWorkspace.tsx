@@ -42,9 +42,10 @@ import {
   useState,
   useTransition,
 } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import {
   List,
   LayoutGrid,
@@ -62,22 +63,17 @@ import {
   getGroupSubtasksAction,
   getTaskRemarksAction,
   deleteGroupTaskAction,
-  getAssignableUsersAction,
 } from "@/lib/actions/tasks";
+import { getAssignableUsersAction } from "@/lib/actions/profiles";
 import { formatRelativeTime, formatDate } from "@/lib/utils/dates";
 import { toast } from "@/lib/toast";
-import {
-  SubTaskModal,
-  type SubTaskModalTaskUpdate,
-} from "@/components/tasks/SubTaskModal";
+import type { SubTaskModalTaskUpdate } from "@/components/tasks/SubTaskModal";
 import { TaskCompletionCircle } from "@/components/tasks/TaskCompletionCircle";
 import { TaskStatusIcon } from "@/components/tasks/TaskStatusIcon";
 import { useTaskCompletionToggle } from "@/hooks/useTaskCompletionToggle";
 import { canToggleTaskComplete } from "@/lib/utils/task-complete-auth";
-import {
-  AssigneePickerModal,
-  type AssignableUser,
-} from "@/components/tasks/AssigneePickerModal";
+import { AssigneePickerModal } from "@/components/tasks/AssigneePickerModal";
+import type { AssignableUser } from "@/lib/types";
 import { TASK_STATUS, TASK_PRIORITY } from "@/lib/constants/task-constants";
 import { TASK_STATUS_LABELS } from "@/lib/constants/task-types";
 import type {
@@ -86,6 +82,7 @@ import type {
 } from "@/lib/services/tasks-service";
 import { Avatar } from "@/components/ui/Avatar";
 import { BackButton } from "@/components/ui/BackButton";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DatePicker } from "@/components/ui/DatePicker";
 import type {
   Task,
@@ -96,6 +93,14 @@ import type {
   AppDomain,
 } from "@/lib/types/database";
 import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+
+// Load-on-intent (perf audit G-1): SubTaskModal (1,672 lines) stays out of the
+// /tasks/[id] route chunk until a subtask is first opened (the call site
+// already conditional-renders it behind the remarks fetch).
+const SubTaskModal = dynamic(
+  () => import("@/components/tasks/SubTaskModal").then((m) => m.SubTaskModal),
+  { ssr: false },
+);
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -444,7 +449,7 @@ export function GroupTaskWorkspace({
     if (assignableUsers.length > 0) return;
     getAssignableUsersAction().then((r) => {
       if (r.data) {
-        const users = r.data as AssignableUser[];
+        const users = r.data;
         setAssignableUsers(users);
         // Default to the current user if not already set
         setAddAssignee((prev) => {
@@ -633,124 +638,27 @@ export function GroupTaskWorkspace({
           </div>
         </div>
 
-        {/* Confirm delete dialog */}
-        <AnimatePresence>
-          {confirmDeleteOpen && (
+        {/* Confirm delete — ConfirmDialog owns the portal + z-index contract */}
+        <ConfirmDialog
+          open={confirmDeleteOpen}
+          dialogKey="ws-delete"
+          title="Delete group task?"
+          body={
             <>
-              <motion.div
-                key="ws-delete-backdrop"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                onClick={() => {
-                  if (!isDeleting) setConfirmDeleteOpen(false);
-                }}
-                style={{
-                  position: "fixed",
-                  inset: 0,
-                  background: "var(--overlay-bg-light)",
-                  zIndex: "var(--z-overlay)" as React.CSSProperties["zIndex"],
-                }}
-              />
-              <motion.div
-                key="ws-delete-dialog"
-                initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
-                style={{
-                  position: "fixed",
-                  top: "50%",
-                  left: "50%",
-                  transform: "translate(-50%, -50%)",
-                  zIndex: "var(--z-modal)" as React.CSSProperties["zIndex"],
-                  background: "var(--theme-paper)",
-                  borderRadius: "var(--radius-lg)",
-                  boxShadow: "var(--shadow-4)",
-                  width: "min(420px, calc(100vw - var(--space-8)))",
-                  padding: "var(--space-6)",
-                }}
-              >
-                <h3
-                  style={{
-                    fontFamily: "var(--font-serif)",
-                    fontSize: "var(--text-lg)",
-                    fontWeight: "var(--weight-semibold)",
-                    color: "var(--theme-text-primary)",
-                    margin: "0 0 var(--space-2)",
-                  }}
-                >
-                  Delete group task?
-                </h3>
-                <p
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "var(--text-sm)",
-                    color: "var(--theme-text-secondary)",
-                    margin: "0 0 var(--space-5)",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  <strong style={{ color: "var(--theme-text-primary)" }}>
-                    {group.title}
-                  </strong>{" "}
-                  and all its subtasks will be permanently deleted. This cannot
-                  be undone.
-                </p>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: "var(--space-2)",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDeleteOpen(false)}
-                    disabled={isDeleting}
-                    style={{
-                      padding: "var(--space-2) var(--space-4)",
-                      borderRadius: "var(--radius-sm)",
-                      border: "1px solid var(--theme-paper-border)",
-                      background: "transparent",
-                      fontFamily: "var(--font-sans)",
-                      fontSize: "var(--text-sm)",
-                      color: "var(--theme-text-secondary)",
-                      cursor: isDeleting ? "not-allowed" : "pointer",
-                      opacity: isDeleting ? 0.5 : 1,
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDeleteGroup}
-                    disabled={isDeleting}
-                    style={{
-                      padding: "var(--space-2) var(--space-4)",
-                      borderRadius: "var(--radius-sm)",
-                      border: "none",
-                      background: isDeleting
-                        ? "var(--color-danger-light)"
-                        : "var(--color-danger)",
-                      fontFamily: "var(--font-sans)",
-                      fontSize: "var(--text-sm)",
-                      fontWeight: "var(--weight-semibold)",
-                      color: isDeleting
-                        ? "var(--color-danger-text)"
-                        : "var(--color-danger-fg, #fff)",
-                      cursor: isDeleting ? "not-allowed" : "pointer",
-                      transition: "var(--transition-interactive)",
-                    }}
-                  >
-                    {isDeleting ? "Deleting…" : "Delete"}
-                  </button>
-                </div>
-              </motion.div>
+              <strong style={{ color: "var(--theme-text-primary)" }}>
+                {group.title}
+              </strong>{" "}
+              and all its subtasks will be permanently deleted. This cannot be
+              undone.
             </>
-          )}
-        </AnimatePresence>
+          }
+          confirmLabel="Delete"
+          pendingLabel="Deleting…"
+          danger
+          pending={isDeleting}
+          onConfirm={handleDeleteGroup}
+          onCancel={() => setConfirmDeleteOpen(false)}
+        />
 
         {/* Toolbar: subtask count + view toggle */}
         <div
@@ -1558,11 +1466,12 @@ export function GroupTaskWorkspace({
           )}
         </AnimatePresence>
 
-        {/* FAB */}
+        {/* FAB — plus twirls on approach; the open-state X gets the same quarter turn */}
         <button
           type="button"
           onClick={() => setShowAddPanel((v) => !v)}
           aria-label="Add subtask"
+          className="eia-pressable eia-icon-rotate-hover"
           style={{
             display: "flex",
             alignItems: "center",
@@ -1591,7 +1500,7 @@ export function GroupTaskWorkspace({
           ) : (
             <Plus style={{ width: 15, height: 15, strokeWidth: 1.5 }} />
           )}
-          {showAddPanel ? "Close" : "+ Add subtask"}
+          {showAddPanel ? "Close" : "Add subtask"}
         </button>
       </div>
 

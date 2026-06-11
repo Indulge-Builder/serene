@@ -30,13 +30,7 @@ export default async function ProfilePage() {
       }}
     >
       {/* ── Page header ──────────────────────────────── */}
-      <div style={{ marginBottom: "var(--space-8)" }}>
-        <p
-          className="type-eyebrow"
-          style={{ marginBottom: "var(--space-2)" }}
-        >
-          Account
-        </p>
+      <div style={{ marginBottom: "var(--space-6)" }}>
         <h1 className="type-page-title" style={{ margin: 0 }}>
           Profile Settings<span className="page-title-dot">.</span>
         </h1>

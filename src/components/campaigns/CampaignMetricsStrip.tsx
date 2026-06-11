@@ -3,77 +3,11 @@
 // Zero DB calls — all data comes via props from the page's Promise.all.
 
 import { formatCompact, formatPercent } from '@/lib/utils/numbers';
+import { StatTile, type StatTileSub } from '@/components/ui/StatTile';
 import { AgentDistributionBar } from '@/components/campaigns/AgentDistributionBar';
 import type { CampaignDetailMetrics, AgentDistributionRow } from '@/lib/types/database';
 
-// ─────────────────────────────────────────────
-// Stat card
-// ─────────────────────────────────────────────
-
-type SubLabel = {
-  text:  string;
-  color: string;
-};
-
-function StatCard({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?:  SubLabel;
-}) {
-  return (
-    <div
-      style={{
-        background:   'var(--theme-paper)',
-        border:       '1px solid var(--theme-paper-border)',
-        borderRadius: 'var(--radius-md)',
-        boxShadow:    'var(--shadow-1)',
-        padding:      'var(--space-4)',
-      }}
-    >
-      {/* Micro label */}
-      <p
-        className="label-micro"
-        style={{ marginBottom: 'var(--space-3)' }}
-      >
-        {label}
-      </p>
-
-      {/* Primary value */}
-      <p
-        style={{
-          fontFamily:  'var(--font-sans)',
-          fontSize:    'var(--text-2xl)',
-          fontWeight:  'var(--weight-semibold)',
-          color:       'var(--theme-text-primary)',
-          margin:      sub ? '0 0 var(--space-1)' : '0',
-          lineHeight:  'var(--leading-none)',
-        }}
-      >
-        {value}
-      </p>
-
-      {/* Sub-label (delta / rate) */}
-      {sub && (
-        <p
-          style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize:   'var(--text-xs)',
-            fontWeight: 'var(--weight-medium)',
-            color:      sub.color,
-            margin:     0,
-            lineHeight: 'var(--leading-none)',
-          }}
-        >
-          {sub.text}
-        </p>
-      )}
-    </div>
-  );
-}
+type SubLabel = StatTileSub;
 
 // ─────────────────────────────────────────────
 // Rate helpers — guard division by zero
@@ -152,36 +86,36 @@ export function CampaignMetricsStrip({
         }}
         className="md:grid-cols-3 lg:grid-cols-6"
       >
-        <StatCard
+        <StatTile
           label="Total Leads"
           value={formatCompact(total_leads)}
         />
 
-        <StatCard
+        <StatTile
           label="Won"
           value={formatCompact(won)}
           sub={conversionRateSub(won, total_leads)}
         />
 
-        <StatCard
+        <StatTile
           label="Active Pipeline"
           value={formatCompact(activePipeline)}
           sub={{ text: 'in discussion + nurturing', color: 'var(--theme-text-tertiary)' }}
         />
 
-        <StatCard
+        <StatTile
           label="Junk Rate"
           value={total_leads === 0 ? '—' : formatPercent(junk / total_leads)}
           sub={junkRateSub(junk, total_leads)}
         />
 
-        <StatCard
+        <StatTile
           label="RNR"
           value={formatCompact(rnr)}
           sub={rnrRateSub(rnr, total_leads)}
         />
 
-        <StatCard
+        <StatTile
           label="Avg. First Touch"
           value={firstTouchValue(avg_hours_to_first_touch)}
           sub={{

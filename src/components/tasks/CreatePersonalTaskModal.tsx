@@ -4,6 +4,8 @@
  * CreatePersonalTaskModal — Full-featured personal task creation modal.
  *
  * Composes ui/modal.tsx for all chrome. No form tag — onClick/onChange throughout.
+ * Field primitives (labels, errors, priority chips, due presets) come from
+ * ui/TaskFormFields.tsx — never re-declared here (dry-audit H-3 + L-4).
  *
  * Fields:
  *   Title*         — autofocus, grows 1→3 lines
@@ -12,11 +14,9 @@
  *   Tags           — free-text chip input; persisted to tasks.tags (migration 0024)
  *   Notes          — collapsed "+ Add notes" toggle
  *
- * Due date IST end-of-day:
- *   toUTC() from dates.ts wraps new Date(date).toISOString() — it is a
- *   UTC passthrough, not an IST end-of-day calculator. IST end-of-day is
- *   computed here by building a local midnight in IST (UTC+5:30) and converting
- *   to UTC. IST offset = UTC+5:30 = +330 minutes.
+ * Due date IST end-of-day: resolveDueAt() from TaskFormFields owns the preset →
+ * toISTEndOfDay() math (toUTC() from dates.ts is a UTC passthrough, not an IST
+ * end-of-day calculator).
  */
 
 import {
@@ -29,11 +29,18 @@ import {
 } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
-import { DatePicker } from '@/components/ui/DatePicker';
+import { Button } from '@/components/ui/Button';
+import {
+  FieldLabel,
+  FieldError,
+  PriorityChipRow,
+  DueDateField,
+  resolveDueAt,
+  type DuePreset,
+} from '@/components/ui/TaskFormFields';
 import { createPersonalTaskAction } from '@/lib/actions/tasks';
 import { toast } from '@/lib/toast';
 import { CreatePersonalTaskSchema } from '@/lib/validations/task-schemas';
-import { TASK_PRIORITY } from '@/lib/constants/task-constants';
 import type { Task, TaskPriority } from '@/lib/types/database';
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
@@ -42,116 +49,6 @@ export interface CreatePersonalTaskModalProps {
   open:      boolean;
   onClose:   () => void;
   onCreated: (task: Task) => void;
-}
-
-// ─── IST end-of-day helper ─────────────────────────────────────────────────────
-// IST is UTC+5:30 (+330 minutes).
-// This returns a UTC ISO string representing 23:59:59.999 of `dayOffset` days
-// from today in the IST timezone.
-// We do NOT use toUTC() from dates.ts because that function is a UTC passthrough
-// and does not handle timezone-aware end-of-day calculation.
-// The explicit +330 offset is documented here and not considered a magic number —
-// it represents the immutable IST timezone definition (Asia/Kolkata).
-
-function istEndOfDay(dayOffset: number): string {
-  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // 5h 30m in ms
-
-  // Build today's midnight in IST
-  const nowUTC       = Date.now();
-  const nowIST       = nowUTC + IST_OFFSET_MS;
-  const istMidnight  = nowIST - (nowIST % (24 * 60 * 60 * 1000)); // floor to day
-  const targetISTMs  = istMidnight + dayOffset * 24 * 60 * 60 * 1000;
-  // End of that IST day = IST midnight + 23h 59m 59.999s
-  const istEodMs     = targetISTMs + 24 * 60 * 60 * 1000 - 1;
-  // Convert back to UTC
-  const utcEodMs     = istEodMs - IST_OFFSET_MS;
-  return new Date(utcEodMs).toISOString();
-}
-
-// ─── Pill chip button ──────────────────────────────────────────────────────────
-
-function PillChip({
-  label,
-  active,
-  color,
-  onClick,
-}: {
-  label:   string;
-  active:  boolean;
-  color?:  string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        display:      'inline-flex',
-        alignItems:   'center',
-        padding:      '4px var(--space-3)',
-        borderRadius: 'var(--radius-full)',
-        border:       active
-          ? `1.5px solid ${color ?? 'var(--theme-accent)'}`
-          : '1px solid var(--theme-paper-border)',
-        background:   active
-          ? (color
-              ? `color-mix(in srgb, ${color} 12%, transparent)`
-              : 'var(--theme-accent-surface)')
-          : 'transparent',
-        color:        active
-          ? (color ?? 'var(--theme-accent)')
-          : 'var(--theme-text-secondary)',
-        fontFamily:   'var(--font-sans)',
-        fontSize:     'var(--text-xs)',
-        fontWeight:   active ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-        cursor:       'pointer',
-        transition:   'var(--transition-hover)',
-        flexShrink:   0,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-// ─── Field label ───────────────────────────────────────────────────────────────
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      style={{
-        display:       'block',
-        fontFamily:    'var(--font-sans)',
-        fontSize:      'var(--text-2xs)',
-        fontWeight:    'var(--weight-semibold)',
-        letterSpacing: 'var(--tracking-widest)',
-        textTransform: 'uppercase',
-        color:         'var(--theme-text-tertiary)',
-        marginBottom:  'var(--space-1)',
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-// ─── Inline error ──────────────────────────────────────────────────────────────
-
-function FieldError({ message }: { message: string | undefined }) {
-  if (!message) return null;
-  return (
-    <p
-      style={{
-        fontFamily:  'var(--font-sans)',
-        fontSize:    'var(--text-xs)',
-        color:       'var(--color-danger)',
-        marginTop:   'var(--space-1)',
-        marginBottom: 0,
-      }}
-    >
-      {message}
-    </p>
-  );
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -165,7 +62,7 @@ export function CreatePersonalTaskModal({
   const [title,      setTitle]      = useState('');
   const [titleError, setTitleError] = useState('');
   const [priority,   setPriority]   = useState<TaskPriority>('normal');
-  const [duePreset,  setDuePreset]  = useState<'today' | 'tomorrow' | 'next-week' | null>(null);
+  const [duePreset,  setDuePreset]  = useState<DuePreset | null>(null);
   const [dueDate,    setDueDate]    = useState<Date | null>(null);
   const [notes,      setNotes]      = useState('');
   const [showNotes,  setShowNotes]  = useState(false);
@@ -199,27 +96,6 @@ export function CreatePersonalTaskModal({
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
-  }
-
-  // ── Resolve due_at from preset or specific date ────────────────────────────
-  function getResolvedDueAt(): string | null {
-    if (dueDate) return dueDate.toISOString();
-    if (duePreset === 'today')     return istEndOfDay(0);
-    if (duePreset === 'tomorrow')  return istEndOfDay(1);
-    if (duePreset === 'next-week') return istEndOfDay(7);
-    return null;
-  }
-
-  // ── Preset chip handler ────────────────────────────────────────────────────
-  function handlePresetClick(preset: 'today' | 'tomorrow' | 'next-week') {
-    setDuePreset((prev) => prev === preset ? null : preset);
-    setDueDate(null); // deselect specific when preset chosen
-  }
-
-  // ── DatePicker change ──────────────────────────────────────────────────────
-  function handleDatePickerChange(date: Date | null) {
-    setDueDate(date);
-    if (date) setDuePreset(null); // deselect preset when specific date chosen
   }
 
   // ── Tag input ──────────────────────────────────────────────────────────────
@@ -263,7 +139,7 @@ export function CreatePersonalTaskModal({
     const parsed = CreatePersonalTaskSchema.safeParse({
       title:       title.trim(),
       priority,
-      due_at:      getResolvedDueAt(),
+      due_at:      resolveDueAt(duePreset, dueDate),
       description: notes.trim() || undefined,
       tags,
     });
@@ -327,69 +203,21 @@ export function CreatePersonalTaskModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPending, title, priority, duePreset, dueDate, notes, tags]);
 
-  // ── Priority colours (from TASK_PRIORITY constants) ────────────────────────
-  const PRIORITY_CHIPS: { value: TaskPriority; label: string; color: string }[] = [
-    { value: 'urgent', label: 'Urgent', color: TASK_PRIORITY.urgent.color },
-    { value: 'high',   label: 'High',   color: TASK_PRIORITY.high.color   },
-    { value: 'normal', label: 'Normal', color: TASK_PRIORITY.normal.color },
-  ];
-
   // ── Footer ─────────────────────────────────────────────────────────────────
   const footer = (
     <>
-      <button
-        type="button"
-        onClick={onClose}
-        disabled={isPending}
-        style={{
-          padding:      'var(--space-2) var(--space-4)',
-          borderRadius: 'var(--radius-sm)',
-          border:       '1px solid var(--theme-paper-border)',
-          background:   'transparent',
-          color:        'var(--theme-text-secondary)',
-          fontFamily:   'var(--font-sans)',
-          fontSize:     'var(--text-sm)',
-          fontWeight:   'var(--weight-semibold)',
-          cursor:       isPending ? 'not-allowed' : 'pointer',
-          opacity:      isPending ? 0.5 : 1,
-          transition:   'var(--transition-hover)',
-        }}
-      >
+      <Button variant="ghost" onClick={onClose} disabled={isPending}>
         Cancel
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="primary"
         onClick={handleSubmit}
+        loading={isPending}
         disabled={isPending || !title.trim()}
-        style={{
-          display:      'inline-flex',
-          alignItems:   'center',
-          gap:          'var(--space-2)',
-          padding:      'var(--space-2) var(--space-4)',
-          borderRadius: 'var(--radius-sm)',
-          border:       'none',
-          background:   isPending || !title.trim()
-            ? 'var(--theme-paper-border)'
-            : 'var(--theme-accent)',
-          color:        isPending || !title.trim()
-            ? 'var(--theme-text-tertiary)'
-            : 'var(--theme-accent-fg)',
-          fontFamily:   'var(--font-sans)',
-          fontSize:     'var(--text-sm)',
-          fontWeight:   'var(--weight-semibold)',
-          cursor:       isPending || !title.trim() ? 'not-allowed' : 'pointer',
-          transition:   'var(--transition-interactive)',
-        }}
+        iconLeft={Plus}
       >
-        {isPending ? (
-          'Creating…'
-        ) : (
-          <>
-            <Plus style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
-            Create Task
-          </>
-        )}
-      </button>
+        {isPending ? 'Creating…' : 'Create Task'}
+      </Button>
     </>
   );
 
@@ -470,66 +298,29 @@ export function CreatePersonalTaskModal({
 
       {/* ─── Due date ────────────────────────────────────────────────────── */}
       <div style={{ marginBottom: 'var(--space-5)' }}>
-        <FieldLabel>Due date</FieldLabel>
-
-        {/* Preset chips */}
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <PillChip
-            label="Today"
-            active={duePreset === 'today'}
-            onClick={() => handlePresetClick('today')}
-          />
-          <PillChip
-            label="Tomorrow"
-            active={duePreset === 'tomorrow'}
-            onClick={() => handlePresetClick('tomorrow')}
-          />
-          <PillChip
-            label="Next week"
-            active={duePreset === 'next-week'}
-            onClick={() => handlePresetClick('next-week')}
-          />
-        </div>
-
-        {/* Specific date + time picker */}
-        <div style={{ marginTop: 'var(--space-2)' }}>
-          <DatePicker
-            showTime
-            value={dueDate}
-            onChange={handleDatePickerChange}
-            placeholder="Or pick a specific date & time…"
-            disabled={isPending}
-            aria-label="Pick a specific due date and time"
-          />
-        </div>
+        <DueDateField
+          preset={duePreset}
+          onPresetChange={setDuePreset}
+          date={dueDate}
+          onDateChange={setDueDate}
+          placeholder="Or pick a specific date & time…"
+          disabled={isPending}
+        />
       </div>
 
       {/* ─── Priority ────────────────────────────────────────────────────── */}
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <FieldLabel>Priority</FieldLabel>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          {PRIORITY_CHIPS.map(({ value, label, color }) => (
-            <PillChip
-              key={value}
-              label={label}
-              active={priority === value}
-              color={color}
-              onClick={() => {
-                // Clicking the active Normal chip has no effect (Normal is the fallback)
-                // Clicking any other active chip deselects it → falls back to Normal
-                if (priority === value && value !== 'normal') {
-                  setPriority('normal');
-                } else {
-                  setPriority(value);
-                }
-              }}
-            />
-          ))}
-        </div>
+        <PriorityChipRow
+          value={priority}
+          onChange={setPriority}
+          disabled={isPending}
+          deselectNonNormal
+        />
       </div>
 
       <div style={{ marginBottom: 'var(--space-5)' }}>
-        <FieldLabel>Tags <span style={{ fontWeight: 'var(--weight-normal)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></FieldLabel>
+        <FieldLabel optional>Tags</FieldLabel>
         <div
           style={{
             display:      'flex',

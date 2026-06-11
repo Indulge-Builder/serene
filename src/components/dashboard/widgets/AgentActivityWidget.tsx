@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useId, useRef } from "react";
+import { m as motion } from "framer-motion";
 import { Phone, UserPlus, ArrowRight, Copy, User } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getAgentRecentActivityAction } from "@/lib/actions/dashboard";
 import { CALL_OUTCOME_LABELS } from "@/lib/constants/call-outcomes";
 import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
+import { formatRelativeTime } from "@/lib/utils/dates";
 import type { DashboardAgentActivity } from "@/lib/types";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { CallOutcome, LeadStatus } from "@/lib/types/database";
+import { useWidgetData } from "@/hooks/useWidgetData";
 
 // note_added always fires alongside call_logged — it adds no signal, skip it.
 const SKIP_TYPES = new Set(["note_added"]);
@@ -73,18 +75,6 @@ const FALLBACK_META: ActivityMeta = {
   label: (a) => a.lead_name ?? "Lead",
   sub: (a) => a.action_type.replace(/_/g, " "),
 };
-
-function formatRelativeTime(createdAt: string): string {
-  const diffMs = Date.now() - new Date(createdAt).getTime();
-  const diffMin = Math.floor(diffMs / 60_000);
-  const diffHr = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHr / 24);
-
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffHr < 24) return `${diffHr}h ago`;
-  return `${diffDay}d ago`;
-}
 
 function ActivityItem({ activity }: { activity: DashboardAgentActivity }) {
   const meta = ACTIVITY_MAP[activity.action_type] ?? FALLBACK_META;
@@ -179,10 +169,19 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
   const seed = rawSeed
     ? rawSeed.filter((a) => !SKIP_TYPES.has(a.action_type))
     : null;
-  const [activities, setActivities] = useState<DashboardAgentActivity[]>(
-    seed ?? [],
-  );
-  const [loaded, setLoaded] = useState(seed !== null);
+  const { data, loaded, setData: setActivities } = useWidgetData<DashboardAgentActivity[]>({
+    seed,
+    fetcher: async () => {
+      const result = await getAgentRecentActivityAction(userId);
+      return {
+        data: result.data
+          ? result.data.filter((a) => !SKIP_TYPES.has(a.action_type))
+          : null,
+      };
+    },
+    deps: [userId],
+  });
+  const activities = data ?? [];
   const mountId = useId();
   const innerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -192,24 +191,6 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
   const channelRef = useRef<ReturnType<
     ReturnType<typeof createClient>["channel"]
   > | null>(null);
-
-  // Only fetch on mount when no server-provided initialData
-  useEffect(() => {
-    if (seed !== null) return;
-    let cancelled = false;
-    getAgentRecentActivityAction(userId).then((result) => {
-      if (!cancelled && result.data) {
-        setActivities(
-          result.data.filter((a) => !SKIP_TYPES.has(a.action_type)),
-        );
-        setLoaded(true);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
 
   // Auto-scroll ticker — rAF-driven, GPU-safe, pauses on hidden tab
   useEffect(() => {
@@ -293,7 +274,7 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
               lead_id: newRow.lead_id,
               lead_name: null,
             };
-            return [activity, ...prev].slice(0, ACTIVITY_CAP);
+            return [activity, ...(prev ?? [])].slice(0, ACTIVITY_CAP);
           });
         },
       )

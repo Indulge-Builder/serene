@@ -54,7 +54,7 @@ export async function getAllAdCreatives(): Promise<AdCreative[]> {
 // ─────────────────────────────────────────────
 // Query: batch-resolve ad creatives for a list of campaign names
 // ─────────────────────────────────────────────
-// Per-key Redis cache-aside; one batched DB query for all misses.
+// One batched DB query (.in('campaign_key', uniqueKeys)) — no per-card round trips.
 // Returns Map<campaignKey, AdCreative[]> — each campaign may have multiple videos
 // (migration 0058). Each array is newest-first.
 // Call once per page render — never inside a loop or per-card useEffect.

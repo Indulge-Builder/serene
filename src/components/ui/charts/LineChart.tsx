@@ -9,10 +9,10 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer,
 } from 'recharts';
 import { useChartTokens } from './useChartTokens';
 import { ChartSkeleton } from './ChartSkeleton';
+import { ChartFrame, cartesianDefaults, CARTESIAN_MARGIN } from './CartesianChartFrame';
 
 export interface LineChartSeries {
   key: string;
@@ -44,59 +44,29 @@ export function LineChart({
 
   if (loading) return <ChartSkeleton height={height} />;
 
+  const defaults = cartesianDefaults(tokens);
+
   return (
-    <div
-      className={className}
-      style={{
-        background:   'var(--theme-paper)',
-        borderRadius: 'var(--radius-md)',
-        ...style,
-      }}
-    >
-      <ResponsiveContainer width="100%" height={height}>
-        <RechartsLineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid stroke={tokens.grid} strokeDasharray="3 3" vertical={false} />
-          <XAxis
-            dataKey={xKey}
-            tick={{ fill: tokens.axisLabel, fontSize: 10, fontFamily: 'var(--font-sans)' }}
-            axisLine={false}
-            tickLine={false}
+    <ChartFrame height={height} className={className} style={style}>
+      <RechartsLineChart data={data} margin={CARTESIAN_MARGIN}>
+        <CartesianGrid {...defaults.grid} />
+        <XAxis dataKey={xKey} {...defaults.axis} />
+        <YAxis {...defaults.axis} />
+        <Tooltip {...defaults.tooltip} />
+        {series.length > 1 && <Legend {...defaults.legend} />}
+        {series.map((s, i) => (
+          <Line
+            key={s.key}
+            type="monotone"
+            dataKey={s.key}
+            name={s.label}
+            stroke={tokens.series[i % tokens.series.length]}
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4, fill: tokens.series[i % tokens.series.length] }}
           />
-          <YAxis
-            tick={{ fill: tokens.axisLabel, fontSize: 10, fontFamily: 'var(--font-sans)' }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <Tooltip
-            contentStyle={{
-              background:   tokens.tooltipBg,
-              border:       `1px solid ${tokens.tooltipBorder}`,
-              borderRadius: 'var(--radius-md)',
-              boxShadow:    'var(--shadow-2)',
-              fontSize:     12,
-              fontFamily:   'var(--font-sans)',
-            }}
-            labelStyle={{ color: tokens.axisLabel }}
-          />
-          {series.length > 1 && (
-            <Legend
-              wrapperStyle={{ fontSize: 11, fontFamily: 'var(--font-sans)', color: tokens.axisLabel }}
-            />
-          )}
-          {series.map((s, i) => (
-            <Line
-              key={s.key}
-              type="monotone"
-              dataKey={s.key}
-              name={s.label}
-              stroke={tokens.series[i % tokens.series.length]}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4, fill: tokens.series[i % tokens.series.length] }}
-            />
-          ))}
-        </RechartsLineChart>
-      </ResponsiveContainer>
-    </div>
+        ))}
+      </RechartsLineChart>
+    </ChartFrame>
   );
 }

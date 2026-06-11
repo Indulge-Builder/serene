@@ -7,7 +7,8 @@
  */
 
 import { useEffect, useState, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m as motion } from "framer-motion";
+import { EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { toast as toastStore } from "@/lib/toast";
 import { ToastItem } from "@/components/ui/toast-item";
 import type { ToastItem as ToastItemType } from "@/lib/toast";
@@ -88,7 +89,7 @@ export function ToastProvider() {
               }}
               transition={{
                 duration: 0.25,
-                ease:     [0.16, 1, 0.3, 1],    // --ease-out-expo
+                ease:     EASE_OUT_EXPO,
               }}
               style={{
                 // Pointers should only be active on the front toast

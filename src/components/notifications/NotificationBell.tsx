@@ -9,10 +9,10 @@
 
 import { useRef, useState } from "react";
 import { Bell } from "lucide-react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { useNotifications } from "@/hooks/useNotifications";
 import { NotificationPanel } from "@/components/notifications/NotificationPanel";
-import { EASE_OUT_EXPO, EASE_SPRING } from "@/lib/constants/motion";
+import { EASE_OUT_EXPO, EASE_SPRING, SPRING_BOUNCE } from "@/lib/constants/motion";
 import type { Notification } from "@/lib/types/database";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -75,13 +75,15 @@ export function NotificationBell({
       >
         <Bell style={{ width: "14px", height: "14px", strokeWidth: 1.5 }} />
 
-        {/* Unread dot — always in DOM for layout stability. Animates in once on arrival. */}
+        {/* Unread dot — always in DOM for layout stability. Animates in once on
+            arrival. Never from scale(0) — nothing appears from nothing; the dot
+            pops from a half-size, transparent state. */}
         <motion.span
           key={hasUnread ? "on" : "off"}
           aria-hidden="true"
-          initial={{ scale: 0 }}
-          animate={{ scale: hasUnread ? 1 : 0 }}
-          transition={{ type: "spring", stiffness: 400, damping: 20 }}
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={hasUnread ? { scale: 1, opacity: 1 } : { scale: 0.5, opacity: 0 }}
+          transition={SPRING_BOUNCE}
           style={{
             position:     "absolute",
             top:          "4px",
@@ -90,7 +92,6 @@ export function NotificationBell({
             height:       "6px",
             borderRadius: "var(--radius-full)",
             background:   "var(--theme-accent)",
-            opacity:      hasUnread ? 1 : 0,
             pointerEvents: "none",
           }}
         />

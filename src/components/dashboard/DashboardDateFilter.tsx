@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, ChevronDown } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { buildFilterParams, dateToUrlParam, dateFromUrlParam } from '@/lib/utils/filter-params';
 import { DATE_PRESET_LABELS, type DatePreset } from '@/lib/utils/date-range';

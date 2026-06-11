@@ -5,7 +5,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import {
   DndContext,
   closestCenter,

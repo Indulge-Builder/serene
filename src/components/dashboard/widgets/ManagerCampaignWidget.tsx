@@ -1,26 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import { RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { BarChart } from "@/components/ui/charts/BarChart";
 import type { BarChartSeries } from "@/components/ui/charts/BarChart";
-import {
-  getLeadsByCampaignAction,
-  getLeadsByCampaignForDomainAction,
-} from "@/lib/actions/dashboard";
+import { getLeadsByCampaignAction } from "@/lib/actions/dashboard";
 import { formatCompact } from "@/lib/utils/numbers";
 import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
-import { DEFAULT_GIA_DOMAIN, DOMAIN_LABELS, GIA_DOMAINS, type GiaDomain } from "@/lib/constants/domains";
+import { DEFAULT_GIA_DOMAIN, DOMAIN_LABELS, GIA_DOMAINS } from "@/lib/constants/domains";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/TabSelector";
-import type { AppDomain, LeadStatus } from "@/lib/types/database";
+import type { LeadStatus } from "@/lib/types/database";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import type { DashboardCampaignStatusMix } from "@/lib/types";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { DateRange } from "@/lib/utils/date-range";
 import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
-
-type DomainMode = "all" | GiaDomain;
+import { useWidgetData } from "@/hooks/useWidgetData";
+import { resolveWidgetScope, type WidgetDomainMode as DomainMode } from "@/lib/utils/widget-scope";
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: "var(--color-info)",
@@ -50,69 +47,42 @@ const CHART_SERIES: BarChartSeries[] = STATUS_ORDER.map((s) => ({
 
 export function ManagerCampaignWidget({
   role,
-  domain,
   initialData,
   size = 'xl',
   dateRange,
 }: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
   const rscCampaigns = initialData?.campaigns ?? null;
-  const [campaigns, setCampaigns] = useState<DashboardCampaignStatusMix[]>(
-    rscCampaigns ?? [],
-  );
-  const [loaded, setLoaded] = useState(rscCampaigns !== null);
   const [domainMode, setDomainMode] = useState<DomainMode>(
     isManagerRole ? "all" : DEFAULT_GIA_DOMAIN,
   );
-  const [isPending, startTransition] = useTransition();
 
-  const applyRscCampaigns = useCallback((next: DashboardCampaignStatusMix[]) => {
-    setCampaigns(next);
-    setLoaded(true);
-  }, []);
+  // The ONE fetcher — auto-fetch effect, tab changes, and refresh all go through it.
+  const loadCampaigns = useCallback(
+    (mode: DomainMode) =>
+      getLeadsByCampaignAction(dateRange?.from, dateRange?.to, resolveWidgetScope(role, mode)),
+    [dateRange?.from, dateRange?.to, role],
+  );
+
+  const { data, loaded, isPending, refetch, apply } = useWidgetData<DashboardCampaignStatusMix[]>({
+    seed: rscCampaigns,
+    fetcher: () => loadCampaigns(domainMode),
+    // RSC seeds the manager view and the admin/founder DEFAULT_GIA_DOMAIN tab; fetch the rest.
+    autoFetch: !isManagerRole && domainMode !== DEFAULT_GIA_DOMAIN,
+    deps: [dateRange?.from, dateRange?.to, domainMode],
+  });
+  const campaigns = data ?? [];
 
   const rscMatchesView = isManagerRole || domainMode === DEFAULT_GIA_DOMAIN;
-  useDashboardCohortSync(rscCampaigns, dateRange, rscMatchesView, applyRscCampaigns);
-
-  useEffect(() => {
-    if (isManagerRole || domainMode === DEFAULT_GIA_DOMAIN) return;
-    let cancelled = false;
-    startTransition(async () => {
-      const result =
-        domainMode === "all"
-          ? await getLeadsByCampaignAction(role, domain, dateRange?.from, dateRange?.to)
-          : await getLeadsByCampaignForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
-      if (!cancelled && result.data) {
-        setCampaigns(result.data);
-        setLoaded(true);
-      }
-    });
-    return () => { cancelled = true; };
-  }, [dateRange?.from, dateRange?.to, domainMode, isManagerRole, role, domain]);
+  useDashboardCohortSync(rscCampaigns, dateRange, rscMatchesView, apply);
 
   function handleDomainChange(mode: DomainMode) {
     setDomainMode(mode);
-    startTransition(async () => {
-      if (mode === "all") {
-        const result = await getLeadsByCampaignAction(role, domain, dateRange?.from, dateRange?.to);
-        if (result.data) setCampaigns(result.data);
-      } else {
-        const result = await getLeadsByCampaignForDomainAction(mode as AppDomain, dateRange?.from, dateRange?.to);
-        if (result.data) setCampaigns(result.data);
-      }
-    });
+    refetch(() => loadCampaigns(mode));
   }
 
   function handleRefresh() {
-    startTransition(async () => {
-      if (domainMode === "all") {
-        const result = await getLeadsByCampaignAction(role, domain, dateRange?.from, dateRange?.to);
-        if (result.data) setCampaigns(result.data);
-      } else {
-        const result = await getLeadsByCampaignForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
-        if (result.data) setCampaigns(result.data);
-      }
-    });
+    refetch();
   }
 
   // Keep the full campaign name in data — label wrapping is handled by the
@@ -195,7 +165,7 @@ export function ManagerCampaignWidget({
         <Button
           variant="ghost"
           onClick={handleRefresh}
-          disabled={isPending}
+          loading={isPending}
           title="Refresh"
           style={{
             width: 28,

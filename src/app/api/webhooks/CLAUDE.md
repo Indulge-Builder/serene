@@ -1,14 +1,33 @@
 # Webhooks CLAUDE.md
 
+## Route contract (every webhook route)
+
+- **JSON parse guard:** body parsing goes through `readJsonBody(request)` or — when the
+  route reads `req.text()` first for an HMAC signature — `parseJsonBody(rawBody)`, both
+  from `src/lib/utils/webhook.ts`. Never hand-roll the try/catch-400 block (dry-audit M-8).
+- **Rate limit before body read (security-audit F-4 / S-17):** every POST handler creates its
+  own module-scope `createRateLimiter({ windowMs, max })` from `src/lib/utils/webhook.ts` and
+  checks `isRateLimited(getClientIp(request))` → 429 **before** `req.text()`/`readJsonBody()`.
+  Per-route instances keep the windows isolated. Caps: leads 100/60s; whatsapp 300/60s
+  (Gupshup delivery receipts are up to 3 POSTs per outbound message, so legit traffic is burstier).
+- **Secret compares are timing-safe:** every secret/token equality goes through
+  `safeSecretCompare()` from `src/lib/utils/webhook.ts` (`timingSafeEqual` + length guard).
+  Never `===`/`!==` a webhook secret. (Meta HMAC verification stays in
+  `verifyMetaSignature` — it compares digests, not the raw secret.)
+- **Outward sends:** any route whose post-response work performs network sends must
+  `export const maxDuration = 60` and run the work inside `after()` with the sends
+  `await`-ed — see the root CLAUDE.md `after()` Pattern Note (2026-06-08 outage).
+- A future webhook (call-intelligence) composes all four rules from day one.
+
 ## Active BSP: Gupshup v1
 
 ### Auth — `src/app/api/webhooks/whatsapp/route.ts`
 
-Inbound requests are authenticated via the `x-gupshup-secret` header checked with `timingSafeEqual` (Node `crypto`). The secret value is read from `GUPSHUP_WEBHOOK_SECRET`.
+Inbound requests are authenticated via the `x-gupshup-secret` header checked with `safeSecretCompare()` from `src/lib/utils/webhook.ts` (timing-safe). The secret value is read from `GUPSHUP_WEBHOOK_SECRET`.
 
 - Presence of `x-gupshup-secret` header routes the request through the Gupshup path.
 - Absence routes through the dormant Meta v3 path (kept for future use).
-- Never use a plain `===` string compare for the secret — always `timingSafeEqual` with equal-length buffer check.
+- Never use a plain `===` string compare for the secret — always `safeSecretCompare()` (it wraps `timingSafeEqual` with the equal-length buffer check).
 
 ### Inbound format — dual-format parser
 

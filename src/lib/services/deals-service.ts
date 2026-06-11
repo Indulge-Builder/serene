@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { isGiaDomain } from '@/lib/constants/domains';
-import type { UserRole, AppDomain, DealFilters, DealWithRelations } from '@/lib/types/database';
+import type { UserRole, AppDomain, DealFilters, DealWithRelations, Deal } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
 // Result types
@@ -128,7 +129,10 @@ export async function getDealsSummary(
   domain:  AppDomain,
   filters: DealFilters,
 ): Promise<DealsSummary> {
-  const supabase = await createClient();
+  // get_deals_summary trusts p_role/p_caller_domain — EXECUTE revoked from
+  // `authenticated` (migration 0102, audit F-1). Admin client only; the args
+  // below must stay session-derived (Q-13: the caller is the trust boundary).
+  const supabase = createAdminClient();
 
   // p_caller_domain — always the server-verified profile domain.
   // Used by the RPC for the manager role-gate: d.domain = p_caller_domain.
@@ -172,4 +176,28 @@ export async function getDealsSummary(
     membership_count: Number(row.membership_count  ?? 0),
     retail_count:     Number(row.retail_count      ?? 0),
   };
+}
+
+// ─────────────────────────────────────────────
+// getLeadDeal — the single non-archived deal linked to a lead (won path).
+//
+// Uses the session client; RLS applies. An agent querying a deal they do not
+// own (assigned_to mismatch) receives null — correct RLS behaviour, not a bug.
+// Returns null on empty result or any Supabase error — never throws.
+// Used by the lead dossier (/leads/[id]) to render the LeadDealCard.
+// ─────────────────────────────────────────────
+export async function getLeadDeal(leadId: string): Promise<Deal | null> {
+  const supabase = await createClient();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
+    .from('deals')
+    .select('*')
+    .eq('lead_id', leadId)
+    .is('archived_at', null)
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as unknown as Deal;
 }

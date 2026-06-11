@@ -3,23 +3,29 @@ import { Suspense } from 'react';
 import { BackButton } from '@/components/ui/BackButton';
 
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { getLeadBySlug, getLeadById, getLeadNotesFull, getLeadActivitiesFull, getAgentsForDomain } from '@/lib/services/leads-service';
-import { getAdCreativesForCampaign } from '@/lib/services/ad-creatives-service';
-import { getConversationByLeadId, getMessages } from '@/lib/services/whatsapp-service';
-import { LeadInfoCard } from '@/components/leads/LeadInfoCard';
+import { getLeadBySlug, getLeadById } from '@/lib/services/leads-service';
 import { StatusActionPanel } from '@/components/leads/StatusActionPanel';
 import { DynamicFormResponses } from '@/components/leads/DynamicFormResponses';
 import { LeadNotesInput } from '@/components/leads/LeadNotesInput';
-import { LeadJourneyTimeline } from '@/components/leads/LeadJourneyTimeline';
-import { LeadNotesSection } from '@/components/leads/LeadNotesSection';
+import { PersonalDetailsCard } from '@/components/leads/PersonalDetailsCard';
+import { LeadInfoCardAsync } from '@/components/leads/LeadInfoCardAsync';
+import { LeadDealCardAsync } from '@/components/leads/LeadDealCardAsync';
+import { LeadNotesSectionAsync } from '@/components/leads/LeadNotesSectionAsync';
+import { LeadActivitiesAsync } from '@/components/leads/LeadActivitiesAsync';
+import { LeadWhatsAppCardAsync } from '@/components/leads/LeadWhatsAppCardAsync';
 import { LeadTasksAsync } from '@/components/leads/LeadTasksAsync';
 import { LeadTasksCardSkeleton } from '@/components/leads/LeadTasksCardSkeleton';
-import { LeadActivityLog } from '@/components/leads/LeadActivityLog';
-import { PersonalDetailsCard } from '@/components/leads/PersonalDetailsCard';
-import { LeadWhatsAppCard } from '@/components/leads/LeadWhatsAppCard';
+import { DossierCardSkeleton } from '@/components/leads/LeadDossierSkeletons';
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> };
 
+// Streaming shape (perf audit 2026-06-11 item B):
+// wave 1 (blocking) — profile + lead only; paints header, StatusActionPanel,
+// PersonalDetailsCard, form responses, notes input in one round trip.
+// Everything else is a self-fetching async child behind its own <Suspense>
+// boundary — info card (ad creatives + agents), deal card, tasks, WhatsApp
+// (conversation → messages serial hop stays inside the boundary), notes
+// timeline, journey + activity log.
 export default async function LeadDossierPage({ params, searchParams }: Props) {
   const { id } = await params;
   const sp = await searchParams;
@@ -48,19 +54,6 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
     profile.role === 'manager' ||
     profile.role === 'admin' ||
     profile.role === 'founder';
-
-  // Fetch supporting data in parallel
-  const [notes, activities, adCreatives, agents, initialConversation] = await Promise.all([
-    getLeadNotesFull(lead.id),
-    getLeadActivitiesFull(lead.id),
-    lead.utm_campaign ? getAdCreativesForCampaign(lead.utm_campaign) : Promise.resolve([]),
-    canReassign ? getAgentsForDomain(lead.domain) : Promise.resolve([]),
-    getConversationByLeadId(lead.id),
-  ]);
-
-  const initialMessages = initialConversation
-    ? await getMessages(initialConversation.id, { limit: 30 })
-    : [];
 
   const canEditLeadFields =
     (profile.role === 'agent' && lead.assigned_to === profile.id) ||
@@ -117,6 +110,13 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
         {/* Status action panel */}
         <StatusActionPanel lead={lead} callerProfile={profile} />
 
+        {/* Closed-deal summary — only when the lead has a linked deal (won).
+            null fallback: most leads have no deal, a skeleton here would flash
+            and shift layout for nothing. */}
+        <Suspense fallback={null}>
+          <LeadDealCardAsync leadId={lead.id} />
+        </Suspense>
+
         {/* Two-column layout */}
         <div
           style={{
@@ -128,15 +128,14 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
         >
           {/* Left column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-            <LeadInfoCard
-              lead={lead}
-              assigneeName={lead.assignee?.full_name ?? null}
-              adCreatives={adCreatives}
-              canEdit={canEditLeadFields}
-              canEditDomain={canEditDomain}
-              canReassign={canReassign}
-              agents={agents}
-            />
+            <Suspense fallback={<DossierCardSkeleton headerWidth={140} rows={5} />}>
+              <LeadInfoCardAsync
+                lead={lead}
+                canEdit={canEditLeadFields}
+                canEditDomain={canEditDomain}
+                canReassign={canReassign}
+              />
+            </Suspense>
             {lead.form_data && Object.keys(lead.form_data).length > 0 && (
               <DynamicFormResponses formData={lead.form_data} />
             )}
@@ -152,31 +151,40 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
               leadId={lead.id}
               canAdd={canEditPersonalDetails}
             />
-            <LeadWhatsAppCard
-              leadId={lead.id}
-              leadPhone={lead.phone}
-              leadName={fullName}
-              callerProfile={{ id: profile.id, role: profile.role }}
-              initialConversation={initialConversation}
-              initialMessages={initialMessages}
-            />
+            <Suspense fallback={<DossierCardSkeleton headerWidth={100} rows={3} />}>
+              <LeadWhatsAppCardAsync
+                leadId={lead.id}
+                leadPhone={lead.phone}
+                leadName={fullName}
+                callerProfile={{ id: profile.id, role: profile.role }}
+              />
+            </Suspense>
           </div>
         </div>
 
         {/* Notes timeline — above journey per UX spec */}
         <div style={{ marginTop: 'var(--space-6)' }}>
-          <LeadNotesSection notes={notes} />
+          <Suspense fallback={<DossierCardSkeleton headerWidth={110} rows={3} />}>
+            <LeadNotesSectionAsync leadId={lead.id} />
+          </Suspense>
         </div>
 
-        {/* Journey progress */}
-        <div style={{ marginTop: 'var(--space-6)' }}>
-          <LeadJourneyTimeline lead={lead} activities={activities} />
-        </div>
-
-        {/* Chronological activity history */}
-        <div style={{ marginTop: 'var(--space-6)', marginBottom: 'var(--space-8)' }}>
-          <LeadActivityLog activities={activities} />
-        </div>
+        {/* Journey progress + chronological activity history — one fetch,
+            margins owned by LeadActivitiesAsync; fallback mirrors them */}
+        <Suspense
+          fallback={
+            <>
+              <div style={{ marginTop: 'var(--space-6)' }}>
+                <DossierCardSkeleton headerWidth={130} rows={2} />
+              </div>
+              <div style={{ marginTop: 'var(--space-6)', marginBottom: 'var(--space-8)' }}>
+                <DossierCardSkeleton headerWidth={130} rows={4} />
+              </div>
+            </>
+          }
+        >
+          <LeadActivitiesAsync lead={lead} />
+        </Suspense>
       </main>
     </>
   );

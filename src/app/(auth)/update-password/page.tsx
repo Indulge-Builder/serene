@@ -43,13 +43,15 @@ function InvalidLinkCard({ expired = false }: { expired?: boolean }) {
       >
         {/* Unified brand header */}
         <div className="flex flex-col items-center gap-3 mb-8">
-          <Image
-            src="/logo.webp"
-            alt="Indulge"
-            width={48}
-            height={48}
-            style={{ borderRadius: "var(--radius-sm)" }}
-          />
+          <div className="eia-auth-logo-medallion">
+            <Image
+              src="/logo.webp"
+              alt="Indulge"
+              width={48}
+              height={48}
+              style={{ borderRadius: "var(--radius-sm)" }}
+            />
+          </div>
           <h1
             style={{
               fontFamily: "var(--font-serif)",

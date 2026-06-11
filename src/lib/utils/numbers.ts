@@ -79,10 +79,13 @@ function formatCompactWestern(n: number): string {
  */
 export function formatPercent(
   value: number | null | undefined,
-  options?: { multiplied?: boolean },
+  options?: { multiplied?: boolean; decimals?: 0 | 1 },
 ): string {
   if (value === null || value === undefined) return '—';
-  const pct = options?.multiplied ? value : value * 100;
+  const raw = options?.multiplied ? value : value * 100;
+  // Round to the requested precision first so 74.97 → "75%" (never "75.0%").
+  const factor = (options?.decimals ?? 1) === 0 ? 1 : 10;
+  const pct = Math.round(raw * factor) / factor;
   // Whole number → no decimal; otherwise one decimal
   const formatted = Number.isInteger(pct) ? `${pct}` : `${pct.toFixed(1)}`;
   return `${formatted}%`;

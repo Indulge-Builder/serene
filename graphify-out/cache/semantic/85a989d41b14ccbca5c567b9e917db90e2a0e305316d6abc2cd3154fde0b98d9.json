@@ -1,0 +1,1 @@
+{"nodes": [{"id": "claude_md_migrations", "label": "Database Migrations Documentation", "file_type": "document", "source_file": "supabase/migrations/CLAUDE.md", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}

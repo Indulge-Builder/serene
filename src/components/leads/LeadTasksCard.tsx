@@ -1,17 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { TaskCompletionCircle } from "@/components/tasks/TaskCompletionCircle";
 import { useTaskCompletionToggle } from "@/hooks/useTaskCompletionToggle";
-import { CreateLeadTaskModal } from "@/components/leads/CreateLeadTaskModal";
 import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
 import { TASK_STATUS } from "@/lib/constants/task-constants";
 import { formatTaskDueAt } from "@/lib/utils/dates";
 import type { Task } from "@/lib/types/database";
+
+// Load-on-intent (perf audit G-1): already conditional-rendered below, so the
+// dynamic import alone keeps the modal chunk out of the dossier route chunk.
+const CreateLeadTaskModal = dynamic(
+  () =>
+    import("@/components/leads/CreateLeadTaskModal").then(
+      (m) => m.CreateLeadTaskModal,
+    ),
+  { ssr: false },
+);
 
 interface LeadTasksCardProps {
   leadId: string;
@@ -51,6 +61,7 @@ export function LeadTasksCard({ leadId, initialTasks }: LeadTasksCardProps) {
               type="button"
               onClick={() => setModalOpen(true)}
               aria-label="Add follow-up task"
+              className="eia-pressable eia-icon-rotate-hover"
               style={{
                 display: "flex",
                 alignItems: "center",

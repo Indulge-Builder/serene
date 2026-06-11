@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { motion } from 'framer-motion';
-import { EASE_SPRING, BASE_DURATION } from '@/lib/constants/motion';
+import { m as motion } from 'framer-motion';
+import { SPRING_CONFIG } from '@/lib/constants/motion';
 
 export type ToggleSize = 'sm' | 'md';
 
@@ -90,7 +90,7 @@ export function Toggle({
         {/* Thumb */}
         <motion.span
           animate={{ x: checked ? travelX : 0 }}
-          transition={{ type: 'spring', stiffness: 500, damping: 35, ease: EASE_SPRING }}
+          transition={SPRING_CONFIG}
           style={{
             position:     'absolute',
             top:          pad,

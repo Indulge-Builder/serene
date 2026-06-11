@@ -68,9 +68,9 @@ Stored in the database. Used in all authorization logic. Never derived from JWT 
 | `house`      | —      | House data       |
 | `legacy`     | —      | Legacy data      |
 
-### Grants
+### Cross-domain access
 
-Roles are domain-scoped. A user has one role inside one domain; `founder` and `admin` are the only roles with multi-domain access (`domain_id = *`). When someone needs data outside their domain, a **grant** is issued — not a role change. Grants are explicit, expiring, and auditable: every cross-domain access has a grantor, a permission, and an `expires_at`. No global roles for regular users.
+Roles are domain-scoped: one role, one domain per user. `founder` and `admin` are the only roles with cross-domain access. **There is no grants table** — when someone genuinely needs visibility outside their domain, an admin temporarily changes their domain (operational, audited via `profile_audit_log`). Full model: `docs/architecture/auth-and-rbac.md`.
 
 ---
 
@@ -144,10 +144,12 @@ Source of truth: `docs/changelog.md`. Only work listed there as shipped is marke
 
 ## 6. What Is Planned (Not Built)
 
-- **WhatsApp page** — full in-app messaging interface (`/whatsapp`); conversation list + chat window; see `docs/The_Gia.md` Section 14.3
-- **WhatsApp AI chatbot** — Claude-powered RAG bot for automatic lead engagement until the agent takes over; see `docs/The_Gia.md` Section 14.6
-- **Sia (Concierge module)** — planned; not started
-- **Additional domain modules** — Finance, Marketing, Shop, B2B, House, Legacy — planned; not started
+- **Lia (AI presence)** + **client records (post-won flow)** — current focus; see `docs/01-vision.md`
+- **WhatsApp AI chatbot** — auto lead engagement until the agent takes over; see `docs/integrations/whatsapp-gupshup.md` (the WhatsApp *page* shipped — `docs/pages/whatsapp.md`)
+- **Sia (Concierge module)** — planned; not started — `docs/modules/sia.md`
+- **Call intelligence / helpdesk** — spec complete — `docs/modules/call-intelligence.md`
+
+> This section is a snapshot; `docs/changelog.md` (history) and `docs/01-vision.md` (roadmap) are the sources of truth.
 
 ---
 
@@ -236,11 +238,12 @@ Never commit `.env.local`. Required environment variables are documented in `.en
 
 | File | Path | Contents |
 | ---- | ---- | -------- |
-| The Blueprint | `docs/The_Blueprint.md` | Project spec, tech stack, RBAC model, phase plan, decision log |
-| Design DNA | `docs/DESIGN-DNA.md` | Full visual and interaction design reference for the OS |
-| The Rules | `docs/The_Rules.md` | Coded non-negotiable rules across architecture, data, UI, and security |
+| Docs index | `docs/README.md` | The map of all documentation + reading orders |
+| Design DNA | `docs/design/DESIGN-DNA.md` | The design constitution |
+| The Rules | `docs/rules/The_Rules.md` | Coded non-negotiable engineering rules + Decision Log |
 | Changelog | `docs/changelog.md` | Single source of truth for what shipped and when |
-| The Gia | `docs/The_Gia.md` | Onboarding CRM module: ingestion, lifecycle, dossier, WhatsApp (planned) |
+| Gia module | `docs/modules/gia.md` | The CRM module: lifecycle, end-to-end flow, SLA engine |
+| Architecture | `docs/architecture/overview.md` | System map; database/auth/caching/migrations live beside it |
 
 Command-layer rules for day-to-day development live in `/CLAUDE.md` and `/.cursorrules` (identical).
 
@@ -254,4 +257,4 @@ Command-layer rules for day-to-day development live in `/CLAUDE.md` and `/.curso
 - All DB queries in `src/lib/services/`, all mutations in `src/lib/actions/`
 - RLS is enabled on every table — no exceptions
 
-For the full rule set, see `docs/The_Rules.md` and `/CLAUDE.md`.
+For the full rule set, see `docs/rules/The_Rules.md` and `/CLAUDE.md`.

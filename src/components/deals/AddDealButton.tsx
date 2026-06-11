@@ -1,10 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { NewDealModal } from '@/components/deals/NewDealModal';
 import type { UserRole, AppDomain } from '@/lib/types/database';
+
+// Load-on-intent (perf audit G-1): chunk fetched on first open, not with /deals.
+const NewDealModal = dynamic(
+  () => import('@/components/deals/NewDealModal').then((m) => m.NewDealModal),
+  { ssr: false },
+);
 
 type Props = {
   callerRole:   UserRole;
@@ -22,6 +28,7 @@ export function AddDealButton({ callerRole, callerDomain, callerName, callerId }
         variant="primary"
         size="sm"
         iconLeft={Plus}
+        iconMotion="rotate"
         onClick={() => setOpen(true)}
       >
         New Deal

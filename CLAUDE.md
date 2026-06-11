@@ -4,7 +4,10 @@
 
 This file is the command layer. It tells you the non-negotiables,
 where everything lives, and what to never do.
-The full design reference is in `docs/design-dna.md`.
+The engineering constitution (the rule IDs cited below) is `docs/rules/The_Rules.md` —
+its Section 0 "Reuse First" (R-01–R-04 + the repeat-offender table) is the law this
+file's registry serves.
+The full design reference is in `docs/design/DESIGN-DNA.md`.
 The full token values are in `src/styles/design-tokens.css`.
 
 ---
@@ -48,32 +51,56 @@ src/lib/supabase/server.ts          ← server Supabase client (only place)
 src/lib/supabase/middleware.ts      ← session refresh helper (only place)
 src/proxy.ts                        ← Next.js 16 proxy (replaces middleware.ts)
 src/lib/actions/                    ← ALL server actions live here
+src/lib/actions/_auth.ts            ← requireProfile(roles?) — THE session/role guard every session-based action starts with (Rule 09 / A-18); never hand-roll getCurrentProfile()+role checks. Exceptions table: src/lib/actions/CLAUDE.md (sla.ts, loginAction, 4 parallel-fetch tasks actions)
 src/lib/services/                   ← ALL DB queries live here
+src/lib/services/lead-cache.ts      ← invalidateLeadCaches(site, lead, scope) — THE lead Redis-invalidation helper (dual-key row del, list version INCRs, dashboard slots); never hand-roll redis.del blocks in lead actions (P-08)
 src/lib/validations/                ← ALL Zod schemas live here
 src/lib/constants/                  ← domain names, role names, status enums
-src/lib/constants/motion.ts        ← shared Framer Motion constants (ENTER_DURATION, EASE_OUT_EXPO, etc.) — import here, never re-declare inline per component
+src/lib/constants/motion.ts        ← shared Framer Motion constants (ENTER_DURATION, EASE_OUT_EXPO, SPRING_CONFIG, PAGE_DURATION, etc.) — import here, never re-declare a duration/easing/spring inline (V-13)
+src/components/layout/MotionProvider.tsx ← <MotionProvider> — LazyMotion strict + async domMax + MotionConfig reducedMotion="user" (app-wide reduced motion); mounted once in the root layout. THE framer import convention everywhere (A-17): `import { m as motion } from 'framer-motion'` — never the bare { motion } namespace (strict mode throws)
 src/lib/utils/sanitize.ts           ← sanitizeText() — the only sanitizer
 src/lib/utils/phone.ts              ← normalizeToE164() — the only normalizer
 src/lib/utils/dates.ts              ← formatDate() — the only date formatter
 src/lib/utils/numbers.ts            ← formatCount(), formatCurrency() etc.
 src/lib/utils/export.ts             ← buildCSV(), buildLeadsCSV(), buildXLSXWorkbook(), triggerBrowserDownload() — CLIENT-SIDE ONLY; never import from server actions or services
-src/lib/utils/chart-tokens.ts       ← getChartTokens() — Recharts bridge
+src/components/ui/charts/useChartTokens.ts ← useChartTokens() + resolveColorMap() — the Recharts colour bridge (resolves var(--…)→hex, re-resolves on theme change). NOTE: the old src/lib/utils/chart-tokens.ts stub is DELETED — never recreate it.
+src/lib/utils/strings.ts            ← getInitials() + hashString() — the ONLY initials derivation and deterministic colour-pick hash; never re-implement inline
+src/lib/services/profiles-service.ts ← getAssignableUsers({ domain?, agentsOnly? }) — THE assignable-users query; client wrapper getAssignableUsersAction(domain?) in lib/actions/profiles.ts; canonical AssignableUser type in lib/types — never re-declare a Pick<Profile,…> assignee shape or fork another agents/users list
+src/lib/utils/ist.ts                ← THE canonical IST (UTC+5:30) date math — IST_OFFSET_MS, toISTMidnight(), toISTEndOfDay(), getISTMondayStart(), getISTMonthStart(), getISTPrevMonthRange(), toIst(), istToUtc(). date-range.ts / whatsapp-period.ts / performance-service.ts / sla.ts all import from here; never re-fork IST boundary math
 src/lib/utils/campaigns.ts          ← beautifyCampaignTitle() — the only campaign-title decorator
+src/lib/utils/webhook.ts            ← readJsonBody()/parseJsonBody() — THE webhook JSON parse guard; createRateLimiter()+getClientIp() — THE rate limiter (S-17); safeSecretCompare() — THE timing-safe secret compare; never hand-roll any of the three in a route
+src/lib/utils/rows.ts               ← mapRows<TRow, TOut>(data, fn) — THE typed boundary for untyped query results (joined selects, untyped RPCs); never add a new `as Record<string, unknown>` row cast in a service (Q-18)
+src/lib/constants/define-enum.ts    ← defineEnum([{ id, label }]) — THE factory for simple string-enum constants (derives values/labels/options/zodEnum from one array); richer config tables (TASK_PRIORITY, lead-status badges) stay hand-written
+src/components/ui/StatTile.tsx      ← <StatTile label value sub? variant="card"|"cell"> — THE labelled stat tile (campaign metric cards + deals summary cells); performance MetricCard deliberately stays bespoke
 src/lib/utils/scroll.ts             ← scrollToBottom(), lockBodyScroll() etc.
 src/lib/services/dashboard-service.ts ← ALL dashboard widget queries (never extend leads-service.ts)
 src/lib/actions/dashboard.ts         ← ALL dashboard server actions (widget data refresh)
 src/lib/constants/dashboard-widgets.ts ← widget registry (pure data, no component refs)
+src/hooks/useWidgetData.ts            ← useWidgetData({ seed, fetcher, autoFetch?, deps? }) — THE dashboard-widget data lifecycle (RSC seed → skip mount fetch, deps-driven auto-fetch, refetch for tabs/refresh, apply for cohort sync); never hand-roll seed/loaded/fetch-effect state in a widget
+src/lib/utils/widget-scope.ts         ← resolveWidgetScope(role, mode) + WidgetDomainMode — THE manager-vs-domain-picker scope decision for widget fetches (client side; the dashboard actions re-enforce the manager override server-side via effectiveWidgetDomain())
 src/lib/constants/route-permissions.ts ← ALWAYS_ALLOWED_PREFIXES + DOMAIN_ROUTE_MAP (domain → permitted route prefixes)
 src/lib/constants/domain-colors.ts    ← DOMAIN_LINE_COLORS record, one entry per AppDomain; values are var(--domain-*) strings resolved via resolveColorMap() before Recharts use
 src/lib/utils/route-access.ts         ← canAccessRoute(profile, pathname) — pure function, safe in 'use client' components
 src/hooks/useDebounce.ts              ← useDebounce<T>(value, delay) — the ONLY debounce utility; never recreate inline
+src/hooks/useMountOnFirstOpen.ts      ← useMountOnFirstOpen(open) — THE mount latch for next/dynamic modals whose call site keeps them mounted (Dialog owns the exit animation internally); see src/components/CLAUDE.md "Heavy modal loading rule"; never re-implement inline
+src/hooks/usePortalAnchor.ts          ← usePortalAnchor() — THE floating-panel anchoring mechanism (portal positioning, flip, outside-close, visualViewport); pair with <FloatingPanel>; never re-implement inline
+src/components/ui/FloatingPanel.tsx   ← <FloatingPanel> — anchored dropdown-panel portal + chrome; driven by usePortalAnchor
+src/components/ui/CollapseReveal.tsx  ← <CollapseReveal> — THE expand/collapse reveal (grid-template-rows 0fr↔1fr + fade); never animate height: 0↔"auto"; render inside <AnimatePresence> at the call site
+src/components/ui/DateRangeFields.tsx ← <DateRangeFields> — the canonical From → To date-range panel body for filter bars
+src/components/ui/FilterBar.tsx       ← <FilterBar> — THE shared list-page filter-bar shell (sliders icon + count badge, SearchBar, children dropdowns, Range trigger+panel, optional Apply, Clear). All four filter bars compose it; never fork a new filter-bar chrome
+src/hooks/useUrlFilters.ts            ← useUrlFilters({ resetKeys? }) — THE URL-param filter plumbing (debounced search→URL push, push(updates), clearAll) for URL-driven filter bars; client-state bars (TasksFilters) pass state straight to <FilterBar>
+src/components/ui/ConfirmDialog.tsx   ← <ConfirmDialog> — THE standalone confirm dialog; owns the --z-overlay/--z-modal contract + body portal; never window.confirm
+src/components/ui/EmptyState.tsx      ← <EmptyState> — THE canonical empty state (hero icon-tile variant + inline serif-italic variant); makes "Playfair italic heading, never 'No data available'" structural; never hand-roll the italic style object
+src/components/ui/PageSkeletons.tsx   ← PageHeaderSkeleton / FilterBarSkeleton / SkeletonCard / Shimmer / skeletonStagger — THE shared loading.tsx scaffold blocks (page header, paper filter strip, card chrome); loading files compose these, only bespoke interiors stay inline
+src/components/ui/charts/CartesianChartFrame.tsx ← ChartFrame + cartesianDefaults(tokens) + CARTESIAN_MARGIN — shared paper container + grid/axis/tooltip/legend prop defaults for Area/Line/Bar (Pie/Donut/Butterfly exempt); never re-inline these prop blocks in a chart wrapper
+src/components/ui/TaskFormFields.tsx  ← FieldLabel / FieldError / FormChip / PriorityChipRow (chip + dot variants) / DueDateField + resolveDueAt (IST presets) / TaskTypeField — THE shared task-creation form fields; all four create-task modals compose these — never re-express a priority chip, due-preset chip, or task-type radio list inline
 src/hooks/useDashboardLayout.ts       ← localStorage layout hook (key: eia:dashboard:layout:${userId}:v1)
 src/components/dashboard/            ← DashboardCanvas, DashboardWidgetSlot, WidgetSkeleton, widgets/
 src/components/ui/                  ← shadcn primitives, zero feature imports
 src/components/ui/lia-glyph.tsx     ← Lia's custom SVG mark (always breathing)
 src/styles/design-tokens.css        ← ALL CSS variables, all themes
-src/app/globals.css                 ← `.layout-canvas` dashboard shell (grain + gradient layers)
-docs/design-dna.md                  ← full design reference
+src/app/globals.css                 ← `.layout-shell` (the mounted flat dashboard shell) + `.layout-canvas` (atmosphere class — mounted on the auth shell only, never the dashboard shell) + Tailwind @theme isolation block
+docs/design/DESIGN-DNA.md          ← full design reference
 docs/changelog.md                   ← SINGLE SOURCE OF TRUTH for all changes (mandatory)
 ```
 
@@ -107,13 +134,16 @@ docs/changelog.md                   ← SINGLE SOURCE OF TRUTH for all changes (
     Components handle both branches explicitly.
 
 11  Async work over 3 seconds or needing retry → Trigger.dev.
-    Never in route handlers.
+    Post-response sends → after() (see Pattern Notes). Nothing heavier in route handlers.
 
 12  Every meaningful change — feature, fix, migration, new package, refactor —
     gets an entry in docs/changelog.md before or alongside the code.
     docs/changelog.md is the single source of truth. The_Changelog.md is deleted.
 
 ```
+
+These 12 are the command-layer summary. The full constitution — Section 0 "Reuse First"
+(R-rules) plus the A/S/D/P/V/Q tables and the Decision Log — is `docs/rules/The_Rules.md`.
 
 ---
 
@@ -124,11 +154,14 @@ NEVER  hardcode a colour value in a component
 NEVER  use text-gray-* or bg-gray-* or bg-white — use tokens
 NEVER  use z-index values not in the --z-* scale
 NEVER  animate width, height, padding, or margin — only transform and opacity
+       (expand/collapse composes <CollapseReveal> — grid-template-rows, never height 0↔auto)
 NEVER  put backdrop-filter/blur on cards, dropdowns, or modals
        (sanctioned only on: TopBar, mobile sidebar overlay, command palette)
 NEVER  use font-bold (700) — --weight-semibold (600) is the maximum
 NEVER  create a component that both fetches data and renders UI
-NEVER  duplicate a component that already exists — extend it instead
+NEVER  duplicate a component, hook, util, or service that already exists — extend it instead;
+       copy-pasting an existing module as the base for a "new" one is the same violation
+       (The_Rules §0, R-01–R-04 — check the repeat-offender table there)
 NEVER  let a Zod default error message reach the user interface
 NEVER  clear a form field on validation error
 NEVER  use "No data available" as empty state copy
@@ -138,8 +171,11 @@ NEVER  add backdrop-blur outside the three sanctioned surfaces
 NEVER  use a coloured border on one edge of a card, row, or column as a category/status indicator (borderLeft/borderTop/borderRight/borderBottom accent strips) — use pills, dots, icons, or semantic badges instead
 NEVER  add a package or meaningful change without a docs/changelog.md entry
 NEVER  write to The_Changelog.md — it has been deleted; docs/changelog.md is the only changelog
-NEVER  import a value symbol from lib/services/ in a 'use client' component — it pulls next/headers into the client bundle and hard-errors; use a Server Action in lib/actions/ instead
-NEVER  fire an outward network send (WhatsApp/Gupshup, any external fetch that must complete) as bare void fn().catch() in a route or server action — Vercel freezes the lambda on response flush and orphans it. Use after() from next/server and await the send inside. See Pattern Notes.
+NEVER  import a value symbol from lib/services/ in a 'use client' component — it pulls next/headers into the client bundle and hard-errors; use a Server Action in lib/actions/ instead (A-15)
+NEVER  hand-roll a session/role check in a server action — requireProfile(roles?) from lib/actions/_auth.ts (A-18)
+NEVER  hand-roll a confirm dialog or use window.confirm — compose <ConfirmDialog>
+NEVER  import { motion } from 'framer-motion' — always import { m as motion }. The root layout's <MotionProvider> (LazyMotion strict + async domMax features) throws in dev on the full namespace; the alias keeps every motion.div JSX site identical while shipping the slim m core (A-17; perf audit G-2)
+NEVER  fire an outward network send (WhatsApp/Gupshup, any external fetch that must complete) as bare void fn().catch() in a route or server action — Vercel freezes the lambda on response flush and orphans it. Use after() from next/server and await the send inside. See Pattern Notes (A-16).
 ```
 
 ---
@@ -148,7 +184,8 @@ NEVER  fire an outward network send (WhatsApp/Gupshup, any external fetch that m
 
 Before building anything, ask:
 
-1. Does this already exist in `src/components/ui/`?
+1. Does this already exist in `src/components/ui/` or the File Locations table above?
+   (The_Rules §0 — search by behaviour, not name)
 2. Can I compose it from the 12 core components?
 3. Am I about to hardcode anything that should be a token?
 
@@ -170,6 +207,7 @@ The dot is **only** on primary nav pages (the top-level `<h1>` the user lands on
 Detail pages (leads/[id], campaigns/[id], admin/users/[id]) are exempt — they show a back link instead.
 
 **Empty states:** Always Playfair italic heading. Never "No data available."
+Compose `<EmptyState>` from `src/components/ui/EmptyState.tsx` — never hand-roll the italic style object.
 
 **Form errors:** Always from `lib/validations/form-errors.ts`.
 Never raw Zod messages. Never "Invalid input."
@@ -254,15 +292,15 @@ Lia never silently crosses domain boundaries.
 ## Theme Quick Reference
 
 ```text
-data-theme="earth"   → gold accent (#D4AF37), warm canvas (#0d0c0a) + grain + radial washes
-data-theme="air"     → steel blue accent (#7b9fc4), blue-black canvas
-data-theme="water"   → teal accent (#2a9d8f), teal-black canvas
-data-theme="fire"    → lava orange accent (#e05c1a), brown-black canvas
-data-theme="cosmos"  → nebula violet accent (#8b6fd4), violet-black canvas
+data-theme="earth"   → champagne gold accent (#c9a553), warm canvas (#0d0c0a) + grain + radial washes
+data-theme="air"     → slate blue accent (#54769e), blue-black canvas
+data-theme="water"   → deep teal accent (#1e7d72), teal-black canvas
+data-theme="fire"    → ember sienna accent (#c25022), brown-black canvas
+data-theme="cosmos"  → nebula amethyst accent (#7a5fc0), violet-black canvas
 
 Default (no attribute) = Earth.
 Theme attribute goes on the <html> element.
---theme-accent-fg on Earth is #0a0a0a (dark text on gold).
+--theme-accent-fg on Earth is #201808 (warm ink on gold).
 --theme-accent-fg on all other themes is #ffffff.
 ```
 
@@ -277,11 +315,20 @@ eia/
 ├── .env.local                       ← never committed
 ├── .env.example                     ← always committed
 │
-├── docs/
-│   ├── The_Blueprint.md             ← project spec, phases, RBAC, decision log
-│   ├── design-dna.md                ← full design reference
-│   ├── The_Rules.md                 ← 50+ coded rules across 8 sections
-│   └── changelog.md                 ← ALL changes logged here (single source of truth)
+├── docs/                            ← full tree + reading orders: docs/README.md
+│   ├── README.md                    ← the documentation index (start here)
+│   ├── 00-for-the-board.md          ← plain-English product explanation
+│   ├── 01-vision.md                 ← roadmap + per-module "done"
+│   ├── changelog.md                 ← ALL changes logged here (single source of truth)
+│   ├── architecture/                ← overview · database(+.sql) · auth-and-rbac · caching · migrations
+│   ├── design/                      ← DESIGN-DNA (law) · design-system · decision-log
+│   ├── rules/The_Rules.md           ← the constitution: §0 Reuse First (R-rules) + A/S/D/P/V/Q + Decision Log
+│   ├── pages/                       ← one spec per route (14 files)
+│   ├── modules/                     ← gia · lia · sia · elia · call-intelligence
+│   ├── integrations/                ← lead-ingestion · whatsapp-gupshup · trigger-dev · upstash-redis
+│   ├── operations/                  ← environments · deployment
+│   ├── audits/                      ← dated audit reports (design, security)
+│   └── _archive/                    ← pre-restructure originals (never cite)
 │
 ├── src/
 │   ├── app/
@@ -292,7 +339,8 @@ eia/
 │   │   │   └── update-password/
 │   │   ├── (dashboard)/             ← all authenticated pages
 │   │   ├── api/
-│   │   │   └── webhooks/            ← inbound webhooks only. No other API routes.
+│   │   │   ├── webhooks/            ← inbound webhooks (leads, whatsapp)
+│   │   │   └── auth/callback/       ← the auth callback. No other API routes (P-02).
 │   │   ├── globals.css
 │   │   ├── layout.tsx
 │   │   └── page.tsx                 ← redirects to /login or /dashboard
@@ -319,13 +367,15 @@ eia/
 │   │   │   ├── dates.ts             ← formatDate(), toUTC()
 │   │   │   ├── numbers.ts           ← formatCount(), formatCurrency()
 │   │   │   ├── scroll.ts            ← scrollToBottom(), lockBodyScroll()
-│   │   │   └── chart-tokens.ts      ← getChartTokens() — Recharts bridge
+│   │   │   ├── ist.ts               ← canonical IST date math (offset, day/month boundaries)
+│   │   │   └── strings.ts           ← getInitials(), hashString()
 │   │   └── types/
 │   │       ├── database.ts          ← auto-generated from Supabase
 │   │       └── index.ts             ← shared types
 │   │
-│   ├── hooks/
-│   │   └── useLeadColumnPreferences.ts  ← column pref hook (pattern for all future table pickers)
+│   ├── hooks/                       ← ALL shared hooks (useWidgetData, useUrlFilters, useDebounce,
+│   │                                   usePortalAnchor, useMountOnFirstOpen, useLeadColumnPreferences, …)
+│   │                                   — registry rows in File Locations above
 │   │
 │   ├── styles/
 │   │   └── design-tokens.css        ← ALL CSS variables, all five themes
@@ -342,7 +392,7 @@ eia/
 
 ## Phase Status
 
-> **Full build history lives in `docs/changelog.md` (chronological, single source of truth) and `docs/master.md §7` (phase table) + `§9` (migration index). This section is a pointer, not a duplicate — do not re-expand the per-feature history here.** When you ship something meaningful, add it to `docs/changelog.md`, not to this file.
+> **Full build history lives in `docs/changelog.md` (chronological, single source of truth); the migration index is `docs/architecture/migrations.md`; the forward roadmap is `docs/01-vision.md`. This section is a pointer, not a duplicate — do not re-expand the per-feature history here.** When you ship something meaningful, add it to `docs/changelog.md`, not to this file.
 
 | Phase / Module | Status | Headline |
 | --- | --- | --- |
@@ -371,7 +421,7 @@ Every task, every time. No exceptions.
 ```text
 1. Read the relevant authority files for this task:
    - CLAUDE.md (this file) and src/components/CLAUDE.md
-   - docs/design-dna.md for any visual/layout decision
+   - docs/design/DESIGN-DNA.md for any visual/layout decision
    - src/styles/design-tokens.css for token values
    - The feature-area CLAUDE.md if one exists
 
@@ -380,22 +430,27 @@ Every task, every time. No exceptions.
    "date picker" not just "DatePicker"
    "format duration" not just "formatDuration"
    "round robin" not just "getNextRoundRobinAgent"
-   Document what you find. Only build what does not already exist. (Q-12)
+   Check the repeat-offender table in docs/rules/The_Rules.md §0 first.
+   Document what you find. Only build what does not already exist. (R-01, formerly Q-12)
 
 3. Only then write code.
 ```
 
-This sequence is not optional. Q-12 applies to components, hooks, utils,
+This sequence is not optional. R-01 applies to components, hooks, utils,
 service functions, constants, and Zod schemas. A duplicate created without
-a prior search is a violation regardless of whether the names differ.
+a prior search is a violation regardless of whether the names differ — and
+copy-pasting an existing module as the base for a "new" one is the same
+violation (R-03). Consolidated forks stay deleted (R-04).
 
 ---
 
 ## Pattern Notes
 
-### `unstable_cache` — domain-scoped queries
+### `unstable_cache` — scoped keys (Q-16) and the `cookies()` constraint (P-09)
 
 When wrapping a service function in `unstable_cache`, the cache key **must** include the caller's domain when the underlying query is domain-scoped. A manager in `concierge` must never receive a cached response intended for `finance`.
+
+**P-09 comes first:** a service function that calls `createClient()` (which reads `cookies()`) can **never** be wrapped in `unstable_cache` — Next.js throws at runtime. Use React `cache()` for per-request memoisation instead. Full pattern + reference implementations: `src/lib/CLAUDE.md`.
 
 ```ts
 // ✅ Correct
@@ -437,7 +492,7 @@ void Promise.all([redis.del(REDIS_KEYS.leadRowId(leadId))]).catch(() => {});
 revalidatePath(`/leads/${slug}`);
 ```
 
-**Rule:** Every `redis.del` in a server action must be `await`-ed inside a `try/catch` that logs
+**Rule (P-08):** Every `redis.del` in a server action must be `await`-ed inside a `try/catch` that logs
 a `[module-action]`-prefixed warning. The `try/catch` keeps Redis failure non-fatal. The `await`
 ensures the cache layer is consistent before the RSC layer is told it can re-render. These two
 requirements are not in conflict.
@@ -447,8 +502,15 @@ requirements are not in conflict.
 only). Any action that mutates the lead row must delete both when `slug` is non-null. Deleting
 only `leadRowId` is a silent no-op on normal dossier traffic.
 
+**Both contracts are now structural for lead actions:** call
+`invalidateLeadCaches(site, { leadId, slug, domain }, scope)` from
+`src/lib/services/lead-cache.ts` — it awaits everything inside the try/catch-warn convention
+and `scope.row` always deletes both row keys. Never hand-assemble a `redis.del` block in a lead
+action. Dashboard *volume* keys are deliberately not in any scope: their read-side keys embed an
+ISO `from:to` range a del cannot enumerate — freshness is TTL-only (120s).
+
 Reference implementation: `updateLeadStatus`, `addLeadCallNote`, `addLeadNote` in
-`src/lib/actions/leads.ts`.
+`src/lib/actions/leads.ts` (all via `invalidateLeadCaches`).
 
 ---
 
@@ -512,6 +574,8 @@ This keeps the backdrop below the panel. **`--z-modal-overlay` (61) is reserved 
 
 The bug of backdrop covering the panel happens when `--z-modal-overlay` (61) is accidentally used for a standalone dialog backdrop — it then sits above the panel at `--z-modal` (60) and blocks all clicks.
 
+**This contract is now structural: every standalone confirm composes `<ConfirmDialog>` from `src/components/ui/ConfirmDialog.tsx`** — it owns the backdrop/panel z-indices, the `document.body` portal, and the two-action layout. Never hand-roll a confirm dialog; never use `window.confirm`. Adopted in `GroupTasksTab`, `GroupTaskWorkspace`, `AdCreativesManager`.
+
 ---
 
 ### Framer Motion `transform` + `position: fixed` — portal escape
@@ -523,20 +587,30 @@ Framer Motion entrance animations apply CSS `transform` to the animated element.
 
 **Result:** dialogs and dropdowns rendered inside a `motion.div` card appear clipped, washed out, or unresponsive even with correct z-index values.
 
-**Fix:** portal overlays and dropdowns to `document.body` using `createPortal`. Capture the trigger element's position with `getBoundingClientRect()` at open time and position the portaled panel with `position: fixed` from `document.body`.
+**Fix — structural, never re-implemented inline:** anchored panels use `usePortalAnchor()` (`src/hooks/usePortalAnchor.ts`) + `<FloatingPanel>` (`src/components/ui/FloatingPanel.tsx`) — the hook owns positioning/flip/outside-close/visualViewport correction, the component owns the `document.body` portal and chrome. Centered confirms use `<ConfirmDialog>`, which portals itself.
 
 **Reference implementations:**
 
-- `GroupTasksTab.tsx` — ⋯ dropdown and confirm delete dialog both portaled
-- `GroupTaskWorkspace.tsx` — confirm delete dialog portaled (same bug, same fix)
-- `LeadsFilters.tsx` — date range panel portaled (canonical reference)
-- `TasksFilters.tsx` — Gia date range panel portaled (matches LeadsFilters pattern)
+- `LeadsFilters.tsx` / `DealsFilters.tsx` / `CampaignFilters.tsx` / `TasksFilters.tsx` — all four compose `<FilterBar>` (`src/components/ui/FilterBar.tsx`), which owns the Range trigger + `usePortalAnchor` + `<FloatingPanel>` + `<DateRangeFields>` internally (canonical)
+- `GroupTasksTab.tsx` — ⋯ dropdown portaled; confirm delete via `<ConfirmDialog>`
+- `GroupTaskWorkspace.tsx` — confirm delete via `<ConfirmDialog>`
+- `DatePicker.tsx` / `TimePicker.tsx` / `FilterDropdown.tsx` — primitives still own a private copy of the mechanism (migrate onto `usePortalAnchor` last; do not fork a new copy from them)
 
 ---
 
 ## When in Doubt
 
-1. Check `docs/design-dna.md` for the full spec on any section.
+1. Check `docs/design/DESIGN-DNA.md` for the full spec on any section.
 2. Check `src/styles/design-tokens.css` for the exact token value.
 3. Check `src/lib/constants/` for domain names, roles, and status values.
 4. Never invent a value. If it doesn't exist in the token system, ask before adding it.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

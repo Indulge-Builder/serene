@@ -1,11 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import { RefreshCcw } from "lucide-react";
-import {
-  getLeadStatusSummaryAction,
-  getLeadStatusForDomainAction,
-} from "@/lib/actions/dashboard";
+import { getLeadStatusSummaryAction } from "@/lib/actions/dashboard";
 import { Button } from "@/components/ui/Button";
 import { formatCompact } from "@/lib/utils/numbers";
 import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
@@ -15,9 +12,8 @@ import {
   DEFAULT_GIA_DOMAIN,
   DOMAIN_LABELS,
   GIA_DOMAINS,
-  type GiaDomain,
 } from "@/lib/constants/domains";
-import type { AppDomain, LeadStatus } from "@/lib/types/database";
+import type { LeadStatus } from "@/lib/types/database";
 import type {
   DashboardLeadStatusCount,
   DashboardAgentStatusBreakdown,
@@ -25,8 +21,8 @@ import type {
 import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { DateRange } from "@/lib/utils/date-range";
 import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
-
-type DomainMode = "all" | GiaDomain;
+import { useWidgetData } from "@/hooks/useWidgetData";
+import { resolveWidgetScope, type WidgetDomainMode as DomainMode } from "@/lib/utils/widget-scope";
 
 // Chip surfaces — semantic token system, theme-aware.
 const STATUS_TEXT: Record<LeadStatus, string> = {
@@ -59,21 +55,17 @@ const STATUS_BORDER: Record<LeadStatus, string> = {
   junk:          "var(--status-junk-border)",
 };
 
-// Saturated fill colours for stacked bar segments and legend dots.
-// Exception to Rule 01 (no hardcoded hex in components): these are data-visualisation
-// fills on SVG-equivalent divs where CSS vars cannot be resolved by the rendering engine
-// in the same way chart libraries resolve them. The colours are intentionally distinct
-// so each status is instantly distinguishable in a compact stacked bar.
-// Do not replace with --status-*-text tokens — those muted tones are indistinguishable
-// at small bar widths and defeat the purpose of the visualisation.
+// Saturated fill colours for stacked bar segments and legend dots — the
+// --status-*-solid tier exists for exactly this job (compact bars where the
+// muted -text tones are indistinguishable). Never substitute -text tokens here.
 const BAR_COLORS: Record<LeadStatus, string> = {
-  new:           "#F5A623",
-  touched:       "#4A90D9",
-  in_discussion: "#27AE8F",
-  nurturing:     "#8B6FD4",
-  won:           "#27AE60",
-  lost:          "#E05C4B",
-  junk:          "#B0B0B0",
+  new:           "var(--status-new-solid)",
+  touched:       "var(--status-touched-solid)",
+  in_discussion: "var(--status-in-discussion-solid)",
+  nurturing:     "var(--status-nurturing-solid)",
+  won:           "var(--status-won-solid)",
+  lost:          "var(--status-lost-solid)",
+  junk:          "var(--status-junk-solid)",
 };
 
 const STATUS_ORDER: LeadStatus[] = [
@@ -184,41 +176,31 @@ function StackedBar({ mix, total }: { mix: Partial<Record<LeadStatus, number>>; 
   );
 }
 
-export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg', dateRange }: WidgetProps & { dateRange?: DateRange }) {
+export function ManagerLeadStatusWidget({ role, initialData, size = 'lg', dateRange }: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
   const initialMode: DomainMode = isManagerRole ? "all" : DEFAULT_GIA_DOMAIN;
 
   const rscLeadStatus = initialData?.lead_status ?? null;
-  const [data, setData] = useState<StatusData | null>(rscLeadStatus);
-  const [loaded, setLoaded] = useState(rscLeadStatus !== null);
   const [domainMode, setDomainMode] = useState<DomainMode>(initialMode);
-  const [isPending, startTransition] = useTransition();
 
-  const applyRscStatus = useCallback((next: StatusData) => {
-    setData(next);
-    setLoaded(true);
-  }, []);
+  // The ONE fetcher — auto-fetch effect, tab changes, and refresh all go through it.
+  const loadStatus = useCallback(
+    (mode: DomainMode) =>
+      getLeadStatusSummaryAction(dateRange?.from, dateRange?.to, resolveWidgetScope(role, mode)),
+    [dateRange?.from, dateRange?.to, role],
+  );
+
+  const { data, loaded, isPending, refetch, apply } = useWidgetData<StatusData>({
+    seed: rscLeadStatus,
+    fetcher: () => loadStatus(domainMode),
+    // RSC seeds the manager view and the admin/founder DEFAULT_GIA_DOMAIN tab; fetch the rest.
+    autoFetch: !isManagerRole && domainMode !== DEFAULT_GIA_DOMAIN,
+    deps: [dateRange?.from, dateRange?.to, domainMode],
+  });
 
   // RSC scopes admin/founder pipeline to onboarding on first paint — same as DEFAULT_GIA_DOMAIN tab.
   const rscMatchesView = isManagerRole || domainMode === DEFAULT_GIA_DOMAIN;
-  useDashboardCohortSync(rscLeadStatus, dateRange, rscMatchesView, applyRscStatus);
-
-  // Client fetch when RSC payload does not match the active domain tab.
-  useEffect(() => {
-    if (isManagerRole || domainMode === DEFAULT_GIA_DOMAIN) return;
-    let cancelled = false;
-    startTransition(async () => {
-      const result =
-        domainMode === "all"
-          ? await getLeadStatusSummaryAction(role, domain, dateRange?.from, dateRange?.to)
-          : await getLeadStatusForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
-      if (!cancelled && result.data) {
-        setData(result.data);
-        setLoaded(true);
-      }
-    });
-    return () => { cancelled = true; };
-  }, [dateRange?.from, dateRange?.to, domainMode, isManagerRole, role, domain]);
+  useDashboardCohortSync(rscLeadStatus, dateRange, rscMatchesView, apply);
 
   const totals    = data?.totals ?? [];
   const byAgent   = data?.byAgent ?? [];
@@ -227,27 +209,11 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
 
   function handleDomainChange(mode: DomainMode) {
     setDomainMode(mode);
-    startTransition(async () => {
-      if (mode === "all") {
-        const result = await getLeadStatusSummaryAction(role, domain, dateRange?.from, dateRange?.to);
-        if (result.data) setData(result.data);
-      } else {
-        const result = await getLeadStatusForDomainAction(mode as AppDomain, dateRange?.from, dateRange?.to);
-        if (result.data) setData(result.data);
-      }
-    });
+    refetch(() => loadStatus(mode));
   }
 
   function handleRefresh() {
-    startTransition(async () => {
-      if (domainMode === "all") {
-        const result = await getLeadStatusSummaryAction(role, domain, dateRange?.from, dateRange?.to);
-        if (result.data) setData(result.data);
-      } else {
-        const result = await getLeadStatusForDomainAction(domainMode as AppDomain, dateRange?.from, dateRange?.to);
-        if (result.data) setData(result.data);
-      }
-    });
+    refetch();
   }
 
   // Active statuses present in the data (for legend — skip zeros)
@@ -284,7 +250,7 @@ export function ManagerLeadStatusWidget({ role, domain, initialData, size = 'lg'
         <Button
           variant="ghost"
           onClick={handleRefresh}
-          disabled={isPending}
+          loading={isPending}
           title="Refresh"
           style={{ width: 28, height: 28, padding: 0, border: "1px solid var(--theme-paper-border)", flexShrink: 0 }}
           iconLeft={RefreshCcw}

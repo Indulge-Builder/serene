@@ -21,8 +21,10 @@
 
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { redis } from '@/lib/redis';
 import { REDIS_KEYS, TASK_GIA_TTL, TASK_PERSONAL_PAGE1_TTL, TASK_GROUP_LIST_TTL } from '@/lib/constants/redis-keys';
+import type { AssignableUser, WithAuthor, WithAssignee } from '@/lib/types';
 import type {
   Task,
   TaskGroup,
@@ -70,8 +72,9 @@ export type GroupTaskFilters = {
   priority?: TaskPriority[];
 };
 
-/** Minimal assignee profile attached to subtask list rows */
-export type AssigneeSlim = Pick<Profile, 'id' | 'full_name' | 'avatar_url'>;
+/** Minimal assignee profile attached to subtask list rows — derived from the
+ * canonical AssignableUser (lib/types), never a fresh Pick<Profile, …>. */
+export type AssigneeSlim = Pick<AssignableUser, 'id' | 'full_name' | 'avatar_url'>;
 
 /** Group list row — subtask counts + unique assignee avatars (no subtask rows) */
 export type TaskGroupRow = TaskGroup & {
@@ -81,14 +84,10 @@ export type TaskGroupRow = TaskGroup & {
 };
 
 /** Full subtask row — task + assignee profile */
-export type SubtaskWithAssignee = Task & {
-  assignee: AssigneeSlim | null;
-};
+export type SubtaskWithAssignee = WithAssignee<Task, AssigneeSlim | null>;
 
 /** TaskRemark with resolved author profile — canonical type for the chat panel */
-export type TaskRemarkWithAuthor = TaskRemark & {
-  author: Pick<Profile, 'id' | 'full_name' | 'avatar_url'> | null;
-};
+export type TaskRemarkWithAuthor = WithAuthor<TaskRemark, AssigneeSlim | null>;
 
 /** Full task detail — task + remarks */
 export type TaskWithMessages = Task & {
@@ -511,7 +510,7 @@ export async function getTaskGroupById(groupId: string): Promise<TaskGroup | nul
 
 // ─────────────────────────────────────────────
 // Query: all distinct tags used by a user's personal tasks
-// Used to populate the tag filter dropdown in PersonalTasksTab.
+// Used to populate the My Tasks tag filter dropdown (TasksShell → TasksFilters).
 // Returns a sorted deduplicated string array.
 // Uses the GIN-indexed tags column — does not require a sequential scan.
 // ─────────────────────────────────────────────
@@ -590,7 +589,10 @@ export async function getGiaTasksForUser(
     console.error('[tasks-service] getGiaTasksForUser Redis get error:', e);
   }
 
-  const supabase = await createClient();
+  // get_gia_tasks trusts p_user_id/p_role/p_domain — EXECUTE revoked from
+  // `authenticated` (migration 0102, audit F-1). Admin client only; args are
+  // session-derived by TasksAsync (Q-13: the caller is the trust boundary).
+  const supabase = createAdminClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any).rpc('get_gia_tasks', {

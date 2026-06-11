@@ -2,17 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { requireProfile } from "@/lib/actions/_auth";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { formErrors } from "@/lib/validations/form-errors";
 import {
   upsertAdCreativeSchema,
   deleteAdCreativeSchema,
 } from "@/lib/validations/ad-creative-schema";
-import type { ActionResult } from "@/lib/types";
+import type { ActionResult, UserRole } from "@/lib/types";
 import type { AdCreative } from "@/lib/types/database";
 
-const ADMIN_ROLES = ["admin", "founder"];
+const ADMIN_ROLES: UserRole[] = ["admin", "founder"];
 
 // ─────────────────────────────────────────────────────────
 // upsertAdCreative
@@ -37,10 +37,8 @@ export async function upsertAdCreative(
     return { data: null, error: formErrors.generic };
   }
 
-  const caller = await getCurrentProfile();
-  if (!caller || !ADMIN_ROLES.includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
-  }
+  const auth = await requireProfile(ADMIN_ROLES);
+  if (!auth.ok) return auth.result;
 
   const { id, campaign_key, video_url, thumbnail_url, ad_name, notes } = parsed.data;
 
@@ -109,10 +107,8 @@ export async function deleteAdCreative(
     return { data: null, error: formErrors.generic };
   }
 
-  const caller = await getCurrentProfile();
-  if (!caller || !ADMIN_ROLES.includes(caller.role)) {
-    return { data: null, error: formErrors.unauthorized };
-  }
+  const auth = await requireProfile(ADMIN_ROLES);
+  if (!auth.ok) return auth.result;
 
   const adminClient = createAdminClient();
   const { data: deleted, error } = await adminClient

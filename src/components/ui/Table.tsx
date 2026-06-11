@@ -146,15 +146,19 @@ export function Table<T>({
             rows.map((row, i) => {
               const key = rowKey(row, i);
               const isSelected = selectedRowKey === key;
+              // Row-by-row arrival (design-dna M-04) — first 8 rows, 30ms steps
+              const entering = i < 8;
               return (
                 <tr
                   key={key}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  className={entering ? 'eia-row-enter' : undefined}
                   style={{
                     background:  isSelected ? 'var(--theme-accent-surface)' : 'transparent',
                     cursor:      onRowClick ? 'pointer' : 'default',
                     transition:  'background var(--duration-fast) var(--ease-in-out)',
                     borderBottom:'1px solid var(--theme-paper-border)',
+                    animationDelay: entering ? `${i * 30}ms` : undefined,
                   }}
                   onMouseEnter={(e) => {
                     if (!isSelected) {

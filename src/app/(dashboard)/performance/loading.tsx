@@ -1,27 +1,29 @@
 // loading.tsx — performance page.
 //
-// The agent view (most common) has: header only, no filter bar, then PerformanceSkeleton.
-// The manager/founder view has a filter bar + ManagerPerformanceSkeleton inside a Suspense.
+// The manager/admin/founder views share one chrome: page header, filter bar
+// (sliders icon + agent search + Period dropdown), then the two-column roster
+// panel — so this file renders that shape and the founder/manager load is
+// seamless (the in-page Suspense fallback is the same ManagerPerformanceSkeleton).
 //
-// Since loading.tsx cannot know the role, we render the agent shape — it's the most
-// common and the mismatch on manager is less jarring than the wrong chrome for agents.
-// PerformanceSkeleton already covers KPI cards + effort cards + outcome card.
+// loading.tsx cannot know the role, so the agent view briefly shows this chrome
+// too — but only for the profile-fetch window: the agent branch in page.tsx
+// wraps its RPC in a Suspense whose fallback is PerformanceSkeleton (the agent
+// shape), so agents flip to their correct skeleton as soon as the role is known.
 
-import { PerformanceSkeleton } from './PerformanceSkeleton';
+import { ManagerPerformanceSkeleton } from './ManagerPerformanceSkeleton';
+import { PageHeaderSkeleton, FilterBarSkeleton } from '@/components/ui/PageSkeletons';
 
 export default function PerformanceLoading() {
   return (
     <main className="flex-1 min-w-0 p-8">
-      {/* Page header — no filter bar on agent view */}
-      <div style={{ marginBottom: 'var(--space-6)' }}>
-        <div
-          className="skeleton"
-          style={{ width: '200px', height: '36px', borderRadius: 'var(--radius-sm)' }}
-        />
-      </div>
+      {/* Page header */}
+      <PageHeaderSkeleton titleWidth={200} />
 
-      {/* KPI + effort + outcome cards — reuses the exact Suspense fallback */}
-      <PerformanceSkeleton />
+      {/* Filter bar — sliders icon + agent search + Period dropdown */}
+      <FilterBarSkeleton icon searchWidth="flex" chips={[96]} />
+
+      {/* Roster + detail panel — same shape as the in-page Suspense fallback */}
+      <ManagerPerformanceSkeleton />
     </main>
   );
 }

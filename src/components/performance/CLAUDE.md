@@ -1,5 +1,13 @@
 # src/components/performance/ — CLAUDE.md
 
+## Recharts loading rule (perf audit G-3)
+
+`CoreFourGrid`, `CallOutcomeBar`, and `DomainOverviewPanel` import Recharts, so
+their call sites (`AgentPerformanceShell`, `AgentDetailPanel`,
+`FounderPerformanceShell`) load them via `next/dynamic` with same-shape
+`.skeleton` placeholders — the chart chunk stays out of the `/performance`
+initial bundle. Import these three statically only from another lazy chunk.
+
 ## Component inventory
 
 | File | Role |

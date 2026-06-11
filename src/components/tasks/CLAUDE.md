@@ -5,6 +5,10 @@ Zero DB calls. Zero business logic. Zero service imports.
 
 Cross-feature data flows through `lib/` only.
 Every modal composes `src/components/ui/modal.tsx` — never reimplements chrome.
+Every create-task form composes `src/components/ui/TaskFormFields.tsx`
+(`FieldLabel`, `FieldError`, `PriorityChipRow`, `DueDateField` + `resolveDueAt`,
+`TaskTypeField`) — never re-express a priority chip, due-preset chip, or
+task-type radio list inline (dry-audit H-3 + L-4).
 
 ---
 
@@ -19,6 +23,8 @@ The canonical task detail modal. Used for personal tasks, group subtasks, and (v
 Props: `open`, `onClose`, `task`, `group?`, `assignee?`, `initialRemarks`, `callerProfile`, `currentUserName?`, `onTaskUpdated?`, `onTaskDeleted?`
 
 `AnimatePresence` is required at the **call site** — the modal does not wrap its own.
+
+**Loaded via `next/dynamic` at every call site** (perf audit G-1 — GroupTasksTab, MyTasksCalendarView, GroupTaskWorkspace). Never statically import the component; `SubTaskModalTaskUpdate` stays an `import type`. See `src/components/CLAUDE.md` "Heavy modal loading rule".
 
 ---
 
@@ -67,6 +73,8 @@ Composes `modal.tsx`. Fields: title, due presets, priority, tags, notes.
 Composes `modal.tsx` (`max-w-3xl`). Left live-preview + right form fields.
 `onCreated(group)` — parent converts to `TaskGroupRow` and prepends.
 
+Loaded via `next/dynamic` in `GroupTasksTab` behind `useMountOnFirstOpen` (perf G-1); `GroupTaskWithMeta` stays an `import type`.
+
 ---
 
 ### MyTasksCalendarView
@@ -76,12 +84,7 @@ Composes `modal.tsx` (`max-w-3xl`). Left live-preview + right form fields.
 The My Tasks tab UI. Two-column layout: `Calendar` (280px sticky left) + date-grouped sections (right).
 Mounted from `TasksShell` when `tab=personal`.
 
----
-
-### PersonalTasksTab (legacy — not mounted)
-
-`PersonalTasksTab.tsx` — superseded by `MyTasksCalendarView` on 2026-05-31.
-Do not extend. Safe to delete after all doc/comment references are removed.
+Task rows render through the module-scope **`CalendarTaskRow`** (`memo`, perf G-4): hover lives in the parent (`hoveredTaskId`), so the row receives a primitive `highlighted` flag plus `isLast`/`showDue`/`effectiveStatus`/`canComplete` primitives and `useCallback`'d handlers (`handleRowClick`, `setHoveredTaskId`, `handleToggle`). Keep new row props primitive/stable — never re-inline the row JSX.
 
 ---
 
@@ -91,6 +94,8 @@ Do not extend. Safe to delete after all doc/comment references are removed.
 
 Accordion group list. Subtasks lazy-loaded on first expand.
 `assignableUsers` fetched **once** at tab level — never per-group.
+
+`GroupRow` is `memo()`-ised (perf G-4): `onToggle` is `(groupId: string) => void` — the parent passes the one stable `useCallback`'d `toggleGroup`, never a per-row arrow. Keep new `GroupRow` props primitive/stable. `SubTaskModal` + `CreateGroupTaskModal` load via `next/dynamic` (the create modal behind `useMountOnFirstOpen`).
 
 ---
 
@@ -174,9 +179,9 @@ callerRole:    UserRole
 Composes `src/components/ui/modal.tsx` with `maxWidth="max-w-md"`. Five fields (in order):
 
 1. Lead search — 300ms debounced input calling `searchLeadsAction`, dropdown of results (name + phone + domain badge), selection locks the lead; scoped to caller's domain via action layer.
-2. Task type — radio list using `TASK_TYPES` / `TASK_TYPE_LABELS` from `task-types.ts` (same as `CreateLeadTaskModal`).
-3. Priority — three chip buttons (Urgent / High / Normal), default Normal.
-4. Due date + time — `DatePicker` with `showTime=true` from `src/components/ui/DatePicker.tsx`.
+2. Task type — `TaskTypeField` from `ui/TaskFormFields.tsx` (same as `CreateLeadTaskModal`).
+3. Priority — `PriorityChipRow` (Urgent / High / Normal), default Normal.
+4. Due date + time — `DueDateField` (no presets) wrapping `DatePicker` with `showTime`.
 5. Notes — optional `<textarea>` max 1000 chars.
 
 Calls `createLeadTaskAction` from `lib/actions/leads.ts` — **no new action**. On success builds a
@@ -195,8 +200,8 @@ Calls `createLeadTaskAction` from `lib/actions/leads.ts` — **no new action**. 
 | GiaTaskRow          | props only                                                   |
 | GiaDaySection       | props only                                                   |
 | CreateGiaTaskModal  | `searchLeadsAction` (lead picker), `createLeadTaskAction` (create) |
-| MyTasksCalendarView | `getPersonalTasksAction`, `listAgentsForDomain`, `getPersonalTaskTagsAction` |
-| GroupTasksTab       | `getGroupSubtasksAction`, `createSubtaskAction`, `listAgentsForDomain` |
+| MyTasksCalendarView | `getPersonalTasksAction`, `getPersonalTaskTagsAction` (assignable users via `initialAgents` prop) |
+| GroupTasksTab       | `getGroupSubtasksAction`, `createSubtaskAction` (assignable users via `initialAgents` prop) |
 | GroupTaskWorkspace  | `createSubtaskAction`, `getGroupSubtasksAction`, `getTaskRemarksAction` |
 | SubTaskModal        | `addTaskRemarkAction`, `updateTaskAction`, `updateChecklistAction`, `deleteTaskAction` |
 | CreatePersonalTaskModal | `createPersonalTaskAction`                               |

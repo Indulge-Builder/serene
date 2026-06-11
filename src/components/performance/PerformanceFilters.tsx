@@ -6,7 +6,7 @@ import { Calendar, SlidersHorizontal, X } from 'lucide-react';
 import { FilterDropdown } from '@/components/ui/FilterDropdown';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { SearchBar } from '@/components/ui/SearchBar';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import { BASE_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { buildFilterParams } from '@/lib/utils/filter-params';
 import type { PerformancePeriod } from '@/lib/services/performance-service';

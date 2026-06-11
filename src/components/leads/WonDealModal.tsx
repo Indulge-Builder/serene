@@ -98,7 +98,7 @@ export function WonDealModal({ leadId: _leadId, isPending, error, onClose, onCon
               type="button"
               onClick={handleNext}
               disabled={!dealType || isPending}
-              style={{ background: 'var(--color-success)', color: 'var(--theme-text-inverse)' }}
+              style={{ background: 'var(--color-success)', color: 'var(--color-success-fg)' }}
             >
               Next
               <ChevronRight style={{ width: '0.875rem', height: '0.875rem', marginLeft: 'var(--space-1)' }} />
@@ -139,7 +139,7 @@ export function WonDealModal({ leadId: _leadId, isPending, error, onClose, onCon
               form="won-deal-form"
               disabled={isPending}
               loading={isPending}
-              style={{ background: 'var(--color-success)', color: 'var(--theme-text-inverse)' }}
+              style={{ background: 'var(--color-success)', color: 'var(--color-success-fg)' }}
             >
               {isPending ? 'Saving…' : 'Confirm Won'}
             </Button>
@@ -213,7 +213,7 @@ export function WonDealModal({ leadId: _leadId, isPending, error, onClose, onCon
                         width:        '6px',
                         height:       '6px',
                         borderRadius: 'var(--radius-full)',
-                        background:   'var(--theme-text-inverse)',
+                        background:   'var(--color-success-fg)',
                       }}
                     />
                   )}

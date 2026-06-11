@@ -4,7 +4,8 @@
 //
 // Lead key families:
 //   lead:list:v:{role}:{domain}         — version counter (INCR on any lead mutation)
-//   lead:list:{role}:{callerDomain}:{userId}:{filterHash}:v{N}  — versioned list cache (30s)
+//   lead:list:{role}:{callerDomain}:{userId}:{filterHash}  — version-validated list cache (30s);
+//     value is { v, result } where v is the counter value at write time (perf audit C-3)
 //   lead:filter-options:{role}:{domain}:{targetDomain}          — filter dropdown data (300s)
 //   lead:row:id:{leadId}     — full lead row by PK (120s, explicit del on mutation)
 //   lead:row:slug:{slug}     — full lead row by slug (120s, explicit del on mutation)
@@ -47,12 +48,15 @@ export const REDIS_KEYS = {
   leadListVersion: (role: string, domain: string) =>
     `lead:list:v:${role}:${domain}`,
 
-  // Canonical shape: lead:list:{role}:{callerDomain}:{userId}:{filterHash}:v{version}
+  // Canonical shape: lead:list:{role}:{callerDomain}:{userId}:{filterHash}
   // role and userId each appear exactly once. callerDomain is the session-verified
   // profile domain — not filters.domain — so cross-domain bleed is impossible.
-  // version is embedded so incrementing the counter auto-voids all prior pages.
-  leadList: (role: string, callerDomain: string, userId: string, filterHash: string, version: number) =>
-    `lead:list:${role}:${callerDomain}:${userId}:${filterHash}:v${version}`,
+  // The version is NOT in the key (perf audit C-3): the stored value carries the
+  // counter value it was written under, and the reader validates it against the
+  // live counter in the same MGET — one Upstash round trip instead of two, while
+  // an INCR still atomically voids every prior page.
+  leadList: (role: string, callerDomain: string, userId: string, filterHash: string) =>
+    `lead:list:${role}:${callerDomain}:${userId}:${filterHash}`,
 
   leadFilterOptions: (role: string, domain: string, targetDomain: string) =>
     `lead:filter-options:${role}:${domain}:${targetDomain}`,
@@ -81,8 +85,8 @@ export const REDIS_KEYS = {
 //
 // Arrays are sorted before joining so [a,b] and [b,a] produce the same key.
 // Null/undefined values become '' so the component count stays fixed.
-// version is the current value of leadListVersion(role, callerDomain) — always
-// read from Redis immediately before calling this function.
+// The leadListVersion counter is validated against the stored value's `v`
+// field at read time, not embedded in the key (perf audit C-3).
 // ─────────────────────────────────────────────
 export function buildLeadListKey(
   role:         string,
@@ -102,7 +106,6 @@ export function buildLeadListKey(
     date_to?:           string | null;
     sort_order?:        string | null;
   },
-  version: number,
 ): string {
   const status  = [...(filters.status  ?? [])].sort().join(',');
   const outcome = [...(filters.last_call_outcome ?? [])].sort().join(',');
@@ -122,7 +125,7 @@ export function buildLeadListKey(
     filters.sort_order ?? 'desc',
   ].join(':');
 
-  return REDIS_KEYS.leadList(role, callerDomain, userId, filterHash, version);
+  return REDIS_KEYS.leadList(role, callerDomain, userId, filterHash);
 }
 
 // TTL values in seconds — never milliseconds.

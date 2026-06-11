@@ -8,7 +8,8 @@ import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { FilterDropdown } from '@/components/ui/FilterDropdown';
 import { Modal } from '@/components/ui/modal';
-import { createManualLead, listAgentsForDomain } from '@/lib/actions/leads';
+import { createManualLead } from '@/lib/actions/leads';
+import { getAssignableUsersAction } from '@/lib/actions/profiles';
 import { CreateManualLeadSchema } from '@/lib/validations/lead-schema';
 import { DOMAIN_LABELS, GIA_DOMAIN_FILTER_ITEMS } from '@/lib/constants/domains';
 import { LEAD_SOURCE_OPTIONS } from '@/lib/constants/lead-sources';
@@ -161,7 +162,7 @@ export function AddLeadModal({
     let cancelled = false;
 
     startTransition(async () => {
-      const result = await listAgentsForDomain(watchedDomain);
+      const result = await getAssignableUsersAction(watchedDomain as AppDomain);
       if (cancelled) return;
       const list = result.data ?? [];
       setAgents(list);

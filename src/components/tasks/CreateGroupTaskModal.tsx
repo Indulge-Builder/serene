@@ -8,21 +8,28 @@ import {
   useState,
   useTransition,
 } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import { Plus, X, User, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { Avatar } from '@/components/ui/Avatar';
+import { Button } from '@/components/ui/Button';
+import {
+  FieldLabel,
+  FieldError,
+  PriorityChipRow,
+  DueDateField,
+} from '@/components/ui/TaskFormFields';
 import { createGroupTaskAction, createSubtaskAction } from '@/lib/actions/tasks';
-import { listAgentsForDomain } from '@/lib/actions/leads';
+import { getAssignableUsersAction } from '@/lib/actions/profiles';
 import { toast } from '@/lib/toast';
 import { CreateGroupTaskSchema } from '@/lib/validations/task-schemas';
 import * as LucideIcons from 'lucide-react';
-import { TASK_PRIORITY, GROUP_TASK_ACCENT_COLORS, GROUP_TASK_ICONS } from '@/lib/constants/task-constants';
+import { GROUP_TASK_ACCENT_COLORS, GROUP_TASK_ICONS } from '@/lib/constants/task-constants';
 import { DOMAIN_LABELS, GIA_DOMAINS } from '@/lib/constants/domains';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 import type { TaskGroup, TaskPriority, AppDomain, UserRole } from '@/lib/types/database';
-import type { AssignableUser } from '@/components/tasks/AssigneePickerModal';
+import type { AssignableUser } from '@/lib/types';
 
 // ─── Extended group type — accent/icon are UI-only until migration adds DB cols ─
 
@@ -50,19 +57,6 @@ interface SubtaskDraft {
   assignee:   AssignableUser | null;
   dueAt:      Date | null;
 }
-
-// ─── Shared field-label style ──────────────────────────────────────────────────
-
-const FIELD_LABEL_STYLE: React.CSSProperties = {
-  display:       'block',
-  fontFamily:    'var(--font-sans)',
-  fontSize:      'var(--text-2xs)',
-  fontWeight:    'var(--weight-semibold)',
-  letterSpacing: 'var(--tracking-widest)',
-  textTransform: 'uppercase',
-  color:         'var(--theme-text-tertiary)',
-  marginBottom:  'var(--space-1)',
-};
 
 const INPUT_BASE: React.CSSProperties = {
   display:      'block',
@@ -92,58 +86,6 @@ function useInputFocus() {
       e.currentTarget.style.boxShadow   = '';
     },
   };
-}
-
-// ─── Priority pills ─────────────────────────────────────────────────────────────
-
-function PriorityPills({
-  value,
-  onChange,
-  disabled,
-}: {
-  value:    TaskPriority;
-  onChange: (p: TaskPriority) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-      {(['urgent', 'high', 'normal'] as TaskPriority[]).map((p) => {
-        const cfg      = TASK_PRIORITY[p];
-        const isActive = value === p;
-        return (
-          <button
-            key={p}
-            type="button"
-            disabled={disabled}
-            onClick={() => onChange(p)}
-            style={{
-              display:      'inline-flex',
-              alignItems:   'center',
-              height:       28,
-              padding:      '0 var(--space-3)',
-              borderRadius: 'var(--radius-full)',
-              border:       isActive
-                ? `1.5px solid ${cfg.color}`
-                : '1px solid var(--theme-paper-border)',
-              background:   isActive
-                ? `color-mix(in srgb, ${cfg.color} 12%, transparent)`
-                : 'transparent',
-              color:        isActive ? cfg.color : 'var(--theme-text-secondary)',
-              fontFamily:   'var(--font-sans)',
-              fontSize:     'var(--text-xs)',
-              fontWeight:   isActive ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-              cursor:       disabled ? 'not-allowed' : 'pointer',
-              opacity:      disabled ? 0.6 : 1,
-              transition:   'var(--transition-hover)',
-              whiteSpace:   'nowrap',
-            }}
-          >
-            {cfg.label}
-          </button>
-        );
-      })}
-    </div>
-  );
 }
 
 // ─── Assignee chip (inline) ────────────────────────────────────────────────────
@@ -406,52 +348,12 @@ function SubtaskRow({
       />
 
       {/* Priority inline */}
-      <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
-        {(['urgent', 'high', 'normal'] as TaskPriority[]).map((p) => {
-          const cfg      = TASK_PRIORITY[p];
-          const isActive = draft.priority === p;
-          if (!isActive && draft.priority !== p) {
-            // show only a small dot for inactive
-          }
-          return (
-            <button
-              key={p}
-              type="button"
-              title={cfg.label}
-              aria-label={cfg.label}
-              disabled={disabled}
-              onClick={() => onPriorityChange(p)}
-              style={{
-                width:        20,
-                height:        20,
-                borderRadius: 'var(--radius-full)',
-                border:       isActive ? `2px solid ${cfg.color}` : '1.5px solid var(--theme-paper-border)',
-                background:   isActive ? `color-mix(in srgb, ${cfg.color} 14%, transparent)` : 'transparent',
-                cursor:       disabled ? 'not-allowed' : 'pointer',
-                flexShrink:   0,
-                transition:   'var(--transition-hover)',
-                position:     'relative',
-                display:      'flex',
-                alignItems:   'center',
-                justifyContent: 'center',
-              }}
-            >
-              {isActive && (
-                <span
-                  style={{
-                    width:        6,
-                    height:       6,
-                    borderRadius: 'var(--radius-full)',
-                    background:   cfg.color,
-                    display:      'block',
-                    flexShrink:   0,
-                  }}
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
+      <PriorityChipRow
+        variant="dot"
+        value={draft.priority}
+        onChange={onPriorityChange}
+        disabled={disabled}
+      />
 
       {/* Assignee — warn when title is filled but no assignee (subtask will be skipped) */}
       <AssigneeInlinePicker
@@ -550,17 +452,9 @@ export function CreateGroupTaskModal({
     const d = isManagerLocked ? callerDomain : domain;
     if (!d) { setAssignableUsers([]); return; }
     let cancelled = false;
-    listAgentsForDomain(d as AppDomain).then((r) => {
+    getAssignableUsersAction(d as AppDomain).then((r) => {
       if (cancelled || !r.data) return;
-      setAssignableUsers(
-        r.data.map((a: { id: string; full_name: string }) => ({
-          id:         a.id,
-          full_name:  a.full_name,
-          avatar_url: null,
-          role:       'agent' as const,
-          domain:     (d as AppDomain),
-        })),
-      );
+      setAssignableUsers(r.data);
     });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -704,65 +598,27 @@ export function CreateGroupTaskModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canSubmit, title, description, domain, priority, dueAt, drafts, isManagerLocked, callerDomain]);
 
-  // ── Status label ─────────────────────────────────────────────────────────────
+  // ── Footer ───────────────────────────────────────────────────────────────────
   const submitLabel = isPending
     ? phase === 'creating-subtasks'
-      ? `Adding subtasks…`
+      ? 'Adding subtasks…'
       : 'Creating…'
-    : (
-      <>
-        <Plus style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
-        Create Group Task
-      </>
-    );
+    : 'Create Group Task';
 
-  // ── Footer ───────────────────────────────────────────────────────────────────
   const footer = (
     <>
-      <button
-        type="button"
-        onClick={onClose}
-        disabled={isPending}
-        style={{
-          height:       36,
-          padding:      '0 var(--space-4)',
-          borderRadius: 'var(--radius-sm)',
-          border:       '1px solid var(--theme-paper-border)',
-          background:   'transparent',
-          color:        'var(--theme-text-secondary)',
-          fontFamily:   'var(--font-sans)',
-          fontSize:     'var(--text-sm)',
-          fontWeight:   'var(--weight-semibold)',
-          cursor:       isPending ? 'not-allowed' : 'pointer',
-          opacity:      isPending ? 0.5 : 1,
-          transition:   'var(--transition-hover)',
-        }}
-      >
+      <Button variant="ghost" onClick={onClose} disabled={isPending}>
         Cancel
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="primary"
         onClick={handleSubmit}
+        loading={isPending}
         disabled={!canSubmit}
-        style={{
-          height:       36,
-          display:      'inline-flex',
-          alignItems:   'center',
-          gap:          'var(--space-2)',
-          padding:      '0 var(--space-5)',
-          borderRadius: 'var(--radius-sm)',
-          border:       'none',
-          background:   canSubmit ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
-          color:        canSubmit ? 'var(--theme-accent-fg)' : 'var(--theme-text-tertiary)',
-          fontFamily:   'var(--font-sans)',
-          fontSize:     'var(--text-sm)',
-          fontWeight:   'var(--weight-semibold)',
-          cursor:       canSubmit ? 'pointer' : 'not-allowed',
-          transition:   'var(--transition-interactive)',
-        }}
+        iconLeft={Plus}
       >
         {submitLabel}
-      </button>
+      </Button>
     </>
   );
 
@@ -780,7 +636,7 @@ export function CreateGroupTaskModal({
 
         {/* Title */}
         <div>
-          <span style={FIELD_LABEL_STYLE}>Title <span style={{ color: 'var(--color-danger)' }}>*</span></span>
+          <FieldLabel required>Title</FieldLabel>
           <input
             ref={titleRef}
             type="text"
@@ -796,16 +652,12 @@ export function CreateGroupTaskModal({
             }}
             {...focusHandlers}
           />
-          {titleError && (
-            <p style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--color-danger)', margin: 'var(--space-1) 0 0' }}>
-              {titleError}
-            </p>
-          )}
+          <FieldError message={titleError || undefined} />
         </div>
 
         {/* Description */}
         <div>
-          <span style={FIELD_LABEL_STYLE}>Description</span>
+          <FieldLabel>Description</FieldLabel>
           <textarea
             ref={descRef}
             value={description}
@@ -849,7 +701,7 @@ export function CreateGroupTaskModal({
           {/* Domain — hidden for managers (locked to their domain) */}
           {!isManagerLocked && (
             <div>
-              <span style={FIELD_LABEL_STYLE}>Domain <span style={{ color: 'var(--color-danger)' }}>*</span></span>
+              <FieldLabel required>Domain</FieldLabel>
               <div style={{ position: 'relative' }}>
                 <select
                   value={domain}
@@ -880,33 +732,25 @@ export function CreateGroupTaskModal({
                   <path d="M2 4l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
-              {domainError && (
-                <p style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--color-danger)', margin: 'var(--space-1) 0 0' }}>
-                  {domainError}
-                </p>
-              )}
+              <FieldError message={domainError || undefined} />
             </div>
           )}
 
           {/* Priority */}
           <div>
-            <span style={FIELD_LABEL_STYLE}>Priority</span>
-            <PriorityPills value={priority} onChange={setPriority} disabled={isPending} />
+            <FieldLabel>Priority</FieldLabel>
+            <PriorityChipRow value={priority} onChange={setPriority} disabled={isPending} />
           </div>
 
           {/* Due date */}
-          <div>
-            <span style={FIELD_LABEL_STYLE}>Due Date</span>
-            <DatePicker
-              value={dueAt}
-              onChange={setDueAt}
-              disabled={isPending}
-              placeholder="Optional"
-              showTime
-              style={{ width: '100%' }}
-              aria-label="Group due date"
-            />
-          </div>
+          <DueDateField
+            label="Due Date"
+            date={dueAt}
+            onDateChange={setDueAt}
+            disabled={isPending}
+            placeholder="Optional"
+            pickerStyle={{ width: '100%' }}
+          />
         </div>
 
         {/* ── Section: Appearance (colour + icon) ─────────────────────────── */}
@@ -919,7 +763,7 @@ export function CreateGroupTaskModal({
         >
           {/* Accent colour */}
           <div>
-            <span style={FIELD_LABEL_STYLE}>Accent colour</span>
+            <FieldLabel>Accent colour</FieldLabel>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
               {GROUP_TASK_ACCENT_COLORS.map((c) => (
                 <button
@@ -952,7 +796,7 @@ export function CreateGroupTaskModal({
 
           {/* Icon */}
           <div>
-            <span style={FIELD_LABEL_STYLE}>Icon</span>
+            <FieldLabel>Icon</FieldLabel>
             <div
               style={{
                 display:   'flex',
@@ -1036,10 +880,10 @@ export function CreateGroupTaskModal({
                 alignItems:          'center',
               }}
             >
-              <span style={{ ...FIELD_LABEL_STYLE, marginBottom: 0 }}>Title</span>
-              <span style={{ ...FIELD_LABEL_STYLE, marginBottom: 0, minWidth: 68 }}>Priority</span>
-              <span style={{ ...FIELD_LABEL_STYLE, marginBottom: 0, minWidth: 72 }}>Assignee</span>
-              <span style={{ ...FIELD_LABEL_STYLE, marginBottom: 0, minWidth: 100 }}>Due</span>
+              <FieldLabel style={{ marginBottom: 0 }}>Title</FieldLabel>
+              <FieldLabel style={{ marginBottom: 0, minWidth: 68 }}>Priority</FieldLabel>
+              <FieldLabel style={{ marginBottom: 0, minWidth: 72 }}>Assignee</FieldLabel>
+              <FieldLabel style={{ marginBottom: 0, minWidth: 100 }}>Due</FieldLabel>
               <span style={{ width: 24 }} />
             </div>
           )}

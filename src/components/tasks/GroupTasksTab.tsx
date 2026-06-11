@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -8,9 +9,10 @@ import {
   useState,
   useTransition,
 } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowUpRight,
   ChevronRight,
@@ -25,26 +27,43 @@ import * as LucideIcons from 'lucide-react';
 import { createSubtaskAction, getGroupSubtasksAction, getTaskRemarksAction, deleteGroupTaskAction } from '@/lib/actions/tasks';
 import { TaskCompletionCircle } from '@/components/tasks/TaskCompletionCircle';
 import { useCreateTriggerModal } from '@/hooks/useCreateTriggerModal';
+import { useMountOnFirstOpen } from '@/hooks/useMountOnFirstOpen';
 import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';
 import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
-import { formatRelativeTime } from '@/lib/utils/dates';
+import { formatRelativeTime, formatDate } from '@/lib/utils/dates';
+import { getInitials, hashString } from '@/lib/utils/strings';
 import { toast } from '@/lib/toast';
-import { SubTaskModal, type SubTaskModalTaskUpdate } from '@/components/tasks/SubTaskModal';
+import type { SubTaskModalTaskUpdate } from '@/components/tasks/SubTaskModal';
 import { TaskStatusIcon } from '@/components/tasks/TaskStatusIcon';
-import { AssigneePickerModal, type AssignableUser } from '@/components/tasks/AssigneePickerModal';
-import { CreateGroupTaskModal, type GroupTaskWithMeta } from '@/components/tasks/CreateGroupTaskModal';
+import { AssigneePickerModal } from '@/components/tasks/AssigneePickerModal';
+import type { AssignableUser } from '@/lib/types';
+import type { GroupTaskWithMeta } from '@/components/tasks/CreateGroupTaskModal';
 import { TASK_STATUS, TASK_PRIORITY, GROUP_TASK_ACCENT_COLORS, GROUP_TASK_ICONS } from '@/lib/constants/task-constants';
 import type { TaskGroupRow, SubtaskWithAssignee, TaskRemarkWithAuthor } from '@/lib/services/tasks-service';
 import { Avatar } from '@/components/ui/Avatar';
 import { AvatarStack } from '@/components/ui/AvatarStack';
+import { CollapseReveal } from '@/components/ui/CollapseReveal';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { Task, TaskGroup, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
 import { TASK_STATUS_LABELS } from '@/lib/constants/task-types';
-import { EASE_OUT_EXPO, ENTER_DURATION, FAST_DURATION } from '@/lib/constants/motion';
+import { EASE_OUT_EXPO, ENTER_DURATION, EXIT_DURATION, FAST_DURATION } from '@/lib/constants/motion';
 import {
   filterGroupRows,
   groupFiltersActiveCount,
   type GroupTaskFiltersState,
 } from '@/lib/utils/task-client-filters';
+
+// Load-on-intent (perf audit G-1): SubTaskModal (1,672 lines) and
+// CreateGroupTaskModal (974 lines) stay out of the /tasks route chunk until
+// a row / the create trigger is first opened.
+const SubTaskModal = dynamic(
+  () => import('@/components/tasks/SubTaskModal').then((m) => m.SubTaskModal),
+  { ssr: false },
+);
+const CreateGroupTaskModal = dynamic(
+  () => import('@/components/tasks/CreateGroupTaskModal').then((m) => m.CreateGroupTaskModal),
+  { ssr: false },
+);
 
 // ─── Extended row type — carries UI-only accent/icon until DB migration ─────────
 
@@ -68,12 +87,6 @@ interface GroupTasksTabProps {
 }
 
 // ─── Deterministic fallback accent + icon from row id/title hash ──────────────
-
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
 
 function getAccentForRow(row: GroupTaskRowWithMeta): string {
   if (row.accent_color) return row.accent_color;
@@ -177,9 +190,7 @@ function DueDateChip({ dueAt }: { dueAt: string }) {
   const isOverdue = due < now && due.toDateString() !== now.toDateString();
   const isToday   = due.toDateString() === now.toDateString();
 
-  const day   = due.getDate();
-  const month = due.toLocaleString('en-IN', { month: 'short' });
-  const label = `${day} ${month}`;
+  const label = formatDate(due, 'd MMM');
 
   let bg   = 'var(--theme-paper-subtle)';
   let text = 'var(--theme-text-secondary)';
@@ -325,7 +336,7 @@ function SubtaskStatusBadge({ status }: { status: TaskStatus }) {
 interface GroupRowProps {
   group:            GroupTaskRowWithMeta;
   isExpanded:       boolean;
-  onToggle:         () => void;
+  onToggle:         (groupId: string) => void;
   currentUserId:    string;
   currentUserName:  string;
   callerRole:       UserRole;
@@ -338,7 +349,10 @@ interface GroupRowProps {
 
 const HEADER_CLICK_DELAY_MS = 220;
 
-function GroupRow({
+// memo (G-4): row objects keep their identity across filter keystrokes and
+// expand/collapse, and every callback prop is useCallback'd in the parent —
+// so toggling one group re-renders two rows, not the whole accordion.
+const GroupRow = memo(function GroupRow({
   group,
   isExpanded,
   onToggle,
@@ -368,9 +382,9 @@ function GroupRow({
     if (headerClickTimerRef.current) clearTimeout(headerClickTimerRef.current);
     headerClickTimerRef.current = setTimeout(() => {
       headerClickTimerRef.current = null;
-      onToggle();
+      onToggle(group.id);
     }, HEADER_CLICK_DELAY_MS);
-  }, [onToggle]);
+  }, [onToggle, group.id]);
 
   const handleHeaderDoubleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -569,7 +583,7 @@ function GroupRow({
         tabIndex={0}
         onClick={handleHeaderClick}
         onDoubleClick={handleHeaderDoubleClick}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle(); }}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle(group.id); }}
         style={{
           display:    'flex',
           alignItems: 'center',
@@ -625,6 +639,7 @@ function GroupRow({
             }}
             aria-label={`Open ${group.title}`}
             title="Open workspace (double-click row)"
+            className="eia-icon-lift-hover"
             whileTap={{ scale: 0.92 }}
             transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
             style={{
@@ -791,124 +806,28 @@ function GroupRow({
         </div>
       </div>
 
-      {/* ── Confirm delete dialog — portaled to body so Framer transform doesn't trap fixed children */}
-      {typeof window !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {confirmDeleteOpen && (
-            <>
-              <motion.div
-                key={`delete-group-backdrop-${group.id}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                onClick={(e) => { e.stopPropagation(); if (!isDeleting) setConfirmDeleteOpen(false); }}
-                style={{
-                  position:   'fixed',
-                  inset:      0,
-                  background: 'var(--overlay-bg-light)',
-                  zIndex:     'var(--z-overlay)' as React.CSSProperties['zIndex'],
-                }}
-              />
-              <motion.div
-                key={`delete-group-dialog-${group.id}`}
-                initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  position:       'fixed',
-                  top:            '50%',
-                  left:           '50%',
-                  transform:      'translate(-50%, -50%)',
-                  zIndex:         'var(--z-modal)' as React.CSSProperties['zIndex'],
-                  background:     'var(--theme-paper)',
-                  borderRadius:   'var(--radius-lg)',
-                  boxShadow:      'var(--shadow-4)',
-                  width:          'min(420px, calc(100vw - var(--space-8)))',
-                  padding:        'var(--space-6)',
-                }}
-              >
-                <h3
-                  style={{
-                    fontFamily:  'var(--font-serif)',
-                    fontSize:    'var(--text-lg)',
-                    fontWeight:  'var(--weight-semibold)',
-                    color:       'var(--theme-text-primary)',
-                    margin:      '0 0 var(--space-2)',
-                  }}
-                >
-                  Delete group task?
-                </h3>
-                <p
-                  style={{
-                    fontFamily: 'var(--font-sans)',
-                    fontSize:   'var(--text-sm)',
-                    color:      'var(--theme-text-secondary)',
-                    margin:     '0 0 var(--space-5)',
-                    lineHeight: 1.5,
-                  }}
-                >
-                  <strong style={{ color: 'var(--theme-text-primary)' }}>{group.title}</strong> and all its subtasks will be permanently deleted. This cannot be undone.
-                </p>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteOpen(false); }}
-                    disabled={isDeleting}
-                    style={{
-                      padding:      'var(--space-2) var(--space-4)',
-                      borderRadius: 'var(--radius-sm)',
-                      border:       '1px solid var(--theme-paper-border)',
-                      background:   'transparent',
-                      fontFamily:   'var(--font-sans)',
-                      fontSize:     'var(--text-sm)',
-                      color:        'var(--theme-text-secondary)',
-                      cursor:       isDeleting ? 'not-allowed' : 'pointer',
-                      opacity:      isDeleting ? 0.5 : 1,
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); handleDeleteGroup(); }}
-                    disabled={isDeleting}
-                    style={{
-                      padding:      'var(--space-2) var(--space-4)',
-                      borderRadius: 'var(--radius-sm)',
-                      border:       'none',
-                      background:   isDeleting ? 'var(--color-danger-light)' : 'var(--color-danger)',
-                      fontFamily:   'var(--font-sans)',
-                      fontSize:     'var(--text-sm)',
-                      fontWeight:   'var(--weight-semibold)',
-                      color:        isDeleting ? 'var(--color-danger-text)' : 'var(--color-danger-fg, #fff)',
-                      cursor:       isDeleting ? 'not-allowed' : 'pointer',
-                      transition:   'var(--transition-interactive)',
-                    }}
-                  >
-                    {isDeleting ? 'Deleting…' : 'Delete'}
-                  </button>
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>,
-        document.body,
-      )}
+      {/* ── Confirm delete — ConfirmDialog owns the portal + z-index contract */}
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        dialogKey={`delete-group-${group.id}`}
+        title="Delete group task?"
+        body={
+          <>
+            <strong style={{ color: 'var(--theme-text-primary)' }}>{group.title}</strong> and all its subtasks will be permanently deleted. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        pendingLabel="Deleting…"
+        danger
+        pending={isDeleting}
+        onConfirm={handleDeleteGroup}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
 
       {/* ── Expanded subtasks ───────────────────────────────────────────────── */}
       <AnimatePresence initial={false}>
         {isExpanded && (
-          <motion.div
-            key={`subtasks-${group.id}`}
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.28, ease: EASE_OUT_EXPO }}
-            style={{ overflow: 'hidden' }}
-          >
+          <CollapseReveal key={`subtasks-${group.id}`} duration={EXIT_DURATION}>
             <div style={{ height: 1, background: 'var(--theme-paper-border)' }} />
 
             <div style={{ background: 'var(--theme-paper-subtle)' }}>
@@ -1053,7 +972,7 @@ function GroupRow({
                               userSelect: 'none',
                             }}
                           >
-                            {subtask.assignee.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            {getInitials(subtask.assignee.full_name)}
                           </span>
                         </span>
                       )}
@@ -1083,14 +1002,7 @@ function GroupRow({
               {/* Add subtask row */}
               <AnimatePresence>
                 {showAddSubtask ? (
-                  <motion.div
-                    key="add-subtask-row"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
-                    style={{ overflow: 'hidden' }}
-                  >
+                  <CollapseReveal key="add-subtask-row" duration={0.18}>
                     <div
                       style={{
                         display:    'flex',
@@ -1183,7 +1095,7 @@ function GroupRow({
                         Cancel
                       </button>
                     </div>
-                  </motion.div>
+                  </CollapseReveal>
                 ) : (
                   <motion.button
                     key="add-subtask-trigger"
@@ -1256,12 +1168,12 @@ function GroupRow({
                 />,
                 document.body,
               )}
-          </motion.div>
+          </CollapseReveal>
         )}
       </AnimatePresence>
     </motion.div>
   );
-}
+});
 
 // ─── Main component ─────────────────────────────────────────────────────────────
 
@@ -1299,12 +1211,14 @@ export function GroupTasksTab({
   const assignableUsers: AssignableUser[] = initialAgents;
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const mountCreateModal = useMountOnFirstOpen(createModalOpen);
 
   useCreateTriggerModal(createTrigger, () => setCreateModalOpen(true));
 
-  function toggleGroup(id: string) {
+  // Stable identity so memo(GroupRow) skips untouched rows on expand/collapse (G-4)
+  const toggleGroup = useCallback((id: string) => {
     setExpandedGroupId((prev) => (prev === id ? null : id));
-  }
+  }, []);
 
   const handleGroupCountsChange = useCallback((
     groupId: string,
@@ -1396,7 +1310,7 @@ export function GroupTasksTab({
             key={group.id}
             group={group}
             isExpanded={expandedGroupId === group.id}
-            onToggle={() => toggleGroup(group.id)}
+            onToggle={toggleGroup}
             currentUserId={currentUserId}
             currentUserName={currentUserName}
             callerRole={callerRole}
@@ -1409,13 +1323,15 @@ export function GroupTasksTab({
         ))
       )}
 
-      <CreateGroupTaskModal
-        open={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        onCreated={handleGroupCreated}
-        callerRole={callerRole}
-        callerDomain={callerDomain}
-      />
+      {mountCreateModal && (
+        <CreateGroupTaskModal
+          open={createModalOpen}
+          onClose={() => setCreateModalOpen(false)}
+          onCreated={handleGroupCreated}
+          callerRole={callerRole}
+          callerDomain={callerDomain}
+        />
+      )}
     </div>
   );
 }

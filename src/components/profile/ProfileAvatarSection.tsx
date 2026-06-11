@@ -6,13 +6,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { createClient }        from "@/lib/supabase/client";
 import { updateProfileAvatar } from "@/lib/actions/profiles";
 import { formErrors }          from "@/lib/validations/form-errors";
+import { getInitials }         from "@/lib/utils/strings";
 import type { Profile }        from "@/lib/types/database";
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return (parts[0]?.[0] ?? "?").toUpperCase();
-  return ((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase();
-}
 
 type Props = { profile: Profile };
 
@@ -152,7 +147,7 @@ export function ProfileAvatarSection({ profile }: Props) {
           style={{
             position:       "absolute",
             inset:          0,
-            background:     "rgba(0,0,0,0.52)",
+            background:     "var(--overlay-scrim)",
             display:        "flex",
             alignItems:     "center",
             justifyContent: "center",
@@ -171,7 +166,7 @@ export function ProfileAvatarSection({ profile }: Props) {
             style={{
               position:       "absolute",
               inset:          0,
-              background:     "rgba(0,0,0,0.52)",
+              background:     "var(--overlay-scrim)",
               display:        "flex",
               alignItems:     "center",
               justifyContent: "center",

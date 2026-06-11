@@ -1,118 +1,57 @@
-// Skeleton — admin/ad-creatives page chrome.
-// Mirrors the AdCreativesManager: p-8, manager-internal header (title + "Upload Video" button
-// + search bar), then a grid of ad creative cards.
-// 6 card skeletons in a responsive 3-column grid.
+// Skeleton — admin/ad-creatives page.
+// Mirrors AdCreativesManager exactly: canonical page header (h1 + Add Creative
+// CTA), the paper filter bar (sliders icon + search + count), then a vertical
+// list of horizontal creative row cards (48×64 video thumb · title/subtitle ·
+// Edit/Delete buttons). The old 3-column 16:9 thumbnail grid no longer exists.
+
+import {
+  PageHeaderSkeleton,
+  FilterBarSkeleton,
+  SkeletonCard,
+  Shimmer,
+  skeletonStagger,
+} from '@/components/ui/PageSkeletons';
 
 export default function AdCreativesLoading() {
   return (
     <main className="flex-1 p-8">
-      {/* AdCreativesManager owns its own header inside the client component.
-          Match: title skeleton + upload button skeleton + search bar skeleton. */}
-      <div
-        style={{
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: 'space-between',
-          gap:            'var(--space-4)',
-          marginBottom:   'var(--space-5)',
-        }}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-          <div
-            className="skeleton"
-            style={{ width: '160px', height: '28px', borderRadius: 'var(--radius-sm)' }}
-          />
-          <div
-            className="skeleton"
-            style={{ width: '100px', height: '12px', borderRadius: 'var(--radius-xs)' }}
-          />
-        </div>
-        <div
-          className="skeleton"
-          style={{ width: '130px', height: '36px', borderRadius: 'var(--radius-sm)', flexShrink: 0 }}
-        />
-      </div>
+      {/* Row 1 — page header: title left, Add Creative CTA right */}
+      <PageHeaderSkeleton titleWidth={190} actionWidth={140} />
 
-      {/* Filter / search strip */}
-      <div
-        style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-3)',
-          marginBottom: 'var(--space-5)',
-        }}
-      >
-        <div
-          className="skeleton"
-          style={{ width: '240px', height: '36px', borderRadius: 'var(--radius-sm)' }}
-        />
-        <div
-          className="skeleton"
-          style={{ width: '60px', height: '12px', borderRadius: 'var(--radius-xs)', marginLeft: 'auto' }}
-        />
-      </div>
+      {/* Row 2 — paper filter bar: sliders icon + search + count */}
+      <FilterBarSkeleton icon searchWidth="flex" countWidth={70} />
 
-      {/* Ad creative card grid — 3 columns */}
-      <style>{`
-        .eia-ac-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: var(--space-4);
-        }
-        @media (max-width: 900px) {
-          .eia-ac-grid { grid-template-columns: repeat(2, 1fr); }
-        }
-        @media (max-width: 560px) {
-          .eia-ac-grid { grid-template-columns: 1fr; }
-        }
-      `}</style>
+      {/* Row 3 — creative row cards (flex column, gap-2) */}
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 6 }).map((_, i) => {
+          const delay = skeletonStagger(i);
+          return (
+            <SkeletonCard key={i} style={{ flexWrap: 'nowrap' }}>
+              {/* Video thumbnail — 48×64 portrait */}
+              <Shimmer w={48} h={64} r="var(--radius-sm)" delay={delay} style={{ flexShrink: 0 }} />
 
-      <div className="eia-ac-grid">
-        {[0, 80, 160, 160, 240, 320].map((delay, i) => (
-          <div
-            key={i}
-            style={{
-              background:   'var(--theme-paper)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow:    'var(--shadow-1)',
-              overflow:     'hidden',
-            }}
-          >
-            {/* Video thumbnail placeholder — 9:16 aspect */}
-            <div
-              className="skeleton"
-              style={{
-                width:          '100%',
-                aspectRatio:    '16 / 9',
-                borderRadius:   0,
-                animationDelay: `${delay}ms`,
-              }}
-            />
-            {/* Card body */}
-            <div style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              {/* Title + subtitle */}
               <div
-                className="skeleton"
-                style={{ width: '140px', height: '13px', borderRadius: 'var(--radius-xs)', animationDelay: `${delay}ms` }}
-              />
-              <div
-                className="skeleton"
-                style={{ width: '88px', height: '20px', borderRadius: 'var(--radius-full)', animationDelay: `${delay}ms` }}
-              />
-              {/* Action buttons row */}
-              <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
-                <div
-                  className="skeleton"
-                  style={{ width: '32px', height: '32px', borderRadius: 'var(--radius-sm)', animationDelay: `${delay}ms` }}
-                />
-                <div
-                  className="skeleton"
-                  style={{ width: '32px', height: '32px', borderRadius: 'var(--radius-sm)', animationDelay: `${delay}ms` }}
-                />
+                style={{
+                  flex:          1,
+                  minWidth:      0,
+                  display:       'flex',
+                  flexDirection: 'column',
+                  gap:           'var(--space-2)',
+                }}
+              >
+                <Shimmer w={180} h={13} r="var(--radius-xs)" delay={delay} />
+                <Shimmer w={120} h={11} r="var(--radius-xs)" delay={delay} />
               </div>
-            </div>
-          </div>
-        ))}
+
+              {/* Edit / Delete buttons */}
+              <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
+                <Shimmer w={60} h={26} r="var(--radius-sm)" delay={delay} />
+                <Shimmer w={72} h={26} r="var(--radius-sm)" delay={delay} />
+              </div>
+            </SkeletonCard>
+          );
+        })}
       </div>
     </main>
   );

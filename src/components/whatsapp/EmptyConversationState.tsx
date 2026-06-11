@@ -1,76 +1,16 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { MessageCircle } from "lucide-react";
-import { ENTER_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export function EmptyConversationState() {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
-      style={{
-        display:        "flex",
-        flexDirection:  "column",
-        alignItems:     "center",
-        justifyContent: "center",
-        height:         "100%",
-        gap:            "var(--space-5)",
-        padding:        "var(--space-8)",
-      }}
-    >
-      {/* Icon glyph */}
-      <div
-        style={{
-          width:          "64px",
-          height:         "64px",
-          borderRadius:   "var(--radius-xl)",
-          background:     "var(--theme-paper)",
-          border:         "1px solid var(--theme-paper-border)",
-          boxShadow:      "var(--shadow-1)",
-          display:        "flex",
-          alignItems:     "center",
-          justifyContent: "center",
-        }}
-      >
-        <MessageCircle
-          style={{
-            width:       "28px",
-            height:      "28px",
-            strokeWidth: 1.5,
-            color:       "var(--theme-accent)",
-          }}
-        />
-      </div>
-
-      <div style={{ textAlign: "center", maxWidth: "240px" }}>
-        <p
-          style={{
-            fontFamily: "var(--font-serif)",
-            fontStyle:  "italic",
-            fontSize:   "var(--text-xl)",
-            color:      "var(--theme-text-primary)",
-            margin:     "0 0 var(--space-2)",
-            fontWeight: "var(--weight-normal)",
-            lineHeight: 1.3,
-          }}
-        >
-          Select a conversation.
-        </p>
-        <p
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize:   "var(--text-sm)",
-            color:      "var(--theme-text-tertiary)",
-            margin:     0,
-            lineHeight: "var(--leading-relaxed)",
-          }}
-        >
-          Choose from the list to view the full thread.
-        </p>
-      </div>
-    </motion.div>
+    <EmptyState
+      icon={MessageCircle}
+      title="Select a conversation."
+      description="Choose from the list to view the full thread."
+      style={{ height: "100%" }}
+    />
   );
 }
 

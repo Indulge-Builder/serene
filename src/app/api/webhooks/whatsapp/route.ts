@@ -2,9 +2,9 @@
 // GET  — Meta hub challenge verification (Gupshup also uses this for URL verification).
 // POST — Dual-format: Gupshup v2 (active BSP) or Meta v3 (dormant, kept for future use).
 
-import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse, after } from 'next/server';
 import { WEBHOOK_VERIFY_TOKEN, verifyMetaSignature } from '@/lib/services/whatsapp-api';
+import { createRateLimiter, getClientIp, parseJsonBody, safeSecretCompare } from '@/lib/utils/webhook';
 import { parseWebhookPayload, processInboundMessage, processStatusUpdate } from '@/lib/services/whatsapp-ingestion';
 import type { MetaInboundMessage, MetaWebhookPayload } from '@/lib/types/whatsapp';
 
@@ -19,17 +19,13 @@ const GUPSHUP_WEBHOOK_SECRET = process.env.GUPSHUP_WEBHOOK_SECRET ?? '';
 // so a new-number lead's agent + founder notifications complete before freeze.
 export const maxDuration = 60;
 
-// ─────────────────────────────────────────────
-// Timing-safe Gupshup secret check
-// ─────────────────────────────────────────────
-
-function verifyGupshupSecret(incoming: string): boolean {
-  if (!GUPSHUP_WEBHOOK_SECRET || !incoming) return false;
-  const a = Buffer.from(incoming,              'utf8');
-  const b = Buffer.from(GUPSHUP_WEBHOOK_SECRET, 'utf8');
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
+// Rate limiting (security-audit F-4) — in-memory, per worker (shared factory in
+// utils/webhook.ts). Cap is 3× the leads route's: legitimate Gupshup traffic is
+// burstier — every outbound message can produce up to 3 delivery-receipt POSTs
+// (sent/delivered/read) on top of inbound messages and billing pings, all from
+// Gupshup's egress IPs. A 429 only triggers a BSP retry, but headroom means
+// real traffic is never throttled.
+const isRateLimited = createRateLimiter({ windowMs: 60_000, max: 300 });
 
 // ─────────────────────────────────────────────
 // GET — Meta hub challenge (unchanged for both BSPs)
@@ -53,21 +49,23 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 // ─────────────────────────────────────────────
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  // Rate limit — drop before reading body to avoid amplification (F-4)
+  if (isRateLimited(getClientIp(req))) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   const rawBody = await req.text();
 
   // ── Gupshup v2 path ──────────────────────────
   const gupshupSecret = req.headers.get('x-gupshup-secret');
   if (gupshupSecret !== null) {
-    if (!verifyGupshupSecret(gupshupSecret)) {
+    if (!safeSecretCompare(gupshupSecret, GUPSHUP_WEBHOOK_SECRET)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    let body: Record<string, unknown>;
-    try {
-      body = JSON.parse(rawBody) as Record<string, unknown>;
-    } catch {
-      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-    }
+    const parsed = parseJsonBody<Record<string, unknown>>(rawBody);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.body;
 
     // Delivery receipts and billing pings — acknowledge, no processing
     if (body.type === 'message-event' || body.type === 'billing-event') {
@@ -112,12 +110,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: MetaWebhookPayload;
-  try {
-    body = JSON.parse(rawBody) as MetaWebhookPayload;
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  const parsedMeta = parseJsonBody<MetaWebhookPayload>(rawBody);
+  if (!parsedMeta.ok) return parsedMeta.response;
+  const body = parsedMeta.body;
 
   after(async () => {
     try {

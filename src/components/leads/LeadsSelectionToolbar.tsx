@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m as motion } from 'framer-motion';
 import { toast } from '@/lib/toast';
 import { exportLeadsAction } from '@/lib/actions/leads';
 import { buildLeadsCSV, buildXLSXWorkbook, triggerBrowserDownload } from '@/lib/utils/export';

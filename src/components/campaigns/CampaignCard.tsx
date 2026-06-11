@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
+import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { formatCompact } from '@/lib/utils/numbers';
 import type { CampaignMetrics, AdCreative } from '@/lib/types/database';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
@@ -114,7 +115,7 @@ export function CampaignCard({ campaign, index, adCreatives = [] }: CampaignCard
         transition={{
           duration: 0.25,
           delay:    staggerDelay / 1000,
-          ease:     [0.16, 1, 0.3, 1],
+          ease:     EASE_OUT_EXPO,
         }}
         role="button"
         tabIndex={0}

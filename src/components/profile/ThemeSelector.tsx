@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Check } from "lucide-react";
 import { updateProfile } from "@/lib/actions/profiles";
 import { Toggle } from "@/components/ui/Toggle";
@@ -25,12 +25,30 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
   const [active,    setActive]    = useState<ThemeKey>(currentTheme);
   const [isPending, startTransition] = useTransition();
   const sound = useNotificationSound();
+  const dissolveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Never leave the dissolve class stranded on <html> if the page unmounts mid-switch.
+  useEffect(() => {
+    return () => {
+      if (dissolveTimer.current) clearTimeout(dissolveTimer.current);
+      document.documentElement.classList.remove("eia-theme-transition");
+    };
+  }, []);
 
   function handleThemeChange(theme: ThemeKey) {
     if (theme === active) return;
 
-    // 1. Instant DOM switch — zero latency visual feedback.
-    document.documentElement.setAttribute("data-theme", theme);
+    // 1. Cross-dissolve window: --transition-theme on every element while the
+    //    palette recolours (design-tokens §15), removed after it settles.
+    const root = document.documentElement;
+    root.classList.add("eia-theme-transition");
+    if (dissolveTimer.current) clearTimeout(dissolveTimer.current);
+    dissolveTimer.current = setTimeout(() => {
+      root.classList.remove("eia-theme-transition");
+    }, 400);
+
+    // 2. DOM switch — the attribute flips instantly; colours dissolve over it.
+    root.setAttribute("data-theme", theme);
     setActive(theme);
 
     // 2. Persist to DB in the background via the existing updateProfile action.

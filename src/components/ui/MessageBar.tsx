@@ -134,6 +134,7 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
             onClick={onSend}
             disabled={!canSend}
             aria-label="Send message"
+            className="eia-pressable eia-icon-lift-hover"
             style={{
               width:          `${SEND_SIZE}px`,
               height:         `${SEND_SIZE}px`,
@@ -145,7 +146,7 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
               justifyContent: "center",
               flexShrink:     0,
               background:     canSend ? "var(--theme-accent)" : "var(--theme-paper-border)",
-              transition:     "background var(--duration-fast) var(--ease-in-out)",
+              transition:     "background var(--duration-fast) var(--ease-in-out), transform var(--duration-instant) var(--ease-spring)",
             }}
           >
             {loading ? (

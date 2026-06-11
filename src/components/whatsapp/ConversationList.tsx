@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useSearchParams } from "next/navigation";
 import { SearchBar } from "@/components/ui/SearchBar";
+import { useDebounce } from "@/hooks/useDebounce";
 import { ConversationRow } from "@/components/whatsapp/ConversationRow";
 import { WhatsAppConversationPeriodFilter } from "@/components/whatsapp/WhatsAppConversationPeriodFilter";
 import { searchConversationsAction } from "@/lib/actions/whatsapp";
@@ -68,54 +69,30 @@ export function ConversationList({
     WhatsAppConversation[] | null
   >(null);
   const [isSearching, startSearchTransition] = useTransition();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedQuery = useDebounce(query, 300);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
-  const periodFilter = period
-    ? { period, customFrom: customFrom ?? undefined, customTo: customTo ?? undefined }
-    : {};
-
-  // Debounced search — 300ms
   const handleQueryChange = useCallback((value: string) => {
     setQuery(value);
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    if (!value.trim()) {
-      setSearchResults(null);
-      return;
-    }
-
-    debounceRef.current = setTimeout(() => {
-      startSearchTransition(async () => {
-        const results = await searchConversationsAction({
-          query: value.trim(),
-          ...periodFilter,
-        });
-        setSearchResults(results);
-      });
-    }, 300);
-  }, [period, customFrom, customTo]);
-
-  // Clear debounce on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    // Clearing the input clears results immediately — never waits for the debounce.
+    if (!value.trim()) setSearchResults(null);
   }, []);
 
-  // Re-run search when period changes while query is active
+  // Debounced search (300ms). Also re-runs immediately when the period changes
+  // while a query is active (debouncedQuery is already settled in that case).
   useEffect(() => {
-    if (!query.trim()) return;
+    const trimmed = debouncedQuery.trim();
+    if (!trimmed) return;
     startSearchTransition(async () => {
       const results = await searchConversationsAction({
-        query: query.trim(),
-        ...periodFilter,
+        query: trimmed,
+        ...(period
+          ? { period, customFrom: customFrom ?? undefined, customTo: customTo ?? undefined }
+          : {}),
       });
       setSearchResults(results);
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period, customFrom, customTo]);
+  }, [debouncedQuery, period, customFrom, customTo]);
 
   // IntersectionObserver for "Load more" (P-05 — no scroll listener)
   useEffect(() => {

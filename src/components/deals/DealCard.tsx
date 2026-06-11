@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import { DEAL_TYPE_LABELS, DEAL_DURATION_LABELS } from '@/lib/constants/deal-types';
 import { formatDate } from '@/lib/utils/dates';

@@ -9,29 +9,13 @@
 // TasksSkeleton already includes the filter/tab strip inside its output.
 
 import { TasksSkeleton } from './TasksSkeleton';
+import { PageHeaderSkeleton } from '@/components/ui/PageSkeletons';
 
 export default function TasksLoading() {
   return (
     <main className="flex-1 p-8">
       {/* Page header — mirrors page.tsx row exactly */}
-      <div
-        style={{
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: 'space-between',
-          gap:            'var(--space-4)',
-          marginBottom:   'var(--space-6)',
-        }}
-      >
-        <div
-          className="skeleton"
-          style={{ width: '72px', height: '36px', borderRadius: 'var(--radius-sm)' }}
-        />
-        <div
-          className="skeleton"
-          style={{ width: '100px', height: '36px', borderRadius: 'var(--radius-sm)' }}
-        />
-      </div>
+      <PageHeaderSkeleton titleWidth={72} actionWidth={100} />
 
       {/* Reuse the exact Suspense fallback — no duplication, no double skeleton */}
       <TasksSkeleton tab="personal" />

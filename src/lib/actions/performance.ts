@@ -1,22 +1,15 @@
 'use server';
 
 import { z }                         from 'zod';
-import { getCurrentProfile }         from '@/lib/services/profiles-service';
+import { requireProfile }            from '@/lib/actions/_auth';
 import {
-  getCoreFourMetrics,
-  getEffortMetrics,
-  getCallOutcomeBreakdown,
-  getPreviousPeriodCoreMetrics,
-  getTeamBenchmarks,
+  getAgentPerformanceSummary,
   getAgentDetailMetrics,
   getAgentRosterPerformance,
   getDomainHealthMetrics,
   getPeriodDateRange,
   type PerformancePeriod,
-  type CoreFourMetrics,
-  type EffortMetrics,
-  type OutcomeBreakdownItem,
-  type TeamBenchmarks,
+  type AgentPerformanceSummary,
 } from '@/lib/services/performance-service';
 import { GIA_DOMAINS }               from '@/lib/constants/domains';
 import type { ActionResult, AgentDetailMetrics, AgentRosterRow, DomainHealthCard } from '@/lib/types/index';
@@ -60,14 +53,11 @@ export async function getAgentDetailMetricsAction(
     return { data: null, error: 'Invalid parameters.' };
   }
 
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: 'Not authenticated.' };
-
   // Authorization: manager can only view agents in their own domain.
   // Admin/founder pass domain=null (all-domains view) and are unrestricted.
-  if (caller.role === 'agent' || caller.role === 'guest') {
-    return { data: null, error: 'Access denied.' };
-  }
+  const auth = await requireProfile(['manager', 'admin', 'founder']);
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
   if (caller.role === 'manager') {
     // Manager must supply their own domain; reject null or mismatched domain.
     if (!domain || caller.domain !== domain) {
@@ -91,13 +81,9 @@ export async function getAgentDetailMetricsAction(
 // Agent self-view only. Returns all data needed for the performance shell.
 // ─────────────────────────────────────────────
 
-export type AgentSelfMetrics = {
-  core:       CoreFourMetrics;
-  previous:   CoreFourMetrics | null;
-  effort:     EffortMetrics;
-  outcomes:   OutcomeBreakdownItem[];
-  benchmarks: TeamBenchmarks;
-};
+// Shape alias kept for the client shell's import — the payload now arrives
+// from the single get_agent_performance RPC (perf audit D-2).
+export type AgentSelfMetrics = AgentPerformanceSummary;
 
 export async function getAgentSelfMetricsAction(
   period:      PerformancePeriod,
@@ -107,19 +93,14 @@ export async function getAgentSelfMetricsAction(
   const parsed = GetAgentSelfSchema.safeParse({ period, customFrom, customTo });
   if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
 
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: 'Not authenticated.' };
-  if (caller.role !== 'agent') return { data: null, error: 'Access denied.' };
+  // The RPC is self-scoped (auth.uid() inside) — the role gate here is the
+  // action-layer check; no caller id is passed anywhere.
+  const auth = await requireProfile(['agent']);
+  if (!auth.ok) return auth.result;
 
   try {
-    const [core, effort, outcomes, previous, benchmarks] = await Promise.all([
-      getCoreFourMetrics(caller.id, period, customFrom, customTo),
-      getEffortMetrics(caller.id, period, customFrom, customTo),
-      getCallOutcomeBreakdown(caller.id, period, customFrom, customTo),
-      getPreviousPeriodCoreMetrics(caller.id, period),
-      getTeamBenchmarks(caller.domain, period, customFrom, customTo),
-    ]);
-    return { data: { core, previous: previous ?? null, effort, outcomes, benchmarks }, error: null };
+    const data = await getAgentPerformanceSummary(period, customFrom, customTo);
+    return { data, error: null };
   } catch {
     return { data: null, error: 'Failed to load performance data.' };
   }
@@ -147,11 +128,9 @@ export async function getManagerRosterAction(
   const parsed = GetManagerRosterSchema.safeParse({ period, allDomains, customFrom, customTo });
   if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
 
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: 'Not authenticated.' };
-  if (caller.role === 'agent' || caller.role === 'guest') {
-    return { data: null, error: 'Access denied.' };
-  }
+  const auth = await requireProfile(['manager', 'admin', 'founder']);
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
 
   try {
     const range = getPeriodDateRange(period);
@@ -186,11 +165,8 @@ export async function getDomainHealthMetricsAction(
   const parsed = GetDomainHealthSchema.safeParse({ period, customFrom, customTo });
   if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
 
-  const caller = await getCurrentProfile();
-  if (!caller) return { data: null, error: 'Not authenticated.' };
-  if (caller.role === 'agent' || caller.role === 'guest') {
-    return { data: null, error: 'Access denied.' };
-  }
+  const auth = await requireProfile(['manager', 'admin', 'founder']);
+  if (!auth.ok) return auth.result;
 
   try {
     const range = getPeriodDateRange(period);

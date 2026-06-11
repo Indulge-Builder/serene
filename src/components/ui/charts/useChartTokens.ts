@@ -13,11 +13,11 @@ export interface ChartTokens {
 
 /** Default fallback (Earth theme) — resolved before paint if possible, prevents flash. */
 const FALLBACK: ChartTokens = {
-  series:       ['#d4af37', '#2860a0', '#3a7d52', '#b87a10', '#b83a28', '#7a6b5d'],
-  grid:         '#e5e4df',
+  series:       ['#c9a553', '#2860a0', '#3a7d52', '#b87a10', '#b83a28', '#665739'],
+  grid:         '#e7e2d4',
   axisLabel:    '#b5a99a',
-  tooltipBg:    '#ffffff',
-  tooltipBorder:'#e5e4df',
+  tooltipBg:    '#fcfbf6',
+  tooltipBorder:'#e7e2d4',
 };
 
 function resolveVar(name: string): string {

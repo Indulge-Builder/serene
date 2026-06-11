@@ -17,7 +17,7 @@ const { notifications, unreadCount, markRead, markAllRead, isLoading } =
   useNotifications({ userId, initialData });
 ```
 
-- Initial data seeded from server-fetched prop (passed through layout → Sidebar → NotificationBell).
+- Initial data seeded from a server-fetched prop. **Streaming contract (perf A-2, 2026-06-11):** the layout starts `getNotifications(profile.id)` WITHOUT awaiting and passes the promise to `Sidebar` as `notificationsPromise`; `Sidebar` unwraps it with React `use()` inside a `<Suspense>` boundary (`SeededNotificationBell`, static same-size `BellFallback`). Never re-add a blocking `await getNotifications` to the layout — it stalls every navigation's TTFB for a bell seed. `getNotifications` must keep returning `[]` on error (never reject) — a rejected promise would throw from `use()`.
 - Realtime subscription via Supabase `postgres_changes` — filtered strictly at channel level by `recipient_id=eq.${userId}`. Not filtered in JS after the event — filtering in JS leaks data.
 - Optimistic updates for `markRead` and `markAllRead` — rollback on error.
 - Subscribe on mount, unsubscribe on unmount.
@@ -56,7 +56,7 @@ Never move the filter into the JS handler. It must be on the channel to prevent 
 - Hover: `scale 1.08`, 200ms `EASE_OUT_EXPO`. No `x` nudge.
 - Tap: `scale 0.88` spring (`EASE_SPRING`).
 - Icon colour: `--theme-sidebar-text` at rest → `--theme-sidebar-active` when open or `unreadCount > 0`. Transition via `--transition-hover`.
-- Unread dot: 6px, `--theme-accent`. Always in DOM. Uses `key={unreadCount > 0 ? 'on' : 'off'}` on `motion.span` to retrigger spring entrance (`scale 0→1`) on each `unreadCount` 0→N edge. No continuous pulse.
+- Unread dot: 6px, `--theme-accent`. Always in DOM. Uses `key={unreadCount > 0 ? 'on' : 'off'}` on `motion.span` to retrigger spring entrance (`scale 0.5→1` + `opacity 0→1` — never from `scale(0)`, design-audit 2026-06-11) on each `unreadCount` 0→N edge. No continuous pulse.
 
 ### NotificationPanel
 

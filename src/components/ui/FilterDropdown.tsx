@@ -4,7 +4,7 @@ import React, { useRef, useEffect, useLayoutEffect, useCallback, useState } from
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence } from 'framer-motion';
 import { DROPDOWN_VARIANTS } from '@/lib/constants/motion';
 
 export interface FilterDropdownItem {

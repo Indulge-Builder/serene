@@ -1,53 +1,10 @@
 import { formatCount, formatCurrency } from '@/lib/utils/numbers';
+import { StatTile } from '@/components/ui/StatTile';
 import type { DealsSummary } from '@/lib/services/deals-service';
 
 type DealsSummaryStripProps = {
   summary: DealsSummary;
 };
-
-type StatCellProps = {
-  label: string;
-  value: string;
-};
-
-function StatCell({ label, value }: StatCellProps) {
-  return (
-    <div
-      style={{
-        display:        'flex',
-        flexDirection:  'column',
-        alignItems:     'center',
-        flex:           1,
-        padding:        'var(--space-4) var(--space-5)',
-        minWidth:       '120px',
-      }}
-    >
-      <span
-        style={{
-          fontFamily:         'var(--font-mono)',
-          fontSize:           'var(--text-2xl)',
-          fontWeight:         'var(--weight-normal)',
-          fontVariantNumeric: 'tabular-nums',
-          color:              'var(--theme-accent)',
-          lineHeight:         1.1,
-          marginBottom:       'var(--space-1)',
-          whiteSpace:         'nowrap',
-        }}
-      >
-        {value}
-      </span>
-      <span
-        className="label-micro"
-        style={{
-          color:     'var(--theme-text-tertiary)',
-          textAlign: 'center',
-        }}
-      >
-        {label}
-      </span>
-    </div>
-  );
-}
 
 function StatDivider() {
   return (
@@ -78,22 +35,26 @@ export function DealsSummaryStrip({ summary }: DealsSummaryStripProps) {
         overflow:     'hidden',
       }}
     >
-      <StatCell
+      <StatTile
+        variant="cell"
         label="Total Deals"
         value={formatCount(summary.total_deals)}
       />
       <StatDivider />
-      <StatCell
+      <StatTile
+        variant="cell"
         label="Total Revenue"
         value={formatCurrency(summary.total_revenue)}
       />
       <StatDivider />
-      <StatCell
+      <StatTile
+        variant="cell"
         label="Memberships"
         value={formatCount(summary.membership_count)}
       />
       <StatDivider />
-      <StatCell
+      <StatTile
+        variant="cell"
         label="Retail"
         value={formatCount(summary.retail_count)}
       />

@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { getNotifications } from "@/lib/services/notifications-service";
 import { canAccessRoute } from "@/lib/utils/route-access";
@@ -13,11 +12,9 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
+  // getCurrentProfile() is cache()-memoised — one auth round trip + one
+  // profile SELECT shared across the layout, page, and all Async children.
+  // It returns null when there is no session, so no separate getUser() needed.
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
   if (!profile.is_active) redirect("/login");
@@ -25,7 +22,9 @@ export default async function DashboardLayout({
   const pathname = (await headers()).get('x-pathname') ?? '/';
   if (!canAccessRoute(profile, pathname)) redirect('/dashboard');
 
-  const initialNotifications = await getNotifications(profile.id);
+  // Deliberately NOT awaited — the promise streams to the bell's Suspense
+  // boundary inside the Sidebar, so the shell + page never block on it.
+  const notificationsPromise = getNotifications(profile.id);
 
   const safeTheme = ["earth", "air", "water", "fire", "cosmos"].includes(profile.theme)
     ? profile.theme
@@ -43,7 +42,7 @@ export default async function DashboardLayout({
         overflow: "hidden",
       }}
     >
-      <Sidebar profile={profile} initialNotifications={initialNotifications} />
+      <Sidebar profile={profile} notificationsPromise={notificationsPromise} />
 
       {/* Toast stack — portal-like, sits at root of dashboard shell, outside scroll */}
       <ToastProvider />

@@ -7,7 +7,8 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
+import { EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, X } from "lucide-react";
 import { LiaGlyph } from "@/components/ui/lia-glyph";
 import type { ToastItem as ToastItemType, ToastType } from "@/lib/toast";
@@ -174,7 +175,7 @@ export function ToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
       exit="exit"
       transition={{
         duration: 0.35,
-        ease:     [0.16, 1, 0.3, 1],    // --ease-out-expo
+        ease:     EASE_OUT_EXPO,
       }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -212,7 +213,7 @@ export function ToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
           // lia bar breathes continuously; others fire once via CSS animation
           animation:    toast.type === "lia"
             ? "eia-lia-breathe 3s ease-in-out infinite"
-            : "eia-toast-bar-breathe 600ms cubic-bezier(0.16,1,0.3,1) forwards",
+            : "eia-toast-bar-breathe 600ms var(--ease-out-expo) forwards",
         }}
       />
 
@@ -358,8 +359,12 @@ export function ToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
             position:   "absolute",
             bottom:     0,
             left:       0,
+            width:      "100%",
             height:     "2px",
             background: "var(--color-warning)",
+            // depletion is scaleX (keyframe in design-tokens.css) — width 100%
+            // + origin left here; never animate width (layout every frame)
+            transformOrigin: "left",
             animation:  `toast-deplete ${toast.duration}ms linear forwards`,
             animationPlayState: paused ? "paused" : "running",
           }}

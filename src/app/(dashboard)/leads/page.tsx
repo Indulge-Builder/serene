@@ -1,9 +1,9 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
-import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { getCurrentProfile, getAssignableUsers } from '@/lib/services/profiles-service';
 import { isGiaDomain, parseGiaDomainParam } from '@/lib/constants/domains';
-import { getLeadFilterOptions, getAgentsForDomain, getActiveUsersForDomain } from '@/lib/services/leads-service';
+import { getLeadFilterOptions } from '@/lib/services/leads-service';
 import type { LeadFilters, LeadStatus, CallOutcome } from '@/lib/types/database';
 import { LeadsFilters } from '@/components/leads/LeadsFilters';
 import { LeadsTableAsync } from '@/components/leads/LeadsTableAsync';
@@ -71,9 +71,11 @@ export default async function LeadsPage({
       profile.domain,
       filters.domain && isGiaDomain(filters.domain) ? filters.domain : null,
     ),
-    (profile.role === 'admin' || profile.role === 'founder')
-      ? getActiveUsersForDomain(profile.domain)
-      : getAgentsForDomain(profile.domain),
+    // Admin/founder: all active users in their domain; everyone else: agents only.
+    getAssignableUsers({
+      domain:     profile.domain,
+      agentsOnly: profile.role !== 'admin' && profile.role !== 'founder',
+    }),
   ]);
 
   const showAgentFilter  = profile.role !== 'agent';

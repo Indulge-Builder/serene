@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useState, useTransition, useMemo } from "react";
+import { useCallback, useEffect, useState, useTransition, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
 import { MyTasksCalendarView } from "@/components/tasks/MyTasksCalendarView";
 import { GroupTasksTab } from "@/components/tasks/GroupTasksTab";
@@ -13,7 +13,7 @@ import { useTasksCreate } from "@/components/tasks/TasksCreateContext";
 import { useCreateTriggerModal } from "@/hooks/useCreateTriggerModal";
 import { getPersonalTaskTagsAction } from "@/lib/actions/tasks";
 import { DOMAIN_LABELS, compareDomainDisplayOrder } from "@/lib/constants/domains";
-import type { AgentSlim } from "./TasksAsync";
+import type { AssignableUser } from "@/lib/types";
 import {
   EMPTY_PERSONAL_TASK_FILTERS,
   EMPTY_GROUP_TASK_FILTERS,
@@ -43,7 +43,7 @@ interface TasksShellProps {
   currentUserName: string;
   callerRole:    UserRole;
   callerDomain:  AppDomain;
-  initialAgents: AgentSlim[];
+  initialAgents: AssignableUser[];
   initialTags:   string[];
 }
 
@@ -76,6 +76,14 @@ export function TasksShell({
     EMPTY_GIA_TASK_FILTERS,
   );
   const [personalTagItems, setPersonalTagItems] = useState<string[]>(initialTags);
+
+  // TasksAsync fetches tags only when the personal tab is active, and this
+  // component never remounts on tab switches (per-tab filter state must
+  // survive). Re-seed from the prop on every personal-tab RSC pass so a
+  // user who landed on gia/group and switched here still gets fresh tags.
+  useEffect(() => {
+    if (initialTab === "personal") setPersonalTagItems(initialTags);
+  }, [initialTab, initialTags]);
   const [personalVisibleCount, setPersonalVisibleCount] = useState(
     personalResult.tasks.length,
   );

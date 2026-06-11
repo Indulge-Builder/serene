@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { TrendingUp, TrendingDown, Minus, Trophy, Zap, Clock, Target } from "lucide-react";
 import {
   AreaChart,
@@ -13,6 +13,7 @@ import type {
   TeamBenchmarks,
 } from "@/lib/services/performance-service";
 import { formatDuration } from "@/lib/utils/dates";
+import { formatPercent } from "@/lib/utils/numbers";
 import { EXIT_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { useChartTokens } from "@/components/ui/charts/useChartTokens";
 
@@ -20,11 +21,9 @@ import { useChartTokens } from "@/components/ui/charts/useChartTokens";
 // Helpers
 // ─────────────────────────────────────────────
 
-function formatPct(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  const rounded = Math.round(value * 10) / 10;
-  return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
-}
+// Thin alias kept because formatPct is also passed as a formatter fn to makeBenchmarkLine.
+const formatPct = (value: number | null): string =>
+  formatPercent(value, { multiplied: true });
 
 function computeDelta(
   current: number | null,
@@ -130,6 +129,8 @@ function MiniSparkline({
 
 // ─────────────────────────────────────────────
 // Single metric card
+// Deliberately NOT ui/StatTile (dry-audit L-8): the delta/sparkline/motion
+// decoration is this card's own anatomy. Plain stat tiles compose StatTile.
 // ─────────────────────────────────────────────
 
 function MetricCard({

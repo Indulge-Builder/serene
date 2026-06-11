@@ -7,11 +7,35 @@ export type ActionResult<T = null> = {
   error: string | null;
 };
 
+/**
+ * THE canonical assignable-user projection (dry-audit M-4 + M-11).
+ * Produced by getAssignableUsers() in profiles-service and
+ * getAssignableUsersAction() in actions/profiles.ts.
+ * Never re-declare a Pick<Profile, …> assignee shape — derive slimmer
+ * shapes from this one (see AssigneeSlim in tasks-service).
+ */
+export type AssignableUser = Pick<
+  Profile,
+  "id" | "full_name" | "avatar_url" | "role" | "domain"
+>;
+
+// ─── Resolved-relation intersection helpers (dry-audit L-3) ────────────────
+// THE way to express "row + joined profile fields". Never hand-write a fresh
+// `& { author: … }` / `& { assignee: … }` intersection — name the shape with
+// one of these so the intent (a service-layer join projection) is documented.
+
+/** Row + resolved author profile. Default: non-null `{ full_name }`. */
+export type WithAuthor<T, TAuthor = { full_name: string }> = T & { author: TAuthor };
+/** Row + resolved assignee profile. Default: nullable `{ full_name }`. */
+export type WithAssignee<T, TAssignee = { full_name: string } | null> = T & { assignee: TAssignee };
+/** Row + resolved actor profile (activity/audit rows). Default: nullable `{ full_name }`. */
+export type WithActor<T, TActor = { full_name: string } | null> = T & { actor: TActor };
+
 // ─── Dashboard summary types ───────────────────────────────────────────────
 // Shape must exactly match what get_dashboard_summary RPC returns.
 // Used by getDashboardSummary() in dashboard-service.ts and consumed by widget props.
 
-import type { LeadStatus, AppDomain } from "./database";
+import type { LeadStatus, AppDomain, Profile } from "./database";
 
 export type DashboardAgentTask = {
   id:            string;

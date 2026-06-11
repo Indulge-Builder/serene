@@ -1,7 +1,9 @@
 // All DB queries for profiles — Rule 03: no raw Supabase calls in actions/components.
 
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile, UserRole, AppDomain } from "@/lib/types/database";
+import type { AssignableUser } from "@/lib/types";
 
 /** Fetch a single profile by id. Returns null if not found. */
 export async function getProfileById(id: string): Promise<Profile | null> {
@@ -88,13 +90,18 @@ export async function isUsernameTaken(
   return data !== null;
 }
 
-/** Fetch the current user's profile. */
-export async function getCurrentProfile(): Promise<Profile | null> {
+/**
+ * Fetch the current user's profile.
+ * Memoised with React cache() — within one RSC render pass the layout, page,
+ * and every Async child share a single auth.getUser() round trip + profile
+ * SELECT. Server actions are separate requests and always re-verify fresh.
+ */
+export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   return getProfileById(user.id);
-}
+});
 
 /**
  * Update non-authorization profile fields.
@@ -166,18 +173,44 @@ export async function setProfileActive(
   return { data: data as Profile, error: null };
 }
 
-/** Fetch all active non-guest users for the subtask assignee picker (any role, any domain). */
-export async function getAssignableUsers(): Promise<
-  { id: string; full_name: string; avatar_url: string | null; role: UserRole; domain: AppDomain }[]
-> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, avatar_url, role, domain")
-    .eq("is_active", true)
-    .neq("role", "guest")
-    .order("full_name", { ascending: true });
-
-  if (error || !data) return [];
-  return data as { id: string; full_name: string; avatar_url: string | null; role: UserRole; domain: AppDomain }[];
+/**
+ * THE canonical "who can I assign this to?" query (dry-audit M-11).
+ * Default (no options): all active non-guest users, any role, any domain
+ * (subtask/Gia assignee pickers).
+ * `domain`     — restrict to one domain.
+ * `agentsOnly` — restrict to role 'agent' (lead/deal assignment pools).
+ * Always sorted by full_name. Never fork another profiles query for
+ * assignability — extend this one.
+ */
+export async function getAssignableUsers(
+  options: { domain?: AppDomain; agentsOnly?: boolean } = {},
+): Promise<AssignableUser[]> {
+  return getAssignableUsersCached(options.domain ?? null, options.agentsOnly ?? false);
 }
+
+/**
+ * React cache() memo behind getAssignableUsers (perf audit E-3) — the page and
+ * its Async children (e.g. dossier wave 1 + LeadInfoCardAsync) share one query
+ * per render pass. Primitive args only: cache() keys object args by reference,
+ * so a fresh `options` literal per call site would never dedupe.
+ * Deliberately NOT Redis-cached: profiles is tiny, and a 60s-stale assignee
+ * list could offer a just-deactivated user in pickers.
+ */
+const getAssignableUsersCached = cache(
+  async (domain: AppDomain | null, agentsOnly: boolean): Promise<AssignableUser[]> => {
+    const supabase = await createClient();
+    let query = supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url, role, domain")
+      .eq("is_active", true)
+      .neq("role", "guest");
+
+    if (domain) query = query.eq("domain", domain);
+    if (agentsOnly) query = query.eq("role", "agent");
+
+    const { data, error } = await query.order("full_name", { ascending: true });
+
+    if (error || !data) return [];
+    return data as AssignableUser[];
+  },
+);
