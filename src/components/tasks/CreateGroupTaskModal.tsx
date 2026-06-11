@@ -689,13 +689,12 @@ export function CreateGroupTaskModal({
           />
         </div>
 
-        {/* Domain + Priority + Due date — one row */}
+        {/* Domain + Priority + Due date — one row, stacked below sm */}
         <div
+          className={`grid grid-cols-1 ${isManagerLocked ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}
           style={{
-            display:             'grid',
-            gridTemplateColumns: isManagerLocked ? '1fr 1fr' : '1fr 1fr 1fr',
-            gap:                 'var(--space-4)',
-            alignItems:          'end',
+            gap:        'var(--space-4)',
+            alignItems: 'end',
           }}
         >
           {/* Domain — hidden for managers (locked to their domain) */}
@@ -753,13 +752,10 @@ export function CreateGroupTaskModal({
           />
         </div>
 
-        {/* ── Section: Appearance (colour + icon) ─────────────────────────── */}
+        {/* ── Section: Appearance (colour + icon) — stacked below sm ──────── */}
         <div
-          style={{
-            display:      'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap:          'var(--space-4)',
-          }}
+          className="grid grid-cols-1 sm:grid-cols-2"
+          style={{ gap: 'var(--space-4)' }}
         >
           {/* Accent colour */}
           <div>

@@ -48,13 +48,14 @@ const GRID_CSS = `
 .eia-bento-cell-1 { grid-column: span 6; }
 .eia-bento-cell-2 { grid-column: span 12; }
 
-/* Below 820 px — all widgets stack full-width */
-@media (max-width: 820px) {
+/* Below md — all widgets stack full-width (< --bp-md 768; DNA §9.1: canonical
+   breakpoints only, the former 820 was arbitrary — responsive audit F-4) */
+@media (max-width: 767.98px) {
   .eia-bento-cell-1,
   .eia-bento-cell-2 { grid-column: span 12; }
 }
 
-/* Between 820–1100 px — both half-width widgets stay halves
+/* From md up — both half-width widgets stay halves
    but campaign spans full (already 12, no change needed) */
 `;
 
@@ -198,8 +199,9 @@ export function DashboardCanvas({
       {/* Inject bento grid CSS once */}
       <style>{GRID_CSS}</style>
 
-      {/* Page header */}
-      <div className="flex items-center justify-between gap-4 mb-4">
+      {/* Page header — wraps below ~md so the greeting and the control
+          cluster (date filter + edit) stack instead of overflowing (audit F1) */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 mb-4">
         <h1 className="type-page-title m-0">
           {greeting},{' '}
           <span style={{ color: 'var(--theme-accent)' }}>{firstName}</span>

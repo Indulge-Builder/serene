@@ -172,8 +172,9 @@ function UserCard({ user, index }: { user: Profile; index: number }) {
       }}
       style={{
         display:      "flex",
+        flexWrap:     "wrap",
         alignItems:   "center",
-        gap:          "var(--space-4)",
+        gap:          "var(--space-3) var(--space-4)",
         padding:      "var(--space-4) var(--space-5)",
         background:   "var(--theme-paper)",
         border:       "1px solid var(--theme-paper-border)",
@@ -252,7 +253,7 @@ function UserCard({ user, index }: { user: Profile; index: number }) {
       </div>
 
       {/* Domain */}
-      <div style={{ flex: "0 0 120px" }}>
+      <div style={{ flex: "0 0 auto", minWidth: "100px" }}>
         <span style={{
           fontFamily: "var(--font-sans)",
           fontSize:   "var(--text-xs)",
@@ -288,9 +289,11 @@ function UserCard({ user, index }: { user: Profile; index: number }) {
       <div style={{ flex: "0 0 auto" }}>
         <Link
           href={`/admin/users/${user.id}`}
+          className="eia-touch"
           style={{
             display:        "inline-flex",
             alignItems:     "center",
+            justifyContent: "center",
             gap:            "var(--space-1)",
             padding:        "var(--space-1) var(--space-3)",
             background:     "transparent",

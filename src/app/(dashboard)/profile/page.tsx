@@ -12,7 +12,7 @@ import { ROLE_LABELS } from "@/lib/constants/roles";
 import { DOMAIN_LABELS } from "@/lib/constants/domains";
 import { formatDate } from "@/lib/utils/dates";
 
-export const metadata = { title: "Profile Settings — Indulge OS" };
+export const metadata = { title: "Profile — Indulge OS" };
 
 export default async function ProfilePage() {
   const profile = await getCurrentProfile();
@@ -22,28 +22,22 @@ export default async function ProfilePage() {
 
   return (
     <main
-      style={{
-        flex:          1,
-        padding:       "var(--space-8)",
-        paddingBottom: "var(--space-16)",
-        maxWidth:      "1280px",
-      }}
+      className="flex-1 p-4 sm:p-6 lg:p-8"
+      style={{ paddingBottom: "var(--space-16)", maxWidth: "1280px" }}
     >
       {/* ── Page header ──────────────────────────────── */}
       <div style={{ marginBottom: "var(--space-6)" }}>
-        <h1 className="type-page-title" style={{ margin: 0 }}>
-          Profile Settings<span className="page-title-dot">.</span>
+        {/* m-0 as a class (not inline style) — the mobile-trigger title
+            indent in globals.css must be able to override the margin. */}
+        <h1 className="type-page-title m-0">
+          Profile<span className="page-title-dot">.</span>
         </h1>
       </div>
 
-      {/* ── Wide two-column layout ────────────────────── */}
+      {/* ── Wide two-column layout — single column below lg ── */}
       <div
-        style={{
-          display:             "grid",
-          gridTemplateColumns: "minmax(0, 1fr) 340px",
-          gap:                 "var(--space-6)",
-          alignItems:          "start",
-        }}
+        className="eia-dossier-grid eia-dossier-grid--340"
+        style={{ alignItems: "start" }}
       >
         {/* Left column — editable sections */}
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>

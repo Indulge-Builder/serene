@@ -441,8 +441,8 @@ export function CoreFourGrid({ current, previous, benchmarks }: Props) {
 
   return (
     <div
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
       style={{
-        display: "flex",
         gap: "var(--space-4)",
         alignItems: "stretch",
       }}

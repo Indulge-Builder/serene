@@ -217,6 +217,21 @@ onNoteAdded?: () => void — optional callback fired after successful note post
 Calls `addLeadNote` action. Submits via button click or ⌘+Enter. Uses `useTransition`.
 Header uses `--color-info-dark-*` tokens. Note has `call_outcome = null` — it does NOT increment `call_count` or change `last_call_outcome`.
 
+**Voice dictation (2026-06-12):** footer mic button records via `useAudioRecorder`
+(`src/hooks/useAudioRecorder.ts` — codec negotiation, 2-min auto-stop, mic release) and
+transcribes via `transcribeAudioAction` (`lib/actions/transcription.ts` → Deepgram Nova-3
+multilingual). The transcript is **appended to the textarea as an editable draft** — never
+auto-submitted; saving always goes through the same `addLeadNote` path as a typed note
+(sanitisation, activities, cache invalidation identical). Audio is never persisted. While
+recording: static danger dot + mono `m:ss / 2:00` counter replaces the ⌘+Enter hint, stop
+(transcribe) + × (discard) buttons; while transcribing: `Spinner` + "Transcribing…". The mic
+renders only when `MediaRecorder` is supported; pass the actual blob MIME through — never
+hardcode it (Safari records mp4/aac). **`CalledModal` composes the identical cluster**
+(label-row right slot of its Note field; same hook + action, saved via `addLeadCallNote`) —
+the shared pieces (`formatRecorderElapsed`, `DEFAULT_MAX_RECORDING_MS`) are exported from
+`src/hooks/useAudioRecorder.ts`, never re-declared per consumer. Mid-recording modal close is
+safe: unmount triggers the hook's discard + mic-track release.
+
 ---
 
 ### ReasonModal (inside StatusActionPanel)

@@ -78,13 +78,11 @@ export function CampaignMetricsStrip({
   return (
     <div style={{ marginBottom: 'var(--space-6)' }}>
       {/* Row 1 — 6 stat cards */}
+      {/* Inline grid-template-columns would override the md:/lg: classes —
+          the column count must live in classes only. */}
       <div
-        style={{
-          display:             'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
-          gap:                 'var(--space-3)',
-        }}
-        className="md:grid-cols-3 lg:grid-cols-6"
+        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6"
+        style={{ gap: 'var(--space-3)' }}
       >
         <StatTile
           label="Total Leads"

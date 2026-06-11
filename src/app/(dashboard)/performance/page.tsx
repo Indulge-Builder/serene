@@ -156,7 +156,7 @@ export default async function PerformancePage({
   // We fetch initial data server-side for 'this_month' so first paint is instant.
   if (profile.role === "agent") {
     return (
-      <main className="flex-1 min-w-0 p-8">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
         <div className="mb-6">
           <h1 className="type-page-title m-0">
             Your Performance<span className="page-title-dot">.</span>
@@ -173,7 +173,7 @@ export default async function PerformancePage({
   // domain is always read from the server-verified profile — never from URL params
   if (profile.role === "manager") {
     return (
-      <main className="flex-1 min-w-0 p-8">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
         <div className="mb-6">
           <h1 className="type-page-title m-0">
             Team Performance<span className="page-title-dot">.</span>
@@ -203,17 +203,28 @@ export default async function PerformancePage({
   // All domains in one roster; domain filtering is client-side in ManagerPerformancePanel.
   // Fetch domain health server-side so the Domains tab has initial data on first paint.
   const { getDomainHealthMetrics, getPeriodDateRange } = await import("@/lib/services/performance-service");
+  const { getDomainTargets } = await import("@/lib/services/domain-targets-service");
   const founderRange = getPeriodDateRange(period);
   const founderFrom  = (period === 'custom' && rawFrom) ? rawFrom : founderRange.from;
   const founderTo    = (period === 'custom' && rawTo)   ? rawTo   : founderRange.to;
-  const initialDomainHealth = await getDomainHealthMetrics(
-    [...GIA_DOMAINS] as AppDomain[],
-    founderFrom,
-    founderTo,
-  );
+  const monthRange   = getPeriodDateRange('this_month');
+
+  const [initialDomainHealth, monthHealth, domainTargets] = await Promise.all([
+    getDomainHealthMetrics([...GIA_DOMAINS] as AppDomain[], founderFrom, founderTo),
+    // The target meter is month-pinned; when the active period IS this month,
+    // reuse the same fetch instead of a second RPC round trip.
+    period === 'this_month'
+      ? Promise.resolve(null)
+      : getDomainHealthMetrics([...GIA_DOMAINS] as AppDomain[], monthRange.from, monthRange.to),
+    getDomainTargets(),
+  ]);
+
+  const monthDeals = Object.fromEntries(
+    (monthHealth ?? initialDomainHealth).map((c) => [c.domain, c.totalDeals]),
+  ) as Partial<Record<AppDomain, number>>;
 
   return (
-    <main className="flex-1 min-w-0 p-8">
+    <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
       <div className="mb-6">
         <h1 className="type-page-title m-0">
           Performance<span className="page-title-dot">.</span>
@@ -235,6 +246,9 @@ export default async function PerformancePage({
         customFrom={rawFrom}
         customTo={rawTo}
         initialDomainHealth={initialDomainHealth}
+        initialTargets={domainTargets}
+        monthDeals={monthDeals}
+        canEditTargets={true}
         agentsSlot={
           <Suspense fallback={<ManagerPerformanceSkeleton />}>
             <ManagerPerformanceAsync

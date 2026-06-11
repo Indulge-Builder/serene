@@ -67,6 +67,7 @@ function WorkDayPicker({ days, onChange, disabled }: WorkDayPickerProps) {
             disabled={disabled}
             aria-pressed={selected}
             aria-label={`${selected ? "Deselect" : "Select"} ${DAY_LABELS[day]}`}
+            className="eia-touch"
             style={{
               width:          "26px",
               height:         "26px",
@@ -548,8 +549,9 @@ export function AgentSettingsTable({
                   </div>
                 )}
 
-                {/* Shift controls group */}
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flex: "0 0 auto", flexWrap: "wrap" }}>
+                {/* Shift controls group — must be allowed to shrink so its
+                    children wrap inside the card at narrow widths */}
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap" }}>
                   {/* Shift start */}
                   <div>
                     <span className="label-micro" style={{ color: "var(--theme-text-tertiary)", display: "block", marginBottom: "var(--space-1)" }}>
@@ -638,6 +640,7 @@ export function AgentSettingsTable({
                     onClick={() => handleClear(agent.id)}
                     disabled={isSaving}
                     title="Clear shift"
+                    className="eia-touch"
                     style={{ width: 28, height: 28, padding: 0, justifyContent: "center", flexShrink: 0 }}
                   >
                     <X size={12} strokeWidth={1.5} />

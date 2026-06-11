@@ -103,7 +103,7 @@ export default async function DashboardPage({
   const firstName  = profile.full_name.split(" ")[0];
 
   return (
-    <main className="flex-1 p-8">
+    <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <DashboardCanvas
         greeting={greeting}
         firstName={firstName}

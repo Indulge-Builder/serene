@@ -213,8 +213,8 @@ export function EffortGrid({ metrics }: Props) {
 
   return (
     <div
+      className="grid grid-cols-2 lg:grid-cols-4"
       style={{
-        display: "flex",
         gap: "var(--space-4)",
         alignItems: "stretch",
       }}

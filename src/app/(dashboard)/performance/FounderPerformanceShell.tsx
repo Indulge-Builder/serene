@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { PerformancePeriod } from '@/lib/services/performance-service';
-import type { DomainHealthCard } from '@/lib/types/index';
+import type { DomainHealthCard, DomainTarget } from '@/lib/types/index';
 import type { AppDomain } from '@/lib/types/database';
 
 // Loaded on intent (perf audit G-3): the Domains tab is the only Recharts
@@ -22,7 +22,7 @@ const DomainOverviewPanel = dynamic(
 function DomainsTabFallback() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-4)' }}>
+      <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 'var(--space-4)' }}>
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="skeleton" style={{ height: '120px', borderRadius: 'var(--radius-lg)' }} />
         ))}
@@ -40,6 +40,11 @@ type Props = {
   customFrom?:         string;
   customTo?:           string;
   initialDomainHealth: DomainHealthCard[];
+  /** Founder-set monthly deals targets (domain_targets) */
+  initialTargets:      DomainTarget[];
+  /** Deals closed THIS MONTH per domain — month-pinned target meter input */
+  monthDeals:          Partial<Record<AppDomain, number>>;
+  canEditTargets:      boolean;
   agentsSlot:          React.ReactNode;
 };
 
@@ -48,6 +53,9 @@ export function FounderPerformanceShell({
   customFrom,
   customTo,
   initialDomainHealth,
+  initialTargets,
+  monthDeals,
+  canEditTargets,
   agentsSlot,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('agents');
@@ -98,6 +106,9 @@ export function FounderPerformanceShell({
           period={period}
           customFrom={customFrom}
           customTo={customTo}
+          initialTargets={initialTargets}
+          monthDeals={monthDeals}
+          canEditTargets={canEditTargets}
         />
       )}
     </div>

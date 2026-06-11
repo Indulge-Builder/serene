@@ -293,6 +293,7 @@ export function Calendar({
           type="button"
           onClick={() => navigate(-1)}
           aria-label="Previous month"
+          className="eia-touch"
           style={{
             display:        'flex',
             alignItems:     'center',
@@ -358,6 +359,7 @@ export function Calendar({
           type="button"
           onClick={() => navigate(1)}
           aria-label="Next month"
+          className="eia-touch"
           style={{
             display:        'flex',
             alignItems:     'center',

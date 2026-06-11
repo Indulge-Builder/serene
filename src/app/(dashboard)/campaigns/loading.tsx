@@ -12,7 +12,7 @@ import {
 
 export default function CampaignsLoading() {
   return (
-    <main className="flex-1 p-8">
+    <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <PageHeaderSkeleton titleWidth={120} />
 
       <FilterBarSkeleton searchWidth={200} chips={[88, 100, 80]} />

@@ -14,7 +14,7 @@ import {
 
 export default function AdCreativesLoading() {
   return (
-    <main className="flex-1 p-8">
+    <main className="flex-1 p-4 sm:p-6 lg:p-8">
       {/* Row 1 — page header: title left, Add Creative CTA right */}
       <PageHeaderSkeleton titleWidth={190} actionWidth={140} />
 

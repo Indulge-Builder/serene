@@ -1,11 +1,18 @@
 'use client';
 
 import { useMemo, useState, useTransition, type ReactNode } from 'react';
-import { Phone } from 'lucide-react';
+import { Mic, Phone, Square, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/ui/DatePicker';
+import { Spinner } from '@/components/ui/Spinner';
 import { useRouter } from 'next/navigation';
 import { addLeadCallNote, createLeadTaskAction } from '@/lib/actions/leads';
+import { transcribeAudioAction } from '@/lib/actions/transcription';
+import {
+  useAudioRecorder,
+  formatRecorderElapsed as formatElapsed,
+  DEFAULT_MAX_RECORDING_MS as MAX_RECORDING_MS,
+} from '@/hooks/useAudioRecorder';
 import { CALL_OUTCOMES, CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
 import { TASK_TYPES, TASK_TYPE_LABELS } from '@/lib/constants/task-types';
 import { formErrors } from '@/lib/validations/form-errors';
@@ -67,6 +74,36 @@ export function CalledModal({ leadId, onClose }: Props) {
   // Next-step task fields
   const [taskType, setTaskType]  = useState<TaskType>('call');
   const [dueAt, setDueAt]        = useState<Date | null>(null);
+
+  // Voice dictation — same stack as LeadNotesInput: transcript lands in the
+  // note textarea as an editable draft, saved through the unchanged
+  // addLeadCallNote path. Closing the modal mid-recording unmounts this
+  // component; useAudioRecorder's unmount cleanup discards the take and
+  // releases the mic track.
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const recorder = useAudioRecorder({
+    onError: (message) => setError(message),
+    onComplete: async ({ blob }) => {
+      setIsTranscribing(true);
+      setError(null);
+      const formData = new FormData();
+      formData.append('audio', blob, 'voice-note');
+      const result = await transcribeAudioAction(formData);
+      setIsTranscribing(false);
+      if (result.error || !result.data) {
+        setError(result.error);
+        return;
+      }
+      const text = result.data.text;
+      if (!text) {
+        setError("Couldn't hear anything in that recording. Please try again.");
+        return;
+      }
+      setNote(prev => (prev.trim() ? `${prev.replace(/\s+$/, '')} ${text}` : text));
+    },
+  });
+
+  const isBusy = isPending || isTranscribing;
 
   const outcomeLabel = useMemo(
     () => (outcome ? CALL_OUTCOME_LABELS[outcome] : 'Select outcome…'),
@@ -194,7 +231,7 @@ export function CalledModal({ leadId, onClose }: Props) {
             variant="secondary"
             type="button"
             onClick={handleLogOnly}
-            disabled={isPending}
+            disabled={isBusy || recorder.isRecording}
             loading={isPending}
           >
             Log Update
@@ -203,7 +240,7 @@ export function CalledModal({ leadId, onClose }: Props) {
             variant="primary"
             type="button"
             onClick={handleLogWithTask}
-            disabled={isPending}
+            disabled={isBusy || recorder.isRecording}
             loading={isPending}
             style={{ boxShadow: 'var(--shadow-accent-glow)' }}
           >
@@ -235,9 +272,112 @@ export function CalledModal({ leadId, onClose }: Props) {
 
         {/* Note */}
         <div>
-          <label htmlFor="call-note" style={fieldLabelStyle}>
-            Note <span style={{ color: 'var(--color-danger)' }}>*</span>
-          </label>
+          <div
+            style={{
+              display:        'flex',
+              alignItems:     'center',
+              justifyContent: 'space-between',
+              gap:            'var(--space-2)',
+              marginBottom:   'var(--space-2)',
+            }}
+          >
+            <label htmlFor="call-note" style={{ ...fieldLabelStyle, marginBottom: 0 }}>
+              Note <span style={{ color: 'var(--color-danger)' }}>*</span>
+            </label>
+
+            {/* Voice dictation cluster — mirrors LeadNotesInput */}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              {recorder.isRecording && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <span
+                    style={{
+                      width:        '8px',
+                      height:       '8px',
+                      borderRadius: 'var(--radius-full)',
+                      background:   'var(--color-danger)',
+                      flexShrink:   0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize:   'var(--text-xs)',
+                      color:      'var(--theme-text-secondary)',
+                    }}
+                  >
+                    {formatElapsed(recorder.elapsedMs)} / {formatElapsed(MAX_RECORDING_MS)}
+                  </span>
+                </span>
+              )}
+              {isTranscribing && (
+                <span
+                  style={{
+                    display:    'inline-flex',
+                    alignItems: 'center',
+                    gap:        'var(--space-2)',
+                    fontSize:   'var(--text-xs)',
+                    color:      'var(--theme-text-tertiary)',
+                  }}
+                >
+                  <Spinner size="sm" />
+                  Transcribing…
+                </span>
+              )}
+              {recorder.isSupported && recorder.isRecording && (
+                <button
+                  type="button"
+                  onClick={recorder.cancel}
+                  aria-label="Discard recording"
+                  title="Discard recording"
+                  style={{
+                    display:        'inline-flex',
+                    alignItems:     'center',
+                    justifyContent: 'center',
+                    width:          '28px',
+                    height:         '28px',
+                    borderRadius:   'var(--radius-md)',
+                    border:         '1px solid var(--theme-paper-border)',
+                    background:     'transparent',
+                    color:          'var(--theme-text-tertiary)',
+                    cursor:         'pointer',
+                  }}
+                >
+                  <X style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5 }} />
+                </button>
+              )}
+              {recorder.isSupported && (
+                <button
+                  type="button"
+                  onClick={recorder.isRecording ? recorder.stop : recorder.start}
+                  disabled={isBusy || recorder.status === 'requesting'}
+                  aria-label={recorder.isRecording ? 'Stop recording and transcribe' : 'Dictate the note'}
+                  title={recorder.isRecording ? 'Stop & transcribe' : 'Dictate the note'}
+                  style={{
+                    display:        'inline-flex',
+                    alignItems:     'center',
+                    justifyContent: 'center',
+                    width:          '28px',
+                    height:         '28px',
+                    borderRadius:   'var(--radius-md)',
+                    border:         recorder.isRecording
+                      ? '1px solid color-mix(in srgb, var(--color-danger) 40%, transparent)'
+                      : '1px solid color-mix(in srgb, var(--theme-accent) 30%, transparent)',
+                    background:     recorder.isRecording ? 'var(--color-danger-light)' : 'transparent',
+                    color:          recorder.isRecording ? 'var(--color-danger-text)' : 'var(--theme-accent)',
+                    cursor:         isBusy ? 'not-allowed' : 'pointer',
+                    opacity:        isBusy ? 0.45 : 1,
+                    transition:     'opacity 150ms, background 150ms, border-color 150ms',
+                  }}
+                >
+                  {recorder.isRecording ? (
+                    <Square style={{ width: '0.7rem', height: '0.7rem', strokeWidth: 1.5, fill: 'currentColor' }} />
+                  ) : (
+                    <Mic style={{ width: '0.8rem', height: '0.8rem', strokeWidth: 1.5 }} />
+                  )}
+                </button>
+              )}
+            </span>
+          </div>
           <textarea
             id="call-note"
             value={note}

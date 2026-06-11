@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/actions/_auth";
 import { sanitizeText } from "@/lib/utils/sanitize";
+import { normalizeCampaignKey } from "@/lib/utils/campaigns";
 import { formErrors } from "@/lib/validations/form-errors";
 import {
   upsertAdCreativeSchema,
@@ -44,7 +45,7 @@ export async function upsertAdCreative(
 
   // Normalisation invariant — must match the DB CHECK constraint and the
   // getAdCreativeForCampaign lookup (lowercase + trim).
-  const normalisedKey = campaign_key.toLowerCase().trim();
+  const normalisedKey = normalizeCampaignKey(campaign_key);
 
   const row = {
     campaign_key:  normalisedKey,

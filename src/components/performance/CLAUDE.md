@@ -2,7 +2,7 @@
 
 ## Recharts loading rule (perf audit G-3)
 
-`CoreFourGrid`, `CallOutcomeBar`, and `DomainOverviewPanel` import Recharts, so
+`CoreFourGrid`, `CallOutcomeBar`, `DomainOverviewPanel` (which mounts `DomainTargetMeter`), and `AgentCallTrendChart` import Recharts, so
 their call sites (`AgentPerformanceShell`, `AgentDetailPanel`,
 `FounderPerformanceShell`) load them via `next/dynamic` with same-shape
 `.skeleton` placeholders — the chart chunk stays out of the `/performance`
@@ -18,6 +18,10 @@ initial bundle. Import these three statically only from another lazy chunk.
 | `CallOutcomeBar.tsx` | Donut + legend (agent self-view and detail panel) |
 | `ManagerPerformancePanel.tsx` | Two-column shell — roster left, detail right |
 | `AgentDetailPanel.tsx` | Manager / founder agent detail: stats, pipeline, outcomes |
+| `DomainOverviewPanel.tsx` | Founder Domains tab — 4 stats per domain (incl. Deals Closed) + month-pinned `DomainTargetMeter` + founder/admin inline target edit (`upsertDomainTargetAction`); mobile = CSS scroll-snap carousel (no library) |
+| `DomainTargetMeter.tsx` | Radial deals-vs-target meter (Recharts `RadialBarChart`, 2 colours via `useChartTokens`); target null/0 → `EmptyState` inline "No target set." — never a division |
+| `AgentCallTrendChart.tsx` | 14-day daily-calls area chart — composes `ChartFrame` + `cartesianDefaults` (Cartesian frame rule); loaded via `next/dynamic` from the shell |
+| `AgentRecentActivityList.tsx` | Agent Today view — keyset "load more" (composite cursor, page 15, button not infinite scroll) via `getAgentRecentLeadActivityAction` |
 
 ---
 

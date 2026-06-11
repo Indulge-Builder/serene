@@ -23,17 +23,22 @@ widen scope.
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `performance-service.ts` only (never extend leads/dashboard services) — `getAgentPerformanceSummary` (React `cache()`, D-2), `getAgentRosterPerformance` (RPC-backed), `getAgentDetailMetrics`, `getDomainHealthMetrics`, period helpers; Redis `perf:*` per `../architecture/caching.md` |
-| RPCs | `get_agent_performance` + `get_agent_roster_performance` (0101, self-/role-scoped in SQL), domain-health RPCs (0066b/0068/0076) |
-| Actions | `performance.ts` — `getAgentSelfMetricsAction` (agent-only), `getAgentDetailMetricsAction` (manager domain-checked), `getManagerRosterAction`, `getDomainHealthMetricsAction` |
+| Service | `performance-service.ts` only (never extend leads/dashboard services) — `getAgentPerformanceSummary` (React `cache()`, D-2), `getAgentRosterPerformance` (RPC-backed), `getAgentDetailMetrics`, `getDomainHealthMetrics`, `getAgentTodayPulse` (0108), `getAgentLeadActivityPage` (keyset, composite cursor), period helpers; targets in `domain-targets-service.ts`. No Redis (see §"caching") |
+| RPCs | `get_agent_performance` + `get_agent_roster_performance` (0101, self-/role-scoped in SQL), domain-health RPCs (0066b/0068/0076/0107 — `total_deals` added), `get_agent_today_pulse` (0108, self-scoped) |
+| Tables | `domain_targets` (0105) — founder-set monthly deals-closed target per domain; UNIQUE(domain, metric, period); RLS all-read / admin+founder write |
+| Actions | `performance.ts` — `getAgentSelfMetricsAction` (agent-only), `getAgentDetailMetricsAction` (manager domain-checked), `getManagerRosterAction`, `getDomainHealthMetricsAction`, `getAgentPulseAction` (agent-only), `getAgentRecentLeadActivityAction` (agent-only, cursor from client / id from profile), `upsertDomainTargetAction` (admin/founder) |
 | Period system | IST presets (`today`, `this_week`, `this_month`, `prev_month`, custom range) via `lib/utils/ist.ts` — Deep dive §3 |
 
 ## 4. Components
 
 `AgentPerformanceShell` (period tabs, Overview/Today tabs, `MetricCard` — deliberately bespoke,
-sparklines, `CallOutcomeBar` donut) · `ManagerPerformanceAsync` (roster + `AgentDetailPanel`) ·
+sparklines, `CallOutcomeBar` donut; Today tab adds the pulse: calls new/old split chips,
+`AgentCallTrendChart` 14-day trend, Revenue card, `AgentRecentActivityList` keyset load-more) ·
+`ManagerPerformanceAsync` (roster + `AgentDetailPanel`) ·
 `FounderPerformanceShell` (Agents/Domains tabs; `agentsSlot` injection) · `DomainOverviewPanel`
-+ `DomainHealthGrid` · `CoreFourGrid`, `EffortGrid`, `StatAtom` · `PerformanceFilters` ·
+(4 stats incl. Deals Closed + `DomainTargetMeter` radial deals-vs-target meter, founder/admin
+inline target edit, mobile CSS scroll-snap carousel) + `DomainHealthGrid` (legacy, unmounted) ·
+`CoreFourGrid`, `EffortGrid`, `StatAtom` · `PerformanceFilters` ·
 roster display helpers in `lib/utils/performance-roster-display.ts`.
 
 ## 5. States
@@ -48,6 +53,19 @@ Deep dive §12 — **the Critical Date-Field Rule** (`leadsWon`/`conversionRate`
 `status_changed_at`; `touchRate` by `created_at` cohort — intentional asymmetry), period
 boundaries are IST, benchmarks compare within domain, never re-fan-out the agent view into
 per-metric queries.
+
+Added 2026-06-12:
+
+- **Target meter is month-pinned.** `DomainTargetMeter` always compares THIS MONTH's
+  `total_deals` against the monthly `domain_targets` value — it does not move with the
+  period filter (page reuses the period fetch when the period IS `this_month`, otherwise
+  fetches the month range once). Target null/0 → "No target set." — never a division.
+- **Pulse split is a partition.** `get_agent_today_pulse` computes total/new/old with
+  `count(*)` + two complementary FILTERs over the same row set — new + old always equals
+  total calls today. "Calls" = `lead_notes` with `call_outcome IS NOT NULL` (same
+  definition as `calls_logged` in 0101).
+- **Activity load-more uses a composite cursor** `(created_at, id)` — never a single-column
+  cursor; page ~15 via a button, never infinite scroll. Agent id from the verified profile.
 
 ## 7. Open items
 

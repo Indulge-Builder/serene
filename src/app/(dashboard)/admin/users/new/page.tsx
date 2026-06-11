@@ -12,12 +12,8 @@ export default async function NewUserPage() {
 
   return (
     <main
-      style={{
-        flex:          1,
-        padding:       "var(--space-8)",
-        paddingBottom: "var(--space-16)",
-        maxWidth:      "1280px",
-      }}
+      className="flex-1 p-4 sm:p-6 lg:p-8"
+      style={{ paddingBottom: "var(--space-16)", maxWidth: "1280px" }}
     >
       <div
         style={{

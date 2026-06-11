@@ -6,9 +6,15 @@ import { m as motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { EffortGrid } from './EffortGrid';
-import { getAgentSelfMetricsAction, type AgentSelfMetrics } from '@/lib/actions/performance';
+import { AgentRecentActivityList } from './AgentRecentActivityList';
+import {
+  getAgentSelfMetricsAction,
+  getAgentPulseAction,
+  type AgentSelfMetrics,
+} from '@/lib/actions/performance';
+import { formatCurrencyCompact, formatCount } from '@/lib/utils/numbers';
 import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
-import type { PerformancePeriod } from '@/lib/services/performance-service';
+import type { PerformancePeriod, AgentTodayPulse } from '@/lib/services/performance-service';
 
 // Recharts stays out of the /performance initial chunk (perf audit G-3): the
 // shell, period selector, and effort cards hydrate first; the two chart panels
@@ -21,12 +27,20 @@ const CallOutcomeBar = dynamic(
   () => import('./CallOutcomeBar').then((mod) => mod.CallOutcomeBar),
   { loading: () => <OutcomeBarFallback /> },
 );
+const AgentCallTrendChart = dynamic(
+  () => import('./AgentCallTrendChart').then((mod) => mod.AgentCallTrendChart),
+  { loading: () => <TrendFallback /> },
+);
+
+function TrendFallback() {
+  return <div className="skeleton" style={{ height: '180px', borderRadius: 'var(--radius-lg)' }} />;
+}
 
 function KpiRowFallback() {
   return (
-    <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" style={{ gap: 'var(--space-4)' }}>
       {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="skeleton" style={{ flex: 1, height: '168px', borderRadius: 'var(--radius-lg)' }} />
+        <div key={i} className="skeleton" style={{ height: '168px', borderRadius: 'var(--radius-lg)' }} />
       ))}
     </div>
   );
@@ -191,9 +205,9 @@ function MetricsSkeleton() {
       {/* 4 KPI cards */}
       <KpiRowFallback />
       {/* 4 effort cards */}
-      <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
+      <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 'var(--space-4)' }}>
         {[1,2,3,4].map((i) => (
-          <div key={i} className="skeleton" style={{ flex: 1, height: '108px', borderRadius: 'var(--radius-lg)' }} />
+          <div key={i} className="skeleton" style={{ height: '108px', borderRadius: 'var(--radius-lg)' }} />
         ))}
       </div>
       {/* outcome bar */}
@@ -208,12 +222,16 @@ function MetricsSkeleton() {
 
 function TodayTab({
   data,
+  pulse,
 }: {
-  data: AgentSelfMetrics | null;
+  data:  AgentSelfMetrics | null;
+  pulse: AgentTodayPulse | null;
 }) {
   if (!data) return <MetricsSkeleton />;
 
-  const callsToday = data.effort.callsLogged;
+  // The pulse RPC is the literal since-IST-midnight count regardless of the
+  // selected period; fall back to the period effort count only for 'today'.
+  const callsToday = pulse?.callsToday.total;
   const notesToday = data.effort.notesWritten;
 
   return (
@@ -224,10 +242,9 @@ function TodayTab({
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
+        className="grid grid-cols-1 sm:grid-cols-2"
         style={{
-          display:        'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap:            'var(--space-4)',
+          gap: 'var(--space-4)',
         }}
       >
         {/* Calls Today */}
@@ -246,12 +263,41 @@ function TodayTab({
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-medium)', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--theme-text-tertiary)' }}>
             Calls Today
           </span>
-          <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-display)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
-            {callsToday}
-          </span>
+          {callsToday === undefined ? (
+            <div className="skeleton" style={{ width: '72px', height: '48px', borderRadius: 'var(--radius-sm)' }} />
+          ) : (
+            <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-display)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
+              {callsToday}
+            </span>
+          )}
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
             call notes logged since midnight IST
           </span>
+          {pulse && pulse.callsToday.total > 0 && (
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              {[
+                { label: `${formatCount(pulse.callsToday.newLeads)} new lead${pulse.callsToday.newLeads === 1 ? '' : 's'}`, bg: 'var(--theme-accent-surface)', color: 'var(--theme-accent)' },
+                { label: `${formatCount(pulse.callsToday.oldLeads)} existing`, bg: 'var(--theme-paper-subtle)', color: 'var(--theme-text-secondary)' },
+              ].map(({ label, bg, color }) => (
+                <span
+                  key={label}
+                  style={{
+                    display:      'inline-flex',
+                    alignItems:   'center',
+                    padding:      '2px 10px',
+                    borderRadius: 'var(--radius-full)',
+                    background:   bg,
+                    color,
+                    fontFamily:   'var(--font-sans)',
+                    fontSize:     'var(--text-xs)',
+                    fontWeight:   'var(--weight-medium)',
+                  }}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Notes Today */}
@@ -279,6 +325,28 @@ function TodayTab({
         </div>
       </motion.div>
 
+      {/* 14-day call trend */}
+      <motion.div
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: ENTER_DURATION, delay: 0.06, ease: EASE_OUT_EXPO }}
+        style={{
+          background:   'var(--theme-paper)',
+          border:       '1px solid var(--theme-paper-border)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow:    'var(--shadow-1)',
+          padding:      'var(--space-5)',
+          display:      'flex',
+          flexDirection:'column',
+          gap:          'var(--space-3)',
+        }}
+      >
+        <span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>
+          Daily Calls · Last 14 Days
+        </span>
+        {pulse ? <AgentCallTrendChart trend={pulse.callTrend} /> : <TrendFallback />}
+      </motion.div>
+
       {/* Today's outcome breakdown */}
       <motion.div
         initial={{ opacity: 0, y: 4 }}
@@ -288,25 +356,28 @@ function TodayTab({
         <CallOutcomeBar breakdown={data.outcomes} />
       </motion.div>
 
-      {/* Pipeline live counts */}
+      {/* Pipeline live counts + period deals */}
       <motion.div
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: ENTER_DURATION, delay: 0.14, ease: EASE_OUT_EXPO }}
         style={{
-          display:        'flex',
-          gap:            'var(--space-4)',
+          display:  'flex',
+          flexWrap: 'wrap',
+          gap:      'var(--space-4)',
         }}
       >
         {[
-          { label: 'Leads Won',    value: data.core.leadsWon,      color: 'var(--color-success-text)',  bg: 'var(--color-success-light)'  },
-          { label: 'In Discussion',value: data.effort.inDiscussionCount, color: 'var(--color-info-text)',    bg: 'var(--color-info-light)'    },
-          { label: 'Nurturing',    value: data.effort.nurturingCount,    color: 'var(--color-warning-text)', bg: 'var(--color-warning-light)' },
-        ].map(({ label, value, color, bg }) => (
+          { label: 'Leads Won',    value: String(data.core.leadsWon),            sub: null,                                                                       color: 'var(--color-success-text)',  bg: 'var(--color-success-light)'  },
+          { label: 'In Discussion',value: String(data.effort.inDiscussionCount), sub: null,                                                                       color: 'var(--color-info-text)',     bg: 'var(--color-info-light)'    },
+          { label: 'Nurturing',    value: String(data.effort.nurturingCount),    sub: null,                                                                       color: 'var(--color-warning-text)',  bg: 'var(--color-warning-light)' },
+          // Revenue + deal count from public.deals (won_at in the active period)
+          { label: 'Revenue',      value: pulse ? formatCurrencyCompact(pulse.deals.revenue) : '—', sub: pulse ? `${formatCount(pulse.deals.dealCount)} deal${pulse.deals.dealCount === 1 ? '' : 's'}` : null, color: 'var(--theme-accent)', bg: 'var(--theme-accent-surface)' },
+        ].map(({ label, value, sub, color, bg }) => (
           <div
             key={label}
             style={{
-              flex:         1,
+              flex:         '1 1 140px',
               background:   bg,
               borderRadius: 'var(--radius-lg)',
               padding:      'var(--space-4) var(--space-5)',
@@ -321,8 +392,22 @@ function TodayTab({
             <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-light)', color, lineHeight: 1 }}>
               {value}
             </span>
+            {sub && (
+              <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color }}>
+                {sub}
+              </span>
+            )}
           </div>
         ))}
+      </motion.div>
+
+      {/* Recent lead activity — keyset load-more */}
+      <motion.div
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: ENTER_DURATION, delay: 0.2, ease: EASE_OUT_EXPO }}
+      >
+        <AgentRecentActivityList />
       </motion.div>
     </div>
   );
@@ -416,6 +501,10 @@ export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props)
   const [customFrom, setCustomFrom] = useState<Date | null>(null);
   const [customTo, setCustomTo]     = useState<Date | null>(null);
 
+  // Today-tab pulse (calls split, 14-day trend, period deals) — fetched on
+  // first Today-tab open and refetched on period/date change while visible.
+  const [pulse, setPulse] = useState<AgentTodayPulse | null>(null);
+
   // Track whether this is the first render (use initialData, no fetch)
   const hasFetched = useRef(false);
 
@@ -441,6 +530,28 @@ export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props)
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period, customFrom, customTo]);
+
+  // Pulse fetch — only while the Today tab is visible. Plain promise chain
+  // with a cancelled ref (no startTransition — would defer setPulse(null)).
+  const showingToday = period === 'today' || activeTab === 'today';
+  useEffect(() => {
+    if (!showingToday) return;
+
+    let cancelled = false;
+    setPulse(null);
+
+    const from = period === 'custom' ? customFrom?.toISOString() : undefined;
+    const to   = period === 'custom' ? customTo?.toISOString()   : undefined;
+    getAgentPulseAction(period, from, to)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.data) setPulse(result.data);
+      })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showingToday, period, customFrom, customTo]);
 
   function handlePeriodChange(p: PerformancePeriod) {
     if (p === period) return;
@@ -551,7 +662,7 @@ export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props)
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
               >
-                <TodayTab data={data} />
+                <TodayTab data={data} pulse={pulse} />
               </motion.div>
             ) : (
               <motion.div

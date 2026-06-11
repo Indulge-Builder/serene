@@ -502,12 +502,14 @@ export function MyTasksCalendarView({
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ display: 'flex', gap: 'var(--space-5)', alignItems: 'flex-start' }}>
+    <div
+      className="flex flex-col items-stretch md:flex-row md:items-start"
+      style={{ gap: 'var(--space-5)' }}
+    >
 
-      {/* ── Left: Calendar panel ──────────────────────────────────────────── */}
-      <div style={{
-        flexShrink: 0, width: 280,
-        position: 'sticky', top: 'var(--space-4)',
+      {/* ── Left: Calendar panel — full-width above the list <md, 280px sticky column md+ */}
+      <div className="w-full md:w-70 md:sticky" style={{
+        flexShrink: 0, top: 'var(--space-4)',
         display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
       }}>
         {/* Calendar card */}

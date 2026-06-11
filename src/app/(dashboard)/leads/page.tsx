@@ -83,7 +83,8 @@ export default async function LeadsPage({
 
   return (
     <>
-      <main className="flex-1 p-8">
+      {/* DNA §9.2 page-padding ladder: px-4 mobile → px-6 tablet → px-8 desktop */}
+      <main className="flex-1 p-4 sm:p-6 lg:p-8">
         <div className="flex items-center justify-between gap-4 mb-6">
           <h1 className="type-page-title m-0">Leads<span className="page-title-dot">.</span></h1>
 

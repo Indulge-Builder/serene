@@ -145,11 +145,15 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 **Activities:** `call_logged` `{ outcome, call_count }`; `note_added` `{ call_outcome }`; if status was `new`, also `status_changed` `{ old_status: 'new', new_status: 'touched' }`.
 
+**Voice dictation (2026-06-12):** the Note field carries the same mic cluster as `LeadNotesInput` — `useAudioRecorder` + `transcribeAudioAction`, transcript appended to the textarea as an editable draft, saved through the unchanged `addLeadCallNote` path. Both footer buttons are disabled while recording/transcribing. Closing the modal mid-recording unmounts the component and the hook's unmount cleanup discards the take and releases the mic.
+
 **Status:** Auto `new` → `touched` when first call on `new` lead (in RPC). The optimistic pill update for this transition is handled entirely by `StatusActionPanel` before the modal opens — `CalledModal` has no `initialStatus` or status-callback props.
 
 #### 7g. LeadNotesInput vs LeadNotesSection
 
 **LeadNotesInput:** Plain team note → `addLeadNote` → RPC `add_lead_plain_note`; `call_outcome` null; does not increment `call_count`. Submit button or ⌘+Enter. Header uses `var(--color-info-dark-*)` tokens.
+
+**Voice dictation (2026-06-12):** a mic button in the composer footer records via `useAudioRecorder` (`src/hooks/useAudioRecorder.ts` — MediaRecorder codec negotiation, 2-minute auto-stop, mic-track release) and transcribes server-side via `transcribeAudioAction` (`lib/actions/transcription.ts` → `transcription-service.ts`, Deepgram Nova-3 multilingual for Hinglish). The transcript is **appended to the textarea as an editable draft** — never auto-submitted; the save is the same `addLeadNote` path as a typed note (sanitisation, activity log, cache invalidation identical). Audio is transcribed in-memory and discarded — never stored (D-01 carve-out, Decision Log 2026-06-12). The mic renders only when `MediaRecorder` is supported; the recording's actual MIME type travels with the blob (Safari mp4/aac, Chrome webm/opus).
 
 **LeadNotesSection:** Read-only timeline from props; author `note.author.full_name`; **call outcome badge** when `note.call_outcome` set (styled via `OUTCOME_BADGE` tokens e.g. `var(--color-warning-light)`). Chronological display from server order (newest first in service).
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense, use } from "react";
+import { Suspense, use, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { m as motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, m as motion, useReducedMotion } from "framer-motion";
 import { SPRING_CONFIG, BASE_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 import {
   LayoutDashboard,
@@ -19,11 +19,13 @@ import {
   MessageCircle,
   Film,
   Bell,
+  Wallet,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import { canAccessRoute } from "@/lib/utils/route-access";
 import { getInitials } from "@/lib/utils/strings";
+import { lockBodyScroll } from "@/lib/utils/scroll";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import type { Profile, Notification } from "@/lib/types/database";
 
@@ -45,10 +47,11 @@ const MAIN_NAV: NavItem[] = [
   { href: "/whatsapp",  label: "WhatsApp",  icon: MessageCircle   },
 ];
 
-// Analytics section — Performance for all roles; Campaigns for manager+
+// Analytics section — Performance for all roles; Campaigns + Budget for manager+
 const ANALYTICS_NAV: NavItem[] = [
   { href: "/performance", label: "Performance", icon: BarChart2 },
   { href: "/campaigns", label: "Campaigns", icon: TrendingUp },
+  { href: "/budget", label: "Budget", icon: Wallet },
 ];
 
 // Visible to manager, admin, founder — lead assignment config (+ ad creatives for admin/founder)
@@ -69,6 +72,18 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/users", label: "User Management", icon: Shield },
 ];
 
+// Primary nav pages where the floating mobile drawer trigger renders.
+// Detail pages (/leads/[id], /tasks/[id], …) are excluded — their
+// BackButton occupies the same top-left corner and is the affordance there.
+const MOBILE_TRIGGER_PATHS = new Set<string>([
+  ...MAIN_NAV.map((i) => i.href),
+  ...ANALYTICS_NAV.map((i) => i.href),
+  "/admin/ad-creatives",
+  "/settings",
+  "/admin/users",
+  "/profile",
+]);
+
 // ─── NavLink ──────────────────────────────────────────────
 
 function NavLink({
@@ -81,13 +96,11 @@ function NavLink({
   return (
     <Link
       href={href}
+      // Layout props live in .eia-nav-link (globals.css) so the md icon-rail
+      // media query can centre the icon — inline styles would win otherwise.
+      className="eia-nav-link"
+      title={label}
       style={{
-        position: "relative",
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-3)",
-        padding: "10px var(--space-3)",
-        borderRadius: "var(--radius-md)",
         color: isActive
           ? "var(--theme-sidebar-active)"
           : "var(--theme-sidebar-text)",
@@ -99,7 +112,6 @@ function NavLink({
         fontSize: "var(--text-sm)",
         fontWeight: isActive ? "var(--weight-medium)" : "var(--weight-normal)",
         letterSpacing: "var(--tracking-wide)",
-        textDecoration: "none",
         transition:
           "color var(--duration-fast) var(--ease-in-out), background var(--duration-fast) var(--ease-in-out), transform var(--duration-base) var(--ease-spring)",
       }}
@@ -146,15 +158,16 @@ function NavLink({
           flexShrink: 0,
         }}
       />
-      <span style={{ flex: 1 }}>{label}</span>
+      {/* Hidden on the md icon rail — the title attr carries the label there */}
+      <span className="eia-sidebar-rail-hide" style={{ flex: 1 }}>{label}</span>
 
       {isActive && (
         <motion.span
+          className="eia-sidebar-rail-hide eia-nav-chevron"
           aria-hidden="true"
           initial={reduceMotion ? false : { opacity: 0, x: -4 }}
           animate={{ opacity: 0.5, x: 0 }}
           transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
-          style={{ display: "flex", flexShrink: 0 }}
         >
           <ChevronRight style={{ width: "12px", height: "12px" }} />
         </motion.span>
@@ -177,10 +190,9 @@ function NavSection({ label }: { label: string }) {
         }}
       />
       <span
-        className="label-micro"
+        className="label-micro eia-sidebar-section-label"
         style={{
           padding: "0 var(--space-3)",
-          display: "block",
           marginBottom: "var(--space-2)",
           color:
             "color-mix(in srgb, var(--theme-sidebar-text) 40%, transparent)",
@@ -244,13 +256,76 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
   const isManager = profile.role === "manager" || isPrivileged;
   const isOnProfile = pathname === "/profile";
 
+  // Mobile drawer (< md). On md+ the CSS ignores data-open entirely —
+  // the aside is a static rail/full sidebar (globals.css .eia-sidebar).
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Navigating closes the drawer (nav links push a new pathname).
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
+
+  // While open: Escape closes, body scroll locked (DNA §9.3).
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const unlock = lockBodyScroll();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      unlock();
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [drawerOpen]);
+
   const initials = getInitials(profile.full_name);
   const roleLabel = ROLE_LABELS[profile.role];
 
   return (
+    <>
+      {/* ── Mobile drawer trigger (< md only) — floats over the paper on
+          the page-title line (the .type-page-title indent in globals.css
+          clears it). Canvas-coloured bubble backdrop (.eia-mobile-trigger).
+          Primary nav pages only — detail pages use their BackButton. ── */}
+      {MOBILE_TRIGGER_PATHS.has(pathname) && (
+        <div className="eia-mobile-topbar">
+          <button
+            type="button"
+            aria-label="Open navigation"
+            aria-expanded={drawerOpen}
+            className="eia-mobile-trigger eia-touch eia-pressable"
+            onClick={() => setDrawerOpen(true)}
+          >
+            <img
+              src="/logo.webp"
+              alt=""
+              aria-hidden="true"
+              style={{ width: "34px", height: "34px", objectFit: "contain" }}
+            />
+          </button>
+        </div>
+      )}
+
+      {/* ── Drawer backdrop — sanctioned blur surface (V-06) ── */}
+      <AnimatePresence>
+        {drawerOpen && (
+          <motion.div
+            className="eia-sidebar-backdrop"
+            aria-hidden="true"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
+            onClick={() => setDrawerOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
     <aside
+      className="eia-sidebar"
+      data-open={drawerOpen ? "true" : "false"}
       style={{
-        width: "240px",
         height: "100dvh",
         background: "var(--theme-sidebar-bg)",
         boxShadow: "var(--shadow-sidebar)",
@@ -262,6 +337,7 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
     >
       {/* ── Logo block ──────────────────────────────── */}
       <div
+        className="eia-sidebar-logo"
         style={{
           padding: "28px var(--space-5) var(--space-5)",
           display: "flex",
@@ -269,20 +345,39 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
           alignItems: "center",
         }}
       >
-        <img
-          src="/logo-light.avif"
-          alt="Eia"
+        <Link
+          href="/dashboard"
+          aria-label="Go to dashboard"
+          className="eia-sidebar-logo-link"
           style={{
-            width: "128px",
-            height: "128px",
-            objectFit: "contain",
-            filter: `
-              drop-shadow(0 0 8px  color-mix(in srgb, var(--theme-accent) 30%, transparent))
-              drop-shadow(0 0 20px color-mix(in srgb, var(--theme-accent) 12%, transparent))
-            `,
+            display: "block",
+            lineHeight: 0,
+            borderRadius: "var(--radius-md)",
+            transition: "opacity var(--duration-fast) var(--ease-in-out)",
           }}
-        />
+          onMouseEnter={(e) => {
+            e.currentTarget.style.opacity = "0.85";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.opacity = "1";
+          }}
+        >
+          <img
+            src="/logo-light.avif"
+            alt=""
+            aria-hidden="true"
+            className="eia-sidebar-logo-img"
+            style={{
+              objectFit: "contain",
+              filter: `
+                drop-shadow(0 0 8px  color-mix(in srgb, var(--theme-accent) 30%, transparent))
+                drop-shadow(0 0 20px color-mix(in srgb, var(--theme-accent) 12%, transparent))
+              `,
+            }}
+          />
+        </Link>
         <div
+          className="eia-sidebar-rail-hide"
           aria-hidden="true"
           style={{
             marginTop: "var(--space-4)",
@@ -375,34 +470,24 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
           }}
         />
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-2)",
-          }}
-        >
-          {/* Notification bell — seed streams in without blocking the shell */}
-          <Suspense fallback={<BellFallback />}>
-            <SeededNotificationBell
-              userId={profile.id}
-              promise={notificationsPromise}
-            />
-          </Suspense>
+        <div className="eia-sidebar-footer-row">
+          {/* Notification bell — seed streams in without blocking the shell.
+              Hidden on the md icon rail (avatar only there). */}
+          <span className="eia-sidebar-rail-hide">
+            <Suspense fallback={<BellFallback />}>
+              <SeededNotificationBell
+                userId={profile.id}
+                promise={notificationsPromise}
+              />
+            </Suspense>
+          </span>
 
-          {/* User info — links to profile settings */}
+          {/* User info — links to profile settings. Layout props live in
+              .eia-sidebar-profile so the rail can shrink it to the avatar. */}
           <Link
             href="/profile"
+            className="eia-sidebar-profile"
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-2)",
-              flex: 1,
-              minWidth: 0,
-              textDecoration: "none",
-              borderRadius: "var(--radius-md)",
-              padding: "var(--space-1)",
-              margin: "calc(-1 * var(--space-1))",
               background: isOnProfile
                 ? "var(--theme-sidebar-active-bg)"
                 : "transparent",
@@ -462,8 +547,8 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
               </div>
             )}
 
-            {/* Name + role */}
-            <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Name + role — hidden on the md icon rail */}
+            <div className="eia-sidebar-rail-hide" style={{ flex: 1, minWidth: 0 }}>
               <p
                 style={{
                   fontFamily: "var(--font-sans)",
@@ -500,15 +585,15 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
             </div>
           </Link>
 
-          {/* Sign-out */}
+          {/* Sign-out — hidden on the md icon rail (use the drawer/full modes) */}
           <button
             type="button"
             aria-label="Sign out"
+            className="eia-sidebar-signout"
             onClick={async () => {
               await signOutUser();
             }}
             style={{
-              display: "flex",
               alignItems: "center",
               justifyContent: "center",
               width: "28px",
@@ -543,5 +628,6 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
         </div>
       </div>
     </aside>
+    </>
   );
 }

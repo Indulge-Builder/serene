@@ -655,6 +655,14 @@
 
 /* ================================================================
    12. GLOBAL TOKENS — BREAKPOINTS
+
+   DOCUMENTATION-ONLY tokens. CSS custom properties cannot appear in
+   @media preludes — `@media (min-width: var(--bp-md))` silently never
+   matches. Media queries write the raw pixel value with a `--bp-*`
+   comment (see globals.css RESPONSIVE SHELL). Tailwind v4's default
+   sm/md/lg/xl/2xl scale equals --bp-sm…--bp-2xl (responsive audit
+   2026-06, decision D-1) — use `md:` utilities in components. Client
+   JS uses useMediaQuery + MQ from src/hooks/useMediaQuery.ts.
    ================================================================ */
 
 :root {
@@ -1017,10 +1025,12 @@
   color:          var(--theme-text-tertiary);
 }
 
-/* Page title — Playfair h1 on primary nav pages. Always ends with .page-title-dot */
+/* Page title — Playfair h1 on primary nav pages. Always ends with .page-title-dot.
+   Fluid (DNA §9.2 + responsive audit D-4): 24px on phones → 30px from ~810px up.
+   The ONLY fluid type tier — body/label/data text stays on the fixed scale. */
 .type-page-title {
   font-family:    var(--font-serif);
-  font-size:      var(--text-2xl);
+  font-size:      clamp(var(--text-xl), 1.05rem + 1.6vw, var(--text-2xl));
   font-weight:    var(--weight-light);
   letter-spacing: var(--tracking-tighter);
   line-height:    var(--leading-tight);

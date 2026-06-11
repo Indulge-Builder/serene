@@ -54,7 +54,7 @@ export default async function CampaignsPage({
   const showDomainFilter = profile.role === 'admin' || profile.role === 'founder';
 
   return (
-    <main className="flex-1 p-8">
+    <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between gap-4 mb-6">
         <h1 className="type-page-title m-0">Campaigns<span className="page-title-dot">.</span></h1>
       </div>

@@ -27,7 +27,7 @@ export function StatAtom({ label, value, paletteIndex, delay = 0 }: StatAtomProp
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: ENTER_DURATION, delay: delay / 1000, ease: EASE_OUT_EXPO }}
       style={{
-        flex:           '1 1 0',
+        flex:           '1 1 140px',
         display:        'flex',
         flexDirection:  'column',
         justifyContent: 'space-between',

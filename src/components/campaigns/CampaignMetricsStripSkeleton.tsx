@@ -6,13 +6,11 @@ export function CampaignMetricsStripSkeleton() {
 
   return (
     <div style={{ marginBottom: 'var(--space-6)' }}>
+      {/* Column count lives in classes only — inline grid-template-columns
+          would override the md:/lg: variants (mirrors CampaignMetricsStrip) */}
       <div
-        style={{
-          display:             'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
-          gap:                 'var(--space-3)',
-        }}
-        className="md:grid-cols-3 lg:grid-cols-6"
+        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6"
+        style={{ gap: 'var(--space-3)' }}
       >
         {staggerDelays.map((delay, i) => (
           <div

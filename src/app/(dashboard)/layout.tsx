@@ -34,44 +34,18 @@ export default async function DashboardLayout({
     <>
       {/* Sets data-theme on <html> before the browser paints — no flash. */}
       <ThemeInitializer theme={safeTheme} />
-    <div
-      className="layout-shell flex"
-      style={{
-        gap:      "var(--space-3)",
-        height:   "100dvh",
-        overflow: "hidden",
-      }}
-    >
+    {/* Responsive frame (.eia-shell* in globals.css — audit D-3): row with
+        gutter+paper on md+, column with mobile top strip + full-bleed paper
+        below md. The Sidebar renders its own three modes (full/rail/drawer). */}
+    <div className="layout-shell eia-shell">
       <Sidebar profile={profile} notificationsPromise={notificationsPromise} />
 
       {/* Toast stack — portal-like, sits at root of dashboard shell, outside scroll */}
       <ToastProvider />
 
       {/* Flat canvas gutter (matches sidebar) — paper fills the padded area */}
-      <div
-        style={{
-          flex:           1,
-          minWidth:       0,
-          height:         "100dvh",
-          display:        "flex",
-          flexDirection:  "column",
-          padding:        "12px 12px 12px 0",
-          background:     "var(--theme-canvas)",
-        }}
-      >
-        <div
-          style={{
-            flex:           1,
-            minHeight:      0,
-            display:        "flex",
-            flexDirection:  "column",
-            background:     "var(--theme-paper)",
-            borderRadius:   "var(--radius-xl)",
-            boxShadow:      "var(--shadow-paper)",
-            overflowY:      "auto",
-            overflowX:      "hidden",
-          }}
-        >
+      <div className="eia-shell-gutter">
+        <div className="eia-shell-paper">
           {children}
         </div>
       </div>

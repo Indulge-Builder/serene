@@ -15,7 +15,9 @@ export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   ...GIA_DOMAINS.reduce(
     (acc, domain) => ({
       ...acc,
-      [domain]: ['/leads', '/deals', '/tasks', '/performance', '/campaigns', '/whatsapp', '/settings'],
+      // /budget is manager-read in practice — the page itself redirects
+      // agents/guests (role gate), like /campaigns.
+      [domain]: ['/leads', '/deals', '/tasks', '/performance', '/campaigns', '/budget', '/whatsapp', '/settings'],
     }),
     {} as Partial<Record<AppDomain, string[]>>,
   ),
@@ -23,7 +25,7 @@ export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   // ── Non-Gia domains ───────────────────────────────────────────────────────
   concierge: ['/tasks', '/whatsapp', '/settings'],
   finance:   ['/tasks', '/settings'],
-  marketing: ['/tasks', '/campaigns', '/settings'],
+  marketing: ['/tasks', '/campaigns', '/budget', '/settings'],
   tech:      ['/tasks', '/settings'],
   b2b:       ['/tasks', '/leads', '/deals', '/campaigns', '/settings'],
 } as Record<AppDomain, string[]>;

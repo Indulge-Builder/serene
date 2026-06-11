@@ -11,6 +11,25 @@ A design rule changed without an entry here is not a change — it is a violatio
 
 ## Decided
 
+### 2026-06-12 — D-01 carve-out: raw audio to Deepgram for voice-note transcription
+
+- **Decision:** voice-note dictation sends raw recorded audio to Deepgram (Nova-3 multilingual) under their no-training / zero-retention API terms. This is a logged, scoped carve-out from D-01 ("no raw PII reaches an external AI model — pseudonymise first").
+- **Rationale:** audio cannot be pseudonymised — speech *is* the payload. The exposure is bounded: audio is transcribed in-memory and discarded (never written to Storage, disk, or DB); the transcript enters the system only as a human-reviewed editable draft saved through the existing sanitised `addLeadNote` path; the Deepgram key is server-only (`transcription-service.ts` is the sole call site).
+- **Scope:** `src/lib/services/transcription-service.ts` only. Any future voice surface (Lia's voice channel) must route through the same service and inherits the same no-storage contract. Transcripts containing client data are never logged (D-05).
+
+### 2026-06-12 — Responsive implementation contract (audit: `docs/audits/2026-06-responsive-audit.md`)
+
+The responsive *law* already existed (DNA §2.7 / §9 / §12); the code was desktop-only. Five implementation decisions, decided once:
+
+- **D-1 — Breakpoint scale: Tailwind v4 defaults, no custom tokens.** The defaults equal DNA §2.7 (`sm 640 / md 768 / lg 1024 / xl 1280 / 2xl 1536`). `--bp-*` in `design-tokens.css` are documentation-only — custom properties cannot appear in `@media` preludes (note added at the token block). Components use `md:` utilities; component-free CSS writes the raw pixel with a `/* --bp-* */` comment; client JS uses `useMediaQuery(MQ.…)` from `src/hooks/useMediaQuery.ts` — never raw `matchMedia` or `window.innerWidth` snapshots for layout.
+- **D-2 — Dense tables become card stacks below `md`, owned by the table component.** DNA R-05 made structural: the table renders a `hidden md:block` table + `md:hidden` card stack (CSS toggle, SSR-safe, zero JS). The card stack renders a fixed mobile field set and deliberately ignores stored column preferences — persisted desktop shapes never drive narrow rendering. `md`–`lg` keeps container (not body) horizontal scroll. Reference: `LeadsTable.tsx`.
+- **D-3 — Sidebar three modes:** `lg+` 240px full · `md` 64px icon rail (labels hidden, `title` tooltips) · `<md` off-canvas drawer (transform+visibility only) + the V-06-sanctioned blur backdrop, opened from a mobile top strip (hamburger + wordmark) that exists only `<md`. DNA §12's bottom nav bar is optional and deferred. Shell column-stacks `<md`; paper goes full-bleed (no gutter/radius).
+- **D-4 — Fluid type for the page-title tier only:** `.type-page-title` = `clamp(var(--text-xl), 1.05rem + 1.6vw, var(--text-2xl))` (24→30px). Body/label/data text stays on the fixed scale.
+- **D-5 — Responsiveness lives in shared primitives** (FilterBar wrap/scroll, table card-stack, `.eia-dossier-grid`, `.eia-shell*`), never per-page class sprinkle; page-level responsive classes are allowed for page chrome (padding/heading) only.
+
+**Rationale:** only 10 of ~200 component files used a responsive prefix; the sanctioned mobile sidebar overlay didn't exist; two arbitrary breakpoints (820px bento, 767px raw matchMedia) had crept in. One contract stops per-surface improvisation.
+**Scope shipped 2026-06-12:** foundation (`useMediaQuery`+`MQ`, `body` dvh, bento 820→md, fluid H1) + shell (Sidebar modes, drawer, mobile strip, `.eia-shell*`) + `/leads` reference (padding ladder, toolbar wrap, card stack, `.eia-dossier-grid` on the dossier). Remaining surfaces: follow-up phases F1–F5 in the audit doc.
+
 ### 2026-06-11 — `height: 0 ↔ auto` collapse is the one sanctioned layout-property animation
 
 - **Decision:** `AnimatePresence` collapse/expand of variable-height sections may animate `height: 0 ↔ 'auto'` when all three hold: (a) the animated element carries `overflow: hidden`, (b) duration ≤ 250 ms (`EXIT_DURATION`), (c) it is paired with an opacity fade. Every other fill/progress/distribution animation stays transform-only: `scaleX` on a full-width inner element with `transformOrigin: 'left center'`.

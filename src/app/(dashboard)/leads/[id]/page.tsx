@@ -73,7 +73,8 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
 
   return (
     <>
-      <main style={{ flex: 1, padding: 'var(--space-8)', maxWidth: '1280px' }}>
+      {/* DNA §9.2 page-padding ladder: p-4 mobile → p-6 tablet → p-8 desktop */}
+      <main className="flex-1 p-4 sm:p-6 lg:p-8" style={{ maxWidth: '1280px' }}>
         {/* Page header — back button + Playfair title */}
         <div
           style={{
@@ -117,14 +118,10 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
           <LeadDealCardAsync leadId={lead.id} />
         </Suspense>
 
-        {/* Two-column layout */}
+        {/* Two-column layout — single column below lg (.eia-dossier-grid, globals.css) */}
         <div
-          style={{
-            display:             'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) 320px',
-            gap:                 'var(--space-6)',
-            marginTop:           'var(--space-6)',
-          }}
+          className="eia-dossier-grid"
+          style={{ marginTop: 'var(--space-6)' }}
         >
           {/* Left column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>

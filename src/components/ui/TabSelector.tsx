@@ -113,6 +113,14 @@ export function TabsList({ children, className, style }: TabsListProps) {
     display: 'flex',
     alignItems: 'center',
     position: 'relative',
+    // Responsive (audit F1, D-5): triggers are nowrap, so an overflowing tray
+    // scrolls horizontally inside itself instead of widening its parent.
+    // Consumers that squeeze triggers (flex: 1, minWidth: 0) never overflow,
+    // so they are unaffected. Scrollbar hidden — the cut-off chip affords it.
+    maxWidth: '100%',
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
+    WebkitOverflowScrolling: 'touch',
     // ✓ spec — pill tray: paper-subtle bg + paper-border. Radius is --radius-xl
     // (intentional drift from --radius-md spec — current dark-canvas chip pattern
     // reads better with a more rounded tray; documented in components/CLAUDE.md).

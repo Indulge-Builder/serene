@@ -561,6 +561,7 @@ export async function getDomainHealthMetrics(
     nurturing:        number | string | null;
     total_calls_made: number | string | null;
     total_revenue:    number | string | null;
+    total_deals:      number | string | null;
   };
 
   return mapRows<DomainHealthRpcRow, DomainHealthCard>(data, (row) => {
@@ -578,8 +579,161 @@ export async function getDomainHealthMetrics(
       conversionRate: closed > 0 ? (won / closed) * 100 : null,
       totalCallsMade: Number(row.total_calls_made   ?? 0),
       totalRevenue:   Number(row.total_revenue      ?? 0),
+      totalDeals:     Number(row.total_deals        ?? 0),
     };
   });
+}
+
+// ─────────────────────────────────────────────
+// Agent Today Pulse — one self-scoped RPC round trip (migration 0108).
+// calls_today new/old split + 14-day call trend + period deals from
+// public.deals. The IST day boundary is computed HERE via lib/utils/ist
+// (never re-forked in SQL) and passed as p_today_start.
+// ─────────────────────────────────────────────
+
+export type AgentTodayPulse = {
+  callsToday: { total: number; newLeads: number; oldLeads: number };
+  /** Oldest-first, 14 entries, day = IST calendar date (YYYY-MM-DD) */
+  callTrend:  { day: string; count: number }[];
+  deals:      { dealCount: number; revenue: number };
+};
+
+export async function getAgentTodayPulse(
+  period: PerformancePeriod,
+  customFrom?: string,
+  customTo?: string,
+): Promise<AgentTodayPulse> {
+  const supabase = await createClient();
+  const range = getPeriodDateRange(period);
+  const from = (period === "custom" && customFrom) ? customFrom : range.from;
+  const to   = (period === "custom" && customTo)   ? customTo   : range.to;
+  const todayStart = toISTMidnight(new Date()).toISOString();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("get_agent_today_pulse", {
+    p_today_start: todayStart,
+    p_date_from:   from,
+    p_date_to:     to,
+  });
+
+  if (error || !data) {
+    console.error("[performance-service] get_agent_today_pulse failed:", error);
+    return {
+      callsToday: { total: 0, newLeads: 0, oldLeads: 0 },
+      callTrend:  [],
+      deals:      { dealCount: 0, revenue: 0 },
+    };
+  }
+
+  const payload = data as {
+    calls_today?: { total?: number | string; new_leads?: number | string; old_leads?: number | string } | null;
+    call_trend?:  { day: string; count: number | string }[] | null;
+    deals?:       { deal_count?: number | string; revenue?: number | string } | null;
+  };
+
+  return {
+    callsToday: {
+      total:    Number(payload.calls_today?.total     ?? 0),
+      newLeads: Number(payload.calls_today?.new_leads ?? 0),
+      oldLeads: Number(payload.calls_today?.old_leads ?? 0),
+    },
+    callTrend: (payload.call_trend ?? []).map((d) => ({
+      day:   d.day,
+      count: Number(d.count),
+    })),
+    deals: {
+      dealCount: Number(payload.deals?.deal_count ?? 0),
+      revenue:   Number(payload.deals?.revenue    ?? 0),
+    },
+  };
+}
+
+// ─────────────────────────────────────────────
+// Agent recent lead activity — keyset "load more" (page ~15, no infinite
+// scroll). Composite cursor (created_at, id) per the composite-cursor rule in
+// src/lib/CLAUDE.md — created_at alone can tie on bulk writes.
+// Scoped to the agent's leads via the !inner join; the leads RLS is the
+// second layer for agent callers.
+// ─────────────────────────────────────────────
+
+export type AgentActivityCursor = { created_at: string; id: string };
+
+export type AgentLeadActivityItem = {
+  id:         string;
+  leadId:     string;
+  actionType: string;
+  details:    Record<string, unknown> | null;
+  createdAt:  string;
+  leadName:   string;
+  leadSlug:   string | null;
+};
+
+export type AgentLeadActivityPage = {
+  items:      AgentLeadActivityItem[];
+  hasMore:    boolean;
+  nextCursor: AgentActivityCursor | null;
+};
+
+const AGENT_ACTIVITY_PAGE_SIZE = 15;
+
+export async function getAgentLeadActivityPage(
+  agentId: string,
+  cursor?: AgentActivityCursor,
+): Promise<AgentLeadActivityPage> {
+  const supabase = await createClient();
+
+  let query = supabase
+    .from("lead_activities")
+    .select(
+      "id, lead_id, action_type, details, created_at, lead:leads!inner(first_name, last_name, slug, assigned_to)",
+    )
+    .eq("lead.assigned_to", agentId)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(AGENT_ACTIVITY_PAGE_SIZE + 1);
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`,
+    );
+  }
+
+  const { data, error } = await query;
+  if (error || !data) {
+    if (error) {
+      console.error("[performance-service] agent activity page failed:", error);
+    }
+    return { items: [], hasMore: false, nextCursor: null };
+  }
+
+  type ActivityRow = {
+    id:          string;
+    lead_id:     string;
+    action_type: string;
+    details:     Record<string, unknown> | null;
+    created_at:  string;
+    lead:        { first_name: string | null; last_name: string | null; slug: string | null };
+  };
+
+  const hasMore = data.length > AGENT_ACTIVITY_PAGE_SIZE;
+  const pageRows = data.slice(0, AGENT_ACTIVITY_PAGE_SIZE);
+
+  const items = mapRows<ActivityRow, AgentLeadActivityItem>(pageRows, (row) => ({
+    id:         row.id,
+    leadId:     row.lead_id,
+    actionType: row.action_type,
+    details:    row.details,
+    createdAt:  row.created_at,
+    leadName:   [row.lead?.first_name, row.lead?.last_name].filter(Boolean).join(" ") || "Unknown lead",
+    leadSlug:   row.lead?.slug ?? null,
+  }));
+
+  const last = items[items.length - 1];
+  return {
+    items,
+    hasMore,
+    nextCursor: hasMore && last ? { created_at: last.createdAt, id: last.id } : null,
+  };
 }
 
 export async function getDomainsWithLeads(

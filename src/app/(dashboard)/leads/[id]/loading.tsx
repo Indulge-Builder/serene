@@ -8,7 +8,7 @@ import { DossierCardSkeleton } from '@/components/leads/LeadDossierSkeletons';
 
 export default function LeadDossierLoading() {
   return (
-    <main style={{ flex: 1, padding: 'var(--space-8)', maxWidth: '1280px' }}>
+    <main className="flex-1 p-4 sm:p-6 lg:p-8" style={{ maxWidth: '1280px' }}>
       {/* Header — back button circle + title + phone line */}
       <div
         style={{
@@ -44,15 +44,8 @@ export default function LeadDossierLoading() {
         ))}
       </div>
 
-      {/* Two-column layout */}
-      <div
-        style={{
-          display:             'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) 320px',
-          gap:                 'var(--space-6)',
-          marginTop:           'var(--space-6)',
-        }}
-      >
+      {/* Two-column layout — mirrors page.tsx (.eia-dossier-grid collapse below lg) */}
+      <div className="eia-dossier-grid" style={{ marginTop: 'var(--space-6)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
           <DossierCardSkeleton headerWidth={140} rows={5} />
           <DossierCardSkeleton headerWidth={120} rows={3} />

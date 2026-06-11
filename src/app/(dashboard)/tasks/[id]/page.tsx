@@ -31,7 +31,7 @@ export default async function GroupTaskWorkspacePage({ params }: Props) {
   if (profile.role === 'guest') redirect('/dashboard');
 
   return (
-    <main className="flex-1 p-8">
+    <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <Suspense fallback={<WorkspaceSkeleton />}>
         <WorkspaceAsync
           groupId={id}

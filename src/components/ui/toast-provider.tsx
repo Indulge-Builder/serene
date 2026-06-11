@@ -11,20 +11,13 @@ import { AnimatePresence, m as motion } from "framer-motion";
 import { EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { toast as toastStore } from "@/lib/toast";
 import { ToastItem } from "@/components/ui/toast-item";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import type { ToastItem as ToastItemType } from "@/lib/toast";
 
 export function ToastProvider() {
   const [toasts, setToasts]   = useState<ToastItemType[]>(() => toastStore.getToasts());
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Detect viewport width for mobile positioning
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
-    setIsMobile(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
+  // Viewport mode for mobile positioning — THE media-query hook, never raw matchMedia
+  const isMobile = useMediaQuery(MQ.mobile);
 
   // Subscribe to toast store changes.
   // toastStore.subscribe() returns the removeEventListener cleanup — return it

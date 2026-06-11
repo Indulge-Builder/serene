@@ -4,7 +4,7 @@
 
 export default function DashboardLoading() {
   return (
-    <main className="flex-1 p-8">
+    <main className="flex-1 p-4 sm:p-6 lg:p-8">
       {/* Header row: greeting skeleton + date filter skeleton */}
       <div
         style={{
@@ -41,7 +41,7 @@ export default function DashboardLoading() {
         }
         .eia-loading-cell-1 { grid-column: span 6; }
         .eia-loading-cell-2 { grid-column: span 12; }
-        @media (max-width: 820px) {
+        @media (max-width: 767.98px) { /* < --bp-md — mirrors DashboardCanvas GRID_CSS */
           .eia-loading-cell-1,
           .eia-loading-cell-2 { grid-column: span 12; }
         }

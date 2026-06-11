@@ -144,6 +144,17 @@ export type DomainHealthCard = {
   conversionRate:  number | null;
   totalCallsMade:  number;
   totalRevenue:    number;
+  /** Deals closed in the period — COUNT from public.deals by won_at (0107) */
+  totalDeals:      number;
+};
+
+// ─── Performance — founder-set domain targets (domain_targets, 0105) ────────
+
+export type DomainTarget = {
+  domain:       AppDomain;
+  metric:       'deals_closed';
+  target_value: number;
+  period:       'month';
 };
 
 /**

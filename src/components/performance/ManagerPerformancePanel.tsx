@@ -475,19 +475,18 @@ export function ManagerPerformancePanel({
         )}
       </AnimatePresence>
     <div
+      className="flex flex-col items-stretch md:flex-row md:items-start"
       style={{
-        display:       'flex',
         gap:           'var(--space-5)',
-        alignItems:    'flex-start',
         opacity:       isRefetching ? 0.6 : 1,
         transition:    'opacity 200ms var(--ease-in-out)',
         pointerEvents: isRefetching ? 'none' : undefined,
       }}
     >
-      {/* ── Left: agent roster ──────────────────────────────────────── */}
+      {/* ── Left: agent roster — full-width above the detail <md, 268px column md+ */}
       <div
+        className="w-full md:w-67"
         style={{
-          width:        '268px',
           flexShrink:   0,
           background:   'var(--theme-paper)',
           border:       '1px solid var(--theme-paper-border)',

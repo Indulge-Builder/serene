@@ -7,6 +7,7 @@ import { ConversationList } from "@/components/whatsapp/ConversationList";
 import { ConversationPanel } from "@/components/whatsapp/ConversationPanel";
 import { EmptyConversationState } from "@/components/whatsapp/EmptyConversationState";
 import { createClient } from "@/lib/supabase/client";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import {
   getConversationsAction,
   getMessagesAction,
@@ -32,7 +33,6 @@ interface WhatsAppShellProps {
   };
 }
 
-const LEFT_RAIL_WIDTH = "320px";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -42,6 +42,9 @@ export function WhatsAppShell({
   callerProfile,
 }: WhatsAppShellProps) {
   const mountId = useId();
+  // Single-pane mode below md (responsive audit F3, D-1): list OR conversation
+  // with back navigation — a genuine behaviour branch, so the hook, not CSS.
+  const isMobile = useMediaQuery(MQ.mobile);
   const searchParams = useSearchParams();
   const { period, customFrom, customTo } = parseWhatsAppPeriodFromSearchParams(searchParams);
   const skipPeriodRefetch = useRef(true);
@@ -183,6 +186,11 @@ export function WhatsAppShell({
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
+  // <md the split-pane collapses to a single pane: the list, or the active
+  // conversation with a back affordance (audit §3.4).
+  const showRail = !isMobile || activeConversation === null;
+  const showPane = !isMobile || activeConversation !== null;
+
   return (
     <div
       style={{
@@ -192,15 +200,15 @@ export function WhatsAppShell({
         overflow: "hidden",
       }}
     >
-      {/* Left rail — page title + search + list (same inset as Leads / Settings) */}
+      {/* Left rail — page title + search + list (same inset as Leads / Settings).
+          Full-width pane <md; fixed 320px rail at md+ (w-80 = 320px). */}
+      {showRail && (
       <div
+        className="w-full md:w-80 pt-4 pl-4 md:pt-8 md:pl-8"
         style={{
-          width: LEFT_RAIL_WIDTH,
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
-          paddingTop: "var(--space-8)",
-          paddingLeft: "var(--space-8)",
           background: "var(--theme-paper)",
           borderRight: "1px solid var(--theme-paper-border)",
           overflow: "hidden",
@@ -248,8 +256,10 @@ export function WhatsAppShell({
           />
         </div>
       </div>
+      )}
 
       {/* Right pane — full height from top; contact header owns top breathing room */}
+      {showPane && (
       <div
         style={{
           flex: 1,
@@ -286,12 +296,14 @@ export function WhatsAppShell({
               initialMessages={activeMessages}
               callerProfile={callerProfile}
               onConversationUpdate={handleConversationUpdate}
+              onBack={isMobile ? () => setActiveConversationId(null) : undefined}
             />
           )
         ) : (
           <EmptyConversationState />
         )}
       </div>
+      )}
     </div>
   );
 }

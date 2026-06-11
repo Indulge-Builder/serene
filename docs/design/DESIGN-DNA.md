@@ -2978,6 +2978,14 @@ Use only these. No arbitrary breakpoints in components.
 | `--bp-3xl` | 1920px | Full HD — data-heavy views, wide tables  |
 
 **In Tailwind:** `sm:` `md:` `lg:` `xl:` `2xl:` — always mobile-first (min-width).
+Tailwind v4's default scale equals this table — no custom breakpoint theme keys exist or should be added.
+
+**Implementation contract (2026-06-12 — decisions D-1…D-5 in `decision-log.md`, audit in `../audits/2026-06-responsive-audit.md`):**
+the `--bp-*` tokens are documentation-only (CSS custom properties cannot appear in `@media` preludes);
+component-free CSS writes the raw pixel with a `/* --bp-* */` comment (see `globals.css` "RESPONSIVE SHELL");
+client JS uses `useMediaQuery` + `MQ` from `src/hooks/useMediaQuery.ts` — never raw `matchMedia` strings or
+`window.innerWidth` snapshots in components. Responsive behaviour lives in shared primitives
+(table card-stack, FilterBar, `.eia-shell*`, `.eia-dossier-grid`) — never per-page class sprinkle.
 
 ---
 

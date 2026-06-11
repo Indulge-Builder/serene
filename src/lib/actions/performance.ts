@@ -7,12 +7,17 @@ import {
   getAgentDetailMetrics,
   getAgentRosterPerformance,
   getDomainHealthMetrics,
+  getAgentTodayPulse,
+  getAgentLeadActivityPage,
   getPeriodDateRange,
   type PerformancePeriod,
   type AgentPerformanceSummary,
+  type AgentTodayPulse,
+  type AgentLeadActivityPage,
 } from '@/lib/services/performance-service';
-import { GIA_DOMAINS }               from '@/lib/constants/domains';
-import type { ActionResult, AgentDetailMetrics, AgentRosterRow, DomainHealthCard } from '@/lib/types/index';
+import { upsertDomainTarget }        from '@/lib/services/domain-targets-service';
+import { GIA_DOMAINS, GIA_DOMAIN_ENUM } from '@/lib/constants/domains';
+import type { ActionResult, AgentDetailMetrics, AgentRosterRow, DomainHealthCard, DomainTarget } from '@/lib/types/index';
 import type { AppDomain }            from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
@@ -178,4 +183,105 @@ export async function getDomainHealthMetricsAction(
   } catch {
     return { data: null, error: 'Failed to load domain metrics.' };
   }
+}
+
+// ─────────────────────────────────────────────
+// Action: getAgentPulseAction
+// Agent self-view Today tab — calls-today new/old split, 14-day call trend,
+// period deals. The RPC is self-scoped (auth.uid() inside).
+// ─────────────────────────────────────────────
+
+export async function getAgentPulseAction(
+  period:      PerformancePeriod,
+  customFrom?: string,
+  customTo?:   string,
+): Promise<ActionResult<AgentTodayPulse>> {
+  const parsed = GetAgentSelfSchema.safeParse({ period, customFrom, customTo });
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  const auth = await requireProfile(['agent']);
+  if (!auth.ok) return auth.result;
+
+  try {
+    const data = await getAgentTodayPulse(period, customFrom, customTo);
+    return { data, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load today data.' };
+  }
+}
+
+// ─────────────────────────────────────────────
+// Action: getAgentRecentLeadActivityAction
+// Keyset "load more" over the agent's lead activities (page ~15).
+// The agent id always comes from the verified profile — never the client.
+// ─────────────────────────────────────────────
+
+const ActivityCursorSchema = z
+  .object({
+    created_at: z.string().datetime({ offset: true }),
+    id:         z.string().uuid(),
+  })
+  .optional();
+
+export async function getAgentRecentLeadActivityAction(
+  cursor?: { created_at: string; id: string },
+): Promise<ActionResult<AgentLeadActivityPage>> {
+  const parsed = ActivityCursorSchema.safeParse(cursor);
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  const auth = await requireProfile(['agent']);
+  if (!auth.ok) return auth.result;
+
+  try {
+    const page = await getAgentLeadActivityPage(auth.profile.id, parsed.data);
+    return { data: page, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load activity.' };
+  }
+}
+
+// ─────────────────────────────────────────────
+// Action: upsertDomainTargetAction
+// Founder/admin set a monthly deals-closed target from the domain card's
+// edit affordance. Zod first (S-01); RLS write policy is the second layer.
+// ─────────────────────────────────────────────
+
+const UpsertDomainTargetSchema = z.object({
+  domain: z.enum(GIA_DOMAIN_ENUM),
+  targetValue: z
+    .number()
+    .nonnegative()
+    .max(100_000, 'target_too_large'),
+});
+
+export async function upsertDomainTargetAction(
+  domain:      AppDomain,
+  targetValue: number,
+): Promise<ActionResult<DomainTarget>> {
+  const parsed = UpsertDomainTargetSchema.safeParse({ domain, targetValue });
+  if (!parsed.success) {
+    return { data: null, error: 'Enter a valid target (a non-negative number).' };
+  }
+
+  const auth = await requireProfile(['admin', 'founder']);
+  if (!auth.ok) return auth.result;
+
+  const result = await upsertDomainTarget(
+    parsed.data.domain,
+    parsed.data.targetValue,
+    auth.profile.id,
+  );
+  if (!result.ok) {
+    return { data: null, error: 'The target could not be saved. Please try again.' };
+  }
+
+  return {
+    data: {
+      domain:       parsed.data.domain,
+      metric:       'deals_closed',
+      target_value: parsed.data.targetValue,
+      period:       'month',
+    },
+    error: null,
+  };
 }

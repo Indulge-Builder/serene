@@ -75,7 +75,7 @@ html {
 body {
   background-color: var(--theme-canvas);
   color: var(--theme-canvas-text);
-  min-height: 100vh;
+  min-height: 100dvh; /* dvh, never vh — DNA §9.3 R-01 (mobile address-bar jump) */
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -86,6 +86,268 @@ body {
    a mismatched wash next to the flat sidebar. */
 .layout-shell {
   background-color: var(--theme-canvas);
+}
+
+/* ================================================================
+   RESPONSIVE SHELL — responsive audit 2026-06, decisions D-1/D-3.
+   Breakpoint pixel values appear ONLY here and in component-free CSS
+   (custom properties cannot be used in @media preludes — see the
+   --bp-* note in design-tokens.css §2.7). Each query carries its
+   --bp-* comment. JS viewport branches use useMediaQuery (src/hooks).
+   ================================================================ */
+
+/* Shell frame — sidebar | gutter(paper). Column-stacks below md:
+   mobile top strip, then full-bleed paper. */
+.eia-shell {
+  display: flex;
+  gap: var(--space-3);
+  height: 100dvh;
+  overflow: hidden;
+}
+.eia-shell-gutter {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px 12px 0;
+  background: var(--theme-canvas);
+}
+.eia-shell-paper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--theme-paper);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-paper);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+@media (max-width: 767.98px) { /* < --bp-md */
+  .eia-shell {
+    flex-direction: column;
+    gap: 0;
+  }
+  .eia-shell-gutter {
+    padding: 0;
+  }
+  .eia-shell-paper {
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+/* Sidebar — three modes (DNA §3.2 / §9.2):
+   lg+        240px, full labels (default)
+   md…lg-1    64px icon rail — labels/sections/footer text hidden, title tooltips
+   < md       off-canvas drawer (full 240px panel) + backdrop, opened from the
+              mobile top strip. Transform + visibility only (M-06).
+   Layout-critical Sidebar props live in these classes (not inline styles) so
+   the rail media query can override them. Colour/state stays inline in TSX. */
+.eia-sidebar {
+  width: 240px;
+}
+.eia-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+}
+.eia-nav-chevron {
+  display: flex;
+  flex-shrink: 0;
+}
+.eia-sidebar-section-label {
+  display: block;
+}
+.eia-sidebar-logo-img {
+  width: 128px;
+  height: 128px;
+}
+.eia-sidebar-footer-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.eia-sidebar-profile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-1);
+  margin: calc(-1 * var(--space-1));
+}
+.eia-sidebar-signout {
+  display: flex;
+}
+@media (min-width: 768px) and (max-width: 1023.98px) { /* --bp-md … < --bp-lg */
+  .eia-sidebar {
+    width: 64px;
+  }
+  .eia-sidebar .eia-sidebar-rail-hide,
+  .eia-sidebar .eia-sidebar-section-label,
+  .eia-sidebar .eia-sidebar-signout {
+    display: none;
+  }
+  .eia-sidebar .eia-nav-link {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .eia-sidebar .eia-sidebar-logo {
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+  .eia-sidebar .eia-sidebar-logo-img {
+    width: 40px;
+    height: 40px;
+  }
+  .eia-sidebar .eia-sidebar-footer-row {
+    justify-content: center;
+  }
+  .eia-sidebar .eia-sidebar-profile {
+    flex: 0 0 auto;
+  }
+}
+@media (max-width: 767.98px) { /* < --bp-md */
+  .eia-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform var(--duration-enter) var(--ease-out-expo),
+      visibility 0s linear var(--duration-enter);
+  }
+  .eia-sidebar[data-open="true"] {
+    transform: translateX(0);
+    visibility: visible;
+    transition-delay: 0s, 0s;
+    box-shadow: var(--shadow-4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eia-sidebar {
+    transition: none;
+  }
+}
+
+/* Mobile drawer trigger — exists only below md, and only on primary nav
+   pages (Sidebar skips rendering it on detail pages, whose BackButton
+   occupies the same corner). It floats over the paper, vertically aligned
+   with the page <h1> line; the sibling rule below indents .type-page-title
+   to clear it, so trigger + title share one line. The button itself wears
+   a canvas-coloured "bubble" backdrop (accent radial washes on canvas). */
+.eia-mobile-topbar {
+  display: none;
+}
+@media (max-width: 767.98px) { /* < --bp-md */
+  .eia-shell {
+    position: relative;
+  }
+  .eia-mobile-topbar {
+    display: block;
+    position: absolute;
+    top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
+    left: var(--space-4);
+    z-index: var(--z-raised);
+  }
+  /* Page title clears the floating trigger — fires only when the trigger
+     is mounted (general-sibling scope: topbar and gutter share .eia-shell). */
+  .eia-mobile-topbar ~ .eia-shell-gutter .type-page-title {
+    margin-left: 52px;
+  }
+}
+.eia-mobile-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 16%, transparent);
+  border-radius: var(--radius-full);
+  color: var(--theme-accent);
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+  /* Soft accent-washed paper — derives from --theme-accent, so it
+     follows the user's theme. */
+  background: color-mix(in srgb, var(--theme-accent) 7%, var(--theme-paper));
+}
+
+/* Drawer backdrop — one of the three sanctioned backdrop-blur surfaces (V-06). */
+.eia-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg-light);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: var(--z-sidebar);
+}
+@media (min-width: 768px) { /* ≥ --bp-md — backdrop is a mobile-only surface */
+  .eia-sidebar-backdrop {
+    display: none;
+  }
+}
+
+/* Detail-page two-column grid (lead dossier, /profile, /admin/users/[id]).
+   Single column below lg. --340 is a modifier for the wider identity
+   sidebars — one class, one variant, never a second grid class (audit F2). */
+.eia-dossier-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+}
+@media (min-width: 1024px) { /* --bp-lg */
+  .eia-dossier-grid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+  .eia-dossier-grid--340 {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+}
+
+/* Group-task board (audit F4) — horizontal snap-scroll rail below lg
+   (5 × 1fr at 180px min = 900px+ would force body overflow); 5 equal
+   columns from lg up, container-scrolling if the gutter is narrower. */
+.eia-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: min(78vw, 260px);
+  gap: var(--space-4);
+  align-items: start;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: var(--space-2);
+}
+.eia-board > * {
+  scroll-snap-align: start;
+}
+@media (min-width: 1024px) { /* --bp-lg */
+  .eia-board {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(5, minmax(180px, 1fr));
+    scroll-snap-type: none;
+    padding-bottom: 0;
+  }
+}
+
+/* Touch-target extension (DNA §9.3 R-03) — compact 36px toolbar controls
+   grow to ≥40px on coarse-pointer devices without changing desktop chrome. */
+@media (pointer: coarse) {
+  .eia-touch {
+    min-height: 40px;
+    min-width: 40px;
+  }
 }
 
 /* Atmosphere (mounted on the auth shell; marketing later). Never the dashboard shell. */

@@ -8,8 +8,7 @@ import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { ArrowDownUp, Clock, Columns } from 'lucide-react';
 import { buildFilterParams } from '@/lib/utils/filter-params';
 import type { LeadListItemWithAssignee } from '@/lib/services/leads-service';
-import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
-import type { LeadStatus } from '@/lib/types/database';
+import { LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
 import { CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
 import { getLeadSourceLabel, getMetaMediumLabel } from '@/lib/constants/lead-sources';
 import { formatDate } from '@/lib/utils/dates';
@@ -33,10 +32,9 @@ type LeadsTableProps = {
   filters:          LeadFilters;
   hasActiveFilters?: boolean;
   goingCold?:       boolean;
-  statusCounts?:    Partial<Record<LeadStatus, number>>;
 };
 
-export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, goingCold = false, statusCounts = {} }: LeadsTableProps) {
+export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, goingCold = false }: LeadsTableProps) {
   const router       = useRouter();
   const pathname     = usePathname();
   const params       = useSearchParams();
@@ -114,10 +112,6 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
     });
   }, []);
 
-  // statusCounts is the only source of truth for pill counts.
-  // It reflects the full filtered dataset, not just the current page slice.
-  const hasStatusPills = LEAD_STATUSES.some((s) => (statusCounts[s] ?? 0) > 0);
-
   // Section 11.5: content enters opacity 0→1 + y 4px→0 at 250ms ease-out-expo
   // with 100ms delay (overlap with skeleton exit at 150ms ease-in)
   return (
@@ -141,22 +135,24 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
         boxShadow:    'var(--shadow-1)',
       }}
     >
-      {/* Table toolbar — going cold + status pills | sort + columns + export */}
+      {/* Table toolbar — going cold + status pills | sort + columns + export.
+          Wraps on narrow viewports (a nowrap row overflows the card < ~520px). */}
       <div
         style={{
           display:      'flex',
           alignItems:   'center',
-          gap:          'var(--space-3)',
+          gap:          'var(--space-2) var(--space-3)',
           padding:      'var(--space-4) var(--space-5)',
           borderBottom: '1px solid var(--theme-paper-border)',
           background:   'var(--theme-paper-subtle)',
-          flexWrap:     'nowrap',
+          flexWrap:     'wrap',
         }}
       >
         <button
           type="button"
           onClick={toggleGoingCold}
           aria-pressed={goingCold}
+          className="eia-touch"
           style={{
             display:      'inline-flex',
             alignItems:   'center',
@@ -184,26 +180,6 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
           <span>Going Cold</span>
         </button>
 
-        {hasStatusPills && (
-          <div
-            className="hidden md:flex items-center gap-2 shrink-0"
-            aria-label="Lead status summary"
-          >
-            {LEAD_STATUSES.map((status) => {
-              const count = statusCounts[status] ?? 0;
-              if (count === 0) return null;
-              return (
-                <StatusBadge
-                  key={status}
-                  variant={LEAD_STATUS_BADGE[status]}
-                  label={LEAD_STATUS_LABELS[status]}
-                  count={count}
-                />
-              );
-            })}
-          </div>
-        )}
-
         <div style={{ flex: 1, minWidth: 0 }} aria-hidden="true" />
 
         {/* Sort order — commits immediately to URL (not part of filter draft) */}
@@ -212,6 +188,7 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
           onClick={toggleSortOrder}
           title={sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}
           aria-pressed={sortOrder === 'asc'}
+          className="eia-touch"
           style={{
             display:      'inline-flex',
             alignItems:   'center',
@@ -251,6 +228,7 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
             onClick={() => setPickerOpen((v) => !v)}
             aria-pressed={pickerOpen}
             aria-label="Toggle column visibility"
+            className="eia-touch"
             style={{
               display:      'inline-flex',
               alignItems:   'center',
@@ -288,8 +266,9 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
 
       </div>
 
-      {/* Table */}
-      <div style={{ overflowX: 'auto' }}>
+      {/* Table — md+ only. Container scroll (not body scroll) covers tablet
+          widths; below md the card stack renders instead (DNA R-05 / audit D-2). */}
+      <div className="hidden md:block" style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: 'var(--theme-paper-subtle)' }}>
@@ -338,34 +317,7 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
                     textAlign: 'center',
                   }}
                 >
-                  <p
-                    style={{
-                      fontFamily: 'var(--font-serif)',
-                      fontSize:   'var(--text-lg)',
-                      fontStyle:  'italic',
-                      color:      'var(--theme-text-tertiary)',
-                      fontWeight: 'var(--weight-normal)',
-                    }}
-                  >
-                    {goingCold
-                      ? 'No cold leads.'
-                      : hasActiveFilters
-                        ? 'Nothing matches these filters.'
-                        : 'No leads yet.'}
-                  </p>
-                  <p
-                    style={{
-                      marginTop: 'var(--space-2)',
-                      fontSize:  'var(--text-sm)',
-                      color:     'var(--theme-text-tertiary)',
-                    }}
-                  >
-                    {goingCold
-                      ? 'All leads have had recent activity.'
-                      : hasActiveFilters
-                        ? 'Try adjusting or clearing your filters.'
-                        : 'Leads will appear here once the webhook receives its first submission.'}
-                  </p>
+                  <LeadsEmptyCopy goingCold={goingCold} hasActiveFilters={hasActiveFilters} />
                 </td>
               </tr>
             ) : (
@@ -383,10 +335,174 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
           </tbody>
         </table>
       </div>
+
+      {/* Card stack — below md (DNA R-05 / audit D-2). Fixed mobile field set;
+          deliberately ignores stored column preferences (desktop shapes must
+          never drive the narrow rendering). Selection/columns/export stay
+          tablet+ — mobile is a monitoring surface (DNA §9 philosophy). */}
+      <div className="md:hidden">
+        {leads.length === 0 ? (
+          <div style={{ padding: 'var(--space-12) var(--space-4)', textAlign: 'center' }}>
+            <LeadsEmptyCopy goingCold={goingCold} hasActiveFilters={hasActiveFilters} />
+          </div>
+        ) : (
+          leads.map((lead, index) => (
+            <LeadMobileCard key={lead.id} lead={lead} index={index} />
+          ))
+        )}
+      </div>
     </motion.div>
     </>
   );
 }
+
+// ─────────────────────────────────────────────
+// Empty-state copy — shared by the table cell (md+) and the card stack (<md)
+// so the two renderings can never drift.
+// ─────────────────────────────────────────────
+function LeadsEmptyCopy({
+  goingCold,
+  hasActiveFilters,
+}: {
+  goingCold:        boolean;
+  hasActiveFilters: boolean;
+}) {
+  return (
+    <>
+      <p
+        style={{
+          fontFamily: 'var(--font-serif)',
+          fontSize:   'var(--text-lg)',
+          fontStyle:  'italic',
+          color:      'var(--theme-text-tertiary)',
+          fontWeight: 'var(--weight-normal)',
+        }}
+      >
+        {goingCold
+          ? 'No cold leads.'
+          : hasActiveFilters
+            ? 'Nothing matches these filters.'
+            : 'No leads yet.'}
+      </p>
+      <p
+        style={{
+          marginTop: 'var(--space-2)',
+          fontSize:  'var(--text-sm)',
+          color:     'var(--theme-text-tertiary)',
+        }}
+      >
+        {goingCold
+          ? 'All leads have had recent activity.'
+          : hasActiveFilters
+            ? 'Try adjusting or clearing your filters.'
+            : 'Leads will appear here once the webhook receives its first submission.'}
+      </p>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Mobile lead card — one row of the <md card stack (DNA R-05: first column
+// becomes the card header, key fields as labelled lines). Same href shape as
+// LeadRow (slug fallback + ?from= return URL). ≥44px tap target.
+// ─────────────────────────────────────────────
+const LeadMobileCard = memo(function LeadMobileCard({
+  lead,
+  index,
+}: {
+  lead:  LeadListItemWithAssignee;
+  index: number;
+}) {
+  const router       = useRouter();
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
+
+  const fullName = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
+  const fromUrl  = searchParams.toString()
+    ? `${pathname}?${searchParams.toString()}`
+    : pathname;
+  const href = `/leads/${lead.slug ?? lead.id}?from=${encodeURIComponent(fromUrl)}`;
+
+  // Same row-arrival treatment as LeadRow (first 8, 30ms steps)
+  const entering = index < 8;
+
+  return (
+    <div
+      role="link"
+      tabIndex={0}
+      aria-label={`Open lead ${fullName}`}
+      onClick={() => router.push(href)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          router.push(href);
+        }
+      }}
+      className={entering ? 'eia-row-enter' : undefined}
+      style={{
+        display:        'flex',
+        flexDirection:  'column',
+        gap:            'var(--space-2)',
+        minHeight:      '44px',
+        padding:        'var(--space-4) var(--space-5)',
+        borderBottom:   '1px solid var(--theme-paper-border)',
+        cursor:         'pointer',
+        animationDelay: entering ? `${index * 30}ms` : undefined,
+      }}
+    >
+      {/* Header — name + status pill */}
+      <div
+        style={{
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'space-between',
+          gap:            'var(--space-3)',
+        }}
+      >
+        <span
+          style={{
+            fontSize:     'var(--text-sm)',
+            fontWeight:   'var(--weight-medium)',
+            color:        'var(--theme-text-primary)',
+            overflow:     'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace:   'nowrap',
+            minWidth:     0,
+          }}
+        >
+          {fullName}
+        </span>
+        <StatusBadge
+          variant={LEAD_STATUS_BADGE[lead.status]}
+          label={LEAD_STATUS_LABELS[lead.status]}
+        />
+      </div>
+
+      {/* Phone */}
+      <span
+        style={{
+          fontSize:   'var(--text-xs)',
+          fontFamily: 'var(--font-mono)',
+          color:      'var(--theme-text-secondary)',
+        }}
+      >
+        {lead.phone ?? '—'}
+      </span>
+
+      {/* Assignee · received */}
+      <span
+        style={{
+          fontSize: 'var(--text-2xs)',
+          color:    'var(--theme-text-tertiary)',
+        }}
+      >
+        {[lead.assignee?.full_name, formatDate(lead.created_at, 'dd MMM, h:mm a')]
+          .filter(Boolean)
+          .join(' · ')}
+      </span>
+    </div>
+  );
+});
 
 // ─────────────────────────────────────────────
 // Checkbox cell — indeterminate support via ref
@@ -681,12 +797,10 @@ const STATUS_PILL_ACCENT_RING =
 function StatusBadge({
   variant,
   label,
-  count,
   highlighted = false,
 }: {
   variant: string;
   label:   string;
-  count?:  number;
   /** Row hover — accent ring on the pill, no row background fill. */
   highlighted?: boolean;
 }) {
@@ -699,12 +813,6 @@ function StatusBadge({
       }}
     >
       {label}
-      {count !== undefined && (
-        <>
-          <span aria-hidden="true">·</span>
-          {count}
-        </>
-      )}
     </span>
   );
 }

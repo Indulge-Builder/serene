@@ -37,12 +37,8 @@ export default async function UserDetailPage({ params }: Props) {
 
   return (
     <main
-      style={{
-        flex:          1,
-        padding:       "var(--space-8)",
-        paddingBottom: "var(--space-16)",
-        maxWidth:      "1280px",
-      }}
+      className="flex-1 p-4 sm:p-6 lg:p-8"
+      style={{ paddingBottom: "var(--space-16)", maxWidth: "1280px" }}
     >
       {/* Page header — back button + Playfair title */}
       <div
@@ -60,14 +56,10 @@ export default async function UserDetailPage({ params }: Props) {
         </h1>
       </div>
 
-      {/* Two-column wide layout — primary forms left, identity sidebar right */}
+      {/* Two-column wide layout — forms left, identity right; single column below lg */}
       <div
-        style={{
-          display:             "grid",
-          gridTemplateColumns: "minmax(0, 1fr) 340px",
-          gap:                 "var(--space-6)",
-          alignItems:          "start",
-        }}
+        className="eia-dossier-grid eia-dossier-grid--340"
+        style={{ alignItems: "start" }}
       >
         {/* Left column — editable forms */}
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>

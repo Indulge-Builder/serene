@@ -12,16 +12,19 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
+import { Pencil, Check, X } from 'lucide-react';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import { DOMAIN_LINE_COLORS } from '@/lib/constants/domain-colors';
 import { getDomainIcon } from '@/lib/constants/domain-icons';
-import { getDomainHealthMetricsAction } from '@/lib/actions/performance';
+import { getDomainHealthMetricsAction, upsertDomainTargetAction } from '@/lib/actions/performance';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
 import { formatCompact, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { useChartTokens, resolveColorMap } from '@/components/ui/charts/useChartTokens';
 import { StatAtom } from '@/components/performance/StatAtom';
+import { DomainTargetMeter } from '@/components/performance/DomainTargetMeter';
+import { useToast } from '@/hooks/useToast';
 import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
-import type { DomainHealthCard } from '@/lib/types/index';
+import type { DomainHealthCard, DomainTarget } from '@/lib/types/index';
 import type { PerformancePeriod } from '@/lib/services/performance-service';
 import type { AppDomain } from '@/lib/types/database';
 
@@ -36,6 +39,13 @@ type Props = {
   period:       PerformancePeriod;
   customFrom?:  string;
   customTo?:    string;
+  /** Monthly deals-closed targets from domain_targets (may be empty) */
+  initialTargets: DomainTarget[];
+  /** Deals closed THIS MONTH per domain — the meter is month-pinned and does
+   *  not move with the period filter (the target is a monthly number). */
+  monthDeals:     Partial<Record<AppDomain, number>>;
+  /** Founder/admin only — shows the target edit affordance */
+  canEditTargets: boolean;
 };
 
 // ─────────────────────────────────────────────
@@ -46,18 +56,46 @@ function DomainStatCard({
   card,
   resolvedDotColors,
   index,
+  monthDealsValue,
+  target,
+  canEditTargets,
+  onSaveTarget,
 }: {
   card:              DomainHealthCard;
   resolvedDotColors: Record<string, string>;
   index:             number;
+  monthDealsValue:   number;
+  target:            number | null;
+  canEditTargets:    boolean;
+  onSaveTarget:      (domain: AppDomain, value: number) => Promise<boolean>;
 }) {
   const domainColor = resolvedDotColors[card.domain] ?? 'var(--theme-accent)';
   const domainLabel = DOMAIN_LABELS[card.domain] ?? card.domain;
   const DomainIcon  = getDomainIcon(card.domain);
   const baseDelay   = index * 60;
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft]         = useState('');
+  const [isSaving, setIsSaving]   = useState(false);
+
+  function startEdit() {
+    setDraft(target != null && target > 0 ? String(target) : '');
+    setIsEditing(true);
+  }
+
+  async function commitEdit() {
+    const value = parseInt(draft, 10);
+    if (isNaN(value) || value < 0) return;
+    setIsSaving(true);
+    const ok = await onSaveTarget(card.domain, value);
+    setIsSaving(false);
+    if (ok) setIsEditing(false);
+  }
+
   return (
     <motion.div
+      // Mobile: full-width scroll-snap slide; md+: plain grid cell
+      className="snap-center shrink-0 w-[86%] sm:w-[70%] md:w-auto md:shrink"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: ENTER_DURATION, delay: baseDelay / 1000, ease: EASE_OUT_EXPO }}
@@ -107,25 +145,136 @@ function DomainStatCard({
       </div>
 
       {/* Stats row */}
-      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
         <StatAtom
-          label="Total Leads"
+          label="Leads"
           value={formatCompact(card.totalLeads)}
           paletteIndex={0}
           delay={baseDelay + 40}
         />
         <StatAtom
-          label="Total Calls"
+          label="Calls"
           value={formatCompact(card.totalCallsMade)}
           paletteIndex={1}
           delay={baseDelay + 80}
         />
         <StatAtom
-          label="Total Revenue"
-          value={formatCurrencyCompact(card.totalRevenue)}
-          paletteIndex={3}
+          label="Deals Closed"
+          value={formatCompact(card.totalDeals)}
+          paletteIndex={2}
           delay={baseDelay + 120}
         />
+        <StatAtom
+          label="Revenue"
+          value={formatCurrencyCompact(card.totalRevenue)}
+          paletteIndex={3}
+          delay={baseDelay + 160}
+        />
+      </div>
+
+      {/* Target meter row — month-pinned (target is a monthly number) */}
+      <div
+        style={{
+          display:    'flex',
+          alignItems: 'center',
+          gap:        'var(--space-5)',
+          paddingTop: 'var(--space-3)',
+          borderTop:  '1px solid var(--theme-paper-border)',
+        }}
+      >
+        <DomainTargetMeter value={monthDealsValue} target={target} />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', flex: 1, minWidth: 0 }}>
+          <span
+            className="label-micro"
+            style={{ color: 'var(--theme-text-tertiary)' }}
+          >
+            Deals vs Target · This Month
+          </span>
+
+          {isEditing ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <input
+                type="number"
+                min={0}
+                value={draft}
+                autoFocus
+                disabled={isSaving}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void commitEdit();
+                  if (e.key === 'Escape') setIsEditing(false);
+                }}
+                aria-label={`Monthly deals target for ${domainLabel}`}
+                className="eia-input"
+                style={{
+                  width:        '88px',
+                  padding:      'var(--space-1) var(--space-2)',
+                  borderRadius: 'var(--radius-sm)',
+                  border:       '1px solid var(--theme-paper-border)',
+                  background:   'var(--theme-paper)',
+                  color:        'var(--theme-text-primary)',
+                  fontFamily:   'var(--font-mono)',
+                  fontSize:     'var(--text-sm)',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => void commitEdit()}
+                disabled={isSaving}
+                aria-label="Save target"
+                style={{
+                  display: 'inline-flex',
+                  border: 'none', background: 'transparent', cursor: 'pointer',
+                  color: 'var(--color-success)', padding: 'var(--space-1)',
+                }}
+              >
+                <Check style={{ width: 16, height: 16, strokeWidth: 1.5 }} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                disabled={isSaving}
+                aria-label="Cancel target edit"
+                style={{
+                  display: 'inline-flex',
+                  border: 'none', background: 'transparent', cursor: 'pointer',
+                  color: 'var(--theme-text-tertiary)', padding: 'var(--space-1)',
+                }}
+              >
+                <X style={{ width: 16, height: 16, strokeWidth: 1.5 }} />
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span
+                style={{
+                  fontFamily: 'var(--font-sans)',
+                  fontSize:   'var(--text-sm)',
+                  color:      'var(--theme-text-secondary)',
+                }}
+              >
+                {target != null && target > 0
+                  ? `Target ${formatCompact(target)} deals`
+                  : 'No monthly target'}
+              </span>
+              {canEditTargets && (
+                <button
+                  type="button"
+                  onClick={startEdit}
+                  aria-label={`Edit monthly deals target for ${domainLabel}`}
+                  style={{
+                    display: 'inline-flex',
+                    border: 'none', background: 'transparent', cursor: 'pointer',
+                    color: 'var(--theme-text-tertiary)', padding: 'var(--space-1)',
+                  }}
+                >
+                  <Pencil style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </motion.div>
   );
@@ -182,12 +331,37 @@ function CustomTooltip({
 // DomainOverviewPanel
 // ─────────────────────────────────────────────
 
-export function DomainOverviewPanel({ initialData, period, customFrom, customTo }: Props) {
+export function DomainOverviewPanel({
+  initialData,
+  period,
+  customFrom,
+  customTo,
+  initialTargets,
+  monthDeals,
+  canEditTargets,
+}: Props) {
+  const toast = useToast;
   const [data, setData]               = useState<DomainHealthCard[]>(initialData);
   const [activeMetric, setMetric]     = useState<MetricKey>('leads');
   const [isRefetching, setRefetching] = useState(false);
   const [, startTransition]           = useTransition();
   const isMountedRef                  = useRef(false);
+
+  // domain → monthly deals-closed target (null = not set)
+  const [targets, setTargets] = useState<Partial<Record<AppDomain, number>>>(() =>
+    Object.fromEntries(initialTargets.map((t) => [t.domain, t.target_value])),
+  );
+
+  async function handleSaveTarget(domain: AppDomain, value: number): Promise<boolean> {
+    const result = await upsertDomainTargetAction(domain, value);
+    if (result.error || !result.data) {
+      toast.danger('Target not saved', { message: result.error ?? undefined });
+      return false;
+    }
+    setTargets((prev) => ({ ...prev, [domain]: result.data!.target_value }));
+    toast.success('Target updated');
+    return true;
+  }
 
   // Sync when the parent re-renders with fresh server-fetched initialData (URL navigation)
   useEffect(() => {
@@ -293,13 +467,15 @@ export function DomainOverviewPanel({ initialData, period, customFrom, customTo 
           pointerEvents: isRefetching ? 'none' : undefined,
         }}
       >
-        {/* Domain cards — 2×2 grid */}
+        {/* Domain cards — md+: 2×2 grid; below md: full-width scroll-snap
+            carousel (CSS only, no library) */}
         <div
+          className="flex overflow-x-auto snap-x snap-mandatory md:grid md:grid-cols-2 md:overflow-visible"
           style={{
-            display:             'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap:                 'var(--space-4)',
-            marginBottom:        'var(--space-6)',
+            gap:                     'var(--space-4)',
+            marginBottom:            'var(--space-6)',
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth:          'none',
           }}
         >
           {(GIA_DOMAINS as readonly AppDomain[]).map((domain, index) => {
@@ -314,6 +490,7 @@ export function DomainOverviewPanel({ initialData, period, customFrom, customTo 
               conversionRate: null,
               totalCallsMade: 0,
               totalRevenue:   0,
+              totalDeals:     0,
             };
             return (
               <DomainStatCard
@@ -321,6 +498,10 @@ export function DomainOverviewPanel({ initialData, period, customFrom, customTo 
                 card={card}
                 resolvedDotColors={resolvedDotColors}
                 index={index}
+                monthDealsValue={monthDeals[domain] ?? 0}
+                target={targets[domain] ?? null}
+                canEditTargets={canEditTargets}
+                onSaveTarget={handleSaveTarget}
               />
             );
           })}

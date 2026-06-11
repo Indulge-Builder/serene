@@ -9,6 +9,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { ArrowLeft } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { MessageBar } from "@/components/ui/MessageBar";
@@ -33,6 +34,8 @@ interface ConversationPanelProps {
   initialMessages:   WhatsAppMessage[];
   callerProfile:     { id: string; full_name: string; avatar_url?: string | null; role: UserRole };
   onConversationUpdate: (updated: Partial<WhatsAppConversation>) => void;
+  /** Single-pane mode (<md): renders a back-to-list button in the header. */
+  onBack?: () => void;
 }
 
 const MANAGER_ROLES: UserRole[] = ["manager", "admin", "founder"];
@@ -46,6 +49,7 @@ export function ConversationPanel({
   initialMessages,
   callerProfile,
   onConversationUpdate,
+  onBack,
 }: ConversationPanelProps) {
   const mountId       = useId();
   const listRef       = useRef<HTMLDivElement>(null);
@@ -263,16 +267,43 @@ export function ConversationPanel({
     >
       {/* ZONE A — Header */}
       <div
+        className="px-4 py-4 md:px-8 md:pt-8 md:pb-5"
         style={{
           display:        "flex",
           alignItems:     "center",
           gap:            "var(--space-3)",
-          padding:        "var(--space-8) var(--space-8) var(--space-5)",
           flexShrink:     0,
           borderBottom:   "1px solid var(--theme-paper-border)",
           background:     "var(--theme-paper)",
         }}
       >
+        {/* Back to list — single-pane mode only (<md) */}
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Back to conversations"
+            className="eia-pressable"
+            style={{
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              width:          "40px",
+              height:         "40px",
+              marginLeft:     "calc(-1 * var(--space-2))",
+              flexShrink:     0,
+              background:     "transparent",
+              border:         "none",
+              borderRadius:   "var(--radius-md)",
+              color:          "var(--theme-text-secondary)",
+              cursor:         "pointer",
+              padding:        0,
+            }}
+          >
+            <ArrowLeft style={{ width: "18px", height: "18px", strokeWidth: 1.5 }} />
+          </button>
+        )}
+
         {/* Contact avatar */}
         <Avatar
           name={conversation.lead_name ?? conversation.phone}
@@ -424,11 +455,13 @@ export function ConversationPanel({
         )}
       </div>
 
-      {/* ZONE C — Composer */}
+      {/* ZONE C — Composer. safe-area inset (DNA R-02): this is the
+          viewport-bottom surface in single-pane mode on notched devices. */}
       {convStatus === "resolved" ? (
         <div
           style={{
             padding:        "var(--space-4)",
+            paddingBottom:  "calc(var(--space-4) + env(safe-area-inset-bottom, 0px))",
             flexShrink:     0,
             display:        "flex",
             alignItems:     "center",
@@ -452,8 +485,9 @@ export function ConversationPanel({
       ) : (
         <div
           style={{
-            padding:    "var(--space-3) var(--space-4)",
-            flexShrink: 0,
+            padding:       "var(--space-3) var(--space-4)",
+            paddingBottom: "calc(var(--space-3) + env(safe-area-inset-bottom, 0px))",
+            flexShrink:    0,
           }}
         >
           <MessageBar

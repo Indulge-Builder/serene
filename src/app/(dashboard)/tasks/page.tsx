@@ -39,7 +39,7 @@ export default async function TasksPage({
     : 'personal';
 
   return (
-    <main className="flex-1 p-8">
+    <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <TasksCreateProvider>
         <div className="flex items-center justify-between gap-4 mb-6">
           <h1 className="type-page-title m-0">

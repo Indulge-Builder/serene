@@ -17,8 +17,8 @@ export function LoginForm() {
       style={{ maxWidth: "26rem", zIndex: "var(--z-raised)" }}
     >
       <div
-        className="eia-auth-card"
-        style={{ padding: "var(--space-10) var(--space-8)" }}
+        className="eia-auth-card px-6 sm:px-8"
+        style={{ paddingTop: "var(--space-10)", paddingBottom: "var(--space-10)" }}
       >
         {/* Unified brand header */}
         <div className="flex flex-col items-center gap-3 mb-10">

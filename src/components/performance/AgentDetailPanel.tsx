@@ -402,7 +402,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            style={{ display: 'flex', gap: 'var(--space-3)' }}
+            style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}
           >
             <StatAtom label="Total Calls" value={formatCompact(metrics.totalCallsMade)}     paletteIndex={0} delay={0}   />
             <StatAtom label="Leads"       value={formatCompact(metrics.totalLeads)}         paletteIndex={1} delay={40}  />
@@ -416,13 +416,13 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            style={{ display: 'flex', gap: 'var(--space-3)' }}
+            style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}
           >
             {STAT_PALETTES.map((p, i) => (
               <div
                 key={i}
                 style={{
-                  flex:         '1 1 0',
+                  flex:         '1 1 140px',
                   height:       '68px',
                   borderRadius: 'var(--radius-lg)',
                   background:   p.bg,

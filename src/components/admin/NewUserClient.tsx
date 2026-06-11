@@ -16,12 +16,8 @@ export function NewUserClient() {
 
   return (
     <div
-      style={{
-        display:             "grid",
-        gridTemplateColumns: "minmax(0, 1fr) 340px",
-        gap:                 "var(--space-6)",
-        alignItems:          "start",
-      }}
+      className="eia-dossier-grid eia-dossier-grid--340"
+      style={{ alignItems: "start" }}
     >
       {/* Left column — form */}
       <SectionCard title="Member Details">

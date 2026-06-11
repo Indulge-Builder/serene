@@ -39,6 +39,12 @@ export const formErrors = {
   avatarUploadFailed:   "Upload failed. Please check your connection and try again.",
   avatarProfileFailed:  "Image uploaded but profile update failed. Please try again.",
 
+  // Voice note transcription
+  audioRequired:        "No recording was captured. Please try again.",
+  audioTooLarge:        "Recording is too large. Keep voice notes under two minutes.",
+  audioInvalidType:     "That recording format isn't supported. Please try again.",
+  transcriptionFailed:  "Couldn't transcribe the recording. Please try again or type the note.",
+
   // Password change
   passwordCurrentIncorrect: "Current password is incorrect.",
   passwordSameAsCurrent:    "New password must differ from your current password.",

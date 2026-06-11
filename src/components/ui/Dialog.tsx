@@ -73,17 +73,18 @@ export function Dialog({
             exit={{ opacity: 0 }}
             transition={{ duration: ENTER_DURATION, ease: EASE_IN_OUT }}
             onClick={onClose}
+            className={
+              isFull
+                ? 'flex items-stretch justify-center p-0'
+                // Bottom sheet <md (DNA R-06): panel docks to the bottom edge,
+                // no gutter; centered dialog with the space-4 gutter from md up.
+                : 'flex items-end justify-center p-0 md:items-center md:p-4'
+            }
             style={{
               position:   'fixed',
               inset:      0,
               backgroundColor: 'color-mix(in srgb, var(--theme-canvas) 72%, transparent)',
-              zIndex:     isFull
-                ? ('var(--z-overlay)' as React.CSSProperties['zIndex'])
-                : ('var(--z-overlay)' as React.CSSProperties['zIndex']),
-              display:    'flex',
-              alignItems: isFull ? 'stretch' : 'center',
-              justifyContent: 'center',
-              padding:    isFull ? 0 : 'var(--space-4)',
+              zIndex:     ('var(--z-overlay)' as React.CSSProperties['zIndex']),
             }}
           >
             {/* Panel */}
@@ -97,11 +98,19 @@ export function Dialog({
               animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: ENTER_DURATION, ease: EASE_OUT_EXPO } }}
               exit={{ opacity: 0, scale: 0.97, transition: { duration: EXIT_DURATION, ease: EASE_IN_EXPO } }}
               onClick={(e) => e.stopPropagation()}
-              className={maxWidth}
+              className={[
+                maxWidth,
+                isFull
+                  ? 'rounded-none'
+                  // <md: sheet — top corners only, 90dvh ceiling, safe-area pad.
+                  // md+: the classic centered dialog radius.
+                  : 'rounded-t-xl rounded-b-none md:rounded-xl max-md:max-h-[90dvh] max-md:pb-[env(safe-area-inset-bottom)]',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               style={{
                 background:   'var(--theme-paper)',
                 boxShadow:    'var(--shadow-4)',
-                borderRadius: isFull ? 0 : 'var(--radius-xl)',
                 overflow:     'hidden',
                 display:      'flex',
                 flexDirection:'column',
@@ -160,7 +169,7 @@ export function Dialog({
                       type="button"
                       onClick={onClose}
                       aria-label="Close dialog"
-                      className="eia-pressable eia-icon-rotate-hover"
+                      className="eia-pressable eia-icon-rotate-hover eia-touch"
                       style={{
                         display:        'flex',
                         alignItems:     'center',

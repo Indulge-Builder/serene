@@ -11,7 +11,7 @@ import {
 
 export default function LeadsLoading() {
   return (
-    <main className="flex-1 p-8">
+    <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <PageHeaderSkeleton titleWidth={80} actionWidth={110} />
 
       <FilterBarSkeleton chips={[80, 96, 88, 100]} />

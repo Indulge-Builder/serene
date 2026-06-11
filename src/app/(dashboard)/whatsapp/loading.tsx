@@ -3,14 +3,13 @@
 export default function WhatsAppLoading() {
   return (
     <main className="flex min-h-0 flex-1 overflow-hidden">
+      {/* Mirrors WhatsAppShell: full-width list pane <md, 320px rail at md+ */}
       <div
+        className="w-full md:w-80 pt-4 pl-4 md:pt-8 md:pl-8"
         style={{
-          width:         "320px",
           flexShrink:    0,
           display:       "flex",
           flexDirection: "column",
-          paddingTop:    "var(--space-8)",
-          paddingLeft:   "var(--space-8)",
           background:    "var(--theme-paper)",
           borderRight:   "1px solid var(--theme-paper-border)",
         }}
@@ -130,9 +129,9 @@ export default function WhatsAppLoading() {
       </div>
 
       <div
+        className="hidden md:flex"
         style={{
           flex:           1,
-          display:        "flex",
           flexDirection:  "column",
           alignItems:     "center",
           justifyContent: "center",

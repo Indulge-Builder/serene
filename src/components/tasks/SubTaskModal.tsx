@@ -182,7 +182,7 @@ function IconButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={variant === "close" ? "eia-pressable eia-icon-rotate-hover" : "eia-pressable"}
+      className={variant === "close" ? "eia-pressable eia-icon-rotate-hover eia-touch" : "eia-pressable eia-touch"}
       style={iconButtonStyles(variant, active, danger)}
     >
       {children}
@@ -845,12 +845,12 @@ export function SubTaskModal({
         exit={{ opacity: 0, scale: 0.97, y: 8 }}
         transition={{ duration: 0.22, ease: EASE_OUT_EXPO }}
         onClick={(e) => e.stopPropagation()}
+        className="left-0 lg:left-60"
         style={{
           position:       "fixed",
           top:            0,
           right:          0,
           bottom:         0,
-          left:           "240px",
           display:        "flex",
           alignItems:     "center",
           justifyContent: "center",
@@ -863,7 +863,7 @@ export function SubTaskModal({
             pointerEvents: "auto",
             width:         "95vw",
             maxWidth:      "1100px",
-            height:        "90vh",
+            height:        "90dvh",
             maxHeight:     "820px",
             background:    "var(--theme-paper)",
             borderRadius:  "var(--radius-lg)",
@@ -874,24 +874,22 @@ export function SubTaskModal({
             flexDirection: "column",
           }}
         >
-          {/* ── TWO-ZONE GRID — shared header row, aligned content row ─ */}
+          {/* ── TWO-ZONE GRID — shared header row, aligned content row.
+                Below md the zones stack in one scrolling column (audit F4);
+                placements live in classes so the mobile column can reflow. ─ */}
           <div
+            className="grid grid-cols-1 md:grid-cols-[38%_62%] md:grid-rows-[auto_1fr] overflow-y-auto md:overflow-hidden"
             style={{
-              display:              "grid",
-              gridTemplateColumns:  "38% 62%",
-              gridTemplateRows:     "auto 1fr",
-              flex:                 1,
-              minHeight:            0,
-              overflow:             "hidden",
-              background:           "var(--theme-paper-subtle)",
+              flex:       1,
+              minHeight:  0,
+              background: "var(--theme-paper-subtle)",
             }}
           >
             {/* Zone A header — title + description | status + priority */}
             <div
               id={titleId}
+              className="md:col-start-1 md:row-start-1"
               style={{
-                gridColumn:     1,
-                gridRow:        1,
                 display:        "flex",
                 alignItems:     "flex-start",
                 justifyContent: "space-between",
@@ -1191,11 +1189,11 @@ export function SubTaskModal({
               </div>
             </div>
 
-            {/* Zone B header — action icons */}
+            {/* Zone B header — action icons (first in the mobile column so
+                close/edit stay at the top of the sheet) */}
             <div
+              className="md:col-start-2 md:row-start-1 max-md:order-first max-md:pb-0"
               style={{
-                gridColumn:     2,
-                gridRow:        1,
                 display:        "flex",
                 flexDirection:  "column",
                 alignItems:     "flex-end",
@@ -1297,9 +1295,8 @@ export function SubTaskModal({
 
             {/* Zone A body — checklist, details, metadata */}
             <div
+              className="md:col-start-1 md:row-start-2"
               style={{
-                gridColumn:    1,
-                gridRow:       2,
                 minHeight:     0,
                 overflow:      "hidden",
                 display:       "flex",
@@ -1640,11 +1637,12 @@ export function SubTaskModal({
               </AnimatePresence>
             </div>
 
-            {/* Zone B body — remarks timeline + composer */}
+            {/* Zone B body — remarks timeline + composer. Fixed height in the
+                mobile column so the timeline scrolls internally and the
+                composer stays reachable. */}
             <div
+              className="md:col-start-2 md:row-start-2 max-md:h-[60dvh]"
               style={{
-                gridColumn:    2,
-                gridRow:       2,
                 minHeight:     0,
                 overflow:      "hidden",
                 display:       "flex",

@@ -110,6 +110,7 @@ function DealTypeChip({ dealType, dealDuration }: { dealType: string; dealDurati
 
 const cardStyle: React.CSSProperties = {
   display:        'flex',
+  flexWrap:       'wrap',
   alignItems:     'center',
   gap:            'var(--space-4)',
   padding:        'var(--space-4) var(--space-5)',
@@ -128,7 +129,7 @@ function CardBody({ deal }: { deal: DealWithRelations }) {
   return (
     <>
       {/* Left zone — contact name + phone + domain badge */}
-      <div style={{ flex: '0 0 auto', minWidth: '180px', maxWidth: '240px' }}>
+      <div style={{ flex: '1 1 180px', minWidth: 0, maxWidth: '240px' }}>
         <p
           style={{
             fontFamily:   'var(--font-serif)',

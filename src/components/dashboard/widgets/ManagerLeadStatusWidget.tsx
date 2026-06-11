@@ -277,7 +277,10 @@ export function ManagerLeadStatusWidget({ role, initialData, size = 'lg', dateRa
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(5, 1fr)",
+              // auto-fit (audit F1): 5-up on a half-width desktop widget,
+              // 3+2 / 2-up as the widget narrows — repeat(5, 1fr) clipped
+              // the nowrap labels below ~480px of widget width.
+              gridTemplateColumns: "repeat(auto-fit, minmax(88px, 1fr))",
               gap: "var(--space-2)",
             }}
           >
@@ -314,7 +317,6 @@ export function ManagerLeadStatusWidget({ role, initialData, size = 'lg', dateRa
                       fontSize:  "var(--text-2xs)",
                       color:     STATUS_TEXT[s],
                       textAlign: "center",
-                      whiteSpace:"nowrap",
                       opacity:   0.8,
                     }}
                   >

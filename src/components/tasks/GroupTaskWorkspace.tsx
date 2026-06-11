@@ -954,15 +954,7 @@ export function GroupTaskWorkspace({
 
       {/* ── Board view ────────────────────────────────────────────────────── */}
       {view === "board" && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(5, 1fr)",
-            gap: "var(--space-4)",
-            alignItems: "start",
-            overflowX: "auto",
-          }}
-        >
+        <div className="eia-board">
           {BOARD_COLUMNS.map((col) => {
             const colSubtasks = subtasks.filter((t) =>
               col.statuses.includes(getEffectiveStatus(t.id, t.status)),
@@ -975,7 +967,6 @@ export function GroupTaskWorkspace({
                   borderRadius: "var(--radius-md)",
                   overflow: "hidden",
                   boxShadow: "var(--shadow-1)",
-                  minWidth: "180px",
                 }}
               >
                 {/* Column header */}
@@ -1232,15 +1223,14 @@ export function GroupTaskWorkspace({
 
       {/* ── Add subtask floating button + panel ───────────────────────────── */}
       <div
+        className="fixed bottom-4 left-4 right-4 md:bottom-8 md:left-auto md:right-8"
         style={{
-          position: "fixed",
-          bottom: "var(--space-8)",
-          right: "var(--space-8)",
           zIndex: "var(--z-raised)" as React.CSSProperties["zIndex"],
           display: "flex",
           flexDirection: "column",
           alignItems: "flex-end",
           gap: "var(--space-3)",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
         }}
       >
         <AnimatePresence>
@@ -1251,13 +1241,13 @@ export function GroupTaskWorkspace({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.97 }}
               transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+              className="w-full md:w-80"
               style={{
                 background: "var(--theme-paper)",
                 border: "1px solid var(--theme-paper-border)",
                 borderRadius: "var(--radius-lg)",
                 boxShadow: "var(--shadow-3)",
                 padding: "var(--space-4)",
-                width: "320px",
                 display: "flex",
                 flexDirection: "column",
                 gap: "var(--space-3)",

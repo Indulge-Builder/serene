@@ -10,6 +10,7 @@ function StatDivider() {
   return (
     <div
       aria-hidden="true"
+      className="max-sm:hidden"
       style={{
         width:      '1px',
         alignSelf:  'stretch',
@@ -24,9 +25,8 @@ function StatDivider() {
 export function DealsSummaryStrip({ summary }: DealsSummaryStripProps) {
   return (
     <div
+      className="grid grid-cols-2 sm:flex sm:items-stretch"
       style={{
-        display:      'flex',
-        alignItems:   'stretch',
         marginBottom: 'var(--space-4)',
         background:   'var(--theme-paper)',
         border:       '1px solid var(--theme-paper-border)',

@@ -6,6 +6,227 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-12 — Sidebar logo links to dashboard
+
+- **`Sidebar` logo is clickable:** the Eia mark in the sidebar header is wrapped in a `Link` to `/dashboard` with an `aria-label` and a subtle hover opacity fade.
+
+**Files:** `src/components/layout/Sidebar.tsx`.
+
+---
+
+## 2026-06-12 — Leads table: status summary chips removed
+
+- **Toolbar status pills removed from `LeadsTable`:** the per-status count chips (New · Touched · In Discussion · …) in the table toolbar are gone, along with the dead plumbing — the `statusCounts` prop on `LeadsTable`, the pass-through in `LeadsTableAsync`, and the unused `count` prop on the private `StatusBadge` (row status pills unchanged).
+- **Service untouched:** `getLeadsByRole` still calls `get_leads_status_counts` and returns `statusCounts` — the RPC is how `totalCount` is derived (perf audit C-1), not chip-only work.
+- **Verification:** `tsc --noEmit` clean.
+
+**Files:** `src/components/leads/LeadsTable.tsx`, `src/components/leads/LeadsTableAsync.tsx`.
+
+---
+
+## 2026-06-12 — Responsive: /admin/users card row wraps (audit miss)
+
+- **`UsersTable` `UserCard` wraps:** the member row was a non-wrapping flex with ~340px of unshrinkable fixed-basis zones (role pill, `0 0 120px` domain, `0 0 80px` status, edit link) — content clipped inside the card below ~840px and the row was unusable on phones. The §3.7 "card-list pages … mostly degrade fine" finding was stale for this one. Now `flexWrap: wrap` (row gap `--space-3`), domain zone `0 0 auto` + `minWidth: 100px`, and the Edit link gets `.eia-touch` (≥40px under coarse pointers). Same convention as the F2 `DealCard`/`AgentSettingsTable` fixes; desktop single-line layout unchanged.
+- **Verification:** `tsc --noEmit` clean, `next build` clean.
+
+**Files:** `src/components/admin/UsersTable.tsx`, `docs/audits/2026-06-responsive-audit.md`.
+
+---
+
+## 2026-06-12 — Ad-spend foundation (/budget), domain targets + radial meter, agent Today-view upgrades
+
+Three-phase build: (A) Meta ad-spend ingestion + `/budget` page, (B) founder-set monthly domain targets with a radial deals-vs-target meter on the Domains tab, (C) agent performance Today-view upgrades (calls new-vs-old split, 14-day trend, deals revenue, recent-activity load-more). Dashboard widgets deliberately NOT started (separate brief).
+
+### Phase A — ad spend
+
+- **Migration 0104 `ad_spend_daily`:** day-grain spend rows, `UNIQUE(campaign_key, spend_date, source)`, `campaign_key` carries the same lowercase+trim CHECK as `ad_creatives` (0012). RLS: manager+ read, admin/founder write. `update_updated_at()` reused.
+- **Migration 0106 `get_budget_summary(p_date_from, p_date_to)`:** one row per campaign with spend in the period, LEFT-joined to lead counts (`created_at` cohort, `lower(trim(utm_campaign))` join) and deals (count + revenue by `won_at` through `deals.lead_id`). Spend dates filtered on IST calendar days (`AT TIME ZONE 'Asia/Kolkata'`). Scope-param tier — EXECUTE revoked, admin-client only (Q-13).
+- **`normalizeCampaignKey()` extracted into `lib/utils/campaigns.ts`** — THE campaign-key normalisation; `upsertAdCreative` and the entire spend pipeline now share it (R-03 — no fork; a fork here silently orphans spend from leads).
+- **`lib/utils/ad-spend-parse.ts` (new, CLIENT-SIDE ONLY):** `parseMetaSpendFile(file)` — dynamic `xlsx` import (same rule as `export.ts`), column whitelist (Reporting starts/ends, Campaign name, Results, Amount spent (INR), Impressions, Reach, Link clicks; rest discarded). **THE grain guard:** any row with `Reporting starts !== Reporting ends` rejects the ENTIRE file with an instructional "re-export with Breakdown → By time → Day" error — a range-grain file accepted once would double-count forever. Zero-spend rows skipped; duplicate (campaign, day) rows merged (upsert can't hit one conflict key twice).
+- **`uploadAdSpendAction` (`lib/actions/ad-spend.ts`):** Zod (`uploadAdSpendSchema`) → `requireProfile(['admin','founder'])` → server-side re-sanitize + re-normalise → upsert on the unique key → `{ inserted, updated, skipped }` toast summary. Re-uploading the same CSV changes zero values (idempotent on the key).
+- **`/budget` page:** canonical list layout; reuses `PerformanceFilters` (IST period presets + custom range, URL-driven), `Table<T>` (sanctioned RPC-result grid), `StatTile` cells for the totals strip (spend, leads, CPL, deals, CPD, revenue — CPL/CPD render "—" at zero denominators), `EmptyState`. Upload button (admin/founder) → `next/dynamic` modal (`useMountOnFirstOpen`) with parse preview. **No Redis** — always-live reads like `/campaigns`. Access: manager read + admin/founder upload; `/budget` added to `DOMAIN_ROUTE_MAP` (Gia domains + marketing) and the Sidebar Analytics section (manager+). *Note: manager read access is the working default per the RLS spec — flag if spend should be admin/founder-only.*
+
+### Phase B — domain targets
+
+- **Migration 0105 `domain_targets`:** `UNIQUE(domain, metric, period)`, metric CHECK `('deals_closed')`, period CHECK `('month')`. RLS: all-authenticated read, admin/founder write. Nothing seeded — founders enter targets via the card edit affordance.
+- **Migration 0107:** `get_domain_health_metrics` extended (not a new RPC) with `total_deals` — COUNT from `public.deals` by `won_at`, same source/date-field as `total_revenue` (0076). 0102 revoke posture re-applied after the DROP/recreate.
+- **Domain cards (`DomainOverviewPanel`):** four stats (Leads, Calls, Deals Closed, Revenue) + **radial deals-vs-target meter** (`DomainTargetMeter` — Recharts `RadialBarChart` via `useChartTokens`, 2 colours). The meter is **month-pinned**: always this-month deals vs the monthly target, independent of the period filter (page reuses the period fetch when it IS this_month — no double RPC). Target 0/unset → serif-italic "No target set." (`EmptyState` inline) — no division crash. Founder/admin pencil → inline input → `upsertDomainTargetAction` (Zod → `requireProfile` → upsert via `domain-targets-service`).
+- **Mobile:** below `md` the card grid becomes a CSS scroll-snap carousel (`snap-x snap-mandatory`, full-width slides) — no library.
+
+### Phase C — agent view
+
+- **Migration 0108 `get_agent_today_pulse(p_today_start, p_date_from, p_date_to)`:** SELF-SCOPED (`auth.uid()`, GRANT authenticated — 0101 pattern). Returns calls-today split new-vs-old (call notes joined to lead `created_at`; new+old partitions the same row set so the split always sums to the total), 14-day daily call counts (IST day boundary passed in from `lib/utils/ist` — never re-forked in SQL), and period deals count + revenue from `public.deals` by `won_at`. Date-field asymmetry untouched: the existing `get_agent_performance` core (leadsWon/conversion by `status_changed_at`, touch by `created_at`) is not modified.
+- **Recent lead activity:** `getAgentLeadActivityPage` (performance-service) — keyset "load more" on `lead_activities` scoped to the agent's leads, **composite cursor `(created_at, id)`** per the composite-cursor rule, page 15, served by `getAgentRecentLeadActivityAction` (agent id always from the verified profile). Button, not infinite scroll.
+- **`AgentPerformanceShell` Today tab:** Calls Today hero now shows the literal since-IST-midnight pulse count with new/existing split chips; new `AgentCallTrendChart` (composes `ChartFrame` + `cartesianDefaults`, `next/dynamic` per the Recharts splitting rule); Revenue card (period deals count + amount) joins the pipeline row; `AgentRecentActivityList` below. Pulse fetched only while the Today tab is visible. Manager roster pinning (`get_user_domain()`) untouched.
+
+### Sign-off
+
+`pnpm tsc --noEmit` clean; `check:tokens` clean. Idempotent re-upload (unique-key upsert), range-grain rejection (whole-file, instructional message), 0-target meter renders "No target set." with no division, new+old split is a partition of total calls today (SQL FILTER on the same row set).
+
+**Files:** `supabase/migrations/202606120001{04,05,06,07,08}_*.sql`, `src/lib/utils/{campaigns,ad-spend-parse}.ts`, `src/lib/validations/ad-spend-schema.ts`, `src/lib/services/{ad-spend-service,domain-targets-service,performance-service}.ts`, `src/lib/actions/{ad-spend,ad-creatives,performance}.ts`, `src/app/(dashboard)/budget/*`, `src/components/budget/*`, `src/components/performance/{DomainOverviewPanel,DomainTargetMeter,AgentCallTrendChart,AgentRecentActivityList,AgentPerformanceShell}.tsx`, `src/app/(dashboard)/performance/{page,FounderPerformanceShell}.tsx`, `src/components/layout/Sidebar.tsx`, `src/lib/constants/route-permissions.ts`, `src/lib/types/index.ts`, docs.
+
+---
+
+## 2026-06-12 — Responsive: /performance manager/founder two-pane fix (audit miss) + V-14 codified
+
+- **`ManagerPerformancePanel` two-pane stacks `<md`:** the Agents view (manager + founder) was a fixed `268px` roster + `flex: 1` detail row at every width — the one §3.7 surface the audit missed. Now `flex-col items-stretch md:flex-row md:items-start`, roster `w-full md:w-67` (268px). `AgentDetailPanel` stats row + skeleton wrap (`flexWrap` + `StatAtom` `flex: 1 1 140px` — 2×2 below ~600px container, 4-up desktop; container-driven, no breakpoint).
+- **Rules codification (V-14):** the responsive contract is now in the constitution, not just the decision log — `The_Rules.md` §5 V-14 (points at D-1…D-5 + the audit; code-level invariants: `useMediaQuery`/`MQ`, shared primitives, column counts in classes only, `dvh`, persisted layouts never drive narrow rendering), five new §8 Never-Do lines, and a Decision Log row. DESIGN-DNA already carried the implementation contract (§9, added in phase 1); `.cursorrules` re-synced to `CLAUDE.md`.
+- Also fixed in passing: the two new `src/components/budget/` upload components failed `tsc` (`iconLeft={Upload}` lucide typing quirk) — applied the codebase's established `as LucideIcon` cast (same as `LeadWhatsAppCard`).
+- **Verification:** `tsc --noEmit` clean, `next build` clean.
+
+**Files:** `src/components/performance/{ManagerPerformancePanel,AgentDetailPanel,StatAtom}.tsx`, `src/components/budget/{AdSpendUploadButton,AdSpendUploadModal}.tsx`, `docs/rules/The_Rules.md`, `docs/audits/2026-06-responsive-audit.md`, `.cursorrules`.
+
+---
+
+## 2026-06-12 — Mobile nav: dark top strip removed, floating brand-mark trigger on the title line
+
+The mobile (< md) drawer trigger no longer lives in a dark `--theme-sidebar-bg` strip with a wordmark. The strip element is now a zero-flow floating anchor: a single 40px hamburger button floats over the full-bleed paper, vertically aligned with the page `<h1>` — trigger and title share one line.
+
+- **`Sidebar.tsx`:** logo `<img>` dropped; the trigger renders **only on primary nav pages** (`MOBILE_TRIGGER_PATHS` — MAIN/ANALYTICS nav hrefs + `/admin/users`, `/admin/ad-creatives`, `/settings`, `/profile`). Detail pages (`/leads/[id]`, `/tasks/[id]`, …) get no hamburger — their `BackButton` occupies the same top-left corner and is the affordance there.
+- **`globals.css`:** `.eia-mobile-topbar` becomes `position: absolute` (top/left `--space-4` + safe-area inset, `--z-raised`) inside a now-`relative` `.eia-shell`. A general-sibling rule `.eia-mobile-topbar ~ .eia-shell-gutter .type-page-title { margin-left: 52px }` indents page titles to clear the trigger — and only fires when the trigger is actually mounted. New `.eia-mobile-trigger` class: soft theme-tinted circle — 7% accent-washed `--theme-paper` bg, 16% accent hairline border, `--shadow-1` (no decorative orbs; a flat wash). Derives from `--theme-accent`, so it follows the user's chosen theme. The glyph inside is the brand mark (`/logo.webp`, 34px) rather than a Lucide `Menu` hamburger. `eia-pressable` press feedback.
+- Works on every primary page including WhatsApp (its rail `<h1 class="type-page-title">` at `pt-4 pl-4` matches the geometry) and the dashboard greeting. Drawer/backdrop behaviour unchanged.
+- **`/profile`:** title "Profile Settings" → "Profile" (metadata too), and its inline `style={{ margin: 0 }}` replaced with the `m-0` class — inline margin beat the stylesheet indent, so the trigger overlapped the title on that page.
+
+**Files:** `src/components/layout/Sidebar.tsx`, `src/app/globals.css`, `src/app/(dashboard)/profile/page.tsx`.
+
+---
+
+## 2026-06-12 — PWA: installable home-screen app (manifest, icons, offline-shell service worker)
+
+Eia is now installable on Android and iOS as a standalone home-screen app — the web app itself, no second codebase, no behaviour change. Web push is explicitly out of scope (separate brief: needs a subscription table + send path).
+
+- **Manifest:** `src/app/manifest.ts` (Next 16 native convention → served at `/manifest.webmanifest`, auto-linked). Name/short_name "Eia", `display: standalone`, `start_url: /dashboard` (→ `/login` via the existing layout guard when signed out). Theme/background colour `#0d0c0a` — hardcoded hex is sanctioned in manifest.ts, the viewport `themeColor`, and offline.html only, because none of the three can read CSS vars; each carries a comment pinning it to the Earth `--theme-canvas` token.
+- **Icons:** generated from the gold brand mark (cropped out of `public/logo-light.avif`) composited on the Earth canvas — `public/icons/icon-{192,512}.png` (purpose any, mark at 74%) + `icon-maskable-{192,512}.png` (mark at 56%, inside the 80% safe zone) + `src/app/apple-icon.png` (180px, Next file convention emits the apple-touch-icon link; the manual `icons.apple: /logo.webp` metadata entry removed).
+- **Service worker:** `public/sw.js` — offline fallback shell ONLY. Intercepts GET `mode: navigate` requests exclusively, network-first with `public/offline.html` as the catch fallback; the response itself is never cached. Server Action POSTs, RSC payloads/prefetches, and static assets pass through untouched — **the SW must never cache role-scoped data** (a cached page replayed to another user on a shared device is the failure mode this rule exists for). `skipWaiting` + `clients.claim` on every install so a deploy never leaves a stale SW locked in. Registered by `src/components/layout/ServiceWorkerRegistration.tsx` (root layout, production-only — a SW in dev fights HMR).
+- **iOS:** `appleWebApp` metadata (capable, title "Eia", `black-translucent` status bar over the dark canvas) + `viewport.themeColor` in the root layout.
+- **Proxy:** matcher now excludes `manifest.webmanifest`, `sw.js`, `offline.html`, `icons/`, `apple-icon` — the PWA surface is fetched by the browser outside any auth context and must never route through session refresh (same rationale as the webhook bypass).
+- **Verification:** `tsc --noEmit` clean, `next build` clean (`/manifest.webmanifest` + `/apple-icon.png` emitted static). Device install pass (Android + iOS: standalone launch, login, Server Action mutation, theme persistence, post-deploy SW refresh) pending hardware.
+
+**Files:** `src/app/{manifest.ts,layout.tsx,apple-icon.png}`, `public/{sw.js,offline.html,icons/*}`, `src/components/layout/ServiceWorkerRegistration.tsx`, `src/proxy.ts`, `src/app/CLAUDE.md`, `docs/operations/pwa-install-guide.md` (plain-English team install guide).
+
+---
+
+## 2026-06-12 — Voice dictation in CalledModal (pure composition)
+
+The call-log modal's Note field gets the same mic cluster as the dossier note composer — zero new services or actions. `useAudioRecorder` + `transcribeAudioAction` reused exactly as-is; the transcript appends to the textarea as an editable draft and saves through the unchanged `addLeadCallNote` path.
+
+- **`CalledModal`:** mic/stop + discard buttons and the `m:ss / 2:00` counter sit in the Note label row; both footer buttons (`Log Update`, `Log Update + Task`) are disabled while recording or transcribing. Mid-recording close (Escape/backdrop) is safe: the modal is conditionally rendered by `StatusActionPanel`, so closing unmounts it and `useAudioRecorder`'s unmount cleanup discards the take and releases the mic track — same guarantee as tab-close.
+- **`useAudioRecorder`:** now exports the shared display pieces — `formatRecorderElapsed()` and `DEFAULT_MAX_RECORDING_MS` — imported by both `LeadNotesInput` and `CalledModal` instead of per-consumer copies.
+- **Verification:** `tsc --noEmit` clean.
+
+**Files:** `src/components/leads/{CalledModal,LeadNotesInput}.tsx`, `src/hooks/useAudioRecorder.ts`, `src/components/leads/CLAUDE.md`, `docs/pages/lead-dossier.md`.
+
+---
+
+## 2026-06-12 — Voice notes: mic dictation on the lead dossier (Deepgram transcription layer)
+
+Mic option in the `/leads/[id]` note composer: record → server-side transcription → transcript drops into the textarea as an **editable draft** → saves through the unchanged `addLeadNote` path. Built as reusable speech-to-text infrastructure (the foundation seam for Lia's voice channel), not a notes gadget. **Audio is transcribed in-memory and discarded — never stored** (D-01 carve-out logged in `docs/design/decision-log.md`: raw audio to Deepgram under no-training/zero-retention API terms — audio cannot be pseudonymised).
+
+- **`src/lib/services/transcription-service.ts` (new, server-only):** `transcribeAudio(audio, mimeType)` — THE Deepgram call site. Nova-3 with `language=multi` (Hinglish code-switching). Plain `fetch`, no SDK dependency. `DEEPGRAM_API_KEY` env var (added to `.env.example`); throws on failure for the action layer to map.
+- **`src/lib/actions/transcription.ts` (new):** `transcribeAudioAction(formData)` — Zod first (`TranscribeAudioSchema`, new in `lib/validations/transcription-schema.ts`: Blob, ≤ 3 MB, audio-type check), then `requireProfile()`, then the service. Returns `{ data: { text }, error }`; writes nothing. New `formErrors.audio*` / `transcriptionFailed` copy.
+- **`src/hooks/useAudioRecorder.ts` (new):** THE MediaRecorder hook — `isTypeSupported` codec negotiation (Chrome webm/opus → Safari mp4/aac → Firefox ogg/opus; the actual MIME travels with the blob, never hardcoded), 32 kbps bitrate hint, 2-minute auto-stop, elapsed ticker, guaranteed mic-track release on stop/cancel/unmount.
+- **`LeadNotesInput`:** footer mic button (renders only when `MediaRecorder` is supported). Recording state: danger dot + mono `m:ss / 2:00` counter, stop (→ transcribe) and × (discard) buttons; transcribing state: spinner + label. Transcript appends to existing draft text; errors surface in the composer's existing error line. Never auto-submits.
+- **`next.config.ts`:** `Permissions-Policy` header `microphone=()` → `microphone=(self)` (the old value blocked the app's own mic); `experimental.serverActions.bodySizeLimit: '4mb'` (Safari AAC can exceed the 1 MB default at the 2-minute cap; schema still rejects > 3 MB).
+- **Sign-off:** `tsc --noEmit` clean. No new write path to `lead_notes`; Deepgram key never reaches a client bundle; audio never persisted.
+
+**Files:** `src/lib/services/transcription-service.ts`, `src/lib/actions/transcription.ts`, `src/lib/validations/{transcription-schema,form-errors}.ts`, `src/hooks/useAudioRecorder.ts`, `src/components/leads/LeadNotesInput.tsx`, `next.config.ts`, `.env.example`, `CLAUDE.md`, `src/lib/CLAUDE.md`, `src/components/leads/CLAUDE.md`, `docs/pages/lead-dossier.md`, `docs/design/decision-log.md`.
+
+---
+
+## 2026-06-12 — Responsive F5: Dialog bottom sheet, auth 320px pass, touch-target sweep
+
+Final follow-up phase from the responsive audit (`docs/audits/2026-06-responsive-audit.md` §3.6/§3.8). All five follow-up phases (F1–F5) are now closed.
+
+- **`Dialog` becomes a bottom sheet `<md`** (DNA R-06 — one change in `Dialog.tsx` serves every modal that composes `modal.tsx`/`Dialog`): the overlay docks the panel to the bottom edge (`items-end`, no gutter) below md and stays the centered dialog with the `space-4` gutter from md up; the panel gets top-corner-only `--radius-xl` rounding, a `90dvh` max-height, and `env(safe-area-inset-bottom)` padding below md. The enter/exit animation contract (scale+fade via `ENTER_DURATION`/`EXIT_DURATION`) is untouched; `size="full"` behaviour unchanged.
+- **Auth 320px pass:** all four `.eia-auth-card` surfaces (login, forgot-password, update-password form + invalid-link card) ease horizontal padding `px-6 sm:px-8` (was fixed `--space-8`); the 26rem card + `mx-4` already fit 320 — content width goes from 224px to 240px at 320.
+- **DNA §12 44px touch-target sweep** via the existing `.eia-touch` class (≥40px under coarse pointers only, desktop chrome unchanged): `Dialog` close ×, `SubTaskModal` header icon buttons, `Calendar` month prev/next, `AgentSettingsTable` work-day chips (26px) + clear-shift button (28px). (CSS `min-width/min-height` beats the inline `width`, so visual size is unchanged on fine pointers.)
+- Deferred, unchanged: the DNA R-05 "filters move to a sheet" exploration — the F1-shipped `FilterBar` scroll row remains the mobile filter UX; revisit only with a real usability signal.
+- **Verification:** `tsc --noEmit` clean, `next build` clean.
+
+**Files:** `src/components/ui/{Dialog,Calendar}.tsx`, `src/components/tasks/SubTaskModal.tsx`, `src/components/settings/AgentSettingsTable.tsx`, `src/app/(auth)/login/login-form.tsx`, `src/app/(auth)/forgot-password/forgot-password-form.tsx`, `src/app/(auth)/update-password/{page,update-password-form}.tsx`, `docs/audits/2026-06-responsive-audit.md`, `CLAUDE.md`, `src/components/CLAUDE.md`.
+
+---
+
+## 2026-06-12 — Responsive F4: Tasks — board rail, SubTaskModal stacking, modal grids, calendar stack
+
+Follow-up phase F4 from the responsive audit (`docs/audits/2026-06-responsive-audit.md` §3.5).
+
+- **Board → snap-scroll rail `<lg`:** new `.eia-board` class (globals.css, canonical `--bp-lg` query): below lg the 5 columns become a horizontal `grid-auto-flow: column` rail (`grid-auto-columns: min(78vw, 260px)`, `scroll-snap-type: x mandatory`, touch momentum); from lg up `repeat(5, minmax(180px, 1fr))` with container (never body) scroll as the fallback at tight lg widths. The inline `repeat(5, 1fr)` + per-column `minWidth: 180px` (≈900px forced body overflow below ~960px) is gone.
+- **Add-subtask panel:** FAB stack is `bottom-4 left-4 right-4 md:bottom-8 md:left-auto md:right-8` + safe-area inset; the panel is `w-full md:w-80` — full-width sheet `<md`, the same 320px card at `md+`.
+- **SubTaskModal:** `height: 90vh → 90dvh`; the wrapper's fixed `left: 240px` sidebar offset (off-screen modal at phone widths, wrong at the md icon-rail too) → `left-0 lg:left-60`; the `38% 62%` two-zone grid stacks into one scrolling column `<md` — zone placements moved from inline `gridColumn/gridRow` to `md:col-start-*/md:row-start-*` classes, action icons `order-first` in the mobile column (close stays at top), Zone B fixed at `60dvh` so the remarks timeline scrolls internally and the composer stays reachable.
+- **CreateGroupTaskModal:** the Domain/Priority/Due row and the Appearance (colour+icon) row stack below `sm` (`grid-cols-1 sm:grid-cols-2/3`).
+- **MyTasksCalendarView:** the 280px sticky calendar + list flex row stacks `<md` (`flex-col md:flex-row`, calendar `w-full md:w-70 md:sticky`). Calendar day cells already render at 44px height when `taskDots` is present — tap targets pass.
+- **Padding ladder:** `/tasks` page + loading + `/tasks/[id]` moved to `p-4 sm:p-6 lg:p-8`.
+- **Verification:** `tsc --noEmit` clean, `next build` clean.
+
+**Files:** `src/app/globals.css`, `src/components/tasks/{GroupTaskWorkspace,SubTaskModal,CreateGroupTaskModal,MyTasksCalendarView}.tsx`, `src/app/(dashboard)/tasks/{page,loading}.tsx`, `src/app/(dashboard)/tasks/[id]/page.tsx`, `docs/audits/2026-06-responsive-audit.md`.
+
+---
+
+## 2026-06-12 — Responsive F3: WhatsApp single-pane mode
+
+Follow-up phase F3 from the responsive audit (`docs/audits/2026-06-responsive-audit.md` §3.4) — the split-pane was unusable on phones (320px rail + ~0–55px chat pane at 375).
+
+- **Single-pane mode `<md`** (`useMediaQuery(MQ.mobile)` in `WhatsAppShell` — a genuine behaviour branch, per D-1): the shell renders the list **or** the active conversation, never both. Selecting a conversation swaps to the full-width panel; a new `onBack` prop on `ConversationPanel` (40×40 `ArrowLeft` button, `.eia-pressable`) returns to the list by clearing the existing `activeConversationId` state. Desktop split-pane unchanged (back button not rendered).
+- **Fixed 320px rail assumption killed:** rail is `w-full md:w-80` (`w-80` = 320px, same value as the old constant) with rail padding on a `pt-4 pl-4 md:pt-8 md:pl-8` ladder; `ConversationPanel` header padding likewise `px-4 py-4 md:px-8 md:pt-8 md:pb-5`.
+- **Safe-area inset (DNA R-02):** both composer wrappers (MessageBar + resolved banner) get `paddingBottom: calc(… + env(safe-area-inset-bottom, 0px))` — applied at the viewport-bottom wrapper in `ConversationPanel`, not inside the `MessageBar` primitive (which also lives mid-page in the lead dossier where the inset would be wrong).
+- **`whatsapp/loading.tsx`** mirrors the shell: full-width list skeleton `<md`, right-pane skeleton `hidden md:flex`.
+- Tap targets: conversation rows already exceed 44px (avatar + two text lines + `--space-3` vertical padding); back button is 40×40.
+- **Verification:** `tsc --noEmit` clean, `next build` clean.
+
+**Files:** `src/components/whatsapp/{WhatsAppShell,ConversationPanel}.tsx`, `src/app/(dashboard)/whatsapp/loading.tsx`, `docs/audits/2026-06-responsive-audit.md`.
+
+---
+
+## 2026-06-12 — Responsive F2: detail grids + analytics surfaces
+
+Follow-up phase F2 from the responsive audit (`docs/audits/2026-06-responsive-audit.md` §3.7) — performance, campaigns, settings, admin, deals.
+
+- **`.eia-dossier-grid` adoption (D-5):** `/profile`, `/admin/users/[id]`, and `NewUserClient` (`/admin/users/new`) drop their inline `minmax(0,1fr) 340px` grids for the shared class + a new `--340` modifier (lg+ only; single column `<lg`). One class, one variant — no second grid class forked.
+- **Founder performance:** `DomainOverviewPanel` domain cards and the `FounderPerformanceShell` Domains-tab skeleton go `grid-cols-1 md:grid-cols-2` (was fixed `repeat(2, 1fr)` at all widths).
+- **Agent performance:** `CoreFourGrid` KPI row → `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4` (was a non-wrapping flex row — 4 sparkline cards at ~85px each on a phone); `EffortGrid` → `grid-cols-2 lg:grid-cols-4`; `KpiRowFallback`/`MetricsSkeleton` mirror the same shapes; Today-tab hero pair stacks `<sm` and the pipeline count row wraps (`flex: 1 1 140px`).
+- **Campaign metrics strip (bug fix):** the strip's inline `gridTemplateColumns: repeat(2, 1fr)` was overriding its own `md:grid-cols-3 lg:grid-cols-6` classes — the strip rendered 2-wide at **every** width, including desktop. Column count now lives in classes only (`grid-cols-2 md:grid-cols-3 lg:grid-cols-6`); same fix in `CampaignMetricsStripSkeleton`.
+- **Deals:** `DealsSummaryStrip` becomes a 2×2 grid `<sm` (dividers hidden) and the flex strip at `sm+`; `DealCard` zones wrap (`flexWrap` + left zone `1 1 180px`) instead of overflowing the card at phone widths.
+- **Settings:** `AgentSettingsTable` shift-controls group `flex: 0 0 auto` → `1 1 auto` + `minWidth: 0` — it could never shrink below its ~500px single-line width, clipping the card `<md`. The surface is already a card list (the audit's "real `<table>`" note was stale), so D-2's card-stack requirement is satisfied structurally; no table/stack toggle needed.
+- **Padding ladder:** every §3.7 page + `loading.tsx` moved to `p-4 sm:p-6 lg:p-8` — settings, performance (all three role mains), campaigns (+`[id]`), deals, admin/users (+`[id]`, `new`), admin/ad-creatives. `/tasks` stays for F4.
+- **Verification:** `tsc --noEmit` clean, `next build` clean.
+
+**Files:** `src/app/globals.css`, `src/app/(dashboard)/{profile,settings,deals,campaigns,performance,admin}/…` pages + loading files, `src/app/(dashboard)/performance/FounderPerformanceShell.tsx`, `src/components/performance/{CoreFourGrid,EffortGrid,DomainOverviewPanel,AgentPerformanceShell}.tsx`, `src/components/campaigns/{CampaignMetricsStrip,CampaignMetricsStripSkeleton}.tsx`, `src/components/deals/{DealsSummaryStrip,DealCard}.tsx`, `src/components/settings/AgentSettingsTable.tsx`, `src/components/admin/NewUserClient.tsx`, `docs/audits/2026-06-responsive-audit.md`.
+
+---
+
+## 2026-06-12 — Responsive F1: dashboard widget interiors
+
+Follow-up phase F1 from the responsive audit (`docs/audits/2026-06-responsive-audit.md`) — the dashboard surface at narrow widths.
+
+- **Page chrome:** `/dashboard` page + `loading.tsx` moved onto the DNA padding ladder (`p-4 sm:p-6 lg:p-8`).
+- **Canvas header wraps** (`flex-wrap` + `gap-y-3`): below ~md the greeting and the control cluster (date filter + Edit layout) stack instead of overflowing — the right cluster was `shrink-0` against a Playfair greeting.
+- **`TabsList` scrolls on overflow (primitive-level, D-5):** the tray gets `maxWidth: 100%` + hidden-scrollbar `overflow-x: auto`. Triggers are nowrap, so an overflowing tray (e.g. the 5-chip Gia domain pickers in the campaign/volume/status widgets at ~340px) now scrolls inside itself instead of widening the widget. Consumers that deliberately squeeze triggers (`flex: 1, minWidth: 0` — the volume widget's domain picker) never overflow and are unaffected. Every `Tabs` consumer app-wide inherits this.
+- **Lead Pipeline stat chips:** `repeat(5, 1fr)` → `repeat(auto-fit, minmax(88px, 1fr))` and the chip label loses its `nowrap` — 5-up on a desktop half-width widget, 3+2/2-up as the widget narrows; previously the nowrap labels clipped below ~480px of widget width.
+- Audited and left alone: widget list rows (AgentTasks/AgentActivity) and the volume header already carry correct `minWidth: 0` + ellipsis guards; the persisted bento layout already degrades by breakpoint.
+- **Verification:** `tsc --noEmit` clean, `next build` clean.
+
+**Files:** `src/app/(dashboard)/dashboard/{page,loading}.tsx`, `src/components/dashboard/DashboardCanvas.tsx`, `src/components/ui/TabSelector.tsx`, `src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx`, `docs/audits/2026-06-responsive-audit.md`.
+
+---
+
+## 2026-06-12 — Responsive phase 1: audit + foundation + responsive shell + /leads reference implementation
+
+Eia was desktop-only in practice — only 10 component files used a responsive Tailwind prefix, the Sidebar was an unconditional 240px flex child, and the DNA-sanctioned mobile sidebar overlay (V-06) didn't exist in code. This phase ships the full audit, the shared foundation, and shell + `/leads` as the reference implementation. **Audit + per-surface follow-up plan (F1–F5): `docs/audits/2026-06-responsive-audit.md`. Implementation decisions D-1–D-5: `docs/design/decision-log.md`.**
+
+- **Audit:** every surface walked at 375/768/1280/1536+ and 200% zoom against DNA §2.7/§9/§12; fixed-width, raw-`matchMedia`, and arbitrary-breakpoint greps catalogued. Key call: the law existed, the implementation didn't — gap analysis, not new law.
+- **Foundation:**
+  - `src/hooks/useMediaQuery.ts` — **THE viewport/media-condition hook** (`useMediaQuery(query)` + canonical `MQ.mobile / MQ.tabletDown / MQ.touch` strings; `useSyncExternalStore`, SSR snapshot `false`). `toast-provider.tsx` migrated off its raw `matchMedia("(max-width: 767px)")`.
+  - `src/lib/utils/scroll.ts` implemented for real — it was a `throw new Error("Not implemented")` stub despite being in the registry. `scrollToBottom(el)` and `lockBodyScroll(): () => void` (re-entrant, returns unlock).
+  - `body` `min-height` 100vh → **100dvh** (DNA R-01); bento-grid + dashboard-loading arbitrary `@media (max-width: 820px)` normalised to md (DNA §9.1); `--bp-*` token block annotated documentation-only (CSS vars can't appear in `@media` preludes); `.type-page-title` is now fluid — `clamp(var(--text-xl), 1.05rem + 1.6vw, var(--text-2xl))`, the only fluid type tier (D-4).
+- **Shell (D-3):** `(dashboard)/layout.tsx` moved onto `.eia-shell / .eia-shell-gutter / .eia-shell-paper` classes (globals.css "RESPONSIVE SHELL" section). Sidebar gains three modes — 240px full (`lg+`), 64px icon rail with `title` tooltips (`md`), off-canvas drawer + sanctioned blur backdrop + mobile top strip with hamburger (`<md`). Drawer: transform/visibility only, Escape + backdrop + route-change close, `lockBodyScroll` while open, reduced-motion gated. Layout-critical Sidebar styles moved from inline to classes so the rail media query can override them.
+- **/leads (reference implementation, D-2/D-5):** page + dossier + both `loading.tsx` on the DNA padding ladder (`p-4 sm:p-6 lg:p-8`); table toolbar wraps instead of clipping; toolbar buttons get `.eia-touch` (≥40px under coarse pointers); **card stack below `md`** inside `LeadsTable.tsx` (`hidden md:block` table / `md:hidden` cards — name+status header, phone, assignee·received, same `?from=` href, ≥44px rows, ignores stored column prefs by design); empty-state copy extracted to one shared `LeadsEmptyCopy`; dossier two-column grid → shared `.eia-dossier-grid` (single column `<lg`).
+- **Verification:** `tsc --noEmit` clean, `next build` clean, `check:tokens` clean.
+
+**Files:** `docs/audits/2026-06-responsive-audit.md` (new), `src/hooks/useMediaQuery.ts` (new), `src/lib/utils/scroll.ts`, `src/app/globals.css`, `src/styles/design-tokens.css`, `src/app/(dashboard)/layout.tsx`, `src/components/layout/Sidebar.tsx`, `src/components/ui/toast-provider.tsx`, `src/components/dashboard/DashboardCanvas.tsx`, `src/app/(dashboard)/dashboard/loading.tsx`, `src/app/(dashboard)/leads/{page,loading}.tsx`, `src/app/(dashboard)/leads/[id]/{page,loading}.tsx`, `src/components/leads/LeadsTable.tsx`, `docs/design/decision-log.md`, `CLAUDE.md`.
+
+---
+
 ## 2026-06-12 — Performance + ad-creatives loading skeletons matched to their real pages
 
 Both routes' `loading.tsx` files showed chrome that didn't match what loaded.

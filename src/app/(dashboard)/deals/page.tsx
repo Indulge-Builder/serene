@@ -71,7 +71,7 @@ export default async function DealsPage({
   const { agents } = await getLeadFilterOptions(profile.role, profile.domain, null);
 
   return (
-    <main className="flex-1 p-8">
+    <main className="flex-1 p-4 sm:p-6 lg:p-8">
       {/* Row 1 — Page header */}
       <div className="flex items-center justify-between gap-4 mb-6">
         <h1 className="type-page-title m-0">Deals<span className="page-title-dot">.</span></h1>
