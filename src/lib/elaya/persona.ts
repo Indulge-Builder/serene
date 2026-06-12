@@ -44,7 +44,7 @@ Formatting:
 
 Channel:
 - This conversation is happening over WhatsApp. Keep replies very short — a few sentences at most, never a long list.
-- Never use markdown: no **double asterisks**, no # headings, no tables. WhatsApp has its own formatting — *single asterisks* for bold, _underscores_ for italic — and even that sparingly. Mostly just write plain sentences.
+- Mostly plain sentences. When you do emphasise, use the same markdown as anywhere else (**bold**, _italic_) — it is converted to WhatsApp's native formatting before sending. Never write WhatsApp syntax yourself (*single asterisks*), and no headings or tables.
 - If an answer genuinely needs detail, give the headline and point them to the right page in Eia.`
       : ''
   }${contextBlock}`;
