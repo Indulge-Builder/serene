@@ -16,6 +16,8 @@ Thin orchestrators in `src/app/`. Data fetching lives in async children (`*Async
 | `(dashboard)/whatsapp` | `(dashboard)/CLAUDE.md` § WhatsApp |
 | `(dashboard)/helpdesk` | `docs/modules/call-intelligence.md` — RSC library fetch, client-side filter only |
 | `(dashboard)/escalations` | `docs/pages/escalations.md` — manager+ breach surface; live sla-service reads, no cache |
+| `(dashboard)/elaya` | `docs/modules/elia.md` — Elaya chat (all roles); RSC seeds conversation + transcript; client streams from `/api/elaya/chat` |
+| `api/elaya/chat` | `docs/modules/elia.md` — THE Elaya SSE endpoint (sanctioned P-02 exception); auth → burst limit → Zod → daily cap, all before any model call |
 | `(dashboard)/profile` | — |
 | `(dashboard)/admin/users`, `admin/ad-creatives` | `admin/ad-creatives/CLAUDE.md` |
 | `(dashboard)/settings` | `(dashboard)/settings/CLAUDE.md` |
@@ -27,6 +29,6 @@ Thin orchestrators in `src/app/`. Data fetching lives in async children (`*Async
 - **Route guard stays in the layout** (perf audit A-3): the `(dashboard)` layout reads `x-pathname` via `headers()` for `canAccessRoute` — this keeps the layout fully dynamic, which is correct (everything is per-user) and not a hot cost (soft navigations don't re-run it). Do not "optimise" the guard into individual pages.
 - **Proxy session check is local-CPU** (perf audit A-1 follow-up): `updateSession` uses `auth.getClaims()` — ES256 signature verified against a process-cached JWKS, expired sessions still refreshed via its internal `getSession()`. Never revert to `getUser()` there (a ~50–150ms auth-server round trip per request), and never weaken `getCurrentProfile()` to claims-only — it is the authoritative Rule 09 / A-01 check (`requireProfile` wraps it for actions, A-18).
 - **Suspense:** list pages use filter bar (client) + `<Suspense><*Async /></Suspense>` (server). Never fetch table data inside the filter component.
-- **Webhooks only** under `app/api/` — no other API routes (see root CLAUDE).
+- **Webhooks + `/api/elaya/chat` only** under `app/api/` — no other API routes (P-02; the Elaya SSE route is the one sanctioned non-webhook exception, Decision Log 2026-06-12 — Server Actions cannot stream).
 - **PWA surface:** `app/manifest.ts` (Next native convention → `/manifest.webmanifest`; Earth canvas hex hardcoded by sanctioned exception — manifests can't read CSS vars), `app/apple-icon.png` (apple-touch-icon file convention), `public/sw.js` + `public/offline.html` (offline shell), registered by `components/layout/ServiceWorkerRegistration.tsx` in the root layout (production-only). **The SW must never cache RSC payloads, Server Action responses, or any navigation response** — page HTML is role-scoped per user; the SW intercepts GET `mode: navigate` only, network-first, and caches nothing but the static offline shell + icons. POSTs pass through untouched. The proxy matcher excludes the whole PWA surface (manifest/sw.js/offline.html/icons/apple-icon) — it is fetched outside any auth context, like the webhook bypass. Bump `CACHE_VERSION` in `sw.js` when offline.html or the icons change.
 - **Feature CLAUDE.md** files hold invariants; this file is the index only.

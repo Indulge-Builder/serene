@@ -1102,7 +1102,7 @@ export type Database = {
       whatsapp_notification_logs: {
         Row: {
           id:              string
-          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager'
+          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'elaya_reply'
           lead_id:         string | null
           recipient_id:    string | null
           recipient_phone: string
@@ -1117,7 +1117,7 @@ export type Database = {
         }
         Insert: {
           id?:             string
-          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager'
+          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'elaya_reply'
           lead_id?:        string | null
           recipient_id?:   string | null
           recipient_phone: string

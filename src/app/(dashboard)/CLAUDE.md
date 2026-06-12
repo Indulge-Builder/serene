@@ -64,16 +64,28 @@ Pure data — no component references. Each entry:
 }
 ```
 
-**Current widgets (Phase 7 — Gia module):**
+**Current widgets (Gia module — 2026-06-12 agent dashboard redesign):**
 
 | id | label | roles | size |
 | --- | --- | --- | --- |
 | `agent-tasks` | My Tasks | all except guest | md |
-| `agent-activity` | Recent Activity | all except guest | md |
+| `agent-activity` | Recent Activity | all except guest | lg |
+| `agent-pending-calls` | Pending Calls | agent | sm |
+| `agent-new-leads` | New Leads | agent | sm |
+| `elaya-presence` | Elaya | agent | md |
 | `manager-lead-status` | Lead Pipeline | manager, admin, founder | lg |
 | `manager-lead-volume` | Lead Volume | manager, admin, founder | lg |
 | `manager-campaigns` | Campaign Performance | manager, admin, founder | xl |
 | `manager-cold-leads` | Going Cold | manager, admin, founder | sm |
+| `manager-budget` | Campaign Budget | manager, admin, founder | sm |
+
+Agent default layout: tasks · Elaya (right column) · pending-calls · new-leads · activity. Manager/admin/founder: the founder six + `manager-budget`.
+
+**Snapshot count rules (`agent-pending-calls`, `agent-new-leads`, `manager-cold-leads`):** all three compose `SnapshotCountWidget` — seed-only from `get_dashboard_summary` (0115), no fetch/refresh, and **zero date inputs** (live pipeline states; wiring them to the URL date param is conceptually invalid). The agent counts come from the RPC's agent early-return branch (`assigned_to = p_user_id`); manager+ get 0 stubs.
+
+**`elaya-presence` rules:** shell for the future Elaya layer — breathing `LiaGlyph`, IST greeting (`getElayaTimeGreeting`) with `WidgetProps.firstName`, deterministic daily line (`pickElayaDailyLine` in `lib/constants/elaya.ts`), disabled `MessageBar`. No model call on login, no three.js (that lazy-loads post-Elaya-ship).
+
+**`manager-budget` rules:** RSC-seeded `initialData.budget_summary` from `getBudgetSummary` (ad-spend-service; NOT in the RPC); managers pre-filtered server-side via `filterBudgetRowsByDomain` and pinned in `getBudgetSummaryWidgetAction` via `effectiveWidgetDomain()`. Date filter applies (cohort data). CPL renders "—" at zero leads, never ₹0.
 
 **`manager-cold-leads` widget rules:**
 - `initialData.cold_leads_count` is the only data source. No `useEffect` fetch, no server action, no refresh button.
@@ -90,7 +102,7 @@ Pure data — no component references. Each entry:
 
 Pattern mirrors `useLeadColumnPreferences` exactly.
 
-**localStorage key format:** `eia:dashboard:layout:${userId}:v1`
+**localStorage key format:** `eia:dashboard:layout:${userId}:v2` (bumped from `v1` in the 2026-06-12 redesign — bump again whenever the default grid changes shape; stale layouts must be orphaned, never reconciled)
 
 **Returns:**
 

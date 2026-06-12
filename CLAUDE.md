@@ -79,7 +79,11 @@ src/lib/utils/scroll.ts             ← scrollToBottom(el), lockBodyScroll() →
 src/lib/services/transcription-service.ts ← transcribeAudio() — THE Deepgram call site (server-only; Nova-3 multilingual for Hinglish). Audio transcribed in-memory and discarded — never stored. Client entry: transcribeAudioAction (lib/actions/transcription.ts); mic capture: src/hooks/useAudioRecorder.ts — THE recording hook (codec negotiation, 2-min auto-stop, mic-track release); never re-implement MediaRecorder plumbing inline
 src/lib/constants/interests.ts      ← SERVICE_CATEGORY_* (defineEnum) + DOMAIN_INTERESTS + getDomainInterests() — THE per-domain leads.service_interests vocabulary (text[], NEVER an enum; unknown values dropped at ingestion via extractServiceInterests, never rejected)
 src/lib/services/intelligence-service.ts ← Call Intelligence reads — getHelpdeskLibrary(domain) (Redis 1hr {cases,hooks} envelope; key REDIS_KEYS.helpdeskCases + REDIS_TTL.HELPDESK_CASES live in redis-keys.ts ONLY), getCasesForLead()/getHooksForCategories() (dossier card, ≤6 rows, deliberately un-cached). Tables service_cases + conversation_hooks (migration 0110: all-authenticated read, admin/founder write RLS). Writes ONLY via lib/actions/intelligence.ts — every write awaits the helpdesk-key del (P-08 convention) before revalidatePath('/helpdesk'). Helpdesk filtering is CLIENT-SIDE on the full library — never add a per-keystroke server search
-src/components/intelligence/        ← CaseCard, CategoryPill, HookList, HelpdeskSearch — shared Call Intelligence components; /helpdesk and the dossier ServiceInterestCard both compose these
+src/components/intelligence/        ← CaseCard (dossier preview), CaseListRow + CaseDetailModal (/helpdesk list row → full-detail modal), CategoryTag (THE static category pill — card/row/modal), CategoryPill (filter button), HookList, HelpdeskSearch, category-icons.ts — shared Call Intelligence components; /helpdesk and the dossier ServiceInterestCard both compose these
+src/lib/elaya/                      ← THE Elaya AI subsystem (foundation 2026-06-12). provider.ts — the ONE provider-neutral complete() contract; adapters/anthropic.ts — the ONLY file allowed to import @anthropic-ai/sdk (Gemini/OpenAI land as sibling adapters, zero brain changes); registry.ts — llm_providers config row → adapter, read per turn (model switch = DB edit, no deploy); principal.ts — verified profile → role+persona+permitted toolset (customer persona stubbed); pii.ts — maskPii(), THE PII gateway every tool result passes before reaching a model (depth via elaya_settings); persona.ts — system prompt; brain.ts — the tool-calling loop; tools/registry.ts — the 6 read-only tools, each wrapping an existing lib/services function — NEVER a direct table query, NEVER model-supplied identity args
+src/lib/services/elaya-service.ts   ← Elaya conversation/message DB access — 24h session expiry (server-side, ONE active session per user across channels), append-only message inserts, IST daily-cap count (shared across channels)
+src/lib/services/elaya-whatsapp.ts  ← tryHandleElayaWhatsAppMessage() — THE WhatsApp staff routing gate + Elaya WhatsApp turn (called by the whatsapp webhook before processInboundMessage; profile match → brain to completion + one sendElayaWhatsAppReply; no match → lead pipeline untouched; never writes lead-pipeline tables)
+src/lib/services/llm-providers-service.ts ← llm_providers + elaya_settings reads — per request, never module-cached (sla_policies pattern)
 src/lib/services/dashboard-service.ts ← ALL dashboard widget queries (never extend leads-service.ts)
 src/lib/actions/dashboard.ts         ← ALL dashboard server actions (widget data refresh)
 src/lib/constants/dashboard-widgets.ts ← widget registry (pure data, no component refs)
@@ -349,7 +353,8 @@ eia/
 │   │   ├── (dashboard)/             ← all authenticated pages
 │   │   ├── api/
 │   │   │   ├── webhooks/            ← inbound webhooks (leads, whatsapp)
-│   │   │   └── auth/callback/       ← the auth callback. No other API routes (P-02).
+│   │   │   ├── auth/callback/       ← the auth callback
+│   │   │   └── elaya/chat/          ← Elaya SSE streaming (sanctioned P-02 exception, Decision Log 2026-06-12). No other API routes (P-02).
 │   │   ├── globals.css
 │   │   ├── layout.tsx
 │   │   └── page.tsx                 ← redirects to /login or /dashboard
@@ -416,8 +421,10 @@ eia/
 | Deals | ✅ | `public.deals` first-class table (0072–0074), walk-in creation |
 | Attribution refactor | ✅ | `source`/`medium`/`attribution jsonb` (0065); `leads.city` column (0066) |
 | Domain route authorization | ✅ | `canAccessRoute` + `DOMAIN_ROUTE_MAP` + layout guard + Sidebar filter |
+| Elaya foundation | ✅ | Migration 0116 (`elaya_*`, `user_context`, `llm_providers`, `elaya_settings`), provider abstraction (Anthropic adapter), principal resolver, PII gateway, 6 read-only tools, `/elaya` SSE chat |
+| Elaya WhatsApp staff channel | ✅ | Routing gate on the whatsapp webhook (staff number → same brain/tools/cap, one reply; unknown number → lead pipeline untouched), `elaya_reply` audit rows (0117) |
 
-**Current focus:** Lia AI presence, client records (post-won flow).
+**Current focus:** Elaya Phase 2 (agentic writes via `elaya_actions`, WhatsApp customer persona), client records (post-won flow).
 
 **UI primitive rule (kept here because it's a live convention):** `Button` (CSS hover, zero Framer cost) for form submits and modal actions; `MotionButton + MOTION_BUTTON_DEFAULTS` for standalone primary CTAs that are pressed repeatedly (`AddLeadButton`, `TasksShell` header). Never add `MotionButton` to a form submit. Never merge the two.
 

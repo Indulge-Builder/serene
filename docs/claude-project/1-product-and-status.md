@@ -44,11 +44,15 @@ the building:
 
 ## The surfaces (sidebar pages)
 
-Dashboard (bento-grid home) · Leads (pipeline list + per-lead dossier) · Deals (closed-business
-ledger) · WhatsApp (shared team inbox — unknown number auto-creates a lead) · Tasks (personal +
-group projects + auto-created Gia follow-ups) · Campaigns (which ads produce leads/wins) ·
-Performance (agent/manager/founder scoreboards) · Settings (agent roster/rota) · Admin: Users,
-Ad Creatives, Error Log · Profile. Details per page: `3-pages-summary.md`.
+Dashboard (bento-grid home) · Elaya (AI chat — read-only foundation: asks about your own leads,
+tasks, deals, numbers and the case library via permission-scoped tools; 200 msgs/day shared
+across channels; staff can also message Elaya over WhatsApp on the shared Gupshup number —
+their number routes to the same brain with the same role-scoped tools) · Leads
+(pipeline list + per-lead dossier) · Deals (closed-business ledger) · WhatsApp (shared team
+inbox — unknown number auto-creates a lead; staff numbers route to Elaya instead) · Tasks (personal + group projects + auto-created
+Gia follow-ups) · Campaigns (which ads produce leads/wins) · Performance (agent/manager/founder
+scoreboards) · Settings (agent roster/rota) · Admin: Users, Ad Creatives, Error Log · Profile.
+Details per page: `3-pages-summary.md`.
 
 ## Trust principles (plain words, all enforced in code/DB)
 

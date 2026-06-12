@@ -4,7 +4,9 @@ import { GIA_DOMAINS } from '@/lib/constants/domains';
 /** Routes all authenticated users can always reach, regardless of domain. */
 // /helpdesk is the Call Intelligence library — visible to all roles/domains
 // by spec (docs/modules/call-intelligence.md §9); read-only, RLS-gated writes.
-export const ALWAYS_ALLOWED_PREFIXES: string[] = ['/dashboard', '/profile', '/helpdesk'];
+// /elaya is Elaya's chat surface — all roles by spec (docs/modules/elia.md);
+// what Elaya can ACCESS is enforced per-principal in the tool layer, not here.
+export const ALWAYS_ALLOWED_PREFIXES: string[] = ['/dashboard', '/profile', '/helpdesk', '/elaya'];
 
 /**
  * Domain → permitted route prefixes.

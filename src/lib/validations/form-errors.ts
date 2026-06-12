@@ -45,6 +45,12 @@ export const formErrors = {
   audioInvalidType:     "That recording format isn't supported. Please try again.",
   transcriptionFailed:  "Couldn't transcribe the recording. Please try again or type the note.",
 
+  // Elaya
+  elayaMessageInvalid:  "Please write a message before sending.",
+  elayaMessageTooLong:  "Messages must be 4,000 characters or fewer.",
+  elayaCapReached:      "You've reached today's Elaya message limit. It resets at midnight.",
+  elayaUnavailable:     "Elaya couldn't respond just now. Please try again.",
+
   // Password change
   passwordCurrentIncorrect: "Current password is incorrect.",
   passwordSameAsCurrent:    "New password must differ from your current password.",

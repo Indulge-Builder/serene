@@ -6,6 +6,7 @@ import { NextRequest, NextResponse, after } from 'next/server';
 import { WEBHOOK_VERIFY_TOKEN, verifyMetaSignature } from '@/lib/services/whatsapp-api';
 import { createRateLimiter, getClientIp, parseJsonBody, safeSecretCompare } from '@/lib/utils/webhook';
 import { parseWebhookPayload, processInboundMessage, processStatusUpdate } from '@/lib/services/whatsapp-ingestion';
+import { tryHandleElayaWhatsAppMessage } from '@/lib/services/elaya-whatsapp';
 import type { MetaInboundMessage, MetaWebhookPayload } from '@/lib/types/whatsapp';
 
 // ─────────────────────────────────────────────
@@ -17,6 +18,8 @@ const GUPSHUP_WEBHOOK_SECRET = process.env.GUPSHUP_WEBHOOK_SECRET ?? '';
 // processInboundMessage runs inside after() and now awaits notifyLeadAssigned's
 // Gupshup sends. Give the lambda headroom (default Vercel timeout can be 10–15s)
 // so a new-number lead's agent + founder notifications complete before freeze.
+// The Elaya staff branch also runs its full brain turn (model + tools) inside
+// the same after() — 60s matches the /api/elaya/chat budget.
 export const maxDuration = 60;
 
 // Rate limiting (security-audit F-4) — in-memory, per worker (shared factory in
@@ -91,7 +94,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             text:      { body: inner.text as string },
           };
 
-          await processInboundMessage(waId, phone, message, senderName);
+          // Routing gate: sender number matches an active profile → Elaya
+          // (staff channel); otherwise the existing lead pipeline, unchanged.
+          const handledByElaya = await tryHandleElayaWhatsAppMessage(phone, message);
+          if (!handledByElaya) {
+            await processInboundMessage(waId, phone, message, senderName);
+          }
         } catch (err) {
           console.error('[whatsapp/webhook] Gupshup processing error:', err);
         }
@@ -131,6 +139,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       for (const event of events) {
         if (event.type === 'message') {
+          // Same routing gate as the Gupshup path: staff → Elaya, else leads.
+          const handledByElaya = await tryHandleElayaWhatsAppMessage(event.phone, event.data);
+          if (handledByElaya) continue;
           const senderName = nameByWaId.get(event.waId) ?? null;
           await processInboundMessage(event.waId, event.phone, event.data, senderName);
         } else if (event.type === 'status') {

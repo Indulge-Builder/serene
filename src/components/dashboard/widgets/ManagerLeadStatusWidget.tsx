@@ -447,34 +447,24 @@ export function ManagerLeadStatusWidget({ role, initialData, size = 'lg', dateRa
             width:      "100%",
           }}
         >
+          {/* Campaign-widget pattern: natural-width triggers in the TabsList's
+              own horizontally scrollable tray — never flex:1-squeezed (clips
+              labels <md). */}
           <Tabs
             value={domainMode}
             onValueChange={(v) => handleDomainChange(v as DomainMode)}
             variant="connected"
             indicatorLayoutId="lead-status-domain"
             style={{
-              width:         "100%",
               opacity:       isPending ? 0.6 : 1,
               pointerEvents: isPending ? "none" : undefined,
             }}
           >
-            <TabsList style={{ width: "100%" }}>
-              {([...GIA_DOMAINS, "all"] as DomainMode[]).map((mode) => (
-                <TabsTrigger
-                  key={mode}
-                  value={mode}
-                  style={{ flex: 1, minWidth: 0, padding: "6px 4px", fontSize: "var(--text-2xs)" }}
-                >
-                  <span
-                    style={{
-                      overflow:     "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace:   "nowrap",
-                      maxWidth:     "100%",
-                    }}
-                  >
-                    {mode === "all" ? "All" : DOMAIN_LABELS[mode]}
-                  </span>
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              {GIA_DOMAINS.map((d) => (
+                <TabsTrigger key={d} value={d}>
+                  {DOMAIN_LABELS[d]}
                 </TabsTrigger>
               ))}
             </TabsList>

@@ -22,6 +22,7 @@ import {
   Wallet,
   BookOpen,
   AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
@@ -43,6 +44,7 @@ type NavItem = {
 
 const MAIN_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/elaya",     label: "Elaya",     icon: Sparkles        },
   { href: "/leads",     label: "Leads",     icon: UserRound       },
   { href: "/deals",     label: "Deals",     icon: Trophy          },
   { href: "/tasks",     label: "Tasks",     icon: CheckSquare     },

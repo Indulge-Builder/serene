@@ -102,6 +102,7 @@ export function CallOutcomeBar({ breakdown }: Props) {
 
   return (
     <motion.div
+      className="flex flex-col md:flex-row md:items-center"
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: EXIT_DURATION, delay: 0.18, ease: EASE_OUT_EXPO }}
@@ -111,9 +112,7 @@ export function CallOutcomeBar({ breakdown }: Props) {
         borderRadius: 'var(--radius-lg)',
         padding:      'var(--space-5)',
         boxShadow:    'var(--shadow-1)',
-        display:      'flex',
         gap:          'var(--space-6)',
-        alignItems:   'center',
       }}
     >
       {/* Left: heading + legend rows */}
@@ -209,8 +208,9 @@ export function CallOutcomeBar({ breakdown }: Props) {
 
       </div>
 
-      {/* Right: Donut chart */}
+      {/* Right (below md: centred underneath the legend): Donut chart */}
       <div
+        className="mx-auto md:mx-0"
         style={{
           flexShrink: 0,
           position: 'relative',

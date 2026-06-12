@@ -6,6 +6,139 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-12 — Elaya WhatsApp staff channel: routing gate on the shared Gupshup number
+
+Staff can now talk to Elaya over WhatsApp on the existing shared Gupshup number. Every inbound message routes by sender identity: number matches an active `profiles` row → Elaya pipeline with that user's role and toolset; no match → the existing lead pipeline, completely untouched. Same brain, same tools, same caps — a second channel, not a second system.
+
+- **Routing gate (`src/lib/services/elaya-whatsapp.ts` new):** `tryHandleElayaWhatsAppMessage(phone, message)` called by BOTH webhook branches (Gupshup active + Meta dormant) before `processInboundMessage`. Once a profile matches it returns handled on **every** path, failures included — a staff message can never mint a lead row. Collision (staff number also on an active lead row): profile wins, `[elaya-whatsapp] phone collision` warn with both ids.
+- **Shared normalization (`normalizeWaPhone` in `lib/utils/phone.ts` new):** the lead pipeline's normalize-with-fallback extracted into THE inbound-WhatsApp normalizer; `processInboundMessage` and the gate both use it — same sender always resolves to the same E.164 string on both sides. `getActiveProfileByPhone(normalizedPhone)` added to `profiles-service.ts` (admin client — webhook has no session; active profiles only).
+- **Caller-scoped despite admin client:** the principal is resolved from the matched profile (`resolveStaffPrincipal`) and every tool executes as that principal — identical guarantees to `/api/elaya/chat`.
+- **No streaming, never blocks the ack:** the webhook 200s immediately; the brain runs to completion inside the route's existing `after()` (`maxDuration` 60 already in place), then ONE reply goes out via `sendElayaWhatsAppReply` (new in `whatsapp-api.ts`) — a free-form session message (the sender just messaged us, so the 24h session window is open; no template). One `whatsapp_notification_logs` row per reply attempt (**migration 0117** widens the type CHECK with `'elaya_reply'`; `database.ts` union hand-extended in the interim). Reply failures are logged, never retried.
+- **One cap, one session, across channels:** `countUserMessagesToday` was already per-user; `getOrCreateActiveConversation` now deliberately drops the channel filter on read (one active 24h session per user — WhatsApp continues a live in-app conversation and vice versa; `originChannel` param stamps newly created rows). Per-message `channel` records the surface. Cap reached → polite static refusal, nothing persisted, no model call. Message N where N > cap never reaches the model.
+- **Persona channel block:** `buildElayaSystemPrompt(…, channel)` + `runElayaTurn({ channel })` — on WhatsApp Elaya keeps replies to a few plain-text sentences, no markdown.
+- **Idempotency:** `hasProcessedWaMessage(waMessageId)` (elaya-service) dedups BSP redeliveries via `elaya_messages.meta->>wa_message_id` (insertUserMessage gained an optional `meta`). Non-text messages get a polite "text only" reply — no cap burn, no model call.
+- **Isolation verified:** the Elaya branch writes ONLY `elaya_messages` + the audit row — grep-verified no `whatsapp_conversations` / `whatsapp_messages` / `leads` writes. Unknown numbers flow through the old pipeline unchanged.
+- `pnpm tsc --noEmit` clean.
+
+**Files:** `src/lib/services/elaya-whatsapp.ts` (new), `supabase/migrations/20260612000117_elaya_reply_log_type.sql` (new), `src/lib/utils/phone.ts`, `src/lib/services/{whatsapp-ingestion,whatsapp-api,profiles-service,elaya-service}.ts`, `src/lib/elaya/{brain,persona}.ts`, `src/lib/types/database.ts`, `src/app/api/webhooks/whatsapp/route.ts`, docs (`api/webhooks/CLAUDE.md`, `modules/elia.md`, `lib/CLAUDE.md`, root `CLAUDE.md`, `migrations/CLAUDE.md`, project digest, this entry).
+
+---
+
+## 2026-06-12 — Helpdesk results: card grid → list rows + case detail modal
+
+`/helpdesk` results now follow the standard list-page pattern instead of the 3-column card grid — consistent with the other list pages, and each case opens a full-detail modal.
+
+- **`CaseListRow` (new):** compact clickable row — 36px category icon tile (new `category-icons.ts` map, Sparkles fallback for unknown slugs), truncated Playfair title + featured star, one-line summary, trailing `CategoryTag` + city/country + chevron. Card-list chrome (shadow-1 → shadow-2 hover + `translateY(-1px)`, staggered entrance capped 320ms); keyboard-activatable (`role="button"`, Enter/Space). `AnimatePresence popLayout` reflow on filter/search changes preserved.
+- **`CaseDetailModal` (new):** composes `ui/modal.tsx` (Modal rule) — shows everything saved on the case: category, featured badge, location, **full** summary (no clamp, `pre-line`), outcome note, all tags. Loaded on intent via `next/dynamic` + `useMountOnFirstOpen` (perf G-1; the latch keeps the internal exit animation).
+- **`CategoryTag` (new, R-01 consolidation):** THE static category pill — extracted from `CaseCard`'s inline copy; now shared by `CaseCard`, `CaseListRow`, and the modal. `CategoryPill` (the filter *button*) is untouched.
+- **`CaseCard` stays** as the dossier `ServiceInterestCard` stacked preview — only `/helpdesk` switched presentation.
+- `tsc`: no errors in touched files (the in-progress Elaya WIP errors remain, incl. a new `'elaya_reply'` type mismatch in `whatsapp-api.ts` — not from this change). Token gate clean.
+
+**Files:** `src/components/intelligence/` (`CaseListRow.tsx`, `CaseDetailModal.tsx`, `CategoryTag.tsx`, `category-icons.ts` new; `HelpdeskSearch.tsx`, `CaseCard.tsx` reworked), docs (`modules/call-intelligence.md` §9, root `CLAUDE.md` registry line, this entry).
+
+---
+
+## 2026-06-12 — Dashboard mobile fixes: widget domain tabs, campaign axis labels, greeting wrap
+
+Three mobile-breakpoint defects on `/dashboard`.
+
+- **Lead Volume + Lead Pipeline domain tabs adopt the Campaign Performance selector pattern:** both widgets previously forced `flex: 1, minWidth: 0, padding 6px/4px, --text-2xs` onto every `TabsTrigger` inside a `width: 100%` tray, squeezing six tabs into the row and crushing the labels below `md`. They now render natural-width triggers and let the `TabsList` tray do what it already does — scroll horizontally with a hidden scrollbar (audit F1/D-5). Lead Volume also gains the same bottom-pinned `borderTop + paddingTop` row chrome as the Campaign widget (its `DOMAIN_ROW` chart-height constant updated 36→52 to match); Lead Pipeline's tab order flipped to All-first for consistency with the other two widgets.
+- **Campaign Performance X-axis labels no longer collide on mobile:** `WrappedXTick` gains a `compact` mode (driven by `useMediaQuery(MQ.mobile)`) — a single ≤9-char ellipsised line rotated −35° with end anchor at 8.5px, replacing the two-line horizontal labels that overlapped at narrow category widths. Desktop rendering unchanged.
+- **Greeting no longer truncates below `md`:** the `max-md:truncate` on the dashboard `<h1>` cut the user's name off entirely on small screens. The accent-coloured name + page-title dot are now wrapped in a `max-md:block` span — greeting on line one, name on its own line on mobile; desktop stays one line.
+- `tsc --noEmit` clean. No new tokens, no new dependencies.
+
+**Files:** `src/components/dashboard/widgets/ManagerLeadVolumeWidget.tsx`, `src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx`, `src/components/dashboard/widgets/ManagerCampaignWidget.tsx`, `src/components/dashboard/DashboardCanvas.tsx`, this entry.
+
+---
+
+## 2026-06-12 — Elaya foundation: schema, multi-provider LLM layer, read-only tool-calling brain, /elaya chat
+
+The substrate every future AI feature (revival, reports, agentic writes, customer bot) plugs into. No writes, no WhatsApp sends, no avatar — read-only chat only.
+
+- **Migration 0116 (`elaya_foundation`):** `elaya_conversations` (24h session window — expiry enforced server-side), `elaya_messages` (**append-only**, A-11; `channel` column from day one for the future WhatsApp lane; `sender_id` denormalised so the daily cap is one indexed count), `user_context` (durable per-user context; service-role writes only), `elaya_actions` (**empty until Phase 2** — schema reserved for action proposals), `llm_providers` (job-type → provider+model config, sla_policies pattern — read per request, never module-cached; seeded `routing` → anthropic/claude-haiku-4-5, `reasoning` → anthropic/claude-sonnet-4-6), `elaya_settings` (key/value config: `daily_message_cap` 200, `pii_masking_depth` 'light', `session_expiry_hours` 24). RLS on all six; users read own rows; user-role message INSERT own-conversation only; all config/assistant/context writes service-role.
+- **Provider abstraction (`src/lib/elaya/provider.ts`):** one `complete()` contract (streaming via `onTextDelta`, normalized tool calls in the result). `adapters/anthropic.ts` is the ONLY file importing `@anthropic-ai/sdk` — Gemini/OpenAI land later as new adapter files + a config row, with zero brain changes. `registry.ts` resolves the `llm_providers` row per turn, so **a model/provider switch is a DB edit, no deploy**; an unimplemented provider fails loud, never silently falls back.
+- **Principal resolver (`principal.ts`):** verified session profile → role + persona + permitted toolset. Staff persona only; customer persona is a throwing stub. Tools execute AS the principal — identity args are always principal-derived, the model supplies filter values only. **No prompt-only authorization.**
+- **PII gateway (`pii.ts`):** in the pipeline from day one (D-01 posture) — every tool result passes `maskPii()` before serialization to the model. Depth configurable via the `pii_masking_depth` settings row: light (default — phones keep last 4, emails keep first char + domain) / strict / off. Name pseudonymisation mounts here when the vault lands.
+- **Read-only tools (`tools/registry.ts`):** six tools wrapping existing services only — `search_leads` (`getLeadsByRole` — agent role constraint unconditional), `get_lead_details` (`getLeadBySlug` + explicit `canAccessLead` re-check on top of RLS, because the lead row Redis cache is shared), `get_my_tasks` (`getGiaTasksForUser` + `getPersonalTasks`), `search_deals` (`getDealsByRole`), `get_performance_snapshot` (agent → self-scoped `getAgentTodayPulse`; manager+ → `getAgentRosterPerformance`), `get_helpdesk_content` (`getCasesForLead`/`getHooksForCategories`/`getHelpdeskLibrary`). **No direct table queries in any tool**; a tool name outside the principal's toolset is refused at dispatch; guests get zero tools.
+- **Brain (`brain.ts`):** tool-calling loop over the neutral contract — last-10-verbatim history (text-only replay; the live loop builds proper tool_use/tool_result pairs), `user_context` injected into the persona prompt, 5-iteration tool ceiling. Persona (`persona.ts`): warm, lightly playful, Hinglish-mirroring, compass-not-chatbot; data only from tools.
+- **`POST /api/elaya/chat` (SSE):** sanctioned P-02 exception (Decision Log) — Server Actions cannot stream. Gate order, all server-side before any model call: session+active profile (401) → per-IP burst limiter via `createRateLimiter` (429, S-17) → Zod (S-01; formErrors copy) → **daily cap from the config row — message 201 gets 429 and is never persisted**. Conversation ownership verified on supplied ids (S-06). Assistant message + `last_message_at` bump persist before the stream closes (lambda alive while the response is open — A-16 satisfied without `after()`). `maxDuration = 60`.
+- **`/elaya` page (all roles — `/elaya` added to `ALWAYS_ALLOWED_PREFIXES`; sidebar entry with Sparkles icon):** RSC seeds the active conversation + transcript + remaining-today; `ElayaChatShell` consumes the SSE stream (optimistic user bubble, streaming assistant bubble, tool status line, cap banner, input restored on rejected send); breathing `LiaGlyph` presence header; deterministic greeting reuses `getElayaTimeGreeting`/`pickElayaDailyLine`. `loading.tsx` composes `PageSkeletons`.
+- **New package:** `@anthropic-ai/sdk` (0.104.1) — the Anthropic adapter; server-only, `ANTHROPIC_API_KEY` (S-11, added to `.env.example`).
+- **Deploy order:** migration 0116 before code (page/route read `llm_providers` + `elaya_settings` at runtime). ⚠️ 0116 NOT yet applied to prod (0114/0115 also pending). Regenerate `database.ts` types after applying; `src/lib/types/elaya.ts` carries the hand-declared rows until then.
+- Sign-off verified: `pnpm tsc --noEmit` clean; cross-agent lead access refused in the tool layer (role constraint + `canAccessLead`); cap blocks message N>cap server-side; model switch via `llm_providers` row with no deploy.
+
+**Files:** `supabase/migrations/20260612000116_elaya_foundation.sql`, `src/lib/elaya/{provider,registry,principal,pii,persona,brain}.ts`, `src/lib/elaya/adapters/anthropic.ts`, `src/lib/elaya/tools/registry.ts`, `src/lib/services/{elaya-service,llm-providers-service}.ts`, `src/lib/types/elaya.ts`, `src/lib/validations/elaya-schema.ts`, `src/lib/validations/form-errors.ts`, `src/app/api/elaya/chat/route.ts`, `src/app/(dashboard)/elaya/{page,loading}.tsx`, `src/components/elaya/{ElayaChatShell,ElayaMessageBubble}.tsx`, `src/components/layout/Sidebar.tsx`, `src/lib/constants/route-permissions.ts`, `.env.example`, docs, this entry.
+
+---
+
+## 2026-06-12 — Profile page: view-first Personal Details & Security cards with header edit toggle
+
+The two editable profile cards previously dropped the user straight into form inputs, so current values read as "blank fields with placeholders" (a null phone showed only the `98765 43210` placeholder). Both now rest in a read-only view and switch to the form behind an explicit edit toggle.
+
+- **`ProfileDetailsForm` view/edit modes:** the component now owns its `SectionCard` (title + `headerRight` toggle — ghost `Button` with `Settings2`/`X` icon, `iconMotion="rotate"`, label Edit/Cancel). At rest it renders the canonical labelled-datum grid (`InfoRow` ×5: Full Name, Phone in mono, Job Title, Username, Email full-width; empty values fall through to InfoRow's tertiary `—`). The edit form is unchanged inside; on save success a `useEffect` on the action state fires `toast.success("Profile updated")` and drops back to view mode, displaying the action-returned row until the `revalidatePath` refresh lands. Cancel simply unmounts the form (uncontrolled inputs reset to current values on next open; values still never clear on a validation error since the form stays mounted).
+- **`PasswordChangeForm` same pattern:** owns its `SectionCard` ("Security"); at rest a single masked `InfoRow` (Lock icon, `••••••••••` in mono). The full change form (requirements list, strength bar, confirm match) appears only behind the toggle; success now resets + collapses + `toast.success("Password updated")` instead of a persistent inline banner. Cancel resets all fields and state.
+- **`FormNotice` (new, `components/profile/`):** the byte-identical error/success banner markup duplicated across both forms extracted into one component (literal token lookup per tone — no dynamic `var()` strings); both forms' inline errors compose it.
+- **Fixes:** dead `profile-two-col` class (referenced, never defined — the edit grid never collapsed on mobile) replaced with `grid grid-cols-1 md:grid-cols-2`; page-level `SectionCard` wrappers for the two cards removed (components own them); stale unused `Avatar` import dropped from the page.
+- No new tokens, no new dependencies. `tsc --noEmit` + token gate clean.
+
+**Files:** `src/components/profile/ProfileDetailsForm.tsx`, `src/components/profile/PasswordChangeForm.tsx`, `src/components/profile/FormNotice.tsx` (new), `src/app/(dashboard)/profile/page.tsx`, this entry.
+
+---
+
+## 2026-06-12 — Deals + Settings mobile pass: deal card meta moves left, agent roster card stacks cleanly
+
+Two `<md` card-layout fixes, both via the canonical `useMediaQuery(MQ.mobile)` behaviour branch (both components are inline-style clients; desktop renders byte-identical).
+
+- **`DealCard` mobile layout:** the right zone previously stacked amount + won date + agent name all right-aligned, which read poorly on the phone wrap. Below md the card now renders: row 1 — identity (name / phone / domain + walk-in badges) left, the `--theme-accent` mono amount alone on the right (per the design system); row 2 — deal-type chip, then a left-aligned meta line `Won {date} · {agent name}` (tertiary date, secondary agent, `·` separator). Same tokens, no new styles invented.
+- **`AgentSettingsTable` card stacks on mobile:** the flat flex-wrap card (identity → domain badge → shift controls → spacer → In Pool toggle → clear ×) wrapped chaotically below md. The card blocks are now extracted (`identityBlock` / `domainBadgeBlock` / `shiftFieldsBlock` / `poolToggleBlock` / `clearButtonBlock`) and assembled per layout: mobile is a column — header row (avatar + name left, In Pool toggle right), domain badge, a 1px structural `--theme-paper-border` divider, then the shift fields in a wrap row with the clear × hugging the right edge (`marginLeft: auto`); desktop keeps the exact previous order and spacer. No duplicated JSX — one source per block.
+- No new components, no new tokens. `tsc --noEmit` clean.
+
+**Files:** `src/components/deals/DealCard.tsx`, `src/components/settings/AgentSettingsTable.tsx`, this entry.
+
+---
+
+## 2026-06-12 — Performance mobile pass: Call Outcome Breakdown stacks, agent roster collapsible
+
+Two `<md` fixes on `/performance` (manager + founder Agents tab; the agent self-view inherits the first).
+
+- **`CallOutcomeBar` stacks below md:** the legend + fixed-180px donut row was a side-by-side `display: flex` at every width, cramping the legend and overflowing narrow viewports. Root is now `flex flex-col md:flex-row md:items-center` (CSS classes — purely presentational, per the `useMediaQuery` doc rule) with the donut centred via `mx-auto md:mx-0`; desktop renders byte-identical. Applies everywhere the chart mounts: `AgentDetailPanel` (manager/founder agent detail) and both `AgentPerformanceShell` call sites.
+- **Agent roster collapsible on mobile (`ManagerPerformancePanel`):** below md the roster card stacked full-height above the detail panel with no way to dismiss it. The roster body now collapses via the canonical `<CollapseReveal>` (inside `AnimatePresence`, never height 0↔auto) behind a `useMediaQuery(MQ.mobile)` behaviour branch. The "Agents" header becomes the toggle (`aria-expanded`, ChevronDown 180° rotate per the FilterDropdown convention, visible-agent count badge in the inactive TabSelector badge colours); collapsed, it shows the selected agent's name. Selecting an agent auto-collapses the list so the detail is immediately visible; clearing the selection (search/domain filter hiding the agent) auto-reopens it. Desktop column is always expanded — header renders as before.
+- No new components, no new tokens. `tsc --noEmit` clean.
+
+**Files:** `src/components/performance/CallOutcomeBar.tsx`, `src/components/performance/ManagerPerformancePanel.tsx`, this entry.
+
+---
+
+## 2026-06-12 — Dossier intelligence card: always visible + inline library search
+
+The "Why we're perfect." card on the lead dossier no longer disappears for leads without interests, and every lead can now be worked against the full helpdesk library without leaving the dossier.
+
+- **Both hide-gates removed:** the page-level `interests.length || city` mount gate (`leads/[id]/page.tsx`) and the `return null` inside `ServiceInterestCardAsync` are gone — the card is **always in the DOM**. Leads with no interests/matches get a search-first view ("No interests on file yet — search the library above, or add interests on the contact card."); the Suspense fallback is now `DossierCardSkeleton` instead of `null`.
+- **Inline library search:** `ServiceInterestCard` is now `'use client'` with a `SearchBar` under the header. The full library for the **lead's** domain loads lazily — one `getHelpdeskLibraryAction(domain)` call on the first keystroke (Redis 1hr envelope behind it; failed fetch shows a retry-on-type notice), then filtering is synchronous client-side — **no per-keystroke server search** (Call Intelligence spec §6/§9 rule held). Results cap at 8 with a count line; clearing the query returns to the curated ≤6 interest/city matches; hooks hide while a query is active (interest-scoped, not query-scoped). Footer "Browse the full library" link unchanged.
+- **Shared matcher (R-01):** the case-query predicate is extracted from `HelpdeskSearch` into `caseMatchesQuery` (`src/lib/utils/case-search.ts` — THE matcher, title/summary/city/country/tags); `/helpdesk` and the dossier card now filter identically and cannot drift.
+- **Action extended:** `getHelpdeskLibraryAction(targetDomain?)` — optional Gia-domain param (Zod-validated, Rule 02) so the dossier reads the lead's shelf rather than the caller's; safe to accept client-side (0110 read RLS is all-authenticated — the param only picks a shelf, never widens access). No-arg behaviour unchanged for existing callers.
+- `pnpm tsc --noEmit`: no errors in any touched file (three pre-existing errors remain in the in-progress `src/{app/api,components,lib}/elaya/` chat work, untouched by this change). Token gate clean.
+
+**Files:** `src/app/(dashboard)/leads/[id]/page.tsx`, `src/components/leads/ServiceInterestCard.tsx` + `ServiceInterestCardAsync.tsx`, `src/components/intelligence/HelpdeskSearch.tsx`, `src/lib/actions/intelligence.ts`, `src/lib/utils/case-search.ts` (new), docs (`modules/call-intelligence.md` Surface A, `components/leads/CLAUDE.md`, `(dashboard)/leads/CLAUDE.md`, this entry).
+
+---
+
+## 2026-06-12 — Agent dashboard redesign: snapshot counts, Elaya presence card, enriched activity feed, manager budget widget
+
+The agent first screen rebuilt, and the manager dashboard becomes the founder layout plus a campaign-budget widget. The Elaya card is the reserved home for the future Elaya layer — it ships as a shell (no three.js, no model call; the 3D presence lazy-loads post-Elaya-ship).
+
+- **`get_dashboard_summary` v9 (0115):** two new return keys — `pending_calls_count` (open `gia_followup` tasks assigned to the caller, non-terminal status) and `new_leads_count` (own non-archived leads at `new`). Both computed in the agent early-return branch only (`0` stubs for manager+), **zero date inputs** — they are live pipeline snapshots (Going Cold class), the global date filter never touches them. No new client fetches: the counts ride the one summary RPC (perf-01, no fan-out). Signature unchanged; 0102 revoke posture re-stated. **Bonus fix:** 0081 had silently regressed the 0070 totals fix — `agent_counts`/`campaign_agg` were back on `COUNT(*)` (counting status rows, not leads); 0115 restores `SUM(cnt)` for both, so campaign totals/sort are correct at the source again (the TS `normalizeLeadStatusSummary` defence only covered the pipeline side). **Applied to prod + ledger-recorded 2026-06-12** (SQL + ledger row in one transaction; verified live: ledger row present, 7 return keys, agent counts cross-checked against direct COUNTs for both a 0/0 agent and a 63-pending/280-new agent, revoke posture intact — `authenticated` cannot EXECUTE, `service_role` can). 0114 remains pending — it seeds a live cadence rule and belongs to the follow-up-engine stream.
+- **Snapshot count widgets:** new `SnapshotCountWidget` base (R-01 — the big-count/label/hint/Link card extracted from `ManagerColdLeadsWidget`, which now composes it) + `AgentPendingCallsWidget` (→ `/tasks?tab=gia`, info colour) and `AgentNewLeadsWidget` (→ `/leads?status=new`, success colour). Seed-only, no fetch, no refresh, no date wiring — by construction a date param cannot reach them.
+- **Elaya presence card (`elaya-presence`, agent layout right column):** breathing `LiaGlyph` (a static glyph = not present), IST time-of-day greeting with the profile first name (new optional `firstName` on `WidgetProps`, threaded Canvas → Slot), one curated line per agent per IST day from the new `lib/constants/elaya.ts` — deterministic `hashString(userId:istDay)` rotation, **no AI call on login** — and a rendered-but-disabled `MessageBar` (`variant="nested"`) as her future conversation seat.
+- **Enriched activity feed (`agent-activity`, now `defaultSize: lg`):** the transform-ticker is replaced by a **natively scrollable viewport** with a gentle rAF auto-drift — hover pauses the drift and the pointer scrolls the list directly; `onScroll` keeps the ticker position in sync so resuming never jumps (touch gets the same pause + 1.5s resume). Feed widened: standalone `note_added` rows (dossier notes) now render (FileText icon, content excerpt) — the blanket `SKIP_TYPES` filter is replaced by a paired-note rule that drops only the `note_added` twin written alongside a `call_logged` within 5s (seed, refresh, and Realtime paths all share it). New items still enter via the Framer transform/opacity slide-in.
+- **Manager budget widget (`manager-budget`):** reuses the `/budget` pipeline — RSC-seeded from `getBudgetSummary` in the page `Promise.all` (manager rows pre-filtered server-side), refreshed via the new `getBudgetSummaryWidgetAction` (Zod → `requireProfile(manager+)` → **`effectiveWidgetDomain()` pins managers to their own domain**). Domain derives from the campaign-key prefix via the new `filterBudgetRowsByDomain` helper (`ad-spend-service`, reuses `resolveDomainFromCampaign` — `ad_spend_daily` has no domain column). Renders four `StatTile variant="cell"` aggregates (Spend / Leads / Cost-per-Lead / Deal Revenue; CPL renders "—" at zero leads, never ₹0) + a campaign-count footer; date filter applies (cohort data), `useWidgetData` + `useDashboardCohortSync` lifecycle. `DashboardSummary` gains `budget_summary` (and the two count keys).
+- **Layouts:** agent default = tasks · Elaya · pending-calls · new-leads · activity; manager/admin/founder = the founder six + `manager-budget`. **`useDashboardLayout` storage key bumped `v1` → `v2`** so stale persisted layouts are orphaned instead of fighting the new grid (registry ids unchanged — existing ids never renamed).
+- No new dependencies, no hardcoded colours (token gate clean). `pnpm tsc --noEmit` clean.
+
+**Files:** `supabase/migrations/20260612000115_dashboard_agent_snapshot_counts.sql`, `src/lib/constants/elaya.ts` (new), `src/lib/constants/dashboard-widgets.ts`, `src/components/dashboard/widgets/` (`SnapshotCountWidget` + `AgentPendingCallsWidget` + `AgentNewLeadsWidget` + `ElayaPresenceCard` + `ManagerBudgetWidget` new; `ManagerColdLeadsWidget` + `AgentActivityWidget` reworked), `src/components/dashboard/DashboardWidgetSlot.tsx`, `src/components/dashboard/DashboardCanvas.tsx`, `src/hooks/useDashboardLayout.ts`, `src/lib/actions/dashboard.ts`, `src/lib/services/ad-spend-service.ts`, `src/app/(dashboard)/dashboard/page.tsx`, `src/lib/types/index.ts`, docs (`pages/dashboard.md`, `supabase/migrations/CLAUDE.md` inventory, `(dashboard)/CLAUDE.md`, this entry).
+
+---
+
 ## 2026-06-12 — Follow-up Engine Phase 3: SLA settings panel, /escalations page, In Discussion 48h cadence (CAD-02A)
 
 The UI layer on top of the config-driven engine, plus the one rule the Phase 2 seed missed. Zero new machinery — the settings panel writes the existing `sla_policies` table, the escalation page reads artifacts the engine already produces, and CAD-02A rides the existing cadence path.
@@ -19,14 +152,14 @@ The UI layer on top of the config-driven engine, plus the one rule the Phase 2 s
 
 ---
 
-## 2026-06-12 — Call Intelligence content: curated seed file + one-shot seed script (run pending)
+## 2026-06-12 — Call Intelligence content: curated library seeded (content gate closed)
 
 The content gate from `docs/modules/call-intelligence.md` is now packaged: the team's curated library — 150 service cases + 30 hooks for `onboarding`, distilled from the Freshdesk ticket export (Jan 2023 – Jun 2026, 37,225 resolved tickets) — landed as a repo data file with a validated seed path. **Exceeds the ship bar** (≥20 verified cases per category): exactly 25 cases + 5 hooks per category across all six (`travel`/`dining`/`gifts`/`events`/`retail`/`special` — byte-identical to the `onboarding` vocabulary in `lib/constants/interests.ts`).
 
 - **Data:** `scripts/data/call-intelligence-seed.json` (moved from a root-level `data.json` drop) — fields map 1:1 to the 0110 tables; JSON `id`s (`case-travel-001`) are worksheet references, stripped on insert (DB generates uuids).
 - **Script:** `scripts/seed-call-intelligence.ts` (import-zoho convention: service-role client, `npx tsx --env-file=.env.local`). Validates every row against the 0110 contract **before any write** — domain/category membership, non-empty title/summary/hook, and the city-slug-tag invariant (`city` present ⇒ lowercase slug in `tags`; powers the dossier city match). Idempotency guard: aborts if the domain already has rows in either table (`--force` deletes + reseeds). Inserts in batches of 50, then dels the `helpdesk:cases:onboarding` Redis envelope (non-fatal on failure — 1hr TTL backstop) and re-counts as verification.
 - **Validation result:** all 150 + 30 rows pass (0 errors), including the city-slug check.
-- **Not yet run against the DB** — seeding production content is a one-command human step: `npx tsx --env-file=.env.local scripts/seed-call-intelligence.ts`. Update the status line in `call-intelligence.md` once executed.
+- **Executed against production (2026-06-12, user-authorized):** 150 cases + 30 hooks inserted, post-insert counts verified (150/30), `helpdesk:cases:onboarding` Redis key deleted. The content gate in `call-intelligence.md` is closed; post-seed edits go via the admin path (the script refuses to re-run without `--force`).
 
 **Files:** `scripts/data/call-intelligence-seed.json`, `scripts/seed-call-intelligence.ts`, docs (`docs/modules/call-intelligence.md` status line, this entry).
 

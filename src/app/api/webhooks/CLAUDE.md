@@ -21,6 +21,28 @@
 
 ## Active BSP: Gupshup v1
 
+### Inbound routing gate — staff → Elaya, unknown → lead pipeline (2026-06-12)
+
+Every inbound message event (BOTH the Gupshup and dormant Meta branches) passes through
+`tryHandleElayaWhatsAppMessage(phone, message)` from `src/lib/services/elaya-whatsapp.ts`
+**before** `processInboundMessage`:
+
+- The sender number is normalized via `normalizeWaPhone()` (`src/lib/utils/phone.ts`) — THE
+  shared inbound-WhatsApp normalizer; the lead pipeline uses the same function, so both sides
+  of the gate always resolve the same string. Never fork a second normalization.
+- Number matches an **active** `profiles` row (`getActiveProfileByPhone`) → Elaya staff
+  channel: full brain turn to completion inside the route's existing `after()` (the 200 ack is
+  NEVER blocked on LLM latency; `maxDuration = 60` covers the turn), single reply via
+  `sendElayaWhatsAppReply` (audit row `type 'elaya_reply'`, migration 0117). Once a profile
+  matches, the gate returns `true` on **every** downstream path including failures — a staff
+  message must never fall through and mint a lead row.
+- No match → `processInboundMessage` runs unchanged (lead pipeline byte-identical).
+- Collision (a staff number that also exists on an active lead row): profile wins; a
+  `[elaya-whatsapp] phone collision` warn is logged with both ids.
+- The Elaya branch writes ONLY `elaya_messages` (+ the notification-log audit row) — never
+  `whatsapp_conversations` / `whatsapp_messages` / `leads`. Reply failures are logged, never
+  retried.
+
 ### Auth — `src/app/api/webhooks/whatsapp/route.ts`
 
 Inbound requests are authenticated via the `x-gupshup-secret` header checked with `safeSecretCompare()` from `src/lib/utils/webhook.ts` (timing-safe). The secret value is read from `GUPSHUP_WEBHOOK_SECRET`.

@@ -9,11 +9,12 @@
 // (try/catch-warn, P-08 convention) before revalidatePath('/helpdesk').
 
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { requireProfile } from '@/lib/actions/_auth';
 import { createClient } from '@/lib/supabase/server';
 import { redis } from '@/lib/redis';
 import { REDIS_KEYS } from '@/lib/constants/redis-keys';
-import { DEFAULT_GIA_DOMAIN, isGiaDomain } from '@/lib/constants/domains';
+import { DEFAULT_GIA_DOMAIN, GIA_DOMAIN_ENUM, isGiaDomain } from '@/lib/constants/domains';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { formErrors } from '@/lib/validations/form-errors';
 import {
@@ -34,11 +35,24 @@ function resolveHelpdeskDomain(domain: AppDomain): AppDomain {
   return isGiaDomain(domain) ? domain : DEFAULT_GIA_DOMAIN;
 }
 
-export async function getHelpdeskLibraryAction(): Promise<ActionResult<HelpdeskLibrary>> {
+// Optional target domain (the dossier card searches the LEAD's library, which
+// may differ from the caller's domain). Harmless to accept from the client:
+// the 0110 read RLS is all-authenticated — this only picks which Gia shelf to
+// read, never widens access.
+const HelpdeskDomainSchema = z.enum(GIA_DOMAIN_ENUM).optional();
+
+export async function getHelpdeskLibraryAction(
+  targetDomain?: AppDomain,
+): Promise<ActionResult<HelpdeskLibrary>> {
+  const parsed = HelpdeskDomainSchema.safeParse(targetDomain);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
   const auth = await requireProfile();
   if (!auth.ok) return auth.result;
 
-  const library = await getHelpdeskLibrary(resolveHelpdeskDomain(auth.profile.domain));
+  const library = await getHelpdeskLibrary(
+    resolveHelpdeskDomain((parsed.data ?? auth.profile.domain) as AppDomain),
+  );
   return { data: library, error: null };
 }
 

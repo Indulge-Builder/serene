@@ -306,7 +306,7 @@ the only dossier call site for its service function, delegates rendering to a di
 | `LeadNotesSectionAsync` | `leadId` | `getLeadNotesFull(leadId)` | `<LeadNotesSection>` |
 | `LeadActivitiesAsync` | `lead: Lead` | `getLeadActivitiesFull(lead.id)` **once** | `<LeadJourneyTimeline>` + `<LeadActivityLog>` (owns both sections' margins — never split into two boundaries) |
 | `LeadWhatsAppCardAsync` | `leadId`, `leadPhone`, `leadName`, `callerProfile: { id, role }` | `getConversationByLeadId(leadId)` then serial `getMessages(conversation.id, { limit: 30 })` — the serial hop stays **inside** this boundary | `<LeadWhatsAppCard>` |
-| `ServiceInterestCardAsync` | `lead: Pick<Lead, 'service_interests' \| 'city' \| 'domain'>` | `Promise.all`: `getCasesForLead(interests, city, domain)` + `getHooksForCategories(interests, domain)` (hooks skipped when interests empty — city-only matches show cases, no hooks) | `<ServiceInterestCard>` (Call Intelligence Surface A: "Why we're perfect." + `CaseCard`s + `HookList` + quiet `/helpdesk?category=` footer link); returns `null` when interests empty AND zero city matches — pair with `fallback={null}`; the page additionally gates mounting on `interests.length \|\| city` |
+| `ServiceInterestCardAsync` | `lead: Pick<Lead, 'service_interests' \| 'city' \| 'domain'>` | `Promise.all`: `getCasesForLead(interests, city, domain)` + `getHooksForCategories(interests, domain)` (hooks skipped when interests empty — city-only matches show cases, no hooks) | `<ServiceInterestCard>` (Call Intelligence Surface A: "Why we're perfect." + library `SearchBar` + `CaseCard`s + `HookList` + quiet `/helpdesk?category=` footer link). **Always renders** (2026-06-12 — both hide-gates removed): empty interests/matches get the search-first view; page fallback is `DossierCardSkeleton` |
 
 ---
 
@@ -408,7 +408,7 @@ Embedded WhatsApp chat card on the lead dossier page. Placed between the 2-col g
 | LeadActivitiesAsync   | `getLeadActivitiesFull` from `leads-service.ts` (server only)                                        |
 | LeadWhatsAppCardAsync | `getConversationByLeadId` + `getMessages` from `whatsapp-service.ts` (server only)                   |
 | ServiceInterestCardAsync | `getCasesForLead` + `getHooksForCategories` from `intelligence-service.ts` (server only)          |
-| ServiceInterestCard   | none — props only (composes `components/intelligence/` CaseCard + HookList)                          |
+| ServiceInterestCard   | `'use client'` — `getHelpdeskLibraryAction(lead.domain)` (lazy, once, on first search keystroke) + `caseMatchesQuery` from `lib/utils/case-search.ts`; composes `components/intelligence/` CaseCard + HookList + `ui/SearchBar` |
 | LeadDossierSkeletons  | none                                                                                                  |
 | AddLeadModal          | `createManualLead` action, `getAssignableUsersAction` (`lib/actions/profiles.ts`)                                              |
 | LeadColumnPicker      | none — props only                                                                                    |

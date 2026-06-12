@@ -1,8 +1,13 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { AtSign, Briefcase, Mail, Phone, Settings2, User, X } from "lucide-react";
 import { updateProfile }  from "@/lib/actions/profiles";
 import { Button } from "@/components/ui/Button";
+import { SectionCard } from "@/components/ui/SectionCard";
+import { InfoRow } from "@/components/ui/InfoRow";
+import { FormNotice } from "@/components/profile/FormNotice";
+import { toast } from "@/lib/toast";
 import { normalizeToE164 } from "@/lib/utils/phone";
 import type { Profile }   from "@/lib/types/database";
 import type { ActionResult } from "@/lib/types";
@@ -21,10 +26,22 @@ function stripCountryCode(phone: string | null | undefined): string {
 
 export function ProfileDetailsForm({ profile }: Props) {
   const [state, formAction, isPending] = useActionState(updateProfile, initialState);
+  const [editing, setEditing] = useState(false);
   const phoneNumberRef = useRef<HTMLInputElement>(null);
   const phoneHiddenRef = useRef<HTMLInputElement>(null);
+  // Tracks the last save we reacted to, so the effect fires once per submission.
+  const handledSaveRef = useRef<Profile | null>(null);
 
-  const succeeded = state.data !== null;
+  // Freshest values: the action's returned row wins until the RSC revalidates.
+  const current = state.data ?? profile;
+
+  useEffect(() => {
+    if (state.data && state.data !== handledSaveRef.current) {
+      handledSaveRef.current = state.data;
+      toast.success("Profile updated");
+      setEditing(false);
+    }
+  }, [state.data]);
 
   function normalizePhoneOnBlur() {
     const raw = phoneNumberRef.current?.value ?? "";
@@ -44,189 +61,199 @@ export function ProfileDetailsForm({ profile }: Props) {
   }
 
   return (
-    <form action={formAction}>
-      <input type="hidden" name="id" value={profile.id} />
-      {/* Phone is normalised to E.164 on blur; hidden input carries the canonical value */}
-      <input ref={phoneHiddenRef} type="hidden" name="phone"
-        defaultValue={profile.phone ?? ""} />
-
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
-
-        {/* Row 1 — Full Name + Phone */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}
-          className="profile-two-col">
-          <Field
-            label="Full Name"
-            htmlFor="pf_full_name"
-            required
-          >
-            <input
-              id="pf_full_name"
-              name="full_name"
-              type="text"
-              defaultValue={profile.full_name}
-              required
-              autoComplete="name"
-              className="eia-input"
-              style={{ height: "36px", padding: "0 var(--space-3)" }}
-            />
-          </Field>
-
-          <Field
+    <SectionCard
+      title="Personal Details"
+      headerRight={
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          iconLeft={editing ? X : Settings2}
+          iconMotion="rotate"
+          onClick={() => setEditing((v) => !v)}
+          disabled={isPending}
+        >
+          {editing ? "Cancel" : "Edit"}
+        </Button>
+      }
+    >
+      {!editing ? (
+        <div
+          className="grid grid-cols-1 md:grid-cols-2"
+          style={{ columnGap: "var(--space-6)", rowGap: "var(--space-5)" }}
+        >
+          <InfoRow icon={User} label="Full Name" value={current.full_name} />
+          <InfoRow
+            icon={Phone}
             label="Phone Number"
-            htmlFor="pf_phone_number"
-          >
-            <div style={{ display: "flex", gap: "var(--space-2)" }}>
-              {/* Country code — read-only display */}
+            value={
+              current.phone ? (
+                <span style={{ fontFamily: "var(--font-mono)" }}>{current.phone}</span>
+              ) : undefined
+            }
+          />
+          <InfoRow icon={Briefcase} label="Job Title" value={current.job_title || undefined} />
+          <InfoRow icon={AtSign} label="Username" value={current.username || undefined} />
+          <InfoRow
+            icon={Mail}
+            label="Email Address"
+            value={current.email}
+            style={{ gridColumn: "1 / -1" }}
+          />
+        </div>
+      ) : (
+        <form action={formAction}>
+          <input type="hidden" name="id" value={current.id} />
+          {/* Phone is normalised to E.164 on blur; hidden input carries the canonical value */}
+          <input ref={phoneHiddenRef} type="hidden" name="phone"
+            defaultValue={current.phone ?? ""} />
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
+
+            {/* Row 1 — Full Name + Phone */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field
+                label="Full Name"
+                htmlFor="pf_full_name"
+                required
+              >
+                <input
+                  id="pf_full_name"
+                  name="full_name"
+                  type="text"
+                  defaultValue={current.full_name}
+                  required
+                  autoComplete="name"
+                  className="eia-input"
+                  style={{ height: "36px", padding: "0 var(--space-3)" }}
+                />
+              </Field>
+
+              <Field
+                label="Phone Number"
+                htmlFor="pf_phone_number"
+              >
+                <div style={{ display: "flex", gap: "var(--space-2)" }}>
+                  {/* Country code — read-only display */}
+                  <div
+                    style={{
+                      display:        "flex",
+                      alignItems:     "center",
+                      height:         "36px",
+                      padding:        "0 var(--space-3)",
+                      background:     "var(--theme-paper-subtle)",
+                      border:         "1px solid var(--theme-paper-border)",
+                      borderRadius:   "var(--radius-sm)",
+                      fontFamily:     "var(--font-sans)",
+                      fontSize:       "var(--text-sm)",
+                      color:          "var(--theme-text-tertiary)",
+                      flexShrink:     0,
+                      whiteSpace:     "nowrap",
+                      userSelect:     "none",
+                    }}
+                  >
+                    +91
+                  </div>
+                  <input
+                    id="pf_phone_number"
+                    ref={phoneNumberRef}
+                    type="tel"
+                    defaultValue={stripCountryCode(current.phone)}
+                    placeholder="98765 43210"
+                    autoComplete="tel-national"
+                    className="eia-input"
+                    style={{ height: "36px", padding: "0 var(--space-3)", flex: 1 }}
+                    onBlur={normalizePhoneOnBlur}
+                  />
+                </div>
+              </Field>
+            </div>
+
+            {/* Row 2 — Job Title + Username */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="Job Title" htmlFor="pf_job_title">
+                <input
+                  id="pf_job_title"
+                  name="job_title"
+                  type="text"
+                  defaultValue={current.job_title ?? ""}
+                  placeholder="e.g. Senior Concierge Agent"
+                  className="eia-input"
+                  style={{ height: "36px", padding: "0 var(--space-3)" }}
+                />
+              </Field>
+
+              <Field
+                label="Username"
+                htmlFor="pf_username"
+              >
+                <input
+                  id="pf_username"
+                  name="username"
+                  type="text"
+                  defaultValue={current.username ?? ""}
+                  placeholder="e.g. priya_sharma"
+                  autoComplete="username"
+                  className="eia-input"
+                  style={{ height: "36px", padding: "0 var(--space-3)" }}
+                />
+              </Field>
+            </div>
+
+            {/* Email — read-only, full width */}
+            <Field
+              label="Email Address"
+              htmlFor="pf_email"
+              hint="Email changes require contacting your administrator."
+            >
               <div
+                id="pf_email"
+                aria-readonly="true"
                 style={{
-                  display:        "flex",
-                  alignItems:     "center",
-                  height:         "36px",
-                  padding:        "0 var(--space-3)",
-                  background:     "var(--theme-paper-subtle)",
-                  border:         "1px solid var(--theme-paper-border)",
-                  borderRadius:   "var(--radius-sm)",
-                  fontFamily:     "var(--font-sans)",
-                  fontSize:       "var(--text-sm)",
-                  color:          "var(--theme-text-tertiary)",
-                  flexShrink:     0,
-                  whiteSpace:     "nowrap",
-                  userSelect:     "none",
+                  height:       "36px",
+                  display:      "flex",
+                  alignItems:   "center",
+                  padding:      "0 var(--space-3)",
+                  background:   "var(--theme-paper-subtle)",
+                  border:       "1px solid var(--theme-paper-border)",
+                  borderRadius: "var(--radius-sm)",
+                  fontFamily:   "var(--font-sans)",
+                  fontSize:     "var(--text-sm)",
+                  color:        "var(--theme-text-tertiary)",
+                  userSelect:   "all",
+                  cursor:       "text",
                 }}
               >
-                +91
+                {current.email}
               </div>
-              <input
-                id="pf_phone_number"
-                ref={phoneNumberRef}
-                type="tel"
-                defaultValue={stripCountryCode(profile.phone)}
-                placeholder="98765 43210"
-                autoComplete="tel-national"
-                className="eia-input"
-                style={{ height: "36px", padding: "0 var(--space-3)", flex: 1 }}
-                onBlur={normalizePhoneOnBlur}
-              />
+            </Field>
+
+            {/* Feedback */}
+            {state.error && <FormNotice kind="error">{state.error}</FormNotice>}
+
+            {/* Submit */}
+            <div
+              style={{
+                display:        "flex",
+                justifyContent: "flex-end",
+                paddingTop:     "var(--space-3)",
+                borderTop:      "1px solid var(--theme-paper-border)",
+              }}
+            >
+              <Button
+                variant="primary"
+                type="submit"
+                disabled={isPending}
+                loading={isPending}
+                style={{ boxShadow: isPending ? "none" : "var(--shadow-accent-glow)" }}
+              >
+                {isPending ? "Saving…" : "Save Changes"}
+              </Button>
             </div>
-          </Field>
-        </div>
-
-        {/* Row 2 — Job Title + Username */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}
-          className="profile-two-col">
-          <Field label="Job Title" htmlFor="pf_job_title">
-            <input
-              id="pf_job_title"
-              name="job_title"
-              type="text"
-              defaultValue={profile.job_title ?? ""}
-              placeholder="e.g. Senior Concierge Agent"
-              className="eia-input"
-              style={{ height: "36px", padding: "0 var(--space-3)" }}
-            />
-          </Field>
-
-          <Field
-            label="Username"
-            htmlFor="pf_username"
-          >
-            <input
-              id="pf_username"
-              name="username"
-              type="text"
-              defaultValue={profile.username ?? ""}
-              placeholder="e.g. priya_sharma"
-              autoComplete="username"
-              className="eia-input"
-              style={{ height: "36px", padding: "0 var(--space-3)" }}
-            />
-          </Field>
-        </div>
-
-        {/* Email — read-only, full width */}
-        <Field
-          label="Email Address"
-          htmlFor="pf_email"
-          hint="Email changes require contacting your administrator."
-        >
-          <div
-            id="pf_email"
-            aria-readonly="true"
-            style={{
-              height:       "36px",
-              display:      "flex",
-              alignItems:   "center",
-              padding:      "0 var(--space-3)",
-              background:   "var(--theme-paper-subtle)",
-              border:       "1px solid var(--theme-paper-border)",
-              borderRadius: "var(--radius-sm)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-sm)",
-              color:        "var(--theme-text-tertiary)",
-              userSelect:   "all",
-              cursor:       "text",
-            }}
-          >
-            {profile.email}
           </div>
-        </Field>
-
-        {/* Feedback */}
-        {state.error && (
-          <div
-            role="alert"
-            style={{
-              padding:      "var(--space-3) var(--space-4)",
-              background:   "var(--color-danger-light)",
-              border:       "1px solid color-mix(in srgb, var(--color-danger) 25%, transparent)",
-              borderRadius: "var(--radius-sm)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-sm)",
-              color:        "var(--color-danger-text)",
-            }}
-          >
-            {state.error}
-          </div>
-        )}
-        {succeeded && (
-          <div
-            role="status"
-            style={{
-              padding:      "var(--space-3) var(--space-4)",
-              background:   "var(--color-success-light)",
-              border:       "1px solid color-mix(in srgb, var(--color-success) 25%, transparent)",
-              borderRadius: "var(--radius-sm)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-sm)",
-              color:        "var(--color-success-text)",
-            }}
-          >
-            Profile updated successfully.
-          </div>
-        )}
-
-        {/* Submit */}
-        <div
-          style={{
-            display:        "flex",
-            justifyContent: "flex-end",
-            paddingTop:     "var(--space-3)",
-            borderTop:      "1px solid var(--theme-paper-border)",
-          }}
-        >
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={isPending}
-            loading={isPending}
-            style={{ boxShadow: isPending ? "none" : "var(--shadow-accent-glow)" }}
-          >
-            {isPending ? "Saving…" : "Save Changes"}
-          </Button>
-        </div>
-      </div>
-    </form>
+        </form>
+      )}
+    </SectionCard>
   );
 }
 

@@ -649,6 +649,17 @@ violations M-04/L-02). Never recreate it; `MyTasksCalendarView` is the only My T
 
 ---
 
+## Elaya Components — `src/components/elaya/`
+
+| Component | File | Responsibility |
+| --- | --- | --- |
+| `ElayaChatShell` | `ElayaChatShell.tsx` | `'use client'` chat surface. Owns transcript state, the SSE consumption loop against `POST /api/elaya/chat` (`meta`/`delta`/`tool`/`done`/`error` frames), composer (Enter sends, Shift+Enter newline; input restored on rejected send — never cleared on error), cap banner, tool-status line. Presence header renders a breathing `LiaGlyph` in `--theme-accent` (a static glyph = Elaya absent — never pass `breathing={false}` while the shell is mounted). Cap/expiry are server-enforced; everything here is cosmetic state. |
+| `ElayaMessageBubble` | `ElayaMessageBubble.tsx` | Display-only bubble (A-06). User: right, `--theme-accent-surface`; Elaya: left, `--theme-paper-subtle` (mirrors the WhatsApp bubble surface contract). One radius (`--radius-lg`, V-07); entrance opacity/y only via `m as motion` + `FAST_DURATION`/`EASE_OUT_EXPO`. |
+
+**Height:** the shell card is `calc(100dvh - 190px)` — `dvh`, never `vh` (V-14).
+
+---
+
 ## Notification Components
 
 `src/components/notifications/` — bell, panel, item.

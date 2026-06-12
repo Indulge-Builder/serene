@@ -3,9 +3,11 @@
 import { useState, useRef, useEffect }          from 'react';
 import { useSearchParams }                      from 'next/navigation';
 import { m as motion, AnimatePresence }               from 'framer-motion';
-import { SlidersHorizontal, Check }              from 'lucide-react';
+import { SlidersHorizontal, Check, ChevronDown } from 'lucide-react';
 import { Avatar }                                from '@/components/ui/Avatar';
+import { CollapseReveal }                        from '@/components/ui/CollapseReveal';
 import { EmptyState }                            from '@/components/ui/EmptyState';
+import { useMediaQuery, MQ }                     from '@/hooks/useMediaQuery';
 import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT, BASE_DURATION } from '@/lib/constants/motion';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import {
@@ -249,14 +251,41 @@ function RosterHeader({
   availableDomains,
   domainFilter,
   onFilterChange,
+  collapsible,
+  expanded,
+  onToggle,
+  agentCount,
+  selectedName,
 }: {
   allDomains:      boolean;
   availableDomains: AppDomain[];
   domainFilter:    AppDomain | null;
   onFilterChange:  (d: AppDomain | null) => void;
+  // Mobile collapse (design-system CollapseReveal at the panel level)
+  collapsible:     boolean;
+  expanded:        boolean;
+  onToggle:        () => void;
+  agentCount:      number;
+  selectedName:    string | null;
 }) {
   const [open, setOpen] = useState(false);
   const isFiltered = domainFilter !== null;
+
+  const label = (
+    <span
+      style={{
+        fontFamily:    'var(--font-sans)',
+        fontSize:      'var(--text-2xs)',
+        fontWeight:    'var(--weight-medium)',
+        letterSpacing: '0.12em',
+        textTransform: 'uppercase',
+        color:         'var(--theme-text-tertiary)',
+        flexShrink:    0,
+      }}
+    >
+      Agents
+    </span>
+  );
 
   return (
     <div
@@ -264,24 +293,84 @@ function RosterHeader({
         display:        'flex',
         alignItems:     'center',
         justifyContent: 'space-between',
+        gap:            'var(--space-2)',
         padding:        'var(--space-3) var(--space-4) var(--space-2)',
-        borderBottom:   '1px solid var(--theme-paper-border)',
+        borderBottom:   `1px solid ${!collapsible || expanded ? 'var(--theme-paper-border)' : 'transparent'}`,
         marginBottom:   'var(--space-1)',
         position:       'relative',
+        transition:     'border-color var(--duration-fast) var(--ease-in-out)',
       }}
     >
-      <span
-        style={{
-          fontFamily:    'var(--font-sans)',
-          fontSize:      'var(--text-2xs)',
-          fontWeight:    'var(--weight-medium)',
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          color:         'var(--theme-text-tertiary)',
-        }}
-      >
-        Agents
-      </span>
+      {collapsible ? (
+        <button
+          onClick={onToggle}
+          aria-expanded={expanded}
+          style={{
+            display:    'flex',
+            alignItems: 'center',
+            gap:        'var(--space-2)',
+            flex:       1,
+            minWidth:   0,
+            padding:    0,
+            background: 'transparent',
+            border:     'none',
+            cursor:     'pointer',
+            textAlign:  'left',
+          }}
+        >
+          {label}
+          {/* Count badge — inactive TabSelector badge colours */}
+          <span
+            style={{
+              display:        'inline-flex',
+              alignItems:     'center',
+              justifyContent: 'center',
+              minWidth:       '18px',
+              height:         '18px',
+              padding:        '0 5px',
+              borderRadius:   'var(--radius-full)',
+              background:     'var(--theme-paper-subtle)',
+              color:          'var(--theme-text-tertiary)',
+              fontFamily:     'var(--font-sans)',
+              fontSize:       'var(--text-2xs)',
+              fontWeight:     'var(--weight-medium)',
+              flexShrink:     0,
+            }}
+          >
+            {agentCount}
+          </span>
+          {/* Collapsed: show who is selected so the header stays informative */}
+          {!expanded && selectedName && (
+            <span
+              style={{
+                fontFamily:   'var(--font-sans)',
+                fontSize:     'var(--text-xs)',
+                color:        'var(--theme-text-secondary)',
+                whiteSpace:   'nowrap',
+                overflow:     'hidden',
+                textOverflow: 'ellipsis',
+                minWidth:     0,
+              }}
+            >
+              {selectedName}
+            </span>
+          )}
+          <ChevronDown
+            style={{
+              width:      14,
+              height:     14,
+              color:      'var(--theme-text-tertiary)',
+              flexShrink: 0,
+              marginLeft: 'auto',
+              transform:  expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform var(--duration-fast) var(--ease-in-out)',
+            }}
+            strokeWidth={1.5}
+          />
+        </button>
+      ) : (
+        label
+      )}
 
       {/* Filter icon — only shown in all-domains mode */}
       {allDomains && (
@@ -363,8 +452,14 @@ export function ManagerPerformancePanel({
   const [domainFilter, setDomainFilter] = useState<AppDomain | null>(null);
   const [agentRoster, setAgentRoster]   = useState<AgentRosterRow[]>(initialRoster);
   const [isRefetching, setIsRefetching] = useState(false);
+  const [rosterOpen, setRosterOpen]     = useState(true);
+  const isMobile                        = useMediaQuery(MQ.mobile);
   const searchParams                    = useSearchParams();
   const searchTerm                      = (searchParams.get('search') ?? '').trim().toLowerCase();
+
+  // The roster list is collapsible only below md (full-width stacked layout);
+  // on desktop the side column is always expanded.
+  const rosterExpanded = !isMobile || rosterOpen;
 
   // Skip the first mount — we already have server-fetched initial data.
   const hasMounted = useRef(false);
@@ -408,6 +503,11 @@ export function ManagerPerformancePanel({
       setSelectedId(null);
     }
   }, [searchTerm, domainFilter, agentRoster, selectedId]);
+
+  // Mobile: with nothing selected the roster is the only useful content — reopen it.
+  useEffect(() => {
+    if (isMobile && selectedId === null) setRosterOpen(true);
+  }, [isMobile, selectedId]);
 
   // Unique domains that actually have agents, in roster display order
   const presentDomains = PERFORMANCE_ROSTER_DOMAIN_ORDER.filter((d) =>
@@ -499,6 +599,11 @@ export function ManagerPerformancePanel({
           allDomains={allDomains}
           availableDomains={presentDomains}
           domainFilter={domainFilter}
+          collapsible={isMobile}
+          expanded={rosterExpanded}
+          onToggle={() => setRosterOpen((v) => !v)}
+          agentCount={visibleAgents.length}
+          selectedName={selectedAgent?.full_name ?? null}
           onFilterChange={(d) => {
             setDomainFilter(d);
             const stillVisible = agentRoster.filter((a) => {
@@ -512,34 +617,44 @@ export function ManagerPerformancePanel({
           }}
         />
 
-        <div style={{ padding: 'var(--space-1)' }}>
-          {groups.map((group) => (
-            <div key={group.domain}>
-              {/* Domain section label — only when showing all domains and more than one domain present */}
-              {allDomains && groups.length > 1 && (
-                <DomainSectionLabel
-                  label={DOMAIN_LABELS[group.domain as keyof typeof DOMAIN_LABELS]}
-                />
-              )}
-              {group.agents.map((agent) => {
-                const idx = globalIndex++;
-                return (
-                  <AgentCard
-                    key={agent.id}
-                    agent={agent}
-                    isSelected={agent.id === selectedId}
-                    onClick={() => setSelectedId(agent.id)}
-                    delay={delay(idx)}
-                  />
-                );
-              })}
-            </div>
-          ))}
+        <AnimatePresence initial={false}>
+          {rosterExpanded && (
+            <CollapseReveal key="roster-body">
+              <div style={{ padding: 'var(--space-1)' }}>
+                {groups.map((group) => (
+                  <div key={group.domain}>
+                    {/* Domain section label — only when showing all domains and more than one domain present */}
+                    {allDomains && groups.length > 1 && (
+                      <DomainSectionLabel
+                        label={DOMAIN_LABELS[group.domain as keyof typeof DOMAIN_LABELS]}
+                      />
+                    )}
+                    {group.agents.map((agent) => {
+                      const idx = globalIndex++;
+                      return (
+                        <AgentCard
+                          key={agent.id}
+                          agent={agent}
+                          isSelected={agent.id === selectedId}
+                          onClick={() => {
+                            setSelectedId(agent.id);
+                            // Mobile: collapse the roster so the detail panel is immediately visible
+                            if (isMobile) setRosterOpen(false);
+                          }}
+                          delay={delay(idx)}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
 
-          {visibleAgents.length === 0 && agentRoster.length > 0 && (
-            <EmptyState title="Nothing matches these filters." />
+                {visibleAgents.length === 0 && agentRoster.length > 0 && (
+                  <EmptyState title="Nothing matches these filters." />
+                )}
+              </div>
+            </CollapseReveal>
           )}
-        </div>
+        </AnimatePresence>
       </div>
 
       {/* ── Right: empty prompt OR agent detail ───────────────────── */}

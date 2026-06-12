@@ -10,6 +10,7 @@ import { TimePicker } from "@/components/ui/TimePicker";
 import { Toggle } from "@/components/ui/Toggle";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { FilterDropdown } from "@/components/ui/FilterDropdown";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import { toggleAgentRouting, setAgentShiftAction } from "@/lib/actions/agent-routing";
 import { toast } from "@/lib/toast";
 import { EASE_OUT_EXPO } from "@/lib/constants/motion";
@@ -129,6 +130,7 @@ export function AgentSettingsTable({
 }: AgentSettingsTableProps) {
   const isPrivileged     = callerRole === "admin" || callerRole === "founder";
   const showDomainFilter = isPrivileged;
+  const isMobile         = useMediaQuery(MQ.mobile);
 
   const [roster, setRoster]             = useState<AgentRosterRow[]>(initialRoster);
   const [search, setSearch]             = useState("");
@@ -408,40 +410,9 @@ export function AgentSettingsTable({
             const hasEither = !!state.start || !!state.end;
             const activeHours = hasBoth ? computeActiveHours(state.start, state.end) : null;
 
-            return (
-              <motion.div
-                key={agent.id}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: (isSaving || isPending) ? 0.6 : 1, y: 0 }}
-                transition={{
-                  duration: 0.25,
-                  delay:    Math.min(i * 80, 320) / 1000,
-                  ease:     EASE_OUT_EXPO,
-                }}
-                style={{
-                  display:      "flex",
-                  alignItems:   "center",
-                  gap:          "var(--space-4)",
-                  flexWrap:     "wrap",
-                  padding:      "var(--space-4) var(--space-5)",
-                  background:   "var(--theme-paper)",
-                  border:       "1px solid var(--theme-paper-border)",
-                  borderRadius: "var(--radius-lg)",
-                  boxShadow:    "var(--shadow-1)",
-                  transition:   "box-shadow var(--duration-fast) var(--ease-in-out), transform var(--duration-instant) var(--ease-spring), opacity var(--duration-base) var(--ease-in-out)",
-                }}
-                onMouseEnter={(e) => {
-                  if (isSaving || isPending) return;
-                  (e.currentTarget as HTMLDivElement).style.boxShadow = "var(--shadow-2)";
-                  (e.currentTarget as HTMLDivElement).style.transform = "translateY(-1px)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.boxShadow = "var(--shadow-1)";
-                  (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
-                }}
-              >
-                {/* Agent name + avatar */}
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flex: "1 1 200px", minWidth: 0 }}>
+            // Card blocks — assembled per layout below
+            const identityBlock = (
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flex: isMobile ? "1 1 auto" : "1 1 200px", minWidth: 0 }}>
                   <Avatar
                     src={agent.avatar_url}
                     name={agent.full_name}
@@ -502,11 +473,12 @@ export function AgentSettingsTable({
                       </span>
                     )}
                   </div>
-                </div>
+              </div>
+            );
 
-                {/* Domain badge — privileged only */}
-                {isPrivileged && (
-                  <div style={{ flex: "0 0 auto" }}>
+            // Domain badge — privileged only
+            const domainBadgeBlock = isPrivileged ? (
+              <div style={{ flex: "0 0 auto" }}>
                     <span style={{
                       display:      "inline-flex",
                       alignItems:   "center",
@@ -523,12 +495,11 @@ export function AgentSettingsTable({
                     }}>
                       {DOMAIN_LABELS[agent.domain] ?? agent.domain}
                     </span>
-                  </div>
-                )}
+              </div>
+            ) : null;
 
-                {/* Shift controls group — must be allowed to shrink so its
-                    children wrap inside the card at narrow widths */}
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap" }}>
+            const shiftFieldsBlock = (
+              <>
                   {/* Shift start */}
                   <div>
                     <span className="label-micro" style={{ color: "var(--theme-text-tertiary)", display: "block", marginBottom: "var(--space-1)" }}>
@@ -586,13 +557,12 @@ export function AgentSettingsTable({
                       disabled={isSaving}
                     />
                   </div>
-                </div>
+              </>
+            );
 
-                {/* Spacer */}
-                <div style={{ flex: "1 1 0" }} />
-
-                {/* In Pool toggle */}
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+            // In Pool toggle
+            const poolToggleBlock = (
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
                   <span style={{
                     fontFamily: "var(--font-sans)",
                     fontSize:   "var(--text-xs)",
@@ -607,23 +577,86 @@ export function AgentSettingsTable({
                     onChange={() => handleToggle(agent)}
                     disabled={isPending}
                   />
-                </div>
+              </div>
+            );
 
-                {/* Clear shift */}
-                {hasEither ? (
-                  <Button
-                    variant="danger"
-                    size="xs"
-                    onClick={() => handleClear(agent.id)}
-                    disabled={isSaving}
-                    title="Clear shift"
-                    className="eia-touch"
-                    style={{ width: 28, height: 28, padding: 0, justifyContent: "center", flexShrink: 0 }}
-                  >
-                    <X size={12} strokeWidth={1.5} />
-                  </Button>
+            // Clear shift
+            const clearButtonBlock = hasEither ? (
+              <Button
+                variant="danger"
+                size="xs"
+                onClick={() => handleClear(agent.id)}
+                disabled={isSaving}
+                title="Clear shift"
+                className="eia-touch"
+                style={{ width: 28, height: 28, padding: 0, justifyContent: "center", flexShrink: 0, marginLeft: isMobile ? "auto" : undefined }}
+              >
+                <X size={12} strokeWidth={1.5} />
+              </Button>
+            ) : null;
+
+            return (
+              <motion.div
+                key={agent.id}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: (isSaving || isPending) ? 0.6 : 1, y: 0 }}
+                transition={{
+                  duration: 0.25,
+                  delay:    Math.min(i * 80, 320) / 1000,
+                  ease:     EASE_OUT_EXPO,
+                }}
+                style={{
+                  display:       "flex",
+                  flexDirection: isMobile ? "column" : "row",
+                  alignItems:    isMobile ? "stretch" : "center",
+                  gap:           isMobile ? "var(--space-3)" : "var(--space-4)",
+                  flexWrap:      isMobile ? "nowrap" : "wrap",
+                  padding:       isMobile ? "var(--space-4)" : "var(--space-4) var(--space-5)",
+                  background:    "var(--theme-paper)",
+                  border:        "1px solid var(--theme-paper-border)",
+                  borderRadius:  "var(--radius-lg)",
+                  boxShadow:     "var(--shadow-1)",
+                  transition:    "box-shadow var(--duration-fast) var(--ease-in-out), transform var(--duration-instant) var(--ease-spring), opacity var(--duration-base) var(--ease-in-out)",
+                }}
+                onMouseEnter={(e) => {
+                  if (isSaving || isPending) return;
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = "var(--shadow-2)";
+                  (e.currentTarget as HTMLDivElement).style.transform = "translateY(-1px)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = "var(--shadow-1)";
+                  (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
+                }}
+              >
+                {isMobile ? (
+                  <>
+                    {/* Header row — identity left, In Pool toggle right */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
+                      {identityBlock}
+                      {poolToggleBlock}
+                    </div>
+                    {domainBadgeBlock}
+                    <div aria-hidden style={{ height: 1, background: "var(--theme-paper-border)" }} />
+                    {/* Shift controls — wrap row; clear button hugs the right edge */}
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: "var(--space-3)", flexWrap: "wrap" }}>
+                      {shiftFieldsBlock}
+                      {clearButtonBlock}
+                    </div>
+                  </>
                 ) : (
-                  <span style={{ width: 28, flexShrink: 0 }} />
+                  <>
+                    {identityBlock}
+                    {domainBadgeBlock}
+                    {/* Shift controls group — must be allowed to shrink so its
+                        children wrap inside the card at narrow widths */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap" }}>
+                      {shiftFieldsBlock}
+                    </div>
+                    {/* Spacer */}
+                    <div style={{ flex: "1 1 0" }} />
+                    {poolToggleBlock}
+                    {clearButtonBlock ?? <span style={{ width: 28, flexShrink: 0 }} />}
+                  </>
                 )}
               </motion.div>
             );

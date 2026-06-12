@@ -219,7 +219,9 @@ export function ManagerLeadVolumeWidget({
   const PADDING   = 40;
   const HEADER    = 36;
   const GAP       = 16;
-  const DOMAIN_ROW = isManagerRole ? 0 : 36 + GAP;
+  // domain row: borderTop 1px + paddingTop 12px + natural tab tray — same
+  // constant as ManagerCampaignWidget, which shares the row chrome.
+  const DOMAIN_ROW = isManagerRole ? 0 : 52 + GAP;
   const chartHeight = Math.max(
     120,
     totalPx - PADDING - HEADER - GAP * 2 - DOMAIN_ROW,
@@ -451,32 +453,38 @@ export function ManagerLeadVolumeWidget({
         )}
       </div>
 
-      {/* ── Domain picker + period totals (admin/founder) ── */}
+      {/* ── Domain picker — pinned to bottom, admin/founder only.
+          Campaign-widget pattern: natural-width triggers in the TabsList's own
+          horizontally scrollable tray — never flex:1-squeezed (clips labels <md). ── */}
       {!isManagerRole && (
-        <Tabs
-          value={domainMode}
-          onValueChange={(v) => handleDomainChange(v as DomainMode)}
-          variant="connected"
-          indicatorLayoutId="lead-volume-domain"
+        <div
           style={{
+            paddingTop: "var(--space-3)",
+            borderTop:  "1px solid var(--theme-paper-border)",
             flexShrink: 0,
-            opacity: isPending ? 0.6 : 1,
-            pointerEvents: isPending ? "none" : undefined,
-            width: "100%",
+            minWidth:   0,
           }}
         >
-          <TabsList style={{ width: "100%" }}>
-            {(["all", ...GIA_DOMAINS] as DomainMode[]).map((mode) => (
-              <TabsTrigger
-                key={mode}
-                value={mode}
-                style={{ flex: 1, minWidth: 0, padding: "6px 4px", fontSize: "var(--text-2xs)" }}
-              >
-                {mode === "all" ? "All" : DOMAIN_LABELS[mode]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+          <Tabs
+            value={domainMode}
+            onValueChange={(v) => handleDomainChange(v as DomainMode)}
+            variant="connected"
+            indicatorLayoutId="lead-volume-domain"
+            style={{
+              opacity: isPending ? 0.6 : 1,
+              pointerEvents: isPending ? "none" : undefined,
+            }}
+          >
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              {GIA_DOMAINS.map((d) => (
+                <TabsTrigger key={d} value={d}>
+                  {DOMAIN_LABELS[d]}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
       )}
     </div>
   );

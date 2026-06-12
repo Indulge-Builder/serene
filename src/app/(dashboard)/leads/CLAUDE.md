@@ -37,7 +37,7 @@ Thin server orchestrator. **The page blocks only on wave 1:** `Promise.all(getCu
 | Deal card | `LeadDealCardAsync` | `getLeadDeal(lead.id)`; renders nothing when null | `null` — no skeleton, most leads have no deal |
 | Tasks | `LeadTasksAsync` | `getAllLeadTasks` (not `getNextLeadTask`; `LeadDossierTasksAsync` retired) | `LeadTasksCardSkeleton` |
 | WhatsApp | `LeadWhatsAppCardAsync` | conversation → messages **serially inside the boundary** — never re-hoist `getMessages` into a page-level wave | `DossierCardSkeleton` |
-| Interest card | `ServiceInterestCardAsync` | `getCasesForLead` + `getHooksForCategories` in `Promise.all` (Call Intelligence; mounted top of right column, only when `service_interests.length \|\| city`) | `null` — most leads have no interests; renders nothing when no matches |
+| Interest card | `ServiceInterestCardAsync` | `getCasesForLead` + `getHooksForCategories` in `Promise.all` (Call Intelligence; top of right column, **always mounted** — 2026-06-12: empty interests/matches render the search-first view, never nothing) | `DossierCardSkeleton` |
 | Notes timeline | `LeadNotesSectionAsync` | `getLeadNotesFull(lead.id)` | `DossierCardSkeleton` |
 | Journey + activity log | `LeadActivitiesAsync` | `getLeadActivitiesFull(lead.id)` **once** for both sections — never split into two boundaries (same data, double query) | two `DossierCardSkeleton`s mirroring its margins |
 

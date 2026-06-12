@@ -9,7 +9,7 @@
 // eslint-disable-next-line comments are co-located with each cast.
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import { normalizeToE164 } from '@/lib/utils/phone';
+import { normalizeWaPhone } from '@/lib/utils/phone';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { getMediaDownloadUrl } from '@/lib/services/whatsapp-api';
 import { createLeadFromWhatsApp } from '@/lib/services/lead-ingestion';
@@ -78,14 +78,8 @@ export async function processInboundMessage(
   message:     MetaInboundMessage,
   senderName?: string | null,
 ): Promise<void> {
-  // 1. Normalize phone to E.164
-  let normalizedPhone: string;
-  try {
-    normalizedPhone = normalizeToE164(phone);
-  } catch {
-    // wa_id from Meta is already E.164 without +; if normalizeToE164 fails, use raw with +
-    normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
-  }
+  // 1. Normalize phone to E.164 — shared with the Elaya staff routing gate
+  const normalizedPhone = normalizeWaPhone(phone);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createAdminClient() as any;

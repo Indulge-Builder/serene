@@ -5,21 +5,35 @@
 // initialData from the RSC page; filtering is synchronous JS on that array —
 // zero server round-trips per keystroke, no debounce, no FTS (spec §6/§9).
 // At >500 cases, swap the includes() filter for fuse.js — never a server query.
+//
+// Results render as a LIST of compact rows (2026-06-12 — replaced the
+// 3-column card grid for consistency with the other list pages); clicking a
+// row opens CaseDetailModal with everything saved on the case.
 
 import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { AnimatePresence } from 'framer-motion';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { CaseCard } from '@/components/intelligence/CaseCard';
+import { CaseListRow } from '@/components/intelligence/CaseListRow';
 import { CategoryPill } from '@/components/intelligence/CategoryPill';
 import { HookList } from '@/components/intelligence/HookList';
+import { useMountOnFirstOpen } from '@/hooks/useMountOnFirstOpen';
 import {
   SERVICE_CATEGORIES,
   SERVICE_CATEGORY_LABELS,
   getServiceCategoryLabel,
   type ServiceCategory,
 } from '@/lib/constants/interests';
+import { caseMatchesQuery } from '@/lib/utils/case-search';
 import type { ServiceCase, ConversationHook } from '@/lib/services/intelligence-service';
+
+// Detail modal loads on intent (perf G-1) — kept mounted after first open via
+// useMountOnFirstOpen so modal.tsx's internal exit animation still plays.
+const CaseDetailModal = dynamic(
+  () => import('@/components/intelligence/CaseDetailModal').then((m) => m.CaseDetailModal),
+  { ssr: false },
+);
 
 type HelpdeskSearchProps = {
   initialCases:     ServiceCase[];
@@ -45,21 +59,20 @@ export function HelpdeskSearch({
   const [activeCategory, setActiveCategory] = useState<ActiveCategory>(
     parseCategory(initialCategory),
   );
+  // Detail modal — activeCase survives close so the exit animation has content.
+  const [activeCase, setActiveCase] = useState<ServiceCase | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const detailMounted = useMountOnFirstOpen(detailOpen);
+
+  function openCase(c: ServiceCase) {
+    setActiveCase(c);
+    setDetailOpen(true);
+  }
 
   const filtered = useMemo(() => {
     return initialCases.filter((c) => {
       const matchesCategory = activeCategory === 'all' || c.category === activeCategory;
-      if (!query.trim()) return matchesCategory;
-
-      const q = query.trim().toLowerCase();
-      const matchesQuery =
-        c.title.toLowerCase().includes(q) ||
-        c.summary.toLowerCase().includes(q) ||
-        (c.city ?? '').toLowerCase().includes(q) ||
-        (c.country ?? '').toLowerCase().includes(q) ||
-        c.tags.some((t) => t.includes(q));
-
-      return matchesCategory && matchesQuery;
+      return matchesCategory && caseMatchesQuery(c, query);
     });
   }, [initialCases, query, activeCategory]);
 
@@ -132,10 +145,10 @@ export function HelpdeskSearch({
           style={{ padding: 'var(--space-10) var(--space-4)' }}
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3" style={{ gap: 'var(--space-4)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           <AnimatePresence mode="popLayout">
             {filtered.map((c, i) => (
-              <CaseCard key={c.id} serviceCase={c} index={i} showTags />
+              <CaseListRow key={c.id} serviceCase={c} index={i} onClick={() => openCase(c)} />
             ))}
           </AnimatePresence>
         </div>
@@ -154,6 +167,14 @@ export function HelpdeskSearch({
             label={`Talking points for ${getServiceCategoryLabel(activeCategory)}`}
           />
         </div>
+      )}
+
+      {detailMounted && activeCase && (
+        <CaseDetailModal
+          open={detailOpen}
+          onClose={() => setDetailOpen(false)}
+          serviceCase={activeCase}
+        />
       )}
     </div>
   );

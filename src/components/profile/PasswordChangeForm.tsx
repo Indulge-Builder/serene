@@ -1,10 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, EyeOff, Check } from "lucide-react";
+import { Eye, EyeOff, Check, Lock, Settings2, X } from "lucide-react";
 import { m as motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/Button";
+import { SectionCard } from "@/components/ui/SectionCard";
+import { InfoRow } from "@/components/ui/InfoRow";
 import { PasswordStrengthBar } from "@/components/ui/PasswordStrengthBar";
+import { FormNotice } from "@/components/profile/FormNotice";
+import { toast } from "@/lib/toast";
 import { createClient } from "@/lib/supabase/client";
 import { formErrors } from "@/lib/validations/form-errors";
 import { FAST_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
@@ -12,7 +16,6 @@ import { FAST_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 type FormStatus =
   | { status: "idle" }
   | { status: "pending" }
-  | { status: "success" }
   | { status: "error"; message: string };
 
 interface Requirement {
@@ -29,6 +32,7 @@ const REQUIREMENTS: Requirement[] = [
 ];
 
 export function PasswordChangeForm() {
+  const [editing,    setEditing]    = useState(false);
   const [current,    setCurrent]    = useState("");
   const [next,       setNext]       = useState("");
   const [confirm,    setConfirm]    = useState("");
@@ -43,6 +47,21 @@ export function PasswordChangeForm() {
   const allRequirementsMet = REQUIREMENTS.every((r) => r.met(next));
   const confirmMatches     = confirm === next;
   const canSubmit          = !isPending && current.length > 0 && allRequirementsMet && confirmMatches && confirm.length > 0;
+
+  function resetFields() {
+    setCurrent("");
+    setNext("");
+    setConfirm("");
+    setShowCur(false);
+    setShowNext(false);
+    setConfirmTouched(false);
+    setFormState({ status: "idle" });
+  }
+
+  function toggleEditing() {
+    if (editing) resetFields();
+    setEditing((v) => !v);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -79,11 +98,9 @@ export function PasswordChangeForm() {
       return;
     }
 
-    setFormState({ status: "success" });
-    setCurrent("");
-    setNext("");
-    setConfirm("");
-    setConfirmTouched(false);
+    resetFields();
+    setEditing(false);
+    toast.success("Password updated");
   }
 
   const confirmError =
@@ -92,179 +109,179 @@ export function PasswordChangeForm() {
       : undefined;
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
-
-        {/* Current password */}
-        <PasswordField
-          id="pw_current"
-          label="Current Password"
-          value={current}
-          onChange={setCurrent}
-          show={showCur}
-          onToggleShow={() => setShowCur((v) => !v)}
-          autoComplete="current-password"
+    <SectionCard
+      title="Security"
+      headerRight={
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          iconLeft={editing ? X : Settings2}
+          iconMotion="rotate"
+          onClick={toggleEditing}
           disabled={isPending}
-        />
-
-        {/* New password + requirements + strength bar */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-          <PasswordField
-            id="pw_next"
-            label="New Password"
-            value={next}
-            onChange={setNext}
-            show={showNext}
-            onToggleShow={() => setShowNext((v) => !v)}
-            autoComplete="new-password"
-            disabled={isPending}
-          />
-
-          {/* Live requirements list */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-            {REQUIREMENTS.map((req) => {
-              const met = req.met(next);
-              return (
-                <div
-                  key={req.id}
-                  style={{
-                    display:    "flex",
-                    alignItems: "center",
-                    gap:        "var(--space-2)",
-                  }}
-                >
-                  <span
-                    style={{
-                      display:        "flex",
-                      alignItems:     "center",
-                      justifyContent: "center",
-                      width:          "14px",
-                      height:         "14px",
-                      flexShrink:     0,
-                      color:          met ? "var(--color-success)" : "var(--theme-text-tertiary)",
-                      transition:     `color ${FAST_DURATION}s var(--ease-in-out)`,
-                    }}
-                  >
-                    <AnimatePresence mode="wait" initial={false}>
-                      {met ? (
-                        <motion.span
-                          key="met"
-                          initial={{ scale: 0.6, opacity: 0 }}
-                          animate={{ scale: 1,   opacity: 1 }}
-                          exit={{    scale: 0.6, opacity: 0 }}
-                          transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
-                          style={{ display: "flex" }}
-                        >
-                          <Check style={{ width: "12px", height: "12px", strokeWidth: 2.5 }} aria-hidden="true" />
-                        </motion.span>
-                      ) : (
-                        <motion.span
-                          key="unmet"
-                          initial={{ scale: 0.6, opacity: 0 }}
-                          animate={{ scale: 1,   opacity: 1 }}
-                          exit={{    scale: 0.6, opacity: 0 }}
-                          transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
-                          style={{ display: "flex" }}
-                        >
-                          {/* Small circle placeholder */}
-                          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                            <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                          </svg>
-                        </motion.span>
-                      )}
-                    </AnimatePresence>
-                  </span>
-                  <span
-                    style={{
-                      fontFamily:  "var(--font-sans)",
-                      fontSize:    "var(--text-xs)",
-                      color:       met ? "var(--color-success)" : "var(--theme-text-tertiary)",
-                      transition:  `color ${FAST_DURATION}s var(--ease-in-out)`,
-                    }}
-                  >
-                    {req.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Strength bar */}
-          <PasswordStrengthBar password={next} />
-        </div>
-
-        {/* Confirm new password */}
-        <PasswordField
-          id="pw_confirm"
-          label="Confirm New Password"
-          value={confirm}
-          onChange={(v) => {
-            setConfirm(v);
-            if (!confirmTouched && v.length > 0) setConfirmTouched(true);
-          }}
-          show={showNext}
-          onToggleShow={() => setShowNext((v) => !v)}
-          autoComplete="new-password"
-          disabled={isPending}
-          error={confirmError}
-          matchSuccess={confirmTouched && confirm.length > 0 && confirmMatches}
-        />
-
-        {/* Feedback */}
-        {formState.status === "error" && (
-          <div
-            role="alert"
-            style={{
-              padding:      "var(--space-3) var(--space-4)",
-              background:   "var(--color-danger-light)",
-              border:       "1px solid color-mix(in srgb, var(--color-danger) 25%, transparent)",
-              borderRadius: "var(--radius-sm)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-sm)",
-              color:        "var(--color-danger-text)",
-            }}
-          >
-            {formState.message}
-          </div>
-        )}
-        {formState.status === "success" && (
-          <div
-            role="status"
-            style={{
-              padding:      "var(--space-3) var(--space-4)",
-              background:   "var(--color-success-light)",
-              border:       "1px solid color-mix(in srgb, var(--color-success) 25%, transparent)",
-              borderRadius: "var(--radius-sm)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-sm)",
-              color:        "var(--color-success-text)",
-            }}
-          >
-            Password updated successfully.
-          </div>
-        )}
-
-        {/* Submit */}
-        <div
-          style={{
-            display:        "flex",
-            justifyContent: "flex-end",
-            paddingTop:     "var(--space-3)",
-            borderTop:      "1px solid var(--theme-paper-border)",
-          }}
         >
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={!canSubmit}
-            loading={isPending}
-            style={{ boxShadow: canSubmit && !isPending ? "var(--shadow-accent-glow)" : "none" }}
-          >
-            {isPending ? "Updating…" : "Update Password"}
-          </Button>
-        </div>
-      </div>
-    </form>
+          {editing ? "Cancel" : "Edit"}
+        </Button>
+      }
+    >
+      {!editing ? (
+        <InfoRow
+          icon={Lock}
+          label="Password"
+          value={
+            <span style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.15em" }}>
+              ••••••••••
+            </span>
+          }
+        />
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
+
+            {/* Current password */}
+            <PasswordField
+              id="pw_current"
+              label="Current Password"
+              value={current}
+              onChange={setCurrent}
+              show={showCur}
+              onToggleShow={() => setShowCur((v) => !v)}
+              autoComplete="current-password"
+              disabled={isPending}
+            />
+
+            {/* New password + requirements + strength bar */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+              <PasswordField
+                id="pw_next"
+                label="New Password"
+                value={next}
+                onChange={setNext}
+                show={showNext}
+                onToggleShow={() => setShowNext((v) => !v)}
+                autoComplete="new-password"
+                disabled={isPending}
+              />
+
+              {/* Live requirements list */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+                {REQUIREMENTS.map((req) => {
+                  const met = req.met(next);
+                  return (
+                    <div
+                      key={req.id}
+                      style={{
+                        display:    "flex",
+                        alignItems: "center",
+                        gap:        "var(--space-2)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          display:        "flex",
+                          alignItems:     "center",
+                          justifyContent: "center",
+                          width:          "14px",
+                          height:         "14px",
+                          flexShrink:     0,
+                          color:          met ? "var(--color-success)" : "var(--theme-text-tertiary)",
+                          transition:     `color ${FAST_DURATION}s var(--ease-in-out)`,
+                        }}
+                      >
+                        <AnimatePresence mode="wait" initial={false}>
+                          {met ? (
+                            <motion.span
+                              key="met"
+                              initial={{ scale: 0.6, opacity: 0 }}
+                              animate={{ scale: 1,   opacity: 1 }}
+                              exit={{    scale: 0.6, opacity: 0 }}
+                              transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+                              style={{ display: "flex" }}
+                            >
+                              <Check style={{ width: "12px", height: "12px", strokeWidth: 2.5 }} aria-hidden="true" />
+                            </motion.span>
+                          ) : (
+                            <motion.span
+                              key="unmet"
+                              initial={{ scale: 0.6, opacity: 0 }}
+                              animate={{ scale: 1,   opacity: 1 }}
+                              exit={{    scale: 0.6, opacity: 0 }}
+                              transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+                              style={{ display: "flex" }}
+                            >
+                              {/* Small circle placeholder */}
+                              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                                <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                              </svg>
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </span>
+                      <span
+                        style={{
+                          fontFamily:  "var(--font-sans)",
+                          fontSize:    "var(--text-xs)",
+                          color:       met ? "var(--color-success)" : "var(--theme-text-tertiary)",
+                          transition:  `color ${FAST_DURATION}s var(--ease-in-out)`,
+                        }}
+                      >
+                        {req.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Strength bar */}
+              <PasswordStrengthBar password={next} />
+            </div>
+
+            {/* Confirm new password */}
+            <PasswordField
+              id="pw_confirm"
+              label="Confirm New Password"
+              value={confirm}
+              onChange={(v) => {
+                setConfirm(v);
+                if (!confirmTouched && v.length > 0) setConfirmTouched(true);
+              }}
+              show={showNext}
+              onToggleShow={() => setShowNext((v) => !v)}
+              autoComplete="new-password"
+              disabled={isPending}
+              error={confirmError}
+              matchSuccess={confirmTouched && confirm.length > 0 && confirmMatches}
+            />
+
+            {/* Feedback */}
+            {formState.status === "error" && (
+              <FormNotice kind="error">{formState.message}</FormNotice>
+            )}
+
+            {/* Submit */}
+            <div
+              style={{
+                display:        "flex",
+                justifyContent: "flex-end",
+                paddingTop:     "var(--space-3)",
+                borderTop:      "1px solid var(--theme-paper-border)",
+              }}
+            >
+              <Button
+                variant="primary"
+                type="submit"
+                disabled={!canSubmit}
+                loading={isPending}
+                style={{ boxShadow: canSubmit && !isPending ? "var(--shadow-accent-glow)" : "none" }}
+              >
+                {isPending ? "Updating…" : "Update Password"}
+              </Button>
+            </div>
+          </div>
+        </form>
+      )}
+    </SectionCard>
   );
 }
 

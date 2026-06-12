@@ -142,14 +142,13 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
 
           {/* Right column — stretches to match left column height */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', alignSelf: 'stretch' }}>
-            {/* Call Intelligence interest card — null fallback: leads without
-                interests/city matches render nothing here, a skeleton would
-                flash for the majority. Self-fetching child = no waterfall. */}
-            {((lead.service_interests ?? []).length > 0 || lead.city) && (
-              <Suspense fallback={null}>
-                <ServiceInterestCardAsync lead={lead} />
-              </Suspense>
-            )}
+            {/* Call Intelligence interest card — always mounted (2026-06-12):
+                the card owns a library search, so leads with no interests get
+                the search-first view instead of nothing. Self-fetching child =
+                no waterfall. */}
+            <Suspense fallback={<DossierCardSkeleton headerWidth={150} rows={2} />}>
+              <ServiceInterestCardAsync lead={lead} />
+            </Suspense>
             <Suspense fallback={<LeadTasksCardSkeleton />}>
               <LeadTasksAsync leadId={lead.id} />
             </Suspense>

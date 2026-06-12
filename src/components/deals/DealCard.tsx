@@ -7,6 +7,7 @@ import { DEAL_TYPE_LABELS, DEAL_DURATION_LABELS } from '@/lib/constants/deal-typ
 import { formatDate } from '@/lib/utils/dates';
 import { formatCurrency } from '@/lib/utils/numbers';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import type { DealWithRelations } from '@/lib/services/deals-service';
 
 type DealCardProps = {
@@ -124,7 +125,103 @@ const cardStyle: React.CSSProperties = {
 };
 
 function CardBody({ deal }: { deal: DealWithRelations }) {
+  const isMobile = useMediaQuery(MQ.mobile);
   const displayName = deal.contact_name || '—';
+
+  if (isMobile) {
+    return (
+      <>
+        {/* Row 1 — identity left, amount right */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-3)', width: '100%' }}>
+          <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+            <p
+              style={{
+                fontFamily:   'var(--font-serif)',
+                fontSize:     'var(--text-base)',
+                fontWeight:   'var(--weight-normal)',
+                fontStyle:    'italic',
+                color:        'var(--theme-text-primary)',
+                margin:       '0 0 var(--space-1)',
+                overflow:     'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace:   'nowrap',
+              }}
+            >
+              {displayName}
+            </p>
+            {deal.contact_phone && (
+              <p
+                style={{
+                  fontFamily:   'var(--font-mono)',
+                  fontSize:     'var(--text-sm)',
+                  color:        'var(--theme-text-secondary)',
+                  margin:       '0 0 var(--space-2)',
+                  overflow:     'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace:   'nowrap',
+                }}
+              >
+                {deal.contact_phone}
+              </p>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <DomainBadge domain={deal.domain} />
+              {deal.lead_id === null && <WalkInPill />}
+            </div>
+          </div>
+          <p
+            style={{
+              fontFamily:         'var(--font-mono)',
+              fontSize:           'var(--text-2xl)',
+              fontWeight:         'var(--weight-normal)',
+              fontVariantNumeric: 'tabular-nums',
+              color:              'var(--theme-accent)',
+              margin:             0,
+              lineHeight:         1,
+              whiteSpace:         'nowrap',
+              flexShrink:         0,
+            }}
+          >
+            {formatCurrency(deal.deal_amount)}
+          </p>
+        </div>
+
+        {/* Row 2 — deal type chip, then won date + agent name, all left-aligned */}
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <DealTypeChip dealType={deal.deal_type} dealDuration={deal.deal_duration} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            <p
+              style={{
+                fontFamily: 'var(--font-sans)',
+                fontSize:   'var(--text-xs)',
+                color:      'var(--theme-text-tertiary)',
+                margin:     0,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Won {formatDate(deal.won_at, 'dd MMM yyyy')}
+            </p>
+            {deal.assignee?.full_name && (
+              <>
+                <span aria-hidden style={{ color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-xs)', lineHeight: 1 }}>·</span>
+                <p
+                  style={{
+                    fontFamily: 'var(--font-sans)',
+                    fontSize:   'var(--text-xs)',
+                    color:      'var(--theme-text-secondary)',
+                    margin:     0,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {deal.assignee.full_name}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

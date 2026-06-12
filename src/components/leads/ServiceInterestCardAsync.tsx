@@ -7,12 +7,13 @@ type Props = {
 };
 
 /**
- * Async server component — direct child of <Suspense fallback={null}> on the
- * dossier page (Call Intelligence Surface A). Only dossier call site for
+ * Async server component — direct child of <Suspense> on the dossier page
+ * (Call Intelligence Surface A). Only dossier call site for
  * getCasesForLead/getHooksForCategories; both fetches run in one Promise.all —
  * never a sequential await (the page-level waterfall is the failure mode the
- * spec calls out). Renders nothing when the lead gives us nothing to match —
- * no placeholder, no DOM node.
+ * spec calls out). ALWAYS renders the card (2026-06-12): leads with no
+ * interests/matches get the search-first view — the card owns the library
+ * search, so an empty curated set is a starting point, not a dead end.
  */
 export async function ServiceInterestCardAsync({ lead }: Props) {
   const interests = lead.service_interests ?? [];
@@ -21,6 +22,7 @@ export async function ServiceInterestCardAsync({ lead }: Props) {
   const domain = lead.domain as AppDomain;
 
   const [cases, hooks] = await Promise.all([
+    // getCasesForLead returns [] itself when interests AND city are both empty.
     getCasesForLead(interests, lead.city, domain),
     // Hooks are scoped to the lead's stated interest categories; a city-only
     // tag match shows cases but no hooks (no category to scope to).
@@ -29,8 +31,5 @@ export async function ServiceInterestCardAsync({ lead }: Props) {
       : Promise.resolve([]),
   ]);
 
-  // Empty interests AND no city-tag matches → the section does not exist.
-  if (interests.length === 0 && cases.length === 0) return null;
-
-  return <ServiceInterestCard interests={interests} cases={cases} hooks={hooks} />;
+  return <ServiceInterestCard interests={interests} cases={cases} hooks={hooks} domain={domain} />;
 }

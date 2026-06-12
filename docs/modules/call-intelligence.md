@@ -38,7 +38,7 @@
 It has two entry points:
 
 **Surface A — The Lead Dossier Interest Card.**
-When a lead opens in the dossier, a card automatically appears showing the most relevant past deliveries and conversation hooks based on two data points from the lead: their city (`leads.city`) and their stated service interests (`leads.service_interests`). The agent sees this before or during the call without searching for anything.
+When a lead opens in the dossier, a card shows the most relevant past deliveries and conversation hooks based on two data points from the lead: their city (`leads.city`) and their stated service interests (`leads.service_interests`). The agent sees this before or during the call without searching for anything. **Since 2026-06-12 the card is always visible and also carries its own library search** — a lead with no interests gets a search-first view instead of nothing, and even matched leads can search the full library inline (one lazy `getHelpdeskLibraryAction(lead.domain)` fetch on first keystroke, then client-side `caseMatchesQuery` filtering — same no-per-keystroke-server-search rule as Surface B).
 
 **Surface B — The Helpdesk Page (`/helpdesk`).**
 A standalone search page accessible from the sidebar. Agent types any keyword — "yacht", "rolex", "jaipur", "nanny", "f1" — and all matching past deliveries appear instantly. Zero server round-trips after the initial page load. Used mid-call when the conversation goes somewhere unexpected.
@@ -395,13 +395,15 @@ Not cached in Redis. The dossier already has its own caching via `leadRowSlug` a
 
 ### Where It Lives
 
-The dossier right panel, below `LeadInfoCard`, above `LeadTasksCard`. Only rendered when `lead.service_interests.length > 0`.
+The dossier right panel, top of the right column, above `LeadTasksCard`. **Always rendered** (2026-06-12 — previously gated on interests/city; the gate is gone on both the page and `ServiceInterestCardAsync`).
 
-Component: `src/components/leads/ServiceInterestCard.tsx`
+Component: `src/components/leads/ServiceInterestCard.tsx` — `'use client'` since the search landed; the async wrapper still does all server fetching.
 
 ### What It Shows
 
 **Header:** Playfair Display, *"Why we're perfect."* — small section heading with the page-title dot.
+
+**Library search (2026-06-12):** a `SearchBar` under the header searches the lead's domain library. Lazy fetch: the full `{cases}` envelope loads once via `getHelpdeskLibraryAction(lead.domain)` on the first keystroke (Redis 1hr envelope behind it); filtering is synchronous `caseMatchesQuery` (`src/lib/utils/case-search.ts` — THE shared matcher, also used by `HelpdeskSearch`). Results cap at 8 with a count line; clearing the query returns to the curated view. Hooks hide while a query is active (they are interest-scoped, not query-scoped).
 
 **Auto-populated case cards** (up to 6):
 
@@ -493,18 +495,17 @@ Standard paper shell. Full-width single column. Max-width 860px, centered.
 
 - Small `--theme-text-tertiary` line below pills: *"24 examples"* or *"3 results for 'rolex'"*
 
-**Case cards grid:**
+**Case list + detail modal (2026-06-12 — replaced the 3-column card grid for list-page consistency):**
 
-- 2-column grid on desktop, 1-column on mobile
-- Each card:
-  - Category pill (top-left)
-  - Title (Playfair, `--theme-text-primary`, 16px)
-  - City + country (small, `--theme-text-tertiary`)
-  - Summary (2-line truncate, `--theme-text-secondary`, 14px)
-  - Outcome note (italic, `--theme-text-tertiary`, 13px) — shown if present
-  - Tags row: up to 5 tags as tiny pills, `--theme-paper-subtle` bg, `--theme-text-tertiary` text
-- Card: `var(--theme-paper)` bg, `var(--theme-paper-border)` border, `var(--shadow-1)`, `var(--radius-md)`
-- Hover: `var(--shadow-2)`, lift `translateY(-1px)`, `200ms` transition
+- Results render as a vertical list of compact rows (`CaseListRow`) — important info only:
+  - Leading 36px icon tile (category icon from `category-icons.ts`, `--theme-accent-surface` bg)
+  - Title (Playfair, truncated) + featured star when `is_featured`
+  - One-line summary (`--theme-text-tertiary`, truncated)
+  - Trailing cluster: `CategoryTag` pill · city/country · chevron
+- Row chrome: `var(--theme-paper)` bg, `var(--theme-paper-border)` border, `var(--shadow-1)`, `var(--radius-md)`; hover `var(--shadow-2)` + `translateY(-1px)` (card-list pattern); keyboard-activatable (`role="button"`, Enter/Space)
+- Clicking a row opens **`CaseDetailModal`** (composes `ui/modal.tsx`; loaded via `next/dynamic` + `useMountOnFirstOpen`) showing EVERYTHING saved on the case: category, featured badge, location, full summary (no clamp), outcome note, all tags
+- `CategoryTag` (`src/components/intelligence/CategoryTag.tsx`) is THE static category pill — shared by `CaseCard`, `CaseListRow`, and the modal (the filter button stays `CategoryPill`)
+- `CaseCard` (stacked preview) remains the dossier `ServiceInterestCard` row
 
 **Empty state (no search results):**
 
@@ -545,8 +546,8 @@ No FTS at this layer. Plain `includes()` is sufficient and faster than regex for
 
 ### Animation
 
-- Initial card grid: stagger entrance, same pattern as dossier card
-- Filter/search result change: `AnimatePresence` with `layout` prop on the grid so cards smoothly reflow rather than jump
+- Initial list: stagger entrance, same pattern as dossier card
+- Filter/search result change: `AnimatePresence` with `layout` prop on the rows so the list smoothly reflows rather than jumps
 - Category pill toggle: `scale: 0.96 → 1.0` on press, 100ms
 
 ---
@@ -558,11 +559,15 @@ src/
 ├── app/(dashboard)/
 │   └── helpdesk/
 │       ├── page.tsx                    ← Server Component. Fetches all cases + hooks as initialData.
-│       └── loading.tsx                 ← Skeleton for the page shell + card grid.
+│       └── loading.tsx                 ← Skeleton for the page shell + results list.
 │
 ├── components/
 │   ├── intelligence/
-│   │   ├── CaseCard.tsx               ← Single case card. Used in both surfaces.
+│   │   ├── CaseCard.tsx               ← Stacked preview card (dossier surface).
+│   │   ├── CaseListRow.tsx            ← Helpdesk list row → opens CaseDetailModal.
+│   │   ├── CaseDetailModal.tsx        ← Full case details (composes ui/modal.tsx).
+│   │   ├── CategoryTag.tsx            ← THE static category pill (card/row/modal).
+│   │   ├── category-icons.ts          ← category → Lucide icon map.
 │   │   ├── HookList.tsx               ← Conversation hooks list (numbered items).
 │   │   ├── CategoryPill.tsx           ← Single category filter pill (shared).
 │   │   └── HelpdeskSearch.tsx         ← Client component. Owns query state + filter logic.
@@ -784,7 +789,8 @@ Before calling this feature shipped:
 ✓ Helpdesk search: typing "rolex" returns relevant cases in < 50ms (client-side filter proof)
 ✓ Dossier card: a lead with service_interests = ['events'] and city = 'Delhi' shows
     cases matching events category AND cases tagged 'delhi'
-✓ A lead with service_interests = [] shows no ServiceInterestCard in the DOM
+✓ A lead with service_interests = [] shows the search-first card (no curated cases, no hooks,
+    library search functional) — superseded 2026-06-12: the card is always in the DOM
 ✓ Helpdesk page unreachable by unauthenticated users (proxy guard)
 ✓ service_cases INSERT/UPDATE blocked for agent and manager roles (RLS verified)
 ✓ Ingestion: a test webhook payload with interest = 'travel,events' writes

@@ -1,14 +1,14 @@
 'use client';
 
-// Call Intelligence — single service_cases card. Used by both surfaces:
-// the /helpdesk grid (showTags) and the dossier ServiceInterestCard.
-// Display-only; entrance stagger via the index prop (spec §8: 0.28s,
-// EASE_OUT_EXPO, 0.06s per card). Hover lift follows the CampaignCard
-// card-list pattern (CSS transition + inline handlers).
+// Call Intelligence — single service_cases card (compact stacked preview).
+// Used by the dossier ServiceInterestCard; /helpdesk moved to CaseListRow +
+// CaseDetailModal (2026-06-12). Display-only; entrance stagger via the index
+// prop (spec §8: 0.28s, EASE_OUT_EXPO, 0.06s per card). Hover lift follows
+// the CampaignCard card-list pattern (CSS transition + inline handlers).
 
 import { m as motion } from 'framer-motion';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
-import { getServiceCategoryLabel } from '@/lib/constants/interests';
+import { CategoryTag } from './CategoryTag';
 import type { ServiceCase } from '@/lib/services/intelligence-service';
 
 type CaseCardProps = {
@@ -53,23 +53,7 @@ export function CaseCard({ serviceCase: c, index = 0, showTags = false }: CaseCa
     >
       {/* Category pill + location row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
-        <span
-          style={{
-            display:       'inline-flex',
-            alignItems:    'center',
-            padding:       '2px 8px',
-            borderRadius:  'var(--radius-full)',
-            background:    'var(--theme-accent-surface)',
-            color:         'var(--theme-accent)',
-            fontFamily:    'var(--font-sans)',
-            fontSize:      'var(--text-2xs)',
-            fontWeight:    'var(--weight-medium)',
-            letterSpacing: 'var(--tracking-wide)',
-            whiteSpace:    'nowrap',
-          }}
-        >
-          {getServiceCategoryLabel(c.category)}
-        </span>
+        <CategoryTag category={c.category} />
         {location && (
           <span
             style={{

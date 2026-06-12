@@ -103,6 +103,44 @@ export async function sendTextMessage(
 }
 
 // ─────────────────────────────────────────────
+// Elaya WhatsApp reply — free-form session message (the staff member just
+// messaged us, so the 24h session window is open; no template needed).
+// Wraps sendTextMessage with the one-log-row-per-attempt finally contract
+// (type 'elaya_reply', migration 0117). Never throws — the webhook's Elaya
+// branch must never retry-loop on a failed reply.
+// ─────────────────────────────────────────────
+
+export async function sendElayaWhatsAppReply(
+  to:          string,
+  text:        string,
+  recipientId: string,
+): Promise<boolean> {
+  let delivered   = false;
+  let gupshupBody = '';
+  try {
+    const res   = await sendTextMessage(to, text);
+    delivered   = true;
+    gupshupBody = `messageId: ${res.messages[0]?.id ?? ''}`;
+    console.log(`[whatsapp-api] Elaya reply sent to user ${recipientId}`);
+  } catch (err) {
+    gupshupBody = String(err);
+    console.error(`[whatsapp-api] Elaya reply failed for user ${recipientId}:`, err);
+  } finally {
+    // Awaited so the row is durably written before the after() chain settles
+    // (same Vercel-freeze rationale as sendGupshupTemplate).
+    await logNotification({
+      type:           'elaya_reply',
+      recipientId,
+      recipientPhone: to.replace(/^\+/, ''),
+      gupshupStatus:  delivered ? 200 : 0,
+      gupshupBody,
+      delivered,
+    });
+  }
+  return delivered;
+}
+
+// ─────────────────────────────────────────────
 // Send template message
 // ─────────────────────────────────────────────
 
@@ -250,7 +288,7 @@ function isGupshupDelivered(httpOk: boolean, body: string): boolean {
 // ─────────────────────────────────────────────
 
 interface NotificationLogEntry {
-  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager';
+  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'elaya_reply';
   leadId?:        string | null;
   recipientId?:   string | null;
   recipientPhone: string;

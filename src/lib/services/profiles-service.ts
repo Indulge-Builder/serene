@@ -2,8 +2,32 @@
 
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { Profile, UserRole, AppDomain } from "@/lib/types/database";
 import type { AssignableUser } from "@/lib/types";
+
+/**
+ * Resolve an ACTIVE staff profile by E.164 phone — THE WhatsApp staff-identity
+ * lookup (Elaya routing gate). Admin client: called from the webhook context,
+ * which has no session. Caller must pass an already-normalized number
+ * (normalizeWaPhone); profiles.phone is stored E.164 via normalizeToE164.
+ */
+export async function getActiveProfileByPhone(normalizedPhone: string): Promise<Profile | null> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("phone", normalizedPhone)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[profiles-service] getActiveProfileByPhone failed:", error.message);
+    return null;
+  }
+  return (data as Profile | null) ?? null;
+}
 
 /** Fetch a single profile by id. Returns null if not found. */
 export async function getProfileById(id: string): Promise<Profile | null> {

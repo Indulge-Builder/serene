@@ -17,6 +17,7 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { DateRange } from "@/lib/utils/date-range";
 import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
 import { useWidgetData } from "@/hooks/useWidgetData";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import { resolveWidgetScope, type WidgetDomainMode as DomainMode } from "@/lib/utils/widget-scope";
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
@@ -52,6 +53,7 @@ export function ManagerCampaignWidget({
   dateRange,
 }: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
+  const isMobile = useMediaQuery(MQ.mobile);
   const rscCampaigns = initialData?.campaigns ?? null;
   const [domainMode, setDomainMode] = useState<DomainMode>(
     isManagerRole ? "all" : DEFAULT_GIA_DOMAIN,
@@ -221,7 +223,7 @@ export function ManagerCampaignWidget({
               strokeDasharray: "none",
             }}
             xAxisProps={{
-              tick: <WrappedXTick />,
+              tick: <WrappedXTick compact={isMobile} />,
               interval: 0,
             }}
             yAxisProps={{
@@ -329,11 +331,33 @@ export function ManagerCampaignWidget({
 
 // Custom XAxis tick that wraps long campaign names across two lines.
 // Recharts renders this as SVG so we use <tspan> for line breaks.
+// `compact` (mobile, <md): horizontal two-line labels collide at narrow
+// category widths, so render a single short rotated line instead.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function WrappedXTick({ x, y, payload }: any) {
+function WrappedXTick({ x, y, payload, compact }: any) {
   if (!payload?.value) return null;
 
   const name: string = payload.value;
+
+  if (compact) {
+    const MAX_COMPACT = 9;
+    const label =
+      name.length > MAX_COMPACT ? `${name.slice(0, MAX_COMPACT - 1)}…` : name;
+    return (
+      <text
+        x={x}
+        y={y}
+        dy={6}
+        textAnchor="end"
+        fill="var(--theme-text-tertiary)"
+        fontSize={8.5}
+        transform={`rotate(-35, ${x}, ${y})`}
+      >
+        {label}
+      </text>
+    );
+  }
+
   const MAX = 12; // max chars per line
 
   // Always truncate both lines to MAX, then add … only if the original was longer.

@@ -203,16 +203,18 @@ export function DashboardCanvas({
       {/* Inject bento grid CSS once */}
       <style>{GRID_CSS}</style>
 
-      {/* Page header — one line, always: greeting left, control cluster
-          (date filter + edit) right. Below md the greeting truncates and the
-          edit control compresses to an icon-only Settings button so all four
-          top elements (drawer trigger · title · filter · settings) share the
-          title line. Desktop wraps if it must (audit F1). */}
+      {/* Page header — greeting left, control cluster (date filter + edit)
+          right. Below md the name drops to its own line (never truncated —
+          the greeting + name don't fit one line next to the controls) and
+          the edit control compresses to an icon-only button so the top
+          elements share the title row. Desktop wraps if it must (audit F1). */}
       <div className="flex flex-wrap max-md:flex-nowrap items-center justify-between gap-x-4 gap-y-3 mb-4">
-        <h1 className="type-page-title m-0 max-md:min-w-0 max-md:truncate">
+        <h1 className="type-page-title m-0 max-md:min-w-0">
           {greeting},{' '}
-          <span style={{ color: 'var(--theme-accent)' }}>{firstName}</span>
-          <span className="page-title-dot">.</span>
+          <span className="max-md:block">
+            <span style={{ color: 'var(--theme-accent)' }}>{firstName}</span>
+            <span className="page-title-dot">.</span>
+          </span>
         </h1>
 
         <div className="flex shrink-0 items-center gap-2">
