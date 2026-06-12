@@ -127,7 +127,7 @@ export async function markConversationAsRead(
   const auth = await requireProfile();
   if (!auth.ok) return auth.result;
 
-  await markConversationRead(parsed.data.conversationId);
+  await markConversationRead(parsed.data.conversationId, auth.profile.id);
   return { data: null, error: null };
 }
 

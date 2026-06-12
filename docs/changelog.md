@@ -6,6 +6,116 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-12 — /whatsapp: unread tracking actually works (mark-read fix + per-row unread dots)
+
+The WhatsApp inbox's unread feature was broken end-to-end by two compounding bugs. (1) `markConversationRead` upserted into `whatsapp_conversation_reads` **without `agent_id`** — its comment claimed a DB default (`auth.uid()`) populates the column, but migration 0034 defines `agent_id uuid NOT NULL` with no default, so every mark-read INSERT failed its NOT NULL constraint, the error was silently swallowed, the table stayed empty, and the header badge (`get_wa_unread_count`) counted every open conversation forever. (2) `unread_count` was consumed but never produced — `ConversationRow`'s unread dot reads `conv.unread_count`, but neither `getConversations` nor `searchConversations` ever computed it, so no row ever showed a dot.
+
+- **`markConversationRead(conversationId, agentId)`:** now requires the caller's id and writes it explicitly; `markConversationAsRead` passes `auth.profile.id` from `requireProfile()`. Upsert errors are warn-logged instead of swallowed. Comment corrected — there is no DB default on `agent_id`.
+- **`attachUnreadCounts` (whatsapp-service):** one batched, RLS-scoped (`agent_id = auth.uid()`) reads query per list/search response; sets `unread_count` 0/1 per row mirroring the `get_wa_unread_count` predicate exactly (open AND (no read row OR `last_message_at` > `last_read_at`)). Read failure is non-fatal (dots hidden).
+- **`WhatsAppShell`:** header badge is now live state — decrements when an unread conversation is opened (optimistic; the panel persists the read position), increments on Realtime INSERT (new conversation) and on UPDATE when `last_message_at` advances on a non-active open conversation; rows clear/set their dot in step. Realtime handler reads via refs (`conversationsRef`/`activeIdRef`) — the channel closure is mounted once and previously saw stale state. Also fixed a rapid-switch race: a monotonic `selectSeq` token drops stale `getMessagesAction` responses so clicking A→B fast can never render A's thread under B.
+- **`ConversationPanel`:** re-fires `markConversationAsRead` on each Realtime message INSERT while the conversation is on screen — new messages bump `last_message_at` past the mount-time `last_read_at` and would otherwise re-flag an open-on-screen conversation as unread.
+- `npx tsc --noEmit` clean.
+
+**Files:** `src/lib/services/whatsapp-service.ts`, `src/lib/actions/whatsapp.ts`, `src/components/whatsapp/WhatsAppShell.tsx`, `src/components/whatsapp/ConversationPanel.tsx`, docs (`src/lib/CLAUDE.md` whatsapp-service registry row, this entry).
+
+---
+
+## 2026-06-12 — /elaya: counter + compass copy removed, full-height flex-fill layout
+
+The Elaya page carried two visible message counters (the header chip "N of cap today" and the sidebar `StatTile` "N of cap messages today"), plus "Your compass" + the line of the day in the identity card, and its cards were sized with a `calc(100dvh - 190px)` magic offset that left a dead gap below the fold.
+
+- **Counters removed:** the header budget chip and the identity-card `StatTile` mirror are gone. The cap remains fully server-enforced and still surfaces when it matters — at cap the header shows a `--color-warning` "Daily limit reached" note and the composer swaps to the cap banner (`formErrors.elayaCapReached`). The `remaining` state stays internal (drives `capReached` only).
+- **Identity card slimmed:** "Your compass" micro label and the daily line removed — the card is now glyph + name, starter prompts, capabilities. `dailyLine`/`remaining`/`cap` props dropped from `ElayaIdentityCard`; `dailyLine`/`cap` dropped from `ElayaChatShell`. The deterministic daily line still seeds the empty-transcript greeting and the dashboard `elaya-presence` widget (`pickElayaDailyLine` untouched).
+- **Full-height layout, standard grid kept:** the page keeps the canonical `.eia-dossier-grid--340` (chat 1fr left, identity 340px right on lg — the `/profile`/dossier standard). Height is now flex-fill: page `<main>` is `flex-1 min-h-0 flex flex-col`, the grid is `flex-1` + `minHeight: 0`, so both columns stretch to exactly the remaining paper height on every viewport — no more `calc(100dvh - 190px)`, no bottom gap, both columns always equal. Chat card keeps `minHeight: 420px`; identity card dropped `position: sticky` (the page no longer scrolls on lg). `loading.tsx` mirrors the new shape.
+- `npx tsc --noEmit` clean.
+
+**Files:** `src/components/elaya/ElayaChatShell.tsx`, `src/components/elaya/ElayaIdentityCard.tsx`, `src/app/(dashboard)/elaya/page.tsx`, `src/app/(dashboard)/elaya/loading.tsx`, docs (`src/components/CLAUDE.md` Elaya rows + height note, `docs/pages/elaya.md`, this entry).
+
+---
+
+## 2026-06-12 — List pages: skeleton re-shows on every filter change (keyed Suspense)
+
+Applying a filter gave no pending feedback — the filter navigation runs inside `startTransition` (useUrlFilters), and React transitions deliberately hold the old content of an already-mounted Suspense boundary until the new RSC payload arrives, so the stale table just sat there while the server fetched.
+
+- **Fix is the canonical App Router pattern:** key the existing `<Suspense>` boundary by the parsed filter set — `<Suspense key={JSON.stringify(filters)} fallback={<…Skeleton />}>`. A changed key makes React treat the subtree as new content, so the existing skeleton (`LeadsTableSkeleton` / `DealsSkeleton` / `CampaignListSkeleton`) re-shows for every filter, search, pagination, and sort-order change. Zero new components, zero client state.
+- Applied to all three URL-driven list pages: `/leads`, `/deals`, `/campaigns` (identical structure, identical gap).
+- The key is the parsed `filters` object, not raw `searchParams` — unrelated params can never force a remount.
+
+**Files:** `src/app/(dashboard)/leads/page.tsx`, `src/app/(dashboard)/deals/page.tsx`, `src/app/(dashboard)/campaigns/page.tsx`, docs (`src/app/(dashboard)/leads/CLAUDE.md`, this entry).
+
+---
+
+## 2026-06-12 — /elaya bubbles render markdown (`ChatMarkdown`)
+
+Elaya's in-app replies showed raw markdown — `**Sailee**`, `-` bullets, `# headings` — because `ElayaMessageBubble` rendered `message.content` as plain text. The WhatsApp channel already had its half of the answer (`markdownToWhatsApp` converts markdown *out* of replies); the in-app page now gets the mirror image.
+
+- **`ChatMarkdown` (new, `src/components/ui/`):** THE markdown-lite renderer for model-authored chat text. Renders the subset models actually emit — `**bold**`/`__bold__` (semibold, never 700), `*italic*`/`_italic_` (underscore form requires standalone markers so snake_case never matches), `` `code` ``, `~~strike~~`, `[text](url)` (http(s) only, accent-coloured, `target="_blank" rel="noopener noreferrer"`), `-`/`*`/`1.` lists, headings-as-semibold-lines, ``` fences (mono block on `--theme-paper`) — as React elements. No `dangerouslySetInnerHTML`, no markdown dependency, so model output can never inject HTML. Anything outside the subset (including a half-streamed unclosed `**`) falls through as plain text, which makes it safe under SSE token streaming. Display-only (A-06), server-component-safe.
+- **`ElayaMessageBubble`:** assistant content goes through `<ChatMarkdown>`; user bubbles stay plain text (user input is not markdown).
+- **`persona.ts`:** the in-app Formatting line now matches the renderer — simple emphasis (bold, bullets) is welcome; tables/headings/nested lists remain banned. The WhatsApp channel block is untouched (still strips markdown).
+- `npx tsc --noEmit` clean.
+
+**Files:** `src/components/ui/ChatMarkdown.tsx` (new), `src/components/elaya/ElayaMessageBubble.tsx`, `src/lib/elaya/persona.ts`, docs (`src/components/CLAUDE.md` registry rows, this entry).
+
+---
+
+## 2026-06-12 — Filter bars: Apply button removed, immediate-commit everywhere
+
+The leads filter bar was the last holdout on the draft→Apply commit model — every other bar (deals, campaigns, tasks, performance, admin users, agent settings) already committed on selection. The Apply approach is now removed entirely: every filter applies the moment it is selected, and because each commit merges into the existing URL params via `buildFilterParams`, selections compound (status AND agent AND dates narrow the table together).
+
+- **`FilterBar`:** the `apply` prop (draft-commit model) is deleted — `LeadsFilters` was its sole consumer. The shell is immediate-commit only; never reintroduce an Apply button.
+- **`useUrlFilters` extended (R-01 — extend THE plumbing, never fork):** new `pushDebounced(updates)` merges rapid updates into a ref accumulator and flushes them as **ONE** `router.push` (one RSC render) after the standard 350ms; every commit path (`push`, the debounced-search effect, `clearAll`) drains the accumulator first, so an immediate commit can never race a pending one into dropping a filter key — they merge into the same navigation. Commits fired from timer closures build on `paramsRef` (latest committed params), and the flush timer is cleared on unmount.
+- **`useMultiSelectUrlParam(url, key)` (new, same file):** THE optimistic multi-select URL param. Local state echoes the URL value so checkboxes tick instantly (`useSearchParams` only updates after navigation commits — without the echo every tick would lag a server round-trip); commits go through `pushDebounced`, so a burst of checkbox toggles costs one navigation. Re-syncs from the URL on commit echo, back/forward, and clearAll.
+- **`LeadsFilters` rewritten** onto the `DealsFilters` immediate-commit pattern: `FilterDraft`/`draftFromParams`/`isDirty`/`applyFilters` deleted; single-selects and dates read from `params` and `push` on change (domain still atomically clears `agent_id` + `campaign` in the same push); Status/Outcome use `useMultiSelectUrlParam`; static dropdown item arrays hoisted to module scope.
+- **`parseMultiParam<T>(params, key)`** moved to `src/lib/utils/filter-params.ts` (was a private helper inside `LeadsFilters`) — THE comma-separated multi-select param parser.
+- `npx tsc --noEmit` clean.
+
+**Files:** `src/components/ui/FilterBar.tsx`, `src/hooks/useUrlFilters.ts`, `src/components/leads/LeadsFilters.tsx`, `src/lib/utils/filter-params.ts`, docs (`src/components/leads/CLAUDE.md` contract rewrite, `src/components/CLAUDE.md` + root `CLAUDE.md` registry rows, this entry).
+
+---
+
+## 2026-06-12 — Zero-flash theme: SSR theme cookie replaces the post-hydration flip
+
+Every page load briefly painted the Earth default before the user's selected theme applied — the root layout hardcoded `data-theme="earth"` on `<html>`, and `ThemeInitializer`'s `useLayoutEffect` could only correct it *after* React hydrated, milliseconds after the browser had already painted the SSR HTML. (The layout CLAUDE.md claimed an "inline `<script>` before paint" that never existed — doc drift, now corrected.)
+
+- **`src/lib/constants/themes.ts` (new):** THE theme vocabulary — `THEME_KEYS`/`THEME_OPTIONS`/`ThemeKey`/`DEFAULT_THEME`/`isThemeKey()` via `defineEnum` (the five keys were previously re-inlined in `ThemeSelector` and the dashboard layout; both now import). Plus the SSR mirror: `THEME_COOKIE` (`eia-theme`, 1yr, `SameSite=Lax`) and `persistThemeCookie()` (client-only writer).
+- **Root layout reads the cookie:** `(await cookies()).get(THEME_COOKIE)` → `isThemeKey` validation → `data-theme` on `<html>` — the first byte already carries the user's theme, so there is nothing to flash. Unknown/absent cookie falls back to Earth. (The app is fully per-user dynamic already; the `cookies()` read adds no rendering-mode cost.)
+- **`ThemeInitializer` demoted to corrective sync:** only flips the attribute when the cookie was missing or stale vs `profiles.theme` (new device, cleared cookies, user switch on the same browser — one residual flash there, then self-healed), and re-writes the cookie on every dashboard load.
+- **`ThemeSelector` writes the cookie on switch** alongside the existing instant attribute flip + background `updateProfile` persist — a reload immediately after switching paints the new theme with no flash.
+- `profiles.theme` remains the source of truth; the cookie is a paint hint only — never read for authorization or business logic.
+- `pnpm tsc --noEmit` clean.
+
+**Files:** `src/lib/constants/themes.ts` (new), `src/app/layout.tsx`, `src/app/(dashboard)/layout.tsx`, `src/components/layout/ThemeInitializer.tsx`, `src/components/profile/ThemeSelector.tsx`, docs (`components/layout/CLAUDE.md`, root `CLAUDE.md` + `lib/CLAUDE.md` registries, this entry).
+
+---
+
+## 2026-06-12 — /helpdesk "+ Suggestion" CTA: create service cases from the page
+
+The helpdesk library gains its missing write surface: a "+ Suggestion" primary CTA in the page header (admin/founder only) opening a create modal that saves through the existing `upsertServiceCaseAction` — no new server code.
+
+- **`AddSuggestionButton` (new, `src/components/intelligence/`):** standard list-page header CTA (AddLeadButton pattern — `MotionButton` + `MOTION_BUTTON_DEFAULTS`, Plus icon with `iconMotion="rotate"`); modal chunk loads on intent via `next/dynamic` + `useMountOnFirstOpen` (perf G-1). Rendered by `helpdesk/page.tsx` only for admin/founder — the action enforces the same gate server-side.
+- **`AddSuggestionModal` (new, `src/components/intelligence/`):** composes `ui/modal.tsx` (`max-w-xl`); fields mirror `ServiceCaseSchema` / what `CaseDetailModal` displays — Title, Category (`FormChip` single-select over the 6 `SERVICE_CATEGORIES`), Domain (`GIA_DOMAINS` select, defaults to the page's resolved shelf), The story, Outcome, City/Country, Tags (chip input, slug-normalised as you type so the lowercase-slug rule never surfaces as an error, max 10), Featured (`Toggle`). Field primitives from `ui/TaskFormFields.tsx` (`FieldLabel`/`FieldError`/`FormChip`); client-side Zod parse maps issues to per-field inline errors; form values survive a failed save (Never-Do: no field clearing on error).
+- **Save path is the existing one:** `upsertServiceCaseAction` (Zod → `requireProfile(['admin','founder'])` → `sanitizeText` → session-client write under 0110 RLS → awaited helpdesk-key `redis.del` → `revalidatePath('/helpdesk')`). The revalidated RSC payload re-seeds `HelpdeskSearch`, so the new suggestion appears without any client-side merge.
+- `npx tsc --noEmit` clean.
+
+**Files:** `src/components/intelligence/{AddSuggestionButton,AddSuggestionModal}.tsx` (new), `src/app/(dashboard)/helpdesk/page.tsx`, this entry.
+
+---
+
+## 2026-06-12 — /elaya page enhancement: identity rail + chat surface polish
+
+`/elaya` graduates from a lone chat card to the full surface: an identity sidebar on the canonical dossier grid and a more present chat screen — all display-only, zero changes to the SSE route, cap enforcement, or persistence.
+
+- **`ElayaIdentityCard` (new, `src/components/elaya/`):** the 340px identity sidebar — 64px accent-surface tile with the breathing glyph, serif name + "Your compass" micro label, her deterministic line of the day, the live remaining-message budget (composes `StatTile` `variant="cell"` — server stays the authority, this is a mirror), curated starter prompts, and a "She can see" capability list (one row per read-only tool family). Sticky `aside` per the `/profile` sidebar pattern; stacks below the chat under lg.
+- **Starter prompts (`ELAYA_STARTER_PROMPTS` in `lib/constants/elaya.ts` new):** prefill the composer and focus it — **never auto-send**; disabled while streaming or at cap.
+- **`ElayaChatShell`:** now owns the page's two-column layout via the canonical `.eia-dossier-grid eia-dossier-grid--340` (audit F2 — one grid class, never a fork; chat in the 1fr column, sidebar right like `/profile` / `/admin/users/[id]`) so the rail shares live `remaining` state. Header: glyph in a 36px accent-surface tile, serif name, and a right-aligned budget chip ("N of 200 today", `--color-warning` at ≤10% or cap reached). Transcript: a serif-italic status row with a small breathing glyph covers both tool calls and the first-token wait ("Thinking…") — previously the wait rendered nothing. Composer: the hand-rolled textarea + Send `Button` replaced with the shared `MessageBar` (R-01 — same composer as the WhatsApp panel, lead WhatsApp card, and the dashboard Elaya card; auto-grow, accent focus ring, lift-hover send, spinner while streaming); Enter-sends/Shift+Enter and input-restored-on-rejected-send preserved, starter-prompt focus via the forwarded textarea ref.
+- **`ElayaMessageBubble`:** new `showGlyph` prop — Elaya's bubbles get her breathing mark beside them (bare glyph, no tile chrome; presence, not an avatar). Bubble contract untouched (surfaces, `--radius-lg`, V-07).
+- **`loading.tsx`** mirrors the new grid (lg-only rail skeleton + presence-tile strip).
+- `pnpm tsc --noEmit` clean.
+
+**Files:** `src/components/elaya/ElayaIdentityCard.tsx` (new), `src/components/elaya/{ElayaChatShell,ElayaMessageBubble}.tsx`, `src/app/(dashboard)/elaya/{page,loading}.tsx`, `src/lib/constants/elaya.ts`, docs (`pages/elaya.md`, `components/CLAUDE.md`, this entry).
+
+---
+
 ## 2026-06-12 — Elaya WhatsApp staff channel: routing gate on the shared Gupshup number
 
 Staff can now talk to Elaya over WhatsApp on the existing shared Gupshup number. Every inbound message routes by sender identity: number matches an active `profiles` row → Elaya pipeline with that user's role and toolset; no match → the existing lead pipeline, completely untouched. Same brain, same tools, same caps — a second channel, not a second system.
@@ -17,10 +127,11 @@ Staff can now talk to Elaya over WhatsApp on the existing shared Gupshup number.
 - **One cap, one session, across channels:** `countUserMessagesToday` was already per-user; `getOrCreateActiveConversation` now deliberately drops the channel filter on read (one active 24h session per user — WhatsApp continues a live in-app conversation and vice versa; `originChannel` param stamps newly created rows). Per-message `channel` records the surface. Cap reached → polite static refusal, nothing persisted, no model call. Message N where N > cap never reaches the model.
 - **Persona channel block:** `buildElayaSystemPrompt(…, channel)` + `runElayaTurn({ channel })` — on WhatsApp Elaya keeps replies to a few plain-text sentences, no markdown.
 - **Idempotency:** `hasProcessedWaMessage(waMessageId)` (elaya-service) dedups BSP redeliveries via `elaya_messages.meta->>wa_message_id` (insertUserMessage gained an optional `meta`). Non-text messages get a polite "text only" reply — no cap burn, no model call.
+- **WhatsApp-native formatting (follow-up, same day):** replies were arriving with literal markdown asterisks. New `markdownToWhatsApp()` (`lib/utils/whatsapp-format.ts`) — THE deterministic markdown → WhatsApp converter (`**x**`→`*x*` bold, `*x*`→`_x_` italic, headings → bold line, md `*` bullets → "- ", `[t](url)` → `t (url)`, `~~x~~`→`~x~`) — runs on every model-authored reply before `sendElayaWhatsAppReply`; the persona channel block now teaches WhatsApp emphasis instead of banning formatting outright. Transcript keeps the raw model text; only the wire format converts.
 - **Isolation verified:** the Elaya branch writes ONLY `elaya_messages` + the audit row — grep-verified no `whatsapp_conversations` / `whatsapp_messages` / `leads` writes. Unknown numbers flow through the old pipeline unchanged.
 - `pnpm tsc --noEmit` clean.
 
-**Files:** `src/lib/services/elaya-whatsapp.ts` (new), `supabase/migrations/20260612000117_elaya_reply_log_type.sql` (new), `src/lib/utils/phone.ts`, `src/lib/services/{whatsapp-ingestion,whatsapp-api,profiles-service,elaya-service}.ts`, `src/lib/elaya/{brain,persona}.ts`, `src/lib/types/database.ts`, `src/app/api/webhooks/whatsapp/route.ts`, docs (`api/webhooks/CLAUDE.md`, `modules/elia.md`, `lib/CLAUDE.md`, root `CLAUDE.md`, `migrations/CLAUDE.md`, project digest, this entry).
+**Files:** `src/lib/services/elaya-whatsapp.ts` (new), `src/lib/utils/whatsapp-format.ts` (new), `supabase/migrations/20260612000117_elaya_reply_log_type.sql` (new), `src/lib/utils/phone.ts`, `src/lib/services/{whatsapp-ingestion,whatsapp-api,profiles-service,elaya-service}.ts`, `src/lib/elaya/{brain,persona}.ts`, `src/lib/types/database.ts`, `src/app/api/webhooks/whatsapp/route.ts`, docs (`api/webhooks/CLAUDE.md`, `modules/elia.md`, `lib/CLAUDE.md`, root `CLAUDE.md`, `migrations/CLAUDE.md`, project digest, this entry).
 
 ---
 

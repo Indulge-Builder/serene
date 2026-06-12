@@ -94,7 +94,10 @@ export default async function DealsPage({
       </div>
 
       {/* Row 3 — Content */}
-      <Suspense fallback={<DealsSkeleton />}>
+      {/* key: any filter/search/page change remounts the boundary so the
+          skeleton re-shows while the new rows fetch — without it the transition
+          holds the stale list with zero pending feedback. */}
+      <Suspense key={JSON.stringify(filters)} fallback={<DealsSkeleton />}>
         <DealsAsync
           role={profile.role}
           userId={profile.id}

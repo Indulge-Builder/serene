@@ -108,7 +108,10 @@ export default async function LeadsPage({
           />
         </div>
 
-        <Suspense fallback={<LeadsTableSkeleton />}>
+        {/* key: any filter/search/page/sort change remounts the boundary so the
+            skeleton re-shows while the new rows fetch — without it the transition
+            holds the stale table with zero pending feedback. */}
+        <Suspense key={JSON.stringify(filters)} fallback={<LeadsTableSkeleton />}>
           <LeadsTableAsync
             role={profile.role}
             userId={profile.id}

@@ -6,7 +6,7 @@
 | --- | --- |
 | `Sidebar.tsx` | `'use client'`; primary nav, user footer, notification bell. |
 | `TopBar.tsx` | `'use client'`; page-level topbar (breadcrumb, search). |
-| `ThemeInitializer.tsx` | Inline `<script>` that sets `data-theme` synchronously before paint. |
+| `ThemeInitializer.tsx` | `'use client'`; corrective sync for the SSR theme cookie (`lib/constants/themes.ts`). The root layout SSRs `data-theme` on `<html>` from the `eia-theme` cookie (zero-flash first paint); this component only flips the attribute when the cookie was missing/stale vs `profiles.theme` and re-writes the cookie for the next request. |
 
 ---
 

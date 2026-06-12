@@ -1,17 +1,25 @@
 "use client";
 
 import { useLayoutEffect } from "react";
+import { persistThemeCookie, type ThemeKey } from "@/lib/constants/themes";
 
-type Props = { theme: string };
+type Props = { theme: ThemeKey };
 
 /**
- * Applies data-theme to <html> before the browser paints.
- * useLayoutEffect fires synchronously after DOM mutations, so the
- * theme token resolves on the first frame — no flash for any theme.
+ * Corrective sync for the SSR theme cookie (lib/constants/themes.ts).
+ * The root layout already stamps data-theme from the cookie on the server,
+ * so the first paint is normally correct. This only flips the attribute when
+ * the cookie was missing or stale vs the DB truth (new device, cleared
+ * cookies, user switch) — and re-writes the cookie so the NEXT request
+ * server-renders the right theme from the first byte.
  */
 export function ThemeInitializer({ theme }: Props) {
   useLayoutEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
+    const root = document.documentElement;
+    if (root.getAttribute("data-theme") !== theme) {
+      root.setAttribute("data-theme", theme);
+    }
+    persistThemeCookie(theme);
   }, [theme]);
 
   return null;

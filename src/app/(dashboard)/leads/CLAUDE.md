@@ -25,6 +25,14 @@ leads/page.tsx                  ← Server component (thin orchestrator)
 **Critical:** `LeadsTableAsync` MUST be the direct child of `<Suspense>`.
 If it is a sibling of the skeleton, the boundary does nothing.
 
+**Filter-change skeleton (2026-06-12):** the boundary is keyed —
+`<Suspense key={JSON.stringify(filters)} …>`. Filter/search/page/sort navigations run
+inside `startTransition` (useUrlFilters), and a transition holds the old table with zero
+pending feedback for an unkeyed boundary; the changed key makes React treat the subtree
+as new content, so `LeadsTableSkeleton` re-shows while the new rows fetch. Same pattern
+on `/deals` and `/campaigns`. Never remove the key, and never widen it beyond the parsed
+`filters` object (keying on raw `searchParams` would remount on unrelated params).
+
 ---
 
 ## Lead dossier (`leads/[id]/page.tsx`) — streamed (perf audit 2026-06-11 item B)

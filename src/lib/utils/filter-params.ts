@@ -27,6 +27,16 @@ export function buildFilterParams(
   return next;
 }
 
+/** Parse a comma-separated multi-select URL param ('a,b' → ['a','b']). */
+export function parseMultiParam<T extends string>(
+  params: URLSearchParams,
+  key: string,
+): T[] {
+  const val = params.get(key);
+  if (!val) return [];
+  return val.split(',').filter(Boolean) as T[];
+}
+
 /** Parse YYYY-MM-DD URL param as local calendar date (IST-safe). */
 export function dateFromUrlParam(s: string | null): Date | null {
   if (!s) return null;

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { USER_ROLES } from "@/lib/constants/roles";
 import { APP_DOMAINS } from "@/lib/constants/domains";
+import { THEME_ENUM } from "@/lib/constants/themes";
 
 const userRoleEnum = USER_ROLES as [string, ...string[]];
 const appDomainEnum = APP_DOMAINS as [string, ...string[]];
@@ -72,7 +73,7 @@ export const updateProfileSchema = z.object({
     .or(z.literal(""))
     .transform((v) => v || null),
   theme: z
-    .enum(['earth', 'air', 'water', 'fire', 'cosmos'])
+    .enum(THEME_ENUM)
     .optional(),
   timezone: z
     .string()

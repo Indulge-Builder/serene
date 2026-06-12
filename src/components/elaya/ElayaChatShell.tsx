@@ -3,14 +3,17 @@
 // Elaya chat surface — owns transcript state, the SSE consumption loop, and the
 // composer. Streams from POST /api/elaya/chat (the sanctioned Elaya route).
 // Cap + session expiry are server-enforced; everything here is presentation.
+// Also composes the right 340px identity rail (ElayaIdentityCard) so the
+// starter-prompt prefill shares the composer state. The grid flex-fills the
+// page main (no fixed dvh math) so the chat takes the full remaining height.
 
 import { useEffect, useRef, useState } from 'react';
-import { Send } from 'lucide-react';
 import { LiaGlyph } from '@/components/ui/lia-glyph';
-import { Button } from '@/components/ui/Button';
+import { MessageBar } from '@/components/ui/MessageBar';
 import { useToast } from '@/hooks/useToast';
 import { scrollToBottom } from '@/lib/utils/scroll';
 import { formErrors } from '@/lib/validations/form-errors';
+import { ElayaIdentityCard } from '@/components/elaya/ElayaIdentityCard';
 import { ElayaMessageBubble, type ElayaUiMessage } from '@/components/elaya/ElayaMessageBubble';
 
 type SseEvent =
@@ -37,7 +40,12 @@ type Props = {
   remainingToday: number;
 };
 
-export function ElayaChatShell({ conversationId, initialMessages, greeting, remainingToday }: Props) {
+export function ElayaChatShell({
+  conversationId,
+  initialMessages,
+  greeting,
+  remainingToday,
+}: Props) {
   const toast = useToast;
   const [messages, setMessages] = useState<ElayaUiMessage[]>(initialMessages);
   const [input, setInput] = useState('');
@@ -47,6 +55,7 @@ export function ElayaChatShell({ conversationId, initialMessages, greeting, rema
   const [activeConversationId, setActiveConversationId] = useState(conversationId);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const counterRef = useRef(0);
 
   useEffect(() => {
@@ -54,6 +63,15 @@ export function ElayaChatShell({ conversationId, initialMessages, greeting, rema
   }, [messages, toolStatus]);
 
   const capReached = remaining <= 0;
+  // First-token wait — the assistant bubble exists but has nothing to say yet.
+  const awaitingFirstToken =
+    isStreaming && messages.some((msg) => msg.pending && msg.content.length === 0);
+  const statusLine = toolStatus ?? (awaitingFirstToken ? 'Thinking…' : null);
+
+  function handlePromptSelect(prompt: string) {
+    setInput(prompt);
+    composerRef.current?.focus();
+  }
 
   async function send() {
     const content = input.trim();
@@ -156,113 +174,131 @@ export function ElayaChatShell({ conversationId, initialMessages, greeting, rema
   }
 
   return (
-    <div
-      className="flex flex-col rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"
-      style={{ height: 'calc(100dvh - 190px)', minHeight: '420px' }}
-    >
-      {/* Presence header — the glyph always breathes while Elaya is present */}
+    <div className="eia-dossier-grid eia-dossier-grid--340 flex-1" style={{ minHeight: 0 }}>
       <div
-        className="flex items-center gap-3 px-5 py-3"
-        style={{ borderBottom: '1px solid var(--theme-paper-border)' }}
+        className="flex flex-col rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"
+        style={{ minHeight: '420px' }}
       >
-        <span style={{ color: 'var(--theme-accent)' }}>
-          <LiaGlyph size={22} breathing />
-        </span>
-        <div className="flex flex-col">
+        {/* Presence header — the glyph always breathes while Elaya is present */}
+        <div
+          className="flex items-center gap-3 px-5 py-3"
+          style={{ borderBottom: '1px solid var(--theme-paper-border)' }}
+        >
           <span
+            className="flex items-center justify-center"
             style={{
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--weight-medium)',
-              color: 'var(--theme-text-primary)',
+              width: '36px',
+              height: '36px',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--theme-accent-surface)',
+              color: 'var(--theme-accent)',
+              flexShrink: 0,
             }}
           >
-            Elaya
+            <LiaGlyph size={20} />
           </span>
-          <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)' }}>
-            {toolStatus ?? (isStreaming ? 'Thinking…' : 'With you')}
-          </span>
-        </div>
-      </div>
-
-      {/* Transcript */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-        <div className="flex flex-col" style={{ gap: 'var(--space-3)' }}>
-          {messages.length === 0 && (
-            <ElayaMessageBubble message={{ id: 'greeting', role: 'assistant', content: greeting }} />
-          )}
-          {messages.map((msg) =>
-            msg.content.length === 0 && msg.pending ? null : (
-              <ElayaMessageBubble key={msg.id} message={msg} />
-            ),
-          )}
-          {toolStatus && (
+          <div className="flex flex-col min-w-0">
             <span
-              className="italic"
               style={{
                 fontFamily: 'var(--font-serif)',
-                fontSize: 'var(--text-xs)',
-                color: 'var(--theme-text-tertiary)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-medium)',
+                color: 'var(--theme-text-primary)',
               }}
             >
-              {toolStatus}
+              Elaya
+            </span>
+            <span
+              className="truncate"
+              style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)' }}
+            >
+              {statusLine ?? 'With you'}
+            </span>
+          </div>
+          {capReached && (
+            <span
+              className="ml-auto"
+              style={{
+                fontSize: 'var(--text-2xs)',
+                whiteSpace: 'nowrap',
+                color: 'var(--color-warning)',
+              }}
+            >
+              Daily limit reached
             </span>
           )}
         </div>
-      </div>
 
-      {/* Composer */}
-      <div className="px-5 py-4" style={{ borderTop: '1px solid var(--theme-paper-border)' }}>
-        {capReached ? (
-          <p
-            className="italic m-0"
-            style={{
-              fontFamily: 'var(--font-serif)',
-              fontSize: 'var(--text-sm)',
-              color: 'var(--theme-text-tertiary)',
-            }}
-          >
-            {formErrors.elayaCapReached}
-          </p>
-        ) : (
-          <div className="flex items-end gap-3">
-            <textarea
+        {/* Transcript */}
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+          <div className="flex flex-col" style={{ gap: 'var(--space-3)' }}>
+            {messages.length === 0 && (
+              <ElayaMessageBubble
+                message={{ id: 'greeting', role: 'assistant', content: greeting }}
+                showGlyph
+              />
+            )}
+            {messages.map((msg) =>
+              msg.content.length === 0 && msg.pending ? null : (
+                <ElayaMessageBubble key={msg.id} message={msg} showGlyph />
+              ),
+            )}
+            {statusLine && (
+              <div className="flex items-center" style={{ gap: 'var(--space-2)' }}>
+                <span style={{ color: 'var(--theme-accent)', display: 'flex', flexShrink: 0 }}>
+                  <LiaGlyph size={14} />
+                </span>
+                <span
+                  className="italic"
+                  style={{
+                    fontFamily: 'var(--font-serif)',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--theme-text-tertiary)',
+                  }}
+                >
+                  {statusLine}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Composer */}
+        <div className="px-5 py-4" style={{ borderTop: '1px solid var(--theme-paper-border)' }}>
+          {capReached ? (
+            <p
+              className="italic m-0"
+              style={{
+                fontFamily: 'var(--font-serif)',
+                fontSize: 'var(--text-sm)',
+                color: 'var(--theme-text-tertiary)',
+              }}
+            >
+              {formErrors.elayaCapReached}
+            </p>
+          ) : (
+            <MessageBar
+              ref={composerRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={setInput}
+              onSend={() => void send()}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   void send();
                 }
               }}
-              rows={Math.min(3, Math.max(1, input.split('\n').length))}
-              placeholder="Ask Elaya"
-              maxLength={4000}
-              className="eia-input flex-1 resize-none"
-              style={{
-                background: 'var(--theme-paper-subtle)',
-                border: '1px solid var(--theme-paper-border)',
-                borderRadius: 'var(--radius-md)',
-                padding: 'var(--space-3) var(--space-4)',
-                fontSize: 'var(--text-sm)',
-                color: 'var(--theme-text-primary)',
-                outline: 'none',
-                caretColor: 'var(--theme-accent)',
-              }}
-            />
-            <Button
-              variant="primary"
-              size="md"
-              iconLeft={Send}
               loading={isStreaming}
-              disabled={input.trim().length === 0}
-              iconMotion="lift"
-              onClick={() => void send()}
-            >
-              Send
-            </Button>
-          </div>
-        )}
+              maxLength={4000}
+              placeholder="Ask Elaya"
+            />
+          )}
+        </div>
       </div>
+
+      {/* Identity sidebar — right 340px column on lg (the canonical dossier
+          placement), stacked below the chat on smaller viewports */}
+      <ElayaIdentityCard busy={isStreaming || capReached} onPromptSelect={handlePromptSelect} />
     </div>
   );
 }

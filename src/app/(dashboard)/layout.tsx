@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { getNotifications } from "@/lib/services/notifications-service";
 import { canAccessRoute } from "@/lib/utils/route-access";
+import { DEFAULT_THEME, isThemeKey } from "@/lib/constants/themes";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ThemeInitializer } from "@/components/layout/ThemeInitializer";
 import { ToastProvider } from "@/components/ui/toast-provider";
@@ -26,13 +27,13 @@ export default async function DashboardLayout({
   // boundary inside the Sidebar, so the shell + page never block on it.
   const notificationsPromise = getNotifications(profile.id);
 
-  const safeTheme = ["earth", "air", "water", "fire", "cosmos"].includes(profile.theme)
-    ? profile.theme
-    : "earth";
+  const safeTheme = isThemeKey(profile.theme) ? profile.theme : DEFAULT_THEME;
 
   return (
     <>
-      {/* Sets data-theme on <html> before the browser paints — no flash. */}
+      {/* The root layout already SSRs data-theme from the eia-theme cookie;
+          this corrects a missing/stale cookie against the DB truth and
+          re-writes it for the next request. */}
       <ThemeInitializer theme={safeTheme} />
     {/* Responsive frame (.eia-shell* in globals.css — audit D-3): row with
         gutter+paper on md+, column with mobile top strip + full-bleed paper

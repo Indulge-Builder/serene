@@ -37,10 +37,13 @@ export default async function ElayaPage() {
 
   const now = new Date();
   const firstName = profile.full_name.split(' ')[0] ?? profile.full_name;
-  const greeting = `${getElayaTimeGreeting(now)}, ${firstName}. ${pickElayaDailyLine(profile.id, now)}`;
+  const dailyLine = pickElayaDailyLine(profile.id, now);
+  const greeting = `${getElayaTimeGreeting(now)}, ${firstName}. ${dailyLine}`;
 
   return (
-    <main className="flex-1 p-4 sm:p-6 lg:p-8">
+    // flex column + min-h-0 so ElayaChatShell can flex-fill the remaining
+    // paper height exactly — no dvh offset math, no bottom gap.
+    <main className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between gap-4 mb-6">
         <h1 className="type-page-title m-0">
           Elaya<span className="page-title-dot">.</span>

@@ -3,6 +3,7 @@ import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getHelpdeskLibrary } from '@/lib/services/intelligence-service';
 import { DEFAULT_GIA_DOMAIN, isGiaDomain } from '@/lib/constants/domains';
 import { HelpdeskSearch } from '@/components/intelligence/HelpdeskSearch';
+import { AddSuggestionButton } from '@/components/intelligence/AddSuggestionButton';
 
 // /helpdesk — Call Intelligence Surface B (docs/modules/call-intelligence.md §9).
 // Server Component: fetches the FULL library once (Redis 1hr → Supabase) and
@@ -20,11 +21,15 @@ export default async function HelpdeskPage({ searchParams }: Props) {
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
-      {/* Page header — standard list-page contract (title row, no prose) */}
+      {/* Page header — standard list-page contract (title left, CTA right) */}
       <div className="flex items-center justify-between gap-4 mb-6">
         <h1 className="type-page-title m-0">
           Helpdesk<span className="page-title-dot">.</span>
         </h1>
+        {/* Write path is admin/founder-gated (upsertServiceCaseAction) — hide the CTA for everyone else */}
+        {(profile.role === 'admin' || profile.role === 'founder') && (
+          <AddSuggestionButton domain={domain} />
+        )}
       </div>
 
       <HelpdeskSearch

@@ -54,7 +54,23 @@ export function WhatsAppShell({
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
+  // Live mirror of the RSC-seeded badge — adjusted optimistically on open/new
+  // message; the server truth comes back on the next page load.
+  const [unreadBadge, setUnreadBadge] = useState(unreadCount);
   const [activeMessages, setActiveMessages] = useState<WhatsAppMessage[]>([]);
+  // Refs for the Realtime handler — its closure is mounted once and would
+  // otherwise read stale state.
+  const conversationsRef = useRef(conversations);
+  const activeIdRef = useRef(activeConversationId);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+  useEffect(() => {
+    activeIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+  // Monotonic token so a slow getMessagesAction response for a previously
+  // selected conversation can never overwrite the current one.
+  const selectSeq = useRef(0);
   const [cursor, setCursor] = useState<string | null>(
     initialConversations.length > 0
       ? (initialConversations[initialConversations.length - 1]
@@ -116,12 +132,48 @@ export function WhatsAppShell({
         (payload: any) => {
           if (payload.eventType === "INSERT") {
             const newConv = payload.new as WhatsAppConversation;
-            setConversations((prev) => [newConv, ...prev]);
+            if (conversationsRef.current.some((c) => c.id === newConv.id)) return;
+            // A conversation row is created by the first inbound message —
+            // it starts unread unless the raw row says otherwise.
+            setConversations((prev) => [
+              { ...newConv, unread_count: 1 },
+              ...prev,
+            ]);
+            setUnreadBadge((n) => n + 1);
           } else if (payload.eventType === "UPDATE") {
             const updated = payload.new as WhatsAppConversation;
+            const prevRow = conversationsRef.current.find(
+              (c) => c.id === updated.id,
+            );
+            if (!prevRow) return;
+
+            const isActive = updated.id === activeIdRef.current;
+            const hasNewMessage =
+              !!updated.last_message_at &&
+              (!prevRow.last_message_at ||
+                updated.last_message_at > prevRow.last_message_at);
+            // Mirrors the get_wa_unread_count predicate: only open
+            // conversations count, and the one currently on screen is read
+            // (the panel keeps the server-side read position in step).
+            const nextUnread =
+              updated.status !== "open" || isActive
+                ? 0
+                : hasNewMessage
+                  ? 1
+                  : (prevRow.unread_count ?? 0);
+
+            const wasUnread = (prevRow.unread_count ?? 0) > 0;
+            if (nextUnread > 0 && !wasUnread) setUnreadBadge((n) => n + 1);
+            if (nextUnread === 0 && wasUnread)
+              setUnreadBadge((n) => Math.max(0, n - 1));
+
             setConversations((prev) =>
               prev
-                .map((c) => (c.id === updated.id ? { ...c, ...updated } : c))
+                .map((c) =>
+                  c.id === updated.id
+                    ? { ...c, ...updated, unread_count: nextUnread }
+                    : c,
+                )
                 // Re-sort by last_message_at DESC
                 .sort((a, b) => {
                   const ta = a.last_message_at ?? a.created_at;
@@ -161,12 +213,28 @@ export function WhatsAppShell({
   async function handleSelectConversation(id: string) {
     if (id === activeConversationId) return;
     setActiveConversationId(id);
+
+    // Optimistically clear this row's unread state — the panel persists the
+    // read position server-side (markConversationAsRead) when it mounts.
+    const wasUnread = conversations.some(
+      (c) => c.id === id && (c.unread_count ?? 0) > 0,
+    );
+    if (wasUnread) {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, unread_count: 0 } : c)),
+      );
+      setUnreadBadge((n) => Math.max(0, n - 1));
+    }
+
+    const seq = ++selectSeq.current;
     setIsLoadingConv(true);
     try {
       const messages = await getMessagesAction(id);
+      // A newer selection won the race — drop this stale response.
+      if (seq !== selectSeq.current) return;
       setActiveMessages(messages);
     } finally {
-      setIsLoadingConv(false);
+      if (seq === selectSeq.current) setIsLoadingConv(false);
     }
   }
 
@@ -221,7 +289,7 @@ export function WhatsAppShell({
           <h1 className="type-page-title m-0">
             WhatsApp<span className="page-title-dot">.</span>
           </h1>
-          {unreadCount > 0 && (
+          {unreadBadge > 0 && (
             <span
               style={{
                 display: "inline-flex",
@@ -239,7 +307,7 @@ export function WhatsAppShell({
                 flexShrink: 0,
               }}
             >
-              {unreadCount > 99 ? "99+" : unreadCount}
+              {unreadBadge > 99 ? "99+" : unreadBadge}
             </span>
           )}
         </div>

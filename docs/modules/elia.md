@@ -110,7 +110,11 @@ Contracts (extend the five foundation invariants — never weaken):
   follows the user. Per-message `channel` records where each message happened. Cap reached →
   polite static refusal, nothing persisted, no model call (same as the route).
 - **Persona knows the surface:** `buildElayaSystemPrompt(principal, ctx, 'whatsapp')` appends
-  a channel block — very short plain-text replies, no markdown.
+  a channel block — very short replies, WhatsApp-native emphasis only. Belt-and-braces: the
+  reply also passes `markdownToWhatsApp()` (`lib/utils/whatsapp-format.ts`) before sending —
+  models emit markdown regardless of prompts, so `**x**`→`*x*`, `*x*`→`_x_`, headings → bold
+  line, md bullets → "- ", links → `text (url)`. The transcript keeps the raw model text;
+  only the wire format is converted.
 - **Isolation:** the Elaya branch never writes `whatsapp_conversations` / `whatsapp_messages` /
   `leads`. Its only writes are `elaya_messages` inserts + the audit row. Idempotency mirrors
   the lead pipeline: `hasProcessedWaMessage` dedups on the Gupshup message id

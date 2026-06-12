@@ -2,7 +2,6 @@
 
 import { X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { SearchBar } from '@/components/ui/SearchBar';
-import { Button } from '@/components/ui/Button';
 import { FloatingPanel } from '@/components/ui/FloatingPanel';
 import { DateRangeFields } from '@/components/ui/DateRangeFields';
 import { DateRangePresetList } from '@/components/ui/DateRangePresetList';
@@ -69,8 +68,6 @@ type FilterBarProps = {
   dividerAfterSearch?: boolean;
   /** Renders the Range trigger + FloatingPanel + DateRangeFields when set. */
   dateRange?: FilterBarDateRange;
-  /** Draft-commit model (leads): renders a primary Apply button after children + range. */
-  apply?: { disabled: boolean; onClick: () => void; label?: string };
   onClearAll: () => void;
   clearLabel?: string;
   /** Container style extras (e.g. tasks: flex '1 1 0', minWidth 0). */
@@ -114,11 +111,11 @@ function dateTriggerStyle(
  * Owns the chrome every filter bar repeats: sliders icon (+ optional count
  * badge), SearchBar, optional divider, the date-range triggers + portal
  * panels (usePortalAnchor + FloatingPanel; "Range" presets via
- * DateRangePresetList, "Dates" From → To via DateRangeFields), optional
- * Apply button, and the Clear button. Fully controlled and display-only — commit semantics
- * (draft→Apply vs immediate, URL vs client state) belong to the consumer:
- * URL-driven pages pair it with useUrlFilters; client-state pages (tasks)
- * pass state straight through.
+ * DateRangePresetList, "Dates" From → To via DateRangeFields), and the
+ * Clear button. Fully controlled and display-only — every filter commits
+ * the moment it changes (immediate-commit model; there is no Apply/draft
+ * mode): URL-driven pages pair it with useUrlFilters; client-state pages
+ * (tasks) pass state straight through.
  *
  * Page filter components supply only their FilterDropdowns as children.
  * Never fork a new filter-bar chrome — extend this one.
@@ -137,7 +134,6 @@ export function FilterBar({
   showCountBadge = true,
   dividerAfterSearch,
   dateRange,
-  apply,
   onClearAll,
   clearLabel = 'Clear filters',
   style,
@@ -328,19 +324,6 @@ export function FilterBar({
             />
           </FloatingPanel>
         </div>
-      )}
-
-      {apply && (
-        <Button
-          variant="primary"
-          size="sm"
-          suppressFocusRing
-          disabled={apply.disabled}
-          onClick={apply.onClick}
-          style={{ flexShrink: 0 }}
-        >
-          {apply.label ?? 'Apply'}
-        </Button>
       )}
 
       {/* Clear all — visibility driven by activeCount (committed state) */}

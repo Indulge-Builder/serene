@@ -66,7 +66,10 @@ export default async function CampaignsPage({
         />
       </div>
 
-      <Suspense fallback={<CampaignListSkeleton />}>
+      {/* key: any filter/search change remounts the boundary so the skeleton
+          re-shows while the new list fetches — without it the transition holds
+          the stale cards with zero pending feedback. */}
+      <Suspense key={JSON.stringify(filters)} fallback={<CampaignListSkeleton />}>
         <CampaignListAsync
           role={profile.role}
           callerDomain={profile.domain}

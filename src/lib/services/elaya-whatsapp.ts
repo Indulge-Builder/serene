@@ -17,6 +17,7 @@
 
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { normalizeWaPhone } from '@/lib/utils/phone';
+import { markdownToWhatsApp } from '@/lib/utils/whatsapp-format';
 import { getActiveProfileByPhone } from '@/lib/services/profiles-service';
 import { resolveLeadByPhone } from '@/lib/services/whatsapp-ingestion';
 import { sendElayaWhatsAppReply } from '@/lib/services/whatsapp-api';
@@ -152,6 +153,11 @@ async function handleStaffMessage(
   });
   await touchConversation(conversation.id);
 
-  const reply = result.text.trim().length > 0 ? result.text.slice(0, MAX_REPLY_CHARS) : REPLY_EMPTY;
+  // The transcript keeps the model's raw text; the wire gets WhatsApp-native
+  // formatting (markdown ** / # would render as literal asterisks otherwise).
+  const reply =
+    result.text.trim().length > 0
+      ? markdownToWhatsApp(result.text).slice(0, MAX_REPLY_CHARS)
+      : REPLY_EMPTY;
   await sendElayaWhatsAppReply(normalizedPhone, reply, profile.id);
 }

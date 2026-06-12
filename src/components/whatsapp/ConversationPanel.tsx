@@ -117,6 +117,13 @@ export function ConversationPanel({
             if (seenIds.current.has(incoming.id)) return;
             seenIds.current.add(incoming.id);
 
+            // The conversation is on screen — advance the read position so
+            // this message never counts as unread (it bumped last_message_at
+            // past the mark-read written on mount).
+            markConversationAsRead({ conversationId: conversation.id }).catch(
+              () => {},
+            );
+
             setMessages((prev) => {
               // Echo from our own outbound send — replace oldest optimistic row
               if (

@@ -12,32 +12,39 @@ Every modal composes `src/components/ui/modal.tsx` — never reimplements chrome
 
 ---
 
-## LeadsFilters — draft → Apply contract
+## LeadsFilters — immediate-commit contract
 
 `LeadsFilters.tsx` — `'use client'`
 
-**`FilterDraft` type** (defined in the component file):
+**The Apply/draft model is gone (2026-06-12).** Every filter commits the moment it
+changes, exactly like `DealsFilters` — each `push` merges into the existing URL params
+via `buildFilterParams`, so selections compound (status AND agent AND dates).
+There is no `FilterDraft`, no `draftFromParams`, no `isDirty`, no Apply button —
+never reintroduce them.
 
-```ts
-type FilterDraft = {
-  status:     LeadStatus[];
-  outcome:    CallOutcome[];
-  domain:     string | null;
-  agent_id:   string | null;
-  source:     string | null;
-  campaign:   string | null;
-  date_from:  string | null;
-  date_to:    string | null;
-  // search is NOT in FilterDraft — it lives in useUrlFilters (debounced, immediate-commit)
-  // sort_order is NOT in FilterDraft — see LeadsTable toolbar toggle
-};
-```
+**Commit paths (two, by selection shape):**
+
+- **Single-selects (Source, Campaign, Agent, Domain) + dates:** read the committed
+  value straight from `params`, commit with `url.push({ key: value })` on change —
+  byte-for-byte the `DealsFilters` pattern.
+- **Multi-selects (Status, Outcome):** `useMultiSelectUrlParam(url, key)` from
+  `src/hooks/useUrlFilters.ts` — THE optimistic multi-select param. Local state echoes
+  the URL value so checkboxes tick instantly (`useSearchParams` only updates after the
+  navigation commits); the URL commit goes through `url.pushDebounced` (350ms, the
+  standard delay), so a burst of checkbox toggles lands as **ONE** `router.push` / one
+  RSC render. Re-syncs from the URL on commit echo, back/forward, and clearAll. Never
+  hand-roll this echo+debounce state in a filter component.
+
+`pushDebounced` accumulates updates in a ref and every commit path (`push`, the search
+effect, `clearAll`) drains the accumulator first — an immediate single-select push can
+never race a pending multi-select commit into dropping a key; they merge into the same
+navigation.
 
 **Sort order toggle** lives in `LeadsTable.tsx` toolbar (right cluster), immediately left of the Columns button — not in `LeadsFilters`. Cycles `'desc' → 'asc' → 'desc'` on click; commits immediately to the URL via `buildFilterParams` (resets `page`). Labels: "Newest first" (default, `desc`) / "Oldest first" (`asc`). `sort_order=asc` is the only value written to the URL; default `desc` omits the param. `clearAll()` in `LeadsFilters` pushes bare `pathname`, which also clears `sort_order`.
 
-**Going Cold chip** lives in `LeadsTable.tsx` toolbar (left cluster, first control) — not in `LeadsFilters`. Immediate-commit via `buildFilterParams`; on activate clears `status` + `outcome` from URL. `committedCount` in `LeadsFilters` still counts `going_cold=true`.
+**Going Cold chip** lives in `LeadsTable.tsx` toolbar (left cluster, first control) — not in `LeadsFilters`. Immediate-commit via `buildFilterParams`; on activate clears `status` + `outcome` from URL. `activeCount` in `LeadsFilters` still counts `going_cold=true`.
 
-**Shell composition:** the bar chrome (icon, search, divider, Range trigger + panel, Apply, Clear) is `<FilterBar>` from `src/components/ui/FilterBar.tsx` with `layout="scroll"`, `showCountBadge={false}`, `dateRange.trigger="chevron"`, `apply={{ disabled: !isDirty, onClick: applyFilters }}`. This file owns only the draft model + the six `FilterDropdown`s.
+**Shell composition:** the bar chrome (icon, search, divider, Range trigger + panel, Clear) is `<FilterBar>` from `src/components/ui/FilterBar.tsx` with `layout="scroll"`, `showCountBadge={false}`, `dateRange.trigger="chevron"`. This file owns only the six `FilterDropdown`s + their commit wiring.
 
 **Search state** is managed separately from the dropdown/date draft — owned by `useUrlFilters({ resetKeys: ['page'] })` from `src/hooks/useUrlFilters.ts`:
 
@@ -46,29 +53,25 @@ type FilterDraft = {
 - `clearAll` (hook) calls `setSearchInput('')` immediately (no 350ms wait).
 - `SearchBar` renders inside `<FilterBar>` — never re-implement inline.
 
-**`draftFromParams(params: URLSearchParams): FilterDraft`** — pure helper that reads all filter keys from the current `URLSearchParams`. Used to initialise state and to sync draft on browser back/forward (`useEffect([params])`).
-
-**`isDirty`** — computed `boolean`. Compares each `draft` field against the live URL param using serialised string comparison (`draft.status.join(',') !== params.get('status') ?? ''` etc.). Never a `useState`. Array reference equality traps will give false positives — always compare serialised strings.
+**Multi-select URL parsing** is `parseMultiParam<T>(params, key)` from
+`src/lib/utils/filter-params.ts` (comma-separated values) — never re-inline the split.
 
 **Single-row layout** (left → right):
 
 - Container: `<FilterBar layout="scroll">` — `flexWrap: nowrap`, `gap: var(--space-2)`, `overflowX: auto`, hidden scrollbar. Horizontal scroll on narrow viewports; chips stay on one line.
-- Order: Sliders icon → `SearchBar` → 1px vertical divider → Status → Outcome → Source → Campaign? → Agent? → Domain? → Range → Apply → Clear?.
+- Order: Sliders icon → `SearchBar` → 1px vertical divider → Status → Outcome → Source → Campaign? → Agent? → Domain? → Range → Clear?.
 - **Search:** `suppressFocusAccent` — paper border + no `--shadow-focus` on focus. `style={{ flex: '1 1 180px', maxWidth: '280px' }}` — grows modestly but never dominates wide viewports (without `maxWidth`, chips scroll off-screen).
 - **Filter chips:** `menuPortal` + `hideCountBadge` + `accentBorderOnOpen={false}` — no numeric count on triggers (prevents width shift); accent border/tint when the chip has a selection, not when the menu is open.
-- **Apply:** `suppressFocusRing` on `Button` — no focus glow on tab/click.
 - **Range:** accent border only when dates are set (`rangeActive`), not when the panel is open.
 - **Divider:** inline `div`, `width: 1`, `height: 1.25rem`, `background: var(--theme-paper-border)`, `flexShrink: 0` — separates search from filter chips.
 - Every `FilterDropdown` and the Range trigger: `flexShrink: 0`.
 - **Dropdown panels:** every `FilterDropdown` must pass `menuPortal` (menus render `position: fixed` on `document.body`). Without it, `overflowX: auto` on the row clips the absolutely positioned menu and options are unreachable. The Range date panel lives inside `<FilterBar>` (`usePortalAnchor()` + `<FloatingPanel>` + `<DateRangeFields>` — see `src/components/CLAUDE.md` Overlays) — same rule, owned structurally.
 
-**Apply button:** `Button variant="primary" size="sm"` (not `MotionButton`), always visible, `disabled={!isDirty}`. Calls `applyFilters()` which builds the full URL from all draft keys and fires one `router.push`. Permanent placement avoids filter-bar layout shift.
+**`activeCount`** — counts active URL params (what the table is showing). Used only for showing/hiding the Clear button — no numeric badge in the bar.
 
-**`committedCount`** — counts active URL params (what the table is showing), **not** draft values. Used only for showing/hiding the Clear button — no numeric badge in the bar. Never substitute `isDirty` for `committedCount`.
+**Domain change invariant:** `domain` change must atomically clear `agent_id` and `campaign` in the same `push()` call. Never use a separate `useEffect` for this.
 
-**Domain change invariant:** `domain` change must atomically clear `agent_id` and `campaign` in the same `setDraft` call. Never use a separate `useEffect` for this.
-
-**Zero `setTimeout` debounce.** Zero per-keystroke `router.push` — including search.
+**Zero hand-rolled debounce in this component.** All debouncing lives in `useUrlFilters` (search) and `pushDebounced`/`useMultiSelectUrlParam` (multi-selects). Zero per-keystroke `router.push` — including search.
 
 ---
 

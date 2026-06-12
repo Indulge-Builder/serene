@@ -51,6 +51,43 @@ function mapMessageRow(row: WaMessageRow): WhatsAppMessage {
   };
 }
 
+// Per-caller unread flag for list rows. Mirrors the get_wa_unread_count RPC
+// predicate exactly: a conversation is unread when it is open AND the caller
+// has no read row OR last_message_at is newer than their last_read_at.
+// The reads SELECT runs on the session client — RLS (`agent_id = auth.uid()`)
+// scopes it to the caller's own rows, so no explicit agent filter is needed.
+// Read failure is non-fatal: rows fall back to unread_count 0 (dot hidden).
+async function attachUnreadCounts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  conversations: WhatsAppConversation[],
+): Promise<WhatsAppConversation[]> {
+  if (conversations.length === 0) return conversations;
+
+  const { data, error } = await supabase
+    .from('whatsapp_conversation_reads')
+    .select('conversation_id, last_read_at')
+    .in('conversation_id', conversations.map((c) => c.id));
+
+  if (error) return conversations;
+
+  const lastReadByConversation = new Map<string, string>(
+    ((data ?? []) as { conversation_id: string; last_read_at: string }[]).map(
+      (r) => [r.conversation_id, r.last_read_at],
+    ),
+  );
+
+  return conversations.map((c) => {
+    const lastRead = lastReadByConversation.get(c.id);
+    const unread =
+      c.status === 'open' &&
+      (lastRead === undefined ||
+        (c.last_message_at !== null &&
+          new Date(c.last_message_at).getTime() > new Date(lastRead).getTime()));
+    return { ...c, unread_count: unread ? 1 : 0 };
+  });
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyLastMessagePeriodFilter(query: any, filters?: WhatsAppConversationListFilters) {
   if (!filters?.period) return query;
@@ -112,9 +149,9 @@ export async function getConversations(options: {
 
   if (error || !data) return { conversations: [], nextCursor: null };
 
-  const conversations = mapRows<WaConversationRow, WhatsAppConversation>(
-    data,
-    mapConversationRow,
+  const conversations = await attachUnreadCounts(
+    supabase,
+    mapRows<WaConversationRow, WhatsAppConversation>(data, mapConversationRow),
   );
 
   const nextCursor =
@@ -245,22 +282,32 @@ export async function getUnreadCount(): Promise<number> {
 // ─────────────────────────────────────────────
 // markConversationRead
 // UPSERT agent's read position for a conversation.
-// The agent_id column is populated by the DB default (auth.uid()) via RLS policy.
+// agent_id has NO DB default (migration 0034) — it must be supplied explicitly
+// from the caller's verified profile or the INSERT fails its NOT NULL constraint.
+// RLS (`agent_id = auth.uid()`) still guarantees the row is the caller's own.
 // ─────────────────────────────────────────────
 
-export async function markConversationRead(conversationId: string): Promise<void> {
+export async function markConversationRead(
+  conversationId: string,
+  agentId: string,
+): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = (await createClient()) as any;
 
-  await supabase
+  const { error } = await supabase
     .from('whatsapp_conversation_reads')
     .upsert(
       {
         conversation_id: conversationId,
+        agent_id:        agentId,
         last_read_at:    new Date().toISOString(),
       },
       { onConflict: 'conversation_id,agent_id' },
     );
+
+  if (error) {
+    console.warn('[whatsapp-service] markConversationRead failed', error);
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -298,5 +345,8 @@ export async function searchConversations(
 
   if (error || !data) return [];
 
-  return mapRows<WaConversationRow, WhatsAppConversation>(data, mapConversationRow);
+  return attachUnreadCounts(
+    supabase,
+    mapRows<WaConversationRow, WhatsAppConversation>(data, mapConversationRow),
+  );
 }

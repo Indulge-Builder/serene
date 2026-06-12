@@ -5,16 +5,11 @@ import { Check } from "lucide-react";
 import { updateProfile } from "@/lib/actions/profiles";
 import { Toggle } from "@/components/ui/Toggle";
 import { useNotificationSound } from "@/hooks/useNotificationSound";
-
-const THEMES = [
-  { key: "earth",  label: "Earth"  },
-  { key: "air",    label: "Air"    },
-  { key: "water",  label: "Water"  },
-  { key: "fire",   label: "Fire"   },
-  { key: "cosmos", label: "Cosmos" },
-] as const;
-
-type ThemeKey = typeof THEMES[number]["key"];
+import {
+  THEME_OPTIONS,
+  persistThemeCookie,
+  type ThemeKey,
+} from "@/lib/constants/themes";
 
 type Props = {
   currentTheme: ThemeKey;
@@ -48,7 +43,9 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
     }, 400);
 
     // 2. DOM switch — the attribute flips instantly; colours dissolve over it.
+    //    The cookie keeps the next SSR paint in sync (no flash on reload).
     root.setAttribute("data-theme", theme);
+    persistThemeCookie(theme);
     setActive(theme);
 
     // 2. Persist to DB in the background via the existing updateProfile action.
@@ -83,16 +80,16 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
           flexWrap:   "wrap",
         }}
       >
-        {THEMES.map((theme) => {
-          const isActive = active === theme.key;
+        {THEME_OPTIONS.map((theme) => {
+          const isActive = active === theme.id;
 
           return (
             <button
-              key={theme.key}
+              key={theme.id}
               role="radio"
               aria-checked={isActive}
               aria-label={`${theme.label} theme`}
-              onClick={() => handleThemeChange(theme.key)}
+              onClick={() => handleThemeChange(theme.id)}
               disabled={isPending}
               style={{
                 display:       "flex",
@@ -127,7 +124,7 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
                   correct colours without any hardcoded hex values.
                 */}
                 <div
-                  data-theme={theme.key}
+                  data-theme={theme.id}
                   style={{
                     width:          "72px",
                     height:         "48px",

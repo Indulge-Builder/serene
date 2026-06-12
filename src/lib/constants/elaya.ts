@@ -27,6 +27,14 @@ export const ELAYA_DAILY_LINES = [
   'Grace under pressure closes more than pressure ever did.',
 ] as const;
 
+/** Curated composer starters for the /elaya identity card — prefill the composer only, never auto-send. */
+export const ELAYA_STARTER_PROMPTS = [
+  "What's on my plate today?",
+  'Which of my leads are going cold?',
+  'How are my numbers looking this month?',
+  'Find me a case about price objections.',
+] as const;
+
 /** IST time-of-day salutation for the Elaya card. */
 export function getElayaTimeGreeting(now: Date): string {
   const { hour } = toIst(now);

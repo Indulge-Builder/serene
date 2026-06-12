@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { FilterDropdown } from "@/components/ui/FilterDropdown";
-import { useUrlFilters } from "@/hooks/useUrlFilters";
+import { useUrlFilters, useMultiSelectUrlParam } from "@/hooks/useUrlFilters";
 import type { LeadFilterOptions } from "@/lib/services/leads-service";
 import type { UserRole, LeadStatus, CallOutcome } from "@/lib/types/database";
 import {
@@ -24,46 +23,26 @@ type LeadsFiltersProps = {
   showDomainFilter: boolean;
 };
 
-// ─── FilterDraft ──────────────────────────────────────────────────────────────
-
-type FilterDraft = {
-  status: LeadStatus[];
-  outcome: CallOutcome[];
-  domain: string | null;
-  agent_id: string | null;
-  source: string | null;
-  campaign: string | null;
-  date_from: string | null;
-  date_to: string | null;
-  // sort_order is NOT in draft — commits immediately in LeadsTable toolbar
-};
-
-function parseMulti<T extends string>(
-  params: URLSearchParams,
-  key: string,
-): T[] {
-  const val = params.get(key);
-  if (!val) return [];
-  return val.split(",").filter(Boolean) as T[];
-}
-
-function draftFromParams(params: URLSearchParams): FilterDraft {
-  return {
-    status:     parseMulti<LeadStatus>(params, "status"),
-    outcome:    parseMulti<CallOutcome>(params, "outcome"),
-    domain:     params.get("domain"),
-    agent_id:   params.get("agent_id"),
-    source:     params.get("source"),
-    campaign:   params.get("campaign"),
-    date_from:  params.get("date_from"),
-    date_to:    params.get("date_to"),
-  };
-}
+// Static item arrays — module scope, never rebuilt per render.
+const STATUS_ITEMS = LEAD_STATUSES.map((s) => ({
+  id: s,
+  label: LEAD_STATUS_LABELS[s],
+}));
+const OUTCOME_ITEMS = CALL_OUTCOMES.map((o) => ({
+  id: o,
+  label: CALL_OUTCOME_LABELS[o],
+}));
+const SOURCE_ITEMS = LEAD_SOURCES.map((s) => ({
+  id: s,
+  label: LEAD_SOURCE_LABELS[s],
+}));
 
 // ─── LeadsFilters ─────────────────────────────────────────────────────────────
-// Draft → Apply commit model: dropdown/date changes accumulate in `draft`;
-// one router.push fires on Apply. Search commits independently (debounced
-// via useUrlFilters). See src/components/leads/CLAUDE.md for the contract.
+// Immediate-commit model (same as DealsFilters): every change pushes the URL
+// via useUrlFilters, so each new selection compounds with what is already
+// committed. Multi-selects (Status/Outcome) go through useMultiSelectUrlParam —
+// instant checkbox echo, toggle bursts batched into ONE router.push. See
+// src/components/leads/CLAUDE.md for the contract.
 
 export function LeadsFilters({
   options,
@@ -71,79 +50,32 @@ export function LeadsFilters({
   showDomainFilter,
 }: LeadsFiltersProps) {
   const url = useUrlFilters({ resetKeys: ["page"] });
-  const { params } = url;
+  const { params, push } = url;
 
-  const [draft, setDraft] = useState<FilterDraft>(() => draftFromParams(params));
+  const [status, setStatus]   = useMultiSelectUrlParam<LeadStatus>(url, "status");
+  const [outcome, setOutcome] = useMultiSelectUrlParam<CallOutcome>(url, "outcome");
 
-  // Sync draft when URL changes (browser back/forward).
-  useEffect(() => {
-    setDraft(draftFromParams(params));
-  }, [params]);
+  // Single-value filters read straight from the committed URL.
+  const source   = params.get("source");
+  const campaign = params.get("campaign");
+  const agentId  = params.get("agent_id");
+  const domain   = params.get("domain");
+  const dateFrom = params.get("date_from");
+  const dateTo   = params.get("date_to");
 
-  // ── isDirty: compare draft against live URL (computed, no useState) ──
-  const isDirty =
-    draft.status.join(",") !== (params.get("status") ?? "") ||
-    draft.outcome.join(",") !== (params.get("outcome") ?? "") ||
-    (draft.domain ?? "") !== (params.get("domain") ?? "") ||
-    (draft.agent_id ?? "") !== (params.get("agent_id") ?? "") ||
-    (draft.source ?? "") !== (params.get("source") ?? "") ||
-    (draft.campaign ?? "") !== (params.get("campaign") ?? "") ||
-    (draft.date_from ?? "") !== (params.get("date_from") ?? "") ||
-    (draft.date_to ?? "") !== (params.get("date_to") ?? "");
-
-  // ── committedCount: reflects what the table is currently showing ──
-  const committedCount =
+  // ── activeCount: committed URL params (what the table is showing) ──
+  const activeCount =
     (params.get("search") ? 1 : 0) +
     (params.get("status") ? 1 : 0) +
     (params.get("outcome") ? 1 : 0) +
-    (params.get("source") ? 1 : 0) +
-    (params.get("campaign") ? 1 : 0) +
-    (params.get("domain") ? 1 : 0) +
-    (params.get("agent_id") ? 1 : 0) +
-    (params.get("date_from") ? 1 : 0) +
-    (params.get("date_to") ? 1 : 0) +
+    (source ? 1 : 0) +
+    (campaign ? 1 : 0) +
+    (domain ? 1 : 0) +
+    (agentId ? 1 : 0) +
+    (dateFrom ? 1 : 0) +
+    (dateTo ? 1 : 0) +
     (params.get("going_cold") === "true" ? 1 : 0);
 
-  function applyFilters() {
-    url.push({
-      status:     draft.status.length > 0 ? draft.status.join(",") : null,
-      outcome:    draft.outcome.length > 0 ? draft.outcome.join(",") : null,
-      domain:     draft.domain,
-      agent_id:   draft.agent_id,
-      source:     draft.source,
-      campaign:   draft.campaign,
-      date_from:  draft.date_from,
-      date_to:    draft.date_to,
-    });
-  }
-
-  function clearAll() {
-    setDraft({
-      status:     [],
-      outcome:    [],
-      domain:     null,
-      agent_id:   null,
-      source:     null,
-      campaign:   null,
-      date_from:  null,
-      date_to:    null,
-    });
-    url.clearAll();
-  }
-
-  // FilterDropdown item arrays
-  const statusItems = LEAD_STATUSES.map((s) => ({
-    id: s,
-    label: LEAD_STATUS_LABELS[s],
-  }));
-  const outcomeItems = CALL_OUTCOMES.map((o) => ({
-    id: o,
-    label: CALL_OUTCOME_LABELS[o],
-  }));
-  const sourceItems = LEAD_SOURCES.map((s) => ({
-    id: s,
-    label: LEAD_SOURCE_LABELS[s],
-  }));
   const campaignItems = options.campaigns.map((c) => ({ id: c, label: c }));
   const agentItems = options.agents.map((a) => ({
     id: a.id,
@@ -160,20 +92,19 @@ export function LeadsFilters({
       suppressSearchFocusAccent
       searchStyle={{ flex: "1 1 180px", maxWidth: "280px" }}
       dividerAfterSearch
-      activeCount={committedCount}
+      activeCount={activeCount}
       showCountBadge={false}
       clearLabel="Clear"
-      onClearAll={clearAll}
-      apply={{ disabled: !isDirty, onClick: applyFilters }}
+      onClearAll={url.clearAll}
       dateRange={{
         trigger:      "chevron",
         panelKey:     "leads-range-panel",
-        from:         draft.date_from,
-        to:           draft.date_to,
-        onFromChange: (v) => setDraft((prev) => ({ ...prev, date_from: v })),
-        onToChange:   (v) => setDraft((prev) => ({ ...prev, date_to: v })),
-        onClear:      () => setDraft((d) => ({ ...d, date_from: null, date_to: null })),
-        onPresetSelect: (from, to) => setDraft((d) => ({ ...d, date_from: from, date_to: to })),
+        from:         dateFrom,
+        to:           dateTo,
+        onFromChange: (v) => push({ date_from: v }),
+        onToChange:   (v) => push({ date_to: v }),
+        onClear:      () => push({ date_from: null, date_to: null }),
+        onPresetSelect: (from, to) => push({ date_from: from, date_to: to }),
       }}
     >
       {/* Status — multi-select */}
@@ -183,10 +114,10 @@ export function LeadsFilters({
         accentBorderOnOpen={false}
         style={{ flexShrink: 0 }}
         label="Status"
-        items={statusItems}
-        selected={draft.status}
+        items={STATUS_ITEMS}
+        selected={status}
         multi
-        onChange={(next) => setDraft((d) => ({ ...d, status: next as LeadStatus[] }))}
+        onChange={(next) => setStatus(next as LeadStatus[])}
       />
 
       {/* Outcome — multi-select */}
@@ -196,10 +127,10 @@ export function LeadsFilters({
         accentBorderOnOpen={false}
         style={{ flexShrink: 0 }}
         label="Outcome"
-        items={outcomeItems}
-        selected={draft.outcome}
+        items={OUTCOME_ITEMS}
+        selected={outcome}
         multi
-        onChange={(next) => setDraft((d) => ({ ...d, outcome: next as CallOutcome[] }))}
+        onChange={(next) => setOutcome(next as CallOutcome[])}
       />
 
       {/* Source — single select */}
@@ -209,9 +140,9 @@ export function LeadsFilters({
         accentBorderOnOpen={false}
         style={{ flexShrink: 0 }}
         label="Source"
-        items={sourceItems}
-        selected={draft.source ? [draft.source] : []}
-        onChange={(next) => setDraft((d) => ({ ...d, source: next[0] ?? null }))}
+        items={SOURCE_ITEMS}
+        selected={source ? [source] : []}
+        onChange={(next) => push({ source: next[0] ?? null })}
       />
 
       {/* Campaign — single select, only when options exist */}
@@ -223,8 +154,8 @@ export function LeadsFilters({
           style={{ flexShrink: 0 }}
           label="Campaign"
           items={campaignItems}
-          selected={draft.campaign ? [draft.campaign] : []}
-          onChange={(next) => setDraft((d) => ({ ...d, campaign: next[0] ?? null }))}
+          selected={campaign ? [campaign] : []}
+          onChange={(next) => push({ campaign: next[0] ?? null })}
         />
       )}
 
@@ -237,13 +168,13 @@ export function LeadsFilters({
           style={{ flexShrink: 0 }}
           label="Agent"
           items={agentItems}
-          selected={draft.agent_id ? [draft.agent_id] : []}
-          onChange={(next) => setDraft((d) => ({ ...d, agent_id: next[0] ?? null }))}
+          selected={agentId ? [agentId] : []}
+          onChange={(next) => push({ agent_id: next[0] ?? null })}
         />
       )}
 
       {/* Domain — single select, admin/founder only.
-          Domain change atomically clears agent_id + campaign (same setDraft). */}
+          Domain change atomically clears agent_id + campaign (same push). */}
       {showDomainFilter && (
         <FilterDropdown
           menuPortal
@@ -252,14 +183,13 @@ export function LeadsFilters({
           style={{ flexShrink: 0 }}
           label="Domain"
           items={GIA_DOMAIN_FILTER_ITEMS}
-          selected={draft.domain ? [draft.domain] : []}
+          selected={domain ? [domain] : []}
           onChange={(next) =>
-            setDraft((d) => ({
-              ...d,
+            push({
               domain:   next[0] ?? null,
               agent_id: null,
               campaign: null,
-            }))
+            })
           }
         />
       )}
