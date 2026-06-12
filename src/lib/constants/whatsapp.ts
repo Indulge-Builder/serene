@@ -87,3 +87,8 @@ export const GUPSHUP_FOUNDER_LEAD_NOTIFICATION_TEMPLATE_ID  = 'd5828042-fbfc-4e6
 export const GUPSHUP_SLA_AGENT_TEMPLATE_ID                  = '54d5dd55-a1fa-482b-8823-49e9b9e22745';
 export const GUPSHUP_SLA_MANAGER_TEMPLATE_ID                = '682fd320-3b04-45da-8b1a-9a390770fac8';
 export const GUPSHUP_LEAD_INITIATION_TEMPLATE_ID            = '7aee2a33-3442-4b3a-a1b6-d20a2e39895a';
+// Params: {{1}} agent first name, {{2}} lead name, {{3}} lead phone, {{4}} task title
+export const GUPSHUP_TASK_DUE_REMINDER_TEMPLATE_ID          = '05411e50-30c6-432b-8b45-cc079fa43c81';
+// Params: {{1}} manager first name, {{2}} agent name, {{3}} lead name, {{4}} task title,
+//         {{5}} due time in IST human format ("4:00 PM") — never UTC, never ISO
+export const GUPSHUP_TASK_OVERDUE_MANAGER_TEMPLATE_ID       = 'c7ddd983-9472-453d-a712-e1daecc03a05';

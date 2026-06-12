@@ -18,9 +18,11 @@ import type { Notification, NotificationType } from "@/lib/types/database";
 
 function getTypeIconColor(type: NotificationType): string {
   switch (type) {
-    case "sla_breach_agent":    return "var(--color-warning-text)";
-    case "sla_breach_manager":  return "var(--color-danger-text)";
-    default:                    return "var(--theme-accent)";
+    case "sla_breach_agent":     return "var(--color-warning-text)";
+    case "sla_breach_manager":   return "var(--color-danger-text)";
+    case "sla_breach_founder":   return "var(--color-danger-text)";
+    case "task_overdue_manager": return "var(--color-danger-text)";
+    default:                     return "var(--theme-accent)";
   }
 }
 
@@ -34,8 +36,10 @@ function getTypeIcon(type: NotificationType): React.ElementType {
     case "task_assigned":      return CheckSquare;
     case "mention":            return AtSign;
     case "system":             return Info;
-    case "sla_breach_agent":   return AlertTriangle;
-    case "sla_breach_manager": return AlertTriangle;
+    case "sla_breach_agent":     return AlertTriangle;
+    case "sla_breach_manager":   return AlertTriangle;
+    case "sla_breach_founder":   return AlertTriangle;
+    case "task_overdue_manager": return AlertTriangle;
   }
   return assertNever(type);
 }

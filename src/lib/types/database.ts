@@ -107,6 +107,101 @@ export type Database = {
           },
         ]
       }
+      conversation_hooks: {
+        Row: {
+          category: string
+          context: string | null
+          created_at: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          hook: string
+          id: string
+          sort_order: number
+        }
+        Insert: {
+          category: string
+          context?: string | null
+          created_at?: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          hook: string
+          id?: string
+          sort_order?: number
+        }
+        Update: {
+          category?: string
+          context?: string | null
+          created_at?: string
+          domain?: Database["public"]["Enums"]["app_domain"]
+          hook?: string
+          id?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      service_cases: {
+        Row: {
+          category: string
+          city: string | null
+          country: string | null
+          created_at: string
+          created_by: string | null
+          domain: Database["public"]["Enums"]["app_domain"]
+          embedding: string | null
+          id: string
+          is_featured: boolean
+          outcome_note: string | null
+          search_vector: unknown
+          sort_order: number
+          summary: string
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain: Database["public"]["Enums"]["app_domain"]
+          embedding?: string | null
+          id?: string
+          is_featured?: boolean
+          outcome_note?: string | null
+          search_vector?: unknown
+          sort_order?: number
+          summary: string
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain?: Database["public"]["Enums"]["app_domain"]
+          embedding?: string | null
+          id?: string
+          is_featured?: boolean
+          outcome_note?: string | null
+          search_vector?: unknown
+          sort_order?: number
+          summary?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_cases_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_activities: {
         Row: {
           action_type: string
@@ -286,12 +381,14 @@ export type Database = {
           id: string
           last_activity_at: string | null
           last_call_outcome: string | null
+          last_call_outcome_at: string | null
           last_name: string | null
           lead_intent: string | null
           medium: string | null
           personal_details: Json | null
           phone: string | null
           previous_lead_id: string | null
+          service_interests: string[]
           slug: string | null
           source: string | null
           status: string
@@ -314,12 +411,14 @@ export type Database = {
           id?: string
           last_activity_at?: string | null
           last_call_outcome?: string | null
+          last_call_outcome_at?: string | null
           last_name?: string | null
           lead_intent?: string | null
           medium?: string | null
           personal_details?: Json | null | Record<string, string>
           phone?: string | null
           previous_lead_id?: string | null
+          service_interests?: string[]
           slug?: string | null
           source?: string | null
           status?: string
@@ -342,12 +441,14 @@ export type Database = {
           id?: string
           last_activity_at?: string | null
           last_call_outcome?: string | null
+          last_call_outcome_at?: string | null
           last_name?: string | null
           lead_intent?: string | null
           medium?: string | null
           personal_details?: Json | null
           phone?: string | null
           previous_lead_id?: string | null
+          service_interests?: string[]
           slug?: string | null
           source?: string | null
           status?: string
@@ -597,6 +698,48 @@ export type Database = {
           },
         ]
       }
+      sla_policies: {
+        Row: {
+          active: boolean
+          auto_task: boolean
+          channels: string[]
+          code: string
+          created_at: string
+          hours_mode: string
+          recipient_role: string
+          threshold_minutes: number
+          trigger_kind: string
+          trigger_value: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          auto_task?: boolean
+          channels?: string[]
+          code: string
+          created_at?: string
+          hours_mode: string
+          recipient_role: string
+          threshold_minutes?: number
+          trigger_kind: string
+          trigger_value: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          auto_task?: boolean
+          channels?: string[]
+          code?: string
+          created_at?: string
+          hours_mode?: string
+          recipient_role?: string
+          threshold_minutes?: number
+          trigger_kind?: string
+          trigger_value?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       task_groups: {
         Row: {
           created_at: string
@@ -714,6 +857,7 @@ export type Database = {
           group_id: string | null
           id: string
           module: string
+          overdue_at: string | null
           priority: string
           status: string
           tags: string[]
@@ -733,6 +877,7 @@ export type Database = {
           group_id?: string | null
           id?: string
           module: string
+          overdue_at?: string | null
           priority?: string
           status?: string
           tags?: string[]
@@ -752,6 +897,7 @@ export type Database = {
           group_id?: string | null
           id?: string
           module?: string
+          overdue_at?: string | null
           priority?: string
           status?: string
           tags?: string[]
@@ -956,7 +1102,7 @@ export type Database = {
       whatsapp_notification_logs: {
         Row: {
           id:              string
-          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation'
+          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager'
           lead_id:         string | null
           recipient_id:    string | null
           recipient_phone: string
@@ -971,7 +1117,7 @@ export type Database = {
         }
         Insert: {
           id?:             string
-          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation'
+          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager'
           lead_id?:        string | null
           recipient_id?:   string | null
           recipient_phone: string
@@ -1376,6 +1522,13 @@ export type NotificationType =
   | 'system'
   | 'sla_breach_agent'
   | 'sla_breach_manager'
+  | 'sla_breach_founder'
+  | 'task_overdue_manager'
+
+// sla_policies CHECK-constraint unions (migration 0111)
+export type SlaTriggerKind   = 'status' | 'outcome' | 'task_due'
+export type SlaRecipientRole = 'agent' | 'manager' | 'founder'
+export type SlaHoursMode     = 'agent_shift' | 'business' | 'clock'
 
 // ─────────────────────────────────────────────
 // Table row types — extracted from Database namespace
@@ -1393,6 +1546,17 @@ export type LeadRawPayload   = Omit<Database['public']['Tables']['lead_raw_paylo
   payload: Record<string, unknown>
 }
 export type LeadSlaTimer     = Database['public']['Tables']['lead_sla_timers']['Row']
+
+// SlaPolicy — config row behind the Gia follow-up engine (migration 0111).
+// Read per job run via sla-service.getSlaPolicies() — never cached at module scope.
+export type SlaPolicy = Omit<
+  Database['public']['Tables']['sla_policies']['Row'],
+  'trigger_kind' | 'recipient_role' | 'hours_mode'
+> & {
+  trigger_kind:   SlaTriggerKind
+  recipient_role: SlaRecipientRole
+  hours_mode:     SlaHoursMode
+}
 
 export type Notification = Database['public']['Tables']['notifications']['Row'] & {
   type: string  // narrowed by callers via NotificationType — kept as string for service compatibility

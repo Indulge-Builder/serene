@@ -430,6 +430,7 @@ export type LeadsResult = {
 | `updateLeadEmail` | `UpdateLeadEmailSchema` | `assertLeadFieldEditAccess` | UPDATE email; activity `note_added` `{type:'lead_email_updated'}` | `revalidatePath` dossier | `{ data: { leadId }, error }` |
 | `updateLeadDomain` | `UpdateLeadDomainSchema` | Same; **blocks agent** | UPDATE domain; activity | `revalidatePath` | `{ data: { leadId }, error }` |
 | `updateLeadSource` | `UpdateLeadSourceSchema` | Field edit access | UPDATE `source`; activity `lead_source_updated` | `revalidatePath` dossier | `{ data: { leadId }, error }` |
+| `updateLeadInterests` | `UpdateLeadInterestsSchema` | Field edit access (`assertLeadFieldEditAccess` — same gate, no widening/narrowing) | Drops unknowns vs lead domain via `extractServiceInterests`; UPDATE `service_interests`; activity `lead_interests_updated` `{old, new}` (no-op edits skip write + activity) | `revalidateLeadDossier` (dual-key row del via `invalidateLeadCaches`) → `ServiceInterestCard` re-matches | `{ data: { leadId, interests }, error }` |
 | `addLeadNote` | `AddLeadNoteSchema` | Standard lead access | RPC `add_lead_plain_note` | `last_activity_at` only (in RPC) | `{ data: { noteId }, error }` |
 | `recordDeal` | `RecordDealSchema` | Standard lead access | Thin re-export → `recordDeal` in `actions/deals.ts`: **INSERT into `public.deals`** (`deal_type`, `deal_amount`, `deal_duration` membership-only, `won_at`) via `adminClient`; then `updateLeadStatus({ status: 'won' })`. Never writes `leads.deal_*` (dropped, migration 0097). | Won notifications + SLA via nested `updateLeadStatus` | `{ data: { leadId }, error }` |
 | `getAssignableUsersAction` (in `actions/profiles.ts`) | — (`domain?`) | Logged in | `getAssignableUsers({ domain, agentsOnly })` — admin/founder get all active users, others agents only | None | `{ data: AssignableUser[], error }` |
@@ -560,13 +561,15 @@ Playfair italic heading (`var(--font-serif)`). Table has **zero** filter/sort/co
 
 #### 6e. AddLeadModal
 
-**Schema:** `CreateManualLeadSchema` — `first_name`, `last_name?`, `phone` (E.164), `email?`, `domain` (`GIA_DOMAIN_ENUM`), `assigned_to?`, `source?` (`LEAD_SOURCE_ENUM`).
+**Schema:** `CreateManualLeadSchema` — `first_name`, `last_name?`, `phone` (E.164), `email?`, `domain` (`GIA_DOMAIN_ENUM`), `assigned_to?`, `source?` (`LEAD_SOURCE_ENUM`), `service_interests?` (string[], default `[]`).
 
 **Duplicate:** `createManualLead` → `get_active_lead_by_phone`; returns `{ leadId, duplicate: true }`; banner with link `/leads/${duplicateLeadId}`; modal stays open.
 
 **Submit action:** `createManualLead`.
 
 **Agent fetch guard:** `getAssignableUsersAction(domain)` only when `watchedDomain !== initialDomain`; restoring initial domain resets `initialAgents` without network.
+
+**Service interests (call-intelligence Phase 1.1):** optional `FormChip` multi-select row below the Source/Domain/Assign grid — options from `getDomainInterests(watchedDomain)`, labels via `getServiceCategoryLabel()` (never a re-typed list). The domain-change effect filters the current selection to the new domain's vocabulary on every switch (out-of-vocabulary picks never silently submit). Server side, `createManualLead` drops unknown values against the *resolved* domain via `extractServiceInterests` — the same dropper as webhook/WhatsApp ingestion — and writes `text[]` on the same INSERT (no path fork; assignment/SLA/notifications untouched). Empty selection = `'{}'`, byte-identical to pre-1.1 behaviour.
 
 ---
 

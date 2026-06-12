@@ -21,6 +21,8 @@ import {
   Check,
   ChevronDown,
   MapPin,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import type { Lead, AdCreative } from '@/lib/types/database';
 import { DOMAIN_LABELS, GIA_DOMAIN_FILTER_ITEMS, type GiaDomain } from '@/lib/constants/domains';
@@ -33,14 +35,17 @@ import {
 } from '@/lib/constants/lead-sources';
 import { DROPDOWN_VARIANTS } from '@/lib/constants/motion';
 import { formatDate } from '@/lib/utils/dates';
+import { getDomainInterests, getServiceCategoryLabel } from '@/lib/constants/interests';
 import { InfoRow } from '@/components/ui/InfoRow';
 import { Spinner } from '@/components/ui/Spinner';
+import { FormChip } from '@/components/ui/TaskFormFields';
 import { CampaignVideoModal } from '@/components/leads/CampaignVideoModal';
 import {
   assignLead,
   updateLeadEmail,
   updateLeadDomain,
   updateLeadSource,
+  updateLeadInterests,
 } from '@/lib/actions/leads';
 
 type SelectOption = { id: string; label: string };
@@ -192,6 +197,24 @@ export function LeadInfoCard({
             label="City"
             value={lead.city?.trim() ? lead.city.trim() : undefined}
           />
+          {canEdit ? (
+            <InterestsInlineField
+              leadId={lead.id}
+              domain={lead.domain}
+              initialInterests={lead.service_interests ?? []}
+              onSaved={() => router.refresh()}
+            />
+          ) : (
+            <InfoRow
+              icon={Sparkles}
+              label="Interests"
+              value={
+                (lead.service_interests ?? []).length > 0
+                  ? (lead.service_interests ?? []).map(getServiceCategoryLabel).join(', ')
+                  : undefined
+              }
+            />
+          )}
           <InfoRow
             icon={PhoneCall}
             label="Call count"
@@ -563,6 +586,169 @@ function EmailInlineField({
         )}
       </LeadFieldShell>
       {saveErr && !editing && (
+        <p style={{ margin: 'var(--space-1) 0 0 calc(1rem + var(--space-3))', fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)' }}>
+          {saveErr}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Interests — click to edit as a FormChip multi-select (Phase 1.1b).
+// Same shell/feedback chrome as EmailInlineField; explicit Save/Cancel
+// (multi-select cannot commit per toggle). Options come from the lead's
+// domain vocabulary; the action re-drops unknowns server-side and returns
+// the resolved array, which becomes the new display value.
+// ─────────────────────────────────────────────
+function InterestsInlineField({
+  leadId,
+  domain,
+  initialInterests,
+  onSaved,
+}: {
+  leadId:           string;
+  domain:           string;
+  initialInterests: string[];
+  onSaved:          () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string[]>(initialInterests);
+  const [display, setDisplay] = useState<string[]>(initialInterests);
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    setDraft(initialInterests);
+    setDisplay(initialInterests);
+  }, [initialInterests]);
+
+  const options = getDomainInterests(domain);
+
+  function toggle(id: string) {
+    setDraft((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  }
+
+  async function commit() {
+    const same =
+      draft.length === display.length && draft.every((v, i) => v === display[i]);
+    if (same) {
+      setEditing(false);
+      return;
+    }
+
+    setSaveErr(null);
+    setSaving(true);
+    const result = await updateLeadInterests({ leadId, interests: draft });
+    setSaving(false);
+
+    if (result.error || !result.data) {
+      setSaveErr(result.error ?? 'Something went wrong. Please try again.');
+      return;
+    }
+
+    setDisplay(result.data.interests);
+    setDraft(result.data.interests);
+    setSuccess(true);
+    setEditing(false);
+    setTimeout(() => setSuccess(false), 2000);
+    onSaved();
+  }
+
+  function cancel() {
+    setDraft(display);
+    setSaveErr(null);
+    setEditing(false);
+  }
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onKeyDown={(e) => {
+        if (editing && e.key === 'Escape') cancel();
+      }}
+    >
+      <LeadFieldShell icon={Sparkles} label="Interests" open={editing} disabled={saving}>
+        {editing ? (
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', minWidth: 0, width: '100%' }}>
+            <span style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}>
+              {options.map((id) => (
+                <FormChip
+                  key={id}
+                  label={getServiceCategoryLabel(id)}
+                  active={draft.includes(id)}
+                  disabled={saving}
+                  onClick={() => toggle(id)}
+                />
+              ))}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void commit()}
+                aria-label="Save interests"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)',
+                  padding: '2px 10px', borderRadius: 'var(--radius-full)',
+                  border: '1px solid var(--theme-accent)', background: 'var(--theme-accent)',
+                  color: 'var(--theme-accent-fg)', fontSize: 'var(--text-xs)',
+                  fontFamily: 'var(--font-sans)', cursor: saving ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {saving ? <Spinner size="sm" /> : <Check style={{ width: '0.7rem', height: '0.7rem', strokeWidth: 2 }} />}
+                Save
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={cancel}
+                aria-label="Cancel editing interests"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)',
+                  padding: '2px 10px', borderRadius: 'var(--radius-full)',
+                  border: '1px solid var(--theme-paper-border)', background: 'transparent',
+                  color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-xs)',
+                  fontFamily: 'var(--font-sans)', cursor: saving ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <X style={{ width: '0.7rem', height: '0.7rem', strokeWidth: 2 }} />
+                Cancel
+              </button>
+            </span>
+          </span>
+        ) : (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => setEditing(true)}
+            style={{
+              display:    'inline-flex',
+              alignItems: 'center',
+              gap:        'var(--space-2)',
+              padding:    0,
+              border:     'none',
+              background: 'transparent',
+              font:       'inherit',
+              textAlign:  'left',
+              cursor:     saving ? 'not-allowed' : 'pointer',
+              minWidth:   0,
+              maxWidth:   '100%',
+            }}
+          >
+            <FieldSaveFeedback saving={saving} success={success} error={null} />
+            <EditableValueText hovered={hovered} muted={display.length === 0}>
+              {display.length > 0
+                ? display.map(getServiceCategoryLabel).join(', ')
+                : 'Add interests'}
+            </EditableValueText>
+          </button>
+        )}
+      </LeadFieldShell>
+      {saveErr && (
         <p style={{ margin: 'var(--space-1) 0 0 calc(1rem + var(--space-3))', fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)' }}>
           {saveErr}
         </p>

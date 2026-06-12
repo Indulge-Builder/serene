@@ -257,9 +257,17 @@ body {
   .eia-mobile-topbar {
     display: block;
     position: absolute;
-    top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
+    top: calc(var(--space-7) + env(safe-area-inset-top, 0px));
     left: var(--space-4);
     z-index: var(--z-raised);
+  }
+  /* Breathing room above the page title — the paper is full-bleed below md,
+     so the page-padding ladder's p-4 alone leaves the <h1> hugging the
+     screen top (and the status bar on notched phones). Scoped to mains that
+     carry the ladder; full-bleed mains (e.g. /whatsapp) are untouched. The
+     trigger's `top` above moves by the same +12px to stay on the h1 line. */
+  .eia-shell-paper main.p-4 {
+    padding-top: calc(var(--space-7) + env(safe-area-inset-top, 0px));
   }
   /* Page title clears the floating trigger — fires only when the trigger
      is mounted (general-sibling scope: topbar and gutter share .eia-shell). */

@@ -27,13 +27,15 @@
  */
 
 import { task, tasks, runs } from '@trigger.dev/sdk/v3';
-import type { SlaRuleCode } from '@/lib/constants/sla';
+
+// Rule codes are free text since the config-driven engine (migration 0111):
+// SLA-xx status rules and CAD-xx cadence ticks ride the same task.
 
 // ─── Payload types ────────────────────────────────────────────────────────────
 
 interface ScheduleLeadSlasPayload {
   leadId:           string;
-  ruleCode:         SlaRuleCode;
+  ruleCode:         string;
   fireAt:           string;  // ISO string (Date serialised for Trigger.dev payload)
   assignedAgentId:  string;
   domainManagerIds: string[];
@@ -41,7 +43,7 @@ interface ScheduleLeadSlasPayload {
 
 interface FireSlaBreachPayload {
   leadId:   string;
-  ruleCode: SlaRuleCode;
+  ruleCode: string;
 }
 
 // ─── Task definition — must be exported for Trigger.dev scan ─────────────────
@@ -68,11 +70,24 @@ export const fireLeadSlaTask = task({
 
 export async function scheduleLeadSlasTask(
   leadId:           string,
-  ruleCode:         SlaRuleCode,
+  ruleCode:         string,
   fireAt:           Date,
   assignedAgentId:  string,
   domainManagerIds: string[],
+  opts?: {
+    /**
+     * Appended to the idempotency key. Daily cadence ticks (CAD-xx) pass the
+     * IST date of fireAt so "one tick per lead per rule per day" is structural
+     * — without it the key would dedupe tomorrow's tick against today's
+     * completed run (Trigger.dev keys outlive terminal runs within their TTL).
+     */
+    idempotencySuffix?: string;
+  },
 ): Promise<void> {
+  const idempotencyKey = opts?.idempotencySuffix
+    ? `lead-sla-${leadId}-${ruleCode}-${opts.idempotencySuffix}`
+    : `lead-sla-${leadId}-${ruleCode}`;
+
   if (fireAt <= new Date()) {
     // Fire time is in the past — trigger immediately rather than skip
     // (SLA already breached at the moment of scheduling)
@@ -80,8 +95,8 @@ export async function scheduleLeadSlasTask(
       'fire-lead-sla',
       { leadId, ruleCode } satisfies FireSlaBreachPayload,
       {
-        idempotencyKey: `lead-sla-${leadId}-${ruleCode}`,
-        tags:           [`lead-sla-${leadId}`, `sla-rule-${ruleCode}`],
+        idempotencyKey,
+        tags: [`lead-sla-${leadId}`, `sla-rule-${ruleCode}`],
       },
     );
   } else {
@@ -89,9 +104,9 @@ export async function scheduleLeadSlasTask(
       'fire-lead-sla',
       { leadId, ruleCode } satisfies FireSlaBreachPayload,
       {
-        delay:          fireAt,
-        idempotencyKey: `lead-sla-${leadId}-${ruleCode}`,
-        tags:           [`lead-sla-${leadId}`, `sla-rule-${ruleCode}`],
+        delay: fireAt,
+        idempotencyKey,
+        tags: [`lead-sla-${leadId}`, `sla-rule-${ruleCode}`],
       },
     );
   }

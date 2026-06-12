@@ -3,11 +3,11 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { m as motion } from "framer-motion";
-import { Pencil, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { Pencil, ChevronDown } from "lucide-react";
 import type { Profile } from "@/lib/types/database";
 import { ROLE_LABELS, USER_ROLES } from "@/lib/constants/roles";
 import { DOMAIN_LABELS, APP_DOMAINS } from "@/lib/constants/domains";
-import { SearchBar } from "@/components/ui/SearchBar";
+import { FilterBar } from "@/components/ui/FilterBar";
 import { Avatar } from "@/components/ui/Avatar";
 import { EASE_OUT_EXPO } from "@/lib/constants/motion";
 
@@ -51,57 +51,44 @@ export function UsersTable({ users }: UsersTableProps) {
 
   return (
     <div>
-      {/* ── Filter bar ────────────────────────────────────────────── */}
-      <div
+      {/* ── Filter bar — shared shell (chrome + mobile scroll row) ── */}
+      <FilterBar
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search by name or email…"
+        searchSize="sm"
+        searchAriaLabel="Search members"
+        searchStyle={{ flex: "1 1 200px", minWidth: "160px" }}
+        activeCount={activeCount}
+        onClearAll={() => {
+          setSearch("");
+          setRoleFilter("all");
+          setDomainFilter("all");
+        }}
         style={{
-          display:      "flex",
-          alignItems:   "center",
-          gap:          "var(--space-3)",
           padding:      "var(--space-4) var(--space-5)",
           marginBottom: "var(--space-4)",
           background:   "var(--theme-paper)",
           border:       "1px solid var(--theme-paper-border)",
           borderRadius: "var(--radius-md)",
           boxShadow:    "var(--shadow-1)",
-          flexWrap:     "wrap",
         }}
+        trailing={
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize:   "var(--text-xs)",
+              color:      "var(--theme-text-tertiary)",
+              whiteSpace: "nowrap",
+              marginLeft: "auto",
+              flexShrink: 0,
+            }}
+          >
+            {filtered.length} {filtered.length === 1 ? "member" : "members"}
+          </span>
+        }
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
-          <SlidersHorizontal
-            style={{ width: "1rem", height: "1rem", color: "var(--theme-text-tertiary)", strokeWidth: 1.5 }}
-          />
-          {activeCount > 0 && (
-            <span
-              style={{
-                display:        "inline-flex",
-                alignItems:     "center",
-                justifyContent: "center",
-                minWidth:       "1.25rem",
-                height:         "1.25rem",
-                padding:        "0 0.25rem",
-                borderRadius:   "var(--radius-full)",
-                background:     "var(--theme-accent)",
-                color:          "var(--theme-accent-fg)",
-                fontSize:       "10px",
-                fontWeight:     "var(--weight-medium)",
-                lineHeight:     1,
-              }}
-            >
-              {activeCount}
-            </span>
-          )}
-        </div>
-
-        <div style={{ flex: "1 1 200px", minWidth: "160px" }}>
-          <SearchBar
-            value={search}
-            onChange={setSearch}
-            placeholder="Search by name or email…"
-            size="sm"
-          />
-        </div>
-
-        <div style={{ position: "relative" }}>
+        <div style={{ position: "relative", flexShrink: 0 }}>
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
@@ -115,7 +102,7 @@ export function UsersTable({ users }: UsersTableProps) {
           <ChevronDown style={chevronStyle} />
         </div>
 
-        <div style={{ position: "relative" }}>
+        <div style={{ position: "relative", flexShrink: 0 }}>
           <select
             value={domainFilter}
             onChange={(e) => setDomainFilter(e.target.value)}
@@ -128,19 +115,7 @@ export function UsersTable({ users }: UsersTableProps) {
           </select>
           <ChevronDown style={chevronStyle} />
         </div>
-
-        <span
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize:   "var(--text-xs)",
-            color:      "var(--theme-text-tertiary)",
-            whiteSpace: "nowrap",
-            marginLeft: "auto",
-          }}
-        >
-          {filtered.length} {filtered.length === 1 ? "member" : "members"}
-        </span>
-      </div>
+      </FilterBar>
 
       {/* ── Card list ────────────────────────────────────────────── */}
       {filtered.length === 0 ? emptyState : (

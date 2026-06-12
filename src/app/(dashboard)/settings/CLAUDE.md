@@ -8,15 +8,17 @@
 
 ```
 src/app/(dashboard)/settings/
-  page.tsx              — server component; auth guard; fetches getAgentRosterByDomain; renders AgentSettingsTable directly (no shell)
+  page.tsx              — server component; auth guard; Promise.all of getAgentRosterByDomain + (admin/founder) getAllSlaPolicies; renders AgentSettingsTable + SlaPoliciesPanel
 
 src/components/settings/
   AgentSettingsTable.tsx — unified table: one row per agent with assignment toggle + shift start/end + active hours
+  SlaPoliciesPanel.tsx   — follow-up engine editor (admin/founder only): one row per sla_policies rule; threshold blur-save, hours-basis select, channel checkboxes, active toggle (optimistic). Writes via updateSlaPolicyAction (actions/sla-policies.ts). Recipient choice = toggling the per-recipient rows active; identity fields read-only. Full spec: docs/pages/settings.md §4
 ```
 
 ## Architecture
 
-Single page. No tabs. Each agent row in `AgentSettingsTable` exposes:
+Single page. No tabs. Agent roster table for manager+; the SLA panel renders below it for
+admin/founder only. Each agent row in `AgentSettingsTable` exposes:
 - **Shift Start** — `<TimePicker>` (`src/components/ui/TimePicker.tsx`); saves immediately on each pick when both fields are valid
 - **Shift End** — `<TimePicker>`; saves immediately on each pick when both fields are valid
 - **Active Hours** — computed client-side from start/end strings; displays as "Xh Ym"

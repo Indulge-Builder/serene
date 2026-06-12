@@ -93,7 +93,7 @@ agents?:         { id: string; full_name: string }[]   — active agents for the
 Renders the left-column contact card on the lead dossier page.
 Campaign (`utm_campaign`) is an `InfoRow` after Received; opens `CampaignVideoModal` when `adCreatives.length > 0`.
 `Last modified` shows `lead.updated_at` (read-only).
-Name and phone are always read-only `InfoRow`s. Email: click → inline text input. Domain, source (`leads.source`), assignee: identical to `InfoRow` at rest; click opens a simple themed option menu (no `FilterDropdown`, no search). No card-wide edit mode.
+Name and phone are always read-only `InfoRow`s. Email: click → inline text input. Domain, source (`leads.source`), assignee: identical to `InfoRow` at rest; click opens a simple themed option menu (no `FilterDropdown`, no search). Interests (`service_interests`, `canEdit` gate): click → `FormChip` multi-select in the `LeadFieldShell` chrome with explicit Save/Cancel (multi-select cannot commit per toggle) — `InterestsInlineField`, private to this file; options from `getDomainInterests(lead.domain)`, the `updateLeadInterests` action returns the server-resolved array which becomes the display value, `onSaved` → `router.refresh()` re-renders `ServiceInterestCard`. No card-wide edit mode.
 
 **Reassignment rules:**
 
@@ -173,8 +173,9 @@ initialAgents: { id: string; full_name: string }[]
 onSuccess:     (leadId: string) => void
 ```
 
-Fields: First name, Last name, Phone, Email, Source, Domain (manager+), Assign to.
+Fields: First name, Last name, Phone, Email, Source, Domain (manager+), Assign to, Interests (optional `FormChip` multi-select).
 Source optional select → `leads.source` (values from `lib/constants/lead-sources.ts`). `lead_intent` always null on manual leads.
+Interests: options from `getDomainInterests(watchedDomain)` + `getServiceCategoryLabel()` (`lib/constants/interests.ts`); domain switch filters the selection to the new vocabulary; server drops unknowns against the resolved domain via `extractServiceInterests` → `leads.service_interests text[]` (empty = `'{}'`).
 Duplicate detection server-side; inline banner with dossier link on dup — modal stays open.
 Loaded via `next/dynamic` in `AddLeadButton` behind `useMountOnFirstOpen` (perf G-1) — never statically import it into a route chunk.
 
@@ -305,6 +306,7 @@ the only dossier call site for its service function, delegates rendering to a di
 | `LeadNotesSectionAsync` | `leadId` | `getLeadNotesFull(leadId)` | `<LeadNotesSection>` |
 | `LeadActivitiesAsync` | `lead: Lead` | `getLeadActivitiesFull(lead.id)` **once** | `<LeadJourneyTimeline>` + `<LeadActivityLog>` (owns both sections' margins — never split into two boundaries) |
 | `LeadWhatsAppCardAsync` | `leadId`, `leadPhone`, `leadName`, `callerProfile: { id, role }` | `getConversationByLeadId(leadId)` then serial `getMessages(conversation.id, { limit: 30 })` — the serial hop stays **inside** this boundary | `<LeadWhatsAppCard>` |
+| `ServiceInterestCardAsync` | `lead: Pick<Lead, 'service_interests' \| 'city' \| 'domain'>` | `Promise.all`: `getCasesForLead(interests, city, domain)` + `getHooksForCategories(interests, domain)` (hooks skipped when interests empty — city-only matches show cases, no hooks) | `<ServiceInterestCard>` (Call Intelligence Surface A: "Why we're perfect." + `CaseCard`s + `HookList` + quiet `/helpdesk?category=` footer link); returns `null` when interests empty AND zero city matches — pair with `fallback={null}`; the page additionally gates mounting on `interests.length \|\| city` |
 
 ---
 
@@ -405,6 +407,8 @@ Embedded WhatsApp chat card on the lead dossier page. Placed between the 2-col g
 | LeadNotesSectionAsync | `getLeadNotesFull` from `leads-service.ts` (server only)                                             |
 | LeadActivitiesAsync   | `getLeadActivitiesFull` from `leads-service.ts` (server only)                                        |
 | LeadWhatsAppCardAsync | `getConversationByLeadId` + `getMessages` from `whatsapp-service.ts` (server only)                   |
+| ServiceInterestCardAsync | `getCasesForLead` + `getHooksForCategories` from `intelligence-service.ts` (server only)          |
+| ServiceInterestCard   | none — props only (composes `components/intelligence/` CaseCard + HookList)                          |
 | LeadDossierSkeletons  | none                                                                                                  |
 | AddLeadModal          | `createManualLead` action, `getAssignableUsersAction` (`lib/actions/profiles.ts`)                                              |
 | LeadColumnPicker      | none — props only                                                                                    |

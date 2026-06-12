@@ -173,6 +173,7 @@ export function LeadsFilters({
         onFromChange: (v) => setDraft((prev) => ({ ...prev, date_from: v })),
         onToChange:   (v) => setDraft((prev) => ({ ...prev, date_to: v })),
         onClear:      () => setDraft((d) => ({ ...d, date_from: null, date_to: null })),
+        onPresetSelect: (from, to) => setDraft((d) => ({ ...d, date_from: from, date_to: to })),
       }}
     >
       {/* Status — multi-select */}

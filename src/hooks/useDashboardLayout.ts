@@ -11,7 +11,10 @@ import {
 import type { UserRole } from '@/lib/types/database';
 
 const STORAGE_KEY_PREFIX = 'eia:dashboard:layout';
-const STORAGE_VERSION    = 'v1';
+// v2 — 2026-06-12 agent dashboard redesign (new grid: snapshot counts, Elaya,
+// budget). Versioning the key orphans stale v1 layouts instead of letting
+// them fight the new default grid.
+const STORAGE_VERSION    = 'v2';
 
 export type WidgetPlacement = {
   widgetId: string;

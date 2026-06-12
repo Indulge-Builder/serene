@@ -1,6 +1,6 @@
 # Settings — Page Spec
 
-> **Purpose:** spec for `/settings` — the agent-roster configuration page (routing pool, shift windows, work days).
+> **Purpose:** spec for `/settings` — the agent-roster configuration page (routing pool, shift windows, work days) + the follow-up engine panel (admin/founder).
 > **Audience:** engineers. · **Source-of-truth scope:** the settings route, `agent-routing-service.ts`, `agent-routing.ts` actions, the roster table. SLA business rules: `../modules/gia.md` § SLA Engine.
 > **Last verified:** 2026-06-09 full pass; 2026-06-11 restructure (F-2 manager-domain check reflected).
 
@@ -32,7 +32,21 @@ cross-row reads; the action layer enforces the domain). Since 2026-06-11 (securi
 
 `AgentSettingsTable` (client; optimistic toggles) with inline `WorkDayPicker` ·
 `TimePicker` (`src/components/ui/` primitive — wheel columns, measured item height) ·
-`Toggle` for pool membership.
+`Toggle` for pool membership · `SlaPoliciesPanel` (admin/founder only, below the roster).
+
+### Follow-up Engine panel (`SlaPoliciesPanel`, 2026-06-12)
+
+One row per `sla_policies` rule, grouped Status rules / Cadences / Task due rules.
+Editable: threshold minutes (blur-save + `formatDuration` hint; hidden for outcome
+cadences, which tick daily), hours basis select, channel checkboxes (CAD rows show
+"Creates a task" — channels stay `{}`), active toggle (optimistic, revert + toast).
+Identity fields (code, trigger, recipient, auto_task) are read-only — **toggling the
+manager/founder rows active IS the recipient checklist** (recipients are separate rows
+by design). Reads: `getAllSlaPolicies` (session client; 0111 RLS admin/founder SELECT).
+Writes: `updateSlaPolicyAction` (`actions/sla-policies.ts`) — Zod →
+`requireProfile(['admin','founder'])` → admin-client update (no write RLS by design) →
+`revalidatePath('/settings')`. The engine reads policies per job run: active/channel
+edits apply on the next fire; threshold edits apply to newly armed timers only.
 
 ## 5. States
 

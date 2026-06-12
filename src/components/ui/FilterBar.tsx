@@ -5,7 +5,13 @@ import { SearchBar } from '@/components/ui/SearchBar';
 import { Button } from '@/components/ui/Button';
 import { FloatingPanel } from '@/components/ui/FloatingPanel';
 import { DateRangeFields } from '@/components/ui/DateRangeFields';
+import { DateRangePresetList } from '@/components/ui/DateRangePresetList';
+import {
+  DATE_RANGE_PRESET_LABELS,
+  matchDateRangePreset,
+} from '@/lib/constants/date-range-presets';
 import { usePortalAnchor } from '@/hooks/usePortalAnchor';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 
 type FilterBarDateRange = {
   /** URL-param-formatted date strings (see lib/utils/filter-params). */
@@ -15,6 +21,13 @@ type FilterBarDateRange = {
   onToChange: (value: string | null) => void;
   /** Clears both dates in one state update / URL push. */
   onClear: () => void;
+  /**
+   * Atomic from+to commit for the "Range" preset trigger (Today … Last 3
+   * Months — ui/DateRangePresetList). When provided, the Range trigger
+   * renders before the manual "Dates" trigger. Must apply both values in
+   * ONE state update / URL push.
+   */
+  onPresetSelect?: (from: string | null, to: string | null) => void;
   /** Stable AnimatePresence key — unique per page (e.g. 'deals-range-panel'). */
   panelKey: string;
   /**
@@ -40,8 +53,14 @@ type FilterBarProps = {
    * Row behaviour. 'wrap' (default): wrapping row, gap --space-3.
    * 'scroll' (leads): single nowrap row, gap --space-2, horizontal scroll,
    * hidden scrollbar.
+   * Below md, 'wrap' automatically collapses to the scroll behaviour — a
+   * wrapping bar piles into a ragged stack on phones (responsive audit
+   * 2026-06-12). Consequence: every FilterDropdown child must pass
+   * `menuPortal`, or its menu clips against the scroll container's overflow.
    */
   layout?: 'wrap' | 'scroll';
+  /** Omit the SearchBar entirely (e.g. performance agent self-view). */
+  hideSearch?: boolean;
   /** Count of committed/active filters — drives badge and Clear visibility. */
   activeCount: number;
   /** Numeric badge next to the sliders icon. Default true; leads hides it. */
@@ -62,12 +81,41 @@ type FilterBarProps = {
   trailing?: React.ReactNode;
 };
 
+/** Shared chrome for the Range (presets) and Dates (From → To) triggers. */
+function dateTriggerStyle(
+  active: boolean,
+  accented: boolean,
+  chevronVariant: boolean,
+): React.CSSProperties {
+  return {
+    display:      'inline-flex',
+    alignItems:   'center',
+    gap:          'var(--space-2)',
+    height:       '2.25rem',
+    padding:      'var(--space-1) var(--space-3)',
+    background:   active ? 'var(--theme-accent-surface)' : 'var(--theme-paper-subtle)',
+    border:       `1px solid ${accented ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
+    borderRadius: 'var(--radius-md)',
+    fontSize:     'var(--text-sm)',
+    fontFamily:   'var(--font-sans)',
+    fontWeight:   'var(--weight-medium)',
+    color:        active ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
+    cursor:       'pointer',
+    whiteSpace:   'nowrap',
+    outline:      'none',
+    transition:   chevronVariant
+      ? 'var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out)'
+      : 'var(--transition-hover)',
+  };
+}
+
 /**
  * THE shared list-page filter bar shell (leads, deals, campaigns, tasks).
  * Owns the chrome every filter bar repeats: sliders icon (+ optional count
- * badge), SearchBar, optional divider, the date-range trigger + portal panel
- * (usePortalAnchor + FloatingPanel + DateRangeFields), optional Apply button,
- * and the Clear button. Fully controlled and display-only — commit semantics
+ * badge), SearchBar, optional divider, the date-range triggers + portal
+ * panels (usePortalAnchor + FloatingPanel; "Range" presets via
+ * DateRangePresetList, "Dates" From → To via DateRangeFields), optional
+ * Apply button, and the Clear button. Fully controlled and display-only — commit semantics
  * (draft→Apply vs immediate, URL vs client state) belong to the consumer:
  * URL-driven pages pair it with useUrlFilters; client-state pages (tasks)
  * pass state straight through.
@@ -84,6 +132,7 @@ export function FilterBar({
   searchStyle,
   suppressSearchFocusAccent,
   layout = 'wrap',
+  hideSearch,
   activeCount,
   showCountBadge = true,
   dividerAfterSearch,
@@ -95,12 +144,22 @@ export function FilterBar({
   children,
   trailing,
 }: FilterBarProps) {
-  const range = usePortalAnchor();
+  const range    = usePortalAnchor();
+  const presets  = usePortalAnchor({ estimatedWidth: 200, estimatedHeight: 340 });
+  const isMobile = useMediaQuery(MQ.mobile);
 
-  const isScroll      = layout === 'scroll';
+  // Below md every bar runs as a single scrolling row (see layout prop doc).
+  const isScroll      = layout === 'scroll' || isMobile;
   const rangeVariant  = dateRange?.trigger ?? 'badge';
   const rangeActive   = !!(dateRange?.from || dateRange?.to);
   const rangeAccented = rangeVariant === 'chevron' ? rangeActive : range.open || rangeActive;
+
+  // "Range" preset trigger state — active only when from/to exactly match a preset.
+  const matchedPreset = dateRange?.onPresetSelect
+    ? matchDateRangePreset(dateRange.from, dateRange.to)
+    : null;
+  const presetActive   = matchedPreset !== null;
+  const presetAccented = rangeVariant === 'chevron' ? presetActive : presets.open || presetActive;
 
   return (
     <div
@@ -147,15 +206,17 @@ export function FilterBar({
         )}
       </div>
 
-      <SearchBar
-        value={searchValue}
-        onChange={onSearchChange}
-        placeholder={searchPlaceholder}
-        size={searchSize}
-        aria-label={searchAriaLabel}
-        suppressFocusAccent={suppressSearchFocusAccent}
-        style={searchStyle}
-      />
+      {!hideSearch && (
+        <SearchBar
+          value={searchValue}
+          onChange={onSearchChange}
+          placeholder={searchPlaceholder}
+          size={searchSize}
+          aria-label={searchAriaLabel}
+          suppressFocusAccent={suppressSearchFocusAccent}
+          style={isScroll ? { minWidth: '160px', ...searchStyle } : searchStyle}
+        />
+      )}
 
       {dividerAfterSearch && (
         <div
@@ -170,7 +231,48 @@ export function FilterBar({
 
       {children}
 
-      {/* Date range — trigger only; panel portaled to document.body via FloatingPanel */}
+      {/* Range — quick presets (Today … Last 3 Months); panel portaled via FloatingPanel */}
+      {dateRange?.onPresetSelect && (
+        <div style={{ flexShrink: 0 }}>
+          <button
+            ref={presets.triggerRef}
+            type="button"
+            onClick={presets.toggle}
+            aria-haspopup="menu"
+            aria-expanded={presets.open}
+            style={dateTriggerStyle(presetActive, presetAccented, rangeVariant === 'chevron')}
+          >
+            {matchedPreset ? DATE_RANGE_PRESET_LABELS[matchedPreset] : 'Range'}
+            <ChevronDown
+              style={{
+                width:       14,
+                height:      14,
+                strokeWidth: 1.5,
+                transform:   presets.open ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition:  'transform var(--duration-fast) var(--ease-in-out)',
+              }}
+              aria-hidden="true"
+            />
+          </button>
+
+          <FloatingPanel
+            {...presets.panelProps}
+            panelKey={`${dateRange.panelKey}-presets`}
+            style={{ padding: 'var(--space-2)' }}
+          >
+            <DateRangePresetList
+              from={dateRange.from}
+              to={dateRange.to}
+              onSelect={(from, to) => {
+                dateRange.onPresetSelect?.(from, to);
+                presets.close();
+              }}
+            />
+          </FloatingPanel>
+        </div>
+      )}
+
+      {/* Dates — manual From → To; panel portaled to document.body via FloatingPanel */}
       {dateRange && (
         <div style={{ flexShrink: 0 }}>
           <button
@@ -179,29 +281,9 @@ export function FilterBar({
             onClick={range.toggle}
             aria-haspopup="dialog"
             aria-expanded={range.open}
-            style={{
-              display:      'inline-flex',
-              alignItems:   'center',
-              gap:          'var(--space-2)',
-              height:       '2.25rem',
-              padding:      'var(--space-1) var(--space-3)',
-              background:   rangeActive ? 'var(--theme-accent-surface)' : 'var(--theme-paper-subtle)',
-              border:       `1px solid ${rangeAccented ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
-              borderRadius: 'var(--radius-md)',
-              fontSize:     'var(--text-sm)',
-              fontFamily:   'var(--font-sans)',
-              fontWeight:   'var(--weight-medium)',
-              color:        rangeActive ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
-              cursor:       'pointer',
-              whiteSpace:   'nowrap',
-              outline:      'none',
-              transition:
-                rangeVariant === 'chevron'
-                  ? 'var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out)'
-                  : 'var(--transition-hover)',
-            }}
+            style={dateTriggerStyle(rangeActive, rangeAccented, rangeVariant === 'chevron')}
           >
-            Range
+            Dates
             {rangeVariant === 'chevron' ? (
               <ChevronDown
                 style={{

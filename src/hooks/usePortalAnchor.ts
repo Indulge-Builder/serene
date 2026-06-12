@@ -74,7 +74,11 @@ export function usePortalAnchor<TTrigger extends HTMLElement = HTMLButtonElement
       const flipLeft = rect.left + w > window.innerWidth - edgeMargin;
       const spaceBelow = window.innerHeight - rect.bottom;
       const flipUp = spaceBelow < h && rect.top > spaceBelow;
-      const left = (flipLeft ? rect.right - w : rect.left) - vvLeft;
+      // Clamp into the viewport gutter — a panel wider than the space on
+      // either side of the trigger (narrow viewports) must never start
+      // off-screen left or overflow right when room exists.
+      const rawLeft = (flipLeft ? rect.right - w : rect.left) - vvLeft;
+      const left = Math.max(edgeMargin, Math.min(rawLeft, window.innerWidth - w - edgeMargin));
       const top = (flipUp ? rect.top - gap : rect.bottom + gap) - vvTop;
       setPosition({ top, left, flipUp });
     },

@@ -1,0 +1,3155 @@
+{
+  "meta": {
+    "feature": "call-intelligence",
+    "generated": "2026-06-12",
+    "source": "Freshdesk ticket export Jan 2023 – Jun 2026 (37,225 resolved tickets), curated to 150",
+    "domain": "onboarding",
+    "categories": [
+      "travel",
+      "dining",
+      "gifts",
+      "events",
+      "retail",
+      "special"
+    ],
+    "case_count": 150,
+    "hook_count": 30
+  },
+  "serviceCases": [
+    {
+      "id": "case-travel-001",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Arranged a private helicopter from Prayagraj to the Sangam at peak Maha Kumbh for 6 guests",
+      "summary": "Secured helicopter transfers into the Sangam during the 2025 Maha Kumbh — the most congested pilgrimage window on earth — for a party of six, across two separate dates in February. Routing, permissions and ground coordination were handled end to end.",
+      "outcome_note": "Both dates flew as planned despite crowd-control restrictions across the city.",
+      "city": "Prayagraj",
+      "country": "India",
+      "tags": [
+        "prayagraj",
+        "kumbh",
+        "helicopter",
+        "vip_access",
+        "rare",
+        "india"
+      ],
+      "is_featured": true,
+      "sort_order": 0
+    },
+    {
+      "id": "case-travel-002",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Planned a luxury air-cruise expedition to Antarctica, including the South America legs",
+      "summary": "Built a complete Antarctica expedition plan for the Nov–Mar polar season, combining a luxury air-cruise with the South America approach and an 8–10 day itinerary. Cabin categories, charter connections and weather buffers were all mapped before the client committed.",
+      "outcome_note": null,
+      "city": null,
+      "country": "Antarctica",
+      "tags": [
+        "antarctica",
+        "cruise",
+        "expedition",
+        "once_in_a_lifetime",
+        "international"
+      ],
+      "is_featured": true,
+      "sort_order": 1
+    },
+    {
+      "id": "case-travel-003",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Chartered a same-day private yacht in Bali",
+      "summary": "The client asked for a yacht in Bali for that same day. A vessel with crew was sourced, vetted and confirmed within hours, with pickup logistics arranged from the villa.",
+      "outcome_note": null,
+      "city": "Bali",
+      "country": "Indonesia",
+      "tags": [
+        "bali",
+        "yacht",
+        "same_day",
+        "charter",
+        "indonesia"
+      ],
+      "is_featured": false,
+      "sort_order": 2
+    },
+    {
+      "id": "case-travel-004",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Lined up private yacht charters in Saint-Tropez with full crew and provisioning options",
+      "summary": "Produced a vetted shortlist of crewed yachts available out of Saint-Tropez in peak Riviera season, with pricing, capacity and provisioning detail for each. The client picked from real availability, not brochures.",
+      "outcome_note": null,
+      "city": "Saint-Tropez",
+      "country": "France",
+      "tags": [
+        "saint_tropez",
+        "yacht",
+        "charter",
+        "french_riviera",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 3
+    },
+    {
+      "id": "case-travel-005",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Booked a 3-hour sundowner yacht in Maui for a family of eight",
+      "summary": "Arranged a private sunset sail off Maui for four adults and four kids, matched to a family-safe vessel and crew. Confirmed across time zones for a fixed date in June.",
+      "outcome_note": null,
+      "city": "Maui",
+      "country": "USA",
+      "tags": [
+        "maui",
+        "hawaii",
+        "yacht",
+        "sundowner",
+        "family",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 4
+    },
+    {
+      "id": "case-travel-006",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Arranged a Dubai sunset yacht day with sandbank stop and water sports",
+      "summary": "Put together a full-day private yacht experience in Dubai — sunset cruising, a sandbank anchorage and on-board water sports — for a December date in peak season.",
+      "outcome_note": null,
+      "city": "Dubai",
+      "country": "UAE",
+      "tags": [
+        "dubai",
+        "yacht",
+        "water_sports",
+        "sunset",
+        "uae"
+      ],
+      "is_featured": false,
+      "sort_order": 5
+    },
+    {
+      "id": "case-travel-007",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Chartered a private yacht in Goa for 20 guests, 5–8 pm slot confirmed",
+      "summary": "Secured a 20-pax private yacht in Goa for a fixed three-hour evening window in October. Vessel capacity, crew and boarding point were locked despite the short notice.",
+      "outcome_note": null,
+      "city": "Goa",
+      "country": "India",
+      "tags": [
+        "goa",
+        "yacht",
+        "party",
+        "charter",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 6
+    },
+    {
+      "id": "case-travel-008",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Arranged a private jet from Barcelona to Ibiza in peak summer",
+      "summary": "Booked a private jet for the Barcelona–Ibiza hop on a fixed late-July date — the busiest week of the Balearic season, when empty legs vanish within hours.",
+      "outcome_note": null,
+      "city": "Barcelona",
+      "country": "Spain",
+      "tags": [
+        "barcelona",
+        "ibiza",
+        "private_jet",
+        "charter",
+        "peak_season",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 7
+    },
+    {
+      "id": "case-travel-009",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Sourced private charter options Chandigarh to Dubai",
+      "summary": "Scoped and priced private charter aircraft for a direct Chandigarh–Dubai sector — a route with no scheduled premium service — including aircraft category and permit timelines.",
+      "outcome_note": null,
+      "city": "Chandigarh",
+      "country": "India",
+      "tags": [
+        "chandigarh",
+        "dubai",
+        "private_jet",
+        "charter",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 8
+    },
+    {
+      "id": "case-travel-010",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Activated Pranaam meet-and-greet at Bengaluru T2 within the hour for 3 passengers",
+      "summary": "The client called for airport assistance at Bengaluru Terminal 2 with less than an hour before landing. Pranaam porter and escort service was confirmed for all three passengers before the aircraft touched down.",
+      "outcome_note": null,
+      "city": "Bengaluru",
+      "country": "India",
+      "tags": [
+        "bengaluru",
+        "airport",
+        "meet_and_greet",
+        "same_day",
+        "urgent",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 9
+    },
+    {
+      "id": "case-travel-011",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Secured an urgent room at The Oberoi Amarvilas, Agra",
+      "summary": "Got a confirmed room at the Oberoi Amarvilas — the Taj-view property that runs full months out — on urgent notice for the client's dates.",
+      "outcome_note": null,
+      "city": "Agra",
+      "country": "India",
+      "tags": [
+        "agra",
+        "oberoi",
+        "hotel",
+        "urgent",
+        "sold_out",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 10
+    },
+    {
+      "id": "case-travel-012",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Booked Hôtel de Paris, Monte-Carlo, on the client's exact dates",
+      "summary": "Confirmed a stay at Hôtel de Paris in Monaco — one of Europe's most demanded addresses — handling category selection and the booking conditions in full.",
+      "outcome_note": null,
+      "city": "Monte-Carlo",
+      "country": "Monaco",
+      "tags": [
+        "monaco",
+        "hotel",
+        "monte_carlo",
+        "luxury_stay",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 11
+    },
+    {
+      "id": "case-travel-013",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Reserved the Dior Suite penthouse in Paris for a couple",
+      "summary": "Booked La Suite Dior — the couture penthouse — for a one-couple stay on a fixed August date, coordinating directly for one of the hardest single rooms to confirm in Paris.",
+      "outcome_note": null,
+      "city": "Paris",
+      "country": "France",
+      "tags": [
+        "paris",
+        "dior",
+        "penthouse",
+        "suite",
+        "rare",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 12
+    },
+    {
+      "id": "case-travel-014",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Scoped a ~35-room Maldives resort block for a single group in peak January",
+      "summary": "Researched and shortlisted Maldives resorts able to hold roughly 35 rooms for one group in the last week of January — effectively a partial buyout in the islands' tightest week — with experiences mapped per property.",
+      "outcome_note": null,
+      "city": null,
+      "country": "Maldives",
+      "tags": [
+        "maldives",
+        "resort",
+        "group_travel",
+        "buyout",
+        "peak_season",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 13
+    },
+    {
+      "id": "case-travel-015",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Booked seaplane transfers in the Maldives",
+      "summary": "Arranged seaplane legs for a Maldives stay, syncing the transfer slots with international arrival times so the client never waited at the dock.",
+      "outcome_note": null,
+      "city": null,
+      "country": "Maldives",
+      "tags": [
+        "maldives",
+        "seaplane",
+        "transfer",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 14
+    },
+    {
+      "id": "case-travel-016",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Reserved the Anantara Jungle Bubble Lodge in Chiang Rai",
+      "summary": "Confirmed the transparent jungle-bubble suite at Anantara Golden Triangle in Chiang Rai — a two-unit experience that books out months ahead — including the elephant-camp programme.",
+      "outcome_note": null,
+      "city": "Chiang Rai",
+      "country": "Thailand",
+      "tags": [
+        "chiang_rai",
+        "thailand",
+        "anantara",
+        "unique_stay",
+        "rare",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 15
+    },
+    {
+      "id": "case-travel-017",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Planned a week in Courchevel with skiing, horse riding and 5-star availability checks",
+      "summary": "Built a week-long Courchevel programme combining ski arrangements, horse riding and verified five-star availability for the client's dates, with restaurant pairings per evening.",
+      "outcome_note": null,
+      "city": "Courchevel",
+      "country": "France",
+      "tags": [
+        "courchevel",
+        "ski",
+        "france",
+        "itinerary",
+        "luxury_stay",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 16
+    },
+    {
+      "id": "case-travel-018",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Curated an Amalfi Coast and Positano itinerary day by day",
+      "summary": "Designed a May itinerary across Amalfi, Positano and Sorrento — boats, tables and drives sequenced so the client never doubled back on the coast road.",
+      "outcome_note": null,
+      "city": "Amalfi",
+      "country": "Italy",
+      "tags": [
+        "amalfi",
+        "positano",
+        "italy",
+        "itinerary",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 17
+    },
+    {
+      "id": "case-travel-019",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Curated a 25th-anniversary itinerary across New Zealand",
+      "summary": "Built a full New Zealand anniversary itinerary from scratch — lodges, scenic flights and pacing matched to the couple rather than a template.",
+      "outcome_note": null,
+      "city": null,
+      "country": "New Zealand",
+      "tags": [
+        "new_zealand",
+        "anniversary",
+        "itinerary",
+        "bespoke",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 18
+    },
+    {
+      "id": "case-travel-020",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Built the Everest breakfast experience itinerary",
+      "summary": "Planned the helicopter-to-Everest breakfast experience — flight windows, acclimatisation stops and weather contingency — as part of a larger Nepal routing.",
+      "outcome_note": null,
+      "city": null,
+      "country": "Nepal",
+      "tags": [
+        "everest",
+        "nepal",
+        "helicopter",
+        "once_in_a_lifetime",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 19
+    },
+    {
+      "id": "case-travel-021",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Found an urgent stay in Nice, France, for fixed September dates",
+      "summary": "Ran an urgent accommodation search in Nice for an 18–22 September window when the city was effectively full, and produced bookable options the same day.",
+      "outcome_note": null,
+      "city": "Nice",
+      "country": "France",
+      "tags": [
+        "nice",
+        "france",
+        "urgent",
+        "villa",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 20
+    },
+    {
+      "id": "case-travel-022",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Arranged a helicopter from Bengaluru to Mahabalipuram",
+      "summary": "Organised a private helicopter transfer from Bengaluru to Mahabalipuram for a Friday departure — permits, helipad clearances and ground cars at both ends.",
+      "outcome_note": null,
+      "city": "Bengaluru",
+      "country": "India",
+      "tags": [
+        "bengaluru",
+        "helicopter",
+        "transfer",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 21
+    },
+    {
+      "id": "case-travel-023",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Produced an urgent luxury SUV with chauffeur, Jaipur to Delhi, for 3 passengers",
+      "summary": "Sourced a luxury SUV with driver for an immediate Jaipur–Delhi run for three passengers, confirmed within hours of the ask.",
+      "outcome_note": null,
+      "city": "Jaipur",
+      "country": "India",
+      "tags": [
+        "jaipur",
+        "delhi",
+        "chauffeur",
+        "suv",
+        "urgent",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 22
+    },
+    {
+      "id": "case-travel-024",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Handled the St. Moritz stay end to end — transfers, tables and the Zurich airport run",
+      "summary": "Managed a St. Moritz trip in full: Kempinski-to-Zurich-airport transfer, plus a curated list of the bars and restaurants actually worth the client's evenings.",
+      "outcome_note": null,
+      "city": "St. Moritz",
+      "country": "Switzerland",
+      "tags": [
+        "st_moritz",
+        "zurich",
+        "switzerland",
+        "transfer",
+        "itinerary",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 23
+    },
+    {
+      "id": "case-travel-025",
+      "domain": "onboarding",
+      "category": "travel",
+      "title": "Planned a Mykonos holiday for 10 — restaurants, yacht and beach clubs",
+      "summary": "Built a five-day Mykonos programme for a group of ten: dinner tables, a private yacht day and beach-club placements across the peak late-July window.",
+      "outcome_note": null,
+      "city": "Mykonos",
+      "country": "Greece",
+      "tags": [
+        "mykonos",
+        "greece",
+        "yacht",
+        "beach_club",
+        "group_travel",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 24
+    },
+    {
+      "id": "case-dining-001",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Worked a table at Noma, Copenhagen — the hardest reservation in the world",
+      "summary": "Pursued and secured dining at Noma in Copenhagen across the client's flexible late-October and early-November windows. Noma's seatings release and vanish in minutes; flexibility plus persistence got it done.",
+      "outcome_note": null,
+      "city": "Copenhagen",
+      "country": "Denmark",
+      "tags": [
+        "copenhagen",
+        "noma",
+        "michelin",
+        "impossible_table",
+        "international"
+      ],
+      "is_featured": true,
+      "sort_order": 0
+    },
+    {
+      "id": "case-dining-002",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Repeatedly secured tables at Gaggan, Bangkok — for parties of 2 to 4, on short notice",
+      "summary": "Confirmed multiple reservations at Gaggan in Bangkok across different months and group sizes, including short-notice asks. Gaggan releases very few covers and is among Asia's most chased tables.",
+      "outcome_note": "Clients keep coming back to us specifically for Bangkok dining.",
+      "city": "Bangkok",
+      "country": "Thailand",
+      "tags": [
+        "bangkok",
+        "gaggan",
+        "michelin",
+        "impossible_table",
+        "thailand",
+        "international"
+      ],
+      "is_featured": true,
+      "sort_order": 1
+    },
+    {
+      "id": "case-dining-003",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Booked CORE by Clare Smyth — 3 Michelin stars — for 6 adults and 4 kids",
+      "summary": "Secured a ten-cover family booking at CORE by Clare Smyth in London, a three-star room that rarely takes large parties with children, and aligned the menu for the group.",
+      "outcome_note": null,
+      "city": "London",
+      "country": "UK",
+      "tags": [
+        "london",
+        "michelin",
+        "core",
+        "family",
+        "impossible_table",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 2
+    },
+    {
+      "id": "case-dining-004",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Chased a counter seat at Sushi Sugita, Tokyo",
+      "summary": "Worked Tokyo's most closed sushi counter — Sushi Sugita — across a four-day flexible window for the client. Sugita does not take direct foreign bookings; access runs entirely on relationships.",
+      "outcome_note": null,
+      "city": "Tokyo",
+      "country": "Japan",
+      "tags": [
+        "tokyo",
+        "sushi",
+        "omakase",
+        "impossible_table",
+        "japan",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 3
+    },
+    {
+      "id": "case-dining-005",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Same-day lunch table at Sushisamba Dubai, confirmed within the hour",
+      "summary": "The client wanted Sushisamba Dubai at 1:30 pm that same day, party of four. Confirmed within the hour — and we've since repeated Sushisamba Dubai bookings for groups of 2 to 6, including one with a surprise cake staged at the table.",
+      "outcome_note": null,
+      "city": "Dubai",
+      "country": "UAE",
+      "tags": [
+        "dubai",
+        "sushisamba",
+        "same_day",
+        "urgent",
+        "uae"
+      ],
+      "is_featured": false,
+      "sort_order": 4
+    },
+    {
+      "id": "case-dining-006",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Dinner at Sushi Samba, Heron Tower, London",
+      "summary": "Locked a prime-time dinner at Sushi Samba in London's Heron Tower — one of the city's most over-subscribed view tables.",
+      "outcome_note": null,
+      "city": "London",
+      "country": "UK",
+      "tags": [
+        "london",
+        "sushisamba",
+        "dinner",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 5
+    },
+    {
+      "id": "case-dining-007",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Standing access to Trishna, Mumbai — tables for 2 to 6, again and again",
+      "summary": "Confirmed repeated bookings at Trishna in Mumbai across party sizes and dates, including weekday prime slots and a Saturday lunch for four — a room that turns away walk-ins nightly.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "trishna",
+        "seafood",
+        "repeat_delivery",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 6
+    },
+    {
+      "id": "case-dining-008",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Urgent dinner at Masque, Mumbai — with a backup locked in parallel",
+      "summary": "Secured an urgent reservation at Masque, Mumbai's tasting-menu flagship, while holding The Bombay Canteen as a confirmed fallback so the evening could not fail either way.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "masque",
+        "tasting_menu",
+        "urgent",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 7
+    },
+    {
+      "id": "case-dining-009",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Urgent table at Ministry of Crab, Colombo",
+      "summary": "Got the client into Ministry of Crab in Sri Lanka on urgent notice — the room books out weeks ahead and holds almost nothing back for late requests.",
+      "outcome_note": null,
+      "city": "Colombo",
+      "country": "Sri Lanka",
+      "tags": [
+        "colombo",
+        "ministry_of_crab",
+        "sri_lanka",
+        "urgent",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 8
+    },
+    {
+      "id": "case-dining-010",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Table for 12 at Bagatelle, Courchevel, in peak ski season",
+      "summary": "Reserved a 12-cover table at Bagatelle Courchevel across two candidate March dates at the height of the season, when the room is effectively closed to new names.",
+      "outcome_note": null,
+      "city": "Courchevel",
+      "country": "France",
+      "tags": [
+        "courchevel",
+        "bagatelle",
+        "apres_ski",
+        "group_dining",
+        "france",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 9
+    },
+    {
+      "id": "case-dining-011",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Dior Café, Paris — table for 6",
+      "summary": "Booked the Dior Café in Paris for six guests, a couture-house café that declines most direct requests, and have since repeated 2–3 pax bookings on other dates.",
+      "outcome_note": null,
+      "city": "Paris",
+      "country": "France",
+      "tags": [
+        "paris",
+        "dior",
+        "cafe",
+        "rare",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 10
+    },
+    {
+      "id": "case-dining-012",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Private dinner at Le Restaurant Monsieur Dior with a customised menu",
+      "summary": "Arranged a private dinner at Le Restaurant Monsieur Dior in Paris with the menu adapted to the client's preferences, paired with a dessert visit to La Pâtisserie Dior the same day.",
+      "outcome_note": null,
+      "city": "Paris",
+      "country": "France",
+      "tags": [
+        "paris",
+        "dior",
+        "private_dining",
+        "bespoke",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 11
+    },
+    {
+      "id": "case-dining-013",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Mapped vegetarian fine dining at Michelin level — Barcelona and London",
+      "summary": "Curated genuinely vegetarian Michelin-star options in Barcelona and London for clients who don't compromise on either count, then converted the picks into confirmed tables.",
+      "outcome_note": null,
+      "city": "Barcelona",
+      "country": "Spain",
+      "tags": [
+        "barcelona",
+        "london",
+        "michelin",
+        "vegetarian",
+        "curation",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 12
+    },
+    {
+      "id": "case-dining-014",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Back-to-back Michelin solo dinners in Hong Kong — Chaat and New Punjab Club",
+      "summary": "Booked consecutive solo dinners at Chaat and New Punjab Club — both Michelin-starred — on back-to-back April nights in Hong Kong for a travelling client.",
+      "outcome_note": null,
+      "city": "Hong Kong",
+      "country": "Hong Kong",
+      "tags": [
+        "hong_kong",
+        "michelin",
+        "new_punjab_club",
+        "solo_dining",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 13
+    },
+    {
+      "id": "case-dining-015",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Built a Michelin dining circuit for Kyoto, then booked it",
+      "summary": "Curated the Kyoto leg of a Japan trip around 1–3 star rooms with a vegetarian-friendly mix, sequenced bookings across the stay, and handled the no-foreign-booking houses through partners.",
+      "outcome_note": null,
+      "city": "Kyoto",
+      "country": "Japan",
+      "tags": [
+        "kyoto",
+        "japan",
+        "michelin",
+        "itinerary_dining",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 14
+    },
+    {
+      "id": "case-dining-016",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Counter seats at Wasabi by Morimoto at 9:45 pm for 3",
+      "summary": "Confirmed late-evening sushi-counter seats at Wasabi by Morimoto at the Taj — the counter itself, not the room — for a party of three.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "wasabi",
+        "sushi",
+        "counter_seats",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 15
+    },
+    {
+      "id": "case-dining-017",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Le Petit Chef, Goa — the projection-mapped dinner, table for 2",
+      "summary": "Reserved Le Petit Chef in Goa — the 3D projection-mapped dining experience with a handful of seatings a night — for a December date in peak Goa season.",
+      "outcome_note": null,
+      "city": "Goa",
+      "country": "India",
+      "tags": [
+        "goa",
+        "le_petit_chef",
+        "experience_dining",
+        "peak_season",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 16
+    },
+    {
+      "id": "case-dining-018",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Zuma Dubai for lunch — on New Year's Day, booked the same morning",
+      "summary": "The ask came in at 1 pm on January 1st: Zuma Dubai, lunch, now. Confirmed the same day, in the single most oversubscribed dining week of the Dubai calendar.",
+      "outcome_note": null,
+      "city": "Dubai",
+      "country": "UAE",
+      "tags": [
+        "dubai",
+        "zuma",
+        "new_year",
+        "same_day",
+        "urgent",
+        "uae"
+      ],
+      "is_featured": false,
+      "sort_order": 17
+    },
+    {
+      "id": "case-dining-019",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Table for 15 in Goa at 1 pm on January 1st",
+      "summary": "Found and confirmed a 15-pax New Year's Day lunch in Goa — second-house party crowd, every venue full — with hours of notice.",
+      "outcome_note": null,
+      "city": "Goa",
+      "country": "India",
+      "tags": [
+        "goa",
+        "group_dining",
+        "new_year",
+        "same_day",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 18
+    },
+    {
+      "id": "case-dining-020",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Urgent table at One8, Delhi — outside seating or first-floor balcony, as specified",
+      "summary": "Secured an urgent table for two at One8 in Delhi, holding out for the client's exact seating preference rather than taking the first availability.",
+      "outcome_note": null,
+      "city": "Delhi",
+      "country": "India",
+      "tags": [
+        "delhi",
+        "one8",
+        "urgent",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 19
+    },
+    {
+      "id": "case-dining-021",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Valentine's window table at Willow, Singapore — Michelin-starred",
+      "summary": "Booked Michelin-starred Willow in Singapore for the 14th–15th February window — the two hardest dining dates of the year anywhere.",
+      "outcome_note": null,
+      "city": "Singapore",
+      "country": "Singapore",
+      "tags": [
+        "singapore",
+        "willow",
+        "michelin",
+        "valentines",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 20
+    },
+    {
+      "id": "case-dining-022",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Post-concert dinner for 10 at 8 pm, walking distance from the venue, Dubai",
+      "summary": "Confirmed a 10-cover 8 pm dinner near a sold-out Dubai concert so the client's group walked from the show straight to the table.",
+      "outcome_note": null,
+      "city": "Dubai",
+      "country": "UAE",
+      "tags": [
+        "dubai",
+        "group_dining",
+        "concert_night",
+        "uae"
+      ],
+      "is_featured": false,
+      "sort_order": 21
+    },
+    {
+      "id": "case-dining-023",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Urgent same-day table at Four Seasons, Mumbai, for 4",
+      "summary": "Turned around an urgent same-day reservation at the Four Seasons Mumbai for four guests within the hour of the ask.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "four_seasons",
+        "same_day",
+        "urgent",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 22
+    },
+    {
+      "id": "case-dining-024",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Prime 9:15 pm table for 8 at Carine, Emirates Golf Club, Dubai",
+      "summary": "Reserved Carine at Emirates Golf Club for eight guests at peak Friday timing — a club room with heavy member priority.",
+      "outcome_note": null,
+      "city": "Dubai",
+      "country": "UAE",
+      "tags": [
+        "dubai",
+        "carine",
+        "group_dining",
+        "uae"
+      ],
+      "is_featured": false,
+      "sort_order": 23
+    },
+    {
+      "id": "case-dining-025",
+      "domain": "onboarding",
+      "category": "dining",
+      "title": "Curated Michelin dining across Lucerne, Interlaken and Montreux for a Swiss roadtrip",
+      "summary": "Mapped Michelin-starred rooms along the client's Switzerland route — Lucerne, Interlaken, Montreux — and booked the stops so the drive ate well every single day.",
+      "outcome_note": null,
+      "city": null,
+      "country": "Switzerland",
+      "tags": [
+        "switzerland",
+        "michelin",
+        "roadtrip",
+        "curation",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 24
+    },
+    {
+      "id": "case-gifts-001",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Flew a crate of Alphonso mangoes from India to a recipient in the UK",
+      "summary": "A client wanted to send peak-season Alphonso mangoes to someone important to him in the UK. We handled sourcing from the right orchard, export-grade packing, phytosanitary paperwork and door delivery in Britain.",
+      "outcome_note": null,
+      "city": "London",
+      "country": "UK",
+      "tags": [
+        "london",
+        "uk",
+        "mangoes",
+        "international_delivery",
+        "rare",
+        "india"
+      ],
+      "is_featured": true,
+      "sort_order": 0
+    },
+    {
+      "id": "case-gifts-002",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Ran a weekly gift programme counting down to a client's wedding",
+      "summary": "Designed and executed a multi-week gifting countdown to a wedding — a different curated gift delivered every week, each themed to the couple, with the full calendar managed so the client never had to think about it once.",
+      "outcome_note": "The programme ran to the wedding date without a single missed week.",
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "wedding",
+        "gift_programme",
+        "bespoke",
+        "recurring"
+      ],
+      "is_featured": true,
+      "sort_order": 1
+    },
+    {
+      "id": "case-gifts-003",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Sourced a Glenlivet 25-year-old for a birthday delivery in Jaipur",
+      "summary": "Located a Glenlivet 25 Year Old — limited allocation in India — and delivered it as a birthday gift in Jaipur alongside a curated bouquet, on the date.",
+      "outcome_note": null,
+      "city": "Jaipur",
+      "country": "India",
+      "tags": [
+        "jaipur",
+        "whisky",
+        "glenlivet",
+        "rare",
+        "birthday",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 2
+    },
+    {
+      "id": "case-gifts-004",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Sourced La Maison du Chocolat in Bengaluru",
+      "summary": "Procured La Maison du Chocolat — the Parisian chocolatier with no India retail presence — for a Bengaluru delivery, handling import and cold-chain so the box arrived as it left Paris.",
+      "outcome_note": null,
+      "city": "Bengaluru",
+      "country": "India",
+      "tags": [
+        "bengaluru",
+        "chocolate",
+        "maison_du_chocolat",
+        "international_sourcing",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 3
+    },
+    {
+      "id": "case-gifts-005",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Curated and delivered a corporate Diwali programme — 45 bespoke gift boxes",
+      "summary": "Designed 45 curated Diwali gift boxes for a client's corporate list, presented tiered options at multiple price points, and ran the full Delhi-NCR delivery schedule to land before the festival.",
+      "outcome_note": null,
+      "city": "Delhi",
+      "country": "India",
+      "tags": [
+        "delhi",
+        "diwali",
+        "corporate_gifting",
+        "hampers",
+        "bespoke",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 4
+    },
+    {
+      "id": "case-gifts-006",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Delivered Diwali hampers in Dubai and Abu Dhabi for an India-based client",
+      "summary": "Arranged festival hampers delivered across Dubai and Abu Dhabi on a Monday deadline for a client sitting in India — sourcing, customisation and last-mile handled locally in the UAE.",
+      "outcome_note": null,
+      "city": "Dubai",
+      "country": "UAE",
+      "tags": [
+        "dubai",
+        "abu_dhabi",
+        "diwali",
+        "hampers",
+        "international_delivery",
+        "uae"
+      ],
+      "is_featured": false,
+      "sort_order": 5
+    },
+    {
+      "id": "case-gifts-007",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Cake and bouquet delivered to a hotel in Banff, Canada",
+      "summary": "Coordinated a fresh cake and bouquet to a client's family at a hotel in Banff — small-town Canada, no premium delivery network — timed to the morning of the occasion.",
+      "outcome_note": null,
+      "city": "Banff",
+      "country": "Canada",
+      "tags": [
+        "banff",
+        "canada",
+        "cake",
+        "flowers",
+        "international_delivery"
+      ],
+      "is_featured": false,
+      "sort_order": 6
+    },
+    {
+      "id": "case-gifts-008",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Rakhi and gift hamper delivered in Singapore",
+      "summary": "Sourced a Rakhi with an accompanying hamper and delivered it to the client's brother in Singapore in time for Raksha Bandhan.",
+      "outcome_note": null,
+      "city": "Singapore",
+      "country": "Singapore",
+      "tags": [
+        "singapore",
+        "rakhi",
+        "hamper",
+        "festival",
+        "international_delivery"
+      ],
+      "is_featured": false,
+      "sort_order": 7
+    },
+    {
+      "id": "case-gifts-009",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Chinese New Year gifts delivered inside China to a fixed date",
+      "summary": "Arranged gift and cake deliveries inside mainland China for Chinese New Year — a market where foreign gifting logistics routinely fail — landing on the 5th of February as specified.",
+      "outcome_note": null,
+      "city": null,
+      "country": "China",
+      "tags": [
+        "china",
+        "chinese_new_year",
+        "international_delivery",
+        "festival"
+      ],
+      "is_featured": false,
+      "sort_order": 8
+    },
+    {
+      "id": "case-gifts-010",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Valentine's morning in Kolkata: strawberries, flowers and a luxury fragrance",
+      "summary": "Composed and delivered a Valentine's gift in Kolkata — fresh strawberries, an arrangement and a luxury fragrance — landing on the morning of the 14th.",
+      "outcome_note": null,
+      "city": "Kolkata",
+      "country": "India",
+      "tags": [
+        "kolkata",
+        "valentines",
+        "flowers",
+        "fragrance",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 9
+    },
+    {
+      "id": "case-gifts-011",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Newborn hamper delivered to The Leela Palace, Bengaluru",
+      "summary": "Curated a newborn gift hamper and had it waiting at The Leela Palace Bengaluru for the family's arrival.",
+      "outcome_note": null,
+      "city": "Bengaluru",
+      "country": "India",
+      "tags": [
+        "bengaluru",
+        "newborn",
+        "hamper",
+        "hotel_delivery",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 10
+    },
+    {
+      "id": "case-gifts-012",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Tracked down Cherrapunji gin in Delhi as a Rakhi gift",
+      "summary": "Sourced a bottle of Cherrapunji gin — patchy distribution even in metros — in Delhi and delivered it as a Rakhi gift on schedule.",
+      "outcome_note": null,
+      "city": "Delhi",
+      "country": "India",
+      "tags": [
+        "delhi",
+        "gin",
+        "rare",
+        "rakhi",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 11
+    },
+    {
+      "id": "case-gifts-013",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Bouquet delivered to Dharamshala",
+      "summary": "Delivered a fresh premium bouquet in Dharamshala — a hill town with no florist network worth the name — on the client's date.",
+      "outcome_note": null,
+      "city": "Dharamshala",
+      "country": "India",
+      "tags": [
+        "dharamshala",
+        "flowers",
+        "remote_delivery",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 12
+    },
+    {
+      "id": "case-gifts-014",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Next-morning flowers in Mumbai, handed directly to the client's driver",
+      "summary": "Client messaged at night: flowers in Bombay tomorrow morning, handed to my driver. Done exactly as asked — right arrangement, right handover, right time.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "flowers",
+        "same_day",
+        "precision_delivery",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 13
+    },
+    {
+      "id": "case-gifts-015",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Custom-embroidered matching polos for a couple's anniversary",
+      "summary": "Produced customised matching polo shirts for a couple's anniversary — design, embroidery and delivery handled to the date.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "anniversary",
+        "custom",
+        "apparel",
+        "bespoke"
+      ],
+      "is_featured": false,
+      "sort_order": 14
+    },
+    {
+      "id": "case-gifts-016",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Father's Day flowers in two cities at once — Hyderabad and Bhilai",
+      "summary": "Delivered Father's Day arrangements simultaneously to the client's father in Hyderabad and father-in-law in Bhilai — one of them a city with essentially no premium florists — both on the morning itself.",
+      "outcome_note": null,
+      "city": "Hyderabad",
+      "country": "India",
+      "tags": [
+        "hyderabad",
+        "bhilai",
+        "fathers_day",
+        "flowers",
+        "multi_city",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 15
+    },
+    {
+      "id": "case-gifts-017",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Curated a one-of-a-kind gift for an 81st birthday",
+      "summary": "Built a shortlist of genuinely unusual gifts for a mother's 81st birthday — pieces with meaning rather than price tags — and delivered the chosen one with flowers on the 23rd.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "birthday",
+        "bespoke",
+        "curation",
+        "flowers"
+      ],
+      "is_featured": false,
+      "sort_order": 16
+    },
+    {
+      "id": "case-gifts-018",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Champagne, bouquet and a spa session gifted in Singapore on 2 days' notice",
+      "summary": "Packaged a champagne-flowers-spa gift experience in Singapore for a Thursday deadline, booked and delivered from India with no local presence required of the client.",
+      "outcome_note": null,
+      "city": "Singapore",
+      "country": "Singapore",
+      "tags": [
+        "singapore",
+        "champagne",
+        "spa",
+        "experience_gift",
+        "international_delivery"
+      ],
+      "is_featured": false,
+      "sort_order": 17
+    },
+    {
+      "id": "case-gifts-019",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Two-tier eggless cake delivered in Delhi to an exact date",
+      "summary": "Commissioned a two-tier eggless celebration cake from the right baker in Delhi and delivered it on the 7th as specified — dietary constraint and design both honoured.",
+      "outcome_note": null,
+      "city": "Delhi",
+      "country": "India",
+      "tags": [
+        "delhi",
+        "cake",
+        "eggless",
+        "custom",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 18
+    },
+    {
+      "id": "case-gifts-020",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Flowers and cake delivered in Solapur",
+      "summary": "Executed a flowers-and-cake delivery in Solapur — tier-3 city, zero premium vendors — by building the supply on the ground for that one delivery.",
+      "outcome_note": null,
+      "city": "Solapur",
+      "country": "India",
+      "tags": [
+        "solapur",
+        "flowers",
+        "cake",
+        "remote_delivery",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 19
+    },
+    {
+      "id": "case-gifts-021",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Flowers, chocolate cake and a Saregama Carvaan delivered to a doctor in Hyderabad",
+      "summary": "Composed a thank-you gift for the client's doctor — arrangement, chocolate cake and a Saregama Carvaan music player — delivered in Hyderabad with a personal note transcribed exactly.",
+      "outcome_note": null,
+      "city": "Hyderabad",
+      "country": "India",
+      "tags": [
+        "hyderabad",
+        "thank_you",
+        "carvaan",
+        "bespoke",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 20
+    },
+    {
+      "id": "case-gifts-022",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Four packets of dates delivered to Dublin",
+      "summary": "Sourced and shipped specific dates to a recipient in Dublin — a tiny ask executed with the same precision as a big one.",
+      "outcome_note": null,
+      "city": "Dublin",
+      "country": "Ireland",
+      "tags": [
+        "dublin",
+        "ireland",
+        "international_delivery",
+        "dates"
+      ],
+      "is_featured": false,
+      "sort_order": 21
+    },
+    {
+      "id": "case-gifts-023",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Curated tiered hamper menus for UHNI corporate gifting",
+      "summary": "Produced curated hampers at multiple price points for a client's ultra-high-net-worth contact list, presented as a menu so they could match hamper to relationship in one sitting.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "corporate_gifting",
+        "hampers",
+        "uhni",
+        "curation"
+      ],
+      "is_featured": false,
+      "sort_order": 22
+    },
+    {
+      "id": "case-gifts-024",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Gift options in London under a fixed budget, delivered by Sunday",
+      "summary": "Curated and executed a London gift purchase under a hard ₹50k ceiling against a Sunday deadline — sourced, wrapped and delivered locally.",
+      "outcome_note": null,
+      "city": "London",
+      "country": "UK",
+      "tags": [
+        "london",
+        "uk",
+        "budget_brief",
+        "international_delivery"
+      ],
+      "is_featured": false,
+      "sort_order": 23
+    },
+    {
+      "id": "case-gifts-025",
+      "domain": "onboarding",
+      "category": "gifts",
+      "title": "Spa gift vouchers at the Grand Hyatt, Delhi",
+      "summary": "Arranged full-body and back-treatment spa vouchers at the Hyatt in Delhi as a giftable package, with the booking flexibility handled in advance.",
+      "outcome_note": null,
+      "city": "Delhi",
+      "country": "India",
+      "tags": [
+        "delhi",
+        "spa",
+        "voucher",
+        "experience_gift",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 24
+    },
+    {
+      "id": "case-events-001",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "10 lounge tickets for Coldplay Mumbai — after the public sale crashed and sold out",
+      "summary": "When Coldplay's January 2025 Mumbai shows sold out within minutes and the resale market went vertical, we delivered 10 lounge tickets for one client — and fulfilled multiple parallel requests for 4–12 seats including standing and lounge categories.",
+      "outcome_note": "Repeated the delivery across several client groups for the same tour.",
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "coldplay",
+        "concert",
+        "sold_out",
+        "lounge",
+        "india"
+      ],
+      "is_featured": true,
+      "sort_order": 0
+    },
+    {
+      "id": "case-events-002",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Wimbledon tickets — including requests landed days before play",
+      "summary": "Sourced Wimbledon tickets across multiple years and rounds, including men's draw seats and late asks placed after the tournament had begun. Wimbledon has no meaningful public inventory; this is pure access.",
+      "outcome_note": null,
+      "city": "London",
+      "country": "UK",
+      "tags": [
+        "london",
+        "wimbledon",
+        "tennis",
+        "sold_out",
+        "vip_access",
+        "international"
+      ],
+      "is_featured": true,
+      "sort_order": 1
+    },
+    {
+      "id": "case-events-003",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "10 gold passes for Diljit Dosanjh's Dil-Luminati show in Delhi",
+      "summary": "Delivered 10 gold-category passes for the Delhi leg of the Dil-Luminati tour — the most demanded Indian tour of the year — and serviced parallel requests for lounge, VIP and fan-pit across the same city.",
+      "outcome_note": null,
+      "city": "Delhi",
+      "country": "India",
+      "tags": [
+        "delhi",
+        "diljit_dosanjh",
+        "concert",
+        "sold_out",
+        "vip_access",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 2
+    },
+    {
+      "id": "case-events-004",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "16 tickets for Diljit Dosanjh in Bengaluru — one group, one block",
+      "summary": "Secured 16 seats together for the Bengaluru Dil-Luminati show — keeping a group that size in one block for a sold-out arena date is the hard part, not the tickets.",
+      "outcome_note": null,
+      "city": "Bengaluru",
+      "country": "India",
+      "tags": [
+        "bengaluru",
+        "diljit_dosanjh",
+        "concert",
+        "group_booking",
+        "sold_out",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 3
+    },
+    {
+      "id": "case-events-005",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Lounge for 10 at Diljit Dosanjh, Jaipur",
+      "summary": "Confirmed 10 lounge tickets for the Jaipur stop of the Dil-Luminati tour on the 3rd of November.",
+      "outcome_note": null,
+      "city": "Jaipur",
+      "country": "India",
+      "tags": [
+        "jaipur",
+        "diljit_dosanjh",
+        "concert",
+        "lounge",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 4
+    },
+    {
+      "id": "case-events-006",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "4 platinum lounge tickets for Karan Aujla in Delhi",
+      "summary": "Delivered four platinum-lounge tickets for Karan Aujla's December Delhi show after general categories had gone.",
+      "outcome_note": null,
+      "city": "Delhi",
+      "country": "India",
+      "tags": [
+        "delhi",
+        "karan_aujla",
+        "concert",
+        "lounge",
+        "sold_out",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 5
+    },
+    {
+      "id": "case-events-007",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "IPL final — hospitality box with car passes",
+      "summary": "Arranged IPL final tickets in air-conditioned hospitality with matching car passes, plus repeated finals fulfilment across seasons for groups of 4 to 16.",
+      "outcome_note": null,
+      "city": "Chennai",
+      "country": "India",
+      "tags": [
+        "chennai",
+        "ipl",
+        "cricket",
+        "hospitality",
+        "final",
+        "sold_out",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 6
+    },
+    {
+      "id": "case-events-008",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "T20 World Cup final in Barbados — hospitality for 2",
+      "summary": "Sourced hospitality-category tickets for the T20 World Cup final in Barbados for two guests — international cricket's scarcest seat that year, an ocean away.",
+      "outcome_note": null,
+      "city": null,
+      "country": "Barbados",
+      "tags": [
+        "barbados",
+        "cricket",
+        "world_cup",
+        "hospitality",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 7
+    },
+    {
+      "id": "case-events-009",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Paris Olympics tickets — including a group of 8–10 for a single Saturday",
+      "summary": "Fulfilled Paris 2024 Olympics requests across dates, including a block of 8–10 seats for one Saturday session — Olympic group inventory effectively doesn't exist at retail.",
+      "outcome_note": null,
+      "city": "Paris",
+      "country": "France",
+      "tags": [
+        "paris",
+        "olympics",
+        "sold_out",
+        "group_booking",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 8
+    },
+    {
+      "id": "case-events-010",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Taylor Swift Eras tour — floor and front-standing across Madrid, Vienna and London",
+      "summary": "Sourced Eras tour tickets across three European legs — front-standing in Vienna, 6 seats in Madrid, floor tickets in London — for different client groups during the most demanded tour in history.",
+      "outcome_note": null,
+      "city": "London",
+      "country": "UK",
+      "tags": [
+        "london",
+        "madrid",
+        "vienna",
+        "taylor_swift",
+        "concert",
+        "sold_out",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 9
+    },
+    {
+      "id": "case-events-011",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "4 passes for F1 at Spa-Francorchamps — race Sunday",
+      "summary": "Delivered four Sunday passes for the Belgian Grand Prix at Spa, race day, the only day that matters.",
+      "outcome_note": null,
+      "city": "Spa",
+      "country": "Belgium",
+      "tags": [
+        "spa",
+        "f1",
+        "grand_prix",
+        "belgium",
+        "race_day",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 10
+    },
+    {
+      "id": "case-events-012",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Singapore Grand Prix access",
+      "summary": "Arranged Singapore GP tickets — the night race where premium inventory is locked by corporates a year out.",
+      "outcome_note": null,
+      "city": "Singapore",
+      "country": "Singapore",
+      "tags": [
+        "singapore",
+        "f1",
+        "grand_prix",
+        "night_race",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 11
+    },
+    {
+      "id": "case-events-013",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Two extra seats *next to* the client's existing ones — sold-out David Gilmour show",
+      "summary": "The client already had seats to a sold-out David Gilmour concert and wanted two more, adjacent. We found the specific neighbouring seats — not just any two — and secured them.",
+      "outcome_note": null,
+      "city": "London",
+      "country": "UK",
+      "tags": [
+        "london",
+        "david_gilmour",
+        "concert",
+        "sold_out",
+        "precision_ask",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 12
+    },
+    {
+      "id": "case-events-014",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Tomorrowland passes for the 27th",
+      "summary": "Sourced Tomorrowland entry for a fixed festival date — a festival that sells out globally within minutes of registration.",
+      "outcome_note": null,
+      "city": "Boom",
+      "country": "Belgium",
+      "tags": [
+        "boom",
+        "tomorrowland",
+        "festival",
+        "sold_out",
+        "belgium",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 13
+    },
+    {
+      "id": "case-events-015",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "6 tickets for Arijit Singh in Mumbai, March 23",
+      "summary": "Confirmed six tickets for Arijit Singh's Mumbai concert on a fixed March date, with the seats delivered to the client's parents' home in another city when asked.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "arijit_singh",
+        "concert",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 14
+    },
+    {
+      "id": "case-events-016",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Arijit Singh in London — 3 tickets across flexible dates",
+      "summary": "Secured three tickets to Arijit Singh's London show across the client's August–September flexibility window.",
+      "outcome_note": null,
+      "city": "London",
+      "country": "UK",
+      "tags": [
+        "london",
+        "arijit_singh",
+        "concert",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 15
+    },
+    {
+      "id": "case-events-017",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Bryan Adams Mumbai — 4 tickets, December 13",
+      "summary": "Delivered four tickets for Bryan Adams' Mumbai show, one of several parallel requests we filled for that date.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "bryan_adams",
+        "concert",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 16
+    },
+    {
+      "id": "case-events-018",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Dua Lipa Mumbai tickets — plus the Wembley leg with a hotel walkable to the stadium",
+      "summary": "Fulfilled Dua Lipa requests on both continents: Mumbai show tickets, and for the Wembley date a hotel booked within walking distance of the stadium for two.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "london",
+        "dua_lipa",
+        "concert",
+        "wembley",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 17
+    },
+    {
+      "id": "case-events-019",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "AR Rahman in Singapore",
+      "summary": "Arranged tickets for AR Rahman's Singapore concert for a client travelling in for the show.",
+      "outcome_note": null,
+      "city": "Singapore",
+      "country": "Singapore",
+      "tags": [
+        "singapore",
+        "ar_rahman",
+        "concert",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 18
+    },
+    {
+      "id": "case-events-020",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Access to Lakmé Fashion Week 2025",
+      "summary": "Secured attendance at Lakmé Fashion Week — an invite-led event with no public ticketing path at all.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "lakme_fashion_week",
+        "fashion",
+        "invite_only",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 19
+    },
+    {
+      "id": "case-events-021",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "6 tickets for the Jaipur IPL match on April 22",
+      "summary": "Confirmed six tickets for the Jaipur IPL fixture — stadium inventory in Jaipur is thin and goes to local networks first.",
+      "outcome_note": null,
+      "city": "Jaipur",
+      "country": "India",
+      "tags": [
+        "jaipur",
+        "ipl",
+        "cricket",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 20
+    },
+    {
+      "id": "case-events-022",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Symphony of Stars, Abu Dhabi — 2 tickets, June 1",
+      "summary": "Booked a pair of tickets for the Symphony of Stars concert in Abu Dhabi on the client's exact date.",
+      "outcome_note": null,
+      "city": "Abu Dhabi",
+      "country": "UAE",
+      "tags": [
+        "abu_dhabi",
+        "concert",
+        "uae",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 21
+    },
+    {
+      "id": "case-events-023",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Diljit Dosanjh in Abu Dhabi — party of 4",
+      "summary": "Secured four tickets for Diljit Dosanjh's Abu Dhabi show for a client flying in from India.",
+      "outcome_note": null,
+      "city": "Abu Dhabi",
+      "country": "UAE",
+      "tags": [
+        "abu_dhabi",
+        "diljit_dosanjh",
+        "concert",
+        "uae",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 22
+    },
+    {
+      "id": "case-events-024",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Lollapalooza India passes",
+      "summary": "Arranged Lollapalooza India access alongside a parallel Diljit ask — one client, one weekend, both delivered.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "lollapalooza",
+        "festival",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 23
+    },
+    {
+      "id": "case-events-025",
+      "domain": "onboarding",
+      "category": "events",
+      "title": "Adele in Europe — 3 seated tickets",
+      "summary": "Sourced three seated tickets for Adele's European shows — a residency-scale event with virtually no seated resale supply.",
+      "outcome_note": null,
+      "city": "Munich",
+      "country": "Germany",
+      "tags": [
+        "munich",
+        "adele",
+        "concert",
+        "sold_out",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 24
+    },
+    {
+      "id": "case-retail-001",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Sourced a Rolex Cosmograph Daytona — no dealer waitlist, no years of waiting",
+      "summary": "Procured a Rolex Daytona for a client outside the authorised-dealer queue, where the official waitlist runs years. Daytona, GMT-Master II and Submariner requests are a steady drumbeat for us — sourced, verified and delivered.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "rolex",
+        "daytona",
+        "watches",
+        "waitlisted",
+        "sold_out"
+      ],
+      "is_featured": true,
+      "sort_order": 0
+    },
+    {
+      "id": "case-retail-002",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Sourced Hermès Birkin and Kelly bags — exact spec: size, leather, hardware, colour",
+      "summary": "Delivered Hermès quota bags to specification — Birkin 25 and 30 in Togo with gold hardware, Kelly 25 Sellier in Epsom, Mini Kellys in requested colours — pieces Hermès itself will not sell without years of purchase history.",
+      "outcome_note": "Repeat Hermès briefs from the same clients, increasingly specific each time.",
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "hermes",
+        "birkin",
+        "kelly",
+        "sold_out",
+        "rare",
+        "bags"
+      ],
+      "is_featured": true,
+      "sort_order": 1
+    },
+    {
+      "id": "case-retail-003",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Hunted a Kelly 15/20 in emerald green",
+      "summary": "Ran a global search for a Mini Kelly in a specific emerald green — one of the rarest colour-size combinations Hermès produces — presenting verified options with provenance.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "hermes",
+        "kelly",
+        "rare",
+        "colour_specific",
+        "bags"
+      ],
+      "is_featured": false,
+      "sort_order": 2
+    },
+    {
+      "id": "case-retail-004",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Sourced an Hermès Constance 18 — gold hardware, Epsom leather",
+      "summary": "Located a Constance 18 to the client's exact preference of hardware and leather, with authentication handled before presentation.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "hermes",
+        "constance",
+        "bags",
+        "rare"
+      ],
+      "is_featured": false,
+      "sort_order": 3
+    },
+    {
+      "id": "case-retail-005",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Goyard pieces on demand — Saigon Structure Nano, totes, trolleys",
+      "summary": "Sourced Goyard across briefs — the Saigon Structure Nano, white totes, trolley bags — for a house that has no e-commerce and famously restricts purchases, and arranged boutique appointments where the client preferred to buy in person.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "goyard",
+        "bags",
+        "rare",
+        "appointment"
+      ],
+      "is_featured": false,
+      "sort_order": 4
+    },
+    {
+      "id": "case-retail-006",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Sourced a Patek Philippe Nautilus 5712R-001",
+      "summary": "Procured the rose-gold Nautilus 5712R — a discontinued-tier reference trading far above retail with multi-year authorised waitlists — verified and delivered.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "patek_philippe",
+        "nautilus",
+        "watches",
+        "waitlisted",
+        "rare"
+      ],
+      "is_featured": false,
+      "sort_order": 5
+    },
+    {
+      "id": "case-retail-007",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Located a Patek Nautilus 5980 flyback chronograph with denim-effect calf strap",
+      "summary": "Tracked the exact 5980 flyback configuration the client specified, down to the denim-effect strap — a one-spec search executed across international dealers.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "patek_philippe",
+        "nautilus",
+        "watches",
+        "spec_hunt",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 6
+    },
+    {
+      "id": "case-retail-008",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Sourced a Patek Philippe Gondolo Small Seconds",
+      "summary": "Ran sourcing for a Patek Gondolo Small Seconds — a quiet, low-production reference most dealers never see — and presented verified availability with pricing.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "patek_philippe",
+        "gondolo",
+        "watches",
+        "rare"
+      ],
+      "is_featured": false,
+      "sort_order": 7
+    },
+    {
+      "id": "case-retail-009",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "A Rolex Datejust in hand in Mumbai — by tomorrow, as a gift",
+      "summary": "The client needed any available Rolex Datejust in Mumbai for gifting the next day. Located, verified and arranged within the deadline.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "rolex",
+        "datejust",
+        "same_day",
+        "watches",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 8
+    },
+    {
+      "id": "case-retail-010",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Built a same-week shortlist across the grails: Nautilus, Aquanaut, Daytona Oysterflex, Royal Oak",
+      "summary": "For a client deciding between the four hardest sports watches in the world, we produced a live, purchasable shortlist across Patek, Rolex and Audemars Piguet in days — not a catalogue, actual pieces.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "patek_philippe",
+        "audemars_piguet",
+        "rolex",
+        "watches",
+        "curation"
+      ],
+      "is_featured": false,
+      "sort_order": 9
+    },
+    {
+      "id": "case-retail-011",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Van Cleef & Arpels Alhambra bracelets — malachite and mother-of-pearl",
+      "summary": "Sourced Alhambra bracelets in both malachite and mother-of-pearl for separate briefs, including verifying India delivery for a maison that tightly controls cross-border sales.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "van_cleef",
+        "alhambra",
+        "jewellery",
+        "rare"
+      ],
+      "is_featured": false,
+      "sort_order": 10
+    },
+    {
+      "id": "case-retail-012",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Cartier Juste un Clou, small model, size 17 — exact size secured",
+      "summary": "Procured the Juste un Clou bracelet in the precise small-model size 17 — boutiques routinely run out of mid-range sizes for months.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "cartier",
+        "juste_un_clou",
+        "jewellery",
+        "spec_hunt"
+      ],
+      "is_featured": false,
+      "sort_order": 11
+    },
+    {
+      "id": "case-retail-013",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Sourced a vintage women's Rolex / Cartier",
+      "summary": "Ran a vintage hunt for a women's Rolex or Cartier — verified provenance, serviced movement, honest dial — rather than the polished-over pieces flooding the vintage market.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "rolex",
+        "cartier",
+        "vintage",
+        "watches",
+        "rare"
+      ],
+      "is_featured": false,
+      "sort_order": 12
+    },
+    {
+      "id": "case-retail-014",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Apple Vision Pro in India before India launch",
+      "summary": "Sourced the Apple Vision Pro for an Indian client while the device was US-only — procurement, import and delivery handled before official availability existed.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "apple",
+        "vision_pro",
+        "tech",
+        "sold_out",
+        "international"
+      ],
+      "is_featured": false,
+      "sort_order": 13
+    },
+    {
+      "id": "case-retail-015",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Dior advent calendar in December — after global sellout",
+      "summary": "Secured the Dior beauty advent calendar in December, weeks after worldwide sellout, including the billing trail the client wanted.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "dior",
+        "advent_calendar",
+        "seasonal",
+        "sold_out"
+      ],
+      "is_featured": false,
+      "sort_order": 14
+    },
+    {
+      "id": "case-retail-016",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Hermès Chypre sandals in two sizes — handled in complete discretion",
+      "summary": "Sourced Hermès Chypre sandals in UK 9 and 11 — perpetually out of stock in popular sizes — for a brief that required total discretion from start to finish.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "hermes",
+        "chypre",
+        "footwear",
+        "discretion",
+        "sold_out"
+      ],
+      "is_featured": false,
+      "sort_order": 15
+    },
+    {
+      "id": "case-retail-017",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Olympia Le-Tan custom clutch — commissioned, paid, imported",
+      "summary": "Managed a custom Olympia Le-Tan clutch commission end to end: the bespoke work with the Paris atelier, payment and customs into India.",
+      "outcome_note": null,
+      "city": "Paris",
+      "country": "France",
+      "tags": [
+        "paris",
+        "olympia_le_tan",
+        "custom",
+        "bags",
+        "international",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 16
+    },
+    {
+      "id": "case-retail-018",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Ayrton Senna signed McLaren memorabilia — 100th-win print and Donington 1993",
+      "summary": "Sourced authenticated Ayrton Senna memorabilia — the McLaren 100th-win signed print and a Donington 1993 Craner Curves signed piece — from the collector market.",
+      "outcome_note": null,
+      "city": null,
+      "country": "UK",
+      "tags": [
+        "international",
+        "senna",
+        "f1",
+        "memorabilia",
+        "signed",
+        "rare",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 17
+    },
+    {
+      "id": "case-retail-019",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Sourced an Azul Popeye sculpture",
+      "summary": "Located and procured a collectible Azul Popeye sculpture for a client's home — art-market sourcing with authentication and shipping handled.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "sculpture",
+        "art",
+        "collectible",
+        "rare"
+      ],
+      "is_featured": false,
+      "sort_order": 18
+    },
+    {
+      "id": "case-retail-020",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Indian contemporary art sourcing — Ganesh pop art and listed-artist paintings",
+      "summary": "Sourced Indian contemporary works — including a named listed artist's painting and Ganesh-themed pop art — with gallery verification and pricing negotiation.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "art",
+        "painting",
+        "contemporary",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 19
+    },
+    {
+      "id": "case-retail-021",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Found a vintage record player from a single reference photo",
+      "summary": "The client sent one photo. We identified the model, found a working vintage unit, and delivered it restored.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "vintage",
+        "record_player",
+        "spec_hunt",
+        "rare"
+      ],
+      "is_featured": false,
+      "sort_order": 20
+    },
+    {
+      "id": "case-retail-022",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Hermès Picotin 18 with gold hardware in pastel",
+      "summary": "Sourced a Picotin 18 in a pastel colourway with gold hardware — a configuration boutiques rarely receive — verified and delivered.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "hermes",
+        "picotin",
+        "bags",
+        "colour_specific"
+      ],
+      "is_featured": false,
+      "sort_order": 21
+    },
+    {
+      "id": "case-retail-023",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Official Chelsea black kit jersey",
+      "summary": "Procured the Chelsea black jersey in the client's size from official stock when domestic channels showed nothing.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "chelsea",
+        "football",
+        "jersey",
+        "merchandise"
+      ],
+      "is_featured": false,
+      "sort_order": 22
+    },
+    {
+      "id": "case-retail-024",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Immediate purchase of a Tata Safari — car procured and delivered",
+      "summary": "Handled an immediate-buy brief for a Tata Safari: dealer allocation, variant, paperwork and delivery compressed into days against months-long waiting periods.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "car",
+        "tata_safari",
+        "procurement",
+        "waitlisted"
+      ],
+      "is_featured": false,
+      "sort_order": 23
+    },
+    {
+      "id": "case-retail-025",
+      "domain": "onboarding",
+      "category": "retail",
+      "title": "Hermès belts and small leather goods on recurring briefs",
+      "summary": "Fulfilled repeat Hermès briefs beyond bags — belts, buckles, Jige Élan clutches, wallets — sourced to spec and delivered, often as gifts on deadlines.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "hermes",
+        "belts",
+        "leather_goods",
+        "repeat_delivery"
+      ],
+      "is_featured": false,
+      "sort_order": 24
+    },
+    {
+      "id": "case-special-001",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Relocated a client's dogs from Mumbai to Dubai",
+      "summary": "Managed the full international relocation of the client's dogs from Mumbai to Dubai — vet certifications, import permits, crate logistics and a pet-cleared flight plan. We also priced a private jet option for the family to fly with the dogs.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "dubai",
+        "pets",
+        "relocation",
+        "international",
+        "logistics",
+        "india"
+      ],
+      "is_featured": true,
+      "sort_order": 0
+    },
+    {
+      "id": "case-special-002",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "The Hermès appointment machine — leather appointments across Paris, Milan, Geneva, Lisbon and Rome",
+      "summary": "Secured Hermès leather-goods appointments — the gateway to quota bags — across five European cities for travelling clients, often aligned to their exact itinerary dates. These appointments are not bookable; they are granted.",
+      "outcome_note": "Several appointments converted into quota-bag purchases on the spot.",
+      "city": "Paris",
+      "country": "France",
+      "tags": [
+        "paris",
+        "milan",
+        "geneva",
+        "hermes",
+        "appointment",
+        "vip_access",
+        "international"
+      ],
+      "is_featured": true,
+      "sort_order": 1
+    },
+    {
+      "id": "case-special-003",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Placed a nanny in Srinagar for a 3-month summer engagement",
+      "summary": "Sourced, vetted and placed a nanny in Srinagar for a three-month stay starting end of May — a placement market that effectively doesn't exist in Kashmir.",
+      "outcome_note": null,
+      "city": "Srinagar",
+      "country": "India",
+      "tags": [
+        "srinagar",
+        "nanny",
+        "staffing",
+        "vetted",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 2
+    },
+    {
+      "id": "case-special-004",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Found an educated, passport-holding nanny for a 4-year-old — travel-ready",
+      "summary": "Recruited a nanny meeting an unusual spec: educated, holding a valid passport, ready to travel internationally with the family at short notice.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "nanny",
+        "staffing",
+        "passport",
+        "travel_ready"
+      ],
+      "is_featured": false,
+      "sort_order": 3
+    },
+    {
+      "id": "case-special-005",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Beach villa in Dubai with a Gujarati chef installed",
+      "summary": "Arranged a Dubai beach villa with a Gujarati home chef hired and installed for the stay — the family ate exactly as they do at home, on a beach in the Gulf.",
+      "outcome_note": null,
+      "city": "Dubai",
+      "country": "UAE",
+      "tags": [
+        "dubai",
+        "villa",
+        "private_chef",
+        "gujarati",
+        "staffing",
+        "uae"
+      ],
+      "is_featured": false,
+      "sort_order": 4
+    },
+    {
+      "id": "case-special-006",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Hired one continental and one Gujarati/Marwadi chef for a single household",
+      "summary": "Recruited two private chefs for one home — continental and Gujarati/Marwadi cuisine — running parallel vetting tracks and trials.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "private_chef",
+        "staffing",
+        "vetted"
+      ],
+      "is_featured": false,
+      "sort_order": 5
+    },
+    {
+      "id": "case-special-007",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Private chef for a special occasion in Bengaluru",
+      "summary": "Placed a private chef for a one-night special occasion in Bengaluru — menu designed with the client, trial-tested before the evening.",
+      "outcome_note": null,
+      "city": "Bengaluru",
+      "country": "India",
+      "tags": [
+        "bengaluru",
+        "private_chef",
+        "occasion",
+        "staffing",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 6
+    },
+    {
+      "id": "case-special-008",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Full-trip personal security for a travelling companion",
+      "summary": "Arranged a vetted bodyguard to cover a client's travelling companion for the entire duration of an international stay — briefed, licensed and discreet. We've since built security into multi-day itineraries that included dinners and parties.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "international",
+        "security",
+        "bodyguard",
+        "staffing",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 7
+    },
+    {
+      "id": "case-special-009",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "A butler for the entire Dubai trip",
+      "summary": "Placed a trained butler with the client's party for the full length of a Dubai stay — luggage, scheduling, errands — invisible until needed.",
+      "outcome_note": null,
+      "city": "Dubai",
+      "country": "UAE",
+      "tags": [
+        "dubai",
+        "butler",
+        "staffing",
+        "uae"
+      ],
+      "is_featured": false,
+      "sort_order": 8
+    },
+    {
+      "id": "case-special-010",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Urgent medicines delivered in New Delhi",
+      "summary": "Sourced and delivered specific prescription medicines in New Delhi on urgent timelines — including a four-strip ask where local pharmacies showed no stock.",
+      "outcome_note": null,
+      "city": "Delhi",
+      "country": "India",
+      "tags": [
+        "delhi",
+        "medicines",
+        "urgent",
+        "same_day",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 9
+    },
+    {
+      "id": "case-special-011",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Located a yellow-fever vaccination slot in Juhu",
+      "summary": "Found a same-area yellow-fever vaccination option in Juhu, Mumbai — a vaccine administered only at designated centres with chronic slot scarcity — ahead of the client's travel.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "vaccine",
+        "travel_prep",
+        "urgent",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 10
+    },
+    {
+      "id": "case-special-012",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Passport for a 6-month-old, plus renewals and visa guidance for the family",
+      "summary": "Navigated a passport application for a six-month-old alongside the parents' renewal and London visa requirements — the entire family's documents handled as one project.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "passport",
+        "visa",
+        "documentation",
+        "family"
+      ],
+      "is_featured": false,
+      "sort_order": 11
+    },
+    {
+      "id": "case-special-013",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Schengen visa pathway for an Indian citizen on UAE residence",
+      "summary": "Untangled the Schengen application route for an Indian passport holder resident in the UAE — jurisdiction, documentation and appointment strategy mapped end to end.",
+      "outcome_note": null,
+      "city": "Dubai",
+      "country": "UAE",
+      "tags": [
+        "dubai",
+        "schengen",
+        "visa",
+        "documentation",
+        "uae",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 12
+    },
+    {
+      "id": "case-special-014",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "US visa interview slot in Kolkata inside a 2-week window",
+      "summary": "Secured a US visa interview appointment in Kolkata within the client's hard 15–31 October window, against backlogs running months.",
+      "outcome_note": null,
+      "city": "Kolkata",
+      "country": "India",
+      "tags": [
+        "kolkata",
+        "visa",
+        "us_visa",
+        "appointment",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 13
+    },
+    {
+      "id": "case-special-015",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "A jaapa (postnatal) maid with a UK visa",
+      "summary": "Sourced a traditional jaapa maid who already held a valid UK visa — so she could fly to London for the family's newborn. A search most agencies refuse outright.",
+      "outcome_note": null,
+      "city": "London",
+      "country": "UK",
+      "tags": [
+        "london",
+        "jaapa",
+        "nanny",
+        "staffing",
+        "visa",
+        "rare",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 14
+    },
+    {
+      "id": "case-special-016",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Wheelchair-accessible caravan in Ahmedabad",
+      "summary": "Sourced a wheelchair-accessible caravan in Ahmedabad — vehicle category that barely exists in India — and separately placed an assistant driver trained in wheelchair support for an elderly parent.",
+      "outcome_note": null,
+      "city": "Ahmedabad",
+      "country": "India",
+      "tags": [
+        "ahmedabad",
+        "wheelchair",
+        "accessibility",
+        "caravan",
+        "staffing",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 15
+    },
+    {
+      "id": "case-special-017",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Recovered lost baggage from Hayman Island, Australia",
+      "summary": "Chased and recovered a client's lost baggage from Hayman Island in Australia — coordinating across the resort, the airline and international forwarding until it was back in the client's hands.",
+      "outcome_note": null,
+      "city": null,
+      "country": "Australia",
+      "tags": [
+        "australia",
+        "lost_baggage",
+        "recovery",
+        "international",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 16
+    },
+    {
+      "id": "case-special-018",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Polaroid camera produced in Delhi — urgently",
+      "summary": "Sourced a Polaroid camera in Delhi against a same-day clock — found, bought and delivered.",
+      "outcome_note": null,
+      "city": "Delhi",
+      "country": "India",
+      "tags": [
+        "delhi",
+        "polaroid",
+        "same_day",
+        "urgent",
+        "sourcing",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 17
+    },
+    {
+      "id": "case-special-019",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "A Diwali-themed puppet show, produced on request",
+      "summary": "Commissioned and staged a Diwali-themed puppet show for a client's family celebration — performers, script and staging arranged from scratch.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "diwali",
+        "entertainment",
+        "bespoke",
+        "family"
+      ],
+      "is_featured": false,
+      "sort_order": 18
+    },
+    {
+      "id": "case-special-020",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Produced a Game of Thrones themed birthday",
+      "summary": "Designed and executed a full Game of Thrones themed birthday — set, props and programme — on a fixed May date.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "birthday",
+        "themed_party",
+        "bespoke",
+        "production"
+      ],
+      "is_featured": false,
+      "sort_order": 19
+    },
+    {
+      "id": "case-special-021",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Midnight beach anniversary setup at the Taj, Goa",
+      "summary": "Staged a surprise midnight anniversary setup on the beach at a Taj property in Goa — décor, timing and hotel coordination, with the client's spouse none the wiser until the reveal.",
+      "outcome_note": null,
+      "city": "Goa",
+      "country": "India",
+      "tags": [
+        "goa",
+        "anniversary",
+        "surprise",
+        "beach_setup",
+        "taj",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 20
+    },
+    {
+      "id": "case-special-022",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Proposal engineering in Mumbai — venues, backups and ideas",
+      "summary": "Built proposal options for Mumbai — primary venue, alternates and creative concepts — so the client chose the moment, not whatever was available.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "proposal",
+        "surprise",
+        "bespoke",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 21
+    },
+    {
+      "id": "case-special-023",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Imported a one-year-old puppy from the US to India",
+      "summary": "Managed the import of a young puppy from the United States to India — breeder coordination, vaccination schedule, quarantine compliance and flight logistics. We've also run pet transfers from India to Europe.",
+      "outcome_note": null,
+      "city": null,
+      "country": "India",
+      "tags": [
+        "india",
+        "pets",
+        "import",
+        "international",
+        "logistics"
+      ],
+      "is_featured": false,
+      "sort_order": 22
+    },
+    {
+      "id": "case-special-024",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Medical concierge — specialist appointments secured with named doctors",
+      "summary": "Booked specialist medical appointments on request — including a sought-after ultrasound specialist and a top diabetologist in Bengaluru — cutting waits from weeks to days.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "bengaluru",
+        "medical",
+        "appointment",
+        "specialist",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 23
+    },
+    {
+      "id": "case-special-025",
+      "domain": "onboarding",
+      "category": "special",
+      "title": "Urgent printing and delivery near Trump Tower, Mumbai",
+      "summary": "Executed an urgent print-and-deliver job to a Mumbai address within hours — the small, unglamorous asks get the same machine as the big ones.",
+      "outcome_note": null,
+      "city": "Mumbai",
+      "country": "India",
+      "tags": [
+        "mumbai",
+        "printing",
+        "urgent",
+        "same_day",
+        "india"
+      ],
+      "is_featured": false,
+      "sort_order": 24
+    }
+  ],
+  "conversationHooks": [
+    {
+      "id": "hook-travel-01",
+      "domain": "onboarding",
+      "category": "travel",
+      "hook": "During the Maha Kumbh, when the roads into Prayagraj were gridlocked for days, we flew a family of six by private helicopter straight to the Sangam — twice.",
+      "context": "Use when the lead doubts you can handle India's hardest logistics.",
+      "sort_order": 0
+    },
+    {
+      "id": "hook-travel-02",
+      "domain": "onboarding",
+      "category": "travel",
+      "hook": "We've planned everything from a same-day yacht in Bali to a full Antarctica air-cruise expedition. The question is never whether it's possible — it's how you want it done.",
+      "context": "Opening line to frame range, from spontaneous to once-in-a-lifetime.",
+      "sort_order": 1
+    },
+    {
+      "id": "hook-travel-03",
+      "domain": "onboarding",
+      "category": "travel",
+      "hook": "We don't recommend the Instagram places. We find the hidden ones — matched to your hygiene standard, your adventure level, your past trips.",
+      "context": "Use when the lead says they already have a travel agent.",
+      "sort_order": 2
+    },
+    {
+      "id": "hook-travel-04",
+      "domain": "onboarding",
+      "category": "travel",
+      "hook": "One client landed at Bengaluru T2 with less than an hour's notice — our airport escort was waiting at the aerobridge before the plane docked.",
+      "context": "Use when the lead asks how fast you can move.",
+      "sort_order": 3
+    },
+    {
+      "id": "hook-travel-05",
+      "domain": "onboarding",
+      "category": "travel",
+      "hook": "We've booked the Dior penthouse suite in Paris and held 35 rooms in the Maldives for a single family in peak January. Scale or rarity — we've done both.",
+      "context": "Use with leads planning big family travel or trophy stays.",
+      "sort_order": 4
+    },
+    {
+      "id": "hook-dining-01",
+      "domain": "onboarding",
+      "category": "dining",
+      "hook": "We've put clients into Noma, Gaggan, and a three-Michelin-star room in London with six adults and four kids. The 'impossible table' is our most routine request.",
+      "context": "Use when the lead tests you with a famous restaurant name.",
+      "sort_order": 0
+    },
+    {
+      "id": "hook-dining-02",
+      "domain": "onboarding",
+      "category": "dining",
+      "hook": "On January 1st a client asked for Zuma Dubai at lunch — that day. He was at the table by afternoon.",
+      "context": "Use to prove same-day capability in the worst possible week.",
+      "sort_order": 1
+    },
+    {
+      "id": "hook-dining-03",
+      "domain": "onboarding",
+      "category": "dining",
+      "hook": "When we book Masque on an urgent ask, we lock a backup table in parallel. Your evening can't fail — that's the design.",
+      "context": "Use when the lead worries about reliability of last-minute plans.",
+      "sort_order": 2
+    },
+    {
+      "id": "hook-dining-04",
+      "domain": "onboarding",
+      "category": "dining",
+      "hook": "Tokyo sushi counters that don't take foreign bookings, Michelin circuits across Kyoto — Japan dining runs on relationships, and we have them.",
+      "context": "Use with leads planning Japan trips.",
+      "sort_order": 3
+    },
+    {
+      "id": "hook-dining-05",
+      "domain": "onboarding",
+      "category": "dining",
+      "hook": "Tell me the city and the occasion. Vegetarian Michelin in Barcelona, a 12-top at Bagatelle Courchevel in peak season — specificity is exactly what we're for.",
+      "context": "Use to pull the lead's actual dining brief out of them.",
+      "sort_order": 4
+    },
+    {
+      "id": "hook-gifts-01",
+      "domain": "onboarding",
+      "category": "gifts",
+      "hook": "A client wanted to send Alphonso mangoes to someone in the UK. We sourced from the orchard, handled the export paperwork, and delivered them to the door in Britain.",
+      "context": "Use to show gifting has no borders. Memorable, low-flex, human.",
+      "sort_order": 0
+    },
+    {
+      "id": "hook-gifts-02",
+      "domain": "onboarding",
+      "category": "gifts",
+      "hook": "For one client's wedding we ran a gift countdown — a different curated surprise delivered every single week until the wedding day. He never had to think about it once.",
+      "context": "Use with leads who have anniversaries, weddings, or courtships in play.",
+      "sort_order": 1
+    },
+    {
+      "id": "hook-gifts-03",
+      "domain": "onboarding",
+      "category": "gifts",
+      "hook": "We've delivered flowers and cake in Solapur and Dharamshala — towns with no premium vendors at all. We built the supply for one delivery. That's the standard everywhere.",
+      "context": "Use when the lead's family is in a tier-2/3 city.",
+      "sort_order": 2
+    },
+    {
+      "id": "hook-gifts-04",
+      "domain": "onboarding",
+      "category": "gifts",
+      "hook": "Our gifting team's only job is making you look incredible to the people you care about. You give us the person; we do the thinking.",
+      "context": "Use as a positioning line for the gifts category itself.",
+      "sort_order": 3
+    },
+    {
+      "id": "hook-gifts-05",
+      "domain": "onboarding",
+      "category": "gifts",
+      "hook": "Diwali season, one brief: 45 curated boxes for a corporate list, three price tiers, all delivered across Delhi-NCR before the festival. We run gifting like an operation.",
+      "context": "Use with business-owner leads — opens the corporate gifting door.",
+      "sort_order": 4
+    },
+    {
+      "id": "hook-events-01",
+      "domain": "onboarding",
+      "category": "events",
+      "hook": "When Coldplay Mumbai sold out in minutes, our clients still walked into the lounge — we delivered ten tickets for one group alone.",
+      "context": "Use the moment a lead mentions concerts. India's most famous sellout.",
+      "sort_order": 0
+    },
+    {
+      "id": "hook-events-02",
+      "domain": "onboarding",
+      "category": "events",
+      "hook": "Wimbledon, the Paris Olympics, an F1 Sunday at Spa, the T20 World Cup final in Barbados — the seats the public can't buy are exactly the ones we work in.",
+      "context": "Use to frame the events category at the top end.",
+      "sort_order": 1
+    },
+    {
+      "id": "hook-events-03",
+      "domain": "onboarding",
+      "category": "events",
+      "hook": "A client had seats to a sold-out David Gilmour show and wanted two more — next to his. Not two anywhere. Next to his. We found them.",
+      "context": "Use to demonstrate precision, not just access.",
+      "sort_order": 2
+    },
+    {
+      "id": "hook-events-04",
+      "domain": "onboarding",
+      "category": "events",
+      "hook": "Diljit's Dil-Luminati tour — we delivered in Delhi, Bengaluru, Jaipur, Hyderabad, Kolkata, even Abu Dhabi. Whatever city, whatever category: lounge, VIP, fan pit.",
+      "context": "Use with leads who follow Indian artists.",
+      "sort_order": 3
+    },
+    {
+      "id": "hook-events-05",
+      "domain": "onboarding",
+      "category": "events",
+      "hook": "Sixteen tickets, one block, sold-out arena. Keeping a group together is the hard part — that's what you're paying for, not the ticket.",
+      "context": "Use when the lead wants to take a large group.",
+      "sort_order": 4
+    },
+    {
+      "id": "hook-retail-01",
+      "domain": "onboarding",
+      "category": "retail",
+      "hook": "We sourced a Rolex Daytona without the dealer waitlist — the official queue runs years. We didn't use a dealer.",
+      "context": "The single strongest retail proof line. Use early.",
+      "sort_order": 0
+    },
+    {
+      "id": "hook-retail-02",
+      "domain": "onboarding",
+      "category": "retail",
+      "hook": "Birkin 25 in Togo with gold hardware, Kelly 25 Sellier in noir, a Mini Kelly in emerald green — we source Hermès to exact spec, not 'whatever's available'.",
+      "context": "Use when the lead or their spouse carries Hermès.",
+      "sort_order": 1
+    },
+    {
+      "id": "hook-retail-03",
+      "domain": "onboarding",
+      "category": "retail",
+      "hook": "A client needed a Rolex Datejust in Mumbai as a gift — by the next day. It was in his hands on time.",
+      "context": "Use to prove speed in retail, not just rarity.",
+      "sort_order": 2
+    },
+    {
+      "id": "hook-retail-04",
+      "domain": "onboarding",
+      "category": "retail",
+      "hook": "One client sent us a single photo of a vintage record player. We identified the model, found a working unit, and delivered it restored.",
+      "context": "Use to show the sourcing engine works from almost nothing.",
+      "sort_order": 3
+    },
+    {
+      "id": "hook-retail-05",
+      "domain": "onboarding",
+      "category": "retail",
+      "hook": "Vision Pro before it launched in India, the Dior advent calendar weeks after global sellout, signed Senna memorabilia — if it exists somewhere, we can reach it.",
+      "context": "Use for the 'can you really get anything?' moment.",
+      "sort_order": 4
+    },
+    {
+      "id": "hook-special-01",
+      "domain": "onboarding",
+      "category": "special",
+      "hook": "A client moved to Dubai — we relocated his dogs from Mumbai: permits, vets, crates, flights. We even priced a private jet so the family could fly with them.",
+      "context": "The warmest proof story. Use with family-oriented leads.",
+      "sort_order": 0
+    },
+    {
+      "id": "hook-special-02",
+      "domain": "onboarding",
+      "category": "special",
+      "hook": "Hermès leather appointments in Paris, Milan, Geneva, Lisbon and Rome — aligned to our clients' travel dates. Those appointments aren't booked. They're granted.",
+      "context": "Use with leads who shop the maisons in Europe.",
+      "sort_order": 1
+    },
+    {
+      "id": "hook-special-03",
+      "domain": "onboarding",
+      "category": "special",
+      "hook": "We found a jaapa maid who already held a UK visa so she could fly to London for a newborn. Most agencies won't even take that brief.",
+      "context": "Use to show staffing reach — the requests nobody else attempts.",
+      "sort_order": 2
+    },
+    {
+      "id": "hook-special-04",
+      "domain": "onboarding",
+      "category": "special",
+      "hook": "Lost baggage on Hayman Island in Australia. We chased it across the resort, the airline and international forwarding until it was back in the client's hands.",
+      "context": "Use to show we stay on a problem until it's actually closed.",
+      "sort_order": 3
+    },
+    {
+      "id": "hook-special-05",
+      "domain": "onboarding",
+      "category": "special",
+      "hook": "If it's legal where you are, we'll attempt it. A yellow-fever vaccine slot in Juhu, urgent medicines at night in Delhi, a Game of Thrones birthday — same machine, every time.",
+      "context": "Category-defining line for Special Requests. Use to close the pitch.",
+      "sort_order": 4
+    }
+  ]
+}

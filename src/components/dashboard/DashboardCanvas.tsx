@@ -18,8 +18,9 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, LayoutDashboard, RotateCcw } from 'lucide-react';
+import { GripVertical, LayoutDashboard, RotateCcw, Settings } from 'lucide-react';
 import { useDashboardLayout } from '@/hooks/useDashboardLayout';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { WIDGET_MAP, type WidgetSize, type WidgetColSpan } from '@/lib/constants/dashboard-widgets';
 import { DashboardWidgetSlot, type WidgetProps } from './DashboardWidgetSlot';
 import { DashboardDateFilter } from './DashboardDateFilter';
@@ -78,6 +79,7 @@ function SortableWidget({
   userId,
   role,
   domain,
+  firstName,
   initialData,
   dateRange,
 }: SortableWidgetProps) {
@@ -136,6 +138,7 @@ function SortableWidget({
         userId={userId}
         role={role}
         domain={domain}
+        firstName={firstName}
         initialData={initialData}
         dateRange={dateRange}
       />
@@ -168,6 +171,7 @@ export function DashboardCanvas({
   const { layout, removeWidget, resizePlacement, reorderWidgets, resetToDefaults } =
     useDashboardLayout(userId, role);
   const [editMode, setEditMode] = useState(false);
+  const isMobile = useMediaQuery(MQ.mobile);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -199,10 +203,13 @@ export function DashboardCanvas({
       {/* Inject bento grid CSS once */}
       <style>{GRID_CSS}</style>
 
-      {/* Page header — wraps below ~md so the greeting and the control
-          cluster (date filter + edit) stack instead of overflowing (audit F1) */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 mb-4">
-        <h1 className="type-page-title m-0">
+      {/* Page header — one line, always: greeting left, control cluster
+          (date filter + edit) right. Below md the greeting truncates and the
+          edit control compresses to an icon-only Settings button so all four
+          top elements (drawer trigger · title · filter · settings) share the
+          title line. Desktop wraps if it must (audit F1). */}
+      <div className="flex flex-wrap max-md:flex-nowrap items-center justify-between gap-x-4 gap-y-3 mb-4">
+        <h1 className="type-page-title m-0 max-md:min-w-0 max-md:truncate">
           {greeting},{' '}
           <span style={{ color: 'var(--theme-accent)' }}>{firstName}</span>
           <span className="page-title-dot">.</span>
@@ -242,23 +249,34 @@ export function DashboardCanvas({
             type="button"
             onClick={() => setEditMode((v) => !v)}
             aria-pressed={editMode}
+            aria-label={editMode ? 'Done editing layout' : 'Edit layout'}
+            className="eia-pressable eia-icon-rotate-hover eia-touch"
             style={{
-              display:      'flex',
-              alignItems:   'center',
-              gap:          'var(--space-1)',
-              fontSize:     'var(--text-xs)',
-              fontWeight:   'var(--weight-medium)',
+              display:        'flex',
+              alignItems:     'center',
+              justifyContent: 'center',
+              gap:            'var(--space-1)',
+              fontSize:       'var(--text-xs)',
+              fontWeight:     'var(--weight-medium)',
               color:        editMode ? 'var(--theme-accent-fg)' : 'var(--theme-text-secondary)',
               background:   editMode ? 'var(--theme-accent)' : 'var(--theme-paper-subtle)',
               border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-sm)',
+              borderRadius: isMobile ? 'var(--radius-full)' : 'var(--radius-sm)',
               cursor:       'pointer',
-              padding:      '0 var(--space-3)',
+              padding:      isMobile ? 0 : '0 var(--space-3)',
+              width:        isMobile ? '32px' : undefined,
+              flexShrink:   0,
               height:       '32px',
             }}
           >
-            <LayoutDashboard size={12} strokeWidth={1.5} />
-            {editMode ? 'Done' : 'Edit layout'}
+            {isMobile ? (
+              <Settings size={15} strokeWidth={1.5} />
+            ) : (
+              <>
+                <LayoutDashboard size={12} strokeWidth={1.5} />
+                {editMode ? 'Done' : 'Edit layout'}
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -283,6 +301,7 @@ export function DashboardCanvas({
                 userId={userId}
                 role={role}
                 domain={domain}
+                firstName={firstName}
                 initialData={initialData}
                 dateRange={dateRange}
               />

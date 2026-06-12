@@ -105,6 +105,7 @@ export function TasksFilters({
               onFromChange: (v) => patchGia({ dateFrom: v ?? '' }),
               onToChange:   (v) => patchGia({ dateTo: v ?? '' }),
               onClear:      () => patchGia({ dateFrom: '', dateTo: '' }),
+              onPresetSelect: (from, to) => patchGia({ dateFrom: from ?? '', dateTo: to ?? '' }),
             }
           : undefined
       }
@@ -129,6 +130,7 @@ export function TasksFilters({
           selected={giaFilters.taskTypes}
           multi
           onChange={(types) => patchGia({ taskTypes: types as TaskType[] })}
+          menuPortal
         />
       ) : isPersonal ? (
         <>
@@ -139,6 +141,7 @@ export function TasksFilters({
               selected={personalFilters.tags}
               multi
               onChange={(tags) => patchPersonal({ tags })}
+              menuPortal
             />
           )}
           <FilterDropdown
@@ -147,6 +150,7 @@ export function TasksFilters({
             selected={personalFilters.statuses}
             multi
             onChange={(statuses) => patchPersonal({ statuses: statuses as PersonalTaskFiltersState['statuses'] })}
+            menuPortal
           />
           <FilterDropdown
             label="Priority"
@@ -154,6 +158,7 @@ export function TasksFilters({
             selected={personalFilters.priorities}
             multi
             onChange={(priorities) => patchPersonal({ priorities: priorities as PersonalTaskFiltersState['priorities'] })}
+            menuPortal
           />
         </>
       ) : (
@@ -164,6 +169,7 @@ export function TasksFilters({
             selected={groupFilters.statuses}
             multi
             onChange={(statuses) => patchGroup({ statuses: statuses as GroupTaskFiltersState['statuses'] })}
+            menuPortal
           />
           <FilterDropdown
             label="Priority"
@@ -171,6 +177,7 @@ export function TasksFilters({
             selected={groupFilters.priorities}
             multi
             onChange={(priorities) => patchGroup({ priorities: priorities as GroupTaskFiltersState['priorities'] })}
+            menuPortal
           />
           {showGroupDomainFilter && groupDomainItems.length > 1 && (
             <FilterDropdown
@@ -178,6 +185,7 @@ export function TasksFilters({
               items={groupDomainItems}
               selected={groupFilters.domain !== 'all' ? [groupFilters.domain] : []}
               onChange={(next) => patchGroup({ domain: next[0] ?? 'all' })}
+              menuPortal
             />
           )}
           <FilterDropdown
@@ -187,6 +195,7 @@ export function TasksFilters({
             onChange={(next) =>
               patchGroup({ progress: (next[0] ?? 'all') as GroupTaskFiltersState['progress'] })
             }
+            menuPortal
           />
         </>
       )}

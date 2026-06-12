@@ -91,6 +91,8 @@ Never move the filter into the JS handler. It must be on the channel to prevent 
 | `system` | `Info` |
 | `sla_breach_agent` | `AlertTriangle` |
 | `sla_breach_manager` | `AlertTriangle` |
+| `sla_breach_founder` | `AlertTriangle` (SLA-01C — new lead untouched 45 min) |
+| `task_overdue_manager` | `AlertTriangle` (gia task due +30 min, no clearing event) |
 
 ## Notification sound
 

@@ -59,6 +59,7 @@ export function DealsFilters({
         onFromChange: (v) => push({ date_from: v }),
         onToChange:   (v) => push({ date_to: v }),
         onClear:      () => push({ date_from: null, date_to: null }),
+        onPresetSelect: (from, to) => push({ date_from: from, date_to: to }),
       }}
     >
       {/* Deal type — single select */}
@@ -67,6 +68,7 @@ export function DealsFilters({
         items={DEAL_TYPE_ITEMS}
         selected={dealTypeFilter ? [dealTypeFilter] : []}
         onChange={(next) => push({ deal_type: next[0] ?? null })}
+        menuPortal
       />
 
       {/* Domain — admin/founder only */}
@@ -76,6 +78,7 @@ export function DealsFilters({
           items={GIA_DOMAIN_FILTER_ITEMS}
           selected={domainFilter ? [domainFilter] : []}
           onChange={(next) => push({ domain: next[0] ?? null, agent_id: null })}
+          menuPortal
         />
       )}
 
@@ -86,6 +89,7 @@ export function DealsFilters({
           items={agentItems}
           selected={agentFilter ? [agentFilter] : []}
           onChange={(next) => push({ agent_id: next[0] ?? null })}
+          menuPortal
         />
       )}
     </FilterBar>

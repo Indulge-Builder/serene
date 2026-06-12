@@ -2,10 +2,10 @@
 
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useTransition, useState, useEffect } from 'react';
-import { Calendar, SlidersHorizontal, X } from 'lucide-react';
+import { Calendar } from 'lucide-react';
+import { FilterBar } from '@/components/ui/FilterBar';
 import { FilterDropdown } from '@/components/ui/FilterDropdown';
 import { DatePicker } from '@/components/ui/DatePicker';
-import { SearchBar } from '@/components/ui/SearchBar';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import { BASE_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { buildFilterParams } from '@/lib/utils/filter-params';
@@ -120,54 +120,20 @@ export function PerformanceFilters({
   }
 
   return (
-    <div
+    <FilterBar
+      searchValue={searchInput}
+      onSearchChange={setSearchInput}
+      searchPlaceholder="Search agents…"
+      searchAriaLabel="Search agents"
+      searchStyle={{ flex: '1 1 220px', minWidth: '180px' }}
+      hideSearch={!showSearch}
+      activeCount={activeCount}
+      onClearAll={clearAll}
       style={{
-        display:    'flex',
-        alignItems: 'center',
-        gap:        'var(--space-3)',
-        flexWrap:   'wrap',
         opacity:    isPending ? 0.6 : 1,
         transition: 'opacity var(--duration-fast) var(--ease-in-out)',
       }}
     >
-      {/* Filter icon + active count badge */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
-        <SlidersHorizontal
-          style={{ width: '1rem', height: '1rem', color: 'var(--theme-text-tertiary)', strokeWidth: 1.5 }}
-        />
-        {activeCount > 0 && (
-          <span
-            style={{
-              display:        'inline-flex',
-              alignItems:     'center',
-              justifyContent: 'center',
-              minWidth:       '1.25rem',
-              height:         '1.25rem',
-              padding:        '0 0.25rem',
-              borderRadius:   'var(--radius-full)',
-              background:     'var(--theme-accent)',
-              color:          'var(--theme-accent-fg)',
-              fontSize:       'var(--text-2xs)',
-              fontWeight:     'var(--weight-medium)',
-              lineHeight:     1,
-            }}
-          >
-            {activeCount}
-          </span>
-        )}
-      </div>
-
-      {showSearch && (
-        <SearchBar
-          value={searchInput}
-          onChange={setSearchInput}
-          placeholder="Search agents…"
-          size="md"
-          aria-label="Search agents"
-          style={{ flex: '1 1 220px', minWidth: '180px' }}
-        />
-      )}
-
       <FilterDropdown
         label="Period"
         icon={Calendar}
@@ -175,6 +141,7 @@ export function PerformanceFilters({
         selected={[period]}
         onChange={handlePeriodSelect}
         multi={false}
+        menuPortal
       />
 
       <AnimatePresence>
@@ -205,35 +172,6 @@ export function PerformanceFilters({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {activeCount > 0 && (
-        <button
-          type="button"
-          onClick={clearAll}
-          disabled={isPending}
-          style={{
-            display:    'inline-flex',
-            alignItems: 'center',
-            gap:        'var(--space-1)',
-            height:     '2.25rem',
-            padding:    '0 var(--space-2)',
-            border:     'none',
-            background: 'transparent',
-            color:      'var(--theme-text-tertiary)',
-            fontSize:   'var(--text-sm)',
-            fontFamily: 'var(--font-sans)',
-            cursor:     isPending ? 'not-allowed' : 'pointer',
-            opacity:    isPending ? 0.5 : 1,
-            flexShrink: 0,
-            transition: 'color var(--duration-fast) var(--ease-in-out)',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-primary)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)'; }}
-        >
-          <X style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />
-          <span>Clear filters</span>
-        </button>
-      )}
-    </div>
+    </FilterBar>
   );
 }

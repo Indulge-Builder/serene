@@ -42,6 +42,7 @@ export function CampaignFilters({ role: _role, showDomainFilter }: CampaignFilte
         onFromChange: (v) => push({ date_from: v }),
         onToChange:   (v) => push({ date_to: v }),
         onClear:      () => push({ date_from: null, date_to: null }),
+        onPresetSelect: (from, to) => push({ date_from: from, date_to: to }),
       }}
     >
       {/* Domain — single select, admin/founder only (GIA_DOMAINS) */}
@@ -51,6 +52,7 @@ export function CampaignFilters({ role: _role, showDomainFilter }: CampaignFilte
           items={GIA_DOMAIN_FILTER_ITEMS}
           selected={domainFilter ? [domainFilter] : []}
           onChange={(next) => push({ domain: next[0] ?? null })}
+          menuPortal
         />
       )}
     </FilterBar>

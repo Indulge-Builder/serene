@@ -120,6 +120,23 @@ serials were reused on different days: **0058** (`ad_creatives_multi_video` 06-0
 | 0101 (06-11) | `get_agent_performance` (self-scoped) + `get_agent_roster_performance` RPCs — performance page aggregation moved into SQL (perf D-2) |
 | 0102 (06-11) | **REVOKE client EXECUTE on scope-param RPCs** (security F-1, Option A) — Class B/C read RPCs callable only via the service-role action path |
 | 0103 (06-11) | explicit `WITH CHECK` on `leads_update` (self-documenting; body identical to the 0091 USING clause) |
+| 0104 (06-12) | `ad_spend_daily` table — day-grain Meta spend; `UNIQUE(campaign_key, spend_date, source)` |
+| 0105 (06-12) | `domain_targets` table — founder monthly deals-closed targets |
+| 0106 (06-12) | `get_budget_summary` RPC — spend + lead/deal joins (EXECUTE revoked, Q-13) |
+| 0107 (06-12) | domain-health `total_deals` aggregate from `public.deals` |
+| 0108 (06-12) | `get_agent_today_pulse` self-scoped RPC (calls split + 14-day trend + period deals) |
+| 0109 (06-12) | **`leads.service_interests text[]`** + partial GIN index (Call Intelligence Phase 1) |
+| 0110 (06-12) | **`service_cases` + `conversation_hooks` tables** — RLS (all-authenticated read / admin+founder write), weighted FTS + tags GIN indexes, `immutable_array_to_string()` helper, dormant `embedding vector(1536)` column (no HNSW until Phase 2) |
+| 0111 (06-12) | **`sla_policies` table** (follow-up engine Phase 2) — one row per rule (trigger_kind status/outcome/task_due, threshold, recipient_role, auto_task, channels, hours_mode, active); RLS admin/founder SELECT, service-role writes; seeded with the 8 live SLA rules (parity with `SLA_RULES`; 'active'→'nurturing') + SLA-01C (new·45·founder) + CAD-01A/B/C cadence family + TASK-01A/B task-due rules |
+| 0112 (06-12) | **`leads.last_call_outcome_at`** — timestamp of the latest call outcome; `add_lead_call_note` stamps it alongside `last_call_outcome`; backfilled from the latest outcome-bearing `lead_notes` row (990 of 1096 outcome-carrying leads have no such note → stay NULL → never pass the cadence freshness window) |
+| 0113 (06-12) | **`tasks.overdue_at`** (+ partial index) — stamped exactly once by the overdue job; status CHECK deliberately NOT grown. `notifications.type` CHECK + `sla_breach_founder`, `task_overdue_manager`; `whatsapp_notification_logs.type` CHECK + `task_due_reminder`, `task_overdue_manager` |
+| 0114 (06-12) | **CAD-02A seed** — the In Discussion 48h cadence row (`status` · `in_discussion` · 2880 biz-min · agent · auto_task · channels `{}` · `agent_shift`); idempotent `ON CONFLICT (code) DO NOTHING`. Engine treats every CAD-prefixed code as a cadence (task + re-arm) regardless of trigger_kind. **⚠️ NOT yet applied to prod** — apply = SQL + ledger row in one transaction |
+
+> **Migration ledger repaired (2026-06-12).** `supabase_migrations.schema_migrations` previously
+> recorded only 0001–0064 (0065–0108 were applied out-of-band — the Phase 0 audit finding). Each
+> of the 46 missing migrations had its primary schema effect catalog-verified live, then was
+> recorded. 0109/0110 were applied **with** ledger rows. Local files == remote ledger, zero
+> pending — `supabase db push` is safe again. Keep it that way: every future apply records its row.
 
 > **`lead_health` is fully removed (0084).** No column, util, component, or filter remains —
 > any reference found anywhere is stale. (Unrelated: *Domain Health* — `DomainOverviewPanel` /

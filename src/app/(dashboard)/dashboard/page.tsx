@@ -5,6 +5,7 @@ import {
   getLeadVolumeByRange,
   getLeadVolumeByDomains,
 } from "@/lib/services/dashboard-service";
+import { getBudgetSummary, filterBudgetRowsByDomain } from "@/lib/services/ad-spend-service";
 import { GIA_DOMAINS } from "@/lib/constants/domains";
 import { DashboardCanvas } from "@/components/dashboard/DashboardCanvas";
 import { pickDashboardGreeting } from "@/lib/constants/dashboard-greetings";
@@ -64,7 +65,7 @@ export default async function DashboardPage({
   const isManagerPlus = role === "manager" || role === "admin" || role === "founder";
 
   try {
-    const [rpcData, managerVolume, multiVolume] = await Promise.all([
+    const [rpcData, managerVolume, multiVolume, budgetRows] = await Promise.all([
       getDashboardSummary(
         role,
         domain,
@@ -78,6 +79,11 @@ export default async function DashboardPage({
       isManagerPlus && !isManager
         ? getLeadVolumeByDomains([...GIA_DOMAINS], dateRange)
         : Promise.resolve(null),
+      // Budget widget seed (manager+ only) — date-filtered like campaigns;
+      // managers are pinned to their own domain before the data reaches the client.
+      isManagerPlus
+        ? getBudgetSummary(dateRange.from, dateRange.to)
+        : Promise.resolve(null),
     ]);
     initialData = {
       ...rpcData,
@@ -86,6 +92,9 @@ export default async function DashboardPage({
       campaigns:         rpcData.campaigns      ?? [],
       lead_volume:       managerVolume,
       lead_volume_multi: multiVolume,
+      budget_summary:    budgetRows && isManager
+        ? filterBudgetRowsByDomain(budgetRows, domain)
+        : budgetRows,
     };
   } catch (e) {
     console.error("[dashboard/page] RPC failed, rendering with empty initial data:", e);
@@ -96,6 +105,7 @@ export default async function DashboardPage({
       campaigns:      [],
       lead_volume:       null,
       lead_volume_multi: null,
+      budget_summary:    null,
     };
   }
 

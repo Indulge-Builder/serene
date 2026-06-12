@@ -14,6 +14,8 @@ Thin orchestrators in `src/app/`. Data fetching lives in async children (`*Async
 | `(dashboard)/performance` | `(dashboard)/performance/CLAUDE.md` |
 | `(dashboard)/tasks`, `tasks/[id]` | `(dashboard)/tasks/CLAUDE.md` |
 | `(dashboard)/whatsapp` | `(dashboard)/CLAUDE.md` § WhatsApp |
+| `(dashboard)/helpdesk` | `docs/modules/call-intelligence.md` — RSC library fetch, client-side filter only |
+| `(dashboard)/escalations` | `docs/pages/escalations.md` — manager+ breach surface; live sla-service reads, no cache |
 | `(dashboard)/profile` | — |
 | `(dashboard)/admin/users`, `admin/ad-creatives` | `admin/ad-creatives/CLAUDE.md` |
 | `(dashboard)/settings` | `(dashboard)/settings/CLAUDE.md` |

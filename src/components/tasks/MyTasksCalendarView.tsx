@@ -254,7 +254,7 @@ export function MyTasksCalendarView({
         created_by:  result.data!.createdBy,
         group_id:    null,
         task_category: 'personal', task_type: 'other', module: 'gia',
-        completed_at: null, attachments: [], tags: [], created_at: now, updated_at: now,
+        completed_at: null, overdue_at: null, attachments: [], tags: [], created_at: now, updated_at: now,
       };
       setActiveTasks((prev) => [syntheticTask, ...prev]);
     });
@@ -611,6 +611,7 @@ export function MyTasksCalendarView({
             <CollapseReveal key="quick-add" style={{ marginBottom: 'var(--space-2)' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                flexWrap: 'wrap',
                 padding: 'var(--space-3) var(--space-4)',
                 background: 'var(--theme-accent-surface)',
                 border: '1px solid var(--theme-paper-border)',
@@ -626,7 +627,7 @@ export function MyTasksCalendarView({
                   }}
                   placeholder="Task title…" disabled={isPending}
                   style={{
-                    flex: 1, border: 'none', outline: 'none',
+                    flex: '1 1 160px', minWidth: 0, border: 'none', outline: 'none',
                     background: 'transparent', fontFamily: 'var(--font-sans)',
                     fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)',
                     caretColor: 'var(--theme-accent)',

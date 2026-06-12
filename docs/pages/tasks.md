@@ -81,6 +81,7 @@ design-audit L-02), no JS sort on `getPersonalTasks` output, channel nonces.
 | `group_id` | uuid | NULL | — | FK → `task_groups(id)` ON DELETE CASCADE |
 | `due_at` | timestamptz | NULL | — | |
 | `completed_at` | timestamptz | NULL | — | Set when `status = 'completed'` |
+| `overdue_at` | timestamptz | NULL | — | Stamped **exactly once** by the `check-task-overdue` job (0113) when a `gia_followup` task passes due+30 min with no clearing event; deliberately not a status value |
 | `attachments` | jsonb | NOT NULL | `'[]'` | Checklist items; CHECK `jsonb_typeof = 'array'` (0023) |
 | `tags` | text[] | NOT NULL | `'{}'` | Personal tasks; GIN partial index (0024) |
 | `created_at` | timestamptz | NOT NULL | `now()` | |
@@ -226,6 +227,7 @@ Realtime: **enabled**.
 | --- | --- | --- |
 | `task_assigned` | `createPersonalTaskAction`, `createSubtaskAction` when assignee ≠ caller | `/tasks` (relative only) |
 | `task_due` | `sendTaskReminderTask` (Trigger.dev) | `/tasks` |
+| `task_overdue_manager` | `checkTaskOverdueTask` (Trigger.dev — gia tasks, due+30 min, no clearing event) | `/leads/[id]` |
 
 `notifications.action_url` CHECK: `NOT LIKE 'http%'` — relative paths only.
 

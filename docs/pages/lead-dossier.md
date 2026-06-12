@@ -119,7 +119,7 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 **Read-only:** Full Name, Phone, Call count, Received, Last modified — not inline-edited (name/phone are not mutable in UI).
 
-**Inline-editable (`canEdit`):** Email → `updateLeadEmail`; Source (`source`) → `updateLeadSource` via inline select pattern.
+**Inline-editable (`canEdit`):** Email → `updateLeadEmail`; Source (`source`) → `updateLeadSource` via inline select pattern; Interests → `updateLeadInterests` via `InterestsInlineField` (FormChip multi-select in the `LeadFieldShell` chrome, explicit Save/Cancel; options from the lead's domain vocabulary, server re-drops unknowns; activity logs old → new; `onSaved` → `router.refresh()` so `ServiceInterestCard` re-renders with new matches).
 
 **Domain (`canEditDomain`):** `updateLeadDomain` — `GIA_DOMAIN_FILTER_ITEMS`; agents cannot.
 

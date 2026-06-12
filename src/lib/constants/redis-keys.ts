@@ -72,6 +72,13 @@ export const REDIS_KEYS = {
 
   leadActivities: (leadId: string) =>
     `lead:activities:${leadId}`,
+
+  // Call Intelligence helpdesk library — one envelope { cases, hooks } per
+  // domain (3600s). Invalidated on every admin service_cases/hook write via
+  // the intelligence actions; the dossier card query is NOT cached (6-row
+  // indexed lookup, lead-specific — see intelligence-service.ts header).
+  helpdeskCases: (domain: string) =>
+    `helpdesk:cases:${domain}`,
 } as const;
 
 // ─────────────────────────────────────────────
@@ -143,4 +150,5 @@ export const REDIS_TTL = {
   LEAD_ROW:               120,  // dossier data; explicitly invalidated on mutation
   LEAD_NOTES:             120,
   LEAD_ACTIVITIES:        120,
+  HELPDESK_CASES:        3600,  // brag library changes rarely; explicit del on admin write
 } as const;

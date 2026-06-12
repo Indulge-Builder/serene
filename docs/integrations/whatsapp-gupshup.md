@@ -103,17 +103,19 @@ dropped most notifications (no error, no log row — only lucky survivors logged
 | `createManualLead` (Add Lead) | `lib/actions/leads.ts` | `after(notifyLeadAssigned(…))` |
 | WhatsApp inbound (new number) | `lib/services/whatsapp-ingestion.ts` | `await notifyLeadAssigned(…)` inside the route's `after()` |
 
-## 5. The five templates (`src/lib/constants/whatsapp.ts`)
+## 5. The seven templates (`src/lib/constants/whatsapp.ts`)
 
 | Constant | Purpose | Params |
 | -------- | ------- | ------ |
 | `GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID` (`193e330d-…`) | agent: new lead assigned | agent first name · lead name · lead phone |
 | `GUPSHUP_FOUNDER_LEAD_NOTIFICATION_TEMPLATE_ID` (`d5828042-…`) | all founders: new lead | domain · agentName · leadName · leadPhone |
 | `GUPSHUP_SLA_AGENT_TEMPLATE_ID` (`54d5dd55-…`) | agent: SLA breach | leadName · leadPhone · status · lastUpdatedAt |
-| `GUPSHUP_SLA_MANAGER_TEMPLATE_ID` (`682fd320-…`) | managers: SLA breach | + agentName (5 params) |
+| `GUPSHUP_SLA_MANAGER_TEMPLATE_ID` (`682fd320-…`) | managers (and founders, SLA-01C): SLA breach | + agentName (5 params) |
 | `GUPSHUP_LEAD_INITIATION_TEMPLATE_ID` (`7aee2a33-…`) | agent-initiated outreach from the dossier | leadName · agentName |
+| `GUPSHUP_TASK_DUE_REMINDER_TEMPLATE_ID` (`05411e50-…`) | agent: gia_followup task due (TASK-01A) | agent first name · lead name · lead phone · task title |
+| `GUPSHUP_TASK_OVERDUE_MANAGER_TEMPLATE_ID` (`c7ddd983-…`) | domain managers: gia task overdue +30 min (TASK-01B) | manager first name (per-recipient) · agent name · lead name · task title · due time **IST human format ("4:00 PM") — never UTC/ISO** |
 
-All five senders are thin wrappers over the internal `sendGupshupTemplate()` core, which owns
+All seven senders are thin wrappers over the internal `sendGupshupTemplate()` core, which owns
 the fetch, status/body/delivered capture, and the one-log-row-per-attempt
 `finally { await logNotification }` contract. Never call the Gupshup template endpoint outside
 it. The four notification senders never throw to their callers;
@@ -127,7 +129,7 @@ One row per template-send attempt, written by `logNotification()` **awaited in e
 
 | Column | Value |
 | ------ | ----- |
-| `type` | `agent_assignment` · `founder_alert` · `sla_breach` · `lead_initiation` (CHECK) |
+| `type` | `agent_assignment` · `founder_alert` · `sla_breach` · `lead_initiation` · `task_due_reminder` · `task_overdue_manager` (CHECK, widened in 0113) |
 | `recipient_phone` / `lead_phone` | **last 4 digits only** — full numbers never stored (D-04) |
 | `gupshup_status` | HTTP status; `0` = network-level fetch error |
 | `gupshup_body` | response body, truncated to 2000 chars |

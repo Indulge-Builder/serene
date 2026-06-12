@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef } from "react";
 import { m as motion } from "framer-motion";
-import { Phone, UserPlus, ArrowRight, Copy, User } from "lucide-react";
+import { Phone, UserPlus, ArrowRight, Copy, User, FileText } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getAgentRecentActivityAction } from "@/lib/actions/dashboard";
 import { CALL_OUTCOME_LABELS } from "@/lib/constants/call-outcomes";
@@ -14,8 +14,29 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { CallOutcome, LeadStatus } from "@/lib/types/database";
 import { useWidgetData } from "@/hooks/useWidgetData";
 
-// note_added always fires alongside call_logged — it adds no signal, skip it.
-const SKIP_TYPES = new Set(["note_added"]);
+// A call note writes call_logged + note_added as a pair — the paired note adds
+// no signal, so it is dropped. STANDALONE notes (dossier "Add note") have no
+// twin call_logged within the window and stay in the feed (2026-06-12 enrich).
+const PAIRED_NOTE_WINDOW_MS = 5000;
+
+function isPairedNote(
+  activity: DashboardAgentActivity,
+  pool: DashboardAgentActivity[],
+): boolean {
+  if (activity.action_type !== "note_added") return false;
+  const t = new Date(activity.created_at).getTime();
+  return pool.some(
+    (b) =>
+      b.action_type === "call_logged" &&
+      b.lead_id != null &&
+      b.lead_id === activity.lead_id &&
+      Math.abs(new Date(b.created_at).getTime() - t) < PAIRED_NOTE_WINDOW_MS,
+  );
+}
+
+function enrichFeed(rows: DashboardAgentActivity[]): DashboardAgentActivity[] {
+  return rows.filter((a) => !isPairedNote(a, rows));
+}
 
 type ActivityMeta = {
   icon: React.ElementType;
@@ -47,6 +68,19 @@ const ACTIVITY_MAP: Record<string, ActivityMeta> = {
         return `${LEAD_STATUS_LABELS[from] ?? from} → ${LEAD_STATUS_LABELS[to] ?? to}`;
       }
       return "Status changed";
+    },
+  },
+  note_added: {
+    icon: FileText,
+    color: "var(--theme-text-secondary)",
+    label: (a) => a.lead_name ?? "Lead",
+    sub: (a) => {
+      const content = a.details?.content;
+      if (typeof content === "string" && content.trim().length > 0) {
+        const text = content.trim();
+        return text.length > 60 ? `${text.slice(0, 59)}…` : text;
+      }
+      return "Note added";
     },
   },
   lead_created: {
@@ -161,51 +195,47 @@ function ActivityItem({ activity }: { activity: DashboardAgentActivity }) {
 }
 
 const ACTIVITY_CAP = 25;
-const ROW_HEIGHT = 48; // px — matches ActivityItem padding + content
-const SCROLL_SPEED = 0.11; // px per frame (~9px/s at 60fps)
+const SCROLL_SPEED = 0.11; // px per frame (~7px/s at 60fps) — gentle drift
 
-export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: WidgetProps) {
+export function AgentActivityWidget({ userId, role, initialData, size = 'lg' }: WidgetProps) {
   const rawSeed = initialData?.agent_activity ?? null;
-  const seed = rawSeed
-    ? rawSeed.filter((a) => !SKIP_TYPES.has(a.action_type))
-    : null;
+  const seed = rawSeed ? enrichFeed(rawSeed) : null;
   const { data, loaded, setData: setActivities } = useWidgetData<DashboardAgentActivity[]>({
     seed,
     fetcher: async () => {
       const result = await getAgentRecentActivityAction(userId);
       return {
-        data: result.data
-          ? result.data.filter((a) => !SKIP_TYPES.has(a.action_type))
-          : null,
+        data: result.data ? enrichFeed(result.data) : null,
       };
     },
     deps: [userId],
   });
   const activities = data ?? [];
   const mountId = useId();
-  const innerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const offsetRef = useRef(0); // current translateY (negative = scrolled down)
-  const pausedRef = useRef(false); // true while hovered
+  const scrollPosRef = useRef(0); // fractional auto-scroll position
+  const pausedRef = useRef(false); // true while hovered / touch-scrolling
   const rafRef = useRef<number>(0);
+  const touchResumeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelRef = useRef<ReturnType<
     ReturnType<typeof createClient>["channel"]
   > | null>(null);
 
-  // Auto-scroll ticker — rAF-driven, GPU-safe, pauses on hidden tab
+  // Auto-advance ticker over a NATIVELY SCROLLABLE viewport — the pointer can
+  // scroll the list directly (hover pauses the drift; onScroll keeps the
+  // ticker position in sync so resuming never jumps). Pauses on hidden tab.
   useEffect(() => {
     if (!loaded) return;
 
     const tick = () => {
-      if (!pausedRef.current && innerRef.current) {
-        const viewportHeight = viewportRef.current?.clientHeight ?? 220;
-        const totalHeight = activities.length * ROW_HEIGHT;
-        const maxScroll = Math.max(0, totalHeight - viewportHeight);
-
+      const vp = viewportRef.current;
+      if (!pausedRef.current && vp) {
+        const maxScroll = vp.scrollHeight - vp.clientHeight;
         if (maxScroll > 0) {
-          offsetRef.current = offsetRef.current - SCROLL_SPEED;
-          if (offsetRef.current < -maxScroll) offsetRef.current = 0; // wrap to top
-          innerRef.current.style.transform = `translateY(${offsetRef.current}px)`;
+          let next = scrollPosRef.current + SCROLL_SPEED;
+          if (next >= maxScroll) next = 0; // wrap to top
+          scrollPosRef.current = next;
+          vp.scrollTop = next;
         }
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -228,6 +258,12 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [loaded, activities.length]);
+
+  useEffect(() => {
+    return () => {
+      if (touchResumeRef.current) clearTimeout(touchResumeRef.current);
+    };
+  }, []);
 
   // Realtime subscription — scoped by role (P-06 compliance)
   // admin/founder: no filter (all activities); agent: filter by actor_id
@@ -258,24 +294,24 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
             lead_id: string | null;
           };
 
-          if (SKIP_TYPES.has(newRow.action_type)) return;
-
-          // Reset to top so new item is immediately visible
-          offsetRef.current = 0;
-          if (innerRef.current)
-            innerRef.current.style.transform = "translateY(0px)";
+          const activity: DashboardAgentActivity = {
+            id: newRow.id,
+            action_type: newRow.action_type,
+            details: newRow.details,
+            created_at: newRow.created_at,
+            lead_id: newRow.lead_id,
+            lead_name: null,
+          };
 
           setActivities((prev) => {
-            const activity: DashboardAgentActivity = {
-              id: newRow.id,
-              action_type: newRow.action_type,
-              details: newRow.details,
-              created_at: newRow.created_at,
-              lead_id: newRow.lead_id,
-              lead_name: null,
-            };
+            // Drop the note half of a call-note pair (same rule as the seed filter)
+            if (isPairedNote(activity, prev ?? [])) return prev;
             return [activity, ...(prev ?? [])].slice(0, ACTIVITY_CAP);
           });
+
+          // Surface the new item — slide-in entrance plays at the top
+          scrollPosRef.current = 0;
+          if (viewportRef.current) viewportRef.current.scrollTop = 0;
         },
       )
       .subscribe();
@@ -341,40 +377,44 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
         </span>
       </div>
 
-      {/* Ticker viewport — flex-fills remaining space, overflow hidden, fades at edges */}
+      {/* Feed — natively scrollable; gentle auto-drift when idle, fades at edges */}
       <div
-        ref={viewportRef}
         style={{
           position: "relative",
           flex: 1,
           minHeight: "160px",
-          overflow: "hidden",
-        }}
-        onMouseEnter={() => {
-          pausedRef.current = true;
-        }}
-        onMouseLeave={() => {
-          pausedRef.current = false;
         }}
       >
-        {/* Fade masks — top and bottom */}
         <div
+          ref={viewportRef}
+          onMouseEnter={() => {
+            pausedRef.current = true;
+          }}
+          onMouseLeave={() => {
+            pausedRef.current = false;
+          }}
+          onTouchStart={() => {
+            pausedRef.current = true;
+            if (touchResumeRef.current) clearTimeout(touchResumeRef.current);
+          }}
+          onTouchEnd={() => {
+            if (touchResumeRef.current) clearTimeout(touchResumeRef.current);
+            touchResumeRef.current = setTimeout(() => {
+              pausedRef.current = false;
+            }, 1500);
+          }}
+          onScroll={(e) => {
+            // Keep the ticker in sync with manual scrolling — resuming the
+            // drift continues from wherever the pointer left the list.
+            scrollPosRef.current = e.currentTarget.scrollTop;
+          }}
           style={{
             position: "absolute",
             inset: 0,
-            zIndex: 1,
-            background: `linear-gradient(to bottom,
-            var(--theme-paper) 0%,
-            transparent 18%,
-            transparent 82%,
-            var(--theme-paper) 100%
-          )`,
-            pointerEvents: "none",
+            overflowY: "auto",
+            scrollbarWidth: "none",
           }}
-        />
-
-        {/* Scrolling inner list */}
-        <div ref={innerRef} style={{ willChange: "transform" }}>
+        >
           {loaded && activities.length === 0 ? (
             <p
               style={{
@@ -395,6 +435,22 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'md' }: 
             ))
           )}
         </div>
+
+        {/* Fade masks — top and bottom, fixed over the scrolling viewport */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 1,
+            background: `linear-gradient(to bottom,
+            var(--theme-paper) 0%,
+            transparent 12%,
+            transparent 88%,
+            var(--theme-paper) 100%
+          )`,
+            pointerEvents: "none",
+          }}
+        />
       </div>
     </div>
   );

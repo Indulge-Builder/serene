@@ -328,7 +328,7 @@ eia/
 │   ├── architecture/                ← overview · database(+.sql) · auth-and-rbac · caching · migrations
 │   ├── design/                      ← DESIGN-DNA (law) · design-system · decision-log
 │   ├── rules/The_Rules.md           ← the constitution: §0 Reuse First (R-rules) + A/S/D/P/V/Q + Decision Log
-│   ├── pages/                       ← one spec per route (14 files)
+│   ├── pages/                       ← one spec per route (16 files)
 │   ├── modules/                     ← gia · lia · sia · elia · call-intelligence
 │   ├── integrations/                ← lead-ingestion · whatsapp-gupshup · trigger-dev · upstash-redis
 │   ├── operations/                  ← environments · deployment

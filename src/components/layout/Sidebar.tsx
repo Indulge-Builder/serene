@@ -20,6 +20,8 @@ import {
   Film,
   Bell,
   Wallet,
+  BookOpen,
+  AlertTriangle,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
@@ -45,13 +47,16 @@ const MAIN_NAV: NavItem[] = [
   { href: "/deals",     label: "Deals",     icon: Trophy          },
   { href: "/tasks",     label: "Tasks",     icon: CheckSquare     },
   { href: "/whatsapp",  label: "WhatsApp",  icon: MessageCircle   },
+  { href: "/helpdesk",  label: "Helpdesk",  icon: BookOpen        },
 ];
 
-// Analytics section — Performance for all roles; Campaigns + Budget for manager+
+// Analytics section — Performance for all roles; Campaigns + Budget +
+// Escalations for manager+ (the shared isManager gate below)
 const ANALYTICS_NAV: NavItem[] = [
   { href: "/performance", label: "Performance", icon: BarChart2 },
   { href: "/campaigns", label: "Campaigns", icon: TrendingUp },
   { href: "/budget", label: "Budget", icon: Wallet },
+  { href: "/escalations", label: "Escalations", icon: AlertTriangle },
 ];
 
 // Visible to manager, admin, founder — lead assignment config (+ ad creatives for admin/founder)

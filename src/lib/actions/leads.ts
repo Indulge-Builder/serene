@@ -8,6 +8,7 @@ import { redis } from "@/lib/redis";
 import { REDIS_KEYS } from "@/lib/constants/redis-keys";
 import { requireProfile } from "@/lib/actions/_auth";
 import { invalidateLeadCaches } from "@/lib/services/lead-cache";
+import { extractServiceInterests } from "@/lib/services/lead-ingestion";
 import {
   AddCallNoteSchema,
   AddLeadNoteSchema,
@@ -15,6 +16,7 @@ import {
   UpdateLeadDomainSchema,
   UpdateLeadSourceSchema,
   UpdateLeadCitySchema,
+  UpdateLeadInterestsSchema,
   UpdateLeadStatusSchema,
   AssignLeadSchema,
   UpdatePersonalDetailsSchema,
@@ -39,6 +41,7 @@ import {
   scheduleSlaTimersForLead,
   cancelSlaTimersForLead,
   refreshActivitySlaTimers,
+  armCadenceForOutcome,
 } from "@/lib/actions/sla";
 import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
 import { scheduleTaskReminder } from "@/trigger/task-reminders";
@@ -128,23 +131,48 @@ export async function addLeadCallNote(
   revalidatePath("/leads");
 
   // 5. SLA side-effects (fire-and-forget, non-fatal — cannot go in the RPC)
+  // armCadenceForOutcome is chained AFTER the schedule/refresh settles — their
+  // cancel-all sweeps every run tagged to this lead and would otherwise kill
+  // the freshly armed cadence tick. It no-ops unless the outcome is in the
+  // cadence set (rnr / switched_off / wrong_number) and the status is armable.
   const postStatus = didAutoAdvance ? "touched" : oldStatus;
 
   if (didAutoAdvance) {
+    const slaAssignee = assignedTo ?? caller.id;
     scheduleSlaTimersForLead({
       leadId,
       status: "touched",
       assignedAt: now,
-      assignedTo: assignedTo ?? caller.id,
+      assignedTo: slaAssignee,
       domain,
-    }).catch(() => {});
+    })
+      .then(() =>
+        armCadenceForOutcome({
+          leadId,
+          outcome: callOutcome,
+          assignedTo: slaAssignee,
+          domain,
+          status: "touched",
+        }),
+      )
+      .catch(() => {});
   } else if (assignedTo && ["touched", "in_discussion"].includes(postStatus)) {
     refreshActivitySlaTimers({
       leadId,
       status: postStatus,
       assignedTo,
       domain,
-    }).catch(() => {});
+    })
+      .then(() =>
+        armCadenceForOutcome({
+          leadId,
+          outcome: callOutcome,
+          assignedTo,
+          domain,
+          status: postStatus,
+        }),
+      )
+      .catch(() => {});
   }
 
   return { data: { noteId: noteId as string }, error: null };
@@ -526,6 +554,14 @@ export async function createManualLead(
   //    normalizeToE164 on phone (already done by Zod transform in schema)
   const { first_name, last_name, phone, email, source } = fields;
 
+  // 5b. Interests: drop out-of-vocabulary values for the RESOLVED domain —
+  //     the exact same best-effort dropper as the webhook/WhatsApp paths
+  //     (never rejects the submission, never blocks the INSERT).
+  const serviceInterests = extractServiceInterests(
+    { interests: fields.service_interests },
+    resolvedDomain,
+  );
+
   // 6. Duplicate check via get_active_lead_by_phone (Rule S-09 / dedup spec)
   const { data: existingLeads } = await admin.rpc("get_active_lead_by_phone", {
     p_phone: phone,
@@ -558,6 +594,7 @@ export async function createManualLead(
       medium: null,
       utm_campaign: null,
       attribution: null,
+      service_interests: serviceInterests,
       form_data: {},
       last_call_outcome: null,
       personal_details: null,
@@ -815,6 +852,68 @@ export async function updateLeadCity(
 
   await revalidateLeadDossier(access.lead);
   return { data: { leadId }, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: updateLeadInterests (call-intelligence Phase 1.1b)
+// Same field-edit path as email/source/city: assertLeadFieldEditAccess →
+// admin update → activity entry → revalidateLeadDossier (dual-key row del
+// via invalidateLeadCaches — never hand-rolled). Out-of-vocabulary values
+// dropped against the lead's domain via extractServiceInterests (the same
+// dropper as every ingestion path). Activity logs old → new — interests
+// drive what agents pitch; an unlogged change is a hole in the lead story.
+// ─────────────────────────────────────────────
+export async function updateLeadInterests(
+  input: unknown,
+): Promise<ActionResult<{ leadId: string; interests: string[] }>> {
+  const parsed = UpdateLeadInterestsSchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  const { leadId } = parsed.data;
+  const access = await assertLeadFieldEditAccess(leadId);
+  if (!access.ok) return { data: null, error: access.error };
+
+  const interests = extractServiceInterests(
+    { interests: parsed.data.interests },
+    access.lead.domain,
+  );
+
+  const admin = createAdminClient();
+  const { data: current } = await admin
+    .from("leads")
+    .select("service_interests")
+    .eq("id", leadId)
+    .single();
+  const oldInterests = current?.service_interests ?? [];
+
+  // No-op edit: skip the write and the activity row entirely.
+  if (
+    oldInterests.length === interests.length &&
+    oldInterests.every((v, i) => v === interests[i])
+  ) {
+    return { data: { leadId, interests }, error: null };
+  }
+
+  const { error: updateError } = await admin
+    .from("leads")
+    .update({ service_interests: interests })
+    .eq("id", leadId);
+
+  if (updateError) return { data: null, error: formErrors.generic };
+
+  await admin.from("lead_activities").insert({
+    lead_id: leadId,
+    actor_id: access.caller.id,
+    action_type: "note_added",
+    details: {
+      type: "lead_interests_updated",
+      old: oldInterests,
+      new: interests,
+    },
+  });
+
+  await revalidateLeadDossier(access.lead);
+  return { data: { leadId, interests }, error: null };
 }
 
 // ─────────────────────────────────────────────

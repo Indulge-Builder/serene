@@ -58,27 +58,78 @@ clearing `resolution_reason`. Terminal statuses cancel all SLA timers.
 6. **After won** — the deal lives on `/deals`; the future clients module takes over from
    `deals.client_id` (reserved).
 
-## 4. The SLA engine
+## 4. The follow-up engine (SLA + cadence + task-due rules)
 
 Business hours: IST, Mon–Sat 09:00–19:00 (`src/lib/constants/sla.ts`; per-agent shift
-overrides from `/settings` via `buildAgentShiftOverride`). Eight rules:
+overrides from `/settings` via `buildAgentShiftOverride`).
 
-| Code | Trigger status | Threshold | Recipient | Auto-task? |
-| ---- | -------------- | --------- | --------- | ---------- |
-| SLA-01A | `new` | 15 min | agent | yes (urgent) |
-| SLA-01B | `new` | 30 min | manager | no |
-| SLA-02A | `touched` | 24 h | agent | yes (high) |
-| SLA-02B | `touched` | 36 h | manager | no |
-| SLA-03A | `in_discussion` | 24 h | agent | yes (high) |
-| SLA-03B | `in_discussion` | 36 h | manager | no |
-| SLA-04A | `nurturing` | 4 biz-days | agent | yes (high) |
-| SLA-04B | `nurturing` | 4 biz-days | manager | no |
+**Config-driven since 2026-06-12 (migration 0111):** every rule is a row in
+`sla_policies` (code, trigger_kind `status|outcome|task_due`, trigger_value,
+threshold_minutes, recipient_role `agent|manager|founder`, auto_task, channels
+`{in_app,whatsapp}`, hours_mode `agent_shift|business|clock`, active). The engine
+reads policies **per job run** via the admin client — never cached at module
+scope, so a threshold edit applies on the next fire without a deploy. `SLA_RULES`
+in `constants/sla.ts` is the parity reference for the seed, not an engine input.
+A deactivated policy (`active=false`) makes pending fires exit as stale.
+
+| Code | Kind | Trigger | Threshold | Recipient | Auto-task? |
+| ---- | ---- | ------- | --------- | --------- | ---------- |
+| SLA-01A | status | `new` | 15 min | agent | yes (urgent) |
+| SLA-01B | status | `new` | 30 min | manager | no |
+| SLA-01C | status | `new` | 45 min | founder | no |
+| SLA-02A | status | `touched` | 24 h | agent | yes (high) |
+| SLA-02B | status | `touched` | 36 h | manager | no |
+| SLA-03A | status | `in_discussion` | 24 h | agent | yes (high) |
+| SLA-03B | status | `in_discussion` | 36 h | manager | no |
+| SLA-04A | status | `nurturing` | 4 biz-days | agent | yes (high) |
+| SLA-04B | status | `nurturing` | 4 biz-days | manager | no |
+| CAD-01A/B/C | outcome | `rnr` / `switched_off` / `wrong_number` | daily | agent | yes (the cadence task) |
+| CAD-02A | status | `in_discussion` | every 48 biz-h | agent | yes (the cadence task) |
+| TASK-01A | task_due | `gia_followup` due | at due | agent | no (in-app + WhatsApp reminder) |
+| TASK-01B | task_due | `gia_followup` due | +30 clock-min | manager | no (overdue escalation) |
+
+**Outcome cadence (CAD-01 family):** when a call note lands with an unreached
+outcome (vocabulary = the rnr/switched_off/wrong_number subset of
+`CALL_OUTCOMES`), `addLeadCallNote` arms a daily tick — scheduled at the start
+of the agent's **next shift day** (an RNR logged 19:30 ticks tomorrow at shift
+open, never 19:30+24h). Each tick re-reads the lead and creates one follow-up
+task (`create_lead_gia_task`, type `call`, due 2 business hours into the shift),
+then re-arms for tomorrow. It repeats daily until the outcome or status changes.
+Three duplicate-storm layers, all required: date-scoped idempotency keys
+(`lead-sla-{lead}-{code}-{IST date}`), the open-task guard
+(`getOpenGiaFollowupTask` — an open gia task for the lead+agent skips creation;
+the overdue rule chases it), and the 7-day freshness window on
+`leads.last_call_outcome_at` (migration 0112 — pre-go-live/backfilled outcomes
+never arm; NULL timestamp = never fresh). Armable statuses:
+`new`/`touched`/`in_discussion` only — junk/lost/nurturing/terminal never
+receive cadence tasks. Status changes disarm structurally: cadence runs ride
+the `lead-sla-${leadId}` tag, so the existing cancel-all sweeps them.
+
+**Status cadence (CAD-02A, migration 0114):** every CAD-prefixed code is a
+cadence regardless of trigger_kind (`isCadenceCode` in `constants/sla.ts`).
+CAD-02A arms with the other `in_discussion` status policies on every status
+change / activity refresh and fires 48 business hours later; if the lead is
+STILL `in_discussion` it creates a follow-up task (same `create_lead_gia_task`
+path + open-task guard as CAD-01) and re-arms `threshold_minutes` ahead —
+repeating until the lead leaves the status. A call note resets the 48h clock
+(`refreshActivitySlaTimers` cancel-all + re-schedule); no outcome/freshness
+guards apply — the status itself is the liveness condition.
+
+**Task-due rules (TASK-01A/B):** at a `gia_followup` task's due time the
+existing `task_due` in-app notification is joined by the `task_due_reminder`
+WhatsApp template to the agent (gia tasks only — the template is lead-shaped;
+personal/group tasks stay in-app only). 30 clock-minutes later, if there is no
+clearing event (task completed/cancelled OR any lead activity after due),
+`tasks.overdue_at` is stamped **exactly once** (UPDATE … WHERE overdue_at IS
+NULL — never a status value; the status CHECK did not grow) and the lead's
+domain managers get `task_overdue_manager` in-app + WhatsApp.
 
 Mechanics (idempotency keys, tags, stale-fire guard, hook points):
 `../integrations/trigger-dev.md`. Timer state: `lead_sla_timers`
-(service-role only). Breach notifications: the two SLA Gupshup templates +
-in-app `sla_breach_*` notifications. Activity refreshes SLA-02/03 only — SLA-01 is never
-refreshed by activity, only by leaving `new`.
+(service-role only; CAD ticks ride the same table). Breach notifications: the
+SLA Gupshup templates + in-app `sla_breach_*` notifications (founder rules use
+`sla_breach_founder` + the SLA manager template). Activity refreshes SLA-02/03
+only — SLA-01 is never refreshed by activity, only by leaving `new`.
 
 ## 5. Gia surfaces
 

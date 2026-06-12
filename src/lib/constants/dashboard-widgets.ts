@@ -50,8 +50,38 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
   {
     id:          'agent-activity',
     label:       'Recent Activity',
-    description: 'A live whisper of your last 10 actions.',
+    description: 'A live feed of lead activity — calls, notes, status moves.',
     roles:       ['agent', 'manager', 'admin', 'founder'],
+    domains:     '*',
+    defaultSize: 'lg',
+    colSpan:     1,
+    module:      'gia',
+  },
+  {
+    id:          'agent-pending-calls',
+    label:       'Pending Calls',
+    description: 'Open Gia follow-up calls on your plate. Live count — the date filter never applies.',
+    roles:       ['agent'],
+    domains:     '*',
+    defaultSize: 'sm',
+    colSpan:     1,
+    module:      'gia',
+  },
+  {
+    id:          'agent-new-leads',
+    label:       'New Leads',
+    description: 'Your leads still at New, waiting for a first call. Live count — the date filter never applies.',
+    roles:       ['agent'],
+    domains:     '*',
+    defaultSize: 'sm',
+    colSpan:     1,
+    module:      'gia',
+  },
+  {
+    id:          'elaya-presence',
+    label:       'Elaya',
+    description: 'Elaya’s seat on your dashboard — greeting now, the full Elaya layer arrives here.',
+    roles:       ['agent'],
     domains:     '*',
     defaultSize: 'md',
     colSpan:     1,
@@ -97,6 +127,16 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     colSpan:     1,
     module:      'gia',
   },
+  {
+    id:          'manager-budget',
+    label:       'Campaign Budget',
+    description: 'Ad spend joined to lead and deal outcomes for the period.',
+    roles:       ['manager', 'admin', 'founder'],
+    domains:     '*',
+    defaultSize: 'sm',
+    colSpan:     1,
+    module:      'gia',
+  },
 ];
 
 export const WIDGET_MAP: Record<string, WidgetDefinition> = Object.fromEntries(
@@ -107,7 +147,10 @@ export function isValidWidgetId(id: string): id is string {
   return id in WIDGET_MAP;
 }
 
-// Default layout per role — ordered list of widget ids
+// Default layout per role — ordered list of widget ids.
+// Manager mirrors the founder layout (+ the budget widget, domain-pinned
+// server-side). Agent first screen: tasks left / Elaya right, the two live
+// snapshot counts, then the tall activity feed.
 export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
   founder: [
     'agent-tasks',
@@ -116,6 +159,7 @@ export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
     'manager-lead-volume',
     'manager-campaigns',
     'manager-cold-leads',
+    'manager-budget',
   ],
   admin: [
     'agent-tasks',
@@ -124,6 +168,7 @@ export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
     'manager-lead-volume',
     'manager-campaigns',
     'manager-cold-leads',
+    'manager-budget',
   ],
   manager: [
     'agent-tasks',
@@ -132,9 +177,13 @@ export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
     'manager-lead-volume',
     'manager-campaigns',
     'manager-cold-leads',
+    'manager-budget',
   ],
   agent: [
     'agent-tasks',
+    'elaya-presence',
+    'agent-pending-calls',
+    'agent-new-leads',
     'agent-activity',
   ],
   guest: [],

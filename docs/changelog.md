@@ -6,6 +6,261 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-12 — Follow-up Engine Phase 3: SLA settings panel, /escalations page, In Discussion 48h cadence (CAD-02A)
+
+The UI layer on top of the config-driven engine, plus the one rule the Phase 2 seed missed. Zero new machinery — the settings panel writes the existing `sla_policies` table, the escalation page reads artifacts the engine already produces, and CAD-02A rides the existing cadence path.
+
+- **CAD-02A — In Discussion 48h cadence (0114, confirmed absent from the Phase 2 seed):** new `sla_policies` row (`status` · `in_discussion` · 2880 biz-min · agent · auto_task · channels `'{}'` · `agent_shift`). Engine extension in `lib/actions/sla.ts`: a **CAD-prefixed code is a cadence regardless of trigger_kind** — `fireSlaBreachHandler` branches on `isCadenceCode(code)` (new helper in `constants/sla.ts`) as well as `trigger_kind='outcome'`. Status cadences arm with the other status policies (the schedule/refresh loops now pass the date-scoped idempotency suffix for CAD codes), and on fire `runCadenceTick` checks one liveness condition — lead still in the trigger status — then creates the follow-up task (open-task guard unchanged) and **re-arms `threshold_minutes` ahead** via `policyDeadline` (outcome cadences keep their daily-at-shift-open re-arm). A call note resets the 48h clock (`refreshActivitySlaTimers` cancel-all + re-schedule); leaving `in_discussion` disarms structurally (tag cancel-all). Task title in `STATUS_CADENCE_TASK_TITLES`. **Migration file written but NOT yet applied to prod** (apply was permission-blocked this session) — `20260612000114_cad02_in_discussion_cadence.sql`, idempotent `ON CONFLICT (code) DO NOTHING`; apply = SQL + ledger row per the post-repair convention.
+- **SLA settings panel (`/settings`, admin/founder only):** `SlaPoliciesPanel` below the agent roster — one row per policy, grouped Status rules / Cadences / Task due rules. Editable knobs: threshold minutes (blur-save, `formatDuration` hint), hours basis select (`agent_shift`/`business`/`clock`), channel checkboxes (in-app / WhatsApp), active toggle (optimistic, revert + toast on error). **The recipient "checklist" is structural:** recipients are separate rows (01A agent / 01B manager / 01C founder) — toggling a row active IS the recipient choice; identity fields (code, trigger, recipient, auto_task) are read-only. Write path: `updateSlaPolicyAction` (`actions/sla-policies.ts` — deliberately separate from the sessionless engine file) → Zod (`UpdateSlaPolicySchema`) → `requireProfile(['admin','founder'])` → `updateSlaPolicy` (admin client — 0111 has no write RLS by design; the gated action is the sanctioned path). Reads via `getAllSlaPolicies` (session client; 0111 RLS double-enforces). Engine reads per run, so active/channel edits apply on the next fire; threshold edits apply to newly armed timers (already-DELAYED runs keep their computed fire time).
+- **`/escalations` (manager+; manager → own domain, admin/founder → org-wide with a Domain column):** three live, deliberately un-cached lists driven by existing engine artifacts. **SLA breaches** — fired `lead_sla_timers` from the last 7 days whose rule still matches the lead's current status (moved-on leads drop out; CAD fires excluded as routine), grouped per lead with all breached codes. **Overdue follow-up tasks** — open gia tasks carrying the exactly-once `tasks.overdue_at` stamp (0113). **Going cold** — the same predicate as `/leads?going_cold=true` (`last_activity_at` older than 5 days, non-terminal), with an "Open in Leads" deep link. Service reads in `sla-service.ts` (`getEscalatedLeads` / `getOverdueGiaTasks` / `getGoingColdLeads` — admin client with session-derived scope args, `mapRows` boundary). UI: `StatTile` summary strip + three `Table<T>` section cards (`EscalationSections.tsx`), rows navigate to the dossier; `EmptyState` inline variants. Route added to `DOMAIN_ROUTE_MAP` (gia domains) + Sidebar Analytics section (AlertTriangle icon, behind the existing `isManager` gate); the page redirects agent/guest.
+- `tsc --noEmit` clean.
+
+**Files:** `supabase/migrations/20260612000114_cad02_in_discussion_cadence.sql`, `src/lib/constants/sla.ts`, `src/lib/actions/sla.ts`, `src/lib/actions/sla-policies.ts`, `src/lib/services/sla-service.ts`, `src/lib/validations/sla-policy-schema.ts`, `src/components/settings/SlaPoliciesPanel.tsx`, `src/components/escalations/EscalationSections.tsx`, `src/app/(dashboard)/escalations/page.tsx` + `loading.tsx`, `src/app/(dashboard)/settings/page.tsx`, `src/components/layout/Sidebar.tsx`, `src/lib/constants/route-permissions.ts`, docs (`gia.md` §4, `migrations.md`, `pages/settings.md`, `pages/escalations.md` (new), CLAUDE registries).
+
+---
+
+## 2026-06-12 — Call Intelligence content: curated seed file + one-shot seed script (run pending)
+
+The content gate from `docs/modules/call-intelligence.md` is now packaged: the team's curated library — 150 service cases + 30 hooks for `onboarding`, distilled from the Freshdesk ticket export (Jan 2023 – Jun 2026, 37,225 resolved tickets) — landed as a repo data file with a validated seed path. **Exceeds the ship bar** (≥20 verified cases per category): exactly 25 cases + 5 hooks per category across all six (`travel`/`dining`/`gifts`/`events`/`retail`/`special` — byte-identical to the `onboarding` vocabulary in `lib/constants/interests.ts`).
+
+- **Data:** `scripts/data/call-intelligence-seed.json` (moved from a root-level `data.json` drop) — fields map 1:1 to the 0110 tables; JSON `id`s (`case-travel-001`) are worksheet references, stripped on insert (DB generates uuids).
+- **Script:** `scripts/seed-call-intelligence.ts` (import-zoho convention: service-role client, `npx tsx --env-file=.env.local`). Validates every row against the 0110 contract **before any write** — domain/category membership, non-empty title/summary/hook, and the city-slug-tag invariant (`city` present ⇒ lowercase slug in `tags`; powers the dossier city match). Idempotency guard: aborts if the domain already has rows in either table (`--force` deletes + reseeds). Inserts in batches of 50, then dels the `helpdesk:cases:onboarding` Redis envelope (non-fatal on failure — 1hr TTL backstop) and re-counts as verification.
+- **Validation result:** all 150 + 30 rows pass (0 errors), including the city-slug check.
+- **Not yet run against the DB** — seeding production content is a one-command human step: `npx tsx --env-file=.env.local scripts/seed-call-intelligence.ts`. Update the status line in `call-intelligence.md` once executed.
+
+**Files:** `scripts/data/call-intelligence-seed.json`, `scripts/seed-call-intelligence.ts`, docs (`docs/modules/call-intelligence.md` status line, this entry).
+
+---
+
+## 2026-06-12 — Follow-up Engine Phase 2: config-driven rules, outcome cadence, task due/overdue escalation
+
+The 8-rule SLA engine is now config-driven, and three new rule families ship on the same machinery: a founder escalation, a daily outcome cadence, and gia-task due/overdue notifications. **No second scheduler** — everything extends `lead-sla.ts` / `task-reminders.ts` and rides the existing idempotency-key / tag-cancellation / stale-fire conventions.
+
+- **`sla_policies` (0111):** one row per rule — `trigger_kind` (`status`/`outcome`/`task_due`), `trigger_value`, `threshold_minutes`, `recipient_role` (`agent`/`manager`/`founder`), `auto_task`, `channels`, `hours_mode` (`agent_shift`/`business`/`clock`), `active`. The engine reads policies **per job run** via the admin client (`getSlaPolicies`/`getSlaPolicy` in `sla-service.ts`) — never module-cached, so an edit applies on the next fire; `active=false` silences already-DELAYED runs at fire time. Seeded with the eight live rules copied from `SLA_RULES` (the constant stays as the parity reference; `statusTrigger 'active'` stored as the real status `nurturing`) **plus `SLA-01C`** — `new` · 45 min · founder (in-app `sla_breach_founder` + the SLA manager template to all active founders). **Parity proof:** post-seed `SELECT` compared field-by-field against `SLA_RULES` — all eight match on trigger/threshold/recipient/auto-task; `hours_mode` mirrors the recipient-is-agent shift-override branch the constant engine used.
+- **Outcome cadence (CAD-01A/B/C):** an unreached call outcome (`rnr`/`switched_off`/`wrong_number` — the `CALL_OUTCOMES` subset, never new values) arms a daily tick via the new `armCadenceForOutcome`, **chained after** the SLA schedule/refresh in `addLeadCallNote` (their cancel-all would sweep a parallel-armed tick). The tick fires at the start of the agent's **next shift day** (`toISTMidnight + 24h` → `nextBusinessDeadline(·, 0, shift)` — an RNR logged 19:30 ticks tomorrow at shift open, never 19:30+24h), re-reads the lead, creates one `create_lead_gia_task` follow-up (`call`, due 2 business hours into the shift, due reminder wired), and re-arms tomorrow — repeating until the outcome or status changes (status changes also disarm structurally: CAD runs carry the `lead-sla-${leadId}` tag the cancel-all sweeps). Junk/lost/nurturing/terminal are never armable. **Duplicate-storm layers (all three):** date-scoped idempotency keys (`lead-sla-{lead}-{code}-{IST date}` — `scheduleLeadSlasTask` gained `opts.idempotencySuffix`); the open-task guard (skip creation when any open gia task exists for the lead+agent — this is also how a follow-up the agent created in the same call flow is respected; the overdue rule chases the open task); the 7-day freshness window on the new **`leads.last_call_outcome_at` (0112)** — stamped by `add_lead_call_note`, backfilled from the latest outcome-bearing note. **Freshness proof:** of 734 active leads carrying a cadence outcome, 700 fail freshness outright (NULL or >7d timestamp), and arming is event-driven besides — the pre-go-live book cannot arm. **Guard proof:** the inner-join open-task query returns the open row for a known (lead, agent) pair → a second tick skips creation. (`getOpenGiaFollowupTask` was also fixed from its two-step form, which only inspected the agent's single most-recent open gia task — an older open task for the target lead slipped past the dedup.)
+- **Task due reminder (TASK-01A):** at due time, `sendTaskReminderTask` keeps the existing in-app `task_due` for every category and additionally sends the **`task_due_reminder`** Gupshup template (`05411e50-…`; agent first name · lead name · lead phone · task title) to the assigned agent — **gia_followup only** (the template is lead-shaped; personal/group tasks stay in-app only).
+- **Overdue escalation (TASK-01B):** the due fire arms the new `checkTaskOverdueTask` at due+30 clock-min (key `task-overdue-{task}-{dueAtISO}`, same `task-reminder-{task}` tag so existing cancel paths sweep it). At fire: clearing events (task completed/cancelled · due_at moved · any lead activity logged after due) exit silently; otherwise **`tasks.overdue_at` (0113)** is stamped exactly once (`UPDATE … WHERE overdue_at IS NULL` — rolled-back live proof: first attempt 1 row, second attempt 0; the `tasks.status` CHECK did **not** grow) and the lead's domain managers get in-app `task_overdue_manager` + the **`task_overdue_manager`** template (`c7ddd983-…`; manager first name per-recipient · agent name · lead name · task title · due time IST "4:00 PM" — never UTC, never ISO).
+- **Notification vocabulary (0113):** `notifications.type` + `sla_breach_founder`, `task_overdue_manager` (NotificationItem's exhaustive switch extended — no default branch added); `whatsapp_notification_logs.type` + `task_due_reminder`, `task_overdue_manager`. One log row per attempt, last-4 digits only, `lead_id` populated on engine sends.
+- **Live fire (sign-off):** both templates fired once to Wizard's own number through the real wrappers (profile phone lookup, param assembly, Gupshup fetch, log row) — Gupshup 202, `delivered: true`, both log rows verified. Visual slot check on the device is the remaining human step.
+- **Prod:** 0111–0113 applied ledger-recorded (post-repair convention — local files == remote ledger, zero pending); `database.ts` converged (`sla_policies`, `leads.last_call_outcome_at`, `tasks.overdue_at`, `SlaPolicy` + CHECK-union types). `pnpm tsc --noEmit` clean.
+- **Note on the brief's "denormalize last_call_outcome" directive:** `leads.last_call_outcome` has existed since 0003 and `add_lead_call_note` already wrote it — what the freshness window actually needed was the **timestamp**, so 0112 adds `last_call_outcome_at` instead (same intent, honest execution).
+- **Scope boundary held:** no settings UI, no escalation page — Phase 3.
+
+**Files:** `supabase/migrations/20260612000111-0113`, `src/lib/constants/sla.ts`, `src/lib/constants/whatsapp.ts`, `src/lib/types/database.ts`, `src/lib/services/sla-service.ts`, `src/lib/services/whatsapp-api.ts`, `src/lib/actions/sla.ts`, `src/lib/actions/leads.ts`, `src/trigger/lead-sla.ts`, `src/trigger/task-reminders.ts`, `src/components/notifications/NotificationItem.tsx`, `src/components/tasks/CreatePersonalTaskModal.tsx` + `MyTasksCalendarView.tsx` (synthetic Task `overdue_at: null`), docs (`gia.md` §4, `trigger-dev.md`, `whatsapp-gupshup.md`, `tasks.md`, `migrations.md`, CLAUDE.md registries).
+
+---
+
+## 2026-06-12 — Call Intelligence Phase 1.1b: interests editable on the lead dossier
+
+`service_interests` is now editable on the dossier exactly like the other lead fields — lighting up the dossier card for the existing book and every WhatsApp-originated lead (all empty-interests today).
+
+- **Same path, no fork:** `updateLeadInterests` follows the per-field convention verbatim — `UpdateLeadInterestsSchema` (Zod first) → `assertLeadFieldEditAccess` (the identical gate every field edit uses; no widening, no narrowing) → admin UPDATE → activity entry → `revalidateLeadDossier`, which owns the cache invariant (`invalidateLeadCaches { row: true }` = **both** `leadRowSlug` + `leadRowId` keys, never a hand-rolled del) + `revalidatePath` so `ServiceInterestCard` re-renders with the new matches.
+- **Vocabulary:** unknowns dropped against the **lead's** domain via `extractServiceInterests` — third consumer of the one dropper (webhook/WhatsApp, Add Lead, now dossier edit). The action returns the server-resolved array; the UI displays that, not its own draft.
+- **History:** every change writes `lead_activities` `note_added { type: 'lead_interests_updated', old: [...], new: [...] }` — old → new, per the existing field-edit activity convention. No-op edits (same array) skip both the write and the activity row.
+- **UI:** `InterestsInlineField` (private to `LeadInfoCard`, `canEdit` gate — same as email/source): rest state matches every editable field (`LeadFieldShell` + dashed-underline hover, "Add interests" when empty); click → `FormChip` multi-select of the domain vocabulary with explicit Save/Cancel (Escape cancels). Read-only roles see a plain `InfoRow`. Reuse: `FormChip`, `LeadFieldShell`/`EditableValueText`/`FieldSaveFeedback`, `getDomainInterests`/`getServiceCategoryLabel` — zero new primitives.
+- **Verification:** `tsc --noEmit` clean. **Live visibility proof** (rolled-back transaction, real identities): the session-client lead select inside `assertLeadFieldEditAccess` returns 0 rows for an out-of-domain agent (edit blocked as "Lead not found.") and 1 row for the assigned agent — the exact gate the action runs. Activity shape and dual-key invalidation are code-verified (the structural `revalidateLeadDossier`/`invalidateLeadCaches` contract shared by all field edits); full in-browser edit → card-refresh check needs an authenticated session post-deploy.
+
+**Files:** `src/lib/validations/lead-schema.ts`, `src/lib/actions/leads.ts`, `src/components/leads/LeadInfoCard.tsx`, docs (`docs/pages/leads.md` §5 actions table, `docs/pages/lead-dossier.md` §7c, `docs/modules/call-intelligence.md` §5, `src/components/leads/CLAUDE.md`, `src/lib/CLAUDE.md`).
+
+---
+
+## 2026-06-12 — Call Intelligence Phase 1.1: service_interests on the Add Lead form
+
+Manual leads now carry `service_interests` exactly like webhook/WhatsApp leads — an optional, domain-scoped multi-select on the existing Add Lead modal. Empty selection = `'{}'`, byte-identical to before for anyone who skips it.
+
+- **Reuse scan (R-01, documented):** multi-select pill candidates were `FormChip` (`ui/TaskFormFields.tsx` — generic `label/active/onClick/disabled` pill, modal-safe), `CategoryPill` (feature-folder filter pill, accent-fill styling), `PriorityChipRow` (single-select), `FilterDropdown multi` (dropdown UX wrong for ≤6 always-visible options). **`FormChip` reused — no new component.**
+- **One source of truth:** chip options from `getDomainInterests(watchedDomain)`; labels via `getServiceCategoryLabel()` — extended in `lib/constants/interests.ts` to title-case non-concierge slugs (`smart_home` → "Smart Home") so every surface shares one resolver. No re-typed list anywhere.
+- **Domain/vocabulary guard:** the existing domain-change effect in `AddLeadModal` now filters the current selection to the new domain's vocabulary on every switch (including switching back) — out-of-vocabulary picks are cleared, never silently submitted.
+- **Client/server defensive pair:** `CreateManualLeadSchema.service_interests` (string[] — trimmed, lowercased, ≤12, default `[]`); `createManualLead` then drops unknown values against the **resolved** domain (agents are pinned server-side, so the schema can't do this) by calling `extractServiceInterests` — literally the same dropper as the webhook/WhatsApp paths.
+- **No path fork:** the field rides the existing `createManualLead` INSERT — dedup RPC, assignment verification, `after(notifyLeadAssigned)` (WhatsApp + SLA arming), cache invalidation all untouched. No new service function, no migration (column exists since 0109).
+- **Verification:** `tsc --noEmit` clean; live spot-check of the shared dropper: `['travel','events','rolex']` @ onboarding → `['travel','events']`; `['travel','watches']` @ shop → `['watches']`; `[]` → `[]`; mixed-case/junk @ legacy → `['succession','art']`. The dossier `ServiceInterestCard` needs no change — it keys on `lead.service_interests` regardless of origin.
+
+**Files:** `src/lib/constants/interests.ts`, `src/lib/validations/lead-schema.ts`, `src/lib/actions/leads.ts`, `src/components/leads/AddLeadModal.tsx`, docs (`docs/pages/leads.md`, `docs/modules/call-intelligence.md` §5, `src/components/CLAUDE.md`, `src/components/leads/CLAUDE.md`, `src/lib/CLAUDE.md`).
+
+---
+
+## 2026-06-12 — Call-intelligence spec DDL made copy-paste true; the two missing deals rows traced to test leads (founder confirmation packaged)
+
+- **Spec §4 DDL corrected** (`docs/modules/call-intelligence.md`): the `service_cases` block now carries the `public.immutable_array_to_string(text[], text)` wrapper and uses it in the `search_vector` GENERATED expression — plain `array_to_string()` is STABLE and Postgres rejects it in a generated column (`42P17`, hit on the real 0110 apply). Inline comments warn the next module that reuses the FTS-over-tags pattern. `embedding` line also corrected to `extensions.vector(1536)` + the `CREATE EXTENSION … WITH SCHEMA extensions` prerequisite. The spec block is now byte-equivalent to what runs in production.
+- **The 2 won leads without `deals` rows — investigated before scaffolding the amounts lookup.** Both are almost certainly internal test leads, not unrecorded revenue: `testing--6087` (name "testing", note "lklk", new→won in 4.5 minutes) and `ram--9139` (name "Aram" — matches the developer, note "km;kl", new→won in 16 seconds, WhatsApp-sourced). **No deal rows were inserted and no amounts invented.** Full evidence table + both resolution paths (archive via ledger-recorded data migration if confirmed test; insert the deal row via ledger-recorded migration / admin `recordDeal` re-drive if a founder confirms a real amount) documented in `docs/pages/deals.md` §7 Open items. Until one path runs, `/deals` and `/performance` disagree on win count by exactly 2.
+
+**Files:** `docs/modules/call-intelligence.md`, `docs/pages/deals.md`.
+
+---
+
+## 2026-06-12 — Call Intelligence migrations applied + §15 live checks passed; seed retired into a content-verification worksheet
+
+Production apply of the Phase 1 schema (authorized), with the §15 verification walk:
+
+- **0109/0110 applied to production WITH ledger rows** (the out-of-band era ends here — see the ledger-repair entry below). **One fix surfaced on apply:** `array_to_string()` is only STABLE, so Postgres rejected the spec's `search_vector` GENERATED expression (`42P17`); 0110 now ships `public.immutable_array_to_string(text[], text)` (IMMUTABLE wrapper, no casting) and the generated column uses it. Local migration file updated to match what ran.
+- **Types regenerated and converged:** `database.ts`'s hand-extended `service_cases` / `conversation_hooks` / `leads.service_interests` blocks now **byte-match `supabase gen types` output** (adopted `Enums["app_domain"]` for `domain`, `search_vector: unknown` incl. optional Insert/Update keys). Intelligence service/action signatures take `AppDomain`; one documented narrow cast in `ServiceInterestCardAsync` where the legacy `leads.Row.domain: string` drift crosses in (fixing that drift ripples across many services — out of scope). `tsc --noEmit` clean.
+- **Live checks (all passed):**
+  1. **RLS write matrix** — single always-rolled-back transaction with real JWT claims: AGENT=BLOCKED, MANAGER=BLOCKED (no manager exists in prod — an agent was temp-promoted inside the txn), ADMIN=INSERT_ALLOWED; state verified untouched after.
+  2. **Ingestion** — `ingestLead()` invoked directly against prod (bypassing the route = zero notification side-effects; the running dev server with real Gupshup keys was deliberately not used) with `interest='travel,events, rolex'`, domain `b2b` (empty routing pool): lead row landed with `service_interests=['travel','events']` — `rolex` dropped, unassigned. Test lead deleted; no orphan activities, no raw-payload row.
+  3. **Redis invalidation** — `helpdesk:cases:onboarding` primed via Upstash REST, disposable case written through RLS as a real founder identity, key DEL'd (same REST op `redis.del` issues) → GET nil → test row removed. The action-side wiring (awaited `invalidateHelpdeskCache` before `revalidatePath`) is code-verified; full in-app E2E needs an admin session post-deploy.
+- **Seed retired (decision: nothing is bulk-seeded).** `supabase/seeds/call_intelligence_seed.sql` deleted; its 120 cases + 36 hooks converted (script-parsed, not retranscribed) into `docs/modules/call-intelligence-content-worksheet.md` — per-category tables with Status (VERIFIED/EDITED/REJECTED) + Ref/Owner columns. Only VERIFIED rows enter the DB, via the admin path (`upsertServiceCaseAction`/`upsertConversationHookAction`) — never bulk SQL. Ship bar unchanged: ≥20 verified per category.
+- **Data observation (no action taken):** 2 won leads carry no `deals` row — consistent with the 0073 backfill's `deal_amount IS NOT NULL` condition (won before amounts were mandatory). Flagged for whoever owns deals hygiene.
+
+**Files:** `supabase/migrations/20260612000110_call_intelligence_tables.sql`, `src/lib/types/database.ts`, `src/lib/services/intelligence-service.ts`, `src/lib/actions/intelligence.ts`, `src/components/leads/ServiceInterestCardAsync.tsx`, `docs/modules/call-intelligence-content-worksheet.md` (new), `supabase/seeds/call_intelligence_seed.sql` (deleted), `docs/modules/call-intelligence.md`, `docs/architecture/migrations.md`, `supabase/migrations/CLAUDE.md`.
+
+---
+
+## 2026-06-12 — Migration ledger repaired: 0065–0108 catalog-verified and recorded; local == remote, zero pending
+
+Closes the Phase 0 finding (`supabase_migrations.schema_migrations` recorded only 0001–0064; 0065–0108 had been applied out-of-band, so any `supabase db push` would have attempted 46 re-runs).
+
+- **Verification before recording (per migration, against live catalogs):** columns/tables/indexes (`information_schema`, `pg_class`), function existence + body markers (`pg_proc.prosrc` — e.g. 0085's `wc.lead_id`, 0087's `new_status`, 0081's `cold_leads_count`), policy quals/with_check (`pg_policies` — 0088/0095 InitPlan hoists, 0091/0103 `leads_update`), storage buckets/policies (0071/0092/0093), EXECUTE privileges (0102/0106 revokes via `has_function_privilege`), comments (0094/0096), and the 0073 backfill parity. **42 distinct checks, all passed.**
+- **`lead_health` chain (0077–0079 + 0082–0084):** the build migrations' effects are deliberately ABSENT (reverted) — verified as zero `%lead_health%` catalog objects. All six recorded: they demonstrably ran, and recording the reverts without the builds would have let a future `db push` re-run 0077–0079 with no revert following — resurrecting the column.
+- **0073 nuance:** 2 active won leads have no `deals` row — explained by the migration's own `deal_amount IS NOT NULL` condition, not a missing apply (noted in the apply entry above).
+- **Recorded:** 46 rows inserted (`version`, `name`; `statements` left NULL — original applied text not reconstructable) with `ON CONFLICT DO NOTHING`. Final state verified by set-diff: **local migration files == remote ledger, only 0109/0110 pending** — which were then applied with ledger rows (entry above). The gap stops growing today: every future apply records its row.
+
+**Files:** none (database ledger only; `docs/architecture/migrations.md` carries the repair note).
+
+---
+
+## 2026-06-12 — Helpdesk page aligned with the standard list-page contract
+
+- **Page structure:** `/helpdesk` dropped its bespoke centered `maxWidth: 860px` column and the prose paragraph under the `<h1>` — it now follows the canonical list-page layout: full-width `main` with the standard padding ladder, title row (`type-page-title` + dot), Row-2 paper filter strip, content below. Card grid gains `xl:grid-cols-3` for the full-width canvas.
+- **Filter strip composes `<FilterBar>`:** the bare `size="lg"` SearchBar + loose pill rows + count line are now the shared shell inside the standard paper strip — search (client-state, per-keystroke), `CategoryPill`s as children, result count as `trailing`, active-count badge + Clear button, and the mobile single-row scroll behaviour for free.
+- **`CategoryPill` conventions:** Framer `whileTap` replaced with the canonical CSS press mechanism (`eia-pressable` + `eia-touch` — never a second press mechanism); `flexShrink: 0` added so pills survive the scroll row.
+- **`CaseCard`:** hardcoded `16px` title size → `var(--text-base)`.
+- **`loading.tsx`** mirrors the new shape via the shared `FilterBarSkeleton` (icon + search + chips + count) instead of hand-rolled shimmer rows.
+- **Verification:** `tsc --noEmit` clean (pre-existing unrelated `intelligence-service.ts` error only).
+
+**Files:** `src/app/(dashboard)/helpdesk/page.tsx`, `src/app/(dashboard)/helpdesk/loading.tsx`, `src/components/intelligence/HelpdeskSearch.tsx`, `src/components/intelligence/CategoryPill.tsx`, `src/components/intelligence/CaseCard.tsx`.
+
+---
+
+## 2026-06-12 — Responsive: filter-bar date panels fit phone viewports
+
+- **`DateRangeFields` (the "Dates" panel) stacks below md:** the side-by-side From → To row (~400px nowrap) overflowed phone viewports. On mobile (`useMediaQuery(MQ.mobile)`, D-1) the two fields stack vertically at `min(15rem, calc(100dvw - 4rem))` wide, the `DatePicker` triggers stretch full-width, the → glyph is dropped, and Clear becomes a labelled ×-Clear button aligned right. Desktop markup unchanged.
+- **`usePortalAnchor` viewport clamp:** the computed panel `left` is now clamped into the `edgeMargin` gutter (`Math.max(edgeMargin, Math.min(rawLeft, innerWidth − w − edgeMargin))`) — previously the flip-left math (`rect.right − w`) could place a panel wider than the trigger's left-side space partially off-screen on narrow viewports. Applies to every FloatingPanel consumer (Dates, Range presets, filter dropdowns via the hook).
+- **`DatePicker` trigger:** gained `flex: 1 1 auto` — content-sized everywhere today (grow only acts when a caller sets a width on the wrapper via `style`), full-width in the stacked Dates panel.
+- **Verification:** `tsc --noEmit` clean.
+
+**Files:** `src/components/ui/DateRangeFields.tsx`, `src/hooks/usePortalAnchor.ts`, `src/components/ui/DatePicker.tsx`.
+
+---
+
+## 2026-06-12 — Call Intelligence Phase 1: /helpdesk search page + lead-dossier interest card (code complete; prod migration + seed pending)
+
+Implements `docs/modules/call-intelligence.md` Phase 1 end to end — pure client-side filtering, no embeddings pipeline, no subcategories, no AI.
+
+- **Migrations (files written, NOT yet applied to production — apply was permission-blocked this session):** `20260612000109_leads_service_interests.sql` (`leads.service_interests text[] NOT NULL DEFAULT '{}'` + partial GIN index; spec's 0085/0086 numbers were already taken) and `20260612000110_call_intelligence_tables.sql` (`service_cases` + `conversation_hooks`: RLS all-authenticated read / admin+founder write with InitPlan-hoisted `get_user_role()`, weighted FTS vector + GIN, tags GIN, `update_updated_at()` reuse, dormant `embedding extensions.vector(1536)` — **no HNSW index until Phase 2**).
+- **Seed:** `supabase/seeds/call_intelligence_seed.sql` — idempotent DO block; 120 cases (20/category, 2 featured each, city slug always tagged) + 36 hooks (6/category), domain `onboarding`. **Content drafted by engineering per §13 rules; the team must verify claims against real delivery history before agents quote them.**
+- **Constants:** `lib/constants/interests.ts` — `SERVICE_CATEGORY_*` via `defineEnum` (L-7) + `DOMAIN_INTERESTS` + `getDomainInterests()`. `redis-keys.ts` gains `REDIS_KEYS.helpdeskCases(domain)` + `REDIS_TTL.HELPDESK_CASES` (3600s) — the only home for the helpdesk key/TTL.
+- **Service:** `lib/services/intelligence-service.ts` — `getHelpdeskLibrary(domain)` (Redis 1hr `{ cases, hooks }` envelope → Supabase fallthrough; partial reads never cached; Redis failure degrades to live read), `getCasesForLead(interests, city, domain)` (≤6 rows, `category IN interests OR tags @> [lower(city)]`, featured-first, deliberately un-cached), `getHooksForCategories()`.
+- **Actions:** `lib/actions/intelligence.ts` — `getHelpdeskLibraryAction` (any role), `upsertServiceCaseAction` / `upsertConversationHookAction` (Zod first line → `requireProfile(['admin','founder'])` → `sanitizeText` → session-client write so RLS double-enforces → awaited `redis.del(helpdeskCases)` in try/catch-warn (P-08 convention) → `revalidatePath('/helpdesk')`). Schemas in `lib/validations/intelligence-schemas.ts` (human messages only).
+- **Ingestion:** `extractServiceInterests(formData, domain)` in `lead-ingestion.ts` — best-effort, never throws, drops unknown values against `DOMAIN_INTERESTS`, writes `text[]` never an enum; wired into the webhook INSERT and (explicit always-`[]`) the WhatsApp path. `form_data` stays immutable.
+- **Components:** new `src/components/intelligence/` — `CaseCard` (both surfaces; spec stagger 0.28s/EASE_OUT_EXPO/0.06s; CampaignCard hover-lift pattern), `CategoryPill`, `HookList` (server-safe), `HelpdeskSearch` (owns query+category state; synchronous `includes()` filter, zero per-keystroke server calls).
+- **Helpdesk page:** `/(dashboard)/helpdesk` (RSC fetch → `initialData`, 860px centered, BookOpen nav item in the Sidebar MAIN_NAV, `/helpdesk` added to `ALWAYS_ALLOWED_PREFIXES` — visible to all roles per spec) + composed `loading.tsx` skeleton. Reads `?category=` as the initial filter.
+- **Dossier card:** `ServiceInterestCardAsync` (self-fetching async child behind `<Suspense fallback={null}>`, mounted top of the right column above tasks — the streaming-architecture equivalent of the spec's `Promise.all` rule; both fetches in one `Promise.all`, no waterfall) → `ServiceInterestCard` ("Why we're perfect." + cases + Talking points + sanctioned quiet footer link `/helpdesk?category=<first interest>`). Lead with no interests and no city match → card absent from the DOM.
+- **Types:** `database.ts` hand-extended with `service_cases`/`conversation_hooks` and `leads.service_interests` exactly as the generator will produce post-apply (regen after migrations run to converge).
+- **Verification:** `tsc --noEmit` clean; `check:tokens` clean (zero hex in new components); no FTS per keystroke, no subcategory column, no embedding pipeline. **Outstanding (blocked on prod apply + seed):** live RLS write-block check for agent/manager, ingestion webhook test (`interest='travel,events'` → `['travel','events']`), Redis invalidation observation, <50ms filter timing (trivial at 120 rows).
+
+**Files:** migrations 0109–0110 (new), `supabase/seeds/call_intelligence_seed.sql` (new), `src/lib/constants/interests.ts` (new), `src/lib/constants/redis-keys.ts`, `src/lib/services/intelligence-service.ts` (new), `src/lib/actions/intelligence.ts` (new), `src/lib/validations/intelligence-schemas.ts` (new), `src/lib/services/lead-ingestion.ts`, `src/lib/types/database.ts`, `src/components/intelligence/*` (new ×4), `src/components/leads/ServiceInterestCard{,Async}.tsx` (new), `src/app/(dashboard)/helpdesk/{page,loading}.tsx` (new), `src/app/(dashboard)/leads/[id]/page.tsx`, `src/components/layout/Sidebar.tsx`, `src/lib/constants/route-permissions.ts`, docs (`CLAUDE.md`, `src/lib/CLAUDE.md`, `src/components/leads/CLAUDE.md`, `src/app/CLAUDE.md`, `supabase/migrations/CLAUDE.md`, `docs/architecture/{migrations,overview}.md`, `docs/modules/call-intelligence.md`).
+
+---
+
+## 2026-06-12 — Responsive: every filter bar is one scrolling row on mobile; three hand-rolled bars consolidated onto FilterBar
+
+- **`FilterBar` mobile behaviour (the DRY fix):** below md the `wrap` layout auto-collapses to the existing `scroll` layout (single nowrap row, horizontal scroll, hidden scrollbar — the leads bar's mobile language) via `useMediaQuery(MQ.mobile)`. Deals, campaigns, and tasks inherit the fix with zero per-page work; leads was already scroll. A `minWidth: 160px` floor is merged under `searchStyle` in scroll mode so the search input can't be crushed.
+- **`menuPortal` everywhere:** a scrolling row clips non-portaled dropdown menus, so every `FilterDropdown` rendered inside a `FilterBar` now passes `menuPortal` (deals ×3, campaigns ×1, tasks ×8, performance ×1, settings ×2). Not defaulted globally — portaled menus at `--z-dropdown` would render under modals that compose `FilterDropdown`.
+- **`hideSearch` prop added** to `FilterBar` (omits the SearchBar) for the performance agent self-view.
+- **Follow-up fix — chips crushed instead of scrolling:** `FilterDropdown`'s root (`minWidth: 0`, no shrink guard) shrank to nothing in the nowrap scroll row, so on tasks/settings/deals the bar squished instead of overflowing into the horizontal scroll (leads was immune — `LeadsFilters` passes `flexShrink: 0` per chip). The root now sets `flexShrink: 0` itself (skipped for `fullWidth`, declared before the `style` spread so consumers can override) — every bar scrolls correctly with no per-consumer styling.
+- **Consolidation (R-01/R-04):** `PerformanceFilters`, admin `UsersTable`, and settings `AgentSettingsTable` each carried a hand-rolled copy of the FilterBar chrome (sliders icon + count badge + SearchBar + Clear). All three now compose `<FilterBar>` — ~180 lines of duplicated chrome deleted. `UsersTable`/`AgentSettingsTable` pass their paper-card chrome via `style` and their result-count via `trailing`, and gain the standard Clear-filters button they previously lacked.
+- Authority docs updated: root `CLAUDE.md` FilterBar registry row + `src/components/CLAUDE.md` FilterBar table row (used-by list, mobile rule, menuPortal consequence).
+- **Verification:** `tsc --noEmit` clean (one pre-existing unrelated error in `intelligence-service.ts`).
+
+**Files:** `src/components/ui/FilterBar.tsx`, `src/components/ui/FilterDropdown.tsx`, `src/components/deals/DealsFilters.tsx`, `src/components/campaigns/CampaignFilters.tsx`, `src/components/tasks/TasksFilters.tsx`, `src/components/performance/PerformanceFilters.tsx`, `src/components/admin/UsersTable.tsx`, `src/components/settings/AgentSettingsTable.tsx`, `CLAUDE.md`, `src/components/CLAUDE.md`.
+
+---
+
+## 2026-06-12 — Filter bars: "Range" quick-preset panel; manual From → To renamed "Dates"
+
+- **New "Range" preset trigger on every filter bar** (leads, deals, campaigns, tasks Gia tab): a dropdown of seven quick ranges — Today, Yesterday, This Week, Previous Week, This Month, Previous Month, Last 3 Months. Selecting one commits `date_from` + `date_to` atomically (one URL push / one draft update / one client-state patch per page's existing commit model), so the data filtering flows through the untouched `date_from`/`date_to` paths on every page. The previous manual From → To trigger is renamed **"Dates"** — same panel, same behaviour.
+- **`src/lib/constants/date-range-presets.ts`** — preset enum via `defineEnum` (L-7) + `resolveDateRangePreset(preset, now?)` / `matchDateRangePreset(from, to, now?)`. "Today" anchors to the IST calendar day via `toIst()` from `lib/utils/ist.ts` (never the browser's local day); weeks start Monday, consistent with `getISTMondayStart`. Presets serialise through `dateToUrlParam` — identical format to the DatePicker, so the leads service's IST midnight/end-of-day boundary transforms apply unchanged.
+- **`src/components/ui/DateRangePresetList.tsx`** — THE preset panel body, rendered inside the FilterBar Range `FloatingPanel`. Active preset shows accent surface + Check; clicking the active preset (or the footer Clear) clears both dates.
+- **`FilterBar`** — `dateRange.onPresetSelect?: (from, to) => void` renders the Range trigger before Dates (second `usePortalAnchor` + `FloatingPanel`); when the current from/to exactly match a preset the trigger label becomes the preset name (e.g. "This Week"). The shared trigger chrome is extracted into `dateTriggerStyle()` — both triggers wear identical chrome per page variant (`badge`/`chevron`).
+- Per-page commit semantics preserved: leads stays draft → Apply; deals/campaigns push immediately; tasks Gia tab patches client state.
+- **Verification:** `tsc --noEmit` — no errors in touched files (two pre-existing errors in `UsersTable.tsx` from in-flight work, unrelated).
+
+**Files:** `src/lib/constants/date-range-presets.ts` (new), `src/components/ui/DateRangePresetList.tsx` (new), `src/components/ui/FilterBar.tsx`, `src/components/leads/LeadsFilters.tsx`, `src/components/deals/DealsFilters.tsx`, `src/components/campaigns/CampaignFilters.tsx`, `src/components/tasks/TasksFilters.tsx`.
+
+---
+
+## 2026-06-12 — Phase 0 audit-critical verification: all five June schema-audit criticals confirmed closed (zero changes)
+
+Pre-Phase-2 verification pass over the five outstanding schema-audit criticals. **Every one was already fixed by the 0085–0087 repair migrations and the notification-orchestrator refactor — no new migration, no code change.** Verified against the live production schema (project `xmucqqhbupudnzderchy`), not just the repo:
+
+1. **`tasks.status` default** — live default is `'to_do'::text`, inside the CHECK. Proven by a live INSERT omitting `status` (DO block, rolled back): returned `status = 'to_do'`. Fixed by 0086.
+2. **`get_wa_unread_count`** — live function body passes `wc.lead_id` to `can_access_wa_conversation()` (the conversation-id bug is gone). Replicating the RPC's logic per agent shows a real non-zero unread count (agent with 2 unread open conversations). Fixed by 0085.
+3. **`get_campaign_detail_metrics`** — live lateral join reads `details->>'new_status' = 'touched'`. Live RPC call for the highest-volume campaign returns `avg_hours_to_first_touch ≈ 10.28` (non-NULL, 64-lead cohort). Fixed by 0087.
+4. **`lead_health` revert** — full catalog sweep (columns, function names, function bodies via `pg_proc.prosrc`, relations, triggers, constraints, indexes) matches **zero** objects on `%lead_health%`. The 0082→0083→0084 revert chain is fully effective in production.
+5. **`whatsapp_notification_logs.lead_id`** — column exists (uuid), `notifyLeadAssigned` threads `leadId` into both `sendLeadAssignmentNotification` and `sendFounderLeadNotification`, and `logNotification` persists it. Live data: **153/153** `agent_assignment` rows carry `lead_id` (latest 2026-06-12 06:22 UTC).
+
+- **New finding (out of scope, not repaired):** the production migration ledger `supabase_migrations.schema_migrations` records only 0001–0064; migrations 0065–0108 were applied out-of-band (their schema effects are all live — spot-checked `leads.search_text` 0098, `ad_spend_daily` 0104, `get_agent_today_pulse` 0108). Risk: any future `supabase db push`/CLI-driven apply will see 44 "pending" migrations and attempt to re-run them. Needs a deliberate ledger-repair decision; not done here (no unguarded DDL, no scope creep).
+- `docs/architecture/migrations.md` already records 0085–0087 in its repair table — no doc drift to fix. No `tech-debt.md` exists in the repo to close entries in (the audit-cycle file referenced by the Phase 0 brief was never created or was consolidated away).
+- **Verification:** `tsc --noEmit` clean; all live checks above; test INSERT rolled back, zero rows persisted.
+
+**Files:** none (verification only; this changelog entry is the record).
+
+---
+
+## 2026-06-12 — Responsive: leads table toolbar compresses to icons on mobile
+
+- **`LeadsTable` toolbar below md:** the four controls (Going Cold · sort · Columns · Export) wrapped into a ragged multi-line pile on phones. The toolbar now stays on one line: the sort and Export labels hide below md (`max-md:hidden` on the label spans — icon-only buttons, same compress-to-icon language as the dashboard header settings button; both carry `aria-label`/`title`), and the Columns picker hides entirely below md — it configures table columns and the table only renders md+ (the mobile card stack ignores column prefs). Going Cold keeps its label (it's a filter chip; meaning matters and it fits).
+- No new styles or code paths — label spans and the picker wrapper gained responsive classes only.
+- **Verification:** `tsc --noEmit` — no errors in touched files (one pre-existing error in `intelligence-service.ts` from in-flight work, unrelated).
+
+**Files:** `src/components/leads/LeadsTable.tsx`, `src/components/leads/ExportButton.tsx`.
+
+---
+
+## 2026-06-12 — Responsive: tasks page mobile fixes (group rows, tab strip, quick-add)
+
+- **`GroupTasksTab` group header rows:** the collapsed header was a single nowrap flex row whose fixed metrics cluster (Open button + avatar stack + 170px progress bar + 64px done-count + due chip + ⋯ menu ≈ 480px) crushed the title to zero width and clipped controls under the card's `overflow: hidden` on phones. `GroupRow` now branches on `useMediaQuery(MQ.mobile)`: below 768px the header wraps — chevron + icon + title keep the first line, the metrics cluster takes a full-width wrapped second line indented past the chevron. Desktop markup unchanged.
+- **`GroupTasksTab` subtask rows:** same nowrap pattern (status + priority + assignee + due ≈ 250px fixed). On mobile the row wraps: completion circle + title + Eye affordance stay on line one (`order` keeps the Eye there), the meta cluster wraps to its own indented line.
+- **`TasksShell` tab strip:** the 3-tab accent `TabSelector` tray (~330px) could not shrink and overflowed narrow phones. It now sits in an `overflowX: auto` wrapper (hidden scrollbar) so the tray scrolls within the paper strip.
+- **`MyTasksCalendarView` quick-add row:** title input + DatePicker + assignee/Save/Cancel buttons sat in one nowrap row, leaving the input a sliver on phones. The row now wraps with the input at `flex: 1 1 160px`.
+- Calendar column stacking (`md:` classes) and `FilterBar` wrapping were already correct — untouched.
+- **Verification:** `tsc --noEmit` clean.
+
+**Files:** `src/components/tasks/GroupTasksTab.tsx`, `src/app/(dashboard)/tasks/TasksShell.tsx`, `src/components/tasks/MyTasksCalendarView.tsx`.
+
+---
+
+## 2026-06-12 — Responsive: dashboard header on one line on mobile
+
+- **`DashboardCanvas` header below md:** the control cluster (date filter + Edit layout) used to wrap under the greeting as a ragged left-aligned pile. The header is now a single line on mobile (`max-md:flex-nowrap`, greeting `max-md:min-w-0 max-md:truncate`): drawer trigger · greeting · date filter · settings button all share the title line, controls docked right.
+- **Edit control compresses to an icon:** below md the "Edit layout" text button renders as a 32px round icon-only `Settings` (gear) button — tap toggles edit mode, accent fill when active, `aria-label` carries the state. Branches on `useMediaQuery(MQ.mobile)` (D-1); desktop keeps the labelled `LayoutDashboard` button unchanged.
+- **Reused motion vocabulary (DRY):** the button wears the existing `eia-pressable` (`:active` scale) + `eia-icon-rotate-hover` (quarter-turn gear on hover, pointer-fine gated) + `eia-touch` classes — no new keyframes or inline animation.
+- **Verification:** `tsc --noEmit` clean.
+
+**Files:** `src/components/dashboard/DashboardCanvas.tsx`.
+
+---
+
+## 2026-06-12 — Responsive: DatePicker popover fits the mobile viewport
+
+- **Stacked layout below md:** with `showTime` the popover was a fixed ~448px side-by-side row (calendar 260px + time wheel) — wider than any phone, so in `CalledModal` (and every `showTime` consumer) the panel overflowed and the flip-left math (`rect.right − w`) pushed it to a negative `left`, off-screen. `DatePicker` now branches on `useMediaQuery(MQ.mobile)`: below 768px the time wheel stacks under the calendar (column flex, `borderTop` divider instead of `borderLeft`, bottom-corner radii) keeping the panel at date-only width (292px).
+- **Viewport clamping:** `updatePanelPosition` clamps `left`/`top` to an 8px viewport gutter in both placement directions, so anchor-relative placement can never put the panel off-screen regardless of trigger position. The panel also gains `maxHeight: calc(100dvh − 16px)` + `overflowY: auto` so the taller stacked layout scrolls instead of clipping on short viewports.
+- Desktop (`showTime` row layout and date-only) behaviour unchanged apart from the clamp safety net.
+- **Verification:** `tsc --noEmit` clean.
+
+**Files:** `src/components/ui/DatePicker.tsx`.
+
+---
+
+## 2026-06-12 — Responsive: breathing room above page titles on mobile
+
+- **Mobile top spacing:** below md the paper is full-bleed, so the page-padding ladder's `p-4` left the `<h1>` 16px from the screen edge (and under the status bar on notched phones). New structural rule in the globals.css RESPONSIVE SHELL block: `.eia-shell-paper main.p-4` gets `padding-top: calc(var(--space-7) + env(safe-area-inset-top))` — 28px + notch allowance, scoped to mains carrying the ladder so full-bleed mains (`/whatsapp`) are untouched. Covers every page and `loading.tsx` with zero per-page edits.
+- **Trigger alignment preserved:** `.eia-mobile-topbar` `top` moves `--space-4` → `--space-7` (same +12px) so the floating drawer trigger stays on the `<h1>` line.
+
+**Files:** `src/app/globals.css`.
+
+---
+
 ## 2026-06-12 — Responsive: lead dossier mobile fixes (status panel + info card)
 
 - **`StatusActionPanel` mobile layout:** the single wrap-flex row (pill · divider · stage buttons · `flex: 1` spacer · divider · Called) wrapped arbitrarily on phones — orphaned dividers, drifting Called button. Now branches on `useMediaQuery(MQ.mobile)`: below 768px the status pill and Called button share a top row (`space-between`), stage actions (Level Up / Junk / Won / Nurture / Lost / Revive) render in their own wrap row below with `flex: 1 0 auto` equal-width sizing (new `fluid` prop on the private `ActionButton`); dividers and spacer are desktop-only. Desktop markup unchanged.

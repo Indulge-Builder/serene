@@ -2,13 +2,13 @@
 
 import { useState, useTransition, useMemo } from "react";
 import { m as motion } from "framer-motion";
-import { X, SlidersHorizontal } from "lucide-react";
+import { X } from "lucide-react";
 import { DOMAIN_LABELS, compareDomainDisplayOrder } from "@/lib/constants/domains";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { TimePicker } from "@/components/ui/TimePicker";
 import { Toggle } from "@/components/ui/Toggle";
-import { SearchBar } from "@/components/ui/SearchBar";
+import { FilterBar } from "@/components/ui/FilterBar";
 import { FilterDropdown } from "@/components/ui/FilterDropdown";
 import { toggleAgentRouting, setAgentShiftAction } from "@/lib/actions/agent-routing";
 import { toast } from "@/lib/toast";
@@ -312,62 +312,50 @@ export function AgentSettingsTable({
 
   return (
     <div>
-      {/* ── Filter bar ─────────────────────────────────────────────── */}
-      <div
+      {/* ── Filter bar — shared shell (chrome + mobile scroll row) ── */}
+      <FilterBar
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search by name or title…"
+        searchSize="sm"
+        searchAriaLabel="Search agents"
+        searchStyle={{ flex: "1 1 200px", minWidth: "160px" }}
+        activeCount={activeCount}
+        onClearAll={() => {
+          setSearch("");
+          setDomainFilter("all");
+          setPoolFilter("all");
+        }}
         style={{
-          display:      "flex",
-          alignItems:   "center",
-          gap:          "var(--space-3)",
           padding:      "var(--space-4) var(--space-5)",
           marginBottom: "var(--space-4)",
           background:   "var(--theme-paper)",
           border:       "1px solid var(--theme-paper-border)",
           borderRadius: "var(--radius-md)",
           boxShadow:    "var(--shadow-1)",
-          flexWrap:     "wrap",
         }}
+        trailing={
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize:   "var(--text-xs)",
+              color:      "var(--theme-text-tertiary)",
+              whiteSpace: "nowrap",
+              marginLeft: "auto",
+              flexShrink: 0,
+            }}
+          >
+            {filtered.length} {filtered.length === 1 ? "agent" : "agents"}
+          </span>
+        }
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
-          <SlidersHorizontal
-            style={{ width: "1rem", height: "1rem", color: "var(--theme-text-tertiary)", strokeWidth: 1.5 }}
-          />
-          {activeCount > 0 && (
-            <span
-              style={{
-                display:        "inline-flex",
-                alignItems:     "center",
-                justifyContent: "center",
-                minWidth:       "1.25rem",
-                height:         "1.25rem",
-                padding:        "0 0.25rem",
-                borderRadius:   "var(--radius-full)",
-                background:     "var(--theme-accent)",
-                color:          "var(--theme-accent-fg)",
-                fontSize:       "10px",
-                fontWeight:     "var(--weight-medium)",
-                lineHeight:     1,
-              }}
-            >
-              {activeCount}
-            </span>
-          )}
-        </div>
-
-        <div style={{ flex: "1 1 200px", minWidth: "160px" }}>
-          <SearchBar
-            value={search}
-            onChange={setSearch}
-            placeholder="Search by name or title…"
-            size="sm"
-          />
-        </div>
-
         {showDomainFilter && presentDomains.length > 1 && (
           <FilterDropdown
             label="Domain"
             items={domainFilterItems}
             selected={domainFilter !== "all" ? [domainFilter] : []}
             onChange={(next) => setDomainFilter(next[0] ?? "all")}
+            menuPortal
           />
         )}
 
@@ -376,20 +364,9 @@ export function AgentSettingsTable({
           items={[...POOL_FILTER_ITEMS]}
           selected={poolFilter !== "all" ? [poolFilter] : []}
           onChange={(next) => setPoolFilter(next[0] ?? "all")}
+          menuPortal
         />
-
-        <span
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize:   "var(--text-xs)",
-            color:      "var(--theme-text-tertiary)",
-            whiteSpace: "nowrap",
-            marginLeft: "auto",
-          }}
-        >
-          {filtered.length} {filtered.length === 1 ? "agent" : "agents"}
-        </span>
-      </div>
+      </FilterBar>
 
       {/* ── Empty state ────────────────────────────────────────────── */}
       {filtered.length === 0 && (

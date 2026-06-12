@@ -51,12 +51,34 @@ const WIDGET_COMPONENTS: Record<
       default: m.ManagerColdLeadsWidget,
     })),
   ),
+  "agent-pending-calls": lazy(() =>
+    import("./widgets/AgentPendingCallsWidget").then((m) => ({
+      default: m.AgentPendingCallsWidget,
+    })),
+  ),
+  "agent-new-leads": lazy(() =>
+    import("./widgets/AgentNewLeadsWidget").then((m) => ({
+      default: m.AgentNewLeadsWidget,
+    })),
+  ),
+  "elaya-presence": lazy(() =>
+    import("./widgets/ElayaPresenceCard").then((m) => ({
+      default: m.ElayaPresenceCard,
+    })),
+  ),
+  "manager-budget": lazy(() =>
+    import("./widgets/ManagerBudgetWidget").then((m) => ({
+      default: m.ManagerBudgetWidget,
+    })),
+  ),
 };
 
 export type WidgetProps = {
   userId: string;
   role: UserRole;
   domain: AppDomain;
+  /** Caller's first name — used by presence surfaces (Elaya card greeting). */
+  firstName?: string;
   /** Pre-fetched dashboard summary from the RSC. When present widgets skip their mount fetch. */
   initialData?: DashboardSummary;
   /** Current size tier — widgets use this for their container height. */
@@ -301,6 +323,7 @@ export function DashboardWidgetSlot({
   userId,
   role,
   domain,
+  firstName,
   initialData,
   dateRange,
 }: DashboardWidgetSlotProps) {
@@ -374,6 +397,7 @@ export function DashboardWidgetSlot({
             userId={userId}
             role={role}
             domain={domain}
+            firstName={firstName}
             initialData={initialData}
             size={size}
             dateRange={dateRange}

@@ -111,6 +111,7 @@ All DB access lives in `src/lib/services/` (A-03). Each file's owning doc:
 | `whatsapp-api.ts` | `../integrations/whatsapp-gupshup.md` |
 | `whatsapp-ingestion.ts` | `../integrations/whatsapp-gupshup.md` |
 | `ad-creatives-service.ts` | `../pages/ad-creatives.md` |
+| `intelligence-service.ts` | `../modules/call-intelligence.md` |
 
 (The 17th file is the directory's `CLAUDE.md` — the code-adjacent registry with per-function
 exports and Redis TTLs.)

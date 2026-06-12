@@ -77,6 +77,9 @@ src/lib/constants/define-enum.ts    ← defineEnum([{ id, label }]) — THE fact
 src/components/ui/StatTile.tsx      ← <StatTile label value sub? variant="card"|"cell"> — THE labelled stat tile (campaign metric cards + deals summary cells); performance MetricCard deliberately stays bespoke
 src/lib/utils/scroll.ts             ← scrollToBottom(el), lockBodyScroll() → unlock fn (re-entrant; mobile drawer/sheets)
 src/lib/services/transcription-service.ts ← transcribeAudio() — THE Deepgram call site (server-only; Nova-3 multilingual for Hinglish). Audio transcribed in-memory and discarded — never stored. Client entry: transcribeAudioAction (lib/actions/transcription.ts); mic capture: src/hooks/useAudioRecorder.ts — THE recording hook (codec negotiation, 2-min auto-stop, mic-track release); never re-implement MediaRecorder plumbing inline
+src/lib/constants/interests.ts      ← SERVICE_CATEGORY_* (defineEnum) + DOMAIN_INTERESTS + getDomainInterests() — THE per-domain leads.service_interests vocabulary (text[], NEVER an enum; unknown values dropped at ingestion via extractServiceInterests, never rejected)
+src/lib/services/intelligence-service.ts ← Call Intelligence reads — getHelpdeskLibrary(domain) (Redis 1hr {cases,hooks} envelope; key REDIS_KEYS.helpdeskCases + REDIS_TTL.HELPDESK_CASES live in redis-keys.ts ONLY), getCasesForLead()/getHooksForCategories() (dossier card, ≤6 rows, deliberately un-cached). Tables service_cases + conversation_hooks (migration 0110: all-authenticated read, admin/founder write RLS). Writes ONLY via lib/actions/intelligence.ts — every write awaits the helpdesk-key del (P-08 convention) before revalidatePath('/helpdesk'). Helpdesk filtering is CLIENT-SIDE on the full library — never add a per-keystroke server search
+src/components/intelligence/        ← CaseCard, CategoryPill, HookList, HelpdeskSearch — shared Call Intelligence components; /helpdesk and the dossier ServiceInterestCard both compose these
 src/lib/services/dashboard-service.ts ← ALL dashboard widget queries (never extend leads-service.ts)
 src/lib/actions/dashboard.ts         ← ALL dashboard server actions (widget data refresh)
 src/lib/constants/dashboard-widgets.ts ← widget registry (pure data, no component refs)
@@ -91,8 +94,9 @@ src/hooks/useMountOnFirstOpen.ts      ← useMountOnFirstOpen(open) — THE moun
 src/hooks/usePortalAnchor.ts          ← usePortalAnchor() — THE floating-panel anchoring mechanism (portal positioning, flip, outside-close, visualViewport); pair with <FloatingPanel>; never re-implement inline
 src/components/ui/FloatingPanel.tsx   ← <FloatingPanel> — anchored dropdown-panel portal + chrome; driven by usePortalAnchor
 src/components/ui/CollapseReveal.tsx  ← <CollapseReveal> — THE expand/collapse reveal (grid-template-rows 0fr↔1fr + fade); never animate height: 0↔"auto"; render inside <AnimatePresence> at the call site
-src/components/ui/DateRangeFields.tsx ← <DateRangeFields> — the canonical From → To date-range panel body for filter bars
-src/components/ui/FilterBar.tsx       ← <FilterBar> — THE shared list-page filter-bar shell (sliders icon + count badge, SearchBar, children dropdowns, Range trigger+panel, optional Apply, Clear). All four filter bars compose it; never fork a new filter-bar chrome
+src/components/ui/DateRangeFields.tsx ← <DateRangeFields> — the canonical From → To date-range panel body for filter bars (the "Dates" panel)
+src/components/ui/DateRangePresetList.tsx ← <DateRangePresetList> — THE quick-range preset panel body (the "Range" panel: Today…Last 3 Months); presets + IST-anchored resolver in src/lib/constants/date-range-presets.ts
+src/components/ui/FilterBar.tsx       ← <FilterBar> — THE shared list-page filter-bar shell (sliders icon + count badge, SearchBar (hideSearch to omit), children dropdowns, Range trigger+panel, optional Apply, Clear, trailing slot). Below md every bar auto-collapses to the single-row scroll layout — FilterDropdown children must pass menuPortal. Composed by ALL filter bars: Leads, Deals, Campaigns, Tasks, Performance, admin UsersTable, settings AgentSettingsTable; never fork a new filter-bar chrome
 src/hooks/useUrlFilters.ts            ← useUrlFilters({ resetKeys? }) — THE URL-param filter plumbing (debounced search→URL push, push(updates), clearAll) for URL-driven filter bars; client-state bars (TasksFilters) pass state straight to <FilterBar>
 src/components/ui/ConfirmDialog.tsx   ← <ConfirmDialog> — THE standalone confirm dialog; owns the --z-overlay/--z-modal contract + body portal; never window.confirm
 src/components/ui/EmptyState.tsx      ← <EmptyState> — THE canonical empty state (hero icon-tile variant + inline serif-italic variant); makes "Playfair italic heading, never 'No data available'" structural; never hand-roll the italic style object
@@ -328,7 +332,7 @@ eia/
 │   ├── architecture/                ← overview · database(+.sql) · auth-and-rbac · caching · migrations
 │   ├── design/                      ← DESIGN-DNA (law) · design-system · decision-log
 │   ├── rules/The_Rules.md           ← the constitution: §0 Reuse First (R-rules) + A/S/D/P/V/Q + Decision Log
-│   ├── pages/                       ← one spec per route (14 files)
+│   ├── pages/                       ← one spec per route (16 files)
 │   ├── modules/                     ← gia · lia · sia · elia · call-intelligence
 │   ├── integrations/                ← lead-ingestion · whatsapp-gupshup · trigger-dev · upstash-redis
 │   ├── operations/                  ← environments · deployment
@@ -596,7 +600,7 @@ Framer Motion entrance animations apply CSS `transform` to the animated element.
 
 **Reference implementations:**
 
-- `LeadsFilters.tsx` / `DealsFilters.tsx` / `CampaignFilters.tsx` / `TasksFilters.tsx` — all four compose `<FilterBar>` (`src/components/ui/FilterBar.tsx`), which owns the Range trigger + `usePortalAnchor` + `<FloatingPanel>` + `<DateRangeFields>` internally (canonical)
+- `LeadsFilters.tsx` / `DealsFilters.tsx` / `CampaignFilters.tsx` / `TasksFilters.tsx` — all four compose `<FilterBar>` (`src/components/ui/FilterBar.tsx`), which owns the Range (presets) + Dates triggers + `usePortalAnchor` + `<FloatingPanel>` + `<DateRangePresetList>`/`<DateRangeFields>` internally (canonical)
 - `GroupTasksTab.tsx` — ⋯ dropdown portaled; confirm delete via `<ConfirmDialog>`
 - `GroupTaskWorkspace.tsx` — confirm delete via `<ConfirmDialog>`
 - `DatePicker.tsx` / `TimePicker.tsx` / `FilterDropdown.tsx` — primitives still own a private copy of the mechanism (migrate onto `usePortalAnchor` last; do not fork a new copy from them)

@@ -347,6 +347,10 @@ export function FilterDropdown({
         display:  fullWidth ? 'flex' : 'inline-flex',
         width:    fullWidth ? '100%' : undefined,
         minWidth: 0,
+        // Chips never shrink in a flex row — required for FilterBar's nowrap
+        // scroll layout (mobile + leads), where shrinking items would crush
+        // instead of overflowing into the horizontal scroll.
+        flexShrink: fullWidth ? undefined : 0,
         ...style,
       }}
     >

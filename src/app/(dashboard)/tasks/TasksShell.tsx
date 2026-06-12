@@ -149,13 +149,25 @@ export function TasksShell({
           flexWrap:     "wrap",
         }}
       >
-        <TabSelector
-          tabs={TABS}
-          activeTab={activeTab}
-          onChange={(id) => setTab(id as TaskTab)}
-          variant="accent"
-          indicatorLayoutId="tasks-page-tabs"
-        />
+        {/* Tab tray can exceed narrow phone widths (3 tabs ≈ 330px) — scroll
+            horizontally within the strip instead of overflowing the paper. */}
+        <div
+          style={{
+            maxWidth:       '100%',
+            minWidth:       0,
+            overflowX:      'auto',
+            scrollbarWidth: 'none',
+            flexShrink:     0,
+          }}
+        >
+          <TabSelector
+            tabs={TABS}
+            activeTab={activeTab}
+            onChange={(id) => setTab(id as TaskTab)}
+            variant="accent"
+            indicatorLayoutId="tasks-page-tabs"
+          />
+        </div>
 
         <TasksFilters
           activeTab={activeTab}

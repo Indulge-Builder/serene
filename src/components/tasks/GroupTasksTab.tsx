@@ -27,6 +27,7 @@ import * as LucideIcons from 'lucide-react';
 import { createSubtaskAction, getGroupSubtasksAction, getTaskRemarksAction, deleteGroupTaskAction } from '@/lib/actions/tasks';
 import { TaskCompletionCircle } from '@/components/tasks/TaskCompletionCircle';
 import { useCreateTriggerModal } from '@/hooks/useCreateTriggerModal';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { useMountOnFirstOpen } from '@/hooks/useMountOnFirstOpen';
 import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';
 import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
@@ -366,6 +367,9 @@ const GroupRow = memo(function GroupRow({
   onGroupDeleted,
 }: GroupRowProps) {
   const router = useRouter();
+  // Below --bp-md the fixed metrics cluster (~480px) cannot share one row with
+  // the title — it wraps to its own line(s) under the title row.
+  const isMobile = useMediaQuery(MQ.mobile);
   const accent   = getAccentForRow(group);
   const iconKey  = getIconForRow(group);
   const progress = group.subtask_count > 0
@@ -587,8 +591,9 @@ const GroupRow = memo(function GroupRow({
         style={{
           display:    'flex',
           alignItems: 'center',
+          flexWrap:   isMobile ? 'wrap' : 'nowrap',
           gap:        12,
-          padding:    '16px 20px',
+          padding:    isMobile ? '14px 16px' : '16px 20px',
           cursor:     'pointer',
           userSelect: 'none',
         }}
@@ -625,9 +630,24 @@ const GroupRow = memo(function GroupRow({
           {group.title}
         </span>
 
-        {/* Metrics cluster — stop propagation so clicks don't toggle */}
+        {/* Metrics cluster — stop propagation so clicks don't toggle.
+            Mobile: full-width second line, wrapping, indented past the chevron. */}
         <div
-          style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}
+          style={{
+            display:    'flex',
+            alignItems: 'center',
+            gap:        12,
+            flexShrink: 0,
+            ...(isMobile
+              ? {
+                  flexBasis:   '100%',
+                  minWidth:    0,
+                  flexWrap:    'wrap' as const,
+                  rowGap:      8,
+                  paddingLeft: 28,
+                }
+              : null),
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Open workspace — click; row double-click also navigates */}
@@ -891,8 +911,9 @@ const GroupRow = memo(function GroupRow({
                     style={{
                       display:      'flex',
                       alignItems:   'center',
+                      flexWrap:     isMobile ? 'wrap' : 'nowrap',
                       gap:          'var(--space-3)',
-                      padding:      '10px 20px 10px 24px',
+                      padding:      isMobile ? '10px 16px' : '10px 20px 10px 24px',
                       cursor:       'pointer',
                       borderBottom: i < subtasks.length - 1 ? '1px solid var(--theme-paper-border)' : 'none',
                       position:     'relative',
@@ -933,13 +954,25 @@ const GroupRow = memo(function GroupRow({
                       {subtask.title}
                     </span>
 
-                    {/* Meta cluster — status, priority, assignee, due */}
+                    {/* Meta cluster — status, priority, assignee, due.
+                        Mobile: own wrapped line under the title (order pushes it
+                        past the Eye affordance, which stays on the title line). */}
                     <div
                       style={{
                         display:    'flex',
                         alignItems: 'center',
                         gap:        'var(--space-2)',
                         flexShrink: 0,
+                        ...(isMobile
+                          ? {
+                              order:       5,
+                              flexBasis:   '100%',
+                              minWidth:    0,
+                              flexWrap:    'wrap' as const,
+                              rowGap:      6,
+                              paddingLeft: 36,
+                            }
+                          : null),
                       }}
                     >
                       <SubtaskStatusBadge status={effectiveStatus} />

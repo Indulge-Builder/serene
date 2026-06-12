@@ -9,6 +9,8 @@ import {
   GUPSHUP_SLA_AGENT_TEMPLATE_ID,
   GUPSHUP_SLA_MANAGER_TEMPLATE_ID,
   GUPSHUP_LEAD_INITIATION_TEMPLATE_ID,
+  GUPSHUP_TASK_DUE_REMINDER_TEMPLATE_ID,
+  GUPSHUP_TASK_OVERDUE_MANAGER_TEMPLATE_ID,
 } from '@/lib/constants/whatsapp';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MetaApiResponse, TemplateComponent } from '@/lib/types/whatsapp';
@@ -248,7 +250,7 @@ function isGupshupDelivered(httpOk: boolean, body: string): boolean {
 // ─────────────────────────────────────────────
 
 interface NotificationLogEntry {
-  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation';
+  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager';
   leadId?:        string | null;
   recipientId?:   string | null;
   recipientPhone: string;
@@ -554,6 +556,110 @@ export async function sendSlaManagerNotification(
     }
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendSlaManagerNotification:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Send task due reminder to the assigned agent via Gupshup template
+// Fire-and-forget safe — never throws to the caller
+// gia_followup tasks only (the template is lead-shaped) — caller enforces.
+// Params: [agent first name, lead name, lead phone, task title]
+// ─────────────────────────────────────────────
+
+export async function sendTaskDueReminderNotification(
+  agentId:   string,
+  leadName:  string,
+  leadPhone: string,
+  taskTitle: string,
+  leadId?:   string | null,
+): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const { data: agent } = await admin
+      .from('profiles')
+      .select('phone, full_name')
+      .eq('id', agentId)
+      .single();
+
+    if (!agent?.phone) {
+      console.warn(`[whatsapp-api] Agent ${agentId} has no phone — skipping task due reminder`);
+      return;
+    }
+
+    const agentFirstName = agent.full_name?.trim().split(/\s+/)[0] || 'there';
+
+    await sendGupshupTemplate({
+      templateId:     GUPSHUP_TASK_DUE_REMINDER_TEMPLATE_ID,
+      destination:    agent.phone,
+      templateParams: [agentFirstName, leadName, leadPhone || 'not provided', taskTitle],
+      label:          'Task due reminder',
+      logRecipient:   `agent ${agentId}`,
+      log: {
+        type:        'task_due_reminder',
+        leadId:      leadId ?? null,
+        recipientId: agentId,
+        agentName:   agent.full_name ?? null,
+        leadName,
+        leadPhone,
+      },
+    });
+  } catch (err) {
+    console.error('[whatsapp-api] Unexpected error in sendTaskDueReminderNotification:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Send task overdue escalation to domain managers via Gupshup template
+// Fire-and-forget safe — never throws to the caller
+// Params: [manager first name, agent name, lead name, task title, due time IST ("4:00 PM")]
+// {{1}} is per-recipient, so params are assembled inside the loop.
+// Sends stay sequential — Trigger.dev context, small lists (same as SLA manager sends).
+// ─────────────────────────────────────────────
+
+export async function sendTaskOverdueManagerNotification(
+  recipientIds: string[],
+  agentName:    string,
+  leadName:     string,
+  taskTitle:    string,
+  dueTimeIst:   string,
+  leadId?:      string | null,
+): Promise<void> {
+  try {
+    if (recipientIds.length === 0) return;
+
+    const admin = createAdminClient();
+    const { data: recipients } = await admin
+      .from('profiles')
+      .select('id, phone, full_name')
+      .in('id', recipientIds);
+
+    if (!recipients || recipients.length === 0) return;
+
+    for (const recipient of recipients) {
+      if (!recipient.phone) {
+        console.warn(`[whatsapp-api] Manager ${recipient.id} has no phone — skipping task overdue notification`);
+        continue;
+      }
+
+      const managerFirstName = recipient.full_name?.trim().split(/\s+/)[0] || 'there';
+
+      await sendGupshupTemplate({
+        templateId:     GUPSHUP_TASK_OVERDUE_MANAGER_TEMPLATE_ID,
+        destination:    recipient.phone,
+        templateParams: [managerFirstName, agentName, leadName, taskTitle, dueTimeIst],
+        label:          'Task overdue manager notification',
+        logRecipient:   `recipient ${recipient.id}`,
+        log: {
+          type:        'task_overdue_manager',
+          leadId:      leadId ?? null,
+          recipientId: recipient.id,
+          agentName,
+          leadName,
+        },
+      });
+    }
+  } catch (err) {
+    console.error('[whatsapp-api] Unexpected error in sendTaskOverdueManagerNotification:', err);
   }
 }
 

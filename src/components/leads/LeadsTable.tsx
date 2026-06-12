@@ -135,8 +135,11 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
         boxShadow:    'var(--shadow-1)',
       }}
     >
-      {/* Table toolbar — going cold + status pills | sort + columns + export.
-          Wraps on narrow viewports (a nowrap row overflows the card < ~520px). */}
+      {/* Table toolbar — going cold | sort + columns + export. One line at
+          every viewport: below md the sort/export labels compress to icons
+          (same language as the dashboard header settings button) and Columns
+          hides entirely — it configures table columns and the table only
+          renders md+ (the card stack ignores column prefs). */}
       <div
         style={{
           display:      'flex',
@@ -187,6 +190,7 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
           type="button"
           onClick={toggleSortOrder}
           title={sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}
+          aria-label={sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}
           aria-pressed={sortOrder === 'asc'}
           className="eia-touch"
           style={{
@@ -219,11 +223,11 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
             }}
             aria-hidden="true"
           />
-          <span>{sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}</span>
+          <span className="max-md:hidden">{sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}</span>
         </button>
 
-        {/* Column picker trigger */}
-        <div ref={pickerAnchorRef} style={{ position: 'relative', flexShrink: 0 }}>
+        {/* Column picker trigger — md+ only (table-only control, see toolbar note) */}
+        <div ref={pickerAnchorRef} className="max-md:hidden" style={{ position: 'relative', flexShrink: 0 }}>
           <button
             onClick={() => setPickerOpen((v) => !v)}
             aria-pressed={pickerOpen}

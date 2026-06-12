@@ -101,7 +101,7 @@ export function ExportButton({ filters }: ExportButtonProps) {
         type="button"
       >
         <Download style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} />
-        <span>Export</span>
+        <span className="max-md:hidden">Export</span>
       </button>
 
       <AnimatePresence>

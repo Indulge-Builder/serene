@@ -105,6 +105,7 @@ export type DashboardMultiDomainVolumeSummary = {
 
 // ─── Performance — manager / founder view types ───────────────────────────
 import type { OutcomeBreakdownItem } from "@/lib/services/performance-service";
+import type { BudgetCampaignRow } from "@/lib/services/ad-spend-service";
 
 export type AgentRosterRow = {
   id:                     string;
@@ -176,4 +177,17 @@ export type DashboardSummary = {
   lead_volume_multi: DashboardMultiDomainVolumeSummary | null;
   /** Count of non-terminal leads with no activity in 5+ days. Agent role: always 0. */
   cold_leads_count?: number;
+  /**
+   * Agent snapshot counts (migration 0115) — LIVE pipeline states, never
+   * scoped by the dashboard date filter. Non-agent roles: always 0.
+   */
+  pending_calls_count?: number;
+  new_leads_count?: number;
+  /**
+   * Manager+: campaign budget rows for the active date range, assembled by
+   * dashboard/page.tsx from getBudgetSummary() (not in the RPC — spend lives
+   * in ad_spend_daily). Manager rows are pre-filtered to their domain.
+   * Agent role: always null.
+   */
+  budget_summary?: BudgetCampaignRow[] | null;
 };

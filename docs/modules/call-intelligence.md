@@ -1,8 +1,8 @@
 # Call Intelligence & Helpdesk — Full Feature Specification
 
-> **Purpose:** complete spec for the planned call-intelligence/helpdesk module (service taxonomy, schema, retrieval, UI surfaces, build sequence).
-> **Audience:** engineers. · **Source-of-truth scope:** the *plan* for this module — nothing in this file is built yet; no code claims herein describe shipped reality.
-> **Last verified:** 2026-06-09 (spec date) · **Status:** planning complete, not started.
+> **Purpose:** complete spec for the call-intelligence/helpdesk module (service taxonomy, schema, retrieval, UI surfaces, build sequence).
+> **Audience:** engineers. · **Source-of-truth scope:** the module's design contract. **Phase 1 code is built (2026-06-12)** — see `docs/changelog.md` for the implementation record; file paths below are now live (migrations renumbered 0109/0110, the spec's 0085/0086 slots were taken).
+> **Last verified:** 2026-06-12 · **Status:** Phase 1 code complete; **migrations 0109/0110 applied to production (ledger-recorded)**; §15 live checks passed (RLS write matrix agent/manager blocked + admin allowed, ingestion `interest='travel,events'` → `['travel','events']`, Redis key del verified). **Content gate: CLOSED (seeded 2026-06-12).** The curated library — 150 cases + 30 hooks for `onboarding` (25 cases + 5 hooks per category, exceeding the ≥20/category ship bar), distilled from the Freshdesk export — was seeded via `scripts/seed-call-intelligence.ts` from `scripts/data/call-intelligence-seed.json`: every row validated against the 0110 contract (incl. the city-slug-tag invariant) pre-insert, post-insert counts verified (150/30), `helpdesk:cases:onboarding` Redis envelope deleted. The worksheet (`call-intelligence-content-worksheet.md`) remains the drafting reference; all post-seed edits go via the admin path (the script refuses to re-run without `--force`).
 >
 > **Eia · Indulge Global · Internal OS**
 > Written: 2026-06-09
@@ -128,6 +128,16 @@ Zod validation at the action layer validates submitted interests against `DOMAIN
 The brag library. 150 curated real past deliveries. Searched live during calls.
 
 ```sql
+-- array_to_string() is only STABLE (anyarray element casting), so Postgres
+-- rejects it inside a GENERATED column (42P17). This text[]-only wrapper
+-- involves no casting and is safely IMMUTABLE — required by search_vector
+-- below. Any future module reusing this FTS-over-tags pattern needs it too
+-- (it already exists in prod from migration 0110; CREATE OR REPLACE is safe).
+CREATE OR REPLACE FUNCTION public.immutable_array_to_string(text[], text)
+RETURNS text
+LANGUAGE sql IMMUTABLE PARALLEL SAFE
+RETURN array_to_string($1, $2);
+
 CREATE TABLE public.service_cases (
   id             uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -165,11 +175,13 @@ CREATE TABLE public.service_cases (
     setweight(to_tsvector('english', title), 'A') ||
     setweight(to_tsvector('english', coalesce(summary, '')), 'B') ||
     setweight(to_tsvector('english', coalesce(city, '') || ' ' || coalesce(country, '')), 'B') ||
-    setweight(to_tsvector('english', array_to_string(tags, ' ')), 'C')
+    -- NOT plain array_to_string() — STABLE, rejected in a generated column
+    setweight(to_tsvector('english', public.immutable_array_to_string(tags, ' ')), 'C')
   ) STORED,
 
-  -- Phase 2 only — embedding column exists from day 1, populated later
-  embedding      vector(1536)  -- NULL until Phase 2. HNSW index NOT created until populated.
+  -- Phase 2 only — embedding column exists from day 1, populated later.
+  -- Requires: CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
+  embedding      extensions.vector(1536)  -- NULL until Phase 2. HNSW index NOT created until populated.
 );
 
 -- Indexes
@@ -309,6 +321,10 @@ function extractServiceInterests(formData: Record<string, unknown>, domain: AppD
 ```
 
 The normalized array is written to `leads.service_interests` on INSERT. `form_data` remains immutable after insert (convention unchanged).
+
+**Manual leads (Phase 1.1, shipped 2026-06-12):** the Add Lead modal carries the same field — an optional domain-scoped `FormChip` multi-select. `createManualLead` drops out-of-vocabulary values against the resolved domain via the same `extractServiceInterests` helper and writes `text[]` on its existing INSERT (no second path). A domain switch in the form clears picks outside the new domain's vocabulary.
+
+**Existing leads (Phase 1.1b, shipped 2026-06-12):** interests are editable on the dossier like every other lead field — `InterestsInlineField` in `LeadInfoCard` (`canEdit` gate) → `updateLeadInterests` (same `assertLeadFieldEditAccess` + `revalidateLeadDossier` path as email/source; activity entry logs old → new). This lights up the dossier card for the existing book and WhatsApp-originated leads, which all start with empty interests.
 
 ---
 

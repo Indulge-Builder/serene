@@ -15,6 +15,11 @@ import {
   type LeadVolumeSummary,
   type MultiDomainVolumeSummary,
 } from '@/lib/services/dashboard-service';
+import {
+  getBudgetSummary,
+  filterBudgetRowsByDomain,
+  type BudgetCampaignRow,
+} from '@/lib/services/ad-spend-service';
 import type { DashboardAgentTask } from '@/lib/types';
 import type { AppDomain } from '@/lib/types/database';
 import type { DateRange } from '@/lib/utils/date-range';
@@ -190,6 +195,51 @@ export async function getLeadVolumeForDomainAction(
     { from: parsed.data.from, to: parsed.data.to },
   );
   return { data, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Campaign Budget (manager budget widget refresh / cohort change)
+// Spend joined to lead + deal outcomes via getBudgetSummary (ad-spend-service).
+// Managers are pinned to their own domain via effectiveWidgetDomain — the
+// domain is derived from the campaign-key prefix, same map lead ingestion uses.
+// ─────────────────────────────────────────────
+const BudgetScopeSchema = z.object({
+  from:   z.string().datetime({ message: 'Invalid from date.' }),
+  to:     z.string().datetime({ message: 'Invalid to date.'   }),
+  domain: z.enum(GIA_DOMAIN_ENUM).optional(),
+}).refine(
+  ({ from, to }) => new Date(from) < new Date(to),
+  { message: 'from must be before to.' },
+);
+
+export async function getBudgetSummaryWidgetAction(
+  from: string,
+  to:   string,
+  targetDomain?: AppDomain,
+): Promise<{ data: BudgetCampaignRow[] | null; error: string | null }> {
+  const parsed = BudgetScopeSchema.safeParse({ from, to, domain: targetDomain });
+  if (!parsed.success) return { data: null, error: 'Invalid domain or date range.' };
+
+  const auth = await requireProfile(['manager', 'admin', 'founder']);
+  if (!auth.ok) return auth.result;
+  const profile = auth.profile;
+
+  // Managers always get their own domain regardless of the request; admin and
+  // founder get the target they asked for (or the all-domain view).
+  const requested = profile.role === 'manager'
+    ? (profile.domain as AppDomain)
+    : parsed.data.domain;
+  const scopeDomain = effectiveWidgetDomain(
+    profile.role,
+    profile.domain as AppDomain,
+    requested,
+  );
+
+  const rows = await getBudgetSummary(parsed.data.from, parsed.data.to);
+  return {
+    data: scopeDomain ? filterBudgetRowsByDomain(rows, scopeDomain) : rows,
+    error: null,
+  };
 }
 
 // Re-export resolvePresetToRange so client components can call it for default range labels

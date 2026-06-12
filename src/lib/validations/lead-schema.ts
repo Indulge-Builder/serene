@@ -110,6 +110,15 @@ export const CreateManualLeadSchema = z.object({
     },
     z.enum(LEAD_SOURCE_ENUM).nullable().optional(),
   ),
+  // Optional multi-select (call-intelligence Phase 1.1). Bounded + normalised
+  // here; out-of-vocabulary values are DROPPED (never rejected) in the action
+  // against the RESOLVED domain via extractServiceInterests — the schema
+  // cannot know the final domain (agents are pinned to their own server-side).
+  service_interests: z
+    .array(z.string().trim().toLowerCase().max(40))
+    .max(12, "Too many interests selected.")
+    .optional()
+    .default([]),
 });
 
 export type CreateManualLeadInput = z.infer<typeof CreateManualLeadSchema>;
@@ -156,6 +165,19 @@ export const UpdateLeadCitySchema = z.object({
 });
 
 export type UpdateLeadCityInput = z.infer<typeof UpdateLeadCitySchema>;
+
+export const UpdateLeadInterestsSchema = z.object({
+  leadId: z.string().uuid("Invalid lead ID"),
+  // Bounded/normalised here; out-of-vocabulary values are DROPPED in the
+  // action against the lead's domain via extractServiceInterests — same
+  // contract as CreateManualLeadSchema.service_interests.
+  interests: z
+    .array(z.string().trim().toLowerCase().max(40))
+    .max(12, "Too many interests selected.")
+    .default([]),
+});
+
+export type UpdateLeadInterestsInput = z.infer<typeof UpdateLeadInterestsSchema>;
 
 // ─────────────────────────────────────────────
 // Record deal (WonDealModal — fired when marking a lead Won)

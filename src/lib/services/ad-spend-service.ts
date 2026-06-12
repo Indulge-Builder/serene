@@ -6,6 +6,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapRows } from "@/lib/utils/rows";
+import { resolveDomainFromCampaign } from "@/lib/constants/campaign-domain-map";
 
 export type BudgetCampaignRow = {
   campaignKey:     string;
@@ -80,6 +81,19 @@ export async function getBudgetSummary(
       costPerDeal:      deals > 0 ? spend / deals : null,
     };
   });
+}
+
+/**
+ * Scope budget rows to one domain via the campaign-prefix → domain map
+ * (ad_spend_daily has no domain column — domain is derived from the campaign
+ * key exactly like lead ingestion does). Used by the manager dashboard budget
+ * widget; the /budget page itself stays admin/founder (all domains).
+ */
+export function filterBudgetRowsByDomain(
+  rows: BudgetCampaignRow[],
+  domain: string,
+): BudgetCampaignRow[] {
+  return rows.filter((r) => resolveDomainFromCampaign(r.campaignKey) === domain);
 }
 
 /**

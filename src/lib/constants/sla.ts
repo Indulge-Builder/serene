@@ -1,8 +1,17 @@
 /**
  * sla.ts — Gia SLA Engine constants
  *
- * Source of truth for all SLA rule codes, thresholds, and business-hours config.
- * Pure data — no DB deps, no imports from services or actions.
+ * Business-hours config + the engine's static vocabulary (rule-code types,
+ * auto-task titles, cadence outcome set). Pure data — no DB deps, no imports
+ * from services or actions.
+ *
+ * SINCE PHASE 2 (config-driven engine, migration 0111): rule thresholds,
+ * recipients, and active flags live in the `sla_policies` table and are read
+ * per job run via sla-service.getSlaPolicies(). SLA_RULES below is retained as
+ * the PARITY REFERENCE — the 0111 seed was copied from it (with statusTrigger
+ * 'active' stored as the real status 'nurturing') and any edit to live
+ * behaviour happens in the DB, not here. Do not re-point the engine at this
+ * constant.
  *
  * SLA rules:
  *   SLA-01x  New lead            — 15min (agent), 30min (manager)
@@ -55,6 +64,55 @@ export const SLA_AUTO_TASK_TITLES: Record<Extract<SlaRuleCode, `SLA-${string}A`>
   'SLA-03A': 'Discussion stalled — re-engage lead',
   'SLA-04A': 'Less than 3 call attempts in 4 days',
 } as const;
+
+// ─── Outcome cadence (CAD-01 family, sla_policies trigger_kind='outcome') ────
+
+/**
+ * Call outcomes that arm the daily follow-up cadence. Vocabulary is the
+ * "unreached" subset of CALL_OUTCOMES (constants/call-outcomes.ts) — never
+ * invent values here; the sla_policies CAD rows carry the same strings.
+ */
+export const CADENCE_OUTCOMES = ['rnr', 'switched_off', 'wrong_number'] as const;
+export type CadenceOutcome = (typeof CADENCE_OUTCOMES)[number];
+
+export const CADENCE_RULE_BY_OUTCOME: Record<CadenceOutcome, string> = {
+  rnr:          'CAD-01A',
+  switched_off: 'CAD-01B',
+  wrong_number: 'CAD-01C',
+};
+
+/** Lead statuses the cadence may act on — non-terminal, never junk/lost/nurturing. */
+export const CADENCE_ARMABLE_STATUSES = ['new', 'touched', 'in_discussion'] as const;
+
+/** Outcomes older than this never arm or sustain a cadence (pre-go-live guard). */
+export const CADENCE_FRESHNESS_DAYS = 7;
+
+/** Cadence task due time: this many business minutes after the tick fires. */
+export const CADENCE_TASK_DUE_BUSINESS_MINUTES = 120;
+
+export const CADENCE_TASK_TITLES: Record<CadenceOutcome, string> = {
+  rnr:          'No response on last call — try again today',
+  switched_off: 'Phone was switched off — try again today',
+  wrong_number: 'Wrong number on file — verify and re-attempt today',
+};
+
+// ─── Status cadence (CAD with trigger_kind='status', migration 0114) ─────────
+
+/**
+ * A CAD-prefixed code marks a policy as a CADENCE rule regardless of
+ * trigger_kind: on fire it creates a follow-up task (open-task guard) and
+ * re-arms instead of sending a one-shot breach notification. Outcome cadences
+ * (CAD-01x) re-arm daily at shift open; status cadences (CAD-02A) re-arm
+ * threshold_minutes ahead and live/die with the lead's status.
+ */
+export function isCadenceCode(code: string): boolean {
+  return code.startsWith('CAD-');
+}
+
+/** Task titles for status-cadence rules, keyed by policy code. */
+export const STATUS_CADENCE_TASK_TITLES: Record<string, string> = {
+  'CAD-02A': 'Discussion open 48 hours — follow up',
+};
 
 // ─── Status → applicable rule codes ──────────────────────────────────────────
 

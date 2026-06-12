@@ -12,6 +12,7 @@ import {
   FLIP_UP_TRANSFORM_TEMPLATE,
 } from '@/lib/constants/motion';
 import { toUTC, formatDate } from '@/lib/utils/dates';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 
 export interface DatePickerProps {
   value?: Date | null;
@@ -49,9 +50,13 @@ function combine(date: Date, hour: number, minute: number, meridiem: Meridiem): 
 
 // Approximate panel dimensions for viewport flip detection.
 // Calendar is 260px + 32px padding; time wheel column adds ~148px when showTime.
+// On the mobile breakpoint the time wheel stacks below the calendar instead,
+// keeping the panel at date-only width but roughly 540px tall.
 const PANEL_WIDTH_DATE_ONLY = 292;
 const PANEL_WIDTH_WITH_TIME = 448;
 const PANEL_HEIGHT = 320;
+const PANEL_HEIGHT_STACKED = 540;
+const VIEWPORT_GUTTER = 8;
 
 export function DatePicker({
   value,
@@ -73,22 +78,42 @@ export function DatePicker({
   const triggerRef   = useRef<HTMLButtonElement>(null);
   const panelRef     = useRef<HTMLDivElement>(null);
 
-  const panelWidth = showTime ? PANEL_WIDTH_WITH_TIME : PANEL_WIDTH_DATE_ONLY;
+  // Below --bp-md the side-by-side calendar+time row (448px) cannot fit —
+  // stack the time wheel below the calendar instead.
+  const isMobile = useMediaQuery(MQ.mobile);
+  const stacked = showTime && isMobile;
+
+  const panelWidth  = showTime && !stacked ? PANEL_WIDTH_WITH_TIME : PANEL_WIDTH_DATE_ONLY;
+  const panelHeight = stacked ? PANEL_HEIGHT_STACKED : PANEL_HEIGHT;
 
   const updatePanelPosition = useCallback((panelW?: number, panelH?: number) => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const w = panelW ?? panelWidth;
-    const h = panelH ?? PANEL_HEIGHT;
+    const h = panelH ?? panelHeight;
     const vvLeft = window.visualViewport?.offsetLeft ?? 0;
     const vvTop  = window.visualViewport?.offsetTop  ?? 0;
-    const flipLeft = rect.left + w > window.innerWidth - 8;
+    const flipLeft = rect.left + w > window.innerWidth - VIEWPORT_GUTTER;
     const spaceBelow = window.innerHeight - rect.bottom;
     const flipUp = spaceBelow < h && rect.top > spaceBelow;
-    const left = (flipLeft ? rect.right - w : rect.left) - vvLeft;
-    const top  = (flipUp ? rect.top - 4 : rect.bottom + 4) - vvTop;
+    // Clamp so the panel never leaves the viewport — anchor-relative placement
+    // can overshoot on narrow screens where the panel is wider/taller than the
+    // space on either side of the trigger.
+    const rawLeft = flipLeft ? rect.right - w : rect.left;
+    const left = Math.max(
+      VIEWPORT_GUTTER,
+      Math.min(rawLeft, window.innerWidth - w - VIEWPORT_GUTTER),
+    ) - vvLeft;
+    const rawTop = flipUp ? rect.top - 4 : rect.bottom + 4;
+    // flipUp renders the panel above `top` via translateY(-100%), so the clamp
+    // keeps top ≥ panel height + gutter; the panel's own max-height guarantees
+    // h fits the viewport.
+    const top = (flipUp
+      ? Math.max(rawTop, Math.min(h + VIEWPORT_GUTTER, window.innerHeight - VIEWPORT_GUTTER))
+      : Math.max(VIEWPORT_GUTTER, Math.min(rawTop, window.innerHeight - h - VIEWPORT_GUTTER))
+    ) - vvTop;
     setPanelPos({ top, left, flipUp });
-  }, [panelWidth]);
+  }, [panelWidth, panelHeight]);
 
   useEffect(() => {
     setMounted(true);
@@ -213,13 +238,15 @@ export function DatePicker({
             border:       '1px solid var(--theme-paper-border)',
             overflow:     'hidden',
             background:   'var(--theme-paper)',
+            maxHeight:    `calc(100dvh - ${VIEWPORT_GUTTER * 2}px)`,
+            overflowY:    'auto',
           }}
         >
           <div
             data-datepicker-panel="true"
             style={{
               display:    'flex',
-              flexDirection: 'row',
+              flexDirection: stacked ? 'column' : 'row',
               alignItems: 'stretch',
             }}
           >
@@ -230,7 +257,11 @@ export function DatePicker({
               maxDate={maxDate}
               style={
                 showTime
-                  ? { borderRadius: 'var(--radius-md) 0 0 var(--radius-md)' }
+                  ? {
+                      borderRadius: stacked
+                        ? 'var(--radius-md) var(--radius-md) 0 0'
+                        : 'var(--radius-md) 0 0 var(--radius-md)',
+                    }
                   : undefined
               }
             />
@@ -242,6 +273,15 @@ export function DatePicker({
                 minute={selMinute}
                 meridiem={selMeridiem}
                 onChange={handleTimeChange}
+                style={
+                  stacked
+                    ? {
+                        borderLeft:   'none',
+                        borderTop:    '1px solid var(--theme-paper-border)',
+                        borderRadius: '0 0 var(--radius-md) var(--radius-md)',
+                      }
+                    : undefined
+                }
               />
             )}
           </div>
@@ -271,6 +311,9 @@ export function DatePicker({
           display:     'inline-flex',
           alignItems:  'center',
           gap:         'var(--space-2)',
+          // Content-sized by default; fills the wrapper when a caller sets a
+          // width on it via `style` (DateRangeFields mobile stack).
+          flex:        '1 1 auto',
           height:      '2.25rem',
           padding:     'var(--space-2) var(--space-3)',
           background:  'var(--theme-paper-subtle)',

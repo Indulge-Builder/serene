@@ -191,6 +191,7 @@ export function CreatePersonalTaskModal({
         task_type:     'other',
         module:        'gia',
         completed_at:  null,
+        overdue_at:    null,
         attachments:   [],
         tags:          parsed.data.tags,
         created_at:    new Date().toISOString(),

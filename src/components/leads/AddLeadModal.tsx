@@ -7,11 +7,13 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { FilterDropdown } from '@/components/ui/FilterDropdown';
+import { FormChip } from '@/components/ui/TaskFormFields';
 import { Modal } from '@/components/ui/modal';
 import { createManualLead } from '@/lib/actions/leads';
 import { getAssignableUsersAction } from '@/lib/actions/profiles';
 import { CreateManualLeadSchema } from '@/lib/validations/lead-schema';
 import { DOMAIN_LABELS, GIA_DOMAIN_FILTER_ITEMS } from '@/lib/constants/domains';
+import { getDomainInterests, getServiceCategoryLabel } from '@/lib/constants/interests';
 import { LEAD_SOURCE_OPTIONS } from '@/lib/constants/lead-sources';
 import type { AppDomain, UserRole } from '@/lib/types/database';
 
@@ -29,13 +31,14 @@ type CallerProfile = {
 };
 
 type FormValues = {
-  first_name:    string;
-  last_name:     string;
-  phone:         string;
-  email:         string;
-  source: string;
-  domain:        string;
-  assigned_to:   string;
+  first_name:        string;
+  last_name:         string;
+  phone:             string;
+  email:             string;
+  source:            string;
+  domain:            string;
+  assigned_to:       string;
+  service_interests: string[];
 };
 
 type Props = {
@@ -110,25 +113,47 @@ export function AddLeadModal({
     handleSubmit,
     watch,
     setValue,
+    getValues,
     reset,
     formState: { errors },
   } = useForm<FormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(CreateManualLeadSchema) as any,
     defaultValues: {
-      first_name:    '',
-      last_name:     '',
-      phone:         '',
-      email:         '',
-      source: '',
-      domain:        callerProfile.domain,
-      assigned_to:   callerProfile.id,
+      first_name:        '',
+      last_name:         '',
+      phone:             '',
+      email:             '',
+      source:            '',
+      domain:            callerProfile.domain,
+      assigned_to:       callerProfile.id,
+      service_interests: [],
     },
   });
 
   const watchedSource     = watch('source');
   const watchedDomain     = watch('domain');
   const watchedAssignedTo = watch('assigned_to');
+  const watchedInterests  = watch('service_interests');
+
+  // Domain-scoped interest options — ids from DOMAIN_INTERESTS, labels from
+  // the single resolver in lib/constants/interests.ts (never a re-typed list).
+  const interestOptions = useMemo(
+    () =>
+      getDomainInterests(watchedDomain).map((id) => ({
+        id,
+        label: getServiceCategoryLabel(id),
+      })),
+    [watchedDomain],
+  );
+
+  function toggleInterest(id: string) {
+    const current = getValues('service_interests') ?? [];
+    setValue(
+      'service_interests',
+      current.includes(id) ? current.filter((x) => x !== id) : [...current, id],
+    );
+  }
 
   const sourceLabel = useMemo(() => {
     if (!watchedSource) return 'Select source…';
@@ -155,6 +180,16 @@ export function AddLeadModal({
   // This is the only permitted useEffect + data refetch as per spec.
   useEffect(() => {
     if (!canChangeDomain) return;
+
+    // Failure-mode guard (call-intelligence Phase 1.1): a domain switch must
+    // clear picks outside the new domain's vocabulary — 'travel' selected
+    // under onboarding must never silently submit under shop. Runs on every
+    // switch, including switching back to the initial domain.
+    const vocab = getDomainInterests(watchedDomain);
+    const current = getValues('service_interests') ?? [];
+    const kept = current.filter((i) => vocab.includes(i));
+    if (kept.length !== current.length) setValue('service_interests', kept);
+
     if (watchedDomain === initialDomain) {
       setAgents(initialAgents);
       return;
@@ -179,13 +214,14 @@ export function AddLeadModal({
   useEffect(() => {
     if (open) {
       reset({
-        first_name:    '',
-        last_name:     '',
-        phone:         '',
-        email:         '',
-        source: '',
-        domain:        callerProfile.domain,
-        assigned_to:   callerProfile.id,
+        first_name:        '',
+        last_name:         '',
+        phone:             '',
+        email:             '',
+        source:            '',
+        domain:            callerProfile.domain,
+        assigned_to:       callerProfile.id,
+        service_interests: [],
       });
       setServerError(null);
       setDuplicateLeadId(null);
@@ -205,13 +241,14 @@ export function AddLeadModal({
 
     startTransition(async () => {
       const result = await createManualLead({
-        first_name:    values.first_name,
-        last_name:     values.last_name || undefined,
-        phone:         values.phone,
-        email:         values.email || undefined,
-        domain:        values.domain,
-        assigned_to:   values.assigned_to || undefined,
-        source: values.source || undefined,
+        first_name:        values.first_name,
+        last_name:         values.last_name || undefined,
+        phone:             values.phone,
+        email:             values.email || undefined,
+        domain:            values.domain,
+        assigned_to:       values.assigned_to || undefined,
+        source:            values.source || undefined,
+        service_interests: values.service_interests ?? [],
       });
 
       if (result.error) {
@@ -501,6 +538,32 @@ export function AddLeadModal({
             {errors.assigned_to && (
               <p style={fieldError}>{errors.assigned_to.message}</p>
             )}
+          </div>
+        </div>
+
+        {/* Row 5: Service interests — optional, domain-scoped multi-select.
+            Options follow the Domain field above; empty selection = '{}'. */}
+        <div>
+          <span id="al-interests-label" style={fieldLabel}>
+            Interests{' '}
+            <span style={{ textTransform: 'none', letterSpacing: 'normal', fontWeight: 'var(--weight-normal)' }}>
+              (optional)
+            </span>
+          </span>
+          <div
+            role="group"
+            aria-labelledby="al-interests-label"
+            style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}
+          >
+            {interestOptions.map((opt) => (
+              <FormChip
+                key={opt.id}
+                label={opt.label}
+                active={(watchedInterests ?? []).includes(opt.id)}
+                disabled={isPending}
+                onClick={() => toggleInterest(opt.id)}
+              />
+            ))}
           </div>
         </div>
 

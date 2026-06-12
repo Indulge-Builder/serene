@@ -14,6 +14,7 @@ import { LeadNotesSectionAsync } from '@/components/leads/LeadNotesSectionAsync'
 import { LeadActivitiesAsync } from '@/components/leads/LeadActivitiesAsync';
 import { LeadWhatsAppCardAsync } from '@/components/leads/LeadWhatsAppCardAsync';
 import { LeadTasksAsync } from '@/components/leads/LeadTasksAsync';
+import { ServiceInterestCardAsync } from '@/components/leads/ServiceInterestCardAsync';
 import { LeadTasksCardSkeleton } from '@/components/leads/LeadTasksCardSkeleton';
 import { DossierCardSkeleton } from '@/components/leads/LeadDossierSkeletons';
 
@@ -141,6 +142,14 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
 
           {/* Right column — stretches to match left column height */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', alignSelf: 'stretch' }}>
+            {/* Call Intelligence interest card — null fallback: leads without
+                interests/city matches render nothing here, a skeleton would
+                flash for the majority. Self-fetching child = no waterfall. */}
+            {((lead.service_interests ?? []).length > 0 || lead.city) && (
+              <Suspense fallback={null}>
+                <ServiceInterestCardAsync lead={lead} />
+              </Suspense>
+            )}
             <Suspense fallback={<LeadTasksCardSkeleton />}>
               <LeadTasksAsync leadId={lead.id} />
             </Suspense>

@@ -52,6 +52,31 @@ dropped `leads.deal_*`).
 
 `client_id` is a reserved column — FK lands with the future clients module (post-won flow).
 
+### Two won leads with no `deals` row — founder decision required (2026-06-12)
+
+`/deals` and `/performance` disagree on win count by exactly 2 until this is resolved. The 0073
+backfill skipped both (its `deal_amount IS NOT NULL` condition); on inspection **both look like
+internal test leads, not real revenue** — founders should confirm before any deal row is written:
+
+| Lead (dossier) | Phone | Domain | Agent | Won at (UTC) | Evidence it's a test |
+| -------------- | ----- | ------ | ----- | ------------ | -------------------- |
+| `/leads/ram--9139` ("Aram") | +917481879139 | onboarding | Amit Agarwal | 2026-06-05 09:54 | note "km;kl"; new→won in 16s of clicks; WhatsApp-sourced; name matches the developer |
+| `/leads/testing--6087` ("testing") | +915476586087 | house | Sailee | 2026-05-30 12:47 | name "testing"; note "lklk"; new→won in 4.5 min |
+
+**Resolution paths (pick one per lead, never raw ad-hoc SQL):**
+
+- **Test lead (expected):** archive it — `archived_at = now()` via a ledger-recorded data
+  migration. Archived leads drop out of every win cohort, so the /deals vs /performance counts
+  reconcile without inventing revenue.
+- **Real win (if a founder confirms an amount):** insert its `deals` row via a ledger-recorded
+  data migration mirroring the 0073 column mapping (`lead_id`, contact fields from the lead row,
+  `domain`, the founder-confirmed `deal_amount`, `deal_type`, `assigned_to`,
+  `won_at = status_changed_at`), or have an admin re-drive `recordDeal` for the lead.
+
+Either way the migration gets the next free number, lands in `supabase/migrations/`, and is
+recorded in `supabase_migrations.schema_migrations` on apply — the ledger stays gap-free
+(see `../architecture/migrations.md`, ledger-repair note).
+
 ---
 
 ## 8. Deep dive

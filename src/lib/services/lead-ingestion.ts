@@ -4,6 +4,7 @@ import { selectAdapter } from '@/lib/leads/adapters';
 import { resolveDomainFromCampaign, DEFAULT_LEAD_DOMAIN } from '@/lib/constants/campaign-domain-map';
 import { getNextRoundRobinAgent } from '@/lib/services/leads-service';
 import { LEAD_SOURCE_ENUM, type LeadSource } from '@/lib/constants/lead-sources';
+import { getDomainInterests } from '@/lib/constants/interests';
 import type { Database } from '@/lib/types/database';
 
 type LeadInsert = Database['public']['Tables']['leads']['Insert'];
@@ -31,6 +32,34 @@ export function sanitizeRawPayload(payload: unknown): unknown {
   }
 
   return cleaned;
+}
+
+// ─────────────────────────────────────────────
+// Service interests — best-effort parse from form_data (call-intelligence §5).
+// NEVER throws and never blocks an ingest: a garbage interest string yields []
+// and the lead INSERT proceeds untouched. Unknown values are dropped, not
+// rejected, against the DOMAIN_INTERESTS vocabulary for the lead's domain.
+// Writes text[] — never the service_category enum.
+// ─────────────────────────────────────────────
+export function extractServiceInterests(
+  formData: Record<string, unknown> | null | undefined,
+  domain: string,
+): string[] {
+  try {
+    const raw =
+      formData?.['interest'] ?? formData?.['interests'] ?? formData?.['service_interest'] ?? '';
+    const candidates =
+      typeof raw === 'string'
+        ? raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+        : Array.isArray(raw)
+          ? raw.map(String).map((s) => s.trim().toLowerCase()).filter(Boolean)
+          : [];
+
+    const valid = getDomainInterests(domain);
+    return [...new Set(candidates.filter((c) => valid.includes(c)))];
+  } catch {
+    return [];
+  }
 }
 
 export type IngestionResult =
@@ -195,6 +224,10 @@ export async function ingestLead(
     utm_campaign: data.utm_campaign ?? null,
   };
 
+  // Best-effort interest capture — can never fail or delay the INSERT.
+  // The interest key stays in form_data (immutable-after-insert convention).
+  const serviceInterests = extractServiceInterests(formDataRaw, domain);
+
   const leadInsert: LeadInsert = {
     first_name:         data.first_name,
     last_name:          data.last_name ?? null,
@@ -211,6 +244,7 @@ export async function ingestLead(
     utm_campaign:       data.utm_campaign ?? null,
     attribution:        attributionSnapshot,
     city:               cityFromForm,
+    service_interests:  serviceInterests,
     form_data:          formDataRaw,
     last_call_outcome:  null,
     personal_details:   null,
@@ -325,6 +359,8 @@ export async function createLeadFromWhatsApp(
       utm_campaign:       null,
       attribution:        { platform: 'whatsapp' },
       city:               null,
+      // WhatsApp messages carry no form data — same best-effort path, always [].
+      service_interests:  extractServiceInterests({}, domain),
       form_data:          {},
       last_call_outcome:  null,
       personal_details:   null,
