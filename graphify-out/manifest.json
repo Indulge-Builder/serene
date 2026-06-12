@@ -2070,8 +2070,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781277775.436563,
-    "ast_hash": "ff11448d0d83429955a4fd95dc395b3a",
+    "mtime": 1781278526.034806,
+    "ast_hash": "8d2be941131c845c8cffc0ea17ca40a3",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -3150,8 +3150,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/persona.ts": {
-    "mtime": 1781276047.3213344,
-    "ast_hash": "10bc441ae98fb7696f591489976ce0cb",
+    "mtime": 1781278324.5843127,
+    "ast_hash": "dd34bac432a541e83e891679a0a75e59",
     "semantic_hash": ""
   },
   "src/lib/elaya/pii.ts": {
@@ -3240,8 +3240,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/elaya-whatsapp.ts": {
-    "mtime": 1781275113.142801,
-    "ast_hash": "f79a2c22af4b1b6c941ccca3a0cface0",
+    "mtime": 1781278419.6820314,
+    "ast_hash": "9e378a7bd62e8f3a44a03090348f6f00",
     "semantic_hash": ""
   },
   "supabase/migrations/20260612000117_elaya_reply_log_type.sql": {
@@ -3255,8 +3255,8 @@
     "semantic_hash": ""
   },
   "src/lib/utils/whatsapp-format.ts": {
-    "mtime": 1781275166.656774,
-    "ast_hash": "ac77194affc804b7e9791e284e0114d6",
+    "mtime": 1781278392.5897312,
+    "ast_hash": "6661ad91d8cd55c3f90c7457a728ec2a",
     "semantic_hash": ""
   },
   "src/components/intelligence/AddSuggestionButton.tsx": {

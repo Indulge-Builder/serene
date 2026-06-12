@@ -6,6 +6,19 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-12 — Elaya WhatsApp replies: persona/converter formatting inversion fixed
+
+The persona's WhatsApp channel block and `markdownToWhatsApp` disagreed about what single asterisks mean. The prompt told the model to write WhatsApp-native syntax (`*single asterisks* for bold`), but the converter treats single `*x*` as markdown italic and rewrites it to `_x_` — so the better the model followed its instructions, the more of its intended bold rendered as italic on the phone. Meanwhile the base Formatting line ("Simple emphasis renders fine — `**bold**`") contradicted the channel block's "never use markdown" in the same prompt.
+
+- **One owner of the wire format:** the channel block now tells the model to write the same markdown as everywhere else (`**bold**`, `_italic_`) and never WhatsApp syntax — `markdownToWhatsApp` deterministically owns the conversion. The base Formatting line no longer conflicts with it.
+- **Converter pass order fixed:** the heading pass now runs *after* the bold/italic passes and strips inner sentinels, so a bold heading (`## **Today's numbers**`) collapses to one `*…*` pair instead of double-wrapping into literal `**…**` on the wire.
+- **Marker-aware truncation:** new `truncateWhatsAppText(text, max)` in `whatsapp-format.ts` replaces the bare `.slice(0, MAX_REPLY_CHARS)` in `elaya-whatsapp.ts` — a cut landing inside a `*`/`_`/`~` pair or a ``` fence drops the orphaned opener instead of leaving it rendering literally. Replies under the cap pass through untouched.
+- Converter covered by 10 behavioural cases (bold/italic/heading-with-bold/bullets/strike/links/bare-asterisk math) — all pass; `npx tsc --noEmit` clean.
+
+**Files:** `src/lib/elaya/persona.ts`, `src/lib/utils/whatsapp-format.ts`, `src/lib/services/elaya-whatsapp.ts`, docs (this entry).
+
+---
+
 ## 2026-06-12 — /whatsapp: unread tracking actually works (mark-read fix + per-row unread dots)
 
 The WhatsApp inbox's unread feature was broken end-to-end by two compounding bugs. (1) `markConversationRead` upserted into `whatsapp_conversation_reads` **without `agent_id`** — its comment claimed a DB default (`auth.uid()`) populates the column, but migration 0034 defines `agent_id uuid NOT NULL` with no default, so every mark-read INSERT failed its NOT NULL constraint, the error was silently swallowed, the table stayed empty, and the header badge (`get_wa_unread_count`) counted every open conversation forever. (2) `unread_count` was consumed but never produced — `ConversationRow`'s unread dot reads `conv.unread_count`, but neither `getConversations` nor `searchConversations` ever computed it, so no row ever showed a dot.

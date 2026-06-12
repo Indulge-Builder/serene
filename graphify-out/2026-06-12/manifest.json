@@ -1015,8 +1015,8 @@
     "semantic_hash": "4f9c074df26b5851b145b2a36509b76f"
   },
   "src/components/whatsapp/ConversationPanel.tsx": {
-    "mtime": 1781214342.4444323,
-    "ast_hash": "bb1e2be3b60406232e27332fd163ee05",
+    "mtime": 1781277695.7645416,
+    "ast_hash": "aca39e0a2f5d6a9c9c5047f4a5cb3600",
     "semantic_hash": ""
   },
   "src/components/whatsapp/ConversationRow.tsx": {
@@ -1040,8 +1040,8 @@
     "semantic_hash": ""
   },
   "src/components/whatsapp/WhatsAppShell.tsx": {
-    "mtime": 1781214311.296645,
-    "ast_hash": "eb7c6abfa42b308bab7b80c301921bf2",
+    "mtime": 1781277682.9807472,
+    "ast_hash": "e15e108f0e6efe3d8530b3caebf7a6d4",
     "semantic_hash": ""
   },
   "src/hooks/useCreateTriggerModal.ts": {
@@ -1155,9 +1155,9 @@
     "semantic_hash": ""
   },
   "src/lib/actions/whatsapp.ts": {
-    "mtime": 1781157904.3338883,
-    "ast_hash": "9f8b5bbc06861e74ef7a3ac2e86bd8e2",
-    "semantic_hash": "9f8b5bbc06861e74ef7a3ac2e86bd8e2"
+    "mtime": 1781276597.9747868,
+    "ast_hash": "89d65415ff06f66381cdae108a22cc11",
+    "semantic_hash": ""
   },
   "src/lib/constants/call-outcomes.ts": {
     "mtime": 1781165922.90466,
@@ -1355,9 +1355,9 @@
     "semantic_hash": ""
   },
   "src/lib/services/whatsapp-service.ts": {
-    "mtime": 1781165793.5338244,
-    "ast_hash": "385eb42527f5315e470c0ddd2e7ce460",
-    "semantic_hash": "385eb42527f5315e470c0ddd2e7ce460"
+    "mtime": 1781276577.864656,
+    "ast_hash": "2466a259ee02dd61874ad3bc77c6b0ee",
+    "semantic_hash": ""
   },
   "src/lib/supabase/admin.ts": {
     "mtime": 1779807117.2016406,
@@ -2070,8 +2070,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781276397.0580788,
-    "ast_hash": "40a5e3cee7b0179b849ab72e54fd14b4",
+    "mtime": 1781277775.436563,
+    "ast_hash": "ff11448d0d83429955a4fd95dc395b3a",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -2165,8 +2165,8 @@
     "semantic_hash": ""
   },
   "src/lib/CLAUDE.md": {
-    "mtime": 1781275415.894836,
-    "ast_hash": "a38c10298040bcccf4c5d7a39c054cbf",
+    "mtime": 1781277821.8437607,
+    "ast_hash": "be8f10a62856176784b68f10be654533",
     "semantic_hash": ""
   },
   "src/lib/actions/CLAUDE.md": {
