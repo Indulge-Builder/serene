@@ -475,8 +475,8 @@
     "semantic_hash": ""
   },
   "src/components/layout/Sidebar.tsx": {
-    "mtime": 1781220470.5143228,
-    "ast_hash": "943c3c6386fa0441a24aa6835c51443a",
+    "mtime": 1781221402.714179,
+    "ast_hash": "2416b01a4343c98cdb5d91fa54300e08",
     "semantic_hash": ""
   },
   "src/components/layout/ThemeInitializer.tsx": {
@@ -2070,8 +2070,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781221237.2258134,
-    "ast_hash": "2a2c769e4d58c2fe20977dea0e4d83c1",
+    "mtime": 1781221443.2881641,
+    "ast_hash": "0c3e51be7b2404ed1d6a16673f1cb311",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -2135,8 +2135,8 @@
     "semantic_hash": ""
   },
   "src/components/CLAUDE.md": {
-    "mtime": 1781216661.2015848,
-    "ast_hash": "4aa622299d3c9f0f0754bfcf1d73ab5e",
+    "mtime": 1781221321.4708185,
+    "ast_hash": "2b425d5506e8f412c17c17a49f3010fc",
     "semantic_hash": ""
   },
   "src/components/layout/CLAUDE.md": {
@@ -2710,8 +2710,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/transcription-service.ts": {
-    "mtime": 1781217279.6062584,
-    "ast_hash": "62ec2476814202cd879c1a74e19b225d",
+    "mtime": 1781246474.3023634,
+    "ast_hash": "fc9b0f1ef82f69f93ea7d96b451757d5",
     "semantic_hash": ""
   },
   "src/lib/validations/transcription-schema.ts": {

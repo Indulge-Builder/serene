@@ -4,6 +4,7 @@ import { useState, useTransition, useOptimistic, useRef } from 'react';
 import { Phone, TrendingUp, Leaf, XCircle, Trash2, Trophy, Zap } from 'lucide-react';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import { FAST_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { Button } from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
 import { updateLeadStatus, recordDeal } from '@/lib/actions/leads';
@@ -74,10 +75,155 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
     });
   }
 
+  const isMobile = useMediaQuery(MQ.mobile);
+
   if (!canAct) return null;
 
   const isTerminal = optimisticStatus === 'won' || optimisticStatus === 'lost' || optimisticStatus === 'junk';
   const badgeStyle = LEAD_STATUS_COLORS[optimisticStatus];
+
+  /* Status pill — prominent, anchored left. Status changes transition:
+     colours dissolve via CSS, the label crossfades (M-04 — data never flashes). */
+  const statusPill = (
+    <div
+      style={{
+        display:      'inline-flex',
+        alignItems:   'center',
+        gap:          'var(--space-2)',
+        padding:      '0.375rem var(--space-4)',
+        borderRadius: 'var(--radius-full)',
+        background:   badgeStyle.light,
+        border:       `1px solid ${badgeStyle.border}`,
+        color:        badgeStyle.text,
+        fontFamily:   'var(--font-sans)',
+        fontSize:     'var(--text-sm)',
+        fontWeight:   'var(--weight-semibold)',
+        letterSpacing: 'var(--tracking-wide)',
+        boxShadow:    'var(--shadow-1)',
+        flexShrink:   0,
+        transition:   'background var(--duration-slow) var(--ease-in-out), border-color var(--duration-slow) var(--ease-in-out), color var(--duration-slow) var(--ease-in-out)',
+      }}
+    >
+      {/* Colored dot */}
+      <span
+        style={{
+          width:        '7px',
+          height:       '7px',
+          borderRadius: 'var(--radius-full)',
+          background:   badgeStyle.text,
+          flexShrink:   0,
+          opacity:      0.7,
+          transition:   'background var(--duration-slow) var(--ease-in-out)',
+        }}
+      />
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span
+          key={optimisticStatus}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+        >
+          {LEAD_STATUS_LABELS[optimisticStatus]}
+        </motion.span>
+      </AnimatePresence>
+    </div>
+  );
+
+  // Stage-specific actions for the current status
+  const stageActions: {
+    key:     string;
+    icon:    React.ReactNode;
+    label:   string;
+    variant: ButtonVariant;
+    onClick: () => void;
+  }[] = [];
+
+  if (optimisticStatus === 'touched') {
+    stageActions.push(
+      {
+        key:     'level-up',
+        icon:    <TrendingUp style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />,
+        label:   'Level Up',
+        variant: 'success',
+        onClick: () => fireStatusUpdate('in_discussion'),
+      },
+      {
+        key:     'junk',
+        icon:    <Trash2 style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />,
+        label:   'Junk',
+        variant: 'ghost-danger',
+        onClick: () => setActiveModal('junk'),
+      },
+    );
+  }
+
+  if (optimisticStatus === 'in_discussion') {
+    stageActions.push(
+      {
+        key:     'won',
+        icon:    <Trophy style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />,
+        label:   'Won',
+        variant: 'success',
+        onClick: () => setActiveModal('won'),
+      },
+      {
+        key:     'nurture',
+        icon:    <Leaf style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />,
+        label:   'Nurture',
+        variant: 'accent',
+        onClick: () => setActiveModal('nurturing'),
+      },
+      {
+        key:     'lost',
+        icon:    <XCircle style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />,
+        label:   'Lost',
+        variant: 'danger-outline',
+        onClick: () => setActiveModal('lost'),
+      },
+    );
+  }
+
+  if (optimisticStatus === 'junk') {
+    stageActions.push({
+      key:     'revive',
+      icon:    <Zap style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />,
+      label:   'Revive Lead',
+      variant: 'revive',
+      onClick: () => setActiveModal('revive'),
+    });
+  }
+
+  /* Called — always present; phone icon rings on approach */
+  const calledButton = (
+    <ActionButton
+      icon={<Phone style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
+      label="Called"
+      variant="primary"
+      className="eia-icon-ring-hover"
+      disabled={isPending || isTerminal}
+      onClick={() => {
+        if (lead.status === 'new') {
+          startTransition(async () => {
+            setOptimisticStatus('touched');
+          });
+        }
+        setActiveModal('called');
+      }}
+    />
+  );
+
+  const verticalDivider = (
+    <div
+      aria-hidden="true"
+      style={{
+        width:      '1px',
+        height:     '28px',
+        background: 'var(--theme-paper-border)',
+        flexShrink: 0,
+      }}
+    />
+  );
 
   return (
     <>
@@ -89,164 +235,48 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
           boxShadow:    'var(--shadow-1)',
           padding:      'var(--space-4) var(--space-5)',
           display:      'flex',
-          alignItems:   'center',
           gap:          'var(--space-3)',
-          flexWrap:     'wrap',
+          ...(isMobile
+            ? { flexDirection: 'column' as const, alignItems: 'stretch' as const }
+            : { alignItems: 'center' as const, flexWrap: 'wrap' as const }),
         }}
       >
-        {/* Status pill — prominent, anchored left. Status changes transition:
-            colours dissolve via CSS, the label crossfades (M-04 — data never flashes). */}
-        <div
-          style={{
-            display:      'inline-flex',
-            alignItems:   'center',
-            gap:          'var(--space-2)',
-            padding:      '0.375rem var(--space-4)',
-            borderRadius: 'var(--radius-full)',
-            background:   badgeStyle.light,
-            border:       `1px solid ${badgeStyle.border}`,
-            color:        badgeStyle.text,
-            fontFamily:   'var(--font-sans)',
-            fontSize:     'var(--text-sm)',
-            fontWeight:   'var(--weight-semibold)',
-            letterSpacing: 'var(--tracking-wide)',
-            boxShadow:    'var(--shadow-1)',
-            flexShrink:   0,
-            transition:   'background var(--duration-slow) var(--ease-in-out), border-color var(--duration-slow) var(--ease-in-out), color var(--duration-slow) var(--ease-in-out)',
-          }}
-        >
-          {/* Colored dot */}
-          <span
-            style={{
-              width:        '7px',
-              height:       '7px',
-              borderRadius: 'var(--radius-full)',
-              background:   badgeStyle.text,
-              flexShrink:   0,
-              opacity:      0.7,
-              transition:   'background var(--duration-slow) var(--ease-in-out)',
-            }}
-          />
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.span
-              key={optimisticStatus}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+        {isMobile ? (
+          /* Mobile: pill + Called on the top row, stage actions in an
+             equal-width row below — no orphaned dividers, no wrap drift. */
+          <>
+            <div
+              style={{
+                display:        'flex',
+                alignItems:     'center',
+                justifyContent: 'space-between',
+                gap:            'var(--space-3)',
+              }}
             >
-              {LEAD_STATUS_LABELS[optimisticStatus]}
-            </motion.span>
-          </AnimatePresence>
-        </div>
-
-        {/* Vertical divider after status pill */}
-        <div
-          aria-hidden="true"
-          style={{
-            width:      '1px',
-            height:     '28px',
-            background: 'var(--theme-paper-border)',
-            flexShrink: 0,
-          }}
-        />
-
-        {/* Level Up — only when touched */}
-        {optimisticStatus === 'touched' && (
-          <ActionButton
-            icon={<TrendingUp style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
-            label="Level Up"
-            variant="success"
-            disabled={isPending}
-            onClick={() => fireStatusUpdate('in_discussion')}
-          />
+              {statusPill}
+              {calledButton}
+            </div>
+            {stageActions.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                {stageActions.map(({ key, ...action }) => (
+                  <ActionButton key={key} {...action} disabled={isPending} fluid />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {statusPill}
+            {verticalDivider}
+            {stageActions.map(({ key, ...action }) => (
+              <ActionButton key={key} {...action} disabled={isPending} />
+            ))}
+            {/* Spacer pushes Called to the far right */}
+            <div style={{ flex: 1 }} />
+            {verticalDivider}
+            {calledButton}
+          </>
         )}
-
-        {/* Junk — only when touched */}
-        {optimisticStatus === 'touched' && (
-          <ActionButton
-            icon={<Trash2 style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
-            label="Junk"
-            variant="ghost-danger"
-            disabled={isPending}
-            onClick={() => setActiveModal('junk')}
-          />
-        )}
-
-        {/* Won — only when in_discussion */}
-        {optimisticStatus === 'in_discussion' && (
-          <ActionButton
-            icon={<Trophy style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
-            label="Won"
-            variant="success"
-            disabled={isPending}
-            onClick={() => setActiveModal('won')}
-          />
-        )}
-
-        {/* Nurture — only when in_discussion */}
-        {optimisticStatus === 'in_discussion' && (
-          <ActionButton
-            icon={<Leaf style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
-            label="Nurture"
-            variant="accent"
-            disabled={isPending}
-            onClick={() => setActiveModal('nurturing')}
-          />
-        )}
-
-        {/* Lost — only when in_discussion */}
-        {optimisticStatus === 'in_discussion' && (
-          <ActionButton
-            icon={<XCircle style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
-            label="Lost"
-            variant="danger-outline"
-            disabled={isPending}
-            onClick={() => setActiveModal('lost')}
-          />
-        )}
-
-        {/* Revive — only when junk */}
-        {optimisticStatus === 'junk' && (
-          <ActionButton
-            icon={<Zap style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
-            label="Revive Lead"
-            variant="revive"
-            disabled={isPending}
-            onClick={() => setActiveModal('revive')}
-          />
-        )}
-
-        {/* Spacer pushes Called to the far right */}
-        <div style={{ flex: 1 }} />
-
-        {/* Vertical divider before Called */}
-        <div
-          aria-hidden="true"
-          style={{
-            width:      '1px',
-            height:     '28px',
-            background: 'var(--theme-paper-border)',
-            flexShrink: 0,
-          }}
-        />
-
-        {/* Called — always on the far right; phone icon rings on approach */}
-        <ActionButton
-          icon={<Phone style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
-          label="Called"
-          variant="primary"
-          className="eia-icon-ring-hover"
-          disabled={isPending || isTerminal}
-          onClick={() => {
-            if (lead.status === 'new') {
-              startTransition(async () => {
-                setOptimisticStatus('touched');
-              });
-            }
-            setActiveModal('called');
-          }}
-        />
       </div>
 
       {/* Inline error (e.g. Level Up transition failure) */}
@@ -383,6 +413,7 @@ function ActionButton({
   disabled,
   onClick,
   className,
+  fluid = false,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -390,6 +421,8 @@ function ActionButton({
   disabled: boolean;
   onClick: () => void;
   className?: string;
+  /** Equal-width flex sizing for the mobile stage-action row */
+  fluid?: boolean;
 }) {
   const base = VARIANT_STYLES[variant];
   return (
@@ -406,6 +439,7 @@ function ActionButton({
         height:         '2.25rem',
         paddingLeft:    'var(--space-4)',
         paddingRight:   'var(--space-4)',
+        ...(fluid ? { flex: '1 0 auto' } : null),
         borderRadius:   'var(--radius-sm)',
         fontSize:       'var(--text-sm)',
         fontWeight:     'var(--weight-medium)',

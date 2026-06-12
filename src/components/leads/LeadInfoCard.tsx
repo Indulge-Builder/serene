@@ -160,12 +160,12 @@ export function LeadInfoCard({
       </div>
 
       <div style={{ padding: 'var(--space-5)' }}>
+        {/* Single column below sm — two ~140px columns clip values on phones */}
         <div
+          className="grid grid-cols-1 sm:grid-cols-2"
           style={{
-            display:             'grid',
-            gridTemplateColumns: '1fr 1fr',
-            columnGap:           'var(--space-6)',
-            rowGap:              'var(--space-5)',
+            columnGap: 'var(--space-6)',
+            rowGap:    'var(--space-5)',
           }}
         >
           <InfoRow
@@ -377,6 +377,8 @@ function LeadFieldShell({
             fontSize:   'var(--text-sm)',
             color:      'var(--theme-text-primary)',
             cursor:     disabled ? 'not-allowed' : 'pointer',
+            minWidth:   0,
+            wordBreak:  'break-word',
           }}
         >
           {children}
@@ -545,6 +547,8 @@ function EmailInlineField({
               font:       'inherit',
               textAlign:  'left',
               cursor:     saving ? 'not-allowed' : 'pointer',
+              minWidth:   0,
+              maxWidth:   '100%',
             }}
           >
             <FieldSaveFeedback saving={saving} success={success} error={null} />

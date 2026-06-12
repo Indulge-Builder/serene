@@ -6,6 +6,16 @@ All notable changes to the Eia platform are recorded here in reverse chronologic
 
 ---
 
+## 2026-06-12 — Responsive: lead dossier mobile fixes (status panel + info card)
+
+- **`StatusActionPanel` mobile layout:** the single wrap-flex row (pill · divider · stage buttons · `flex: 1` spacer · divider · Called) wrapped arbitrarily on phones — orphaned dividers, drifting Called button. Now branches on `useMediaQuery(MQ.mobile)`: below 768px the status pill and Called button share a top row (`space-between`), stage actions (Level Up / Junk / Won / Nurture / Lost / Revive) render in their own wrap row below with `flex: 1 0 auto` equal-width sizing (new `fluid` prop on the private `ActionButton`); dividers and spacer are desktop-only. Desktop markup unchanged.
+- **`LeadInfoCard` value clipping:** the info grid was hardcoded `1fr 1fr` at every viewport — ~140px columns clipped emails/campaign values on phones (card has `overflow: hidden`). Now `grid-cols-1 sm:grid-cols-2`. `LeadFieldShell`'s value span gains the same overflow guards `InfoRow` already had (`minWidth: 0` + `wordBreak: break-word`), and the email trigger button gets `minWidth: 0` + `maxWidth: 100%` so long addresses wrap instead of overflowing.
+- **Verification:** `tsc --noEmit` clean.
+
+**Files:** `src/components/leads/StatusActionPanel.tsx`, `src/components/leads/LeadInfoCard.tsx`.
+
+---
+
 ## 2026-06-12 — Sidebar logo links to dashboard
 
 - **`Sidebar` logo is clickable:** the Eia mark in the sidebar header is wrapped in a `Link` to `/dashboard` with an `aria-label` and a subtle hover opacity fade.
