@@ -49,106 +49,82 @@ export function ForgotPasswordForm() {
           </h1>
         </div>
 
-        {state?.success ? (
-          /* ── Success state ── */
-          <div className="flex flex-col items-center gap-4 text-center">
+        {/* ── Request form ── */}
+        <form action={action} noValidate>
+          <div className="flex flex-col gap-4">
             <p
               style={{
                 fontSize: "var(--text-sm)",
                 lineHeight: "var(--leading-relaxed)",
                 color: "var(--theme-sidebar-text)",
+                marginBottom: "var(--space-2)",
+                textAlign: "center",
               }}
             >
-              If an account exists for that address, we&apos;ve sent a reset
-              link. Check your inbox and follow the instructions.
+              Enter your registered email and we&apos;ll send you a 6-digit reset
+              code.
             </p>
-            <Link
-              href="/login"
-              className="serene-auth-link"
-              style={{ marginTop: "var(--space-2)" }}
-            >
-              Back to sign in
-            </Link>
-          </div>
-        ) : (
-          /* ── Request form ── */
-          <form action={action} noValidate>
-            <div className="flex flex-col gap-4">
-              <p
-                style={{
-                  fontSize: "var(--text-sm)",
-                  lineHeight: "var(--leading-relaxed)",
-                  color: "var(--theme-sidebar-text)",
-                  marginBottom: "var(--space-2)",
-                  textAlign: "center",
-                }}
+
+            {/* Email */}
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="fp-email"
+                className="label-micro"
+                style={{ color: "var(--theme-sidebar-text)" }}
               >
-                Please enter your registered email.
-              </p>
-
-              {/* Email */}
-              <div className="flex flex-col gap-1.5">
-                <label
-                  htmlFor="fp-email"
-                  className="label-micro"
-                  style={{ color: "var(--theme-sidebar-text)" }}
-                >
-                  Email
-                </label>
-                <input
-                  id="fp-email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="you@indulge.com"
-                  className="serene-input-auth"
-                />
-              </div>
-
-              {/* Error */}
-              {state?.error && (
-                <p
-                  role="alert"
-                  style={{
-                    fontSize: "var(--text-xs)",
-                    lineHeight: "var(--leading-normal)",
-                    color: "var(--color-danger-dark-text)",
-                    backgroundColor: "var(--color-danger-dark-fill)",
-                    border: "1px solid var(--color-danger-dark-border)",
-                    borderRadius: "var(--radius-xs)",
-                    padding: "var(--space-2) var(--space-3)",
-                  }}
-                >
-                  {state.error}
-                </p>
-              )}
-
-              {/* Submit */}
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={isPending}
-                loading={isPending}
-                style={{
-                  marginTop: "var(--space-2)",
-                  width: "100%",
-                  boxShadow: "var(--shadow-accent-glow)",
-                }}
-              >
-                {isPending ? "Sending…" : "Send Reset Link"}
-              </Button>
+                Email
+              </label>
+              <input
+                id="fp-email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                placeholder="you@indulge.com"
+                className="serene-input-auth"
+              />
             </div>
-          </form>
-        )}
+
+            {/* Error */}
+            {state?.error && (
+              <p
+                role="alert"
+                style={{
+                  fontSize: "var(--text-xs)",
+                  lineHeight: "var(--leading-normal)",
+                  color: "var(--color-danger-dark-text)",
+                  backgroundColor: "var(--color-danger-dark-fill)",
+                  border: "1px solid var(--color-danger-dark-border)",
+                  borderRadius: "var(--radius-xs)",
+                  padding: "var(--space-2) var(--space-3)",
+                }}
+              >
+                {state.error}
+              </p>
+            )}
+
+            {/* Submit */}
+            <Button
+              variant="primary"
+              type="submit"
+              disabled={isPending}
+              loading={isPending}
+              style={{
+                marginTop: "var(--space-2)",
+                width: "100%",
+                boxShadow: "var(--shadow-accent-glow)",
+              }}
+            >
+              {isPending ? "Sending…" : "Send Reset Code"}
+            </Button>
+          </div>
+        </form>
 
         {/* Back to sign in */}
-        {!state?.success && (
-          <div className="flex justify-center mt-6">
-            <Link href="/login" className="serene-auth-link">
-              Back to sign in
-            </Link>
-          </div>
-        )}
+        <div className="flex justify-center mt-6">
+          <Link href="/login" className="serene-auth-link">
+            Back to sign in
+          </Link>
+        </div>
       </div>
     </div>
   );

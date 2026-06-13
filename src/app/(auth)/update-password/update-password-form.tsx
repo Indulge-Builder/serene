@@ -5,52 +5,124 @@ import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import Image from "next/image";
 import { PasswordStrengthBar } from "@/components/ui/PasswordStrengthBar";
-import { updatePasswordAction } from "@/lib/actions/auth";
+import { updatePasswordAction, verifyResetOtpAction } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/Button";
 
-export function UpdatePasswordForm() {
+export function UpdatePasswordForm({ email }: { email: string }) {
+  // Two steps: (1) enter the 6-digit code from the email → verifyOtp establishes
+  // the session; (2) set the new password → updateUser on that session.
+  const [verified, setVerified] = useState(false);
+
+  if (!verified) {
+    return <CodeStep email={email} onVerified={() => setVerified(true)} />;
+  }
+
+  return <PasswordStep />;
+}
+
+// ─── Step 1: enter the 6-digit code ──────────────────────
+
+function CodeStep({
+  email,
+  onVerified,
+}: {
+  email: string;
+  onVerified: () => void;
+}) {
+  const [state, action, isPending] = useActionState(
+    async (
+      prev: { success: boolean; error: string | null } | null,
+      formData: FormData,
+    ) => {
+      const result = await verifyResetOtpAction(prev, formData);
+      if (result.success) onVerified();
+      return result;
+    },
+    null,
+  );
+
+  return (
+    <AuthCardShell>
+      <form action={action} noValidate>
+        <input type="hidden" name="email" value={email} />
+        <div className="flex flex-col gap-4">
+          <p
+            style={{
+              fontSize: "var(--text-sm)",
+              lineHeight: "var(--leading-relaxed)",
+              color: "var(--theme-sidebar-text)",
+              marginBottom: "var(--space-2)",
+              textAlign: "center",
+            }}
+          >
+            We sent a 6-digit code to{" "}
+            <span style={{ color: "var(--theme-canvas-text)" }}>{email}</span>.
+            Enter it below to continue.
+          </p>
+
+          {/* Code */}
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="up-code"
+              className="label-micro"
+              style={{ color: "var(--theme-sidebar-text)" }}
+            >
+              Reset Code
+            </label>
+            <input
+              id="up-code"
+              name="token"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="123456"
+              className="serene-input-auth"
+              style={{
+                letterSpacing: "0.4em",
+                textAlign: "center",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            />
+          </div>
+
+          {state?.error && <ErrorBanner message={state.error} />}
+
+          <Button
+            variant="primary"
+            type="submit"
+            disabled={isPending}
+            loading={isPending}
+            style={{
+              marginTop: "var(--space-2)",
+              width: "100%",
+              boxShadow: "var(--shadow-accent-glow)",
+            }}
+          >
+            {isPending ? "Verifying…" : "Verify Code"}
+          </Button>
+        </div>
+      </form>
+
+      <div className="flex justify-center mt-6">
+        <Link href="/forgot-password" className="serene-auth-link">
+          Request a new code
+        </Link>
+      </div>
+    </AuthCardShell>
+  );
+}
+
+// ─── Step 2: set the new password ────────────────────────
+
+function PasswordStep() {
   const [state, action, isPending] = useActionState(updatePasswordAction, null);
   const [showNew, setShowNew] = useState(false);
   const [newPassword, setNewPassword] = useState("");
 
   return (
-    <div
-      className="relative w-full mx-4"
-      style={{ maxWidth: "26rem", zIndex: "var(--z-raised)" }}
-    >
-      <div
-        className="serene-auth-card px-6 sm:px-8"
-        style={{ paddingTop: "var(--space-10)", paddingBottom: "var(--space-10)" }}
-      >
-        {/* Unified brand header */}
-        <div className="flex flex-col items-center gap-3 mb-10">
-          <div className="serene-auth-logo-medallion">
-            <Image
-              src="/logo.webp"
-              alt="Serene"
-              width={48}
-              height={48}
-              priority
-              style={{ borderRadius: "var(--radius-sm)" }}
-            />
-          </div>
-          <h1
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: "var(--text-3xl)",
-              fontWeight: "var(--weight-light)",
-              letterSpacing: "var(--tracking-tighter)",
-              lineHeight: "var(--leading-tight)",
-              color: "var(--theme-canvas-text)",
-              textAlign: "center",
-              margin: 0,
-            }}
-          >
-            Serene<span className="page-title-dot">.</span>
-          </h1>
-        </div>
-
-        {state?.success ? (
+    <AuthCardShell>
+      {state?.success ? (
           /* ── Success state ── */
           <div className="flex flex-col items-center gap-4 text-center">
             <p
@@ -153,23 +225,7 @@ export function UpdatePasswordForm() {
                 </div>
               </div>
 
-              {/* Error */}
-              {state?.error && (
-                <p
-                  role="alert"
-                  style={{
-                    fontSize: "var(--text-xs)",
-                    lineHeight: "var(--leading-normal)",
-                    color: "var(--color-danger-dark-text)",
-                    backgroundColor: "var(--color-danger-dark-fill)",
-                    border: "1px solid var(--color-danger-dark-border)",
-                    borderRadius: "var(--radius-xs)",
-                    padding: "var(--space-2) var(--space-3)",
-                  }}
-                >
-                  {state.error}
-                </p>
-              )}
+              {state?.error && <ErrorBanner message={state.error} />}
 
               {/* Submit */}
               <Button
@@ -188,8 +244,72 @@ export function UpdatePasswordForm() {
             </div>
           </form>
         )}
+    </AuthCardShell>
+  );
+}
+
+// ─── Shared card shell + chrome ──────────────────────────
+
+function AuthCardShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="relative w-full mx-4"
+      style={{ maxWidth: "26rem", zIndex: "var(--z-raised)" }}
+    >
+      <div
+        className="serene-auth-card px-6 sm:px-8"
+        style={{ paddingTop: "var(--space-10)", paddingBottom: "var(--space-10)" }}
+      >
+        {/* Unified brand header */}
+        <div className="flex flex-col items-center gap-3 mb-10">
+          <div className="serene-auth-logo-medallion">
+            <Image
+              src="/logo.webp"
+              alt="Serene"
+              width={48}
+              height={48}
+              priority
+              style={{ borderRadius: "var(--radius-sm)" }}
+            />
+          </div>
+          <h1
+            style={{
+              fontFamily: "var(--font-serif)",
+              fontSize: "var(--text-3xl)",
+              fontWeight: "var(--weight-light)",
+              letterSpacing: "var(--tracking-tighter)",
+              lineHeight: "var(--leading-tight)",
+              color: "var(--theme-canvas-text)",
+              textAlign: "center",
+              margin: 0,
+            }}
+          >
+            Serene<span className="page-title-dot">.</span>
+          </h1>
+        </div>
+
+        {children}
       </div>
     </div>
+  );
+}
+
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <p
+      role="alert"
+      style={{
+        fontSize: "var(--text-xs)",
+        lineHeight: "var(--leading-normal)",
+        color: "var(--color-danger-dark-text)",
+        backgroundColor: "var(--color-danger-dark-fill)",
+        border: "1px solid var(--color-danger-dark-border)",
+        borderRadius: "var(--radius-xs)",
+        padding: "var(--space-2) var(--space-3)",
+      }}
+    >
+      {message}
+    </p>
   );
 }
 

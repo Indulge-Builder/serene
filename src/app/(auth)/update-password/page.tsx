@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { createClient } from "@/lib/supabase/server";
 import { UpdatePasswordForm } from "./update-password-form";
 
 export const metadata: Metadata = {
@@ -11,24 +10,25 @@ export const metadata: Metadata = {
 export default async function UpdatePasswordPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ email?: string }>;
 }) {
   const params = await searchParams;
 
-  if (params.error) {
-    return <InvalidLinkCard expired />;
+  // OTP-code recovery: the user arrives here WITHOUT a session — they establish
+  // it by entering the 6-digit code from their email (step 1 of the form). The
+  // email is carried from /forgot-password as a query param so the verifyOtp
+  // call has it; if it's missing, the form falls back to asking for the email.
+  // The old session-gate (getUser → InvalidLinkCard) is gone: there is no link
+  // to expire, so there is no expired-link state on this page anymore.
+  if (!params.email) {
+    return <MissingEmailCard />;
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  return <UpdatePasswordForm email={params.email} />;
+}
 
-  if (!user) {
-    return <InvalidLinkCard />;
-  }
-
-  return <UpdatePasswordForm />;
+function MissingEmailCard() {
+  return <InvalidLinkCard />;
 }
 
 function InvalidLinkCard({ expired = false }: { expired?: boolean }) {

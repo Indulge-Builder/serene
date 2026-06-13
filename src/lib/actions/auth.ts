@@ -5,7 +5,11 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { formErrors } from "@/lib/validations/form-errors";
-import { forgotPasswordSchema, updatePasswordSchema } from "@/lib/validations/auth";
+import {
+  forgotPasswordSchema,
+  updatePasswordSchema,
+  verifyResetOtpSchema,
+} from "@/lib/validations/auth";
 
 const loginSchema = z.object({
   email:    z.string().email("email_invalid"),
@@ -64,14 +68,52 @@ export async function requestPasswordResetAction(
   }
 
   const supabase = await createClient();
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
   // Always return success — never reveal whether the email exists (Rule S-09).
-  // redirectTo receives token_hash + type=recovery params from Supabase — no
-  // PKCE code_verifier cookie required, so the link works from any browser/device.
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${siteUrl}/api/auth/callback?next=/update-password`,
+  //
+  // OTP-code recovery (not a magic link): the email renders {{ .Token }}, a
+  // 6-digit code the user types on /update-password. No verifying URL ships in
+  // the email, so corporate inbox link-scanners (Google Workspace / Safe Links)
+  // can't pre-fetch and burn the one-time token. `redirectTo` is intentionally
+  // omitted — there is no link to follow. Verification happens in
+  // verifyResetOtpAction via verifyOtp({ type: 'recovery' }).
+  await supabase.auth.resetPasswordForEmail(parsed.data.email);
+
+  // Carry the email forward so the code-entry step (step 1 of /update-password)
+  // can run verifyOtp without asking for it again. Whether or not the address
+  // exists, we always advance — never reveal account existence (Rule S-09).
+  redirect(
+    `/update-password?email=${encodeURIComponent(parsed.data.email)}`,
+  );
+}
+
+export async function verifyResetOtpAction(
+  _prevState: { success: boolean; error: string | null } | null,
+  formData: FormData,
+): Promise<{ success: boolean; error: string | null }> {
+  const parsed = verifyResetOtpSchema.safeParse({
+    email: formData.get("email"),
+    token: formData.get("token"),
   });
+
+  if (!parsed.success) {
+    return { success: false, error: formErrors.otpInvalid };
+  }
+
+  const supabase = await createClient();
+
+  // Redeeming the recovery OTP establishes the auth session (sets the cookies),
+  // which is what updatePasswordAction's updateUser() then relies on. A wrong or
+  // expired code returns an error; never reveal which (Rule S-09).
+  const { error } = await supabase.auth.verifyOtp({
+    email: parsed.data.email,
+    token: parsed.data.token,
+    type: "recovery",
+  });
+
+  if (error) {
+    return { success: false, error: formErrors.otpInvalid };
+  }
 
   return { success: true, error: null };
 }

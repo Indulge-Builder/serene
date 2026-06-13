@@ -12,6 +12,23 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-13 — Fix: password reset switched from magic link to 6-digit OTP code (corporate inbox link-scanners burned the one-time token)
+
+**Symptom:** clicking the reset link in the email always landed on "this link has expired," even within seconds of receiving it. Supabase **auth logs proved the cause**: the recovery email was sent at `12:51:15Z`, and `/verify` returned `403 otp_expired` / `"One-time token not found"` at `12:51:24Z` — 9 seconds later, **from a different IP than the request**. A one-time token can't expire in 9 seconds (recovery tokens last ~1h); `"not found"` means it was already redeemed once. That is the signature of an email **link-scanner** (Google Workspace / Microsoft Safe Links scanning links in the `@indulge.global` inbox) issuing a GET that consumed the single-use token before the human click arrived. The callback route (`/api/auth/callback`) verifying the token on a bare GET made every prefetch fatal.
+
+**Fix — OTP code instead of a magic link.** Nothing consumable now ships in the email:
+
+- `requestPasswordResetAction` (`src/lib/actions/auth.ts`) — dropped `redirectTo` from `resetPasswordForEmail`; there is no longer a verifying URL in the email. On success it `redirect`s to `/update-password?email=<addr>` (the address is carried forward, never revealing account existence — Rule S-09 still holds: we always advance).
+- New `verifyResetOtpAction` — `verifyOtp({ email, token, type: 'recovery' })` runs **only on explicit submit** of the typed 6-digit code, establishing the session that `updatePasswordAction.updateUser()` then uses. A scanner's GET can't reach it.
+- `update-password/page.tsx` — removed the old session-gate (`getUser()` → `InvalidLinkCard`). The user now arrives **without** a session and establishes it by entering the code. The page requires only the `email` query param; the expired-link state is gone (there is no link to expire).
+- `update-password-form.tsx` — now a **two-step** client form: `CodeStep` (6-digit code entry → `verifyResetOtpAction`) → `PasswordStep` (the existing new-password + strength-bar UI). Shared card chrome extracted to `AuthCardShell` + `ErrorBanner` (R-01 — one shell, both steps).
+- `forgot-password-form.tsx` — copy updated ("Send Reset Code"), dead success-state branch removed (the action redirects now).
+- Validation: `verifyResetOtpSchema` (email + `^\d{6}$` token) in `validations/auth.ts`; `formErrors.otpInvalid` added. Both `verifyOtp` failure modes map to the same `otpInvalid` copy — never reveal which check failed.
+
+**Supabase dashboard change required (not in code):** the **Reset Password** email template must render `{{ .Token }}` (the 6-digit code) instead of the `{{ .TokenHash }}` link. The `/api/auth/callback` route is now unused by the recovery flow (still serves any future magic-link/PKCE callback) and was left in place.
+
+---
+
 ## 2026-06-13 — Platform rename: Eia → Serene (software), Lia/Elia → Elaya (AI presence)
 
 The platform is renamed from **Eia** to **Serene**; the AI presence — which had two legacy names, the original design-vision name **Lia** and the roadmap name **Elia** — is unified under its shipped name **Elaya** (Gia, the lead module, is unchanged). Every occurrence across code, CSS, config, docs, and persistent client-side state was read and reclassified before editing — no blind find-and-replace — and matched on word boundaries so substring collisions (`alias`, `media`, `reliable`, `compliance`) and the already-correct `Gia`/`elaya_*` were left untouched. **This changelog's dated entries below are intentionally NOT rewritten** — on the date each was written the platform was named Eia / the AI was Lia or Elia, and the changelog is an append-only log (the same non-negotiable that governs the `*_activities` tables). Only the document title + framing line and new entries use the current names.
