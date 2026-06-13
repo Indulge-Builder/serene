@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { UpdatePasswordForm } from "./update-password-form";
 
 export const metadata: Metadata = {
-  title: "Set New Password — Indulge OS",
+  title: "Set New Password — Serene",
 };
 
 export default async function UpdatePasswordPage({
@@ -46,7 +46,7 @@ function InvalidLinkCard({ expired = false }: { expired?: boolean }) {
           <div className="serene-auth-logo-medallion">
             <Image
               src="/logo.webp"
-              alt="Indulge"
+              alt="Serene"
               width={48}
               height={48}
               style={{ borderRadius: "var(--radius-sm)" }}
@@ -64,7 +64,7 @@ function InvalidLinkCard({ expired = false }: { expired?: boolean }) {
               margin: 0,
             }}
           >
-            Indulge OS<span className="page-title-dot">.</span>
+            Serene<span className="page-title-dot">.</span>
           </h1>
         </div>
 

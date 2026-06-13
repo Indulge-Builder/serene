@@ -11,7 +11,7 @@ import { ROLE_LABELS } from "@/lib/constants/roles";
 import { DOMAIN_LABELS } from "@/lib/constants/domains";
 import { formatDate } from "@/lib/utils/dates";
 
-export const metadata = { title: "Profile — Indulge OS" };
+export const metadata = { title: "Profile — Serene" };
 
 export default async function ProfilePage() {
   const profile = await getCurrentProfile();

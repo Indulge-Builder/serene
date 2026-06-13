@@ -25,7 +25,7 @@ export function LoginForm() {
           <div className="serene-auth-logo-medallion">
             <Image
               src="/logo.webp"
-              alt="Indulge"
+              alt="Serene"
               width={48}
               height={48}
               priority
@@ -44,7 +44,7 @@ export function LoginForm() {
               margin: 0,
             }}
           >
-            Indulge OS<span className="page-title-dot">.</span>
+            Serene<span className="page-title-dot">.</span>
           </h1>
         </div>
 
