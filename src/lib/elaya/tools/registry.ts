@@ -10,15 +10,23 @@
 //   3. Every tool result passes the PII gateway (maskPii) before serialization.
 //   4. A tool name outside the principal's toolset is refused at dispatch.
 //
-// Adding a tool: define schema + run() below, add to TOOL_REGISTRY, add the name
-// to the role toolsets it belongs to. Phase 2 write-tools will live in a separate
-// module gated behind elaya_actions proposals — never add a mutating tool here.
+// Adding a READ tool: define schema + run() below, add to TOOL_REGISTRY, add the name
+// to the role toolsets it belongs to. WRITE tools live in a separate module
+// (write-registry.ts) — never add a mutating tool here. This file owns the SINGLE
+// dispatch path (executeTool): it consults both the read registry below and the write
+// registry, so the brain has one entry point and one masking/truncation/try-catch path.
 
 import { z } from 'zod';
 import type { ElayaPrincipal } from '@/lib/elaya/principal';
 import { maskPii } from '@/lib/elaya/pii';
 import type { PiiMaskingDepth } from '@/lib/services/llm-providers-service';
 import type { LlmToolDefinition } from '@/lib/elaya/provider';
+import {
+  WRITE_TOOL_REGISTRY,
+  writeToolsForRole,
+  type ElayaWriteToolName,
+  type WriteToolContext,
+} from '@/lib/elaya/tools/write-registry';
 import { getLeadsByRole, getLeadBySlug, getLeadNotesFull } from '@/lib/services/leads-service';
 import { getDealsByRole } from '@/lib/services/deals-service';
 import { getGiaTasksForUser, getPersonalTasks } from '@/lib/services/tasks-service';
@@ -42,7 +50,7 @@ const PERIODS = ['today', 'this_week', 'this_month', 'last_month'] as const;
 // Tool shape
 // ─────────────────────────────────────────────
 
-export type ElayaToolName =
+export type ElayaReadToolName =
   | 'search_leads'
   | 'get_lead_details'
   | 'get_my_tasks'
@@ -50,8 +58,11 @@ export type ElayaToolName =
   | 'get_performance_snapshot'
   | 'get_helpdesk_content';
 
+/** Every tool name the principal may carry — read tools (this file) + write tools. */
+export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
+
 type ElayaTool = {
-  name: ElayaToolName;
+  name: ElayaReadToolName;
   description: string;
   schema: z.ZodTypeAny;
   /** JSON Schema mirror of `schema` — handed to the provider adapter. */
@@ -352,22 +363,34 @@ const ALL_TOOLS = [
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));
 
-const STAFF_TOOLSET: readonly ElayaToolName[] = ALL_TOOLS.map((t) => t.name);
+const READ_TOOLSET: readonly ElayaReadToolName[] = ALL_TOOLS.map((t) => t.name);
+
+// Per-role toolset = all read tools + the write tools that role is permitted (Phase 2).
+// Read access is uniform across staff today; write access is role-gated in the write
+// registry (agents do NOT get reassign_lead). Guests get nothing.
+function staffToolset(role: UserRole): readonly ElayaToolName[] {
+  return [...READ_TOOLSET, ...writeToolsForRole(role)];
+}
 
 export const TOOLSET_BY_ROLE: Record<UserRole, readonly ElayaToolName[]> = {
-  founder: STAFF_TOOLSET,
-  admin:   STAFF_TOOLSET,
-  manager: STAFF_TOOLSET,
-  agent:   STAFF_TOOLSET,
+  founder: staffToolset('founder'),
+  admin:   staffToolset('admin'),
+  manager: staffToolset('manager'),
+  agent:   staffToolset('agent'),
   guest:   [], // guests converse but get zero data access
 };
 
-/** Provider-neutral definitions for the principal's permitted tools. */
+/** Provider-neutral definitions for the principal's permitted tools (read + write). */
 export function getToolDefinitionsForPrincipal(principal: ElayaPrincipal): LlmToolDefinition[] {
   return principal.toolset
-    .map((name) => TOOL_REGISTRY.get(name))
-    .filter((t): t is ElayaTool => Boolean(t))
-    .map((t) => ({ name: t.name, description: t.description, inputSchema: t.jsonSchema }));
+    .map((name): LlmToolDefinition | null => {
+      const read = TOOL_REGISTRY.get(name);
+      if (read) return { name: read.name, description: read.description, inputSchema: read.jsonSchema };
+      const write = WRITE_TOOL_REGISTRY.get(name);
+      if (write) return { name: write.name, description: write.description, inputSchema: write.jsonSchema };
+      return null;
+    })
+    .filter((d): d is LlmToolDefinition => d !== null);
 }
 
 export type ElayaToolExecution = {
@@ -376,21 +399,30 @@ export type ElayaToolExecution = {
 };
 
 /**
- * Execute one tool call as the principal. Refusals/validation failures return
- * a model-facing message (isError) — they never throw out of this function.
+ * Execute one tool call as the principal — THE single dispatch path for read AND write
+ * tools. Refusals/validation failures return a model-facing message (isError) — they
+ * never throw out of this function. `ctx` (conversation/channel) is threaded to write
+ * tools so they can record audit/proposal rows; read tools ignore it.
  */
 export async function executeTool(
   principal: ElayaPrincipal,
   name: string,
   rawInput: Record<string, unknown>,
   maskingDepth: PiiMaskingDepth,
+  ctx: WriteToolContext,
 ): Promise<ElayaToolExecution> {
-  const tool = TOOL_REGISTRY.get(name);
-  if (!tool || !principal.toolset.includes(tool.name as ElayaToolName)) {
+  // Toolset membership is the hard gate — a name outside the principal's toolset is
+  // refused at dispatch (this is what excludes reassign_lead for agents).
+  const permitted = principal.toolset.includes(name as ElayaToolName);
+
+  const readTool = TOOL_REGISTRY.get(name);
+  const writeTool = WRITE_TOOL_REGISTRY.get(name);
+  if ((!readTool && !writeTool) || !permitted) {
     return { content: `Tool '${name}' is not available to this user.`, isError: true };
   }
 
-  const parsed = tool.schema.safeParse(rawInput);
+  const schema = readTool?.schema ?? writeTool!.schema;
+  const parsed = schema.safeParse(rawInput);
   if (!parsed.success) {
     return {
       content: `Invalid input for '${name}': ${parsed.error.issues
@@ -401,7 +433,9 @@ export async function executeTool(
   }
 
   try {
-    const result = await tool.run(principal, parsed.data as Record<string, unknown>);
+    const result = readTool
+      ? await readTool.run(principal, parsed.data as Record<string, unknown>)
+      : await writeTool!.run(principal, parsed.data as Record<string, unknown>, ctx);
     const masked = maskPii(result, maskingDepth);
     let serialized = JSON.stringify(masked);
     if (serialized.length > TOOL_RESULT_MAX_CHARS) {
@@ -411,6 +445,6 @@ export async function executeTool(
   } catch (e) {
     // D-05: never log prompt/tool payloads — tool name only.
     console.error(`[elaya-tools] '${name}' failed:`, e instanceof Error ? e.message : e);
-    return { content: `Tool '${name}' failed. Tell the user the data could not be fetched right now.`, isError: true };
+    return { content: `Tool '${name}' failed. Tell the user it could not be completed right now.`, isError: true };
   }
 }

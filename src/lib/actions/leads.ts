@@ -4,10 +4,14 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { redis } from "@/lib/redis";
-import { REDIS_KEYS } from "@/lib/constants/redis-keys";
 import { requireProfile } from "@/lib/actions/_auth";
 import { invalidateLeadCaches } from "@/lib/services/lead-cache";
+import {
+  addLeadNoteCore,
+  updateLeadStatusCore,
+  assignLeadCore,
+  createLeadTaskCore,
+} from "@/lib/services/lead-mutations";
 import { extractServiceInterests } from "@/lib/services/lead-ingestion";
 import {
   AddCallNoteSchema,
@@ -36,17 +40,13 @@ import {
   type LeadActivityWithActor,
   type LeadNoteWithAuthor,
 } from "@/lib/services/leads-service";
-import { createNotification } from "@/lib/services/notifications-service";
 import {
   scheduleSlaTimersForLead,
-  cancelSlaTimersForLead,
   refreshActivitySlaTimers,
   armCadenceForOutcome,
 } from "@/lib/actions/sla";
-import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
-import { scheduleTaskReminder } from "@/trigger/task-reminders";
 import type { ActionResult, Profile } from "@/lib/types/index";
-import type { LeadStatus, AppDomain, Task } from "@/lib/types/database";
+import type { Task } from "@/lib/types/database";
 
 // ─────────────────────────────────────────────
 // Action: addLeadCallNote
@@ -216,97 +216,27 @@ export async function updateLeadStatus(
 
   if (!hasAccess) return { data: null, error: formErrors.unauthorized };
 
-  // 4. All DB writes in one atomic round-trip via RPC
-  const admin = createAdminClient();
-  const now = new Date().toISOString();
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rpcResult, error: rpcError } = await (admin as any).rpc(
-    "update_lead_status",
-    {
-      p_lead_id: leadId,
-      p_actor_id: caller.id,
-      p_status: status,
-      p_reason: reason ?? null,
-      p_now: now,
-    },
-  );
-
-  if (rpcError || !rpcResult) return { data: null, error: formErrors.generic };
-
-  const result = rpcResult as {
-    changed: boolean;
-    old_status?: string;
-    new_status?: string;
-    assigned_to?: string | null;
-    domain?: string;
-    first_name?: string | null;
-    last_name?: string | null;
-  };
-
-  // RPC returned early — status was already the same
-  if (!result.changed) return { data: { leadId }, error: null };
-
-  // Redis invalidation — awaited so the next dossier load never reads stale data
   const slug = lead.slug as string | null;
-  await invalidateLeadCaches(
-    "updateLeadStatus",
-    { leadId, slug, domain: lead.domain as string },
-    { row: true, activities: true, lists: true, dashboard: true },
-  );
 
-  // Invalidate dossier + list RSC cache
+  // Shared mutation core (RPC + awaited invalidation + won-notify fan-out + SLA branch).
+  // Same core the Elaya update_lead_status tool executes on confirmation.
+  const core = await updateLeadStatusCore(
+    { userId: caller.id, role: caller.role, domain: caller.domain, fullName: caller.full_name },
+    { leadId, status, reason: reason ?? null },
+    { slug, domain: lead.domain as string },
+  );
+  if (!core.ok) return { data: null, error: formErrors.generic };
+
+  // RPC returned early — status was already the same. No RSC cache work needed.
+  if (!core.result.changed) return { data: { leadId }, error: null };
+
+  // Invalidate dossier + list RSC cache (request-context only — stays in the action,
+  // not in the core; the Elaya/WhatsApp path has no RSC page to revalidate).
   revalidatePath(`/leads/${slug ?? leadId}`);
   revalidatePath("/leads");
 
-  const { assigned_to: assignedTo, domain, first_name, last_name } = result;
-
-  // 5. Won: notify all active managers/admins/founders in the domain
-  if (status === "won") {
-    const displayName = last_name
-      ? `${first_name ?? "A lead"} ${last_name}`
-      : (first_name ?? "A lead");
-
-    const { data: managers } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("domain", domain as AppDomain)
-      .in("role", ["manager", "admin", "founder"])
-      .eq("is_active", true);
-
-    if (managers && managers.length > 0) {
-      await Promise.all(
-        managers.map((m: { id: string }) =>
-          createNotification({
-            recipient_id: m.id,
-            type: "lead_won",
-            title: `Lead won — ${displayName}`,
-            body: `Marked won by ${caller.full_name}`,
-            action_url: `/leads/${leadId}`,
-          }),
-        ),
-      );
-    }
-  }
-
-  // 6. SLA side-effects (fire-and-forget, non-fatal — cannot go in the RPC)
-  if (TERMINAL_SLA_STATUSES.has(status)) {
-    cancelSlaTimersForLead({ leadId }).catch(() => {});
-  } else if (assignedTo) {
-    scheduleSlaTimersForLead({
-      leadId,
-      status,
-      assignedAt: now,
-      assignedTo,
-      domain: domain as string,
-    }).catch(() => {});
-  }
-
   return { data: { leadId }, error: null };
 }
-
-// Terminal statuses for SLA purposes (no new timers)
-const TERMINAL_SLA_STATUSES = new Set<LeadStatus>(["won", "lost", "junk"]);
 
 // ─────────────────────────────────────────────
 // Action: assignLead (manual reassign)
@@ -343,59 +273,42 @@ export async function assignLead(
 
   if (!existingLead) return { data: null, error: "Lead not found." };
 
-  // Rule S-06 — a manager may only reassign leads inside their own domain,
-  // and only to an active agent of the lead's domain (audit F-3).
-  // Admin/founder remain unrestricted.
-  if (caller.role === "manager") {
-    if (existingLead.domain !== caller.domain) {
-      return { data: null, error: formErrors.unauthorized };
-    }
-    if (
-      !assignedAgent ||
-      assignedAgent.domain !== existingLead.domain ||
-      !assignedAgent.is_active
-    ) {
-      return {
-        data: null,
-        error: "The selected user is not available in this domain.",
-      };
-    }
-  }
-
-  const assignedAgentName = assignedAgent?.full_name ?? "Unknown Agent";
-
-  // 4. Reassign
-  const assignedAt = new Date().toISOString();
-  await admin
-    .from("leads")
-    .update({
-      assigned_to: agentId,
-      assigned_at: assignedAt,
-      status_changed_at: assignedAt,
-      last_activity_at: assignedAt,
-    })
-    .eq("id", leadId);
-
-  // 5. Log agent_assigned activity
-  await admin.from("lead_activities").insert({
-    lead_id: leadId,
-    actor_id: caller.id,
-    action_type: "agent_assigned",
-    details: { assigned_to: agentId, method: "manual" },
-  });
-
-  // Redis invalidation — awaited so the next load never reads stale data
-  await invalidateLeadCaches(
-    "assignLead",
-    { leadId, slug: existingLead.slug as string | null, domain: existingLead.domain as string },
-    { row: true, activities: true, lists: true },
+  // Shared mutation core: S-06 manager domain-scope check + reassign + activity +
+  // awaited invalidation. Returns the notify input — the action applies after().
+  // Same core the Elaya reassign_lead tool executes on confirmation.
+  const core = await assignLeadCore(
+    { userId: caller.id, role: caller.role, domain: caller.domain, fullName: caller.full_name },
+    { leadId, agentId },
+    {
+      existingLead: {
+        status: existingLead.status as string | null,
+        domain: existingLead.domain as string,
+        slug: existingLead.slug as string | null,
+        first_name: existingLead.first_name as string | null,
+        last_name: existingLead.last_name as string | null,
+        phone: existingLead.phone as string | null,
+      },
+      assignedAgent: assignedAgent
+        ? {
+            full_name: assignedAgent.full_name as string | null,
+            domain: assignedAgent.domain as string | null,
+            is_active: assignedAgent.is_active as boolean,
+          }
+        : null,
+    },
   );
 
-  const assignLeadName = existingLead.last_name
-    ? `${existingLead.first_name} ${existingLead.last_name}`
-    : existingLead.first_name;
+  if (!core.ok) {
+    return {
+      data: null,
+      error:
+        core.error === "agent_unavailable"
+          ? "The selected user is not available in this domain."
+          : formErrors.unauthorized,
+    };
+  }
 
-  // 6–7. All assignment side-effects via shared orchestrator
+  // 6–7. All assignment side-effects via shared orchestrator.
   const { notifyLeadAssigned } = await import(
     "@/lib/services/lead-assignment-notify"
   );
@@ -403,20 +316,7 @@ export async function assignLead(
   // lambda alive until notifyLeadAssigned's awaited Gupshup sends settle. A bare
   // void here would be orphaned when the lambda freezes after the action returns.
   after(
-    notifyLeadAssigned({
-      leadId,
-      assignedTo:  agentId,
-      agentName:   assignedAgentName,
-      leadName:    assignLeadName,
-      leadPhone:   existingLead.phone ?? "",
-      domain:      existingLead.domain as string,
-      isNew:       false,
-      isDuplicate: false,
-      actorId:     caller.id,
-      scheduleSla: true,
-      leadStatus:  existingLead.status as string,
-      assignedAt,
-    }).catch((err) => {
+    notifyLeadAssigned(core.notify).catch((err) => {
       console.error("[leads:assignLead] notifyLeadAssigned failed (non-fatal):", err);
     }),
   );
@@ -951,30 +851,15 @@ export async function addLeadNote(
 
   if (!hasAccess) return { data: null, error: formErrors.unauthorized };
 
-  const admin = createAdminClient();
-  const now = new Date().toISOString();
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rpcResult, error: rpcError } = await (admin as any).rpc(
-    "add_lead_plain_note",
-    {
-      p_lead_id: leadId,
-      p_author_id: caller.id,
-      p_content: content,
-      p_now: now,
-    },
+  // Shared mutation core (RPC + awaited cache invalidation). Same core the Elaya
+  // add_lead_note tool calls — the write inherits invalidation identically.
+  const core = await addLeadNoteCore(
+    { userId: caller.id, role: caller.role, domain: caller.domain, fullName: caller.full_name },
+    { leadId, content },
   );
+  if (!core.ok) return { data: null, error: formErrors.generic };
 
-  if (rpcError || !rpcResult) return { data: null, error: formErrors.generic };
-
-  // Redis invalidation — awaited so the next dossier load never reads stale data
-  await invalidateLeadCaches(
-    "addLeadNote",
-    { leadId },
-    { notes: true, activities: true },
-  );
-
-  return { data: { noteId: rpcResult.note_id }, error: null };
+  return { data: { noteId: core.noteId }, error: null };
 }
 
 // ─────────────────────────────────────────────
@@ -1027,55 +912,23 @@ export async function createLeadTaskAction(
 
   if (!hasAccess) return { data: null, error: formErrors.unauthorized };
 
-  // 4. Derive task title from the canonical constant — never a hardcoded string
-  const title = TASK_TYPE_LABELS[taskType];
-
-  // 5. Assign to lead's current assignee, fall back to caller
-  const assignedTo = (lead.assigned_to as string | null) ?? caller.id;
-
-  const adminClient = createAdminClient();
-
-  // 6. Atomic two-INSERT via RPC (tasks + task_gia_meta in one transaction)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rows, error: rpcError } = await (adminClient as any).rpc(
-    "create_lead_gia_task",
-    {
-      p_lead_id: leadId,
-      p_assigned_to: assignedTo,
-      p_created_by: caller.id,
-      p_task_type: taskType,
-      p_title: title,
-      p_description: description ?? null,
-      p_priority: priority,
-      p_due_at: dueAt ? new Date(dueAt).toISOString() : null,
-    },
+  // Shared mutation core: RPC (tasks + task_gia_meta) + Trigger.dev reminder +
+  // assignee dashboard-cache del. Assigns to the lead's current assignee, fall
+  // back to the actor. Same core the Elaya create_lead_task tool calls.
+  const core = await createLeadTaskCore(
+    { userId: caller.id, role: caller.role, domain: caller.domain, fullName: caller.full_name },
+    { leadId, taskType, description: description ?? null, priority, dueAt: dueAt ?? null },
+    lead.assigned_to as string | null,
   );
 
-  if (rpcError || !rows || (rows as Task[]).length === 0) {
-    return { data: null, error: formErrors.generic };
-  }
+  if (!core.ok) return { data: null, error: formErrors.generic };
 
-  const task = (rows as Task[])[0];
-
-  // 7. Schedule Trigger.dev reminder — fire-and-forget, never blocks the action
-  if (dueAt) {
-    scheduleTaskReminder(task.id, new Date(dueAt), assignedTo).catch(() => {});
-  }
-
-  // 8. Invalidate dossier RSC cache so LeadTasksAsync refetches after router.refresh()
+  // Invalidate dossier RSC cache so LeadTasksAsync refetches after router.refresh()
+  // (request-context only — stays in the action, not the core).
   const dossierSegment = (lead.slug as string | null) ?? leadId;
   revalidatePath(`/leads/${dossierSegment}`);
 
-  // 9. Invalidate assignee's dashboard agent-tasks widget cache.
-  //    Uses caller.id (server-verified) — caller is the person acting, and if they
-  //    assigned to themselves the widget must refresh immediately.
-  try {
-    await redis.del(REDIS_KEYS.dashboardAgentTasks(caller.id));
-  } catch (e) {
-    console.warn("[dashboard-invalidation] redis del failed on createLeadTask", e);
-  }
-
-  return { data: task, error: null };
+  return { data: core.task, error: null };
 }
 
 // ─────────────────────────────────────────────
