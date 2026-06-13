@@ -11,8 +11,8 @@ import shutil
 from collections import defaultdict
 from pathlib import Path
 
-GRAPH = Path("/Users/alam/Desktop/eia/graphify-out/graph.json")
-VAULT = Path("/Users/alam/Desktop/Eia Vault")
+GRAPH = Path("/Users/alam/Desktop/serene/graphify-out/graph.json")
+VAULT = Path("/Users/alam/Desktop/Serene Vault")
 OUT = VAULT / "06 🕸 Code Graph"
 
 LAYER_RULES = [
