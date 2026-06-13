@@ -15,7 +15,7 @@ import {
 import { EscalationsSkeleton } from "./loading";
 import type { AppDomain } from "@/lib/types/database";
 
-export const metadata = { title: "Escalations — Eia" };
+export const metadata = { title: "Escalations — Serene" };
 
 /**
  * /escalations — the manager+ breach surface for the Gia follow-up engine.

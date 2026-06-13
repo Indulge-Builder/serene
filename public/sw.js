@@ -1,5 +1,5 @@
 /**
- * Eia service worker — offline fallback shell ONLY.
+ * Serene service worker — offline fallback shell ONLY.
  *
  * Hard rules (root CLAUDE.md / PWA brief):
  * - NEVER cache navigations, RSC payloads, or Server Action responses.
@@ -12,7 +12,7 @@
  *
  * Bump CACHE_VERSION whenever offline.html or the icons change.
  */
-const CACHE_VERSION = "eia-shell-v1";
+const CACHE_VERSION = "serene-shell-v1";
 const OFFLINE_URL = "/offline.html";
 const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png"];
 

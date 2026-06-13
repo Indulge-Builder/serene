@@ -1,4 +1,4 @@
-# Eia Design System — Component Implementation Reference
+# Serene Design System — Component Implementation Reference
 
 > **Purpose:** how the design law is implemented — shell classes, component library behaviour, layout patterns, form system.
 > **Audience:** engineers (designers read `DESIGN-DNA.md` first). · **Source-of-truth scope:** implementation reference only — where this file and `DESIGN-DNA.md` disagree, DNA is law and this file is a bug.
@@ -8,7 +8,7 @@
 
 ## 1. Philosophy
 
-Eia is a luxury internal operating system for Indulge team members. People spend eight to twelve hours a day inside it. The interface must be calm enough never to tire them, precise enough to earn trust, and refined enough to reflect the brand they represent.
+Serene is a luxury internal operating system for Indulge team members. People spend eight to twelve hours a day inside it. The interface must be calm enough never to tire them, precise enough to earn trust, and refined enough to reflect the brand they represent.
 
 ### Two-layer world: canvas + paper
 
@@ -25,7 +25,7 @@ Hierarchy without noise: the user always knows where the “world” ends and wh
 
 | Voice | Token / family | Role |
 | ----- | -------------- | ---- |
-| **Editorial** | `--font-serif` (Playfair) | Page titles, empty states, Lia’s welcome — once per view at display scale |
+| **Editorial** | `--font-serif` (Playfair) | Page titles, empty states, Elaya’s welcome — once per view at display scale |
 | **UI** | `--font-sans` (Geist Sans) | Everything operational: nav, tables, forms, buttons |
 | **Technical** | `--font-mono` (Geist Mono) | IDs, phones, timestamps, metrics — exact values only |
 
@@ -76,9 +76,9 @@ Before shipping any surface, ask: *Does this belong in a product serving the wor
 
 ---
 
-### 2b. Paper surface (`.eia-paper` / dashboard shell)
+### 2b. Paper surface (`.serene-paper` / dashboard shell)
 
-**Canonical class** (design spec — `src/app/globals.css` also ships `.eia-paper-surface` with the same texture stack for auth cards):
+**Canonical class** (design spec — `src/app/globals.css` also ships `.serene-paper-surface` with the same texture stack for auth cards):
 
 | Property | Token / value |
 | -------- | ------------- |
@@ -90,7 +90,7 @@ Before shipping any surface, ask: *Does this belong in a product serving the wor
 | Margin | `12px` top/right/bottom on paper (`margin: 12px 12px 12px 0`) |
 | Gap from sidebar | `gap: var(--space-3)` (12px) on `.layout-canvas` flex row |
 
-The dashboard paper div does not always use the `.eia-paper` class name; it applies the same tokens inline. Prefer the class when adding new full-bleed paper regions.
+The dashboard paper div does not always use the `.serene-paper` class name; it applies the same tokens inline. Prefer the class when adding new full-bleed paper regions.
 
 ---
 
@@ -163,7 +163,7 @@ The dashboard paper div does not always use the `.eia-paper` class name; it appl
 
 **Zones:** left = page title (`--font-serif`, `--text-xl`, `--weight-semibold` in current TopBar); centre reserved; right = avatar + actions.
 
-**Page title period:** primary nav `<h1 class="type-page-title">` ends with `<span class="page-title-dot">.</span>` — accent blink via `eia-page-dot-blink` 2.4s. Detail pages with `BackButton` use the dot on the title but skip eyebrow above.
+**Page title period:** primary nav `<h1 class="type-page-title">` ends with `<span class="page-title-dot">.</span>` — accent blink via `serene-page-dot-blink` 2.4s. Detail pages with `BackButton` use the dot on the title but skip eyebrow above.
 
 ---
 
@@ -183,7 +183,7 @@ Never use raw numbers in components — named tokens only.
 | `--z-modal-overlay` | 61 | Nested modal backdrop |
 | `--z-modal-nested` | 62 | Nested modal panel |
 | `--z-toast` | 70 | Toast stack |
-| `--z-cursor` | 80 | Lia floating cursor, drag handles |
+| `--z-cursor` | 80 | Elaya floating cursor, drag handles |
 
 ---
 
@@ -396,7 +396,7 @@ Implemented in `src/styles/design-tokens.css`. **Exactly three named type classe
 
 *(Corrected 2026-06-11 — design-audit DOC-04: this section previously listed `.type-card-title`, `.type-body`, `.type-label`, `.type-caption`, `.type-mono` as implemented. They are defined nowhere and used nowhere — card titles, body copy, labels, captions, and mono values are composed from raw tokens (`--text-*`, `--weight-*`, `--font-*`) inline. If a recurring composition earns a class, add it to `design-tokens.css` first, then document it here.)*
 
-**`.page-title-dot`:** `color: var(--theme-accent)`; `animation: eia-page-dot-blink 2.4s ease-in-out infinite`.
+**`.page-title-dot`:** `color: var(--theme-accent)`; `animation: serene-page-dot-blink 2.4s ease-in-out infinite`.
 
 **Dot usage:** primary sidebar destinations only (`/dashboard`, `/leads`, `/tasks`, etc.). **Exempt:** detail routes with `BackButton` (`/leads/[id]`, `/campaigns/[id]`, `/admin/users/[id]`, …) — back affordance replaces eyebrow.
 
@@ -519,7 +519,7 @@ Implemented in `src/styles/design-tokens.css`. **Exactly three named type classe
 | Sidebar nav hover (target) | — | `x: 2` | — | 250ms | `--ease-spring` |
 | Sidebar active pill (target) | layoutId spring | stiffness **380**, damping **30** | — | spring | — |
 | Button press (`MotionButton`) | — | `scale: 0.97` | — | 100ms + spring | `MOTION_BUTTON_DEFAULTS` |
-| Skeleton | — | `eia-skeleton-pulse` 1.6s | — | loop | ease-in-out |
+| Skeleton | — | `serene-skeleton-pulse` 1.6s | — | loop | ease-in-out |
 | Page title dot | opacity 1 ↔ 0.2 | — | — | 2.4s | ease-in-out |
 | List stagger | `opacity: 0, y: 4` | `opacity: 1, y: 0` | — | 200ms, stagger 40ms, max 8 | out-expo |
 | Page content | `opacity: 0, y: 8` | `opacity: 1, y: 0` | — | 500ms | out-expo |
@@ -575,7 +575,7 @@ All paths under `src/components/ui/`. Display-only — no DB calls. Every colour
 | ---- | ---------- |
 | sm/md/lg | mapped in component |
 
-- Animation: `eia-spin` keyframe (1s linear)
+- Animation: `serene-spin` keyframe (1s linear)
 - `canvas` variant uses `--theme-canvas-text` on dark surfaces
 
 #### `Button` — `Button.tsx` — `ButtonProps`
@@ -612,11 +612,11 @@ Sizes xs–xl. `--radius-md`. Initials: six hashed semantic pairs. `selected`: a
 
 #### `SearchBar` — `SearchBar.tsx` — `SearchBarProps`
 
-Controlled. Focus: `--shadow-focus`, border `--theme-accent`, `caret-color: var(--theme-accent)`. Placeholder via `.eia-input`. Clear button: `AnimatePresence` scale 0.7→1. Sizes sm/md/lg; variant `soft`.
+Controlled. Focus: `--shadow-focus`, border `--theme-accent`, `caret-color: var(--theme-accent)`. Placeholder via `.serene-input`. Clear button: `AnimatePresence` scale 0.7→1. Sizes sm/md/lg; variant `soft`.
 
 #### Text inputs (pattern)
 
-No standalone `Input.tsx` — use **`.eia-input`** (`globals.css`): `--theme-paper-subtle` bg, `--theme-paper-border`, `--radius-sm`, `--text-sm`, focus `--shadow-focus`.
+No standalone `Input.tsx` — use **`.serene-input`** (`globals.css`): `--theme-paper-subtle` bg, `--theme-paper-border`, `--radius-sm`, `--text-sm`, focus `--shadow-focus`.
 
 #### `MessageBar` — `MessageBar.tsx` — `MessageBarProps`
 
@@ -684,13 +684,13 @@ Overlay `color-mix(var(--theme-canvas) 72%, transparent)`. Surface `--theme-pape
 
 #### `Modal` — `modal.tsx` — `ModalProps` / `ModalType`
 
-**One file, lowercase `modal.tsx`** — there is no `Modal.tsx` on disk. It exports `Modal`, `ModalProps`, and `ModalType` (`'standard' | 'lia'`). `Modal` wraps `Dialog` and resolves the footer slot by type:
+**One file, lowercase `modal.tsx`** — there is no `Modal.tsx` on disk. It exports `Modal`, `ModalProps`, and `ModalType` (`'standard' | 'elaya'`). `Modal` wraps `Dialog` and resolves the footer slot by type:
 
 - `type="standard"` (default): `title` / `description` / `footer` slots passed through to `Dialog`.
-- `type="lia"`: enforces **exactly two actions** — `Dismiss` (ghost) + `Approve` (primary) — with a breathing `LiaGlyph size={20}`. `onApprove` / `onDismiss` / `approveLabel` / `dismissLabel` props; both handlers call `onClose()` after firing.
+- `type="elaya"`: enforces **exactly two actions** — `Dismiss` (ghost) + `Approve` (primary) — with a breathing `LiaGlyph size={20}`. `onApprove` / `onDismiss` / `approveLabel` / `dismissLabel` props; both handlers call `onClose()` after firing.
 - `maxWidth` (Tailwind class string) is a **backward-compat prop on this same component** — it overrides `size` for existing callers. It is **not** a separate "legacy" file.
 
-**Rule:** every modal in Eia composes `modal.tsx` (or `Dialog` directly) — never reimplements chrome.
+**Rule:** every modal in Serene composes `modal.tsx` (or `Dialog` directly) — never reimplements chrome.
 
 #### `InfoRow` — `InfoRow.tsx` — `InfoRowProps`
 
@@ -719,7 +719,7 @@ No `Badge.tsx` — use `.status-pill` utilities (`--status-*` lead pills, `.stat
 
 #### Skeleton
 
-`.skeleton` class — `eia-skeleton-pulse` 1.6s on `--theme-paper-subtle`. `ChartSkeleton` for charts. **Minimum display 150ms (V-08)** before swap to content.
+`.skeleton` class — `serene-skeleton-pulse` 1.6s on `--theme-paper-subtle`. `ChartSkeleton` for charts. **Minimum display 150ms (V-08)** before swap to content.
 
 ---
 
@@ -738,15 +738,15 @@ No `Badge.tsx` — use `.status-pill` utilities (`--status-*` lead pills, `.stat
 
 ---
 
-### Lia & toast
+### Elaya & toast
 
-#### `lia-glyph.tsx` — `LiaGlyph`
+#### `elaya-glyph.tsx` — `LiaGlyph`
 
-Custom SVG; `lia-breathe` 3s when `breathing` true. Static glyph = Lia absent.
+Custom SVG; `elaya-breathe` 3s when `breathing` true. Static glyph = Elaya absent.
 
 #### `toast-provider.tsx` / `toast-item.tsx`
 
-Stack max 3; stagger scale/translateY. Types: success/warning/danger/loading/lia. Danger never auto-dismiss. `eia-toast-bar-breathe` on left bar.
+Stack max 3; stagger scale/translateY. Types: success/warning/danger/loading/elaya. Danger never auto-dismiss. `serene-toast-bar-breathe` on left bar.
 
 ---
 
@@ -761,7 +761,7 @@ Stack max 3; stagger scale/translateY. Types: success/warning/danger/loading/lia
 | Pattern | Canonical implementation |
 | ------- | ------------------------ |
 | Card | `SectionCard` |
-| Form fields | `.eia-input` + `label-micro` |
+| Form fields | `.serene-input` + `label-micro` |
 
 (`MessageBar` is now a real `ui/` primitive — see Input + Selection above.)
 
@@ -797,10 +797,10 @@ No `p-8` — panel owns insets. **`/whatsapp`** split layout.
 
 The `(auth)` route group (`/login`, `/forgot-password`, `/update-password`) is the **one surface that is dark by design** — it renders directly on `--theme-canvas` with **no sidebar, no paper**. A single centred card (`maxWidth: 26rem`, `--z-raised`) floats on the canvas above two radial glows and two accent-tinted orbs. Cards/inputs/links draw from the **canvas/sidebar palette**, never the paper palette.
 
-- Card: `.eia-auth-card` · Inputs: `.eia-input-auth` · Links: `.eia-auth-link` (all in `globals.css`).
+- Card: `.serene-auth-card` · Inputs: `.serene-input-auth` · Links: `.serene-auth-link` (all in `globals.css`).
 - Brand header: `/logo.webp` + serif `Indulge OS` with a trailing `.page-title-dot` (the only sanctioned dot off a primary-nav `<h1>`).
 - Errors use the **dark-surface** semantic tokens (`--color-danger-dark-*`), never the light variants.
-- **Forbidden on auth:** `--theme-paper*`, `.eia-paper-surface`, `.eia-input`, light `--color-*-light`.
+- **Forbidden on auth:** `--theme-paper*`, `.serene-paper-surface`, `.serene-input`, light `--color-*-light`.
 
 Full token-level spec: **`DESIGN-DNA.md` §3.7 "Auth Surface (canvas-dark)"**. Session/action/schema behaviour: **`docs/pages/auth.md`**.
 
@@ -811,7 +811,7 @@ Full token-level spec: **`DESIGN-DNA.md` §3.7 "Auth Surface (canvas-dark)"**. S
 | Narrow | 672px (`--bp` ~2xl tailwind max-w-2xl) | Profile, settings forms |
 | Standard | 1024px | Task lists, lead lists |
 | Wide | 1280px | CRM, analytics, dossiers |
-| Full | none | WhatsApp, Lia full-screen |
+| Full | none | WhatsApp, Elaya full-screen |
 
 ### 8e. Filter bar pattern
 

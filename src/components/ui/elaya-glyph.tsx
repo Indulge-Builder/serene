@@ -1,16 +1,16 @@
 import type { SVGProps } from "react";
 
-interface LiaGlyphProps extends SVGProps<SVGSVGElement> {
+interface ElayaGlyphProps extends SVGProps<SVGSVGElement> {
   size?: number;
   breathing?: boolean;
 }
 
 /**
- * Lia's mark. Always breathing when she is present.
+ * Elaya's mark. Always breathing when she is present.
  * Pass breathing={false} only when she is absent.
  * Color is always inherited from `color` (set via --theme-accent on the parent).
  */
-export function LiaGlyph({ size = 32, breathing = true, className = "", ...props }: LiaGlyphProps) {
+export function ElayaGlyph({ size = 32, breathing = true, className = "", ...props }: ElayaGlyphProps) {
   return (
     <svg
       width={size}
@@ -18,7 +18,7 @@ export function LiaGlyph({ size = 32, breathing = true, className = "", ...props
       viewBox="0 0 32 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={`${breathing ? "lia-breathe" : ""} ${className}`.trim()}
+      className={`${breathing ? "elaya-breathe" : ""} ${className}`.trim()}
       aria-hidden="true"
       {...props}
     >

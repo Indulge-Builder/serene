@@ -1,14 +1,14 @@
 'use client';
 
 // Elaya identity card — the identity sidebar on /elaya. Lives in the right
-// 340px column of the canonical .eia-dossier-grid--340 (the /profile sidebar
+// 340px column of the canonical .serene-dossier-grid--340 (the /profile sidebar
 // pattern; stacks below the main column under lg). Display-only (A-06):
 // presence, curated starter prompts (prefill the composer only — never
 // auto-send), and what she can see.
 
 import { m as motion } from 'framer-motion';
 import { Users, ListChecks, Handshake, TrendingUp, BookOpen } from 'lucide-react';
-import { LiaGlyph } from '@/components/ui/lia-glyph';
+import { ElayaGlyph } from '@/components/ui/elaya-glyph';
 import { ELAYA_STARTER_PROMPTS } from '@/lib/constants/elaya';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
@@ -55,7 +55,7 @@ export function ElayaIdentityCard({ busy, onPromptSelect }: Props) {
             flexShrink: 0,
           }}
         >
-          <LiaGlyph size={32} />
+          <ElayaGlyph size={32} />
         </span>
         <span
           style={{
@@ -83,7 +83,7 @@ export function ElayaIdentityCard({ busy, onPromptSelect }: Props) {
             type="button"
             disabled={busy}
             onClick={() => onPromptSelect(prompt)}
-            className="eia-pressable w-full text-left border border-(--theme-paper-border) text-(--theme-text-secondary) hover:border-(--theme-accent-muted) hover:text-(--theme-text-primary) disabled:opacity-50 disabled:pointer-events-none"
+            className="serene-pressable w-full text-left border border-(--theme-paper-border) text-(--theme-text-secondary) hover:border-(--theme-accent-muted) hover:text-(--theme-text-primary) disabled:opacity-50 disabled:pointer-events-none"
             style={{
               background: 'transparent',
               borderRadius: 'var(--radius-md)',

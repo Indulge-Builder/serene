@@ -1,4 +1,4 @@
-# Eia — Design Essentials (Claude Project digest)
+# Serene — Design Essentials (Claude Project digest)
 
 > Generated digest of `docs/design/DESIGN-DNA.md` (7,076 lines — the law) — 2026-06-11.
 > The Surface Contract, theme table, and Never-Do list live in `CLAUDE.md` (uploaded
@@ -15,12 +15,12 @@ semantic tokens throughout.
 
 ## Typography
 
-Fonts: **Playfair Display** (display/H1/empty states/Lia voice), **Geist Sans** (everything
+Fonts: **Playfair Display** (display/H1/empty states/Elaya voice), **Geist Sans** (everything
 else), **Geist Mono** (IDs, timestamps, metrics).
 
 | Level | Font | Size | Weight | Used for |
 | ----- | ---- | ---- | ------ | -------- |
-| Display | Playfair | `--text-display` | light | Lia hero, empty states |
+| Display | Playfair | `--text-display` | light | Elaya hero, empty states |
 | H1 | Playfair | `--text-2xl/3xl` | semibold | Page titles |
 | H2 / H3 | Geist | `--text-lg` / `--text-md` | semibold | Section / card headings |
 | Body | Geist | `--text-sm` | normal | All content |
@@ -28,7 +28,7 @@ else), **Geist Mono** (IDs, timestamps, metrics).
 | Micro | Geist | `--text-2xs` | semibold, uppercase, widest tracking | Labels, dividers |
 
 Rules: never mix Playfair and Geist in one line · max three type sizes per component · never
-letter-space body text · never colour-only hierarchy · Playfair italic is a mood (Lia's voice,
+letter-space body text · never colour-only hierarchy · Playfair italic is a mood (Elaya's voice,
 empty states), not word emphasis · **`--weight-semibold` (600) is the heaviest weight — no
 font-bold anywhere** · field labels are exactly: 10px, font-medium, uppercase,
 tracking-[0.12em], `--theme-text-tertiary`.
@@ -63,7 +63,7 @@ Motion exists for spatial honesty, state communication, presence feedback — ne
 base 0 · raised 10 · dropdown 20 · sticky 30 (TopBar) · sidebar 40 · overlay 50 (modal
 backdrops) · modal 60 (panels, drawers, palette) · modal-overlay 61 + modal-nested 62
 (**only** for a second modal stacked above an existing modal — using 61 for a standalone
-backdrop blocks all clicks) · toast 70 · cursor 80 (Lia, drag handles).
+backdrop blocks all clicks) · toast 70 · cursor 80 (Elaya, drag handles).
 
 Framer `transform` on an ancestor breaks `position: fixed` descendants (new containing block)
 — so anchored panels portal to body via `usePortalAnchor()` + `<FloatingPanel>`, confirms via
@@ -107,9 +107,9 @@ teal #1e7d72; Fire = ember sienna #c25022; Cosmos = nebula amethyst #7a5fc0 (acc
 on all non-Earth themes — every accent holds ≥4.5:1 AA with its fg). Theme is stored on
 `profiles.theme`; a zero-flash inline script applies it before paint.
 
-## Lia design language (DNA §15 — designed, not built)
+## Elaya design language (DNA §15 — designed, not built)
 
-Lia is a presence, not a chatbot. Her glyph **always breathes** when present (liaBreathe, 3s)
+Elaya is a presence, not a chatbot. Her glyph **always breathes** when present (liaBreathe, 3s)
 — a static glyph means she is absent. Four surfaces: Panel (persistent side panel),
 Conversation (full-screen), Inline Suggestion (always 400ms delay, never instant), Action
 Proposal (exactly two actions: Approve / Dismiss). One presence dot or nothing — never a

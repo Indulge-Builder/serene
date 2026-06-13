@@ -33,7 +33,7 @@ Deep dive §8.
 `page.tsx` + `LeadsTableAsync` (Suspense child) · `LeadsFilters` (composes `<FilterBar>` +
 `useUrlFilters`) · `LeadsTable` (bespoke — never `Table<T>`; status pills toolbar; memoised
 `LeadRow`) · `LeadColumnPicker` + `useLeadColumnPreferences`
-(`eia:leads:columns:${userId}:v1`) · `LeadsPagination` (hidden ≤30 rows) · `AddLeadButton` +
+(`serene:leads:columns:${userId}:v1`) · `LeadsPagination` (hidden ≤30 rows) · `AddLeadButton` +
 `AddLeadModal` (on-intent `next/dynamic`) · `ExportButton`.
 
 ## 5. States
@@ -539,7 +539,7 @@ main
 
 `platform` renders as a pill (`var(--theme-accent-subtle)` bg, `var(--theme-text-secondary)` text). `medium` renders plain text via `getMetaMediumLabel()` from `lib/constants/lead-sources.ts` — shows `—` when null.
 
-**Column prefs:** `useLeadColumnPreferences(userId)` — key `eia:leads:columns:${userId}:v1`. Locked columns always visible; drag reorder via `@dnd-kit/sortable` in `LeadColumnPicker`; locked columns pinned to front on reorder.
+**Column prefs:** `useLeadColumnPreferences(userId)` — key `serene:leads:columns:${userId}:v1`. Locked columns always visible; drag reorder via `@dnd-kit/sortable` in `LeadColumnPicker`; locked columns pinned to front on reorder.
 
 **Prefetch on hover:** Each `LeadRow` `<tr>` calls `router.prefetch('/leads/${lead.slug ?? lead.id}')` on `onMouseEnter` — same href as the `onClick` push. Uses the single `useRouter()` instance at the top of `LeadRow`. Next.js deduplicates repeated prefetch calls internally; no debounce needed.
 
@@ -627,7 +627,7 @@ Playfair italic heading (`var(--font-serif)`). Table has **zero** filter/sort/co
 
 #### Column preferences localStorage key
 
-`eia:leads:columns:${userId}:v1`
+`serene:leads:columns:${userId}:v1`
 
 ---
 

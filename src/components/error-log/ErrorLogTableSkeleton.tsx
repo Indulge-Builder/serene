@@ -1,4 +1,4 @@
-// Pulse: the canonical `.skeleton` class via <Shimmer> (eia-skeleton-pulse,
+// Pulse: the canonical `.skeleton` class via <Shimmer> (serene-skeleton-pulse,
 // design-tokens.css §11.1) — never a private keyframe (design audit M-10).
 
 import { Shimmer, skeletonStagger } from '@/components/ui/PageSkeletons';

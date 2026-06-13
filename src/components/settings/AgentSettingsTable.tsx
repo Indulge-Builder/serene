@@ -68,7 +68,7 @@ function WorkDayPicker({ days, onChange, disabled }: WorkDayPickerProps) {
             disabled={disabled}
             aria-pressed={selected}
             aria-label={`${selected ? "Deselect" : "Select"} ${DAY_LABELS[day]}`}
-            className="eia-touch"
+            className="serene-touch"
             style={{
               width:          "26px",
               height:         "26px",
@@ -588,7 +588,7 @@ export function AgentSettingsTable({
                 onClick={() => handleClear(agent.id)}
                 disabled={isSaving}
                 title="Clear shift"
-                className="eia-touch"
+                className="serene-touch"
                 style={{ width: 28, height: 28, padding: 0, justifyContent: "center", flexShrink: 0, marginLeft: isMobile ? "auto" : undefined }}
               >
                 <X size={12} strokeWidth={1.5} />

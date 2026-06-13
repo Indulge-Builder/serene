@@ -26,7 +26,7 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
   useEffect(() => {
     return () => {
       if (dissolveTimer.current) clearTimeout(dissolveTimer.current);
-      document.documentElement.classList.remove("eia-theme-transition");
+      document.documentElement.classList.remove("serene-theme-transition");
     };
   }, []);
 
@@ -36,10 +36,10 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
     // 1. Cross-dissolve window: --transition-theme on every element while the
     //    palette recolours (design-tokens §15), removed after it settles.
     const root = document.documentElement;
-    root.classList.add("eia-theme-transition");
+    root.classList.add("serene-theme-transition");
     if (dissolveTimer.current) clearTimeout(dissolveTimer.current);
     dissolveTimer.current = setTimeout(() => {
-      root.classList.remove("eia-theme-transition");
+      root.classList.remove("serene-theme-transition");
     }, 400);
 
     // 2. DOM switch — the attribute flips instantly; colours dissolve over it.
@@ -67,7 +67,7 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
           margin:     "0 0 var(--space-5)",
         }}
       >
-        Choose the visual theme for your Eia workspace. Switches instantly across
+        Choose the visual theme for your Serene workspace. Switches instantly across
         the entire interface.
       </p>
 

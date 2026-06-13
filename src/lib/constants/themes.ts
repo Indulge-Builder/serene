@@ -29,7 +29,7 @@ export function isThemeKey(value: unknown): value is ThemeKey {
 // ThemeInitializer runs after hydration (the millisecond colour flash).
 // profiles.theme stays the source of truth: ThemeInitializer re-syncs the
 // cookie on every dashboard load, ThemeSelector on every switch.
-export const THEME_COOKIE = "eia-theme";
+export const THEME_COOKIE = "serene-theme";
 
 const THEME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 

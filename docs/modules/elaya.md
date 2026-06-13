@@ -1,12 +1,14 @@
 # Elaya
 
-> **Purpose:** the AI presence inside Eia — chat surface today, the substrate for every future AI feature (lead revival, reports, agentic writes, customer bot).
+> **Purpose:** the AI presence inside Serene — chat surface today, the substrate for every future AI feature (lead revival, reports, agentic writes, customer bot).
 > **Audience:** engineers. · **Source-of-truth scope:** Elaya architecture + phase contracts.
 > **Last verified:** 2026-06-13 · **Status:** Foundation (read-only chat) + WhatsApp staff channel + **Phase 2 agentic writes (E3)**.
 
-Historical note: this module was tracked as "Elia" in the roadmap; the shipped name is **Elaya**
-(matching the pre-existing presence card in `src/lib/constants/elaya.ts`). File stays `elia.md`
-so roadmap references resolve.
+Historical note: this presence was tracked as both "Elaya" (the original design vision) and
+"Elaya" (the roadmap name) before shipping; the canonical name is **Elaya** (matching the
+presence card in `src/lib/constants/elaya.ts`). The old `elaya.md` / `elaya.md` module docs were
+consolidated into this file during the Serene→Serene / Elaya→Elaya rename — the original design
+vision lives in the "Design vision" section at the end of this doc.
 
 ## What shipped in the foundation (2026-06-12)
 
@@ -200,8 +202,33 @@ user UPDATE policy, by design.
   lead-scoped toolset. (The staff WhatsApp channel above is live; the customer persona stub
   still throws.)
 - **In-app proposal cards:** the confirmation today is a plain yes/no reply on both channels.
-  The Lia two-action Approve/Dismiss card (over the same `elaya_actions` proposal rows) is a
+  The Elaya two-action Approve/Dismiss card (over the same `elaya_actions` proposal rows) is a
   later UI affordance — the gate and ledger are already in place for it.
 - **Context writer:** Elaya populates `user_context` from conversations.
 - **Routing job:** Haiku-tier intent triage in front of the reasoning brain.
 - **Voice/avatar:** out of scope here; `transcription-service` already exists for the voice channel.
+
+## Design vision
+
+> Folded in from the original `elaya.md` (the pre-Elaya design doc) during the Serene→Serene /
+> Elaya→Elaya rename. This is the design language the presence was conceived against; the shipped
+> surfaces above are the first realisation of it.
+
+Elaya is the agentic AI presence that lives inside Serene. She is not a chatbot — she is a
+presence: a compass that surfaces the right insight on the right surface at the right moment.
+
+**Design language (DESIGN-DNA §15):**
+
+- Full design language — glyph (always breathing when present), four surfaces (Panel,
+  Conversation, Inline Suggestion, Action Proposal), motion rules, voice: `DESIGN-DNA.md` §15.
+- Operating rules (root `CLAUDE.md` quick reference): inline suggestions always delay 400 ms;
+  proposal cards have exactly two actions (Approve / Dismiss); one dot or nothing — never a
+  number badge; her colour is always `--theme-accent`; cross-domain insights are always
+  labelled with the source domain.
+- Privacy constraint that shapes the build: **no raw PII reaches any external AI model** (D-01)
+  — pseudonymisation before anything leaves the vault. The PII gateway (`pii.ts`) is the
+  interim enforcement point until the vault lands (see foundation invariant 5 above).
+
+**The presence in code:** `src/components/ui/elaya-glyph.tsx` (the breathing SVG mark, the
+`ElayaGlyph` component), the `elaya` toast/modal types, and the live Elaya subsystem
+(`src/lib/elaya/`) documented above.

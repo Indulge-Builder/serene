@@ -48,7 +48,7 @@ clearing `resolution_reason`. Terminal statuses cancel all SLA timers.
    `../integrations/lead-ingestion.md`.
 2. **Notify + arm SLA** — `after(notifyLeadAssigned(...))`: agent WhatsApp, founder WhatsApp,
    in-app notification, SLA-01 timers. Detail: `../integrations/whatsapp-gupshup.md` §4.
-3. **First contact** — agent opens the dossier from the notification, calls outside Eia,
+3. **First contact** — agent opens the dossier from the notification, calls outside Serene,
    logs outcome + note via `CalledModal` → `add_lead_call_note` RPC (0030) — note insert,
    `call_count++`, auto-advance `new → touched`, activities, all in one transaction.
 4. **Progression** — status updates as the lead warms; team notes; Gia follow-up tasks

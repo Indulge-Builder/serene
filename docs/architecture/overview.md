@@ -1,24 +1,24 @@
 # System Overview
 
-> **Purpose:** the whole system in one read — what Eia is, the stack, how the services connect, what happens on a request, and where every code-layer concept is documented.
+> **Purpose:** the whole system in one read — what Serene is, the stack, how the services connect, what happens on a request, and where every code-layer concept is documented.
 > **Audience:** engineers (new-engineer entry point; non-technical readers start at `../00-for-the-board.md`).
 > **Source-of-truth scope:** topology, request flow, cross-page shell features, Realtime registry, client-pattern/hook index, service-file → home-doc map.
 > **Last verified:** 2026-06-11.
 
 ---
 
-## 1. What Eia is
+## 1. What Serene is
 
-Eia is the internal operating system for Indulge Global — India's premier luxury concierge
+Serene is the internal operating system for Indulge Global — India's premier luxury concierge
 brand, based in Goa. It is a production platform, not a prototype: agents spend 8–12 hours a
-day inside it. The architecture is modular — **Eia** is the base OS every team member logs
+day inside it. The architecture is modular — **Serene** is the base OS every team member logs
 into; domain modules load on top for the right people, and adding a module never touches the
 base layer.
 
 | Name | What it is |
 | ---- | ---------- |
-| **Eia** | The OS — the shell, auth, theming, navigation, dashboard |
-| **Lia** | The agentic AI presence inside Eia (`../modules/lia.md` — in design) |
+| **Serene** | The OS — the shell, auth, theming, navigation, dashboard |
+| **Elaya** | The agentic AI presence inside Serene (`../modules/elaya.md` — in design) |
 | **Gia** | The CRM module for the four sales domains (`../modules/gia.md` — live) |
 | **Sia** | The Concierge module (`../modules/sia.md` — not started) |
 
@@ -132,7 +132,7 @@ Every subscription includes a filter and a mount-scoped `useId()` nonce in the c
 ## 7. Shell features (cross-page, owned here)
 
 - **Sidebar** (`src/components/layout/Sidebar.tsx`) — canvas-dark nav, domain-filtered via
-  `canAccessRoute` (never renders inaccessible links), Lia glyph, user footer.
+  `canAccessRoute` (never renders inaccessible links), Elaya glyph, user footer.
 - **TopBar** (`src/components/layout/`) — sticky, one of only three sanctioned
   `backdrop-filter` surfaces, page title, notification bell.
 - **In-app notifications** — `notifications` table (`database.md`) + `notifications-service.ts`
@@ -149,8 +149,8 @@ Every subscription includes a filter and a mount-scoped `useId()` nonce in the c
 
 | Hook | One-liner |
 | ---- | --------- |
-| `useDashboardLayout` | widget order/size per user — localStorage `eia:dashboard:layout:${userId}:v1` |
-| `useLeadColumnPreferences` | leads column visibility/order — `eia:leads:columns:${userId}:v1`; THE pattern for any future column picker (Q-08) |
+| `useDashboardLayout` | widget order/size per user — localStorage `serene:dashboard:layout:${userId}:v1` |
+| `useLeadColumnPreferences` | leads column visibility/order — `serene:leads:columns:${userId}:v1`; THE pattern for any future column picker (Q-08) |
 | `useDashboardCohortSync` | global dashboard date-cohort URL ↔ state sync |
 | `useWidgetData` | THE dashboard-widget data lifecycle (RSC seed → deps auto-fetch → refetch) |
 | `useUrlFilters` | THE URL-param filter plumbing for list filter bars |

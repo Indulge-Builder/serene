@@ -1125,8 +1125,8 @@
     "semantic_hash": "c857c420796568377ce2d1106e3b6aef"
   },
   "src/lib/actions/leads.ts": {
-    "mtime": 1781257122.498841,
-    "ast_hash": "b8ba57e03108c2f3b250c028a57bd2c7",
+    "mtime": 1781332808.7178025,
+    "ast_hash": "315de059935957a7e34bb8c204322ef9",
     "semantic_hash": ""
   },
   "src/lib/actions/notifications.ts": {
@@ -2060,8 +2060,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1781276248.1040814,
-    "ast_hash": "d27bd1eef0339731fb0dd3f3a097fc4d",
+    "mtime": 1781338310.1898744,
+    "ast_hash": "ac3e3ba90904ead6269ec3a8cafacfbe",
     "semantic_hash": ""
   },
   "README.md": {
@@ -2070,8 +2070,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781278526.034806,
-    "ast_hash": "8d2be941131c845c8cffc0ea17ca40a3",
+    "mtime": 1781338162.7708304,
+    "ast_hash": "2245b83604e5175bffd66b93a5d181bf",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -2165,8 +2165,8 @@
     "semantic_hash": ""
   },
   "src/lib/CLAUDE.md": {
-    "mtime": 1781277821.8437607,
-    "ast_hash": "be8f10a62856176784b68f10be654533",
+    "mtime": 1781338266.1271803,
+    "ast_hash": "39fc7af647dce8d30181f21adcedc8e7",
     "semantic_hash": ""
   },
   "src/lib/actions/CLAUDE.md": {
@@ -2180,8 +2180,8 @@
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {
-    "mtime": 1781267527.7144778,
-    "ast_hash": "6122c6d30068ae7a2c5218ec8076a8af",
+    "mtime": 1781338278.1431122,
+    "ast_hash": "1f9bcd195009b506b287d00d38b87ce7",
     "semantic_hash": ""
   },
   "imgs/DB-Schema-img-2.png": {
@@ -2595,8 +2595,8 @@
     "semantic_hash": ""
   },
   "docs/modules/elia.md": {
-    "mtime": 1781275229.545676,
-    "ast_hash": "ffd1a7d94301a7b98d19b98cf79b6229",
+    "mtime": 1781338216.4719193,
+    "ast_hash": "0d7227a3ab3efa4bd5c5ec2f2e8c4090",
     "semantic_hash": ""
   },
   "docs/modules/gia.md": {
@@ -3145,13 +3145,13 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/brain.ts": {
-    "mtime": 1781267235.173243,
-    "ast_hash": "bd2b691334b815d8c2a83e9c35eea9d0",
+    "mtime": 1781333143.4543455,
+    "ast_hash": "57d2df570c41d1a8e56d98f0665182fc",
     "semantic_hash": ""
   },
   "src/lib/elaya/persona.ts": {
-    "mtime": 1781278324.5843127,
-    "ast_hash": "dd34bac432a541e83e891679a0a75e59",
+    "mtime": 1781333168.1863716,
+    "ast_hash": "909267f8ba53c6897656de8b361b9011",
     "semantic_hash": ""
   },
   "src/lib/elaya/pii.ts": {
@@ -3175,8 +3175,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/registry.ts": {
-    "mtime": 1781265605.0394814,
-    "ast_hash": "3e66d65a98c7c0b503662f39c4b2d73f",
+    "mtime": 1781333078.6745903,
+    "ast_hash": "2b9432e46672bfcb77543c5a2aaec984",
     "semantic_hash": ""
   },
   "src/lib/services/elaya-service.ts": {
@@ -3277,6 +3277,31 @@
   "src/components/ui/ChatMarkdown.tsx": {
     "mtime": 1781276032.700434,
     "ast_hash": "bfa99de2d190977a05f62e6671edd34c",
+    "semantic_hash": ""
+  },
+  "src/lib/elaya/confirmation.ts": {
+    "mtime": 1781332563.355502,
+    "ast_hash": "8b39e24c1c3cc98153dac50e7a79233c",
+    "semantic_hash": ""
+  },
+  "src/lib/elaya/tools/write-registry.ts": {
+    "mtime": 1781332982.8045032,
+    "ast_hash": "fbf3ab69cfc262a745a420ed87217e41",
+    "semantic_hash": ""
+  },
+  "src/lib/services/elaya-actions-service.ts": {
+    "mtime": 1781332852.7241766,
+    "ast_hash": "c468c019c1a8f7c26f453d23d1f26a3a",
+    "semantic_hash": ""
+  },
+  "src/lib/services/lead-mutations.ts": {
+    "mtime": 1781332668.7605107,
+    "ast_hash": "499d503eefbeb98b2d398dd2050b06ca",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260613000118_elaya_actions_phase2.sql": {
+    "mtime": 1781332524.3211083,
+    "ast_hash": "2c50668c356fc0fe525b218fbcfbb05e",
     "semantic_hash": ""
   }
 }

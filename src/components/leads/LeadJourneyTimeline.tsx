@@ -235,11 +235,11 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
             })();
 
             return (
-              // eia-row-enter: the journey unfolds left → right (60ms steps;
+              // serene-row-enter: the journey unfolds left → right (60ms steps;
               // server-component-safe CSS stagger, same utility as table rows)
               <div
                 key={status}
-                className="eia-row-enter"
+                className="serene-row-enter"
                 style={{
                   display:       'flex',
                   flexDirection: 'column',

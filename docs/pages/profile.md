@@ -44,7 +44,7 @@ avatar ≤ 2 MB validated before upload.
 
 ## 7. Open items
 
-Notification-sound preference lives in localStorage (`eia:notifications:sound:v1`) with **no
+Notification-sound preference lives in localStorage (`serene:notifications:sound:v1`) with **no
 `/profile` control yet** — deliberate gap, noted in the original doc.
 
 ---
@@ -133,7 +133,7 @@ There is **no `NotificationPreferences` component** and **no Notifications `Sect
 | Item | Detail |
 | ---- | ------ |
 | **Hook** | `src/hooks/useNotificationSound.ts` |
-| **Storage** | `localStorage` key `eia:notifications:sound:v1` (default `true` when absent) |
+| **Storage** | `localStorage` key `serene:notifications:sound:v1` (default `true` when absent) |
 | **Where sound plays** | `src/hooks/useNotifications.ts` (mounted from `NotificationBell` in the **Sidebar**). On a Realtime `INSERT` to `notifications`, calls `sound.play()` — debounced ~1500 ms, Web Audio chime, respects the persisted `enabled` flag |
 
 **Rule:** Only `useNotifications` should call `play()` — not feature pages directly.

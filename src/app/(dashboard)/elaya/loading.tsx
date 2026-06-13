@@ -2,14 +2,14 @@ import { PageHeaderSkeleton, SkeletonCard, Shimmer, skeletonStagger } from '@/co
 
 // /elaya navigation skeleton — header + chat surface + identity sidebar
 // (presence strip, a few bubble shapes, composer strip). Mirrors the shipped
-// .eia-dossier-grid--340 layout in ElayaChatShell (sidebar right on lg,
+// .serene-dossier-grid--340 layout in ElayaChatShell (sidebar right on lg,
 // stacked below the chat under lg; flex-fills the page main).
 export default function ElayaLoading() {
   return (
     <main className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 lg:p-8">
       <PageHeaderSkeleton titleWidth={120} />
 
-      <div className="eia-dossier-grid eia-dossier-grid--340 flex-1" style={{ minHeight: 0 }}>
+      <div className="serene-dossier-grid serene-dossier-grid--340 flex-1" style={{ minHeight: 0 }}>
         <SkeletonCard
           style={{
             flexDirection: 'column',

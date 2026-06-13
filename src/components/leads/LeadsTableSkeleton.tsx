@@ -2,7 +2,7 @@
 // during pagination (pre-mortem: skeleton shorter than content = layout jump).
 // Section 11.3: header skeleton-lines at 20%/35%/20%/15%, h-2.5
 //               rows same column structure, h-3 per cell, py-3 = 48px total
-// Pulse: the canonical `.skeleton` class via <Shimmer> (eia-skeleton-pulse,
+// Pulse: the canonical `.skeleton` class via <Shimmer> (serene-skeleton-pulse,
 // design-tokens.css §11.1) — never a private keyframe (design audit M-10).
 
 import { Shimmer, skeletonStagger } from '@/components/ui/PageSkeletons';

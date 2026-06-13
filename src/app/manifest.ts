@@ -8,8 +8,8 @@ const EARTH_CANVAS = "#0d0c0a";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Eia",
-    short_name: "Eia",
+    name: "Serene",
+    short_name: "Serene",
     description: "Internal operating system for Indulge team members.",
     start_url: "/dashboard",
     display: "standalone",

@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { m as motion, AnimatePresence } from "framer-motion";
 import { EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, X } from "lucide-react";
-import { LiaGlyph } from "@/components/ui/lia-glyph";
+import { ElayaGlyph } from "@/components/ui/elaya-glyph";
 import type { ToastItem as ToastItemType, ToastType } from "@/lib/toast";
 
 // ─── Type config ─────────────────────────────────────────────────────────────
@@ -20,7 +20,7 @@ interface TypeConfig {
   iconBg:      string;
   iconColor:   string;
   Icon:        React.ComponentType<{ style?: React.CSSProperties; className?: string }> | null;
-  isLia:       boolean;
+  isElaya:       boolean;
   isLoading:   boolean;
 }
 
@@ -32,7 +32,7 @@ function getTypeConfig(type: ToastType): TypeConfig {
         iconBg:    "var(--color-success-light)",
         iconColor: "var(--color-success-text)",
         Icon:      CheckCircle2,
-        isLia:     false,
+        isElaya:     false,
         isLoading: false,
       };
     case "warning":
@@ -41,7 +41,7 @@ function getTypeConfig(type: ToastType): TypeConfig {
         iconBg:    "var(--color-warning-light)",
         iconColor: "var(--color-warning-text)",
         Icon:      AlertTriangle,
-        isLia:     false,
+        isElaya:     false,
         isLoading: false,
       };
     case "danger":
@@ -50,7 +50,7 @@ function getTypeConfig(type: ToastType): TypeConfig {
         iconBg:    "var(--color-danger-light)",
         iconColor: "var(--color-danger-text)",
         Icon:      XCircle,
-        isLia:     false,
+        isElaya:     false,
         isLoading: false,
       };
     case "info":
@@ -59,7 +59,7 @@ function getTypeConfig(type: ToastType): TypeConfig {
         iconBg:    "var(--color-info-light)",
         iconColor: "var(--color-info-text)",
         Icon:      Info,
-        isLia:     false,
+        isElaya:     false,
         isLoading: false,
       };
     case "loading":
@@ -68,16 +68,16 @@ function getTypeConfig(type: ToastType): TypeConfig {
         iconBg:    "var(--theme-accent-surface)",
         iconColor: "var(--theme-accent)",
         Icon:      Loader2,
-        isLia:     false,
+        isElaya:     false,
         isLoading: true,
       };
-    case "lia":
+    case "elaya":
       return {
         barColor:  "var(--theme-accent)",
         iconBg:    "var(--theme-accent-surface)",
         iconColor: "var(--theme-accent)",
         Icon:      null,
-        isLia:     true,
+        isElaya:     true,
         isLoading: false,
       };
   }
@@ -210,10 +210,10 @@ export function ToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
           width:        "3px",
           background:   config.barColor,
           borderRadius: "var(--radius-xs) 0 0 var(--radius-xs)",
-          // lia bar breathes continuously; others fire once via CSS animation
-          animation:    toast.type === "lia"
-            ? "eia-lia-breathe 3s ease-in-out infinite"
-            : "eia-toast-bar-breathe 600ms var(--ease-out-expo) forwards",
+          // elaya bar breathes continuously; others fire once via CSS animation
+          animation:    toast.type === "elaya"
+            ? "serene-elaya-breathe 3s ease-in-out infinite"
+            : "serene-toast-bar-breathe 600ms var(--ease-out-expo) forwards",
         }}
       />
 
@@ -237,8 +237,8 @@ export function ToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
             color:          config.iconColor,
           }}
         >
-          {config.isLia ? (
-            <LiaGlyph size={18} />
+          {config.isElaya ? (
+            <ElayaGlyph size={18} />
           ) : config.Icon ? (
             <config.Icon
               style={{ width: "16px", height: "16px", strokeWidth: 1.5 }}

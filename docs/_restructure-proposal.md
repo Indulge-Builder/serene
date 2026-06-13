@@ -14,11 +14,11 @@ signal (file mtime + changelog sync entries).
 
 | File | What it actually contains | Updated | Verdict |
 | ---- | ------------------------- | ------- | ------- |
-| `DESIGN-DNA.md` (7,049 ln) | The design constitution: 5 theme token maps + CSS, global tokens, layout, typography, components spec, micro-details (§5.99), motion/icons/texture (§6), responsiveness (§9), permanent decisions (§10), skeletons (§11), mobile (§12), toast (§13), forms (§7), data display (§8), page transitions (§14), Lia design language (§15), data-viz colour (§16), addenda A.1–A.4 | 2026-06-10 | **MOVE** → `design/DESIGN-DNA.md`; fix DOC-05 (noise 0.9 vs 0.68 self-contradiction) + DOC-06 (500 ms ceiling vs §14.3/§16.7) with "corrected" footnotes; fix stale tail-note citing deleted `docs/context.md` + non-existent `docs/design-tokens.css` mirror |
+| `DESIGN-DNA.md` (7,049 ln) | The design constitution: 5 theme token maps + CSS, global tokens, layout, typography, components spec, micro-details (§5.99), motion/icons/texture (§6), responsiveness (§9), permanent decisions (§10), skeletons (§11), mobile (§12), toast (§13), forms (§7), data display (§8), page transitions (§14), Elaya design language (§15), data-viz colour (§16), addenda A.1–A.4 | 2026-06-10 | **MOVE** → `design/DESIGN-DNA.md`; fix DOC-05 (noise 0.9 vs 0.68 self-contradiction) + DOC-06 (500 ms ceiling vs §14.3/§16.7) with "corrected" footnotes; fix stale tail-note citing deleted `docs/context.md` + non-existent `docs/design-tokens.css` mirror |
 | `design-system.md` (1,006 ln) | Component implementation reference: shell, themes, surface contract, tokens, motion, component library, layout patterns, forms, empty states, data-viz, responsive, transitions, never-do, invariants | 2026-06-10 | **MOVE** → `design/design-system.md`; fix DOC-04 (claims `.type-card-title`/`.type-body`/`.type-label`/`.type-caption`/`.type-mono` exist — only `.type-eyebrow` + `.type-page-title` are in `design-tokens.css`) + DOC-01 (`.layout-canvas` described as the dashboard shell; dashboard actually mounts `.layout-shell`, `.layout-canvas` is mounted nowhere) |
 | `The_Rules.md` (253 ln) | The engineering constitution: A/S/D/P/V/Q rule tables, sanctioned colour exceptions, naming conventions, Never-Do list, rule-change Decision Log | 2026-06-11 | **MOVE** → `rules/The_Rules.md`; its Decision Log stays (historical record of rule changes); design rules get a one-line pointer to DESIGN-DNA where duplicated |
 | `The_Gia.md` (1,201 ln) | Gia module spec: leads schema, ingestion, domain resolution, round-robin, lifecycle, dossier, call logging, notes, lead tasks, list/access, deals, end-to-end flow, WhatsApp (§14), SLA (§15), file map, decision log | 2026-06-11 (but content drifted) | **REWRITE/SPLIT** → module narrative + lifecycle + SLA → `modules/gia.md`; §3–5 ingestion → `integrations/lead-ingestion.md`; §14 → `integrations/whatsapp-gupshup.md` + `pages/whatsapp.md`. Stale: cites `private_scratchpad` (dropped 0061), deal columns on `leads` (dropped 0097), Meta `X-Hub-Signature-256` webhook auth (actual: Gupshup `x-gupshup-secret`), `platform: 'whatsapp'` (now `source`, 0065), `docs/The_Blueprint.md` (deleted) |
-| `master.md` (1,250 ln) | The whole-system reference: what Eia is, stack, naming, authorization model, roles/domains, profiles foundation, phase history, route map, 98-migration index, file map, services/actions/constants/utils/hooks registries, task system, WhatsApp system, SLA engine, rules copy, never-do copy, decision log, design quick-ref, Redis layer (§22), export system (§23) | 2026-06-09 | **SPLIT** → §1–2 → `architecture/overview.md`; §4–6 → `architecture/auth-and-rbac.md` + `architecture/database.md`; §9 → `architecture/migrations.md`; §22 → `architecture/caching.md`; §23 → `pages/leads.md`; §14–16 → `pages/tasks.md` / integrations / `modules/gia.md`; §17–18 rules copy → pointer to `rules/The_Rules.md` (drifted copy — e.g. its V-10 differs from The_Rules V-10); §19 decision log → preserved in `rules/The_Rules.md` log + relevant architecture docs; §7 phase table → `01-vision.md` + changelog pointer. Then archive |
+| `master.md` (1,250 ln) | The whole-system reference: what Serene is, stack, naming, authorization model, roles/domains, profiles foundation, phase history, route map, 98-migration index, file map, services/actions/constants/utils/hooks registries, task system, WhatsApp system, SLA engine, rules copy, never-do copy, decision log, design quick-ref, Redis layer (§22), export system (§23) | 2026-06-09 | **SPLIT** → §1–2 → `architecture/overview.md`; §4–6 → `architecture/auth-and-rbac.md` + `architecture/database.md`; §9 → `architecture/migrations.md`; §22 → `architecture/caching.md`; §23 → `pages/leads.md`; §14–16 → `pages/tasks.md` / integrations / `modules/gia.md`; §17–18 rules copy → pointer to `rules/The_Rules.md` (drifted copy — e.g. its V-10 differs from The_Rules V-10); §19 decision log → preserved in `rules/The_Rules.md` log + relevant architecture docs; §7 phase table → `01-vision.md` + changelog pointer. Then archive |
 | `changelog.md` (4,633 ln, 425 entries) | Reverse-chronological record of every shipped change since 2026-05-26 | 2026-06-11 | **KEEP-AS-IS** at `docs/changelog.md` (append-only historical record; old path strings inside entries are exempt from reference rewrite) |
 | `database_architecture.sql` (400 KB) | `pg_dump` schema snapshot (PostgreSQL 17.6) | 2026-06-09 | **MOVE** → `architecture/database_architecture.sql` (companion dump to the new `architecture/database.md` narrative) |
 | `call-intelligence-spec.md` (811 ln) | Planned call-intelligence/helpdesk module: taxonomy, schema, ingestion, retrieval, UI surfaces, migration plan, build sequence | 2026-06-09 | **MOVE** → `modules/call-intelligence.md` (status: spec, not built) |
@@ -93,9 +93,9 @@ Code surfaces with **no documentation home today** → the new doc that covers e
 | RBAC route authorization (`canAccessRoute`, `DOMAIN_ROUTE_MAP`, proxy, layout guard) | split across auth-pages.md/master/CLAUDE.md | `architecture/auth-and-rbac.md` |
 | SECURITY DEFINER policy + F-1 posture (post-audit) | security audit only | `architecture/auth-and-rbac.md` § RLS philosophy |
 | Raw-payload PII retention decision (F-5) | security audit note | `integrations/lead-ingestion.md` § Raw payload policy |
-| Lia (AI presence) — design language exists (DNA §15) but no module/status doc | DNA §15, CLAUDE.md quick ref | `modules/lia.md` (status: in design, not built) |
+| Elaya (AI presence) — design language exists (DNA §15) but no module/status doc | DNA §15, CLAUDE.md quick ref | `modules/elaya.md` (status: in design, not built) |
 | Sia (Concierge module) | one-line mentions only | `modules/sia.md` stub |
-| Elia | **appears nowhere in the repo** — named only in the restructure brief | `modules/elia.md` stub with "TODO: verify scope" |
+| Elaya | **appears nowhere in the repo** — named only in the restructure brief | `modules/elaya.md` stub with "TODO: verify scope" |
 | Non-technical explanation of the whole product | none | `00-for-the-board.md` |
 | Product vision / module roadmap / "done" per module | fragments in master §7, README §5 | `01-vision.md` |
 | Docs index + reading orders | none | `README.md` (docs/) |
@@ -104,14 +104,14 @@ Code surfaces with **no documentation home today** → the new doc that covers e
 
 ## 4. Proposed Tree
 
-Adapted from the brief: added `audits/`, `modules/lia.md`, `pages/error-log.md`;
+Adapted from the brief: added `audits/`, `modules/elaya.md`, `pages/error-log.md`;
 `database_architecture.sql` moves under `architecture/`; `changelog.md` stays at root.
 
 ```text
 docs/
 ├── README.md                      ← index: every file's contract, reading orders (engineer/designer/board), "want X → read Y" routing table, page-spec template definition
-├── 00-for-the-board.md            ← plain-English: what Eia is, modules, live-vs-build, lead journey, what each screen shows, roadmap; zero jargon/paths
-├── 01-vision.md                   ← product vision, module roadmap (Gia→Lia→Sia→Elia), per-module "done", phase history pointer
+├── 00-for-the-board.md            ← plain-English: what Serene is, modules, live-vs-build, lead journey, what each screen shows, roadmap; zero jargon/paths
+├── 01-vision.md                   ← product vision, module roadmap (Gia→Elaya→Sia→Elaya), per-module "done", phase history pointer
 ├── changelog.md                   ← unchanged (single source of truth for what shipped)
 ├── architecture/
 │   ├── overview.md                ← system diagram in words (Next.js↔Supabase↔Redis↔Trigger.dev↔Gupshup↔Vercel), request flow, shell features, Realtime registry, client patterns/hooks
@@ -133,9 +133,9 @@ docs/
 │   ├── ad-creatives.md  └── error-log.md
 ├── modules/
 │   ├── gia.md                     ← what Gia is, lifecycle, SLA engine, surfaces, status
-│   ├── lia.md                     ← AI presence: design language pointer, surfaces, status (in design)
+│   ├── elaya.md                     ← AI presence: design language pointer, surfaces, status (in design)
 │   ├── sia.md                     ← stub: concierge module, not started
-│   ├── elia.md                    ← stub: TODO verify scope (no repo source)
+│   ├── elaya.md                    ← stub: TODO verify scope (no repo source)
 │   └── call-intelligence.md       ← existing spec, moved
 ├── integrations/
 │   ├── whatsapp-gupshup.md        ← Gupshup config, webhook contract, inbound pipeline, 5 templates, notify orchestrator, logs table, open items
@@ -218,7 +218,7 @@ new-tree path, `docs/changelog.md`, or inside the exempt set.
 4. Split `master.md` → architecture/ ×5 (verify each claim against code; correct drift); archive master.md.
 5. Write integrations/ ×4 from whatsapp-notifcation.md + The_Gia.md §3–5/§14 + code; archive sources.
 6. Migrate page specs → `pages/` (template header + restructure; verify high-risk claims; preserve still-true content). Archive originals.
-7. Write modules/ (gia from The_Gia.md remainder; lia/sia/elia stubs).
+7. Write modules/ (gia from The_Gia.md remainder; elaya/sia/elaya stubs).
 8. Write operations/ ×2 (env sweep + deployment from code/config).
 9. Write `00-for-the-board.md`, `01-vision.md`, `docs/README.md`.
 10. Execute the full breakage table; grep-verify zero dead refs.

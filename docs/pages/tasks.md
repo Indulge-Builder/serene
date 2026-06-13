@@ -694,7 +694,7 @@ Action returns `{ taskId, assignedTo, createdBy }`. Synthetic `Task` uses **`res
 #### 15b. `GroupTaskWorkspace`
 
 **View toggle:** `list` \| `board`  
-**localStorage key:** `eia:tasks:workspace-view:${groupId}`  
+**localStorage key:** `serene:tasks:workspace-view:${groupId}`  
 **Default:** `useState('list')` until `useEffect` reads storage (no SSR mismatch).
 
 **List sort:** priority DESC, then `due_at ASC NULLS LAST`.

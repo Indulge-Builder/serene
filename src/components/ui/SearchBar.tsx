@@ -108,7 +108,7 @@ export function SearchBar({
       <input
         type="text"
         className={
-          suppressFocusAccent ? "eia-input eia-input--no-focus-ring" : "eia-input"
+          suppressFocusAccent ? "serene-input serene-input--no-focus-ring" : "serene-input"
         }
         value={value}
         onChange={(e) => onChange(e.target.value)}

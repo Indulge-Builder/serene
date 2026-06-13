@@ -8,7 +8,7 @@
 // page main (no fixed dvh math) so the chat takes the full remaining height.
 
 import { useEffect, useRef, useState } from 'react';
-import { LiaGlyph } from '@/components/ui/lia-glyph';
+import { ElayaGlyph } from '@/components/ui/elaya-glyph';
 import { MessageBar } from '@/components/ui/MessageBar';
 import { useToast } from '@/hooks/useToast';
 import { scrollToBottom } from '@/lib/utils/scroll';
@@ -146,7 +146,7 @@ export function ElayaChatShell({
             setToolStatus(null);
             appendDelta(event.text);
           } else if (event.type === 'tool') {
-            setToolStatus(TOOL_STATUS_LABELS[event.name] ?? 'Checking Eia…');
+            setToolStatus(TOOL_STATUS_LABELS[event.name] ?? 'Checking Serene…');
           } else if (event.type === 'done') {
             setMessages((prev) =>
               prev.map((msg) => (msg.id === assistantId ? { ...msg, pending: false } : msg)),
@@ -174,7 +174,7 @@ export function ElayaChatShell({
   }
 
   return (
-    <div className="eia-dossier-grid eia-dossier-grid--340 flex-1" style={{ minHeight: 0 }}>
+    <div className="serene-dossier-grid serene-dossier-grid--340 flex-1" style={{ minHeight: 0 }}>
       <div
         className="flex flex-col rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"
         style={{ minHeight: '420px' }}
@@ -195,7 +195,7 @@ export function ElayaChatShell({
               flexShrink: 0,
             }}
           >
-            <LiaGlyph size={20} />
+            <ElayaGlyph size={20} />
           </span>
           <div className="flex flex-col min-w-0">
             <span
@@ -246,7 +246,7 @@ export function ElayaChatShell({
             {statusLine && (
               <div className="flex items-center" style={{ gap: 'var(--space-2)' }}>
                 <span style={{ color: 'var(--theme-accent)', display: 'flex', flexShrink: 0 }}>
-                  <LiaGlyph size={14} />
+                  <ElayaGlyph size={14} />
                 </span>
                 <span
                   className="italic"

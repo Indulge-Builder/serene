@@ -39,21 +39,21 @@ import type { DatePreset, DateRange } from '@/lib/utils/date-range';
  */
 
 const GRID_CSS = `
-.eia-bento-grid {
+.serene-bento-grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   gap: var(--space-4);
   width: 100%;
   align-items: start;
 }
-.eia-bento-cell-1 { grid-column: span 6; }
-.eia-bento-cell-2 { grid-column: span 12; }
+.serene-bento-cell-1 { grid-column: span 6; }
+.serene-bento-cell-2 { grid-column: span 12; }
 
 /* Below md — all widgets stack full-width (< --bp-md 768; DNA §9.1: canonical
    breakpoints only, the former 820 was arbitrary — responsive audit F-4) */
 @media (max-width: 767.98px) {
-  .eia-bento-cell-1,
-  .eia-bento-cell-2 { grid-column: span 12; }
+  .serene-bento-cell-1,
+  .serene-bento-cell-2 { grid-column: span 12; }
 }
 
 /* From md up — both half-width widgets stay halves
@@ -124,7 +124,7 @@ function SortableWidget({
   return (
     <div
       ref={setNodeRef}
-      className={`eia-bento-cell-${colSpan}`}
+      className={`serene-bento-cell-${colSpan}`}
       style={style}
     >
       <DashboardWidgetSlot
@@ -252,7 +252,7 @@ export function DashboardCanvas({
             onClick={() => setEditMode((v) => !v)}
             aria-pressed={editMode}
             aria-label={editMode ? 'Done editing layout' : 'Edit layout'}
-            className="eia-pressable eia-icon-rotate-hover eia-touch"
+            className="serene-pressable serene-icon-rotate-hover serene-touch"
             style={{
               display:        'flex',
               alignItems:     'center',
@@ -290,7 +290,7 @@ export function DashboardCanvas({
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={widgetIds} strategy={verticalListSortingStrategy}>
-          <div className="eia-bento-grid">
+          <div className="serene-bento-grid">
             {layout.map((placement) => (
               <SortableWidget
                 key={placement.widgetId}

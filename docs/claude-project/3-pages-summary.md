@@ -1,4 +1,4 @@
-# Eia — Pages Summary (Claude Project digest)
+# Serene — Pages Summary (Claude Project digest)
 
 > Generated digest of the 14 specs in `docs/pages/` — 2026-06-11. Each spec's "Deep dive"
 > holds the full invariant lists; attach the individual spec to a chat for page-level work.

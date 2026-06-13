@@ -1,5 +1,5 @@
 /**
- * Shared motion constants for Framer Motion animations across Eia.
+ * Shared motion constants for Framer Motion animations across Serene.
  * All values derive directly from design-tokens.css — never re-declare inline per component.
  *
  * Usage:
@@ -25,7 +25,7 @@ export const SLOW_DURATION = 0.35;
 /** --duration-instant: 100ms */
 export const INSTANT_DURATION = 0.1;
 
-/** --duration-page: 500ms — the §10.1 #05 animation ceiling. Nothing animates longer except liaBreathe. */
+/** --duration-page: 500ms — the §10.1 #05 animation ceiling. Nothing animates longer except elayaBreathe. */
 export const PAGE_DURATION = 0.5;
 
 /** --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1) */

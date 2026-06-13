@@ -62,7 +62,7 @@ None recorded.
 
 #### What this module owns
 
-The user management module is the **authorization foundation of the entire Eia platform**. Every RLS policy in every table calls `get_user_role()` and/or `get_user_domain()`, which read exclusively from `public.profiles`. User creation, role/domain assignment, deactivation, and agent round-robin eligibility all flow through this module. If `profiles` or its policies are wrong, every module built on top is wrong.
+The user management module is the **authorization foundation of the entire Serene platform**. Every RLS policy in every table calls `get_user_role()` and/or `get_user_domain()`, which read exclusively from `public.profiles`. User creation, role/domain assignment, deactivation, and agent round-robin eligibility all flow through this module. If `profiles` or its policies are wrong, every module built on top is wrong.
 
 #### Three routes and their purposes
 

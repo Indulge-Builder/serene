@@ -290,7 +290,7 @@ export function ConversationPanel({
             type="button"
             onClick={onBack}
             aria-label="Back to conversations"
-            className="eia-pressable"
+            className="serene-pressable"
             style={{
               display:        "flex",
               alignItems:     "center",

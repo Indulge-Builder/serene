@@ -40,7 +40,7 @@ function parsePeriod(raw: string | undefined): PerformancePeriod {
 }
 
 // ─────────────────────────────────────────────
-// Motivational footer — server component, Lia's voice (agent view only)
+// Motivational footer — server component, Elaya's voice (agent view only)
 // ─────────────────────────────────────────────
 
 function PerformanceMotivationalFooter({

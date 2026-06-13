@@ -152,7 +152,7 @@ export function Table<T>({
                 <tr
                   key={key}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={entering ? 'eia-row-enter' : undefined}
+                  className={entering ? 'serene-row-enter' : undefined}
                   style={{
                     background:  isSelected ? 'var(--theme-accent-surface)' : 'transparent',
                     cursor:      onRowClick ? 'pointer' : 'default',

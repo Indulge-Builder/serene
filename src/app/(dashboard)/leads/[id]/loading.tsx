@@ -44,8 +44,8 @@ export default function LeadDossierLoading() {
         ))}
       </div>
 
-      {/* Two-column layout — mirrors page.tsx (.eia-dossier-grid collapse below lg) */}
-      <div className="eia-dossier-grid" style={{ marginTop: 'var(--space-6)' }}>
+      {/* Two-column layout — mirrors page.tsx (.serene-dossier-grid collapse below lg) */}
+      <div className="serene-dossier-grid" style={{ marginTop: 'var(--space-6)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
           <DossierCardSkeleton headerWidth={140} rows={5} />
           <DossierCardSkeleton headerWidth={120} rows={3} />

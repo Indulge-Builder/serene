@@ -22,7 +22,7 @@ export default async function AdminUsersPage() {
 
         <Link
           href="/admin/users/new"
-          className="eia-pressable eia-icon-rotate-hover"
+          className="serene-pressable serene-icon-rotate-hover"
           style={{
             display:        "inline-flex",
             alignItems:     "center",

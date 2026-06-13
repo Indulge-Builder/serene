@@ -155,7 +155,7 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
           type="button"
           onClick={toggleGoingCold}
           aria-pressed={goingCold}
-          className="eia-touch"
+          className="serene-touch"
           style={{
             display:      'inline-flex',
             alignItems:   'center',
@@ -192,7 +192,7 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
           title={sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}
           aria-label={sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}
           aria-pressed={sortOrder === 'asc'}
-          className="eia-touch"
+          className="serene-touch"
           style={{
             display:      'inline-flex',
             alignItems:   'center',
@@ -232,7 +232,7 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
             onClick={() => setPickerOpen((v) => !v)}
             aria-pressed={pickerOpen}
             aria-label="Toggle column visibility"
-            className="eia-touch"
+            className="serene-touch"
             style={{
               display:      'inline-flex',
               alignItems:   'center',
@@ -442,7 +442,7 @@ const LeadMobileCard = memo(function LeadMobileCard({
           router.push(href);
         }
       }}
-      className={entering ? 'eia-row-enter' : undefined}
+      className={entering ? 'serene-row-enter' : undefined}
       style={{
         display:        'flex',
         flexDirection:  'column',
@@ -552,7 +552,7 @@ function CheckboxCell({
       )}
       {checked && (
         <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
-          <path className="eia-check-draw" d="M1 3L3 5L7 1" stroke="var(--theme-accent-fg)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path className="serene-check-draw" d="M1 3L3 5L7 1" stroke="var(--theme-accent-fg)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )}
     </div>
@@ -602,7 +602,7 @@ const LeadRow = memo(function LeadRow({
         router.prefetch(href);
       }}
       onMouseLeave={() => setHovered(false)}
-      className={entering ? 'eia-row-enter' : undefined}
+      className={entering ? 'serene-row-enter' : undefined}
       style={{
         borderBottom:   '1px solid var(--theme-paper-border)',
         cursor:         'pointer',

@@ -182,7 +182,7 @@ function IconButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={variant === "close" ? "eia-pressable eia-icon-rotate-hover eia-touch" : "eia-pressable eia-touch"}
+      className={variant === "close" ? "serene-pressable serene-icon-rotate-hover serene-touch" : "serene-pressable serene-touch"}
       style={iconButtonStyles(variant, active, danger)}
     >
       {children}

@@ -1,4 +1,4 @@
-# Eia — CLAUDE.md
+# Serene — CLAUDE.md
 
 ## Read this before writing a single line of code
 
@@ -12,12 +12,12 @@ The full token values are in `src/styles/design-tokens.css`.
 
 ---
 
-## What Eia Is
+## What Serene Is
 
 A luxury internal operating system for Indulge team members.
 Two-layer shell: dark canvas + floating paper content area.
 Five themes: Earth (default), Air, Water, Fire, Cosmos.
-One AI presence: Lia — she is not a chatbot, she is a compass.
+One AI presence: Elaya — she is not a chatbot, she is a compass.
 
 ---
 
@@ -86,7 +86,7 @@ src/lib/constants/route-permissions.ts ← ALWAYS_ALLOWED_PREFIXES + DOMAIN_ROUT
 src/lib/constants/domain-colors.ts    ← DOMAIN_LINE_COLORS record, one entry per AppDomain; values are var(--domain-*) strings resolved via resolveColorMap() before Recharts use
 src/lib/utils/route-access.ts         ← canAccessRoute(profile, pathname) — pure function, safe in 'use client' components
 src/hooks/useDebounce.ts              ← useDebounce<T>(value, delay) — the ONLY debounce utility; never recreate inline
-src/hooks/useMediaQuery.ts            ← useMediaQuery(query) + MQ.{mobile,tabletDown,touch} — THE viewport/media-condition hook (responsive audit 2026-06, D-1); never raw matchMedia or a window.innerWidth snapshot for layout in a component; prefer CSS md: classes when purely presentational. Breakpoints = Tailwind v4 defaults = DNA §2.7; --bp-* tokens are documentation-only (CSS vars can't appear in @media preludes). Responsive shell classes (.eia-shell*, .eia-sidebar*, .eia-dossier-grid + --340 variant (340px identity sidebars: /profile, /admin/users/[id], NewUserClient), .eia-board (group-task board: snap-scroll rail <lg, 5 columns lg+), .eia-touch) live in globals.css "RESPONSIVE SHELL"
+src/hooks/useMediaQuery.ts            ← useMediaQuery(query) + MQ.{mobile,tabletDown,touch} — THE viewport/media-condition hook (responsive audit 2026-06, D-1); never raw matchMedia or a window.innerWidth snapshot for layout in a component; prefer CSS md: classes when purely presentational. Breakpoints = Tailwind v4 defaults = DNA §2.7; --bp-* tokens are documentation-only (CSS vars can't appear in @media preludes). Responsive shell classes (.serene-shell*, .serene-sidebar*, .serene-dossier-grid + --340 variant (340px identity sidebars: /profile, /admin/users/[id], NewUserClient), .serene-board (group-task board: snap-scroll rail <lg, 5 columns lg+), .serene-touch) live in globals.css "RESPONSIVE SHELL"
 src/hooks/useMountOnFirstOpen.ts      ← useMountOnFirstOpen(open) — THE mount latch for next/dynamic modals whose call site keeps them mounted (Dialog owns the exit animation internally); see src/components/CLAUDE.md "Heavy modal loading rule"; never re-implement inline
 src/hooks/usePortalAnchor.ts          ← usePortalAnchor() — THE floating-panel anchoring mechanism (portal positioning, flip, outside-close, visualViewport); pair with <FloatingPanel>; never re-implement inline
 src/components/ui/FloatingPanel.tsx   ← <FloatingPanel> — anchored dropdown-panel portal + chrome; driven by usePortalAnchor
@@ -99,10 +99,10 @@ src/components/ui/EmptyState.tsx      ← <EmptyState> — THE canonical empty s
 src/components/ui/PageSkeletons.tsx   ← PageHeaderSkeleton / FilterBarSkeleton / SkeletonCard / Shimmer / skeletonStagger — THE shared loading.tsx scaffold blocks (page header, paper filter strip, card chrome); loading files compose these, only bespoke interiors stay inline
 src/components/ui/charts/CartesianChartFrame.tsx ← ChartFrame + cartesianDefaults(tokens) + CARTESIAN_MARGIN — shared paper container + grid/axis/tooltip/legend prop defaults for Area/Line/Bar (Pie/Donut/Butterfly exempt); never re-inline these prop blocks in a chart wrapper
 src/components/ui/TaskFormFields.tsx  ← FieldLabel / FieldError / FormChip / PriorityChipRow (chip + dot variants) / DueDateField + resolveDueAt (IST presets) / TaskTypeField — THE shared task-creation form fields; all four create-task modals compose these — never re-express a priority chip, due-preset chip, or task-type radio list inline
-src/hooks/useDashboardLayout.ts       ← localStorage layout hook (key: eia:dashboard:layout:${userId}:v1)
+src/hooks/useDashboardLayout.ts       ← localStorage layout hook (key: serene:dashboard:layout:${userId}:v1)
 src/components/dashboard/            ← DashboardCanvas, DashboardWidgetSlot, WidgetSkeleton, widgets/
 src/components/ui/                  ← shadcn primitives, zero feature imports
-src/components/ui/lia-glyph.tsx     ← Lia's custom SVG mark (always breathing)
+src/components/ui/elaya-glyph.tsx     ← Elaya's custom SVG mark (always breathing)
 src/styles/design-tokens.css        ← ALL CSS variables, all themes
 src/app/globals.css                 ← `.layout-shell` (the mounted flat dashboard shell) + `.layout-canvas` (atmosphere class — mounted on the auth shell only, never the dashboard shell) + Tailwind @theme isolation block
 docs/design/DESIGN-DNA.md          ← full design reference
@@ -206,7 +206,7 @@ Default size: `w-4 h-4`, stroke: `1.5`.
 Sidebar nav: `w-[15px] h-[15px]` (intentional exception).
 
 **Page title dot:** Every primary navigation page `<h1>` ends with `<span className="page-title-dot">.</span>`.
-This produces a slow accent-coloured blink (2.4s ease-in-out, `eia-page-dot-blink` keyframe).
+This produces a slow accent-coloured blink (2.4s ease-in-out, `serene-page-dot-blink` keyframe).
 Use `className="type-page-title"` on the `<h1>` and the dot class on the trailing span.
 The dot is **only** on primary nav pages (the top-level `<h1>` the user lands on from the sidebar).
 Detail pages (leads/[id], campaigns/[id], admin/users/[id]) are exempt — they show a back link instead.
@@ -275,21 +275,21 @@ Every list page (leads, users, settings, campaigns, tasks, etc.) follows this ex
 
 ---
 
-## Lia Quick Reference
+## Elaya Quick Reference
 
 ```text
-Lia is not a chatbot. She is a presence.
+Elaya is not a chatbot. She is a presence.
 Her glyph ALWAYS breathes when she is present (liaBreathe animation).
-A static glyph = Lia is not present.
+A static glyph = Elaya is not present.
 
 Four surfaces: Panel, Conversation, Inline Suggestion, Action Proposal.
 Inline suggestions always have a 400ms delay. Never instant.
 Proposal cards always have exactly two actions: Approve and Dismiss.
-Lia never shows a number badge. One dot or nothing.
-Lia's colour is always --theme-accent. She belongs to the theme.
+Elaya never shows a number badge. One dot or nothing.
+Elaya's colour is always --theme-accent. She belongs to the theme.
 
 Cross-domain insights are always labelled with the source domain.
-Lia never silently crosses domain boundaries.
+Elaya never silently crosses domain boundaries.
 ```
 
 ---
@@ -314,7 +314,7 @@ Theme attribute goes on the <html> element.
 ## Folder Structure
 
 ```text
-eia/
+serene/
 ├── CLAUDE.md                        ← this file
 ├── .cursorrules                     ← identical to this file
 ├── .env.local                       ← never committed
@@ -329,7 +329,7 @@ eia/
 │   ├── design/                      ← DESIGN-DNA (law) · design-system · decision-log
 │   ├── rules/The_Rules.md           ← the constitution: §0 Reuse First (R-rules) + A/S/D/P/V/Q + Decision Log
 │   ├── pages/                       ← one spec per route (16 files)
-│   ├── modules/                     ← gia · lia · sia · elia · call-intelligence
+│   ├── modules/                     ← gia · elaya · sia · elaya · call-intelligence
 │   ├── integrations/                ← lead-ingestion · whatsapp-gupshup · trigger-dev · upstash-redis
 │   ├── operations/                  ← environments · deployment
 │   ├── audits/                      ← dated audit reports (design, security)
@@ -413,7 +413,7 @@ eia/
 | Attribution refactor | ✅ | `source`/`medium`/`attribution jsonb` (0065); `leads.city` column (0066) |
 | Domain route authorization | ✅ | `canAccessRoute` + `DOMAIN_ROUTE_MAP` + layout guard + Sidebar filter |
 
-**Current focus:** Lia AI presence, client records (post-won flow).
+**Current focus:** Elaya AI presence, client records (post-won flow).
 
 **UI primitive rule (kept here because it's a live convention):** `Button` (CSS hover, zero Framer cost) for form submits and modal actions; `MotionButton + MOTION_BUTTON_DEFAULTS` for standalone primary CTAs that are pressed repeatedly (`AddLeadButton`, `TasksShell` header). Never add `MotionButton` to a form submit. Never merge the two.
 

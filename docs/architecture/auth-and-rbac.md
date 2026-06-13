@@ -8,7 +8,7 @@
 
 ## 1. The core principle
 
-Authorization in Eia reads from **one place only: `public.profiles`** (Rule A-01).
+Authorization in Serene reads from **one place only: `public.profiles`** (Rule A-01).
 
 Never from JWT claims. Never from session metadata. Never from any other table.
 

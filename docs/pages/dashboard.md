@@ -6,7 +6,7 @@
 
 ## 1. Purpose
 
-Eia's home surface: a personalised bento grid of Gia widgets. Each widget is an independently
+Serene's home surface: a personalised bento grid of Gia widgets. Each widget is an independently
 code-split client component. Summary data arrives on first paint via one server-side
 `get_dashboard_summary` RPC (React `cache()`); a global URL-param date filter
 (`DashboardDateFilter`) scopes pipeline/campaign/volume to a cohort window
@@ -321,7 +321,7 @@ Initial grid positions are derived in `useDashboardLayout.getDefaults()`: `col =
 #### localStorage key
 
 ```text
-eia:dashboard:layout:${userId}:v2
+serene:dashboard:layout:${userId}:v2
 ```
 
 (`STORAGE_KEY_PREFIX` + `:` + `userId` + `:` + `STORAGE_VERSION`. Bumped `v1` → `v2` in the 2026-06-12 redesign — versioning the key orphans stale layouts instead of letting them fight a new default grid. Bump it again whenever the default grid changes shape.)
@@ -412,9 +412,9 @@ Each widget receives the **full** `DashboardSummary` and the active `dateRange`,
 
 #### Bento grid
 
-- **12 CSS grid columns** (`.eia-bento-grid`: `grid-template-columns: repeat(12, 1fr)`; `gap: var(--space-4)`).
-- **`colSpan: 1`** → `.eia-bento-cell-1` → `grid-column: span 6` (half width on wide screens).
-- **`colSpan: 2`** → `.eia-bento-cell-2` → `grid-column: span 12` (full width — used by `manager-campaigns`).
+- **12 CSS grid columns** (`.serene-bento-grid`: `grid-template-columns: repeat(12, 1fr)`; `gap: var(--space-4)`).
+- **`colSpan: 1`** → `.serene-bento-cell-1` → `grid-column: span 6` (half width on wide screens).
+- **`colSpan: 2`** → `.serene-bento-cell-2` → `grid-column: span 12` (full width — used by `manager-campaigns`).
 - **Breakpoint `@media (max-width: 820px)`:** both cell classes become `span 12` (full-width stack).
 
 #### dnd-kit
@@ -529,7 +529,7 @@ const WIDGET_COMPONENTS: Record<string, React.LazyExoticComponent<...>> = {
 
 **Task categories:** `personal`, `group_subtask`, `gia_followup`.
 **Active statuses:** `to_do`, `in_progress`, `in_review` (widget shows status chip for non-`to_do` only).
-**Category dot:** keyframe `eia-cat-dot-pulse` — 7px circle, `2.4s ease-in-out`, stagger `0s`/`0.4s`/`0.8s`; colours from `TASK_CATEGORY[cat].dotColor`.
+**Category dot:** keyframe `serene-cat-dot-pulse` — 7px circle, `2.4s ease-in-out`, stagger `0s`/`0.4s`/`0.8s`; colours from `TASK_CATEGORY[cat].dotColor`.
 **Priority chip:** only `urgent` and `high` (`normal` → no chip).
 **Context label:** italic tertiary after title — lead name (`gia_followup`) or group title (`group_subtask`).
 **Sort order (server):** overdue → priority → `due_at`. **Row limit:** 30.
@@ -750,7 +750,7 @@ The dashboard activity ticker **does not** play audio. Sound is owned by the **n
 | **Implementation** | Web Audio API — oscillators 1047 Hz (C6) + 1318 Hz (E6), ~0.4s decay, master gain 0.12 |
 | **Debounce** | 1500ms between plays |
 | **Autoplay** | `context.resume()`; if state ≠ `'running'`, silent return |
-| **localStorage** | `eia:notifications:sound:v1` — default `true` when absent |
+| **localStorage** | `serene:notifications:sound:v1` — default `true` when absent |
 
 **Rule:** only `useNotifications.ts` may call `sound.play()`.
 

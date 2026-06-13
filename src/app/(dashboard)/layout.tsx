@@ -31,22 +31,22 @@ export default async function DashboardLayout({
 
   return (
     <>
-      {/* The root layout already SSRs data-theme from the eia-theme cookie;
+      {/* The root layout already SSRs data-theme from the serene-theme cookie;
           this corrects a missing/stale cookie against the DB truth and
           re-writes it for the next request. */}
       <ThemeInitializer theme={safeTheme} />
-    {/* Responsive frame (.eia-shell* in globals.css — audit D-3): row with
+    {/* Responsive frame (.serene-shell* in globals.css — audit D-3): row with
         gutter+paper on md+, column with mobile top strip + full-bleed paper
         below md. The Sidebar renders its own three modes (full/rail/drawer). */}
-    <div className="layout-shell eia-shell">
+    <div className="layout-shell serene-shell">
       <Sidebar profile={profile} notificationsPromise={notificationsPromise} />
 
       {/* Toast stack — portal-like, sits at root of dashboard shell, outside scroll */}
       <ToastProvider />
 
       {/* Flat canvas gutter (matches sidebar) — paper fills the padded area */}
-      <div className="eia-shell-gutter">
-        <div className="eia-shell-paper">
+      <div className="serene-shell-gutter">
+        <div className="serene-shell-paper">
           {children}
         </div>
       </div>

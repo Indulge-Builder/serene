@@ -12,7 +12,7 @@
  * computed-value time — the browser drops it silently. This guard would have
  * caught every Critical in the 2026-06 design audit (C-01…C-03, H-03, H-04),
  * including the class where Tailwind's default theme silently "fills the gap"
- * for names Eia never defined (`--text-4xl`).
+ * for names Serene never defined (`--text-4xl`).
  *
  * Run: npm run check:tokens   (also runs in front of `npm run build`)
  */
@@ -32,7 +32,7 @@ const RUNTIME_DEFINED = new Set([
   '--font-playfair',
 ]);
 
-/** Prefixes that are never Eia's to define. */
+/** Prefixes that are never Serene's to define. */
 const IGNORED_PREFIXES = ['--tw-']; // Tailwind internals
 
 /**

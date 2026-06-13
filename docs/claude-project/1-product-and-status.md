@@ -1,11 +1,11 @@
-# Eia — Product & Status (Claude Project digest)
+# Serene — Product & Status (Claude Project digest)
 
 > Generated digest of `docs/00-for-the-board.md`, `docs/01-vision.md`, `docs/modules/*` — 2026-06-11.
 > Source of truth is the repo docs; regenerate when they change.
 
-## What Eia is
+## What Serene is
 
-Eia is the internal operating system Indulge Global (India's premier luxury concierge brand,
+Serene is the internal operating system Indulge Global (India's premier luxury concierge brand,
 based in Goa) built for itself. Every team member logs into one place for the sales pipeline,
 prospect conversations, tasks, performance numbers, and work-distribution controls. It is a
 production platform — agents live in it 8–12 hours a day — built to luxury-product standards:
@@ -16,24 +16,24 @@ the building:
 
 | Module | What it is | Status |
 | ------ | ---------- | ------ |
-| **Eia** (base OS) | Login, theming (5 themes), role/domain authorization at three layers, dashboard shell, notifications, tasks | ✅ live |
+| **Serene** (base OS) | Login, theming (5 themes), role/domain authorization at three layers, dashboard shell, notifications, tasks | ✅ live |
 | **Gia** (CRM) | The sales floor — full lead journey: ad → ingestion → fair assignment → worked dossier → resolution → deal, with SLA guardrails and role-correct reporting | ✅ live, daily use |
 | **Client records** | Post-won flow — a won deal opens a client record (`deals.client_id` is the reserved hook) | 🔨 current focus |
-| **Lia** (AI presence) | Not a chatbot — a presence/compass surfacing insights. Four designed surfaces: Panel, Conversation, Inline Suggestion, Action Proposal. Design-first: fully specified (DESIGN-DNA §15), **no code wired yet** beyond the breathing glyph | 🔨 current focus (design-first) |
+| **Elaya** (AI presence) | Not a chatbot — a presence/compass surfacing insights. Four designed surfaces: Panel, Conversation, Inline Suggestion, Action Proposal. Design-first: fully specified (DESIGN-DNA §15), **no code wired yet** beyond the breathing glyph | 🔨 current focus (design-first) |
 | **Sia** (Concierge) | Won clients as ongoing relationships, on top of client records | ⏸ not started |
 | **Call intelligence / Helpdesk** | Spec complete (`docs/modules/call-intelligence.md`); awaiting content seeding | 📋 spec only |
-| **Elia** | Name reserved, scope undefined | ❓ |
+| **Elaya** | Name reserved, scope undefined | ❓ |
 
 ## The journey of one lead (the heart of Gia)
 
 1. Prospect taps a Meta/Instagram ad and submits details → webhook fires.
-2. Seconds later the lead exists in Eia — validated, cleaned, deduped by phone (one phone never
+2. Seconds later the lead exists in Serene — validated, cleaned, deduped by phone (one phone never
    becomes two active records; a terminal lead re-enquiring spawns a new linked record).
 3. Auto-assigned round-robin (fair taxi rank: longest-waiting active agent in the lead's
    domain; on-leave agents skipped via one switch on /settings).
 4. Agent gets a WhatsApp alert; founders get a quiet copy; an in-app notification fires;
    SLA timers arm.
-5. Agent calls outside Eia, then logs the call — every call/note/status change is recorded
+5. Agent calls outside Serene, then logs the call — every call/note/status change is recorded
    append-only (history can never be quietly rewritten).
 6. SLA engine watches the clock (e.g. new lead not called in 15 min → agent nudged; 30 min →
    manager alerted; eight rules total across the lifecycle, IST business hours Mon–Sat 9–19).

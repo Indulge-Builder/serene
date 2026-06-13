@@ -4,7 +4,7 @@
 > **Audience:** engineers. · **Source-of-truth scope:** the module's design contract. **Phase 1 code is built (2026-06-12)** — see `docs/changelog.md` for the implementation record; file paths below are now live (migrations renumbered 0109/0110, the spec's 0085/0086 slots were taken).
 > **Last verified:** 2026-06-12 · **Status:** Phase 1 code complete; **migrations 0109/0110 applied to production (ledger-recorded)**; §15 live checks passed (RLS write matrix agent/manager blocked + admin allowed, ingestion `interest='travel,events'` → `['travel','events']`, Redis key del verified). **Content gate: CLOSED (seeded 2026-06-12).** The curated library — 150 cases + 30 hooks for `onboarding` (25 cases + 5 hooks per category, exceeding the ≥20/category ship bar), distilled from the Freshdesk export — was seeded via `scripts/seed-call-intelligence.ts` from `scripts/data/call-intelligence-seed.json`: every row validated against the 0110 contract (incl. the city-slug-tag invariant) pre-insert, post-insert counts verified (150/30), `helpdesk:cases:onboarding` Redis envelope deleted. The worksheet (`call-intelligence-content-worksheet.md`) remains the drafting reference; all post-seed edits go via the admin path (the script refuses to re-run without `--force`).
 >
-> **Eia · Indulge Global · Internal OS**
+> **Serene · Indulge Global · Internal OS**
 > Written: 2026-06-09
 > Status: Planning complete. Awaiting content seeding before build begins.
 > Author: Architecture session between Wizard & Claude

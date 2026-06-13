@@ -1,7 +1,7 @@
 "use client";
 
 // THE microphone recording hook — reusable speech-capture infrastructure
-// (voice notes today; Lia's voice channel later). Owns getUserMedia,
+// (voice notes today; Elaya's voice channel later). Owns getUserMedia,
 // MediaRecorder codec negotiation, the max-duration auto-stop, and mic-track
 // release. Audio only ever exists as an in-memory Blob handed to onComplete —
 // this hook never uploads or persists anything itself.

@@ -1,12 +1,12 @@
-# Eia — Design DNA
+# Serene — Design DNA
 
-> **Purpose:** the design constitution — the law for every visual and interaction decision in Eia.
-> **Audience:** designers + engineers. · **Source-of-truth scope:** design rules, theme system, motion law, component visual spec, Lia design language. Token *values* live in `src/styles/design-tokens.css`; component *implementation* notes live in `design-system.md`; dated design decisions in `decision-log.md`.
+> **Purpose:** the design constitution — the law for every visual and interaction decision in Serene.
+> **Audience:** designers + engineers. · **Source-of-truth scope:** design rules, theme system, motion law, component visual spec, Elaya design language. Token *values* live in `src/styles/design-tokens.css`; component *implementation* notes live in `design-system.md`; dated design decisions in `decision-log.md`.
 > **Last verified:** 2026-06-11 (DOC-01/05/06 corrections applied — see `docs/audits/design-audit-2026-06.md` §4).
 
 ## Version 1.0
 
-> The single source of truth for every visual decision in Eia.
+> The single source of truth for every visual decision in Serene.
 > Every colour, font, space, radius, shadow, animation, and component lives here.
 > Nothing is hardcoded anywhere else. Everything derives from this file.
 
@@ -15,7 +15,7 @@
 
 ## 0. Design Philosophy
 
-Eia is a luxury operating system for people who run a world-class concierge brand. The people using it spend 8-12 hours a day inside it. The design must be calm enough to never tire them, precise enough to earn their trust, and refined enough to reflect the brand they represent.
+Serene is a luxury operating system for people who run a world-class concierge brand. The people using it spend 8-12 hours a day inside it. The design must be calm enough to never tire them, precise enough to earn their trust, and refined enough to reflect the brand they represent.
 
 - The two-layer shell: dark textured canvas + floating cream paper content area
 - Playfair Display for headings — it is the editorial soul of the brand
@@ -35,7 +35,7 @@ Eia is a luxury operating system for people who run a world-class concierge bran
 ## THE SURFACE CONTRACT
 
 **Memorise this before writing a single className.**
-Every text colour decision in Eia flows from one rule:
+Every text colour decision in Serene flows from one rule:
 
 | Surface you are on                                                              | Token to use for text                                                 |
 | ------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
@@ -55,7 +55,7 @@ Every text colour decision in Eia flows from one rule:
 
 ## 1. The Five Themes
 
-Eia ships with five themes. Each theme is a complete colour palette applied to every token in the system. Switching themes changes everything — backgrounds, accents, borders, badges, buttons — globally.
+Serene ships with five themes. Each theme is a complete colour palette applied to every token in the system. Switching themes changes everything — backgrounds, accents, borders, badges, buttons — globally.
 
 The default theme is **Earth**. Users choose their theme in profile settings.
 
@@ -64,7 +64,7 @@ The default theme is **Earth**. Users choose their theme in profile settings.
 ## Theme 01 — Earth (Default)
 
 > Warm. Grounded. Heritage.
-> When Earth is active, Eia looks and feels eye pleasing, asthetic, magentic, easy on eyes, beutiful, new gen soft, warm, thats gives psycologiacl relief and never strainf our user.
+> When Earth is active, Serene looks and feels eye pleasing, asthetic, magentic, easy on eyes, beutiful, new gen soft, warm, thats gives psycologiacl relief and never strainf our user.
 
 ## Token Map: Earth
 
@@ -161,7 +161,7 @@ When implementing Earth theme:
 
 > Still. Luminous. Breathless.
 > The sky before sunrise over Cappadocia. Cold high air. The colour of held breath and quiet thought.
-> Air is Eia at its most focused — when the user needs clarity, not warmth.
+> Air is Serene at its most focused — when the user needs clarity, not warmth.
 
 ---
 
@@ -258,7 +258,7 @@ When implementing Earth theme:
 
 > Deep. Fluid. Ancient memory.
 > The North Atlantic in November. Múlafossur falling into the sea.
-> Water is Eia in its most contemplative state — depth without heaviness, calm without stillness.
+> Water is Serene in its most contemplative state — depth without heaviness, calm without stillness.
 
 ---
 
@@ -361,7 +361,7 @@ When implementing Earth theme:
 
 > Alive. Unapologetic. Ancient exhale.
 > Stromboli at 2am. The earth cracking open and breathing out.
-> Fire is Eia at its most awake — high energy, high focus, zero compromise.
+> Fire is Serene at its most awake — high energy, high focus, zero compromise.
 
 ## Token Map: Fire
 
@@ -464,7 +464,7 @@ When implementing Earth theme:
 
 > Vast. Intelligent. Before everything.
 > The Atacama salt flat at 3am. The Milky Way as structure, not smear.
-> Cosmos is Eia at its most sovereign — the darkness that was here before the first light,
+> Cosmos is Serene at its most sovereign — the darkness that was here before the first light,
 > and the light that makes the darkness legible.
 
 ---
@@ -672,7 +672,7 @@ Geist Sans — the workhorse. UI, body, data, labels.
 Swiss precision. Never decorative.
 
 Playfair — the soul. Display moments, module names,
-Lia's voice, empty states, hero text.
+Elaya's voice, empty states, hero text.
 Used sparingly. Every appearance is an event.
 
 Geist Mono — the honest one. Code, IDs, timestamps,
@@ -701,7 +701,7 @@ Every step is a conscious decision, not a round number.
 --text-xl: 1.5rem; /* 24px — page titles on mobile */
 --text-2xl: 1.875rem; /* 30px — page titles on desktop */
 --text-3xl: 2.25rem; /* 36px — hero headings, module names */
---text-display: 3rem; /* 48px — Lia empty state, landing hero */
+--text-display: 3rem; /* 48px — Elaya empty state, landing hero */
 --text-giant: 4rem; /* 64px — reserved: full-bleed moments only */
 
 /* ============================================================
@@ -714,7 +714,7 @@ Tight for display. Generous for reading. Never arbitrary.
 --leading-tight: 1.2; /* headings — 2xl and above */
 --leading-snug: 1.35; /* subheadings — lg to xl */
 --leading-normal: 1.5; /* body copy — the default reading rhythm */
---leading-relaxed: 1.65; /* long-form prose, Lia responses */
+--leading-relaxed: 1.65; /* long-form prose, Elaya responses */
 --leading-loose: 1.8; /* small text — xs and 2xs for legibility */
 
 /* ============================================================
@@ -764,7 +764,7 @@ Never use arbitrary values outside this scale in components.
 --space-14: 3.5rem; /* 56px — large layout gaps */
 --space-16: 4rem; /* 64px — page top padding, hero breathing room */
 --space-20: 5rem; /* 80px — full-bleed section padding */
---space-24: 6rem; /* 96px — reserved for landing / Lia hero */
+--space-24: 6rem; /* 96px — reserved for landing / Elaya hero */
 
 /* ============================================================
 SECTION 2.8 — BORDER RADIUS SCALE
@@ -778,7 +778,7 @@ The scale follows the same philosophy across all themes.
 --radius-md: 0.75rem; /* 12px — dropdowns, tooltips, small cards */
 --radius-lg: 1rem; /* 16px — cards, dialogs, popovers */
 --radius-xl: 1.5rem; /* 24px — paper surface, panels, sheets */
---radius-2xl: 2rem; /* 32px — large feature cards, Lia surface */
+--radius-2xl: 2rem; /* 32px — large feature cards, Elaya surface */
 --radius-full: 9999px; /* pills, avatars, status dots, sliders */
 
 /* ============================================================
@@ -844,8 +844,8 @@ font-weight: var(--weight-normal);
 letter-spacing: var(--tracking-normal);
 line-height: var(--leading-relaxed);
 
-/* Lia display — the large empty state and hero voice */
---type-lia-display:
+/* Elaya display — the large empty state and hero voice */
+--type-elaya-display:
 font-family: var(--font-serif);
 font-size: var(--text-display);
 font-weight: var(--weight-light);
@@ -1013,14 +1013,14 @@ inset 0 1px 0 rgba(212, 175, 55, 0.12),
 /* ============================================================
 SECTION 2.7 — BREAKPOINTS
 Mobile-first. Every value is a min-width boundary.
-Eia is a dashboard — lg and above is the primary target.
+Serene is a dashboard — lg and above is the primary target.
 sm and md exist for responsive moments, not full layouts.
 ============================================================ */
 
 --bp-xs: 480px; /* large phone — portrait edge case */
 --bp-sm: 640px; /* mobile landscape / small tablet */
 --bp-md: 768px; /* tablet portrait */
---bp-lg: 1024px; /* desktop — primary Eia viewport */
+--bp-lg: 1024px; /* desktop — primary Serene viewport */
 --bp-xl: 1280px; /* wide desktop */
 --bp-2xl: 1536px; /* ultra-wide / external monitor */
 --bp-3xl: 1920px; /* reserved — full HD, data-heavy views */
@@ -1085,7 +1085,7 @@ any layout shift that should feel unhurried. */
 --duration-slow: 350ms; /* deliberate — panel open, tab switch */
 --duration-enter: 400ms; /* arrivals — modal, drawer, toast in */
 --duration-exit: 250ms; /* departures — always faster than entering */
---duration-page: 500ms; /* page-level — route transitions, Lia load */
+--duration-page: 500ms; /* page-level — route transitions, Elaya load */
 
 /* --- Named Transition Compositions ------------------------- */
 /* The combinations components actually reach for. */
@@ -1144,7 +1144,7 @@ opacity var(--duration-base) var(--ease-in-out);
 
 ### 3.1 The Shell
 
-Eia is a two-layer world.
+Serene is a two-layer world.
 The canvas is the earth, the sky, the ocean, the void — depending on which theme is active.
 The paper is where work happens. It floats. It has weight. It has shadow.
 Nothing else in the UI should compete with this hierarchy.
@@ -1158,7 +1158,7 @@ Nothing else in the UI should compete with this hierarchy.
 │ │
 │ ┌──────────┐ ┌── gap-3 (12px) ─────────────────────────────┐ │
 │ │ │ │ │ │
-│ │ .eia- │ │ .eia-paper │ │
+│ │ .serene- │ │ .serene-paper │ │
 │ │ sidebar │ │ background: var(--theme-paper) │ │
 │ │ │ │ border-radius: var(--radius-xl) │ │
 │ │ 240px │ │ box-shadow: var(--shadow-paper) │ │
@@ -1190,7 +1190,7 @@ address bar hides. `dvh` is dynamic — it follows the actual visible height.
 ### 3.2 Sidebar
 
 ```text
-.eia-sidebar
+.serene-sidebar
 ├── width: 240px (desktop) → 64px (tablet) → 0 / bottom-bar (mobile)
 ├── position: fixed, full height, z-40
 ├── background: var(--theme-sidebar-bg)
@@ -1240,7 +1240,7 @@ address bar hides. `dvh` is dynamic — it follows the actual visible height.
 ### 3.3 TopBar
 
 ```text
-.eia-topbar
+.serene-topbar
 ├── height: 56px (h-14)
 ├── position: sticky, top: 0, z-30
 ├── background: var(--theme-paper) ← same as paper — no separate bg
@@ -1251,7 +1251,7 @@ address bar hides. `dvh` is dynamic — it follows the actual visible height.
 ├── LEFT — page title (--type-page-title at --text-lg, --weight-semibold)
 │ breadcrumb on deeper pages
 │
-├── CENTRE — reserved (global search, Lia prompt bar)
+├── CENTRE — reserved (global search, Elaya prompt bar)
 │
 └── RIGHT — action cluster
 notification bell → avatar → quick actions
@@ -1270,7 +1270,7 @@ Do not give TopBar a separate background colour. Ever.
 Inside the paper, below the TopBar:
 
 ```text
-.eia-page
+.serene-page
 ├── padding: var(--space-6) md:var(--space-8)
 ├── max-width: governed by content type (see below)
 ├── margin-inline: auto
@@ -1291,7 +1291,7 @@ Inside the paper, below the TopBar:
 | Narrow   | `max-w-2xl` (672px)  | Forms, settings, single-record detail   |
 | Standard | `max-w-5xl` (1024px) | Task lists, lead lists, standard tables |
 | Wide     | `max-w-7xl` (1280px) | CRM, analytics, multi-column dashboards |
-| Full     | none                 | Messaging, Lia full-screen, map views   |
+| Full     | none                 | Messaging, Elaya full-screen, map views   |
 
 ---
 
@@ -1355,7 +1355,7 @@ Named. Never raw numbers in components.
 --z-modal-overlay: 61; /* backdrop of a NESTED modal stacked above --z-modal */
 --z-modal-nested: 62; /* nested modal panel above its own backdrop          */
 --z-toast: 70; /* toasts, notifications — always on top      */
---z-cursor: 80; /* Lia floating cursor, drag handles          */
+--z-cursor: 80; /* Elaya floating cursor, drag handles          */
 ```
 
 **Nested-modal stacking (e.g. `AssigneePickerModal` above `SubTaskModal`):** a standalone confirm
@@ -1369,13 +1369,13 @@ backdrop, `--z-modal-nested` (62) its panel. Using `61` for a standalone backdro
 ### 3.7 Auth Surface (canvas-dark)
 
 The pre-auth pages (`/login`, `/forgot-password`, `/update-password`, and `InvalidLinkCard`) are the
-**one surface in Eia that is dark by design.** They render directly on the canvas — there is no paper,
+**one surface in Serene that is dark by design.** They render directly on the canvas — there is no paper,
 no sidebar, no TopBar. The card is a *darker pane floating on the dark world*, lit only by the theme
 accent. Behaviour, schemas, and session flow live in `docs/pages/auth.md`; this is the token-level
 visual reference.
 
 **The rule that governs everything here:** auth forms draw from the **canvas/sidebar palette**, never
-the paper palette. `--theme-paper*`, `.eia-paper-surface`, `.eia-input`, and the light
+the paper palette. `--theme-paper*`, `.serene-paper-surface`, `.serene-input`, and the light
 `--color-danger-light/-text` variants are all forbidden on auth surfaces — they are tuned for the
 bright paper desk inside the dashboard.
 
@@ -1383,11 +1383,11 @@ bright paper desk inside the dashboard.
 ┌─ (auth)/layout.tsx — backgroundColor: var(--theme-canvas) ───────────┐
 │  radial glow @ 62% 38% (--theme-canvas-glow, →transparent 70%)       │
 │  radial glow @ 18% 78% (--theme-canvas-glow, opacity 0.55)           │
-│  .eia-auth-orb-a 680px top-right   — accent 9%, float 24s            │
-│  .eia-auth-orb-b 560px bottom-left — accent 6%, opacity .7, 30s      │
+│  .serene-auth-orb-a 680px top-right   — accent 9%, float 24s            │
+│  .serene-auth-orb-b 560px bottom-left — accent 6%, opacity .7, 30s      │
 │                                                                       │
 │        ┌─ wrapper: maxWidth 26rem, z-raised ─────────────┐           │
-│        │  .eia-auth-card                                  │           │
+│        │  .serene-auth-card                                  │           │
 │        │  bg --theme-sidebar-hover-bg                     │           │
 │        │  border 1px --theme-sidebar-border               │           │
 │        │  radius --radius-xl · shadow --shadow-3          │           │
@@ -1399,9 +1399,9 @@ bright paper desk inside the dashboard.
 │        │                 trailing .page-title-dot         │           │
 │        │                                                  │           │
 │        │   label-micro (override → --theme-sidebar-text)  │           │
-│        │   .eia-input-auth                                │           │
+│        │   .serene-input-auth                                │           │
 │        │   [ Sign In ] primary + --shadow-accent-glow     │           │
-│        │   .eia-auth-link (accent 65% → 100%)             │           │
+│        │   .serene-auth-link (accent 65% → 100%)             │           │
 │        └──────────────────────────────────────────────────┘           │
 └───────────────────────────────────────────────────────────────────────┘
 ```
@@ -1410,9 +1410,9 @@ bright paper desk inside the dashboard.
 
 | Class | Composition |
 | ----- | ----------- |
-| `.eia-auth-card` | bg `--theme-sidebar-hover-bg`; border `1px --theme-sidebar-border`; `--radius-xl`; `--shadow-3` |
-| `.eia-input-auth` | bg `--theme-canvas`; border `1px --theme-sidebar-border`; text `--theme-canvas-text`; `--radius-sm`; pad `--space-3 --space-4`; `--text-sm`. Placeholder `--theme-sidebar-text`. **Focus:** border `--theme-accent` + `box-shadow: 0 0 0 3px var(--theme-accent-surface)` |
-| `.eia-auth-link` | `--text-xs`; rest `color-mix(--theme-accent 65%, transparent)`; hover full `--theme-accent` |
+| `.serene-auth-card` | bg `--theme-sidebar-hover-bg`; border `1px --theme-sidebar-border`; `--radius-xl`; `--shadow-3` |
+| `.serene-input-auth` | bg `--theme-canvas`; border `1px --theme-sidebar-border`; text `--theme-canvas-text`; `--radius-sm`; pad `--space-3 --space-4`; `--text-sm`. Placeholder `--theme-sidebar-text`. **Focus:** border `--theme-accent` + `box-shadow: 0 0 0 3px var(--theme-accent-surface)` |
+| `.serene-auth-link` | `--text-xs`; rest `color-mix(--theme-accent 65%, transparent)`; hover full `--theme-accent` |
 
 **The brand header (identical on all four surfaces):** `/logo.webp` 48×48 (`--radius-sm`) above an
 `<h1>` reading **`Indulge OS`** + a trailing `<span class="page-title-dot">.</span>` — serif,
@@ -1442,7 +1442,7 @@ wrapper sits at `--z-raised` so it floats above the orbs.
 
 Three voices. Strict roles. No improvisation.
 
-Playfair speaks once per view — the title, the empty state, the Lia welcome.
+Playfair speaks once per view — the title, the empty state, the Elaya welcome.
 It is the soul of the screen. Use it twice and it loses meaning.
 Use it three times and it becomes wallpaper.
 
@@ -1462,7 +1462,7 @@ It signals: this value is exact. Do not paraphrase it.
 
 - Page title in the TopBar — the primary H1 of every view
 - Empty state headlines — when a module has no content yet
-- Lia's welcome message and conversational display moments
+- Elaya's welcome message and conversational display moments
 - Section openers on the main dashboard (sparingly)
 - Module name reveals — Gia, Sia, on their landing views
 
@@ -1477,7 +1477,7 @@ It signals: this value is exact. Do not paraphrase it.
 - At `--text-lg` and `--text-xl`, use `--tracking-tight` (`-0.01em`).
 - Line height: always `--leading-tight` (1.2) for headings,
   `--leading-snug` (1.35) for subheadings
-- Italic is a legitimate voice for Playfair — use it for Lia's tone,
+- Italic is a legitimate voice for Playfair — use it for Elaya's tone,
   for quotes, for empty state sub-copy. Never for navigation or data.
 - Maximum one Playfair instance per view at display size.
   Two Playfair headings on the same screen is one too many.
@@ -1505,7 +1505,7 @@ button text, modal copy, section headers below H2.
 
 ### 4.3 Micro Labels — Geist Sans, uppercase
 
-The micro label is a specific pattern used throughout Eia.
+The micro label is a specific pattern used throughout Serene.
 It is not a font size — it is a composed style.
 
 ```css
@@ -1553,12 +1553,12 @@ code blocks, API keys, numerical metrics in data tables, version numbers.
 
 | Level     | Font       | Size Token                  | Weight Token                          | Tracking             | Leading             | Used For                               |
 | --------- | ---------- | --------------------------- | ------------------------------------- | -------------------- | ------------------- | -------------------------------------- |
-| Display   | Playfair   | `--text-display`            | `--weight-light`                      | `--tracking-tighter` | `--leading-tight`   | Lia hero, empty states                 |
+| Display   | Playfair   | `--text-display`            | `--weight-light`                      | `--tracking-tighter` | `--leading-tight`   | Elaya hero, empty states                 |
 | H1        | Playfair   | `--text-2xl` / `--text-3xl` | `--weight-semibold`                   | `--tracking-tighter` | `--leading-tight`   | Page title in TopBar                   |
 | H2        | Geist      | `--text-lg`                 | `--weight-semibold`                   | `--tracking-tight`   | `--leading-snug`    | Section headings                       |
 | H3        | Geist      | `--text-md`                 | `--weight-semibold`                   | `--tracking-tight`   | `--leading-snug`    | Card titles, group headers             |
 | Body      | Geist      | `--text-sm`                 | `--weight-normal`                     | `--tracking-normal`  | `--leading-normal`  | All content text                       |
-| Body Lead | Geist      | `--text-base`               | `--weight-normal`                     | `--tracking-normal`  | `--leading-relaxed` | Introductory paragraphs, Lia responses |
+| Body Lead | Geist      | `--text-base`               | `--weight-normal`                     | `--tracking-normal`  | `--leading-relaxed` | Introductory paragraphs, Elaya responses |
 | Small     | Geist      | `--text-xs`                 | `--weight-normal` / `--weight-medium` | `--tracking-normal`  | `--leading-loose`   | Captions, meta, helper text            |
 | Micro     | Geist      | `--text-2xs`                | `--weight-semibold`                   | `--tracking-widest`  | `--leading-none`    | Uppercase labels, section dividers     |
 | Mono      | Geist Mono | match context               | `--weight-normal`                     | `--tracking-normal`  | `--leading-relaxed` | IDs, timestamps, code, metrics         |
@@ -1591,14 +1591,14 @@ and collapses on monochrome displays.
 **Playfair italic is a mood, not an emphasis.**
 `<em>` tags in Playfair contexts render italic. That is correct.
 Do not use italic Playfair to emphasise a word inside a sentence.
-Use it for tone — Lia's voice, a welcome, a reflection.
+Use it for tone — Elaya's voice, a welcome, a reflection.
 
 ## Section 5 — Components
 
 ## Philosophy
 
 Components are not features. They are the atoms of the interface.
-Every screen in Eia is assembled from the same atoms.
+Every screen in Serene is assembled from the same atoms.
 When the atoms are right, the screens take care of themselves.
 
 Three principles govern every component in this system:
@@ -1622,7 +1622,7 @@ It receives props and renders. That is all.
 
 ## The Rules Cursor Follows When Building Any Component
 
-These rules apply to every component built in Eia, now and in the future.
+These rules apply to every component built in Serene, now and in the future.
 They are not suggestions. They are the contract.
 
 ```text
@@ -1649,7 +1649,7 @@ RULE 04 — Loading states are not optional
 
 RULE 05 — Empty states are not optional
          Any component that renders a list, table, or collection must have
-         an empty state. Empty state uses --type-lia-display or --type-body
+         an empty state. Empty state uses --type-elaya-display or --type-body
          depending on prominence. Never a blank white box.
 
 RULE 06 — Error states are not optional
@@ -1682,7 +1682,7 @@ RULE 11 — CVA for variants
 
 RULE 12 — Framer Motion for entrance animations only
          Motion is used for: components entering the DOM, tabs switching,
-         sidebar transitions, Lia responses appearing.
+         sidebar transitions, Elaya responses appearing.
          Not for: hover effects (use CSS transitions), colour changes,
          or anything that runs on every render.
 ```
@@ -1691,7 +1691,7 @@ RULE 12 — Framer Motion for entrance animations only
 
 ## Core Components
 
-The following 12 components appear on every screen in Eia.
+The following 12 components appear on every screen in Serene.
 They are specified completely. Build them once, correctly.
 Every other component in the system assembles from these.
 
@@ -1919,7 +1919,7 @@ Footer:     px-6 py-4
 **Type B — Contextual Panel (no overlay)**
 
 ```text
-Used for: info sections, highlighted data zones, Lia suggestion panels.
+Used for: info sections, highlighted data zones, Elaya suggestion panels.
 
 Container:  bg --theme-accent-surface
             border 1px --theme-paper-border
@@ -2087,7 +2087,7 @@ Keyboard shortcut chip (TopBar version):
 ### 5.11 — Message Bar
 
 The primary input for all conversational surfaces —
-Lia chat, ticket notes, team messages.
+Elaya chat, ticket notes, team messages.
 Inspired by the calm of the best messaging interfaces.
 
 ```text
@@ -2214,7 +2214,7 @@ NEVER   duplicate a component that already exists — extend it instead
 > token names tell you _what_. These recipes tell you _how they combine_.
 >
 > Every detail here is something that cannot be derived from the token map alone.
-> These are the decisions that separate Eia from generic SaaS.
+> These are the decisions that separate Serene from generic SaaS.
 > Read this before building any of the 12 core components.
 > If a detail is already covered in 5.01–5.12, it is not repeated here.
 
@@ -2222,7 +2222,7 @@ NEVER   duplicate a component that already exists — extend it instead
 
 ## 01 — The Sidebar Active State Is Three Layers
 
-This is the most replicated pattern in Eia. It appears on every screen, every session.
+This is the most replicated pattern in Serene. It appears on every screen, every session.
 Get it wrong and nothing feels right. It is always three layers together.
 Remove any one and it looks like a mistake.
 
@@ -2324,7 +2324,7 @@ the border is a whisper, not a wall.
 
 ## 04 — Empty States Use Playfair Italic
 
-Every empty state in Eia — no leads, no tasks, no messages, nothing yet — follows this pattern:
+Every empty state in Serene — no leads, no tasks, no messages, nothing yet — follows this pattern:
 
 ```text
 Icon:     w-12 h-12, --theme-text-tertiary, strokeWidth={1.5}
@@ -2484,10 +2484,10 @@ shipped CSS. The shipped values — 0.68 / 0.055 — are canonical.)*
 
 ## 6.1 — Motion Philosophy
 
-Eia moves the way a well-made door moves.
+Serene moves the way a well-made door moves.
 It has weight. It has intent. It does not slam and it does not drift.
 
-**Three reasons motion exists in Eia:**
+**Three reasons motion exists in Serene:**
 
 1. **Spatial honesty** — where did this panel come from? Where did it go?
    Motion answers these questions so the user never has to ask them.
@@ -2543,7 +2543,7 @@ RULE M-06 — Performance is the ceiling
 
 ## 6.3 — Motion Vocabulary
 
-The complete set of animations used in Eia.
+The complete set of animations used in Serene.
 Nothing outside this list is built without a documented reason.
 
 ```css
@@ -2614,20 +2614,20 @@ Beyond 8: the stagger becomes too long and the user waits for their data.
 
 ---
 
-## 6.4 — Lia Motion (Special)
+## 6.4 — Elaya Motion (Special)
 
-Lia is alive in a way the rest of the UI is not.
+Elaya is alive in a way the rest of the UI is not.
 She is not a panel. She is not a form. She is a presence.
 Her animations reflect that — slower, more breathing, more organic.
 
 ```text
-liaBreathe — the ambient glow around Lia's avatar/glyph
+liaBreathe — the ambient glow around Elaya's avatar/glyph
   opacity: 0.35 ↔ 0.85
   duration: 3s
   easing: ease-in-out
   repeat: infinite, alternating
-  This is the heartbeat. It is always running when Lia is present.
-  It is the reason Lia feels alive even when she is not responding.
+  This is the heartbeat. It is always running when Elaya is present.
+  It is the reason Elaya feels alive even when she is not responding.
 
 liaDotPulse — the thinking indicator (three dots)
   Three dots. Staggered start: 0ms / 160ms / 320ms
@@ -2643,7 +2643,7 @@ liaMessageArrive — each message entering the conversation
   easing:   var(--ease-out-expo)
   No stagger between message content blocks — they arrive as one.
 
-liaTypingCursor — the blinking cursor inside Lia's streaming text
+liaTypingCursor — the blinking cursor inside Elaya's streaming text
   A 2px × 16px rect in var(--theme-accent)
   opacity: 1 ↔ 0
   duration: 500ms
@@ -2708,7 +2708,7 @@ The same icon, five personalities.
 
 ### Icon Semantic Assignments
 
-These icons represent the same concept everywhere in Eia.
+These icons represent the same concept everywhere in Serene.
 Consistency here builds the user's visual vocabulary.
 
 ```text
@@ -2759,11 +2759,11 @@ Data & Content
   Image:              Image
   Chart:              TrendingUp (growth), BarChart2 (comparison)
 
-Lia / AI
-  Lia avatar glyph:   custom SVG — the Lia mark, not a Lucide icon
-  Lia thinking:       liaDotPulse (see 6.4)
-  Lia suggestion:     Sparkles
-  Lia action:         Zap
+Elaya / AI
+  Elaya avatar glyph:   custom SVG — the Elaya mark, not a Lucide icon
+  Elaya thinking:       liaDotPulse (see 6.4)
+  Elaya suggestion:     Sparkles
+  Elaya action:         Zap
 ```
 
 ---
@@ -2775,7 +2775,7 @@ a flight to London. It was not the colour. It was not the pattern.
 It was the texture — the way the surface held light differently at every angle.
 That is what texture does. It proves something was made, not generated._
 
-Texture in Eia works the same way.
+Texture in Serene works the same way.
 It is not seen. It is felt. It is the difference between a surface that looks rendered
 and a surface that looks real.
 
@@ -2811,7 +2811,7 @@ The paper is where work happens. It must feel like a surface you can write on.
 Not clinical white. Not blank. A surface with memory.
 
 ```css
-.eia-paper {
+.serene-paper {
   background-color: var(--theme-paper);
   background-image:
     /* Top edge — the paper catching light from above */
@@ -2848,7 +2848,7 @@ Used correctly, it signals hierarchy — this surface is above that one.
 Used incorrectly, it becomes glassmorphism: a trend that aged poorly because
 it prioritised the effect over the reason for the effect.
 
-**Eia's position:** We use backdrop blur in exactly three places.
+**Serene's position:** We use backdrop blur in exactly three places.
 In those three places, it earns its presence. Nowhere else.
 
 ### Where Backdrop Blur Is Used
@@ -2904,7 +2904,7 @@ Earth canvas is dark. Cosmos canvas is dark. Air canvas is dark.
 Floating glass cards on dark backgrounds look modern for six months
 and generic for six years.
 
-Instead of glass, Eia uses:
+Instead of glass, Serene uses:
 
 **Accent surfaces** — `var(--theme-accent-surface)` is the tinted fill.
 It is a solid colour at low opacity. It is warmer and more intentional than blur.
@@ -2922,38 +2922,38 @@ Grounded interfaces feel like products.
 
 ---
 
-## 6.8 — The Lia Glyph
+## 6.8 — The Elaya Glyph
 
-Lia is not a chatbot. She is not an assistant icon.
-She is a presence — named, specific, with her own visual identity inside Eia.
+Elaya is not a chatbot. She is not an assistant icon.
+She is a presence — named, specific, with her own visual identity inside Serene.
 
-The Lia glyph is a custom SVG mark — not a Lucide icon.
-It lives at `src/components/ui/lia-glyph.tsx`.
+The Elaya glyph is a custom SVG mark — not a Lucide icon.
+It lives at `src/components/ui/elaya-glyph.tsx`.
 
 **Visual character:**
 
 - Minimal. A geometric mark, not an illustration.
-- Carries the `liaBreathe` animation at all times when Lia is present.
+- Carries the `liaBreathe` animation at all times when Elaya is present.
 - Rendered in `var(--theme-accent)` — gold in Earth, teal in Water, violet in Cosmos.
 - The glow behind it: `filter: drop-shadow(0 0 8px color-mix(in srgb, var(--theme-accent) 40%, transparent))`
 - Never static. The breathing is always running.
-- Sizes: `sm` (24px) inline in TopBar or chat, `md` (40px) in the Lia panel header,
+- Sizes: `sm` (24px) inline in TopBar or chat, `md` (40px) in the Elaya panel header,
   `lg` (64px) in the empty/welcome state.
 
 **The breathing glow is the identity.**
-When someone closes their eyes and thinks of Lia, they see a softly glowing mark.
+When someone closes their eyes and thinks of Elaya, they see a softly glowing mark.
 That is what the animation is building. Not novelty. Recognition.
 
 ## Section 9 — Responsiveness
 
 ## Philosophy
 
-Eia is a professional dashboard. Its primary home is a desktop browser
+Serene is a professional dashboard. Its primary home is a desktop browser
 at 1280px or wider. That is where agents spend eight hours a day.
 That is where the design is optimised first.
 
 Mobile is not an afterthought — it is a different mode.
-On mobile, Eia shifts from a productivity surface to a monitoring surface.
+On mobile, Serene shifts from a productivity surface to a monitoring surface.
 Agents check status, respond to urgent items, take quick actions.
 They do not process 200 leads from a phone.
 
@@ -2972,7 +2972,7 @@ Use only these. No arbitrary breakpoints in components.
 | `--bp-xs`  | 480px  | Large phone — edge cases, fold points    |
 | `--bp-sm`  | 640px  | Mobile landscape / small tablet          |
 | `--bp-md`  | 768px  | Tablet portrait — the layout shifts here |
-| `--bp-lg`  | 1024px | Desktop — the primary Eia viewport       |
+| `--bp-lg`  | 1024px | Desktop — the primary Serene viewport       |
 | `--bp-xl`  | 1280px | Wide desktop — comfortable dashboard     |
 | `--bp-2xl` | 1536px | External monitor — breathing room        |
 | `--bp-3xl` | 1920px | Full HD — data-heavy views, wide tables  |
@@ -2985,7 +2985,7 @@ the `--bp-*` tokens are documentation-only (CSS custom properties cannot appear 
 component-free CSS writes the raw pixel with a `/* --bp-* */` comment (see `globals.css` "RESPONSIVE SHELL");
 client JS uses `useMediaQuery` + `MQ` from `src/hooks/useMediaQuery.ts` — never raw `matchMedia` strings or
 `window.innerWidth` snapshots in components. Responsive behaviour lives in shared primitives
-(table card-stack, FilterBar, `.eia-shell*`, `.eia-dossier-grid`) — never per-page class sprinkle.
+(table card-stack, FilterBar, `.serene-shell*`, `.serene-dossier-grid`) — never per-page class sprinkle.
 
 ---
 
@@ -3002,7 +3002,7 @@ client JS uses `useMediaQuery` + `MQ` from `src/hooks/useMediaQuery.ts` — neve
 | **Cards grid**     | Single column, full width                                                        | 2-column grid                                 | 3–4 column grid depending on content type       |
 | **Message bar**    | Fixed bottom, safe-area-inset aware                                              | Inline, bottom of chat container              | Inline, bottom of chat container                |
 | **Search bar**     | Full width, below TopBar                                                         | 240px in TopBar                               | 280px in TopBar with ⌘K chip                    |
-| **Lia panel**      | Full-screen takeover                                                             | Side sheet — 400px                            | Side panel or split view                        |
+| **Elaya panel**      | Full-screen takeover                                                             | Side sheet — 400px                            | Side panel or split view                        |
 | **Data charts**    | Simplified — key metric + single bar/line                                        | Standard chart, reduced legend                | Full chart, full legend, hover tooltips         |
 
 ---
@@ -3077,7 +3077,7 @@ RULE R-06 — Modals become bottom sheets below md
 
 03  Z-index values come only from the --z-* scale defined in Section 3.6.
     No z-[50], no z-[999], no z-[9999].
-    The scale has eight named levels. They cover every scenario Eia will encounter.
+    The scale has eight named levels. They cover every scenario Serene will encounter.
     If you believe you need a ninth level, write it in the Decision Log first.
 
 04  No drop shadows with px values.
@@ -3101,7 +3101,7 @@ RULE R-06 — Modals become bottom sheets below md
     2026-06-11; see docs/design/decision-log.md.)
 
 06  No font-bold anywhere.
-    --weight-semibold (600) is the heaviest weight in Eia.
+    --weight-semibold (600) is the heaviest weight in Serene.
     font-bold (700) is available in Tailwind. Do not use it.
     Bold text in a refined interface reads as shouting.
     Semibold is emphasis. Bold is alarm.
@@ -3112,7 +3112,7 @@ RULE R-06 — Modals become bottom sheets below md
     until the user focuses the field. This is a usability failure.
 
 08  No colour that is not defined in Section 2 or Section 1.
-    If the colour does not exist in the token map, it does not exist in Eia.
+    If the colour does not exist in the token map, it does not exist in Serene.
     If you believe a new colour is needed, propose it in the Decision Log.
     It will be added to the token map and inherit all theme variations.
     It will not be hardcoded in a component.
@@ -3183,7 +3183,7 @@ RULE R-06 — Modals become bottom sheets below md
     10px. font-medium. uppercase. tracking-[0.12em]. --theme-text-tertiary.
     This combination is the signature of professional software.
     Changing any one value — making it 11px, or sentence case, or primary colour —
-    breaks the visual language that unifies every form in Eia.
+    breaks the visual language that unifies every form in Serene.
 
 19  No animation that animates width, height, top, left, padding, or margin.
     These properties trigger layout recalculation on every frame.
@@ -3195,7 +3195,7 @@ RULE R-06 — Modals become bottom sheets below md
     TopBar. Mobile sidebar overlay. Command palette overlay.
     That is the complete list. Adding blur to cards, dropdowns, or modals
     is glassmorphism. Glassmorphism aged poorly.
-    Eia uses elevation, borders, and accent surfaces to communicate depth.
+    Serene uses elevation, borders, and accent surfaces to communicate depth.
     It does not use blur to look modern. It uses restraint to look permanent.
 ```
 
@@ -3241,7 +3241,7 @@ before it arrives. Fast, premium, never jarring.
 ## 11.1 — The Pulse Animation
 
 ```css
-@keyframes eia-skeleton-pulse {
+@keyframes serene-skeleton-pulse {
   0%,
   100% {
     opacity: 1;
@@ -3254,7 +3254,7 @@ before it arrives. Fast, premium, never jarring.
 .skeleton {
   background: var(--theme-paper-subtle);
   border-radius: var(--radius-xs);
-  animation: eia-skeleton-pulse 1.6s ease-in-out infinite;
+  animation: serene-skeleton-pulse 1.6s ease-in-out infinite;
 }
 ```
 
@@ -3417,7 +3417,7 @@ Never squeeze 6 icons into a bottom bar. It becomes unreadable and untappable.
 
 ## 12.2 — Touch & Gesture Standards
 
-Every interactive element in Eia on mobile follows these standards.
+Every interactive element in Serene on mobile follows these standards.
 They are not responsive extras — they are the mobile contract.
 
 ```text
@@ -3472,7 +3472,7 @@ Scroll containers
 ## 13.1 — Philosophy: Living Notifications
 
 Most toast systems are static rectangles with a colour stripe.
-Eia's toasts are alive in three specific ways:
+Serene's toasts are alive in three specific ways:
 
 **1 — They breathe their type.**
 A success toast does not just have a green stripe. The entire left edge
@@ -3576,11 +3576,11 @@ A success toast is always green. The user must never wonder what colour means.
 | `danger`  | `--color-danger`  | `XCircle`        | `--color-danger-text`  | `--color-danger-light`   | Clear. Still. Never hysterical.          |
 | `info`    | `--color-info`    | `Info`           | `--color-info-text`    | `--color-info-light`     | Neutral. A fact, not a feeling.          |
 | `loading` | `--theme-accent`  | `Loader2` (spin) | `--theme-accent`       | `--theme-accent-surface` | Patient. Alive. In progress.             |
-| `lia`     | `--theme-accent`  | Lia glyph (sm)   | `--theme-accent`       | `--theme-accent-surface` | Different. Reserved for Lia only.        |
+| `elaya`     | `--theme-accent`  | Elaya glyph (sm)   | `--theme-accent`       | `--theme-accent-surface` | Different. Reserved for Elaya only.        |
 
-**The `lia` type** is a special class — used exclusively when Lia has completed
+**The `elaya` type** is a special class — used exclusively when Elaya has completed
 an agentic action, generated a report, or has something to show the user.
-It carries the Lia glyph instead of a Lucide icon and the `liaBreathe` animation
+It carries the Elaya glyph instead of a Lucide icon and the `liaBreathe` animation
 runs on the glyph while the toast is visible. It is the only toast type that
 feels like a person sent it — because one did.
 
@@ -3593,12 +3593,12 @@ The continuity is the message: _the same thing that was waiting is now done._
 
 ## 13.4 — The Living Bar Animation
 
-This is what separates Eia's toasts from a rectangle with a stripe.
+This is what separates Serene's toasts from a rectangle with a stripe.
 
 On arrival, the left accent bar performs a single breath:
 
 ```css
-@keyframes eia-toast-bar-breathe {
+@keyframes serene-toast-bar-breathe {
   0% {
     opacity: 0.3;
     box-shadow: none;
@@ -3616,7 +3616,7 @@ On arrival, the left accent bar performs a single breath:
 
 .toast-bar {
   --bar-colour: /* set per type */;
-  animation: eia-toast-bar-breathe 600ms var(--ease-out-expo) forwards;
+  animation: serene-toast-bar-breathe 600ms var(--ease-out-expo) forwards;
 }
 ```
 
@@ -3627,9 +3627,9 @@ It is not looping. It does not pulse continuously.
 A continuously pulsing bar would demand attention it has not earned.
 One breath announces arrival. Stillness says: _I am here when you are ready._
 
-**The `lia` type is the only exception** — its bar carries the `liaBreathe` animation
+**The `elaya` type is the only exception** — its bar carries the `liaBreathe` animation
 continuously (the same 3s gentle pulse from Section 6.4).
-Lia is always breathing. Even in a toast. Especially in a toast.
+Elaya is always breathing. Even in a toast. Especially in a toast.
 
 ---
 
@@ -3719,7 +3719,7 @@ info:      5000ms   — a fact, give time to read
 warning:   6000ms   — time is part of the message, depleting bar active
 danger:    never    — user must dismiss. The error does not go away on its own.
 loading:   never    — lives until resolved
-lia:       7000ms   — Lia's messages deserve a little more time
+elaya:       7000ms   — Elaya's messages deserve a little more time
 ```
 
 **Hover pause:** Hovering over any toast freezes its progress and resets the timer.
@@ -3760,7 +3760,7 @@ toast.success("Lead saved");
 toast.danger("Something went wrong");
 toast.warning("Storage is nearly full");
 toast.info("Sync complete — 14 records updated");
-toast.lia("Report ready — Q3 Performance Summary");
+toast.elaya("Report ready — Q3 Performance Summary");
 
 // With supporting message
 toast.success("Profile updated", {
@@ -3773,10 +3773,10 @@ toast.danger("Delete failed", {
   action: { label: "Retry", onClick: handleRetry },
 });
 
-// With action — Lia type
-toast.lia("Analysis complete", {
-  message: "Lia has flagged 3 leads needing attention.",
-  action: { label: "Review now", onClick: () => router.push("/lia") },
+// With action — Elaya type
+toast.elaya("Analysis complete", {
+  message: "Elaya has flagged 3 leads needing attention.",
+  action: { label: "Review now", onClick: () => router.push("/elaya") },
 });
 
 // Loading — the living toast
@@ -3810,7 +3810,7 @@ on toast entrance. This is negligible. The performance rules that matter:
 ✓  Framer Motion used only for container entrance/exit and stack reflow
 ✓  Maximum 3 toasts in the DOM simultaneously — excess are queued, not rendered
 ✓  Loading toast Loader2 spin: CSS animation, not JS interval
-✓  liaBreathe on Lia glyph: CSS animation, not JS
+✓  liaBreathe on Elaya glyph: CSS animation, not JS
 ✗  No blur filters on toasts — blur on frequently-appearing elements is expensive
 ✗  No box-shadow animation on the main container — only on the 3px bar (tiny element)
 ```
@@ -3825,7 +3825,7 @@ It is imperceptible in profiling. The payoff in feeling is not.
 > Every field is a conversation — the user is telling the software
 > something true. The software must receive that truth with care.
 >
-> A form in Eia is not a data collection mechanism.
+> A form in Serene is not a data collection mechanism.
 > It is an invitation to participate.
 > It should feel as considered as the rest of the interface.
 
@@ -3855,7 +3855,7 @@ Always specific, inline, at the field that needs attention.
 
 ## 7.2 — Field Anatomy
 
-Every field in Eia follows the same vertical structure.
+Every field in Serene follows the same vertical structure.
 No exceptions. This consistency is what makes the form readable.
 
 ```text
@@ -4180,7 +4180,7 @@ If a section grows beyond 6, split it.
 
 ## 7.7 — Validation & Error System
 
-Eia uses Zod for all validation. Every form has a schema.
+Serene uses Zod for all validation. Every form has a schema.
 Every error has a location. No orphaned messages.
 
 ### The Three Error Moments
@@ -4203,7 +4203,7 @@ These are the only on-change validations. Everything else waits.
 
 ### Error Message Voice
 
-Error messages in Eia are written in the first person, from the software's perspective.
+Error messages in Serene are written in the first person, from the software's perspective.
 They are factual, specific, and never blame the user.
 
 ```text
@@ -4223,7 +4223,7 @@ They are factual, specific, and never blame the user.
 ✓  "Enter a date like 14 Jan 2026"
 ```
 
-The voice is the same voice Lia uses. Calm. Human. Direct.
+The voice is the same voice Elaya uses. Calm. Human. Direct.
 Never technical. Never accusatory. Never passive-aggressive.
 
 ### Zod → UI Error Mapping
@@ -4418,7 +4418,7 @@ RULE F-10 — Error messages are always specific
 > is a crack in the foundation. The user may not name it. But they feel it.
 > And they stop trusting.
 >
-> This section is the contract for how Eia speaks numbers, dates,
+> This section is the contract for how Serene speaks numbers, dates,
 > currencies, status, and absence. One voice. Everywhere.
 
 ---
@@ -4884,7 +4884,7 @@ A skeleton is not a failure. A white flash is.
 
 ## 14.2 — The Transition Architecture
 
-Eia uses Next.js App Router. Page transitions work in two layers:
+Serene uses Next.js App Router. Page transitions work in two layers:
 
 ```text
 Layer 1 — The route progress bar (always running)
@@ -4910,7 +4910,7 @@ The content transition tells the user they have arrived.
 ```text
 The line that tells the user the software heard them.
 
-Position:   absolute top of .eia-paper, z-var(--z-sticky)
+Position:   absolute top of .serene-paper, z-var(--z-sticky)
             not the browser chrome — inside the paper surface
             This keeps it themed. It respects the paper.
 
@@ -4933,7 +4933,7 @@ Behaviour:
 Implementation: use nprogress or a lightweight custom hook.
 Never use the browser's built-in loading indicator.
 It appears in the browser chrome, outside the paper.
-We own the progress signal. It lives inside Eia.
+We own the progress signal. It lives inside Serene.
 
 Glow:
   box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent) 60%, transparent)
@@ -5129,7 +5129,7 @@ The sidebar active state updates simultaneously:
   The module name in the TopBar crossfades.
 
 Domain switch total perceived duration: ~500ms
-This is the longest transition in Eia.
+This is the longest transition in Serene.
 It earns this time because it represents the largest context shift.
 ```
 
@@ -5167,7 +5167,7 @@ Route progress bar:
   It shows on all route changes including auth routes.
 
 Custom scrollbar (paper surface):
-  All scrollable areas inside .eia-paper:
+  All scrollable areas inside .serene-paper:
   scrollbar-width: thin (Firefox)
   scrollbar-color: var(--theme-paper-border) transparent (Firefox)
   ::-webkit-scrollbar width: 4px (Chrome/Safari)
@@ -5232,10 +5232,10 @@ The user is reading the skeleton while the transition completes.
 Time is spent well.
 ```
 
-## Section 15 — Lia Design Language
+## Section 15 — Elaya Design Language
 
-> Lia is not a feature added to Eia.
-> She is in Eia the way a compass is in a ship.
+> Elaya is not a feature added to Serene.
+> She is in Serene the way a compass is in a ship.
 > Not decorative. Not optional. Orientating.
 >
 > She does not wait to be summoned. She notices.
@@ -5248,9 +5248,9 @@ Time is spent well.
 
 ---
 
-## 15.1 — Lia's Identity
+## 15.1 — Elaya's Identity
 
-Lia has three qualities that her visual language must carry at all times:
+Elaya has three qualities that her visual language must carry at all times:
 
 **Presence without intrusion.**
 She is always available but never demanding.
@@ -5263,7 +5263,7 @@ When she does not, she breathes.
 Her proposals are phrased as offerings, not conclusions.
 Her visual language reflects this — suggestions appear in a contained surface,
 never overwriting the existing UI, never taking over.
-The user is always in control. Lia's design makes that visible.
+The user is always in control. Elaya's design makes that visible.
 
 **Warmth without informality.**
 She is not a chatbot with a smiley face.
@@ -5275,11 +5275,11 @@ Her body text is Geist — precise, readable, efficient.
 
 ---
 
-## 15.2 — The Lia Glyph
+## 15.2 — The Elaya Glyph
 
-The Lia glyph is Lia's face in the interface.
+The Elaya glyph is Elaya's face in the interface.
 It is a custom SVG mark — not a Lucide icon, not an emoji, not a letter.
-It lives at `src/components/ui/lia-glyph.tsx`.
+It lives at `src/components/ui/elaya-glyph.tsx`.
 
 ```text
 Visual character:
@@ -5288,10 +5288,10 @@ Visual character:
   Circular base suggesting completeness, with an inner mark
   suggesting direction or attention — a compass, not a sun.
 
-The glyph ALWAYS breathes when Lia is present.
+The glyph ALWAYS breathes when Elaya is present.
 The liaBreathe animation (Section 6.4) is never switched off
 while the glyph is visible. It is the heartbeat.
-Still glyph = Lia is not present. Breathing glyph = Lia is here.
+Still glyph = Elaya is not present. Breathing glyph = Elaya is here.
 
 Glow:
   filter: drop-shadow(
@@ -5305,31 +5305,31 @@ Glow:
 Sizes:
   xs  — 20px  sidebar icon, TopBar presence dot
   sm  — 28px  inline in chat messages, toast icon
-  md  — 40px  Lia panel header, suggestion cards
-  lg  — 64px  Lia welcome state, empty conversation
-  xl  — 96px  full-screen Lia mode, onboarding
+  md  — 40px  Elaya panel header, suggestion cards
+  lg  — 64px  Elaya welcome state, empty conversation
+  xl  — 96px  full-screen Elaya mode, onboarding
 
 Colours:
   Primary:  var(--theme-accent)   ← always the theme accent
   On dark:  var(--theme-accent) at full opacity
   On paper: var(--theme-accent) at 90% opacity
-  Muted (when Lia is in background): var(--theme-accent-muted)
-  Never grayscale. Lia does not go grey.
+  Muted (when Elaya is in background): var(--theme-accent-muted)
+  Never grayscale. Elaya does not go grey.
 ```
 
 ---
 
-## 15.3 — Lia's Surfaces
+## 15.3 — Elaya's Surfaces
 
-Lia appears in four distinct surfaces in Eia.
+Elaya appears in four distinct surfaces in Serene.
 Each surface has a specific anatomy and purpose.
 
-### Surface A — The Lia Panel (persistent side panel)
+### Surface A — The Elaya Panel (persistent side panel)
 
 ```text
 When active, a panel opens from the right side of the paper.
 It does not push the main content — it overlays with a shadow.
-The main content dims slightly (opacity 0.6) to acknowledge Lia's presence.
+The main content dims slightly (opacity 0.6) to acknowledge Elaya's presence.
 
 Dimensions:
   width: 400px on lg+, full width on mobile (bottom sheet)
@@ -5343,7 +5343,7 @@ Shell:
   box-shadow: var(--shadow-sidebar) inverted (on the left edge)
 
 Header (h-14):
-  Lia glyph md + "Lia" in Playfair Display, --text-base, --weight-normal
+  Elaya glyph md + "Elaya" in Playfair Display, --text-base, --weight-normal
   Right: close button (X, ghost, w-7 h-7)
   border-bottom: 1px solid var(--theme-paper-border)
   The glyph breathes in the header. Always.
@@ -5358,7 +5358,7 @@ Input area (bottom):
   bg: var(--theme-paper)
   border-top: 1px solid var(--theme-paper-border)
   padding: var(--space-3) var(--space-4) var(--space-5)
-  placeholder: "Ask Lia anything about this page..."
+  placeholder: "Ask Elaya anything about this page..."
 
 Panel entrance:
   x: 40px → 0, opacity: 0 → 1
@@ -5371,22 +5371,22 @@ Panel exit:
   Main content restores: opacity 0.6 → 1, duration 300ms
 ```
 
-### Surface B — The Lia Conversation (full-screen mode)
+### Surface B — The Elaya Conversation (full-screen mode)
 
 ```text
-When the user enters the Lia conversation full-screen —
-the paper becomes Lia's space entirely.
+When the user enters the Elaya conversation full-screen —
+the paper becomes Elaya's space entirely.
 
 The shell:
   Same paper surface. Same shell. The sidebar remains.
-  Only the TopBar changes: title becomes "Lia" in Playfair
-  with the Lia glyph sm to the left of it.
+  Only the TopBar changes: title becomes "Elaya" in Playfair
+  with the Elaya glyph sm to the left of it.
   The trailing accent period (Section 5.99 Detail 03) remains.
 
 Welcome state (empty conversation):
   Centred in the paper, vertically and horizontally.
 
-  Lia glyph xl, breathing, full glow
+  Elaya glyph xl, breathing, full glow
   margin-bottom: var(--space-6)
 
   Greeting:
@@ -5414,14 +5414,14 @@ Welcome state (empty conversation):
     opacity 0→1, y 4→0, 200ms each, --ease-out-expo
 ```
 
-### Surface C — The Lia Inline Suggestion
+### Surface C — The Elaya Inline Suggestion
 
 ```text
-Lia's most powerful and most restrained surface.
+Elaya's most powerful and most restrained surface.
 She surfaces a suggestion inside the existing UI —
 not in a panel, not in a chat. Right where the user is working.
 
-Trigger: Lia has noticed something relevant to the current view.
+Trigger: Elaya has noticed something relevant to the current view.
          She does not interrupt. She places a card.
 
 Suggestion Card:
@@ -5433,7 +5433,7 @@ Suggestion Card:
   box-shadow: var(--shadow-accent-ring)
 
   Header row:
-    Lia glyph xs + "Lia" --text-2xs --weight-semibold --theme-accent
+    Elaya glyph xs + "Elaya" --text-2xs --weight-semibold --theme-accent
     + dismiss button (X w-3.5 h-3.5, --theme-accent-muted, top-right)
 
   Body:
@@ -5450,16 +5450,16 @@ Suggestion Card:
     opacity: 0→1, y: 6→0
     duration: 300ms, --ease-out-expo
     delay: 400ms after page load — never appears instantly
-           Lia needs a moment to notice. Instant suggestions feel scripted.
+           Elaya needs a moment to notice. Instant suggestions feel scripted.
 
   The 400ms delay is the most important detail in this component.
-  It is the pause that makes Lia feel like she observed before speaking.
+  It is the pause that makes Elaya feel like she observed before speaking.
 ```
 
-### Surface D — The Lia Action Proposal
+### Surface D — The Elaya Action Proposal
 
 ```text
-When Lia wants to do something — send a message, update a field,
+When Elaya wants to do something — send a message, update a field,
 create a task, generate a report — she proposes. She never acts unilaterally.
 This is Rule 13 from The_Rules. The design makes the rule visible.
 
@@ -5474,12 +5474,12 @@ Proposal Card:
   box-shadow: var(--shadow-2)
 
   Header:
-    Lia glyph sm + "Lia proposes" in --text-xs --weight-semibold --theme-accent
+    Elaya glyph sm + "Elaya proposes" in --text-xs --weight-semibold --theme-accent
     .label-micro style — uppercase, tracked, tertiary
 
   Proposal title:
     Playfair Display, --text-base, --weight-semibold, --theme-text-primary
-    One sentence. What Lia wants to do.
+    One sentence. What Elaya wants to do.
     Example: "Send a follow-up message to Priya Sharma."
 
   Proposal detail:
@@ -5510,7 +5510,7 @@ Proposal Card:
       Button enters loading state
       Proposal card: border-color transitions to --color-success
       On completion: card fades and collapses (height → 0, 300ms)
-      Toast: toast.lia() — "Action completed"
+      Toast: toast.elaya() — "Action completed"
 
   Dismissal animation:
     On "Dismiss" click:
@@ -5520,13 +5520,13 @@ Proposal Card:
 
 ---
 
-## 15.4 — Lia's Conversation UI
+## 15.4 — Elaya's Conversation UI
 
 ### Message Anatomy
 
 ```text
-Two types of message in Lia's conversation:
-User messages and Lia messages. They are visually distinct.
+Two types of message in Elaya's conversation:
+User messages and Elaya messages. They are visually distinct.
 Not just aligned differently — fundamentally different in form.
 
 User message (right-aligned):
@@ -5545,28 +5545,28 @@ User message (right-aligned):
     right-aligned, mt-1
     format: formatDate(time, 'time')  ← "2:30 PM"
 
-Lia message (left-aligned):
-  max-width: 78%   ← wider — Lia says more
+Elaya message (left-aligned):
+  max-width: 78%   ← wider — Elaya says more
   No bubble background.
   Left border: 2px solid var(--theme-accent)
   border-radius: 0 (the border is the container)
   padding: var(--space-2) 0 var(--space-2) var(--space-4)
   No box-shadow.
 
-  The border is Lia's voice made visible.
+  The border is Elaya's voice made visible.
   The absence of a bubble says: this is not a reply.
   This is a presence speaking.
 
-  Lia glyph xs: absolute left -16px, top 8px
+  Elaya glyph xs: absolute left -16px, top 8px
   Breathing always, even next to the message.
 
   Typography:
     --text-sm --theme-text-primary --leading-relaxed (1.65)
-    Lia's messages breathe more than user messages.
+    Elaya's messages breathe more than user messages.
     The line-height is the extra breath.
 
-  Structured content in Lia messages:
-    When Lia returns data, lists, or analysis —
+  Structured content in Elaya messages:
+    When Elaya returns data, lists, or analysis —
     it renders as structured UI inside the message space,
     not as raw text. See 15.5.
 
@@ -5578,12 +5578,12 @@ Lia message (left-aligned):
 ### Message Stream (typing / generating)
 
 ```text
-While Lia is generating a response:
+While Elaya is generating a response:
 
 Thinking state (before first token):
   liaDotPulse — 3 breathing dots (Section 6.4)
   Positioned where the message will appear
-  Left-aligned, same position as Lia messages
+  Left-aligned, same position as Elaya messages
   Duration: until first token arrives
 
 Streaming state (tokens arriving):
@@ -5594,7 +5594,7 @@ Streaming state (tokens arriving):
   No height animation — natural document flow expansion
 
   Streaming text:
-    Same typography as complete Lia messages
+    Same typography as complete Elaya messages
     The cursor blinks at 500ms intervals (steps(1), hard blink)
     Cursor disappears when streaming completes
 
@@ -5636,38 +5636,38 @@ Message group:
 
 ---
 
-## 15.5 — Structured Content in Lia Messages
+## 15.5 — Structured Content in Elaya Messages
 
-Lia does not only speak in prose.
+Elaya does not only speak in prose.
 When she analyses data, she surfaces it as structured UI —
 embedded directly in the conversation flow.
 
 ```text
 Each structured content type has a specific container:
 
-Data Table (when Lia returns tabular data):
+Data Table (when Elaya returns tabular data):
   Inline table, max 5 columns
   Same spec as Section 5.07 but at 90% scale
   Rounded corners on the table container
   No box-shadow — it is inside the message, not floating
 
-Metric Summary (when Lia returns numbers):
+Metric Summary (when Elaya returns numbers):
   2–4 stat cards in a horizontal row
   Each: label (micro), value (--text-xl --weight-semibold)
   Same token usage as stat cards on the dashboard
   Contained in a card shell (subtle tone)
 
-Lead / Contact Card (when Lia references a person):
+Lead / Contact Card (when Elaya references a person):
   Avatar md + name (--text-sm --weight-semibold) + role/status
   Clickable — navigates to the lead or contact record
   Hover: --shadow-2, background shifts to --theme-paper-subtle
 
-Action Proposal (when Lia suggests taking action):
+Action Proposal (when Elaya suggests taking action):
   The Proposal Card from Surface D, embedded in the message flow
   Appears after the prose explanation, not instead of it
-  Lia explains what she wants to do, then shows the proposal card below
+  Elaya explains what she wants to do, then shows the proposal card below
 
-Code / Technical (when Lia returns formatted data):
+Code / Technical (when Elaya returns formatted data):
   bg: var(--theme-canvas) at 95% opacity on light paper
   border: 1px solid var(--theme-paper-border)
   border-radius: var(--radius-sm)
@@ -5679,74 +5679,74 @@ Code / Technical (when Lia returns formatted data):
 
 ---
 
-## 15.6 — Lia's Presence Indicators
+## 15.6 — Elaya's Presence Indicators
 
-Lia has presence states that the rest of the interface acknowledges.
+Elaya has presence states that the rest of the interface acknowledges.
 
 ```text
 Available (default):
-  Lia glyph in sidebar: breathing at normal rhythm (3s cycle)
+  Elaya glyph in sidebar: breathing at normal rhythm (3s cycle)
   No badge. No indicator. Just the breath.
 
-Processing (Lia is working on something in the background):
-  Lia glyph: breathing rhythm increases slightly (2s cycle)
+Processing (Elaya is working on something in the background):
+  Elaya glyph: breathing rhythm increases slightly (2s cycle)
   A subtle amber tint enters the glow:
   color-mix(in srgb, var(--theme-accent) 60%, var(--color-warning) 40%)
   No badge. No spinner. The rhythm change is enough.
   The user who looks will notice. The user who does not look is not interrupted.
 
-Complete (Lia finished a background task):
-  toast.lia() fires (Section 13 — the Lia toast type)
+Complete (Elaya finished a background task):
+  toast.elaya() fires (Section 13 — the Elaya toast type)
   Glyph returns to normal rhythm
   The toast is the announcement. The glyph's calm return is the confirmation.
 
-Awaiting approval (Lia proposed an action, waiting for response):
-  Lia glyph: a single soft pulse every 6 seconds
+Awaiting approval (Elaya proposed an action, waiting for response):
+  Elaya glyph: a single soft pulse every 6 seconds
   Slower than normal breathe — patient, not urgent
   The glyph is waiting. Its rhythm says so.
   A small accent dot on the sidebar nav item: w-1.5 h-1.5
   bg: var(--theme-accent), position: absolute top-0.5 right-0.5
   border-radius: --radius-full
-  This is the only badge Lia ever shows. One dot. Never a number.
+  This is the only badge Elaya ever shows. One dot. Never a number.
 ```
 
 ---
 
-## 15.7 — Lia's Voice in the UI
+## 15.7 — Elaya's Voice in the UI
 
-Design is not only visual. Lia's written voice is part of her design language.
-Every string Lia displays follows these rules.
+Design is not only visual. Elaya's written voice is part of her design language.
+Every string Elaya displays follows these rules.
 
 ```text
-Lia speaks in first person:
+Elaya speaks in first person:
   "I noticed three leads haven't been contacted this week."
   Not: "Three leads have not been contacted this week."
   The "I noticed" makes it an observation, not an accusation.
 
-Lia proposes, never commands:
+Elaya proposes, never commands:
   "I can send a follow-up if you'd like."
   Not: "Send follow-up."
   The offer is open. The user decides.
 
-Lia is specific, never vague:
+Elaya is specific, never vague:
   "Priya Sharma's follow-up is overdue by 3 days."
   Not: "Some follow-ups need attention."
   Vague suggestions are not suggestions. They are noise.
 
-Lia acknowledges when she does not know:
+Elaya acknowledges when she does not know:
   "I don't have enough context to suggest an action here."
   Not silence. Not a spinner. A direct statement.
 
-Lia's empty states are different from the rest of Eia:
+Elaya's empty states are different from the rest of Serene:
   Standard empty state (Section 5.99 Detail 04) uses Playfair italic.
-  Lia's empty states use Playfair italic in Lia's first person voice.
+  Elaya's empty states use Playfair italic in Elaya's first person voice.
   "Nothing on my radar right now."
   "I'm watching, but all looks well."
   "Ask me anything about what's happening here."
   The difference: standard empty states are descriptive.
-  Lia's empty states are alive. She is there, even in silence.
+  Elaya's empty states are alive. She is there, even in silence.
 
-Lia's error states:
+Elaya's error states:
   "I ran into something unexpected. Try again?"
   Not: "An error occurred."
   She is accountable, not technical.
@@ -5755,20 +5755,20 @@ Lia's error states:
 
 ---
 
-## 15.8 — Lia's Access to Domain Context
+## 15.8 — Elaya's Access to Domain Context
 
 This is a design rule, not just a technical one.
 
 ```text
-Lia always knows which domain the user is currently in.
+Elaya always knows which domain the user is currently in.
 Her suggestions are scoped to that domain.
 
 When a user is in Finance:
-  Lia's suggestions are about Finance data.
+  Elaya's suggestions are about Finance data.
   She does not surface Concierge insights unless asked.
 
 When a user has cross-domain grants (Section 5 — RBAC):
-  Lia can surface insights from granted domains.
+  Elaya can surface insights from granted domains.
   She always labels the source: "In the Concierge domain, I noticed..."
   She never silently crosses domain boundaries.
 
@@ -5776,16 +5776,16 @@ The visual signal for cross-domain insights:
   The suggestion card carries a domain badge (Pill sm accent variant)
   top-right corner: "Concierge" or "Finance" — the source domain
   This makes domain attribution visible and auditable.
-  The user always knows where Lia's insight came from.
+  The user always knows where Elaya's insight came from.
 ```
 
 ---
 
-## 15.9 — The Rules That Make Lia Premium
+## 15.9 — The Rules That Make Elaya Premium
 
 ```text
-RULE L-01 — Lia never appears without the glyph breathing
-            A static glyph means Lia is not present.
+RULE L-01 — Elaya never appears without the glyph breathing
+            A static glyph means Elaya is not present.
             If she is present, she breathes. No exceptions.
 
 RULE L-02 — Inline suggestions always have a 400ms delay
@@ -5800,71 +5800,71 @@ RULE L-03 — Proposal cards always have exactly two actions
             Three actions introduce decision paralysis.
             Two actions is a conversation. Yes or no.
 
-RULE L-04 — Lia never shows a number badge
+RULE L-04 — Elaya never shows a number badge
             One dot, or no dot. Never a count.
             Counts create anxiety. A dot creates awareness.
-            The user will open Lia when they are ready.
+            The user will open Elaya when they are ready.
             The dot says she is waiting. It does not say how long.
 
-RULE L-05 — Lia's messages are never in a bubble on a coloured background
-            The left-border design is Lia's identity.
+RULE L-05 — Elaya's messages are never in a bubble on a coloured background
+            The left-border design is Elaya's identity.
             A bubble makes her look like a chatbot.
             The border says: this is not a response. This is a presence speaking.
 
 RULE L-06 — Structured content appears after text, never instead of it
-            Lia always explains in prose before showing structured data.
+            Elaya always explains in prose before showing structured data.
             A table with no context is a database result.
             A prose explanation followed by a table is intelligence.
 
 RULE L-07 — Cross-domain insights are always labelled
-            When Lia surfaces insight from another domain,
+            When Elaya surfaces insight from another domain,
             the source domain is visible on the card.
             No silent boundary crossing. Ever.
-            This is trust. Trust is Lia's entire value.
+            This is trust. Trust is Elaya's entire value.
 
-RULE L-08 — Lia's colour is always the theme accent
+RULE L-08 — Elaya's colour is always the theme accent
             On Earth she is gold. On Water she is teal. On Cosmos she is violet.
             She does not have her own fixed colour.
             She belongs to the world she lives in.
-            She is of Eia, not placed inside it.
+            She is of Serene, not placed inside it.
 ```
 
 ---
 
-## 15.10 — What Lia Is Not
+## 15.10 — What Elaya Is Not
 
 These are the design anti-patterns that will be proposed and must be refused.
 
 ```text
-Lia is not a chatbot widget
+Elaya is not a chatbot widget
   She does not live in a floating bubble in the corner.
   She does not have a "chat with us" button.
   She is not customer support.
   She lives inside the paper, accessed from the sidebar nav.
 
-Lia is not a notification system
+Elaya is not a notification system
   She does not send push notifications.
   She does not email the user.
   She does not create urgency outside the product.
-  Her only external signal is the single Lia toast.
+  Her only external signal is the single Elaya toast.
 
-Lia is not always-on visible
+Elaya is not always-on visible
   Her panel is not always open.
   Her glyph in the sidebar is the only persistent indicator.
-  The rest of Eia should be fully usable without ever opening Lia.
+  The rest of Serene should be fully usable without ever opening Elaya.
   She enhances. She does not require.
 
-Lia is not a search bar
+Elaya is not a search bar
   She does not replace the search function.
   Searching for "leads from Mumbai" is search.
-  "What should I do about my Mumbai leads?" is Lia.
+  "What should I do about my Mumbai leads?" is Elaya.
   The distinction matters. They are separate surfaces.
 
-Lia is not infallible
+Elaya is not infallible
   Her error states are designed.
   Her "I don't know" response is designed.
   Designing for her limitations is as important as designing for her capabilities.
-  A Lia that only appears when she is certain is a Lia that disappears
+  A Elaya that only appears when she is certain is a Elaya that disappears
   exactly when the user needs help most.
 ```
 
@@ -5873,7 +5873,7 @@ Lia is not infallible
 > A chart is not a dump of numbers with colours applied.
 > A chart is an argument. The colours are the rhetoric.
 >
-> Every colour in every chart in Eia is a decision.
+> Every colour in every chart in Serene is a decision.
 > It encodes meaning. It creates hierarchy.
 > It guides the eye to what matters.
 >
@@ -5894,7 +5894,7 @@ If the answer is "it means first" or "it means series B",
 the colour is doing nothing. It is decoration pretending to be information.
 
 **Theme-awareness is not optional.**
-Every chart in Eia uses CSS variables, not hex values.
+Every chart in Serene uses CSS variables, not hex values.
 A chart built with hardcoded colours breaks when the theme switches.
 A chart built with tokens becomes gold on Earth, teal on Water,
 violet on Cosmos — without a single conditional.
@@ -6122,7 +6122,7 @@ Hover state:
 ### Progress Bar / Pipeline Stage Chart
 
 ```text
-This is the chart most specific to Eia's use case —
+This is the chart most specific to Serene's use case —
 showing pipeline stages, conversion rates, task completion.
 
 Single value:
@@ -6153,7 +6153,7 @@ Threshold / target line:
 ### Scatter Plot
 
 ```text
-Used in Eia for: lead scoring, performance mapping, cohort analysis.
+Used in Serene for: lead scoring, performance mapping, cohort analysis.
 
 Points:
   Default: var(--theme-accent) at 60% opacity
@@ -6176,7 +6176,7 @@ Quadrant lines (when used):
 
 ## 16.5 — Chart Surface & Container
 
-Every chart in Eia lives in a Card (Section 5.04).
+Every chart in Serene lives in a Card (Section 5.04).
 The chart is content inside the card. The card is the container.
 
 ```text
@@ -6217,7 +6217,7 @@ Legend:
 
 Empty chart state:
   The chart container renders at full size.
-  Inside: the standard Eia empty state (Section 5.99 Detail 04)
+  Inside: the standard Serene empty state (Section 5.99 Detail 04)
   Playfair italic: "No data for this period."
   Never a blank chart with empty axes — the axes imply data exists.
   If there is no data, there are no axes. Just the empty state.
@@ -6291,7 +6291,7 @@ Data update (value changes):
   Lines: path morphs — 400ms --ease-out-expo
   Numbers in centre metric: count up from old to new value
                              duration: 600ms, linear
-                             This is the only place linear easing is correct in Eia.
+                             This is the only place linear easing is correct in Serene.
                              Numbers counting at a constant rate feels honest.
 
 Reduced motion:
@@ -6468,8 +6468,8 @@ Reference implementation: `src/components/dashboard/widgets/ManagerLeadVolumeWid
 
 > The semantic colour system (Section 2.1) was designed for paper surfaces.
 > Success green on warm cream paper. Danger red on white paper.
-> But Eia has dark surfaces too — the canvas, the sidebar, tooltips,
-> the Lia code block, the toast container.
+> But Serene has dark surfaces too — the canvas, the sidebar, tooltips,
+> the Elaya code block, the toast container.
 > On dark, the same semantic values that work beautifully on paper
 > become either invisible or too harsh.
 > This addendum completes the system.
@@ -6506,7 +6506,7 @@ They activate on any dark surface — canvas, sidebar, tooltips, code blocks.
 /* ============================================================
    SEMANTIC COLOURS — DARK SURFACE VARIANTS
    Used on: --theme-canvas, --theme-sidebar-bg, tooltip bg,
-            Lia code blocks, any surface darker than #333
+            Elaya code blocks, any surface darker than #333
    ============================================================ */
 
 /* Success — dark surface */
@@ -6552,8 +6552,8 @@ Sidebar alerts / inline indicators:
   The sidebar bg is --theme-sidebar-bg (near-black).
   Standard light fills here are jarring.
 
-Lia code blocks (bg: --theme-canvas at 95%):
-  Any inline semantic highlight in a Lia code response uses dark variants.
+Elaya code blocks (bg: --theme-canvas at 95%):
+  Any inline semantic highlight in a Elaya code response uses dark variants.
 
 Chart tooltips (bg: --theme-canvas):
   Semantic colours in tooltips (success delta, danger drop) use dark text variants.
@@ -6589,8 +6589,8 @@ RULE S-01 — Surface determines semantic variant
 
 ## Addendum A.2 — Drawer / Sheet Component
 
-> The drawer is the most used overlay surface in Eia.
-> Client profiles, task details, Lia panel, mobile sidebar —
+> The drawer is the most used overlay surface in Serene.
+> Client profiles, task details, Elaya panel, mobile sidebar —
 > all of them slide in from an edge and take their place above the content.
 > It was referenced throughout the design DNA without ever being fully specced.
 > This closes that gap.
@@ -6648,7 +6648,7 @@ Structure:
 
 Variants by origin edge:
 
-  RIGHT (default — client profiles, task details, Lia panel):
+  RIGHT (default — client profiles, task details, Elaya panel):
     top: 0, right: 0, bottom: 0
     width: 480px (default), 640px (wide), 100% (mobile)
     border-radius: var(--radius-xl) 0 0 var(--radius-xl)
@@ -6657,7 +6657,7 @@ Variants by origin edge:
     Entrance: x: 100%→0, duration 350ms --ease-out-expo
     Exit:     x: 0→100%, duration 250ms --ease-in-expo
 
-  BOTTOM (mobile modals, mobile Lia panel, action sheets):
+  BOTTOM (mobile modals, mobile Elaya panel, action sheets):
     bottom: 0, left: 0, right: 0
     height: auto, max-height: 90dvh
     border-radius: var(--radius-xl) var(--radius-xl) 0 0
@@ -6746,7 +6746,7 @@ Drawer widths are named, not arbitrary:
 
   sm:      360px   compact — notification details, quick actions
   md:      480px   standard — client profiles, task details (default)
-  lg:      640px   wide — data-heavy panels, Lia panel on wide desktop
+  lg:      640px   wide — data-heavy panels, Elaya panel on wide desktop
   xl:      800px   full — report views, complex multi-tab drawers
   full:    100%    mobile and when content demands full viewport
 
@@ -6818,7 +6818,7 @@ html {
   /* Prevents scroll chaining — reaching the bottom of a list
      does not trigger pull-to-refresh on the body.
      Applied to: sidebar nav, table containers, drawer body,
-                 Lia conversation, modal body, any overflow-y-auto element */
+                 Elaya conversation, modal body, any overflow-y-auto element */
 
   -webkit-overflow-scrolling: touch;
   /* Momentum scroll on iOS — the natural deceleration after a flick.
@@ -6830,7 +6830,7 @@ html {
 
 ## Custom Scrollbar
 
-Every scrollable surface inside `.eia-paper` uses the themed scrollbar.
+Every scrollable surface inside `.serene-paper` uses the themed scrollbar.
 The scrollbar is part of the design system. It is not the browser default.
 
 ```css

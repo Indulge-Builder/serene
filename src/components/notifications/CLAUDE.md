@@ -100,7 +100,7 @@ Never move the filter into the JS handler. It must be on the channel to prevent 
 
 - `play()` fires in `useNotifications` INSERT handler only. Never on initial seed, markRead, or markAllRead.
 - `useNotifications` calls `useNotificationSound()` at its top and calls `sound.play()` after prepending the new notification to state.
-- **localStorage key:** `eia:notifications:sound:v1`. Default `true` when absent. Persists across page refresh.
+- **localStorage key:** `serene:notifications:sound:v1`. Default `true` when absent. Persists across page refresh.
 - **Debounce:** 1500ms minimum between plays. Three rapid Realtime inserts → one chime.
 - **Autoplay guard:** checks `context.state`. If `'suspended'`, calls `context.resume()`. If still not `'running'`, returns silently. No `console.error`, no throw — silence is correct fallback for first-load Realtime events.
 - **Settings toggle:** `src/components/profile/NotificationPreferences.tsx` — first row, live (not stubbed). `Toggle` controlled by `sound.enabled` / `sound.setEnabled`.

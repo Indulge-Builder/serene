@@ -102,7 +102,7 @@ Agent default layout: tasks · Elaya (right column) · pending-calls · new-lead
 
 Pattern mirrors `useLeadColumnPreferences` exactly.
 
-**localStorage key format:** `eia:dashboard:layout:${userId}:v2` (bumped from `v1` in the 2026-06-12 redesign — bump again whenever the default grid changes shape; stale layouts must be orphaned, never reconciled)
+**localStorage key format:** `serene:dashboard:layout:${userId}:v2` (bumped from `v1` in the 2026-06-12 redesign — bump again whenever the default grid changes shape; stale layouts must be orphaned, never reconciled)
 
 **Returns:**
 
@@ -259,7 +259,7 @@ Filters live in `TasksFilters` / `TasksShell` (`task-client-filters.ts` — all 
 **Client Component:** `src/components/tasks/GroupTaskWorkspace.tsx`
 
 - Two views: List (priority DESC + due_at ASC NULLS LAST) | Board (5 columns).
-- View persisted to `localStorage` at `eia:tasks:workspace-view:${groupId}`. Default `'list'` on SSR; `useEffect` reads after mount (no hydration mismatch).
+- View persisted to `localStorage` at `serene:tasks:workspace-view:${groupId}`. Default `'list'` on SSR; `useEffect` reads after mount (no hydration mismatch).
 - Board has 5 columns: To Do · In Progress · In Review · Completed · Error/Cancelled. Error and Cancelled share one column; header shows sum of both counts; cards show actual status pill.
 - Click any row/card → fires `getTaskRemarksAction(subtask.id)`, sets `selectedSubtaskRemarks` state. `SubTaskModal` mounts only once `selectedSubtaskRemarks !== null`. Status changes via TaskModal → local state update on `handleModalClose` (re-fetches subtasks, clears remarks).
 - Realtime: subscribes to `tasks WHERE group_id = id`. Channel: `workspace-subtasks-${groupId}-${mountId}`.

@@ -103,9 +103,9 @@ function NavLink({
   return (
     <Link
       href={href}
-      // Layout props live in .eia-nav-link (globals.css) so the md icon-rail
+      // Layout props live in .serene-nav-link (globals.css) so the md icon-rail
       // media query can centre the icon — inline styles would win otherwise.
-      className="eia-nav-link"
+      className="serene-nav-link"
       title={label}
       style={{
         color: isActive
@@ -166,11 +166,11 @@ function NavLink({
         }}
       />
       {/* Hidden on the md icon rail — the title attr carries the label there */}
-      <span className="eia-sidebar-rail-hide" style={{ flex: 1 }}>{label}</span>
+      <span className="serene-sidebar-rail-hide" style={{ flex: 1 }}>{label}</span>
 
       {isActive && (
         <motion.span
-          className="eia-sidebar-rail-hide eia-nav-chevron"
+          className="serene-sidebar-rail-hide serene-nav-chevron"
           aria-hidden="true"
           initial={reduceMotion ? false : { opacity: 0, x: -4 }}
           animate={{ opacity: 0.5, x: 0 }}
@@ -197,7 +197,7 @@ function NavSection({ label }: { label: string }) {
         }}
       />
       <span
-        className="label-micro eia-sidebar-section-label"
+        className="label-micro serene-sidebar-section-label"
         style={{
           padding: "0 var(--space-3)",
           marginBottom: "var(--space-2)",
@@ -264,7 +264,7 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
   const isOnProfile = pathname === "/profile";
 
   // Mobile drawer (< md). On md+ the CSS ignores data-open entirely —
-  // the aside is a static rail/full sidebar (globals.css .eia-sidebar).
+  // the aside is a static rail/full sidebar (globals.css .serene-sidebar).
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Navigating closes the drawer (nav links push a new pathname).
@@ -293,15 +293,15 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
     <>
       {/* ── Mobile drawer trigger (< md only) — floats over the paper on
           the page-title line (the .type-page-title indent in globals.css
-          clears it). Canvas-coloured bubble backdrop (.eia-mobile-trigger).
+          clears it). Canvas-coloured bubble backdrop (.serene-mobile-trigger).
           Primary nav pages only — detail pages use their BackButton. ── */}
       {MOBILE_TRIGGER_PATHS.has(pathname) && (
-        <div className="eia-mobile-topbar">
+        <div className="serene-mobile-topbar">
           <button
             type="button"
             aria-label="Open navigation"
             aria-expanded={drawerOpen}
-            className="eia-mobile-trigger eia-touch eia-pressable"
+            className="serene-mobile-trigger serene-touch serene-pressable"
             onClick={() => setDrawerOpen(true)}
           >
             <img
@@ -318,7 +318,7 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
       <AnimatePresence>
         {drawerOpen && (
           <motion.div
-            className="eia-sidebar-backdrop"
+            className="serene-sidebar-backdrop"
             aria-hidden="true"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -330,7 +330,7 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
       </AnimatePresence>
 
     <aside
-      className="eia-sidebar"
+      className="serene-sidebar"
       data-open={drawerOpen ? "true" : "false"}
       style={{
         height: "100dvh",
@@ -344,7 +344,7 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
     >
       {/* ── Logo block ──────────────────────────────── */}
       <div
-        className="eia-sidebar-logo"
+        className="serene-sidebar-logo"
         style={{
           padding: "28px var(--space-5) var(--space-5)",
           display: "flex",
@@ -355,7 +355,7 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
         <Link
           href="/dashboard"
           aria-label="Go to dashboard"
-          className="eia-sidebar-logo-link"
+          className="serene-sidebar-logo-link"
           style={{
             display: "block",
             lineHeight: 0,
@@ -373,7 +373,7 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
             src="/logo-light.avif"
             alt=""
             aria-hidden="true"
-            className="eia-sidebar-logo-img"
+            className="serene-sidebar-logo-img"
             style={{
               objectFit: "contain",
               filter: `
@@ -384,7 +384,7 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
           />
         </Link>
         <div
-          className="eia-sidebar-rail-hide"
+          className="serene-sidebar-rail-hide"
           aria-hidden="true"
           style={{
             marginTop: "var(--space-4)",
@@ -477,10 +477,10 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
           }}
         />
 
-        <div className="eia-sidebar-footer-row">
+        <div className="serene-sidebar-footer-row">
           {/* Notification bell — seed streams in without blocking the shell.
               Hidden on the md icon rail (avatar only there). */}
-          <span className="eia-sidebar-rail-hide">
+          <span className="serene-sidebar-rail-hide">
             <Suspense fallback={<BellFallback />}>
               <SeededNotificationBell
                 userId={profile.id}
@@ -490,10 +490,10 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
           </span>
 
           {/* User info — links to profile settings. Layout props live in
-              .eia-sidebar-profile so the rail can shrink it to the avatar. */}
+              .serene-sidebar-profile so the rail can shrink it to the avatar. */}
           <Link
             href="/profile"
-            className="eia-sidebar-profile"
+            className="serene-sidebar-profile"
             style={{
               background: isOnProfile
                 ? "var(--theme-sidebar-active-bg)"
@@ -555,7 +555,7 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
             )}
 
             {/* Name + role — hidden on the md icon rail */}
-            <div className="eia-sidebar-rail-hide" style={{ flex: 1, minWidth: 0 }}>
+            <div className="serene-sidebar-rail-hide" style={{ flex: 1, minWidth: 0 }}>
               <p
                 style={{
                   fontFamily: "var(--font-sans)",
@@ -596,7 +596,7 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
           <button
             type="button"
             aria-label="Sign out"
-            className="eia-sidebar-signout"
+            className="serene-sidebar-signout"
             onClick={async () => {
               await signOutUser();
             }}

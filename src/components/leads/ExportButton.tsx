@@ -73,7 +73,7 @@ export function ExportButton({ filters }: ExportButtonProps) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="eia-pressable eia-icon-drop-hover"
+        className="serene-pressable serene-icon-drop-hover"
         style={{
           display:      'inline-flex',
           alignItems:   'center',

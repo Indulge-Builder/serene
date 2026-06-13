@@ -58,7 +58,7 @@ export default async function UserDetailPage({ params }: Props) {
 
       {/* Two-column wide layout — forms left, identity right; single column below lg */}
       <div
-        className="eia-dossier-grid eia-dossier-grid--340"
+        className="serene-dossier-grid serene-dossier-grid--340"
         style={{ alignItems: "start" }}
       >
         {/* Left column — editable forms */}

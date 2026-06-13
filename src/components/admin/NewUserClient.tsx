@@ -16,7 +16,7 @@ export function NewUserClient() {
 
   return (
     <div
-      className="eia-dossier-grid eia-dossier-grid--340"
+      className="serene-dossier-grid serene-dossier-grid--340"
       style={{ alignItems: "start" }}
     >
       {/* Left column — form */}

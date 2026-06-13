@@ -16,8 +16,8 @@ Thin orchestrators in `src/app/`. Data fetching lives in async children (`*Async
 | `(dashboard)/whatsapp` | `(dashboard)/CLAUDE.md` § WhatsApp |
 | `(dashboard)/helpdesk` | `docs/modules/call-intelligence.md` — RSC library fetch, client-side filter only |
 | `(dashboard)/escalations` | `docs/pages/escalations.md` — manager+ breach surface; live sla-service reads, no cache |
-| `(dashboard)/elaya` | `docs/modules/elia.md` — Elaya chat (all roles); RSC seeds conversation + transcript; client streams from `/api/elaya/chat` |
-| `api/elaya/chat` | `docs/modules/elia.md` — THE Elaya SSE endpoint (sanctioned P-02 exception); auth → burst limit → Zod → daily cap, all before any model call |
+| `(dashboard)/elaya` | `docs/modules/elaya.md` — Elaya chat (all roles); RSC seeds conversation + transcript; client streams from `/api/elaya/chat` |
+| `api/elaya/chat` | `docs/modules/elaya.md` — THE Elaya SSE endpoint (sanctioned P-02 exception); auth → burst limit → Zod → daily cap, all before any model call |
 | `(dashboard)/profile` | — |
 | `(dashboard)/admin/users`, `admin/ad-creatives` | `admin/ad-creatives/CLAUDE.md` |
 | `(dashboard)/settings` | `(dashboard)/settings/CLAUDE.md` |

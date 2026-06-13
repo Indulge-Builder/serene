@@ -119,9 +119,9 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
           <LeadDealCardAsync leadId={lead.id} />
         </Suspense>
 
-        {/* Two-column layout — single column below lg (.eia-dossier-grid, globals.css) */}
+        {/* Two-column layout — single column below lg (.serene-dossier-grid, globals.css) */}
         <div
-          className="eia-dossier-grid"
+          className="serene-dossier-grid"
           style={{ marginTop: 'var(--space-6)' }}
         >
           {/* Left column */}

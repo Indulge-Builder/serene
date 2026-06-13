@@ -8,7 +8,7 @@
  *   Board — 5 columns: To Do · In Progress · In Review · Completed · Error/Cancelled
  *
  * View preference persisted to localStorage at:
- *   eia:tasks:workspace-view:${groupId}
+ *   serene:tasks:workspace-view:${groupId}
  * Default is always 'list' on SSR; useEffect reads localStorage after mount
  * to prevent hydration mismatch.
  *
@@ -290,7 +290,7 @@ export function GroupTaskWorkspace({
   // ── View toggle — default 'list', hydrated from localStorage after mount ──
   const [view, setView] = useState<WorkspaceView>("list");
   const [hydrated, setHydrated] = useState(false);
-  const LS_KEY = `eia:tasks:workspace-view:${group.id}`;
+  const LS_KEY = `serene:tasks:workspace-view:${group.id}`;
 
   useEffect(() => {
     try {
@@ -954,7 +954,7 @@ export function GroupTaskWorkspace({
 
       {/* ── Board view ────────────────────────────────────────────────────── */}
       {view === "board" && (
-        <div className="eia-board">
+        <div className="serene-board">
           {BOARD_COLUMNS.map((col) => {
             const colSubtasks = subtasks.filter((t) =>
               col.statuses.includes(getEffectiveStatus(t.id, t.status)),
@@ -1461,7 +1461,7 @@ export function GroupTaskWorkspace({
           type="button"
           onClick={() => setShowAddPanel((v) => !v)}
           aria-label="Add subtask"
-          className="eia-pressable eia-icon-rotate-hover"
+          className="serene-pressable serene-icon-rotate-hover"
           style={{
             display: "flex",
             alignItems: "center",

@@ -19,12 +19,12 @@ export function UpdatePasswordForm() {
       style={{ maxWidth: "26rem", zIndex: "var(--z-raised)" }}
     >
       <div
-        className="eia-auth-card px-6 sm:px-8"
+        className="serene-auth-card px-6 sm:px-8"
         style={{ paddingTop: "var(--space-10)", paddingBottom: "var(--space-10)" }}
       >
         {/* Unified brand header */}
         <div className="flex flex-col items-center gap-3 mb-10">
-          <div className="eia-auth-logo-medallion">
+          <div className="serene-auth-logo-medallion">
             <Image
               src="/logo.webp"
               alt="Indulge"
@@ -114,7 +114,7 @@ export function UpdatePasswordForm() {
                     type={showNew ? "text" : "password"}
                     autoComplete="new-password"
                     placeholder="Min. 8 characters"
-                    className="eia-input-auth"
+                    className="serene-input-auth"
                     style={{ paddingRight: "var(--space-10)" }}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -143,7 +143,7 @@ export function UpdatePasswordForm() {
                     type={showNew ? "text" : "password"}
                     autoComplete="new-password"
                     placeholder="Repeat your password"
-                    className="eia-input-auth"
+                    className="serene-input-auth"
                     style={{ paddingRight: "var(--space-10)" }}
                   />
                   <EyeToggle

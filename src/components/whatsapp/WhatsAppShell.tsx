@@ -353,7 +353,7 @@ export function WhatsAppShell({
                   height: "32px",
                   strokeWidth: 1.5,
                   color: "var(--theme-text-tertiary)",
-                  animation: "eia-spin 1s linear infinite",
+                  animation: "serene-spin 1s linear infinite",
                 }}
               />
             </div>

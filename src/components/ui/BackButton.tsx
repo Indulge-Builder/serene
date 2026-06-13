@@ -20,7 +20,7 @@ export function BackButton({ href, label }: BackButtonProps) {
       href={href}
       aria-label={label}
       title={label}
-      className="eia-icon-travel-back-hover"
+      className="serene-icon-travel-back-hover"
       initial={{ opacity: 0, x: -6 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
@@ -50,7 +50,7 @@ export function BackButton({ href, label }: BackButtonProps) {
     >
       {/* Arrow travel (design-tokens §15): primary exits left, twin arrives
           from the right — transforms live in the stylesheet, never inline. */}
-      <span className="eia-icon-travel-stage">
+      <span className="serene-icon-travel-stage">
         <ArrowLeft style={{ width: 16, height: 16, strokeWidth: 1.5 }} />
         <ArrowLeft
           aria-hidden="true"
