@@ -2,7 +2,7 @@
 
 > **Purpose:** the AI presence inside Serene — chat surface today, the substrate for every future AI feature (lead revival, reports, agentic writes, customer bot).
 > **Audience:** engineers. · **Source-of-truth scope:** Elaya architecture + phase contracts.
-> **Last verified:** 2026-06-13 · **Status:** Foundation (read-only chat) + WhatsApp staff channel + **Phase 2 agentic writes (E3)**.
+> **Last verified:** 2026-06-14 · **Status:** Foundation (read-only chat) + WhatsApp staff channel + **Phase 2 agentic writes (E3)** + **voice input (E4a)**.
 
 Historical note: this presence was tracked as both "Elaya" (the original design vision) and
 "Elaya" (the roadmap name) before shipping; the canonical name is **Elaya** (matching the
@@ -196,6 +196,50 @@ resolver's per-turn query) and a `COMMENT ON TABLE` documenting the lifecycle. T
 executed/failed/dismissed` status flip is a service-role admin-client UPDATE (RLS-bypassing) — no
 user UPDATE policy, by design.
 
+## Phase 4a — voice input (E4a, shipped 2026-06-14)
+
+Staff can speak to Elaya on both surfaces. **Voice is an input transform only** — audio is
+transcribed to text, then fed into the **exact same `runElayaTurn`** the typed path uses. No
+change to the brain, tools, the E3 propose→confirm protocol, the PII gateway, the daily cap, the
+session, or replies. Replies stay text. English-first (Deepgram multilingual).
+
+```text
+WhatsApp voice note ─► webhook builds type:'audio' MetaInboundMessage (Gupshup CDN url + contentType)
+                        │
+                        ▼  elaya-whatsapp.ts  transcribeWhatsAppAudio(url, mime)
+                        │     fetch(url) → transcribeAudio()  ← THE shared notes STT, never a 2nd path
+                        ▼     (empty/non-speech → graceful nudge, BEFORE cap/model/persist)
+                  ── identical to a typed message from here ──► cap → session → insert → runElayaTurn → reply
+
+In-app mic (ElayaChatShell) ─► useAudioRecorder → transcribeAudioAction → transcript fills the composer
+                                as an EDITABLE DRAFT + focus → user reviews and presses send (never auto-send)
+```
+
+### The E4a hard contracts (extend the foundation/E3 invariants — never weaken)
+
+1. **One STT path, reused.** Both surfaces use `transcription-service.transcribeAudio` (the notes
+   section's Deepgram call site) — the in-app mic through `transcribeAudioAction` (the same action
+   `LeadNotesInput`/`CalledModal` use), the WhatsApp path server-to-server. No second integration.
+2. **Voice changes nothing downstream.** Once audio is text, the cap, dedup
+   (`hasProcessedWaMessage`), session, persist, brain, reply, and E3 confirmation gate are
+   byte-identical to a typed message. A voice-note status-change still records a `proposed`
+   `elaya_actions` row and waits for an affirmative — a mistranscribed write is caught by the same
+   E3 gate, so no separate echo/confirm step exists.
+3. **A voice note = one message.** It burns exactly one slot of the shared daily cap, like typing.
+4. **In-app never auto-sends.** The transcript lands in the composer `input` state as an editable
+   draft (reusing the starter-prompt prefill+focus path); only the user's send dispatches it. A
+   garbled prompt cannot reach a brain that can write to the CRM without human review.
+5. **Empty / non-speech / failure is graceful.** An empty transcript replies "couldn't catch that"
+   **before** the cap, model, or any persist — never an empty prompt at the brain. A download or
+   transcription failure throws to the gate's try/catch → `REPLY_UNAVAILABLE`, still handled, no
+   lead minted, webhook still 200s.
+6. **Audio PII is the same interim D-01 stance as text.** External STT accepted; audio is
+   transcribed in-memory and discarded, never persisted. The transcript flows through the existing
+   `maskPii` gateway exactly as typed text. Documented, not gated.
+
+**ElevenLabs** is locked for E5/E4b (voice *replies* / TTS) and is **not used here** — E4a is
+input transcription only (Deepgram), replies stay text.
+
 ## Later phases (not built)
 
 - **WhatsApp customer persona:** `resolveCustomerPrincipal()` stub becomes real; narrow
@@ -206,7 +250,8 @@ user UPDATE policy, by design.
   later UI affordance — the gate and ledger are already in place for it.
 - **Context writer:** Elaya populates `user_context` from conversations.
 - **Routing job:** Haiku-tier intent triage in front of the reasoning brain.
-- **Voice/avatar:** out of scope here; `transcription-service` already exists for the voice channel.
+- **Voice replies / avatar (E5/E4b):** voice *output* (TTS, ElevenLabs locked) + avatar are out of
+  scope. Voice *input* shipped in E4a above (Deepgram, both surfaces).
 
 ## Design vision
 

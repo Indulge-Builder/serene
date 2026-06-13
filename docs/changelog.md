@@ -12,6 +12,29 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-14 — Elaya voice input (E4a): staff can speak to Elaya on both surfaces — voice is an input transform only
+
+Staff can now talk to Elaya instead of typing, on both channels. **Voice is an input transform only** — audio is transcribed to text and fed into the **exact same `runElayaTurn`** the typed path already uses. The brain, the 6 read + 4 write tools, the E3 propose→confirm protocol, the PII gateway, the daily cap, the 24h session, and the replies are all unchanged. Replies stay text. English-first (Deepgram, already configured multilingual).
+
+**One STT path, reused — no second integration.** Both surfaces run through `transcribeAudio` in `src/lib/services/transcription-service.ts` (the notes section's existing Deepgram call site):
+
+- **In-app mic** (`src/components/elaya/ElayaChatShell.tsx`) — composes the identical stack `LeadNotesInput`/`CalledModal` use: `useAudioRecorder` → `transcribeAudioAction`. The transcript is **appended to the composer as an editable draft and the input is focused — never auto-sent**; the user reviews and presses send, exactly like the notes flow. This is the real review-before-send step: a garbled prompt cannot reach a brain that can write to the CRM without a human pressing send. Mic states mirror the notes cluster (danger dot + `m:ss / 2:00` counter while recording, `Spinner` + transcribe while transcribing, stop + discard buttons); disabled while streaming / at cap; renders only when `MediaRecorder` is supported.
+- **WhatsApp voice notes** (`src/lib/services/elaya-whatsapp.ts`) — `handleStaffMessage` branches on `message.type`. `audio` → new `transcribeWhatsAppAudio(url, mime)` fetches the Gupshup CDN url and calls `transcribeAudio` server-to-server (no action). Once transcribed, the cap, dedup, session, persist, brain, reply, and **E3 confirmation gate are byte-identical to a typed message** — a voice-note status-change still records a `proposed` `elaya_actions` row and waits for an affirmative, so a mistranscribed write is caught by the existing gate (no separate echo step).
+
+**Shared `MessageBar` left-slot (additive).** `src/components/ui/MessageBar.tsx` gained an optional `leadingSlot?: ReactNode` rendered before the textarea — the in-app mic lives there. The WhatsApp-page consumer passes nothing and is byte-identical.
+
+**Webhook audio detection.** `src/app/api/webhooks/whatsapp/route.ts` Gupshup `message` branch inspects `payload.type`: an `audio` payload carries a direct, time-limited CDN url (`inner.url` + `inner.contentType`) — **not** a Meta media-id — so it builds a `type: 'audio'` `MetaInboundMessage`. `getMediaDownloadUrl` (Meta-only, needs the dormant `ACCESS_TOKEN`/`PHONE_NUMBER_ID`) stays unused. Text construction is unchanged.
+
+**Failure modes handled.** Empty / non-speech voice note → graceful `REPLY_NO_SPEECH` nudge **before** the cap, the model, or any persist — an empty prompt never reaches the brain, no cap burn. A download/transcription failure throws to the gate's existing try/catch → `REPLY_UNAVAILABLE`, the gate still returns handled (no lead minted), the webhook still 200s. Image/video/document → the existing `REPLY_TEXT_ONLY` (now "text and voice notes"). In-app transcription failures surface via `toast.danger`.
+
+**A voice note = one capped message.** It burns exactly one slot of the shared daily cap, like typing. **Audio PII** is the same interim D-01 stance as text: external STT accepted, audio transcribed in-memory and discarded (never persisted), the transcript flows through the existing `maskPii` gateway — documented, not gated.
+
+**ElevenLabs** is locked for E5/E4b (voice *replies* / TTS) and is **not used here** — E4a is input transcription only.
+
+Sign-off: `pnpm tsc --noEmit` clean, `next build` clean. Docs updated: `docs/modules/elaya.md` (E4a contracts + phase status), `src/lib/CLAUDE.md`, `src/app/api/webhooks/CLAUDE.md`.
+
+---
+
 ## 2026-06-13 — Fix: password reset switched from magic link to 6-digit OTP code (corporate inbox link-scanners burned the one-time token)
 
 **Symptom:** clicking the reset link in the email always landed on "this link has expired," even within seconds of receiving it. Supabase **auth logs proved the cause**: the recovery email was sent at `12:51:15Z`, and `/verify` returned `403 otp_expired` / `"One-time token not found"` at `12:51:24Z` — 9 seconds later, **from a different IP than the request**. A one-time token can't expire in 9 seconds (recovery tokens last ~1h); `"not found"` means it was already redeemed once. That is the signature of an email **link-scanner** (Google Workspace / Microsoft Safe Links scanning links in the `@indulge.global` inbox) issuing a GET that consumed the single-use token before the human click arrived. The callback route (`/api/auth/callback`) verifying the token on a bare GET made every prefetch fatal.
@@ -23,7 +46,7 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 - `update-password/page.tsx` — removed the old session-gate (`getUser()` → `InvalidLinkCard`). The user now arrives **without** a session and establishes it by entering the code. The page requires only the `email` query param; the expired-link state is gone (there is no link to expire).
 - `update-password-form.tsx` — now a **two-step** client form: `CodeStep` (6-digit code entry → `verifyResetOtpAction`) → `PasswordStep` (the existing new-password + strength-bar UI). Shared card chrome extracted to `AuthCardShell` + `ErrorBanner` (R-01 — one shell, both steps).
 - `forgot-password-form.tsx` — copy updated ("Send Reset Code"), dead success-state branch removed (the action redirects now).
-- Validation: `verifyResetOtpSchema` (email + `^\d{6,8}$` token) in `validations/auth.ts`; `formErrors.otpInvalid` added. Both `verifyOtp` failure modes map to the same `otpInvalid` copy — never reveal which check failed. **OTP length:** Supabase's GoTrue default is 6 digits but this project issues **8** (a configurable auth setting, not in the DB). The schema and the code input (`maxLength={8}`) accept **6–8 digits** so a dashboard length change can't silently truncate the code — an initial `^\d{6}$` / `maxLength={6}` fix shipped first and broke verification because the form clipped the 8-digit code to 6.
+- Validation: `verifyResetOtpSchema` (email + `^\d{6}$` token) in `validations/auth.ts`; `formErrors.otpInvalid` added. Both `verifyOtp` failure modes map to the same `otpInvalid` copy — never reveal which check failed. **OTP length:** standardized on **6 digits** — the Supabase **Email OTP Length** setting is set to 6, and the schema + code input (`maxLength={6}`) are kept in lockstep. (History: the project briefly issued 8-digit codes while the setting defaulted high; the form clipped them to 6 and verification failed. Resolved by setting the dashboard length to 6 and matching the form to it.)
 
 **Supabase dashboard change required (not in code):** the **Reset Password** email template must render `{{ .Token }}` (the 6-digit code) instead of the `{{ .TokenHash }}` link. The `/api/auth/callback` route is now unused by the recovery flow (still serves any future magic-link/PKCE callback) and was left in place.
 

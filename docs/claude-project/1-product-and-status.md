@@ -47,7 +47,9 @@ the building:
 Dashboard (bento-grid home) · Elaya (AI chat — read-only foundation: asks about your own leads,
 tasks, deals, numbers and the case library via permission-scoped tools; 200 msgs/day shared
 across channels; staff can also message Elaya over WhatsApp on the shared Gupshup number —
-their number routes to the same brain with the same role-scoped tools) · Leads
+their number routes to the same brain with the same role-scoped tools; voice notes (WhatsApp)
+and a composer mic (in-app) are transcribed to text and run through the same brain — voice is
+an input transform only, replies stay text) · Leads
 (pipeline list + per-lead dossier) · Deals (closed-business ledger) · WhatsApp (shared team
 inbox — unknown number auto-creates a lead; staff numbers route to Elaya instead) · Tasks (personal + group projects + auto-created
 Gia follow-ups) · Campaigns (which ads produce leads/wins) · Performance (agent/manager/founder

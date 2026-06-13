@@ -26,6 +26,8 @@ export interface MessageBarProps {
   onKeyDown?:   (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   /** `default` — standalone composer (WhatsApp page). `nested` — inset inside a card. */
   variant?:     "default" | "nested";
+  /** Optional control rendered before the textarea (e.g. a dictation mic). Additive — consumers that omit it are unchanged. */
+  leadingSlot?: React.ReactNode;
 }
 
 export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
@@ -41,6 +43,7 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
       maxHeight = 96,
       onKeyDown,
       variant = "default",
+      leadingSlot,
     },
     ref,
   ) {
@@ -99,6 +102,8 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
             }
           }}
         >
+          {leadingSlot}
+
           <textarea
             ref={textareaRef}
             className="serene-message-bar-input"

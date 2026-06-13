@@ -36,6 +36,14 @@ Every inbound message event (BOTH the Gupshup and dormant Meta branches) passes 
   `sendElayaWhatsAppReply` (audit row `type 'elaya_reply'`, migration 0117). Once a profile
   matches, the gate returns `true` on **every** downstream path including failures — a staff
   message must never fall through and mint a lead row.
+- **Voice notes (E4a, 2026-06-14):** the Gupshup `message` branch inspects `payload.type` — an
+  `audio` payload carries a direct, time-limited CDN url (`inner.url` + `inner.contentType`), NOT a
+  Meta media-id, so it builds a `type: 'audio'` `MetaInboundMessage` (`getMediaDownloadUrl` is
+  Meta-only and stays unused). The Elaya gate transcribes it via the shared
+  `transcription-service` (`transcribeWhatsAppAudio` → `transcribeAudio`) and runs the SAME brain
+  turn a typed message would — voice is an input transform only. Empty/non-speech → graceful nudge
+  (no cap burn, no model call); download/transcription failure → handled + `REPLY_UNAVAILABLE`. A
+  voice note counts as one capped message. The lead pipeline never sees a staff voice note.
 - No match → `processInboundMessage` runs unchanged (lead pipeline byte-identical).
 - Collision (a staff number that also exists on an active lead row): profile wins; a
   `[elaya-whatsapp] phone collision` warn is logged with both ids.

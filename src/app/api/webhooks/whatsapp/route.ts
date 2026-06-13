@@ -81,18 +81,38 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           const payload   = body.payload as Record<string, unknown>;
           const sender    = payload.sender as Record<string, unknown> | undefined;
           const inner     = payload.payload as Record<string, unknown>;
+          const innerType = typeof payload.type === 'string' ? payload.type : 'text';
           const messageId = payload.id as string;
           const phone     = `+${payload.source as string}`;
           const waId      = payload.source as string;
           const senderName = (typeof sender?.name === 'string' ? sender.name.trim() : null) || null;
 
-          const message: MetaInboundMessage = {
-            type:      'text',
-            id:        messageId,
-            from:      waId,
-            timestamp: String(Date.now()),
-            text:      { body: inner.text as string },
-          };
+          // Gupshup delivers voice notes as an audio media payload with a direct,
+          // time-limited CDN url (inner.url + inner.contentType) — no Meta media-id
+          // token fetch. Build an `audio` MetaInboundMessage so the Elaya gate can
+          // transcribe it; everything else stays a text message (unknown media types
+          // fall through to text and the gate's "text only" reply handles them).
+          const message: MetaInboundMessage =
+            innerType === 'audio' && typeof inner.url === 'string'
+              ? {
+                  type:      'audio',
+                  id:        messageId,
+                  from:      waId,
+                  timestamp: String(Date.now()),
+                  audio: {
+                    id:        messageId,
+                    url:       inner.url,
+                    mime_type: typeof inner.contentType === 'string' ? inner.contentType : 'audio/ogg',
+                    sha256:    '',
+                  },
+                }
+              : {
+                  type:      'text',
+                  id:        messageId,
+                  from:      waId,
+                  timestamp: String(Date.now()),
+                  text:      { body: typeof inner.text === 'string' ? inner.text : '' },
+                };
 
           // Routing gate: sender number matches an active profile → Elaya
           // (staff channel); otherwise the existing lead pipeline, unchanged.

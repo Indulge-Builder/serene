@@ -43,3 +43,424 @@ also we palneed of having an ap, we msut have , but abas ed on it, we cna have w
 nwo also ne ht homescare with ththis maual way ther ewill be eelaya too, so heour agent will jsut go to eelaya, clcik the speak button say, hada talk with arfa on this topic bla bla bla, callewill call him on susatuday at 4 pm, then elaya gets it process it and updates it, same with whatsapp that will be odoens form elaia, liek i am think we hav eot make the ui of the modle version trully liek app , if we cant aford to move ot reatieve native expo thing, till then our ui ux has to be top notch, and later when all the things will eb done maybe we cna rebuild the whole project as we have the whole blure print all the methofd sjsut code writng in different laguage will eb done by claude clodeinand in mins we cna have the app too, but ill then the web app the current build has t be top notch tailored for mobile usage otoo even though it is running on broser it has to be smooth best and asthric.
 
 we nedd animation like, on skelton liek we have curtian tahat comes form side and closed and our logo animation will comes min the moddle liek the logo beutfully that logo wil lbe naimated alive spinig as w ehave taht mandala w eiwll craete a 3d model of our logo as well, taht will be our consustant loding screen of all the pages so no skelton tension, when only all the data are laded teh curtain will be beutifully pulled pabck withe the animation the data that is leoaded is will be displayed, we need taht transition system betwene oages as we have side abse commoan taht will not change it eill stays cosiatnat and the page hiflet active butoon will updat isnatly but colour less ot will be colouyr only when the curtain are removed and ata is diaplyed os it looka alive aconnect..
+
+Core Identity
+Species
+
+Elaya is not an animal.
+
+Elaya belongs to a species called:
+
+Astralis Driftlings
+
+A cosmic lifeform born where oceans meet starlight.
+
+Design Philosophy
+
+Every iconic mascot has:
+
+Character Core Shape
+Baymax Circle
+Totoro Egg
+Toothless Cat
+Pikachu Rounded triangle
+
+Elaya's shape language:
+
+Main Shape
+
+Soft teardrop
+
+Represents:
+
+Growth
+Curiosity
+Forward movement
+Head
+Size
+
+70% of body volume
+
+Reason:
+
+Triggers parental instincts.
+
+Large head = lovable.
+
+Skull Shape
+
+Not perfectly round.
+
+Imagine:
+
+Water droplet
+Pear
+Seed
+
+Combined.
+
+Eyes
+
+Most important feature.
+
+Size
+
+25% of face.
+
+Huge.
+
+Shape
+
+Circular.
+
+No sharp edges.
+
+Iris
+
+Galaxy-like.
+
+Contains:
+
+Tiny stars
+Nebula particles
+Light gradients
+
+When zoomed in:
+
+Looks like a miniature universe.
+
+Emotional System
+
+Wonder:
+
+pupils expand
+
+Passion:
+
+eyes glow brighter
+
+Reflection:
+
+eyes become slightly dimmer
+
+Calm:
+
+eyelids soften
+
+Bliss:
+
+sparkle particles appear
+Mouth
+
+Very tiny.
+
+Almost invisible.
+
+Similar philosophy:
+
+Totoro.
+
+Minimal.
+
+Ear Fins
+
+Not ears.
+
+Sensory sails.
+
+Shape
+
+Manta ray wing.
+
+Purpose:
+
+Detect:
+
+emotions
+energy
+environmental changes
+
+Animation:
+
+Happy:
+
+flutter upward
+
+Curious:
+
+tilt asymmetrically
+
+Scared:
+
+fold inward
+Body
+Material
+
+Not flesh.
+
+Not jelly.
+
+Not metal.
+
+Combination of:
+
+bioluminescent membrane
+translucent crystal
+liquid light
+
+Shader
+
+70% subsurface scattering
+
+20% translucency
+
+10% emission
+
+Color
+
+Base:
+
+Soft cosmic blue.
+
+Gradient
+
+Head:
+light cyan
+
+Body:
+deep blue
+
+Core:
+warm white
+
+Core Crystal
+
+Center of body.
+
+Most important lore object.
+
+Location
+
+Chest region.
+
+Shape
+
+Floating diamond.
+
+Purpose
+
+Contains:
+
+memories
+experiences
+growth
+
+As Luma evolves:
+
+Creation
+
+tiny crystal
+
+Presence
+
+brighter
+
+Experience
+
+develops facets
+
+Becoming
+
+complex geometry
+
+Death
+
+shatters into stars
+Tentacles
+
+These are NOT tentacles.
+
+Call them:
+
+Memory Ribbons
+
+Makes them meaningful.
+
+Count
+
+5
+
+Surface Details
+
+Tiny stars embedded in skin.
+
+Not painted.
+
+Actually glowing.
+
+Distribution
+
+Dense on upper body.
+
+Sparse near lower body.
+
+Creates illusion:
+
+Universe inside creature.
+
+Movement Style
+
+This is where most designs fail.
+
+Don't animate like jellyfish.
+
+Instead combine:
+
+40% Manta Ray
+
+30% Hummingbird
+
+20% Baby Seal
+
+10% Floating Lantern
+
+Movement should feel:
+
+effortless
+graceful
+curious
+Emotional Animation
+Calm
+
+Very slow floating.
+
+Gentle breathing.
+
+Bliss
+
+Small spins.
+
+Soft glow increase.
+
+Wonder
+
+Leans forward.
+
+Eyes enlarge.
+
+Ribbons stretch.
+
+Passion
+
+Brighter colors.
+
+Faster movement.
+
+Reflection
+
+Floats still.
+
+Eyes focus downward.
+
+Ribbons orbit slowly.
+
+Sound Design
+
+If Luma could speak:
+
+No language.
+
+Sounds like:
+
+whale songs
+wind chimes
+water droplets
+crystal resonance
+
+combined.
+
+Scale
+
+Height:
+
+40-50 cm.
+
+Why?
+
+Small enough to be pet-like.
+
+Large enough to feel present.
+Rigging and Animation Architecture
+For fluid, high-fidelity animation, the skeletal rig must accommodate specific joint placements and movement flows.
+
+Head/Body Joint: A primary connection joint dictates the overall orientation and tilt of the cranial structure.
+
+Fin Joints: Each of the side fins (ears) requires an independent fin joint to allow for expressive fluttering and angling.
+
+Tentacle Base: A primary tentacle base joint controls the collective expansion, contraction, and directional sweep of the ribbons.
+
+Ribbon Articulation: Each of the five individual tentacles requires a spline or chain rig featuring at least five inter-tentacle joints per ribbon to achieve smooth, wave-like motion.
+
+Motion Flow: The rig must support an "Overall Muscle Flow" that allows for seamless transitions between a streamlined swim state and a defensive recoil state.
+
+Hover Mechanics: The base idle animation must include a gentle hover and tilt cycle, utilizing self-correcting drift mechanics.
+
+Pulsation: The animation must incorporate an internal glow and pulsation cycle, shifting smoothly from dim to medium to bright.
+
+Emotional States and Blendshapes
+Elaya's face and body must be rigged with highly responsive shape keys (blendshapes) and material toggles to transition through various emotional states.
+
+Curious: Requires a distinct head tilt and wide eyes for focus.
+
+Happy: The mouth opens slightly, and the eyes transition into a squinted, curved upward shape.
+
+Gentle Joy: Features a soft smile and gentle, flowing tentacle positioning.
+
+Elated Dance: Requires swirling tentacle flow and intensified bioluminescence.
+
+Maximum Excitement: The bioluminescence density receives a 150% boost, the mouth forms a wide 'V' shape, brows appear raised, and the tentacles perform a radial splay with high tension.
+
+Calm: The eyes are completely closed with a gentle, serene smile.
+
+Thinking: One tentacle curls upward to touch the mouth area.
+
+Sadness: Tentacles droop and retract, overall colors become dull and muted, brows point downward, and glowing tears are emitted from the eyes.
+
+Tensed/Anxious: The brow area elevates aggressively, the mouth forms a tight, straight horizontal line, the skin adopts a hardened appearance, and the internal light pulses erratically.
+
+Dormant (Power-Down State): The body colors mute entirely to dark greys and browns, the eyes close, and internal emission drops to a baseline of 10%.
+
+Presence in Serene
+
+Elaya should never feel like a mascot.
+
+It should feel like:
+
+Your companion.
+
+When user logs in:
+
+Elaya awakens.
+
+When user learns:
+
+Elaya grows.
+
+When user completes goals:
+
+Core crystal evolves.
+
+When user reflects:
+
+Ribbons gain complexity.
+
+When user becomes a better version of themselves:
+
+Elaya enters the next phase.
+
+Final Production Description
+
+If I were briefing a senior Blender artist:
+
+Create a genderless cosmic companion named Luma. Its silhouette combines a manta ray pup, a jellyfish spirit, and a celestial seed. The creature has a large pear-shaped translucent head, enormous galaxy eyes, a tiny expressive mouth, manta-like sensory fins, and five bioluminescent memory ribbons representing Earth, Water, Air, Fire, and Cosmos. A glowing crystal core floats inside its body. Its skin is semi-transparent liquid starlight with subsurface scattering, embedded constellations, and soft emissive particles. Its motion is inspired by manta rays, floating lanterns, and curious baby animals. The design must feel timeless, lovable, intelligent, and emotionally comforting—something users instantly want as a lifelong companion rather than a mascot.
+Surface Finish: The materials require specific material roughness tuning to maintain a soft, non-plastic, organic appearance.

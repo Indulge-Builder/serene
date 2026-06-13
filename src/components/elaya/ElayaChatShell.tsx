@@ -8,9 +8,17 @@
 // page main (no fixed dvh math) so the chat takes the full remaining height.
 
 import { useEffect, useRef, useState } from 'react';
+import { Mic, Square, X } from 'lucide-react';
 import { ElayaGlyph } from '@/components/ui/elaya-glyph';
 import { MessageBar } from '@/components/ui/MessageBar';
+import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/hooks/useToast';
+import {
+  useAudioRecorder,
+  formatRecorderElapsed,
+  DEFAULT_MAX_RECORDING_MS,
+} from '@/hooks/useAudioRecorder';
+import { transcribeAudioAction } from '@/lib/actions/transcription';
 import { scrollToBottom } from '@/lib/utils/scroll';
 import { formErrors } from '@/lib/validations/form-errors';
 import { ElayaIdentityCard } from '@/components/elaya/ElayaIdentityCard';
@@ -57,6 +65,33 @@ export function ElayaChatShell({
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const counterRef = useRef(0);
+
+  // Voice dictation — identical stack to the notes section (LeadNotesInput /
+  // CalledModal): record → transcribe → append to the composer as an editable
+  // draft, then focus. NEVER auto-sends — the user reviews and presses send,
+  // so a garbled transcript can never reach the brain unreviewed.
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const recorder = useAudioRecorder({
+    onError: (message) => toast.danger(message),
+    onComplete: async ({ blob }) => {
+      setIsTranscribing(true);
+      const formData = new FormData();
+      formData.append('audio', blob, 'voice-note');
+      const result = await transcribeAudioAction(formData);
+      setIsTranscribing(false);
+      if (result.error || !result.data) {
+        toast.danger(result.error ?? formErrors.transcriptionFailed);
+        return;
+      }
+      const text = result.data.text;
+      if (!text) {
+        toast.danger("Couldn't catch that — try again, or type it.");
+        return;
+      }
+      setInput((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')} ${text}` : text));
+      composerRef.current?.focus();
+    },
+  });
 
   useEffect(() => {
     if (scrollRef.current) scrollToBottom(scrollRef.current);
@@ -291,6 +326,89 @@ export function ElayaChatShell({
               loading={isStreaming}
               maxLength={4000}
               placeholder="Ask Elaya"
+              leadingSlot={
+                recorder.isSupported ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)', flexShrink: 0 }}>
+                    {recorder.isRecording && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                        <span
+                          style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: 'var(--radius-full)',
+                            background: 'var(--color-danger)',
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 'var(--text-2xs)',
+                            color: 'var(--theme-text-secondary)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {formatRecorderElapsed(recorder.elapsedMs)} / {formatRecorderElapsed(DEFAULT_MAX_RECORDING_MS)}
+                        </span>
+                      </span>
+                    )}
+                    {isTranscribing && <Spinner size="sm" />}
+                    {recorder.isRecording && (
+                      <button
+                        type="button"
+                        onClick={recorder.cancel}
+                        aria-label="Discard recording"
+                        title="Discard recording"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: 'var(--radius-sm)',
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'var(--theme-text-tertiary)',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <X style={{ width: '0.85rem', height: '0.85rem', strokeWidth: 1.5 }} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={recorder.isRecording ? recorder.stop : recorder.start}
+                      disabled={isStreaming || capReached || isTranscribing || recorder.status === 'requesting'}
+                      aria-label={recorder.isRecording ? 'Stop recording and transcribe' : 'Dictate a message'}
+                      title={recorder.isRecording ? 'Stop & transcribe' : 'Dictate a message'}
+                      className="serene-pressable"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: 'none',
+                        background: recorder.isRecording ? 'var(--color-danger-light)' : 'transparent',
+                        color: recorder.isRecording ? 'var(--color-danger-text)' : 'var(--theme-accent)',
+                        cursor:
+                          isStreaming || capReached || isTranscribing ? 'not-allowed' : 'pointer',
+                        opacity: isStreaming || capReached || isTranscribing ? 0.45 : 1,
+                        flexShrink: 0,
+                        transition: 'opacity 150ms, background 150ms',
+                      }}
+                    >
+                      {recorder.isRecording ? (
+                        <Square style={{ width: '0.7rem', height: '0.7rem', strokeWidth: 1.5, fill: 'currentColor' }} />
+                      ) : (
+                        <Mic style={{ width: '0.9rem', height: '0.9rem', strokeWidth: 1.5 }} />
+                      )}
+                    </button>
+                  </span>
+                ) : undefined
+              }
             />
           )}
         </div>

@@ -21,6 +21,7 @@ import { markdownToWhatsApp, truncateWhatsAppText } from '@/lib/utils/whatsapp-f
 import { getActiveProfileByPhone } from '@/lib/services/profiles-service';
 import { resolveLeadByPhone } from '@/lib/services/whatsapp-ingestion';
 import { sendElayaWhatsAppReply } from '@/lib/services/whatsapp-api';
+import { transcribeAudio } from '@/lib/services/transcription-service';
 import { resolveStaffPrincipal } from '@/lib/elaya/principal';
 import { runElayaTurn } from '@/lib/elaya/brain';
 import {
@@ -42,7 +43,11 @@ const MAX_REPLY_CHARS = 4000;
 
 // Channel copy — short, plain text, no markdown (WhatsApp surface).
 const REPLY_TEXT_ONLY =
-  'I can only read text here for now — send me your question as a message and I’ll take it from there.';
+  'I can only read text and voice notes here for now — send me your question as a message or a voice note and I’ll take it from there.';
+// Empty / non-speech voice note: a graceful nudge BEFORE the cap, model, or any
+// persist — an empty transcript must never reach the brain (E4a failure mode 1).
+const REPLY_NO_SPEECH =
+  'I couldn’t catch anything in that voice note — try again, or send it as a message.';
 const REPLY_CAP_REACHED =
   'You’ve reached your Elaya message limit for today. The count resets at midnight — see you then.';
 const REPLY_UNAVAILABLE =
@@ -100,8 +105,28 @@ async function handleStaffMessage(
   // wa_message_id dedup.
   if (await hasProcessedWaMessage(message.id)) return;
 
-  const rawText =
-    message.type === 'text' && typeof message.text.body === 'string' ? message.text.body : '';
+  // Resolve the inbound message to text. Voice notes are transcribed here (E4a) —
+  // voice is an INPUT TRANSFORM ONLY: once it's text, everything downstream (cap,
+  // session, persist, brain, reply, E3 confirmation gate) is byte-identical to a
+  // typed message. Audio bytes are transcribed in-memory and discarded — never
+  // persisted (D-01 interim stance, same as the in-app voice note).
+  let rawText: string;
+  if (message.type === 'text') {
+    rawText = typeof message.text.body === 'string' ? message.text.body : '';
+  } else if (message.type === 'audio' && message.audio.url) {
+    rawText = await transcribeWhatsAppAudio(message.audio.url, message.audio.mime_type);
+    // Empty / non-speech transcript: nudge and stop BEFORE the cap, the model,
+    // and any persist — never fire an empty prompt at the brain.
+    if (rawText.trim().length === 0) {
+      await sendElayaWhatsAppReply(normalizedPhone, REPLY_NO_SPEECH, profile.id);
+      return;
+    }
+  } else {
+    // image / video / document — no transcription path.
+    await sendElayaWhatsAppReply(normalizedPhone, REPLY_TEXT_ONLY, profile.id);
+    return;
+  }
+
   const content = sanitizeText(rawText).slice(0, MAX_INBOUND_CHARS);
   if (content.trim().length === 0) {
     await sendElayaWhatsAppReply(normalizedPhone, REPLY_TEXT_ONLY, profile.id);
@@ -162,4 +187,24 @@ async function handleStaffMessage(
       ? truncateWhatsAppText(markdownToWhatsApp(result.text), MAX_REPLY_CHARS)
       : REPLY_EMPTY;
   await sendElayaWhatsAppReply(normalizedPhone, reply, profile.id);
+}
+
+/**
+ * Download a Gupshup voice note from its time-limited CDN url and transcribe it
+ * (Deepgram, via the shared server-only transcription-service — the SAME call
+ * site the notes section uses; never a second STT path). Returns the trimmed
+ * transcript ('' for silence / non-speech). Throws on a download/transcription
+ * failure — the caller's try/catch maps that to REPLY_UNAVAILABLE and the gate
+ * still returns handled, so a failed voice note never mints a lead.
+ */
+async function transcribeWhatsAppAudio(url: string, mimeType: string): Promise<string> {
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error(`[elaya-whatsapp] voice-note download failed: ${res.status}`);
+  }
+  const audio = await res.arrayBuffer();
+  if (audio.byteLength === 0) {
+    throw new Error('[elaya-whatsapp] voice-note download was empty');
+  }
+  return transcribeAudio(audio, mimeType || 'audio/ogg');
 }
