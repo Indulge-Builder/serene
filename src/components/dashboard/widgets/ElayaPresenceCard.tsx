@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { m as motion } from "framer-motion";
-import { LiaGlyph } from "@/components/ui/lia-glyph";
+import { ElayaGlyph } from "@/components/ui/elaya-glyph";
 import { MessageBar } from "@/components/ui/MessageBar";
 import { getElayaTimeGreeting, pickElayaDailyLine } from "@/lib/constants/elaya";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
@@ -44,7 +44,7 @@ export function ElayaPresenceCard({ userId, firstName, size = "md" }: WidgetProp
       {/* Presence row — glyph always breathing while she occupies this card */}
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexShrink: 0 }}>
         <span style={{ color: "var(--theme-accent)", display: "flex" }}>
-          <LiaGlyph size={28} />
+          <ElayaGlyph size={28} />
         </span>
         <span
           className="label-micro"

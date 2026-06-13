@@ -25,7 +25,7 @@ performance/page.tsx              ← Server component (thin orchestrator)
   │     Renders: CoreFourGrid + EffortGrid + CallOutcomeBar
   │
   └── <PerformanceMotivationalFooter leadsWon inDiscussionCount period />
-        Server component — Lia's quiet sentence. Playfair italic. No glyph.
+        Server component — Elaya's quiet sentence. Playfair italic. No glyph.
 ```
 
 The RPC is **self-scoped**: the agent is always `auth.uid()` and the benchmark

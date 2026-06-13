@@ -3,9 +3,9 @@
 import React from 'react';
 import { Dialog, DialogSize } from './Dialog';
 import { Button } from './Button';
-import { LiaGlyph } from './lia-glyph';
+import { ElayaGlyph } from './elaya-glyph';
 
-export type ModalType = 'standard' | 'lia';
+export type ModalType = 'standard' | 'elaya';
 
 export interface ModalProps {
   open: boolean;
@@ -13,7 +13,7 @@ export interface ModalProps {
   title: React.ReactNode;
   description?: string;
   children: React.ReactNode;
-  /** Footer slot — for standard type. Lia type enforces Approve / Dismiss only. */
+  /** Footer slot — for standard type. Elaya type enforces Approve / Dismiss only. */
   footer?: React.ReactNode;
   size?: DialogSize;
   /**
@@ -22,9 +22,9 @@ export interface ModalProps {
    */
   maxWidth?: string;
   type?: ModalType;
-  /** Lia-type only: called when user approves */
+  /** Elaya-type only: called when user approves */
   onApprove?: () => void;
-  /** Lia-type only: called when user dismisses */
+  /** Elaya-type only: called when user dismisses */
   onDismiss?: () => void;
   approveLabel?: string;
   dismissLabel?: string;
@@ -33,8 +33,8 @@ export interface ModalProps {
 /**
  * Semantic wrapper around Dialog.
  * - Standard: exposes title, description, footer slots.
- * - Lia (type="lia"): enforces exactly two actions — Approve and Dismiss.
- *   The Lia constraint comes from the design spec: "Proposal cards always have
+ * - Elaya (type="elaya"): enforces exactly two actions — Approve and Dismiss.
+ *   The Elaya constraint comes from the design spec: "Proposal cards always have
  *   exactly two actions: Approve and Dismiss."
  */
 export function Modal({
@@ -53,9 +53,9 @@ export function Modal({
   dismissLabel = 'Dismiss',
 }: ModalProps) {
   const resolvedFooter =
-    type === 'lia' ? (
+    type === 'elaya' ? (
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', width: '100%' }}>
-        <LiaGlyph size={20} breathing />
+        <ElayaGlyph size={20} breathing />
         <div style={{ flex: 1 }} />
         <Button
           variant="ghost"

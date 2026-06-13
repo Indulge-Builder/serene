@@ -6,7 +6,7 @@
 
 ## 1. Purpose
 
-How users enter Eia: email+password login, password-reset email, and new-password set (after
+How users enter Serene: email+password login, password-reset email, and new-password set (after
 magic link / reset). The auth pages are the one surface that is dark by design — canvas
 palette, no paper, no app chrome.
 
@@ -29,7 +29,7 @@ hitting `/` are redirected to `/dashboard`; deactivated users are gated twice (a
 
 `LoginForm`, `ForgotPasswordForm`, `UpdatePasswordForm`, `InvalidLinkCard`,
 `PasswordStrengthBar` (4-segment danger→success). All draw from the canvas/sidebar palette —
-`--theme-paper*`, `.eia-input`, and light `--color-*-light` tokens are forbidden on auth
+`--theme-paper*`, `.serene-input`, and light `--color-*-light` tokens are forbidden on auth
 surfaces (dark-surface semantic tokens instead).
 
 ## 5. States
@@ -59,7 +59,7 @@ future proxy/action must rate-limit to once per minute when implemented.
 
 ### 1. Module Overview
 
-Three distinct layers make up how users enter, stay in, and manage their identity inside Eia:
+Three distinct layers make up how users enter, stay in, and manage their identity inside Serene:
 
 1. **Pre-auth pages** — unauthenticated surfaces (`/login`, `/forgot-password`, `/update-password`) inside the `(auth)` route group. No sidebar, no dashboard shell, canvas background with ambient motion layers.
 2. **Session infrastructure** — `src/proxy.ts` (Next.js 16 proxy), `src/lib/supabase/middleware.ts` (`updateSession()`), and the two Supabase client factories (`client.ts` / `server.ts`). Keeps the Supabase session cookie fresh on navigations.
@@ -100,7 +100,7 @@ export default async function RootPage() {
 
 > **Visual language is canvas-dark, not paper.** All three auth pages render *on the canvas*
 > (`--theme-canvas`), never on the paper surface. Cards, inputs, links, and text all draw from the
-> **canvas/sidebar palette** — never `--theme-paper`, `.eia-paper-surface`, or `.eia-input`. The full
+> **canvas/sidebar palette** — never `--theme-paper`, `.serene-paper-surface`, or `.serene-input`. The full
 > token-level spec lives in **`DESIGN-DNA.md` → "Auth Surface (canvas-dark)"**; §5e below is the
 > module summary. Established 2026-06-02; brand-header dot added thereafter.
 
@@ -110,10 +110,10 @@ export default async function RootPage() {
 
 - Full-viewport centered shell (`relative min-h-dvh flex items-center justify-center overflow-hidden`, background `var(--theme-canvas)` set inline to prevent a white flash before CSS loads).
 - Two off-centre radial glows using `--theme-canvas-glow` (primary `ellipse 80% 60% at 62% 38%`, transparent at 70%; secondary `ellipse 55% 45% at 18% 78%`, transparent at 68%, `opacity: 0.55`). Centred glow is a spotlight; off-centre is a window.
-- Two CSS orb animations (`globals.css`) — `.eia-auth-orb-a` (680px, upper-right `top:-20% right:-18%`, `eia-orb-float-a` 24s) and `.eia-auth-orb-b` (560px, lower-left `bottom:-22% left:-16%`, `opacity:0.7`, `eia-orb-float-b` 30s). Both are accent-tinted radial gradients (`color-mix(--theme-accent 9%)` / `6%`), `will-change: transform`, transform-only — M-06 compliant.
+- Two CSS orb animations (`globals.css`) — `.serene-auth-orb-a` (680px, upper-right `top:-20% right:-18%`, `serene-orb-float-a` 24s) and `.serene-auth-orb-b` (560px, lower-left `bottom:-22% left:-16%`, `opacity:0.7`, `serene-orb-float-b` 30s). Both are accent-tinted radial gradients (`color-mix(--theme-accent 9%)` / `6%`), `will-change: transform`, transform-only — M-06 compliant.
 - **No** sidebar, top bar, or paper content card from the dashboard shell.
 
-**Removed 2026-06-02** (see `(auth)/CLAUDE.md`): the SVG noise-texture div and the two diagonal accent lines (`.eia-auth-line-1/2`) — parse cost not worth the subtle effect. The two radial glows and two orbs are **kept**.
+**Removed 2026-06-02** (see `(auth)/CLAUDE.md`): the SVG noise-texture div and the two diagonal accent lines (`.serene-auth-line-1/2`) — parse cost not worth the subtle effect. The two radial glows and two orbs are **kept**.
 
 **If session already present:** The auth layout does **not** redirect. A logged-in user can still open `/login`. Successful login always `redirect("/dashboard")` from the action; visiting `/login` manually while authenticated shows the login form unless the user navigates away.
 
@@ -174,7 +174,7 @@ All three forms + `InvalidLinkCard` share one shell. Canonical token spec: **`DE
 **Outer wrapper (every form):** `relative w-full mx-4`, `maxWidth: 26rem`, `zIndex: var(--z-raised)`
 — lifts the card above the layout's glows/orbs.
 
-**Card — `.eia-auth-card`:**
+**Card — `.serene-auth-card`:**
 
 | Property | Value |
 | -------- | ----- |
@@ -197,7 +197,7 @@ All three forms + `InvalidLinkCard` share one shell. Canonical token spec: **`DE
 > It post-dates the 2026-06-02 `(auth)/CLAUDE.md` note that shows the header without it — code is the
 > source of truth here.
 
-**Inputs — `.eia-input-auth`:** `--theme-canvas` bg, `1px solid --theme-sidebar-border`,
+**Inputs — `.serene-input-auth`:** `--theme-canvas` bg, `1px solid --theme-sidebar-border`,
 `--theme-canvas-text` text, `--radius-sm`, `--space-3/--space-4` padding, `--text-sm`. Placeholder
 `--theme-sidebar-text`. Focus: border `--theme-accent` + `box-shadow: 0 0 0 3px var(--theme-accent-surface)`.
 Password fields add `paddingRight: var(--space-10)` for the toggle.
@@ -205,7 +205,7 @@ Password fields add `paddingRight: var(--space-10)` for the toggle.
 **Labels:** `className="label-micro"` **with an inline override** `color: var(--theme-sidebar-text)` —
 `label-micro` renders dark (paper-tuned) by default and must be lightened on the dark card.
 
-**Links — `.eia-auth-link`:** `--text-xs`, `color-mix(--theme-accent 65%, transparent)` at rest →
+**Links — `.serene-auth-link`:** `--text-xs`, `color-mix(--theme-accent 65%, transparent)` at rest →
 full `--theme-accent` on hover. Used for "Forgot your password?" and "Back to sign in".
 
 **Error banners (dark-surface tokens — never the light `-light` variants):**
@@ -233,7 +233,7 @@ Update "Update Password/Updating…".
 On `/update-password` a shared `<EyeToggle>` helper drives both new + confirm fields off one `showNew`
 state.
 
-**Forbidden on auth forms:** `.eia-paper-surface`, `.eia-input`, `--theme-paper*` text/bg tokens, and
+**Forbidden on auth forms:** `.serene-paper-surface`, `.serene-input`, `--theme-paper*` text/bg tokens, and
 the light `--color-danger-light/-text` error variants. Those are paper-surface tokens.
 
 ---
@@ -420,7 +420,7 @@ sequenceDiagram
 | Forgot-password must not reveal whether email exists | `requestPasswordResetAction` |
 | One browser Supabase client — `createClient()` from `client.ts` only | Rule 05 |
 | One server Supabase client per request — `server.ts` only in services/actions | Rule 05 |
-| Notification sound preference: `eia:notifications:sound:v1` in localStorage — separate from theme DB field; no `/profile` control | `useNotificationSound.ts` |
+| Notification sound preference: `serene:notifications:sound:v1` in localStorage — separate from theme DB field; no `/profile` control | `useNotificationSound.ts` |
 | Password reset completes at `/login` after success, not `/dashboard` | `UpdatePasswordForm` success link |
 | `/update-password` shows `PasswordStrengthBar` under the new-password field — it is **not** an exception to the strength-bar pattern | `update-password-form.tsx` |
 

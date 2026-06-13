@@ -1,6 +1,6 @@
 // SERVER ONLY — THE Deepgram call site. No other module may call the Deepgram API.
 //
-// Speech-to-text infrastructure layer (foundation for Lia's voice channel — not a
+// Speech-to-text infrastructure layer (foundation for Elaya's voice channel — not a
 // notes-specific gadget). Nova-2 hi-Latn for Hinglish (Roman script Hindi).
 //
 // Privacy contract (D-01 carve-out, Decision Log 2026-06-12): raw audio cannot be

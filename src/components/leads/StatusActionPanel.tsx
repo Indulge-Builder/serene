@@ -200,7 +200,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
       icon={<Phone style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />}
       label="Called"
       variant="primary"
-      className="eia-icon-ring-hover"
+      className="serene-icon-ring-hover"
       disabled={isPending || isTerminal}
       onClick={() => {
         if (lead.status === 'new') {
@@ -430,7 +430,7 @@ function ActionButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={className ? `eia-pressable ${className}` : 'eia-pressable'}
+      className={className ? `serene-pressable ${className}` : 'serene-pressable'}
       style={{
         display:        'inline-flex',
         alignItems:     'center',

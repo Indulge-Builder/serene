@@ -1,7 +1,7 @@
 # WhatsApp / Gupshup
 
 > **Purpose:** the WhatsApp integration — Gupshup configuration, the inbound webhook contract, the inbound-message pipeline (incl. WhatsApp-origin lead creation), the five outbound templates, the `notifyLeadAssigned` orchestrator, and the notification log.
-> **Audience:** engineers. · **Source-of-truth scope:** everything between Eia and Gupshup/Meta. The `/whatsapp` page UI lives in `../pages/whatsapp.md`; the WhatsApp tables in `../architecture/database.md`; form-lead ingestion in `lead-ingestion.md`.
+> **Audience:** engineers. · **Source-of-truth scope:** everything between Serene and Gupshup/Meta. The `/whatsapp` page UI lives in `../pages/whatsapp.md`; the WhatsApp tables in `../architecture/database.md`; form-lead ingestion in `lead-ingestion.md`.
 > **Last verified:** 2026-06-11 against `src/app/api/webhooks/whatsapp/route.ts`, `src/lib/services/whatsapp-api.ts`, `whatsapp-ingestion.ts`, `lead-assignment-notify.ts`, `src/lib/constants/whatsapp.ts`.
 
 ---

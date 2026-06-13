@@ -19,7 +19,7 @@ import { useWidgetData } from "@/hooks/useWidgetData";
 // Keyframe injected once — GPU-only pulse on the category dot.
 // scale + opacity only, no layout properties.
 const DOT_PULSE_CSS = `
-@keyframes eia-cat-dot-pulse {
+@keyframes serene-cat-dot-pulse {
   0%, 100% { transform: scale(1);    opacity: 1;    }
   50%       { transform: scale(1.55); opacity: 0.55; }
 }
@@ -47,7 +47,7 @@ function CategoryDot({
         borderRadius: "50%",
         background: cfg.dotColor,
         flexShrink: 0,
-        animation: `eia-cat-dot-pulse 2.4s ease-in-out ${delay} infinite`,
+        animation: `serene-cat-dot-pulse 2.4s ease-in-out ${delay} infinite`,
         willChange: "transform, opacity",
       }}
     />

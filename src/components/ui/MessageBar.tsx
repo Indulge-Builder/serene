@@ -66,7 +66,7 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
     return (
       <>
         <style>{`
-          .eia-message-bar-input::placeholder {
+          .serene-message-bar-input::placeholder {
             color:   var(--theme-text-tertiary);
             opacity: 1;
           }
@@ -101,7 +101,7 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
         >
           <textarea
             ref={textareaRef}
-            className="eia-message-bar-input"
+            className="serene-message-bar-input"
             value={value}
             onChange={handleChange}
             onKeyDown={onKeyDown}
@@ -134,7 +134,7 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
             onClick={onSend}
             disabled={!canSend}
             aria-label="Send message"
-            className="eia-pressable eia-icon-lift-hover"
+            className="serene-pressable serene-icon-lift-hover"
             style={{
               width:          `${SEND_SIZE}px`,
               height:         `${SEND_SIZE}px`,

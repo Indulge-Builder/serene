@@ -8,7 +8,7 @@
 
 import { m as motion } from 'framer-motion';
 import { ChatMarkdown } from '@/components/ui/ChatMarkdown';
-import { LiaGlyph } from '@/components/ui/lia-glyph';
+import { ElayaGlyph } from '@/components/ui/elaya-glyph';
 import { FAST_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 export type ElayaUiMessage = {
@@ -43,7 +43,7 @@ export function ElayaMessageBubble({
             marginTop: '0.4rem',
           }}
         >
-          <LiaGlyph size={18} />
+          <ElayaGlyph size={18} />
         </span>
       )}
       <div

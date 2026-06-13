@@ -206,7 +206,7 @@ function DomainStatCard({
                   if (e.key === 'Escape') setIsEditing(false);
                 }}
                 aria-label={`Monthly deals target for ${domainLabel}`}
-                className="eia-input"
+                className="serene-input"
                 style={{
                   width:        '88px',
                   padding:      'var(--space-1) var(--space-2)',

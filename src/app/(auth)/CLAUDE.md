@@ -21,12 +21,12 @@ drawn from the canvas/sidebar palette, not the paper palette.
 
 | Class             | Purpose                                                                                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.eia-auth-card`  | Jewel-box card shell: gradient hairline border (accent-kissed top arc → `--theme-sidebar-border`, painted border-box under a transparent border), lamplight wash at top centre over `--theme-sidebar-hover-bg`, `--radius-xl`, `--shadow-3` + accent underglow bloom; one-time entrance + direct-children stagger (60ms steps) |
-| `.eia-auth-logo-medallion` | 72px circular hairline ring (30% accent) + halo around the 48px logo — the mandala's innermost ring on the surface; part of the unified brand header |
-| `.eia-input-auth` | Dark input: `--theme-canvas` bg, `--theme-sidebar-border` border, `--theme-canvas-text` text; focus ring `--theme-accent` + `--theme-accent-surface` glow |
-| `.eia-auth-link`  | Accent link at 65% opacity at rest, full `--theme-accent` on hover                                                                                        |
+| `.serene-auth-card`  | Jewel-box card shell: gradient hairline border (accent-kissed top arc → `--theme-sidebar-border`, painted border-box under a transparent border), lamplight wash at top centre over `--theme-sidebar-hover-bg`, `--radius-xl`, `--shadow-3` + accent underglow bloom; one-time entrance + direct-children stagger (60ms steps) |
+| `.serene-auth-logo-medallion` | 72px circular hairline ring (30% accent) + halo around the 48px logo — the mandala's innermost ring on the surface; part of the unified brand header |
+| `.serene-input-auth` | Dark input: `--theme-canvas` bg, `--theme-sidebar-border` border, `--theme-canvas-text` text; focus ring `--theme-accent` + `--theme-accent-surface` glow |
+| `.serene-auth-link`  | Accent link at 65% opacity at rest, full `--theme-accent` on hover                                                                                        |
 
-**Never use `.eia-paper-surface`, `.eia-input`, or `--theme-paper` on auth forms.** Those tokens are
+**Never use `.serene-paper-surface`, `.serene-input`, or `--theme-paper` on auth forms.** Those tokens are
 designed for the light paper surface inside the dashboard shell.
 
 ### Unified brand header
@@ -34,7 +34,7 @@ designed for the light paper surface inside the dashboard shell.
 Identical across all three forms:
 
 ```tsx
-<div className="eia-auth-logo-medallion">
+<div className="serene-auth-logo-medallion">
   <Image src="/logo.webp" width={48} height={48} style={{ borderRadius: "var(--radius-sm)" }} />
 </div>
 <h1  fontFamily: --font-serif, fontSize: --text-3xl, color: --theme-canvas-text, textAlign: center>Indulge OS</h1>
@@ -72,19 +72,19 @@ The auth shell is a composed scene, back to front (all layers `pointer-events-no
    themes: grain only, their gradient tokens are `none`). This is the class's intended mount point.
    Supersedes the 2026-06-02 per-page noise-div removal — the class paints grain as one background, no extra DOM.
 2. **Two radial glow divs** — primary at 62% 38% ("off-centre is a window"), secondary counter-corner.
-3. **Engraved mandala** (`.eia-auth-mandala-wrap` > `.eia-auth-mandala` + `.eia-auth-mandala-lit` >
-   `.eia-auth-mandala-beam`) — 8-fold Seed-of-Life rosette (logo geometry): eight circles whose edges
+3. **Engraved mandala** (`.serene-auth-mandala-wrap` > `.serene-auth-mandala` + `.serene-auth-mandala-lit` >
+   `.serene-auth-mandala-beam`) — 8-fold Seed-of-Life rosette (logo geometry): eight circles whose edges
    all pass through one central point hidden behind the card, petals framing it on every side. One SVG
    alpha mask shared by the quiet-accent static layer and the lit layer; the conic beam rotates once
    per 120s **inside** the statically-masked lit layer — the mask must never rotate (8-fold geometry
    is not rotation-invariant). Transform-only.
-4. **Two orb divs** (`.eia-auth-orb-a`, `.eia-auth-orb-b`) — slow drift + subtle scale breathe.
+4. **Two orb divs** (`.serene-auth-orb-a`, `.serene-auth-orb-b`) — slow drift + subtle scale breathe.
 
-`.eia-auth-card` has a one-time entrance (rise + fade, `--duration-page` `--ease-out-expo`) shared by all
+`.serene-auth-card` has a one-time entrance (rise + fade, `--duration-page` `--ease-out-expo`) shared by all
 three forms. `prefers-reduced-motion`: drift/sweep are killed, entrance collapses to an opacity fade.
 
 Root div keeps inline `backgroundColor: 'var(--theme-canvas)'` to prevent white flash before CSS loads.
-Still absent by design: `.eia-auth-line-1/2` divs (removed 2026-06-02).
+Still absent by design: `.serene-auth-line-1/2` divs (removed 2026-06-02).
 
 ---
 

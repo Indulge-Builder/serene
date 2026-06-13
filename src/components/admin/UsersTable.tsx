@@ -264,7 +264,7 @@ function UserCard({ user, index }: { user: Profile; index: number }) {
       <div style={{ flex: "0 0 auto" }}>
         <Link
           href={`/admin/users/${user.id}`}
-          className="eia-touch"
+          className="serene-touch"
           style={{
             display:        "inline-flex",
             alignItems:     "center",

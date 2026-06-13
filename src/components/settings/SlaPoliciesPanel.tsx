@@ -294,7 +294,7 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
                             onKeyDown={(e) => {
                               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                             }}
-                            className="eia-input"
+                            className="serene-input"
                             style={{
                               width:        "76px",
                               padding:      "4px 8px",

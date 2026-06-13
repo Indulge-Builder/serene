@@ -1,4 +1,4 @@
-# Eia — Architecture Summary (Claude Project digest)
+# Serene — Architecture Summary (Claude Project digest)
 
 > Generated digest of `docs/architecture/*` and `docs/integrations/*` — 2026-06-11.
 > Source of truth is the repo docs; regenerate when they change.

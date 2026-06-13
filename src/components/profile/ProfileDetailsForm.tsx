@@ -124,7 +124,7 @@ export function ProfileDetailsForm({ profile }: Props) {
                   defaultValue={current.full_name}
                   required
                   autoComplete="name"
-                  className="eia-input"
+                  className="serene-input"
                   style={{ height: "36px", padding: "0 var(--space-3)" }}
                 />
               </Field>
@@ -161,7 +161,7 @@ export function ProfileDetailsForm({ profile }: Props) {
                     defaultValue={stripCountryCode(current.phone)}
                     placeholder="98765 43210"
                     autoComplete="tel-national"
-                    className="eia-input"
+                    className="serene-input"
                     style={{ height: "36px", padding: "0 var(--space-3)", flex: 1 }}
                     onBlur={normalizePhoneOnBlur}
                   />
@@ -178,7 +178,7 @@ export function ProfileDetailsForm({ profile }: Props) {
                   type="text"
                   defaultValue={current.job_title ?? ""}
                   placeholder="e.g. Senior Concierge Agent"
-                  className="eia-input"
+                  className="serene-input"
                   style={{ height: "36px", padding: "0 var(--space-3)" }}
                 />
               </Field>
@@ -194,7 +194,7 @@ export function ProfileDetailsForm({ profile }: Props) {
                   defaultValue={current.username ?? ""}
                   placeholder="e.g. priya_sharma"
                   autoComplete="username"
-                  className="eia-input"
+                  className="serene-input"
                   style={{ height: "36px", padding: "0 var(--space-3)" }}
                 />
               </Field>

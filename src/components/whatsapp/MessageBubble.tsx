@@ -11,7 +11,7 @@ interface MessageBubbleProps {
   message: WhatsAppMessage;
   isOptimistic?: boolean;
   /** Animate arrival — pass true only for messages appended after mount;
-   *  the initial thread renders static (design-dna §6.4 liaMessageArrive). */
+   *  the initial thread renders static (design-dna §6.4 elayaMessageArrive). */
   entrance?: boolean;
 }
 
@@ -186,7 +186,7 @@ export function MessageBubble({ message, isOptimistic = false, entrance = false 
             paddingRight: "var(--space-1)",
           }}
         >
-          Lia
+          Elaya
         </span>
       )}
 

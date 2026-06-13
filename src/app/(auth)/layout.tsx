@@ -28,18 +28,18 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           edges all pass through one central point hidden behind the card.
           A conic beam rotates inside the statically-masked lit layer (120s),
           so the line-work catches the light without the pattern spinning. */}
-      <div className="eia-auth-mandala-wrap pointer-events-none absolute" aria-hidden="true">
-        <div className="eia-auth-mandala" />
-        <div className="eia-auth-mandala-lit">
-          <div className="eia-auth-mandala-beam" />
+      <div className="serene-auth-mandala-wrap pointer-events-none absolute" aria-hidden="true">
+        <div className="serene-auth-mandala" />
+        <div className="serene-auth-mandala-lit">
+          <div className="serene-auth-mandala-beam" />
         </div>
       </div>
 
       {/* Floating orb A — upper right, 24s drift + breathe. Transform only. */}
-      <div className="eia-auth-orb-a pointer-events-none absolute" aria-hidden="true" />
+      <div className="serene-auth-orb-a pointer-events-none absolute" aria-hidden="true" />
 
       {/* Floating orb B — lower left, 30s counter-drift + breathe. Transform only. */}
-      <div className="eia-auth-orb-b pointer-events-none absolute" aria-hidden="true" />
+      <div className="serene-auth-orb-b pointer-events-none absolute" aria-hidden="true" />
 
       {children}
     </div>

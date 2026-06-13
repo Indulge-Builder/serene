@@ -1,4 +1,4 @@
-# Eia
+# Serene
 
 Internal operating system for Indulge Global. Private repository — not public documentation.
 
@@ -6,7 +6,7 @@ Internal operating system for Indulge Global. Private repository — not public 
 
 ## 1. What This Is
 
-Eia is the internal operating system for Indulge Global — a production foundation, not a prototype — built to serve India's premier luxury concierge brand. Every team member logs into Eia as the single entry point to their work. The architecture is modular: the base layer (Eia) does not change when a new domain module is added. Domain modules load on top for the right people; cross-cutting AI presence (Lia) and CRM (Gia) attach to the OS without rewriting the shell.
+Serene is the internal operating system for Indulge Global — a production foundation, not a prototype — built to serve India's premier luxury concierge brand. Every team member logs into Serene as the single entry point to their work. The architecture is modular: the base layer (Serene) does not change when a new domain module is added. Domain modules load on top for the right people; cross-cutting AI presence (Elaya) and CRM (Gia) attach to the OS without rewriting the shell.
 
 ---
 
@@ -14,8 +14,8 @@ Eia is the internal operating system for Indulge Global — a production foundat
 
 | Name    | What It Is                                                |
 | ------- | --------------------------------------------------------- |
-| **Eia** | The OS — the platform every Indulge team member logs into |
-| **Lia** | The agentic AI model that lives inside Eia                |
+| **Serene** | The OS — the platform every Indulge team member logs into |
+| **Elaya** | The agentic AI model that lives inside Serene                |
 | **Gia** | The CRM module — loads for the Onboarding domain          |
 | **Sia** | The Concierge module — loads for the Concierge domain     |
 
@@ -144,7 +144,7 @@ Source of truth: `docs/changelog.md`. Only work listed there as shipped is marke
 
 ## 6. What Is Planned (Not Built)
 
-- **Lia (AI presence)** + **client records (post-won flow)** — current focus; see `docs/01-vision.md`
+- **Elaya (AI presence)** + **client records (post-won flow)** — current focus; see `docs/01-vision.md`
 - **WhatsApp AI chatbot** — auto lead engagement until the agent takes over; see `docs/integrations/whatsapp-gupshup.md` (the WhatsApp *page* shipped — `docs/pages/whatsapp.md`)
 - **Sia (Concierge module)** — planned; not started — `docs/modules/sia.md`
 - **Call intelligence / helpdesk** — spec complete — `docs/modules/call-intelligence.md`
@@ -156,7 +156,7 @@ Source of truth: `docs/changelog.md`. Only work listed there as shipped is marke
 ## 7. Folder Structure
 
 ```text
-eia/
+serene/
 ├── CLAUDE.md                        ← this file
 ├── .cursorrules                     ← identical to this file
 ├── .env.local                       ← never committed

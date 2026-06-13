@@ -1,4 +1,4 @@
-# Eia Documentation
+# Serene Documentation
 
 > **Purpose:** the index — what every file in `docs/` is, the reading orders, and where to find anything.
 > **Audience:** everyone. · **Source-of-truth scope:** the docs tree itself. Code is always the ultimate source of truth — docs describe reality, never aspiration; where a doc and the code disagree, the code wins and the doc gets fixed.
@@ -33,9 +33,9 @@ docs/
 │   whatsapp · settings · auth · profile · user-management · ad-creatives · error-log
 ├── modules/
 │   ├── gia.md               ← the CRM module: lifecycle, end-to-end flow, SLA engine
-│   ├── lia.md               ← AI presence (in design)
+│   ├── elaya.md               ← AI presence (in design)
 │   ├── sia.md               ← concierge module (not started)
-│   ├── elia.md              ← reserved (undefined)
+│   ├── elaya.md              ← reserved (undefined)
 │   └── call-intelligence.md ← helpdesk/call-intel spec (planned)
 ├── integrations/
 │   ├── lead-ingestion.md    ← Pabbly/Meta webhook pipeline + raw-payload policy

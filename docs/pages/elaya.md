@@ -4,7 +4,7 @@
 > **Audience:** engineers. · **Source-of-truth scope:** this route's behaviour.
 > **Last verified:** 2026-06-12 · **Status:** shipped.
 
-Module architecture + phase contracts: `docs/modules/elia.md`. Build record: `docs/changelog.md`
+Module architecture + phase contracts: `docs/modules/elaya.md`. Build record: `docs/changelog.md`
 (2026-06-12 Elaya foundation entry).
 
 ## Access
@@ -25,7 +25,7 @@ Sidebar: MAIN_NAV, Sparkles icon, directly under Dashboard.
   any persistence or model call. The composer swaps to the cap notice when exhausted; the server
   remains the authority.
 - **Page chrome:** standard header (`type-page-title` + `page-title-dot`), then the canonical
-  `.eia-dossier-grid eia-dossier-grid--340` (audit F2 — same grid as `/profile` and
+  `.serene-dossier-grid serene-dossier-grid--340` (audit F2 — same grid as `/profile` and
   `/admin/users/[id]`; single column below lg): chat card on `--theme-paper` in the 1fr column,
   `ElayaIdentityCard` as the right 340px sidebar (breathing glyph tile + name,
   `ELAYA_STARTER_PROMPTS` prefill-only starters, capability list; stacks below the chat under

@@ -1,6 +1,6 @@
 # Responsive Audit — 2026-06-12
 
-> **Goal:** Eia flawless at four widths — mobile (~375), tablet (~768), laptop (~1280),
+> **Goal:** Serene flawless at four widths — mobile (~375), tablet (~768), laptop (~1280),
 > large (1536+) — and under browser zoom. Zoom shrinks the effective viewport width, so
 > correct breakpoints + zero fixed-width assumptions = smooth zoom for free.
 >
@@ -89,7 +89,7 @@ text breaks the data-dense table rhythm and DNA §9.2 only scales the title tier
 `FilterBar` already owns wrap/scroll behaviour for all four filter bars; the table
 mobile strategy lives in the table component; page chrome adapts inside the canonical
 layout contract (`p-4 sm:p-6 lg:p-8`); the dossier two-column grid is a shared CSS
-class (`.eia-dossier-grid`). A page-level `sm:`/`md:` class is allowed only for page
+class (`.serene-dossier-grid`). A page-level `sm:`/`md:` class is allowed only for page
 chrome (padding/heading rows), never for behaviour a primitive should own.
 
 ---
@@ -137,7 +137,7 @@ Widths tested mentally against code: **375 / 768 / 1280 / 1536+** and 200% zoom
   compact flex; skeleton is % based). No change.
 - **Dossier `/leads/[id]`:** `gridTemplateColumns: 'minmax(0, 1fr) 320px'` fixed at all
   widths → at 375 the right column alone exceeds the viewport → body horizontal
-  scroll. Fixed → shared `.eia-dossier-grid` class: single column below `lg`, `1fr
+  scroll. Fixed → shared `.serene-dossier-grid` class: single column below `lg`, `1fr
   320px` at `lg+`; page padding → `var(--space-4)` → `--space-8` ladder via class.
   (Same pattern applies to `/admin/users/[id]` + `/profile` `1fr 340px` grids —
   follow-up F2 adopts the class there.)
@@ -153,7 +153,7 @@ Widths tested mentally against code: **375 / 768 / 1280 / 1536+** and 200% zoom
   consumer; Lead Pipeline stat chips `repeat(5, 1fr)` → `auto-fit minmax(88px, 1fr)`
   with wrapping labels. Widget list rows already carried `minWidth: 0` + ellipsis
   guards — verified, untouched.
-- Persisted layout (`eia:dashboard:layout:*`) stores **order + size**, and rendering
+- Persisted layout (`serene:dashboard:layout:*`) stores **order + size**, and rendering
   degrades by breakpoint via the span classes — stored config already cannot force a
   desktop shape on mobile. ✓ on the failure-mode check; keep it that way.
 
@@ -172,7 +172,7 @@ Widths tested mentally against code: **375 / 768 / 1280 / 1536+** and 200% zoom
 
 ### 3.5 Tasks (calendar + group board)  ✅ F4 closed 2026-06-12
 
-- ✅ Board: `.eia-board` (globals.css) — horizontal snap-scroll rail `<lg`
+- ✅ Board: `.serene-board` (globals.css) — horizontal snap-scroll rail `<lg`
   (`grid-auto-columns: min(78vw, 260px)`, snap mandatory), `repeat(5,
   minmax(180px, 1fr))` + container scroll at lg+. Add-subtask panel
   `w-full md:w-80`, FAB stack full-width + safe-area inset `<md`.
@@ -204,7 +204,7 @@ Widths tested mentally against code: **375 / 768 / 1280 / 1536+** and 200% zoom
   non-wrapping flex row); `EffortGrid` → `grid-cols-2 lg:grid-cols-4`; skeleton
   fallbacks mirror; Today-tab hero pair stacks `<sm`, pipeline counts wrap.
 - ✅ `/admin/users/[id]`, `/profile`, `NewUserClient`: inline `1fr 340px` grids →
-  `.eia-dossier-grid eia-dossier-grid--340` (new modifier in globals.css — one
+  `.serene-dossier-grid serene-dossier-grid--340` (new modifier in globals.css — one
   class, one variant, no fork).
 - ✅ `CampaignMetricsStrip` (+ skeleton): inline `repeat(2, 1fr)` was overriding the
   `md:`/`lg:` classes (2-wide at every width, desktop included) — column count now
@@ -221,7 +221,7 @@ Widths tested mentally against code: **375 / 768 / 1280 / 1536+** and 200% zoom
 - ✅ **Audit miss #2, fixed same day:** `UsersTable` `UserCard` was a
   non-wrapping flex row with ~340px of unshrinkable fixed-basis zones — the
   "card-list pages mostly degrade fine" finding was stale for it. Now
-  `flexWrap: wrap`, domain zone `0 0 auto`, Edit link `.eia-touch`.
+  `flexWrap: wrap`, domain zone `0 0 auto`, Edit link `.serene-touch`.
 
 ### 3.8 Auth  ✅ F5 closed 2026-06-12
 
@@ -229,7 +229,7 @@ Widths tested mentally against code: **375 / 768 / 1280 / 1536+** and 200% zoom
   absolute and clipped — fixed 680/1200px sizes are fine). Card is width-constrained
   and the auth layout already passes at 375. No body horizontal scroll. Forms stack
   vertically ✓.
-- ✅ 320px pass: all four `.eia-auth-card` surfaces ease horizontal padding to
+- ✅ 320px pass: all four `.serene-auth-card` surfaces ease horizontal padding to
   `px-6 sm:px-8` (was fixed `--space-8`); 26rem card + `mx-4` fits 320.
 
 ---
@@ -242,7 +242,7 @@ Widths tested mentally against code: **375 / 768 / 1280 / 1536+** and 200% zoom
 | No body horizontal scroll at 375/768/1280/1920 + 200% zoom — shell + /leads | ✅ (shell stacks; dossier grid collapses; table card-stack `<md`, container-scroll `md`) |
 | Shell + /leads fully usable at all four widths | ✅ |
 | Modals + floating panels reachable within visualViewport | ✅ (pre-existing `usePortalAnchor`/`Dialog` behaviour, verified) |
-| Tap targets ≥40px on mobile (shell + /leads) | ✅ drawer nav 40px rows, mobile header 40px hamburger, card rows ≥44px, toolbar buttons 36→40px under coarse pointer (`.eia-touch` rule) |
+| Tap targets ≥40px on mobile (shell + /leads) | ✅ drawer nav 40px rows, mobile header 40px hamburger, card rows ≥44px, toolbar buttons 36→40px under coarse pointer (`.serene-touch` rule) |
 | No hardcoded breakpoint pixel values in components | ✅ — no JS logic branches on a raw pixel anymore (`toast-provider` → `useMediaQuery`). Raw px appears only inside stylesheet rules — `.css` files and the bento's injected `GRID_CSS` string — always at a canonical `--bp-*` value with the comment (CSS cannot read custom properties in `@media` preludes) |
 
 ---
@@ -252,10 +252,10 @@ Widths tested mentally against code: **375 / 768 / 1280 / 1536+** and 200% zoom
 | Phase | Surface | Work | Size |
 | --- | --- | --- | --- |
 | **F1** ✅ 2026-06-12 | Dashboard widget interiors | Padding ladder, canvas header wrap, `TabsList` overflow-scroll (primitive), pipeline chip grid auto-fit. Legends already wrapped; list rows already guarded | S |
-| **F2** ✅ 2026-06-12 | Detail grids + analytics | `.eia-dossier-grid`(+`--340`) on `/admin/users/[id]` + `/profile` + `NewUserClient`; founder/agent perf grids responsive; campaign strip inline-style-vs-class bug fixed; deals strip/card wrap; AgentSettingsTable shrink fix; §3.7 padding ladder | M |
+| **F2** ✅ 2026-06-12 | Detail grids + analytics | `.serene-dossier-grid`(+`--340`) on `/admin/users/[id]` + `/profile` + `NewUserClient`; founder/agent perf grids responsive; campaign strip inline-style-vs-class bug fixed; deals strip/card wrap; AgentSettingsTable shrink fix; §3.7 padding ladder | M |
 | **F3** ✅ 2026-06-12 | WhatsApp | Single-pane mode `<md` with back nav (`useMediaQuery(MQ.mobile)` + `onBack` on ConversationPanel); composer safe-area inset; rail `w-full md:w-80`; loading mirrors | M |
-| **F4** ✅ 2026-06-12 | Tasks | `.eia-board` snap-scroll rail `<lg`; SubTaskModal zone stacking `<md` + `90dvh` + sidebar-offset fix; CreateGroupTaskModal grid stacking; calendar column stacks `<md`, 44px cells | M |
-| **F5** ✅ 2026-06-12 | Overlays + polish | `Dialog` bottom-sheet `<md` (DNA R-06, one component serves all modals); auth 320px pass; DNA §12 sweep via `.eia-touch` (Dialog ×, SubTaskModal icons, Calendar nav, WorkDayPicker, clear-shift). Filter-sheet exploration (DNA R-05 second half) deliberately deferred — the FilterBar scroll row stays until a real usability signal | M |
+| **F4** ✅ 2026-06-12 | Tasks | `.serene-board` snap-scroll rail `<lg`; SubTaskModal zone stacking `<md` + `90dvh` + sidebar-offset fix; CreateGroupTaskModal grid stacking; calendar column stacks `<md`, 44px cells | M |
+| **F5** ✅ 2026-06-12 | Overlays + polish | `Dialog` bottom-sheet `<md` (DNA R-06, one component serves all modals); auth 320px pass; DNA §12 sweep via `.serene-touch` (Dialog ×, SubTaskModal icons, Calendar nav, WorkDayPicker, clear-shift). Filter-sheet exploration (DNA R-05 second half) deliberately deferred — the FilterBar scroll row stays until a real usability signal | M |
 
 Each follow-up phase must: reuse `useMediaQuery`/`MQ`, keep behaviour in primitives
 (D-5), keep responsive change as CSS layout (M-06 — transitions stay

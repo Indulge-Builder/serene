@@ -6,7 +6,7 @@
 
 ## 1. Purpose
 
-A shared WhatsApp inbox inside Eia: every lead phone number maps to one conversation thread,
+A shared WhatsApp inbox inside Serene: every lead phone number maps to one conversation thread,
 messages sync in real time, agents reply without leaving the dashboard. Conversations are
 keyed to `leads` and inherit lead assignment/domain rules. Two creation paths: inbound
 (service-role pipeline) and agent-initiated from the dossier
@@ -30,7 +30,7 @@ Deep dive §10.
 ## 4. Components
 
 `WhatsAppShell` (split-pane: list + thread) · `ConversationList` + period filter ·
-`ConversationPanel` · `MessageBubble` (shows a "Lia" label when `is_bot = true` — nothing sets
+`ConversationPanel` · `MessageBubble` (shows a "Elaya" label when `is_bot = true` — nothing sets
 it today) · composer (optimistic insert, Realtime echo confirm) · dossier `LeadWhatsAppCard` +
 `LeadWhatsAppCardAsync`.
 
@@ -62,7 +62,7 @@ RLS (review together); channel nonces; unread counts via the RPC only (fixed in 
 
 ### 1. Module Overview
 
-The WhatsApp module gives Indulge agents and managers a shared inbox inside Eia: every lead phone number maps to one conversation thread, messages sync in real time, and agents reply without leaving the dashboard. It sits in the Gia domain because conversations are keyed to `leads` and inherit the same assignment and domain rules as the lead list.
+The WhatsApp module gives Indulge agents and managers a shared inbox inside Serene: every lead phone number maps to one conversation thread, messages sync in real time, and agents reply without leaving the dashboard. It sits in the Gia domain because conversations are keyed to `leads` and inherit the same assignment and domain rules as the lead list.
 
 **Three surfaces:**
 
@@ -77,7 +77,7 @@ The WhatsApp module gives Indulge agents and managers a shared inbox inside Eia:
 1. **Inbound** — a message arrives from an unknown/known number → `whatsapp-ingestion.ts` creates the conversation (service-role).
 2. **Agent-initiated** — an agent clicks "Start Conversation" on the lead dossier → `initiateWhatsAppConversationAction` creates the conversation (adminClient) and sends the `lead_initiation` Gupshup template to open the 24-hour session window.
 
-**AI chatbot:** Planned, not built. Columns `bot_active`, `bot_paused_by`, and `bot_paused_at` exist on `whatsapp_conversations` (defaults: `bot_active = true`). No application code reads or writes them for bot behaviour. `MessageBubble` shows a "Lia" label when `is_bot = true`, but nothing in the pipeline sets `is_bot = true` on outbound messages today.
+**AI chatbot:** Planned, not built. Columns `bot_active`, `bot_paused_by`, and `bot_paused_at` exist on `whatsapp_conversations` (defaults: `bot_active = true`). No application code reads or writes them for bot behaviour. `MessageBubble` shows a "Elaya" label when `is_bot = true`, but nothing in the pipeline sets `is_bot = true` on outbound messages today.
 
 **BSP:** Gupshup v1 for outbound text, the initiation template, and template notifications. Meta Cloud API helpers remain in `whatsapp-api.ts` for a future switch; they are not called on the active Gupshup path except `getMediaDownloadUrl` during inbound media handling (requires Meta credentials when media arrives).
 
@@ -558,7 +558,7 @@ No `Suspense` boundary on page — `loading.tsx` handles the route-level skeleto
 | Alignment | `flex-start` | `flex-end` |
 | Surface | `var(--theme-paper)` + paper border | `var(--theme-accent-surface)` + accent-tinted border |
 | Sender row | Avatar xs + name (lead) | — |
-| Bot label | — | "Lia" above bubble when `is_bot` |
+| Bot label | — | "Elaya" above bubble when `is_bot` |
 
 **Delivery icons (outbound only):** `sent` → `Check` tertiary; `delivered` → `CheckCheck` tertiary; `read` → `CheckCheck` accent; `failed` → `X` danger.
 

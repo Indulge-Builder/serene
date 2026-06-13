@@ -324,7 +324,7 @@ function SubtaskStatusBadge({ status }: { status: TaskStatus }) {
           borderRadius: 'var(--radius-full)',
           background:   p.dot,
           flexShrink:   0,
-          animation:    status === 'in_progress' ? 'eia-subtask-pulse 2s ease-in-out infinite' : 'none',
+          animation:    status === 'in_progress' ? 'serene-subtask-pulse 2s ease-in-out infinite' : 'none',
         }}
       />
       {TASK_STATUS_LABELS[status]}
@@ -659,7 +659,7 @@ const GroupRow = memo(function GroupRow({
             }}
             aria-label={`Open ${group.title}`}
             title="Open workspace (double-click row)"
-            className="eia-icon-lift-hover"
+            className="serene-icon-lift-hover"
             whileTap={{ scale: 0.92 }}
             transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
             style={{

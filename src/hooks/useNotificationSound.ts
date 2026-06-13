@@ -3,7 +3,7 @@
 /**
  * useNotificationSound — synthesised C6/E6 chime via Web Audio API.
  * No audio files. AudioContext created lazily on first play.
- * Sound state persists to localStorage: eia:notifications:sound:v1.
+ * Sound state persists to localStorage: serene:notifications:sound:v1.
  *
  * Pre-mortem rules:
  * - Realtime fires outside a user gesture — context.resume() may silently fail.
@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const LS_KEY = "eia:notifications:sound:v1";
+const LS_KEY = "serene:notifications:sound:v1";
 
 export function useNotificationSound() {
   // Start null (unhydrated) — toggle renders nothing until the useEffect below reads

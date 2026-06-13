@@ -32,25 +32,25 @@ export default function DashboardLoading() {
 
       {/* Bento grid — matches DashboardCanvas GRID_CSS */}
       <style>{`
-        .eia-loading-bento {
+        .serene-loading-bento {
           display: grid;
           grid-template-columns: repeat(12, 1fr);
           gap: var(--space-4);
           width: 100%;
           align-items: start;
         }
-        .eia-loading-cell-1 { grid-column: span 6; }
-        .eia-loading-cell-2 { grid-column: span 12; }
+        .serene-loading-cell-1 { grid-column: span 6; }
+        .serene-loading-cell-2 { grid-column: span 12; }
         @media (max-width: 767.98px) { /* < --bp-md — mirrors DashboardCanvas GRID_CSS */
-          .eia-loading-cell-1,
-          .eia-loading-cell-2 { grid-column: span 12; }
+          .serene-loading-cell-1,
+          .serene-loading-cell-2 { grid-column: span 12; }
         }
       `}</style>
 
-      <div className="eia-loading-bento">
+      <div className="serene-loading-bento">
         {/* Widget 1 — half-width (md size) */}
         <div
-          className="skeleton eia-loading-cell-1"
+          className="skeleton serene-loading-cell-1"
           style={{
             height:       '220px',
             borderRadius: 'var(--radius-lg)',
@@ -59,7 +59,7 @@ export default function DashboardLoading() {
 
         {/* Widget 2 — half-width (md size) */}
         <div
-          className="skeleton eia-loading-cell-1"
+          className="skeleton serene-loading-cell-1"
           style={{
             height:         '220px',
             borderRadius:   'var(--radius-lg)',
@@ -69,7 +69,7 @@ export default function DashboardLoading() {
 
         {/* Widget 3 — full-width (lg size) */}
         <div
-          className="skeleton eia-loading-cell-2"
+          className="skeleton serene-loading-cell-2"
           style={{
             height:         '280px',
             borderRadius:   'var(--radius-lg)',
@@ -79,7 +79,7 @@ export default function DashboardLoading() {
 
         {/* Widget 4 — full-width (xl size — campaign chart) */}
         <div
-          className="skeleton eia-loading-cell-2"
+          className="skeleton serene-loading-cell-2"
           style={{
             height:         '320px',
             borderRadius:   'var(--radius-lg)',

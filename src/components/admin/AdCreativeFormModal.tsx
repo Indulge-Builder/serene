@@ -349,7 +349,7 @@ export function AdCreativeFormModal({
             value={adName}
             onChange={(e) => setAdName(e.target.value)}
             placeholder="e.g. Goa Resort — Summer Hook"
-            className="eia-input"
+            className="serene-input"
             style={inputBase}
           />
         </div>
@@ -363,7 +363,7 @@ export function AdCreativeFormModal({
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             placeholder="Internal context for the team…"
-            className="eia-input"
+            className="serene-input"
             style={{ ...inputBase, height: "auto", padding: "var(--space-3)", resize: "vertical", lineHeight: "var(--leading-normal)" }}
           />
         </div>

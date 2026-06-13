@@ -1,6 +1,6 @@
 # Deployment
 
-> **Purpose:** how Eia is built and deployed — providers, build commands, runtime constraints.
+> **Purpose:** how Serene is built and deployed — providers, build commands, runtime constraints.
 > **Audience:** engineers/ops. · **Source-of-truth scope:** deployment topology and commands. Env vars: `environments.md`.
 > **Last verified:** 2026-06-11 against `package.json`, `trigger.config.ts`, route `maxDuration` exports.
 

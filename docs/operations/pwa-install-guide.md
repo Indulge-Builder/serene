@@ -1,10 +1,10 @@
-# Eia on Your Phone — Install Guide
+# Serene on Your Phone — Install Guide
 
-> **Purpose:** step-by-step guide to put Eia on your phone's home screen like a real app.
+> **Purpose:** step-by-step guide to put Serene on your phone's home screen like a real app.
 > **Audience:** everyone on the team — no technical knowledge needed (Part 2 and 3).
 > Part 1 is for whoever deploys the app.
 
-Eia is now a PWA (Progressive Web App). That means the website itself can be
+Serene is now a PWA (Progressive Web App). That means the website itself can be
 installed on your phone. Same app, same login, same data — just full-screen,
 with its own icon, launched from your home screen.
 
@@ -40,22 +40,22 @@ You need: an Android phone with Chrome.
 
 1. Open **Chrome** on your phone (not inside WhatsApp or Instagram's built-in
    browser — open the real Chrome app).
-2. Type the Eia production URL in the address bar and open it.
-3. Log in with your Eia email and password (so you know the site works first).
+2. Type the Serene production URL in the address bar and open it.
+3. Log in with your Serene email and password (so you know the site works first).
 4. Tap the **⋮ three-dot menu** in the top-right corner of Chrome.
 5. Tap **"Add to Home screen"** (on newer Chrome it may say **"Install app"**).
-6. A small card pops up showing the gold Eia icon and the name **"Eia"**.
+6. A small card pops up showing the gold Serene icon and the name **"Serene"**.
    Tap **"Install"** (or **"Add"**).
-7. Press your phone's home button. You will see the **Eia icon** on your home
+7. Press your phone's home button. You will see the **Serene icon** on your home
    screen (it may land on the last page — swipe to find it, or check the app
    drawer).
-8. Tap the icon. Eia opens **full screen** — no browser address bar, no Chrome
+8. Tap the icon. Serene opens **full screen** — no browser address bar, no Chrome
    buttons. It opens straight to the dashboard (or the login page if you are
    signed out).
 
-That's it. From now on, always open Eia from this icon.
+That's it. From now on, always open Serene from this icon.
 
-> **Tip:** if Chrome shows a banner at the bottom saying "Add Eia to Home
+> **Tip:** if Chrome shows a banner at the bottom saying "Add Serene to Home
 > screen" on its own — even easier, just tap that.
 
 ---
@@ -66,16 +66,16 @@ You need: an iPhone with Safari. **This only works in Safari** — Chrome on
 iPhone cannot install apps.
 
 1. Open **Safari** on your iPhone.
-2. Type the Eia production URL and open it.
+2. Type the Serene production URL and open it.
 3. Log in once so you know everything works.
 4. Tap the **Share button** — the square with an arrow pointing up, at the
    bottom-middle of the screen.
 5. Scroll **down** in the share menu until you see **"Add to Home Screen"**.
    Tap it.
-6. You'll see the gold Eia icon and the name **"Eia"** already filled in.
+6. You'll see the gold Serene icon and the name **"Serene"** already filled in.
    Tap **"Add"** in the top-right corner.
-7. Safari closes the menu and the **Eia icon** appears on your home screen.
-8. Tap the icon. Eia opens full screen with the dark theme running edge to
+7. Safari closes the menu and the **Serene icon** appears on your home screen.
+8. Tap the icon. Serene opens full screen with the dark theme running edge to
    edge — no Safari bars.
 
 > **Note for iPhone:** the very first time you open the installed app you may

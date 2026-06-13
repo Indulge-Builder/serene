@@ -547,7 +547,7 @@ export function TaskRemarksPanel({
               onClick={postRemark}
               disabled={!canPost}
               aria-label="Send update"
-              className="eia-pressable eia-icon-lift-hover"
+              className="serene-pressable serene-icon-lift-hover"
               style={{
                 width:          `${COMPOSER_SEND_SIZE}px`,
                 height:         `${COMPOSER_SEND_SIZE}px`,

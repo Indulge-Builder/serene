@@ -9,7 +9,7 @@
 ## 1. Why it exists (A-12)
 
 Any async work over 3 seconds or needing retry/delayed execution runs on Trigger.dev — never in
-a route handler. In Eia that is exactly two job families: **lead SLA timers** and **task due
+a route handler. In Serene that is exactly two job families: **lead SLA timers** and **task due
 reminders**. (Sub-3-second post-response work — notification sends — uses `after()` instead;
 see `whatsapp-gupshup.md` §4.)
 

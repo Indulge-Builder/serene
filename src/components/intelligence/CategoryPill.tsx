@@ -3,7 +3,7 @@
 // Call Intelligence — single category filter pill (helpdesk filter row).
 // Single-select: the parent owns activeCategory state. Active = accent fill
 // (--theme-accent-fg text — never text-inverse on accent, Surface Contract).
-// Press feedback is the CSS .eia-pressable mechanism (never a second Framer
+// Press feedback is the CSS .serene-pressable mechanism (never a second Framer
 // whileTap); flexShrink: 0 keeps the pill intact in FilterBar's mobile
 // scroll row.
 
@@ -19,7 +19,7 @@ export function CategoryPill({ label, active, onClick }: CategoryPillProps) {
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className="eia-pressable eia-touch"
+      className="serene-pressable serene-touch"
       style={{
         padding:       '6px 14px',
         borderRadius:  'var(--radius-full)',

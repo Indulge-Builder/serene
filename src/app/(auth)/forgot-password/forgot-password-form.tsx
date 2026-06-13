@@ -18,12 +18,12 @@ export function ForgotPasswordForm() {
       style={{ maxWidth: "26rem", zIndex: "var(--z-raised)" }}
     >
       <div
-        className="eia-auth-card px-6 sm:px-8"
+        className="serene-auth-card px-6 sm:px-8"
         style={{ paddingTop: "var(--space-10)", paddingBottom: "var(--space-10)" }}
       >
         {/* Unified brand header */}
         <div className="flex flex-col items-center gap-3 mb-10">
-          <div className="eia-auth-logo-medallion">
+          <div className="serene-auth-logo-medallion">
             <Image
               src="/logo.webp"
               alt="Indulge"
@@ -64,7 +64,7 @@ export function ForgotPasswordForm() {
             </p>
             <Link
               href="/login"
-              className="eia-auth-link"
+              className="serene-auth-link"
               style={{ marginTop: "var(--space-2)" }}
             >
               Back to sign in
@@ -101,7 +101,7 @@ export function ForgotPasswordForm() {
                   type="email"
                   autoComplete="email"
                   placeholder="you@indulge.com"
-                  className="eia-input-auth"
+                  className="serene-input-auth"
                 />
               </div>
 
@@ -144,7 +144,7 @@ export function ForgotPasswordForm() {
         {/* Back to sign in */}
         {!state?.success && (
           <div className="flex justify-center mt-6">
-            <Link href="/login" className="eia-auth-link">
+            <Link href="/login" className="serene-auth-link">
               Back to sign in
             </Link>
           </div>

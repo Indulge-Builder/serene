@@ -3,12 +3,12 @@
 
 /* ── Tailwind v4 default-theme isolation (design audit §3.3 / Phase 4.2) ──────
    Tailwind's default @theme emits variables that collide with — or silently
-   gap-fill — namespaces Eia owns (an off-scale `var(--text-4xl)` once rendered
-   only because Tailwind defined it; audit H-04). For the namespaces Eia owns,
-   the Tailwind defaults are wiped and re-registered from Eia's scale below, so:
-   - utilities like `text-xs` / `rounded-md` resolve from Eia's tokens, with no
+   gap-fill — namespaces Serene owns (an off-scale `var(--text-4xl)` once rendered
+   only because Tailwind defined it; audit H-04). For the namespaces Serene owns,
+   the Tailwind defaults are wiped and re-registered from Serene's scale below, so:
+   - utilities like `text-xs` / `rounded-md` resolve from Serene's tokens, with no
      mismatched Tailwind line-height companions; and
-   - a `var(--…)` name outside Eia's scale has no silent Tailwind fallback —
+   - a `var(--…)` name outside Serene's scale has no silent Tailwind fallback —
      the declaration drops, and `npm run check:tokens` fails it in CI.
    Values MIRROR design-tokens.css — that file stays the source of truth; if a
    step changes there, change it here too. (The un-layered design-tokens.css
@@ -98,13 +98,13 @@ body {
 
 /* Shell frame — sidebar | gutter(paper). Column-stacks below md:
    mobile top strip, then full-bleed paper. */
-.eia-shell {
+.serene-shell {
   display: flex;
   gap: var(--space-3);
   height: 100dvh;
   overflow: hidden;
 }
-.eia-shell-gutter {
+.serene-shell-gutter {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -113,7 +113,7 @@ body {
   padding: 12px 12px 12px 0;
   background: var(--theme-canvas);
 }
-.eia-shell-paper {
+.serene-shell-paper {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -125,14 +125,14 @@ body {
   overflow-x: hidden;
 }
 @media (max-width: 767.98px) { /* < --bp-md */
-  .eia-shell {
+  .serene-shell {
     flex-direction: column;
     gap: 0;
   }
-  .eia-shell-gutter {
+  .serene-shell-gutter {
     padding: 0;
   }
-  .eia-shell-paper {
+  .serene-shell-paper {
     border-radius: 0;
     box-shadow: none;
   }
@@ -145,10 +145,10 @@ body {
               mobile top strip. Transform + visibility only (M-06).
    Layout-critical Sidebar props live in these classes (not inline styles) so
    the rail media query can override them. Colour/state stays inline in TSX. */
-.eia-sidebar {
+.serene-sidebar {
   width: 240px;
 }
-.eia-nav-link {
+.serene-nav-link {
   position: relative;
   display: flex;
   align-items: center;
@@ -157,23 +157,23 @@ body {
   border-radius: var(--radius-md);
   text-decoration: none;
 }
-.eia-nav-chevron {
+.serene-nav-chevron {
   display: flex;
   flex-shrink: 0;
 }
-.eia-sidebar-section-label {
+.serene-sidebar-section-label {
   display: block;
 }
-.eia-sidebar-logo-img {
+.serene-sidebar-logo-img {
   width: 128px;
   height: 128px;
 }
-.eia-sidebar-footer-row {
+.serene-sidebar-footer-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
-.eia-sidebar-profile {
+.serene-sidebar-profile {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -184,40 +184,40 @@ body {
   padding: var(--space-1);
   margin: calc(-1 * var(--space-1));
 }
-.eia-sidebar-signout {
+.serene-sidebar-signout {
   display: flex;
 }
 @media (min-width: 768px) and (max-width: 1023.98px) { /* --bp-md … < --bp-lg */
-  .eia-sidebar {
+  .serene-sidebar {
     width: 64px;
   }
-  .eia-sidebar .eia-sidebar-rail-hide,
-  .eia-sidebar .eia-sidebar-section-label,
-  .eia-sidebar .eia-sidebar-signout {
+  .serene-sidebar .serene-sidebar-rail-hide,
+  .serene-sidebar .serene-sidebar-section-label,
+  .serene-sidebar .serene-sidebar-signout {
     display: none;
   }
-  .eia-sidebar .eia-nav-link {
+  .serene-sidebar .serene-nav-link {
     justify-content: center;
     padding-left: 0;
     padding-right: 0;
   }
-  .eia-sidebar .eia-sidebar-logo {
+  .serene-sidebar .serene-sidebar-logo {
     padding-left: var(--space-2);
     padding-right: var(--space-2);
   }
-  .eia-sidebar .eia-sidebar-logo-img {
+  .serene-sidebar .serene-sidebar-logo-img {
     width: 40px;
     height: 40px;
   }
-  .eia-sidebar .eia-sidebar-footer-row {
+  .serene-sidebar .serene-sidebar-footer-row {
     justify-content: center;
   }
-  .eia-sidebar .eia-sidebar-profile {
+  .serene-sidebar .serene-sidebar-profile {
     flex: 0 0 auto;
   }
 }
 @media (max-width: 767.98px) { /* < --bp-md */
-  .eia-sidebar {
+  .serene-sidebar {
     position: fixed;
     top: 0;
     bottom: 0;
@@ -228,7 +228,7 @@ body {
       transform var(--duration-enter) var(--ease-out-expo),
       visibility 0s linear var(--duration-enter);
   }
-  .eia-sidebar[data-open="true"] {
+  .serene-sidebar[data-open="true"] {
     transform: translateX(0);
     visibility: visible;
     transition-delay: 0s, 0s;
@@ -236,7 +236,7 @@ body {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .eia-sidebar {
+  .serene-sidebar {
     transition: none;
   }
 }
@@ -247,14 +247,14 @@ body {
    with the page <h1> line; the sibling rule below indents .type-page-title
    to clear it, so trigger + title share one line. The button itself wears
    a canvas-coloured "bubble" backdrop (accent radial washes on canvas). */
-.eia-mobile-topbar {
+.serene-mobile-topbar {
   display: none;
 }
 @media (max-width: 767.98px) { /* < --bp-md */
-  .eia-shell {
+  .serene-shell {
     position: relative;
   }
-  .eia-mobile-topbar {
+  .serene-mobile-topbar {
     display: block;
     position: absolute;
     top: calc(var(--space-7) + env(safe-area-inset-top, 0px));
@@ -266,16 +266,16 @@ body {
      screen top (and the status bar on notched phones). Scoped to mains that
      carry the ladder; full-bleed mains (e.g. /whatsapp) are untouched. The
      trigger's `top` above moves by the same +12px to stay on the h1 line. */
-  .eia-shell-paper main.p-4 {
+  .serene-shell-paper main.p-4 {
     padding-top: calc(var(--space-7) + env(safe-area-inset-top, 0px));
   }
   /* Page title clears the floating trigger — fires only when the trigger
-     is mounted (general-sibling scope: topbar and gutter share .eia-shell). */
-  .eia-mobile-topbar ~ .eia-shell-gutter .type-page-title {
+     is mounted (general-sibling scope: topbar and gutter share .serene-shell). */
+  .serene-mobile-topbar ~ .serene-shell-gutter .type-page-title {
     margin-left: 52px;
   }
 }
-.eia-mobile-trigger {
+.serene-mobile-trigger {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -292,7 +292,7 @@ body {
 }
 
 /* Drawer backdrop — one of the three sanctioned backdrop-blur surfaces (V-06). */
-.eia-sidebar-backdrop {
+.serene-sidebar-backdrop {
   position: fixed;
   inset: 0;
   background: var(--overlay-bg-light);
@@ -301,7 +301,7 @@ body {
   z-index: var(--z-sidebar);
 }
 @media (min-width: 768px) { /* ≥ --bp-md — backdrop is a mobile-only surface */
-  .eia-sidebar-backdrop {
+  .serene-sidebar-backdrop {
     display: none;
   }
 }
@@ -309,16 +309,16 @@ body {
 /* Detail-page two-column grid (lead dossier, /profile, /admin/users/[id]).
    Single column below lg. --340 is a modifier for the wider identity
    sidebars — one class, one variant, never a second grid class (audit F2). */
-.eia-dossier-grid {
+.serene-dossier-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-6);
 }
 @media (min-width: 1024px) { /* --bp-lg */
-  .eia-dossier-grid {
+  .serene-dossier-grid {
     grid-template-columns: minmax(0, 1fr) 320px;
   }
-  .eia-dossier-grid--340 {
+  .serene-dossier-grid--340 {
     grid-template-columns: minmax(0, 1fr) 340px;
   }
 }
@@ -326,7 +326,7 @@ body {
 /* Group-task board (audit F4) — horizontal snap-scroll rail below lg
    (5 × 1fr at 180px min = 900px+ would force body overflow); 5 equal
    columns from lg up, container-scrolling if the gutter is narrower. */
-.eia-board {
+.serene-board {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: min(78vw, 260px);
@@ -337,11 +337,11 @@ body {
   -webkit-overflow-scrolling: touch;
   padding-bottom: var(--space-2);
 }
-.eia-board > * {
+.serene-board > * {
   scroll-snap-align: start;
 }
 @media (min-width: 1024px) { /* --bp-lg */
-  .eia-board {
+  .serene-board {
     grid-auto-flow: row;
     grid-template-columns: repeat(5, minmax(180px, 1fr));
     scroll-snap-type: none;
@@ -352,7 +352,7 @@ body {
 /* Touch-target extension (DNA §9.3 R-03) — compact 36px toolbar controls
    grow to ≥40px on coarse-pointer devices without changing desktop chrome. */
 @media (pointer: coarse) {
-  .eia-touch {
+  .serene-touch {
     min-height: 40px;
     min-width: 40px;
   }
@@ -373,7 +373,7 @@ body {
 }
 
 /* Base input style — used by form fields across the app */
-.eia-input {
+.serene-input {
   width: 100%;
   background-color: var(--theme-paper-subtle);
   border: 1px solid var(--theme-paper-border);
@@ -388,17 +388,17 @@ body {
     border-color var(--duration-fast) var(--ease-in-out);
 }
 
-.eia-input::placeholder {
+.serene-input::placeholder {
   color: var(--theme-text-tertiary);
 }
 
-.eia-input:focus-visible {
+.serene-input:focus-visible {
   border-color: var(--theme-accent);
   box-shadow: var(--shadow-focus);
 }
 
 /* Filter bars — keep paper border on focus (LeadsFilters passes this class) */
-.eia-input.eia-input--no-focus-ring:focus-visible {
+.serene-input.serene-input--no-focus-ring:focus-visible {
   border-color: var(--theme-paper-border);
   box-shadow: none;
 }
@@ -411,7 +411,7 @@ body {
    layer so the main thread is never touched during animation.
    ================================================================ */
 
-@keyframes eia-orb-float-a {
+@keyframes serene-orb-float-a {
   0%,
   100% {
     transform: translate(0px, 0px) scale(1);
@@ -424,7 +424,7 @@ body {
   }
 }
 
-@keyframes eia-orb-float-b {
+@keyframes serene-orb-float-b {
   0%,
   100% {
     transform: translate(0px, 0px) scale(1);
@@ -438,7 +438,7 @@ body {
 }
 
 /* Floating orb — upper-right quadrant */
-.eia-auth-orb-a {
+.serene-auth-orb-a {
   width: 680px;
   height: 680px;
   border-radius: var(--radius-full);
@@ -449,12 +449,12 @@ body {
   );
   top: -20%;
   right: -18%;
-  animation: eia-orb-float-a 24s ease-in-out infinite;
+  animation: serene-orb-float-a 24s ease-in-out infinite;
   will-change: transform;
 }
 
 /* Floating orb — lower-left quadrant, dimmer + slower */
-.eia-auth-orb-b {
+.serene-auth-orb-b {
   width: 560px;
   height: 560px;
   border-radius: var(--radius-full);
@@ -466,7 +466,7 @@ body {
   bottom: -22%;
   left: -16%;
   opacity: 0.7;
-  animation: eia-orb-float-b 30s ease-in-out infinite;
+  animation: serene-orb-float-b 30s ease-in-out infinite;
   will-change: transform;
 }
 
@@ -482,7 +482,7 @@ body {
    statically-masked element — an 8-fold pattern is not rotation-invariant,
    so the mask must never rotate. The light moves; the geometry never does.
    Wrapper owns the radial fade-out; transform + opacity only. */
-.eia-auth-mandala-wrap {
+.serene-auth-mandala-wrap {
   width: 1200px;
   height: 1200px;
   top: 50%;
@@ -494,11 +494,11 @@ body {
     rgba(0, 0, 0, 0.5) 50%,
     transparent 80%
   );
-  animation: eia-auth-fade-in 1.6s var(--ease-out-soft) both;
+  animation: serene-auth-fade-in 1.6s var(--ease-out-soft) both;
 }
 
-.eia-auth-mandala,
-.eia-auth-mandala-lit {
+.serene-auth-mandala,
+.serene-auth-mandala-lit {
   position: absolute;
   inset: 0;
   mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 1200'><g fill='none' stroke='black' stroke-width='2.25'><circle cx='890' cy='600' r='290'/><circle cx='805' cy='805' r='290'/><circle cx='600' cy='890' r='290'/><circle cx='395' cy='805' r='290'/><circle cx='310' cy='600' r='290'/><circle cx='395' cy='395' r='290'/><circle cx='600' cy='310' r='290'/><circle cx='805' cy='395' r='290'/><circle cx='600' cy='600' r='580' stroke-opacity='0.55'/></g></svg>");
@@ -507,14 +507,14 @@ body {
   mask-position: center;
 }
 
-.eia-auth-mandala {
+.serene-auth-mandala {
   background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
 }
 
 /* Beam child overflows symmetrically (inset -22%) so the rotating square
    always covers the inscribed rosette; mask-clip border-box on the parent
    crops the overflow for free. */
-.eia-auth-mandala-beam {
+.serene-auth-mandala-beam {
   position: absolute;
   inset: -22%;
   background: conic-gradient(
@@ -523,11 +523,11 @@ body {
     color-mix(in srgb, var(--theme-accent) 30%, transparent) 26deg,
     transparent 82deg
   );
-  animation: eia-mandala-sweep 120s linear infinite;
+  animation: serene-mandala-sweep 120s linear infinite;
   will-change: transform;
 }
 
-@keyframes eia-mandala-sweep {
+@keyframes serene-mandala-sweep {
   from {
     transform: rotate(0deg);
   }
@@ -536,7 +536,7 @@ body {
   }
 }
 
-@keyframes eia-auth-fade-in {
+@keyframes serene-auth-fade-in {
   from {
     opacity: 0;
   }
@@ -544,7 +544,7 @@ body {
 
 /* Card entrance — the scene composes itself: atmosphere develops over 1.6s,
    the card rises into place once. Page-level entrance, so --duration-page. */
-@keyframes eia-auth-card-enter {
+@keyframes serene-auth-card-enter {
   from {
     opacity: 0;
     transform: translateY(12px) scale(0.985);
@@ -559,7 +559,7 @@ body {
    Surface: lamplight wash at top centre where the brand lives.
    Shadow: --shadow-3 plus a wide accent bloom beneath — the card sits in
    the mandala's light, not pasted over it. */
-.eia-auth-card {
+.serene-auth-card {
   background:
     radial-gradient(
         ellipse 130% 55% at 50% -10%,
@@ -580,26 +580,26 @@ body {
   box-shadow:
     var(--shadow-3),
     0 30px 90px -30px color-mix(in srgb, var(--theme-accent) 18%, transparent);
-  animation: eia-auth-card-enter var(--duration-page) var(--ease-out-expo) both;
+  animation: serene-auth-card-enter var(--duration-page) var(--ease-out-expo) both;
 }
 
 /* Entrance choreography — the card rises, its contents settle just after.
    Direct children only (brand header, form, footer link); 60ms steps,
    everything at rest by ~600ms. */
-.eia-auth-card > * {
-  animation: eia-auth-child-enter var(--duration-enter) var(--ease-out-expo) both;
+.serene-auth-card > * {
+  animation: serene-auth-child-enter var(--duration-enter) var(--ease-out-expo) both;
 }
-.eia-auth-card > *:nth-child(1) {
+.serene-auth-card > *:nth-child(1) {
   animation-delay: 80ms;
 }
-.eia-auth-card > *:nth-child(2) {
+.serene-auth-card > *:nth-child(2) {
   animation-delay: 140ms;
 }
-.eia-auth-card > *:nth-child(3) {
+.serene-auth-card > *:nth-child(3) {
   animation-delay: 200ms;
 }
 
-@keyframes eia-auth-child-enter {
+@keyframes serene-auth-child-enter {
   from {
     opacity: 0;
     transform: translateY(6px);
@@ -609,7 +609,7 @@ body {
 /* Logo medallion — the mandala's innermost ring, made tangible. The
    rosette's point of convergence hides behind the card; this ring is
    its echo on the surface. */
-.eia-auth-logo-medallion {
+.serene-auth-logo-medallion {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -628,21 +628,21 @@ body {
 /* Reduced motion: kill movement, keep the comprehension-aiding fades.
    Must follow the base rules above — equal specificity, cascade decides. */
 @media (prefers-reduced-motion: reduce) {
-  .eia-auth-orb-a,
-  .eia-auth-orb-b,
-  .eia-auth-mandala-beam {
+  .serene-auth-orb-a,
+  .serene-auth-orb-b,
+  .serene-auth-mandala-beam {
     animation: none;
   }
-  .eia-auth-card {
-    animation: eia-auth-fade-in var(--duration-base) var(--ease-in-out) both;
+  .serene-auth-card {
+    animation: serene-auth-fade-in var(--duration-base) var(--ease-in-out) both;
   }
-  .eia-auth-card > * {
+  .serene-auth-card > * {
     animation: none;
   }
 }
 
 /* Auth dark input — canvas-surface field for dark card forms */
-.eia-input-auth {
+.serene-input-auth {
   background: var(--theme-canvas);
   border: 1px solid var(--theme-sidebar-border);
   color: var(--theme-canvas-text);
@@ -656,34 +656,34 @@ body {
     border-color var(--duration-fast) var(--ease-in-out),
     box-shadow var(--duration-fast) var(--ease-in-out);
 }
-.eia-input-auth::placeholder {
+.serene-input-auth::placeholder {
   color: var(--theme-sidebar-text);
 }
-.eia-input-auth:focus {
+.serene-input-auth:focus {
   border-color: var(--theme-accent);
   box-shadow: 0 0 0 3px var(--theme-accent-surface);
 }
 @media (hover: hover) and (pointer: fine) {
-  .eia-input-auth:hover:not(:focus) {
+  .serene-input-auth:hover:not(:focus) {
     border-color: color-mix(in srgb, var(--theme-accent) 18%, var(--theme-sidebar-border));
   }
 }
 
 /* Auth link — accent-coloured, subtle at rest */
-.eia-auth-link {
+.serene-auth-link {
   font-size: var(--text-xs);
   color: color-mix(in srgb, var(--theme-accent) 65%, transparent);
   text-decoration: none;
   transition: color var(--duration-fast) var(--ease-in-out);
 }
-.eia-auth-link:hover {
+.serene-auth-link:hover {
   color: var(--theme-accent);
 }
 
 /* Paper surface texture — design-dna.md Section 6.6
    Top-edge light catch (80px gradient) + fine grain (0.75 / 0.025).
    Quieter than canvas — the desk is more refined than the world. */
-.eia-paper-surface {
+.serene-paper-surface {
   background-color: var(--theme-paper);
   background-image:
     linear-gradient(

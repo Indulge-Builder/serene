@@ -409,7 +409,7 @@ getCurrentProfile()
   → <AgentSettingsTable initialRoster callerRole={profile.role} callerDomain={profile.domain} />
 ```
 
-- Exports `metadata = { title: "Settings — Eia" }`.
+- Exports `metadata = { title: "Settings — Serene" }`.
 - **`<h1 className="type-page-title m-0">`** + `<span className="page-title-dot">.</span>` — primary nav contract. No top-right CTA on this page (the header row is title-only).
 - **No Suspense:** one blocking fetch; no streaming/async child; the page ships atomically.
 

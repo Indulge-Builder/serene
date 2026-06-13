@@ -18,7 +18,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   children?: React.ReactNode;
   /** When true, focus does not add --shadow-focus (filter bar actions). */
   suppressFocusRing?: boolean;
-  /** Opt-in icon hover gesture — maps to the .eia-icon-*-hover utilities.
+  /** Opt-in icon hover gesture — maps to the .serene-icon-*-hover utilities.
    *  rotate: Plus CTAs / close ×. lift: send. drop: download. ring: phone. */
   iconMotion?: ButtonIconMotion;
 }
@@ -59,9 +59,9 @@ const ICON_SIZE: Record<ButtonSize, number> = {
 };
 
 // ✓ spec — design-dna.md §5.01 variant table. Rest + hover chrome lives in
-// design-tokens.css (`.eia-btn-*`): :hover is gated to real pointers there
+// design-tokens.css (`.serene-btn-*`): :hover is gated to real pointers there
 // (no sticky hover after a tap on touch), the focus ring is :focus-visible,
-// and press feedback (.eia-pressable:active) beats hover by cascade order.
+// and press feedback (.serene-pressable:active) beats hover by cascade order.
 // danger/success stay soft-default at rest → saturated on hover (intentional
 // drift from the §5.01 saturated default; switching would visually break
 // 5+ existing consumers).
@@ -86,10 +86,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
   const iconPx = ICON_SIZE[size];
   const isDisabled = disabled || loading;
   const classes = [
-    'eia-pressable',
-    `eia-btn-${variant}`,
-    suppressFocusRing && 'eia-btn-no-ring',
-    iconMotion && `eia-icon-${iconMotion}-hover`,
+    'serene-pressable',
+    `serene-btn-${variant}`,
+    suppressFocusRing && 'serene-btn-no-ring',
+    iconMotion && `serene-icon-${iconMotion}-hover`,
     className,
   ]
     .filter(Boolean)

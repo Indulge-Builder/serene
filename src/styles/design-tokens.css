@@ -1,9 +1,9 @@
 /* ================================================================
-   EIA — DESIGN TOKENS
+   SERENE — DESIGN TOKENS
    src/styles/design-tokens.css
 
    This file is the working implementation of the design system.
-   Every CSS variable used anywhere in Eia is defined here.
+   Every CSS variable used anywhere in Serene is defined here.
    The source of truth for values is docs/design-dna.md.
    This file is what the browser reads.
 
@@ -756,26 +756,26 @@
    ================================================================ */
 
 /* Skeleton pulse — theme-aware via --theme-paper-subtle */
-@keyframes eia-skeleton-pulse {
+@keyframes serene-skeleton-pulse {
   0%, 100% { opacity: 1;   }
   50%       { opacity: 0.4; }
 }
 
 /* Toast bar breath — fires once on arrival */
-@keyframes eia-toast-bar-breathe {
+@keyframes serene-toast-bar-breathe {
   0%   { opacity: 0.3; }
   40%  { opacity: 1;   }
   100% { opacity: 0.85; }
 }
 
-/* Lia breathe — always running when Lia is present */
-@keyframes eia-lia-breathe {
+/* Elaya breathe — always running when she is present */
+@keyframes serene-elaya-breathe {
   0%, 100% { opacity: 0.35; }
   50%       { opacity: 0.85; }
 }
 
-/* Lia typing cursor — hard blink, not a fade */
-@keyframes eia-lia-cursor {
+/* Elaya typing cursor — hard blink, not a fade */
+@keyframes serene-elaya-cursor {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }
 }
@@ -790,37 +790,37 @@
 }
 
 /* Page title dot — slow accent blink on the trailing period */
-@keyframes eia-page-dot-blink {
+@keyframes serene-page-dot-blink {
   0%, 100% { opacity: 1;   }
   50%       { opacity: 0.2; }
 }
 
 /* Loader spin */
-@keyframes eia-spin {
+@keyframes serene-spin {
   from { transform: rotate(0deg);   }
   to   { transform: rotate(360deg); }
 }
 
-@keyframes eia-subtask-pulse {
+@keyframes serene-subtask-pulse {
   0%,  100% { opacity: 1;    transform: scale(1);    }
   50%        { opacity: 0.45; transform: scale(0.72); }
 }
 
 /* Row arrival — tables fade in row by row (design-dna §6.2 M-04).
-   Consumers apply .eia-row-enter to the first 8 rows only, with an inline
+   Consumers apply .serene-row-enter to the first 8 rows only, with an inline
    animation-delay step of 30ms per row; rows beyond 8 render instantly. */
-@keyframes eia-row-enter {
+@keyframes serene-row-enter {
   from { opacity: 0; }
 }
 
 /* Checkbox tick — the check stroke draws itself in (dasharray = path length) */
-@keyframes eia-check-draw {
+@keyframes serene-check-draw {
   from { stroke-dashoffset: 9; }
   to   { stroke-dashoffset: 0; }
 }
 
 /* Phone receiver ring — decaying wiggle, pivots near the earpiece */
-@keyframes eia-phone-ring {
+@keyframes serene-phone-ring {
   0%   { transform: rotate(0deg);   }
   20%  { transform: rotate(-13deg); }
   40%  { transform: rotate(10deg);  }
@@ -833,25 +833,25 @@
 .skeleton {
   background:  var(--theme-paper-subtle);
   border-radius: var(--radius-xs);
-  animation: eia-skeleton-pulse 1.6s ease-in-out infinite;
+  animation: serene-skeleton-pulse 1.6s ease-in-out infinite;
 }
 
 .animate-spin {
-  animation: eia-spin 1s linear infinite;
+  animation: serene-spin 1s linear infinite;
 }
 
-.lia-breathe {
-  animation: eia-lia-breathe 3s ease-in-out infinite;
+.elaya-breathe {
+  animation: serene-elaya-breathe 3s ease-in-out infinite;
 }
 
-.lia-cursor {
-  animation: eia-lia-cursor 500ms steps(1) infinite;
+.elaya-cursor {
+  animation: serene-elaya-cursor 500ms steps(1) infinite;
 }
 
 /* Page title dot — accent period that slowly pulses on primary nav pages */
 .page-title-dot {
   color:     var(--theme-accent);
-  animation: eia-page-dot-blink 2.4s ease-in-out infinite;
+  animation: serene-page-dot-blink 2.4s ease-in-out infinite;
 }
 
 /* ── Button variant chrome (§5.01) ──────────────────────────────────
@@ -860,53 +860,53 @@
    touch) and press feedback beats hover by cascade order instead of
    !important. Button.tsx owns layout/size inline; consumers may still
    override rest values via the style prop (inline wins by design). */
-.eia-btn-primary {
+.serene-btn-primary {
   background: var(--theme-accent);
   color:      var(--theme-accent-fg);
   border:     1px solid transparent;
   box-shadow: var(--shadow-accent-glow);
 }
-.eia-btn-secondary {
+.serene-btn-secondary {
   background: var(--theme-paper-subtle);
   color:      var(--theme-text-primary);
   border:     1px solid var(--theme-paper-border);
   box-shadow: var(--shadow-1);
 }
-.eia-btn-ghost {
+.serene-btn-ghost {
   background: transparent;
   color:      var(--theme-text-primary);
   border:     1px solid transparent;
 }
 /* danger/success: soft-default rest → saturated on hover (Button.tsx note) */
-.eia-btn-danger {
+.serene-btn-danger {
   background: var(--color-danger-light);
   color:      var(--color-danger-text);
   border:     1px solid var(--color-danger-light);
 }
-.eia-btn-success {
+.serene-btn-success {
   background: var(--color-success-light);
   color:      var(--color-success-text);
   border:     1px solid var(--color-success-light);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .eia-btn-primary:hover:not(:disabled) {
+  .serene-btn-primary:hover:not(:disabled) {
     background: var(--theme-accent-hover);
     box-shadow: var(--shadow-accent-lift);
     transform:  translateY(-1px);
   }
-  .eia-btn-secondary:hover:not(:disabled) {
+  .serene-btn-secondary:hover:not(:disabled) {
     border-color: var(--theme-accent-muted);
   }
-  .eia-btn-ghost:hover:not(:disabled) {
+  .serene-btn-ghost:hover:not(:disabled) {
     background: var(--theme-paper-subtle);
   }
-  .eia-btn-danger:hover:not(:disabled) {
+  .serene-btn-danger:hover:not(:disabled) {
     background:   var(--color-danger);
     color:        var(--theme-text-inverse);
     border-color: var(--color-danger);
   }
-  .eia-btn-success:hover:not(:disabled) {
+  .serene-btn-success:hover:not(:disabled) {
     background:   var(--color-success);
     color:        var(--theme-text-inverse);
     border-color: var(--color-success);
@@ -914,8 +914,8 @@
 }
 
 /* Keyboard focus ring — :focus-visible only (a mouse click no longer
-   flashes the ring). suppressFocusRing → .eia-btn-no-ring. */
-.eia-pressable:focus-visible:not(.eia-btn-no-ring) {
+   flashes the ring). suppressFocusRing → .serene-btn-no-ring. */
+.serene-pressable:focus-visible:not(.serene-btn-no-ring) {
   box-shadow: var(--shadow-focus);
 }
 
@@ -923,19 +923,19 @@
    CSS-only so plain Button keeps zero Framer cost. Declared AFTER the
    hover rules so press beats the primary hover lift by cascade order;
    disabled buttons set pointer-events: none, so :active never fires on them. */
-.eia-pressable:active {
+.serene-pressable:active {
   transform: scale(0.97);
 }
 
 /* Row arrival — `backwards` keeps delayed rows invisible until their turn */
-.eia-row-enter {
-  animation: eia-row-enter var(--duration-base) var(--ease-out-expo) backwards;
+.serene-row-enter {
+  animation: serene-row-enter var(--duration-base) var(--ease-out-expo) backwards;
 }
 
 /* Checkbox tick draw — applied to the check <path> (length ≈ 9) */
-.eia-check-draw {
+.serene-check-draw {
   stroke-dasharray: 9;
-  animation: eia-check-draw var(--duration-fast) var(--ease-out-expo) both;
+  animation: serene-check-draw var(--duration-fast) var(--ease-out-expo) both;
 }
 
 /* ── Icon micro-interaction family ──────────────────────────────────
@@ -950,12 +950,12 @@
      drop   → settles downward  Download / export
      ring   → receiver wiggle   Phone (Called)
    Buttons opt in via the typed `iconMotion` prop on ui/Button. */
-.eia-icon-rotate-hover svg,
-.eia-icon-lift-hover   svg,
-.eia-icon-drop-hover   svg {
+.serene-icon-rotate-hover svg,
+.serene-icon-lift-hover   svg,
+.serene-icon-drop-hover   svg {
   transition: transform var(--duration-slow) var(--ease-spring);
 }
-.eia-icon-ring-hover svg {
+.serene-icon-ring-hover svg {
   transform-origin: 50% 35%;
 }
 
@@ -965,27 +965,27 @@
    button/link (which must clip — overflow: hidden), the stage wraps TWO
    copies of the icon; the second is position:absolute / inset:0 inline and
    aria-hidden. All transforms live here — never inline. Consumer: BackButton. */
-.eia-icon-travel-back-hover .eia-icon-travel-stage {
+.serene-icon-travel-back-hover .serene-icon-travel-stage {
   position: relative;
   display: inline-flex;
 }
-.eia-icon-travel-back-hover .eia-icon-travel-stage svg {
+.serene-icon-travel-back-hover .serene-icon-travel-stage svg {
   /* Softer + longer than the rest of the family — the travel is a full
      exit-and-arrival journey; spring at 350ms read as rushed. 500ms is
      the §10.1 motion ceiling; --ease-out-soft is the "unhurried" curve. */
   transition: transform var(--duration-page) var(--ease-out-soft);
 }
-.eia-icon-travel-back-hover .eia-icon-travel-stage svg + svg {
+.serene-icon-travel-back-hover .serene-icon-travel-stage svg + svg {
   transform: translateX(200%);
 }
 
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
-  .eia-icon-rotate-hover:hover:not(:disabled) svg { transform: rotate(90deg); }
-  .eia-icon-lift-hover:hover:not(:disabled)   svg { transform: translate(1px, -1px); }
-  .eia-icon-drop-hover:hover:not(:disabled)   svg { transform: translateY(2px); }
-  .eia-icon-ring-hover:hover:not(:disabled)   svg { animation: eia-phone-ring 700ms var(--ease-in-out); }
-  .eia-icon-travel-back-hover:hover .eia-icon-travel-stage svg:first-of-type { transform: translateX(-200%); }
-  .eia-icon-travel-back-hover:hover .eia-icon-travel-stage svg + svg         { transform: translateX(0); }
+  .serene-icon-rotate-hover:hover:not(:disabled) svg { transform: rotate(90deg); }
+  .serene-icon-lift-hover:hover:not(:disabled)   svg { transform: translate(1px, -1px); }
+  .serene-icon-drop-hover:hover:not(:disabled)   svg { transform: translateY(2px); }
+  .serene-icon-ring-hover:hover:not(:disabled)   svg { animation: serene-phone-ring 700ms var(--ease-in-out); }
+  .serene-icon-travel-back-hover:hover .serene-icon-travel-stage svg:first-of-type { transform: translateX(-200%); }
+  .serene-icon-travel-back-hover:hover .serene-icon-travel-stage svg + svg         { transform: translateX(0); }
 }
 
 /* Theme switch cross-dissolve — ThemeSelector puts this class on <html> for
@@ -994,19 +994,19 @@
    !important so it wins over component-level transitions during the window;
    never present at boot (ThemeInitializer sets the attribute classlessly). */
 @media (prefers-reduced-motion: no-preference) {
-  html.eia-theme-transition,
-  html.eia-theme-transition *,
-  html.eia-theme-transition *::before,
-  html.eia-theme-transition *::after {
+  html.serene-theme-transition,
+  html.serene-theme-transition *,
+  html.serene-theme-transition *::before,
+  html.serene-theme-transition *::after {
     transition: var(--transition-theme) !important;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .eia-pressable:active { transform: none !important; }
-  .eia-btn-primary:hover:not(:disabled) { transform: none; }
-  .eia-row-enter        { animation: none; }
-  .eia-check-draw       { animation: none; stroke-dashoffset: 0; }
+  .serene-pressable:active { transform: none !important; }
+  .serene-btn-primary:hover:not(:disabled) { transform: none; }
+  .serene-row-enter        { animation: none; }
+  .serene-check-draw       { animation: none; stroke-dashoffset: 0; }
 }
 
 

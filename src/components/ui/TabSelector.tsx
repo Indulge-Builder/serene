@@ -64,7 +64,7 @@ export function Tabs({
   value: controlledValue,
   defaultValue,
   onValueChange,
-  indicatorLayoutId = 'eia-tab-indicator',
+  indicatorLayoutId = 'serene-tab-indicator',
   animatedContent = true,
   variant = 'pill',
   children,

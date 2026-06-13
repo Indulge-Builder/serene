@@ -326,7 +326,7 @@ function PasswordField({
           onChange={(e) => onChange(e.target.value)}
           autoComplete={autoComplete}
           disabled={disabled}
-          className="eia-input"
+          className="serene-input"
           style={{
             height:     "36px",
             padding:    "0 var(--space-10) 0 var(--space-3)",

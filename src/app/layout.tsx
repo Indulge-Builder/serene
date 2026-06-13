@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   // black-translucent lets the dark canvas run under the status bar.
   appleWebApp: {
     capable: true,
-    title: "Eia",
+    title: "Serene",
     statusBarStyle: "black-translucent",
   },
 };

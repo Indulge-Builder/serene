@@ -169,7 +169,7 @@ export function Dialog({
                       type="button"
                       onClick={onClose}
                       aria-label="Close dialog"
-                      className="eia-pressable eia-icon-rotate-hover eia-touch"
+                      className="serene-pressable serene-icon-rotate-hover serene-touch"
                       style={{
                         display:        'flex',
                         alignItems:     'center',

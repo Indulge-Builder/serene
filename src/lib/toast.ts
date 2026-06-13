@@ -6,7 +6,7 @@
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ToastType = "success" | "warning" | "danger" | "info" | "loading" | "lia";
+export type ToastType = "success" | "warning" | "danger" | "info" | "loading" | "elaya";
 
 export interface ToastAction {
   label: string;
@@ -37,7 +37,7 @@ const DEFAULT_DURATIONS: Record<ToastType, number> = {
   warning: 6000,
   danger:  0,      // never auto-dismisses
   loading: 0,      // lives until resolved
-  lia:     7000,
+  elaya:   7000,
 };
 
 // ─── Internal state ───────────────────────────────────────────────────────────
@@ -140,8 +140,8 @@ export const toast = {
     return _create("loading", title, opts);
   },
 
-  lia(title: string, opts?: ToastOptions): string {
-    return _create("lia", title, opts);
+  elaya(title: string, opts?: ToastOptions): string {
+    return _create("elaya", title, opts);
   },
 
   /**

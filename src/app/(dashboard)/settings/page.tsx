@@ -5,7 +5,7 @@ import { getAllSlaPolicies }          from "@/lib/services/sla-service";
 import { AgentSettingsTable }         from "@/components/settings/AgentSettingsTable";
 import { SlaPoliciesPanel }           from "@/components/settings/SlaPoliciesPanel";
 
-export const metadata = { title: "Settings — Eia" };
+export const metadata = { title: "Settings — Serene" };
 
 export default async function SettingsPage() {
   const profile = await getCurrentProfile();

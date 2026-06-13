@@ -9,7 +9,7 @@ import {
   type LeadColumnId,
 } from '@/lib/constants/lead-columns';
 
-const STORAGE_KEY_PREFIX = 'eia:leads:columns';
+const STORAGE_KEY_PREFIX = 'serene:leads:columns';
 const STORAGE_VERSION    = 'v1';
 
 type StoredPreferences = {

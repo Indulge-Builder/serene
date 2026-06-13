@@ -267,7 +267,7 @@ export function GoingColdSection({
       action={
         <Link
           href="/leads?going_cold=true"
-          className="eia-icon-lift-hover"
+          className="serene-icon-lift-hover"
           style={{
             display:        "inline-flex",
             alignItems:     "center",

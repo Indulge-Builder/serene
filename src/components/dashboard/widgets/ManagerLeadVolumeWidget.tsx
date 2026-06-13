@@ -291,7 +291,7 @@ export function ManagerLeadVolumeWidget({
                 height: 6,
                 borderRadius: "50%",
                 background: "var(--theme-accent)",
-                animation: "eia-page-dot-blink 2.4s ease-in-out infinite",
+                animation: "serene-page-dot-blink 2.4s ease-in-out infinite",
                 flexShrink: 0,
               }}
             />
