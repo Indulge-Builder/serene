@@ -19,7 +19,7 @@ const playfairDisplay = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Indulge OS",
+  title: "Serene",
   description: "Internal operating system for Indulge team members.",
   icons: {
     icon: "/logo.webp",
