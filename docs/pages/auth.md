@@ -188,7 +188,7 @@ All three forms + `InvalidLinkCard` share one shell. Canonical token spec: **`DE
 
 - `next/image` `/logo.webp` at `48×48`, `borderRadius: var(--radius-sm)`, `priority`.
 - `<h1>`: `--font-serif`, `--text-3xl`, **`--weight-light`**, `--tracking-tighter`, `--leading-tight`,
-  colour `--theme-canvas-text`, centred — text **`Indulge OS`** followed by
+  colour `--theme-canvas-text`, centred — text **`Serene`** followed by
   `<span className="page-title-dot">.</span>` (the accent blink dot).
 - Container `flex flex-col items-center gap-3`, `mb-10` on forms / `mb-8` on `InvalidLinkCard`.
 - **No subtitle.**

@@ -798,7 +798,7 @@ No `p-8` — panel owns insets. **`/whatsapp`** split layout.
 The `(auth)` route group (`/login`, `/forgot-password`, `/update-password`) is the **one surface that is dark by design** — it renders directly on `--theme-canvas` with **no sidebar, no paper**. A single centred card (`maxWidth: 26rem`, `--z-raised`) floats on the canvas above two radial glows and two accent-tinted orbs. Cards/inputs/links draw from the **canvas/sidebar palette**, never the paper palette.
 
 - Card: `.serene-auth-card` · Inputs: `.serene-input-auth` · Links: `.serene-auth-link` (all in `globals.css`).
-- Brand header: `/logo.webp` + serif `Indulge OS` with a trailing `.page-title-dot` (the only sanctioned dot off a primary-nav `<h1>`).
+- Brand header: `/logo.webp` + serif `Serene` with a trailing `.page-title-dot` (the only sanctioned dot off a primary-nav `<h1>`).
 - Errors use the **dark-surface** semantic tokens (`--color-danger-dark-*`), never the light variants.
 - **Forbidden on auth:** `--theme-paper*`, `.serene-paper-surface`, `.serene-input`, light `--color-*-light`.
 

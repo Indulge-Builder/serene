@@ -1394,7 +1394,7 @@ bright paper desk inside the dashboard.
 │        │  padding --space-10 --space-8                    │           │
 │        │                                                  │           │
 │        │   [logo.webp 48×48 r-sm]                         │           │
-│        │   Indulge OS·  ← serif 3xl, weight-light,        │           │
+│        │   Serene·  ← serif 3xl, weight-light,            │           │
 │        │                 --theme-canvas-text,             │           │
 │        │                 trailing .page-title-dot         │           │
 │        │                                                  │           │
@@ -1415,7 +1415,7 @@ bright paper desk inside the dashboard.
 | `.serene-auth-link` | `--text-xs`; rest `color-mix(--theme-accent 65%, transparent)`; hover full `--theme-accent` |
 
 **The brand header (identical on all four surfaces):** `/logo.webp` 48×48 (`--radius-sm`) above an
-`<h1>` reading **`Indulge OS`** + a trailing `<span class="page-title-dot">.</span>` — serif,
+`<h1>` reading **`Serene`** + a trailing `<span class="page-title-dot">.</span>` — serif,
 `--text-3xl`, **`--weight-light`**, `--tracking-tighter`, colour `--theme-canvas-text`, centred, no
 subtitle. This is the **only** sanctioned `.page-title-dot` outside a primary nav `<h1>` (see Micro-Detail
 03). The dot's accent blink is the single living accent on an otherwise still dark card.
@@ -2304,7 +2304,7 @@ It signals: this is a complete thought. This page knows what it is.
 The period is in accent — gold on Earth, teal on Water, violet on Cosmos.
 It is the smallest possible branding moment. It is the right one.
 
-The same `.page-title-dot` appears in exactly **one** non-nav place: the **"Indulge OS."** brand
+The same `.page-title-dot` appears in exactly **one** non-nav place: the **"Serene."** brand
 header on the auth pages (§3.7). Detail pages (with a `BackButton`) keep the dot on their title but
 skip the eyebrow; everywhere else the dot belongs only to a primary nav `<h1>`.
 
