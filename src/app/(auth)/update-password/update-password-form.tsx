@@ -75,11 +75,14 @@ function CodeStep({
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
-              maxLength={6}
-              placeholder="123456"
+              // Supabase issues an 8-digit code on this project (GoTrue default
+              // is 6). maxLength matches the longest accepted; the schema gates
+              // 6–8 so either length verifies.
+              maxLength={8}
+              placeholder="12345678"
               className="serene-input-auth"
               style={{
-                letterSpacing: "0.4em",
+                letterSpacing: "0.3em",
                 textAlign: "center",
                 fontVariantNumeric: "tabular-nums",
               }}
