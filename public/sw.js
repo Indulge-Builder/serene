@@ -51,3 +51,71 @@ self.addEventListener("fetch", (event) => {
     fetch(request).catch(() => caches.match(OFFLINE_URL)),
   );
 });
+
+/* ================================================================
+   WEB PUSH (additive — migration 0120). Independent of the offline
+   shell above; touches none of its fetch/cache logic. The payload is
+   the JSON written by dispatchPush (src/lib/services/push-service.ts):
+   { title, body?, url? }. No role-scoped data is cached here — a push
+   only shows a notification and (on tap) navigates; it stores nothing.
+   ================================================================ */
+
+const PUSH_ICON = "/icons/icon-192.png";
+
+self.addEventListener("push", (event) => {
+  // A push with no/garbled data still shows a safe generic notification rather
+  // than dropping silently — the in-app row already exists either way.
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+
+  const title = payload.title || "Serene";
+  const options = {
+    body: payload.body || "",
+    icon: PUSH_ICON,
+    badge: PUSH_ICON,
+    // Relative action path consumed by notificationclick below. Falls back to
+    // the dashboard. Stored in `data` so it survives to the click handler.
+    data: { url: typeof payload.url === "string" ? payload.url : "/dashboard" },
+    // Re-using the tag would collapse rapid notifications into one; omit it so
+    // each meaningful event surfaces. (The in-app bell is the full history.)
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  // Relative path only (same contract as NotificationItem.action_url). Anything
+  // that is not an in-app relative route falls back to the dashboard — a push
+  // payload must never navigate an installed PWA to an absolute/external URL.
+  const raw = (event.notification.data && event.notification.data.url) || "/dashboard";
+  const path = typeof raw === "string" && raw.startsWith("/") && !raw.startsWith("//")
+    ? raw
+    : "/dashboard";
+  const target = new URL(path, self.location.origin).href;
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clientList) => {
+        // Focus an already-open Serene window and navigate it, rather than
+        // spawning a duplicate tab.
+        for (const client of clientList) {
+          if (client.url.startsWith(self.location.origin) && "focus" in client) {
+            return client.focus().then((focused) => {
+              if ("navigate" in focused) return focused.navigate(target);
+              return focused;
+            });
+          }
+        }
+        // No open window — open one at the target path.
+        if (self.clients.openWindow) return self.clients.openWindow(target);
+        return undefined;
+      }),
+  );
+});

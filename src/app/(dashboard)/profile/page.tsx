@@ -5,6 +5,7 @@ import { ProfileAvatarSection } from "@/components/profile/ProfileAvatarSection"
 import { ProfileDetailsForm }   from "@/components/profile/ProfileDetailsForm";
 import { ThemeSelector }         from "@/components/profile/ThemeSelector";
 import { PasswordChangeForm }    from "@/components/profile/PasswordChangeForm";
+import { PushNotificationSettings } from "@/components/profile/PushNotificationSettings";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { Button } from "@/components/ui/Button";
 import { ROLE_LABELS } from "@/lib/constants/roles";
@@ -47,6 +48,13 @@ export default async function ProfilePage() {
             description="Choose the visual theme for your workspace."
           >
             <ThemeSelector currentTheme={profile.theme} profileId={profile.id} />
+          </SectionCard>
+
+          <SectionCard
+            title="Notifications"
+            description="Get alerts on your phone or desktop even when Serene is closed."
+          >
+            <PushNotificationSettings />
           </SectionCard>
 
           <PasswordChangeForm />

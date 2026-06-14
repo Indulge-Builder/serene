@@ -304,6 +304,7 @@ Column-header click sort is not implemented and must not be added without a spec
 | date from       | `date_from`  | ISO date string                         |
 | date to         | `date_to`    | ISO date string                         |
 | going cold      | `going_cold` | `'true'` only (omitted = off)           |
+| revival         | `revival`    | `'true'` only — the revival review view |
 | sort order      | `sort_order` | `'asc'` only (omitted = `'desc'`)       |
 | page            | `page`       | integer (default 1)                     |
 
@@ -328,6 +329,30 @@ Column-header click sort is not implemented and must not be added without a spec
 **`clearAll()`:** removes `going_cold` because it pushes `pathname` with no params.
 
 **Empty state:** `goingCold=true` prop on `LeadsTable` triggers heading "No cold leads." / sub "All leads have had recent activity." — takes priority over the generic `hasActiveFilters` empty state.
+
+---
+
+## Revival review view (`?revival=true`)
+
+The lead-revival review tab is the leads list filtered to leads holding an OPEN
+`revival_candidate` (Lead Revival R1, `docs/modules/revival.md`).
+
+- **`revival` is a `LeadFilters` flag** (`database.ts`), parsed in `parseFilters` like `going_cold`.
+- **Own service path:** `getLeadsByRole` short-circuits to `getRevivalCandidateLeads` when
+  `filters.revival` is set — it resolves the visible open-candidate `lead_id`s on the SESSION
+  client (RLS scopes by role/domain, like `going_cold` relies on RLS), pages over that id set,
+  then `.in('id', ids)` the leads with the **identical column subset + assignee join + ordering**
+  as the main query. `LeadsTable` renders unchanged.
+- **The status-counts RPC is bypassed for this predicate** — it cannot express the cross-table
+  subquery, and forcing it would drift the count pills from the predicate (C-1). `totalCount`
+  derives from the resolved id-set length; `statusCounts` is `{}` (status pills are meaningless
+  for a candidate view scattered across touched/in_discussion/nurturing).
+- **The Redis list cache is bypassed** — a low-volume, freshness-sensitive review surface.
+- **`RevivalReviewBanner`** (rendered by `LeadsTableAsync` above the table when `revival`) surfaces
+  the AI reasoning + the shared `<ReviveLeadButton>` per candidate — a table cell can't hold the
+  reasoning. It is the reasoning/action surface, **not a second lead list.**
+- There is no `?revival=true` toolbar chip — the view is reached from the dossier / a saved link;
+  add a chip the same way as `going_cold` (in `LeadsTable`'s toolbar) if a UI entry point is wanted.
 
 ---
 

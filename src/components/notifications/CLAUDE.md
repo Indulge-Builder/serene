@@ -63,6 +63,7 @@ Never move the filter into the JS handler. It must be on the channel to prevent 
 - Entrance: `{ opacity: 0, y: 6 } → { opacity: 1, y: 0 }`, `ENTER_DURATION` (400ms), `EASE_OUT_EXPO`. **Not `DROPDOWN_VARIANTS`** (those use 200ms).
 - Exit: `{ opacity: 0, y: -4 }`, `EXIT_DURATION` (250ms), `EASE_IN_EXPO`.
 - Surface: `--theme-paper` + `1px --theme-paper-border` + `--radius-lg` + `--shadow-4`. **No `backdrop-filter`.**
+- **Portal escape + responsive geometry (2026-06-14).** The bell lives inside the sidebar `<aside>`, which carries a `transform` for the off-canvas drawer below md — a transformed ancestor is a containing block for `position: fixed`/`absolute` descendants (root CLAUDE.md "Framer transform + position: fixed — portal escape"). So the panel **portals to `document.body`** via `createPortal` (mount-gated for SSR). Geometry is class-driven (`.notification-panel` in `globals.css`): **below md** it is a docked **bottom sheet** (fixed, full-bleed left/right gutters, `bottom` + safe-area-inset pad, `max-height: 80dvh`, `--z-modal`) with the `.notification-mobile-backdrop` visible (`--z-overlay`, dismiss-on-tap — this replaced the old `display:none` stub, the real "bell not working on phone" fix); **at md+** it is the anchored dropdown (fixed, `--z-dropdown`, 380px) whose `top`/`right` are measured from the bell rect by `NotificationPanel` and applied inline only when `!useMediaQuery(MQ.mobile)` (so the sheet CSS wins below md without an inline fight). The list flexes to fill the sheet; `.notification-panel-list` caps it at 480px on the md+ dropdown.
 - Item stagger: `delay: Math.min(i * 50, 200)ms` at initial mount only. Tracked via `isInitialMount` ref (flipped to false after first open). Realtime-added items always use `custom={0}` — stagger never re-triggers on new arrivals.
 - Item list wrapped in `motion.div layout` + `AnimatePresence` so existing items shift via layout animation (transform only) when a new item prepends.
 
@@ -117,3 +118,21 @@ Never move the filter into the JS handler. It must be on the channel to prevent 
 - `createManualLead` → notifies the assigned agent when `assignedTo !== caller.id` (fire-and-forget, non-fatal).
 
 To add a new trigger: call `createNotification()` from `src/lib/services/notifications-service.ts` inside a server action. Never call it from a component or route handler.
+
+## Web Push — the second channel (migration 0120)
+
+Every notification reaches installed PWAs (iOS 16.4+ standalone, Android, desktop) as well as the
+in-app bell, because `createNotification` calls `dispatchPush` after the row insert — **inside the
+function, so all triggers above get push for free with zero call-site edits**. See
+`src/lib/services/CLAUDE.md` "Web Push — `createNotification` is the fan-out seam" for the service
+contract (non-fatal, Node-only, 404/410 prune).
+
+**SW handlers:** `public/sw.js` has additive `push` (parse `{title, body?, url?}` → `showNotification`)
+and `notificationclick` (focus an open Serene window + navigate, else open the url; relative paths
+only, same contract as `NotificationItem.action_url`) listeners. The offline-shell `install`/`activate`/`fetch`
+logic is byte-for-byte unchanged — push is purely additive; `CACHE_VERSION` was NOT bumped.
+
+**Subscribe UI:** `src/components/profile/PushNotificationSettings.tsx` (in the profile
+"Notifications" SectionCard) composes `hooks/usePushSubscription.ts` — a gesture-gated Enable/Disable
+button. On iOS-not-standalone it shows the **"Add to Home Screen to get alerts" install nudge**
+instead (iOS push only works in the installed PWA — never fake a "subscribed" state there).

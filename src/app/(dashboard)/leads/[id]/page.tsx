@@ -5,6 +5,7 @@ import { BackButton } from '@/components/ui/BackButton';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getLeadBySlug, getLeadById } from '@/lib/services/leads-service';
 import { StatusActionPanel } from '@/components/leads/StatusActionPanel';
+import { RevivalDossierAction } from '@/components/leads/RevivalDossierAction';
 import { DynamicFormResponses } from '@/components/leads/DynamicFormResponses';
 import { LeadNotesInput } from '@/components/leads/LeadNotesInput';
 import { PersonalDetailsCard } from '@/components/leads/PersonalDetailsCard';
@@ -111,6 +112,12 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
 
         {/* Status action panel */}
         <StatusActionPanel lead={lead} callerProfile={profile} />
+
+        {/* Revival suggestion — only when the lead holds an open revival candidate.
+            null fallback: most leads have none, a skeleton would flash for nothing. */}
+        <Suspense fallback={null}>
+          <RevivalDossierAction leadId={lead.id} />
+        </Suspense>
 
         {/* Closed-deal summary — only when the lead has a linked deal (won).
             null fallback: most leads have no deal, a skeleton here would flash

@@ -64,3 +64,44 @@ Both `sendFounderLeadNotification` call sites (webhook route and whatsapp-ingest
 `result.agent_name ?? 'Unassigned'`. `sendFounderLeadNotification` accepts this — the template
 `{{2}}` param is just a string; `'Unassigned'` is a valid value. Never pass `null` or `undefined`
 as the `agentName` argument to `sendFounderLeadNotification`.
+
+## Web Push — `createNotification` is the fan-out seam; `push-service.ts` is the sender
+
+Web Push (VAPID, the `web-push` library — no SaaS) is the **second** notification delivery
+channel, behind the same single chokepoint as the in-app inbox: `createNotification`
+(`notifications-service.ts`). After the in-app row insert succeeds, `createNotification` calls
+`dispatchPush(recipient_id, { title, body, url })` from `push-service.ts`. **The fan-out lives
+INSIDE `createNotification`** — every existing call site (`lead-assignment-notify`,
+`lead-mutations`, `sla`, `tasks`, `task-reminders`) gets push for free with **zero call-site
+edits.** Never add a `dispatchPush` call to an event site; never gate push per call site.
+
+**Non-fatal contract (mirrors the in-app `.catch(() => {})` posture):** the in-app row is the
+source of truth and must succeed even if every push send fails. `dispatchPush` **never throws** —
+it logs and returns. `createNotification` `await`s it so awaited callers (Trigger.dev) keep the
+lambda alive until the send settles; the fire-and-forget callers' own outer `.catch()` still
+covers the whole call.
+
+**Two-runtime invariant:** `createNotification` runs in two contexts — server actions and
+Trigger.dev jobs. `web-push` is **Node-only** (it throws under the Edge runtime). Both contexts
+are Node, and there is **no edge route in the app** — never introduce one that calls
+`createNotification`/`dispatchPush`, and never set `export const runtime = 'edge'` on a route in
+that chain.
+
+**Dead-endpoint prune is MANDATORY (not nice-to-have):** push endpoints expire constantly
+(reinstall, token rotation, permission revoke). The push service answers **404 / 410** for a dead
+endpoint; `dispatchPush` DELETEs those `push_subscriptions` rows in one batched delete. Skipping
+the prune lets the table fill with corpses and slows every subsequent fan-out. Any other status
+(429/5xx) is transient — the row is kept for the next send to retry.
+
+**Client side:** the browser subscribes/unsubscribes via `hooks/usePushSubscription.ts` →
+`actions/push.ts` (session client, owner-only RLS). The subscribe UI + the iOS install nudge live
+in `components/profile/PushNotificationSettings.tsx`. `dispatchPush` is the only push path that
+needs the admin client (cross-user read + prune). VAPID keys: `VAPID_PUBLIC_KEY` /
+`VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (server-only) + `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (the browser
+needs the public key to subscribe).
+
+**iOS silent-failure trap:** iOS delivers Web Push **only inside the installed PWA** (Add to Home
+Screen → standalone). In a Safari tab it fails with no error. `usePushSubscription` reports
+`support = 'ios-needs-install'` for iOS-not-standalone, so the UI shows the install nudge instead
+of a Subscribe button — a non-standalone iOS user can never reach `pushManager.subscribe()` and
+falsely believe they're subscribed.

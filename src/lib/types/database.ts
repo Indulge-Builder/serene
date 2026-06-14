@@ -514,6 +514,44 @@ export type Database = {
           },
         ]
       }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          p256dh: string
+          profile_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          p256dh: string
+          profile_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          profile_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profile_audit_log: {
         Row: {
           changed_at: string
@@ -1562,6 +1600,10 @@ export type Notification = Database['public']['Tables']['notifications']['Row'] 
   type: string  // narrowed by callers via NotificationType — kept as string for service compatibility
 }
 
+// PushSubscriptionRow — one Web Push endpoint per device (migration 0120).
+// One user holds many rows (phone + desktop + …); UNIQUE key is `endpoint`.
+export type PushSubscriptionRow = Database['public']['Tables']['push_subscriptions']['Row']
+
 export type Task = Omit<
   Database['public']['Tables']['tasks']['Row'],
   'status' | 'priority' | 'task_category' | 'task_type' | 'attachments'
@@ -1699,6 +1741,7 @@ export type LeadFilters = {
   date_to:           string | null
   search:            string | null
   going_cold?:       boolean
+  revival?:          boolean
   sort_order?:       'asc' | 'desc'
   page:              number
   pageSize:          number

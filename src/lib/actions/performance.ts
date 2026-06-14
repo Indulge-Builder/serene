@@ -9,16 +9,20 @@ import {
   getDomainHealthMetrics,
   getAgentTodayPulse,
   getAgentLeadActivityPage,
+  getAgentCallsPageForManager,
   getPeriodDateRange,
   type PerformancePeriod,
   type AgentPerformanceSummary,
   type AgentTodayPulse,
   type AgentLeadActivityPage,
+  type AgentCallsPage,
 } from '@/lib/services/performance-service';
+import { getLeadsByRole, type LeadsResult }   from '@/lib/services/leads-service';
+import { getDealsByRole, type DealsResult }   from '@/lib/services/deals-service';
 import { upsertDomainTarget }        from '@/lib/services/domain-targets-service';
 import { GIA_DOMAINS, GIA_DOMAIN_ENUM } from '@/lib/constants/domains';
 import type { ActionResult, AgentDetailMetrics, AgentRosterRow, DomainHealthCard, DomainTarget } from '@/lib/types/index';
-import type { AppDomain }            from '@/lib/types/database';
+import type { AppDomain, LeadFilters, DealFilters } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
 // Schemas
@@ -284,4 +288,163 @@ export async function upsertDomainTargetAction(
     },
     error: null,
   };
+}
+
+// ─────────────────────────────────────────────
+// Founder/manager drill-down actions (Phase 5 deck).
+//
+// All three mirror getAgentDetailMetricsAction's authz EXACTLY: a manager may
+// only drill into an agent in their OWN domain (the `domain` param is a checked
+// param — a manager can only ever pass their own domain, else the guard fails
+// CLOSED at caller.domain !== domain); admin/founder pass domain=null and are
+// unrestricted. The deck holds the roster in memory and passes the target
+// agent's domain, which the manager branch re-validates. No client-supplied
+// scope is ever trusted (Q-13). These are pure reads — no cache writes.
+//
+// Leads/deals reuse the EXISTING getLeadsByRole / getDealsByRole service paths
+// with filters.agent_id = targetAgentId: those paths already honour agent_id on
+// the manager/founder branch (the agent-caller branch ignores it, but these
+// actions are gated to manager+, so that branch is unreachable). No service
+// query change — only these gated wrappers.
+// ─────────────────────────────────────────────
+
+const DrillCursorSchema = z
+  .object({
+    created_at: z.string().datetime({ offset: true }),
+    id:         z.string().uuid(),
+  })
+  .optional();
+
+const GetAgentDrillSchema = z.object({
+  agentId: z.string().uuid(),
+  domain:  z.string().min(1).nullable(),
+  page:    z.number().int().positive().max(1000).optional(),
+  cursor:  DrillCursorSchema,
+});
+
+/** Shared authz preamble — returns the verified caller or an ActionResult error.
+ *  Manager may only target an agent in their own domain. */
+async function assertDrillAccess(domain: AppDomain | null) {
+  const auth = await requireProfile(['manager', 'admin', 'founder']);
+  if (!auth.ok) return { ok: false as const, result: auth.result };
+  const caller = auth.profile;
+  if (caller.role === 'manager') {
+    if (!domain || caller.domain !== domain) {
+      return { ok: false as const, result: { data: null, error: 'Access denied.' } };
+    }
+  }
+  return { ok: true as const, caller };
+}
+
+/** "Recent calls" drill-down — keyset load-more over the agent's call notes.
+ *  Called by AgentCallsDrillModal on open. */
+export async function getAgentCallsForManagerAction(
+  agentId: string,
+  domain:  AppDomain | null,
+  cursor?: { created_at: string; id: string },
+): Promise<ActionResult<AgentCallsPage>> {
+  const parsed = GetAgentDrillSchema.safeParse({ agentId, domain, cursor });
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  const access = await assertDrillAccess(domain);
+  if (!access.ok) return access.result;
+
+  try {
+    const page = await getAgentCallsPageForManager(agentId, parsed.data.cursor);
+    return { data: page, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load calls.' };
+  }
+}
+
+/** Full activity feed for an agent (all action types) — drill-down reuse of
+ *  getAgentLeadActivityPage with the founder/manager authz gate. */
+export async function getAgentActivityForManagerAction(
+  agentId: string,
+  domain:  AppDomain | null,
+  cursor?: { created_at: string; id: string },
+): Promise<ActionResult<AgentLeadActivityPage>> {
+  const parsed = GetAgentDrillSchema.safeParse({ agentId, domain, cursor });
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  const access = await assertDrillAccess(domain);
+  if (!access.ok) return access.result;
+
+  try {
+    const page = await getAgentLeadActivityPage(agentId, parsed.data.cursor, 'all');
+    return { data: page, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load activity.' };
+  }
+}
+
+/** Leads assigned to the target agent — drill-down via the existing
+ *  getLeadsByRole path scoped by filters.agent_id. Called by AgentLeadsDrillModal. */
+export async function getAgentLeadsScopedAction(
+  agentId: string,
+  domain:  AppDomain | null,
+  page?:   number,
+): Promise<ActionResult<LeadsResult>> {
+  const parsed = GetAgentDrillSchema.safeParse({ agentId, domain, page });
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  const access = await assertDrillAccess(domain);
+  if (!access.ok) return access.result;
+  const caller = access.caller;
+
+  try {
+    const filters: LeadFilters = {
+      status:            null,
+      last_call_outcome: null,
+      domain:            null,
+      agent_id:          agentId,
+      source:            null,
+      campaign:          null,
+      date_from:         null,
+      date_to:           null,
+      search:            null,
+      page:              parsed.data.page ?? 1,
+      pageSize:          30,
+    };
+    // Caller's verified role/domain scope the query; agent_id narrows to the
+    // target agent within that scope (honoured on the manager/founder branch).
+    const result = await getLeadsByRole(caller.role, caller.id, caller.domain, filters);
+    return { data: result, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load leads.' };
+  }
+}
+
+/** Deals assigned to the target agent — drill-down via the existing
+ *  getDealsByRole path scoped by filters.agent_id. Called by AgentDealsDrillModal. */
+export async function getAgentDealsScopedAction(
+  agentId: string,
+  domain:  AppDomain | null,
+  page?:   number,
+): Promise<ActionResult<DealsResult>> {
+  const parsed = GetAgentDrillSchema.safeParse({ agentId, domain, page });
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  const access = await assertDrillAccess(domain);
+  if (!access.ok) return access.result;
+  const caller = access.caller;
+
+  try {
+    const filters: DealFilters = {
+      search:    null,
+      domain:    null,
+      deal_type: null,
+      agent_id:  agentId,
+      date_from: null,
+      date_to:   null,
+      page:      parsed.data.page ?? 1,
+      pageSize:  50,
+    };
+    // getDealsByRole requires a non-null AppDomain — pass caller.domain (always
+    // non-null on a Profile), never the nullable checked `domain` param.
+    const result = await getDealsByRole(caller.role, caller.id, caller.domain, filters);
+    return { data: result, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load deals.' };
+  }
 }

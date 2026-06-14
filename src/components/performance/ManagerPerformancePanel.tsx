@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect }          from 'react';
+import dynamic                                   from 'next/dynamic';
 import { useSearchParams }                      from 'next/navigation';
 import { m as motion, AnimatePresence }               from 'framer-motion';
-import { SlidersHorizontal, Check, ChevronDown } from 'lucide-react';
+import { SlidersHorizontal, Check, ChevronDown, LayoutGrid } from 'lucide-react';
 import { Avatar }                                from '@/components/ui/Avatar';
 import { CollapseReveal }                        from '@/components/ui/CollapseReveal';
 import { EmptyState }                            from '@/components/ui/EmptyState';
@@ -20,6 +21,15 @@ import { PerformanceRosterEmptyState }   from './PerformanceRosterEmptyState';
 import type { AgentRosterRow }           from '@/lib/types/index';
 import type { AppDomain }                        from '@/lib/types/database';
 import type { PerformancePeriod }                from '@/lib/services/performance-service';
+
+// Heavy, rarely-opened full-screen overlay — loaded on intent (Heavy modal rule).
+const FounderDrillDownDeck = dynamic(
+  () =>
+    import('@/app/(dashboard)/performance/FounderDrillDownDeck').then(
+      (m) => m.FounderDrillDownDeck,
+    ),
+  { ssr: false },
+);
 
 // ─────────────────────────────────────────────
 // AgentCard — roster row
@@ -453,6 +463,7 @@ export function ManagerPerformancePanel({
   const [agentRoster, setAgentRoster]   = useState<AgentRosterRow[]>(initialRoster);
   const [isRefetching, setIsRefetching] = useState(false);
   const [rosterOpen, setRosterOpen]     = useState(true);
+  const [deckOpen, setDeckOpen]         = useState(false);
   const isMobile                        = useMediaQuery(MQ.mobile);
   const searchParams                    = useSearchParams();
   const searchTerm                      = (searchParams.get('search') ?? '').trim().toLowerCase();
@@ -574,6 +585,48 @@ export function ManagerPerformancePanel({
           />
         )}
       </AnimatePresence>
+
+      {/* Deck trigger — founder/admin all-domains view only. Opens the
+          full-screen swipeable per-agent deck over the IN-MEMORY roster
+          (respecting the active client-side domain filter — zero new fetch). */}
+      {allDomains && visibleAgents.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
+          <button
+            type="button"
+            onClick={() => setDeckOpen(true)}
+            className="serene-pressable serene-touch"
+            style={{
+              display:      'inline-flex',
+              alignItems:   'center',
+              gap:          'var(--space-2)',
+              padding:      'var(--space-2) var(--space-4)',
+              borderRadius: 'var(--radius-md)',
+              border:       '1px solid var(--theme-paper-border)',
+              background:   'var(--theme-paper)',
+              boxShadow:    'var(--shadow-1)',
+              color:        'var(--theme-text-primary)',
+              fontFamily:   'var(--font-sans)',
+              fontSize:     'var(--text-sm)',
+              fontWeight:   'var(--weight-medium)',
+              cursor:       'pointer',
+            }}
+          >
+            <LayoutGrid style={{ width: 15, height: 15, strokeWidth: 1.5 }} aria-hidden="true" />
+            Deck view
+          </button>
+        </div>
+      )}
+
+      {deckOpen && (
+        <FounderDrillDownDeck
+          open={deckOpen}
+          onClose={() => setDeckOpen(false)}
+          roster={visibleAgents}
+          domain={domainFilter}
+          initialAgentId={selectedId ?? undefined}
+        />
+      )}
+
     <div
       className="flex flex-col items-stretch md:flex-row md:items-start"
       style={{

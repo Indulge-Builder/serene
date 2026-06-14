@@ -221,20 +221,20 @@ onNoteAdded?: () => void — optional callback fired after successful note post
 Calls `addLeadNote` action. Submits via button click or ⌘+Enter. Uses `useTransition`.
 Header uses `--color-info-dark-*` tokens. Note has `call_outcome = null` — it does NOT increment `call_count` or change `last_call_outcome`.
 
-**Voice dictation (2026-06-12):** footer mic button records via `useAudioRecorder`
-(`src/hooks/useAudioRecorder.ts` — codec negotiation, 2-min auto-stop, mic release) and
-transcribes via `transcribeAudioAction` (`lib/actions/transcription.ts` → Deepgram Nova-3
-multilingual). The transcript is **appended to the textarea as an editable draft** — never
-auto-submitted; saving always goes through the same `addLeadNote` path as a typed note
-(sanitisation, activities, cache invalidation identical). Audio is never persisted. While
-recording: static danger dot + mono `m:ss / 2:00` counter replaces the ⌘+Enter hint, stop
-(transcribe) + × (discard) buttons; while transcribing: `Spinner` + "Transcribing…". The mic
-renders only when `MediaRecorder` is supported; pass the actual blob MIME through — never
-hardcode it (Safari records mp4/aac). **`CalledModal` composes the identical cluster**
-(label-row right slot of its Note field; same hook + action, saved via `addLeadCallNote`) —
-the shared pieces (`formatRecorderElapsed`, `DEFAULT_MAX_RECORDING_MS`) are exported from
-`src/hooks/useAudioRecorder.ts`, never re-declared per consumer. Mid-recording modal close is
-safe: unmount triggers the hook's discard + mic-track release.
+**Voice dictation (2026-06-12; extracted to `DictationButton` 2026-06-14):** the footer mounts
+`<DictationButton variant="inline" what="a note" onError={setError} onBusyChange={setDictationBusy} />`
+(`src/components/ui/DictationButton.tsx`) — THE shared voice cluster (records via `useAudioRecorder`,
+transcribes via `transcribeAudioAction` → Deepgram Nova-3). The transcript is **appended to the
+textarea as an editable draft** via `onTranscript` — never auto-submitted; saving always goes
+through the same `addLeadNote` path as a typed note (sanitisation, activities, cache invalidation
+identical). Audio is never persisted. The danger-dot `m:ss / 2:00` counter + stop/× buttons +
+Transcribing… spinner all live inside `DictationButton` now (next to the mic) — the footer keeps
+only the ⌘+Enter hint; `dictationBusy` (from `onBusyChange`) gates the Post-note submit while a
+take is in flight. The mic renders only when `MediaRecorder` is supported (the component returns
+`null` otherwise). **`CalledModal` mounts the same `DictationButton`** (`variant="inline"`,
+`what="the note"`, Note label-row slot; saved via `addLeadCallNote`). Never re-inline a
+mic/transcribe cluster — `DictationButton` is the only copy. Mid-recording modal close is safe:
+unmount triggers the hook's discard + mic-track release.
 
 ---
 
@@ -253,13 +253,45 @@ outcome selector pattern exactly. The old raw `<select>` + `ChevronDown` overlay
 
 ---
 
-### StatusActionPanel — Revive flow
+### StatusActionPanel — Revive flow (junk → in_discussion, status-changing)
 
 When `status === 'junk'`, a `Revive Lead` button (amber/warning style, Zap icon) appears.
 Clicking opens a `ConfirmModal` that calls `updateLeadStatus('in_discussion')`.
 All prior history (calls, notes, activities) is preserved.
 SLA timers re-schedule automatically — the existing `updateLeadStatus` action handles this correctly because `in_discussion` is not in `TERMINAL_SLA_STATUSES`.
 The Called button remains disabled for junk leads — revive first, then call.
+
+**This is a DIFFERENT action from Lead Revival's `ReviveLeadButton`** — they only share the word
+"revive". This one CHANGES the lead status (junk → in_discussion). The Lead Revival button below
+creates a follow-up task and never touches the lead status.
+
+---
+
+### ReviveLeadButton (Lead Revival R1 — task-only, never changes status)
+
+`ReviveLeadButton.tsx` — `'use client'`
+
+THE single revive-action component, **two mount points** (one implementation, never two):
+`RevivalReviewBanner` (review-row context) and `RevivalDossierAction` (dossier). Calls
+`reviveLeadAction` (which wraps `reviveLeadCore` — the E2 task path + a "Revived" marker) and,
+when a candidate is supplied, resolves it. Optional `showDismiss` → `dismissRevivalCandidateAction`.
+**Revival NEVER mutates the lead's status or columns** — it creates a follow-up task + resolves the
+`revival_candidate`. Props: `leadId`, `candidateId?`, `showDismiss?`, `size?`, `onResolved?`.
+
+### RevivalReviewBanner
+
+`RevivalReviewBanner.tsx` — `'use client'`. Rendered by `LeadsTableAsync` above the reused
+`LeadsTable` only when `?revival=true`. Surfaces the AI **reasoning** beside each candidate (a
+table cell can't hold a sentence of prose) + mounts `ReviveLeadButton` per row. It is the
+reasoning + action surface, **NOT a second lead list** — the reused `LeadsTable` below is the list.
+Locally hides a row on resolve (`onResolved`). Props: `rows: RevivalReviewRow[]`.
+
+### RevivalDossierAction
+
+`RevivalDossierAction.tsx` — async server component (the dossier mount point). Renders ONLY when
+`getOpenCandidateForLead(leadId)` returns a candidate (most leads have none — `Suspense fallback={null}`,
+like `LeadDealCardAsync`). Surfaces the AI reasoning + suggested date + `ReviveLeadButton` inline,
+mounted right after `StatusActionPanel` on the dossier.
 
 ---
 
@@ -420,3 +452,6 @@ Embedded WhatsApp chat card on the lead dossier page. Placed between the 2-col g
 | LeadTasksAsync        | `getAllLeadTasks` from `tasks-service.ts` (server only)                                              |
 | LeadTasksCardSkeleton | none                                                                                                 |
 | CreateLeadTaskModal   | `createLeadTaskAction` from `lib/actions/leads.ts`                                                   |
+| ReviveLeadButton      | `reviveLeadAction` + `dismissRevivalCandidateAction` from `lib/actions/revival.ts`                   |
+| RevivalReviewBanner   | none — props only (`rows` resolved by `LeadsTableAsync`); composes `ReviveLeadButton`                |
+| RevivalDossierAction  | `getOpenCandidateForLead` from `revival-service.ts` (server only); composes `ReviveLeadButton`       |

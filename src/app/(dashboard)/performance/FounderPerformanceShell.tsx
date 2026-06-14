@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
+import { TabSelector } from '@/components/ui/TabSelector';
 import type { PerformancePeriod } from '@/lib/services/performance-service';
 import type { DomainHealthCard, DomainTarget } from '@/lib/types/index';
 import type { AppDomain } from '@/lib/types/database';
@@ -62,37 +63,19 @@ export function FounderPerformanceShell({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-      {/* Tab switcher */}
-      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-        {(['agents', 'domains'] as Tab[]).map((tab) => {
-          const isActive = activeTab === tab;
-          return (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              style={{
-                display:      'inline-flex',
-                alignItems:   'center',
-                padding:      '5px 14px',
-                borderRadius: 'var(--radius-full)',
-                border:       '1px solid transparent',
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-sm)',
-                fontWeight:   isActive ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                cursor:       'pointer',
-                transition:   'background 150ms ease, color 150ms ease, border-color 150ms ease',
-                background:   isActive ? 'var(--theme-accent-surface)' : 'transparent',
-                color:        isActive ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
-                borderColor:  isActive
-                  ? 'color-mix(in srgb, var(--theme-accent) 22%, transparent)'
-                  : 'transparent',
-              }}
-            >
-              {tab === 'agents' ? 'Agents' : 'Domains'}
-            </button>
-          );
-        })}
+      {/* Tab switcher — TabSelector pill variant (distinct indicatorLayoutId
+          from the agent shell's content tabs, per the shared-layout rule). */}
+      <div style={{ display: 'flex' }}>
+        <TabSelector
+          tabs={[
+            { id: 'agents', label: 'Agents' },
+            { id: 'domains', label: 'Domains' },
+          ]}
+          activeTab={activeTab}
+          onChange={(id) => setActiveTab(id as Tab)}
+          variant="pill"
+          indicatorLayoutId="founder-perf-tabs"
+        />
       </div>
 
       {/* Tab content — agentsSlot is a server-rendered subtree */}

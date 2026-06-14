@@ -7,6 +7,17 @@
 | `Sidebar.tsx` | `'use client'`; primary nav, user footer, notification bell. |
 | `TopBar.tsx` | `'use client'`; page-level topbar (breadcrumb, search). |
 | `ThemeInitializer.tsx` | `'use client'`; corrective sync for the SSR theme cookie (`lib/constants/themes.ts`). The root layout SSRs `data-theme` on `<html>` from the `serene-theme` cookie (zero-flash first paint); this component only flips the attribute when the cookie was missing/stale vs `profiles.theme` and re-writes the cookie for the next request. |
+| `ServiceWorkerRegistration.tsx` | `'use client'`; registers `public/sw.js` in the **root** layout (production-only). The SW owns the offline shell AND (migration 0120) the additive Web Push `push`/`notificationclick` handlers. |
+
+### Web Push (PWA push notifications — migration 0120)
+
+The notification **bell** (`NotificationBell`) is mounted in the Sidebar footer (seed streams via
+the layout's `notificationsPromise`). Web Push is the bell's second delivery channel — fan-out lives
+inside `createNotification` (see `src/components/notifications/CLAUDE.md` "Web Push — the second
+channel" and `src/lib/services/CLAUDE.md`). The **mobile notification panel** is a docked bottom
+sheet below md (portal-escaped from the transformed sidebar `<aside>`); the **subscribe control +
+iOS install nudge** live in the profile "Notifications" SectionCard
+(`components/profile/PushNotificationSettings.tsx`), not in the sidebar.
 
 ---
 

@@ -8,10 +8,12 @@
  * Closes on outside click, Escape, or item click with action_url.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { m as motion, AnimatePresence } from "framer-motion";
 import { NotificationItem } from "@/components/notifications/NotificationItem";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import {
   ENTER_DURATION,
   EXIT_DURATION,
@@ -77,6 +79,42 @@ export function NotificationPanel({
   const panelRef       = useRef<HTMLDivElement>(null);
   const isInitialMount = useRef(true);
 
+  // Portal escape: the bell lives inside the sidebar <aside>, which carries a
+  // `transform` for the off-canvas drawer below md. A transformed ancestor is a
+  // containing block for position:fixed descendants — so the panel MUST portal to
+  // document.body to anchor to the viewport (root CLAUDE.md "Framer transform +
+  // position: fixed — portal escape"). Mount-gated for SSR safety.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  // Below md the panel is a docked bottom sheet (geometry from .notification-panel
+  // in globals.css); at md+ it is a fixed dropdown anchored under the bell rect.
+  const isMobile = useMediaQuery(MQ.mobile);
+
+  // Desktop anchor coords — measured from the bell on open, repositioned on
+  // scroll/resize. Only applied inline when NOT mobile (so the sheet CSS wins
+  // below md without an inline override fighting it).
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
+  useEffect(() => {
+    if (!open || isMobile) { setCoords(null); return; }
+    function place() {
+      const rect = anchorRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      // Right-align the 380px panel under the bell, clamped into an 8px gutter.
+      setCoords({
+        top:   rect.bottom + 8,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    }
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, isMobile, anchorRef]);
+
   // After first render, flip the flag so subsequent Realtime items use custom={0}
   useEffect(() => {
     if (open) {
@@ -118,11 +156,14 @@ export function NotificationPanel({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open, onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
-          {/* Mobile backdrop — bottom sheet overlay */}
+          {/* Mobile backdrop — only visible below md (class-driven). Dismisses
+              the bottom sheet on tap. At md+ the class hides it entirely. */}
           <motion.div
             className="notification-mobile-backdrop"
             initial={{ opacity: 0 }}
@@ -134,8 +175,7 @@ export function NotificationPanel({
               position:   "fixed",
               inset:      0,
               background: "var(--overlay-bg-light)",
-              zIndex:     "var(--z-raised)",
-              display:    "none",
+              zIndex:     "var(--z-overlay)",
             }}
           />
 
@@ -143,21 +183,27 @@ export function NotificationPanel({
             ref={panelRef}
             role="dialog"
             aria-label="Notifications"
+            className="notification-panel"
             variants={PANEL_VARIANTS}
             initial="hidden"
             animate="visible"
             exit="exit"
             style={{
-              position:     "absolute",
-              top:          "calc(100% + var(--space-2))",
-              right:        0,
-              zIndex:       "var(--z-dropdown)",
-              width:        "380px",
-              background:   "var(--theme-paper)",
-              border:       "1px solid var(--theme-paper-border)",
-              borderRadius: "var(--radius-lg)",
-              boxShadow:    "var(--shadow-4)",
-              overflow:     "hidden",
+              // Base geometry (position/size/z-index) is class-driven
+              // (.notification-panel) so it flips to a bottom sheet below md. On
+              // md+ the measured anchor coords below override top/right inline.
+              display:       "flex",
+              flexDirection: "column",
+              background:    "var(--theme-paper)",
+              border:        "1px solid var(--theme-paper-border)",
+              borderRadius:  "var(--radius-lg)",
+              boxShadow:     "var(--shadow-4)",
+              overflow:      "hidden",
+              // Desktop anchor — applied ONLY at md+ (isMobile false). Below md
+              // these stay undefined so the sheet CSS governs.
+              ...(!isMobile && coords
+                ? { top: coords.top, right: coords.right }
+                : null),
             }}
           >
             {/* Header */}
@@ -204,10 +250,11 @@ export function NotificationPanel({
               )}
             </div>
 
-            {/* List */}
+            {/* List — flexes to fill the sheet below md; capped at 480px on the
+                md+ dropdown via .notification-panel-list. */}
             <div
-              className="scrollable"
-              style={{ maxHeight: "480px" }}
+              className="scrollable notification-panel-list"
+              style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
             >
               {notifications.length === 0 ? (
                 <EmptyState
@@ -240,6 +287,7 @@ export function NotificationPanel({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

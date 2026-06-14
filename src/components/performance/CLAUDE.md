@@ -22,6 +22,42 @@ initial bundle. Import these three statically only from another lazy chunk.
 | `DomainTargetMeter.tsx` | Radial deals-vs-target meter (Recharts `RadialBarChart`, 2 colours via `useChartTokens`); target null/0 → `EmptyState` inline "No target set." — never a division |
 | `AgentCallTrendChart.tsx` | 14-day daily-calls area chart — composes `ChartFrame` + `cartesianDefaults` (Cartesian frame rule); loaded via `next/dynamic` from the shell |
 | `AgentRecentActivityList.tsx` | Agent Today view — keyset "load more" (composite cursor, page 15, button not infinite scroll) via `getAgentRecentLeadActivityAction` |
+| `DrillModalShell.tsx` | THE nested-modal shell for the founder deck drill-downs — `document.body` portal + `--z-modal-overlay`/`--z-modal-nested` (stacks ABOVE the deck's `--z-modal` full `Dialog`). A vanilla `<Dialog>` hardcodes `--z-overlay`/`--z-modal` and would render co-planar with the deck, so the three drill modals share this thin shell instead. Display-only chrome; caller owns body + fetch |
+| `AgentCallsDrillModal.tsx` | "Recent calls" drill-down — fetch-on-open, keyset load-more via `getAgentCallsForManagerAction`. **Count contract:** title is the literal "Recent calls"; subtitle is `items.length` / "showing N most recent" — NEVER the card's `totalCallsMade`. One row per call (the source query is `lead_notes WHERE call_outcome IS NOT NULL`, so no `note_added` duplicates) |
+| `AgentLeadsDrillModal.tsx` | Agent's assigned leads — fetch-on-open, page load-more via `getAgentLeadsScopedAction` (existing `getLeadsByRole` path, `filters.agent_id`) |
+| `AgentDealsDrillModal.tsx` | Agent's won deals — fetch-on-open, page load-more via `getAgentDealsScopedAction` (existing `getDealsByRole` path, `filters.agent_id`) |
+
+(`FounderDrillDownDeck.tsx` lives in `src/app/(dashboard)/performance/` — see the deck section below. The generic `Carousel` primitive it composes is `src/components/ui/Carousel.tsx`.)
+
+---
+
+## Founder drill-down deck (Phase 5)
+
+`src/app/(dashboard)/performance/FounderDrillDownDeck.tsx` — full-screen swipeable per-agent
+card deck, mounted from `ManagerPerformancePanel` on the **founder/admin `allDomains` path only**
+(a "Deck view" trigger; `next/dynamic`, `ssr:false` — Heavy-modal rule). It is a `Dialog size="full"`
+(which opts OUT of the `<md` bottom-sheet) wrapping the generic `<Carousel>` (`ui/Carousel.tsx`).
+
+**Zero per-swipe fetch (invariant).** Each slide is a `DeckAgentCard` rendering ONLY in-memory
+`AgentRosterRow` fields (the roster array `ManagerPerformancePanel` already holds — the deck is
+passed `visibleAgents`, respecting the client-side domain filter). Swiping changes the controlled
+`index` and fires NO network request. **Never** add a fetch keyed on the active card.
+
+**`AgentRosterRow` has no `totalCallsMade`** — so the card's "Total Calls" tile is a **label-only**
+tap target ("View"), never a number. Showing a real call count would require a per-agent fetch and
+break the zero-per-swipe-fetch rule. The call COUNT exists only inside the Recent-calls modal
+(`items.length`), never on the card — this is the structural side of the count contract.
+
+**Tapping a tile** opens one of the three drill modals via `DrillModalShell` (nested z above the
+deck). Modals fetch ON OPEN only. The `domain` passed to the modals/actions is the deck's active
+domain filter (null for the all-domains view) — the action's manager-domain guard re-validates it.
+
+**Authz:** all four drill actions go through `assertDrillAccess` in `actions/performance.ts`, which
+mirrors `getAgentDetailMetricsAction` exactly — `requireProfile(['manager','admin','founder'])` then
+a manager must pass `domain === caller.domain`. Leads/deals reuse `getLeadsByRole`/`getDealsByRole`
+with `filters.agent_id` (no new service query); calls use `getAgentCallsPageForManager` (the only new
+read fn — `lead_notes` for phone+outcome+note fidelity). Deck trigger is founder-only to avoid the
+manager domain-pass ambiguity.
 
 ---
 

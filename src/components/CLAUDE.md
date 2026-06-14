@@ -31,6 +31,8 @@ All components are display-only (A-06). Zero business logic. Zero DB calls. All 
 
 **Single-select rule:** use `FilterDropdown` with `multi={false}` (default) for filter bars and modals (`CalledModal`, `LeadsFilters`). Dossier inline fields (`LeadInfoCard`) use `InlineSelectField` — `InfoRow` look at rest, themed menu on click. Do not use `FilterDropdown` on the dossier card.
 
+**`Carousel` (`Carousel.tsx`) — THE generic swipeable deck primitive** (Phase 5). Generic over `T` with a `renderItem` slot; **controlled** `index` + `onIndexChange` (the consumer owns active state). Horizontal track translated on `SPRING_CONFIG` — transform/opacity only (Never-Do list). Touch-swipe with **axis-lock** (a vertical scroll inside a slide is never hijacked; each slide is `overflowY:auto`), prev/next arrows (disabled at the ends), dot indicator + `n / total` counter, ←/→ keyboard nav. Display-only (A-06). **This is NOT `campaigns/AdCreativeCarousel`** — that one is video-coupled (`AdCreativePlayer` + `AdCreative` type) with no touch support; this is content-agnostic. The two coexist by design (R-01 — the video coupling justified a separate generic primitive over an extraction). Sole consumer today: `FounderDrillDownDeck` (the `/performance` founder deck).
+
 ### TabSelector — Compound API
 
 `src/components/ui/TabSelector.tsx` exports both a flat `TabSelector` wrapper (backwards-compat) and a full compound component API.
@@ -168,6 +170,32 @@ Key exports: `ENTER_DURATION`, `EXIT_DURATION`, `BASE_DURATION`, `FAST_DURATION`
 **`travel-back` markup contract:** the class goes on the clipping button/link (`overflow: hidden` required); inside, a `span.serene-icon-travel-stage` wraps TWO copies of the icon — the second `position: absolute; inset: 0` inline + `aria-hidden`. All transforms live in the stylesheet, never inline (an inline transform on either icon breaks the rest/hover states).
 
 **Rules:** never add a variant without a live consumer; never apply to a button whose icon swaps with a `Spinner` mid-flight *and* whose meaning changes (a loading swap that keeps meaning, e.g. `MessageBar`, is fine — `serene-spin` overrides the hover transform).
+
+---
+
+## DictationButton — THE shared voice-dictation cluster (`src/components/ui/DictationButton.tsx`)
+
+`<DictationButton>` is the ONE place the record → transcribe → append-to-draft flow and the mic/stop/cancel buttons + `m:ss / 2:00` counter + Transcribing… spinner are expressed. It wraps `useAudioRecorder` (`src/hooks/useAudioRecorder.ts`) + `transcribeAudioAction` (`lib/actions/transcription.ts` → Deepgram Nova-3). **All four voice surfaces compose it — never re-inline a mic/transcribe cluster.**
+
+Props:
+
+```text
+onTranscript:  (text: string) => void   — receives the transcript; the consumer appends it to its own draft
+onError?:      (message: string) => void — recorder + transcription errors; consumer picks toast vs inline setError
+disabled?:     boolean                   — blocks the START edge only (stop stays live mid-recording)
+variant?:      'composer' | 'inline'     — 'composer' (default) 32px pill (MessageBar leadingSlot); 'inline' 28px bordered (form footer / label row)
+what?:         string                    — aria-label/title verb, e.g. 'a message' (default), 'a note', 'the note'
+onBusyChange?: (busy: boolean) => void   — fires recording||transcribing; for footer consumers gating their submit/save while a take is in flight
+```
+
+**Contracts:**
+
+- **Never auto-sends.** The transcript is appended to the consumer's draft as an editable string; the consumer reviews and submits through its own unchanged path. A garbled transcript can never reach a send/save unreviewed.
+- **Renders `null` when `MediaRecorder` is unsupported** — consumers mount it unconditionally and let it hide itself.
+- **The counter + Transcribing… indicator travel inside the cluster** (next to the buttons) — the two footer consumers' left-hand status region is gone; they keep only their ⌘+Enter hint.
+- Plain `<button>` + `.serene-pressable` (no Framer); not an icon-micro-interaction `lift` consumer.
+
+**Consumers (one component, four mounts):** `ElayaChatShell` (composer leadingSlot), `whatsapp/ConversationPanel` (composer leadingSlot), `leads/LeadNotesInput` (inline footer), `leads/CalledModal` (inline, Note label row). The shared `formatRecorderElapsed` / `DEFAULT_MAX_RECORDING_MS` still live in `useAudioRecorder.ts` and are now referenced only inside `DictationButton`.
 
 ---
 
@@ -638,7 +666,7 @@ violations M-04/L-02). Never recreate it; `MyTasksCalendarView` is the only My T
 | `WhatsAppShell`          | `WhatsAppShell.tsx`          | `'use client'` two-panel layout. Owns conversation list state, active conversation selection, Realtime on `whatsapp_conversations`, cursor pagination, unread badge.           |
 | `ConversationList`       | `ConversationList.tsx`       | `'use client'` left panel body. SearchBar + 300ms debounced search action. IntersectionObserver load-more (P-05). End-state "That's everything."                               |
 | `ConversationRow`        | `ConversationRow.tsx`        | Single conversation item. Unread dot, lead name, phone, timestamp, resolved badge. Active left-border accent state.                                                            |
-| `ConversationPanel`      | `ConversationPanel.tsx`      | `'use client'` right panel. Three zones: header (name, phone, resolve/reopen), message list (Realtime + date groups), composer (optimistic send, char count, resolved banner). |
+| `ConversationPanel`      | `ConversationPanel.tsx`      | `'use client'` right panel. Three zones: header (name, phone, resolve/reopen), message list (Realtime + date groups), composer (`MessageBar` ref-forwarded for focus-after-transcribe + `leadingSlot={<DictationButton variant="composer" onError={toast.danger}/>}` — the mic matches the Elaya composer; optimistic send, char count, resolved banner). |
 | `MessageBubble`          | `MessageBubble.tsx`          | Single message. Inbound (`paper-subtle`) / outbound (`accent-surface`). Delivery icons. Media placeholder. Bot label.                                                          |
 | `EmptyConversationState` | `EmptyConversationState.tsx` | Right panel empty state. Framer Motion entrance. Never "No data available."                                                                                                    |
 
@@ -654,7 +682,7 @@ violations M-04/L-02). Never recreate it; `MyTasksCalendarView` is the only My T
 
 | Component | File | Responsibility |
 | --- | --- | --- |
-| `ElayaChatShell` | `ElayaChatShell.tsx` | `'use client'` chat surface. Owns the page's two-column layout via the canonical `.serene-dossier-grid serene-dossier-grid--340` (audit F2 — never fork a grid class; chat in the 1fr column, identity sidebar right, stacked below under lg) plus transcript state, the SSE consumption loop against `POST /api/elaya/chat` (`meta`/`delta`/`tool`/`done`/`error` frames), composer — the shared `MessageBar` (`variant="default"`, ref-forwarded for starter-prompt focus; Enter sends, Shift+Enter newline; input restored on rejected send — never cleared on error; never hand-roll a composer here), cap banner, and the in-transcript status row (serif italic + small glyph — covers tool calls AND the first-token "Thinking…" wait). Presence header: breathing `LiaGlyph` in a 36px `--theme-accent-surface` tile; **no message counter** (the budget chip / "N of cap" mirror was removed 2026-06-12 — never reintroduce a visible count; at cap a right-aligned `--color-warning` "Daily limit reached" note appears and the composer swaps to the cap banner). A static glyph = Elaya absent — never pass `breathing={false}` while the shell is mounted. Cap/expiry are server-enforced; everything here is cosmetic state. |
+| `ElayaChatShell` | `ElayaChatShell.tsx` | `'use client'` chat surface. Owns the page's two-column layout via the canonical `.serene-dossier-grid serene-dossier-grid--340` (audit F2 — never fork a grid class; chat in the 1fr column, identity sidebar right, stacked below under lg) plus transcript state, the SSE consumption loop against `POST /api/elaya/chat` (`meta`/`delta`/`tool`/`done`/`error` frames), composer — the shared `MessageBar` (`variant="default"`, ref-forwarded for starter-prompt focus; Enter sends, Shift+Enter newline; input restored on rejected send — never cleared on error; never hand-roll a composer here) with `leadingSlot={<DictationButton variant="composer" onError={toast.danger}/>}` for voice dictation (the same shared cluster the WhatsApp composer mounts — never re-inline the mic), cap banner, and the in-transcript status row (serif italic + small glyph — covers tool calls AND the first-token "Thinking…" wait). Presence header: breathing `LiaGlyph` in a 36px `--theme-accent-surface` tile; **no message counter** (the budget chip / "N of cap" mirror was removed 2026-06-12 — never reintroduce a visible count; at cap a right-aligned `--color-warning` "Daily limit reached" note appears and the composer swaps to the cap banner). A static glyph = Elaya absent — never pass `breathing={false}` while the shell is mounted. Cap/expiry are server-enforced; everything here is cosmetic state. |
 | `ElayaIdentityCard` | `ElayaIdentityCard.tsx` | Display-only (A-06) identity sidebar on `/elaya` (rendered by the shell as the second `.serene-dossier-grid--340` child — `/profile` sidebar pattern, stretches to the grid row height). 64px accent-surface glyph tile + serif name (the "Your compass" micro label, line of the day, and `StatTile` budget mirror were removed 2026-06-12 — do not reintroduce), `ELAYA_STARTER_PROMPTS` starter buttons (**prefill + focus the composer only — never auto-send**; disabled while streaming/at cap), "She can see" capability rows (keep in step with `lib/elaya/tools/registry.ts`). |
 | `ElayaMessageBubble` | `ElayaMessageBubble.tsx` | Display-only bubble (A-06). User: right, `--theme-accent-surface`; Elaya: left, `--theme-paper-subtle` (mirrors the WhatsApp bubble surface contract). One radius (`--radius-lg`, V-07); entrance opacity/y only via `m as motion` + `FAST_DURATION`/`EASE_OUT_EXPO`. `showGlyph` renders her breathing mark beside assistant bubbles — bare glyph, no tile chrome (presence, not an avatar). Assistant content renders through `ui/ChatMarkdown.tsx` (markdown-lite — bold/italic/lists/links/code as React elements); user bubbles stay plain text. |
 

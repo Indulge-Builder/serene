@@ -2,7 +2,9 @@
 
 > **Purpose:** spec for `/performance` — one URL, three role-specific layouts (agent self-view, manager team view, founder/admin Agents+Domains tabs).
 > **Audience:** engineers. · **Source-of-truth scope:** the performance route, `performance-service.ts`, `performance.ts` actions, the period system and date-field rule.
-> **Last verified:** 2026-06-11 (includes the perf-audit D-2 RPC consolidation — migration 0101).
+> **Last verified:** 2026-06-14 (D-2 RPC consolidation — migration 0101 — plus the founder
+> domain-targets + month-pinned target-meter wiring, the agent-view Suspense subtree, and the
+> responsive page padding now in code).
 
 ## 1. Purpose
 
@@ -10,7 +12,8 @@ Role-adaptive KPI surface. Agents see their own core-four metrics, effort, outco
 and benchmarks (ONE `get_agent_performance` RPC round trip — self-scoped, no identity params).
 Managers see a domain roster + per-agent detail. Founders/admins get an Agents tab (all-domain
 roster) and a Domains tab (per-domain health cards + comparative chart, revenue from
-`public.deals`).
+`public.deals`, plus a month-pinned deals-vs-target radial meter founders/admins can edit inline
+via `upsertDomainTargetAction`).
 
 ## 2. Who sees it
 
@@ -26,7 +29,7 @@ widen scope.
 | Service | `performance-service.ts` only (never extend leads/dashboard services) — `getAgentPerformanceSummary` (React `cache()`, D-2), `getAgentRosterPerformance` (RPC-backed), `getAgentDetailMetrics`, `getDomainHealthMetrics`, `getAgentTodayPulse` (0108), `getAgentLeadActivityPage` (keyset, composite cursor), period helpers; targets in `domain-targets-service.ts`. No Redis (see §"caching") |
 | RPCs | `get_agent_performance` + `get_agent_roster_performance` (0101, self-/role-scoped in SQL), domain-health RPCs (0066b/0068/0076/0107 — `total_deals` added), `get_agent_today_pulse` (0108, self-scoped) |
 | Tables | `domain_targets` (0105) — founder-set monthly deals-closed target per domain; UNIQUE(domain, metric, period); RLS all-read / admin+founder write |
-| Actions | `performance.ts` — `getAgentSelfMetricsAction` (agent-only), `getAgentDetailMetricsAction` (manager domain-checked), `getManagerRosterAction`, `getDomainHealthMetricsAction`, `getAgentPulseAction` (agent-only), `getAgentRecentLeadActivityAction` (agent-only, cursor from client / id from profile), `upsertDomainTargetAction` (admin/founder) |
+| Actions | `performance.ts` — `getAgentSelfMetricsAction` (agent-only), `getAgentDetailMetricsAction` (manager domain-checked), `getManagerRosterAction`, `getDomainHealthMetricsAction`, `getAgentPulseAction` (agent-only), `getAgentRecentLeadActivityAction` (agent-only, cursor from client / id from profile), `upsertDomainTargetAction` (admin/founder; Zod `domain` ∈ `GIA_DOMAIN_ENUM` + `targetValue` 0–100,000 → `domain-targets-service`) |
 | Period system | IST presets (`today`, `this_week`, `this_month`, `prev_month`, custom range) via `lib/utils/ist.ts` — Deep dive §3 |
 
 ## 4. Components
@@ -67,6 +70,19 @@ Added 2026-06-12:
 - **Activity load-more uses a composite cursor** `(created_at, id)` — never a single-column
   cursor; page ~15 via a button, never infinite scroll. Agent id from the verified profile.
 
+Added 2026-06-14 (Phase 5 deck):
+
+- **`getAgentLeadActivityPage(agentId, cursor?, actionType?)`** — the typed `actionType`
+  (`'all' | 'call_logged' | 'note_added' | 'status_changed'`) ANDs with the cursor `.or()` group
+  (a top-level `.eq`, never folded into the `.or()` string). The select now also carries
+  `leads.phone`, the call outcome (read from the row's own `details->>'outcome'`), and the note body
+  (correlated from a batched `lead_notes` query — exact `lead_id|created_at` match first, falling
+  back to most-recent-per-lead; the note + activity rows share a transaction, so created_at matches).
+- **`getAgentCallsPageForManager(agentId, cursor?)`** — THE "Recent calls" source. Queries
+  `lead_notes WHERE call_outcome IS NOT NULL` directly (the call record itself → one row per call,
+  structurally no `note_added` duplicates), same composite `(created_at, id)` keyset, page 15. The
+  leads RLS is the manager/founder second layer; the action-layer domain guard is the first.
+
 ## 7. Open items
 
 None recorded.
@@ -94,7 +110,7 @@ None recorded.
 2. `profile.role === 'guest'` → `redirect('/dashboard')`
 3. `profile.role === 'agent'` → agent layout — fetches `this_month` initialData server-side, renders `AgentPerformanceShell`
 4. `profile.role === 'manager'` → manager layout (`domain={profile.domain}`)
-5. Else (founder / admin) → fetches `initialDomainHealth` server-side via `getDomainHealthMetrics(GIA_DOMAINS, from, to)` (custom-range aware), then renders `FounderPerformanceShell` with `domain={DEFAULT_GIA_DOMAIN}` placeholder, `initialDomainHealth`, and `agentsSlot={<Suspense><ManagerPerformanceAsync allDomains /></Suspense>}`
+5. Else (founder / admin) → one server-side `Promise.all`: `getDomainHealthMetrics(GIA_DOMAINS, from, to)` (active-period, custom-range aware) → `initialDomainHealth`; a **second month-pinned** `getDomainHealthMetrics(GIA_DOMAINS, thisMonth)` call — **skipped (resolves `null`) when the active period already IS `this_month`** — folded into `monthDeals` (`{ [domain]: totalDeals }` for the month-pinned target meter); and `getDomainTargets()` → `initialTargets`. Then renders `FounderPerformanceShell` with `domain={DEFAULT_GIA_DOMAIN}` placeholder, `initialDomainHealth`, `initialTargets`, `monthDeals`, `canEditTargets={true}`, and `agentsSlot={<Suspense><ManagerPerformanceAsync allDomains /></Suspense>}`
 
 **Service boundary:** Performance queries live only in `performance-service.ts`. Never extend `leads-service.ts` or `dashboard-service.ts` for this module.
 
@@ -284,6 +300,10 @@ Manager/founder/admin only (agent/guest denied). Resolves the range (custom over
 
 Manager/founder/admin only. Resolves range, calls `getDomainHealthMetrics([...GIA_DOMAINS], from, to)`. Returns `ActionResult<DomainHealthCard[]>`. Called by `DomainOverviewPanel` on the founder **Domains** tab on period/date change.
 
+#### `upsertDomainTargetAction(domain, targetValue)`
+
+Admin/founder only. Sets the monthly deals-closed target for a domain from the `DomainTargetMeter` inline edit affordance. Zod first (S-01): `domain ∈ GIA_DOMAIN_ENUM`, `targetValue` a non-negative number ≤ 100,000. Then `requireProfile(['admin','founder'])` (RLS write policy is the second layer), then `upsertDomainTarget(domain, value, callerId)` in `domain-targets-service.ts` (admin-client upsert on `(domain, metric='deals_closed', period='month')`). Returns `ActionResult<DomainTarget>` (the optimistic row — `{ domain, metric, target_value, period }`). Called by `DomainOverviewPanel` / `DomainTargetMeter`.
+
 ---
 
 ### 7. The `/performance` Page — Role Branching
@@ -296,7 +316,7 @@ Manager/founder/admin only. Resolves range, calls `getDomainHealthMetrics([...GI
 | Manager | "Team Performance." | `PerformanceFilters showSearch` | `Suspense` → `ManagerPerformanceAsync domain={profile.domain}` |
 | Founder/admin | "Performance." | `PerformanceFilters showSearch` | `FounderPerformanceShell` |
 
-**Agent branch** (changed 2026-06-04): Page fetches `this_month` data via `Promise.all` of 5 service calls. Passes as `initialData` to `AgentPerformanceShell`. No `Suspense` boundary, no `PerformanceFilters`, no URL params for the agent view. `PerformanceMotivationalFooter` always uses `'this_month'` period label (footer is server-rendered with the initial fetch).
+**Agent branch** (D-2, 2026-06-11): The page renders an `AgentPerformanceAsync` subtree inside `<Suspense fallback={<PerformanceSkeleton />}>` so the header (`Your Performance.`) paints as soon as the role is known — the agent's exposure to the manager/founder `loading.tsx` chrome is bounded to the profile-fetch window. Inside, `AgentPerformanceAsync` does ONE `getAgentPerformanceSummary('this_month')` round trip (the self-scoped `get_agent_performance` RPC; replaces the old 5-call / ~17-query fan-out) and passes it as `initialData` to `AgentPerformanceShell`. No `PerformanceFilters`, no URL params for the agent view. `PerformanceMotivationalFooter` always uses `'this_month'` (server-rendered with the same initial fetch). The agent `<main>` uses the responsive `flex-1 min-w-0 p-4 sm:p-6 lg:p-8` padding (all three role branches do).
 
 **Manager domain rule:** `domain={profile.domain}` is server-verified. **Never** read `searchParams.domain`.
 
@@ -459,10 +479,10 @@ Left: 280px column — "Agents" label + 4 agent card skeletons, stagger 0/80/160
 
 #### 10a. `FounderPerformanceShell` (`'use client'`)
 
-Owns `activeTab: 'agents' | 'domains'` in `useState` — **never** a URL param. Props: `domain` (placeholder `DEFAULT_GIA_DOMAIN`), `period`, `customFrom`, `customTo`, `initialDomainHealth`, `agentsSlot`.
+Owns `activeTab: 'agents' | 'domains'` in `useState` (initial `'agents'`) — **never** a URL param. The tab switcher is a hand-rolled two-button pill row (`--theme-accent-surface` active fill), **not** `TabSelector`. Props: `domain` (placeholder `DEFAULT_GIA_DOMAIN`), `period`, `customFrom`, `customTo`, `initialDomainHealth`, `initialTargets` (`DomainTarget[]` — founder-set monthly deals targets), `monthDeals` (`Partial<Record<AppDomain, number>>` — deals closed THIS MONTH per domain, the month-pinned meter input), `canEditTargets` (boolean), `agentsSlot`.
 
-- **Agents tab:** renders the `agentsSlot` passed from `page.tsx` — a `<Suspense fallback={<ManagerPerformanceSkeleton />}><ManagerPerformanceAsync allDomains /></Suspense>`. The shell does not construct the roster itself; the page injects it so the server `Suspense` boundary lives at the page level.
-- **Domains tab:** renders `<DomainOverviewPanel initialData={initialDomainHealth} period customFrom customTo />`.
+- **Agents tab:** renders the `agentsSlot` passed from `page.tsx` — a `<Suspense fallback={<ManagerPerformanceSkeleton />}><ManagerPerformanceAsync allDomains /></Suspense>`. The shell does not construct the roster itself; the page injects it so the server `Suspense` boundary lives at the page level. The slot stays mounted (`display:none` when inactive) so the roster + selection survive a tab round-trip.
+- **Domains tab:** renders `<DomainOverviewPanel initialData={initialDomainHealth} period customFrom customTo initialTargets monthDeals canEditTargets />`. `DomainOverviewPanel` is `next/dynamic` (perf audit G-3) — its Recharts chunk loads on first Domains-tab click, behind a same-shape `.skeleton` fallback.
 
 #### 10b. `DomainOverviewPanel` (founder Domains tab)
 
@@ -472,6 +492,40 @@ Owns `activeTab: 'agents' | 'domains'` in `useState` — **never** a URL param. 
 - Refetches via `getDomainHealthMetricsAction(period, customFrom, customTo)` on period/date change.
 - Renders four GIA-domain cards (2×2): Total Leads · Total Calls · Total Revenue (+ conversion) per domain, plus a comparative Recharts `BarChart` with a metric toggle (Leads | Calls | Revenue).
 - `DomainHealthGrid.tsx` is a **separate, retained-but-unmounted** legacy grid — not used on either tab. Do not confuse it with `DomainOverviewPanel`.
+
+#### 10b-2. Founder drill-down deck (Phase 5, 2026-06-14)
+
+On the founder/admin **Agents** tab, `ManagerPerformancePanel` (allDomains path) shows a
+**"Deck view"** trigger that opens `FounderDrillDownDeck` (`src/app/(dashboard)/performance/`,
+`next/dynamic`, `ssr:false` — Heavy-modal rule). The deck is a `Dialog size="full"` (opts OUT of
+the `<md` bottom-sheet) wrapping the generic `<Carousel>` (`src/components/ui/Carousel.tsx` — a NEW
+content-agnostic swipe primitive with touch axis-lock; `AdCreativeCarousel` is deliberately
+untouched, R-01).
+
+- **Zero per-swipe fetch (invariant).** One slide per agent, rendering ONLY in-memory
+  `AgentRosterRow` fields (the deck is passed `visibleAgents`, respecting the active client-side
+  domain filter). Swiping changes the controlled `index` and fires NO network request. Never add a
+  fetch keyed on the active card.
+- **Four metric tiles are tap targets.** Total Calls → `AgentCallsDrillModal`, Leads →
+  `AgentLeadsDrillModal`, Won/Revenue → `AgentDealsDrillModal`. Each fetches ON OPEN only, via a
+  `DrillModalShell` that stacks at `--z-modal-overlay`/`--z-modal-nested` ABOVE the deck's
+  `--z-modal` Dialog.
+- **`AgentRosterRow` has no `totalCallsMade`**, so the "Total Calls" tile is **label-only** ("View")
+  — a number would require a per-agent fetch and break the zero-swipe rule. The call COUNT lives
+  only inside the Recent-calls modal.
+- **Count contract (sign-off).** `AgentCallsDrillModal` is titled the literal **"Recent calls"**;
+  its subtitle is `items.length` / "showing N most recent" — **never** the card's `totalCallsMade`
+  (a cohort aggregate that legitimately disagrees with the `lead_notes` event list). One row per
+  call: the source query reads `lead_notes WHERE call_outcome IS NOT NULL`, so no `note_added`
+  duplicates are possible (`'call_logged'` would also work but `lead_notes` IS the call record).
+
+**Authz (all four drill actions).** A shared `assertDrillAccess` in `performance.ts` mirrors
+`getAgentDetailMetricsAction` exactly: `requireProfile(['manager','admin','founder'])` → a manager
+must pass `domain === caller.domain` (fails CLOSED otherwise). Leads/deals reuse the existing
+`getLeadsByRole`/`getDealsByRole` paths with `filters.agent_id` (no new service query — those paths
+already honour `agent_id` on the manager/founder branch, and the agent-caller branch ignores it).
+Calls use `getAgentCallsPageForManager` — the only NEW read fn (`lead_notes` for phone+outcome+note
+fidelity). The deck trigger is founder-only to avoid the manager domain-pass ambiguity.
 
 #### 10c. Differences from manager view
 
@@ -540,7 +594,10 @@ Owns `activeTab: 'agents' | 'domains'` in `useState` — **never** a URL param. 
 | `ManagerPerformancePanel.tsx` | Two-column team shell; roster (left) + detail/empty-state (right); domain popover; client roster refetch via `getManagerRosterAction` |
 | `AgentDetailPanel.tsx` | Manager/founder agent detail |
 | `PerformanceRosterEmptyState.tsx` | Right-panel prompt when `selectedId === null` (Agents tab) |
-| `DomainOverviewPanel.tsx` | Founder **Domains** tab — health cards + comparative bar chart; refetch via `getDomainHealthMetricsAction` |
+| `DomainOverviewPanel.tsx` | Founder **Domains** tab — 4 health cards (2×2; incl. Deals Closed) + month-pinned `DomainTargetMeter` + founder/admin inline target edit + comparative bar chart; refetch via `getDomainHealthMetricsAction`; mobile = CSS scroll-snap carousel (no library) |
+| `DomainTargetMeter.tsx` | Radial deals-vs-target meter (Recharts `RadialBarChart`, 2 colours via `useChartTokens`); month-pinned (`monthDeals` vs `domain_targets`, never the period filter); target null/0 → `<EmptyState>` inline "No target set." — never a division |
+| `AgentCallTrendChart.tsx` | 14-day daily-calls area chart (Today tab); composes `ChartFrame` + `cartesianDefaults`; `next/dynamic` from the shell |
+| `AgentRecentActivityList.tsx` | Agent Today view — keyset "load more" (composite cursor `(created_at, id)`, page 15, button not infinite scroll) via `getAgentRecentLeadActivityAction` |
 | `DomainHealthGrid.tsx` | Legacy domain card grid — retained but **not mounted** on any tab |
 | `StatAtom.tsx` | Single pastel stat card used by `AgentDetailPanel` stats row |
 
@@ -560,9 +617,19 @@ Owns `activeTab: 'agents' | 'domains'` in `useState` — **never** a URL param. 
 | Action | Caller | Auth |
 | -------- | -------- | ------ |
 | `getAgentSelfMetricsAction` | `AgentPerformanceShell` | agent only |
+| `getAgentPulseAction` | `AgentPerformanceShell` (Today tab) | agent only |
+| `getAgentRecentLeadActivityAction` | `AgentRecentActivityList` | agent only (id from profile) |
 | `getAgentDetailMetricsAction` | `AgentDetailPanel` | manager (own domain), admin, founder |
 | `getManagerRosterAction` | `ManagerPerformancePanel` | manager (own domain pinned), admin, founder |
 | `getDomainHealthMetricsAction` | `DomainOverviewPanel` | manager, admin, founder |
+| `upsertDomainTargetAction` | `DomainOverviewPanel` / `DomainTargetMeter` | admin, founder |
+| `getAgentCallsForManagerAction` | `AgentCallsDrillModal` (deck) | manager (own domain), admin, founder |
+| `getAgentActivityForManagerAction` | (drill-down reuse — full feed) | manager (own domain), admin, founder |
+| `getAgentLeadsScopedAction` | `AgentLeadsDrillModal` (deck) | manager (own domain), admin, founder |
+| `getAgentDealsScopedAction` | `AgentDealsDrillModal` (deck) | manager (own domain), admin, founder |
+
+All four go through the shared `assertDrillAccess` (mirrors `getAgentDetailMetricsAction` authz:
+`requireProfile(['manager','admin','founder'])` → manager `domain === caller.domain` guard).
 
 ---
 

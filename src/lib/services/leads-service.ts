@@ -236,6 +236,16 @@ export async function getLeadsByRole(
     pageSize: 30,
   },
 ): Promise<LeadsResult> {
+  // Revival review predicate (Phase R1): the list filtered to leads that hold an
+  // OPEN revival_candidate. This is a cross-table subquery the status-counts RPC
+  // can't express (C-1), so it takes its own path: resolve the candidate lead_ids
+  // (RLS-scoped on the session client — agent sees own, manager sees domain), then
+  // .in('id', ids). Redis list cache is bypassed deliberately — a freshness-
+  // sensitive, low-volume review surface, like the going_cold preset.
+  if (filters.revival) {
+    return getRevivalCandidateLeads(role, userId, domain, filters);
+  }
+
   // Redis cache-aside, version-validated (perf audit C-3): ONE MGET fetches the
   // role+domain version counter and the list entry together — Upstash is HTTP,
   // so the old version-read-then-list-read shape paid 2×RTT on every load.
@@ -438,6 +448,85 @@ export async function getLeadsByRole(
   }
 
   return result;
+}
+
+// ─────────────────────────────────────────────
+// Revival review predicate — leads holding an OPEN revival_candidate.
+//
+// Reuses the SAME column subset + assignee join + ordering as getLeadsByRole so
+// LeadsTable renders identically; the only difference is the row set (scoped to
+// open candidates) and the count (derived from the resolved set, not the
+// status-counts RPC). Session client throughout — RLS on revival_candidates AND
+// leads double-scopes by role/domain (agent → own, manager → domain, admin/founder
+// → all), matching the going_cold preset's reliance on RLS.
+// ─────────────────────────────────────────────
+async function getRevivalCandidateLeads(
+  role: UserRole,
+  userId: string,
+  domain: AppDomain,
+  filters: LeadFilters,
+): Promise<LeadsResult> {
+  const supabase = await createClient();
+  const page = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.max(1, Math.min(200, filters.pageSize ?? 30));
+
+  // Resolve the visible open-candidate lead_ids (RLS-scoped). Bounded — the review
+  // tab is a small surface; the partial index idx_revival_candidates_open serves it.
+  // revival_candidates is not in the generated Database type until 0119 is applied —
+  // interim cast convention (cf. elaya-service); RLS still scopes on the session client.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: candidateRows, error: candErr } = await (supabase as any)
+    .from("revival_candidates")
+    .select("lead_id")
+    .eq("status", "open")
+    .order("created_at", { ascending: false })
+    .limit(1000);
+
+  if (candErr || !candidateRows || candidateRows.length === 0) {
+    return { leads: [], totalCount: 0, statusCounts: {} };
+  }
+
+  // Dedup (the one-open guard means ≤1 per lead, but stay defensive).
+  const leadIds = Array.from(
+    new Set((candidateRows as Array<{ lead_id: string }>).map((r) => r.lead_id)),
+  );
+  const totalCount = leadIds.length;
+
+  // Page over the resolved id set, then fetch those leads (RLS re-scopes — an agent
+  // can never see a candidate's lead outside their assignment even if the id leaked).
+  const pageIds = leadIds.slice((page - 1) * pageSize, page * pageSize);
+  if (pageIds.length === 0) {
+    return { leads: [], totalCount, statusCounts: {} };
+  }
+
+  let query = supabase
+    .from("leads")
+    .select(
+      `id, slug, first_name, last_name, phone, email, domain, assigned_to,
+       status, lead_intent, source, medium, utm_campaign,
+       call_count, last_call_outcome, created_at,
+       assignee:profiles!leads_assigned_to_fkey(full_name)`,
+    )
+    .in("id", pageIds)
+    .is("archived_at", null)
+    .order("created_at", { ascending: filters.sort_order === "asc" });
+
+  // Role constraints — defense in depth alongside RLS (mirrors getLeadsByRole).
+  if (role === "agent") query = query.eq("assigned_to", userId);
+  else if (role === "manager") query = query.eq("domain", domain);
+
+  const { data, error } = await query;
+  if (error || !data) return { leads: [], totalCount, statusCounts: {} };
+
+  const ids = (data as { id: string }[]).map((l) => l.id);
+  const notesMap = await getLatestNotesForLeads(ids, supabase);
+  const leads = (data as (Omit<LeadListItemWithAssignee, "latest_note"> & {
+    assignee: { full_name: string } | null;
+  })[]).map((l) => ({ ...l, latest_note: notesMap.get(l.id) ?? null }));
+
+  // statusCounts left empty — the status pills are meaningless for a candidate view
+  // (these leads are scattered across touched/in_discussion/nurturing by design).
+  return { leads, totalCount, statusCounts: {} };
 }
 
 /** Deduped per-request — safe to call from page header and LeadsTableAsync. */

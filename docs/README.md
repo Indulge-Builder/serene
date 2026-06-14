@@ -33,6 +33,7 @@ docs/
 │   whatsapp · settings · auth · profile · user-management · ad-creatives · error-log
 ├── modules/
 │   ├── gia.md               ← the CRM module: lifecycle, end-to-end flow, SLA engine
+│   ├── revival.md           ← Lead Revival: silence detection → note-AI suppression gate → revive/review
 │   ├── elaya.md               ← AI presence (in design)
 │   ├── sia.md               ← concierge module (not started)
 │   ├── elaya.md              ← reserved (undefined)

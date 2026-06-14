@@ -41,6 +41,7 @@ function parseFilters(searchParams: Awaited<SearchParams>): LeadFilters {
     date_to:           getString('date_to'),
     search:            getString('search'),
     going_cold:        searchParams.going_cold === 'true' ? true : undefined,
+    revival:           searchParams.revival === 'true' ? true : undefined,
     sort_order:        (searchParams.sort_order === 'asc' || searchParams.sort_order === 'desc')
                          ? searchParams.sort_order
                          : 'desc',

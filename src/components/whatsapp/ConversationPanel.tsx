@@ -13,6 +13,7 @@ import { ArrowLeft } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { MessageBar } from "@/components/ui/MessageBar";
+import { DictationButton } from "@/components/ui/DictationButton";
 import { Spinner } from "@/components/ui/Spinner";
 import { MessageBubble } from "@/components/whatsapp/MessageBubble";
 import { createClient } from "@/lib/supabase/client";
@@ -53,6 +54,7 @@ export function ConversationPanel({
 }: ConversationPanelProps) {
   const mountId       = useId();
   const listRef       = useRef<HTMLDivElement>(null);
+  const composerRef   = useRef<HTMLTextAreaElement>(null);
   const seenIds       = useRef<Set<string>>(new Set());
   const optimisticIds = useRef<Set<string>>(new Set());
 
@@ -228,6 +230,14 @@ export function ConversationPanel({
       handleSend();
     }
   }
+
+  // Voice dictation — the transcript lands in the composer as an editable draft
+  // (never auto-sent), then focus. Saving always goes through the same
+  // handleSend path as a typed message.
+  const handleTranscript = useCallback((text: string) => {
+    setDraft((prev) => (prev.trim() ? `${prev.replace(/\s+$/, "")} ${text}` : text));
+    composerRef.current?.focus();
+  }, []);
 
   // ── Resolve / Reopen ─────────────────────────────────────────────────────────
 
@@ -498,6 +508,7 @@ export function ConversationPanel({
           }}
         >
           <MessageBar
+            ref={composerRef}
             value={draft}
             onChange={setDraft}
             onSend={handleSend}
@@ -505,6 +516,14 @@ export function ConversationPanel({
             loading={isSending}
             maxLength={MAX_CHARS}
             maxHeight={96}
+            leadingSlot={
+              <DictationButton
+                onTranscript={handleTranscript}
+                onError={(message) => toast.danger(message)}
+                disabled={isSending}
+                what="a message"
+              />
+            }
           />
 
           {/* Character count warning */}

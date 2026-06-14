@@ -7,6 +7,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { dispatchPush } from "@/lib/services/push-service";
 import type { Notification, NotificationType } from "@/lib/types/database";
 
 export interface CreateNotificationPayload {
@@ -104,9 +105,19 @@ export async function markAllNotificationsRead(
 // ─── Create (service role only) ───────────────────────────────────────────────
 
 /**
- * Insert a notification.
+ * Insert a notification, then fan out a Web Push to the recipient's devices.
+ *
  * Uses the admin (service-role) client — INSERT is blocked for all other clients by RLS.
- * Only called from server actions, never directly from components.
+ * Only called from server actions and Trigger.dev jobs, never directly from components.
+ *
+ * THE FAN-OUT SEAM (Web Push): after the row insert succeeds, dispatchPush sends
+ * the same content to every registered device of `recipient_id`. This lives
+ * INSIDE createNotification so every existing call site — lead-assignment-notify,
+ * lead-mutations, sla, tasks, task-reminders — gets push for free with zero edits.
+ * Push is a NON-FATAL second channel: dispatchPush never throws, and the in-app
+ * row (the source of truth, already inserted above) stands regardless. We `await`
+ * it so awaited callers (Trigger.dev) keep the lambda alive until the send settles;
+ * the fire-and-forget callers' own `.catch()` still covers the whole call.
  */
 export async function createNotification(
   payload: CreateNotificationPayload,
@@ -126,5 +137,13 @@ export async function createNotification(
     console.error("[notifications-service] createNotification error:", error);
     return { error: "Failed to create notification." };
   }
+
+  // Second channel — best-effort, never blocks or fails the in-app notification.
+  await dispatchPush(payload.recipient_id, {
+    title: payload.title,
+    body:  payload.body,
+    url:   payload.action_url,
+  });
+
   return { error: null };
 }

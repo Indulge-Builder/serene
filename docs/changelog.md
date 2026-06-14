@@ -12,6 +12,91 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-14 — Web Push: notifications reach installed PWAs even when Serene is closed (second channel behind one fan-out seam)
+
+The in-app notification spine (the `notifications` table, RLS, Realtime, the bell) stayed exactly as-is; this adds **Web Push (VAPID, the `web-push` library — no SaaS)** as a SECOND delivery channel so a `lead_assigned` / `lead_won` / SLA / task notification also reaches an installed PWA (iOS 16.4+ standalone, Android, desktop) when the app is closed — and finishes the half-built mobile notification panel ("bell not working on phone").
+
+**The fan-out seam (zero call-site edits):** `createNotification` (`notifications-service.ts`) is the single chokepoint every event site already routes through (lead-assignment-notify, lead-mutations, sla, tasks, task-reminders). After the in-app row insert it now calls **`dispatchPush(recipient_id, { title, body, url })`** — so every existing trigger gets push for free with **zero edits to any call site** (all 8 `createNotification` calls verified unchanged). Push is **non-fatal**: `dispatchPush` never throws and the in-app row (source of truth) stands regardless; the `await` keeps Trigger.dev lambdas alive until the send settles.
+
+**New — `src/lib/services/push-service.ts` (SERVER ONLY, NODE ONLY):** `dispatchPush` reads the recipient's `push_subscriptions` via the admin client (cross-user read), sends to all devices in parallel via `web-push`, and **prunes endpoints that answer 404/410** (dead — reinstall/token-rotation) in one batched delete (mandatory — without it the table fills with corpses and every fan-out slows). VAPID configured once, lazily; absent keys → logged no-op, never a throw into the notification path. `web-push` is Node-only and both `createNotification` runtimes (server actions + Trigger.dev) are Node — there is no edge route in the app.
+
+**New — migration `0120_push_subscriptions`:** per-device endpoints — `(id, profile_id FK, endpoint UNIQUE, p256dh, auth, user_agent, created_at)`. `endpoint` is the unique key (one user → many devices). Owner-only RLS (`profile_id = auth.uid()`, SELECT/INSERT/DELETE, no UPDATE — a re-subscribe is an upsert on the service-role/session path); the cross-user read + prune run service-role. `database.ts` hand-extended in the interim (`push_subscriptions` block + `PushSubscriptionRow`). **⚠️ NOT yet applied to prod.**
+
+**New — subscribe flow:** `hooks/usePushSubscription.ts` (gesture-gated `Notification.requestPermission()` + `pushManager.subscribe`; **iOS detects standalone** and reports `'ios-needs-install'` when not installed — never fakes a "subscribed" state, the iOS silent-failure trap) → `actions/push.ts` (`savePushSubscriptionAction` upsert / `removePushSubscriptionAction`, Zod → `requireProfile`, session client, owner-only RLS) → `validations/push-schema.ts`. UI: `components/profile/PushNotificationSettings.tsx` in a new profile "Notifications" SectionCard — Enable/Disable button, or the **"Add to Home Screen to get alerts"** install nudge for iOS-not-standalone.
+
+**SW handlers (additive only):** `public/sw.js` gains `push` (parse `{title, body?, url?}` → `showNotification`) and `notificationclick` (focus an open Serene window + navigate, else open the url; relative paths only). The offline-shell `install`/`activate`/`fetch` logic is **byte-for-byte unchanged** and `CACHE_VERSION` was not bumped — verified via `git diff` (the hunk is a pure append after the existing `fetch` listener).
+
+**Mobile notification panel (the "bell on phone" fix):** the panel now **portals to `document.body`** (escaping the transformed sidebar `<aside>` — the documented Framer/transform containing-block trap) and is class-driven geometry: a docked **bottom sheet** below md (full-bleed, safe-area pad, `max-h 80dvh`, visible backdrop — replacing the old `display:none` stub) and the anchored dropdown at md+ (coords measured from the bell rect, applied inline only when `!MQ.mobile`).
+
+**Env:** `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (server-only, S-11) + `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (the browser needs the public key to subscribe). Generate once with `npx web-push generate-vapid-keys`.
+
+**Deps:** `web-push@3.6.7` + `@types/web-push@3.6.4`.
+
+**Verified:** `pnpm tsc --noEmit` clean. All 8 `createNotification` call sites traced — unedited; push fan-out lives entirely inside the function. `web-push` imported only by `push-service.ts`, which is imported only by `notifications-service.ts` (no client/edge leak). `sw.js` offline-shell unchanged (git diff). No live device send (needs deployed VAPID + a real device, per scope). Conventions honoured: A-17 `m as motion`, no hardcoded colours/hex, owner-only RLS, `requireProfile` guard, `{ data, error }` actions.
+
+---
+
+## 2026-06-14 — WhatsApp composer gets the mic + one shared `DictationButton` across all four voice surfaces (R-01)
+
+The WhatsApp conversation composer was missing the dictation mic the Elaya composer already had — the two message bars had drifted. Rather than copy Elaya's inline mic cluster onto WhatsApp (a third hand-rolled copy on top of the two in `LeadNotesInput`/`CalledModal`), the record→transcribe→append-to-draft flow + the mic/stop/cancel/elapsed/transcribing UI were extracted **once** into `src/components/ui/DictationButton.tsx`, and **all four** surfaces now compose it.
+
+**New:** `DictationButton` — owns `useAudioRecorder` (codec negotiation, 2-min auto-stop, mic-track release) + `transcribeAudioAction` (Deepgram Nova-3) + the mic/Square/× buttons + the danger-dot `m:ss / 2:00` counter + the Transcribing… spinner. Two geometries, identical behaviour: `variant="composer"` (32px pill, mounts as a `<MessageBar leadingSlot>` — Elaya + WhatsApp) and `variant="inline"` (28px bordered, sits in a form footer / label row — LeadNotesInput + CalledModal). **Never auto-sends:** the transcript is appended to the consumer's draft via `onTranscript(text)`; the consumer reviews and submits through its own unchanged path, so a garbled transcript can never reach a send/save unreviewed. Errors flow out via `onError(message)` so each consumer keeps its own surface (toast vs inline `setError`). `onBusyChange(busy)` reports `recording || transcribing` for the two footer consumers that gate their submit/save while a take is in flight. Renders `null` when `MediaRecorder` is unsupported.
+
+**WhatsApp (the actual request):** `ConversationPanel`'s `MessageBar` now takes a `ref` (focus-after-transcribe) + `leadingSlot={<DictationButton …/>}`; transcript appends to the `draft`, errors via `toast.danger`. The mic now matches Elaya's composer exactly.
+
+**Refactors (zero behaviour change):** `ElayaChatShell`, `LeadNotesInput`, `CalledModal` each lost their inline recorder wiring + ~60–95 lines of duplicated cluster JSX and now mount `DictationButton`. In the two footer consumers the elapsed counter + Transcribing… indicator moved into the button cluster (they travel with the buttons now); the footer's left region keeps only the ⌘+Enter hint, and the `|| recorder.isRecording` submit gates collapse into the single `dictationBusy` flag.
+
+**Verified:** `tsc --noEmit` clean; `check:tokens` clean (no hardcoded colours — all `var(--…)`). No new dependency, no migration, no service/action change (reuses the existing `transcribeAudioAction`). All colour/motion tokens, the A-17 `m as motion` convention (unaffected — `DictationButton` uses plain `<button>` + `.serene-pressable`), and the Never-Do list honoured.
+
+---
+
+## 2026-06-14 — Performance Phase 5: agent tab bars to spec + founder per-agent drill-down deck — ~70% reshape over existing primitives, one new service query
+
+Two jobs on `/performance`. **(A)** The agent self-view's Overview/Today tab bar and the founder Agents/Domains pill row now compose `<TabSelector>` (the canonical primitive) instead of hand-rolled bars. **(B)** Founders/admins get a full-screen swipeable per-agent card deck, where tapping a metric tile opens a drill-down modal over data — calls, leads, deals.
+
+**The brief was verified against code before building (workflow) — four corrections caught, all decided:**
+
+- **`call_logged` is the correct discriminator, not `details.outcome`.** Filtering call rows by outcome would double-count against `note_added` (both carry the outcome). The "Recent calls" modal reads `lead_notes WHERE call_outcome IS NOT NULL` directly — structurally one row per call, no `note_added` duplicates possible. (`add_lead_call_note` is the sole writer of `call_logged`, verified.)
+- **The count contract is structural, not reconcilable — so the UI doesn't pretend it is.** The card's "Total Calls" (`totalCallsMade`, a cohort aggregate) and the modal list (`lead_notes` events, no period filter) diverge by design. The modal is titled **"Recent calls"** and shows `items.length` / "showing N most recent" — **never a card total.** (`AgentRosterRow` has no `totalCallsMade` field at all, so the deck card's calls tile is a label-only tap target — showing a number would require a per-swipe fetch.)
+- **`AdCreativeCarousel` was NOT extended** (video-coupled, no touch support) — a new generic `<Carousel>` was built in `ui/` with touch-swipe + axis-lock; the campaigns carousel is untouched (two carousels coexist by design).
+- **`PeriodSelector` stays hand-rolled** — it's a segmented filter (chevron separators + custom-date reveal + loading dim), not a tab bar. Sign-off amended to "no hand-rolled **tab** bar remains."
+
+**Reuse honored — leads/deals drill-downs add NO new service query.** `getLeadsByRole`/`getDealsByRole` already honour `filters.agent_id` on the manager/founder branch (the agent-caller branch ignores it = the built-in scope guard), so the two scoped actions just pass `agent_id = targetAgentId` through. Only the calls modal needed a new service fn (`getAgentCallsPageForManager`) for the `lead_notes` phone+outcome+note fidelity.
+
+**New:** `src/components/ui/Carousel.tsx` (generic swipe deck), `FounderDrillDownDeck.tsx` (Dialog `size="full"`, in-memory roster, zero per-swipe fetch), `DrillModalShell.tsx` (nested-modal z above the deck), `AgentCallsDrillModal`/`AgentLeadsDrillModal`/`AgentDealsDrillModal`. Three gated actions (`getAgentCallsForManagerAction`, `getAgentLeadsScopedAction`, `getAgentDealsScopedAction`) + `getAgentActivityForManagerAction`, all behind a shared `assertDrillAccess` that mirrors `getAgentDetailMetricsAction` authz exactly (`requireProfile(['manager','admin','founder'])` → manager domain-equality guard). `getAgentLeadActivityPage` widened with a typed `actionType` param + phone/outcome/note fields.
+
+**Verified:** `tsc --noEmit` clean; 38-agent adversarial review across the count-contract, scope-leak, zero-fetch-on-swipe, and framework-rule axes confirmed **zero defects** (the only `real:true` findings were PASS confirmations of A-18 authz and A-17 imports). No DB migration, no type regen (`leads.phone`/`lead_notes` already in `database.ts`), no Redis change (reads only).
+
+---
+
+## 2026-06-14 — Lead Revival (Phase R1): recover dormant-but-warm leads that silently died — a thin layer over the follow-up engine + Elaya provider + lead-mutation cores
+
+Recovers leads that have gone quiet past a per-status silence threshold. **Silence detection finds candidates; a cheap LLM gate reads the lead's recent notes to suppress junk and decide when to revive.** Confident revivals become normal assigned tasks badged "Revived"; everything else lands in a review tab where a manager or the lead's agent revives manually. The gate's job is **mostly suppression — it errs toward not-revive.** This is a thin layer over existing machinery, not a new stack: every moving part wraps something that already exists.
+
+**The reuse contracts (all five honored — verified by adversarial review):**
+
+- **Revive task = the E2 path, wholesale.** Both the nightly auto-revive and the manual Revive button call the new `reviveLeadCore` in `src/lib/services/lead-mutations.ts`, which wraps the existing `createLeadTaskCore` (the same core the Elaya `create_lead_task` tool and the SLA cadence ticks use — `create_lead_gia_task` RPC + Trigger.dev reminder + dashboard-cache del). New = two post-creation marker writes on the already-created task (a "Revived" title + `task_gia_meta.call_outcome = 'revived'` badge key). **No new task-creation logic.**
+- **Note-AI gate = the Elaya provider/PII layer, reused.** `src/lib/services/revival-gate.ts` makes a single structured judgment via `resolveLlmForJob('routing')` (Haiku-tier — the seeded-but-unused routing job's first real consumer) → `adapter.complete()` with **no tools** → JSON parse. Notes pass through `maskPii(notes, getPiiMaskingDepth())` before the model (D-01 interim gateway). **No second LLM integration, no new `@anthropic-ai/sdk` import.** Fails CLOSED to `unsure` on any empty/malformed/thrown response — only an exact `"revive"` string can become a task.
+- **Silence detection extends Trigger.dev.** `src/trigger/lead-revival.ts` is **one** daily `schedules.task` (07:30 IST) — the project's first scheduled/cron task (everything prior was per-lead delayed jobs). It reads `revival_policies` per run, finds silent leads (anti-joining open candidates), and runs the gate per lead. **No parallel scheduler.**
+- **Review tab = the existing lead table + filters.** A new `revival` URL predicate on `/leads` (a flag on `LeadFilters` like `going_cold`) routes `getLeadsByRole` to `getRevivalCandidateLeads`, which reuses the identical column subset + assignee join + ordering and renders the same `<LeadsTable>`. `RevivalReviewBanner` sits above it as the reasoning + action surface (a table cell can't hold a sentence of AI reasoning) — **not a second lead list.** The status-counts RPC is deliberately bypassed for this predicate (it can't express the cross-table subquery — C-1).
+- **Revive button = one component, two mounts.** `ReviveLeadButton` is mounted by `RevivalReviewBanner` (review-row context) and `RevivalDossierAction` (dossier). **Never two implementations.**
+
+**Revival is a LAYER over leads — it NEVER mutates the lead's `status` or columns.** The only lead-facing write is the follow-up task; the lead keeps its dormant status. (The pre-existing `StatusActionPanel` junk→in_discussion "Revive" button is a separate action that does change status — they only share the word.)
+
+**Migration 0119 — two tables.** `revival_candidates` (the append-only-ish candidate ledger: `open → actioned/dismissed` state machine, the A-11 carve-out documented mirroring `elaya_actions`; RLS scoped by role/domain via an `EXISTS` subquery on `leads` exactly like `lead_activities`; a **denormalised `assigned_to`** column so the daily-cap count is a native filter, not a silently-dropped PostgREST embed filter; a partial UNIQUE index `(lead_id) WHERE status='open'` = the structural one-open-candidate guard). `revival_policies` (config, the `sla_policies` pattern: per-status `silence_days` + `daily_cap_per_agent`, admin/founder SELECT, service-role writes, read per sweep run; seeded Touched=60d / In-Discussion=60d / Nurturing=90d / cap=25). **Cold is out of scope as a trigger.**
+
+**Failure modes handled.** (1) **Junk floods** — the gate prompt enumerates the disqualifying classes (own-network, "only wanted details", affordability-dead, pure-NR-no-conversation) as `unsure`; suppression bias is in code, not the model's whim. (2) **Duplicate revivals** — the finder anti-join + the partial UNIQUE index + the per-agent/per-IST-day cap (seeded once, decremented locally within a run) all hold; cap overflow falls to review, never dropped; a unique-violation race is swallowed gracefully. (3) **Parallel machinery** — no new scheduler/task-creator/lead-list/LLM path; each wraps existing code.
+
+**Settings.** `RevivalPoliciesPanel` folds into the existing `/settings` page (below the SLA panel, admin/founder only), mirroring `SlaPoliciesPanel`'s optimistic blur-save pattern — thresholds + cap editable, applied on the next nightly sweep.
+
+New: `revival-service.ts`, `revival-gate.ts`, `reviveLeadCore` (in `lead-mutations.ts`), `src/lib/actions/revival.ts` (`reviveLeadAction` / `dismissRevivalCandidateAction` / `updateRevivalPolicyAction`), `src/lib/validations/revival-schema.ts`, `src/lib/constants/revival.ts`, `src/lib/types/revival.ts`, `src/trigger/lead-revival.ts`, `ReviveLeadButton` / `RevivalReviewBanner` / `RevivalDossierAction` / `RevivalPoliciesPanel`. Touched: `lead-mutations.ts`, `leads-service.ts` (revival predicate), `LeadsTableAsync.tsx`, `leads/page.tsx` + `leads/[id]/page.tsx`, `settings/page.tsx`, `database.ts` (`LeadFilters.revival`). `tsconfig.json` excludes an untracked `upload/` artifact that was polluting the typecheck.
+
+Sign-off: `pnpm tsc --noEmit` clean, `next build` clean (30/30 routes). Adversarial multi-agent review confirmed all five reuse contracts + all three failure modes + lead-immutability + RLS; the one CRITICAL finding (a PostgREST embed-filter cap count that would count org-wide) was fixed by the `assigned_to` denormalisation. Docs: `docs/modules/revival.md` (new contract doc), `src/lib/CLAUDE.md`, `src/app/CLAUDE.md`, `supabase/migrations/CLAUDE.md`, `docs/01-vision.md`.
+
+**⚠️ NOT yet applied to prod** — migration 0119 + the `revival` schedule register on next deploy; regenerate `database.ts` after applying (interim types: `src/lib/types/revival.ts`). The scheduled task appears in the Trigger.dev dashboard after deploy.
+
+---
+
 ## 2026-06-14 — Elaya voice input (E4a): staff can speak to Elaya on both surfaces — voice is an input transform only
 
 Staff can now talk to Elaya instead of typing, on both channels. **Voice is an input transform only** — audio is transcribed to text and fed into the **exact same `runElayaTurn`** the typed path already uses. The brain, the 6 read + 4 write tools, the E3 propose→confirm protocol, the PII gateway, the daily cap, the 24h session, and the replies are all unchanged. Replies stay text. English-first (Deepgram, already configured multilingual).

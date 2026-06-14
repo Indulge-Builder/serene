@@ -323,6 +323,51 @@ body {
   }
 }
 
+/* Notification panel (migration 0120 mobile fix). Desktop (md+): anchored
+   dropdown under the bell — absolute, top-right, 380px. Below md the bell lives
+   in the off-canvas sidebar drawer, so an anchored dropdown is unreachable; the
+   panel becomes a docked bottom sheet (full-bleed, top-rounded, safe-area pad)
+   with the backdrop visible. Geometry lives here (class-driven) so the same node
+   flips by breakpoint; the component keeps only surface styling inline.
+   Breakpoint pixels appear only in CSS per the --bp-* rule. */
+.notification-panel {
+  /* < md — docked bottom sheet. */
+  position: fixed;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  top: auto;
+  width: auto;
+  max-height: 80dvh;
+  z-index: var(--z-modal);
+}
+@media (min-width: 768px) { /* ≥ --bp-md — anchored dropdown under the bell */
+  .notification-panel {
+    /* Portaled to document.body (transform-escape) → fixed + measured viewport
+       coords from the bell rect (top/right set inline by NotificationPanel). */
+    position: fixed;
+    left: auto;
+    bottom: auto;
+    width: 380px;
+    max-height: none;
+    z-index: var(--z-dropdown);
+  }
+}
+.notification-mobile-backdrop {
+  display: block;
+}
+@media (min-width: 768px) { /* ≥ --bp-md — backdrop is a mobile-only surface */
+  .notification-mobile-backdrop {
+    display: none;
+  }
+  /* md+ dropdown has no fixed height — cap the scrollable list so a long inbox
+     doesn't grow the dropdown past the viewport. Below md the sheet's max-height
+     + the list's flex govern instead. */
+  .notification-panel-list {
+    max-height: 480px;
+  }
+}
+
 /* Group-task board (audit F4) — horizontal snap-scroll rail below lg
    (5 × 1fr at 180px min = 900px+ would force body overflow); 5 equal
    columns from lg up, container-scrolling if the gutter is narrower. */

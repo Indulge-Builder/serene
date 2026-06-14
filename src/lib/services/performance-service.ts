@@ -658,6 +658,14 @@ export async function getAgentTodayPulse(
 
 export type AgentActivityCursor = { created_at: string; id: string };
 
+/**
+ * Activity-type filter for getAgentLeadActivityPage. 'all' = no predicate (the
+ * agent self-view feed); 'call_logged' = calls only (the discriminator written
+ * by add_lead_call_note — never inferred from details, which note_added also
+ * carries; see migration 0030). The other two are exposed for completeness.
+ */
+export type AgentActivityFilter = "all" | "call_logged" | "note_added" | "status_changed";
+
 export type AgentLeadActivityItem = {
   id:         string;
   leadId:     string;
@@ -666,6 +674,13 @@ export type AgentLeadActivityItem = {
   createdAt:  string;
   leadName:   string;
   leadSlug:   string | null;
+  /** Lead phone (E.164). Surfaced for the founder "Recent calls" drill-down. */
+  phone:      string | null;
+  /** Call outcome — read from the call_logged row's own details->>'outcome'
+   *  (already written by the RPC); only meaningful for call_logged rows. */
+  outcome:    string | null;
+  /** Note body, correlated from lead_notes written in the same transaction. */
+  note:       string | null;
 };
 
 export type AgentLeadActivityPage = {
@@ -679,15 +694,25 @@ const AGENT_ACTIVITY_PAGE_SIZE = 15;
 export async function getAgentLeadActivityPage(
   agentId: string,
   cursor?: AgentActivityCursor,
+  actionType: AgentActivityFilter = "all",
 ): Promise<AgentLeadActivityPage> {
   const supabase = await createClient();
 
   let query = supabase
     .from("lead_activities")
     .select(
-      "id, lead_id, action_type, details, created_at, lead:leads!inner(first_name, last_name, slug, assigned_to)",
+      "id, lead_id, action_type, details, created_at, lead:leads!inner(first_name, last_name, slug, phone, assigned_to)",
     )
-    .eq("lead.assigned_to", agentId)
+    .eq("lead.assigned_to", agentId);
+
+  // action_type filter ANDs with the cursor .or() group below — it MUST be a
+  // top-level .eq (PostgREST ANDs top-level filters with an .or() group). Never
+  // fold it into the .or() string (that would OR it). 'call_logged' is the
+  // correct single-row-per-call discriminator (note_added also carries the
+  // outcome in details, so an outcome-based filter would double-count).
+  if (actionType !== "all") query = query.eq("action_type", actionType);
+
+  query = query
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(AGENT_ACTIVITY_PAGE_SIZE + 1);
@@ -712,20 +737,149 @@ export async function getAgentLeadActivityPage(
     action_type: string;
     details:     Record<string, unknown> | null;
     created_at:  string;
-    lead:        { first_name: string | null; last_name: string | null; slug: string | null };
+    lead:        { first_name: string | null; last_name: string | null; slug: string | null; phone: string | null };
   };
 
   const hasMore = data.length > AGENT_ACTIVITY_PAGE_SIZE;
-  const pageRows = data.slice(0, AGENT_ACTIVITY_PAGE_SIZE);
+  const pageRows = (data as unknown as ActivityRow[]).slice(0, AGENT_ACTIVITY_PAGE_SIZE);
 
-  const items = mapRows<ActivityRow, AgentLeadActivityItem>(pageRows, (row) => ({
-    id:         row.id,
-    leadId:     row.lead_id,
-    actionType: row.action_type,
-    details:    row.details,
-    createdAt:  row.created_at,
-    leadName:   [row.lead?.first_name, row.lead?.last_name].filter(Boolean).join(" ") || "Unknown lead",
-    leadSlug:   row.lead?.slug ?? null,
+  // Note body correlation: lead_notes has no FK to lead_activities, so it can't
+  // be PostgREST-embedded. The note row and the call_logged/note_added activity
+  // row are INSERTed in the SAME transaction (RPC 0030), so they share
+  // created_at to the microsecond. One batched query, then an exact
+  // (lead_id|created_at) match first, falling back to most-recent-per-lead.
+  const noteLeadIds = [
+    ...new Set(
+      pageRows
+        .filter((r) => r.action_type === "call_logged" || r.action_type === "note_added")
+        .map((r) => r.lead_id),
+    ),
+  ];
+
+  const exactNote = new Map<string, string>();   // `${lead_id}|${created_at}` -> content
+  const latestNote = new Map<string, string>();  // lead_id -> content (newest first)
+  if (noteLeadIds.length > 0) {
+    const { data: notes } = await supabase
+      .from("lead_notes")
+      .select("lead_id, content, created_at")
+      .in("lead_id", noteLeadIds)
+      .order("created_at", { ascending: false });
+    for (const n of (notes ?? []) as { lead_id: string; content: string; created_at: string }[]) {
+      exactNote.set(`${n.lead_id}|${n.created_at}`, n.content);
+      if (!latestNote.has(n.lead_id)) latestNote.set(n.lead_id, n.content);
+    }
+  }
+
+  const items = mapRows<ActivityRow, AgentLeadActivityItem>(pageRows, (row) => {
+    const isNoteRow = row.action_type === "call_logged" || row.action_type === "note_added";
+    const note = isNoteRow
+      ? exactNote.get(`${row.lead_id}|${row.created_at}`) ?? latestNote.get(row.lead_id) ?? null
+      : null;
+    const outcome = (row.details?.["outcome"] as string | undefined) ?? null;
+    return {
+      id:         row.id,
+      leadId:     row.lead_id,
+      actionType: row.action_type,
+      details:    row.details,
+      createdAt:  row.created_at,
+      leadName:   [row.lead?.first_name, row.lead?.last_name].filter(Boolean).join(" ") || "Unknown lead",
+      leadSlug:   row.lead?.slug ?? null,
+      phone:      row.lead?.phone ?? null,
+      outcome,
+      note,
+    };
+  });
+
+  const last = items[items.length - 1];
+  return {
+    items,
+    hasMore,
+    nextCursor: hasMore && last ? { created_at: last.createdAt, id: last.id } : null,
+  };
+}
+
+// ─────────────────────────────────────────────
+// Agent calls page (founder/manager drill-down "Recent calls" modal).
+// Queries lead_notes DIRECTLY with call_outcome IS NOT NULL — the same
+// definition of "a call" as AgentDetailMetrics.callsToday / calls_logged
+// (migration 0101). This is structurally one-row-per-call (the notes table is
+// the call record), so it never double-counts the way filtering lead_activities
+// could. Composite keyset cursor (created_at, id), page 15, button — no infinite
+// scroll. Scoped by the agent's leads via the !inner join; the leads RLS is the
+// manager/founder second layer (the action-layer domain guard is the first).
+// No Redis (the performance service has none by design).
+// ─────────────────────────────────────────────
+
+export type AgentCallPageItem = {
+  id:        string;
+  leadId:    string;
+  leadName:  string;
+  leadSlug:  string | null;
+  phone:     string | null;
+  outcome:   string | null;
+  note:      string;
+  createdAt: string;
+};
+
+export type AgentCallsPage = {
+  items:      AgentCallPageItem[];
+  hasMore:    boolean;
+  nextCursor: AgentActivityCursor | null;
+};
+
+export async function getAgentCallsPageForManager(
+  agentId: string,
+  cursor?: AgentActivityCursor,
+): Promise<AgentCallsPage> {
+  const supabase = await createClient();
+
+  let query = supabase
+    .from("lead_notes")
+    .select(
+      "id, lead_id, content, call_outcome, created_at, lead:leads!inner(first_name, last_name, slug, phone, assigned_to)",
+    )
+    .eq("lead.assigned_to", agentId)
+    .not("call_outcome", "is", null)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(AGENT_ACTIVITY_PAGE_SIZE + 1);
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`,
+    );
+  }
+
+  const { data, error } = await query;
+  if (error || !data) {
+    if (error) {
+      console.error("[performance-service] agent calls page failed:", error);
+    }
+    return { items: [], hasMore: false, nextCursor: null };
+  }
+
+  type CallNoteRow = {
+    id:           string;
+    lead_id:      string;
+    content:      string;
+    call_outcome: string | null;
+    created_at:   string;
+    lead:         { first_name: string | null; last_name: string | null; slug: string | null; phone: string | null };
+  };
+
+  const rows = data as unknown as CallNoteRow[];
+  const hasMore = rows.length > AGENT_ACTIVITY_PAGE_SIZE;
+  const pageRows = rows.slice(0, AGENT_ACTIVITY_PAGE_SIZE);
+
+  const items = mapRows<CallNoteRow, AgentCallPageItem>(pageRows, (row) => ({
+    id:        row.id,
+    leadId:    row.lead_id,
+    leadName:  [row.lead?.first_name, row.lead?.last_name].filter(Boolean).join(" ") || "Unknown lead",
+    leadSlug:  row.lead?.slug ?? null,
+    phone:     row.lead?.phone ?? null,
+    outcome:   row.call_outcome ?? null,
+    note:      row.content,
+    createdAt: row.created_at,
   }));
 
   const last = items[items.length - 1];

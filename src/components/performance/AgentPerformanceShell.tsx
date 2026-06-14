@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { DatePicker } from '@/components/ui/DatePicker';
+import { TabSelector } from '@/components/ui/TabSelector';
 import { EffortGrid } from './EffortGrid';
 import { AgentRecentActivityList } from './AgentRecentActivityList';
 import {
@@ -146,49 +147,6 @@ function PeriodSelector({
               />
             )}
           </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Content tab bar — Overview / Today
-// ─────────────────────────────────────────────
-
-function ContentTabBar({
-  activeTab,
-  onChange,
-}: {
-  activeTab: ContentTab;
-  onChange:  (t: ContentTab) => void;
-}) {
-  return (
-    <div style={{ display: 'flex', gap: 'var(--space-1)', borderBottom: '1px solid var(--theme-paper-border)', marginBottom: 'var(--space-5)' }}>
-      {CONTENT_TABS.map((tab) => {
-        const isActive = tab.id === activeTab;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => onChange(tab.id)}
-            style={{
-              padding:        'var(--space-2) var(--space-4)',
-              border:         'none',
-              background:     'transparent',
-              cursor:         'pointer',
-              fontFamily:     'var(--font-sans)',
-              fontSize:       'var(--text-sm)',
-              fontWeight:     isActive ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-              color:          isActive ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
-              borderBottom:   isActive ? '2px solid var(--theme-accent)' : '2px solid transparent',
-              marginBottom:   '-1px',
-              transition:     'color var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out)',
-              whiteSpace:     'nowrap',
-            }}
-          >
-            {tab.label}
-          </button>
         );
       })}
     </div>
@@ -645,12 +603,19 @@ export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props)
             pointerEvents: isLoading ? 'none' : undefined,
           }}
         >
-          {/* Tab bar — hidden when period='today' since tabs are redundant */}
+          {/* Tab bar — hidden when period='today' since tabs are redundant.
+              TabSelector 'connected' variant (distinct indicatorLayoutId from
+              the founder shell's pills, per the shared-layout rule). */}
           {period !== 'today' && (
-            <ContentTabBar
-              activeTab={effectiveTab}
-              onChange={setActiveTab}
-            />
+            <div style={{ marginBottom: 'var(--space-5)' }}>
+              <TabSelector
+                tabs={CONTENT_TABS}
+                activeTab={effectiveTab}
+                onChange={(id) => setActiveTab(id as ContentTab)}
+                variant="connected"
+                indicatorLayoutId="agent-content-tabs"
+              />
+            </div>
           )}
 
           <AnimatePresence mode="wait">
