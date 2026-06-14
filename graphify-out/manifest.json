@@ -2065,8 +2065,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781470904.333236,
-    "ast_hash": "a76b05f1615e541b066518f30d0e034c",
+    "mtime": 1781471561.94884,
+    "ast_hash": "2c20317f7fa995eca91952ca9d0c2e6d",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -2675,8 +2675,8 @@
     "semantic_hash": ""
   },
   "src/app/manifest.ts": {
-    "mtime": 1781470789.4841483,
-    "ast_hash": "f0239d53c45a11b56f00051b34c9854e",
+    "mtime": 1781471525.5108905,
+    "ast_hash": "d03b1d840dae200987b1eab84eb3b9bf",
     "semantic_hash": ""
   },
   "src/components/layout/ServiceWorkerRegistration.tsx": {
@@ -3490,23 +3490,23 @@
     "semantic_hash": ""
   },
   "public/icon-1.webp": {
-    "mtime": 1781470838.139721,
-    "ast_hash": "39518d727394ee17d7463f93e4542306",
+    "mtime": 1781471500.2051184,
+    "ast_hash": "885f9790d5c693091376cfaff8a14103",
     "semantic_hash": ""
   },
   "public/icon-2.webp": {
-    "mtime": 1781470838.6255624,
-    "ast_hash": "e6c6a8c8bd3805581b9e8a47eb5f6e48",
+    "mtime": 1781471500.6485684,
+    "ast_hash": "e9f0002a2b09d652355a56a46f735cbc",
     "semantic_hash": ""
   },
   "public/icon-3.webp": {
-    "mtime": 1781470839.1369402,
-    "ast_hash": "6b31d6b6b1328f001f6f143fcff95cff",
+    "mtime": 1781471501.130531,
+    "ast_hash": "11986422670d471c79687b549e9a8e0b",
     "semantic_hash": ""
   },
   "public/icon-4.webp": {
-    "mtime": 1781470839.6548548,
-    "ast_hash": "9d7a5e36e17eb0adeed2f0247af85c79",
+    "mtime": 1781471501.6228697,
+    "ast_hash": "4abecba3db64c8a543623de806ae2b85",
     "semantic_hash": ""
   },
   "public/icon-5.webp": {
@@ -3515,8 +3515,8 @@
     "semantic_hash": ""
   },
   "scripts/pad-app-icons.mjs": {
-    "mtime": 1781470830.3893325,
-    "ast_hash": "22fd22bdb78938d5cba5248c0e6a45d7",
+    "mtime": 1781471490.4520905,
+    "ast_hash": "5ec124eb3874570e7b33336ab73d0439",
     "semantic_hash": ""
   },
   "public/_icon-originals/icon-1.webp": {

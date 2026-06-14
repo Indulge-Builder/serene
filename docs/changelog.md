@@ -12,6 +12,18 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-15 — Icon look: restored the solid dark plate (reverses the transparent direction) — glyph large on `#0d0c0a`, maskable back
+
+Course-correction on the icon art. The "keep transparent" direction (entry below) looked wrong on the home screen — a transparent icon gets filled with the OS plate (white on iOS), and the safe-zone padding made the glyph small. The look the user actually wanted was the **original** `public/icons/icon-512.png`: the gold seed-of-life glyph **large on a solid #0d0c0a (Earth canvas) plate**. Restored exactly that, applied to all 4 picks.
+
+**Art (`scripts/pad-app-icons.mjs`, rewritten):** each chosen glyph is trimmed, resized to **GLYPH_RATIO 0.82** (large, matching the original), and composited onto a **solid opaque `#0d0c0a`** square (`.flatten`). Output `hasAlpha: no` — the dark plate is baked in, so the OS never fills it white. Sources still in `public/_icon-originals/`; `sharp` still resolved from Next's dep (no new package). `icon-1` stays upgraded to 1254×1254.
+
+**Manifest (`app/manifest.ts`):** **re-added `{ purpose: "maskable" }`** — now valid because the fill is solid and the glyph sits in the safe zone (0.82 inset), so Android's circle/squircle crop has dark corners and unclipped petals. Comment updated to gate maskable on the solid-background precondition.
+
+**Verified:** `icon-1`/`icon-3` `hasAlpha: no`; visual check matches the original dark-plate look (gold glyph centred, large); `/manifest.webmanifest` (cookie `icon-3`) → `purposes: [any, any, any, maskable]`, all `/icon-3.webp`. `tsc --noEmit` clean. The reinstall icon-cache caveat still applies — clear website data for a clean re-add; the Add-to-Home-Screen preview shows what installs.
+
+---
+
 ## 2026-06-15 — Fix: home-screen icon clipped / cramped — padded the glyph into the safe zone and dropped `purpose: "maskable"`
 
 The PWA icon art is the seed-of-life glyph on a **transparent** background, drawn **edge-to-edge**. Two consequences on a home screen: (1) the glyph touched the icon bounds (cramped, no breathing room), and (2) `buildManifest` declared a `{ purpose: "maskable" }` entry — but a maskable icon MUST be a solid edge-to-edge fill with the logo inside the centre safe zone. Android crops maskable icons into a circle/squircle, so a transparent edge-to-edge glyph got its outer petals clipped with transparent corners.

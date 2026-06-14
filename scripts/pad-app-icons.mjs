@@ -1,14 +1,16 @@
 /**
- * One-time (re-runnable) icon padder for the PWA home-screen icons.
+ * One-time (re-runnable) icon builder for the PWA home-screen icons.
  *
  * The source art (public/_icon-originals/icon-N.webp) is the seed-of-life glyph
- * on a TRANSPARENT background, drawn edge-to-edge. On a home screen that means
- * the glyph touches the icon bounds — cramped, and clipped by any OS rounding.
+ * on a TRANSPARENT background. A transparent home-screen icon gets filled with
+ * whatever plate the OS picks (white on iOS) — which looked wrong. The original
+ * Serene icon (public/icons/icon-512.png) was the glyph on a SOLID #0d0c0a
+ * (Earth canvas) plate, large and clean — that is the look we restore here.
  *
- * This shrinks each glyph to GLYPH_RATIO of the canvas and centres it on a fresh
- * fully-transparent square (no background fill — the transparent look is kept by
- * design), so the art sits inside the maskable safe zone with breathing room.
- * Alpha is preserved end-to-end. Re-run after replacing an original.
+ * For each chosen icon we trim the source's transparent margin, resize the glyph
+ * to GLYPH_RATIO of the canvas, and composite it centred on a solid #0d0c0a
+ * square. Same recipe as the original icon-512.png, applied to all 4 picks.
+ * Re-run after replacing an original.
  *
  *   node scripts/pad-app-icons.mjs
  *
@@ -27,7 +29,8 @@ const SRC_DIR = join(ROOT, "public", "_icon-originals");
 const OUT_DIR = join(ROOT, "public");
 
 const SIZE = 1254;          // final square edge (matches icon-2/3/4 source)
-const GLYPH_RATIO = 0.78;   // art occupies 78% → ~11% transparent gutter each side
+const GLYPH_RATIO = 0.82;   // art occupies 82% → large, like the original icon-512
+const PLATE = { r: 0x0d, g: 0x0c, b: 0x0a, alpha: 1 }; // Earth --theme-canvas #0d0c0a, opaque
 const KEYS = ["icon-1", "icon-2", "icon-3", "icon-4"];
 
 const inner = Math.round(SIZE * GLYPH_RATIO);
@@ -37,10 +40,9 @@ for (const key of KEYS) {
   const srcPath = join(SRC_DIR, `${key}.webp`);
   const outPath = join(OUT_DIR, `${key}.webp`);
 
-  // Trim any existing transparent margin first so GLYPH_RATIO is applied to the
-  // actual artwork, not to whatever padding the source already had. Then resize
-  // the glyph to the inner box (contain, transparent fill) and extend back out
-  // to the full square with a transparent gutter.
+  // Trim any transparent margin so GLYPH_RATIO applies to the actual artwork,
+  // then resize the glyph to the inner box (contain, transparent fill so the
+  // glyph's own alpha is preserved before it lands on the plate).
   const glyph = await sharp(srcPath)
     .trim()
     .resize(inner, inner, {
@@ -49,19 +51,18 @@ for (const key of KEYS) {
     })
     .toBuffer();
 
+  // Composite the glyph onto a SOLID #0d0c0a plate — no transparency in the
+  // output, so the OS shows the brand dark plate, never a white fill. Flatten
+  // guarantees a fully opaque result.
   await sharp({
-    create: {
-      width: SIZE,
-      height: SIZE,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
+    create: { width: SIZE, height: SIZE, channels: 4, background: PLATE },
   })
     .composite([{ input: glyph, top: pad, left: pad }])
-    .webp({ quality: 90, alphaQuality: 100 })
+    .flatten({ background: PLATE })
+    .webp({ quality: 92 })
     .toFile(outPath);
 
-  console.log(`padded ${key}.webp → ${SIZE}×${SIZE}, glyph ${inner}px (gutter ${pad}px)`);
+  console.log(`built ${key}.webp → ${SIZE}×${SIZE} on #0d0c0a, glyph ${inner}px (inset ${pad}px)`);
 }
 
 console.log("done.");
