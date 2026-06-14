@@ -66,9 +66,9 @@ export default async function ProfilePage() {
 
           <SectionCard
             title="Add to Home Screen"
-            description="Install Serene as an app and pick its icon."
+            description="Install Serene as an app. It uses the icon you picked above."
           >
-            <InstallPrompt profileId={profile.id} />
+            <InstallPrompt profileId={profile.id} currentIcon={profile.app_icon} />
           </SectionCard>
 
           <SectionCard

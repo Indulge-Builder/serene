@@ -1,20 +1,22 @@
 "use client";
 
 /**
- * InstallPrompt — the FIRST-INSTALL home-screen-icon picker. This is the surface
- * where the chosen icon actually bakes into the placed shortcut: it pre-selects
- * the icon, rewrites the live <link rel="manifest"> + apple-touch-icon to that
- * choice, THEN triggers the install. After install the icon is OS-owned (the
- * profile picker can't change a placed shortcut — see IconSelector).
+ * InstallPrompt — the install ACTION for the "Add to Home Screen" card. It does
+ * NOT pick the icon: the single icon picker lives in IconSelector ("Appearance"
+ * card) and is the source of truth (profiles.app_icon, mirrored in the
+ * serene-app-icon cookie). This component reads that saved choice and bakes it
+ * into the placed shortcut at install time. After install the icon is OS-owned
+ * (the profile picker can't change a placed shortcut — see IconSelector).
  *
  * Two platforms:
  *  - Chromium (Android/desktop): captures `beforeinstallprompt`, shows the card,
- *    swaps the manifest link to the pick, calls deferredPrompt.prompt().
+ *    swaps the live <link rel="manifest"> + apple-touch-icon to the SAVED icon,
+ *    then calls deferredPrompt.prompt().
  *  - iOS: no beforeinstallprompt event exists. We can't trigger install, so we
- *    show the same Add-to-Home-Screen nudge as PushNotificationSettings, with
- *    the picker above it — the user picks, we persist + swap the manifest link,
- *    then they install manually with the right icon already wired (failure-mode
- *    #3: iOS reads apple-touch-icon, which we set, not the manifest icon).
+ *    show the Add-to-Home-Screen nudge. The root layout's generateMetadata
+ *    already SSR'd apple-touch-icon at the saved icon (failure-mode #3: iOS reads
+ *    apple-touch-icon, not the manifest icon), so the manual install is already
+ *    wired to the right icon — nothing to swap.
  *
  * Renders null when there is nothing to offer (no install event AND not iOS, or
  * already running standalone) — the component is mounted unconditionally and
@@ -22,15 +24,9 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Share, PlusSquare, Download } from "lucide-react";
+import { Share, PlusSquare, Download } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { updateProfile } from "@/lib/actions/profiles";
-import {
-  ICON_OPTIONS,
-  iconSrc,
-  persistAppIconCookie,
-  type IconKey,
-} from "@/lib/constants/app-icons";
+import { iconSrc, type IconKey } from "@/lib/constants/app-icons";
 
 /** Chromium's beforeinstallprompt event — not in lib.dom. */
 interface BeforeInstallPromptEvent extends Event {
@@ -59,7 +55,7 @@ function isIos(): boolean {
 }
 
 /**
- * Point the live manifest link + apple-touch-icon at the chosen icon BEFORE
+ * Point the live manifest link + apple-touch-icon at the saved icon BEFORE
  * install fires, so the browser reads the right icon at install time. Mutates
  * the existing <link> tags (creating them if absent) — never duplicates.
  */
@@ -84,10 +80,15 @@ function swapInstallIcon(icon: IconKey) {
   apple.href = href;
 }
 
-export function InstallPrompt({ profileId }: { profileId: string }) {
+export function InstallPrompt({
+  profileId: _profileId,
+  currentIcon,
+}: {
+  profileId: string;
+  currentIcon: IconKey;
+}) {
   const [platform, setPlatform] = useState<Platform>("loading");
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
-  const [selected, setSelected] = useState<IconKey>(ICON_OPTIONS[0].id);
   const [isBusy, setIsBusy]     = useState(false);
   const [installed, setInstalled] = useState(false);
 
@@ -99,7 +100,7 @@ export function InstallPrompt({ profileId }: { profileId: string }) {
     }
 
     const onBeforeInstall = (e: Event) => {
-      e.preventDefault(); // stash it; we trigger install on the user's pick
+      e.preventDefault(); // stash it; we trigger install when the user taps Add
       setDeferred(e as BeforeInstallPromptEvent);
       setPlatform("chromium");
     };
@@ -124,30 +125,14 @@ export function InstallPrompt({ profileId }: { profileId: string }) {
     };
   }, []);
 
-  // Persist the pick (cookie keeps the next SSR manifest link right; the action
-  // writes profiles.app_icon). Fire-and-forget — install proceeds regardless.
-  const persistChoice = useCallback(
-    (icon: IconKey) => {
-      persistAppIconCookie(icon);
-      const fd = new FormData();
-      fd.append("id", profileId);
-      fd.append("app_icon", icon);
-      void updateProfile({ data: null, error: null }, fd);
-    },
-    [profileId],
-  );
-
-  function handleSelect(icon: IconKey) {
-    setSelected(icon);
-    swapInstallIcon(icon); // keep the live links in step as the user browses
-  }
-
-  async function handleInstall() {
+  const handleInstall = useCallback(async () => {
     if (!deferred) return;
     setIsBusy(true);
     try {
-      swapInstallIcon(selected); // ensure the chosen manifest is live first
-      persistChoice(selected);
+      // The saved icon (IconSelector / profiles.app_icon) is the source of
+      // truth — make the live links match it before the OS reads them. No
+      // persist here: the icon was already saved when it was picked.
+      swapInstallIcon(currentIcon);
       await deferred.prompt();
       await deferred.userChoice; // resolved either way; appinstalled handles UI
       setDeferred(null);
@@ -156,7 +141,7 @@ export function InstallPrompt({ profileId }: { profileId: string }) {
     } finally {
       setIsBusy(false);
     }
-  }
+  }, [deferred, currentIcon]);
 
   if (platform === "loading" || platform === "hidden") return null;
   if (installed) {
@@ -184,109 +169,9 @@ export function InstallPrompt({ profileId }: { profileId: string }) {
           margin:     0,
         }}
       >
-        Pick the icon you want on your home screen, then add Serene. The icon you
-        choose now is baked into the shortcut.
+        Add Serene to your home screen. The icon you picked above is baked into
+        the shortcut.
       </p>
-
-      {/* Icon tiles — same picker chrome as IconSelector */}
-      <div
-        role="radiogroup"
-        aria-label="Home screen icon"
-        style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap" }}
-      >
-        {ICON_OPTIONS.map((option) => {
-          const isActive = selected === option.id;
-          return (
-            <button
-              key={option.id}
-              role="radio"
-              aria-checked={isActive}
-              aria-label={`${option.label} home screen icon`}
-              onClick={() => handleSelect(option.id)}
-              disabled={isBusy}
-              style={{
-                display:       "flex",
-                flexDirection: "column",
-                alignItems:    "center",
-                gap:           "var(--space-2)",
-                background:    "transparent",
-                border:        "none",
-                padding:       0,
-                cursor:        isBusy ? "wait" : "pointer",
-              }}
-            >
-              <div
-                style={{
-                  position:      "relative",
-                  borderRadius:  "calc(var(--radius-md) + 2px)",
-                  padding:       "2px",
-                  outline:       isActive
-                    ? "2px solid var(--theme-accent)"
-                    : "2px solid transparent",
-                  outlineOffset: "2px",
-                  transition:    "outline-color var(--duration-fast) var(--ease-in-out)",
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={iconSrc(option.id)}
-                  alt=""
-                  width={56}
-                  height={56}
-                  style={{
-                    display:      "block",
-                    width:        "56px",
-                    height:       "56px",
-                    borderRadius: "var(--radius-md)",
-                    objectFit:    "cover",
-                    border:       "1px solid var(--theme-paper-border)",
-                  }}
-                />
-                {isActive && (
-                  <div
-                    style={{
-                      position:       "absolute",
-                      top:            "-2px",
-                      right:          "-2px",
-                      width:          "18px",
-                      height:         "18px",
-                      borderRadius:   "var(--radius-full)",
-                      background:     "var(--theme-accent)",
-                      display:        "flex",
-                      alignItems:     "center",
-                      justifyContent: "center",
-                      boxShadow:      "0 0 0 2px var(--theme-paper)",
-                    }}
-                  >
-                    <Check
-                      style={{
-                        width:       "10px",
-                        height:      "10px",
-                        strokeWidth: 2.5,
-                        color:       "var(--theme-accent-fg)",
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-              <span
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize:   "var(--text-xs)",
-                  fontWeight: isActive
-                    ? "var(--weight-medium)"
-                    : "var(--weight-normal)",
-                  color:      isActive
-                    ? "var(--theme-text-primary)"
-                    : "var(--theme-text-tertiary)",
-                }}
-              >
-                {option.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
 
       {platform === "chromium" && (
         <div>

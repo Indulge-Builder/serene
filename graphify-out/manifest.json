@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/profile/page.tsx": {
-    "mtime": 1781468052.654012,
-    "ast_hash": "03f045932d8bb1e3d2ff7e0e79bfc538",
+    "mtime": 1781469299.5425737,
+    "ast_hash": "12ce90e927450c97518295c2425aff19",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/settings/loading.tsx": {
@@ -2065,8 +2065,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781468234.4389966,
-    "ast_hash": "90e5c1371262abd3b7dee56219c6d351",
+    "mtime": 1781469351.303114,
+    "ast_hash": "b6414fbba5454f61fc0864b83c883c08",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -3470,8 +3470,8 @@
     "semantic_hash": ""
   },
   "src/components/profile/InstallPrompt.tsx": {
-    "mtime": 1781468096.4190273,
-    "ast_hash": "c408dae29acbb3e2b390434dce5fdb9b",
+    "mtime": 1781469293.115873,
+    "ast_hash": "2fc323fa5d714c7b15a7d97c5363db8b",
     "semantic_hash": ""
   },
   "src/lib/constants/app-icons.ts": {
@@ -3507,6 +3507,11 @@
   "public/icon-4.webp": {
     "mtime": 1781467514.1953733,
     "ast_hash": "f1627508bc119e1cb525241b3850ab78",
+    "semantic_hash": ""
+  },
+  "public/logo-1.webp": {
+    "mtime": 1779830659.6709173,
+    "ast_hash": "83365db02823575a40af43aee2d31399",
     "semantic_hash": ""
   }
 }

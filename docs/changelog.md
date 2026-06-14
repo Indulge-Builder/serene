@@ -12,6 +12,18 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-15 — Fix: home-screen icon picker shown twice on /profile, and install ignoring the saved icon
+
+Two bugs in the PWA icon picker (reported on mobile), one root cause. `/profile` rendered the **icon grid twice** — once in `IconSelector` ("Appearance" card) and again inside `InstallPrompt` ("Add to Home Screen" card) — and the two grids held **independent selection state**. `IconSelector` seeded from the saved `profiles.app_icon`; `InstallPrompt` always seeded from `ICON_OPTIONS[0]` (`icon-1`), ignoring the saved value. So after a user picked (say) `icon-3` in Appearance and then tapped **Add to home screen**, `InstallPrompt.handleInstall()` ran `swapInstallIcon(selected)` + `persistChoice(selected)` with its own stale `selected === 'icon-1'` — **overwriting the DB/cookie back to `icon-1` and installing the wrong icon.** The user's choice was silently discarded.
+
+**Fix — one picker, install respects it.** `InstallPrompt` no longer renders an icon grid or owns icon state. It now takes `currentIcon` (threaded from `profile.app_icon` at the call site) and, on Chromium install, swaps the live `<link rel="manifest">` + `apple-touch-icon` to the **saved** icon before `prompt()`. No persist on install — the icon was already saved when it was picked in `IconSelector` (the single source of truth). iOS path is unchanged in behaviour (manual Add-to-Home-Screen nudge) and now correctly relies on the SSR `apple-touch-icon` `generateMetadata` already pointed at the saved icon. Removed the now-unused `ICON_OPTIONS`/`persistAppIconCookie`/`updateProfile`/`Check` imports and the `selected`/`handleSelect` machinery; `profileId` is retained in the props contract (unused → `_profileId`, matching the `CampaignFilters` `_role` idiom). The "Add to Home Screen" card description now reads "It uses the icon you picked above."
+
+**Result:** exactly one icon grid on `/profile` (in Appearance), and installing always uses the saved choice. Net deletion of ~120 lines from `InstallPrompt`.
+
+**Verified:** `tsc --noEmit` clean. No new tokens/colours; display-only change. Both `IconSelector` and `InstallPrompt` are still `/profile`-only (no other consumers). The original PWA-icon entry below describes the superseded two-picker design — kept as the append-only record.
+
+---
+
 ## 2026-06-15 — PWA home-screen icon picker: choose your installed-app icon at first install and in /profile (`profiles.app_icon`)
 
 Users can now pick which icon Serene installs to the home screen from a set of options — **at first install** (the choice bakes into the placed shortcut) and later in **/profile** (saved as a preference; honest that an already-installed icon can't auto-change because the OS owns the placed shortcut). The choice persists on `profiles.app_icon`, mirroring `profiles.theme` end-to-end.
