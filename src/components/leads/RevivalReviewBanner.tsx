@@ -17,6 +17,7 @@ import { LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-stat
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ReviveLeadButton } from '@/components/leads/ReviveLeadButton';
 import type { LeadStatus } from '@/lib/types/database';
+import type { RevivalVerdict } from '@/lib/types/revival';
 
 export type RevivalReviewRow = {
   leadId: string;
@@ -25,7 +26,10 @@ export type RevivalReviewRow = {
   status: LeadStatus;
   candidateId: string;
   reasoning: string;
-  verdict: 'revive' | 'unsure';
+  // The review banner only ever renders OPEN candidates (unsure, or cap-overflow
+  // revive) — a 'dismiss' verdict is written status='dismissed' and never reaches
+  // here. The type stays the canonical union to match the candidate source.
+  verdict: RevivalVerdict;
   suggestedReviveAt: string | null;
 };
 

@@ -82,7 +82,11 @@ CREATE TABLE revival_candidates (
   -- count is a native column filter — NOT a PostgREST embed filter (which is
   -- silently dropped on a head:true/count query, the getNextLeadTask caveat).
   assigned_to          uuid        REFERENCES profiles(id) ON DELETE SET NULL,
-  verdict              text        NOT NULL CHECK (verdict IN ('revive', 'unsure')),
+  -- The gate's three-way call. 'dismiss' = confident junk (an agent already recorded
+  -- a disqualifier) — written status='dismissed' at creation, kept as the audit log,
+  -- never surfaced in review. 'unsure' = the ambiguous middle → review. 'revive' →
+  -- auto-task. NOTE: 'dismiss' is a VERDICT; 'dismissed' is the candidate STATUS.
+  verdict              text        NOT NULL CHECK (verdict IN ('revive', 'unsure', 'dismiss')),
   ai_reasoning         text        NOT NULL,
   status               text        NOT NULL DEFAULT 'open'
                        CHECK (status IN ('open', 'actioned', 'dismissed')),

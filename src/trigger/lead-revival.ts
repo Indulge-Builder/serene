@@ -61,6 +61,7 @@ export const sweepRevivalCandidatesTask = schedules.task({
     let judged = 0;
     let autoRevived = 0;
     let toReview = 0;
+    let dismissed = 0;
 
     for (const policy of policies) {
       if (!isRevivalTriggerStatus(policy.trigger_status)) continue;
@@ -71,15 +72,33 @@ export const sweepRevivalCandidatesTask = schedules.task({
         const agentId = lead.assigned_to;
         if (!agentId) continue; // finder excludes these, but stay defensive
 
-        // The gate — fails closed to 'unsure' on any error (never auto-revives).
+        // The gate — three-way (revive/dismiss/unsure); fails closed to 'unsure' on
+        // any error (never auto-revives AND never auto-dismisses → a human sees it).
         const verdict = await judgeLeadForRevival({
           leadId: lead.id,
           triggerStatus: policy.trigger_status,
         });
         judged += 1;
 
+        if (verdict.verdict === "dismiss") {
+          // Confident junk — write the candidate status='dismissed' at creation. It
+          // is the audit/training log; the review tab filters status='open' so a
+          // dismissed candidate NEVER surfaces for a human. No task, no review.
+          await insertRevivalCandidate({
+            leadId: lead.id,
+            assignedTo: agentId,
+            verdict: "dismiss",
+            reasoning: verdict.reasoning,
+            triggerStatus: policy.trigger_status,
+            suggestedReviveAt: null,
+            status: "dismissed",
+          });
+          dismissed += 1;
+          continue;
+        }
+
         if (verdict.verdict !== "revive") {
-          // Suppressed → review tab.
+          // Ambiguous middle ('unsure') → review tab.
           await insertRevivalCandidate({
             leadId: lead.id,
             assignedTo: agentId,
@@ -164,8 +183,8 @@ export const sweepRevivalCandidatesTask = schedules.task({
     }
 
     console.log(
-      `[revival-sweep] done — judged=${judged} auto_revived=${autoRevived} to_review=${toReview}`,
+      `[revival-sweep] done — judged=${judged} auto_revived=${autoRevived} to_review=${toReview} dismissed=${dismissed}`,
     );
-    return { judged, autoRevived, toReview };
+    return { judged, autoRevived, toReview, dismissed };
   },
 });

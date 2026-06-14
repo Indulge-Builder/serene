@@ -111,9 +111,20 @@ export type SilentLeadRow = {
 
 /**
  * Find leads in `triggerStatus` that have been silent for >= silenceDays and have
- * NO open revival_candidate (the one-open-candidate guard's first line — the
- * partial UNIQUE index is the DB backstop). Silence = the more recent of
+ * NO existing revival_candidate of ANY status. Silence = the more recent of
  * status_changed_at / last_activity_at older than the threshold.
+ *
+ * The anti-join is on ANY candidate, not just 'open' — a lead the gate already
+ * judged has a settled disposition (open = awaiting review, actioned = revived,
+ * dismissed = confident junk) and must NOT be re-judged on the next sweep. Without
+ * this, a 'dismissed' lead (no open candidate) would re-enter the pool every night,
+ * get re-dismissed, pile up duplicate dismissed rows, and burn a gate LLM call on a
+ * known-dead lead. The partial UNIQUE index still backstops the one-OPEN guard for
+ * the race; this anti-join is the broader "judge each silent lead once" rule. A lead
+ * naturally re-qualifies only if it leaves and re-enters a trigger status (the
+ * candidate then no longer blocks a fresh judgement of the new dormancy episode... —
+ * but candidates are append-only by lead, so today a judged lead stays judged; that
+ * is the intended R1 behaviour, revisited if re-revival-after-status-churn is wanted).
  *
  * Excludes archived + unassigned (a revive task needs an owner). Bounded per run
  * (REVIVAL_SWEEP_BATCH_PER_STATUS), oldest-silent first so the most dormant leads
@@ -129,15 +140,15 @@ export async function findSilentLeadsForStatus(
   const admin = createAdminClient();
   const threshold = new Date(Date.now() - silenceDays * 86_400_000).toISOString();
 
-  // The set of lead_ids that already hold an open candidate — anti-joined below.
-  // Bounded read; the partial index idx_revival_candidates_open serves it.
+  // The set of lead_ids that ALREADY hold a candidate of any status — anti-joined
+  // below so a judged lead is never re-judged (prevents duplicate dismissals + a
+  // wasted gate call on a settled lead).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: openRows } = await (admin as any)
+  const { data: judgedRows } = await (admin as any)
     .from("revival_candidates")
-    .select("lead_id")
-    .eq("status", "open");
-  const openLeadIds = new Set(
-    ((openRows ?? []) as Array<{ lead_id: string }>).map((r) => r.lead_id),
+    .select("lead_id");
+  const judgedLeadIds = new Set(
+    ((judgedRows ?? []) as Array<{ lead_id: string }>).map((r) => r.lead_id),
   );
 
   // Silence uses status_changed_at as the primary clock (when the lead entered
@@ -152,7 +163,7 @@ export async function findSilentLeadsForStatus(
     .not("assigned_to", "is", null)
     .lt("status_changed_at", threshold)
     .order("status_changed_at", { ascending: true })
-    .limit(REVIVAL_SWEEP_BATCH_PER_STATUS + openLeadIds.size);
+    .limit(REVIVAL_SWEEP_BATCH_PER_STATUS + judgedLeadIds.size);
 
   if (error || !data) {
     if (error) console.error("[revival-service] findSilentLeadsForStatus failed:", error.message);
@@ -161,7 +172,7 @@ export async function findSilentLeadsForStatus(
 
   const out: SilentLeadRow[] = [];
   for (const r of data as Array<Record<string, unknown>>) {
-    if (openLeadIds.has(r.id as string)) continue; // already has an open candidate
+    if (judgedLeadIds.has(r.id as string)) continue; // already judged — settled disposition
     // A recent activity (within the window) means the lead isn't actually silent.
     const lastActivity = r.last_activity_at as string | null;
     if (lastActivity && lastActivity >= threshold) continue;
@@ -230,8 +241,11 @@ export async function insertRevivalCandidate(input: {
   reasoning: string;
   triggerStatus: RevivalTriggerStatus;
   suggestedReviveAt: string | null;
-  status: Extract<RevivalCandidateStatus, "open" | "actioned">;
-  /** For an auto-actioned row: the system stamps resolved_at, resolved_by stays null. */
+  // 'open' = review tab; 'actioned' = auto-revived (task already created); 'dismissed'
+  // = confident junk (the gate's 'dismiss' verdict — kept as the audit log, never
+  // surfaced in review). All three are SYSTEM writes here (resolved_by stays null).
+  status: Extract<RevivalCandidateStatus, "open" | "actioned" | "dismissed">;
+  /** For an auto-resolved row (actioned/dismissed): the system stamps resolved_at. */
   resolvedAt?: string | null;
 }): Promise<RevivalCandidateRow | null> {
   const admin = createAdminClient();
@@ -246,8 +260,10 @@ export async function insertRevivalCandidate(input: {
       trigger_status: input.triggerStatus,
       suggested_revive_at: input.suggestedReviveAt,
       status: input.status,
-      resolved_at: input.status === "actioned" ? (input.resolvedAt ?? new Date().toISOString()) : null,
-      resolved_by: null, // system auto-revive; a human review fills this via markCandidateResolved
+      // 'open' stays unresolved (a human acts later); 'actioned'/'dismissed' are
+      // resolved at creation by the system, so stamp resolved_at now.
+      resolved_at: input.status === "open" ? null : (input.resolvedAt ?? new Date().toISOString()),
+      resolved_by: null, // system write; a human review fills this via markCandidateResolved
     })
     .select("*")
     .single();

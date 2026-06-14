@@ -43,7 +43,7 @@ export const REVIVAL_DEFAULT_DAILY_CAP = 25;
 
 // ─── Candidate vocabulary ────────────────────────────────────────────────────
 
-export const REVIVAL_VERDICTS = ["revive", "unsure"] as const;
+export const REVIVAL_VERDICTS = ["revive", "unsure", "dismiss"] as const;
 export const REVIVAL_CANDIDATE_STATUSES = ["open", "actioned", "dismissed"] as const;
 
 // ─── Revived task tagging ────────────────────────────────────────────────────

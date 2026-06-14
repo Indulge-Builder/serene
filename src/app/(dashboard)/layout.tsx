@@ -4,8 +4,10 @@ import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { getNotifications } from "@/lib/services/notifications-service";
 import { canAccessRoute } from "@/lib/utils/route-access";
 import { DEFAULT_THEME, isThemeKey } from "@/lib/constants/themes";
+import { DEFAULT_ICON, isIconKey } from "@/lib/constants/app-icons";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ThemeInitializer } from "@/components/layout/ThemeInitializer";
+import { IconInitializer } from "@/components/layout/IconInitializer";
 import { ToastProvider } from "@/components/ui/toast-provider";
 
 export default async function DashboardLayout({
@@ -28,6 +30,7 @@ export default async function DashboardLayout({
   const notificationsPromise = getNotifications(profile.id);
 
   const safeTheme = isThemeKey(profile.theme) ? profile.theme : DEFAULT_THEME;
+  const safeIcon  = isIconKey(profile.app_icon) ? profile.app_icon : DEFAULT_ICON;
 
   return (
     <>
@@ -35,6 +38,8 @@ export default async function DashboardLayout({
           this corrects a missing/stale cookie against the DB truth and
           re-writes it for the next request. */}
       <ThemeInitializer theme={safeTheme} />
+      {/* Same corrective sync for the app-icon cookie → next-request manifest link. */}
+      <IconInitializer icon={safeIcon} />
     {/* Responsive frame (.serene-shell* in globals.css — audit D-3): row with
         gutter+paper on md+, column with mobile top strip + full-bleed paper
         below md. The Sidebar renders its own three modes (full/rail/drawer). */}

@@ -4,6 +4,8 @@ import { signOutUser } from "@/lib/actions/profiles";
 import { ProfileAvatarSection } from "@/components/profile/ProfileAvatarSection";
 import { ProfileDetailsForm }   from "@/components/profile/ProfileDetailsForm";
 import { ThemeSelector }         from "@/components/profile/ThemeSelector";
+import { IconSelector }           from "@/components/profile/IconSelector";
+import { InstallPrompt }          from "@/components/profile/InstallPrompt";
 import { PasswordChangeForm }    from "@/components/profile/PasswordChangeForm";
 import { PushNotificationSettings } from "@/components/profile/PushNotificationSettings";
 import { SectionCard } from "@/components/ui/SectionCard";
@@ -48,6 +50,25 @@ export default async function ProfilePage() {
             description="Choose the visual theme for your workspace."
           >
             <ThemeSelector currentTheme={profile.theme} profileId={profile.id} />
+
+            {/* Home-screen icon picker — separated by a full-width rule
+                (the labelled-datum-group convention). */}
+            <div
+              style={{
+                marginTop:  "var(--space-5)",
+                paddingTop: "var(--space-5)",
+                borderTop:  "1px solid var(--theme-paper-border)",
+              }}
+            >
+              <IconSelector currentIcon={profile.app_icon} profileId={profile.id} />
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Add to Home Screen"
+            description="Install Serene as an app and pick its icon."
+          >
+            <InstallPrompt profileId={profile.id} />
           </SectionCard>
 
           <SectionCard

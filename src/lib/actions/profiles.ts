@@ -124,6 +124,7 @@ export async function updateProfile(
     job_title: formData.get("job_title") ?? undefined,
     phone:     formData.get("phone")     ?? undefined,
     theme:     formData.get("theme")     ?? undefined,
+    app_icon:  formData.get("app_icon")  ?? undefined,
     timezone:  formData.get("timezone")  ?? undefined,
   });
 
@@ -143,7 +144,7 @@ export async function updateProfile(
     return { data: null, error: formErrors.unauthorized };
   }
 
-  const { id, full_name, username, job_title, phone, theme, timezone } = parsed.data;
+  const { id, full_name, username, job_title, phone, theme, app_icon, timezone } = parsed.data;
 
   // Username uniqueness check (DB constraint is backup; app check gives better UX).
   if (username) {
@@ -166,6 +167,7 @@ export async function updateProfile(
   if (job_title !== undefined) fields.job_title = job_title ? sanitizeText(job_title) : null;
   if (phone     !== undefined) fields.phone     = normalizedPhone;
   if (theme     !== undefined) fields.theme     = theme;
+  if (app_icon  !== undefined) fields.app_icon  = app_icon;
   if (timezone  !== undefined) fields.timezone  = timezone;
 
   const result = await updateProfileFields(id, fields);

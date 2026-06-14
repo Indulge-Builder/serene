@@ -30,6 +30,16 @@ Composed on `SectionCard` (the canonical detail-surface shell): `ProfileDetailsF
 (email read-only — truth is `auth.users`), `ProfileAvatarSection` (uses `--overlay-scrim`),
 `ThemeSelector` (five theme cards), `PasswordChangeForm` + `PasswordStrengthBar`.
 
+> **Appearance also holds `IconSelector`** (2026-06-15) — the PWA home-screen icon picker,
+> saved to `profiles.app_icon` via the SAME `updateProfile` action (no new action). It is honest
+> about reach: a theme repaints the live app, but an installed home-screen icon is OS-owned, so
+> saving here shows a manual-reinstall note and bakes the choice into the NEXT install. The
+> separate **"Add to Home Screen"** SectionCard holds `InstallPrompt` — the first-install picker
+> that swaps the manifest `<link>` + apple-touch-icon to the pick and triggers install
+> (`beforeinstallprompt` on Chromium; Add-to-Home-Screen nudge on iOS). A **"Notifications"**
+> SectionCard (`PushNotificationSettings`, 2026-06-14) now also exists — superseding the
+> "no Notifications section" note further down (kept for history; that claim is stale).
+
 ## 5. States
 
 - **Loading:** page is a fast single fetch; button-level pending states.

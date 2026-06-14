@@ -605,6 +605,7 @@ export type Database = {
           phone: string | null
           reports_to: string | null
           role: Database["public"]["Enums"]["user_role"]
+          app_icon: string
           theme: string
           timezone: string
           updated_at: string
@@ -624,6 +625,7 @@ export type Database = {
           phone?: string | null
           reports_to?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          app_icon?: string
           theme?: string
           timezone?: string
           updated_at?: string
@@ -643,6 +645,7 @@ export type Database = {
           phone?: string | null
           reports_to?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          app_icon?: string
           theme?: string
           timezone?: string
           updated_at?: string
@@ -1572,8 +1575,12 @@ export type SlaHoursMode     = 'agent_shift' | 'business' | 'clock'
 // Table row types — extracted from Database namespace
 // ─────────────────────────────────────────────
 
-export type Profile = Omit<Database['public']['Tables']['profiles']['Row'], 'theme'> & {
+export type Profile = Omit<Database['public']['Tables']['profiles']['Row'], 'theme' | 'app_icon'> & {
   theme: 'earth' | 'air' | 'water' | 'fire' | 'cosmos'
+  // Narrowed to the ICON_KEYS union (src/lib/constants/app-icons.ts) — the
+  // app_icon column lands in the base Row as `string` until database.ts is
+  // regenerated after migration 0121, the same posture as `theme`.
+  app_icon: 'icon-1' | 'icon-2' | 'icon-3' | 'icon-4'
 }
 export type AdCreative       = Database['public']['Tables']['ad_creatives']['Row']
 export type LeadActivity     = Database['public']['Tables']['lead_activities']['Row']

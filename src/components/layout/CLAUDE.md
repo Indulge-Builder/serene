@@ -7,6 +7,7 @@
 | `Sidebar.tsx` | `'use client'`; primary nav, user footer, notification bell. |
 | `TopBar.tsx` | `'use client'`; page-level topbar (breadcrumb, search). |
 | `ThemeInitializer.tsx` | `'use client'`; corrective sync for the SSR theme cookie (`lib/constants/themes.ts`). The root layout SSRs `data-theme` on `<html>` from the `serene-theme` cookie (zero-flash first paint); this component only flips the attribute when the cookie was missing/stale vs `profiles.theme` and re-writes the cookie for the next request. |
+| `IconInitializer.tsx` | `'use client'`; the `ThemeInitializer` twin for the SSR app-icon cookie (`lib/constants/app-icons.ts`). The root layout's `generateMetadata` builds the manifest `<link>` + apple-touch-icon from the `serene-app-icon` cookie; this component only re-writes the cookie from `profiles.app_icon` (new device / cleared cookie / choice made elsewhere) so the NEXT request's manifest link is right. No DOM mutation (the manifest link is metadata, and the installed icon is OS-owned) — cookie correctness for the next install is the whole job. Mounted in the dashboard layout beside `ThemeInitializer`. |
 | `ServiceWorkerRegistration.tsx` | `'use client'`; registers `public/sw.js` in the **root** layout (production-only). The SW owns the offline shell AND (migration 0120) the additive Web Push `push`/`notificationclick` handlers. |
 
 ### Web Push (PWA push notifications — migration 0120)

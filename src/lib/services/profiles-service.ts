@@ -139,6 +139,7 @@ export async function updateProfileFields(
     | 'phone'
     | 'job_title'
     | 'theme'
+    | 'app_icon'
     | 'timezone'
     | 'is_on_leave'
     | 'avatar_url'

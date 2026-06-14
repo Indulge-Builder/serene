@@ -12,6 +12,44 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-15 — PWA home-screen icon picker: choose your installed-app icon at first install and in /profile (`profiles.app_icon`)
+
+Users can now pick which icon Serene installs to the home screen from a set of options — **at first install** (the choice bakes into the placed shortcut) and later in **/profile** (saved as a preference; honest that an already-installed icon can't auto-change because the OS owns the placed shortcut). The choice persists on `profiles.app_icon`, mirroring `profiles.theme` end-to-end.
+
+**Asset reality (differs from the original brief):** the brief assumed `/public/icons/icon-N-{192,512,maskable}.png` SETS already existed. They did not — the user pasted **4 single square webp** at `/public/icon-1.webp … icon-4.webp` (1254×1254). Built around that real shape: one large square per choice covers the manifest 192/512 slots (browser downscales `sizes:"any"`), the maskable purpose, AND apple-touch-icon. Adding a 5th option later is **two lines** (drop `icon-5.webp`, add one `{id,label}` to `ICON_KEYS` + extend the CHECK in a new migration) — no other code change.
+
+**New — `src/lib/constants/app-icons.ts`** (built exactly like `themes.ts` via `defineEnum`): `ICON_KEYS`/`ICON_LABELS`/`ICON_OPTIONS`/`ICON_ENUM`, `DEFAULT_ICON = 'icon-1'`, `isIconKey()`, **`iconSrc(value)`** (THE only key→path resolver — validates against `ICON_KEYS`, falls back to `DEFAULT_ICON`; a raw param can never become an arbitrary `src`), and the SSR mirror `APP_ICON_COOKIE = 'serene-app-icon'` + `persistAppIconCookie()`. Labels are neutral ("Icon 1"…"Icon 4").
+
+**New — migration `0121_profile_app_icon`:** `profiles.app_icon text NOT NULL DEFAULT 'icon-1' CHECK (app_icon IN ('icon-1'..'icon-4'))` — the `theme` column pattern exactly. **NO RLS change** — the existing `profiles_update` policy already permits self-update of non-authorization fields (the WITH CHECK guard only protects role/domain). Not added to `log_profile_changes()` (cosmetic, same posture as theme/timezone). `database.ts` + `Profile` type hand-extended in the interim (narrowed `app_icon` union, mirrors `theme`). **⚠️ NOT yet applied to prod** — regenerate `database.ts` after applying.
+
+**No new persist action (R-01):** `app_icon` rides the **existing** `updateProfile` action — added to `updateProfileSchema` (`ICON_ENUM`) and threaded through (`?? undefined` parse + apply), exactly like `theme`. `updateProfileFields` allow-list extended.
+
+**New — `src/app/api/manifest/route.ts`** (dynamic per-icon manifest; sanctioned PWA carve-out to P-02 — static JSON for the PWA surface, the dynamic twin of `app/manifest.ts`, no DB/session/business logic): reads `?icon=`, validates via `isIconKey` (fallback `DEFAULT_ICON`), returns the manifest with that icon's entries. `app/manifest.ts` refactored to export `buildManifest(icon)` + `EARTH_CANVAS` so both the static default and the route share ONE envelope (no duplication). Proxy matcher + early-return bypass `/api/manifest` (fetched outside auth context, like `manifest.webmanifest`/`sw.js`/`icons`).
+
+**Root layout — install bakes the saved icon (zero hydration wait):** `metadata` → `generateMetadata()` reads the `serene-app-icon` cookie and points `<link rel="manifest">` at `/api/manifest?icon=<saved>` AND sets `icons.apple` to the same webp (failure-mode #3: iOS reads apple-touch-icon, not the manifest icon, on Add-to-Home-Screen). `IconInitializer` (the `ThemeInitializer` twin, mounted in the dashboard layout) re-syncs the cookie from `profiles.app_icon` on every load so the next request's manifest link is correct.
+
+**New — `components/profile/IconSelector.tsx`** (clones `ThemeSelector`: radiogroup, the SAME `updateProfile` FormData call, `useTransition`, cookie persist; image tiles instead of theme-token previews) — and is **honest about reach**: saving shows a manual-reinstall note ("remove from home screen, then add again — the placed icon belongs to your device"), never claims the change is automatic.
+
+**New — `components/profile/InstallPrompt.tsx`** (the full first-install picker): captures Chromium's `beforeinstallprompt`, shows the icon tiles, **swaps the live `<link rel="manifest">` + `apple-touch-icon` to the pick BEFORE calling `prompt()`** (so the chosen icon is what installs), persists the choice, and listens for `appinstalled`. **iOS has no `beforeinstallprompt`** → falls back to the same Add-to-Home-Screen nudge pattern as `PushNotificationSettings`, with the picker above it (pick → persist + swap link → install manually with the right icon wired). Renders null when already standalone or nothing to offer. Both mounted in `/profile` (IconSelector under Appearance; InstallPrompt in a new "Add to Home Screen" SectionCard).
+
+**Convention notes:** `next/image` is used nowhere else in the codebase — kept the plain `<img>` convention (tiny static icons; `eslint-disable @next/next/no-img-element`). The static `app/apple-icon.png` file convention remains as a fallback; `metadata.icons.apple` is the per-user authoritative apple-touch-icon. `sw.js`/push unchanged (the original `/icons/*.png` generic set is intact and still backs the offline shell + push badge).
+
+**Verified:** `pnpm tsc --noEmit` clean; `check-tokens` clean (no hardcoded hex — all inline styles are `var(--…)`; the only sanctioned hex stays the manifest/viewport Earth canvas). Failure modes from the brief all closed: (1) unvalidated `icon` param → `iconSrc`/`isIconKey` fallback, path never built from raw input; (2) migration mirrors `theme`, RLS unchanged (no widened update policy); (3) `apple-touch-icon` set to match the pick on the install screen. No new persist action; no hardcoded colours.
+
+---
+
+## 2026-06-15 — graphify: curated navigation wiki (`graphify-out/wiki/`) replaces noisy auto-clusters as the navigation layer
+
+The knowledge-graph **topology** (`graphify-out/graph.json`) was already current — a forced `graphify update .` confirmed all the newest subsystem files (revival, push, voice, performance drill modals, Carousel) are already nodes. What was stale was the **human/agent navigation layer**: the 456 auto-generated community labels are largely machine noise ("Dev Guide · Cluster 33", "Community 79"), the LLM community names were last regenerated 2026-06-11 (pre-Elaya-rename, pre-Revival, pre-Push), and the `graphify-out/wiki/` path that the root `CLAUDE.md` graphify rules already reference did not exist.
+
+**New — `graphify-out/wiki/` (17 hand-authored pages):** an `index.md` (subsystem map + a "task → start here" router + the Canonical Helper Registry that serves R-01), a `_conventions.md` (the cross-cutting laws that bite — the `after()` rule, dual-key cache, P-08 Redis-before-revalidate, Zod-first/`requireProfile` actions, the PII gateway, IST math, `m as motion` — indexed by *where they apply*), and one page per real subsystem, each with the same shape (**Purpose → Entry points → Data flow → Canonical helpers → Tables → Invariants/Gotchas → File map**): Elaya, Lead Revival, Voice dictation, Web Push, SLA & Notifications, Leads, Tasks, Deals, Performance, Campaigns/Budget, Call Intelligence, WhatsApp, Auth/RBAC, Design system, Shared toolbox. Grounded by six parallel exploration passes over the live code; every cited source path (143 unique) and every internal link verified to resolve.
+
+**New — `graphify-out/README.md`:** a durable directory pointer (survives `graphify` regeneration, unlike `GRAPH_REPORT.md`) routing readers to the curated `wiki/` for navigation and to `graphify query/path/explain` for raw topology.
+
+**No code or schema changes** — documentation/tooling only. Regenerate the graph with `graphify update .` after code changes; the wiki pages are curated by hand when a subsystem changes shape.
+
+---
+
 ## 2026-06-14 — Web Push: notifications reach installed PWAs even when Serene is closed (second channel behind one fan-out seam)
 
 The in-app notification spine (the `notifications` table, RLS, Realtime, the bell) stayed exactly as-is; this adds **Web Push (VAPID, the `web-push` library — no SaaS)** as a SECOND delivery channel so a `lead_assigned` / `lead_won` / SLA / task notification also reaches an installed PWA (iOS 16.4+ standalone, Android, desktop) when the app is closed — and finishes the half-built mobile notification panel ("bell not working on phone").
@@ -66,6 +104,28 @@ Two jobs on `/performance`. **(A)** The agent self-view's Overview/Today tab bar
 **New:** `src/components/ui/Carousel.tsx` (generic swipe deck), `FounderDrillDownDeck.tsx` (Dialog `size="full"`, in-memory roster, zero per-swipe fetch), `DrillModalShell.tsx` (nested-modal z above the deck), `AgentCallsDrillModal`/`AgentLeadsDrillModal`/`AgentDealsDrillModal`. Three gated actions (`getAgentCallsForManagerAction`, `getAgentLeadsScopedAction`, `getAgentDealsScopedAction`) + `getAgentActivityForManagerAction`, all behind a shared `assertDrillAccess` that mirrors `getAgentDetailMetricsAction` authz exactly (`requireProfile(['manager','admin','founder'])` → manager domain-equality guard). `getAgentLeadActivityPage` widened with a typed `actionType` param + phone/outcome/note fields.
 
 **Verified:** `tsc --noEmit` clean; 38-agent adversarial review across the count-contract, scope-leak, zero-fetch-on-swipe, and framework-rule axes confirmed **zero defects** (the only `real:true` findings were PASS confirmations of A-18 authz and A-17 imports). No DB migration, no type regen (`leads.phone`/`lead_notes` already in `database.ts`), no Redis change (reads only).
+
+---
+
+## 2026-06-14 — Lead Revival: gate gets a third verdict (`dismiss`) so confident junk stops clogging the review tab
+
+The revival gate was **binary** (`revive` vs `unsure`), so everything that wasn't a clear revive drained into `unsure` — including leads whose notes carry an explicit agent-recorded disqualifier ("not a Prospect", "doesn't need our services", affordability-dead, MBA-student-only-wanted-details). A calibration eval on 12 real note-shapes returned **11 of 12 as `unsure`**: the binary gate couldn't commit on obvious junk, so it dumped it into human review.
+
+**Added a third verdict — `dismiss` — so the gate COMMITS on confidently-dead leads.** Three verdicts, three behaviours:
+
+- `revive` → auto-task (unchanged — the bar did not move).
+- `dismiss` → a `revival_candidates` row written **`status='dismissed'` at creation** — kept as the audit/training log, **never surfaced in review** (the review reads all filter `status='open'`, so a dismissed candidate is structurally excluded). No task, no human review.
+- `unsure` → the review tab (unchanged) — now reserved for the **genuinely ambiguous middle** (warm-but-stalled, soft-signal, disconnected-unclear), not a dumping ground for junk.
+
+**The prompt rewrite is the core change** (`src/lib/services/revival-gate.ts`): the gate is told to TRUST the agent's written verdict — an explicit disqualifier → `dismiss`, not `unsure` — while a warm lead is **NEVER** auto-dismissed (a real signal it can't cleanly call → `unsure`). The `revive` bar is unchanged. The parser honours only the three exact verdict strings; anything else (garbled/missing/novel) collapses to `unsure` — a glitch never auto-revives AND never auto-dismisses. A malformed/throwing response still fails closed to `unsure`.
+
+**Re-ran the calibration eval — the piles separated: 7 dismiss · 4 unsure · 1 revive** (was 1 · 11 · 0). All sign-off cases held: the five explicit-disqualifier/unreachable-wall leads (#1, #3, #5, #10, #12 + #2/#6) landed `dismiss`; **Ratlam ("onboard in 3-4 months") stayed `revive`**; **Kartik (warm, then "on hold") stayed `unsure`** — no over-correction onto a warm lead. Full result table is the calibration record in `docs/modules/revival.md`.
+
+**Judge-once anti-join (correctness):** the silence finder (`findSilentLeadsForStatus`) now anti-joins leads holding a candidate of **ANY** status (open/actioned/dismissed), not just `open`. Without this, a `dismissed` lead (no open candidate) would re-enter the silent pool every night, get re-dismissed, pile up duplicate dismissed rows, and burn a routing-model call on a known-dead lead. The partial UNIQUE `(lead_id) WHERE status='open'` still backstops the one-open race.
+
+Migration **0119 edited in place** (not yet applied to prod): the `revival_candidates.verdict` CHECK widened to `('revive','unsure','dismiss')`. Touched: `revival-gate.ts` (prompt + parser + the `judgeNotesForRevival` core's three-way return), `lead-revival.ts` (three-verdict sweep branch + `dismissed` tally), `revival-service.ts` (insert accepts `status='dismissed'` + stamps `resolved_at`; finder judge-once anti-join), `types/revival.ts` + `constants/revival.ts` (`RevivalVerdict`/`REVIVAL_VERDICTS` gain `dismiss`), `RevivalReviewBanner.tsx` (verdict type widened to the canonical union). The calibration eval lives at `scripts/test-revival-gate.ts` (kept as the regression check; needs a `server-only` shim to load the gate under `tsx` — run block in the header).
+
+Sign-off: `pnpm tsc --noEmit` clean, `next build` clean (30/30 routes). Failure modes verified by the eval: no `dismiss` leaks into review (filter excludes it), no warm lead auto-dismissed (Kartik stayed `unsure`), the `revive` bar did not shift (Ratlam stayed `revive`). Docs: `docs/modules/revival.md` (three-verdict contract + the eval calibration table).
 
 ---
 

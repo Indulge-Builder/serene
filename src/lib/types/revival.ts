@@ -5,7 +5,11 @@
 
 import type { RevivalTriggerStatus } from "@/lib/constants/revival";
 
-export type RevivalVerdict = "revive" | "unsure";
+// Three verdicts, three behaviours: revive → auto-task; dismiss → a candidate row
+// written status='dismissed' (confident junk, kept as the audit/training log, NOT
+// surfaced in review); unsure → review tab (the ambiguous middle). 'dismiss' exists
+// so confident junk stops draining into 'unsure' and clogging review.
+export type RevivalVerdict = "revive" | "unsure" | "dismiss";
 export type RevivalCandidateStatus = "open" | "actioned" | "dismissed";
 
 export type RevivalCandidateRow = {

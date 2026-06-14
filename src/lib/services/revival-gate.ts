@@ -5,10 +5,15 @@
 // Haiku-tier adapter.complete() with NO tools, notes masked via maskPii before the
 // model. No second LLM integration, no new provider call, no new SDK import.
 //
-// The gate's job is MOSTLY SUPPRESSION — it errs toward 'unsure' (never revive).
-// 'unsure' lands in the review tab (a human decides); only a confident 'revive'
-// can become an auto-task. A malformed/throwing model response FAILS CLOSED to
-// 'unsure' — a glitch never auto-revives.
+// THREE verdicts, three behaviours (the caller/sweep maps them):
+//   • revive  → auto-task (the high bar — a genuine warm signal that died).
+//   • dismiss → a candidate row written status='dismissed' (confident junk an agent
+//               already disqualified) — kept as the audit log, NEVER surfaced in review.
+//   • unsure  → the review tab (the ambiguous middle — a human decides).
+// The gate is suppression-biased against 'revive', but it must COMMIT on dead leads
+// ('dismiss') instead of draining them into 'unsure' and clogging review. A
+// malformed/throwing model response FAILS CLOSED to 'unsure' — a glitch never
+// auto-revives AND never auto-dismisses; it goes to a human.
 
 import "server-only";
 import { resolveLlmForJob } from "@/lib/elaya/registry";
@@ -27,27 +32,37 @@ import type { RevivalGateVerdict } from "@/lib/types/revival";
 // System prompt — the suppression bias lives HERE, in code (not the model's whim).
 // ─────────────────────────────────────────────
 
-const GATE_SYSTEM_PROMPT = `You are a lead-revival SUPPRESSION gate for a luxury concierge sales CRM.
+const GATE_SYSTEM_PROMPT = `You are a lead-revival gate for a luxury concierge sales CRM.
 
-A lead has gone silent. Your ONE job is to read its recent notes and decide whether it is worth an agent's time to re-engage NOW — and to SUPPRESS the junk. You are biased toward NOT reviving. When in doubt, you choose "unsure" (a human reviews it) — you NEVER guess "revive".
+A lead has gone silent. Read its recent notes and return ONE of three verdicts. Most leads are NOT revivable — you are biased against "revive". But you must also COMMIT: do not hide confidently-dead leads behind "unsure". "unsure" is only for the genuinely ambiguous middle, not a dumping ground.
 
-Choose verdict "unsure" (do NOT revive) when the notes show ANY of:
-- Own-network / internal / staff / friend-of-staff lead (not a real prospect).
-- The person only ever wanted information/details/pricing and showed no real buying intent ("only wanted details", "just enquiring", "sending brochure only").
-- Affordability is dead — they said it's too expensive / out of budget / can't afford it, with no openness left.
-- Pure no-response with NO real conversation ever (only "RNR", "switched off", "not picking", "wrong number" — never actually spoke). These are handled by other follow-up tooling, not revival.
-- Explicitly not interested / asked to stop / hard rejection.
-- The notes are empty, contentless, or you cannot tell.
+The agent who wrote these notes already formed a view. When they recorded an explicit disqualifier, TRUST IT — that is "dismiss", not "unsure".
 
-Choose verdict "revive" ONLY when the notes show a genuine warm signal that died from neglect, e.g.:
+Choose verdict "dismiss" (confidently dead — NOT worth a human's second look) when the notes contain an explicit, agent-recorded disqualifier, e.g.:
+- "not a prospect" / "doesn't need our services" / "not interested" / asked to stop / hard rejection.
+- Own-network / internal / staff / friend-of-staff / not a real buyer.
+- Only ever wanted information/details/pricing with no buying intent ("only wanted details", "just enquiring", "sending brochure only", "MBA student, only wanted details").
+- Affordability is dead with no openness left ("can't afford", "too expensive", "not affordable for me") AND no genuine future-intent caveat.
+- Doesn't recall the ad / clicked by mistake / no recollection of any interest.
+- Pure unreachable with NO real conversation EVER and a standing wall (only RNR / switched off / wrong number / incoming-calls-barred — never actually spoke, no engagement to revive).
+
+Choose verdict "revive" ONLY when the notes show a genuine warm signal that died from neglect — the bar is UNCHANGED, do not lower it:
 - A real conversation happened, interest was expressed, and the thread simply went quiet (no rejection, no dead-end).
-- A concrete future intent ("call me after Diwali", "circle back next month", "deciding with spouse") whose window has now arrived or passed.
-- A soft/temporary objection (timing, travel, busy) rather than a hard no.
+- A concrete future intent ("call me after Diwali", "circle back next month", "onboard in 3-4 months", "deciding with spouse") whose window has arrived or passed.
+- A soft/temporary objection (timing, travel, busy, life event) rather than a hard no.
+
+Choose verdict "unsure" (a human reviews it) for the AMBIGUOUS MIDDLE — never as a safe default for junk:
+- A warm-but-stalled lead you can't cleanly call: real interest mixed with a soft objection or a stale/unclear follow-up window (e.g. "on hold, not sure when", "will get back" with no timeline, "will reach out when ready"). A warm lead is NEVER "dismiss" — when a real signal exists but you can't commit, choose "unsure".
+- Effort made (video/brochure sent) but no response yet, where it's unclear if neglected or dead.
+- Disconnected/unclear contact where you cannot tell rejection from accident.
+- Notes too thin to judge either way.
+
+Decision order: is there a genuine warm signal? → if clearly yes, "revive"; if a real signal exists but you can't commit, "unsure". No warm signal AND an explicit disqualifier or a standing unreachable wall? → "dismiss". Otherwise → "unsure".
 
 Output STRICT JSON ONLY (no prose, no markdown, no code fence), exactly:
-{"verdict":"revive"|"unsure","reasoning":"<one short sentence, max 200 chars, why>","suggested_revive_at":"<YYYY-MM-DD or null>"}
+{"verdict":"revive"|"unsure"|"dismiss","reasoning":"<one short sentence, max 200 chars, citing the note signal>","suggested_revive_at":"<YYYY-MM-DD or null>"}
 
-"reasoning" must cite the note signal that drove the call. "suggested_revive_at" is your best date to re-engage (null if you have no basis). Never invent facts not in the notes.`;
+"suggested_revive_at" only applies to "revive" (null otherwise). Never invent facts not in the notes.`;
 
 // ─────────────────────────────────────────────
 // The judgment call.
@@ -192,8 +207,12 @@ function parseGateVerdict(text: string): RevivalGateVerdict | null {
   const o = obj as Record<string, unknown>;
 
   const verdict = o.verdict;
-  // Only an explicit, exact "revive" is honoured — anything else is suppression.
-  const safeVerdict: RevivalGateVerdict["verdict"] = verdict === "revive" ? "revive" : "unsure";
+  // Honour exactly the three known verdicts; ANYTHING ELSE (missing, garbled, a
+  // novel word) collapses to 'unsure' — the safe middle. The bias is asymmetric on
+  // BOTH ends: an unrecognised verdict never auto-revives AND never auto-dismisses
+  // — it goes to a human. Only an exact "revive"/"dismiss" earns its behaviour.
+  const safeVerdict: RevivalGateVerdict["verdict"] =
+    verdict === "revive" ? "revive" : verdict === "dismiss" ? "dismiss" : "unsure";
 
   const reasoningRaw = typeof o.reasoning === "string" ? o.reasoning.trim() : "";
   const reasoning =
