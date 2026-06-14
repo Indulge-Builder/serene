@@ -12,6 +12,18 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-15 — Fix: installed PWA always used `icon-1` — the static `/manifest.webmanifest` ignored the saved icon
+
+**Root cause (the real one).** `generateMetadata()` in the root layout set `manifest: '/api/manifest?icon=<saved>'`, but **Next's `app/manifest.ts` file convention WINS over the `metadata.manifest` value** — Next emits `<link rel="manifest" href="/manifest.webmanifest">` regardless, and the dynamic `/api/manifest?icon=` link is dropped. Confirmed in the rendered `<head>` (cookie `serene-app-icon=icon-3` still produced `<link rel="manifest" href="/manifest.webmanifest">`). That static route **hardcoded `buildManifest("icon-1")`**, so the manifest the browser actually installs from always carried `icon-1` — the installed home-screen shortcut had no reference to the user's pick. (The `apple-touch-icon` link was already correct, which is why iOS behaved differently from Android.)
+
+**Fix.** `app/manifest.ts`'s default export now reads the `serene-app-icon` cookie (the SSR mirror of `profiles.app_icon` — the same cookie the layout reads) and returns `buildManifest(<saved>)`, falling back to `DEFAULT_ICON` when cookieless. `manifest()` became `async` and reads `cookies()` (allowed in the manifest convention; makes the route dynamic, which is correct — the manifest is per-user). Both the file-convention `<link>` and the `generateMetadata` override now agree on the saved icon; there is no hardcoded `icon-1` left anywhere in the install path.
+
+**Verified:** `tsc --noEmit` clean. Live probe of `/manifest.webmanifest` with `Cookie: serene-app-icon=icon-3` → `icons[0].src === /icon-3.webp`; `icon-2` → `/icon-2.webp`; no cookie → `/icon-1.webp`. The `/api/manifest` dynamic route is now redundant for the install path but left in place (it's the explicit `?icon=` override `InstallPrompt.swapInstallIcon` still rewrites the link to; harmless, and the proxy already bypasses it).
+
+**Note on reinstalls:** iOS/Android cache the home-screen icon by app identity, so a remove→re-add can still show the *previously cached* icon even now that the manifest is correct. A fully clean reinstall (clear the site's website data first) picks up the new icon; the Add-to-Home-Screen preview sheet shows what will actually be used.
+
+---
+
 ## 2026-06-15 — Fix: home-screen icon picker shown twice on /profile, and install ignoring the saved icon
 
 Two bugs in the PWA icon picker (reported on mobile), one root cause. `/profile` rendered the **icon grid twice** — once in `IconSelector` ("Appearance" card) and again inside `InstallPrompt` ("Add to Home Screen" card) — and the two grids held **independent selection state**. `IconSelector` seeded from the saved `profiles.app_icon`; `InstallPrompt` always seeded from `ICON_OPTIONS[0]` (`icon-1`), ignoring the saved value. So after a user picked (say) `icon-3` in Appearance and then tapped **Add to home screen**, `InstallPrompt.handleInstall()` ran `swapInstallIcon(selected)` + `persistChoice(selected)` with its own stale `selected === 'icon-1'` — **overwriting the DB/cookie back to `icon-1` and installing the wrong icon.** The user's choice was silently discarded.

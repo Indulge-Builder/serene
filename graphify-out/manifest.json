@@ -2065,8 +2065,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781469351.303114,
-    "ast_hash": "b6414fbba5454f61fc0864b83c883c08",
+    "mtime": 1781470328.653705,
+    "ast_hash": "9c9aa2d3987076d7d193996f3389bfd6",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -2675,8 +2675,8 @@
     "semantic_hash": ""
   },
   "src/app/manifest.ts": {
-    "mtime": 1781467840.8535466,
-    "ast_hash": "b7e0c547de8172ec419ab15e35f3cb82",
+    "mtime": 1781470293.8416047,
+    "ast_hash": "2b43d676cbceb8d91139c4a6d5efc100",
     "semantic_hash": ""
   },
   "src/components/layout/ServiceWorkerRegistration.tsx": {
@@ -3490,8 +3490,8 @@
     "semantic_hash": ""
   },
   "public/icon-1.webp": {
-    "mtime": 1781466090.893754,
-    "ast_hash": "2958811d6e38a4a2e80d608f3c1e4176",
+    "mtime": 1779830659.6709173,
+    "ast_hash": "83365db02823575a40af43aee2d31399",
     "semantic_hash": ""
   },
   "public/icon-2.webp": {
@@ -3509,9 +3509,9 @@
     "ast_hash": "f1627508bc119e1cb525241b3850ab78",
     "semantic_hash": ""
   },
-  "public/logo-1.webp": {
-    "mtime": 1779830659.6709173,
-    "ast_hash": "83365db02823575a40af43aee2d31399",
+  "public/icon-5.webp": {
+    "mtime": 1781466090.893754,
+    "ast_hash": "2958811d6e38a4a2e80d608f3c1e4176",
     "semantic_hash": ""
   }
 }

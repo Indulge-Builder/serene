@@ -1,5 +1,12 @@
 import type { MetadataRoute } from "next";
-import { iconSrc, type IconKey } from "@/lib/constants/app-icons";
+import { cookies } from "next/headers";
+import {
+  APP_ICON_COOKIE,
+  DEFAULT_ICON,
+  iconSrc,
+  isIconKey,
+  type IconKey,
+} from "@/lib/constants/app-icons";
 
 // Hardcoded hex is sanctioned here only: a manifest is static JSON and cannot
 // read CSS variables. Values mirror the Earth (default) theme tokens in
@@ -33,9 +40,18 @@ export function buildManifest(icon: IconKey): MetadataRoute.Manifest {
   };
 }
 
-export default function manifest(): MetadataRoute.Manifest {
-  // Static default (the Next.js `/manifest.webmanifest` convention). A signed-in
-  // device overrides the <link rel="manifest"> to /api/manifest?icon=<saved> in
-  // the root layout so the user's chosen icon is what actually installs.
-  return buildManifest("icon-1");
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  // The Next.js `/manifest.webmanifest` file convention. This link WINS over the
+  // `generateMetadata().manifest` value in the root layout — Next emits
+  // <link rel="manifest" href="/manifest.webmanifest"> from this file regardless
+  // of the metadata override. So this route — not /api/manifest — is what most
+  // browsers install from. It MUST therefore carry the user's saved icon, not a
+  // hardcoded default; reading the serene-app-icon cookie (the SSR mirror of
+  // profiles.app_icon, the same cookie the layout reads) makes the installed
+  // shortcut match the user's pick. Reading cookies() makes this route dynamic,
+  // which is correct — the manifest is per-user. Falls back to DEFAULT_ICON for
+  // a signed-out / cookieless request.
+  const cookieIcon = (await cookies()).get(APP_ICON_COOKIE)?.value;
+  const icon = isIconKey(cookieIcon) ? cookieIcon : DEFAULT_ICON;
+  return buildManifest(icon);
 }
