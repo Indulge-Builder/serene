@@ -19,8 +19,18 @@ export const EARTH_CANVAS = "#0d0c0a";
 // THE single manifest envelope builder. The static export below uses the
 // DEFAULT_ICON; /api/manifest?icon=<key> calls this with the user's validated
 // key so a per-user install bakes that icon into the shortcut. One large
-// square source covers the 192/512 slots (the browser downscales `sizes:"any"`)
-// and the maskable purpose; the same file backs apple-touch-icon in the layout.
+// square source covers the 192/512 slots (the browser downscales `sizes:"any"`);
+// the same file backs apple-touch-icon in the layout.
+//
+// NO `purpose: "maskable"` entry — the icon art is a transparent glyph (the
+// seed-of-life mark on an alpha background), and a maskable icon MUST be a
+// solid edge-to-edge fill with the logo inside the centre safe zone. Declaring
+// a transparent edge-to-edge glyph maskable makes Android crop it into a
+// circle/squircle, clipping the outer petals and leaving transparent corners.
+// `purpose: "any"` (the default when omitted) tells the OS to render the icon
+// as-is — the glyph stays whole. The art itself is padded into the safe zone so
+// it never touches the edges regardless of OS plate. Never re-add maskable here
+// unless the source art becomes a solid-background safe-zone icon.
 export function buildManifest(icon: IconKey): MetadataRoute.Manifest {
   const src = iconSrc(icon); // validated key → /icon-N.webp (never raw input)
   return {
@@ -35,7 +45,6 @@ export function buildManifest(icon: IconKey): MetadataRoute.Manifest {
       { src, sizes: "192x192", type: "image/webp" },
       { src, sizes: "512x512", type: "image/webp" },
       { src, sizes: "any", type: "image/webp" },
-      { src, sizes: "512x512", type: "image/webp", purpose: "maskable" },
     ],
   };
 }

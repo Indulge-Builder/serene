@@ -12,6 +12,18 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-15 — Fix: home-screen icon clipped / cramped — padded the glyph into the safe zone and dropped `purpose: "maskable"`
+
+The PWA icon art is the seed-of-life glyph on a **transparent** background, drawn **edge-to-edge**. Two consequences on a home screen: (1) the glyph touched the icon bounds (cramped, no breathing room), and (2) `buildManifest` declared a `{ purpose: "maskable" }` entry — but a maskable icon MUST be a solid edge-to-edge fill with the logo inside the centre safe zone. Android crops maskable icons into a circle/squircle, so a transparent edge-to-edge glyph got its outer petals clipped with transparent corners.
+
+**Manifest fix (`app/manifest.ts`):** removed the `purpose: "maskable"` icon entry. The remaining entries are `purpose: "any"` (the omitted default) → the OS renders the glyph as-is, whole. Documented inline why maskable must never come back while the art is a transparent glyph.
+
+**Art fix (`scripts/pad-app-icons.mjs`, re-runnable):** originals copied to `public/_icon-originals/`; a one-time padder (resolves `sharp` from Next's existing dependency — **no new package**) `trim`s each source's existing transparent margin, resizes the glyph to **78%** of the canvas (≈11% transparent gutter per side — the maskable safe zone), and re-centres it on a fresh fully-transparent 1254×1254 square. **Background stays transparent by design** (per the chosen direction — keep transparent, just pad). Side effect: `icon-1.webp` was a soft **240×240** source; it's now a crisp **1254×1254** matching `icon-2/3/4`. Alpha preserved end-to-end (`alphaQuality: 100`).
+
+**Verified:** all four icons now 1254×1254 with `hasAlpha: yes`; visual check confirms the glyph sits inside a consistent gutter (previously `icon-3` bled to the top/bottom edges). `/manifest.webmanifest` (cookie `icon-3`) now serves three `purpose:"any"` entries, all `/icon-3.webp` — no maskable. `tsc --noEmit` clean. The static `app/apple-icon.png` fallback + the per-user `metadata.icons.apple` are unchanged. (`public/icon-5.webp` remains an unused orphan referenced only in an app-icons.ts comment as the "add a 5th option" example — left as-is, not part of this fix.)
+
+---
+
 ## 2026-06-15 — Fix: installed PWA always used `icon-1` — the static `/manifest.webmanifest` ignored the saved icon
 
 **Root cause (the real one).** `generateMetadata()` in the root layout set `manifest: '/api/manifest?icon=<saved>'`, but **Next's `app/manifest.ts` file convention WINS over the `metadata.manifest` value** — Next emits `<link rel="manifest" href="/manifest.webmanifest">` regardless, and the dynamic `/api/manifest?icon=` link is dropped. Confirmed in the rendered `<head>` (cookie `serene-app-icon=icon-3` still produced `<link rel="manifest" href="/manifest.webmanifest">`). That static route **hardcoded `buildManifest("icon-1")`**, so the manifest the browser actually installs from always carried `icon-1` — the installed home-screen shortcut had no reference to the user's pick. (The `apple-touch-icon` link was already correct, which is why iOS behaved differently from Android.)
