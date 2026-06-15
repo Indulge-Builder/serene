@@ -2,38 +2,59 @@
 
 // FounderDrillDownDeck — full-screen swipeable per-agent card deck.
 //
-// One card per roster agent, rendered ENTIRELY from the in-memory AgentRosterRow
-// array already held by ManagerPerformancePanel — zero per-swipe fetch. Each
-// card surfaces four metric tiles; tapping a tile opens a drill-down modal that
-// fetches ON OPEN only:
+// One card per roster agent, rendered from the in-memory AgentRosterRow array
+// already held by ManagerPerformancePanel — zero per-SWIPE fetch of roster
+// data. Each card surfaces three metric tiles; tapping a tile opens a drill-down
+// modal that fetches ON OPEN only:
 //   Total Calls -> AgentCallsDrillModal ("Recent calls", count contract)
 //   Leads       -> AgentLeadsDrillModal
-//   Won/Revenue -> AgentDealsDrillModal
+//   Revenue     -> AgentDealsDrillModal
+// ("Deals won" was dropped 2026-06-15 — three tiles, one row.)
+//
+// Below the tiles each card carries a toggleable breakdown chart
+// (Call outcome <-> Lead status). The breakdown is fed by getAgentDetailMetrics
+// (callOutcomeBreakdown + pipelineBreakdown — no new RPC), fetched LAZILY the
+// first time a card becomes active and cached per agent in `metricsByAgent` so a
+// swipe back to a seen card never refetches and a re-render never refires.
 //
 // The deck is a Dialog size="full" (opts OUT of the <md bottom-sheet). The drill
 // modals stack ABOVE it via the nested-modal z contract (DrillModalShell).
 //
 // NOTE: AgentRosterRow has NO totalCallsMade field (that lives only on
-// AgentDetailMetrics, fetched per-agent). The "Total Calls" tile is therefore a
-// label-only tap target — showing a number would require a fetch and break the
-// zero-per-swipe-fetch rule. The call COUNT lives only inside the Recent-calls
-// modal (items.length / "showing N most recent"), never on the card.
+// AgentDetailMetrics). The "Total Calls" tile is therefore a label-only tap
+// target — showing a number would break the zero-per-swipe-fetch rule for the
+// tiles. The call COUNT lives only inside the Recent-calls modal.
 
-import { useState } from 'react';
-import { Phone, Users, Trophy, IndianRupee } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
+import { m as motion } from 'framer-motion';
+import { Phone, Users, IndianRupee, BarChart3, ListChecks } from 'lucide-react';
 import { Dialog } from '@/components/ui/Dialog';
 import { Avatar } from '@/components/ui/Avatar';
 import { Carousel } from '@/components/ui/Carousel';
+import { PipelineBar } from '@/components/performance/PipelineBar';
 import { AgentCallsDrillModal } from '@/components/performance/AgentCallsDrillModal';
 import { AgentLeadsDrillModal } from '@/components/performance/AgentLeadsDrillModal';
 import { AgentDealsDrillModal } from '@/components/performance/AgentDealsDrillModal';
+import { getAgentDetailMetricsAction } from '@/lib/actions/performance';
 import { formatCount, formatCurrencyCompact } from '@/lib/utils/numbers';
+import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
-import type { AgentRosterRow } from '@/lib/types/index';
+import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
 import type { AppDomain } from '@/lib/types/database';
+import type { PerformancePeriod } from '@/lib/services/performance-service';
+
+// Recharts importer — lazy per perf G-3 so the chart chunk never lands in the
+// /performance initial bundle. Same same-shape skeleton placeholder pattern as
+// AgentDetailPanel's CallOutcomeBar mount.
+const CallOutcomeBar = dynamic(
+  () => import('@/components/performance/CallOutcomeBar').then((mod) => mod.CallOutcomeBar),
+  { loading: () => <div className="skeleton" style={{ height: '200px', borderRadius: 'var(--radius-lg)' }} /> },
+);
 
 type DrillKind = 'calls' | 'leads' | 'deals';
 type DrillTarget = { kind: DrillKind; agent: AgentRosterRow } | null;
+type BreakdownMode = 'outcome' | 'status';
 
 interface Props {
   open: boolean;
@@ -41,18 +62,82 @@ interface Props {
   roster: AgentRosterRow[];
   /** null for admin/founder (unrestricted); a single domain for a scoped deck. */
   domain: AppDomain | null;
+  /** Period flows from the panel so the breakdown matches the active filter. */
+  period: PerformancePeriod;
+  customFrom?: string;
+  customTo?: string;
   initialAgentId?: string;
 }
 
-export function FounderDrillDownDeck({ open, onClose, roster, domain, initialAgentId }: Props) {
+type BreakdownState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'ready'; metrics: AgentDetailMetrics };
+
+export function FounderDrillDownDeck({
+  open,
+  onClose,
+  roster,
+  domain,
+  period,
+  customFrom,
+  customTo,
+  initialAgentId,
+}: Props) {
   const startIndex = Math.max(
     0,
     initialAgentId ? roster.findIndex((a) => a.id === initialAgentId) : 0,
   );
   const [index, setIndex] = useState(startIndex === -1 ? 0 : startIndex);
   const [drill, setDrill] = useState<DrillTarget>(null);
+  // One toggle for the whole deck — flipping it on one card carries to the next,
+  // which reads naturally when swiping through agents.
+  const [mode, setMode] = useState<BreakdownMode>('outcome');
+
+  // Per-agent breakdown cache — fetched once per agent, keyed by agent id. A
+  // swipe to a seen card reads from here (no refetch); a re-render never refires.
+  const [breakdowns, setBreakdowns] = useState<Record<string, BreakdownState>>({});
+  // In-flight / settled guard so the lazy effect fires the action exactly once
+  // per agent across re-renders (the cache map alone would re-enter between the
+  // request and setState).
+  const requested = useRef<Set<string>>(new Set());
 
   const activeAgent = roster[Math.min(index, Math.max(roster.length - 1, 0))] ?? null;
+
+  // A new period/date filter invalidates every cached breakdown — drop the cache
+  // and the request guard so the active card refetches against the new range.
+  useEffect(() => {
+    setBreakdowns({});
+    requested.current = new Set();
+  }, [period, customFrom, customTo, domain]);
+
+  // Lazy fetch: only the ACTIVE card's agent loads, and only once. Swiping makes
+  // a new card active → its breakdown loads then; cards never seen never fetch.
+  useEffect(() => {
+    if (!open || !activeAgent) return;
+    const agentId = activeAgent.id;
+    if (requested.current.has(agentId)) return;
+    requested.current.add(agentId);
+
+    let cancelled = false;
+    setBreakdowns((prev) => ({ ...prev, [agentId]: { status: 'loading' } }));
+
+    getAgentDetailMetricsAction(agentId, domain, period, customFrom, customTo)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.error || !result.data) {
+          setBreakdowns((prev) => ({ ...prev, [agentId]: { status: 'error' } }));
+        } else {
+          setBreakdowns((prev) => ({ ...prev, [agentId]: { status: 'ready', metrics: result.data! } }));
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBreakdowns((prev) => ({ ...prev, [agentId]: { status: 'error' } }));
+      });
+
+    return () => { cancelled = true; };
+  }, [open, activeAgent, domain, period, customFrom, customTo]);
 
   return (
     <Dialog
@@ -85,6 +170,9 @@ export function FounderDrillDownDeck({ open, onClose, roster, domain, initialAge
           renderItem={(agent) => (
             <DeckAgentCard
               agent={agent}
+              breakdown={breakdowns[agent.id]}
+              mode={mode}
+              onModeChange={setMode}
               onDrill={(kind) => setDrill({ kind, agent })}
             />
           )}
@@ -124,14 +212,21 @@ export function FounderDrillDownDeck({ open, onClose, roster, domain, initialAge
 }
 
 // ─────────────────────────────────────────────
-// DeckAgentCard — one full-width slide. Renders ONLY in-memory roster fields.
+// DeckAgentCard — one full-width slide. Tiles render ONLY in-memory roster
+// fields; the breakdown reads from the deck-level per-agent cache.
 // ─────────────────────────────────────────────
 
 function DeckAgentCard({
   agent,
+  breakdown,
+  mode,
+  onModeChange,
   onDrill,
 }: {
   agent: AgentRosterRow;
+  breakdown: BreakdownState | undefined;
+  mode: BreakdownMode;
+  onModeChange: (mode: BreakdownMode) => void;
   onDrill: (kind: DrillKind) => void;
 }) {
   const conv = agent.conversionRate;
@@ -187,9 +282,9 @@ function DeckAgentCard({
         )}
       </div>
 
-      {/* Metric tiles — tap targets */}
+      {/* Metric tiles — three tap targets, one row */}
       <div
-        className="grid grid-cols-2"
+        className="grid grid-cols-3"
         style={{ gap: 'var(--space-3)', width: '100%' }}
       >
         <DeckTile
@@ -206,19 +301,164 @@ function DeckAgentCard({
           onClick={() => onDrill('leads')}
         />
         <DeckTile
-          icon={<Trophy style={ICON} aria-hidden="true" />}
-          label="Won"
-          value={formatCount(agent.leadsWon)}
-          onClick={() => onDrill('deals')}
-        />
-        <DeckTile
           icon={<IndianRupee style={ICON} aria-hidden="true" />}
           label="Revenue"
           value={formatCurrencyCompact(agent.totalDealAmount)}
           onClick={() => onDrill('deals')}
         />
       </div>
+
+      {/* Breakdown — toggleable outcome <-> status, lazily fed on card open */}
+      <DeckBreakdown breakdown={breakdown} mode={mode} onModeChange={onModeChange} />
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// DeckBreakdown — the toggle + the active chart for one card.
+// ─────────────────────────────────────────────
+
+function DeckBreakdown({
+  breakdown,
+  mode,
+  onModeChange,
+}: {
+  breakdown: BreakdownState | undefined;
+  mode: BreakdownMode;
+  onModeChange: (mode: BreakdownMode) => void;
+}) {
+  return (
+    <div style={{ width: '100%' }}>
+      {/* Mode toggle */}
+      <div
+        role="group"
+        aria-label="Breakdown mode"
+        style={{
+          display: 'inline-flex',
+          gap: '2px',
+          padding: '2px',
+          marginBottom: 'var(--space-3)',
+          borderRadius: 'var(--radius-md)',
+          background: 'var(--theme-paper-subtle)',
+          border: '1px solid var(--theme-paper-border)',
+        }}
+      >
+        <BreakdownTab
+          active={mode === 'outcome'}
+          icon={<BarChart3 style={TAB_ICON} aria-hidden="true" />}
+          label="Call outcome"
+          onClick={() => onModeChange('outcome')}
+        />
+        <BreakdownTab
+          active={mode === 'status'}
+          icon={<ListChecks style={TAB_ICON} aria-hidden="true" />}
+          label="Lead status"
+          onClick={() => onModeChange('status')}
+        />
+      </div>
+
+      {/* Body */}
+      {breakdown === undefined || breakdown.status === 'loading' ? (
+        <div
+          className="skeleton"
+          style={{ height: '200px', borderRadius: 'var(--radius-lg)', width: '100%' }}
+        />
+      ) : breakdown.status === 'error' ? (
+        <p
+          style={{
+            fontFamily: 'var(--font-serif)',
+            fontStyle: 'italic',
+            fontSize: 'var(--text-sm)',
+            color: 'var(--theme-text-tertiary)',
+            margin: 0,
+            padding: 'var(--space-5)',
+            textAlign: 'center',
+          }}
+        >
+          Breakdown unavailable.
+        </p>
+      ) : mode === 'outcome' ? (
+        <motion.div
+          key="outcome"
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
+        >
+          <CallOutcomeBar breakdown={breakdown.metrics.callOutcomeBreakdown} />
+        </motion.div>
+      ) : (
+        <motion.div
+          key="status"
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
+          style={{
+            background: 'var(--theme-paper)',
+            border: '1px solid var(--theme-paper-border)',
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-5)',
+            boxShadow: 'var(--shadow-1)',
+          }}
+        >
+          <p
+            style={{
+              fontFamily: 'var(--font-sans)',
+              fontSize: 'var(--text-2xs)',
+              fontWeight: 'var(--weight-medium)',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: 'var(--theme-text-tertiary)',
+              margin: '0 0 var(--space-4) 0',
+            }}
+          >
+            Lead Pipeline
+          </p>
+          <PipelineBar breakdown={breakdown.metrics.pipelineBreakdown} />
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+const TAB_ICON = { width: 14, height: 14, strokeWidth: 1.5 } as const;
+
+function BreakdownTab({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className="serene-pressable serene-touch"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 'var(--space-2)',
+        padding: 'var(--space-2) var(--space-3)',
+        borderRadius: 'var(--radius-sm)',
+        border: 'none',
+        cursor: 'pointer',
+        background: active ? 'var(--theme-paper)' : 'transparent',
+        boxShadow: active ? 'var(--shadow-1)' : 'none',
+        color: active ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
+        fontFamily: 'var(--font-sans)',
+        fontSize: 'var(--text-xs)',
+        fontWeight: 'var(--weight-medium)',
+        transition: 'background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
+      }}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
 

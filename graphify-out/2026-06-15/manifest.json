@@ -620,8 +620,8 @@
     "semantic_hash": "fbc4ad6de106eb457ccf4ad16ae96cbd"
   },
   "src/components/leads/StatusActionPanel.tsx": {
-    "mtime": 1781523831.2999704,
-    "ast_hash": "2b686d416e6282b3b1b478096dfe7f05",
+    "mtime": 1781527975.9134908,
+    "ast_hash": "a8476215ad3de7677bf9a9964ea65913",
     "semantic_hash": ""
   },
   "src/components/leads/WonDealModal.tsx": {
@@ -645,8 +645,8 @@
     "semantic_hash": ""
   },
   "src/components/performance/AgentDetailPanel.tsx": {
-    "mtime": 1781523737.0722966,
-    "ast_hash": "7d851d8cc991881008e4e655e07dfa4b",
+    "mtime": 1781531434.8709078,
+    "ast_hash": "9baaee9b5c8f2e41dded6b6d2b0491aa",
     "semantic_hash": ""
   },
   "src/components/performance/AgentPerformanceShell.tsx": {
@@ -680,8 +680,8 @@
     "semantic_hash": ""
   },
   "src/components/performance/ManagerPerformancePanel.tsx": {
-    "mtime": 1781523061.4338682,
-    "ast_hash": "312b685bd3f007337fa2913a6870f698",
+    "mtime": 1781531535.2732341,
+    "ast_hash": "f0d5cf225668bea11b1bf26b1b25d0b5",
     "semantic_hash": ""
   },
   "src/components/performance/PerformanceFilters.tsx": {
@@ -990,8 +990,8 @@
     "semantic_hash": ""
   },
   "src/components/ui/toast-item.tsx": {
-    "mtime": 1781344957.0243022,
-    "ast_hash": "36883911661f9d552c24a500c44e2d3b",
+    "mtime": 1781529285.3211281,
+    "ast_hash": "f2421c47a88590238a7c65d05799847b",
     "semantic_hash": ""
   },
   "src/components/ui/toast-provider.tsx": {
@@ -2060,8 +2060,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781527859.2791479,
-    "ast_hash": "2376b41e9792394701d311df948246b0",
+    "mtime": 1781531807.9271336,
+    "ast_hash": "dd2cf625c0e18c68304c556b0c2cd772",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -2125,8 +2125,8 @@
     "semantic_hash": ""
   },
   "src/components/CLAUDE.md": {
-    "mtime": 1781436116.5518038,
-    "ast_hash": "d5f8c01f0e1e74db55a028c4590048f7",
+    "mtime": 1781529309.9499166,
+    "ast_hash": "b64c0febeb2bf5b2dd01e30686dc5d5e",
     "semantic_hash": ""
   },
   "src/components/layout/CLAUDE.md": {
@@ -2145,8 +2145,8 @@
     "semantic_hash": ""
   },
   "src/components/performance/CLAUDE.md": {
-    "mtime": 1781523952.3926105,
-    "ast_hash": "a3a8ef3ccbba1b3fa0ccd18a43c0fa7e",
+    "mtime": 1781531686.8303523,
+    "ast_hash": "6ff0435d4c4f8fee48c56109c7da080c",
     "semantic_hash": ""
   },
   "src/components/tasks/CLAUDE.md": {
@@ -2510,8 +2510,8 @@
     "semantic_hash": ""
   },
   "docs/pages/performance.md": {
-    "mtime": 1781523896.9915476,
-    "ast_hash": "fe1fd969bf895973afb6ed2477c59edc",
+    "mtime": 1781531764.9835696,
+    "ast_hash": "7001486ac18b50e2ca042cc02e3a87e5",
     "semantic_hash": ""
   },
   "docs/pages/settings.md": {
@@ -3305,8 +3305,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/performance/FounderDrillDownDeck.tsx": {
-    "mtime": 1781397102.8906708,
-    "ast_hash": "043f860cdeab0b71fa7a622da485583a",
+    "mtime": 1781531508.1216464,
+    "ast_hash": "edf1c23392190ca22d3af6d55d69c57d",
     "semantic_hash": ""
   },
   "src/components/leads/RevivalDossierAction.tsx": {
@@ -3540,8 +3540,8 @@
     "semantic_hash": ""
   },
   "src/components/elaya/ElayaWidget.tsx": {
-    "mtime": 1781525383.9190218,
-    "ast_hash": "2b0f9518dc00f7f80a8e78cc0c667017",
+    "mtime": 1781529134.9239109,
+    "ast_hash": "b54ea8037f8449e19226a8187afc5883",
     "semantic_hash": ""
   },
   "src/lib/actions/elaya.ts": {
@@ -3597,6 +3597,26 @@
   "supabase/migrations/20260615113534_deal_category_and_domain_type.sql": {
     "mtime": 1781524947.1855376,
     "ast_hash": "a97fdf6776f058ed00a90b2500275748",
+    "semantic_hash": ""
+  },
+  "src/components/performance/PipelineBar.tsx": {
+    "mtime": 1781531392.3403966,
+    "ast_hash": "3fe181615d4393a54f3c5053a899d6f3",
+    "semantic_hash": ""
+  },
+  "output/first-touch-recording.md": {
+    "mtime": 1781529185.8395133,
+    "ast_hash": "21ae5615165591a82370b0db6a4e126b",
+    "semantic_hash": ""
+  },
+  "output/performance-chart-components.md": {
+    "mtime": 1781529200.623914,
+    "ast_hash": "d59c5ee3e3f8e3f4215c83de74a5c4b0",
+    "semantic_hash": ""
+  },
+  "output/sla-config-business-hours.md": {
+    "mtime": 1781529168.2103322,
+    "ast_hash": "98d4bdea00f654dc220455cbaa3696fb",
     "semantic_hash": ""
   }
 }

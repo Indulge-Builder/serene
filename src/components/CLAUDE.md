@@ -426,13 +426,13 @@ Uses `AnimatePresence` from Framer Motion. Zero Supabase dependency.
 
 Single toast card. Implements Section 13.2 anatomy exactly.
 
-- Living 3px left bar uses `serene-toast-bar-breathe` CSS keyframe (fires once). `elaya` type uses continuous `serene-elaya-breathe`.
+- **No left accent bar** (removed 2026-06-15) — type is read from the icon zone alone; padding is symmetric `--space-3`. The old 3px `serene-toast-bar-breathe` bar + keyframe are deleted.
 - Warning type renders a depletion bar (`toast-deplete` keyframe, linear timing — intentional).
 - `loading` type has `Loader2` icon with `animate-spin` class.
 - `elaya` type renders `<LiaGlyph size={18} />` with breathing active.
 - `danger` type never auto-dismisses — no timer. Verify: `duration = 0`.
 - `hover / focus` over any toast freezes its dismiss timer. Leaving resumes remaining time.
-- loading → resolved transition: icon crossfades via `AnimatePresence mode="wait"`, text crossfades, bar colour transitions.
+- loading → resolved transition: icon crossfades via `AnimatePresence mode="wait"`, text crossfades.
 
 ### useToast hook
 

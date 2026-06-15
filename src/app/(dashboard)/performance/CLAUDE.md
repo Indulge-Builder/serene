@@ -133,6 +133,7 @@ Exported functions (post D-2 — the per-metric query functions
 | `getAgentPerformanceSummary(period, from?, to?)` | `AgentPerformanceSummary` | `get_agent_performance` RPC (0101); React `cache()`-wrapped |
 | `getAgentRosterPerformance(domain, dateFrom, dateTo)` | `AgentRosterRow[]` | `get_agent_roster_performance` RPC (0101) |
 | `getAgentDetailMetrics(agentId, domain, dateFrom, dateTo)` | `AgentDetailMetrics` | 3 parallel queries (unchanged) |
+| `getAgentFirstTouchScorecard(agentId, dateFrom, dateTo)` | `FirstTouchScorecard` | `get_agent_first_touch_pairs` RPC (0123, admin client); React `cache()`; business-minute bucketing in the mapper |
 | `getDomainHealthMetrics(domains, dateFrom, dateTo)` | `DomainHealthCard[]` | `get_domain_health_metrics` RPC (0066) |
 | `getDomainsWithLeads(dateFrom, dateTo)` | `AppDomain[]` | plain query |
 | `getPeriodDateRange(period)` | `DateRange` | pure (IST math via `lib/utils/ist`) |
@@ -195,6 +196,47 @@ round trip per view, so there is nothing slow enough to justify cache-aside's
 2×RTT-on-miss cost. Do not add Redis here without measuring first, and do not
 re-document keys that have no code.
 
+## First-touch speed scorecard (2026-06-15)
+
+Below the `CallOutcomeBar` donut in `AgentDetailPanel`, a `FirstTouchScorecard`
+buckets the period cohort by how fast each lead's **first call note** arrived,
+in **business minutes per that agent's shift**: `< 15m / 15–30m / ≤ 1h / 1–3h /
+3h+` (`FIRST_TOUCH_BUCKETS` in `lib/constants/performance.ts`).
+
+**The bucketing is NOT pure SQL — the calendar/shift math is TS-only.** The RPC
+`get_agent_first_touch_pairs` (0123) returns raw `(lead_id, created_at,
+first_call_at)` pairs per cohort lead (`first_call_at = MIN(lead_notes.created_at)
+WHERE call_outcome IS NOT NULL` — the same "a call" definition as
+`get_agent_performance.calls_logged`). The service mapper
+(`getAgentFirstTouchScorecard`) resolves the agent's shift **once** (a
+`Map<agentId, shift>` via `getAgentRoutingConfigAdmin` + `buildAgentShiftOverride`
+— NULL shift → global `BUSINESS_HOURS`), runs `businessMinutesBetween(created_at,
+first_call_at, shift)` per row, and tallies. **Never replicate the SLA ruler in
+SQL — reuse `lib/utils/sla` (R-01).**
+
+**Invariants:**
+
+- **Buckets sum to leads-with-a-first-call.** Cohort leads with no qualifying call
+  note yet are a **separate `untouched` count** (rendered as a footnote) — never a
+  speed bucket, never silently dropped (`leadsWithFirstCall + untouched =
+  totalCohort`).
+- **A 2am-arrival / 9:15am-call lead lands in `< 15m`** (business-adjusted, not
+  3h+) — `businessMinutesBetween` snaps the pre-09:00 creation to the shift open.
+- **NULL-shift agents fall back to the global `BUSINESS_HOURS`** ruler cleanly —
+  never an error, never skewed.
+- **Cached, never recomputed per render.** `getAgentFirstTouchScorecard` is React
+  `cache()`-memoised per request; it is a period aggregate, never a hot path. The
+  per-row TS loop runs once per (agent, period), not per card open.
+- **Scope (Q-13):** `get_agent_first_touch_pairs` is a scope-param RPC (takes
+  `p_agent`) → **EXECUTE revoked from `authenticated`, admin client only.** The
+  gated action `getAgentFirstTouchScorecardAction` (shared `assertDrillAccess`:
+  manager own-domain, admin/founder unrestricted) is the trust boundary — the
+  `get_agent_roster_performance` posture.
+- **Mount point:** `AgentDetailPanel` only. The `FounderDrillDownDeck` card stays
+  zero-per-swipe-fetch (its hard invariant) — the scorecard needs a per-agent
+  fetch, so it rides the detail panel's existing agent/period fetch effect, not
+  the deck.
+
 ## AgentDetailPanel — fetch contract
 
 `AgentDetailPanel` always fetches via `getAgentDetailMetricsAction` on mount. There is no seed
@@ -254,9 +296,10 @@ const todayStart = new Date(nowIst.getTime() - IST_OFFSET_MS).toISOString();
 
 `src/lib/actions/performance.ts`
 
-| Action                        | Auth                                      |
-| ----------------------------- | ----------------------------------------- |
-| `getAgentDetailMetricsAction` | manager (own domain only), admin, founder |
+| Action                              | Auth                                      |
+| ----------------------------------- | ----------------------------------------- |
+| `getAgentDetailMetricsAction`       | manager (own domain only), admin, founder |
+| `getAgentFirstTouchScorecardAction` | manager (own domain only), admin, founder (shared `assertDrillAccess`) |
 
 Manager role: `caller.domain !== domain` → 403. Domain never trusted from client payload.
 

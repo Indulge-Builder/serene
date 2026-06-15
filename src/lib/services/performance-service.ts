@@ -20,6 +20,11 @@ import {
   getISTMonthStart,
   getISTPrevMonthRange,
 } from "@/lib/utils/ist";
+import { businessMinutesBetween, buildAgentShiftOverride } from "@/lib/utils/sla";
+import type { AgentShiftOverride } from "@/lib/utils/sla";
+import { getAgentRoutingConfigAdmin } from "@/lib/services/agent-routing-service";
+import { firstTouchBucketForMinutes } from "@/lib/constants/performance";
+import type { FirstTouchBucketId } from "@/lib/constants/performance";
 import type { AppDomain, CallOutcome } from "@/lib/types/database";
 import type { AgentRosterRow, AgentDetailMetrics, DomainHealthCard } from "@/lib/types/index";
 
@@ -895,6 +900,123 @@ export async function getAgentCallsPageForManager(
     nextCursor: hasMore && last ? { created_at: last.createdAt, id: last.id } : null,
   };
 }
+
+// ─────────────────────────────────────────────
+// First-touch speed scorecard (deck card, below the call-outcome breakdown)
+//
+// Buckets each cohort lead by how fast its FIRST call note arrived, measured in
+// BUSINESS minutes per the agent's shift. The bucketing CANNOT be pure SQL — the
+// calendar/shift math is TS-only (lib/utils/sla). So the RPC returns raw
+// (lead, created_at, first_call_at) pairs and this mapper does the rest:
+//
+//   1. Resolve the agent's shift override ONCE (a Map<agentId, shift>, built per
+//      call — generalises to multi-agent, resolves the ruler once not per-row).
+//      NULL shift → businessMinutesBetween falls back to the global BUSINESS_HOURS
+//      (IST Mon–Sat 09:00–19:00) cleanly — never an error, never skewed.
+//   2. Per row: first_call_at NULL → "untouched" (cohort lead with no call yet);
+//      never a speed bucket. Else businessMinutesBetween(created_at, first_call_at,
+//      shift) → firstTouchBucketForMinutes → tally.
+//
+// Invariant: the five buckets sum to leads-WITH-a-first-call; `untouched` is the
+// rest of the cohort (leadsWithFirstCall + untouched = total cohort). A 2am-arrival
+// / 9:15am-call lead lands in <15m (business-adjusted), not 3h+.
+//
+// React cache() memoises per request — the AgentDetailPanel render pass never
+// recomputes this; it is an aggregate, never a hot path. The RPC is scope-param
+// (EXECUTE revoked, 0123) so this uses the admin client — the gated action
+// (assertDrillAccess) is the trust boundary, the get_agent_roster_performance
+// posture (Q-13).
+// ─────────────────────────────────────────────
+
+export type FirstTouchScorecard = {
+  /** bucket id → count, e.g. { lt15: 4, lt30: 2, lte1h: 1, lt3h: 0, gte3h: 3 } */
+  buckets:            Record<FirstTouchBucketId, number>;
+  /** cohort leads with no qualifying call note yet — never folded into a bucket */
+  untouched:          number;
+  /** sum of the five buckets — leads whose first touch is measured */
+  leadsWithFirstCall: number;
+  /** untouched + leadsWithFirstCall — the full period cohort */
+  totalCohort:        number;
+};
+
+type FirstTouchPairRow = {
+  lead_id:       string;
+  created_at:    string;
+  first_call_at: string | null;
+};
+
+export const getAgentFirstTouchScorecard = cache(async (
+  agentId:  string,
+  dateFrom: string,
+  dateTo:   string,
+): Promise<FirstTouchScorecard> => {
+  const empty: FirstTouchScorecard = {
+    buckets:            { lt15: 0, lt30: 0, lte1h: 0, lt3h: 0, gte3h: 0 },
+    untouched:          0,
+    leadsWithFirstCall: 0,
+    totalCohort:        0,
+  };
+
+  const admin = createAdminClient();
+
+  // Raw pairs — RPC EXECUTE is revoked from authenticated (0123); admin only.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (admin as any).rpc("get_agent_first_touch_pairs", {
+    p_agent: agentId,
+    p_from:  dateFrom,
+    p_to:    dateTo,
+  });
+
+  if (error) {
+    console.error("[performance-service] first-touch pairs failed:", error);
+    return empty;
+  }
+
+  const rows = mapRows<FirstTouchPairRow, FirstTouchPairRow>(
+    (data ?? []) as FirstTouchPairRow[],
+    (r) => r,
+  );
+
+  // Resolve the agent's shift ONCE — the Map<agentId, shift> pattern. A NULL
+  // shift (no shift_start/end/days configured) → undefined override → the global
+  // BUSINESS_HOURS ruler inside businessMinutesBetween. Mixed-ruler safe.
+  const shiftByAgent = new Map<string, AgentShiftOverride | undefined>();
+  const config = await getAgentRoutingConfigAdmin(agentId);
+  shiftByAgent.set(
+    agentId,
+    config
+      ? (buildAgentShiftOverride(config.shift_start, config.shift_end, config.shift_days) ?? undefined)
+      : undefined,
+  );
+  const shift = shiftByAgent.get(agentId);
+
+  const buckets: Record<FirstTouchBucketId, number> = { lt15: 0, lt30: 0, lte1h: 0, lt3h: 0, gte3h: 0 };
+  let untouched = 0;
+
+  for (const row of rows) {
+    if (!row.first_call_at) {
+      // Cohort lead created in the period with no call note yet — counted, never
+      // dropped, never miscounted into a speed bucket.
+      untouched += 1;
+      continue;
+    }
+    const minutes = businessMinutesBetween(
+      new Date(row.created_at),
+      new Date(row.first_call_at),
+      shift,
+    );
+    buckets[firstTouchBucketForMinutes(minutes)] += 1;
+  }
+
+  const leadsWithFirstCall = buckets.lt15 + buckets.lt30 + buckets.lte1h + buckets.lt3h + buckets.gte3h;
+
+  return {
+    buckets,
+    untouched,
+    leadsWithFirstCall,
+    totalCohort: leadsWithFirstCall + untouched,
+  };
+});
 
 export async function getDomainsWithLeads(
   dateFrom: string,

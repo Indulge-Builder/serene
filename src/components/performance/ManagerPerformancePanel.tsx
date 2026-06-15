@@ -522,6 +522,19 @@ export function ManagerPerformancePanel({
     if (isMobile && selectedId === null) setRosterOpen(true);
   }, [isMobile, selectedId]);
 
+  // Mobile-only: the swipeable deck is the DEFAULT view (desktop/tablet
+  // unchanged — there the deck stays a trigger-driven overlay). Auto-open it once
+  // per mount when on a phone with a non-empty all-domains roster; a manual close
+  // is respected (the latch never reopens it).
+  const autoOpenedDeck = useRef(false);
+  useEffect(() => {
+    if (autoOpenedDeck.current) return;
+    if (isMobile && allDomains && agentRoster.length > 0) {
+      autoOpenedDeck.current = true;
+      setDeckOpen(true);
+    }
+  }, [isMobile, allDomains, agentRoster.length]);
+
   // Unique domains that actually have agents, in roster display order
   const presentDomains = PERFORMANCE_ROSTER_DOMAIN_ORDER.filter((d) =>
     agentRoster.some((a) => a.domain === d),
@@ -651,6 +664,9 @@ export function ManagerPerformancePanel({
           onClose={() => setDeckOpen(false)}
           roster={visibleAgents}
           domain={domainFilter}
+          period={period}
+          customFrom={customFrom}
+          customTo={customTo}
           initialAgentId={selectedId ?? undefined}
         />
       )}

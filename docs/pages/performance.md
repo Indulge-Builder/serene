@@ -91,6 +91,25 @@ Added 2026-06-14 (Phase 5 deck):
   structurally no `note_added` duplicates), same composite `(created_at, id)` keyset, page 15. The
   leads RLS is the manager/founder second layer; the action-layer domain guard is the first.
 
+Added 2026-06-15 (first-touch speed scorecard):
+
+- **First-touch SPEED is bucketed in TS, never SQL.** Below the `CallOutcomeBar` in
+  `AgentDetailPanel`, `FirstTouchScorecard` distributes the period cohort across `< 15m / 15–30m /
+  ≤ 1h / 1–3h / 3h+`, where elapsed = **business minutes** from `leads.created_at` to the lead's
+  EARLIEST `lead_notes` row with `call_outcome IS NOT NULL`, computed per the agent's shift
+  (`lib/utils/sla.businessMinutesBetween` + `buildAgentShiftOverride`; NULL shift → global
+  `BUSINESS_HOURS`). The calendar math is TS-only — the RPC `get_agent_first_touch_pairs` (0123,
+  admin client, EXECUTE revoked per Q-13) returns raw `(lead_id, created_at, first_call_at)` pairs
+  and the service mapper (`getAgentFirstTouchScorecard`, React `cache()`) buckets them. **Never fork
+  the SLA ruler into SQL (R-01).**
+- **Buckets sum to leads-with-a-first-call.** Cohort leads with no qualifying call note are a
+  separate `untouched` count (footnote), never a speed bucket, never dropped
+  (`leadsWithFirstCall + untouched = totalCohort`). A 2am-arrival / 9:15am-call lead lands in
+  `< 15m` (business-adjusted), not 3h+.
+- **Cached, not per-render.** The per-row business-minute loop runs once per (agent, period) — the
+  React `cache()` aggregate, not a render-time computation. Mount point is `AgentDetailPanel` only;
+  the `FounderDrillDownDeck` card keeps its zero-per-swipe-fetch invariant.
+
 ## 7. Open items
 
 None recorded.
@@ -508,21 +527,34 @@ Owns `activeTab: 'agents' | 'domains'` in `useState` (initial `'agents'`) — **
 On the founder/admin **Agents** tab, `ManagerPerformancePanel` (allDomains path) shows a
 **"Deck view"** trigger that opens `FounderDrillDownDeck` (`src/app/(dashboard)/performance/`,
 `next/dynamic`, `ssr:false` — Heavy-modal rule). The deck is a `Dialog size="full"` (opts OUT of
-the `<md` bottom-sheet) wrapping the generic `<Carousel>` (`src/components/ui/Carousel.tsx` — a NEW
+the `<md` bottom-sheet) wrapping the generic `<Carousel>` (`src/components/ui/Carousel.tsx` — a
 content-agnostic swipe primitive with touch axis-lock; `AdCreativeCarousel` is deliberately
 untouched, R-01).
 
-- **Zero per-swipe fetch (invariant).** One slide per agent, rendering ONLY in-memory
-  `AgentRosterRow` fields (the deck is passed `visibleAgents`, respecting the active client-side
-  domain filter). Swiping changes the controlled `index` and fires NO network request. Never add a
-  fetch keyed on the active card.
-- **Four metric tiles are tap targets.** Total Calls → `AgentCallsDrillModal`, Leads →
-  `AgentLeadsDrillModal`, Won/Revenue → `AgentDealsDrillModal`. Each fetches ON OPEN only, via a
-  `DrillModalShell` that stacks at `--z-modal-overlay`/`--z-modal-nested` ABOVE the deck's
-  `--z-modal` Dialog.
+- **Mobile = default view (2026-06-15).** Desktop/tablet are unchanged — the deck stays a
+  trigger-driven overlay. On a **phone** (`useMediaQuery(MQ.mobile)`) with a non-empty `allDomains`
+  roster, the panel auto-opens the deck once per mount via an `autoOpenedDeck` ref latch (a manual
+  close is respected). The latch is gated on `allDomains`, so managers and desktop/tablet never
+  auto-open.
+- **Zero per-swipe fetch of tiles (invariant).** One slide per agent; the tiles render ONLY
+  in-memory `AgentRosterRow` fields (the deck is passed `visibleAgents`, respecting the active
+  client-side domain filter). Swiping changes the controlled `index` and fires NO tile fetch. Never
+  add a fetch keyed on a tile.
+- **Three metric tiles, one row (2026-06-15).** Total Calls → `AgentCallsDrillModal`, Leads →
+  `AgentLeadsDrillModal`, Revenue → `AgentDealsDrillModal`. ("Deals won" was dropped — the card is
+  revenue + two others.) Each modal fetches ON OPEN only and portals ABOVE the full Dialog.
 - **`AgentRosterRow` has no `totalCallsMade`**, so the "Total Calls" tile is **label-only** ("View")
   — a number would require a per-agent fetch and break the zero-swipe rule. The call COUNT lives
   only inside the Recent-calls modal.
+- **Toggleable breakdown — lazy, once per card (2026-06-15).** Below the tiles each card carries a
+  breakdown with a deck-level mode toggle: **Call outcome** (reuses `CallOutcomeBar`, lazy Recharts)
+  ↔ **Lead status** (reuses the extracted `PipelineBar`). Both are fed by **one**
+  `getAgentDetailMetricsAction` call (`callOutcomeBreakdown` + `pipelineBreakdown` — **no new RPC**),
+  fetched the first time a card becomes active and cached per agent (`breakdowns` state map keyed by
+  agent id; a `requested` ref-Set fires the action **exactly once per agent** across swipes and
+  re-renders). A period/date/domain change clears the cache + guard so the active card refetches; an
+  unseen card never fetches. This is the deck's only sanctioned fetch — the tile zero-fetch rule
+  stands.
 - **Count contract (sign-off).** `AgentCallsDrillModal` is titled the literal **"Recent calls"**;
   its subtitle is `items.length` / "showing N most recent" — **never** the card's `totalCallsMade`
   (a cohort aggregate that legitimately disagrees with the `lead_notes` event list). One row per
@@ -600,9 +632,11 @@ fidelity). The deck trigger is founder-only to avoid the manager domain-pass amb
 | `PerformanceFilters.tsx` | Filter bar for manager/founder views only |
 | `CoreFourGrid.tsx` | Agent KPI row + sparklines |
 | `EffortGrid.tsx` | Agent effort cards |
-| `CallOutcomeBar.tsx` | Donut + legend (agent self-view + manager detail panel) |
-| `ManagerPerformancePanel.tsx` | Two-column team shell; roster (left) + detail/empty-state (right); domain popover; client roster refetch via `getManagerRosterAction` |
-| `AgentDetailPanel.tsx` | Manager/founder agent detail; four `StatAtom` tiles open the deck's drill modals (calls/leads/deals) on tap |
+| `CallOutcomeBar.tsx` | Donut + legend (agent self-view + manager detail panel + the deck card's "Call outcome" breakdown mode) |
+| `PipelineBar.tsx` | Segmented lead-status bar + legend chips — extracted from `AgentDetailPanel`'s former private `PipelineSection` (2026-06-15); reused by the detail panel's "Lead Pipeline" section AND the deck card's "Lead status" breakdown mode (R-01, no copy-paste) |
+| `ManagerPerformancePanel.tsx` | Two-column team shell; roster (left) + detail/empty-state (right); domain popover; client roster refetch via `getManagerRosterAction`. Mobile (`allDomains`): auto-opens the deck as the default view |
+| `AgentDetailPanel.tsx` | Manager/founder agent detail; four `StatAtom` tiles open the deck's drill modals (calls/leads/deals) on tap; `FirstTouchScorecard` below the outcome donut |
+| `FirstTouchScorecard.tsx` | First-touch SPEED card below `CallOutcomeBar` (`< 15m`…`3h+` business-minute buckets per agent shift; untouched footnote). Display-only; data from `getAgentFirstTouchScorecard` (`get_agent_first_touch_pairs` RPC 0123, React `cache()`) |
 | `PerformanceRosterEmptyState.tsx` | Right-panel prompt when `selectedId === null` (Agents tab) |
 | `DomainOverviewPanel.tsx` | Founder **Domains** tab — 4 health cards (2×2; incl. Deals Closed) + month-pinned `DomainTargetMeter` + founder/admin inline target edit + comparative bar chart; refetch via `getDomainHealthMetricsAction`; mobile = CSS scroll-snap carousel (no library) |
 | `DomainTargetMeter.tsx` | Radial deals-vs-target meter (Recharts `RadialBarChart`, 2 colours via `useChartTokens`); month-pinned (`monthDeals` vs `domain_targets`, never the period filter); target null/0 → `<EmptyState>` inline "No target set." — never a division |
@@ -621,6 +655,7 @@ fidelity). The deck trigger is founder-only to avoid the manager domain-pass amb
 | `ManagerPerformanceAsync.tsx` | Team data shell (roster + founder domain-health seed) |
 | `ManagerPerformanceSkeleton.tsx` | Team loading |
 | `FounderPerformanceShell.tsx` | Founder/admin `'use client'` two-tab shell (Agents / Domains); owns tab state |
+| `FounderDrillDownDeck.tsx` | Founder/admin swipeable per-agent deck (`Dialog size="full"` + `<Carousel>`); trigger-opened on desktop/tablet, auto-opened on mobile; 3 tap-target tiles (calls/leads/revenue) + a lazy, per-agent-cached toggleable breakdown (outcome ↔ status) fed by one `getAgentDetailMetricsAction` |
 
 #### `src/lib/actions/performance.ts`
 
@@ -630,6 +665,7 @@ fidelity). The deck trigger is founder-only to avoid the manager domain-pass amb
 | `getAgentPulseAction` | `AgentPerformanceShell` (Today tab) | agent only |
 | `getAgentRecentLeadActivityAction` | `AgentRecentActivityList` | agent only (id from profile) |
 | `getAgentDetailMetricsAction` | `AgentDetailPanel` | manager (own domain), admin, founder |
+| `getAgentFirstTouchScorecardAction` | `AgentDetailPanel` (`FirstTouchScorecard`) | manager (own domain), admin, founder (`assertDrillAccess`) |
 | `getManagerRosterAction` | `ManagerPerformancePanel` | manager (own domain pinned), admin, founder |
 | `getDomainHealthMetricsAction` | `DomainOverviewPanel` | manager, admin, founder |
 | `upsertDomainTargetAction` | `DomainOverviewPanel` / `DomainTargetMeter` | admin, founder |

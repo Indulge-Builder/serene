@@ -16,7 +16,6 @@ import type { ToastItem as ToastItemType, ToastType } from "@/lib/toast";
 // ─── Type config ─────────────────────────────────────────────────────────────
 
 interface TypeConfig {
-  barColor:    string;
   iconBg:      string;
   iconColor:   string;
   Icon:        React.ComponentType<{ style?: React.CSSProperties; className?: string }> | null;
@@ -28,7 +27,6 @@ function getTypeConfig(type: ToastType): TypeConfig {
   switch (type) {
     case "success":
       return {
-        barColor:  "var(--color-success)",
         iconBg:    "var(--color-success-light)",
         iconColor: "var(--color-success-text)",
         Icon:      CheckCircle2,
@@ -37,7 +35,6 @@ function getTypeConfig(type: ToastType): TypeConfig {
       };
     case "warning":
       return {
-        barColor:  "var(--color-warning)",
         iconBg:    "var(--color-warning-light)",
         iconColor: "var(--color-warning-text)",
         Icon:      AlertTriangle,
@@ -46,7 +43,6 @@ function getTypeConfig(type: ToastType): TypeConfig {
       };
     case "danger":
       return {
-        barColor:  "var(--color-danger)",
         iconBg:    "var(--color-danger-light)",
         iconColor: "var(--color-danger-text)",
         Icon:      XCircle,
@@ -55,7 +51,6 @@ function getTypeConfig(type: ToastType): TypeConfig {
       };
     case "info":
       return {
-        barColor:  "var(--color-info)",
         iconBg:    "var(--color-info-light)",
         iconColor: "var(--color-info-text)",
         Icon:      Info,
@@ -64,7 +59,6 @@ function getTypeConfig(type: ToastType): TypeConfig {
       };
     case "loading":
       return {
-        barColor:  "var(--theme-accent)",
         iconBg:    "var(--theme-accent-surface)",
         iconColor: "var(--theme-accent)",
         Icon:      Loader2,
@@ -73,7 +67,6 @@ function getTypeConfig(type: ToastType): TypeConfig {
       };
     case "elaya":
       return {
-        barColor:  "var(--theme-accent)",
         iconBg:    "var(--theme-accent-surface)",
         iconColor: "var(--theme-accent)",
         Icon:      null,
@@ -196,27 +189,9 @@ export function ToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
         borderRadius:  "var(--radius-md)",
         boxShadow:     "var(--shadow-3)",
         overflow:      "hidden",
-        padding:       "var(--space-3) var(--space-3) var(--space-3) var(--space-4)",
+        padding:       "var(--space-3)",
       }}
     >
-      {/* Living bar — 3px left edge, animates once on entrance via CSS */}
-      <div
-        className="toast-bar"
-        style={{
-          position:     "absolute",
-          left:         0,
-          top:          0,
-          bottom:       0,
-          width:        "3px",
-          background:   config.barColor,
-          borderRadius: "var(--radius-xs) 0 0 var(--radius-xs)",
-          // elaya bar breathes continuously; others fire once via CSS animation
-          animation:    toast.type === "elaya"
-            ? "serene-elaya-breathe 3s ease-in-out infinite"
-            : "serene-toast-bar-breathe 600ms var(--ease-out-expo) forwards",
-        }}
-      />
-
       {/* Icon zone — crossfades on loading → resolved */}
       <AnimatePresence mode="wait">
         <motion.div
@@ -262,6 +237,8 @@ export function ToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
             flexDirection:  "column",
             gap:            "2px",
             minWidth:       0,
+            // Clear the absolutely-positioned dismiss X (28px @ right --space-3)
+            paddingRight:   "var(--space-6)",
           }}
         >
           <p

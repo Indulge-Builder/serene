@@ -10,12 +10,14 @@ import {
   getAgentTodayPulse,
   getAgentLeadActivityPage,
   getAgentCallsPageForManager,
+  getAgentFirstTouchScorecard,
   getPeriodDateRange,
   type PerformancePeriod,
   type AgentPerformanceSummary,
   type AgentTodayPulse,
   type AgentLeadActivityPage,
   type AgentCallsPage,
+  type FirstTouchScorecard,
 } from '@/lib/services/performance-service';
 import { getLeadsByRole, type LeadsResult }   from '@/lib/services/leads-service';
 import { getDealsByRole, type DealsResult }   from '@/lib/services/deals-service';
@@ -82,6 +84,38 @@ export async function getAgentDetailMetricsAction(
     return { data: metrics, error: null };
   } catch {
     return { data: null, error: 'Failed to load agent metrics.' };
+  }
+}
+
+// ─────────────────────────────────────────────
+// Action: getAgentFirstTouchScorecardAction
+// Called by FirstTouchScorecard (in AgentDetailPanel) on agent/period change.
+// Same authz as the deck drill-downs (assertDrillAccess): manager own-domain,
+// admin/founder unrestricted. The bucketed aggregate is computed once in the
+// service (React cache(), business-minute math per the agent's shift).
+// ─────────────────────────────────────────────
+
+export async function getAgentFirstTouchScorecardAction(
+  agentId:    string,
+  domain:     AppDomain | null,
+  period:     PerformancePeriod,
+  customFrom?: string,
+  customTo?:   string,
+): Promise<ActionResult<FirstTouchScorecard>> {
+  const parsed = GetAgentDetailSchema.safeParse({ agentId, domain, period, customFrom, customTo });
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  const access = await assertDrillAccess(domain);
+  if (!access.ok) return access.result;
+
+  try {
+    const range = getPeriodDateRange(period);
+    const from  = (period === 'custom' && customFrom) ? customFrom : range.from;
+    const to    = (period === 'custom' && customTo)   ? customTo   : range.to;
+    const data  = await getAgentFirstTouchScorecard(agentId, from, to);
+    return { data, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load first-touch scorecard.' };
   }
 }
 

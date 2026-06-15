@@ -11,6 +11,30 @@ A design rule changed without an entry here is not a change — it is a violatio
 
 ## Decided
 
+### 2026-06-15 — First-touch speed is bucketed in business minutes, in TS, with untouched leads counted separately
+
+- **Decision:** the performance first-touch speed scorecard (`FirstTouchScorecard` under the
+  `AgentDetailPanel` outcome donut) buckets each period-cohort lead by `< 15m / 15–30m / ≤ 1h /
+  1–3h / 3h+`, where **first-touch = the earliest `lead_notes` row with `call_outcome IS NOT NULL`**
+  and **elapsed = business minutes** from `leads.created_at` to that note, per the agent's shift
+  (global `BUSINESS_HOURS` fallback when `shift_days` is NULL). The bucketing is **TS-only** — the
+  RPC (`get_agent_first_touch_pairs`, 0123) returns raw `(lead_id, created_at, first_call_at)` pairs
+  and the service mapper (`getAgentFirstTouchScorecard`, React `cache()`) runs
+  `lib/utils/sla.businessMinutesBetween` per row. Leads with **no qualifying call yet** are a
+  separate `untouched` count, never a speed bucket. Bucket edges + colours live once in
+  `lib/constants/performance.ts`.
+- **Rationale:** the buckets are *business* minutes per shift, and that calendar/shift ruler already
+  exists in `lib/utils/sla` (the SLA engine). Re-deriving it in SQL would fork the ruler (R-01) and
+  drift from the SLA deadlines agents are already held to. SQL therefore does only the per-lead MIN;
+  the one place business-minute math lives stays the one place. Counting untouched leads separately
+  (rather than dropping them or dumping them in `3h+`) keeps the bucket total honest —
+  `leadsWithFirstCall + untouched = totalCohort` — and a never-called lead is not a slow first-touch.
+- **Scope:** `/performance` `AgentDetailPanel` only (manager + founder). The aggregate is computed
+  once per (agent, period) via React `cache()` — never per render — and the RPC is admin-client-only
+  (scope-param, EXECUTE revoked, Q-13). The `FounderDrillDownDeck` card is deliberately excluded to
+  preserve its zero-per-swipe-fetch invariant. Any future "speed/SLA-elapsed" metric reuses
+  `businessMinutesBetween` + `buildAgentShiftOverride` — never a SQL calendar fork.
+
 ### 2026-06-15 — A deal's type is derived from its domain, never free-picked
 
 - **Decision:** `deals.deal_type` is determined by the deal's Gia domain, not chosen independently — `onboarding → membership`, `shop → retail`, `house/legacy → sale`. Retail deals additionally require a product `deal_category`. The mapping lives once in `DOMAIN_DEAL_CONFIG` (`src/lib/constants/deal-types.ts`, the `DOMAIN_INTERESTS` pattern) and drives the form, the action's cross-field validation, the filter items, and is mirrored by the DB CHECKs (migration 0122: `deals_deal_type_check` admits `sale`; `deals_retail_category_check` couples `retail ⇔ category`). The type is derived **server-side** in both write paths (`recordDeal` from the lead's domain, `createWalkInDeal` from the server-forced deal domain) — a client-sent `deal_type` is ignored (the field was removed from both Zod schemas).

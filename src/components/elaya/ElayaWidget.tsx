@@ -43,10 +43,11 @@ export function ElayaWidget() {
   const [loading, setLoading] = useState(false);
   const [seed, setSeed] = useState<ElayaChatSeed | null>(null);
 
-  // A warm seed primed on hover/focus, plus a guard so we never run two seed
-  // fetches at once (hover fires, then the click fires before it resolves).
+  // A warm seed primed on hover/focus, plus the in-flight fetch promise so a
+  // click that lands WHILE the prefetch is still running reuses that same fetch
+  // (instead of starting a second one — or worse, bailing on a busy guard).
   const prefetched = useRef<ElayaChatSeed | null>(null);
-  const seeding = useRef(false);
+  const inFlight = useRef<Promise<ElayaChatSeed | null> | null>(null);
 
   // Portal target only exists client-side.
   useEffect(() => setMounted(true), []);
@@ -57,16 +58,19 @@ export function ElayaWidget() {
 
   // Shared fetch — re-seeds so the widget reflects the conversation's current
   // state (e.g. messages sent on /elaya in another tab). Returns null on error.
-  const fetchSeed = useCallback(async (): Promise<ElayaChatSeed | null> => {
-    if (seeding.current) return null;
-    seeding.current = true;
-    try {
+  // De-duplicated via inFlight: a second caller (the click, while a hover
+  // prefetch is still running) awaits the SAME promise rather than firing a
+  // second action or bailing — the bug that made the first click fail.
+  const fetchSeed = useCallback((): Promise<ElayaChatSeed | null> => {
+    if (inFlight.current) return inFlight.current;
+    const p = (async () => {
       const res = await getElayaChatSeedAction();
-      if (res.error || !res.data) return null;
-      return res.data;
-    } finally {
-      seeding.current = false;
-    }
+      return res.error || !res.data ? null : res.data;
+    })().finally(() => {
+      inFlight.current = null;
+    });
+    inFlight.current = p;
+    return p;
   }, []);
 
   // Warm the seed + the heavy chat chunk on intent (pointer/keyboard focus) so
@@ -74,7 +78,7 @@ export function ElayaWidget() {
   // are silent here — handleOpen surfaces a real error if the click still needs
   // a fetch. Never prefetch on /elaya (the button isn't even rendered there).
   const handlePrefetch = useCallback(() => {
-    if (onElayaPage || open || prefetched.current || seeding.current) return;
+    if (onElayaPage || open || prefetched.current || inFlight.current) return;
     void loadChatShell();
     void fetchSeed().then((data) => {
       if (data) prefetched.current = data;
@@ -103,6 +107,9 @@ export function ElayaWidget() {
       toast.danger('Elaya is unavailable right now.');
       return;
     }
+    // The prefetch may have populated this from the same shared fetch — clear it
+    // so a later open doesn't reuse a now-consumed seed.
+    prefetched.current = null;
     setSeed(data);
   }
 

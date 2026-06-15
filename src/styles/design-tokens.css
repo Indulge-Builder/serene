@@ -761,13 +761,6 @@
   50%       { opacity: 0.4; }
 }
 
-/* Toast bar breath — fires once on arrival */
-@keyframes serene-toast-bar-breathe {
-  0%   { opacity: 0.3; }
-  40%  { opacity: 1;   }
-  100% { opacity: 0.85; }
-}
-
 /* Elaya breathe — always running when she is present */
 @keyframes serene-elaya-breathe {
   0%, 100% { opacity: 0.35; }

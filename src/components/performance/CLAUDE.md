@@ -4,9 +4,10 @@
 
 `CoreFourGrid`, `CallOutcomeBar`, `DomainOverviewPanel` (which mounts `DomainTargetMeter`), and `AgentCallTrendChart` import Recharts, so
 their call sites (`AgentPerformanceShell`, `AgentDetailPanel`,
-`FounderPerformanceShell`) load them via `next/dynamic` with same-shape
+`FounderPerformanceShell`, `FounderDrillDownDeck`) load them via `next/dynamic` with same-shape
 `.skeleton` placeholders — the chart chunk stays out of the `/performance`
 initial bundle. Import these three statically only from another lazy chunk.
+`PipelineBar` (the status-mode breakdown) is pure divs — no Recharts — so it imports statically.
 
 ## Component inventory
 
@@ -15,10 +16,12 @@ initial bundle. Import these three statically only from another lazy chunk.
 | `PerformanceFilters.tsx` | Unified period + custom date filter bar |
 | `CoreFourGrid.tsx` | Agent KPI row (leads, calls, conversion, response time) |
 | `EffortGrid.tsx` | Agent effort metric cards |
-| `CallOutcomeBar.tsx` | Donut + legend (agent self-view and detail panel) |
+| `CallOutcomeBar.tsx` | Donut + legend (agent self-view, detail panel, AND the deck card's "Call outcome" breakdown mode). Loaded via `next/dynamic` from each Recharts call site (perf G-3) |
+| `PipelineBar.tsx` | THE segmented lead-status breakdown bar + compact legend chips. **Extracted from `AgentDetailPanel`'s former private `PipelineSection`** (2026-06-15) so the detail-panel "Lead Pipeline" section AND the deck card's "Lead status" breakdown mode render an identical bar — never copy-paste a second status chart (R-01). Owns its own `STATUS_FILL`/`STATUS_ORDER`; takes `{ status, count }[]`. Display-only (A-06), no Recharts (pure divs, so it needs no lazy split) |
 | `ManagerPerformancePanel.tsx` | Two-column shell — roster left, detail right |
 | `AgentDetailPanel.tsx` | Manager / founder agent detail: stats, pipeline, outcomes. The four `StatAtom` tiles are tap targets that open the deck's three drill modals (Total Calls→calls, Leads→leads, Won+Revenue→deals); same props the deck passes, fetch-on-open, `drill` state resets on agent switch |
 | `StatAtom.tsx` | Single pastel stat tile (`AgentDetailPanel` stats row + `DomainOverviewPanel` health cards). Optional `onClick` → pressable `motion.button` (`.serene-pressable` press-scale + cursor + focus ring, matching the deck's `DeckTile`); absent → original static `motion.div`. **`DomainOverviewPanel` passes no `onClick`, so its tiles stay byte-identical — never add a tap affordance there** |
+| `FirstTouchScorecard.tsx` | Display-only (A-06) first-touch SPEED card below `CallOutcomeBar` in `AgentDetailPanel`. Buckets the period cohort by how fast each lead's first call note arrived, in BUSINESS minutes per the agent's shift (`< 15m / 15–30m / ≤ 1h / 1–3h / 3h+`, `FIRST_TOUCH_BUCKETS` in `lib/constants/performance.ts`). Segmented bar + chip legend (the `PipelineBar` language). Takes the resolved `FirstTouchScorecard` data — all math is server-side (`getAgentFirstTouchScorecard`, React `cache()`, `businessMinutesBetween`); untouched cohort leads (no call yet) shown as a footnote, never a bucket. **`AgentDetailPanel` only — NOT the `FounderDrillDownDeck` card** (the deck's zero-per-swipe-fetch invariant) |
 | `DomainOverviewPanel.tsx` | Founder Domains tab — 4 stats per domain (incl. Deals Closed) + month-pinned `DomainTargetMeter` + founder/admin inline target edit (`upsertDomainTargetAction`); mobile = CSS scroll-snap carousel (no library) |
 | `DomainTargetMeter.tsx` | Radial deals-vs-target meter (Recharts `RadialBarChart`, 2 colours via `useChartTokens`); target null/0 → `EmptyState` inline "No target set." — never a division |
 | `AgentCallTrendChart.tsx` | 14-day daily-calls area chart — composes `ChartFrame` + `cartesianDefaults` (Cartesian frame rule); loaded via `next/dynamic` from the shell |
@@ -38,22 +41,43 @@ initial bundle. Import these three statically only from another lazy chunk.
 
 `src/app/(dashboard)/performance/FounderDrillDownDeck.tsx` — full-screen swipeable per-agent
 card deck, mounted from `ManagerPerformancePanel` on the **founder/admin `allDomains` path only**
-(a "Deck view" trigger; `next/dynamic`, `ssr:false` — Heavy-modal rule). It is a `Dialog size="full"`
+(`next/dynamic`, `ssr:false` — Heavy-modal rule). It is a `Dialog size="full"`
 (which opts OUT of the `<md` bottom-sheet) wrapping the generic `<Carousel>` (`ui/Carousel.tsx`).
 
-**Zero per-swipe fetch (invariant).** Each slide is a `DeckAgentCard` rendering ONLY in-memory
-`AgentRosterRow` fields (the roster array `ManagerPerformancePanel` already holds — the deck is
-passed `visibleAgents`, respecting the client-side domain filter). Swiping changes the controlled
-`index` and fires NO network request. **Never** add a fetch keyed on the active card.
+**Mobile = default view (2026-06-15).** Desktop/tablet behaviour is unchanged — the deck stays a
+trigger-driven overlay opened from the "Deck view" button. On a **phone** (`useMediaQuery(MQ.mobile)`)
+with a non-empty `allDomains` roster, `ManagerPerformancePanel` auto-opens the deck once per mount via
+an `autoOpenedDeck` ref latch (a manual close is respected — the latch never reopens it). The trigger
+still exists on mobile for re-opening after a close. **Never** auto-open on desktop/tablet, and never
+auto-open for managers (the latch is gated on `allDomains`).
+
+**Three tiles, one row (2026-06-15).** Each slide's `DeckAgentCard` shows a `grid grid-cols-3` of
+**Total Calls · Leads · Revenue**. "Deals won" was dropped. Tiles render ONLY in-memory
+`AgentRosterRow` fields (zero per-swipe fetch for the tiles). Tap behaviour: Total Calls→`calls`,
+Leads→`leads`, Revenue→`deals` (unchanged from the 4-tile version, minus the Won→deals tile).
 
 **`AgentRosterRow` has no `totalCallsMade`** — so the card's "Total Calls" tile is a **label-only**
-tap target ("View"), never a number. Showing a real call count would require a per-agent fetch and
-break the zero-per-swipe-fetch rule. The call COUNT exists only inside the Recent-calls modal
+tap target ("View"), never a number. The call COUNT exists only inside the Recent-calls modal
 (`items.length`), never on the card — this is the structural side of the count contract.
 
-**Tapping a tile** opens one of the three drill modals via `DrillModalShell` (nested z above the
-deck). Modals fetch ON OPEN only. The `domain` passed to the modals/actions is the deck's active
-domain filter (null for the all-domains view) — the action's manager-domain guard re-validates it.
+**Tapping a tile** opens one of the three drill modals (the deck reuses `AgentCallsDrillModal` /
+`AgentLeadsDrillModal` / `AgentDealsDrillModal` directly, which portal above the full Dialog via the
+nested-modal z contract). Modals fetch ON OPEN only. The `domain` passed to the modals/actions is the
+deck's active domain filter (null for the all-domains view) — the action's manager-domain guard
+re-validates it.
+
+**Toggleable breakdown — lazy, once per card (2026-06-15).** Below the tiles each card carries a
+breakdown chart with a deck-level mode toggle: **Call outcome** (reuses `CallOutcomeBar` — the
+same donut, via `next/dynamic`) ↔ **Lead status** (reuses the extracted `PipelineBar`). Both modes
+are fed by **one** `getAgentDetailMetricsAction` call (`callOutcomeBreakdown` + `pipelineBreakdown`
+— **no new RPC**), fetched LAZILY the first time a card becomes active and cached per agent in a
+deck-level `breakdowns` state map keyed by agent id. A `requested` ref-Set gates the fetch so it
+fires **exactly once per agent** across swipes and re-renders (the cache map alone would re-enter
+between request and `setState`). A period/date/domain change clears both the cache and the guard so
+the active card refetches against the new range; cards never seen never fetch. The mode toggle is
+shared across the deck (flipping it on one card carries to the next). This is the **only** sanctioned
+fetch in the deck — the tile-level zero-per-swipe-fetch rule is intact; the breakdown is a separate,
+gated, cached read.
 
 **Authz:** all four drill actions go through `assertDrillAccess` in `actions/performance.ts`, which
 mirrors `getAgentDetailMetricsAction` exactly — `requireProfile(['manager','admin','founder'])` then

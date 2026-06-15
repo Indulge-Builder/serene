@@ -12,6 +12,110 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-15 — Performance: first-touch speed scorecard below the agent detail breakdown
+
+**What.** A new `FirstTouchScorecard` sits below the `CallOutcomeBar` donut in `AgentDetailPanel`
+(manager + founder agent detail on `/performance`). It distributes the selected period's lead
+cohort across five first-touch speed buckets — **`< 15m / 15–30m / ≤ 1h / 1–3h / 3h+`** — where
+**first-touch** is the lead's earliest `lead_notes` row with `call_outcome IS NOT NULL`, and
+**elapsed** is **business minutes** from `leads.created_at` to that note, measured per the agent's
+shift (global `BUSINESS_HOURS` fallback when `shift_days` is NULL). Leads with no qualifying call
+yet are surfaced as a separate **"N leads not yet called"** footnote — never folded into a bucket.
+
+**Why TS, not SQL.** The buckets are measured in *business* minutes per shift, and that
+calendar/shift math already lives in `lib/utils/sla` (`businessMinutesBetween` +
+`buildAgentShiftOverride`). Replicating it in SQL would fork the SLA engine's ruler (R-01). So SQL
+does only what it's good at and the bucketing stays in one place.
+
+**How.**
+
+- **Migration 0123** — `get_agent_first_touch_pairs(p_agent, p_from, p_to)`: returns raw
+  `TABLE(lead_id, created_at, first_call_at)` per cohort lead (`first_call_at` = `MIN(lead_notes
+  .created_at) WHERE call_outcome IS NOT NULL`, NULL when uncalled). Scope-param RPC → **EXECUTE
+  revoked from `authenticated`, `service_role` only** (Q-13 / 0102 posture). **⚠️ not yet applied
+  to prod.**
+- **`getAgentFirstTouchScorecard(agentId, from, to)`** (`performance-service.ts`) — admin client,
+  React `cache()`-memoised. Resolves the agent's shift **once** (a `Map<agentId, shift>` via
+  `getAgentRoutingConfigAdmin` + `buildAgentShiftOverride`; NULL → global `BUSINESS_HOURS`), runs
+  `businessMinutesBetween` per pair, tallies the five buckets + `untouched`. Returns
+  `{ buckets, untouched, leadsWithFirstCall, totalCohort }`.
+- **`getAgentFirstTouchScorecardAction`** (`performance.ts`) — reuses the deck's `assertDrillAccess`
+  authz (manager own-domain, admin/founder unrestricted) + the period→range resolution from
+  `getAgentDetailMetricsAction`.
+- **`FIRST_TOUCH_BUCKETS` + `firstTouchBucketForMinutes`** in the new `lib/constants/performance.ts`
+  (bucket edges + token colours, hand-written config table).
+- **`FirstTouchScorecard.tsx`** — display-only (A-06): segmented proportion bar + a full five-chip
+  legend (zeros dimmed) + the untouched footnote. Fetched on `AgentDetailPanel`'s existing
+  agent/period effect (its own `cache()` aggregate; reset on agent switch; failure degrades to no
+  card).
+
+**Invariants.** Buckets sum to leads-with-a-first-call (`leadsWithFirstCall + untouched =
+totalCohort`). A 2am-arrival / 9:15am-call lead lands in `< 15m` (business-adjusted, not 3h+).
+NULL-shift agents use the global ruler. The aggregate is computed once per (agent, period) —
+never per render. Mount point is `AgentDetailPanel` only; the `FounderDrillDownDeck` card keeps its
+zero-per-swipe-fetch invariant.
+
+**Files.** `supabase/migrations/20260615000123_agent_first_touch_pairs.sql` (new),
+`src/lib/constants/performance.ts` (new), `src/components/performance/FirstTouchScorecard.tsx`
+(new), `src/lib/services/performance-service.ts`, `src/lib/actions/performance.ts`,
+`src/components/performance/AgentDetailPanel.tsx`. `pnpm tsc --noEmit` clean.
+
+---
+
+## 2026-06-15 — Performance deck: mobile default view, trimmed agent card, toggleable per-card breakdown
+
+**What.** Three changes to the founder/admin agent deck (`FounderDrillDownDeck`) on `/performance`:
+
+1. **Mobile = default view.** Desktop/tablet are unchanged — the deck stays a trigger-opened
+   overlay. On a phone (`useMediaQuery(MQ.mobile)`) with a non-empty `allDomains` roster,
+   `ManagerPerformancePanel` now auto-opens the deck once per mount via an `autoOpenedDeck` ref latch
+   (a manual close is respected — the latch never reopens it). The latch is gated on `allDomains`, so
+   managers and desktop/tablet never auto-open.
+2. **Trimmed agent card to three stats, one row.** `DeckAgentCard` dropped the **"Deals won"** tile —
+   the card is now `grid grid-cols-3`: **Total Calls · Leads · Revenue**. Tap behaviour is unchanged
+   (Total Calls→calls, Leads→leads, Revenue→deals); only the Won→deals tile was removed.
+3. **Toggleable breakdown chart per card.** Below the tiles each card carries a breakdown with a
+   deck-level mode toggle — **Call outcome** (reuses `CallOutcomeBar`) ↔ **Lead status** (reuses the
+   new `PipelineBar`). Both modes are fed by **one** `getAgentDetailMetricsAction` call
+   (`callOutcomeBreakdown` + `pipelineBreakdown` — **no new RPC**), fetched LAZILY the first time a
+   card becomes active and cached per agent in a deck-level `breakdowns` state map. A `requested`
+   ref-Set fires the action **exactly once per agent** across swipes and re-renders; a period/date/
+   domain change clears the cache + guard so the active card refetches; an unseen card never fetches.
+   The tile-level zero-per-swipe-fetch rule is intact — the breakdown is a separate gated, cached read.
+
+**Reuse (R-01).** `AgentDetailPanel`'s former private `PipelineSection` was **extracted** into a new
+exported `src/components/performance/PipelineBar.tsx` and consumed in BOTH the detail panel's "Lead
+Pipeline" section and the deck card's "Lead status" mode — no copy-paste. The detail panel renders
+identically after the extraction (`STATUS_FILL`/`STATUS_ORDER`/`LEAD_STATUS_LABELS` moved with it).
+`CallOutcomeBar` is loaded via `next/dynamic` from the deck (perf G-3) so the Recharts chunk stays
+out of the initial bundle; `PipelineBar` is pure divs (no Recharts), so it imports statically.
+
+**Files.** `src/components/performance/PipelineBar.tsx` (new), `AgentDetailPanel.tsx` (consume
+`PipelineBar`, drop the private section + its now-unused constants/import),
+`src/app/(dashboard)/performance/FounderDrillDownDeck.tsx` (3-tile card, breakdown toggle, lazy
+per-agent fetch + cache, `period`/`customFrom`/`customTo` props), `ManagerPerformancePanel.tsx`
+(mobile auto-open latch, thread the period props to the deck). Docs:
+`src/components/performance/CLAUDE.md`, `docs/pages/performance.md`. `pnpm tsc --noEmit` clean;
+`check:tokens` clean.
+
+---
+
+## 2026-06-15 — Toast: remove the 3px left accent bar, fix text alignment
+
+**Design.** The corner toast (`src/components/ui/toast-item.tsx`) carried a 3px coloured "living
+bar" on its left edge (per-type colour, `serene-toast-bar-breathe` entrance, continuous breathe for
+`elaya`). To make room for it the card used asymmetric padding — `--space-4` on the left, `--space-3`
+everywhere else — which pushed the icon/text off-centre relative to the right edge.
+
+**Fix.** Removed the bar element entirely and dropped the now-unused `barColor` field from every
+`TypeConfig` case; type is still legible from the coloured icon zone alone. Padding is now symmetric
+`--space-3` so the icon + text column sits balanced, and the content column gets `paddingRight:
+--space-6` so the title/body never run under the absolutely-positioned dismiss ×. Deleted the dead
+`serene-toast-bar-breathe` keyframe from `design-tokens.css`. The warning depletion bar, icon/content
+crossfades, and all timer behaviour are unchanged.
+
+---
+
 ## 2026-06-15 — Lead dossier StatusActionPanel: robust equal-width mobile action row
 
 **Bug.** On the lead dossier on mobile, the stage-action buttons (e.g. **Level Up** + **Junk**

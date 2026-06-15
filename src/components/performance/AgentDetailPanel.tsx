@@ -4,18 +4,19 @@ import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { m as motion, AnimatePresence }             from 'framer-motion';
 import { Avatar }                              from '@/components/ui/Avatar';
-import { getAgentDetailMetricsAction }         from '@/lib/actions/performance';
+import { getAgentDetailMetricsAction, getAgentFirstTouchScorecardAction } from '@/lib/actions/performance';
 import { formatCompact, formatCurrency, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { StatAtom, STAT_PALETTES }             from '@/components/performance/StatAtom';
+import { PipelineBar }                          from '@/components/performance/PipelineBar';
+import { FirstTouchScorecard }                 from '@/components/performance/FirstTouchScorecard';
 import { AgentCallsDrillModal }                from '@/components/performance/AgentCallsDrillModal';
 import { AgentLeadsDrillModal }                from '@/components/performance/AgentLeadsDrillModal';
 import { AgentDealsDrillModal }                from '@/components/performance/AgentDealsDrillModal';
 import { DOMAIN_LABELS }                       from '@/lib/constants/domains';
-import { LEAD_STATUS_LABELS }                  from '@/lib/constants/lead-statuses';
 import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
 import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
 import type { AppDomain }                      from '@/lib/types/database';
-import type { PerformancePeriod }              from '@/lib/services/performance-service';
+import type { PerformancePeriod, FirstTouchScorecard as FirstTouchScorecardData } from '@/lib/services/performance-service';
 
 // Recharts chunk loads in parallel with the panel's own metrics fetch (perf
 // audit G-3) — the donut only renders once metrics resolve, so the placeholder
@@ -24,22 +25,6 @@ const CallOutcomeBar = dynamic(
   () => import('./CallOutcomeBar').then((mod) => mod.CallOutcomeBar),
   { loading: () => <div className="skeleton" style={{ height: '200px', borderRadius: 'var(--radius-lg)' }} /> },
 );
-
-// ─────────────────────────────────────────────
-// Pipeline status colour tokens (§16.4)
-// ─────────────────────────────────────────────
-
-const STATUS_FILL: Record<string, string> = {
-  new:           'var(--color-neutral)',
-  touched:       'var(--color-info)',
-  in_discussion: 'var(--color-warning)',
-  won:           'var(--color-success)',
-  nurturing:     'var(--theme-accent)',
-  lost:          'var(--color-danger)',
-  junk:          'var(--color-neutral)',
-};
-
-const STATUS_ORDER = ['new', 'touched', 'in_discussion', 'nurturing', 'won', 'lost', 'junk'];
 
 // ─────────────────────────────────────────────
 // Skeleton atom — reusable shimmer block
@@ -51,116 +36,6 @@ function Skel({ w, h, radius = 'var(--radius-sm)' }: { w: string; h: string; rad
       className="skeleton"
       style={{ width: w, height: h, borderRadius: radius, flexShrink: 0 }}
     />
-  );
-}
-
-// ─────────────────────────────────────────────
-// Pipeline bar — refined segment rendering
-// ─────────────────────────────────────────────
-
-function PipelineSection({ breakdown }: { breakdown: { status: string; count: number }[] }) {
-  const total = breakdown.reduce((s, b) => s + b.count, 0);
-
-  if (total === 0) {
-    return (
-      <p
-        style={{
-          fontFamily: 'var(--font-serif)',
-          fontStyle:  'italic',
-          fontSize:   'var(--text-sm)',
-          color:      'var(--theme-text-tertiary)',
-          margin:     0,
-        }}
-      >
-        No leads in this period.
-      </p>
-    );
-  }
-
-  const ordered = STATUS_ORDER
-    .map((s) => ({ status: s, count: breakdown.find((b) => b.status === s)?.count ?? 0 }))
-    .filter((b) => b.count > 0);
-
-  return (
-    <div>
-      {/* Segmented bar — each segment independently rounded when it terminates a boundary */}
-      <div
-        style={{
-          display:      'flex',
-          height:       '10px',
-          borderRadius: 'var(--radius-full)',
-          overflow:     'hidden',
-          gap:          '2px',
-          marginBottom: 'var(--space-4)',
-          background:   'var(--theme-paper-border)',
-        }}
-      >
-        {ordered.map(({ status, count }) => (
-          <div
-            key={status}
-            title={`${LEAD_STATUS_LABELS[status as keyof typeof LEAD_STATUS_LABELS] ?? status}: ${count}`}
-            style={{
-              width:      `${(count / total) * 100}%`,
-              background: STATUS_FILL[status] ?? 'var(--color-neutral)',
-              minWidth:   '4px',
-              opacity:    0.9,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Legend — compact chip row */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-        {ordered.map(({ status, count }) => {
-          const pct = Math.round((count / total) * 100);
-          return (
-            <div
-              key={status}
-              style={{
-                display:      'inline-flex',
-                alignItems:   'center',
-                gap:          'var(--space-1)',
-                padding:      '3px 8px 3px 6px',
-                borderRadius: 'var(--radius-full)',
-                background:   'var(--theme-paper-subtle)',
-                border:       '1px solid var(--theme-paper-border)',
-              }}
-            >
-              <span
-                style={{
-                  display:      'inline-block',
-                  width:        '6px',
-                  height:       '6px',
-                  borderRadius: 'var(--radius-full)',
-                  background:   STATUS_FILL[status] ?? 'var(--color-neutral)',
-                  opacity:      0.9,
-                  flexShrink:   0,
-                }}
-              />
-              <span
-                style={{
-                  fontFamily: 'var(--font-sans)',
-                  fontSize:   'var(--text-2xs)',
-                  color:      'var(--theme-text-secondary)',
-                  fontWeight: 'var(--weight-medium)',
-                }}
-              >
-                {LEAD_STATUS_LABELS[status as keyof typeof LEAD_STATUS_LABELS] ?? status}
-              </span>
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize:   'var(--text-2xs)',
-                  color:      'var(--theme-text-tertiary)',
-                }}
-              >
-                {count} · {pct}%
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -227,6 +102,7 @@ type DrillKind = 'calls' | 'leads' | 'deals';
 
 export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }: Props) {
   const [metrics, setMetrics]     = useState<AgentDetailMetrics | null>(null);
+  const [scorecard, setScorecard] = useState<FirstTouchScorecardData | null>(null);
   const [error, setError]         = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [drill, setDrill]         = useState<DrillKind | null>(null);
@@ -243,6 +119,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
     // Clear metrics only on agent switch — preserves existing data during period-change refetch
     if (isAgentSwitch) {
       setMetrics(null);
+      setScorecard(null);
       metricsAgentId.current = null;
       // Close any open drill modal so it can't leak the prior agent's data.
       setDrill(null);
@@ -266,6 +143,16 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
         setIsLoading(false);
         setError('Failed to load metrics.');
       });
+
+    // First-touch scorecard — independent fetch on the same agent/period effect
+    // (its own cached aggregate). A failure degrades silently to no card; the
+    // panel's main metrics error already covers the visible failure surface.
+    getAgentFirstTouchScorecardAction(agent.id, domain, period, customFrom, customTo)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.data) setScorecard(result.data);
+      })
+      .catch(() => { /* non-fatal — card simply does not render */ });
 
     return () => { cancelled = true; };
   }, [agent.id, domain, period, customFrom, customTo]);
@@ -505,7 +392,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
       <AnimatePresence mode="wait">
         {metrics ? (
           <SectionCard label="Lead Pipeline" delay={240}>
-            <PipelineSection breakdown={metrics.pipelineBreakdown} />
+            <PipelineBar breakdown={metrics.pipelineBreakdown} />
           </SectionCard>
         ) : (
           <motion.div
@@ -566,6 +453,16 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
               {[88, 64, 98, 58].map((w, i) => <Skel key={i} w={`${w}px`} h="16px" radius="var(--radius-xs)" />)}
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── First-touch speed scorecard ───────────────────────────────────
+          Below the call-outcome breakdown (per the spec). Buckets the period
+          cohort by first-call business-minute speed; its own cached aggregate
+          rides the same agent/period fetch. Renders only once both have resolved. */}
+      <AnimatePresence>
+        {metrics && scorecard && (
+          <FirstTouchScorecard data={scorecard} delay={320} />
         )}
       </AnimatePresence>
 
