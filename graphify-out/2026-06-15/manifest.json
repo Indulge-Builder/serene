@@ -2060,8 +2060,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781523985.870018,
-    "ast_hash": "75372ab11e646ddf2daaaa1a7a786214",
+    "mtime": 1781524110.5605564,
+    "ast_hash": "cae138b6edb983a905e7fb3359d7166d",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -2090,8 +2090,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/deals/CLAUDE.md": {
-    "mtime": 1781342897.3443696,
-    "ast_hash": "5dda1e663f7b86fbb35e3b502d1937ed",
+    "mtime": 1781524221.1780288,
+    "ast_hash": "e2667888179c82162272b5b4da80c794",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/leads/CLAUDE.md": {
@@ -2155,8 +2155,8 @@
     "semantic_hash": ""
   },
   "src/lib/CLAUDE.md": {
-    "mtime": 1781512037.9557383,
-    "ast_hash": "652e3f5e4c27ffe1935772b880a0407d",
+    "mtime": 1781524313.265066,
+    "ast_hash": "6fc0fc0953b41dc3b9a31a9ece58d31f",
     "semantic_hash": ""
   },
   "src/lib/actions/CLAUDE.md": {
@@ -2170,8 +2170,8 @@
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {
-    "mtime": 1781468329.1859317,
-    "ast_hash": "4a70baff103a59ce68cf56c90d5b8209",
+    "mtime": 1781524244.9001548,
+    "ast_hash": "6e6aadff8f6f39f4984c96b54836130c",
     "semantic_hash": ""
   },
   "imgs/DB-Schema-img-2.png": {
@@ -2390,8 +2390,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1781504899.7057095,
-    "ast_hash": "ba762e11775af8281b22291bd46c733f",
+    "mtime": 1781524275.2904837,
+    "ast_hash": "6bd33de54389ce05a1d0a8c261710f26",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -2400,8 +2400,8 @@
     "semantic_hash": ""
   },
   "docs/design/decision-log.md": {
-    "mtime": 1781505356.413425,
-    "ast_hash": "f47c1d459166af3761e7583630041599",
+    "mtime": 1781524154.7247255,
+    "ast_hash": "bca35eefcbba8e87a53b67aa1aa34755",
     "semantic_hash": ""
   },
   "src/components/layout/MotionProvider.tsx": {
@@ -2495,8 +2495,8 @@
     "semantic_hash": ""
   },
   "docs/pages/deals.md": {
-    "mtime": 1781342896.9964366,
-    "ast_hash": "2c6e186ec991382f8d39e8f4d3524f1d",
+    "mtime": 1781524500.249389,
+    "ast_hash": "2834dcb24d5f233f03e45fe4a920d5ae",
     "semantic_hash": ""
   },
   "docs/pages/lead-dossier.md": {
@@ -2635,8 +2635,8 @@
     "semantic_hash": ""
   },
   "docs/claude-project/2-architecture-summary.md": {
-    "mtime": 1781506039.7884562,
-    "ast_hash": "d7090bb9e34d46b7f4f100658a19c3f9",
+    "mtime": 1781524542.699301,
+    "ast_hash": "63e4d6afbad22009c0672bed3dd88b0b",
     "semantic_hash": ""
   },
   "docs/claude-project/3-pages-summary.md": {
@@ -3597,76 +3597,6 @@
   "supabase/migrations/20260615000122_agent_today_pulse_notes.sql": {
     "mtime": 1781519988.6763992,
     "ast_hash": "5faa52bcc1135258ba5db21e2433772d",
-    "semantic_hash": ""
-  },
-  "output/AgentCallsDrillModal.tsx": {
-    "mtime": 1781523460.054032,
-    "ast_hash": "d7abbfef12ffb4360902a9356cb82994",
-    "semantic_hash": ""
-  },
-  "output/AgentDealsDrillModal.tsx": {
-    "mtime": 1781523460.0623996,
-    "ast_hash": "494d9c742774d6d42fe183451dad3d51",
-    "semantic_hash": ""
-  },
-  "output/AgentDetailPanel.tsx": {
-    "mtime": 1781523460.0386543,
-    "ast_hash": "8c31bef6124b3dc861f17317f0d38747",
-    "semantic_hash": ""
-  },
-  "output/AgentLeadsDrillModal.tsx": {
-    "mtime": 1781523460.0577316,
-    "ast_hash": "9a332f8b2a51cb00ee4486f3123291ac",
-    "semantic_hash": ""
-  },
-  "output/AgentPerformanceShell.tsx": {
-    "mtime": 1781523460.0748868,
-    "ast_hash": "e3efde378a06a756afadadc4da886da0",
-    "semantic_hash": ""
-  },
-  "output/DrillModalShell.tsx": {
-    "mtime": 1781523460.0659988,
-    "ast_hash": "d2b617fe1cca0f1693be19269e588ceb",
-    "semantic_hash": ""
-  },
-  "output/FounderDrillDownDeck.tsx": {
-    "mtime": 1781523460.0431402,
-    "ast_hash": "043f860cdeab0b71fa7a622da485583a",
-    "semantic_hash": ""
-  },
-  "output/FounderPerformanceShell.tsx": {
-    "mtime": 1781523460.0263822,
-    "ast_hash": "92b51aeb2f40e6dec87eb4abf9eb8d6a",
-    "semantic_hash": ""
-  },
-  "output/ManagerPerformanceAsync.tsx": {
-    "mtime": 1781523460.0301404,
-    "ast_hash": "9ea4d6f8ead0450ae45cd093b37d98eb",
-    "semantic_hash": ""
-  },
-  "output/ManagerPerformancePanel.tsx": {
-    "mtime": 1781523460.0340564,
-    "ast_hash": "312b685bd3f007337fa2913a6870f698",
-    "semantic_hash": ""
-  },
-  "output/StatAtom.tsx": {
-    "mtime": 1781523460.0705805,
-    "ast_hash": "8f5842614d22a58e8e0fd42270ea4c39",
-    "semantic_hash": ""
-  },
-  "output/founder-perf-actions.tsx": {
-    "mtime": 1781523460.047379,
-    "ast_hash": "b651e7185c1b0ea9a717b6529d7798eb",
-    "semantic_hash": ""
-  },
-  "output/performance-deck-reference.tsx": {
-    "mtime": 1781523466.1655269,
-    "ast_hash": "60b219f7f978b8c66aacb70fceb25852",
-    "semantic_hash": ""
-  },
-  "output/performance-page.tsx": {
-    "mtime": 1781523460.0227935,
-    "ast_hash": "4b10b099c5b25e2b3534fb0cd4a4c1f1",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/performance/founder-perf-actions.tsx": {

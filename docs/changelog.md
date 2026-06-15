@@ -12,6 +12,60 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-15 — Elaya: current-date anchor in the system prompt (fixes wrong-year due dates)
+
+**Problem.** Tasks Elaya created with a relative due date ("tomorrow at 4 PM", "next week") landed
+in the **wrong year** — a task created on 2026-06-15 was stored due 2025-06-17. The lead/task
+write tools normalise a zoneless `dueAt` correctly through `normalizeDueAtToIstInstant` (IST → UTC
+instant), and the calendar bucketing/date keys are correct; the fault was upstream: the **system
+prompt carried no "today" anchor**, so the model resolved every relative date against its
+training-data prior (somewhere in 2025). The resulting past-dated task showed as overdue on
+creation and never appeared on the intended day in the My Tasks calendar (it sat on a 2025 cell the
+current-month view never renders). Verified across the `elaya_actions` ledger: four
+relative-date tasks, all stamped year 2025 (`Talk with Malika` 2025-06-17, three lead tasks
+2025-06-16 / 2025-07-16 / 2025-07-17).
+
+**Fix.**
+
+- `src/lib/utils/ist.ts` — new `formatIstNow(now)`: the current IST date/time as an unambiguous
+  prompt string (named weekday + month + 4-digit year + 24h time + `IST` label, e.g.
+  `"Monday, 15 June 2026, 17:46 IST"`). Pure, beside `toIst`; reuses the canonical IST math.
+- `src/lib/elaya/persona.ts` — `buildElayaSystemPrompt` takes a `now: Date = new Date()` (computed
+  once per turn in `runElayaTurn`, so it covers both the in-app and WhatsApp channels) and injects
+  a high-salience line right after the greeting: the current IST moment + an instruction to resolve
+  every relative date/time against it and emit `dueAt` as a zoneless `YYYY-MM-DDTHH:MM` string
+  (interpreted as IST by the tool layer). No tool/schema/normaliser change — those were already
+  correct; the model simply lacked the anchor.
+
+**Data.** Corrected the one reported task in place — `Talk with Malika at 4 PM` → 2026-06-16 16:00
+IST (the "tomorrow 4 PM" the user meant). The three older lead tasks were left untouched (intended
+dates now ambiguous). The personal-task Redis cache (30s TTL) self-heals; a refresh shows the
+corrected date.
+
+`src/lib/utils/ist.ts`, `src/lib/elaya/persona.ts`.
+
+## 2026-06-15 — Elaya floating widget: opens instantly (prefetch on intent + in-panel loading)
+
+**Problem.** Clicking the floating Elaya FAB (`ElayaWidget`) felt laggy: `handleOpen` `await`ed
+`getElayaChatSeedAction()` (settings read → `getOrCreateActiveConversation` incl. a possible INSERT
+→ `Promise.all` of messages/today-count/cap) **before** ever setting `open`, so on a cold serverless
+lambda nothing visual happened until the whole round-trip resolved — the button just spun.
+
+**Fix (both halves of the perceived-latency problem).**
+
+- **Prefetch on intent** — `onPointerEnter` / `onFocus` on the FAB warm the seed (cached in a
+  `prefetched` ref) *and* preload the heavy `ElayaChatShell` chunk (`loadChatShell()` hoisted out of
+  the `dynamic()` call). A `seeding` ref guards against a hover-then-click double fetch. When the
+  click lands warm, the modal opens **instantly** on the cached seed.
+- **Open-first on the cold path** — if no warm seed exists, the Dialog opens immediately and shows an
+  in-panel loading state (breathing `ElayaGlyph` + "Gathering her thoughts…", Elaya never goes static)
+  while `fetchSeed()` runs; the chat swaps in on arrival. On error the modal closes and a toast fires.
+- The FAB no longer carries a `Spinner` (removed the import) — it opens the surface rather than being
+  the loading affordance. Re-seed-every-open behaviour is preserved (cross-tab freshness, R-01 — same
+  `resolveElayaChatSeed` as `/elaya`).
+
+`src/components/elaya/ElayaWidget.tsx` only — no service/action/schema changes.
+
 ## 2026-06-15 — Deals: deal_type is domain-derived; retail deals carry a product category
 
 A deal's `deal_type` could previously drift from its domain — the create form let the type be

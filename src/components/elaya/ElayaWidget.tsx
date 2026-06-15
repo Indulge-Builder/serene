@@ -15,14 +15,13 @@
 // double-count the daily cap. The button + modal portal to document.body to
 // escape any transformed shell ancestor (the Phase-6 clipping fix).
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { AnimatePresence, m as motion, useReducedMotion } from 'framer-motion';
 import { ElayaGlyph } from '@/components/ui/elaya-glyph';
 import { Dialog } from '@/components/ui/Dialog';
-import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/hooks/useToast';
 import { getElayaChatSeedAction } from '@/lib/actions/elaya';
 import { SPRING_CONFIG, ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
@@ -30,10 +29,9 @@ import type { ElayaChatSeed } from '@/lib/services/elaya-service';
 
 // The chat surface is heavy (SSE loop, MessageBar, DictationButton). Load it on
 // intent — never into the dashboard route chunk (perf audit G-1, heavy-modal rule).
-const ElayaChatShell = dynamic(
-  () => import('@/components/elaya/ElayaChatShell').then((m) => m.ElayaChatShell),
-  { ssr: false },
-);
+const loadChatShell = () =>
+  import('@/components/elaya/ElayaChatShell').then((m) => m.ElayaChatShell);
+const ElayaChatShell = dynamic(loadChatShell, { ssr: false });
 
 export function ElayaWidget() {
   const toast = useToast;
@@ -45,6 +43,11 @@ export function ElayaWidget() {
   const [loading, setLoading] = useState(false);
   const [seed, setSeed] = useState<ElayaChatSeed | null>(null);
 
+  // A warm seed primed on hover/focus, plus a guard so we never run two seed
+  // fetches at once (hover fires, then the click fires before it resolves).
+  const prefetched = useRef<ElayaChatSeed | null>(null);
+  const seeding = useRef(false);
+
   // Portal target only exists client-side.
   useEffect(() => setMounted(true), []);
 
@@ -52,26 +55,63 @@ export function ElayaWidget() {
   // a second one here would double-stream and double-count the cap. Hide there.
   const onElayaPage = pathname === '/elaya';
 
+  // Shared fetch — re-seeds so the widget reflects the conversation's current
+  // state (e.g. messages sent on /elaya in another tab). Returns null on error.
+  const fetchSeed = useCallback(async (): Promise<ElayaChatSeed | null> => {
+    if (seeding.current) return null;
+    seeding.current = true;
+    try {
+      const res = await getElayaChatSeedAction();
+      if (res.error || !res.data) return null;
+      return res.data;
+    } finally {
+      seeding.current = false;
+    }
+  }, []);
+
+  // Warm the seed + the heavy chat chunk on intent (pointer/keyboard focus) so
+  // the click usually opens on a ready conversation. Fire-and-forget; failures
+  // are silent here — handleOpen surfaces a real error if the click still needs
+  // a fetch. Never prefetch on /elaya (the button isn't even rendered there).
+  const handlePrefetch = useCallback(() => {
+    if (onElayaPage || open || prefetched.current || seeding.current) return;
+    void loadChatShell();
+    void fetchSeed().then((data) => {
+      if (data) prefetched.current = data;
+    });
+  }, [onElayaPage, open, fetchSeed]);
+
   async function handleOpen() {
-    if (loading) return;
-    setLoading(true);
-    // Re-seed on every open so the widget reflects the conversation's current
-    // state (e.g. messages sent on /elaya in another tab) — the shell remounts
-    // with fresh props because it only mounts while open && seed.
-    const res = await getElayaChatSeedAction();
-    setLoading(false);
-    if (res.error || !res.data) {
-      toast.danger(res.error ?? 'Elaya is unavailable right now.');
+    if (loading || open) return;
+
+    // Fast path — a hover/focus already warmed the seed. Open instantly.
+    if (prefetched.current) {
+      setSeed(prefetched.current);
+      prefetched.current = null;
+      setOpen(true);
       return;
     }
-    setSeed(res.data);
+
+    // Cold path — open the modal NOW with an in-panel loading state, then fetch.
+    // The user sees the panel immediately instead of a spinning button.
     setOpen(true);
+    setLoading(true);
+    const data = await fetchSeed();
+    setLoading(false);
+    if (!data) {
+      setOpen(false);
+      toast.danger('Elaya is unavailable right now.');
+      return;
+    }
+    setSeed(data);
   }
 
   function handleClose() {
     setOpen(false);
+    setLoading(false);
     // Drop the seed so the next open re-fetches and the shell remounts fresh.
     setSeed(null);
+    prefetched.current = null;
   }
 
   if (!mounted || onElayaPage) return null;
@@ -86,17 +126,15 @@ export function ElayaWidget() {
         aria-label="Open Elaya"
         className="serene-elaya-fab serene-pressable serene-touch"
         onClick={() => void handleOpen()}
+        onPointerEnter={handlePrefetch}
+        onFocus={handlePrefetch}
         initial={reduceMotion ? false : { opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={reduceMotion ? { duration: 0 } : SPRING_CONFIG}
         whileHover={reduceMotion ? undefined : { scale: 1.05 }}
         whileTap={reduceMotion ? undefined : { scale: 0.95 }}
       >
-        {loading ? (
-          <Spinner size="sm" />
-        ) : (
-          <ElayaGlyph size={24} />
-        )}
+        <ElayaGlyph size={24} />
       </motion.button>
 
       {/* The chat IS the modal surface — no card-in-a-card. The Dialog provides
@@ -116,7 +154,7 @@ export function ElayaWidget() {
             current conversation. */}
         <div className="flex flex-col" style={{ height: 'min(78dvh, 680px)' }}>
           <AnimatePresence mode="wait">
-            {seed && (
+            {seed ? (
               <motion.div
                 key={seed.conversationId}
                 className="flex flex-1 flex-col"
@@ -133,6 +171,23 @@ export function ElayaWidget() {
                   embedded
                   onClose={handleClose}
                 />
+              </motion.div>
+            ) : (
+              // Cold path: the modal opened instantly; the conversation is still
+              // resolving. A breathing glyph keeps Elaya present (never a static
+              // glyph) while the seed lands — far better than a spinning button.
+              <motion.div
+                key="elaya-widget-loading"
+                className="flex flex-1 flex-col items-center justify-center gap-4"
+                style={{ minHeight: 0 }}
+                initial={reduceMotion ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
+              >
+                <ElayaGlyph size={36} />
+                <span className="type-eyebrow text-(--theme-text-tertiary)">
+                  Gathering her thoughts…
+                </span>
               </motion.div>
             )}
           </AnimatePresence>

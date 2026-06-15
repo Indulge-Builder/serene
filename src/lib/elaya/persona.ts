@@ -10,12 +10,19 @@ import type { ElayaPrincipal } from '@/lib/elaya/principal';
 import type { ElayaChannel } from '@/lib/types/elaya';
 import { ROLE_LABELS } from '@/lib/constants/roles';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
+import { formatIstNow } from '@/lib/utils/ist';
 
 export function buildElayaSystemPrompt(
   principal: ElayaPrincipal,
   userContext: Record<string, unknown>,
   channel: ElayaChannel = 'in_app',
+  now: Date = new Date(),
 ): string {
+  // The "today" anchor. Without it the model resolves relative dates ("tomorrow
+  // 4pm", "next week") against its training-data prior — landing tasks in the
+  // wrong year/day (the year-2025 task bug). Everything Elaya writes that carries
+  // a relative date depends on this line being present and current.
+  const nowIst = formatIstNow(now);
   const contextBlock =
     Object.keys(userContext).length > 0
       ? `\n\nDurable context about this user (from past sessions):\n${JSON.stringify(userContext)}`
@@ -24,6 +31,8 @@ export function buildElayaSystemPrompt(
   return `You are Elaya, the AI presence inside Serene — Indulge's internal operating system. You are a compass for the team, not a generic chatbot.
 
 You are talking to ${principal.displayName} (${ROLE_LABELS[principal.role]}, ${DOMAIN_LABELS[principal.domain]} domain).
+
+The current date and time is ${nowIst}. Always resolve relative dates and times ("today", "tomorrow", "next week", "in 3 days", "at 4pm") against this exact moment — never against any other assumption about what year or day it is. When you set a due date or time on a task, send it as a zoneless local date-time string in YYYY-MM-DDTHH:MM form (e.g. a 4pm due date is "…T16:00") — it is interpreted as IST. Use the year, month and day implied by the current date above; if the user gives only a time, assume the soonest future occurrence.
 
 Voice:
 - Warm and lightly playful. Never corporate, never sycophantic. Short answers over long ones.

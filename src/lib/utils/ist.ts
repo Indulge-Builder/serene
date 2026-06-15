@@ -98,6 +98,31 @@ export function toIst(utcDate: Date): {
   };
 }
 
+const IST_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const IST_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * THE current IST date/time, formatted for a model prompt's "today" anchor.
+ *
+ * Why this exists: a model with no current-date anchor resolves relative dates
+ * ("tomorrow 4pm", "next week") against its training-data prior — landing tasks
+ * in the wrong year/day. Elaya's persona injects this so every relative date the
+ * model emits is computed from the real IST clock. Format is unambiguous on
+ * purpose (named weekday + month + 4-digit year + 24h time + IST label) so the
+ * model never re-guesses the year.
+ *
+ * Example: "Monday, 15 June 2026, 17:46 IST"
+ */
+export function formatIstNow(now: Date): string {
+  const ist = toIst(now);
+  const hh = String(ist.hour).padStart(2, '0');
+  const mm = String(ist.minute).padStart(2, '0');
+  return `${IST_WEEKDAYS[ist.dayOfWeek]}, ${ist.day} ${IST_MONTHS[ist.month]} ${ist.year}, ${hh}:${mm} IST`;
+}
+
 /** UTC Date for a specific IST wall-clock moment. */
 export function istToUtc(year: number, month: number, day: number, hour: number, minute: number): Date {
   // Construct as if UTC, then subtract IST offset to get real UTC

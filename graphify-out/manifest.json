@@ -1420,8 +1420,8 @@
     "semantic_hash": ""
   },
   "src/lib/utils/ist.ts": {
-    "mtime": 1781512037.9605958,
-    "ast_hash": "1ded491446093112b4d87cca241e257d",
+    "mtime": 1781525850.2280939,
+    "ast_hash": "52ddcaeca672254d8782f9b03510b171",
     "semantic_hash": ""
   },
   "src/lib/utils/numbers.ts": {
@@ -2060,8 +2060,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781524110.5605564,
-    "ast_hash": "cae138b6edb983a905e7fb3359d7166d",
+    "mtime": 1781527393.0381832,
+    "ast_hash": "affcb5ce2db6ab49074168b92a4d84a8",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -2979,11 +2979,6 @@
     "ast_hash": "76b0e3b608b1a9486057ea48e2907c2f",
     "semantic_hash": ""
   },
-  "imgs/elaya/elaya-confused.png": {
-    "mtime": 1781256705.7640204,
-    "ast_hash": "2d8970f919127670613b36e050169824",
-    "semantic_hash": ""
-  },
   "imgs/elaya/elaya-excited.png": {
     "mtime": 1781256625.6622329,
     "ast_hash": "ea8c0388282e5245a21bf5184873de25",
@@ -2997,11 +2992,6 @@
   "imgs/elaya/elaya-tensed.png": {
     "mtime": 1781256494.8080165,
     "ast_hash": "6910f65569db0e091a349aeb343d3c1c",
-    "semantic_hash": ""
-  },
-  "imgs/elaya/elaya-thinking.png": {
-    "mtime": 1781256797.9541698,
-    "ast_hash": "bd7b7da28a9f314573045f03e222c7b0",
     "semantic_hash": ""
   },
   "scripts/data/call-intelligence-seed.json": {
@@ -3130,8 +3120,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/persona.ts": {
-    "mtime": 1781517349.7557054,
-    "ast_hash": "0cc8bd2e2a8eac3f9e79ace457919bf8",
+    "mtime": 1781525880.8114161,
+    "ast_hash": "c20ecd26542ff0b2390ff459bbc77364",
     "semantic_hash": ""
   },
   "src/lib/elaya/pii.ts": {
@@ -3550,8 +3540,8 @@
     "semantic_hash": ""
   },
   "src/components/elaya/ElayaWidget.tsx": {
-    "mtime": 1781519580.7132592,
-    "ast_hash": "ed332c0cc43967ea69d105558795b2ac",
+    "mtime": 1781525383.9190218,
+    "ast_hash": "2b0f9518dc00f7f80a8e78cc0c667017",
     "semantic_hash": ""
   },
   "src/lib/actions/elaya.ts": {
@@ -3604,8 +3594,8 @@
     "ast_hash": "b651e7185c1b0ea9a717b6529d7798eb",
     "semantic_hash": ""
   },
-  "supabase/migrations/20260615000122_deal_category_and_domain_type.sql": {
-    "mtime": 1781523299.6336505,
+  "supabase/migrations/20260615113534_deal_category_and_domain_type.sql": {
+    "mtime": 1781524947.1855376,
     "ast_hash": "a97fdf6776f058ed00a90b2500275748",
     "semantic_hash": ""
   }
