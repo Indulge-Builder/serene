@@ -1293,12 +1293,16 @@ export function SubTaskModal({
             </AnimatePresence>
             </div>
 
-            {/* Zone A body — checklist, details, metadata */}
+            {/* Zone A body — checklist, details, metadata.
+                Below md the grid is the single scroll container, so this zone
+                flows at its natural height (overflow visible, no inner scroller)
+                — clipping the content here truncated the checklist/details on
+                mobile (audit F4 follow-up). From md it owns an independent
+                scroll region inside its fixed grid row. */}
             <div
-              className="md:col-start-1 md:row-start-2"
+              className="md:col-start-1 md:row-start-2 overflow-visible md:overflow-hidden"
               style={{
                 minHeight:     0,
-                overflow:      "hidden",
                 display:       "flex",
                 flexDirection: "column",
                 position:      "relative",
@@ -1320,11 +1324,11 @@ export function SubTaskModal({
                 }}
               />
 
-              {/* Scrollable body */}
+              {/* Body — flows naturally below md (grid scrolls), independent
+                  scroll region from md up */}
               <div
+                className="flex-1 overflow-y-visible md:overflow-y-auto"
                 style={{
-                  flex:          1,
-                  overflowY:     "auto",
                   padding:       "var(--space-4) var(--space-6) var(--space-6) var(--space-7)",
                   display:       "flex",
                   flexDirection: "column",

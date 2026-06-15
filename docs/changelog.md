@@ -12,6 +12,51 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-15 — Lead dossier StatusActionPanel: robust equal-width mobile action row
+
+**Bug.** On the lead dossier on mobile, the stage-action buttons (e.g. **Level Up** + **Junk**
+at `touched`) laid out unevenly and looked broken — mismatched widths, drift, occasional wrap.
+The mobile row used `display: flex; flex-wrap: wrap` with each button at `flex: '1 0 auto'`.
+`flex-shrink: 0` meant buttons could never shrink below their content width (so two buttons whose
+content + gap exceeded the row wrapped/overflowed), and `flex-basis: auto` sized each to its own
+label (so Level Up came out wider than Junk) — the "equal-width row" the comment claimed never held.
+
+**Fix.** The stage-action row is now a CSS grid with `grid-template-columns: repeat(N, minmax(0, 1fr))`
+where `N = stageActions.length` — genuinely equal columns that scale to any count (1 button for junk's
+Revive, 2 for touched, 3 for in_discussion) and any viewport width. The `fluid` button styling changed
+from `flex: '1 0 auto'` to `width: 100%; minWidth: 0; overflow: hidden` (fills its grid cell, shrinkable),
+and the button's icon + label are now wrapped: icon `flexShrink: 0`, label `overflow: hidden;
+textOverflow: ellipsis; minWidth: 0` so a long label ellipsizes inside a narrow cell instead of
+overflowing. Desktop layout (the non-mobile branch) is untouched. The status pill + Called top row
+is unchanged — status stays fully legible (never truncated).
+
+**File:** `src/components/leads/StatusActionPanel.tsx` (mobile branch + `ActionButton`).
+
+---
+
+## 2026-06-15 — SubTaskModal mobile: Zone A content no longer truncated
+
+**Bug.** On mobile the SubTaskModal truncated its Zone A content (Action Items checklist,
+Details, metadata footer). Below `md` the two-zone grid collapses to a single column and the
+grid itself is the scroll container (`grid-cols-1 … overflow-y-auto`). But Zone A's body kept its
+desktop chrome — an `overflow: hidden` wrapper around an inner `flex: 1; overflowY: auto` scroller.
+With no resolved height on mobile, the `flex: 1` child collapsed to its minimum and `overflow: hidden`
+clipped everything past it. Nested scroll-inside-scroll, the inner region never got a height to expand into.
+
+**Fix.** Zone A body now releases the independent-scroll chrome below `md` and only applies it from
+`md` up, matching the grid's own `overflow-y-auto` (mobile) / `md:overflow-hidden` (desktop) contract:
+
+- Wrapper: `overflow-visible md:overflow-hidden` (was a flat inline `overflow: hidden`).
+- Inner body: `flex-1 overflow-y-visible md:overflow-y-auto` (was a flat inline `flex: 1; overflowY: auto`).
+
+Below `md` the content flows at its natural height and the outer grid scrolls the whole column; from
+`md` up the zone keeps its independent scroll region inside its fixed grid row — desktop is byte-identical.
+Zone B (remarks panel, `max-md:h-[60dvh]`) was already correct (explicit height → resolved inner scroll).
+
+**File:** `src/components/tasks/SubTaskModal.tsx` (Zone A body only).
+
+---
+
 ## 2026-06-15 — Elaya: current-date anchor in the system prompt (fixes wrong-year due dates)
 
 **Problem.** Tasks Elaya created with a relative due date ("tomorrow at 4 PM", "next week") landed

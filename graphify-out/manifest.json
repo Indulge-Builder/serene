@@ -620,8 +620,8 @@
     "semantic_hash": "fbc4ad6de106eb457ccf4ad16ae96cbd"
   },
   "src/components/leads/StatusActionPanel.tsx": {
-    "mtime": 1781523831.2999704,
-    "ast_hash": "2b686d416e6282b3b1b478096dfe7f05",
+    "mtime": 1781527975.9134908,
+    "ast_hash": "a8476215ad3de7677bf9a9964ea65913",
     "semantic_hash": ""
   },
   "src/components/leads/WonDealModal.tsx": {
@@ -780,8 +780,8 @@
     "semantic_hash": ""
   },
   "src/components/tasks/SubTaskModal.tsx": {
-    "mtime": 1781344957.0199642,
-    "ast_hash": "03a130c9e7b09031b74ab87fcf2ee453",
+    "mtime": 1781527819.3552198,
+    "ast_hash": "75aae980f340c863a27762628a9cb743",
     "semantic_hash": ""
   },
   "src/components/tasks/TaskCompletionCircle.tsx": {
@@ -2060,8 +2060,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781527393.0381832,
-    "ast_hash": "affcb5ce2db6ab49074168b92a4d84a8",
+    "mtime": 1781528012.2375407,
+    "ast_hash": "7581defff3990359075b92ecb3190d4f",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {

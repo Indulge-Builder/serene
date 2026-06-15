@@ -280,7 +280,13 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
               {calledButton}
             </div>
             {stageActions.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+              <div
+                style={{
+                  display:             'grid',
+                  gridTemplateColumns: `repeat(${stageActions.length}, minmax(0, 1fr))`,
+                  gap:                 'var(--space-2)',
+                }}
+              >
                 {stageActions.map(({ key, ...action }) => (
                   <ActionButton key={key} {...action} disabled={isPending} fluid />
                 ))}
@@ -461,7 +467,7 @@ function ActionButton({
   disabled: boolean;
   onClick: () => void;
   className?: string;
-  /** Equal-width flex sizing for the mobile stage-action row */
+  /** Fill the grid cell (equal-width mobile stage-action row) */
   fluid?: boolean;
 }) {
   const base = VARIANT_STYLES[variant];
@@ -479,7 +485,9 @@ function ActionButton({
         height:         '2.25rem',
         paddingLeft:    'var(--space-4)',
         paddingRight:   'var(--space-4)',
-        ...(fluid ? { flex: '1 0 auto' } : null),
+        // Grid cell already sizes the button; fill it and allow the label to
+        // ellipsize on very narrow viewports rather than overflow the cell.
+        ...(fluid ? { width: '100%', minWidth: 0, overflow: 'hidden' } : null),
         borderRadius:   'var(--radius-sm)',
         fontSize:       'var(--text-sm)',
         fontWeight:     'var(--weight-medium)',
@@ -491,8 +499,17 @@ function ActionButton({
         ...base,
       }}
     >
-      {icon}
-      {label}
+      <span style={{ display: 'inline-flex', flexShrink: 0 }}>{icon}</span>
+      <span
+        style={{
+          overflow:     'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace:   'nowrap',
+          minWidth:     0,
+        }}
+      >
+        {label}
+      </span>
     </button>
   );
 }
