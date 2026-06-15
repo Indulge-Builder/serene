@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for the Elaya chat page (foundation phase — read-only).
 > **Audience:** engineers. · **Source-of-truth scope:** this route's behaviour.
-> **Last verified:** 2026-06-12 · **Status:** shipped.
+> **Last verified:** 2026-06-15 · **Status:** shipped.
 
 Module architecture + phase contracts: `docs/modules/elaya.md`. Build record: `docs/changelog.md`
 (2026-06-12 Elaya foundation entry).

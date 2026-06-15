@@ -2,6 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Plus } from "lucide-react";
 import { getCurrentProfile, getAllProfiles } from "@/lib/services/profiles-service";
+import { getNotifications } from "@/lib/services/notifications-service";
+import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
+import { PageControls } from "@/components/layout/PageControls";
 import { UsersTable } from "@/components/admin/UsersTable";
 
 export default async function AdminUsersPage() {
@@ -20,6 +23,7 @@ export default async function AdminUsersPage() {
           Team<span className="page-title-dot">.</span>
         </h1>
 
+        <div className="flex items-center gap-3">
         <Link
           href="/admin/users/new"
           className="serene-pressable serene-icon-rotate-hover"
@@ -42,6 +46,14 @@ export default async function AdminUsersPage() {
           <Plus style={{ width: 15, height: 15, strokeWidth: 1.5 }} />
           Add Member
         </Link>
+          {TOP_BAR_ENABLED && (
+            <PageControls
+              userId={profile.id}
+              isPrivileged={false}
+              notificationsPromise={getNotifications(profile.id)}
+            />
+          )}
+        </div>
       </div>
 
       <UsersTable users={users} />

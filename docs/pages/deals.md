@@ -123,8 +123,9 @@ CREATE TABLE public.deals (
   contact_email text NULL,
   domain        app_domain NOT NULL,
   deal_amount   numeric(12,2) NOT NULL CHECK (deal_amount > 0 AND deal_amount <= 100000000),
-  deal_type     text NOT NULL CHECK (deal_type IN ('membership','retail')),
+  deal_type     text NOT NULL CHECK (deal_type IN ('membership','retail','sale')),       -- 'sale' added migration 0122
   deal_duration text NULL CHECK (deal_duration IS NULL OR deal_duration IN ('3_months','6_months','1_year')),
+  deal_category text NULL CHECK (deal_category IS NULL OR deal_category IN ('watch','bag','event','jewellery','small_luxury','accessories','other')),  -- migration 0122
   assigned_to   uuid NULL REFERENCES public.profiles(id),
   source        text NULL CHECK (source IS NULL OR source IN ('meta','google','website','whatsapp','referral','ypo','events')),  -- migration 0075
   won_at        timestamptz NOT NULL DEFAULT now(),  -- defaults to now(); walk-ins may supply a past Deal Date. Immutable after insert.
@@ -132,9 +133,20 @@ CREATE TABLE public.deals (
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT deals_membership_duration_check
-    CHECK (deal_type <> 'membership' OR deal_duration IS NOT NULL)
+    CHECK (deal_type <> 'membership' OR deal_duration IS NOT NULL),
+  CONSTRAINT deals_retail_category_check                                                 -- migration 0122
+    CHECK ((deal_type = 'retail' AND deal_category IS NOT NULL)
+        OR (deal_type <> 'retail' AND deal_category IS NULL))
 );
 ```
+
+**Domain → type → category rule (migration 0122, decision-log 2026-06-15):** `deal_type` is
+**derived from the deal's Gia domain — never free-picked** (`DOMAIN_DEAL_CONFIG` in
+`src/lib/constants/deal-types.ts`): `onboarding → membership`, `shop → retail` (+ a required
+`deal_category`), `house`/`legacy` → `sale`. The type is set server-side in `recordDeal` (from the
+lead's domain) and `createWalkInDeal` (from the server-forced deal domain) via
+`resolveDealShapeForDomain`; a client-sent `deal_type` is ignored. The `deals_retail_category_check`
+couples `retail ⇔ category`. The category filter on `/deals` surfaces only inside the `shop` slice.
 
 **Key column rules:**
 
@@ -174,8 +186,13 @@ is true. Clicking opens `WonDealModal`.
 
 #### 3b. WonDealModal
 
-**File:** `src/components/leads/WonDealModal.tsx` — unchanged. Same two-step flow (type → details).
-`onConfirm` fires `recordDeal` from `src/lib/actions/leads.ts` (re-export from `deals.ts`).
+**File:** `src/components/leads/WonDealModal.tsx`. Takes the lead's `domain` prop and **derives the
+deal type from it** (`DOMAIN_DEAL_CONFIG`) — the type is shown read-only, no picker. Single-step
+(2026-06-15; the old "type → details" step was removed now that the type is derived): the recap +
+the type-dependent extra (Product Category for shop/retail, Duration chips for onboarding/membership,
+nothing for house/legacy/sale) + Amount. `onConfirm` passes `{ deal_duration, deal_category,
+deal_amount }` (no `deal_type`) to `recordDeal` from `src/lib/actions/leads.ts` (re-export from
+`deals.ts`), which re-derives the type from the lead's domain.
 
 #### 3c. `recordDeal` action
 
@@ -188,16 +205,22 @@ is true. Clicking opens `WonDealModal`.
 | Field | Rules |
 | --- | --- |
 | `leadId` | UUID |
-| `deal_type` | `'membership'` \| `'retail'` |
-| `deal_duration` | `'3_months'` \| `'6_months'` \| `'1_year'`, nullable, optional |
+| `deal_duration` | `'3_months'` \| `'6_months'` \| `'1_year'`, nullable, optional (membership) |
+| `deal_category` | retail product category, nullable, optional (shop) |
 | `deal_amount` | number, positive, max `100_000_000` |
 
-**New DB order (2026-06-05):**
+> **No `deal_type` field (2026-06-15).** The type is derived from the lead's domain in `recordDeal`
+> (`resolveDealShapeForDomain`), never sent by the client. The schema carries only the
+> type-dependent extras (`deal_duration` for membership, `deal_category` for retail); the action
+> picks the right one for the resolved domain.
+
+**New DB order (2026-06-05; type-derivation added 2026-06-15):**
 
 1. Auth + access check (agent assigned / manager domain / admin / founder).
 2. Fetch lead contact data (`first_name`, `last_name`, `phone`, `email`, `domain`, `assigned_to`).
-3. `(adminClient as any).from('deals').insert({ lead_id, contact_*, domain, deal_*, assigned_to, won_at: now() })` — **must succeed before status flip**.
-4. `return updateLeadStatus({ leadId, status: 'won' })` — all side-effects delegated here.
+3. **Derive `deal_type` from `lead.domain`** (`resolveDealShapeForDomain`); reject non-Gia domains.
+4. `(adminClient as any).from('deals').insert({ lead_id, contact_*, domain, deal_type, deal_duration, deal_category, deal_amount, assigned_to, won_at: now() })` — **must succeed before status flip**.
+5. `return updateLeadStatus({ leadId, status: 'won' })` — all side-effects delegated here.
 
 **Side effects from `updateLeadStatus('won')` (unchanged):** `update_lead_status` RPC, `lead_won`
 notifications to managers/admins/founders, `cancelSlaTimersForLead`, Redis invalidation,
@@ -226,15 +249,20 @@ Composes `src/components/ui/modal.tsx` (`maxWidth="max-w-md"`).
 1. **Contact:** Name, Phone (E.164), Email (optional), Domain picker (`GIA_DOMAINS` — admin/founder
    only; agent and manager locked to own domain), Assign to (manager+ — dropdown pre-loaded via
    `listAgentsForDealDomain`; agent shows read-only self chip).
-2. **Deal:** Type selection cards (same pattern as `WonDealModal` step 1), Duration chips
-   (membership only), a side-by-side **Deal Date** (`DatePicker`, `maxDate={new Date()}` — defaults
-   to today, allows back-dating a past sale) + **Source** (`<select>` from `LEAD_SOURCE_OPTIONS`,
-   optional), and Amount (₹ prefix, decimal).
+2. **Deal:** Deal **type is shown read-only** ("set by {domain}") — it is derived from the chosen
+   domain (`DOMAIN_DEAL_CONFIG`), not picked. The type-dependent extra surfaces accordingly:
+   **Product Category** `<select>` for shop (retail), **Duration** chips for onboarding (membership),
+   nothing for house/legacy (sale). Plus a side-by-side **Deal Date** (`DatePicker`,
+   `maxDate={new Date()}` — defaults to today, allows back-dating a past sale) + **Source**
+   (`<select>` from `LEAD_SOURCE_OPTIONS`, optional), and Amount (₹ prefix, decimal).
 
 **Domain/assignee enforcement (server-side):**
 - Agent: `domain = caller.domain`, `assigned_to = caller.id` — always forced server-side.
 - Manager: `domain = caller.domain`; `assigned_to` may be any agent in their domain (verified).
 - Admin/founder: any Gia domain; assignee verified in chosen domain.
+- **`deal_type` is derived from the resolved domain** (`resolveDealShapeForDomain`) — a client-sent
+  type is ignored. `CreateWalkInDealSchema` carries no `deal_type` field, only the extras
+  (`deal_duration`, `deal_category`), which are cross-validated against the domain's type.
 
 **Calls:** `createWalkInDeal` from `src/lib/actions/deals.ts` via `useTransition`.
 On success: `router.refresh()` — no manual cache invalidation needed.
@@ -337,14 +365,15 @@ nullable — walk-ins have no lead row to join. `DealWithAssignee` no longer exi
 
 ```typescript
 export type DealFilters = {
-  search:    string | null
-  domain:    AppDomain | null   // admin/founder; parseGiaDomainParam() on page
-  deal_type: string | null      // 'membership' | 'retail'
-  agent_id:  string | null
-  date_from: string | null      // ISO date → won_at
-  date_to:   string | null      // ISO date → won_at
-  page:      number
-  pageSize:  number
+  search:        string | null
+  domain:        AppDomain | null   // admin/founder; parseGiaDomainParam() on page
+  deal_type:     string | null      // 'membership' | 'retail' | 'sale'
+  deal_category: string | null      // retail category; DealsFilters surfaces it only when domain=shop
+  agent_id:      string | null
+  date_from:     string | null      // ISO date → won_at
+  date_to:       string | null      // ISO date → won_at
+  page:          number
+  pageSize:      number
 }
 ```
 
@@ -442,13 +471,14 @@ Now `date_from`/`date_to` are conceptually applied to `won_at` (was `status_chan
 
 #### 8b. `DealsFilters`
 
-**File:** `src/components/deals/DealsFilters.tsx` — `'use client'`. Unchanged.
+**File:** `src/components/deals/DealsFilters.tsx` — `'use client'`.
 
 | Control | URL param | Notes |
 | --- | --- | --- |
 | Search | `search` | 500ms debounce; resets page |
-| Deal type | `deal_type` | Single-select `FilterDropdown` |
-| Domain | `domain` | Admin/founder only |
+| Deal type | `deal_type` | Single-select `FilterDropdown` (`membership`/`retail`/`sale`) |
+| Category | `deal_category` | Single-select `FilterDropdown`; **shown only when `domain=shop`** (the retail slice); cleared atomically on any domain change |
+| Domain | `domain` | Admin/founder only; change clears `agent_id` + `deal_category` |
 | Agent | `agent_id` | Manager+ only |
 | Date range | `date_from`, `date_to` | Applied to `won_at` (previously `status_changed_at`) |
 

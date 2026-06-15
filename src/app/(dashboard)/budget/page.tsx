@@ -1,7 +1,10 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { getNotifications } from "@/lib/services/notifications-service";
 import { getPeriodDateRange, type PerformancePeriod } from "@/lib/services/performance-service";
+import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
+import { PageControls } from "@/components/layout/PageControls";
 import { PerformanceFilters } from "@/components/performance/PerformanceFilters";
 import { AdSpendUploadButton } from "@/components/budget/AdSpendUploadButton";
 import { BudgetAsync } from "./BudgetAsync";
@@ -63,7 +66,16 @@ export default async function BudgetPage({
         <h1 className="type-page-title m-0">
           Budget<span className="page-title-dot">.</span>
         </h1>
-        {canUpload && <AdSpendUploadButton />}
+        <div className="flex items-center gap-3">
+          {canUpload && <AdSpendUploadButton />}
+          {TOP_BAR_ENABLED && (
+            <PageControls
+              userId={profile.id}
+              isPrivileged={false}
+              notificationsPromise={getNotifications(profile.id)}
+            />
+          )}
+        </div>
       </div>
 
       {/* Row 2 — filter bar (shared period system, IST presets) */}

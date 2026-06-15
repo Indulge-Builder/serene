@@ -25,6 +25,7 @@ Full matrix: Deep dive §8.
 | ----- | --------- |
 | RPCs | `get_campaign_metrics` (0014), `get_campaign_detail_metrics` (0015/0087), `get_campaign_agent_distribution` (0015) — SECURITY DEFINER; client EXECUTE revoked (0102); always live, **no Redis** |
 | Service | campaign functions live in `leads-service.ts` (campaign data derives from `leads` — logged decision); detail leads table via `getLeadsByRoleCached` |
+| Spend | `getBudgetSummary(from, to)` (`ad-spend-service.ts`) — list-only; one batched fetch in `CampaignListAsync`, mapped onto cards by normalised key. Reused from `/budget`; no new query. Skipped when no range. |
 | Decoration | `beautifyCampaignTitle()` (`lib/utils/campaigns.ts`) — the only title decorator |
 | Creatives | `getAdCreativesForCampaigns` batch map on the list; carousel on detail — home: `ad-creatives.md` |
 
@@ -281,13 +282,16 @@ All three functions use `createClient()` from `src/lib/supabase/server.ts` and c
 
 #### 5c. `CampaignListAsync`
 
-- **Fetches:** `getCampaignMetrics(role, callerDomain, filters)` then `getAdCreativesForCampaigns(campaigns.map(c => c.campaign_name))` — one batch query, never per-card.
-- **Passes to cards:** `campaign`, `index`, `adCreatives` from map key `campaign_name.toLowerCase().trim()`.
+- **Fetches (one `Promise.all`):** `getCampaignMetrics(role, callerDomain, filters)` **+** `getBudgetSummary(date_from, date_to)` (only when both dates are present — `hasRange`). Then `getAdCreativesForCampaigns(campaigns.map(c => c.campaign_name))` — one batch query, never per-card.
+- **Spend join:** the budget rows become a `Map<campaignKey, BudgetCampaignRow>`; the card lookup uses `campaign_name.toLowerCase().trim()` — the same normalisation as the creatives map and the DB `ad_spend_daily.campaign_key`. **One `getBudgetSummary` fetch regardless of campaign count** — never a per-card spend call.
+- **Range discipline:** `getBudgetSummary` and `get_campaign_metrics` get the **identical** `date_from`/`date_to`, so a row's cost (spend ÷ leads) and its lead counts always cover the same window. No range → `getBudgetSummary` skipped, both fields passed as `null`.
+- **Passes to cards:** `campaign`, `index`, `adCreatives` from map key `campaign_name.toLowerCase().trim()`, plus `totalSpend`/`costPerLead` (`number | null` — `null` when no range or no spend row; `costPerLead` already `null` at zero leads upstream).
 - **Empty state:** Playfair italic — *"No campaigns match these filters."* (inline `<p>`, tertiary colour, no separate empty-state component).
 
 #### 5d. `CampaignCard`
 
 - **Left zone:** raw `campaign.campaign_name` + `DomainBadge` (`DOMAIN_LABELS`).
+- **Cost zone (between identity and pills):** two `CostCell`s — **Spend** + **Cost/Lead** for the active range. Micro-label over a mono value (`formatCurrency(Math.round(v))`). `value === null` → `—` in tertiary (no range, or no spend / zero leads) — **never ₹0**. Separated from the pills by a structural `--theme-paper-border` divider (a neutral zone divider, not a semantic single-edge accent strip).
 - **Right zone — seven metric pills in order:** total, won, in discussion, nurturing, lost, junk, RNR (variants: accent, success, info, warning, danger, neutral, neutral).
 - **`MetricPill`:** count displayed via `formatCompact(count)` — never raw integer in the pill.
 - **Hover:** `box-shadow: var(--shadow-2)` and `transform: translateY(-1px)` on mouse enter; reset to `--shadow-1` / `translateY(0)` on leave. Focus uses `--shadow-focus`.
@@ -495,6 +499,8 @@ Sidebar hides the Campaigns link from agent/guest (UI); direct URL still hits pa
 11. **`date_to` end-of-day** — append `T23:59:59.999Z` in service functions before RPC, not in components.
 
 12. **Batch ad creatives on list** — `getAdCreativesForCampaigns` once in `CampaignListAsync`; never `getAdCreativesForCampaign` per card.
+
+    **Batch spend on list (same rule):** `getBudgetSummary` is called **once** in `CampaignListAsync` (in the metrics `Promise.all`) and mapped by normalised key; never a per-card spend call. Both `getBudgetSummary` and `get_campaign_metrics` receive the **identical** resolved `date_from`/`date_to` — cost and lead counts must describe the same window. No range → no spend fetch, cost cells render `—`. Spend/cost render `—` (never ₹0) when `null`.
 
 13. **`beautifyCampaignTitle` / `campaignTitle` never in DB calls** — raw `utm_campaign` string only for lookups.
 

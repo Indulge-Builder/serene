@@ -2,13 +2,13 @@
 
 > **Purpose:** spec for the pre-auth surfaces (`/login`, `/forgot-password`, `/update-password`), the root redirect, the auth callback, and the end-to-end session flow.
 > **Audience:** engineers. · **Source-of-truth scope:** the `(auth)` route group + session flow as experienced by the user. The session *architecture* (proxy, clients, route gates, RBAC) lives in `../architecture/auth-and-rbac.md`; `/profile` lives in `profile.md`; visual law for the canvas-dark auth surface: `../design/DESIGN-DNA.md` §3.7.
-> **Last verified:** 2026-06-09 full pass; 2026-06-11 restructure.
+> **Last verified:** 2026-06-15 (OTP-code password reset pass); 2026-06-11 restructure.
 
 ## 1. Purpose
 
-How users enter Serene: email+password login, password-reset email, and new-password set (after
-magic link / reset). The auth pages are the one surface that is dark by design — canvas
-palette, no paper, no app chrome.
+How users enter Serene: email+password login, password-reset request (6-digit OTP code by
+email), and new-password set (after verifying the code). The auth pages are the one surface
+that is dark by design — canvas palette, no paper, no app chrome.
 
 ## 2. Who sees it
 
@@ -20,15 +20,15 @@ hitting `/` are redirected to `/dashboard`; deactivated users are gated twice (a
 
 | Layer | Key items |
 | ----- | --------- |
-| Actions | `auth.ts` — `loginAction` (+ `is_active` check; the documented non-authorization profile read), `requestPasswordResetAction` (never reveals email existence — S-09), `updatePasswordAction`, `signOutUser` |
-| Callback | `GET /api/auth/callback` — exchanges the Supabase auth code for a session (magic-link invite + password-reset landing), then redirects into the app |
+| Actions | `auth.ts` — `loginAction` (+ `is_active` check; the documented non-authorization profile read), `requestPasswordResetAction` (sends a 6-digit OTP code; never reveals email existence — S-09), `verifyResetOtpAction` (verifies the code → establishes the recovery session), `updatePasswordAction`, `signOutUser` |
+| Callback | `GET /api/auth/callback` — exchanges the Supabase auth code for a session (magic-link invite path only; **dead code for password reset** since the OTP-code switch) |
 | Validation | `validations/auth.ts`; errors via `form-errors.ts` |
 | Session | proxy + `updateSession()` + client factories — `../architecture/auth-and-rbac.md` §7 |
 
 ## 4. Components
 
-`LoginForm`, `ForgotPasswordForm`, `UpdatePasswordForm`, `InvalidLinkCard`,
-`PasswordStrengthBar` (4-segment danger→success). All draw from the canvas/sidebar palette —
+`LoginForm`, `ForgotPasswordForm`, `UpdatePasswordForm` (two-step `CodeStep` → `PasswordStep`),
+`MissingEmailCard`, `PasswordStrengthBar` (4-segment danger→success). All draw from the canvas/sidebar palette —
 `--theme-paper*`, `.serene-input`, and light `--color-*-light` tokens are forbidden on auth
 surfaces (dark-surface semantic tokens instead).
 
@@ -141,30 +141,27 @@ export default async function RootPage() {
 | **Page** | `forgot-password/page.tsx` → `ForgotPasswordForm` |
 | **Field** | `email` |
 | **Action** | `requestPasswordResetAction` |
-| **Supabase** | `resetPasswordForEmail(email, { redirectTo: \`${siteUrl}/api/auth/callback?next=/update-password\` })` where `siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? <localhost:3000 fallback>` |
-| **Success UX** | Inline success copy — **no redirect**. User must check email. |
+| **Supabase** | `resetPasswordForEmail(email)` — **no `redirectTo`**. The recovery email template renders `{{ .Token }}` = a **6-digit code**, not a link. |
+| **Success UX** | Inline success copy — **no redirect**. User reads the code from email, then opens `/update-password?email=<email>` to enter it. |
 | **Email enumeration** | **Always returns success** after valid email format — never reveals whether the address exists (Rule S-09). |
 | **Invalid email format** | `formErrors.email` |
 
-**What the user receives:** Supabase recovery email linking to `/api/auth/callback` with `token_hash` + `type=recovery` (or PKCE `code` in same-browser case). Callback verifies and redirects to `/update-password`.
+**What the user receives:** a Supabase recovery email containing a 6-digit OTP **code** (`{{ .Token }}`) — **no link**. The user types this code on `/update-password`. (Security rationale: a code can't be pre-burned by corporate link-scanners — Google Safe Links et al. — that would otherwise consume the single-use reset token before the user clicks.)
 
-#### 5d. `/update-password`
+#### 5d. `/update-password` — two-step (code → password)
 
 | Item | Detail |
 | ---- | ------ |
-| **Arrival** | User clicked reset link → `/api/auth/callback` establishes session → redirect `next=/update-password` |
-| **Session gate (page)** | Server component calls `getUser()`; if no user → `InvalidLinkCard` (request new link). `?error=link_expired` from failed callback → expired copy |
-| **Fields** | `password`, `confirmPassword` |
-| **Action** | `updatePasswordAction` (server) — `updateUser({ password })` after Zod |
+| **Arrival** | User reads the 6-digit code from email, then manually opens `/update-password?email=<email>`. **No callback, no session at arrival.** |
+| **Param gate (page)** | Server component checks only that the `?email` param **exists** — missing → `MissingEmailCard` (request a new code). There is **no** `getUser()` session gate (the old `InvalidLinkCard` recovery-session gate is **gone**). |
+| **Step 1 — code** | `CodeStep`: enter the 6-digit code → `verifyResetOtpAction` → `supabase.auth.verifyOtp({ email, token, type: 'recovery' })`. This is the step that **establishes the recovery session**. |
+| **Step 2 — password** | `PasswordStep`: `password`, `confirmPassword` → `updatePasswordAction` (server) → `updateUser({ password })` after Zod. Only reachable once Step 1 succeeded. |
 | **Success** | Success panel + link to **`/login`** (not auto-redirect to dashboard) |
-| **Strength bar** | **Present** — `update-password-form.tsx` renders `<PasswordStrengthBar password={newPassword} />` under the new-password field. (The `/profile` `PasswordChangeForm` also uses it; this page is **not** an exception.) |
-| **Schemas** | `updatePasswordSchema` (`src/lib/validations/auth.ts`) — `password` min 8 / max 72, `confirmPassword` min 1, `passwordMismatch` refine on `confirmPassword`. On parse failure the action maps `passwordMismatch` → `formErrors.passwordMismatch`, everything else → `formErrors.passwordTooShort`; a Supabase `updateUser` error → `formErrors.generic` |
+| **Strength bar** | **Present** — `update-password-form.tsx` renders `<PasswordStrengthBar password={newPassword} />` under the new-password field in `PasswordStep`. (The `/profile` `PasswordChangeForm` also uses it; this page is **not** an exception.) |
+| **Schemas** | `verifyResetOtpSchema` validates a **6-digit code** (Step 1). `updatePasswordSchema` (`src/lib/validations/auth.ts`) — `password` min 8 / max 72, `confirmPassword` min 1, `passwordMismatch` refine on `confirmPassword` (Step 2). On parse failure the action maps `passwordMismatch` → `formErrors.passwordMismatch`, everything else → `formErrors.passwordTooShort`; a Supabase `updateUser` error → `formErrors.generic` |
+| **OTP errors** | Invalid **or** expired code both map to `formErrors.otpInvalid` — the page never reveals which (S-09 disclosure discipline). |
 
-**Auth callback** (`src/app/api/auth/callback/route.ts`):
-
-1. `token_hash` + `type` → `verifyOtp` (recovery emails, any device).
-2. Else `code` → `exchangeCodeForSession` (PKCE / same-browser magic links).
-3. Failure → `/update-password?error=link_expired`.
+**No auth callback in the reset path.** `src/app/api/auth/callback/route.ts` still exists but is **dead code for password reset** — only the PKCE / magic-link invite paths reach it. Recovery-session establishment now happens in `verifyResetOtpAction` via `verifyOtp({ type: 'recovery' })`, not at a callback.
 
 #### 5e. Auth visual language (canvas-dark) — module summary
 
@@ -354,8 +351,9 @@ useLayoutEffect(() => {
 | ------ | ---- |
 | `loginAction` | Pre-auth sign-in |
 | `signOut` | Sign out + `/login` (duplicate of profile sign-out) |
-| `requestPasswordResetAction` | Forgot-password email |
-| `updatePasswordAction` | Post-recovery password set |
+| `requestPasswordResetAction` | Forgot-password email — sends a 6-digit OTP code |
+| `verifyResetOtpAction` | Verifies the OTP code → establishes the recovery session |
+| `updatePasswordAction` | Post-verification password set |
 
 ---
 
@@ -418,6 +416,9 @@ sequenceDiagram
 | Zero-flash theme must run before paint (`ThemeInitializer` / `useLayoutEffect`, not `useEffect`) | `ThemeInitializer.tsx` |
 | Avatar upload: 2 MB max validated client-side before upload | `ProfileAvatarSection.tsx` |
 | Forgot-password must not reveal whether email exists | `requestPasswordResetAction` |
+| Password reset uses a 6-digit OTP **code** (no link, no `redirectTo`) — recovery session is established by `verifyResetOtpAction`'s `verifyOtp({ type: 'recovery' })`, never at `/api/auth/callback` (dead code for reset) | `requestPasswordResetAction`, `verifyResetOtpAction`, recovery email template |
+| Invalid and expired reset codes both surface as `formErrors.otpInvalid` — the page never reveals which | `verifyResetOtpAction` + `update-password-form.tsx` |
+| `/update-password` gates on the `?email` param only (→ `MissingEmailCard` when absent) — **no** recovery-session page gate | `update-password/page.tsx` |
 | One browser Supabase client — `createClient()` from `client.ts` only | Rule 05 |
 | One server Supabase client per request — `server.ts` only in services/actions | Rule 05 |
 | Notification sound preference: `serene:notifications:sound:v1` in localStorage — separate from theme DB field; no `/profile` control | `useNotificationSound.ts` |

@@ -6,9 +6,11 @@ import { canAccessRoute } from "@/lib/utils/route-access";
 import { DEFAULT_THEME, isThemeKey } from "@/lib/constants/themes";
 import { DEFAULT_ICON, isIconKey } from "@/lib/constants/app-icons";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { ThemeInitializer } from "@/components/layout/ThemeInitializer";
 import { IconInitializer } from "@/components/layout/IconInitializer";
 import { ToastProvider } from "@/components/ui/toast-provider";
+import { ElayaWidget } from "@/components/elaya/ElayaWidget";
 
 export default async function DashboardLayout({
   children,
@@ -25,9 +27,14 @@ export default async function DashboardLayout({
   const pathname = (await headers()).get('x-pathname') ?? '/';
   if (!canAccessRoute(profile, pathname)) redirect('/dashboard');
 
-  // Deliberately NOT awaited — the promise streams to the bell's Suspense
-  // boundary inside the Sidebar, so the shell + page never block on it.
-  const notificationsPromise = getNotifications(profile.id);
+  // The notification bell lives in the page title row (PageControls) when
+  // TOP_BAR_ENABLED — each page starts its own un-awaited getNotifications seed
+  // there. Only the OFF-path Sidebar footer bell needs the layout-level promise,
+  // so we create it ONLY when the flag is off (no wasted query when it's on).
+  // Deliberately NOT awaited — it streams into the bell's Suspense boundary.
+  const notificationsPromise = TOP_BAR_ENABLED
+    ? undefined
+    : getNotifications(profile.id);
 
   const safeTheme = isThemeKey(profile.theme) ? profile.theme : DEFAULT_THEME;
   const safeIcon  = isIconKey(profile.app_icon) ? profile.app_icon : DEFAULT_ICON;
@@ -49,7 +56,15 @@ export default async function DashboardLayout({
       {/* Toast stack — portal-like, sits at root of dashboard shell, outside scroll */}
       <ToastProvider />
 
-      {/* Flat canvas gutter (matches sidebar) — paper fills the padded area */}
+      {/* Floating Elaya presence — bottom-right circular button → modal with the
+          SAME ElayaChatShell as /elaya (it portals to document.body and hides
+          itself on /elaya, so it's safe to mount once for every dashboard route). */}
+      <ElayaWidget />
+
+      {/* Flat canvas gutter (matches sidebar) — paper fills the padded area.
+          The global controls (domain selector + notification bell) live in each
+          page's title row via <PageControls> (TOP_BAR_ENABLED) — no separate
+          bar; they read as part of the page. */}
       <div className="serene-shell-gutter">
         <div className="serene-shell-paper">
           {children}

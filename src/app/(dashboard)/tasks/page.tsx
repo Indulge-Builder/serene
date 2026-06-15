@@ -2,7 +2,10 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { getNotifications } from '@/lib/services/notifications-service';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
+import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
+import { PageControls } from '@/components/layout/PageControls';
 import { AddTaskButton } from '@/components/tasks/AddTaskButton';
 import { TasksCreateProvider } from '@/components/tasks/TasksCreateContext';
 import { TasksAsync } from './TasksAsync';
@@ -45,7 +48,16 @@ export default async function TasksPage({
           <h1 className="type-page-title m-0">
             Tasks<span className="page-title-dot">.</span>
           </h1>
-          <AddTaskButton activeTab={tab} validTabs={validTabs} />
+          <div className="flex items-center gap-3">
+            <AddTaskButton activeTab={tab} validTabs={validTabs} />
+            {TOP_BAR_ENABLED && (
+              <PageControls
+                userId={profile.id}
+                isPrivileged={false}
+                notificationsPromise={getNotifications(profile.id)}
+              />
+            )}
+          </div>
         </div>
 
         <Suspense fallback={<TasksSkeleton tab={tab} />}>

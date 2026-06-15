@@ -54,11 +54,12 @@ function TypeChip({
 }
 
 type Props = {
+  open:    boolean;
   leadId:  string;
   onClose: () => void;
 };
 
-export function CalledModal({ leadId, onClose }: Props) {
+export function CalledModal({ open, leadId, onClose }: Props) {
   const router                           = useRouter();
   const [isPending, startTransition]     = useTransition();
   const [outcome, setOutcome]            = useState<CallOutcome | ''>('');
@@ -199,7 +200,7 @@ export function CalledModal({ leadId, onClose }: Props) {
 
   return (
     <Modal
-      open={true}
+      open={open}
       onClose={onClose}
       title={modalTitle}
       maxWidth="max-w-lg"

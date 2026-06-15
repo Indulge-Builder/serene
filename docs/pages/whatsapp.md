@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/whatsapp` (shared inbox) and the dossier `LeadWhatsAppCard` — the in-app messaging surfaces.
 > **Audience:** engineers. · **Source-of-truth scope:** the UI surfaces, `whatsapp-service.ts`, `whatsapp.ts` actions, Realtime wiring. The webhook contract, inbound pipeline, templates, and notification log live in `../integrations/whatsapp-gupshup.md`; tables in `../architecture/database.md`.
-> **Last verified:** 2026-06-09 full pass; 2026-06-11 restructure.
+> **Last verified:** 2026-06-15 (Elaya staff channel + voice); 2026-06-09 full pass; 2026-06-11 restructure.
 
 ## 1. Purpose
 
@@ -590,6 +590,23 @@ Right-pane default when no conversation is selected. Motion `opacity 0→1`, `y 
 
 ---
 
+### 8j. Elaya WhatsApp staff channel — routing gate before the lead pipeline
+
+WhatsApp is also Elaya's staff channel. **The webhook calls `tryHandleElayaWhatsAppMessage()` (`src/lib/services/elaya-whatsapp.ts`) BEFORE `processInboundMessage`** — it is a routing gate, not part of the lead pipeline.
+
+**Routing decision (inbound text from a number):**
+
+1. **Staff number** — the sender is matched to an active staff profile via `getActiveProfileByPhone`. The message routes to the **Elaya brain** (same tools, same daily cap, same provider/PII layer as `/elaya`) and produces exactly **one reply** sent via `sendElayaWhatsAppReply`. The lead pipeline is **not** touched. An `elaya_reply` audit row is written (see migration 0117 below).
+2. **Unknown number** — no profile match → the gate returns without acting and the message **falls through to the existing lead pipeline** (`processInboundMessage`) unchanged. `tryHandleElayaWhatsAppMessage` **never writes lead-pipeline tables**.
+
+**Migration 0117 (`elaya_reply` log type):** widened the `whatsapp_notification_logs.type` CHECK to add `'elaya_reply'`. The 4-value CHECK in §11 invariant 15 is now **5 values** (`agent_assignment`, `founder_alert`, `sla_breach`, `lead_initiation`, `elaya_reply`).
+
+**Inbound staff voice notes (Deepgram):** when a staff message is an audio/voice note, `transcribeWhatsAppAudio` (wrapping `transcription-service.ts`, Deepgram) transcribes it **input-transform-only** — the transcript becomes the turn's text **before** the cap/model/persist steps, exactly as if the staffer had typed it. An **empty transcript is a graceful no-op** (no model turn, no reply). Audio is transcribed in memory and never persisted (same contract as the dossier/inbox dictation). The Gupshup voice MIME (`ogg/opus`) travels with the Blob — never hardcoded.
+
+**Composer voice dictation:** `ConversationPanel`'s composer now mounts a `<DictationButton variant="composer">` (the single mic → transcribe → editable-draft cluster, `src/components/ui/DictationButton.tsx`). It **never auto-sends** — the transcript lands as an editable draft in the existing textarea and is submitted through the existing optimistic send path. Renders null when `MediaRecorder` is unsupported. The WhatsApp inbox is one of the four voice surfaces (alongside Elaya chat, `LeadNotesInput`, and `CalledModal`).
+
+---
+
 ### 9. Realtime — Both Channels
 
 | Channel | Pattern | Table | Events | Owner | Cleanup |
@@ -652,7 +669,7 @@ Right-pane default when no conversation is selected. Motion `opacity 0→1`, `y 
 
 14. **Gupshup `message-event` is ack-only today** — delivery status persistence runs on the Meta webhook path unless the Gupshup handler is extended to call `processStatusUpdate`.
 
-15. **`whatsapp_notification_logs.type` is a 4-value CHECK** (`agent_assignment`, `founder_alert`, `sla_breach`, `lead_initiation`) since migration 0067 — extend with a new migration before logging any new type.
+15. **`whatsapp_notification_logs.type` is a 5-value CHECK** (`agent_assignment`, `founder_alert`, `sla_breach`, `lead_initiation` since migration 0067; `elaya_reply` added in migration 0117) — extend with a new migration before logging any new type.
 
 ---
 

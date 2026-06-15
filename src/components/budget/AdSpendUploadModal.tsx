@@ -146,6 +146,21 @@ export function AdSpendUploadModal({ open, onClose }: Props) {
             : fileName ?? "Choose a Meta export (.csv / .xlsx)"}
         </button>
 
+        {/* Multi-day exports ingest in one upload — a 30-day daily breakdown
+            lands as 30 day-grain rows, no need to split by day. */}
+        <p
+          style={{
+            margin:     0,
+            fontFamily: "var(--font-sans)",
+            fontSize:   "var(--text-xs)",
+            color:      "var(--theme-text-tertiary)",
+            lineHeight: "var(--leading-snug)",
+          }}
+        >
+          A multi-day export (e.g. a 30-day daily breakdown) ingests in a single
+          upload — one day-grain row per day. No need to split it up.
+        </p>
+
         {/* Grain / parse error */}
         {parseError && (
           <div

@@ -69,7 +69,9 @@ const ScheduleSlaSchema = z.object({
   leadId:     z.string().uuid(),
   status:     z.string(),
   assignedAt: z.string().datetime(),
-  assignedTo: z.string().uuid(),
+  // Nullable by design: a lead created with no agent still arms its
+  // manager/founder escalation timers. Agent rules self-skip at fire time.
+  assignedTo: z.string().uuid().nullable(),
   domain:     z.string(),
 });
 
@@ -141,7 +143,11 @@ async function logSlaActivity(
 
 // ─── Shift-override resolution (shared) ──────────────────────────────────────
 
-async function resolveAgentShift(agentId: string): Promise<AgentShiftOverride | null> {
+async function resolveAgentShift(agentId: string | null): Promise<AgentShiftOverride | null> {
+  // No agent (unassigned lead) → no shift override → callers fall back to
+  // global BUSINESS_HOURS, which is exactly the correct deadline basis for the
+  // manager/founder escalation rules that fire on an unassigned lead.
+  if (!agentId) return null;
   const agentRoutingConfig = await getAgentRoutingConfigAdmin(agentId);
   return agentRoutingConfig
     ? buildAgentShiftOverride(

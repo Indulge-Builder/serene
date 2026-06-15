@@ -34,10 +34,12 @@ cross-row reads; the action layer enforces the domain). Since 2026-06-11 (securi
 `TimePicker` (`src/components/ui/` primitive — wheel columns, measured item height) ·
 `Toggle` for pool membership · `SlaPoliciesPanel` (admin/founder only, below the roster).
 
-### Follow-up Engine panel (`SlaPoliciesPanel`, 2026-06-12)
+### Follow-up Engine panel (`SlaPoliciesPanel`, 2026-06-12; "New rule" authoring 2026-06-15)
 
-One row per `sla_policies` rule, grouped Status rules / Cadences / Task due rules.
-Editable: threshold minutes (blur-save + `formatDuration` hint; hidden for outcome
+One row per `sla_policies` rule, grouped **Lead status / Call outcome / Follow-up cadences /
+Task due** (the group list is exhaustive — the "Call outcome" group exists so a user-authored
+non-cadence `outcome` rule has a home; seeded `CAD-01x` outcome rules stay under cadences).
+Editable on each row: threshold minutes (blur-save + `formatDuration` hint; hidden for outcome
 cadences, which tick daily), hours basis select, channel checkboxes (CAD rows show
 "Creates a task" — channels stay `{}`), active toggle (optimistic, revert + toast).
 Identity fields (code, trigger, recipient, auto_task) are read-only — **toggling the
@@ -47,6 +49,32 @@ Writes: `updateSlaPolicyAction` (`actions/sla-policies.ts`) — Zod →
 `requireProfile(['admin','founder'])` → admin-client update (no write RLS by design) →
 `revalidatePath('/settings')`. The engine reads policies per job run: active/channel
 edits apply on the next fire; threshold edits apply to newly armed timers only.
+
+#### "New rule" authoring (2026-06-15)
+
+The panel header carries a **New rule** toggle → an inline form lets an admin/founder author a
+policy over the trigger catalog **without a developer**. Five operational fields + channels:
+**Watches** (`trigger_kind`: status / outcome / task_due), **Value** (`trigger_value` — options
+re-derive from the kind so a rejectable value can't be picked), **Notifies** (`recipient_role`),
+**Threshold (min)** (hidden for outcome), **Hours basis** (`hours_mode`), **Channels**. On success
+the server-returned row prepends and renders in its group. A new policy arms automatically — the
+engine reads `getSlaPolicies()` per run, so the next matching lead picks it up with no deploy.
+
+Writes: **`createSlaPolicyAction`** (`actions/sla-policies.ts`) — mirrors `updateSlaPolicyAction`
+(Zod → `requireProfile(['admin','founder'])` → admin-client `createSlaPolicy` insert →
+`revalidatePath('/settings')`). Two structural safeguards:
+
+- **The code is system-generated, never user-set.** The action mints an inert `USR-<id>` (the
+  schema has no `code` field) and asserts it carries no reserved `SLA-`/`CAD-`/`TASK-` prefix
+  before the write. A `CAD-` code would silently become a self-re-arming daily task generator
+  (`isCadenceCode`); `USR-` is provably inert. `auto_task` stays false (a user rule is a
+  notification rule, not a cadence).
+- **`trigger_value` is validated against `trigger_kind` server-side** (`CreateSlaPolicySchema`
+  refine): status → a real `LeadStatus`, outcome → a real `CallOutcome`, task_due →
+  `gia_followup`. A value that can never fire (→ `STALE_FIRE` forever) is rejected by the action,
+  not just the dropdown.
+
+No delete path — switch a rule off via its active toggle.
 
 ## 5. States
 

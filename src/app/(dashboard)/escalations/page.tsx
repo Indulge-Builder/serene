@@ -1,6 +1,9 @@
 import { Suspense }          from "react";
 import { redirect }          from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { getNotifications }  from "@/lib/services/notifications-service";
+import { TOP_BAR_ENABLED }   from "@/lib/constants/feature-flags";
+import { PageControls }      from "@/components/layout/PageControls";
 import {
   getEscalatedLeads,
   getOverdueGiaTasks,
@@ -39,6 +42,13 @@ export default async function EscalationsPage() {
         <h1 className="type-page-title m-0">
           Escalations<span className="page-title-dot">.</span>
         </h1>
+        {TOP_BAR_ENABLED && (
+          <PageControls
+            userId={profile.id}
+            isPrivileged={false}
+            notificationsPromise={getNotifications(profile.id)}
+          />
+        )}
       </div>
 
       <Suspense fallback={<EscalationsSkeleton />}>

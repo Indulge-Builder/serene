@@ -1,6 +1,6 @@
 # Serene — Architecture Summary (Claude Project digest)
 
-> Generated digest of `docs/architecture/*` and `docs/integrations/*` — 2026-06-11.
+> Generated digest of `docs/architecture/*` and `docs/integrations/*` — 2026-06-15.
 > Source of truth is the repo docs; regenerate when they change.
 
 ## Tech stack (final — never propose alternatives)
@@ -21,10 +21,14 @@ Big lists paginate server-side.
 Meta/Pabbly lead webhooks and Gupshup WhatsApp webhooks POST into Vercel (Next.js). Browser
 agents hit RSC pages + Server Actions. Behind Vercel: Supabase (source of truth + Auth +
 Realtime + Storage), Upstash Redis (read cache only), Trigger.dev (SLA timers, task
-reminders), Gupshup API (outbound WhatsApp, always inside `after()`).
+reminders, daily lead-revival sweep), Gupshup API (outbound WhatsApp, always inside
+`after()`), the Elaya LLM provider (Anthropic adapter — chat + the `routing`/Haiku note-AI
+gate), Deepgram (inbound voice transcription, in-memory), and Web Push/VAPID (outbound push).
 
-- **No API routes** except the two webhooks (`/api/webhooks/leads`, `/api/webhooks/whatsapp`)
-  and `/api/auth/callback`. All mutations are Server Actions returning `{ data, error }`.
+- **Five API routes**, no others: the two webhooks (`/api/webhooks/leads`,
+  `/api/webhooks/whatsapp`), `/api/auth/callback`, `/api/elaya/chat` (Elaya SSE streaming —
+  sanctioned P-02 exception), and `/api/manifest` (dynamic per-icon PWA manifest — sanctioned
+  P-02 carve-out). All mutations are Server Actions returning `{ data, error }`.
 - **Request flow:** proxy (session refresh, webhook bypass, sets `x-pathname`) → dashboard
   layout server guard (no session → `/login`; `canAccessRoute` domain gate → `/dashboard`;
   zero-flash theme script) → RSC page (thin orchestrator, Suspense-wrapped async children
@@ -58,6 +62,13 @@ reminders), Gupshup API (outbound WhatsApp, always inside `after()`).
   EXECUTE revoked (migration 0102) and are reachable only via service-role inside actions.
 - Webhooks authenticate **before reading the body**: leads = Bearer `PABBLY_WEBHOOK_SECRET`,
   whatsapp = `x-gupshup-secret` header — both timing-safe compares + rate-limited.
+- **Password reset = OTP code** (replaced the magic-link to dodge corporate link-scanners
+  pre-burning the single-use token): `requestPasswordResetAction` emails a 6-digit
+  `{{ .Token }}` (no `redirectTo`) → `verifyResetOtpAction` calls `verifyOtp` with
+  `type:'recovery'` which **establishes the session** → `updatePasswordAction`. `/update-password`
+  is a two-step, param-only (`?email`) form with no session at arrival; `/api/auth/callback` is
+  now dead code for reset (only PKCE/magic-link invite uses it). Login is unchanged
+  (`signInWithPassword` + `is_active` gate).
 
 ## Database (Postgres, all tables RLS-enabled)
 
@@ -66,15 +77,18 @@ Enums: `user_role`, `app_domain`. Other "enums" are text + CHECK, mirrored in
 
 | Group | Tables (key facts) |
 | ----- | ------------------ |
-| Identity | `profiles` (root of authorization; theme/timezone; `reports_to`; dormant `last_seen_at`) · `profile_audit_log` (append-only, `ON DELETE RESTRICT`) · `agent_routing_config` (round-robin pool switch + shift windows/days; advisory, read by ingestion) |
-| Leads | `leads` (lifecycle `new→touched→in_discussion→nurturing→won\|lost\|junk`; E.164 phone; flat `source`/`medium`/`utm_campaign` + immutable `attribution jsonb` snapshot (`{}` minimum, never NULL); `assigned_to`; `resolution_reason` for lost/junk; `archived_at` soft-delete; `previous_lead_id` dedup chain; immutable trigger-generated `slug` like `priya-sharma-9182`; `search_text` STORED column + trigram index) · `lead_activities`/`lead_notes` (append-only; all notes team-visible) · `lead_raw_payloads` (immutable webhook log incl. failures, full PII by recorded decision, admin/founder SELECT only → `/error-log`) · `lead_sla_timers` (service-role only) |
-| Tasks | one `tasks` table, `task_category` ∈ personal/group_subtask/gia_followup; status `to_do/in_progress/in_review/completed/error/cancelled`; priority urgent/high/normal; checklist in `attachments jsonb`; `tags text[]` · `task_groups` (flat visibility: creator OR assigned a subtask) · `task_remarks` (append-only narrative; `status_change` CHECK coupled to `tasks.status`) · `task_audit_log` (append-only, 6 fields, CASCADE on task delete) · `task_gia_meta` (task↔lead link + call_outcome) |
+| Identity | `profiles` (root of authorization; theme/timezone; `app_icon` 0121 (`'icon-1'..'icon-4'` CHECK, mirrors `theme`, rides existing self-update policy — no new RLS); `reports_to`; dormant `last_seen_at`) · `profile_audit_log` (append-only, `ON DELETE RESTRICT`) · `agent_routing_config` (round-robin pool switch + shift windows/days; advisory, read by ingestion) |
+| Leads | `leads` (lifecycle `new→touched→in_discussion→nurturing→won\|lost\|junk`; E.164 phone; flat `source`/`medium`/`utm_campaign` + immutable `attribution jsonb` snapshot (`{}` minimum, never NULL); `assigned_to`; `resolution_reason` for lost/junk; `archived_at` soft-delete; `previous_lead_id` dedup chain; immutable trigger-generated `slug` like `priya-sharma-9182`; `search_text` STORED column + trigram index; `service_interests text[]` 0109 (Call Intelligence vocabulary, never an enum); `last_call_outcome_at` 0112) · `lead_activities`/`lead_notes` (append-only; all notes team-visible) · `lead_raw_payloads` (immutable webhook log incl. failures, full PII by recorded decision, admin/founder SELECT only → `/error-log`) · `lead_sla_timers` (service-role only) |
+| Tasks | one `tasks` table, `task_category` ∈ personal/group_subtask/gia_followup; status `to_do/in_progress/in_review/completed/error/cancelled`; priority urgent/high/normal; checklist in `attachments jsonb`; `tags text[]`; `overdue_at` 0113 · `task_groups` (flat visibility: creator OR assigned a subtask) · `task_remarks` (append-only narrative; `status_change` CHECK coupled to `tasks.status`) · `task_audit_log` (append-only, 6 fields, CASCADE on task delete) · `task_gia_meta` (task↔lead link + call_outcome) |
 | WhatsApp | `whatsapp_conversations` (one per phone/lead; `wa_id` + `lead_id` UNIQUE; Realtime) · `whatsapp_messages` (append-only except the delivery-receipt status UPDATE; partial-unique `wa_message_id`; Realtime) · `whatsapp_conversation_reads` (per-user read position, UPSERT) · `whatsapp_notification_logs` (one row per template send attempt; last-4 phone digits only) |
-| Commerce | `deals` (first-class since 0072; `lead_id` nullable = walk-in; `deal_type` membership/retail, membership requires duration; `won_at` immutable; **no write RLS by design** — all writes via admin client in `recordDeal`/`createWalkInDeal`; `client_id` reserved for clients module) · `ad_creatives` (campaign videos keyed by `campaign_key` string-match to `leads.utm_campaign`, no FK; multiple per campaign) |
-| Notifications | `notifications` (typed CHECK; `action_url` relative-only; Realtime → bell badge) |
+| Commerce | `deals` (first-class since 0072; `lead_id` nullable = walk-in; **`deal_type` is domain-derived — `onboarding→membership` (needs duration), `shop→retail` (needs `deal_category`), `house`/`legacy`→`sale`; one source `DOMAIN_DEAL_CONFIG`, set server-side, migration 0122 CHECKs `deals_retail_category_check` couple retail⇔category**; `won_at` immutable; **no write RLS by design** — all writes via admin client in `recordDeal`/`createWalkInDeal`; `client_id` reserved for clients module) · `ad_creatives` (campaign videos keyed by `campaign_key` string-match to `leads.utm_campaign`, no FK; multiple per campaign) |
+| Notifications | `notifications` (typed CHECK; `action_url` relative-only; Realtime → bell badge) · `push_subscriptions` 0120 (one row per device; owner-only RLS, **no UPDATE policy**; cross-user read + 404/410 dead-endpoint prune run service-role) |
+| Call Intelligence | `service_cases` + `conversation_hooks` 0110 (RLS all-auth read / admin+founder write; weighted FTS; dormant `embedding vector(1536)`, no HNSW yet) — power `/helpdesk` + the dossier `ServiceInterestCard`; helpdesk library is a Redis 1hr `{cases,hooks}` envelope, filtering is client-side |
+| SLA / Revival | `sla_policies` 0111 (the SLA rules, formerly hard-coded `SLA_RULES` constants; seeded with the 8 live rules + cadence (CAD) + task-due (TASK) families) · `revival_policies` 0119 (per-status silence thresholds + daily cap) · `revival_candidates` 0119 (`open→actioned\|dismissed` ledger; never mutates the leads row) |
+| AI / Elaya | `elaya_conversations` + `elaya_messages` 0116 (append-only message inserts; one active session per user across channels) · `user_context` 0116 (per-user memory) · `elaya_actions` 0118 (write-proposal state-machine ledger `proposed→executed\|failed\|dismissed`; before/after snapshots) · `llm_providers` + `elaya_settings` 0116 (provider config + PII depth; read per turn, never module-cached) |
 
 Storage buckets: `avatars` (public read, own-row write), `ad-creatives` (public read,
-admin/founder write). ~30 SECURITY DEFINER RPCs; load-bearing ones include
+admin/founder write). ~38 SECURITY DEFINER RPCs; load-bearing ones include
 `get_next_round_robin_agent`, `get_active_lead_by_phone`, `update_lead_status`,
 `add_lead_call_note`, `get_dashboard_summary`, `get_agent_performance`, `get_deals_summary`.
 
@@ -124,11 +138,25 @@ admin/founder write). ~30 SECURITY DEFINER RPCs; load-bearing ones include
   suppressed) + SLA timers. Five Gupshup templates, all through `sendGupshupTemplate()` core
   with one-log-row-per-attempt; Gupshup returns HTTP 200 even on errors — delivered =
   `res.ok` AND body not `{status:'error'}`.
+- **Notifications fan-out:** **Web Push** (VAPID, `web-push`, 0120) is a *second* channel behind
+  `createNotification` — the in-app `notifications` row is the source of truth and `dispatchPush`
+  is a non-fatal seam *inside* `createNotification`, so it fans out to every device with **zero
+  call-site edits**; dead endpoints (404/410) self-prune. Server+Node only (`web-push` throws on
+  Edge); iOS delivers only inside the installed PWA (standalone), else `usePushSubscription`
+  reports `ios-needs-install`. `sw.js` gained `push` + `notificationclick` handlers.
 - **Trigger.dev** (async > 3s or needing retry/delay; sub-3s post-response work uses
-  `after()`): exactly two job families — lead SLA timers (`lead-sla.ts`; idempotency key
+  `after()`): three job families — lead SLA timers (`lead-sla.ts`; idempotency key
   `lead-sla-${leadId}-${ruleCode}`, tag-based cancellation, stale-fire guard re-reads the
-  lead) and task due reminders (`task-reminders.ts`; cancel-before-delete contract).
-  SLA actions run sessionless via admin client (the documented `requireProfile` exception).
+  lead), task due reminders (`task-reminders.ts`; cancel-before-delete contract), and the
+  daily **lead-revival sweep** (`lead-revival.ts`; the project's first `schedules.task`/cron,
+  `0 2 * * *` Asia/Kolkata = 07:30 IST). SLA actions run sessionless via admin client (the
+  documented `requireProfile` exception).
+- **Lead revival** (R1, 0119): the sweep reads `revival_policies`, finds silent leads with no
+  open candidate, runs a note-AI **3-verdict gate** (revive/dismiss/unsure — reuses the Elaya
+  `routing`/Haiku provider + `maskPii`, no tools, **fails closed to unsure**). Confident revive
+  under the daily cap → `reviveLeadCore` = a "Revived" follow-up task via the E2
+  `createLeadTaskCore` path (**never** touches the leads row); unsure/overflow → review tab
+  `/leads?revival=true`.
 - **SLA engine** (business rules in `modules/gia.md`): 8 rules — new 15min/30min,
   touched 24h/36h, in_discussion 24h/36h, nurturing 4 biz-days; A-rules notify the agent and
   auto-create a task, B-rules notify the manager. IST business hours Mon–Sat 09:00–19:00 with

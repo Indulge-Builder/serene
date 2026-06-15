@@ -188,9 +188,10 @@ function TodayTab({
   if (!data) return <MetricsSkeleton />;
 
   // The pulse RPC is the literal since-IST-midnight count regardless of the
-  // selected period; fall back to the period effort count only for 'today'.
+  // selected period — both calls and notes read from it (undefined until the
+  // pulse resolves → skeleton on the value below).
   const callsToday = pulse?.callsToday.total;
-  const notesToday = data.effort.notesWritten;
+  const notesToday = pulse?.notesToday;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
@@ -274,9 +275,13 @@ function TodayTab({
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-medium)', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--theme-text-tertiary)' }}>
             Notes Today
           </span>
-          <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-display)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
-            {notesToday}
-          </span>
+          {notesToday === undefined ? (
+            <div className="skeleton" style={{ width: '72px', height: '48px', borderRadius: 'var(--radius-sm)' }} />
+          ) : (
+            <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-display)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
+              {notesToday}
+            </span>
+          )}
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
             all updates & notes added today
           </span>
@@ -375,9 +380,14 @@ function TodayTab({
 // Overview tab — full KPI grid for the selected period
 // ─────────────────────────────────────────────
 
-function OverviewTab({ data, showTodayRow }: { data: AgentSelfMetrics | null; showTodayRow: boolean }) {
+function OverviewTab({ data, pulse, showTodayRow }: { data: AgentSelfMetrics | null; pulse: AgentTodayPulse | null; showTodayRow: boolean }) {
   if (!data) return <MetricsSkeleton />;
 
+  // The "Today" strip reads since-IST-midnight numbers from the pulse RPC (the
+  // genuine since-midnight source), NOT the period-scoped effort/core fields —
+  // those are wrong under the "since midnight IST" label when period ≠ today.
+  // Calls + Notes come from the pulse since-midnight windows; Won is the today
+  // deal count. value === undefined → pulse not yet loaded → skeleton.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
 
@@ -403,14 +413,18 @@ function OverviewTab({ data, showTodayRow }: { data: AgentSelfMetrics | null; sh
         </span>
         <div style={{ display: 'flex', gap: 'var(--space-6)', flex: 1 }}>
           {[
-            { label: 'Calls',  value: data.effort.callsLogged   },
-            { label: 'Notes',  value: data.effort.notesWritten  },
-            { label: 'Won',    value: data.core.leadsWon        },
+            { label: 'Calls',  value: pulse?.callsToday.total },
+            { label: 'Notes',  value: pulse?.notesToday       },
+            { label: 'Won',    value: pulse?.deals.dealCount  },
           ].map(({ label, value }) => (
             <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-2)' }}>
-              <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
-                {value}
-              </span>
+              {value === undefined ? (
+                <div className="skeleton" style={{ width: '24px', height: '24px', borderRadius: 'var(--radius-sm)' }} />
+              ) : (
+                <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
+                  {value}
+                </span>
+              )}
               <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
                 {label}
               </span>
@@ -489,11 +503,18 @@ export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period, customFrom, customTo]);
 
-  // Pulse fetch — only while the Today tab is visible. Plain promise chain
-  // with a cancelled ref (no startTransition — would defer setPulse(null)).
-  const showingToday = period === 'today' || activeTab === 'today';
+  // Pulse fetch gate — the pulse is the genuine since-IST-midnight source for
+  // BOTH the Today tab AND the Overview "Today" strip. The strip renders on the
+  // Overview tab whenever period !== 'today' (showOverviewTodayRow), so the gate
+  // must cover that case too — not just the Today tab. There is exactly ONE
+  // pulse fetch path; widening this boolean is the whole fix (no second fetch).
+  // Plain promise chain with a cancelled ref (no startTransition — would defer
+  // setPulse(null)).
+  const showingTodayTab = period === 'today' || activeTab === 'today';
+  const showingOverviewTodayRow = activeTab === 'overview' && period !== 'today';
+  const needsPulse = showingTodayTab || showingOverviewTodayRow;
   useEffect(() => {
-    if (!showingToday) return;
+    if (!needsPulse) return;
 
     let cancelled = false;
     setPulse(null);
@@ -509,7 +530,7 @@ export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props)
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showingToday, period, customFrom, customTo]);
+  }, [needsPulse, period, customFrom, customTo]);
 
   function handlePeriodChange(p: PerformancePeriod) {
     if (p === period) return;
@@ -637,7 +658,7 @@ export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props)
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
               >
-                <OverviewTab data={data} showTodayRow={showOverviewTodayRow} />
+                <OverviewTab data={data} pulse={pulse} showTodayRow={showOverviewTodayRow} />
               </motion.div>
             )}
           </AnimatePresence>

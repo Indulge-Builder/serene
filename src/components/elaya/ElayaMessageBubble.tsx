@@ -2,9 +2,11 @@
 
 // Display-only chat bubble (A-06). User bubbles sit right on --theme-accent-surface;
 // Elaya bubbles sit left on --theme-paper-subtle (mirrors the WhatsApp bubble
-// surface contract). One radius per component (V-07): --radius-lg.
-// `showGlyph` renders Elaya's breathing mark beside her bubbles — bare glyph,
-// no tile chrome (her presence, not an avatar; a static glyph = absent).
+// surface contract). Radius scale is --radius-lg with the sender-side corner
+// tightened to --radius-xs — the DESIGN-DNA §15.4 "tail detail" (one scale, V-07);
+// a hairline shadow (--shadow-1) gives the gentle lift the DNA spec calls for.
+// `showGlyph` renders Elaya's breathing mark in a soft accent disc beside her
+// bubbles (her presence, not an avatar; a static glyph = absent).
 
 import { m as motion } from 'framer-motion';
 import { ChatMarkdown } from '@/components/ui/ChatMarkdown';
@@ -32,30 +34,43 @@ export function ElayaMessageBubble({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
       className={`flex items-start ${isUser ? 'justify-end' : 'justify-start'}`}
-      style={{ gap: 'var(--space-2)' }}
+      style={{ gap: 'var(--space-3)' }}
     >
       {!isUser && showGlyph && (
         <span
+          aria-hidden="true"
+          className="flex items-center justify-center"
           style={{
             color: 'var(--theme-accent)',
-            display: 'flex',
             flexShrink: 0,
-            marginTop: '0.4rem',
+            width: '28px',
+            height: '28px',
+            marginTop: '0.1rem',
+            borderRadius: 'var(--radius-full)',
+            background: 'var(--theme-accent-surface)',
+            border: '1px solid color-mix(in srgb, var(--theme-accent) 16%, transparent)',
           }}
         >
-          <ElayaGlyph size={18} />
+          <ElayaGlyph size={16} />
         </span>
       )}
       <div
-        className="max-w-[82%] md:max-w-[68%]"
+        className="max-w-[82%] md:max-w-[72%]"
         style={{
           background: isUser ? 'var(--theme-accent-surface)' : 'var(--theme-paper-subtle)',
-          border: '1px solid var(--theme-paper-border)',
-          borderRadius: 'var(--radius-lg)',
+          border: isUser
+            ? '1px solid color-mix(in srgb, var(--theme-accent) 20%, transparent)'
+            : '1px solid var(--theme-paper-border)',
+          // Refined asymmetric radius — the corner nearest the sender's edge is
+          // tighter, the chat-bubble convention (one radius value, V-07).
+          borderRadius: isUser
+            ? 'var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg)'
+            : 'var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-xs)',
+          boxShadow: 'var(--shadow-1)',
           padding: 'var(--space-3) var(--space-4)',
           color: 'var(--theme-text-primary)',
           fontSize: 'var(--text-sm)',
-          lineHeight: 1.6,
+          lineHeight: 'var(--leading-relaxed)',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
           opacity: message.pending ? 0.75 : 1,

@@ -28,6 +28,12 @@ export interface LeadAssignedNotifyInput {
   assignedAt?: string;         // ISO timestamp of assignment; defaults to now
 }
 
+// SLA arming is decoupled from assignment: an unassigned lead must still arm the
+// manager (SLA-01B) and founder (SLA-01C) escalation timers so the team is told
+// a new lead is rotting even when round-robin found no agent. The agent rule
+// (SLA-01A) self-skips at fire time when assigned_to is null. assignedTo is
+// therefore passed through to the engine as `string | null` (never coerced).
+
 // ─────────────────────────────────────────────
 // notifyLeadAssigned
 // Fires four side-effects. The two outward WhatsApp sends are AWAITED so this
@@ -116,8 +122,13 @@ export async function notifyLeadAssigned(input: LeadAssignedNotifyInput): Promis
     }).catch(() => {});
   }
 
-  // 4. SLA timers
-  if (scheduleSla && assignedTo) {
+  // 4. SLA timers — armed on scheduleSla REGARDLESS of assignedTo. An unassigned
+  // new lead must still arm the manager/founder escalation rules (SLA-01B/01C);
+  // they resolve their recipients from the domain at fire time, not from the
+  // (absent) agent. The agent rule (SLA-01A) self-skips at fire when assignedTo
+  // is null. Never gate this on assignedTo — that was the bug that left
+  // unassigned leads with zero timers and nobody told they were rotting.
+  if (scheduleSla) {
     const resolvedAssignedAt = assignedAt ?? new Date().toISOString();
     const { scheduleSlaTimersForLead } = await import('@/lib/actions/sla');
     scheduleSlaTimersForLead({

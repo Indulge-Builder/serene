@@ -100,10 +100,27 @@ function sectionLabel(dateKey: string): string {
   return formatDate(d, 'EEE, d MMM yyyy');
 }
 
-function buildTaskDots(tasks: Task[]): Record<string, TaskDotMeta> {
+// A task is "actionable" — something still to do — when its effective status
+// is neither completed nor cancelled. This is the single source of truth shared
+// by buildTaskDots and groupTasksByDate so a calendar dot can never disagree
+// with what clicking that day lists: a dot means at least one actionable task,
+// and a day whose tasks are all done/cancelled shows no dot. Effective status
+// honours an optimistic toggle so a just-completed task drops its dot at once.
+function isTaskActionable(task: Task, optimisticStatus: Record<string, TaskStatus>): boolean {
+  const effective = optimisticStatus[task.id] ?? task.status;
+  return effective !== 'completed' && effective !== 'cancelled';
+}
+
+function buildTaskDots(
+  tasks: Task[],
+  optimisticStatus: Record<string, TaskStatus>,
+): Record<string, TaskDotMeta> {
   const map: Record<string, TaskDotMeta> = {};
   for (const t of tasks) {
     if (!t.due_at) continue;
+    if (!isTaskActionable(t, optimisticStatus)) continue;
+    // Scope note: dots reflect only the tasks loaded into this view, not the
+    // full DB set (pagination blindness) — out of scope for the phantom-dot fix.
     const k = taskLocalKey(t.due_at);
     if (!map[k]) map[k] = { count: 0, hasUrgent: false };
     map[k].count++;
@@ -131,8 +148,7 @@ function groupTasksByDate(tasks: Task[], optimisticStatus: Record<string, TaskSt
     { today: [], overdue: [], noDate: [], future: {} };
 
   for (const task of tasks) {
-    const effective = optimisticStatus[task.id] ?? task.status;
-    if (effective === 'completed') continue;
+    if (!isTaskActionable(task, optimisticStatus)) continue;
     if (!task.due_at) { buckets.noDate.push(task); continue; }
     const k = taskLocalKey(task.due_at);
     if (k < today)       buckets.overdue.push(task);
@@ -315,7 +331,7 @@ export function MyTasksCalendarView({
 
   const filteredTasks  = activeTasks.filter(taskPassesFilters);
   const allSections    = groupTasksByDate(filteredTasks, optimisticStatus);
-  const taskDots       = buildTaskDots(filteredTasks);
+  const taskDots       = buildTaskDots(filteredTasks, optimisticStatus);
 
   // In single-date mode, narrow to just tasks matching the selected date
   const visibleSections: DateSection[] = (() => {

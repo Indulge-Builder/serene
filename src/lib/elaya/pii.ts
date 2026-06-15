@@ -15,6 +15,11 @@ import type { PiiMaskingDepth } from '@/lib/services/llm-providers-service';
 // E.164-ish and local phone shapes: 8+ digits with optional +, spaces, dashes.
 const PHONE_RE = /(?:\+?\d[\s-]?){8,15}\d/g;
 const EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+// A canonical UUID is an opaque identifier, NEVER PII — but its digit/dash runs
+// (e.g. `…a716-446655440000`) match PHONE_RE and would be corrupted into bullets,
+// breaking any tool that surfaces an id for the model to target (Brief 3: taskId/
+// groupId on get_my_tasks). Guard EXACT-UUID string leaves out of masking entirely.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function maskPhone(raw: string): string {
   const digits = raw.replace(/\D/g, '');
@@ -43,6 +48,9 @@ export function maskPii<T>(value: T, depth: PiiMaskingDepth): T {
   if (depth === 'off') return value;
 
   if (typeof value === 'string') {
+    // A bare UUID leaf is an opaque id, not PII — leave it intact so a corrupted id
+    // can never reach the model (PHONE_RE would otherwise eat its digit run).
+    if (UUID_RE.test(value)) return value as T;
     return maskString(value, depth) as T;
   }
   if (Array.isArray(value)) {

@@ -526,6 +526,12 @@ Today → future dates ascending → Overdue → No Due Date. **Completed tasks 
 - `calendarDate === null` → all sections
 - Click day → single-date mode; empty day → Playfair **"Hooray."**
 - Dot keys: `localKey()` — never `toISOString().slice(0,10)`
+- **Dots = actionable-only.** `buildTaskDots` and `groupTasksByDate` (the click filter) share one
+  predicate — `isTaskActionable(task, optimisticStatus)`: effective status (optimistic toggle
+  honoured) neither `completed` nor `cancelled`. A dot means a day has ≥1 task still to do and can
+  never disagree with what clicking it lists — a day whose tasks are all done/cancelled shows no dot.
+  (Pre-2026-06-15 the dot builder counted every dated task incl. completed → phantom dots clicking to
+  an empty list.) Known limitation: dots reflect only loaded tasks, not the full DB set (pagination).
 
 #### Data
 

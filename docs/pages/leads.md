@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/leads` — the Gia pipeline list: URL-driven server-side filters, Suspense streaming, column preferences, Add Lead, export.
 > **Audience:** engineers. · **Source-of-truth scope:** the list route + `leads-service.ts` reads + `leads.ts` actions + the export system. The dossier is `lead-dossier.md`; ingestion is `../integrations/lead-ingestion.md`; schema narrative is `../architecture/database.md`.
-> **Last verified:** 2026-06-09 full pass; 2026-06-11 restructure (perf C-1/C-2 totalCount fold + `search_text` reflected; stale scratchpad rows corrected).
+> **Last verified:** 2026-06-15 (Lead Revival review surface + voice dictation in dossier note inputs added); 2026-06-09 full pass; 2026-06-11 restructure (perf C-1/C-2 totalCount fold + `search_text` reflected; stale scratchpad rows corrected).
 
 ## 1. Purpose
 
@@ -66,6 +66,34 @@ All export code is **client-side only** — `src/lib/utils/export.ts` (`buildCSV
 server action or service. Export respects the user's current filter scope (export what the
 table shows, fetched via `exportLeadsAction` → `getLeadsForExport`), keeping PII off any export
 endpoint.
+
+## 8a. Lead Revival review surface (`?revival=true`)
+
+The list route doubles as the **Lead Revival review tab** — no new list component, no second
+dossier. Full module contract: `../modules/revival.md`.
+
+- **`?revival=true` URL predicate** — a chip on `/leads` (modelled on `going_cold`) that filters
+  the list to leads holding an **open** `revival_candidates` row. The predicate resolves candidate
+  `lead_id`s first (indexed `WHERE status='open'`), then `.in('id', ids)` on the leads query; when
+  active, the total is derived from the resolved set length — the `get_leads_status_counts` RPC is
+  **bypassed** for this predicate (it cannot express the cross-table subquery, C-1). A `dismissed`
+  candidate is never `open`, so confident-junk leads are structurally excluded from review.
+- **`RevivalReviewBanner`** renders above the reused `LeadsTable` when the predicate is active —
+  it frames the surface as "leads the nightly sweep flagged for a human call" rather than the
+  generic pipeline list.
+- **AI-reasoning candidate surface.** Each reviewed lead carries the gate's `ai_reasoning` (the
+  three-verdict note-AI gate's explanation) shown beside the candidate, so the reviewer sees *why*
+  the sweep surfaced it before acting.
+- **`<ReviveLeadButton>` — one component, two mounts.** It mounts in the review-context column of
+  `LeadsTable` (here) **and** on the dossier; never two implementations. Clicking it calls
+  `createLeadTaskCore` (the E2/E3 auto-task path) to create a **"Revived"** follow-up task and flips
+  the candidate `open → actioned` — it **never mutates the lead's own `status` or columns**.
+
+> **Distinct from the dossier `StatusActionPanel` "Revive Lead" button.** That control is a
+> **lead status change** — on a `junk` (or `lost`) lead it transitions the lead back to
+> `in_discussion` via `updateLeadStatus` (Deep dive §2d transition table). Lead Revival's
+> `ReviveLeadButton` is a **layer** that adds a follow-up task + resolves a candidate ledger row and
+> leaves the lead's status untouched. Same verb, two different mechanisms — never conflate them.
 
 ---
 
@@ -436,6 +464,16 @@ export type LeadsResult = {
 | `getAssignableUsersAction` (in `actions/profiles.ts`) | — (`domain?`) | Logged in | `getAssignableUsers({ domain, agentsOnly })` — admin/founder get all active users, others agents only | None | `{ data: AssignableUser[], error }` |
 | `createLeadTaskAction` | `CreateLeadTaskSchema` | Standard lead access | RPC `create_lead_gia_task` | `scheduleTaskReminder` if `dueAt`; `revalidatePath(/leads/${slug\|id})` | `{ data: Task, error }` |
 | `searchLeadsAction` | `SearchLeadsSchema` | Profile | `searchLeadsForTask` | None | `{ data: LeadSearchResult[], error }` |
+
+**Voice dictation in the dossier note inputs.** `LeadNotesInput` (plain note → `addLeadNote`) and
+`CalledModal` (call note → `addLeadCallNote`) each mount the **inline** `<DictationButton>`
+(`variant="inline"`, `src/components/ui/DictationButton.tsx`) — the single mic → transcribe →
+`onTranscript(text)` cluster. The transcript lands as an **editable draft** in the existing note
+field; it is **never auto-sent** — the consumer's own write path (the actions above) still submits
+it. Transcription runs server-side through `transcribeAudioAction` → `transcription-service.ts`
+(Deepgram Nova-2, language `hi-Latn` / Hinglish); audio is transcribed in-memory and discarded,
+never persisted. The button renders `null` when `MediaRecorder` is unsupported. (These are two of
+the four voice surfaces; the other two are the Elaya and WhatsApp composers via `variant="composer"`.)
 
 ---
 

@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useTransition, useOptimistic, useRef } from 'react';
+import { useEffect, useState, useTransition, useOptimistic, useRef } from 'react';
 import { Phone, TrendingUp, Leaf, XCircle, Trash2, Trophy, Zap } from 'lucide-react';
 import { m as motion, AnimatePresence } from 'framer-motion';
-import { FAST_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { FAST_DURATION, EXIT_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { Button } from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
@@ -15,7 +15,7 @@ import { formErrors } from '@/lib/validations/form-errors';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants/lead-statuses';
 import { JUNK_REASONS, LOST_REASONS, RESOLUTION_REASON_LABELS } from '@/lib/constants/lead-resolution-reasons';
 import type { Lead, Profile, LeadStatus } from '@/lib/types/database';
-import type { DealType, DealDuration } from '@/lib/constants/deal-types';
+import type { DealDuration, DealCategory } from '@/lib/constants/deal-types';
 
 type ActiveModal = 'called' | 'won' | 'nurturing' | 'lost' | 'junk' | 'revive' | null;
 
@@ -30,6 +30,35 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
   const [isPending, startTransition]  = useTransition();
   const [error, setError]             = useState<string | null>(null);
   const [optimisticStatus, setOptimisticStatus] = useOptimistic(lead.status);
+
+  /* Keep the active modal mounted through its close so the Dialog can play its
+     exit animation (open=false drives the fade/scale-out — unmounting on close
+     would cut it; see Heavy modal loading rule). `renderedModal` follows
+     `activeModal` immediately on open and lags one EXIT_DURATION on close.
+     `modalKey` bumps on each open so the next open remounts with fresh state. */
+  const [renderedModal, setRenderedModal] = useState<ActiveModal>(null);
+  const [modalKey, setModalKey]           = useState(0);
+  const exitTimer                         = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (exitTimer.current) {
+      clearTimeout(exitTimer.current);
+      exitTimer.current = null;
+    }
+    if (activeModal) {
+      setRenderedModal(activeModal);
+      setModalKey((k) => k + 1);
+    } else {
+      // Hold the closing modal mounted (open=false) until the exit completes.
+      exitTimer.current = setTimeout(
+        () => setRenderedModal(null),
+        EXIT_DURATION * 1000 + 50,
+      );
+    }
+    return () => {
+      if (exitTimer.current) clearTimeout(exitTimer.current);
+    };
+  }, [activeModal]);
 
   const canAct =
     (callerProfile.role === 'agent' && lead.assigned_to === callerProfile.id) ||
@@ -56,14 +85,15 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
     });
   }
 
-  function fireDeal(deal: { deal_type: DealType; deal_duration: DealDuration | null; deal_amount: number }) {
+  function fireDeal(deal: { deal_duration: DealDuration | null; deal_category: DealCategory | null; deal_amount: number }) {
     setError(null);
     startTransition(async () => {
       setOptimisticStatus('won');
+      // deal_type is intentionally NOT sent — recordDeal derives it from the lead's domain.
       const result = await recordDeal({
         leadId:        lead.id,
-        deal_type:     deal.deal_type,
         deal_duration: deal.deal_duration,
+        deal_category: deal.deal_category,
         deal_amount:   deal.deal_amount,
       });
       if (result.error) {
@@ -202,14 +232,7 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
       variant="primary"
       className="serene-icon-ring-hover"
       disabled={isPending || isTerminal}
-      onClick={() => {
-        if (lead.status === 'new') {
-          startTransition(async () => {
-            setOptimisticStatus('touched');
-          });
-        }
-        setActiveModal('called');
-      }}
+      onClick={() => setActiveModal('called')}
     />
   );
 
@@ -286,17 +309,26 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
         </p>
       )}
 
-      {/* Modals */}
-      {activeModal === 'called' && (
+      {/* Modals — each stays mounted through its close so the Dialog's
+         exit animation plays (open=false drives the fade/scale-out, never an
+         abrupt unmount). `renderedModal` lags `activeModal` on close: it holds
+         the last modal type until the exit finishes, then clears. `key` is the
+         open generation, so each fresh open remounts with clean form state. */}
+      {renderedModal === 'called' && (
         <CalledModal
+          key={modalKey}
+          open={activeModal === 'called'}
           leadId={lead.id}
           onClose={closeModal}
         />
       )}
 
-      {activeModal === 'won' && (
+      {renderedModal === 'won' && (
         <WonDealModal
+          key={modalKey}
+          open={activeModal === 'won'}
           leadId={lead.id}
+          domain={lead.domain}
           isPending={isPending}
           error={error}
           onClose={closeModal}
@@ -304,8 +336,10 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
         />
       )}
 
-      {activeModal === 'nurturing' && (
+      {renderedModal === 'nurturing' && (
         <ConfirmModal
+          key={modalKey}
+          open={activeModal === 'nurturing'}
           title="Move to Nurturing"
           description="This lead isn't ready now. A follow-up task will be created automatically in 3 months."
           confirmLabel="Move to Nurturing"
@@ -317,8 +351,10 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
         />
       )}
 
-      {activeModal === 'lost' && (
+      {renderedModal === 'lost' && (
         <ReasonModal
+          key={modalKey}
+          open={activeModal === 'lost'}
           title="Mark as Lost"
           description="Provide a reason so the team can learn from this."
           confirmLabel="Mark Lost"
@@ -330,8 +366,10 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
         />
       )}
 
-      {activeModal === 'junk' && (
+      {renderedModal === 'junk' && (
         <ReasonModal
+          key={modalKey}
+          open={activeModal === 'junk'}
           title="Mark as Junk"
           description="Provide a reason — wrong number, spam, or other."
           confirmLabel="Mark Junk"
@@ -343,8 +381,10 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
         />
       )}
 
-      {activeModal === 'revive' && (
+      {renderedModal === 'revive' && (
         <ConfirmModal
+          key={modalKey}
+          open={activeModal === 'revive'}
           title="Revive this Lead"
           description="This will move the lead back to In Discussion. All previous history — calls, notes, and activity — will be preserved."
           confirmLabel="Revive Lead"
@@ -461,6 +501,7 @@ function ActionButton({
 // Confirm modal (Nurturing)
 // ─────────────────────────────────────────────
 function ConfirmModal({
+  open,
   title,
   description,
   confirmLabel,
@@ -470,6 +511,7 @@ function ConfirmModal({
   onClose,
   onConfirm,
 }: {
+  open: boolean;
   title: string;
   description: string;
   confirmLabel: string;
@@ -486,7 +528,7 @@ function ConfirmModal({
 
   return (
     <Modal
-      open={true}
+      open={open}
       onClose={onClose}
       title={title}
       maxWidth="max-w-sm"
@@ -539,6 +581,7 @@ const microLabelStyle: React.CSSProperties = {
 };
 
 function ReasonModal({
+  open,
   title,
   description,
   confirmLabel,
@@ -548,6 +591,7 @@ function ReasonModal({
   onClose,
   onConfirm,
 }: {
+  open: boolean;
   title: string;
   description: string;
   confirmLabel: string;
@@ -600,7 +644,7 @@ function ReasonModal({
 
   return (
     <Modal
-      open={true}
+      open={open}
       onClose={onClose}
       title={title}
       maxWidth="max-w-md"

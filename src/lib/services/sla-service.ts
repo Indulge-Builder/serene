@@ -90,6 +90,42 @@ export async function updateSlaPolicy(
   return data as SlaPolicy;
 }
 
+/** A brand-new policy row authored through the /settings "New rule" form. The
+ *  code is action-generated (inert USR-<id>) — never user-supplied. */
+export interface NewSlaPolicy {
+  code:              string;
+  trigger_kind:      'status' | 'outcome' | 'task_due';
+  trigger_value:     string;
+  threshold_minutes: number;
+  recipient_role:    'agent' | 'manager' | 'founder';
+  auto_task:         boolean;
+  channels:          string[];
+  hours_mode:        SlaHoursMode;
+  active:            boolean;
+}
+
+/**
+ * Inserts a new policy row. Admin client — sla_policies has no write RLS by
+ * design (0111); the admin/founder-gated action is the trust boundary. A new
+ * row arms automatically: the engine reads getSlaPolicies() per job run, so
+ * the next matching lead picks it up with no deploy. Returns null on conflict
+ * (duplicate code — astronomically unlikely with USR-<uuid>) or error.
+ */
+export async function createSlaPolicy(policy: NewSlaPolicy): Promise<SlaPolicy | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('sla_policies')
+    .insert(policy)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[sla-service] createSlaPolicy error:', error);
+    return null;
+  }
+  return data as SlaPolicy;
+}
+
 /** Single policy by code — includes inactive rows (caller checks .active). */
 export async function getSlaPolicy(code: string): Promise<SlaPolicy | null> {
   const admin = createAdminClient();

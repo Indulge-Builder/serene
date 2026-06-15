@@ -16,18 +16,52 @@
  */
 
 import { useState, useTransition } from "react";
-import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
-import { CALL_OUTCOME_LABELS } from "@/lib/constants/call-outcomes";
+import { Plus, X } from "lucide-react";
+import { LEAD_STATUS_LABELS, LEAD_STATUSES } from "@/lib/constants/lead-statuses";
+import { CALL_OUTCOME_LABELS, CALL_OUTCOMES } from "@/lib/constants/call-outcomes";
 import { isCadenceCode } from "@/lib/constants/sla";
-import { updateSlaPolicyAction } from "@/lib/actions/sla-policies";
+import { createSlaPolicyAction, updateSlaPolicyAction } from "@/lib/actions/sla-policies";
 import { formatDuration } from "@/lib/utils/dates";
 import { Toggle } from "@/components/ui/Toggle";
+import { Button } from "@/components/ui/Button";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { toast } from "@/lib/toast";
 import type { SlaPolicy, SlaHoursMode, LeadStatus, CallOutcome } from "@/lib/types/database";
+import type { SlaTriggerKind, SlaRecipientRole } from "@/lib/types/database";
 
 interface SlaPoliciesPanelProps {
   initialPolicies: SlaPolicy[];
+}
+
+// ── New-rule form vocabulary ──────────────────────────────────────────────────
+
+const TRIGGER_KIND_OPTIONS: { value: SlaTriggerKind; label: string }[] = [
+  { value: "status",   label: "Lead status" },
+  { value: "outcome",  label: "Call outcome" },
+  { value: "task_due", label: "Task due" },
+];
+
+const RECIPIENT_OPTIONS: { value: SlaRecipientRole; label: string }[] = [
+  { value: "agent",   label: "Agent" },
+  { value: "manager", label: "Manager" },
+  { value: "founder", label: "Founder" },
+];
+
+const TASK_DUE_VALUE_OPTIONS: { value: string; label: string }[] = [
+  { value: "gia_followup", label: "Gia follow-up task" },
+];
+
+/** Trigger-value options for the chosen kind — mirrors the server-side
+ *  trigger_value-against-kind validation so the dropdown can never offer a
+ *  value the action would reject. */
+function triggerValueOptions(kind: SlaTriggerKind): { value: string; label: string }[] {
+  if (kind === "status") {
+    return LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_LABELS[s] }));
+  }
+  if (kind === "outcome") {
+    return CALL_OUTCOMES.map((o) => ({ value: o, label: CALL_OUTCOME_LABELS[o] }));
+  }
+  return TASK_DUE_VALUE_OPTIONS;
 }
 
 // ── Row vocabulary ───────────────────────────────────────────────────────────
@@ -80,10 +114,21 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
   const [pendingCodes, setPendingCodes] = useState<Set<string>>(new Set());
   const [, startTransition] = useTransition();
 
+  // New-rule form state (admin/founder author a rule over the trigger catalog).
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  // Groups are EXHAUSTIVE — a user can author a non-cadence `outcome` rule, so
+  // that group must exist or the new row would land nowhere. Seeded CAD-01x
+  // outcome rules carry the cadence code and stay under "Follow-up cadences".
   const groups: { label: string; rows: SlaPolicy[] }[] = [
     {
       label: "Lead status rules",
       rows: policies.filter((p) => p.trigger_kind === "status" && !isCadenceCode(p.code)),
+    },
+    {
+      label: "Call outcome rules",
+      rows: policies.filter((p) => p.trigger_kind === "outcome" && !isCadenceCode(p.code)),
     },
     {
       label: "Follow-up cadences",
@@ -94,6 +139,30 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
       rows: policies.filter((p) => p.trigger_kind === "task_due"),
     },
   ];
+
+  function createRule(input: CreateRuleDraft) {
+    setCreating(true);
+    startTransition(async () => {
+      const { data, error } = await createSlaPolicyAction({
+        triggerKind:      input.triggerKind,
+        triggerValue:     input.triggerValue,
+        recipientRole:    input.recipientRole,
+        thresholdMinutes: input.thresholdMinutes,
+        hoursMode:        input.hoursMode,
+        channels:         input.channels,
+        active:           true,
+      });
+      setCreating(false);
+      if (error || !data) {
+        toast.danger(error ?? "Couldn't create the rule.");
+        return;
+      }
+      // The server-returned row lands in the matching group immediately.
+      setPolicies((rows) => [...rows, data]);
+      setShowCreate(false);
+      toast.success("Rule created.");
+    });
+  }
 
   function save(code: string, patch: Partial<{
     active: boolean;
@@ -171,7 +240,21 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
       title="Follow-up Engine"
       description="SLA thresholds, escalation recipients, and cadence rules. Active and channel edits apply on the next fire; threshold edits apply to newly armed timers."
       bodyPadding={false}
+      headerRight={
+        <Button
+          variant={showCreate ? "ghost" : "secondary"}
+          size="sm"
+          iconLeft={showCreate ? X : Plus}
+          onClick={() => setShowCreate((v) => !v)}
+        >
+          {showCreate ? "Close" : "New rule"}
+        </Button>
+      }
     >
+      {showCreate && (
+        <CreateRuleForm onCreate={createRule} creating={creating} />
+      )}
+
       <div style={{ overflowX: "auto" }}>
         <div style={{ minWidth: "920px" }}>
           {/* Column header */}
@@ -406,5 +489,258 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
         </div>
       </div>
     </SectionCard>
+  );
+}
+
+// ── New-rule form ─────────────────────────────────────────────────────────────
+
+interface CreateRuleDraft {
+  triggerKind:      SlaTriggerKind;
+  triggerValue:     string;
+  recipientRole:    SlaRecipientRole;
+  thresholdMinutes: number;
+  hoursMode:        SlaHoursMode;
+  channels:         ("in_app" | "whatsapp")[];
+}
+
+/**
+ * The inline "New rule" authoring form. Five operational fields over the
+ * existing trigger catalog; the rule CODE is system-generated server-side and
+ * never appears here. trigger_value options re-derive from the chosen kind so a
+ * value the action would reject can never be selected; the server re-validates
+ * (defense in depth). Threshold is hidden for outcome rules (those tick daily —
+ * threshold_minutes is unused by the engine).
+ */
+function CreateRuleForm({
+  onCreate,
+  creating,
+}: {
+  onCreate: (draft: CreateRuleDraft) => void;
+  creating: boolean;
+}) {
+  const [kind, setKind] = useState<SlaTriggerKind>("status");
+  const [value, setValue] = useState<string>(LEAD_STATUSES[0]);
+  const [recipient, setRecipient] = useState<SlaRecipientRole>("manager");
+  const [threshold, setThreshold] = useState<string>("30");
+  const [hoursMode, setHoursMode] = useState<SlaHoursMode>("business");
+  const [channels, setChannels] = useState<("in_app" | "whatsapp")[]>(["in_app"]);
+
+  const valueOptions = triggerValueOptions(kind);
+  const showThreshold = kind !== "outcome";
+
+  function changeKind(next: SlaTriggerKind) {
+    setKind(next);
+    // Reset trigger value to the first valid option for the new kind so the
+    // value-against-kind invariant always holds before submit.
+    const first = triggerValueOptions(next)[0]?.value ?? "";
+    setValue(first);
+  }
+
+  function toggleChannel(channel: "in_app" | "whatsapp") {
+    setChannels((cur) =>
+      cur.includes(channel) ? cur.filter((c) => c !== channel) : [...cur, channel],
+    );
+  }
+
+  function submit() {
+    const minutes = showThreshold ? Number(threshold) : 0;
+    if (showThreshold && (!Number.isInteger(minutes) || minutes < 0 || minutes > 43_200)) {
+      toast.danger("Threshold must be between 0 and 43,200 minutes.");
+      return;
+    }
+    if (!value) {
+      toast.danger("Choose a trigger value.");
+      return;
+    }
+    onCreate({
+      triggerKind:      kind,
+      triggerValue:     value,
+      recipientRole:    recipient,
+      thresholdMinutes: minutes,
+      hoursMode,
+      channels,
+    });
+  }
+
+  const fieldLabel: React.CSSProperties = {
+    display:       "block",
+    marginBottom:  "var(--space-1)",
+    fontFamily:    "var(--font-sans)",
+    fontSize:      "var(--text-2xs)",
+    fontWeight:    "var(--weight-semibold)",
+    letterSpacing: "var(--tracking-widest)",
+    textTransform: "uppercase",
+    color:         "var(--theme-text-tertiary)",
+  };
+
+  const control: React.CSSProperties = {
+    width:        "100%",
+    padding:      "6px 8px",
+    borderRadius: "var(--radius-sm)",
+    border:       "1px solid var(--theme-paper-border)",
+    background:   "var(--theme-paper)",
+    fontFamily:   "var(--font-sans)",
+    fontSize:     "var(--text-xs)",
+    color:        "var(--theme-text-primary)",
+  };
+
+  return (
+    <div
+      style={{
+        padding:      "var(--space-5) var(--space-6)",
+        borderBottom: "1px solid var(--theme-paper-border)",
+        background:   "var(--theme-paper-subtle)",
+      }}
+    >
+      <p
+        style={{
+          margin:     "0 0 var(--space-4)",
+          fontFamily: "var(--font-sans)",
+          fontSize:   "var(--text-xs)",
+          color:      "var(--theme-text-secondary)",
+        }}
+      >
+        Create a rule over the trigger catalog. It arms automatically on the next matching lead.
+        Switch it off any time with its row toggle.
+      </p>
+
+      <div
+        style={{
+          display:             "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+          gap:                 "var(--space-4)",
+          alignItems:          "end",
+        }}
+      >
+        {/* Watches (trigger kind) */}
+        <div>
+          <label style={fieldLabel} htmlFor="new-rule-kind">Watches</label>
+          <select
+            id="new-rule-kind"
+            value={kind}
+            disabled={creating}
+            onChange={(e) => changeKind(e.target.value as SlaTriggerKind)}
+            style={control}
+          >
+            {TRIGGER_KIND_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Trigger value */}
+        <div>
+          <label style={fieldLabel} htmlFor="new-rule-value">Value</label>
+          <select
+            id="new-rule-value"
+            value={value}
+            disabled={creating}
+            onChange={(e) => setValue(e.target.value)}
+            style={control}
+          >
+            {valueOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Notifies (recipient) */}
+        <div>
+          <label style={fieldLabel} htmlFor="new-rule-recipient">Notifies</label>
+          <select
+            id="new-rule-recipient"
+            value={recipient}
+            disabled={creating}
+            onChange={(e) => setRecipient(e.target.value as SlaRecipientRole)}
+            style={control}
+          >
+            {RECIPIENT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Threshold — hidden for outcome rules (they tick daily) */}
+        {showThreshold && (
+          <div>
+            <label style={fieldLabel} htmlFor="new-rule-threshold">Threshold (min)</label>
+            <input
+              id="new-rule-threshold"
+              type="number"
+              min={0}
+              max={43200}
+              value={threshold}
+              disabled={creating}
+              onChange={(e) => setThreshold(e.target.value)}
+              className="serene-input"
+              style={{ ...control, fontFamily: "var(--font-mono)" }}
+            />
+          </div>
+        )}
+
+        {/* Hours basis */}
+        <div>
+          <label style={fieldLabel} htmlFor="new-rule-hours">Hours basis</label>
+          <select
+            id="new-rule-hours"
+            value={hoursMode}
+            disabled={creating}
+            onChange={(e) => setHoursMode(e.target.value as SlaHoursMode)}
+            style={control}
+          >
+            {HOURS_MODE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Channels */}
+        <div>
+          <span style={fieldLabel}>Channels</span>
+          <div style={{ display: "flex", gap: "var(--space-4)", paddingTop: "4px" }}>
+            {(["in_app", "whatsapp"] as const).map((channel) => {
+              const checked = channels.includes(channel);
+              return (
+                <label
+                  key={channel}
+                  style={{
+                    display:    "flex",
+                    alignItems: "center",
+                    gap:        "var(--space-2)",
+                    fontFamily: "var(--font-sans)",
+                    fontSize:   "var(--text-xs)",
+                    color:      checked ? "var(--theme-text-primary)" : "var(--theme-text-tertiary)",
+                    cursor:     creating ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={creating}
+                    onChange={() => toggleChannel(channel)}
+                    style={{ accentColor: "var(--theme-accent)" }}
+                  />
+                  {channel === "in_app" ? "In-app" : "WhatsApp"}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Create */}
+        <div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={submit}
+            loading={creating}
+            disabled={creating}
+            style={{ width: "100%" }}
+          >
+            Create rule
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

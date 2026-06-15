@@ -24,6 +24,12 @@ export interface DialogProps {
   /** Hides the header close button */
   hideCloseButton?: boolean;
   /**
+   * Body padding. Default `true` (the standard --space-5/6 inset). Pass `false`
+   * when the child owns its own surface edge-to-edge (e.g. an embedded chat
+   * panel that must sit flush against the modal chrome — no card-in-a-card).
+   */
+  bodyPadding?: boolean;
+  /**
    * Tailwind max-width class override — takes precedence over size.
    * Exists for backward compat with callers that pass maxWidth="max-w-lg".
    */
@@ -46,6 +52,7 @@ export function Dialog({
   footer,
   size = 'md',
   hideCloseButton = false,
+  bodyPadding = true,
   maxWidth,
 }: DialogProps) {
   const titleId = useId();
@@ -197,10 +204,13 @@ export function Dialog({
                 style={{
                   flex:       1,
                   overflow:   'auto',
-                  padding:    'var(--space-5) var(--space-6)',
+                  padding:    bodyPadding ? 'var(--space-5) var(--space-6)' : 0,
                   fontSize:   'var(--text-sm)',
                   color:      'var(--theme-text-primary)',
                   lineHeight: 'var(--leading-normal)',
+                  display:    bodyPadding ? undefined : 'flex',
+                  flexDirection: bodyPadding ? undefined : 'column',
+                  minHeight:  bodyPadding ? undefined : 0,
                 }}
               >
                 {children}

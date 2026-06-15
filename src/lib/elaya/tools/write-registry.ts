@@ -35,6 +35,16 @@ import {
   type MutationActor,
 } from "@/lib/services/lead-mutations";
 import {
+  canMutateTask,
+  createPersonalTaskCore,
+  createGroupTaskCore,
+  updateTaskStatusCore,
+  updateTaskCore,
+  deleteTaskCore,
+  type CallerProfile,
+  type TaskMutationTarget,
+} from "@/lib/services/task-mutations";
+import {
   insertExecutedAction,
   insertProposedAction,
   markActionResolved,
@@ -44,20 +54,34 @@ import {
 import { notifyLeadAssigned } from "@/lib/services/lead-assignment-notify";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
 import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
+import { TASK_STATUS } from "@/lib/constants/task-constants";
+import { APP_DOMAINS } from "@/lib/constants/domains";
 import { sanitizeText } from "@/lib/utils/sanitize";
-import type { UserRole } from "@/lib/types";
-import type { LeadStatus } from "@/lib/types/database";
+import { normalizeDueAtToIstInstant } from "@/lib/utils/ist";
+import type { UserRole, AppDomain } from "@/lib/types";
+import type { LeadStatus, TaskStatus, TaskPriority } from "@/lib/types/database";
 import type { ElayaActionRow, ElayaChannel } from "@/lib/types/elaya";
 
 export type ElayaWriteToolName =
+  // Lead writes (E3)
   | "add_lead_note"
   | "create_lead_task"
   | "update_lead_status"
-  | "reassign_lead";
+  | "reassign_lead"
+  // Task writes (Brief 3)
+  | "create_personal_task"
+  | "create_group_task"
+  | "update_task_status"
+  | "update_task"
+  | "delete_task";
 
 const STATE_CHANGING: ReadonlySet<ElayaWriteToolName> = new Set([
   "update_lead_status",
   "reassign_lead",
+  // delete_task is the ONLY state-changing task tier — it proposes and waits for an
+  // affirmative, exactly like the lead state tools. The four other task tools execute
+  // inline (low-risk: a created/edited task is trivially reversible by the user).
+  "delete_task",
 ]);
 
 export function isStateChangingWriteTool(name: string): boolean {
@@ -95,6 +119,35 @@ function actorFromPrincipal(principal: ElayaPrincipal): MutationActor {
     domain: principal.domain,
     fullName: principal.displayName,
   };
+}
+
+/**
+ * The {id,role,domain} shape canMutateTask takes — principal-derived, NEVER model-
+ * supplied. canMutateTask uses the passed client ONLY for a read-only group-domain
+ * SELECT; it never reads auth.uid() and never relies on RLS, so the admin client the
+ * tool layer passes does not widen access (the caller object IS the identity).
+ */
+function callerFromPrincipal(principal: ElayaPrincipal): CallerProfile {
+  return {
+    id: principal.userId,
+    role: principal.role,
+    domain: principal.domain,
+  };
+}
+
+// Task vocabulary the model may supply (mirrors validations/task-schemas.ts).
+const TASK_PRIORITIES = ["urgent", "high", "normal"] as const;
+const TASK_STATUSES = [
+  "to_do",
+  "in_progress",
+  "in_review",
+  "completed",
+  "error",
+  "cancelled",
+] as const;
+
+function taskStatusLabel(status: string): string {
+  return TASK_STATUS[status as TaskStatus]?.label ?? status;
 }
 
 function canAccessLead(principal: ElayaPrincipal, lead: LeadWithAssignee): boolean {
@@ -213,6 +266,10 @@ const createLeadTask: ElayaWriteTool = {
     if (!lead || !canAccessLead(principal, lead)) return { error: REFUSE_LEAD };
 
     const cleanDescription = description ? sanitizeText(description) : null;
+    // Interpret a zoneless "tomorrow 3pm"-style dueAt as IST before it becomes an instant.
+    // The core (and its scheduleTaskReminder + p_due_at) then receives a true ISO instant;
+    // an already-zoned string passes through unchanged. Conversion happens HERE only.
+    const dueAtInstant = normalizeDueAtToIstInstant(dueAt);
 
     const core = await createLeadTaskCore(
       actorFromPrincipal(principal),
@@ -221,7 +278,7 @@ const createLeadTask: ElayaWriteTool = {
         taskType,
         description: cleanDescription,
         priority,
-        dueAt: dueAt ?? null,
+        dueAt: dueAtInstant,
       },
       lead.assigned_to,
     );
@@ -233,7 +290,7 @@ const createLeadTask: ElayaWriteTool = {
       actionType: "create_lead_task",
       payload: {
         target: { slug: lead.slug, leadId: lead.id },
-        args: { taskType, description: cleanDescription, priority, dueAt: dueAt ?? null },
+        args: { taskType, description: cleanDescription, priority, dueAt: dueAtInstant },
         channel: ctx.channel,
         before: null,
         after: {
@@ -365,11 +422,434 @@ const reassignLead: ElayaWriteTool = {
   },
 };
 
+// ═════════════════════════════════════════════
+// TASK WRITE TOOLS (Brief 3) — general task work, NOT lead-attached.
+//
+// These wrap the task-mutations.ts cores (the SAME bodies actions/tasks.ts calls,
+// R-01) and gate with canMutateTask — the per-resource access check the CALLER owns
+// (Q-13: the core stays ungated). Identity is principal-derived (callerFromPrincipal /
+// actorFromPrincipal), never model-supplied. The admin client is passed to
+// canMutateTask only for its read-only group-domain lookup — it does not widen access.
+//
+// Tier split mirrors the lead tools structurally: four execute INLINE (a created or
+// edited task is trivially reversible by the user); delete_task alone PROPOSES and
+// waits for an affirmative — the mutation lands only in executeProposedAction.
+// ═════════════════════════════════════════════
+
+const REFUSE_TASK =
+  "I couldn't find that task among the ones you can act on, or you're not allowed to change it. Check it with me first.";
+const REFUSE_TASK_ASSIGN =
+  "Only managers and above can assign a task to someone else. I can create it for you instead.";
+
+const MANAGER_UP_ROLES: ReadonlySet<UserRole> = new Set(["manager", "admin", "founder"]);
+
+// ── create_personal_task — INLINE ──
+const createPersonalTask: ElayaWriteTool = {
+  name: "create_personal_task",
+  roles: STAFF_ALL,
+  description:
+    "Create a personal to-do for the user (or, managers and above, assign one to a teammate). " +
+    "Use this for general reminders not tied to a lead — e.g. 'remind me to file expenses tomorrow 3pm'. " +
+    "Happens immediately — no confirmation step. If no due time is given, leave it open.",
+  schema: z.object({
+    title: z.string().trim().min(1).max(255),
+    description: z.string().trim().max(1000).optional(),
+    priority: z.enum(TASK_PRIORITIES).default("normal"),
+    dueAt: z.string().trim().max(40).optional(),
+    assigneeId: z.string().uuid().optional(),
+    tags: z.array(z.string().trim().min(1).max(50)).max(10).optional(),
+  }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      title: { type: "string", description: "What the task is (short)" },
+      description: { type: "string", description: "Optional detail" },
+      priority: { type: "string", enum: [...TASK_PRIORITIES], description: "Defaults to normal" },
+      dueAt: { type: "string", description: "Optional due date-time, e.g. '2026-06-16T15:00' (interpreted as IST)" },
+      assigneeId: { type: "string", description: "Optional teammate user id (UUID) — managers+ only; omit to assign to the user" },
+      tags: { type: "array", items: { type: "string" }, description: "Optional tags" },
+    },
+    required: ["title"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { title, description, priority, dueAt, assigneeId, tags } = input as {
+      title: string;
+      description?: string;
+      priority: (typeof TASK_PRIORITIES)[number];
+      dueAt?: string;
+      assigneeId?: string;
+      tags?: string[];
+    };
+
+    // Assigning to ANOTHER user is manager+ only (mirrors createPersonalTaskAction).
+    // The gate is the caller's job (Q-13); the core trusts it.
+    if (assigneeId && assigneeId !== principal.userId && !MANAGER_UP_ROLES.has(principal.role)) {
+      return { error: REFUSE_TASK_ASSIGN };
+    }
+
+    const cleanTitle = sanitizeText(title);
+    if (cleanTitle.length === 0) return { error: "The task title was empty after cleaning." };
+    const cleanDescription = description ? sanitizeText(description) : null;
+    const cleanTags = (tags ?? []).map((t) => sanitizeText(t)).filter((t) => t.length > 0);
+    const dueAtInstant = normalizeDueAtToIstInstant(dueAt);
+
+    const core = await createPersonalTaskCore(actorFromPrincipal(principal), {
+      title: cleanTitle,
+      description: cleanDescription,
+      priority,
+      dueAt: dueAtInstant,
+      assignedTo: assigneeId ?? null,
+      tags: cleanTags,
+    });
+    if (!core.ok) return { error: "I couldn't create that task just now." };
+
+    await insertExecutedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "create_personal_task",
+      payload: {
+        target: { taskId: core.taskId, groupId: null },
+        args: { title: cleanTitle, description: cleanDescription, priority, dueAt: dueAtInstant, assignedTo: core.assignedTo, tags: cleanTags },
+        channel: ctx.channel,
+        before: null,
+        after: { created: { taskId: core.taskId, assignedTo: core.assignedTo, createdBy: core.createdBy } },
+      },
+    });
+
+    const forOther = core.assignedTo !== principal.userId;
+    return {
+      done: true,
+      summary: forOther
+        ? `Created "${cleanTitle}" and assigned it.`
+        : `Created your task "${cleanTitle}".`,
+      taskId: core.taskId,
+    };
+  },
+};
+
+// ── create_group_task — INLINE. All-staff; NO assignee (a group is a container; its
+// subtasks carry assignees). Domain is locked to the actor's by the core for non-
+// admin/founder — so this deliberately does NOT inherit reassign_lead's MANAGER_UP gate. ──
+const createGroupTask: ElayaWriteTool = {
+  name: "create_group_task",
+  roles: STAFF_ALL,
+  description:
+    "Create a shared group/team task workspace (a container others can add subtasks to). " +
+    "Anyone can create one; it lives in the user's own domain (admins and founders may target another). " +
+    "Happens immediately — no confirmation step. This creates the group only, not its subtasks.",
+  schema: z.object({
+    title: z.string().trim().min(1).max(255),
+    description: z.string().trim().max(1000).optional(),
+    priority: z.enum(TASK_PRIORITIES).default("normal"),
+    dueAt: z.string().trim().max(40).optional(),
+    domain: z.enum(APP_DOMAINS as [AppDomain, ...AppDomain[]]).optional(),
+  }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      title: { type: "string", description: "The group/workspace title" },
+      description: { type: "string", description: "Optional detail" },
+      priority: { type: "string", enum: [...TASK_PRIORITIES], description: "Defaults to normal" },
+      dueAt: { type: "string", description: "Optional due date-time (interpreted as IST)" },
+      domain: { type: "string", enum: [...APP_DOMAINS], description: "Admins/founders only; everyone else is locked to their own domain" },
+    },
+    required: ["title"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { title, description, priority, dueAt, domain } = input as {
+      title: string;
+      description?: string;
+      priority: (typeof TASK_PRIORITIES)[number];
+      dueAt?: string;
+      domain?: AppDomain;
+    };
+
+    const cleanTitle = sanitizeText(title);
+    if (cleanTitle.length === 0) return { error: "The group title was empty after cleaning." };
+    const cleanDescription = description ? sanitizeText(description) : null;
+    const dueAtInstant = normalizeDueAtToIstInstant(dueAt);
+
+    // The core re-derives the effective domain (own domain unless admin/founder) — we
+    // pass the requested one; a non-privileged actor's value is ignored by the core.
+    const core = await createGroupTaskCore(actorFromPrincipal(principal), {
+      title: cleanTitle,
+      description: cleanDescription,
+      priority,
+      dueAt: dueAtInstant,
+      domain: domain ?? principal.domain,
+    });
+    if (!core.ok) return { error: "I couldn't create that group task just now." };
+
+    await insertExecutedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "create_group_task",
+      payload: {
+        // A group is a container, not a task — target carries groupId only (no taskId).
+        target: { groupId: core.groupId },
+        args: { title: cleanTitle, description: cleanDescription, priority, dueAt: dueAtInstant, domain: domain ?? principal.domain },
+        channel: ctx.channel,
+        before: null,
+        after: { created: { groupId: core.groupId } },
+      },
+    });
+
+    return {
+      done: true,
+      summary: `Created the group workspace "${cleanTitle}". You can add subtasks to it in Tasks.`,
+      groupId: core.groupId,
+    };
+  },
+};
+
+// ── update_task_status — INLINE. Fetch + canMutateTask gate, then core. ──
+const updateTaskStatus: ElayaWriteTool = {
+  name: "update_task_status",
+  roles: STAFF_ALL,
+  description:
+    "Change a task's status (e.g. mark it in progress, completed, cancelled). Takes the task's id " +
+    "(from get_my_tasks). Happens immediately. Use get_my_tasks first to find the task id.",
+  schema: z.object({
+    taskId: z.string().uuid(),
+    status: z.enum(TASK_STATUSES),
+  }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      taskId: { type: "string", description: "The task id (UUID, from get_my_tasks)" },
+      status: { type: "string", enum: [...TASK_STATUSES], description: "The target status" },
+    },
+    required: ["taskId", "status"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { taskId, status } = input as { taskId: string; status: TaskStatus };
+    const admin = createAdminClient();
+    const { data: task } = await admin
+      .from("tasks")
+      .select("id, assigned_to, created_by, group_id, status, task_category")
+      .eq("id", taskId)
+      .single();
+    if (!task) return { error: REFUSE_TASK };
+    const allowed = await canMutateTask(admin, callerFromPrincipal(principal), task as TaskMutationTarget);
+    if (!allowed) return { error: REFUSE_TASK };
+
+    if (task.status === status) {
+      return { done: true, summary: `That task is already ${taskStatusLabel(status)}.`, taskId };
+    }
+
+    const core = await updateTaskStatusCore(
+      actorFromPrincipal(principal),
+      { taskId, status },
+      { taskCategory: task.task_category as string | null },
+    );
+    if (!core.ok) return { error: "I couldn't change that task's status just now." };
+
+    await insertExecutedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "update_task_status",
+      payload: {
+        target: { taskId, groupId: (task.group_id as string | null) ?? null },
+        args: { status },
+        channel: ctx.channel,
+        before: { status: task.status },
+        after: { status },
+      },
+    });
+
+    return { done: true, summary: `Marked that task ${taskStatusLabel(status)}.`, taskId };
+  },
+};
+
+// ── update_task — INLINE. Partial field update. Fetch + canMutateTask gate, then core. ──
+const updateTask: ElayaWriteTool = {
+  name: "update_task",
+  roles: STAFF_ALL,
+  description:
+    "Edit a task's details — title, description, priority, status, due date, or assignee. Takes the " +
+    "task's id (from get_my_tasks) plus only the fields to change. Happens immediately. " +
+    "To change ONLY the status, prefer update_task_status.",
+  schema: z
+    .object({
+      taskId: z.string().uuid(),
+      title: z.string().trim().min(1).max(255).optional(),
+      description: z.string().trim().max(1000).optional(),
+      priority: z.enum(TASK_PRIORITIES).optional(),
+      status: z.enum(TASK_STATUSES).optional(),
+      assigneeId: z.string().uuid().optional(),
+      // dueAt present (even null) means "change the due date"; omitted means "leave it".
+      dueAt: z.string().trim().max(40).nullable().optional(),
+    })
+    .refine(
+      (v) =>
+        v.title !== undefined ||
+        v.description !== undefined ||
+        v.priority !== undefined ||
+        v.status !== undefined ||
+        v.assigneeId !== undefined ||
+        v.dueAt !== undefined,
+      { message: "give at least one field to change" },
+    ),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      taskId: { type: "string", description: "The task id (UUID, from get_my_tasks)" },
+      title: { type: "string", description: "New title" },
+      description: { type: "string", description: "New description" },
+      priority: { type: "string", enum: [...TASK_PRIORITIES], description: "New priority" },
+      status: { type: "string", enum: [...TASK_STATUSES], description: "New status" },
+      assigneeId: { type: "string", description: "New assignee user id (UUID)" },
+      dueAt: { type: ["string", "null"], description: "New due date-time (IST); null clears it; omit to leave unchanged" },
+    },
+    required: ["taskId"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const raw = input as {
+      taskId: string;
+      title?: string;
+      description?: string;
+      priority?: TaskPriority;
+      status?: TaskStatus;
+      assigneeId?: string;
+      dueAt?: string | null;
+    };
+    const admin = createAdminClient();
+    const { data: existing } = await admin
+      .from("tasks")
+      .select("id, assigned_to, created_by, group_id")
+      .eq("id", raw.taskId)
+      .single();
+    if (!existing) return { error: REFUSE_TASK };
+    const allowed = await canMutateTask(admin, callerFromPrincipal(principal), existing as TaskMutationTarget);
+    if (!allowed) return { error: REFUSE_TASK };
+
+    const dueAtChanged = "dueAt" in raw && raw.dueAt !== undefined;
+    const dueAtInstant = dueAtChanged ? normalizeDueAtToIstInstant(raw.dueAt) : null;
+
+    const core = await updateTaskCore(
+      actorFromPrincipal(principal),
+      {
+        taskId: raw.taskId,
+        title: raw.title !== undefined ? sanitizeText(raw.title) : undefined,
+        description: raw.description !== undefined ? sanitizeText(raw.description) : undefined,
+        priority: raw.priority,
+        status: raw.status,
+        assignedTo: raw.assigneeId,
+        dueAt: dueAtInstant,
+        dueAtChanged,
+      },
+      { assignedTo: (existing.assigned_to as string | null) ?? null },
+    );
+    if (!core.ok) return { error: "I couldn't update that task just now." };
+
+    await insertExecutedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "update_task",
+      payload: {
+        target: { taskId: raw.taskId, groupId: (existing.group_id as string | null) ?? null },
+        args: {
+          title: raw.title !== undefined ? sanitizeText(raw.title) : undefined,
+          description: raw.description !== undefined ? sanitizeText(raw.description) : undefined,
+          priority: raw.priority,
+          status: raw.status,
+          assignedTo: raw.assigneeId,
+          dueAt: dueAtChanged ? dueAtInstant : undefined,
+        },
+        channel: ctx.channel,
+        before: null,
+        after: { updated: true },
+      },
+    });
+
+    return { done: true, summary: "Updated that task.", taskId: raw.taskId };
+  },
+};
+
+// ── delete_task — STATE-CHANGING (propose only). NO mutation in run(). ──
+// The payload carries the taskId + a code-derived human title so the confirmation line
+// names the right task. The model never supplies the confirmation, and the delete target
+// is the stored taskId (not any text), so injected note/description text cannot redirect
+// or trigger the delete. The mutation lands in executeProposedAction's delete_task branch.
+const deleteTask: ElayaWriteTool = {
+  name: "delete_task",
+  roles: STAFF_ALL,
+  description:
+    "Propose deleting a task permanently. Takes the task's id (from get_my_tasks). This is a bigger " +
+    "step: calling it records a proposal and WAITS — it does NOT delete yet. Tell the user which task " +
+    "you're about to delete and ask them to confirm with a yes. Never say it's deleted until the system confirms it executed.",
+  schema: z.object({
+    taskId: z.string().uuid(),
+  }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      taskId: { type: "string", description: "The task id (UUID, from get_my_tasks)" },
+    },
+    required: ["taskId"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { taskId } = input as { taskId: string };
+    const admin = createAdminClient();
+    const { data: task } = await admin
+      .from("tasks")
+      .select("id, assigned_to, created_by, group_id, title, task_category")
+      .eq("id", taskId)
+      .single();
+    if (!task) return { error: REFUSE_TASK };
+    const allowed = await canMutateTask(admin, callerFromPrincipal(principal), task as TaskMutationTarget);
+    if (!allowed) return { error: REFUSE_TASK };
+
+    // The human-readable label is CODE-derived from the DB row (not model text) so the
+    // confirmation line names the right task and no injected text can sit in it.
+    const label = sanitizeText((task.title as string | null) ?? "this task") || "this task";
+
+    await supersedePriorProposals(ctx.conversationId, principal.userId, principal.userId);
+    const proposal = await insertProposedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "delete_task",
+      payload: {
+        target: { taskId, groupId: (task.group_id as string | null) ?? null },
+        args: { taskTitle: label, taskCategory: (task.task_category as string | null) ?? null },
+        channel: ctx.channel,
+        before: { title: label },
+        after: null,
+      },
+    });
+    if (!proposal) return { error: "I couldn't set that up just now." };
+
+    return {
+      proposalRecorded: true,
+      message:
+        `Proposal recorded (NOT yet done): delete the task "${label}". Ask the user to confirm with a yes ` +
+        `before it executes. Do not state it as done.`,
+    };
+  },
+};
+
 // ─────────────────────────────────────────────
 // Registry + per-role toolset
 // ─────────────────────────────────────────────
 
-const ALL_WRITE_TOOLS = [addLeadNote, createLeadTask, updateLeadStatus, reassignLead] as const;
+const ALL_WRITE_TOOLS = [
+  // Lead writes (E3)
+  addLeadNote,
+  createLeadTask,
+  updateLeadStatus,
+  reassignLead,
+  // Task writes (Brief 3)
+  createPersonalTask,
+  createGroupTask,
+  updateTaskStatus,
+  updateTask,
+  deleteTask,
+] as const;
 
 export const WRITE_TOOL_REGISTRY = new Map<string, ElayaWriteTool>(
   ALL_WRITE_TOOLS.map((t) => [t.name, t]),
@@ -397,6 +877,12 @@ export async function executeProposedAction(
   principal: ElayaPrincipal,
   action: ElayaActionRow,
 ): Promise<ProposalExecution> {
+  // delete_task is the only state-changing TASK proposal — it has a task-shaped target
+  // and its own resolver path (re-fetch by taskId, re-gate, fail-closed if already gone).
+  if (action.action_type === "delete_task") {
+    return executeProposedTaskDelete(principal, action);
+  }
+
   const payload = action.payload as {
     target?: { slug?: string | null; leadId?: string };
     args?: Record<string, unknown>;
@@ -443,9 +929,16 @@ export async function executeProposedAction(
 
       await markActionResolved(action.id, "executed", principal.userId, {
         ...action.payload,
-        after: { status: target, reason },
+        after: { status: target, reason, changed: core.result.changed },
       });
-      return { status: "executed", line: `Done — ${leadDisplayName(lead)} is now ${statusLabel(target)}.` };
+      // The proposal is resolved (executed) either way — but be honest about whether the row
+      // actually moved. A no-op (the lead was already in the target status) must NOT claim "Done".
+      return {
+        status: "executed",
+        line: core.result.changed
+          ? `Done — ${leadDisplayName(lead)} is now ${statusLabel(target)}.`
+          : `${leadDisplayName(lead)} was already ${statusLabel(target)} — nothing to change.`,
+      };
     }
 
     if (action.action_type === "reassign_lead") {
@@ -518,14 +1011,89 @@ export async function executeProposedAction(
       return { status: "executed", line: `Done — ${leadDisplayName(lead)} has been reassigned.` };
     }
 
-    // Unknown action_type on a proposed row — should never happen (only the two state
-    // tools insert proposed rows). Fail closed.
+    // Unknown LEAD action_type on a proposed row — should never happen (delete_task is
+    // routed away at the top; only the two lead state tools reach here). Fail closed.
     await markActionResolved(action.id, "failed", principal.userId);
     return { status: "failed", line: "I couldn't complete that action." };
   } catch (e) {
     console.error("[elaya-write] proposal execution threw:", e instanceof Error ? e.message : e);
     await markActionResolved(action.id, "failed", principal.userId);
     return { status: "failed", line: "Something went wrong completing that — try again." };
+  }
+}
+
+// ─────────────────────────────────────────────
+// Executor for a CONFIRMED delete_task proposal — called ONLY by executeProposedAction
+// (which routes the task-shaped target here). Re-fetches the task by id, re-checks
+// canMutateTask with the principal, then runs deleteTaskCore.
+//
+// OPTIMISTIC-CONCURRENCY (failure mode c): deleteTaskCore's .delete().eq(id) returns
+// ok:true even on a row that no longer exists (Supabase reports no error for a zero-row
+// delete) — so a stale delete would falsely claim "Done". We therefore re-fetch FIRST
+// and, if the row is gone, resolve the proposal and say "already removed" rather than
+// running the core. The label in the returned line is code-derived from the stored
+// payload (never model/lead text).
+// ─────────────────────────────────────────────
+async function executeProposedTaskDelete(
+  principal: ElayaPrincipal,
+  action: ElayaActionRow,
+): Promise<ProposalExecution> {
+  const payload = action.payload as {
+    target?: { taskId?: string };
+    args?: { taskTitle?: string; taskCategory?: string | null };
+  };
+  const taskId = payload.target?.taskId;
+  const label = payload.args?.taskTitle ?? "that task";
+
+  if (!taskId) {
+    await markActionResolved(action.id, "failed", principal.userId);
+    return { status: "failed", line: "I couldn't complete that — the proposal was incomplete." };
+  }
+
+  try {
+    const admin = createAdminClient();
+    const { data: task } = await admin
+      .from("tasks")
+      .select("id, assigned_to, created_by, group_id, task_category")
+      .eq("id", taskId)
+      .single();
+
+    // Already gone — a stale proposal against a deleted task. Be honest, don't error.
+    if (!task) {
+      await markActionResolved(action.id, "executed", principal.userId, {
+        ...action.payload,
+        after: { deleted: false, alreadyGone: true },
+      });
+      return { status: "executed", line: `"${label}" was already removed — nothing to delete.` };
+    }
+
+    // Re-gate with the principal (never the stale propose-time decision).
+    const allowed = await canMutateTask(admin, callerFromPrincipal(principal), task as TaskMutationTarget);
+    if (!allowed) {
+      await markActionResolved(action.id, "failed", principal.userId);
+      return { status: "failed", line: "I couldn't delete that — you're no longer allowed to act on it." };
+    }
+
+    const core = await deleteTaskCore(
+      actorFromPrincipal(principal),
+      { taskId },
+      // Prefer the live row's category over the propose-time snapshot.
+      { taskCategory: (task.task_category as string | null) ?? payload.args?.taskCategory ?? null },
+    );
+    if (!core.ok) {
+      await markActionResolved(action.id, "failed", principal.userId);
+      return { status: "failed", line: "I couldn't delete that task just now — try again in a moment." };
+    }
+
+    await markActionResolved(action.id, "executed", principal.userId, {
+      ...action.payload,
+      after: { deleted: true },
+    });
+    return { status: "executed", line: `Done — deleted "${label}".` };
+  } catch (e) {
+    console.error("[elaya-write] task delete execution threw:", e instanceof Error ? e.message : e);
+    await markActionResolved(action.id, "failed", principal.userId);
+    return { status: "failed", line: "Something went wrong deleting that — try again." };
   }
 }
 

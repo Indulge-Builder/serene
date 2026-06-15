@@ -10,7 +10,74 @@ import { normalizeToE164 } from "@/lib/utils/phone";
 import { updateLeadStatus } from "@/lib/actions/leads";
 import type { ActionResult } from "@/lib/types/index";
 import type { AppDomain } from "@/lib/types/database";
-import { isGiaDomain } from "@/lib/constants/domains";
+import { isGiaDomain, type GiaDomain } from "@/lib/constants/domains";
+import {
+  DOMAIN_DEAL_CONFIG,
+  type DealType,
+  type DealCategory,
+  type DealDuration,
+} from "@/lib/constants/deal-types";
+
+// ─────────────────────────────────────────────
+// resolveDealShapeForDomain — THE domain → {type, category, duration} resolver.
+//
+// deal_type is DERIVED from the domain (DOMAIN_DEAL_CONFIG), never trusted from
+// the client. Given the resolved domain plus the form's type-dependent extras
+// (membership duration, retail category), this returns the exact triplet to
+// write — or an error string when the extras don't match the domain's type:
+//   - membership  → duration required, category must be null
+//   - retail      → category required (and valid for the domain), duration null
+//   - sale        → both null
+// Shared by recordDeal (domain from the lead) and createWalkInDeal (domain from
+// the form). The DB CHECKs (migration 0122) are the backstop; this is the
+// user-facing gate that returns clean copy instead of a raw constraint error.
+// ─────────────────────────────────────────────
+type DealShapeInput = {
+  deal_duration?: DealDuration | null;
+  deal_category?: DealCategory | null;
+};
+type DealShape = {
+  deal_type:     DealType;
+  deal_duration: DealDuration | null;
+  deal_category: DealCategory | null;
+};
+
+function resolveDealShapeForDomain(
+  domain: GiaDomain,
+  input:  DealShapeInput,
+): { ok: true; shape: DealShape } | { ok: false; error: string } {
+  const config   = DOMAIN_DEAL_CONFIG[domain];
+  const dealType = config.type;
+
+  if (dealType === "membership") {
+    if (!input.deal_duration) {
+      return { ok: false, error: "Please select a membership duration." };
+    }
+    return {
+      ok: true,
+      shape: { deal_type: dealType, deal_duration: input.deal_duration, deal_category: null },
+    };
+  }
+
+  if (dealType === "retail") {
+    if (!input.deal_category) {
+      return { ok: false, error: "Please select a product category." };
+    }
+    if (!config.categories?.includes(input.deal_category)) {
+      return { ok: false, error: "That product category is not valid for this domain." };
+    }
+    return {
+      ok: true,
+      shape: { deal_type: dealType, deal_duration: null, deal_category: input.deal_category },
+    };
+  }
+
+  // sale (house / legacy) — no duration, no category
+  return {
+    ok: true,
+    shape: { deal_type: dealType, deal_duration: null, deal_category: null },
+  };
+}
 
 // ─────────────────────────────────────────────
 // Action: recordDeal (lead → deal path)
@@ -32,7 +99,7 @@ export async function recordDeal(
     return { data: null, error: first?.message ?? formErrors.generic };
   }
 
-  const { leadId, deal_type, deal_duration, deal_amount } = parsed.data;
+  const { leadId, deal_duration, deal_category, deal_amount } = parsed.data;
 
   // S-06: auth + access check
   const auth = await requireProfile();
@@ -58,6 +125,16 @@ export async function recordDeal(
 
   if (!hasAccess) return { data: null, error: formErrors.unauthorized };
 
+  // deal_type is DERIVED from the lead's domain — never client-supplied.
+  if (!isGiaDomain(lead.domain as string)) {
+    return { data: null, error: "Deals can only be recorded for Gia-domain leads." };
+  }
+  const resolved = resolveDealShapeForDomain(lead.domain as GiaDomain, {
+    deal_duration,
+    deal_category,
+  });
+  if (!resolved.ok) return { data: null, error: resolved.error };
+
   // S-02: sanitise free text; S-03: phone is already E.164 on the lead row
   const contactName = sanitizeText(
     [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || "Unknown",
@@ -72,8 +149,9 @@ export async function recordDeal(
     contact_email: lead.email ?? null,
     domain:        lead.domain as AppDomain,
     deal_amount,
-    deal_type,
-    deal_duration: deal_type === "membership" ? (deal_duration ?? null) : null,
+    deal_type:     resolved.shape.deal_type,
+    deal_duration: resolved.shape.deal_duration,
+    deal_category: resolved.shape.deal_category,
     assigned_to:   lead.assigned_to ?? null,
     won_at:        new Date().toISOString(),
   });
@@ -140,6 +218,18 @@ export async function createWalkInDeal(
     }
   }
 
+  // deal_type is DERIVED from the (server-resolved) domain — never client-supplied.
+  // Admin/founder were validated above; defensively re-assert Gia for agent/manager
+  // (caller.domain is AppDomain — a non-Gia manager has no deal config).
+  if (!isGiaDomain(finalDomain)) {
+    return { data: null, error: "Deals can only be recorded for Gia domains." };
+  }
+  const resolved = resolveDealShapeForDomain(finalDomain as GiaDomain, {
+    deal_duration: data.deal_duration,
+    deal_category: data.deal_category,
+  });
+  if (!resolved.ok) return { data: null, error: resolved.error };
+
   // S-03: normalise phone to E.164
   let normalizedPhone: string;
   try {
@@ -162,8 +252,9 @@ export async function createWalkInDeal(
       domain:        finalDomain,
       source:        data.source ?? null,
       deal_amount:   data.deal_amount,
-      deal_type:     data.deal_type,
-      deal_duration: data.deal_type === "membership" ? (data.deal_duration ?? null) : null,
+      deal_type:     resolved.shape.deal_type,
+      deal_duration: resolved.shape.deal_duration,
+      deal_category: resolved.shape.deal_category,
       assigned_to:   finalAssignedTo,
       won_at:        data.won_at ?? new Date().toISOString(),
     })

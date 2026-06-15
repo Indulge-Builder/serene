@@ -22,14 +22,33 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { ElayaActionRow, ElayaActionStatus, ElayaChannel } from "@/lib/types/elaya";
 
 export type ElayaActionType =
+  // Lead writes (E3)
   | "add_lead_note"
   | "create_lead_task"
   | "update_lead_status"
-  | "reassign_lead";
+  | "reassign_lead"
+  // Task writes (Brief 3) — task-shaped target. create_*/update_* execute inline;
+  // delete_task is the only state-changing tier (propose → confirm → execute).
+  | "create_personal_task"
+  | "create_group_task"
+  | "update_task_status"
+  | "update_task"
+  | "delete_task";
 
-/** Audit payload shape — targeted before/after snapshots (see migration 0118). */
+/**
+ * A write targets either a LEAD (slug + id) or a TASK/GROUP.
+ * Task-shaped target: `taskId` for a task row, `groupId` for a task_groups row (a group
+ * is a container, not a task — so create_group_task carries groupId with no taskId).
+ * At least one id is present; resolvers read whichever the action_type implies.
+ */
+export type ElayaLeadTarget = { slug: string | null; leadId: string };
+export type ElayaTaskTarget = { taskId?: string; groupId?: string | null };
+export type ElayaActionTarget = ElayaLeadTarget | ElayaTaskTarget;
+
+/** Audit payload shape — targeted before/after snapshots (see migration 0118).
+ * The jsonb column is unchanged — this is a TS-only contract widening (no migration). */
 export type ElayaActionPayload = {
-  target: { slug: string | null; leadId: string };
+  target: ElayaActionTarget;
   args: Record<string, unknown>;
   channel: ElayaChannel;
   before: Record<string, unknown> | null;

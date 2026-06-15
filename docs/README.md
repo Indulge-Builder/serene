@@ -2,7 +2,7 @@
 
 > **Purpose:** the index — what every file in `docs/` is, the reading orders, and where to find anything.
 > **Audience:** everyone. · **Source-of-truth scope:** the docs tree itself. Code is always the ultimate source of truth — docs describe reality, never aspiration; where a doc and the code disagree, the code wins and the doc gets fixed.
-> **Last verified:** 2026-06-11 (docs restructure).
+> **Last verified:** 2026-06-15.
 
 ---
 
@@ -21,7 +21,7 @@ docs/
 │   ├── database_architecture.sql ← raw pg_dump schema snapshot
 │   ├── auth-and-rbac.md     ← roles×domains, profiles foundation, sessions, RLS policy
 │   ├── caching.md           ← Redis key registry, TTLs, invalidation contracts
-│   └── migrations.md        ← conventions + full migration index (0001–0103)
+│   └── migrations.md        ← conventions + full migration index (0001–0121)
 ├── design/
 │   ├── DESIGN-DNA.md        ← the design constitution (law)
 │   ├── design-system.md     ← component implementation reference
@@ -31,13 +31,15 @@ docs/
 ├── pages/                   ← one spec per route (template below)
 │   dashboard · leads · lead-dossier · tasks · deals · campaigns · performance
 │   whatsapp · settings · auth · profile · user-management · ad-creatives · error-log
+│   budget · escalations · elaya
 ├── modules/
 │   ├── gia.md               ← the CRM module: lifecycle, end-to-end flow, SLA engine
 │   ├── revival.md           ← Lead Revival: silence detection → note-AI suppression gate → revive/review
-│   ├── elaya.md               ← AI presence (in design)
+│   ├── elaya.md             ← AI presence (live — read tools + Phase 2 agentic writes + voice input)
+│   ├── voice-dictation.md   ← Deepgram speech-to-text (one mic cluster, 4 surfaces + WhatsApp voice notes)
+│   ├── web-push.md          ← Web Push (VAPID) — second notification channel behind createNotification
 │   ├── sia.md               ← concierge module (not started)
-│   ├── elaya.md              ← reserved (undefined)
-│   └── call-intelligence.md ← helpdesk/call-intel spec (planned)
+│   └── call-intelligence.md ← helpdesk/call-intel spec (Phase 1 shipped — migrations 0109/0110)
 ├── integrations/
 │   ├── lead-ingestion.md    ← Pabbly/Meta webhook pipeline + raw-payload policy
 │   ├── whatsapp-gupshup.md  ← Gupshup config, webhook, templates, orchestrator, logs

@@ -504,6 +504,7 @@ Standard paper shell. Full-width single column. Max-width 860px, centered.
   - Trailing cluster: `CategoryTag` pill · city/country · chevron
 - Row chrome: `var(--theme-paper)` bg, `var(--theme-paper-border)` border, `var(--shadow-1)`, `var(--radius-md)`; hover `var(--shadow-2)` + `translateY(-1px)` (card-list pattern); keyboard-activatable (`role="button"`, Enter/Space)
 - Clicking a row opens **`CaseDetailModal`** (composes `ui/modal.tsx`; loaded via `next/dynamic` + `useMountOnFirstOpen`) showing EVERYTHING saved on the case: category, featured badge, location, full summary (no clamp), outcome note, all tags
+- **Edit (admin/founder only, shipped 2026-06-15):** when the page passes `canEdit` (computed from `profile.role`, threaded page → `HelpdeskSearch` → `CaseDetailModal`), the detail modal footer carries an **Edit** button that opens the SHARED `AddSuggestionModal` prefilled in edit mode (`serviceCase` prop → `upsertServiceCaseAction` UPDATE branch on `id`; one form, no `EditSuggestionModal`). The hide is cosmetic — `requireProfile(['admin','founder'])` + the `service_cases` UPDATE RLS are the real gate. Saving closes both modals and `revalidatePath('/helpdesk')` re-seeds the library.
 - `CategoryTag` (`src/components/intelligence/CategoryTag.tsx`) is THE static category pill — shared by `CaseCard`, `CaseListRow`, and the modal (the filter button stays `CategoryPill`)
 - `CaseCard` (stacked preview) remains the dossier `ServiceInterestCard` row
 
@@ -773,8 +774,13 @@ Step 9 — DOSSIER CARD
   Add getCasesForLead() to the dossier page Promise.all
   Render ServiceInterestCard in dossier right panel
 
-Step 10 — ADMIN CRUD (optional sprint, can defer)
-  Simple form (modal) for admin/founder to add/edit cases without touching Supabase dashboard
+Step 10 — ADMIN CRUD (shipped: create + edit)
+  AddSuggestionModal (modal) for admin/founder to add cases without touching the
+  Supabase dashboard (AddSuggestionButton CTA). EDIT shipped 2026-06-15: the same
+  modal takes an optional serviceCase prop (prefill + id-on-submit → the
+  upsertServiceCaseAction UPDATE branch); opened from CaseDetailModal's footer
+  Edit button (canEdit = admin/founder, server-gated). No EditSuggestionModal.
+  Still deferred: delete (no UI path — Supabase dashboard for removals).
 ```
 
 ---

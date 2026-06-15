@@ -1,7 +1,10 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { getNotifications } from "@/lib/services/notifications-service";
 import { DEFAULT_GIA_DOMAIN, GIA_DOMAINS } from "@/lib/constants/domains";
+import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
+import { PageControls } from "@/components/layout/PageControls";
 import type { PerformancePeriod } from "@/lib/services/performance-service";
 import { ManagerPerformanceSkeleton } from "./ManagerPerformanceSkeleton";
 import { PerformanceSkeleton } from "./PerformanceSkeleton";
@@ -157,10 +160,17 @@ export default async function PerformancePage({
   if (profile.role === "agent") {
     return (
       <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
-        <div className="mb-6">
+        <div className="flex items-center justify-between gap-4 mb-6">
           <h1 className="type-page-title m-0">
             Your Performance<span className="page-title-dot">.</span>
           </h1>
+          {TOP_BAR_ENABLED && (
+            <PageControls
+              userId={profile.id}
+              isPrivileged={false}
+              notificationsPromise={getNotifications(profile.id)}
+            />
+          )}
         </div>
         <Suspense fallback={<PerformanceSkeleton />}>
           <AgentPerformanceAsync agentId={profile.id} agentDomain={profile.domain} />
@@ -174,10 +184,17 @@ export default async function PerformancePage({
   if (profile.role === "manager") {
     return (
       <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
-        <div className="mb-6">
+        <div className="flex items-center justify-between gap-4 mb-6">
           <h1 className="type-page-title m-0">
             Team Performance<span className="page-title-dot">.</span>
           </h1>
+          {TOP_BAR_ENABLED && (
+            <PageControls
+              userId={profile.id}
+              isPrivileged={false}
+              notificationsPromise={getNotifications(profile.id)}
+            />
+          )}
         </div>
         <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
           <PerformanceFilters
@@ -225,10 +242,17 @@ export default async function PerformancePage({
 
   return (
     <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
-      <div className="mb-6">
+      <div className="flex items-center justify-between gap-4 mb-6">
         <h1 className="type-page-title m-0">
           Performance<span className="page-title-dot">.</span>
         </h1>
+        {TOP_BAR_ENABLED && (
+          <PageControls
+            userId={profile.id}
+            isPrivileged={false}
+            notificationsPromise={getNotifications(profile.id)}
+          />
+        )}
       </div>
 
       <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">

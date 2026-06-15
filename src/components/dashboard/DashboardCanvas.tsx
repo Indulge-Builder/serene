@@ -24,7 +24,10 @@ import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { WIDGET_MAP, type WidgetSize, type WidgetColSpan } from '@/lib/constants/dashboard-widgets';
 import { DashboardWidgetSlot, type WidgetProps } from './DashboardWidgetSlot';
 import { DashboardDateFilter } from './DashboardDateFilter';
+import { PageControls } from '@/components/layout/PageControls';
+import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import type { DatePreset, DateRange } from '@/lib/utils/date-range';
+import type { Notification } from '@/lib/types/database';
 
 /*
  * Bento grid — 12 equal columns.
@@ -154,6 +157,8 @@ type DashboardCanvasProps = WidgetProps & {
   toParam:      string | null;
   /** Resolved DateRange (from the RSC, computed from preset/params). */
   dateRange:    DateRange;
+  /** Streamed notification seed for the title-row bell (TOP_BAR_ENABLED). */
+  notificationsPromise?: Promise<Notification[]>;
 };
 
 export function DashboardCanvas({
@@ -167,6 +172,7 @@ export function DashboardCanvas({
   fromParam,
   toParam,
   dateRange,
+  notificationsPromise,
 }: DashboardCanvasProps) {
   const { layout, removeWidget, resizePlacement, reorderWidgets, resetToDefaults } =
     useDashboardLayout(userId, role);
@@ -224,6 +230,17 @@ export function DashboardCanvas({
               activePreset={activePreset}
               fromParam={fromParam}
               toParam={toParam}
+            />
+          )}
+
+          {/* Notification bell (TOP_BAR_ENABLED) — dashboard has no standard
+              server title row, so it rides the canvas header cluster. Bell-only
+              (no domain selector — dashboard scopes via widget mode, not ?domain=). */}
+          {TOP_BAR_ENABLED && notificationsPromise && (
+            <PageControls
+              userId={userId}
+              isPrivileged={false}
+              notificationsPromise={notificationsPromise}
             />
           )}
 

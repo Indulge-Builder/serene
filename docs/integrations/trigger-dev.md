@@ -2,16 +2,18 @@
 
 > **Purpose:** the async-job layer — what runs on Trigger.dev, the idempotency/tag conventions, and the hook points in the action layer.
 > **Audience:** engineers. · **Source-of-truth scope:** job mechanics and conventions. The SLA *business rules* (thresholds, recipients) live in `../modules/gia.md` § SLA Engine.
-> **Last verified:** 2026-06-11 against `trigger.config.ts`, `src/trigger/lead-sla.ts`, `src/trigger/task-reminders.ts`, `src/lib/actions/sla.ts`.
+> **Last verified:** 2026-06-15 against `trigger.config.ts`, `src/trigger/lead-sla.ts`, `src/trigger/task-reminders.ts`, `src/trigger/lead-revival.ts`, `src/lib/actions/sla.ts`.
 
 ---
 
 ## 1. Why it exists (A-12)
 
 Any async work over 3 seconds or needing retry/delayed execution runs on Trigger.dev — never in
-a route handler. In Serene that is exactly two job families: **lead SLA timers** and **task due
-reminders**. (Sub-3-second post-response work — notification sends — uses `after()` instead;
-see `whatsapp-gupshup.md` §4.)
+a route handler. In Serene that is three job families: **lead SLA timers**, **task due
+reminders**, and the daily **lead-revival sweep**. The first two are event/queue jobs (scheduled
+or cancelled in response to a lead/task action); the third is the project's **first scheduled
+(cron) task** — it fires on a fixed clock, not in response to an event. (Sub-3-second
+post-response work — notification sends — uses `after()` instead; see `whatsapp-gupshup.md` §4.)
 
 ## 2. Configuration
 
@@ -25,7 +27,7 @@ see `../operations/environments.md`).
 Job files must be exported from `src/trigger/` for the scanner to register them — never move a
 `task()` definition elsewhere.
 
-## 3. The two job files
+## 3. The job files
 
 ### `src/trigger/lead-sla.ts` — Gia follow-up engine jobs (SLA + cadence)
 
@@ -67,6 +69,53 @@ Job files must be exported from `src/trigger/` for the scanner to register them 
 - Both jobs read their TASK-01A/B policy rows per run — never module-cached.
 - `deleteTaskAction` cancels the reminder **before** the DB delete — if cancel throws, the
   delete is aborted (no orphaned reminders for deleted tasks).
+
+### `src/trigger/lead-revival.ts` — daily silence-detection sweep (Lead Revival R1)
+
+The project's **first `schedules.task` (cron) job** — every other Trigger.dev job above is
+event-driven (scheduled/cancelled by a lead or task action). This one fires on a fixed clock.
+It is the single periodic entry point the revival spec calls for — **not** a second scheduler and
+**not** a duplicate of the SLA engine's per-lead delayed runs.
+
+| Export | What it does |
+| ------ | ------------ |
+| `sweepRevivalCandidatesTask` | `schedules.task`, `id: 'sweep-revival-candidates'`, cron `0 2 * * *` timezone `Asia/Kolkata` = **07:30 IST daily** (the gate runs at shift-open so freshly-created "Revived" tasks are waiting when agents start their day). `maxDuration: 300`. Server-only modules are pulled in via dynamic `import()` inside `run()` to keep them out of the Trigger.dev module scan |
+
+**The sweep, per run:**
+
+1. Read the active `revival_policies` rows (admin-client, **per run — never module-cached**, the
+   `sla_policies` pattern). Each policy is keyed by `trigger_status` and carries a per-status
+   `silence_days` threshold + a `daily_cap_per_agent`. Editable from `/settings`; empty → no-op.
+2. Per status: `findSilentLeadsForStatus(status, silence_days)` returns leads silent past the
+   threshold with **no open candidate** (an anti-join, backstopped by the partial UNIQUE index —
+   together the **one-open-candidate guard**).
+3. Per lead: the **note-AI suppression gate** (`judgeLeadForRevival`, `revival-gate.ts`) — ONE
+   structured call returning one of **three verdicts** + reasoning, reusing the Elaya `routing`/Haiku
+   provider + `maskPii` (no tools, no new SDK import). It **fails closed to `unsure`** on any
+   error — a glitch never auto-revives AND never auto-dismisses:
+   - **`dismiss`** (confident junk) → a candidate written `status = 'dismissed'` at creation. It is
+     the audit/training log; the review tab filters `status = 'open'`, so it **never surfaces for a
+     human**. No task, no review.
+   - **`revive` under the agent's daily cap** → `reviveLeadCore` (`lead-mutations.ts`) creates a
+     **"Revived"** follow-up task via the **E2/E3 `createLeadTaskCore` path** (inheriting cache
+     invalidation, activity logging, SLA rails, and the task reminder identically — it **NEVER**
+     touches the leads row), plus an `actioned` candidate. Due date via
+     `nextBusinessDeadline(now, REVIVAL_TASK_DUE_BUSINESS_MINUTES)`.
+   - **`revive` but cap reached**, or **`unsure`** → an **open** candidate routed to the review tab
+     (`/leads?revival=true`). Cap-overflow revivals are **never dropped, never auto-tasked**.
+4. The daily cap is tracked per agent in-run: seeded from `countAutoRevivesToday(agentId)` then
+   decremented locally (the DB count only sees rows already written, so a single run also respects
+   the cap). The cap is only decremented when the `actioned` candidate row actually lands — if the
+   one-open guard rejects a racing duplicate, the task still exists but the count isn't
+   double-spent.
+
+- **Idempotency:** the **daily cron** + the **one-open-candidate guard** make a re-run safe — a lead
+  with a live open candidate is skipped in step 2, and the partial UNIQUE index backstops any
+  concurrent double-insert. Trigger.dev also dedups the scheduled run itself per `scheduleId` per
+  tick. (If `reviveLeadCore` fails, **no candidate is written** so the lead is simply re-judged on
+  the next sweep — the cap isn't burned.)
+- **Layer over leads, never a mutation:** the sweep only writes `revival_candidates` and creates
+  tasks. It never updates lead status or columns. Full contract: `../modules/revival.md`.
 
 ## 4. Hook points in the action layer (`lib/actions/leads.ts`)
 

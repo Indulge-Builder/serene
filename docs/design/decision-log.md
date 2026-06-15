@@ -11,9 +11,15 @@ A design rule changed without an entry here is not a change — it is a violatio
 
 ## Decided
 
+### 2026-06-15 — A deal's type is derived from its domain, never free-picked
+
+- **Decision:** `deals.deal_type` is determined by the deal's Gia domain, not chosen independently — `onboarding → membership`, `shop → retail`, `house/legacy → sale`. Retail deals additionally require a product `deal_category`. The mapping lives once in `DOMAIN_DEAL_CONFIG` (`src/lib/constants/deal-types.ts`, the `DOMAIN_INTERESTS` pattern) and drives the form, the action's cross-field validation, the filter items, and is mirrored by the DB CHECKs (migration 0122: `deals_deal_type_check` admits `sale`; `deals_retail_category_check` couples `retail ⇔ category`). The type is derived **server-side** in both write paths (`recordDeal` from the lead's domain, `createWalkInDeal` from the server-forced deal domain) — a client-sent `deal_type` is ignored (the field was removed from both Zod schemas).
+- **Rationale:** allowing domain and type to be picked independently produced contradictory rows (an `onboarding` deal typed `retail`). Domain already carries the business meaning of the deal, so the type is a pure function of it — encoding that removes a whole class of data-integrity bugs and keeps the type/category vocabularies single-sourced (R-01).
+- **Scope:** all deal creation (`NewDealModal` walk-ins + the lead→won `WonDealModal` path) and the `/deals` filter. The category filter surfaces only inside the `shop` domain slice. Adding a Gia domain or a retail category is one edit to `DOMAIN_DEAL_CONFIG` + one CHECK-extending migration.
+
 ### 2026-06-12 — D-01 carve-out: raw audio to Deepgram for voice-note transcription
 
-- **Decision:** voice-note dictation sends raw recorded audio to Deepgram (Nova-3 multilingual) under their no-training / zero-retention API terms. This is a logged, scoped carve-out from D-01 ("no raw PII reaches an external AI model — pseudonymise first").
+- **Decision:** voice-note dictation sends raw recorded audio to Deepgram (Nova-2, `hi-Latn` for Hinglish — Roman-script Hindi) under their no-training / zero-retention API terms. This is a logged, scoped carve-out from D-01 ("no raw PII reaches an external AI model — pseudonymise first"). (Originally Nova-3 `language=multi`; the production model was later narrowed to Nova-2 `hi-Latn` — the carve-out itself is unchanged.)
 - **Rationale:** audio cannot be pseudonymised — speech *is* the payload. The exposure is bounded: audio is transcribed in-memory and discarded (never written to Storage, disk, or DB); the transcript enters the system only as a human-reviewed editable draft saved through the existing sanitised `addLeadNote` path; the Deepgram key is server-only (`transcription-service.ts` is the sole call site).
 - **Scope:** `src/lib/services/transcription-service.ts` only. Any future voice surface (Elaya's voice channel) must route through the same service and inherits the same no-storage contract. Transcripts containing client data are never logged (D-05).
 

@@ -95,50 +95,62 @@ export function LeadNotesSection({ notes }: Props) {
         </div>
       ) : (
         <div style={{ padding: 'var(--space-5)' }}>
-          <div
-            style={{
-              position:    'relative',
-              paddingLeft: 'var(--space-6)',
-            }}
-          >
-            {/* Vertical line */}
-            <div
-              style={{
-                position:    'absolute',
-                left:        '7px',
-                top:         '8px',
-                bottom:      '8px',
-                width:       '1px',
-                background:  'var(--theme-paper-border)',
-              }}
-            />
-
-            {/* Notes */}
-            {notes.map((note, idx) => {
-              const outcomeBadge = note.call_outcome ? OUTCOME_BADGE[note.call_outcome] : null;
-              return (
+          {/* Notes */}
+          {notes.map((note, idx) => {
+            const outcomeBadge = note.call_outcome ? OUTCOME_BADGE[note.call_outcome] : null;
+            const isLast       = idx === notes.length - 1;
+            return (
+              <div
+                key={note.id}
+                style={{
+                  display:  'flex',
+                  gap:      'var(--space-3)',
+                  position: 'relative',
+                }}
+              >
+                {/* Dot + connector column — alignItems centers both the dot and the 1px rule on the track (mirrors LeadActivityLog) */}
                 <div
-                  key={note.id}
                   style={{
-                    position:     'relative',
-                    paddingBottom: idx === notes.length - 1 ? 0 : 'var(--space-5)',
+                    display:        'flex',
+                    flexDirection:  'column',
+                    alignItems:     'center',
+                    flexShrink:     0,
+                    width:          '15px',
                   }}
                 >
                   {/* Dot */}
                   <div
                     style={{
-                      position:     'absolute',
-                      left:         '-var(--space-6)',
-                      top:          '6px',
                       width:        '15px',
                       height:       '15px',
                       borderRadius: 'var(--radius-full)',
                       background:   'var(--theme-paper)',
                       border:       '2px solid var(--theme-paper-border)',
-                      marginLeft:   '-22px',
+                      flexShrink:   0,
+                      marginTop:    'var(--space-1)',
                     }}
                   />
+                  {/* Connector line */}
+                  {!isLast && (
+                    <div
+                      style={{
+                        flex:       1,
+                        width:      '1px',
+                        background: 'var(--theme-paper-border)',
+                        minHeight:  'var(--space-5)',
+                      }}
+                    />
+                  )}
+                </div>
 
+                {/* Content column */}
+                <div
+                  style={{
+                    flex:          1,
+                    minWidth:      0,
+                    paddingBottom: isLast ? 0 : 'var(--space-5)',
+                  }}
+                >
                   {/* Note card */}
                   <div
                     style={{
@@ -215,9 +227,9 @@ export function LeadNotesSection({ notes }: Props) {
                     </div>
                   </div>
                 </div>
+              </div>
               );
             })}
-          </div>
         </div>
       )}
     </div>

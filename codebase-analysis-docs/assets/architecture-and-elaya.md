@@ -18,9 +18,11 @@ flowchart TB
     subgraph external[Backends]
       PG[(Supabase Postgres + RLS)]
       RDS[(Upstash Redis cache-aside)]
-      TD[Trigger.dev v4]
+      TD[Trigger.dev v4 · SLA + reminders + revival cron]
       GS[Gupshup v1]
       AN[Anthropic API]
+      DG[Deepgram · voice transcription]
+      WP[Web Push · VAPID]
     end
 
     UI -- navigate --> PROXY --> RSC
@@ -32,6 +34,8 @@ flowchart TB
     ACT -- invalidate --> RDS
     ACT -- revalidatePath --> RSC
     ACT -- after() awaited --> GS
+    ACT -- transcribe --> DG
+    ACT -- dispatchPush (in createNotification) --> WP
     TD -- callback --> ACT
     PG -- Realtime --> UI
     AN -- SSE --> UI

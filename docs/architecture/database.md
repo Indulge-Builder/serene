@@ -2,7 +2,7 @@
 
 > **Purpose:** the schema narrative — every table, its purpose, key columns, and relationships. Companion to the raw dump in `database_architecture.sql`.
 > **Audience:** engineers. · **Source-of-truth scope:** what each table is *for* and its contracts. Exact DDL = the dump + `supabase/migrations/`; per-page query usage = `../pages/*.md`; RLS/authorization = `auth-and-rbac.md`.
-> **Last verified:** 2026-06-11 against `database_architecture.sql` (pre-0098 dump — refresh via `supabase db dump` after applying 0098–0103; the dump lacks `leads.search_text`) and the migration files.
+> **Last verified:** 2026-06-15 against the migration files (through 0121). The `database_architecture.sql` dump is pre-0098 — refresh via `supabase db dump` after applying 0098–0121; the dump lacks `leads.search_text`, `leads.service_interests`, `profiles.app_icon`, and the Call Intelligence / SLA / Elaya / Lead Revival / push tables.
 
 ---
 
@@ -23,7 +23,10 @@ CHECK constraints, mirrored as typed constants in `src/lib/constants/`.
 One row per team member, `id` = `auth.users.id`. The root of all authorization (A-01).
 Key columns: `role user_role` (default `agent`), `domain app_domain` (default `concierge`),
 `is_active` (soft-deactivate — never delete), `is_on_leave`, `theme` (5-value CHECK; DB-stored so
-it follows the user across devices), `timezone` (default `Asia/Kolkata`), `reports_to` (self-FK),
+it follows the user across devices), `app_icon` (0121 — `text NOT NULL DEFAULT 'icon-1'`, CHECK in
+`icon-1..icon-4`; the PWA home-screen icon pick, mirrors `theme` exactly and rides the same
+`updateProfile` action; no new RLS — the 0001 `profiles_update` self-update policy covers it),
+`timezone` (default `Asia/Kolkata`), `reports_to` (self-FK),
 `last_seen_at` (**dormant** — no code writes it). Rows are created only by the
 `on_auth_user_created` trigger; `email` is not editable after creation (truth lives in
 `auth.users`); `phone` is E.164.
@@ -55,8 +58,10 @@ in_discussion → nurturing → won | lost | junk`, `status_changed_at`, `last_a
 `{}` means "captured, nothing present", never SQL NULL), call telemetry (`call_count`,
 `last_call_outcome`), dedup (`previous_lead_id` self-FK — a terminal lead re-enquiring spawns a
 new lead linked back), URL identity (`slug` — unique, human-readable `priya-sharma-9182`,
-trigger-generated, immutable), and `search_text` (0098 — STORED generated column over
-name/email/city/phone backing the trigram search index).
+trigger-generated, immutable), `search_text` (0098 — STORED generated column over
+name/email/city/phone backing the trigram search index), and `service_interests text[]` (0109 —
+the per-domain Call Intelligence interest vocabulary, **never an enum**; partial GIN; unknown
+values dropped at ingestion, never rejected).
 
 ### `lead_activities` · `lead_notes`
 
@@ -135,7 +140,137 @@ campaign). Files live in the `ad-creatives` Storage bucket.
 In-app inbox rows: `recipient_id`, `type` CHECK (`lead_assigned`, `lead_won`, `task_due`,
 `task_assigned`, `mention`, `system`, `sla_breach_agent`, `sla_breach_manager`), `title`,
 `body`, `action_url` (relative paths only — CHECK rejects `http%`), `read_at`. Realtime
-enabled — drives the bell badge live.
+enabled — drives the bell badge live. The `type` CHECK has grown over time —
+`sla_breach_founder` + `task_overdue_manager` were added in 0113.
+
+### `push_subscriptions` (0120)
+
+Per-device Web Push (VAPID) endpoints — the **second** notification delivery channel behind the
+in-app `notifications` row, fanned out from inside `createNotification` (zero call-site edits).
+`profile_id` → profiles, `endpoint` (UNIQUE — one row per device, so one user holds many rows),
+`p256dh`, `auth`, `user_agent`, `created_at`. `idx_push_subscriptions_profile` serves the dispatch
+read. **Owner-only RLS** (`profile_id = auth.uid()`): SELECT/INSERT/DELETE for the owner (the
+browser subscribes/unsubscribes on the session client); **no UPDATE policy** — a re-subscribe is an
+upsert on `endpoint`. The cross-user dispatch read and the 404/410 dead-endpoint prune in
+`dispatchPush` (`push-service.ts`) run on the admin client. **Non-fatal second channel** — the
+in-app row stays the source of truth.
+
+## Follow-up & revival engines (3 config/ledger tables)
+
+### `sla_policies` (0111)
+
+Config table behind the Gia follow-up (SLA) engine — one row per rule, read per job run via the
+admin client (never module-cached, the `sla_policies` pattern), so a threshold edit applies on the
+next fire without a deploy. `code` PK; `trigger_kind` CHECK (`status` | `outcome` | `task_due`);
+`trigger_value`; `threshold_minutes`; `recipient_role` CHECK (`agent` | `manager` | `founder`);
+`auto_task`; `channels text[]` (`in_app`/`whatsapp`; the CAD task-creating family carries `{}`);
+`hours_mode` CHECK (`agent_shift` | `business` | `clock`); `active`. Seeded with the 8 live SLA
+rules copied verbatim from `SLA_RULES` (the constants' `active` status trigger is stored as the
+real status `nurturing`) + `SLA-01C` (founder escalation), `CAD-01A/B/C` (outcome cadence) and
+`TASK-01A/B` (gia task due / overdue). **RLS: admin/founder SELECT only**; writes are service-role
+(a future settings UI goes through an admin-gated action).
+
+### `revival_policies` · `revival_candidates` (0119 — Lead Revival R1)
+
+A layer *over* leads — Revival **never mutates the leads row**.
+
+- **`revival_policies`** — per-status silence config (the `sla_policies` pattern): `trigger_status`
+  PK CHECK (`touched` | `in_discussion` | `nurturing` — **cold excluded by design**),
+  `silence_days`, `daily_cap_per_agent` (default 25), `active`; `update_updated_at` trigger. Read
+  per sweep run via the admin client. Seeded touched=60d / in_discussion=60d / nurturing=90d.
+  **RLS: admin/founder SELECT only**; writes service-role.
+- **`revival_candidates`** — the per-lead candidate ledger. `lead_id`, **denormalised `assigned_to`**
+  (so the daily-cap count is a native `.eq('assigned_to')` filter, not a silently-dropped PostgREST
+  embed filter on a `head:true` count), `verdict` CHECK (`revive` | `unsure` | `dismiss` — the
+  note-AI gate's three-way call), `ai_reasoning`, `status` CHECK (`open` | `actioned` | `dismissed`),
+  `trigger_status`, `suggested_revive_at`, `resolved_at`/`resolved_by`. Partial UNIQUE
+  `idx_revival_candidates_one_open (lead_id) WHERE status='open'` is the structural one-open-candidate
+  guard. **A-11 carve-out** (the `elaya_actions` precedent): **SELECT-only RLS** scoped by role/domain
+  via an `EXISTS` subquery on `leads`; **no user INSERT/UPDATE/DELETE** — all writes are service-role;
+  the `open → actioned/dismissed` flip is a resolve-once admin-client UPDATE (column restriction
+  enforced in `revival-service`, not SQL).
+
+## Call Intelligence (2 tables, 0110)
+
+The dossier "brag library" + on-call talking points. `category` is `text`, **not an enum**
+(accommodates Shop/House/Legacy vocabularies, same reasoning as `leads.service_interests`).
+
+### `service_cases`
+
+Curated real past deliveries, searched live during calls (`/helpdesk` loads the full set once; the
+dossier card pulls ≤6). `domain app_domain`, `category text`, `tags text[]` (freeform; every case
+carries its city as a lowercase slug tag powering the dossier city match), `title`/`summary`/
+`outcome_note`, `city`/`country`, `is_featured`/`sort_order`, audit columns + `update_updated_at`
+trigger. `search_vector` is a **weighted STORED generated** `tsvector` (title A, summary/location B,
+tags C) backed by a GIN index — unused in Phase 1 (filtering is client-side) but makes the
+server-side FTS switch an action-layer change, not a schema change. A **dormant**
+`embedding vector(1536)` exists from day one (NULL until Phase 2; **no HNSW index** — that is the
+Phase 2 migration). Indexes on tags (GIN), category, domain, `lower(city)`, and featured/sort.
+
+### `conversation_hooks`
+
+Category-scoped talking points agents say on calls. `domain app_domain`, `category text` (matches
+`service_cases.category` values), `hook` (the full line), `context` (optional guidance),
+`sort_order`. Indexes on category and domain.
+
+**RLS (both tables):** all-authenticated SELECT; **admin/founder-only writes** via InitPlan-hoisted
+`(SELECT get_user_role())`.
+
+## Elaya AI foundation (6 tables, 0116)
+
+The substrate every AI feature plugs into. RLS posture across all six: users read their own rows;
+config tables (`llm_providers`, `elaya_settings`) are admin/founder SELECT; all assistant/tool/
+context/action/config **writes are service-role only** (the authed route is the trust boundary).
+
+### `elaya_conversations`
+
+One row per chat session. `user_id` → profiles, `channel` CHECK (`in_app` | `whatsapp` — present
+from day one so the WhatsApp channel lands without a schema change), `title`, `last_message_at`
+(drives recent-list ordering), `archived_at`. The **24h session expiry is enforced in
+`elaya-service`, not SQL**. Self SELECT + self `in_app` INSERT only; `last_message_at` bumps and
+archiving go through the service-role client (no UPDATE/DELETE policy).
+
+### `elaya_messages`
+
+**Append-only (A-11)** — no UPDATE or DELETE, ever. `conversation_id` → conversations,
+denormalised `sender_id` (the human author on `role='user'` rows; NULL for assistant/tool — a CHECK
+enforces `role <> 'user' OR sender_id IS NOT NULL`), `role` CHECK (`user` | `assistant` | `tool`),
+`channel`, `content`, `tool_calls jsonb` (the assistant turn's normalised tool calls), `meta jsonb`
+(provider/model/usage snapshot). A partial `(sender_id, created_at DESC) WHERE role='user'` index
+serves the server-enforced daily message cap. Users SELECT messages on their own conversations and
+INSERT only `role='user'` rows on them; assistant/tool rows are service-role writes.
+
+### `user_context`
+
+One durable context row per user (`user_id` PK, `context jsonb`). Self SELECT only; **writes
+service-role** (the context writer lands in a later phase — empty until then).
+
+### `elaya_actions`
+
+The agentic-write ledger — **reserved empty in 0116, filled in 0118** (Elaya Phase 2 / E3).
+`conversation_id`, `message_id`, `user_id`, `action_type`, `payload jsonb` (target/args/channel/
+before/after snapshots), `status` proposed→approved/dismissed/executed/failed, `resolved_at`/
+`resolved_by`. **State-machine table, NOT append-only** (an A-11 carve-out — it has
+`status`/`resolved_at`/`resolved_by` and doubles as the trust + rollback audit trail): the
+`proposed → executed/failed/dismissed` flip is a resolve-once service-role admin-client UPDATE
+(same posture as `whatsapp_messages` delivery receipts). 0118 adds the partial
+`idx_elaya_actions_pending (conversation_id, created_at DESC) WHERE status='proposed'` (the
+per-turn confirmation-resolver read) and a lifecycle `COMMENT ON TABLE` — no columns, no CHECK, no
+RLS change. **Never add a user UPDATE policy.** Self SELECT only; all writes service-role.
+
+### `llm_providers`
+
+Job-type → provider+model config (the `sla_policies` pattern: read per request via the admin
+client, never module-cached — a model switch applies on the next message with no deploy).
+`job_type` PK CHECK (`routing` | `reasoning`), `provider` CHECK (`anthropic` | `google` |
+`openai`), `model`, `max_tokens`, `active`. Seeded `routing → claude-haiku-4-5`,
+`reasoning → claude-sonnet-4-6`. RLS admin/founder SELECT; writes service-role.
+
+### `elaya_settings`
+
+Small key/value config (same read-per-request contract). `key` PK, `value jsonb`. Seeded
+`daily_message_cap=200`, `pii_masking_depth='light'`, `session_expiry_hours=24`. RLS admin/founder
+SELECT; writes service-role.
 
 ## Storage buckets
 

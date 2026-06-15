@@ -29,7 +29,7 @@ import {
 } from '@/lib/elaya/tools/write-registry';
 import { getLeadsByRole, getLeadBySlug, getLeadNotesFull } from '@/lib/services/leads-service';
 import { getDealsByRole } from '@/lib/services/deals-service';
-import { getGiaTasksForUser, getPersonalTasks } from '@/lib/services/tasks-service';
+import { getGiaTasksForUser, getPersonalTasks, getGroupTasks } from '@/lib/services/tasks-service';
 import {
   getAgentTodayPulse,
   getAgentRosterPerformance,
@@ -37,6 +37,7 @@ import {
 } from '@/lib/services/performance-service';
 import { getCasesForLead, getHooksForCategories, getHelpdeskLibrary } from '@/lib/services/intelligence-service';
 import { LEAD_STATUSES } from '@/lib/constants/lead-statuses';
+import { DEAL_TYPE_ENUM, DEAL_CATEGORY_ENUM } from '@/lib/constants/deal-types';
 import { DEFAULT_GIA_DOMAIN, isGiaDomain } from '@/lib/constants/domains';
 import type { UserRole } from '@/lib/types';
 import type { LeadStatus } from '@/lib/types/database';
@@ -201,17 +202,24 @@ const getLeadDetails: ElayaTool = {
 const getMyTasks: ElayaTool = {
   name: 'get_my_tasks',
   description:
-    'The current user’s open work: Gia follow-up tasks (managers see their domain’s) plus personal tasks. ' +
-    'Call when the user asks what to do next, what is due, or about follow-ups.',
+    'The current user’s open work across all three kinds: Gia lead follow-up tasks (managers see ' +
+    'their domain’s), personal tasks, and group/team task workspaces. ' +
+    'Call when the user asks what to do next, what is due, about follow-ups, or about team/group work.',
   schema: z.object({}),
   jsonSchema: { type: 'object', properties: {}, additionalProperties: false },
   run: async (principal) => {
-    const [giaTasks, personal] = await Promise.all([
+    const [giaTasks, personal, groups] = await Promise.all([
       getGiaTasksForUser(principal.userId, principal.role, principal.domain),
       getPersonalTasks(principal.userId, { limit: 20 }),
+      getGroupTasks({}, { userId: principal.userId }),
     ]);
+    // taskId / groupId are surfaced DELIBERATELY (Brief 3): they are the handle the
+    // write tools (update_task_status / update_task / delete_task) target. Without an
+    // id the model cannot name a task to act on. The id is an opaque caller-scoped
+    // UUID; the row is already one this principal is permitted to see.
     return {
       followUps: giaTasks.slice(0, 25).map((t) => ({
+        taskId: t.id,
         title: t.title,
         status: t.status,
         priority: t.priority,
@@ -222,11 +230,21 @@ const getMyTasks: ElayaTool = {
         leadPhone: t.lead_phone,
       })),
       personalTasks: personal.tasks.map((t) => ({
+        taskId: t.id,
         title: t.title,
         status: t.status,
         priority: t.priority,
         dueAt: t.due_at,
         tags: t.tags,
+      })),
+      groupTasks: groups.map((g) => ({
+        groupId: g.id,
+        title: g.title,
+        status: g.status,
+        priority: g.priority,
+        dueAt: g.due_at,
+        subtaskCount: g.subtask_count,
+        completedCount: g.completed_count,
       })),
     };
   },
@@ -239,26 +257,29 @@ const searchDeals: ElayaTool = {
     'Call for questions about revenue, wins, memberships or retail sales.',
   schema: z.object({
     search: z.string().trim().max(120).optional(),
-    deal_type: z.enum(['membership', 'retail']).optional(),
+    deal_type: z.enum(DEAL_TYPE_ENUM).optional(),
+    deal_category: z.enum(DEAL_CATEGORY_ENUM).optional(),
     page: z.number().int().min(1).max(50).optional(),
   }),
   jsonSchema: {
     type: 'object',
     properties: {
       search: { type: 'string', description: 'Contact name or phone fragment' },
-      deal_type: { type: 'string', enum: ['membership', 'retail'] },
+      deal_type: { type: 'string', enum: [...DEAL_TYPE_ENUM] },
+      deal_category: { type: 'string', enum: [...DEAL_CATEGORY_ENUM], description: 'Retail product category (shop deals only)' },
       page: { type: 'integer', minimum: 1, description: 'Page number (20 per page)' },
     },
     additionalProperties: false,
   },
   run: async (principal, input) => {
-    const { search, deal_type, page } = input as {
-      search?: string; deal_type?: string; page?: number;
+    const { search, deal_type, deal_category, page } = input as {
+      search?: string; deal_type?: string; deal_category?: string; page?: number;
     };
     const result = await getDealsByRole(principal.role, principal.userId, principal.domain, {
       search: search ?? null,
       domain: null,
       deal_type: deal_type ?? null,
+      deal_category: deal_category ?? null,
       agent_id: null,
       date_from: null,
       date_to: null,
@@ -272,6 +293,7 @@ const searchDeals: ElayaTool = {
         amount: d.deal_amount,
         dealType: d.deal_type,
         duration: d.deal_duration,
+        category: d.deal_category,
         domain: d.domain,
         source: d.source,
         wonAt: d.won_at,

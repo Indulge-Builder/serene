@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * AddSuggestionModal — create a new helpdesk suggestion (service_cases row)
+ * AddSuggestionModal — create OR edit a helpdesk suggestion (service_cases row)
  * from /helpdesk. Composes ui/modal.tsx for all chrome (Modal rule); field
  * primitives (FieldLabel, FieldError, FormChip) come from ui/TaskFormFields.tsx.
  *
@@ -15,10 +15,15 @@
  *   Tags       — lowercase slug chips, max 10 (city tags drive dossier matches)
  *   Featured   — Toggle; featured cases sort first on the dossier card
  *
+ * Create vs edit is ONE form, ONE action (R-01): pass `serviceCase` to prefill
+ * every field and carry its `id` through on submit — upsertServiceCaseAction
+ * already UPDATEs when `id` is set (ServiceCaseSchema.id is optional). The
+ * heading and CTA switch to "Edit"; with no `serviceCase` it stays a create.
+ *
  * Save goes through upsertServiceCaseAction — Zod, admin/founder guard,
  * sanitizeText, Redis invalidation and revalidatePath('/helpdesk') all live
- * there; the refreshed RSC payload re-seeds the list, so the new suggestion
- * appears without any client-side merge.
+ * there; the refreshed RSC payload re-seeds the list, so the change appears
+ * without any client-side merge.
  */
 
 import { useEffect, useRef, useState, useTransition, type KeyboardEvent } from 'react';
@@ -28,6 +33,7 @@ import { Button } from '@/components/ui/Button';
 import { Toggle } from '@/components/ui/Toggle';
 import { FieldLabel, FieldError, FormChip } from '@/components/ui/TaskFormFields';
 import { upsertServiceCaseAction } from '@/lib/actions/intelligence';
+import type { ServiceCase } from '@/lib/services/intelligence-service';
 import { ServiceCaseSchema } from '@/lib/validations/intelligence-schemas';
 import { GIA_DOMAINS, DOMAIN_LABELS } from '@/lib/constants/domains';
 import {
@@ -40,8 +46,14 @@ import type { AppDomain } from '@/lib/types/database';
 export interface AddSuggestionModalProps {
   open:          boolean;
   onClose:       () => void;
-  /** The helpdesk library shelf the page is showing — pre-selects Domain. */
+  /** The helpdesk library shelf the page is showing — pre-selects Domain on create. */
   initialDomain: AppDomain;
+  /**
+   * When set, the modal opens in EDIT mode: every field prefills from this row
+   * and its `id` rides through on submit (upsertServiceCaseAction UPDATEs on
+   * `id`). Omit for the create flow.
+   */
+  serviceCase?:  ServiceCase;
 }
 
 type FieldErrors = Partial<Record<string, string>>;
@@ -85,7 +97,9 @@ function blurField(e: React.FocusEvent<HTMLElement>, hasError: boolean) {
   e.currentTarget.style.boxShadow = '';
 }
 
-export function AddSuggestionModal({ open, onClose, initialDomain }: AddSuggestionModalProps) {
+export function AddSuggestionModal({ open, onClose, initialDomain, serviceCase }: AddSuggestionModalProps) {
+  const isEdit = !!serviceCase;
+
   const [title,       setTitle]       = useState('');
   const [category,    setCategory]    = useState<string | null>(null);
   const [domain,      setDomain]      = useState<AppDomain>(initialDomain);
@@ -101,23 +115,24 @@ export function AddSuggestionModal({ open, onClose, initialDomain }: AddSuggesti
   const titleRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Reset on open — never on error (form values survive a failed save)
+  // Seed on open — never on error (form values survive a failed save). Edit
+  // mode prefills from the row; create mode clears to blanks + the page domain.
   useEffect(() => {
     if (open) {
-      setTitle('');
-      setCategory(null);
-      setDomain(initialDomain);
-      setSummary('');
-      setOutcomeNote('');
-      setCity('');
-      setCountry('');
-      setTags([]);
+      setTitle(serviceCase?.title ?? '');
+      setCategory(serviceCase?.category ?? null);
+      setDomain((serviceCase?.domain ?? initialDomain) as AppDomain);
+      setSummary(serviceCase?.summary ?? '');
+      setOutcomeNote(serviceCase?.outcome_note ?? '');
+      setCity(serviceCase?.city ?? '');
+      setCountry(serviceCase?.country ?? '');
+      setTags(serviceCase?.tags ?? []);
       setTagInput('');
-      setIsFeatured(false);
+      setIsFeatured(serviceCase?.is_featured ?? false);
       setErrors({});
       setTimeout(() => titleRef.current?.focus(), 50);
     }
-  }, [open, initialDomain]);
+  }, [open, initialDomain, serviceCase]);
 
   function clearError(key: string) {
     setErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
@@ -146,6 +161,8 @@ export function AddSuggestionModal({ open, onClose, initialDomain }: AddSuggesti
     if (isPending) return;
 
     const input = {
+      // id present → upsertServiceCaseAction UPDATEs that row; absent → INSERT.
+      ...(serviceCase ? { id: serviceCase.id } : {}),
       domain,
       category:     category ?? '',
       title:        title.trim(),
@@ -155,7 +172,8 @@ export function AddSuggestionModal({ open, onClose, initialDomain }: AddSuggesti
       country:      country.trim() || null,
       tags,
       is_featured:  isFeatured,
-      sort_order:   0,
+      // Preserve the row's place in its category on edit; new rows default to 0.
+      sort_order:   serviceCase?.sort_order ?? 0,
     };
 
     const parsed = ServiceCaseSchema.safeParse(input);
@@ -176,7 +194,7 @@ export function AddSuggestionModal({ open, onClose, initialDomain }: AddSuggesti
         toast.danger('Could not save suggestion', { message: result.error });
         return;
       }
-      toast.success('Suggestion saved');
+      toast.success(isEdit ? 'Suggestion updated' : 'Suggestion saved');
       onClose();
     });
   }
@@ -191,15 +209,15 @@ export function AddSuggestionModal({ open, onClose, initialDomain }: AddSuggesti
         onClick={handleSubmit}
         loading={isPending}
         disabled={isPending || !title.trim() || !summary.trim() || !category}
-        iconLeft={Plus}
+        iconLeft={isEdit ? undefined : Plus}
       >
-        {isPending ? 'Saving…' : 'Save Suggestion'}
+        {isPending ? 'Saving…' : isEdit ? 'Save Changes' : 'Save Suggestion'}
       </Button>
     </>
   );
 
   return (
-    <Modal open={open} onClose={onClose} title="New Suggestion" footer={footer} maxWidth="max-w-xl">
+    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Suggestion' : 'New Suggestion'} footer={footer} maxWidth="max-w-xl">
       {/* ─── Title ─────────────────────────────────────────────────────────── */}
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <FieldLabel required>Title</FieldLabel>

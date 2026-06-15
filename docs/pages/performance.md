@@ -67,6 +67,14 @@ Added 2026-06-12:
   `count(*)` + two complementary FILTERs over the same row set — new + old always equals
   total calls today. "Calls" = `lead_notes` with `call_outcome IS NOT NULL` (same
   definition as `calls_logged` in 0101).
+- **The "Today" strip + Today tab read since-midnight numbers from the pulse only** (added
+  2026-06-15, migration 0122). The pulse `notes_today` is ALL `lead_notes` the agent authored
+  since `p_today_start` (a deliberate superset of `calls_today.total`, which filters
+  `call_outcome IS NOT NULL`). The Overview strip's Calls / Notes / Won come from
+  `callsToday.total` / `notesToday` / `deals.dealCount` — never the period-scoped
+  `effort`/`core` fields (the bug fixed here). The single pulse fetch serves BOTH the Today
+  tab and the Overview strip; the fetch gate covers either being visible, so a tab switch
+  fires no new request.
 - **Activity load-more uses a composite cursor** `(created_at, id)` — never a single-column
   cursor; page ~15 via a button, never infinite scroll. Agent id from the verified profile.
 
@@ -378,7 +386,7 @@ Active button: `--theme-paper` bg + `--shadow-1`. Inactive: transparent + tertia
 
 #### 8b. Overview tab
 
-Always shows a **today snapshot strip** at the top regardless of the selected period: `callsLogged` / `notesWritten` / `core.leadsWon` since IST midnight. This gives the agent instant context even when browsing a historical period.
+Always shows a **today snapshot strip** at the top regardless of the selected period: Calls / Notes / Won since IST midnight. The three values are fed from the **pulse RPC** (`getAgentTodayPulse` → `callsToday.total` / `notesToday` / `deals.dealCount`), the genuine since-IST-midnight source — **never** the period-scoped `effort`/`core` fields, which are wrong under the "since midnight IST" label when period ≠ today. This gives the agent instant context even when browsing a historical period.
 
 Below the strip: `CoreFourGrid` → `EffortGrid` → `CallOutcomeBar` — all scoped to the active period.
 
@@ -386,9 +394,9 @@ When `period === 'today'`, the today strip is hidden (the Today tab already show
 
 #### 8c. Today tab
 
-- Hero 2-column grid: **Calls Today** + **Notes Today** (large Playfair serif values, `--text-5xl`).
+- Hero 2-column grid: **Calls Today** + **Notes Today** (large Playfair serif values, `--text-display`).
 - Call outcome donut (`CallOutcomeBar`) for today's range.
-- Three live pipeline cards: Won / In Discussion / Nurturing (tinted `--color-*-light` backgrounds).
+- Four pipeline cards: Won / In Discussion / Nurturing / Revenue (tinted `--color-*-light` and `--theme-accent-surface` backgrounds). Won / In Discussion / Nurturing are live counts; Revenue + deal count come from `public.deals` (won_at in the active period, via the pulse).
 
 #### 8d. `CoreFourGrid`
 
@@ -467,7 +475,9 @@ Left: 280px column — "Agents" label + 4 agent card skeletons, stagger 0/80/160
 
 **Identity zone:** `Avatar lg` + `selected` ring; success live pip; Playfair name; accent-surface domain badge; mono lead count; conversion % badge (success/warning/danger at 40%/20%).
 
-**Stats:** Five `StatAtom` cards (pastel palettes — intentional non-token colours): Calls Today, Total Leads, Total Calls, Leads Won, Revenue. Note: the "Calls Today" card is fed by `metrics.callsToday`, which now equals `totalCallsMade` for the selected period — it is no longer a literal IST-today count (see §5).
+**Stats:** Four `StatAtom` tiles (pastel palettes — intentional non-token colours): Total Calls, Leads, Won, Revenue.
+
+**Tappable tiles (2026-06-15).** The four `StatAtom` tiles are tap targets that open the **same three drill modals the founder deck uses** — `AgentCallsDrillModal` (Total Calls), `AgentLeadsDrillModal` (Leads), `AgentDealsDrillModal` (Won **and** Revenue → deals, deck parity). The detail panel and the deck now share one drill-modal layer (same `{ open, agentId, agentName, domain, onClose }` props, same fetch-on-open behaviour, same `assertDrillAccess` authz — no new modal/action/query). The tap affordance is opt-in via the new optional `StatAtom onClick?` prop: when passed, the tile renders a `motion.button` with `.serene-pressable` press-scale + cursor + focus ring (matching the deck's `DeckTile`); when absent, it renders the original static `motion.div` (so `DomainOverviewPanel`'s four `StatAtom` cards stay byte-identical — no tap affordance). The modals portal to `document.body`, so they remain interactive during the period-refetch dim (which sets `pointerEvents:'none'` on the panel body); `drill` state resets on agent switch so a stale modal can't carry the prior agent's data. The Conversion/Pipeline/Deal-Breakdown/Call-Outcome sections stay display-only.
 
 **Pipeline:** Segmented bar + chip legend on `--theme-paper-subtle`.
 
@@ -592,14 +602,14 @@ fidelity). The deck trigger is founder-only to avoid the manager domain-pass amb
 | `EffortGrid.tsx` | Agent effort cards |
 | `CallOutcomeBar.tsx` | Donut + legend (agent self-view + manager detail panel) |
 | `ManagerPerformancePanel.tsx` | Two-column team shell; roster (left) + detail/empty-state (right); domain popover; client roster refetch via `getManagerRosterAction` |
-| `AgentDetailPanel.tsx` | Manager/founder agent detail |
+| `AgentDetailPanel.tsx` | Manager/founder agent detail; four `StatAtom` tiles open the deck's drill modals (calls/leads/deals) on tap |
 | `PerformanceRosterEmptyState.tsx` | Right-panel prompt when `selectedId === null` (Agents tab) |
 | `DomainOverviewPanel.tsx` | Founder **Domains** tab — 4 health cards (2×2; incl. Deals Closed) + month-pinned `DomainTargetMeter` + founder/admin inline target edit + comparative bar chart; refetch via `getDomainHealthMetricsAction`; mobile = CSS scroll-snap carousel (no library) |
 | `DomainTargetMeter.tsx` | Radial deals-vs-target meter (Recharts `RadialBarChart`, 2 colours via `useChartTokens`); month-pinned (`monthDeals` vs `domain_targets`, never the period filter); target null/0 → `<EmptyState>` inline "No target set." — never a division |
 | `AgentCallTrendChart.tsx` | 14-day daily-calls area chart (Today tab); composes `ChartFrame` + `cartesianDefaults`; `next/dynamic` from the shell |
 | `AgentRecentActivityList.tsx` | Agent Today view — keyset "load more" (composite cursor `(created_at, id)`, page 15, button not infinite scroll) via `getAgentRecentLeadActivityAction` |
 | `DomainHealthGrid.tsx` | Legacy domain card grid — retained but **not mounted** on any tab |
-| `StatAtom.tsx` | Single pastel stat card used by `AgentDetailPanel` stats row |
+| `StatAtom.tsx` | Single pastel stat tile — `AgentDetailPanel` stats row (4 tap-target tiles via optional `onClick`) + `DomainOverviewPanel` health cards (static, no `onClick`). With `onClick` → pressable `motion.button`; without → original static `motion.div` |
 
 #### `src/app/(dashboard)/performance/`
 

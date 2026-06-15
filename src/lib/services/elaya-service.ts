@@ -13,12 +13,15 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { toISTMidnight } from '@/lib/utils/ist';
+import { getDailyMessageCap, getSessionExpiryHours } from '@/lib/services/llm-providers-service';
+import { getElayaTimeGreeting, pickElayaDailyLine } from '@/lib/constants/elaya';
 import type {
   ElayaChannel,
   ElayaConversation,
   ElayaMessageRow,
   ElayaToolCallRecord,
 } from '@/lib/types/elaya';
+import type { Profile } from '@/lib/types/database';
 
 /** Verbatim history window handed to the model — the last 10 messages. */
 export const ELAYA_MODEL_CONTEXT_MESSAGES = 10;
@@ -276,4 +279,62 @@ export async function getUserContext(userId: string): Promise<Record<string, unk
     return {};
   }
   return ((data as { context: Record<string, unknown> } | null)?.context) ?? {};
+}
+
+// ─────────────────────────────────────────────
+// Chat seed — THE single source of the ElayaChatShell props
+// ─────────────────────────────────────────────
+
+/** A transcript message handed to ElayaChatShell (mirrors ElayaUiMessage). */
+export type ElayaSeedMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+/** Everything ElayaChatShell needs to render — the four shell props. */
+export type ElayaChatSeed = {
+  conversationId: string;
+  initialMessages: ElayaSeedMessage[];
+  greeting: string;
+  remainingToday: number;
+};
+
+/**
+ * Resolve the active conversation, seed the transcript, compute the deterministic
+ * greeting, and derive the remaining daily budget — the EXACT seeding the /elaya
+ * page does. THE single source of ElayaChatShell's props so both entry points
+ * (the /elaya RSC page and the floating widget's server action) seed identically;
+ * never re-inline this logic at a second call site (R-01). SERVER ONLY — composes
+ * server-only service reads; never import into a 'use client' component.
+ */
+export async function resolveElayaChatSeed(profile: Profile): Promise<ElayaChatSeed> {
+  const expiryHours = await getSessionExpiryHours();
+  const conversation = await getOrCreateActiveConversation(profile.id, expiryHours);
+
+  const [rows, sentToday, cap] = await Promise.all([
+    getConversationMessages(conversation.id),
+    countUserMessagesToday(profile.id),
+    getDailyMessageCap(),
+  ]);
+
+  const initialMessages: ElayaSeedMessage[] = rows
+    .filter((row) => row.role === 'user' || row.role === 'assistant')
+    .map((row) => ({
+      id: row.id,
+      role: row.role as 'user' | 'assistant',
+      content: row.content,
+    }));
+
+  const now = new Date();
+  const firstName = profile.full_name.split(' ')[0] ?? profile.full_name;
+  const dailyLine = pickElayaDailyLine(profile.id, now);
+  const greeting = `${getElayaTimeGreeting(now)}, ${firstName}. ${dailyLine}`;
+
+  return {
+    conversationId: conversation.id,
+    initialMessages,
+    greeting,
+    remainingToday: Math.max(0, cap - sentToday),
+  };
 }

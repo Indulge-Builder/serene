@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
+import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { canAccessRoute } from "@/lib/utils/route-access";
 import { getInitials } from "@/lib/utils/strings";
 import { lockBodyScroll } from "@/lib/utils/scroll";
@@ -254,7 +255,9 @@ function BellFallback() {
 
 type SidebarProps = {
   profile: Profile;
-  notificationsPromise: Promise<Notification[]>;
+  // Only present (and only consumed) when TOP_BAR_ENABLED is off — the OFF-path
+  // footer bell. When on, the bell lives in PageControls and this is undefined.
+  notificationsPromise?: Promise<Notification[]>;
 };
 
 export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
@@ -479,15 +482,21 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
 
         <div className="serene-sidebar-footer-row">
           {/* Notification bell — seed streams in without blocking the shell.
-              Hidden on the md icon rail (avatar only there). */}
-          <span className="serene-sidebar-rail-hide">
-            <Suspense fallback={<BellFallback />}>
-              <SeededNotificationBell
-                userId={profile.id}
-                promise={notificationsPromise}
-              />
-            </Suspense>
-          </span>
+              Hidden on the md icon rail (avatar only there).
+              TOP_BAR_ENABLED relocates the bell to the TopBar: the footer mount
+              is removed entirely (not CSS-hidden) so exactly one NotificationBell
+              is alive — a second mount would open a duplicate Realtime channel
+              (`notifications:${userId}`, no mount suffix) and double the state. */}
+          {!TOP_BAR_ENABLED && notificationsPromise && (
+            <span className="serene-sidebar-rail-hide">
+              <Suspense fallback={<BellFallback />}>
+                <SeededNotificationBell
+                  userId={profile.id}
+                  promise={notificationsPromise}
+                />
+              </Suspense>
+            </span>
+          )}
 
           {/* User info — links to profile settings. Layout props live in
               .serene-sidebar-profile so the rail can shrink it to the avatar. */}

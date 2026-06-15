@@ -12,6 +12,629 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-15 — Deals: deal_type is domain-derived; retail deals carry a product category
+
+A deal's `deal_type` could previously drift from its domain — the create form let the type be
+picked independently of the domain, so an `onboarding` deal could be filed as `retail`. The rule is
+now structural: **a Gia domain determines its single deal_type** — `onboarding → membership`,
+`shop → retail`, `house/legacy → sale`. Retail (shop) deals additionally require a **product
+category** (watch / bag / event / jewellery / small_luxury / accessories / other). Enforced at four
+layers: DB, validation, form, and filter.
+
+- **One source of truth:** `DOMAIN_DEAL_CONFIG` in `src/lib/constants/deal-types.ts` (mirrors the
+  `DOMAIN_INTERESTS` pattern) maps each Gia domain → `{ type, categories }` (categories `null` for
+  every non-retail type). It drives the form (auto-sets type from domain; shows the category picker
+  only when `categories ≠ null`), the action's cross-field validation, and the filter items. The
+  type/category vocabularies are never hardcoded in more than one place (R-01). New `'sale'` deal
+  type + `DealCategory` enum added here.
+- **Migration `0122`** (`deal_category_and_domain_type`): adds `deals.deal_category text`; extends
+  `deals_deal_type_check` to admit `'sale'`; adds `deals_deal_category_check` (value whitelist) and
+  `deals_retail_category_check` (the cross-column coupling: `retail ⇒ category NOT NULL`,
+  `non-retail ⇒ category NULL`) — both modelled on the existing `deals_membership_duration_check`.
+  Deletes the one pre-rule `onboarding+retail` walk-in (no duration, stray `lead_id IS NULL` test
+  row) **before** the CHECKs so the table is rule-clean; backfills any surviving retail row to
+  `'other'`. **Applied to prod + verified** (rejects retail-without-category and
+  non-retail-with-category; accepts `sale`; all four domain shapes insert clean).
+- **`deal_type` is derived server-side, never client-supplied.** `recordDeal` derives it from the
+  **lead's** domain; `createWalkInDeal` derives it from the (already server-forced) deal domain — a
+  forged client `deal_type` is ignored (the field was removed from both schemas). The shared
+  `resolveDealShapeForDomain` helper in `actions/deals.ts` returns the exact `{type, category,
+  duration}` triplet to write, or clean user-facing copy when the form's extras don't match the
+  domain's type (the DB CHECKs are the backstop). Agent/manager domain enforcement is unchanged.
+- **Forms:** `NewDealModal` drops the deal-type picker — it shows the type read-only ("set by
+  {domain}"), surfaces the category `<select>` for shop and the duration chips for onboarding, and
+  supports house/legacy/sale (no extras). `WonDealModal` (lead→won) takes the lead's `domain` prop,
+  derives the type identically, and collapsed from two steps to one. Submitting onboarding+retail is
+  impossible from either surface.
+- **Filter:** `DealsFilters` adds a **Category** dropdown that appears only inside the `shop` domain
+  slice (admin/founder); changing domain atomically clears `agent_id` **and** `deal_category`. The
+  existing **Type** filter is retained (now includes `sale`). `DealFilters` gains `deal_category`;
+  `getDealsByRole` filters on it.
+- **Downstream:** `Deal` type + `DealCard` chip (category sub-chip for retail, `sale` handled),
+  Elaya `search_deals` tool (`deal_type` enum widened to include `sale`, new `deal_category` filter +
+  surfaced field).
+- **Decision logged:** `docs/design/decision-log.md` (domain-derived deal type).
+- Files: `src/lib/constants/deal-types.ts`, `supabase/migrations/20260615000122_*.sql`,
+  `src/lib/validations/deal-schema.ts`, `src/lib/actions/deals.ts`,
+  `src/components/deals/NewDealModal.tsx`, `src/components/deals/DealsFilters.tsx`,
+  `src/components/deals/DealCard.tsx`, `src/components/leads/WonDealModal.tsx`,
+  `src/components/leads/StatusActionPanel.tsx`, `src/app/(dashboard)/deals/page.tsx`,
+  `src/lib/services/deals-service.ts`, `src/lib/types/database.ts`,
+  `src/lib/elaya/tools/registry.ts`, `src/lib/actions/performance.ts`.
+
+---
+
+## 2026-06-15 — Performance detail panel: stat tiles open the deck's drill modals
+
+The normal manager/founder agent view (`AgentDetailPanel`) showed the same four metrics as the
+founder deck — Total Calls, Leads, Won, Revenue — but the tiles were dead. They are now **tap
+targets that open the same three drill modals the deck uses**: `AgentCallsDrillModal` (Total Calls),
+`AgentLeadsDrillModal` (Leads), `AgentDealsDrillModal` (Won **and** Revenue → deals, deck parity).
+Both surfaces now share one drill-modal layer — **no new modal, action, or query** (R-01).
+
+- **`StatAtom` gains an opt-in `onClick?` prop.** With it, the tile renders a `motion.button` with
+  `.serene-pressable` press-scale + cursor + focus ring (matching the deck's `DeckTile` affordance);
+  without it, the original static `motion.div`. `DomainOverviewPanel`'s four `StatAtom` cards pass no
+  `onClick`, so they stay byte-identical — no tap affordance, no behaviour change.
+- `AgentDetailPanel` adds a `drill: 'calls' | 'leads' | 'deals' | null` state mirroring the deck's
+  `DrillTarget`; modals conditional-mount below the panel body with the identical
+  `{ open, agentId, agentName, domain, onClose }` props and `assertDrillAccess` authz.
+- **Edge cases handled:** the modals portal to `document.body`, so they stay interactive through the
+  period-refetch dim (panel body sets `pointerEvents:'none'` while refetching) — close works during
+  and after a refetch; `drill` resets on agent switch so a stale modal can't leak the prior agent's
+  data.
+- Files: `src/components/performance/StatAtom.tsx`, `src/components/performance/AgentDetailPanel.tsx`.
+  Docs: `docs/pages/performance.md`, `src/components/performance/CLAUDE.md`.
+
+---
+
+## 2026-06-15 — Performance founder shell: Deck view trigger hoisted onto the Agents/Domains tab row
+
+On the founder/admin `/performance` view the **Agents / Domains** tab pills and the **Deck view**
+button were on two separate rows — the tabs in `FounderPerformanceShell`, the button stacked
+beneath inside `ManagerPerformancePanel` (right-aligned above the roster). They read as
+disconnected. They now sit on **one `justify-between` row**: tabs left, Deck view right.
+
+- **State stays where it lives.** The roster state the deck needs (`visibleAgents`, `domainFilter`,
+  `selectedId`, `deckOpen`) is untouched in `ManagerPerformancePanel`. A thin client context
+  (`founder-perf-actions.tsx`) lets the panel **register its trigger node** up onto the shell's tab
+  row; the shell renders it only on the Agents tab. The full-screen deck modal itself still mounts
+  from the panel.
+- **No extra renders / no loop.** The trigger is `useMemo`'d on `showDeckTrigger` (the only input
+  that changes its visibility), so the registration effect fires only when the trigger appears or
+  disappears — not on every panel render. `agentsSlot` is a stable element prop, so the shell's
+  `setTabAction` re-render never re-renders the panel subtree (no feedback loop).
+- **Manager view unaffected.** `ManagerPerformancePanel` mounted outside the founder shell finds no
+  context and keeps the inline fallback row (the manager path never shows the all-domains deck
+  anyway). Zero-per-swipe-fetch and the deck's other invariants are unchanged.
+- **Files:** `src/app/(dashboard)/performance/founder-perf-actions.tsx` (new),
+  `src/app/(dashboard)/performance/FounderPerformanceShell.tsx`,
+  `src/components/performance/ManagerPerformancePanel.tsx`.
+
+---
+
+## 2026-06-15 — Campaigns list: spend + cost-per-lead per row (joined at the page layer)
+
+Each `/campaigns` card now shows **Spend** and **Cost/Lead** for the active date range, beside the
+existing status pills. No new query, no RPC change — the spend already lived in `ad_spend_daily`
+(read via `getBudgetSummary`); the campaign list had simply never joined to it.
+
+- **One batched spend fetch, mapped by key.** `CampaignListAsync` calls `getBudgetSummary(from, to)`
+  **once**, in the same `Promise.all` as `getCampaignMetrics`, and maps the rows onto campaigns by
+  normalised key (`campaign_name.toLowerCase().trim() === campaign_key` — the same normalisation the
+  ad-creatives map already uses). Never a per-card call. Regardless of campaign count it stays one
+  spend fetch + one metrics fetch + one creatives batch.
+- **One resolved range drives both.** The budget RPC and `get_campaign_metrics` receive the
+  **identical** `filters.date_from`/`date_to`, so cost and lead counts always describe the same window
+  on a row (the leads count-RPC pairing discipline). When no range is set, `getBudgetSummary` is **not
+  called** (it needs both bounds and an unscoped cost figure would mix windows) — the cells render `—`.
+- **`—`, never ₹0.** `totalSpend`/`costPerLead` arrive as `null` (not `0`) when there's no range or no
+  spend row for a campaign; `CampaignCard`'s new `CostCell` renders `—` in tertiary — the same null
+  contract `/budget`'s Cost/Lead column already follows. `costPerLead` is nulled upstream when
+  `leadCount === 0`, so a campaign with spend but zero leads also shows `—` for cost.
+- **Filter bar was already there.** `/campaigns` already composes `<FilterBar>` with the shared
+  range-preset + custom-date panels (`onPresetSelect` + `date_from`/`date_to`) — no filter work needed;
+  the preset's resolved range now also drives the spend join.
+- **Upload-modal copy (closes item 4a).** `AdSpendUploadModal` gains one line noting a multi-day Meta
+  export (e.g. 30 days) ingests in a single upload — one day-grain row per day, no need to split.
+- **No Redis.** Spend reads stay always-live (admin client), matching the campaign RPCs and `/budget`.
+- **Files:** `src/components/campaigns/CampaignListAsync.tsx`, `src/components/campaigns/CampaignCard.tsx`,
+  `src/components/budget/AdSpendUploadModal.tsx`. Docs: `src/app/(dashboard)/campaigns/CLAUDE.md`,
+  `docs/pages/campaigns.md`.
+
+---
+
+## 2026-06-15 — My Tasks calendar: kill the phantom dot (dots = actionable-only)
+
+A day on the My Tasks calendar could show a dot but click through to an **empty list**.
+Cause: `buildTaskDots` counted every task with a `due_at` (no status filter), while the click
+filter `groupTasksByDate` skipped completed tasks — so a day whose tasks were all done showed a
+dot that led nowhere. The two functions disagreed on what a day contained.
+
+- **Fix — one shared predicate.** New module-scope `isTaskActionable(task, optimisticStatus)` in
+  `MyTasksCalendarView.tsx`: a task is actionable when its **effective** status (optimistic toggle
+  honoured) is neither `completed` nor `cancelled`. `buildTaskDots` and `groupTasksByDate` both gate
+  on it, so a dot now means "≥1 task still to do" and can never disagree with the click filter.
+- **`buildTaskDots` now takes `optimisticStatus`** (it previously took only the task list) — a
+  just-completed task drops its dot immediately, matching the list.
+- **Cancelled tasks too.** The old click filter checked only `completed`; the shared predicate
+  excludes `cancelled` as well, so a cancelled-only day shows no dot (and no longer leaks a cancelled
+  task into a section). `getDueDateColor` already treated completed/cancelled together — the predicate
+  aligns with that existing notion of non-actionable.
+- **Out of scope (left as a code comment):** pagination blindness — dots reflect only the tasks
+  loaded into the view, not the full DB set. It does not cause the phantom-dot bug; not fixed here.
+- **Untouched:** date-key/timezone helpers (`localKey`/`taskLocalKey` — never
+  `toISOString().slice(0,10)`) and `Calendar.tsx`'s dot lookup. Scope was the predicate only.
+- **Files:** `src/components/tasks/MyTasksCalendarView.tsx`. Docs: `src/components/tasks/CLAUDE.md`
+  (dots = actionable-only note), `docs/pages/tasks.md` (§9 dot semantics).
+
+---
+
+## 2026-06-15 — Lead dossier status modals: restore the close animation + drop the open flicker
+
+The lead-dossier status-action modals (Called, Won, Nurture, Lost, Junk, Revive) **snapped out
+abruptly on close** instead of playing the Dialog's fade/scale exit, and clicking **Called** on a
+brand-new lead **flickered** the status row as the modal opened. Both were structural call-site
+bugs in `StatusActionPanel`, not Dialog/Modal regressions.
+
+- **Cut exit animation (all six modals).** `Dialog` owns its exit via an internal
+  `<AnimatePresence>{open && …}` — the exit only plays if the component stays mounted while `open`
+  flips `true → false`. The call site instead conditional-rendered each modal on
+  `activeModal === '…'` with a hardcoded `open={true}`, so closing **unmounted** the modal (and its
+  `AnimatePresence`) in the same render — the exit of a destroyed tree can't run, so the overlay +
+  panel popped out instantly. This is the exact failure the **Heavy modal loading rule** warns about
+  ("conditional-rendering on `open` alone cuts the exit").
+  - `CalledModal` + `WonDealModal` + the private `ConfirmModal` / `ReasonModal` now take an **`open`
+    prop** (replacing the hardcoded `open={true}`) threaded to `Modal`.
+  - `StatusActionPanel` keeps the closing modal mounted through its exit via a **`renderedModal`**
+    state that lags `activeModal` by one `EXIT_DURATION` (250ms) on close and a **`modalKey`** that
+    bumps on each open so the next open remounts with fresh form state. Each modal renders on
+    `renderedModal === '…'` with `open={activeModal === '…'}` — open drives the animation, the lag
+    keeps the node alive for the fade-out, the key resets state. (Chosen over the `SubTaskModal`
+    call-site-`AnimatePresence` shape because these modals carry internal form state that must reset
+    per open.)
+- **Open flicker on a new lead.** The Called handler fired
+  `startTransition(() => setOptimisticStatus('touched'))` *and* opened the modal in the same click —
+  the optimistic flip swapped the status pill + `stageActions` set and reflowed the row while the
+  Dialog was animating in. Removed: the `new → touched` advance is already owned server-side by the
+  `add_lead_call_note` RPC (`did_auto_advance`) and reflected via `router.refresh()` on save, so the
+  optimistic flip was both a `useOptimistic`-outside-an-action anti-pattern and the flicker source.
+  The Called button now just opens the modal; status advances on save from server truth.
+- **Files:** `src/components/leads/StatusActionPanel.tsx`, `src/components/leads/CalledModal.tsx`,
+  `src/components/leads/WonDealModal.tsx`. No behavioural change to the underlying writes
+  (`addLeadCallNote`, `updateLeadStatus`, `recordDeal`) — animation + open-state lifecycle only.
+
+---
+
+## 2026-06-15 — Agent /performance: Overview "Today" strip shows real today data
+
+The agent self-view Overview tab's **"Today" snapshot strip** (Calls / Notes / Won, labelled
+"since midnight IST") was reading the **period-scoped** `effort.callsLogged` / `effort.notesWritten`
+/ `core.leadsWon` fields — wrong under the since-midnight label whenever the selected period ≠ today
+(e.g. browsing This Month showed month totals under a "since midnight IST" caption). The data was the
+bug, not the label.
+
+- **Strip now fed from the pulse RPC** (`getAgentTodayPulse`), the genuine since-IST-midnight source:
+  `callsToday.total` / `notesToday` / `deals.dealCount`. The same single pulse fetch already powering
+  the Today tab now also powers the strip — the existing fetch **gate was widened** (`needsPulse =`
+  Today tab visible **or** Overview strip visible), not a second fetch added. There is still exactly
+  one pulse fetch path, and a tab switch fires no new request (the gate value is unchanged across the
+  switch, so the effect does not re-run).
+- **New pulse field `notesToday`** — ALL `lead_notes` the agent authored since `p_today_start` (a
+  deliberate superset of `callsToday.total`, which filters `call_outcome IS NOT NULL`). Migration
+  **0122** `CREATE OR REPLACE`s `get_agent_today_pulse` over 0108 (never edit a run migration, A-14),
+  adding `notes_today` alongside the unchanged calls partition / 14-day trend / period deals; the
+  service `AgentTodayPulse` type + mapper gained the field. The Today tab's "Notes Today" hero now
+  reads from the pulse too (was `effort.notesWritten`, correct only because the Today tab forces
+  period → today) — both surfaces now share one since-midnight source. Skeleton-while-null preserved
+  for every value.
+- **Tab selector variant unchanged — `variant="connected"` kept.** The brief asked to switch the
+  Overview/Today tab bar to `variant="underline"` per spec §8a, but `TabSelector` has no `underline`
+  variant (`'pill' | 'connected' | 'accent'`; components/CLAUDE.md explicitly records "no
+  `border-bottom` variant — do not add without explicit spec"). Per the brief's instruction to stop
+  and report rather than invent one, the variant was left as-is. **Spec §8a is stale here** and needs
+  a product decision (add an `underline` variant, or correct the spec to `connected`) — not resolved
+  in this change.
+- **Spec reconciliation** (`docs/pages/performance.md`): §8c hero values corrected `--text-5xl` →
+  `--text-display`; pipeline cards corrected three → **four** (Won / In Discussion / Nurturing /
+  Revenue) to match shipped code. §8b updated to document the strip's pulse source (was describing the
+  bug). §6 gains a "Today strip + Today tab read from the pulse only" invariant.
+
+Files: `src/components/performance/AgentPerformanceShell.tsx`,
+`src/lib/services/performance-service.ts`,
+`supabase/migrations/20260615000122_agent_today_pulse_notes.sql`, `docs/pages/performance.md`,
+`src/components/performance/CLAUDE.md`. **⚠️ Migration 0122 NOT yet applied to prod** (0108 itself is
+in the unapplied batch); regenerate `database.ts` after applying. `pnpm tsc --noEmit` clean.
+
+---
+
+## 2026-06-15 — Helpdesk: edit an existing service case (admin/founder)
+
+Admin/founder can now **edit** a service case from `/helpdesk`, not just create one. This is UI
+wiring over the existing write path — **no new action, no new form, no service/schema change**
+(R-01). `upsertServiceCaseAction` already UPDATEs when `id` is set, and `ServiceCaseSchema.id` was
+already optional.
+
+- **`AddSuggestionModal` extended (not duplicated)** with an optional `serviceCase?: ServiceCase`
+  prop. When set, the seed-on-open effect prefills every field from the row and submit carries its
+  `id` (and preserves `sort_order`) through the same `upsertServiceCaseAction` → UPDATE branch; the
+  heading becomes **"Edit Suggestion"**, the CTA **"Save Changes"**, and the toast **"Suggestion
+  updated"**. With no `serviceCase` the create flow is byte-for-byte unchanged. **No
+  `EditSuggestionModal` was created** — the one form serves both flows.
+- **`CaseDetailModal`** gains a `canEdit?` prop: when true it renders an **Edit** button (secondary,
+  `Pencil`) in a `modal.tsx` `footer` that opens the shared `AddSuggestionModal` prefilled in edit
+  mode (loaded on intent via `next/dynamic` + `useMountOnFirstOpen`, same as `AddSuggestionButton`).
+  Saving closes both modals; the `revalidatePath('/helpdesk')` already in the action re-seeds the
+  RSC library so the row reflects the change — no client-side array merge.
+- **Gating is server-first.** `canEdit` is computed once on the `/helpdesk` page from
+  `profile.role` (`admin`/`founder`) and threaded page → `HelpdeskSearch` → `CaseDetailModal`. It is
+  the same expression that already gates the `+ Suggestion` CTA. The hide is **cosmetic only** — the
+  real gate is `requireProfile(['admin','founder'])` inside `upsertServiceCaseAction` plus the
+  `service_cases` UPDATE RLS (migration 0110); a forged call from a non-admin still fails.
+
+Files: `src/components/intelligence/AddSuggestionModal.tsx`, `CaseDetailModal.tsx`,
+`HelpdeskSearch.tsx`, `src/app/(dashboard)/helpdesk/page.tsx`. `pnpm tsc --noEmit` clean.
+
+---
+
+## 2026-06-15 — Global page controls: notification bell + admin/founder domain selector on the title row
+
+The global notification bell + an admin/founder domain selector, rendered **inline on each page's
+title row** (right side, beside the page CTA) so they read as part of the page — no separate bar.
+The whole feature sits behind one boolean — `TOP_BAR_ENABLED` in
+`src/lib/constants/feature-flags.ts` (new file) — so it reverts by flipping a single flag.
+
+> Superseded the same-day v1 bar attempts (a canvas-gutter bar, then a sticky in-paper strip): both
+> read as *separated* from the page. `TopBar.tsx` is deleted; `PageControls.tsx` is the replacement.
+
+- **`PageControls.tsx`** (`src/components/layout/`) — the bell + `DomainSelector` cluster. Pages
+  render `{TOP_BAR_ENABLED && <PageControls userId isPrivileged notificationsPromise={getNotifications(profile.id)} />}`
+  in their `flex items-center justify-between` title row. `isPrivileged` (admin/founder) gates the
+  selector; the bell is always present. Below md the selector hides
+  (`.serene-page-controls-selector`); the bell stays inline. The bell uses the `topbar` (paper-text)
+  variant. **Single bell mount** — `useNotifications` keys its Realtime channel `notifications:${userId}`
+  with no `useId()` suffix, so two mounts ⇒ duplicate channel + double unread/chime; the Sidebar
+  footer bell is gated off when on, so the one `PageControls` bell per page is the only mount.
+- **Wired on** leads / deals / campaigns (selector ON — domain-aware) + tasks / performance (all 3
+  role branches) / helpdesk / budget / escalations / settings / elaya / admin/users (bell-only).
+  Dashboard has no server title row → its bell rides the `DashboardCanvas` header cluster (the page
+  threads the streamed `notificationsPromise` in). `/whatsapp` (full-bleed chat) has no bell.
+- **`DomainSelector.tsx`** — composes `FilterDropdown` + `useUrlFilters` (`resetKeys: ['page']`) to
+  write the SAME `?domain=` param leads/deals/campaigns read (the `DealsFilters` mechanism — no new
+  dropdown, no new param), plus a `serene-domain` cookie (`persistDomainCookie` in `domains.ts`,
+  mirrors `serene-theme`). **Reads `param ?? cookie`** (`readDomainCookie`, post-mount via a
+  `mounted` flag to avoid a hydration mismatch) — **the fix for "selector resets when navigating
+  leads → deals"**: after a cross-page nav the URL has no `?domain=`, but the page renders the cookie
+  scope, so the selector reads the same fallback (else it wrongly showed "All domains" over scoped
+  data). Shows the domain's own label when scoped. "All domains" = empty selection (no accent).
+- **One shared resolver:** `resolveDomainParam(searchParams, cookieStore, role)` in
+  `src/lib/utils/domain-scope.ts` (server-only) owns the whole domain decision — `domain` param
+  extraction, role gate, and cookie fallback: admin/founder → `param ?? cookie ?? null`,
+  manager/agent → always `null`. `leads`/`deals`/`campaigns` each call it in place of their old
+  inline `parseGiaDomainParam(getString('domain'))` + admin/founder branch; **cookie logic lives
+  only here, never inlined per page.** Synchronous — the caller passes the awaited `searchParams` +
+  `await cookies()`. **Not a security boundary:** returns `null` for manager/agent regardless of
+  input; the service role-gates remain the authority (campaigns also re-locks manager to
+  `callerDomain` at the page layer). (Replaced `resolveAdminFounderDomain(paramValue)`, which left
+  the param extraction + role branch inline per page.)
+- **Flag-gated in lockstep:** pages render `PageControls` only when `TOP_BAR_ENABLED`; `Sidebar`
+  renders its footer bell only when `!TOP_BAR_ENABLED` (its `notificationsPromise` prop is now
+  optional — the layout creates it only when off). Both states compile and render exactly one bell.
+  `globals.css` swaps the `.serene-shell-topbar*` bar rules for a lean `.serene-page-controls*`
+  inline cluster (all colours via paper tokens). `pnpm exec tsc --noEmit` clean (both flag states),
+  token guard passes.
+
+## 2026-06-15 — Lead dossier: notes-timeline dot alignment + new-deal modal autofocus
+
+Two cosmetic/UX defects on the lead dossier (`/leads/[id]`):
+
+- **Notes timeline dots (`LeadNotesSection.tsx`)** — the dot used an absolute-positioned scheme with
+  an invalid `left: '-var(--space-6)'` (a CSS var cannot be negated inline) plus a `marginLeft: '-22px'`
+  hack, so the markers floated off the vertical rule. Rebuilt the timeline to the **same flex-track
+  structure `LeadActivityLog` already uses** (R-01): each note is a `display: flex` row with a fixed
+  15px dot/connector column where `alignItems: center` centers both the dot and the 1px rule — no
+  absolute positioning, no negative margins, every offset a token. Dots now sit centered on the line
+  at all viewports.
+- **New-deal modal autofocus (`NewDealModal.tsx`)** — dropped the `autoFocus` on the First Name input
+  so the modal opens with no field stealing focus. The `Dialog` chrome's focus contract
+  (`role="dialog"` + `aria-modal` + Escape handler) is unaffected — Esc/Tab containment intact.
+
+## 2026-06-15 — Elaya Phase 3: agentic TASK writes (create / manage tasks, not just leads)
+
+Closes the gap where Elaya could only act on leads — "make me a task" failed, and group/team
+tasks were impossible. Five new write tools in `lib/elaya/tools/write-registry.ts`, each wrapping
+the **existing `task-mutations.ts` cores** (the same bodies `actions/tasks.ts` calls — R-01), so a
+tool-driven task write inherits the reminder / notify / cache side-effects identically. Same
+two-tier confirmation model as E3 (Phase 2), applied to tasks.
+
+- **Four inline tools** (low-risk — a created/edited task is trivially reversible): `create_personal_task`,
+  `create_group_task`, `update_task_status`, `update_task`. Each calls its core then writes one
+  terminal `executed` `elaya_actions` row.
+- **One state-changing tool** — `delete_task`. Its `run()` records a `proposed` row and **waits**; the
+  delete lands only in the brain's confirmation resolver on an affirmative human reply — byte-identical
+  protocol to `update_lead_status`. The proposal payload carries the `taskId` + a code-derived task
+  **title** (read from the DB, never model text) so the confirmation line names the right task.
+- **Gate posture (Q-13).** Each tool builds the `MutationActor` + `CallerProfile` from the **principal**
+  and runs `canMutateTask(adminClient, principalCaller, task)` before mutating — the caller gates, the
+  core stays ungated. The admin client is safe in `canMutateTask` (read-only group-domain lookup; never
+  `auth.uid()`/RLS). Create tools gate on the assignee policy instead of an existing row: assigning a
+  personal task to **another** user is manager+ (mirrors `createPersonalTaskAction`); `create_group_task`
+  is all-staff with no assignee (a group is a container; subtasks carry assignees) — it deliberately does
+  **not** inherit `reassign_lead`'s MANAGER_UP gate.
+- **Optimistic-concurrency on delete.** `deleteTaskCore`'s `.delete().eq(id)` returns `ok:true` even on a
+  missing row (Supabase reports no error for a zero-row delete). The resolver therefore **re-fetches by
+  `taskId` first** and, if the task is already gone, resolves the proposal `executed` and says *"… was
+  already removed — nothing to delete"* rather than running the core or erroring.
+- **IST at every task `dueAt` boundary** via `normalizeDueAtToIstInstant` (R-01 — the helper E3 already
+  uses): zoneless `"2026-06-16T15:00"` → `09:30Z` (15:00 IST); zoned strings pass through. So "remind me
+  to file expenses tomorrow 3pm" creates a `personal` task at 15:00 IST, `group_id: null`, no lead.
+- **Model targeting handle.** `get_my_tasks` (read tool) now surfaces `taskId` (followUps + personalTasks)
+  and `groupId` (groupTasks) — without an id the model can't name a task to update/delete.
+- **PII gateway fix (latent bug).** `maskPii`'s phone regex matched a UUID's digit/dash run and corrupted
+  the surfaced id (e.g. `…a716-446655440000` → bullets). Fixed at the gateway: an **exact-UUID string
+  leaf** is now skipped — a UUID is an opaque identifier, not PII — so any tool surfacing an id is safe.
+- **Ledger contract widened, no migration.** `ElayaActionType` gains the five task types;
+  `ElayaActionPayload.target` becomes a union — lead `{slug, leadId}` | task `{taskId?, groupId?}`. The
+  `elaya_actions.payload` jsonb column is unchanged — TS contract only.
+- **Persona** updated so Elaya knows she can create personal/group tasks, change/edit status, and that
+  delete waits for a yes (alongside lead status/reassign).
+
+Files: `lib/elaya/tools/write-registry.ts` (5 tools + `executeProposedTaskDelete` resolver),
+`lib/elaya/tools/registry.ts` (read-tool id surfacing), `lib/elaya/pii.ts` (UUID guard),
+`lib/elaya/persona.ts`, `lib/services/elaya-actions-service.ts` (union widening).
+Toolset reaches all staff roles automatically via `writeToolsForRole` → `TOOLSET_BY_ROLE`.
+`pnpm tsc --noEmit` clean for touched files (pre-existing `output/` errors stand apart). Full
+contract: `docs/modules/elaya.md` "Phase 3 — task agentic writes".
+
+## 2026-06-15 — SLA: arm escalations on unassigned leads + author rules from /settings
+
+Two changes to the Gia follow-up engine, same files. **(1) Bug fix — SLA arming decoupled
+from agent assignment.** A lead that arrived with no agent (round-robin pool empty) armed
+**zero** SLA timers, so the manager (SLA-01B) and founder (SLA-01C) escalations never fired —
+nobody was told an unassigned lead was rotting. The arming chain assumed an agent end-to-end:
+
+- `ScheduleSlaSchema.assignedTo` is now `.uuid().nullable()` (was `.uuid()`).
+- `notifyLeadAssigned` step 4 arms SLA on `scheduleSla` alone — no longer gated on `assignedTo`.
+  Steps 1 (agent WhatsApp) and 3 (in-app) stay agent-gated; only SLA arming decoupled.
+- `createManualLead`'s `notifyLeadAssigned` call lifted out of its `if (assignedTo)` guard (the
+  founder alert + escalation timers must fire for an unassigned manual lead too; agentName passed
+  as `null` → "Unassigned" in the template).
+- `resolveAgentShift(agentId: string | null)` returns `null` for a null agent → callers fall
+  back to global `BUSINESS_HOURS` (correct basis for the manager/founder rules). `policyDeadline`
+  already supported this via `hours_mode`.
+- `scheduleLeadSlasTask`'s `assignedAgentId` / payload type widened to `string | null`.
+- Agent-recipient rules (SLA-01A) self-skip at fire time when `assigned_to` is null — the
+  existing `if (!assignedTo)` path, reused, not a new one. Manager/founder rules resolve their
+  recipients from the lead's domain at fire time, independent of the (absent) agent.
+- No double-arming: the Trigger.dev idempotency key (`lead-sla-${leadId}-${ruleCode}`) carries no
+  agent, so a later assignment that re-arms the same rule dedupes against the unassigned timer.
+
+  `updateLeadStatusCore`'s status-change SLA branch (`else if (assignedTo)`) is deliberately
+  unchanged — this brief scoped the fix to lead creation.
+
+**(2) Feature — author SLA policies from /settings (no developer).** A non-technical
+admin/founder can now create a rule over the existing trigger catalog:
+
+- `createSlaPolicyAction` (`actions/sla-policies.ts`) mirrors `updateSlaPolicyAction` exactly
+  (Zod → `requireProfile(['admin','founder'])` → admin-client write → `revalidatePath('/settings')`).
+  The rule **code is system-generated** as an inert `USR-<id>` — the schema accepts no `code`
+  field, so a user can never supply one; the generated code is asserted clear of the reserved
+  `SLA-`/`CAD-`/`TASK-` prefixes before the write (a `CAD-` code would silently become a
+  self-re-arming daily task generator — the one footgun that corrupts the engine). `USR-` never
+  matches `isCadenceCode` or the `SLA-04` call_count branch.
+- `CreateSlaPolicySchema` (`validations/sla-policy-schema.ts`) validates `triggerValue`
+  **against** `triggerKind` server-side: `status` → a real `LeadStatus`, `outcome` → a real
+  `CallOutcome`, `task_due` → `gia_followup`. A value that can never fire (which would arm a timer
+  that fires into `STALE_FIRE` forever) is rejected by the action, not just the dropdown.
+- `createSlaPolicy` (`sla-service.ts`) — admin-client insert (no write RLS by design, 0111). A new
+  row arms automatically: the engine reads `getSlaPolicies()` per job run, so the next matching
+  lead picks it up with no deploy.
+- `SlaPoliciesPanel` gains a "New rule" affordance (header toggle) → inline form with five fields
+  (watches / value / notifies / threshold / hours basis) + channels, reusing the panel's existing
+  vocabulary (`HOURS_MODE_OPTIONS`, `LEAD_STATUS_LABELS`, `CALL_OUTCOME_LABELS`). The trigger-value
+  dropdown re-derives from the chosen kind so a rejectable value can't be selected. On success the
+  server-returned row prepends and appears in its group. The panel's group list is now exhaustive
+  — a new **"Call outcome rules"** group catches non-cadence `outcome` rules that previously had no
+  home. No delete path (switch off via the existing active toggle); `auto_task` stays false (a
+  user rule is a notification rule, not a cadence).
+
+No migration — `sla_policies` is already shaped (`code text PRIMARY KEY`, no format CHECK). Files:
+`lib/services/lead-assignment-notify.ts`, `lib/actions/sla.ts`, `lib/actions/leads.ts`,
+`trigger/lead-sla.ts`, `lib/actions/sla-policies.ts`, `lib/validations/sla-policy-schema.ts`,
+`lib/services/sla-service.ts`, `components/settings/SlaPoliciesPanel.tsx`.
+
+---
+
+## 2026-06-15 — Task mutation cores (Elaya Phase 2 substrate, Brief 2)
+
+Lifted the write body + context-free side-effects of the six task-write actions into a shared
+**`src/lib/services/task-mutations.ts`**, mirroring exactly what `lead-mutations.ts` did for
+leads. The session actions in `src/lib/actions/tasks.ts` become thin callers. **Pure substrate —
+no Elaya tools, no web-app behaviour change.** This unblocks Brief 3 (Elaya task-write tools that
+run with no session, as a principal under the admin client).
+
+- **Six cores, one per write action** — `createPersonalTaskCore`, `createGroupTaskCore`,
+  `createSubtaskCore`, `updateTaskStatusCore`, `updateTaskCore`, `deleteTaskCore`. Each takes an
+  explicit **`MutationActor`** (**reused from `lead-mutations.ts`, never redefined** — R-01) and
+  holds the raw `tasks`/`task_groups` insert/update/delete (DIRECT writes via the admin client —
+  no RPC, unlike the lead cores), the `scheduleTaskReminder`/`cancelTaskReminder` calls, the
+  `createNotification` fan-out, and the Redis invalidations.
+- **P-08 conversion.** The actions' `void redis.del().catch()` fire-and-forget dels became
+  **awaited** dels inside a `try/catch`-warn block in the cores — matching the lead cores so the
+  cache layer is consistent before the next read. `revalidatePath` stays in the action wrapper,
+  never the core (off-channel there is no RSC page to revalidate).
+- **`canMutateTask` is now importable by a non-action caller.** Moved verbatim from
+  `actions/tasks.ts` to `task-mutations.ts`; the only change is it now takes the Supabase client
+  (session client from the action, admin from a future tool) instead of calling `createClient()`
+  internally. **The caller gates, the cores stay ungated (Q-13)** — `canMutateTask` runs in the
+  caller before a core, never inside one. (`task-complete-auth.ts`, the client-side UI mirror, is
+  untouched.)
+- **Three named invariants preserved exactly.** (a) The status/delete category cache branches key
+  on `actor.userId` deliberately — NOT `assigned_to` (the pre-mortem note); the actor carries that
+  exact keying. (b) `createSubtaskCore` keeps BOTH the assignee notify and the dual group-cache
+  del. (c) `deleteTaskCore` cancels the Trigger.dev reminder BEFORE the DB delete and the cancel
+  failure stays non-fatal.
+- **Each action is now: validate → `requireProfile()`/`getCurrentProfile()` → per-resource gate
+  (`canMutateTask`) → `actorFromProfile(caller)` → core → `revalidatePath`.** The four documented
+  parallel-fetch actions (`updateTaskStatusAction`/`updateTaskAction`) keep their `Promise.all`
+  profile+task fetch. `addTaskRemarkAction`, `suppressTaskRemarkAction`, `deleteGroupTaskAction`,
+  `updateChecklistAction`, `updateTaskTagsAction` are not cored.
+- Sign-off: `pnpm tsc --noEmit` clean (only the pre-existing `output/` scratch errors remain).
+- Files: **new** `src/lib/services/task-mutations.ts`; `src/lib/actions/tasks.ts` (thin callers,
+  dead imports removed); `src/lib/CLAUDE.md` (services + actions registry rows).
+
+## 2026-06-15 — Elaya: floating chat widget (second entry point, zero-divergence shell)
+
+A floating circular **Elaya** button now sits in the bottom-right corner of every dashboard
+route **except `/elaya`** (the corner opposite the top-left mobile nav hamburger). Clicking it
+opens a modal that renders the **same `ElayaChatShell`** the `/elaya` page renders — no fork — so
+anything built on the main chat surface (tools, persona, voice, the E3 confirm protocol) appears
+in the widget automatically.
+
+- **Shared seed (R-01).** Extracted the `/elaya` page's inline seeding into
+  **`resolveElayaChatSeed(profile)`** in `src/lib/services/elaya-service.ts` — THE single source
+  of the four `ElayaChatShell` props (conversationId · transcript · greeting · remaining cap).
+  Both entry points seed identically: the `/elaya` RSC page calls it directly; the widget calls it
+  through the new server action **`getElayaChatSeedAction()`** (`src/lib/actions/elaya.ts`,
+  `requireProfile()` guard, `{data,error}`, no Zod — it takes no user input). The widget continues
+  the user's **single active conversation**, never a parallel one.
+- **Server boundary for seeding (A-15).** The widget is `'use client'`, so it can't import
+  `elaya-service` for data (that pulls `next/headers` into the client bundle); it imports only the
+  `ElayaChatSeed` **type** and fetches via the action on each open (so the modal reflects the
+  conversation's current state, e.g. messages sent on `/elaya` in another tab).
+- **One prop on the shell, chat surface unchanged.** `ElayaChatShell` gained an optional
+  `hideIdentity` (default `false`) that omits the `ElayaIdentityCard` rail + the dossier grid so
+  the chat fills the modal. The `/elaya` page passes nothing → byte-identical to before; the chat
+  surface itself never diverges.
+- **No double-stream / double-count.** The widget hides itself when `pathname === '/elaya'`, so two
+  live `ElayaChatShell` instances on one conversation can never co-exist and burn the daily cap twice.
+- **Phase-6 clipping fix reused.** The button + modal `createPortal` to `document.body` (escape any
+  transformed shell ancestor). The button is a `.serene-elaya-fab` (globals.css) sharing the
+  `.serene-mobile-trigger` accent-washed-paper aesthetic, tokens only, breathing `ElayaGlyph` =
+  presence; `next/dynamic` loads the heavy chat shell on first open (perf G-1). Desktop toast stack
+  baseline raised to clear the FAB (both anchor bottom-right).
+
+Touched files: `src/lib/services/elaya-service.ts`, `src/lib/actions/elaya.ts` (new),
+`src/components/elaya/ElayaWidget.tsx` (new), `src/components/elaya/ElayaChatShell.tsx`,
+`src/app/(dashboard)/elaya/page.tsx`, `src/app/(dashboard)/layout.tsx`,
+`src/components/ui/toast-provider.tsx`, `src/app/globals.css`. Docs:
+`src/components/layout/CLAUDE.md`, `docs/modules/elaya.md`, project digest. `pnpm tsc --noEmit`
+clean (source tree; the only errors are in the untracked `output/` scratch dir, pre-existing and
+unrelated).
+
+**Refinement (same day) — premium modal, single surface.** The first cut wrapped the shell's own
+bordered+shadowed chat card inside the generic `Modal`'s paper panel (with its "Elaya" + X header)
+— a card-in-a-card with two competing headers that read as unrefined. Reworked to the DESIGN-DNA
+§15.3 **Surface A** anatomy so the chat **is** the modal surface:
+
+- **`Dialog` gained `bodyPadding`** (default `true`) — `false` removes the inset so a child sits
+  flush; the widget opens the chat via `Dialog` (`hideCloseButton`, `bodyPadding={false}`), not the
+  titled `Modal`. `Modal` forwards both `hideCloseButton`/`bodyPadding` for reuse.
+- **`ElayaChatShell` gained `embedded` + `onClose`.** `embedded` strips the card's own
+  border/shadow/radius/min-height so it fills the Dialog panel edge-to-edge (one surface, no double
+  chrome); `onClose` puts a single close X in the shell's own presence header. The `/elaya` page
+  passes neither → free-standing card, no close X (unchanged).
+- **Presence header refined for BOTH surfaces** (consistency = the ask): breathing glyph in a 40px
+  accent disc with `--shadow-accent-glow` + accent ring, name in Playfair `--text-base`
+  `--weight-normal` (DNA spec), serif-italic status sub-line.
+- **Bubbles polished** (page + widget): the DNA §15.4 "tail detail" (sender-side corner tightened
+  to `--radius-xs`, one `--radius-lg` scale — V-07), hairline `--shadow-1` lift, Elaya's glyph in a
+  soft accent disc. Transcript + composer share a centered 46rem reading column so messages never
+  sprawl in the wider modal.
+
+Refinement touched additionally: `src/components/elaya/ElayaMessageBubble.tsx`,
+`src/components/ui/Dialog.tsx`, `src/components/ui/modal.tsx`. `check:tokens` green (444 files).
+
+---
+
+## 2026-06-15 — Elaya: three confirmed tool defects fixed (task timezone · group-task blindness · status no-op lie)
+
+Three correctness fixes inside the existing Elaya tool surface — no new tools, task kinds, or
+mutation layer (all scoped out of this brief). Touched files: `src/lib/utils/ist.ts`,
+`src/lib/elaya/tools/registry.ts`, `src/lib/elaya/tools/write-registry.ts`.
+
+1. **Task timezone — IST written as UTC (`create_lead_task`).** The model emits a zoneless
+   wall-clock `dueAt` like `"2026-06-16T15:00:00"` meaning **3pm IST**; `createLeadTaskCore`'s
+   `new Date(dueAt)` parsed it as the server's zone (UTC on Vercel), so the task landed 5h30m late.
+   Added **`normalizeDueAtToIstInstant()`** to the canonical `ist.ts` (composes the existing
+   `istToUtc` — no new IST math, R-01) and applied it **once, at the tool boundary** in
+   `create_lead_task.run()`: a zoneless `YYYY-MM-DDTHH:MM[:SS]` string → interpreted as IST →
+   returned as a true UTC ISO instant; an already-zoned string (`…Z` / `…±HH:MM` / `…±HHMM`) passes
+   through unchanged. The core keeps receiving a real instant, so its `scheduleTaskReminder(new
+   Date(dueAt))` and `p_due_at` inherit the correct moment — no second conversion (the core's
+   `new Date(<instant>).toISOString()` is idempotent; double-conversion avoided). The audit
+   payload records the converted instant, not the raw model string.
+2. **Group-task blindness (`get_my_tasks`).** The tool fetched only `getGiaTasksForUser` +
+   `getPersonalTasks`, so Elaya never saw group/team work. Added `getGroupTasks({}, { userId })`
+   (the existing service, reused verbatim — never a table query here, R-01) into the same
+   `Promise.all` and returns a third `groupTasks` array (title/status/priority/dueAt + subtask
+   counts). Tool description updated so the model knows it now covers all three task kinds.
+3. **The status no-op lie (`update_lead_status` resolver).** A confirmed status change to a status
+   the lead already held returned `ok: true, changed: false`, yet `executeProposedAction` emitted
+   "Done — now {status}" regardless — Elaya claimed a change that never happened. Now the resolver
+   reads `core.result.changed`: it emits "Done — now {status}" **only** when `changed` is true; on a
+   no-op it resolves the proposal `executed` (the row IS in the target state) but emits an honest
+   "{lead} was already {status} — nothing to change". Cache invalidation untouched (the core already
+   skips it when nothing moved); `reassign_lead` and `add_lead_note` untouched.
+
+Docs: `docs/modules/elaya.md` (read-tools line, `create_lead_task` row, resolver honest-no-op note).
+`pnpm tsc --noEmit` clean (source tree; the only errors are in the untracked `output/` scratch dir,
+pre-existing and unrelated). Verified: a zoneless "3pm" dueAt stores `09:30Z` (= 15:00 IST) and the
+core re-parse is idempotent; `get_my_tasks` returns `groupTasks` for a user who has them; confirming
+a status change to the lead's current status yields the "already" line, never "Done — now".
+
+---
+
+## 2026-06-15 — Elaya: persona now pins all amounts to INR (prompt-only — fixes the AED guess)
+
+Elaya occasionally printed monetary amounts as **AED** (and sometimes `$`/`Rs`) because the staff
+persona never named a currency — the model was free to guess. **Prompt-only fix:** added one INR
+rule to the existing "Data rules" block in `src/lib/elaya/persona.ts` (the same block as the
+"numbers MUST come from your tools" clause, not a new trailing line, so the model doesn't
+deprioritise it):
+
+> Every monetary amount is Indian Rupees. Always render money with the ₹ symbol and Indian digit
+> grouping (₹1,00,000, ₹12,50,000), never western grouping. Never use any other currency code or
+> symbol — no AED, USD, $, €, or "Rs". Amounts from tools are already in rupees; never convert or
+> guess a different currency.
+
+Matches the `formatCurrency()` INR convention (`₹` + `en-IN` Indian grouping) without hardcoding a
+formatter — amounts from tools are already rupees, so the rule states the currency, it does **not**
+introduce conversion language (there are no non-INR amounts to convert). No tool, schema, or
+formatter touched. `pnpm tsc --noEmit` clean (source tree). Verified: asking Elaya a deal-amount
+question replies with `₹`, never AED/$/€.
+
+---
+
+## 2026-06-15 — Docs: full `docs/` sync pass — brought every structural doc up to the live codebase (no code/schema change)
+
+A documentation-only sweep closing the gap between `docs/` and the features shipped 2026-06-12 → 06-15. The changelog itself was already current; the *structural* docs (architecture, pages, modules, integrations, operations) were not. Grounded by a parallel read of the live code for each subsystem, then verified link-by-link (zero broken internal links) — code is the source of truth.
+
+**Stale facts corrected:**
+
+- **`pages/auth.md` + `architecture/auth-and-rbac.md`** — the password reset is now an **OTP-code** flow, not magic-link. Rewrote §5c/§5d to the real three-action path (`requestPasswordResetAction` → `verifyResetOtpAction` → `updatePasswordAction`): `resetPasswordForEmail(email)` with **no `redirectTo`** (email renders `{{ .Token }}` = a 6-digit code), the param-only `/update-password?email=` gate (`MissingEmailCard`, no session gate), the two-step `CodeStep → PasswordStep` form where `verifyOtp({ type: 'recovery' })` establishes the session, and the now-dead `/api/auth/callback` for reset. Documented the corporate-link-scanner rationale.
+- **`pages/profile.md`** — reconciled the internal contradiction (the §4 banner already named the new cards, but §7a/§7f still said "three sections / no Notifications section"). §7a now lists the real four left-column sections; added §7i/§7j/§7k for `IconSelector`, `InstallPrompt`, `PushNotificationSettings`; appendix notes `app_icon` on `updateProfileSchema`.
+- **`architecture/migrations.md`** — filled the **0115–0119 index gap** (the table jumped 0114→0120) and fixed the header count (121 files, 0001–0121, not 105/0103).
+- **`architecture/database.md`** — added `push_subscriptions` (0120), `profiles.app_icon` (0121), `service_cases`/`conversation_hooks` (0110), `sla_policies` (0111), `revival_policies`/`revival_candidates` (0119), and the six `elaya_*` foundation tables (0116) + the `elaya_actions` state-machine note (0118).
+- **`architecture/overview.md`** — system map now includes Web Push, voice (Deepgram), Elaya Phase 2 writes + WhatsApp staff channel, the daily revival cron, Call Intelligence, and the PWA app-icon picker.
+- **`operations/environments.md`** — added the six env vars already in `.env.example` (`DEEPGRAM_API_KEY`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`/`PRIVATE_KEY`/`SUBJECT`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`) with correct exposure + read-site.
+- **`operations/pwa-install-guide.md`** — corrected the "no push notifications" claim (Web Push shipped 06-14) and added the home-screen icon picker.
+- **`integrations/trigger-dev.md`** — documented `sweepRevivalCandidatesTask` (cron `0 2 * * *` Asia/Kolkata = 07:30 IST), the project's first scheduled cron task.
+- **`pages/leads.md`, `pages/whatsapp.md`, `modules/elaya.md`, `architecture/caching.md`, `README.md`, `01-vision.md`, `00-for-the-board.md`** — added the revival review tab + dossier voice; the Elaya WhatsApp staff channel + voice transcription; corrected Elaya to "live" (routing/Haiku provider in production via Lead Revival; Deepgram = **Nova-2**, not Nova-3); the helpdesk Redis TTL + a corrected `perf:*` (no-Redis) note; status/index updates so the product reads as the mature feature set it is.
+
+**New module docs (no prior home):**
+
+- **`modules/voice-dictation.md`** — the Deepgram speech-to-text seam: one `DictationButton` cluster, one server-only `transcription-service.ts` call site, four in-app surfaces + inbound WhatsApp voice notes; audio never persisted; never auto-sends (D-01 carve-out).
+- **`modules/web-push.md`** — Web Push (VAPID): the fan-out seam inside `createNotification` (zero call-site edits), the dead-endpoint prune, the in-app-row-is-source-of-truth non-fatal contract, owner-only `push_subscriptions` RLS, and the iOS-standalone trap.
+
+Both wired into the `README.md` module index (which also dropped a stale duplicate `elaya.md` "reserved (undefined)" line left over from the Lia/Elia → Elaya rename).
+
+**Claude Project digest (`docs/claude-project/`)** — the four self-contained digest files (product/status, architecture, pages, design) were the most-stale docs in the repo (generated 2026-06-11, predating the whole 06-12→06-15 wave). All four refreshed: Elaya corrected from "design-first / no code wired" to **live** (read tools + Phase 2 agentic writes + WhatsApp staff channel + voice) and the duplicate "Elaya — name reserved, scope undefined" rename-leftover row deleted; Call Intelligence and Lead Revival added as shipped; API routes 3→5 (`/api/elaya/chat`, `/api/manifest`), Trigger.dev job families 2→3 (revival cron), RPCs ~30→~38, migrations 105→121, page specs 14→17 (`/elaya`, `/budget`, `/escalations`); OTP-code reset, Web Push, PWA app-icon, and the new AI/Call-Intelligence/Revival DB table groups all reflected.
+
+**Codebase knowledge doc (`codebase-analysis-docs/CODEBASE_KNOWLEDGE.md` + assets)** — the 996-line self-contained "brain dump" (generated 2026-06-13) refreshed to migrations-through-0121: Deepgram model corrected **Nova-3 → Nova-2 `hi-Latn`**; API routes + `/api/manifest`; the OTP-code reset flow (was magic-link); new DB tables documented (`push_subscriptions`, `service_cases`/`conversation_hooks`, `sla_policies`, `revival_policies`/`revival_candidates`) + columns (`profiles.app_icon`, `leads.service_interests`) + the `notifications.type` CHECK growth; new sections **§8.6 Lead Revival**, **Voice Input (Deepgram)**, **Notification Fan-Out & Web Push**, **PWA Install & Home-Screen Icon**; RPC count ~30→~38, hooks 13→16, migrations 0118→0121; the architecture asset diagram gained Deepgram + Web Push externals. Verified: zero broken in-doc anchors, zero stale facts.
+
+---
+
 ## 2026-06-15 — Icon look: restored the solid dark plate (reverses the transparent direction) — glyph large on `#0d0c0a`, maskable back
 
 Course-correction on the icon art. The "keep transparent" direction (entry below) looked wrong on the home screen — a transparent icon gets filled with the OS plate (white on iOS), and the safe-zone padding made the glyph small. The look the user actually wanted was the **original** `public/icons/icon-512.png`: the gold seed-of-life glyph **large on a solid #0d0c0a (Earth canvas) plate**. Restored exactly that, applied to all 4 picks.

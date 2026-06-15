@@ -431,14 +431,15 @@ export async function getAgentDealsScopedAction(
 
   try {
     const filters: DealFilters = {
-      search:    null,
-      domain:    null,
-      deal_type: null,
-      agent_id:  agentId,
-      date_from: null,
-      date_to:   null,
-      page:      parsed.data.page ?? 1,
-      pageSize:  50,
+      search:        null,
+      domain:        null,
+      deal_type:     null,
+      deal_category: null,
+      agent_id:      agentId,
+      date_from:     null,
+      date_to:       null,
+      page:          parsed.data.page ?? 1,
+      pageSize:      50,
     };
     // getDealsByRole requires a non-null AppDomain — pass caller.domain (always
     // non-null on a Profile), never the nullable checked `domain` param.

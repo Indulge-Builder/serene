@@ -55,7 +55,9 @@ export function ToastProvider() {
               gap:     "var(--space-3)",
             }
           : {
-              bottom: "var(--space-6)",
+              // Cleared above the floating Elaya FAB (56px + its space-6 bottom
+              // gap) — both anchor bottom-right; toasts stack above the button.
+              bottom: "calc(var(--space-6) + 56px + var(--space-3))",
               right:  "var(--space-6)",
               display: "flex",
               flexDirection: "column-reverse",

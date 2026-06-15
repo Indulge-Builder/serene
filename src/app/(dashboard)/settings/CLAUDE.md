@@ -12,7 +12,7 @@ src/app/(dashboard)/settings/
 
 src/components/settings/
   AgentSettingsTable.tsx — unified table: one row per agent with assignment toggle + shift start/end + active hours
-  SlaPoliciesPanel.tsx   — follow-up engine editor (admin/founder only): one row per sla_policies rule; threshold blur-save, hours-basis select, channel checkboxes, active toggle (optimistic). Writes via updateSlaPolicyAction (actions/sla-policies.ts). Recipient choice = toggling the per-recipient rows active; identity fields read-only. Full spec: docs/pages/settings.md §4
+  SlaPoliciesPanel.tsx   — follow-up engine editor (admin/founder only): one row per sla_policies rule; threshold blur-save, hours-basis select, channel checkboxes, active toggle (optimistic) — writes via updateSlaPolicyAction. PLUS a "New rule" form (header toggle) that authors a policy over the trigger catalog — writes via createSlaPolicyAction (both in actions/sla-policies.ts). Recipient choice on seeded rows = toggling the per-recipient rows active; seeded-rule identity fields read-only. Groups are exhaustive (Lead status / Call outcome / Follow-up cadences / Task due) so a user-authored outcome rule has a home. Full spec: docs/pages/settings.md §4
 ```
 
 ## Architecture
@@ -88,6 +88,46 @@ It renders 7 pill buttons in Mon→Sat→Sun display order (`[1,2,3,4,5,6,0]`).
 |-------------------|---------|
 | manager           | Agent · Shift Start · Shift End · Active Hours · Work Days · In Pool · Clear |
 | admin / founder   | Agent · Domain · Shift Start · Shift End · Active Hours · Work Days · In Pool · Clear |
+
+## SlaPoliciesPanel — "New rule" authoring (2026-06-15)
+
+The panel's `SectionCard` header carries a **New rule** toggle (admin/founder). Open → an inline
+`CreateRuleForm` (a sub-component in the same file, like `WorkDayPicker` in `AgentSettingsTable`)
+with five operational fields + channels:
+
+- **Watches** (`trigger_kind`: status / outcome / task_due) — drives the value dropdown.
+- **Value** (`trigger_value`) — options re-derive from the kind (`LEAD_STATUSES` →
+  `LEAD_STATUS_LABELS`, `CALL_OUTCOMES` → `CALL_OUTCOME_LABELS`, task_due → `gia_followup`). The
+  dropdown can never offer a value the action would reject.
+- **Notifies** (`recipient_role`: agent / manager / founder).
+- **Threshold (min)** — hidden for `outcome` (those tick daily; `threshold_minutes` is unused).
+- **Hours basis** (`hours_mode`, reuses `HOURS_MODE_OPTIONS`).
+- **Channels** (`in_app` / `whatsapp`).
+
+Writes via **`createSlaPolicyAction`** (`actions/sla-policies.ts`) — mirrors `updateSlaPolicyAction`
+exactly. On success the server-returned row prepends to local state and renders in its group.
+
+**The code is system-generated, never user-set.** `createSlaPolicyAction` mints an inert
+`USR-<id>` and asserts it carries no reserved `SLA-`/`CAD-`/`TASK-` prefix before the write — the
+schema (`CreateSlaPolicySchema`) accepts no `code` field at all. A `CAD-` code would make the rule
+a self-re-arming daily task generator (`isCadenceCode`); `SLA-04` has a call_count branch. `USR-`
+is clear of both. `trigger_value` is validated **against** `trigger_kind` server-side (real
+status / outcome / `gia_followup`) — a value that can never fire (→ `STALE_FIRE` forever) is
+rejected by the action, not just the dropdown. No delete path — switch off via the active toggle.
+
+The panel's group list is **exhaustive**: Lead status · Call outcome · Follow-up cadences · Task
+due. The "Call outcome rules" group exists so a user-authored non-cadence `outcome` rule (which
+isn't an `isCadenceCode` row) has a home; seeded `CAD-01x` outcome rules stay under cadences.
+
+## SLA arming is decoupled from agent assignment (2026-06-15)
+
+A lead created with **no agent** still arms its manager (`SLA-01B`) and founder (`SLA-01C`)
+escalation timers — the engine no longer assumes an agent end-to-end (`ScheduleSlaSchema.assignedTo`
+is `.uuid().nullable()`; `notifyLeadAssigned` arms SLA on `scheduleSla` alone, not on `assignedTo`;
+`resolveAgentShift(null)` falls back to `BUSINESS_HOURS`). The agent rule (`SLA-01A`) self-skips at
+fire when `assigned_to` is null. The Trigger.dev idempotency key carries no agent, so a later
+assignment that re-arms the same rule dedupes against the unassigned timer (no double-arming). See
+`docs/modules/gia.md §4` and the changelog (2026-06-15).
 
 ## Security (A-09 two-layer)
 

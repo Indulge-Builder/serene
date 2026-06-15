@@ -21,6 +21,9 @@ Back to [index](index.md). Conventions: [_conventions.md](_conventions.md).
 - **Drill modals (Phase 5)** — `DrillModalShell` is the reusable keyset-pagination frame:
   - `AgentCallsDrillModal` — keyset over `lead_notes WHERE call_outcome IS NOT NULL`, composite cursor `(created_at, id)`.
   - `AgentLeadsDrillModal` / `AgentDealsDrillModal` — reuse `getLeadsByRole` / `getDealsByRole` with `filters.agent_id`.
+  - **Two mount sites (2026-06-15):** the founder `FounderDrillDownDeck` tiles **and** the normal
+    `AgentDetailPanel` `StatAtom` tiles (Total Calls→calls, Leads→leads, Won+Revenue→deals). Same
+    `{ open, agentId, agentName, domain, onClose }` props on both — one shared drill layer, no fork.
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **Purpose:** the three caching layers — Upstash Redis cache-aside, React `cache()`, and `unstable_cache` — with the key registry, TTLs, and invalidation contracts.
 > **Audience:** engineers. · **Source-of-truth scope:** cache architecture and invariants. Connection/provider setup lives in `../integrations/upstash-redis.md`; exact per-function TTL values are maintained code-adjacent in `src/lib/CLAUDE.md` (services registry).
-> **Last verified:** 2026-06-11 against `src/lib/redis.ts`, `src/lib/constants/redis-keys.ts`, `src/lib/services/lead-cache.ts`, `src/lib/CLAUDE.md`.
+> **Last verified:** 2026-06-15 against `src/lib/redis.ts`, `src/lib/constants/redis-keys.ts`, `src/lib/services/lead-cache.ts`, `src/lib/services/intelligence-service.ts`, `src/lib/CLAUDE.md`.
 
 ---
 
@@ -28,8 +28,8 @@ user-facing error.
 | `lead:notes` / `lead:activities` | `getLeadNotesFull` / `getLeadActivitiesFull` | 120s | Explicit `del` on note/activity write |
 | `lead:filter-options` | `getLeadFilterOptions` | 300s | TTL-only |
 | `dashboard:*` | `dashboard-service` (status, volume, multi-domain, campaigns, agent-tasks) | 30–120s | TTL-only; keys are date-range-namespaced (`from:to`) — a del cannot enumerate them |
-| `perf:*` | `performance-service` | 30–120s | TTL-only. `domain` is deliberately excluded from `perf:agent-detail` (auth-only dimension — does not change the query result) |
 | `task:*` | `tasks-service` (gia, group-list, personal page-1, subtasks, remarks) | 30–120s | Explicit `del` on task writes; `task:group-list` is **user-scoped** (flat-visibility migration 0058b) — on subtask assignment both the caller's and the assignee's keys are deleted |
+| `helpdesk:cases:{domain}` | `intelligence-service.getHelpdeskLibrary` | 3600s (`REDIS_TTL.HELPDESK_CASES`) | Explicit `del` of `helpdeskCases(domain)` on every case/hook write — `actions/intelligence.ts` awaits the del before `revalidatePath('/helpdesk')`. One `{ cases, hooks }` envelope per domain; partial reads never cached. The dossier reads (`getCasesForLead`/`getHooksForCategories`) are deliberately un-cached |
 
 **No `ad-creatives` namespace.** A `campaign:ad-creative:*` cache was added 2026-06-01 and
 removed 2026-06-08 (its `void redis.del` was a P-08 bug; the cache was dropped entirely).
@@ -37,6 +37,12 @@ removed 2026-06-08 (its `void redis.del` was a P-08 bug; the cache was dropped e
 Do not re-add it. Likewise the campaign RPC reads (`getCampaignMetrics`,
 `getCampaignDetailMetrics`, `getCampaignAgentDistribution`) are always live — there is no
 `REDIS_KEYS.campaign.*` namespace.
+
+**No `perf:*` namespace.** `performance-service.ts` is RPC-backed and uses React `cache()` for
+per-request memoisation only — there is **no** Redis cache-aside. The `perf:*` row listed here
+through 2026-06-11 never existed in code (stale doc, corrected 2026-06-11 in `src/lib/CLAUDE.md`,
+removed from this table 2026-06-15). Do not re-add it; `/budget` (`ad-spend-service.ts`) is the
+same posture — always-live RPCs, `revalidatePath` freshness, no Redis.
 
 ## 3. The non-negotiable rules
 
@@ -91,3 +97,15 @@ the **session-verified `callerDomain`**, never `filters.domain`. User-scoped que
 - **Key rule (Q-16):** an `unstable_cache` key includes every dimension that scopes the result —
   domain for domain-scoped queries, userId for user-scoped ones. Omitting one allows
   cross-domain/cross-user cache hits.
+
+## 5. Web Push channel — freshness posture (not a cache layer)
+
+Web Push (VAPID, the `web-push` library, migration 0120) is a **second notification delivery
+channel**, not a cache layer — noted here only to be explicit that **none of it is Redis-cached.**
+The in-app `notifications` row is the **source of truth**; push is **best-effort**. The fan-out
+seam lives inside `createNotification` (`notifications-service.ts`): after the in-app row insert it
+calls `dispatchPush` (`push-service.ts`), which **never throws** — if every push send fails the
+in-app row still stands. Device `push_subscriptions` are read live via the admin client on each
+fan-out and dead endpoints (404/410) are pruned in one batched delete; subscriptions are **never
+Redis-cached** (a stale subscription set would mis-route or miss devices). There is no TTL and no
+explicit del to reason about here.

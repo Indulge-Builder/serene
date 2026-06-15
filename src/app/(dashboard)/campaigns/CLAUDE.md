@@ -13,8 +13,12 @@ campaigns/page.tsx                   ← Server component (thin orchestrator)
   │
   └── <Suspense fallback={<CampaignListSkeleton />}>
         <CampaignListAsync />         ← Async server component
-              calls getCampaignMetrics(role, callerDomain, filters)
-              maps to <CampaignCard> list
+              Promise.all([
+                getCampaignMetrics(role, callerDomain, filters),
+                hasRange ? getBudgetSummary(date_from, date_to) : []  ← spend
+              ])
+              maps spend onto campaigns by normalised key → <CampaignCard> list
+              (spend/cost cells; "—" when no range or no spend)
               empty state: Playfair italic
 
 campaigns/[id]/page.tsx              ← Server component
@@ -95,6 +99,38 @@ Returns `null` when empty — no conditional wrapper at the call site. Composes 
 **Rule:** call this once in `CampaignListAsync` after `getCampaignMetrics` resolves. Never call `getAdCreativesForCampaign` per-card (N+1). The map lookup in `CampaignListAsync` uses the same `toLowerCase().trim()` normalisation as the DB `campaign_key` column.
 
 ---
+
+## Spend + Cost-per-Lead join (page-layer, one batched fetch)
+
+Each `CampaignCard` shows **Spend** and **Cost/Lead** for the active range. The data is **not** a
+new query — it reuses `getBudgetSummary(from, to)` from `ad-spend-service.ts` (the `/budget` source),
+joined at the page layer in `CampaignListAsync`.
+
+- **One fetch, in the same `Promise.all` as the metrics.** `CampaignListAsync` calls
+  `getBudgetSummary` **once** alongside `getCampaignMetrics`, then maps the returned
+  `BudgetCampaignRow[]` into a `Map<campaignKey, row>`. The card lookup uses
+  `campaign.campaign_name.toLowerCase().trim()` — the **same** normalisation as the ad-creatives map
+  and the DB `ad_spend_daily.campaign_key` column. **Never a per-card `getBudgetSummary` call** (that
+  is the N+1 bug for this feature — same class as the batch-ad-creative rule).
+- **One resolved range drives BOTH RPCs.** `getBudgetSummary` and `get_campaign_metrics` receive the
+  **identical** `filters.date_from`/`date_to`. If they diverged, a row's cost (spend ÷ leads) and its
+  lead counts would describe different windows. Resolve the range once (the filter bar's preset writes
+  `date_from`/`date_to`); pass it unchanged to both. This is the same discipline as the leads
+  count-RPC pairing.
+- **No range → no fetch.** `hasRange = Boolean(filters.date_from && filters.date_to)`. When false,
+  `getBudgetSummary` is **skipped** (it requires both bounds, and an unscoped cost figure would mix
+  all-time spend with windowed lead counts). The card then receives `null` for both fields.
+- **`—`, never ₹0.** `totalSpend`/`costPerLead` are passed as `number | null`. `null` (no range, or no
+  spend row for this campaign) → `CostCell` renders `—` in tertiary. `costPerLead` is already nulled
+  upstream by `getBudgetSummary` when `leadCount === 0`, so spend-but-no-leads also shows `—` for cost
+  while Spend still shows the figure. **Never render ₹0** — that is the costPerLead null contract,
+  identical to `/budget`'s `BudgetTable`.
+- **No Redis** — `getBudgetSummary` is always-live (admin client), like the campaign RPCs.
+
+`CampaignCard` props: `totalSpend?: number | null`, `costPerLead?: number | null`. `CostCell` is the
+in-file micro-label-over-value cell (mono value, `formatCurrency(Math.round(v))`). The cost zone sits
+between the identity zone and the status pills, separated by a structural `--theme-paper-border`
+divider (a neutral zone divider — NOT a semantic single-edge accent strip, which is forbidden).
 
 ## No Redis on campaign reads
 

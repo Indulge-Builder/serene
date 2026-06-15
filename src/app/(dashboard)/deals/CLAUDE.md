@@ -1,5 +1,39 @@
 # Deals Page — CLAUDE.md
 
+## Domain → type → category rule (source of truth: `DOMAIN_DEAL_CONFIG`)
+
+A deal's `deal_type` is **derived from its Gia domain — never free-picked** (decision-log
+2026-06-15). The single source is `DOMAIN_DEAL_CONFIG` in `src/lib/constants/deal-types.ts`
+(the `DOMAIN_INTERESTS` pattern):
+
+| Domain | `deal_type` | `deal_category` |
+| --- | --- | --- |
+| `onboarding` | `membership` (needs a `deal_duration`) | none (null) |
+| `shop` | `retail` | **required** — watch / bag / event / jewellery / small_luxury / accessories / other |
+| `house` | `sale` | none (null) |
+| `legacy` | `sale` | none (null) |
+
+`DOMAIN_DEAL_CONFIG` drives **all four layers** — never re-hardcode the type/category lists:
+
+- **Form** (`NewDealModal`, `WonDealModal`): auto-sets the type from the chosen/lead domain (shown
+  read-only), shows the category picker only when `categories ≠ null` (shop), the duration chips
+  only for membership.
+- **Action** (`resolveDealShapeForDomain` in `lib/actions/deals.ts`): derives the type server-side
+  and cross-validates the form's extras against it. **A client-sent `deal_type` is ignored** —
+  `recordDeal` derives from the lead's domain, `createWalkInDeal` from the server-forced deal
+  domain. The Zod schemas no longer carry a `deal_type` field.
+- **Filter** (`DealsFilters`): the Category dropdown reads `DEAL_CATEGORY_OPTIONS`; the Type
+  dropdown reads `DEAL_TYPE_OPTIONS`.
+- **DB** (migration 0122): `deals_deal_type_check` (`membership`/`retail`/`sale`),
+  `deals_deal_category_check` (value whitelist), `deals_retail_category_check` (`retail ⇒ category
+  NOT NULL`, `non-retail ⇒ category NULL`). The CHECKs are the backstop; the action returns clean
+  copy first.
+
+**Adding a Gia domain or retail category = one `{ id, label }` / config line + one CHECK-extending
+migration.** Never fork the mapping.
+
+---
+
 ## Architecture: Three-Component Split
 
 ```
@@ -72,18 +106,21 @@ Defined in `src/lib/types/database.ts`.
 
 ```typescript
 export type DealFilters = {
-  search:    string | null
-  domain:    AppDomain | null   // admin/founder only; parseGiaDomainParam() validates
-  deal_type: string | null      // 'membership' | 'retail'
-  agent_id:  string | null
-  date_from: string | null
-  date_to:   string | null
-  page:      number
-  pageSize:  number
+  search:        string | null
+  domain:        AppDomain | null   // admin/founder only; parseGiaDomainParam() validates
+  deal_type:     string | null      // 'membership' | 'retail' | 'sale'
+  deal_category: string | null      // retail product category; surfaced when domain=shop
+  agent_id:      string | null
+  date_from:     string | null
+  date_to:       string | null
+  page:          number
+  pageSize:      number
 }
 ```
 
-**No `status` field — see invariant 2 above.**
+**No `status` field — see invariant 2 above.** `deal_category` is only meaningful inside the
+`shop` slice (the sole category-bearing `deal_type`); `DealsFilters` surfaces its dropdown only when
+the active domain filter is `shop`, and clears it atomically on any domain change.
 
 ---
 
@@ -143,6 +180,12 @@ On success: `router.refresh()` — no manual cache invalidation needed.
 - Manager: domain = caller.domain; assigned_to may be any active agent in their domain
 - Admin/founder: may pick any Gia domain and any agent in that domain
 
+**`deal_type` is derived from the resolved domain — never sent by the client.** The Details step
+shows the type read-only and surfaces the type-dependent extra: a product-category `<select>` for
+shop (retail), duration chips for onboarding (membership), nothing for house/legacy (sale). The
+action re-derives the type from the server-forced domain via `resolveDealShapeForDomain` and ignores
+any client-supplied type — see the "Domain → type → category rule" section at the top.
+
 **Walk-in deals never touch leads, SLA timers, or activity logs.**
 They insert a single `deals` row and nothing else.
 
@@ -161,12 +204,13 @@ measure, but the service-layer guard is the authoritative one.
 
 ## URL Param Keys
 
-| Filter    | URL param   | Type              |
-|-----------|-------------|-------------------|
-| search    | `search`    | string (debounced 500ms) |
-| domain    | `domain`    | AppDomain (admin/founder only) |
-| deal_type | `deal_type` | 'membership' \| 'retail' |
-| agent_id  | `agent_id`  | UUID string (manager+ only) |
+| Filter        | URL param       | Type              |
+|---------------|-----------------|-------------------|
+| search        | `search`        | string (debounced 500ms) |
+| domain        | `domain`        | AppDomain (admin/founder only) |
+| deal_type     | `deal_type`     | 'membership' \| 'retail' \| 'sale' |
+| deal_category | `deal_category` | retail category (shown only when `domain=shop`; cleared on domain change) |
+| agent_id      | `agent_id`      | UUID string (manager+ only) |
 | date from | `date_from` | ISO date string (applied to won_at) |
 | date to   | `date_to`   | ISO date string (applied to won_at) |
 | page      | `page`      | integer (default 1) |
@@ -179,9 +223,14 @@ Every filter/search change deletes the `page` param via `buildFilterParams(..., 
 
 | Action | File | Description |
 | --- | --- | --- |
-| `recordDeal` | `lib/actions/deals.ts` | Lead → deal path. Inserts `deals` row then delegates `updateLeadStatus('won')` for all side-effects. |
-| `createWalkInDeal` | `lib/actions/deals.ts` | Walk-in / direct sales. No lead involved. `lead_id = null`. |
+| `recordDeal` | `lib/actions/deals.ts` | Lead → deal path. Derives `deal_type` from the **lead's** domain (`resolveDealShapeForDomain`), inserts `deals` row, then delegates `updateLeadStatus('won')` for all side-effects. |
+| `createWalkInDeal` | `lib/actions/deals.ts` | Walk-in / direct sales. No lead involved. `lead_id = null`. Derives `deal_type` from the server-forced deal domain. |
 | `listAgentsForDealDomain` | `lib/actions/deals.ts` | Read action for NewDealModal assignee picker. |
+
+**`resolveDealShapeForDomain(domain, {deal_duration, deal_category})`** (`lib/actions/deals.ts`) is
+THE domain → `{type, duration, category}` resolver shared by both write actions. The type is derived
+from `DOMAIN_DEAL_CONFIG`; the form's extras are cross-validated against it (membership ⇒ duration,
+retail ⇒ valid category, sale ⇒ neither). A client-sent `deal_type` is never read.
 
 `recordDeal` is also re-exported from `lib/actions/leads.ts` for back-compat with `StatusActionPanel`.
 

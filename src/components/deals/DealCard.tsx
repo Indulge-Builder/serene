@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { m as motion } from 'framer-motion';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
-import { DEAL_TYPE_LABELS, DEAL_DURATION_LABELS } from '@/lib/constants/deal-types';
+import { DEAL_TYPE_LABELS, DEAL_DURATION_LABELS, DEAL_CATEGORY_LABELS } from '@/lib/constants/deal-types';
 import { formatDate } from '@/lib/utils/dates';
 import { formatCurrency } from '@/lib/utils/numbers';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
@@ -62,9 +62,24 @@ function WalkInPill() {
   );
 }
 
-function DealTypeChip({ dealType, dealDuration }: { dealType: string; dealDuration: string | null }) {
+function DealTypeChip({
+  dealType,
+  dealDuration,
+  dealCategory,
+}: {
+  dealType:     string;
+  dealDuration: string | null;
+  dealCategory: string | null;
+}) {
   const label    = DEAL_TYPE_LABELS[dealType as keyof typeof DEAL_TYPE_LABELS] ?? dealType;
   const isMember = dealType === 'membership';
+  // The type-dependent detail chip: duration for membership, category for retail.
+  const detail =
+    isMember && dealDuration
+      ? DEAL_DURATION_LABELS[dealDuration as keyof typeof DEAL_DURATION_LABELS] ?? dealDuration
+      : dealType === 'retail' && dealCategory
+        ? DEAL_CATEGORY_LABELS[dealCategory as keyof typeof DEAL_CATEGORY_LABELS] ?? dealCategory
+        : null;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
       <span
@@ -86,7 +101,7 @@ function DealTypeChip({ dealType, dealDuration }: { dealType: string; dealDurati
       >
         {label}
       </span>
-      {isMember && dealDuration && (
+      {detail && (
         <span
           style={{
             display:      'inline-flex',
@@ -102,7 +117,7 @@ function DealTypeChip({ dealType, dealDuration }: { dealType: string; dealDurati
             whiteSpace:   'nowrap',
           }}
         >
-          {DEAL_DURATION_LABELS[dealDuration as keyof typeof DEAL_DURATION_LABELS] ?? dealDuration}
+          {detail}
         </span>
       )}
     </div>
@@ -188,7 +203,7 @@ function CardBody({ deal }: { deal: DealWithRelations }) {
 
         {/* Row 2 — deal type chip, then won date + agent name, all left-aligned */}
         <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-          <DealTypeChip dealType={deal.deal_type} dealDuration={deal.deal_duration} />
+          <DealTypeChip dealType={deal.deal_type} dealDuration={deal.deal_duration} dealCategory={deal.deal_category} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
             <p
               style={{
@@ -265,7 +280,7 @@ function CardBody({ deal }: { deal: DealWithRelations }) {
 
       {/* Centre zone — deal type chip + duration */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-        <DealTypeChip dealType={deal.deal_type} dealDuration={deal.deal_duration} />
+        <DealTypeChip dealType={deal.deal_type} dealDuration={deal.deal_duration} dealCategory={deal.deal_category} />
       </div>
 
       {/* Right zone — deal amount + won date + agent name */}

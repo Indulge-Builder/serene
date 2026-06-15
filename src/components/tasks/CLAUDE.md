@@ -86,6 +86,8 @@ Mounted from `TasksShell` when `tab=personal`.
 
 Task rows render through the module-scope **`CalendarTaskRow`** (`memo`, perf G-4): hover lives in the parent (`hoveredTaskId`), so the row receives a primitive `highlighted` flag plus `isLast`/`showDue`/`effectiveStatus`/`canComplete` primitives and `useCallback`'d handlers (`handleRowClick`, `setHoveredTaskId`, `handleToggle`). Keep new row props primitive/stable — never re-inline the row JSX.
 
+**Calendar dots = actionable-only (single predicate).** A dot means a day has at least one task still to do. `buildTaskDots` and `groupTasksByDate` (the click filter) both gate on the shared module-scope `isTaskActionable(task, optimisticStatus)` — effective status (optimistic toggle honoured) neither `completed` nor `cancelled`. Both receive `optimisticStatus`. Never give the two functions separate completed-checks: that drift is what caused the phantom-dot bug (a day whose tasks were all done showed a dot but clicked to an empty list). A just-completed task drops its dot immediately because the predicate reads optimistic status. Pagination blindness (dots reflect only loaded tasks, not the full DB set) is a separate, known limitation, flagged in a code comment — do not fold a fix for it into the dot predicate. Date-grain keys stay `localKey`/`taskLocalKey` — never `toISOString().slice(0,10)`.
+
 ---
 
 ### GroupTasksTab

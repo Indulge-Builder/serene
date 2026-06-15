@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect }          from 'react';
+import { useState, useRef, useEffect, useMemo }  from 'react';
 import dynamic                                   from 'next/dynamic';
 import { useSearchParams }                      from 'next/navigation';
 import { m as motion, AnimatePresence }               from 'framer-motion';
@@ -16,6 +16,7 @@ import {
   PERFORMANCE_ROSTER_DOMAIN_ORDER,
 } from '@/lib/utils/performance-roster-display';
 import { getManagerRosterAction }                from '@/lib/actions/performance';
+import { useFounderPerfActions }                 from '@/app/(dashboard)/performance/founder-perf-actions';
 import { AgentDetailPanel }              from './AgentDetailPanel';
 import { PerformanceRosterEmptyState }   from './PerformanceRosterEmptyState';
 import type { AgentRosterRow }           from '@/lib/types/index';
@@ -464,6 +465,7 @@ export function ManagerPerformancePanel({
   const [isRefetching, setIsRefetching] = useState(false);
   const [rosterOpen, setRosterOpen]     = useState(true);
   const [deckOpen, setDeckOpen]         = useState(false);
+  const founderActions                  = useFounderPerfActions();
   const isMobile                        = useMediaQuery(MQ.mobile);
   const searchParams                    = useSearchParams();
   const searchTerm                      = (searchParams.get('search') ?? '').trim().toLowerCase();
@@ -534,6 +536,53 @@ export function ManagerPerformancePanel({
 
   const groups = buildPerformanceRosterGroups(visibleAgents, { allDomains, domain });
 
+  // Deck-view trigger — founder/admin all-domains view only. Opens the
+  // full-screen swipeable per-agent deck over the IN-MEMORY roster (respecting
+  // the active client-side domain filter — zero new fetch).
+  const showDeckTrigger = allDomains && visibleAgents.length > 0;
+  // Memoised on the only input that changes its content/visibility so the
+  // shell-registration effect below doesn't re-fire (and re-render the shell)
+  // on every panel render. setDeckOpen is a stable setter.
+  const deckTrigger = useMemo(
+    () =>
+      showDeckTrigger ? (
+        <button
+          type="button"
+          onClick={() => setDeckOpen(true)}
+          className="serene-pressable serene-touch"
+          style={{
+            display:      'inline-flex',
+            alignItems:   'center',
+            gap:          'var(--space-2)',
+            padding:      'var(--space-2) var(--space-4)',
+            borderRadius: 'var(--radius-md)',
+            border:       '1px solid var(--theme-paper-border)',
+            background:   'var(--theme-paper)',
+            boxShadow:    'var(--shadow-1)',
+            color:        'var(--theme-text-primary)',
+            fontFamily:   'var(--font-sans)',
+            fontSize:     'var(--text-sm)',
+            fontWeight:   'var(--weight-medium)',
+            cursor:       'pointer',
+            flexShrink:   0,
+          }}
+        >
+          <LayoutGrid style={{ width: 15, height: 15, strokeWidth: 1.5 }} aria-hidden="true" />
+          Deck view
+        </button>
+      ) : null,
+    [showDeckTrigger],
+  );
+
+  // When mounted inside the founder shell, hoist the trigger up onto the shell's
+  // tab row (aligned opposite the Agents/Domains tabs) instead of stacking it on
+  // its own row above the roster. Clear on unmount / when there's nothing to show.
+  useEffect(() => {
+    if (!founderActions) return;
+    founderActions.setTabAction(deckTrigger);
+    return () => founderActions.setTabAction(null);
+  }, [founderActions, deckTrigger]);
+
   // Flat list with stable animation delays
   let globalIndex = 0;
 
@@ -586,34 +635,13 @@ export function ManagerPerformancePanel({
         )}
       </AnimatePresence>
 
-      {/* Deck trigger — founder/admin all-domains view only. Opens the
-          full-screen swipeable per-agent deck over the IN-MEMORY roster
-          (respecting the active client-side domain filter — zero new fetch). */}
-      {allDomains && visibleAgents.length > 0 && (
+      {/* Deck trigger fallback — only when NOT inside the founder shell (the
+          shell hoists the trigger onto its tab row via FounderPerfActions).
+          The founder all-domains path always has the context, so this renders
+          only in the defensive no-context case. */}
+      {!founderActions && deckTrigger && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
-          <button
-            type="button"
-            onClick={() => setDeckOpen(true)}
-            className="serene-pressable serene-touch"
-            style={{
-              display:      'inline-flex',
-              alignItems:   'center',
-              gap:          'var(--space-2)',
-              padding:      'var(--space-2) var(--space-4)',
-              borderRadius: 'var(--radius-md)',
-              border:       '1px solid var(--theme-paper-border)',
-              background:   'var(--theme-paper)',
-              boxShadow:    'var(--shadow-1)',
-              color:        'var(--theme-text-primary)',
-              fontFamily:   'var(--font-sans)',
-              fontSize:     'var(--text-sm)',
-              fontWeight:   'var(--weight-medium)',
-              cursor:       'pointer',
-            }}
-          >
-            <LayoutGrid style={{ width: 15, height: 15, strokeWidth: 1.5 }} aria-hidden="true" />
-            Deck view
-          </button>
+          {deckTrigger}
         </div>
       )}
 

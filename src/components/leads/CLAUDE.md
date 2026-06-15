@@ -238,6 +238,20 @@ unmount triggers the hook's discard + mic-track release.
 
 ---
 
+### LeadNotesSection
+
+`LeadNotesSection.tsx` — display-only read-only notes timeline (props only; resolved by `LeadNotesSectionAsync`).
+
+**Timeline markup mirrors `LeadActivityLog` (2026-06-15, R-01):** each note is a `display: flex` row
+with a fixed **15px dot/connector column** — `alignItems: center` centers both the 15px dot and the
+1px vertical rule on the track, and the connector flows below the dot (`flex: 1` + `minHeight: var(--space-5)`,
+rendered for every note but the last). **Never reintroduce the old absolute-positioned dot scheme**
+(`position: absolute` + `left: '-var(--space-6)'` + `marginLeft: '-22px'`): a CSS var cannot be negated
+inline, so that scheme floated the dots off the line. Every offset is a token; no raw px where a token
+exists. The two dossier timelines (notes + activity) share this one structure — keep them in step.
+
+---
+
 ### ReasonModal (inside StatusActionPanel)
 
 `ReasonModal` is a private component inside `StatusActionPanel.tsx`.

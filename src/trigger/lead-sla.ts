@@ -37,7 +37,7 @@ interface ScheduleLeadSlasPayload {
   leadId:           string;
   ruleCode:         string;
   fireAt:           string;  // ISO string (Date serialised for Trigger.dev payload)
-  assignedAgentId:  string;
+  assignedAgentId:  string | null;  // null = lead is unassigned (manager/founder rules still fire)
   domainManagerIds: string[];
 }
 
@@ -72,7 +72,7 @@ export async function scheduleLeadSlasTask(
   leadId:           string,
   ruleCode:         string,
   fireAt:           Date,
-  assignedAgentId:  string,
+  assignedAgentId:  string | null,
   domainManagerIds: string[],
   opts?: {
     /**

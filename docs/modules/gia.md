@@ -88,6 +88,24 @@ A deactivated policy (`active=false`) makes pending fires exit as stale.
 | TASK-01A | task_due | `gia_followup` due | at due | agent | no (in-app + WhatsApp reminder) |
 | TASK-01B | task_due | `gia_followup` due | +30 clock-min | manager | no (overdue escalation) |
 
+**Authoring rules from `/settings` (2026-06-15):** an admin/founder can add a rule over this
+catalog through the Follow-up Engine panel's "New rule" form — no developer, no migration. The
+code is system-generated as an inert `USR-<id>` (never user-supplied; reserved `SLA-`/`CAD-`/`TASK-`
+prefixes rejected structurally — a `CAD-` code would become a self-re-arming task generator), and
+`trigger_value` is validated against `trigger_kind` server-side (a value that can never fire is
+rejected, not armed into a permanent `STALE_FIRE`). A new row arms on the next matching lead. Spec:
+`../pages/settings.md §4`.
+
+**Arming is decoupled from assignment (2026-06-15):** a lead created with **no agent** (round-robin
+pool empty) still arms its manager (`SLA-01B`) and founder (`SLA-01C`) escalation timers — the
+escalation must fire even when nobody owns the lead. `notifyLeadAssigned` arms SLA on `scheduleSla`
+alone (not on `assigned_to`); `ScheduleSlaSchema.assignedTo` is nullable; `resolveAgentShift(null)`
+falls back to `BUSINESS_HOURS`. The agent rule (`SLA-01A`) self-skips at fire when `assigned_to` is
+null; manager/founder rules resolve recipients from the lead's domain. The Trigger.dev idempotency
+key carries no agent, so a later assignment re-arming the same rule dedupes against the unassigned
+timer (no double-arming). *(Before this fix, an unassigned lead armed zero timers — nobody was told
+it was rotting.)*
+
 **Outcome cadence (CAD-01 family):** when a call note lands with an unreached
 outcome (vocabulary = the rnr/switched_off/wrong_number subset of
 `CALL_OUTCOMES`), `addLeadCallNote` arms a daily tick — scheduled at the start

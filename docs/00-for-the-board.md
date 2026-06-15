@@ -2,7 +2,7 @@
 
 > **Purpose:** explain what Serene is to someone who doesn't write software — a board member, an investor, a new hire on the business side.
 > **Audience:** non-technical. Ten-minute read. No jargon; every term is explained where it first appears.
-> **Last verified:** 11 June 2026.
+> **Last verified:** 15 June 2026.
 
 ---
 
@@ -22,11 +22,12 @@ It is built like a building with named floors:
 - **Serene** is the building itself — the login, the look and feel, the navigation.
 - **Gia** is the sales floor — it manages every prospective client from first contact to
   closed deal. *This is live and used daily.*
-- **Elaya** is the assistant who will eventually walk every floor — an AI presence that surfaces
-  the right insight at the right moment. *Being designed now.*
+- **Elaya** is the assistant who walks every floor — an AI presence that surfaces the right
+  insight at the right moment and can now take action on a salesperson's behalf. *Live and in
+  use, including over WhatsApp.*
 - **Sia** is the concierge floor — where won clients will live as ongoing relationships.
   *Planned, not started.*
-- **Elaya** is a name reserved for a future floor. Its scope is not yet defined.
+- One further floor name is reserved for the future; its scope is not yet defined.
 
 Adding a new floor never requires rebuilding the building — that is the central architectural
 promise.
@@ -44,7 +45,8 @@ advertisement to deal:
    rank: the agent who has waited longest gets the next lead. Nobody cherry-picks; nobody is
    overloaded. Agents on holiday are skipped with one switch.
 4. **The agent's phone buzzes on WhatsApp:** "New lead: Priya, here's her number." The
-   founders get a quiet copy of the same alert.
+   founders get a quiet copy of the same alert. The same alert can also arrive as a push
+   notification on the agent's phone or computer, even when Serene isn't open in front of them.
 5. **The agent calls Priya, then logs the call in Serene** — what happened, what was promised,
    what's next. Every call, note, and status change is recorded permanently, so anyone who
    picks up the relationship later sees the full story.
@@ -97,23 +99,38 @@ advertisement to deal:
 
 **Live and in daily use:** everything described above — the sales floor (Gia) end to end,
 including lead capture from ads and WhatsApp, fair assignment, the timing guardrails, deals,
-campaign and performance reporting, and the shared WhatsApp inbox.
+campaign and performance reporting, and the shared WhatsApp inbox. Plus, now live:
+
+- **Elaya, the AI assistant** — the team can ask her questions in plain language (in the app
+  or over WhatsApp, including in Hinglish), and she can now act on their behalf: log a call
+  note or create a follow-up task directly, and *propose* a status change or reassignment that
+  a person approves in one reply before anything happens. Every action she takes is recorded,
+  and she is never sent a client's raw personal details.
+- **Voice dictation** — agents can speak instead of type a call note, a WhatsApp reply, or a
+  message to Elaya; their speech (including Hinglish) becomes editable text. The audio is
+  transcribed in the moment and never stored.
+- **An answers desk for agents** — a searchable library of "can we arrange X?" cases and
+  conversation hooks, with the relevant ones surfaced automatically on each lead's page, so
+  service knowledge stops living only in people's heads.
+- **Lead revival** — once a day the system quietly reviews leads that have gone silent and,
+  for the ones still worth chasing, books a follow-up automatically; the borderline ones are
+  set aside for a person to decide. It only ever *adds* a nudge — it never changes the lead.
+- **Push notifications** — alerts can reach an agent's phone or computer directly, and Serene
+  can be installed like an app on the home screen (each person can even choose their own icon).
+- **Sign-in safety** — password resets now use a short code typed into Serene rather than a
+  link in an email, which keeps corporate email scanners from accidentally burning the reset.
 
 **Being built now:**
 
-- **Elaya**, the AI presence — designed first as an experience (how and when she appears),
-  built second.
 - **Client records** — the bridge from "deal won" to "ongoing client relationship".
+- **A WhatsApp auto-assistant for prospects** — letting Elaya engage a new enquiry directly
+  until an agent takes over.
 
 **Planned next:**
 
 - **Sia**, the concierge floor, on top of client records.
-- **An answers desk** for agents — instant, consistent answers to "can we arrange X?" with
-  pricing and timing, so service knowledge stops living only in people's heads.
-- **A WhatsApp auto-assistant** that engages a new enquiry instantly until an agent takes
-  over.
 
 The honest summary for an outsider: the company's core sales operation already runs on
 software the company owns outright — built to luxury-brand standards, with discipline about
-privacy and record-keeping that most internal tools never have. The next phase adds the
-intelligence layer on top.
+privacy and record-keeping that most internal tools never have. The intelligence layer — an AI
+assistant that can both answer and act — is now live on top of it.

@@ -5,9 +5,10 @@
 // agentsSlot is a server-rendered subtree passed as a prop (RSC composition pattern).
 // Both tabs share the same period/customFrom/customTo from URL params.
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { TabSelector } from '@/components/ui/TabSelector';
+import { FounderPerfActionsProvider } from './founder-perf-actions';
 import type { PerformancePeriod } from '@/lib/services/performance-service';
 import type { DomainHealthCard, DomainTarget } from '@/lib/types/index';
 import type { AppDomain } from '@/lib/types/database';
@@ -61,11 +62,25 @@ export function FounderPerformanceShell({
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('agents');
 
+  // The Agents-tab roster panel registers its "Deck view" trigger here so it
+  // renders on this tab row (aligned opposite the tabs) instead of stacking on
+  // its own row above the roster. Cleared whenever the panel has no trigger.
+  const [tabAction, setTabAction] = useState<React.ReactNode>(null);
+  const setTabActionCb = useCallback((node: React.ReactNode) => setTabAction(node), []);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-      {/* Tab switcher — TabSelector pill variant (distinct indicatorLayoutId
-          from the agent shell's content tabs, per the shared-layout rule). */}
-      <div style={{ display: 'flex' }}>
+      {/* Tab row — tabs left, the Agents-tab deck trigger right (same row).
+          TabSelector pill variant (distinct indicatorLayoutId from the agent
+          shell's content tabs, per the shared-layout rule). */}
+      <div
+        style={{
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'space-between',
+          gap:            'var(--space-4)',
+        }}
+      >
         <TabSelector
           tabs={[
             { id: 'agents', label: 'Agents' },
@@ -76,11 +91,15 @@ export function FounderPerformanceShell({
           variant="pill"
           indicatorLayoutId="founder-perf-tabs"
         />
+        {activeTab === 'agents' && tabAction}
       </div>
 
-      {/* Tab content — agentsSlot is a server-rendered subtree */}
+      {/* Tab content — agentsSlot is a server-rendered subtree. The provider
+          lets the client roster panel inside it register its tab-row trigger. */}
       <div style={{ display: activeTab === 'agents' ? 'block' : 'none' }}>
-        {agentsSlot}
+        <FounderPerfActionsProvider value={{ setTabAction: setTabActionCb }}>
+          {agentsSlot}
+        </FounderPerfActionsProvider>
       </div>
 
       {activeTab === 'domains' && (

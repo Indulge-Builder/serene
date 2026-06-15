@@ -2,8 +2,12 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { cookies } from 'next/headers';
 import { getLeadFilterOptions } from '@/lib/services/leads-service';
-import { parseGiaDomainParam } from '@/lib/constants/domains';
+import { resolveDomainParam } from '@/lib/utils/domain-scope';
+import { getNotifications } from '@/lib/services/notifications-service';
+import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
+import { PageControls } from '@/components/layout/PageControls';
 import type { DealFilters, AppDomain } from '@/lib/types/database';
 import { DealsFilters } from '@/components/deals/DealsFilters';
 import { AddDealButton } from '@/components/deals/AddDealButton';
@@ -19,7 +23,9 @@ const PAGE_SIZE = 50;
 function parseFilters(
   searchParams: Awaited<SearchParams>,
   role: string,
-  callerDomain: AppDomain,
+  // Final scope domain from resolveDomainParam (param-first, cookie-fallback for
+  // admin/founder; already null for manager/agent — no role branch needed here).
+  scopeDomain: AppDomain | null,
 ): DealFilters {
   function getString(key: string): string | null {
     const val = searchParams[key];
@@ -33,21 +39,16 @@ function parseFilters(
     return isNaN(n) || n < 1 ? fallback : n;
   }
 
-  // Manager: domain always locked — URL param ignored
-  const domain: AppDomain | null =
-    role === 'manager'
-      ? null // manager constraint applied at service level via callerDomain arg
-      : parseGiaDomainParam(getString('domain'));
-
   return {
-    search:    getString('search'),
-    domain,
-    deal_type: getString('deal_type'),
-    agent_id:  role === 'agent' ? null : getString('agent_id'),
-    date_from: getString('date_from'),
-    date_to:   getString('date_to'),
-    page:      getInt('page', 1),
-    pageSize:  PAGE_SIZE,
+    search:        getString('search'),
+    domain:        scopeDomain,
+    deal_type:     getString('deal_type'),
+    deal_category: getString('deal_category'),
+    agent_id:      role === 'agent' ? null : getString('agent_id'),
+    date_from:     getString('date_from'),
+    date_to:       getString('date_to'),
+    page:          getInt('page', 1),
+    pageSize:      PAGE_SIZE,
   };
 }
 
@@ -62,9 +63,14 @@ export default async function DealsPage({
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
 
-  const resolvedParams   = await searchParams;
-  const filters          = parseFilters(resolvedParams, profile.role, profile.domain);
+  const [resolvedParams, cookieStore] = await Promise.all([searchParams, cookies()]);
   const showDomainFilter = profile.role === 'admin' || profile.role === 'founder';
+
+  // Single shared resolver: param-first, serene-domain cookie fallback for
+  // admin/founder; null for manager/agent (force-scoped server-side).
+  const scopeDomain = resolveDomainParam(resolvedParams, cookieStore, profile.role);
+
+  const filters = parseFilters(resolvedParams, profile.role, scopeDomain);
   const showAgentFilter  = profile.role !== 'agent';
 
   // Fetch agent list for filter dropdown (once at page level — not in filter component)
@@ -75,12 +81,21 @@ export default async function DealsPage({
       {/* Row 1 — Page header */}
       <div className="flex items-center justify-between gap-4 mb-6">
         <h1 className="type-page-title m-0">Deals<span className="page-title-dot">.</span></h1>
-        <AddDealButton
-          callerRole={profile.role}
-          callerDomain={profile.domain}
-          callerName={profile.full_name ?? ''}
-          callerId={profile.id}
-        />
+        <div className="flex items-center gap-3">
+          <AddDealButton
+            callerRole={profile.role}
+            callerDomain={profile.domain}
+            callerName={profile.full_name ?? ''}
+            callerId={profile.id}
+          />
+          {TOP_BAR_ENABLED && (
+            <PageControls
+              userId={profile.id}
+              isPrivileged={showDomainFilter}
+              notificationsPromise={getNotifications(profile.id)}
+            />
+          )}
+        </div>
       </div>
 
       {/* Row 2 — Filter bar */}

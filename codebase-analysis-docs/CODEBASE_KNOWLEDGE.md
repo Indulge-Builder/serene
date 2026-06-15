@@ -4,7 +4,7 @@
 > Self-contained: a reader with no repo access can implement features, fix bugs, and refactor safely from this document alone.
 >
 > - **Repo:** `/Users/alam/Desktop/serene`
-> - **Generated:** 2026-06-13 · against `main` (commit `b4c5b3e`)
+> - **Generated:** 2026-06-13 · **Refreshed:** 2026-06-15 against `main` (migrations through 0121) — added Lead Revival, Web Push, PWA app-icon, voice dictation, OTP-code password reset, Call Intelligence.
 > - **Method:** direct exploration of source + the authoritative in-repo docs (`docs/`, `CLAUDE.md`, the per-area `CLAUDE.md` registries).
 >
 > **Authority hierarchy (when this doc and the repo disagree, the repo wins):**
@@ -55,8 +55,9 @@ The architecture is deliberately **modular**: a base OS layer (Serene — shell,
 | Name | What it is | Status |
 | ---- | ---------- | ------ |
 | **Serene** | The OS — the shell every team member logs into | Live |
-| **Elaya** | The agentic AI presence inside Serene (a "compass", not a chatbot) | Phase 2 (agentic writes) live |
+| **Elaya** | The agentic AI presence inside Serene (a "compass", not a chatbot) | Phase 2 (agentic writes) + voice + WhatsApp staff channel live |
 | **Gia** | The CRM module for the four sales domains (leads, deals, campaigns) | Live |
+| **Lead Revival** | A thin AI-gated layer over Gia that recovers dormant-but-warm leads (daily cron → note-AI gate → "Revived" follow-up task or human review) | Phase R1 live (2026-06-14) |
 | **Sia** | The Concierge module | Not started |
 
 ### Target Users (Roles)
@@ -76,9 +77,13 @@ The architecture is deliberately **modular**: a base OS layer (Serene — shell,
 | **Deals** | First-class record of every closed sale (membership/retail, including walk-ins) | [§11](#11-feature-performance-campaigns-deals-budget) |
 | **Budget** | Ad-spend vs. lead/deal cost analysis (CPL/CPD) | [§11](#11-feature-performance-campaigns-deals-budget) |
 | **WhatsApp** | Two-way conversation with leads via Gupshup; staff messaging to Elaya; templated notifications | [§12](#12-feature-whatsapp-integration) |
-| **Elaya AI** | An LLM presence that can read CRM data and (Phase 2) propose/execute lead mutations behind a confirmation gate | [§13](#13-feature-elaya--the-ai-subsystem) |
+| **Elaya AI** | An LLM presence that can read CRM data and (Phase 2) propose/execute lead mutations behind a confirmation gate; voice input (Deepgram) + WhatsApp staff channel | [§13](#13-feature-elaya--the-ai-subsystem) |
+| **Lead Revival** | Recover dormant-but-warm leads that silently died — a daily silence sweep + cheap-LLM suppression gate that auto-revives the warm and routes the ambiguous to human review (a layer over Gia, never mutates the lead row) | [§8.6](#86-lead-revival-phase-r1) |
+| **Voice dictation** | Speech-to-text (Deepgram) on lead notes, the call modal, the Elaya composer, and inbound WhatsApp voice notes — an editable draft, never auto-sent | [§13](#13-feature-elaya--the-ai-subsystem) |
+| **Web Push** | A second notification channel (VAPID) that reaches an installed PWA when Serene is closed — fanned out behind the one `createNotification` seam | [§7](#7-caching-architecture) |
+| **PWA install + app icon** | Install Serene to the home screen and pick the installed-app icon (`profiles.app_icon`) | [§14](#14-feature-user-management--profiles) |
 | **User management** | Admin/founder creation, role/domain assignment, agent shift/routing config | [§14](#14-feature-user-management--profiles) |
-| **Helpdesk / Call Intelligence** | A library of service cases + conversation hooks surfaced on the lead dossier | [§15](#15-cross-feature-interaction-map) |
+| **Helpdesk / Call Intelligence** | A library of service cases + conversation hooks surfaced on the lead dossier + a standalone `/helpdesk` page (Phase 1 live — migrations 0109/0110) | [§15](#15-cross-feature-interaction-map) |
 
 ---
 
@@ -94,15 +99,16 @@ The architecture is deliberately **modular**: a base OS layer (Serene — shell,
 | UI primitives | shadcn/ui + bespoke library | `src/components/ui/` |
 | DB / Auth / Realtime / Storage | **Supabase** (PostgreSQL 17) | |
 | Caching | **Upstash Redis** | cache-aside |
-| Async jobs | **Trigger.dev SDK v4** (not v3) | SLA timers, task reminders |
+| Async jobs | **Trigger.dev SDK v4** (imports via `/v3` entry) | SLA timers, task reminders, the daily lead-revival sweep |
 | WhatsApp | **Gupshup v1** (BSP) | Meta Cloud API path exists but is dormant |
+| Push | **Web Push (VAPID, `web-push`)** | no SaaS; second notification channel for installed PWAs |
 | Animation | **Framer Motion 12** | transform/opacity only |
 | Charts | **Recharts 3** | always via `useChartTokens()` |
 | Forms | **React Hook Form + Zod 4** | Zod-first actions (S-01) |
 | Icons | **lucide-react** | exclusive |
 | Drag | **@dnd-kit** | exclusive |
 | Export | **xlsx** (SheetJS) | client-side only |
-| Speech-to-text | **Deepgram** (Nova-3, multilingual) | server-only, in-memory, never persisted |
+| Speech-to-text | **Deepgram** (Nova-2, `hi-Latn` for Hinglish) | server-only, in-memory, never persisted (3 MB / 2-min cap) |
 | LLM | **Anthropic SDK** | only in `src/lib/elaya/adapters/anthropic.ts` |
 | Deploy | **Vercel** | |
 | Package manager | **pnpm** | |
@@ -156,20 +162,21 @@ Supabase clients (3 only: client.ts / server.ts / admin.ts)
   (lead webhooks)        │  ├ src/proxy.ts (sessions)   │
   Gupshup ──────────────▶│  ├ RSC pages + Server Actions│
   (WhatsApp webhooks)    │  ├ api/webhooks/* (2)        │
-                         │  └ api/elaya/chat (SSE)      │
-                         └──────┬──────────┬────────────┘
-                                │          │
-              ┌─────────────────┤          ├──────────────────┬────────────────┐
-              ▼                 ▼          ▼                  ▼                ▼
-   Supabase (Postgres 17,  Upstash     Trigger.dev v4     Gupshup v1 API   Anthropic API
-   Auth, Realtime,         Redis       (SLA timers,       (outbound WA      (Elaya, via
-   Storage)                (cache-     task reminders)     sends, in        adapter)
-                           aside)                          after())
+                         │  ├ api/elaya/chat (SSE)      │
+                         │  └ api/manifest (PWA)        │
+                         └──┬─────┬─────┬─────┬─────┬───┘
+                            │     │     │     │     │
+        ┌───────────────────┤     │     │     │     ├──────────────┬──────────────┐
+        ▼                   ▼     ▼     ▼     ▼     ▼              ▼              ▼
+ Supabase (Postgres 17, Upstash  Trigger.dev v4  Gupshup v1   Anthropic API  Deepgram    Web Push
+ Auth, Realtime,        Redis    (SLA timers,    API (out-    (Elaya, via    (voice      (VAPID,
+ Storage)               (cache-  task reminders, bound WA,    adapter)       trans-      installed
+                        aside)   revival sweep)  in after())                 cription)   PWAs)
 ```
 
 **Core invariants:**
 - **One direction of truth:** Postgres is the source of truth. Redis only caches reads. Realtime pushes inserts/updates to subscribed clients. Trigger.dev calls back into Server Actions.
-- **No API routes** except the two webhooks (`/api/webhooks/leads`, `/api/webhooks/whatsapp`), the auth callback (`/api/auth/callback`), and the sanctioned Elaya SSE route (`/api/elaya/chat`) — all other mutations are Server Actions (P-02).
+- **No API routes** except the two webhooks (`/api/webhooks/leads`, `/api/webhooks/whatsapp`), the auth callback (`/api/auth/callback`), the sanctioned Elaya SSE route (`/api/elaya/chat`), and the dynamic per-icon PWA manifest (`/api/manifest`) — both `/api/elaya/chat` and `/api/manifest` are documented P-02 carve-outs; all other mutations are Server Actions.
 - **Outward sends run inside `after()`** from `next/server` with the send awaited — never `void fetch().catch()` (A-16; Vercel freezes the lambda on response flush). See [§17](#17-things-you-must-know-before-changing-code-gotchas).
 
 ### Route Map
@@ -188,14 +195,15 @@ Supabase clients (3 only: client.ts / server.ts / admin.ts)
 | `(dashboard)/escalations` | SLA breach surface (live, uncached) | manager+ |
 | `(dashboard)/elaya` | Elaya chat (SSE) | all roles |
 | `(dashboard)/budget` | Ad-spend / CPL / CPD | admin/founder (manager via widget) |
-| `(dashboard)/profile` | Self profile + theme + password | all |
+| `(dashboard)/profile` | Self profile + theme + password + PWA app-icon picker + push-notification settings | all |
 | `(dashboard)/error-log` | Errored webhook payloads | admin/founder |
 | `(dashboard)/admin/users`, `users/new`, `users/[id]` | User management | admin/founder |
 | `(dashboard)/admin/ad-creatives` | Campaign video assets | admin/founder |
 | `(dashboard)/settings` | SLA policies, agent routing/shifts | admin/founder + manager |
 | `api/webhooks/leads`, `api/webhooks/whatsapp` | Inbound webhooks | secret-authed |
 | `api/elaya/chat` | Elaya SSE streaming | authed |
-| `api/auth/callback` | Supabase auth callback | — |
+| `api/manifest` | Dynamic per-icon PWA manifest (`?icon=`) | public (proxy-bypassed) |
+| `api/auth/callback` | Supabase auth callback (invite / PKCE only — **not** password reset) | — |
 
 ---
 
@@ -321,7 +329,7 @@ Webhooks authenticate **before reading the body**: `/api/webhooks/leads` = Beare
 
 ## 6. Database Schema
 
-> Enums via migration 0001. Other "enums" (lead/task statuses, deal types, notification types) are `text` + CHECK constraints, mirrored as typed constants in `src/lib/constants/`. ~30 SECURITY DEFINER RPC functions exist.
+> Enums via migration 0001. Other "enums" (lead/task statuses, deal types, notification types) are `text` + CHECK constraints, mirrored as typed constants in `src/lib/constants/`. ~38 SECURITY DEFINER RPC functions exist. Migrations run **0001–0121**.
 
 ### Entity-Relationship Overview
 
@@ -337,6 +345,9 @@ erDiagram
     leads ||--o{ tasks : "via task_gia_meta"
     leads ||--o| deals : "lead_id (nullable)"
     leads ||--o| whatsapp_conversations : "lead_id (unique)"
+    leads ||--o{ revival_candidates : "lead_id"
+    profiles ||--o{ revival_candidates : "assigned_to"
+    profiles ||--o{ push_subscriptions : "profile_id"
     task_groups ||--o{ tasks : "group_id"
     tasks ||--o{ task_remarks : "task_id"
     tasks ||--o{ task_audit_log : "task_id"
@@ -350,13 +361,13 @@ erDiagram
 
 ### Identity & Team (3 tables)
 
-- **`profiles`** — one row per team member, `id` = `auth.users.id`. The root of all authorization. Key columns: `role user_role` (default `agent`), `domain app_domain` (default `concierge`), `is_active` (soft-deactivate — never delete), `is_on_leave`, `theme` (5-value CHECK, DB-stored so it follows the user across devices), `timezone` (default `Asia/Kolkata`), `reports_to` (self-FK), `phone` (E.164), `last_seen_at` (**dormant** — no code writes it). Rows created **only** by the `on_auth_user_created` trigger; `email` not editable after creation.
+- **`profiles`** — one row per team member, `id` = `auth.users.id`. The root of all authorization. Key columns: `role user_role` (default `agent`), `domain app_domain` (default `concierge`), `is_active` (soft-deactivate — never delete), `is_on_leave`, `theme` (5-value CHECK, DB-stored so it follows the user across devices), `app_icon` (migration 0121 — CHECK `'icon-1'..'icon-4'`, default `'icon-1'`; the chosen PWA install icon, mirrors `theme` exactly; no new RLS — the existing self-update policy covers it), `timezone` (default `Asia/Kolkata`), `reports_to` (self-FK), `phone` (E.164), `last_seen_at` (**dormant** — no code writes it). Rows created **only** by the `on_auth_user_created` trigger; `email` not editable after creation.
 - **`profile_audit_log`** — append-only audit of `role`, `domain`, `is_active`, `is_on_leave`, `full_name`, `email`, `username` (not theme/timezone). `ON DELETE RESTRICT` on `profile_id` — profiles with history cannot be hard-deleted.
 - **`agent_routing_config`** — round-robin on-duty switch, one row per agent, auto-created by trigger when a profile gets `role = 'agent'`. `is_active = false` removes from the pool instantly. `shift_start`/`shift_end` (time) + `shift_days integer[]` are advisory (read by ingestion, not DB-enforced).
 
 ### Leads (5 tables)
 
-- **`leads`** — the Gia lead record. Identity (`first_name`, `last_name`, `email`, `phone` E.164, `city`, `personal_details jsonb`), routing (`domain`, `assigned_to`, `assigned_at`), lifecycle (`status` text: `new → touched → in_discussion → nurturing → won|lost|junk`; `status_changed_at`, `last_activity_at`, `resolution_reason`, `archived_at`), attribution (`source` + `medium` + `utm_campaign`; `attribution jsonb` immutable snapshot, `{}` means "captured, nothing present", never SQL NULL), call telemetry (`call_count`, `last_call_outcome`, `last_call_outcome_at`), dedup (`previous_lead_id` self-FK), `slug` (unique human-readable `priya-sharma-9182`, trigger-generated, immutable), `search_text` (migration 0098 — STORED generated column over name/email/city/phone, pg_trgm GIN-indexed).
+- **`leads`** — the Gia lead record. Identity (`first_name`, `last_name`, `email`, `phone` E.164, `city`, `personal_details jsonb`), routing (`domain`, `assigned_to`, `assigned_at`), lifecycle (`status` text: `new → touched → in_discussion → nurturing → won|lost|junk`; `status_changed_at`, `last_activity_at`, `resolution_reason`, `archived_at`), attribution (`source` + `medium` + `utm_campaign`; `attribution jsonb` immutable snapshot, `{}` means "captured, nothing present", never SQL NULL), call telemetry (`call_count`, `last_call_outcome`, `last_call_outcome_at`), dedup (`previous_lead_id` self-FK), `slug` (unique human-readable `priya-sharma-9182`, trigger-generated, immutable), `search_text` (migration 0098 — STORED generated column over name/email/city/phone, pg_trgm GIN-indexed), `service_interests text[]` (migration 0109 — per-domain Call-Intelligence interest tags, partial GIN; unknown values dropped at ingestion, never an enum).
 - **`lead_activities`** / **`lead_notes`** — append-only (A-11). Every status change, assignment, note, call log lands in `lead_activities`; `lead_notes` holds note bodies (all team-visible — no private tier; scratchpad removed in 0061).
 - **`lead_raw_payloads`** — immutable log of every inbound webhook payload, including failed ingestions (`ingestion_error`). Admin/founder SELECT only — surfaced on `/error-log`. Retains full PII by design.
 - **`lead_sla_timers`** — SLA engine state (`status pending|fired|cancelled`, `rule_code`, `scheduled_fire_at`, `trigger_run_id`). Service-role only — no user RLS write policies.
@@ -382,9 +393,20 @@ One `tasks` table for all three categories, discriminated by `task_category` (`p
 - **`deals`** — first-class closed-deal record (0072–0074). `lead_id` **nullable** (walk-in sales have no lead). `contact_name`/`contact_phone` denormalised at close. `deal_type`: `membership | retail` (membership requires `deal_duration`: `3_months | 6_months | 1_year`). `deal_amount numeric(12,2)` CHECK 0–100M. `won_at` immutable after insert. `source` carries attribution. **No INSERT/UPDATE/DELETE RLS policies by design** — all writes via the admin client in `recordDeal`/`createWalkInDeal`.
 - **`ad_creatives`** — campaign video assets keyed by `campaign_key` (UNIQUE dropped in 0058a — multiple videos per campaign). Files in the `ad-creatives` Storage bucket.
 
-### Notifications (1 table)
+### Notifications (2 tables)
 
-- **`notifications`** — in-app inbox: `recipient_id`, `type` CHECK (`lead_assigned`, `lead_won`, `task_due`, `task_assigned`, `mention`, `system`, `sla_breach_agent`, `sla_breach_manager`), `title`, `body`, `action_url` (relative paths only — CHECK rejects `http%`), `read_at`. Realtime enabled — drives the bell badge live.
+- **`notifications`** — in-app inbox: `recipient_id`, `type` CHECK (`lead_assigned`, `lead_won`, `task_due`, `task_assigned`, `mention`, `system`, `sla_breach_agent`, `sla_breach_manager`, `sla_breach_founder`, `task_overdue_manager` — the last two added in 0113), `title`, `body`, `action_url` (relative paths only — CHECK rejects `http%`), `read_at`. Realtime enabled — drives the bell badge live. **The in-app row is the source of truth**; Web Push (below) is a best-effort second channel fanned out behind `createNotification`.
+- **`push_subscriptions`** (migration 0120) — per-device Web Push endpoints: `(id, profile_id FK, endpoint UNIQUE, p256dh, auth, user_agent, created_at)` + `idx_push_subscriptions_profile`. **One row per device, many per user** (re-subscribe upserts on `endpoint`). Owner-only RLS (`profile_id = auth.uid()`, SELECT/INSERT/DELETE, **no UPDATE policy**). The cross-user read + the 404/410 dead-endpoint prune in `dispatchPush` run service-role.
+
+### Call Intelligence (2 tables — migration 0110)
+
+- **`service_cases`** / **`conversation_hooks`** — the helpdesk "brag library": curated service cases + conversation hooks, surfaced on the lead dossier (`ServiceInterestCard`, ≤6 rows, un-cached) and the standalone `/helpdesk` page (full library, Redis 1hr `{cases,hooks}` envelope, **client-side filtering**). RLS: all-authenticated read / admin+founder write. Weighted FTS + tags GIN indexes; a dormant `embedding vector(1536)` column (no HNSW until Phase 2). Writes via `lib/actions/intelligence.ts` (each awaits the helpdesk-key `del` before `revalidatePath('/helpdesk')`).
+
+### SLA Policies & Lead Revival (3 tables — migrations 0111 / 0119)
+
+- **`sla_policies`** (migration 0111) — one row per follow-up rule (the engine now reads these instead of a hard-coded constant): `trigger_kind` (status/outcome/task_due), threshold, recipient_role, auto_task, channels, hours_mode, active. RLS admin/founder SELECT, service-role writes. **Read per run, never module-cached** — an edit applies on the next fire. Seeded with the 8 live SLA rules + the CAD (cadence) + TASK (task-due) families.
+- **`revival_policies`** (migration 0119) — config for Lead Revival: per-status silence thresholds + a daily cap. Admin/founder edit from `/settings`; the sweep reads them per run (the `sla_policies` pattern).
+- **`revival_candidates`** (migration 0119) — the per-lead revival ledger: `open → actioned | dismissed`. The silence finder anti-joins any lead that already holds a candidate of any status (judge-once). See [§8.6](#86-lead-revival-phase-r1).
 
 ### Elaya (5 tables — migrations 0116/0117/0118)
 
@@ -403,7 +425,7 @@ One `tasks` table for all three categories, discriminated by `task_category` (`p
 
 ### Load-Bearing RPCs
 
-`get_user_role`/`get_user_domain` (RLS helpers) · `get_next_round_robin_agent` (0007) · `get_active_lead_by_phone` (0008/0090) · `add_lead_call_note` (0030) · `update_lead_status` (0031) · `add_lead_plain_note` (0040) · `get_dashboard_summary` (0029/0062/0115) · `get_leads_status_counts` (0080/0099) · `get_campaign_metrics`/`_detail_metrics`/`_agent_distribution` (0014–0015) · `get_personal_tasks` (0026) · `get_group_task_summaries` (0020) · `add_task_remark_with_status` (0035/0051) · `create_lead_gia_task` (0054) · `get_gia_tasks` (0055) · `get_deals_summary` (0052/0074) · `get_wa_unread_count` (0036/0085) · `get_agent_performance`/`get_agent_roster_performance` (0101) · `get_budget_summary` (0106).
+`get_user_role`/`get_user_domain` (RLS helpers) · `get_next_round_robin_agent` (0007) · `get_active_lead_by_phone` (0008/0090) · `add_lead_call_note` (0030) · `update_lead_status` (0031) · `add_lead_plain_note` (0040) · `get_dashboard_summary` (0029/0062/0115) · `get_leads_status_counts` (0080/0099) · `get_campaign_metrics`/`_detail_metrics`/`_agent_distribution` (0014–0015) · `get_personal_tasks` (0026) · `get_group_task_summaries` (0020) · `add_task_remark_with_status` (0035/0051) · `create_lead_gia_task` (0054) · `get_gia_tasks` (0055) · `get_deals_summary` (0052/0074) · `get_wa_unread_count` (0036/0085) · `get_agent_performance`/`get_agent_roster_performance` (0101) · `get_budget_summary` (0106) · `get_agent_today_pulse` (0108).
 
 ---
 
@@ -439,6 +461,10 @@ Read services check Redis first; on a miss they query Postgres, write back with 
 ### React `cache()` vs `unstable_cache` (P-09)
 
 `unstable_cache` closures **cannot** call `cookies()`/`headers()` (Next.js throws). Since `createClient()` (server) reads `cookies()`, any service calling it **cannot** use `unstable_cache` — use React `cache()` instead (per-request memoisation, no dynamic-API restriction). Reference: `getAgentPerformanceSummary` (cache()) vs `getGroupTasks` (unstable_cache, tag `'group-tasks'`, revalidated via `revalidateTag('group-tasks', { expire: 0 })`).
+
+### Notification Fan-Out & Web Push (`createNotification` + `push-service.ts`)
+
+`createNotification` (`notifications-service.ts`) is the single chokepoint every event site routes through (lead-assignment-notify, lead-mutations, sla, tasks, task-reminders). After the in-app row insert it calls **`dispatchPush(recipient_id, {title, body, url})`** — so **every** trigger gets Web Push with **zero call-site edits**. `dispatchPush` (`src/lib/services/push-service.ts`, **server + Node only** — `web-push` throws on Edge) reads the recipient's `push_subscriptions` via the admin client, sends to all devices in parallel, and **prunes endpoints answering 404/410** in one batched delete (mandatory — else the table fills with corpses). It is **non-fatal**: it never throws, and the in-app row stands regardless. iOS Web Push works only inside the installed PWA (standalone); `usePushSubscription` reports `'ios-needs-install'` otherwise and shows an install nudge. VAPID keys are server-only (`VAPID_PUBLIC_KEY`/`PRIVATE_KEY`/`SUBJECT`); the browser gets only `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. `push_subscriptions` itself is not Redis-cached. Full doc: `docs/modules/web-push.md`.
 
 ---
 
@@ -532,6 +558,17 @@ Each takes an explicit `MutationActor` (principal-derived identity, never a sess
 ### 8.5 Lead Dossier (`/leads/[id]`)
 
 `src/app/(dashboard)/leads/[id]/page.tsx` — streaming RSC. **Wave 1 (blocking):** `Promise.all(getCurrentProfile(), getLeadBySlug(id) ?? getLeadById(id))` → renders header, `StatusActionPanel`, `PersonalDetailsCard`, notes input. **Wave 2+ (each in its own `<Suspense>`):** `LeadInfoCardAsync` (ad creatives + reassign agents), `LeadDealCardAsync`, `LeadTasksAsync`, `LeadWhatsAppCardAsync`, `ServiceInterestCardAsync` (Call Intelligence cases + hooks), `LeadNotesSectionAsync`, `LeadActivitiesAsync` (journey + activity log). Access flags (`canReassign`, `canEditLeadFields`, `canEditDomain`, `canEditPersonalDetails`) computed in wave 1, passed as props.
+
+The note input (`LeadNotesInput`) and the call modal (`CalledModal`) both carry an inline **voice-dictation** mic (`<DictationButton variant="inline">`) — the transcript lands in the textarea as an **editable draft**, saved through the same `addLeadNote`/`addLeadCallNote` path as a typed note (never auto-sent). See [§13 voice](#13-feature-elaya--the-ai-subsystem).
+
+### 8.6 Lead Revival (Phase R1)
+
+> Recover dormant-but-warm leads that silently died. **A thin layer over Gia — it NEVER mutates the lead's own `status` or columns**; the only lead-facing write is a follow-up task. Shipped 2026-06-14 (migration 0119). Full contract: `docs/modules/revival.md`.
+
+- **The sweep** (`src/trigger/lead-revival.ts`, `sweepRevivalCandidatesTask`) — the project's **first scheduled (cron) Trigger.dev task**: `schedules.task`, cron `0 2 * * *` timezone `Asia/Kolkata` = **07:30 IST daily** (gate runs at shift-open). Reads `revival_policies` per run (admin client) → finds leads silent past the per-status threshold **with no open candidate** (judge-once anti-join) → the note-AI gate → confident revive under the daily cap → `reviveLeadCore`; unsure/overflow → an **open** candidate for review.
+- **The note-AI gate** (`src/lib/services/revival-gate.ts`) — ONE structured **three-verdict** call (`revive` / `dismiss` / `unsure`) that **reuses the Elaya `routing` provider (Haiku) + `maskPii`** — no tools, no new SDK import. `judgeNotesForRevival()` is the re-testable model core; `judgeLeadForRevival()` the DB-read wrapper. Confident junk → `dismiss` (a `dismissed` candidate row = audit log, never surfaces for review); warm-but-stalled → `unsure` (review tab). **Fails CLOSED to `unsure`** — a bad verdict never auto-revives AND never auto-dismisses.
+- **A confident revive** → `reviveLeadCore` (`lead-mutations.ts`) = a "Revived"-marked follow-up task through the **same E2 `createLeadTaskCore` path** (inherits cache/activity/SLA/reminder), so the revive is an ordinary assigned task — the lead row is untouched.
+- **The review surface** — `/leads?revival=true`: `RevivalReviewBanner` (per-candidate AI reasoning) above the **reused** `LeadsTable`; `ReviveLeadButton` (one component, two mounts: review tab + dossier). Read via `getOpenCandidatesForCaller` (session-client RLS).
 
 ---
 
@@ -744,7 +781,16 @@ The sanctioned non-webhook API exception (Server Actions can't stream). Order: `
 
 ### WhatsApp Staff Channel (`elaya-whatsapp.ts`)
 
-`tryHandleElayaWhatsAppMessage(phone, message)` — see [§12 routing gate](#12-feature-whatsapp-integration). Writes ONLY `elaya_messages` (+ audit row), never lead-pipeline tables. Shares the cap + session with in-app. Reply failures logged, never retried.
+`tryHandleElayaWhatsAppMessage(phone, message)` — see [§12 routing gate](#12-feature-whatsapp-integration). Writes ONLY `elaya_messages` (+ audit row), never lead-pipeline tables. Shares the cap + session with in-app. Reply failures logged, never retried. Inbound **voice notes** are transcribed (`transcribeWhatsAppAudio`) before the brain turn — an input transform only; an empty transcript is a graceful no-op.
+
+### Voice Input (Deepgram — shared substrate)
+
+Speech-to-text is one reusable seam, not an Elaya-only feature:
+
+- **`src/lib/services/transcription-service.ts`** — THE only Deepgram call site (`import server-only`). **Nova-2, `hi-Latn`** (Hinglish / Roman-script Hindi). Client entry: `transcribeAudioAction` (`lib/actions/transcription.ts`); schema `transcription-schema.ts` (`MAX_VOICE_NOTE_BYTES = 3 MB`).
+- **`src/hooks/useAudioRecorder.ts`** — THE MediaRecorder plumbing (codec negotiation, 2-min auto-stop, mic-track release, unmount discard).
+- **`src/components/ui/DictationButton.tsx`** — THE mic→transcribe→`onTranscript(draft)` cluster. `variant="composer"` (Elaya + WhatsApp composers) or `variant="inline"` (lead note input + call modal). **Never auto-sends** — the transcript is an editable draft submitted through the consumer's existing write path (D-01 carve-out: voice is an input transform, audio transcribed in-memory and discarded, never stored). Renders `null` when MediaRecorder is unsupported.
+- **Four surfaces:** `ElayaChatShell`, `ConversationPanel` (WhatsApp), `LeadNotesInput`, `CalledModal` + the inbound WhatsApp voice-note path above. Full doc: `docs/modules/voice-dictation.md`.
 
 ---
 
@@ -753,8 +799,17 @@ The sanctioned non-webhook API exception (Server Actions can't stream). Order: `
 ### Auth Flows (`src/lib/actions/auth.ts`)
 
 - **`loginAction`** — Zod → `signInWithPassword` → fetch profile → if `is_active = false`, sign out + return `formErrors.accountDeactivated` → redirect `/dashboard`.
-- **`requestPasswordResetAction`** — `resetPasswordForEmail` with redirect to `/api/auth/callback?next=/update-password`. **Always returns success** (S-09 — never reveal whether the email exists).
-- **`updatePasswordAction`** — Zod (password + confirm match) → `updateUser({ password })`.
+- **Password reset is an OTP-code flow (2026-06-13), not magic-link** — three actions:
+  - **`requestPasswordResetAction`** — `resetPasswordForEmail(email)` with **no `redirectTo`**. The recovery email renders `{{ .Token }}` = a **6-digit code**, not a link. **Always returns success** (S-09 — never reveal whether the email exists). The user then opens `/update-password?email=<email>` manually.
+  - **`verifyResetOtpAction`** — `verifyOtp({ email, token, type: 'recovery' })`; **this is the step that establishes the recovery session.** `verifyResetOtpSchema` validates a 6-digit code; invalid **and** expired both map to `formErrors.otpInvalid` (never reveal which).
+  - **`updatePasswordAction`** — Zod (password + confirm match) → `updateUser({ password })`; reachable only after the code verified.
+  - `/update-password` is a **two-step client component** (`CodeStep → PasswordStep`) gated only on the `?email` param (`MissingEmailCard` if absent) — there is **no session at arrival**. **`/api/auth/callback` is now dead code for reset** (only PKCE / magic-link invite uses it). Rationale: a 6-digit code can't be pre-burned by corporate link-scanners (Google Safe Links et al.) the way a single-use reset link can.
+
+### PWA Install & Home-Screen Icon (`profiles.app_icon`, migration 0121)
+
+- **`src/lib/constants/app-icons.ts`** (built via `defineEnum`, like `themes.ts`): `ICON_KEYS`/`ICON_OPTIONS`/`ICON_ENUM`, `DEFAULT_ICON = 'icon-1'`, `isIconKey()`, **`iconSrc(value)`** (THE only key→path resolver — validates, falls back to `DEFAULT_ICON`, so a raw param never becomes an arbitrary src), and the SSR mirror `APP_ICON_COOKIE = 'serene-app-icon'`.
+- **`src/app/manifest.ts`** exports `buildManifest(icon)`; the async default `manifest()` reads the cookie → `buildManifest(saved)`. **`src/app/api/manifest/route.ts`** is the dynamic `/api/manifest?icon=` twin sharing `buildManifest`. The root layout's `generateMetadata()` stamps `<link rel="manifest">` + `apple-touch-icon` from the cookie (zero-flash); `IconInitializer` (a `ThemeInitializer` twin) re-syncs the cookie from `profiles.app_icon` each load.
+- **UI (`/profile`):** `IconSelector` is the ONE persistent picker (rides the existing `updateProfile` action — no new persist action; honest that an installed icon is OS-owned and needs a remove+re-add). `InstallPrompt` (separate "Add to Home Screen" card) reads the saved icon and swaps the live manifest `<link>` + apple-touch-icon **before** `prompt()` (Chromium `beforeinstallprompt`; iOS = Add-to-Home-Screen nudge); it does **not** own icon state. `PushNotificationSettings` lives in a "Notifications" card (see [§7 Web Push](#7-caching-architecture)).
 
 ### User Creation — Two Paths (both fire `on_auth_user_created`)
 
@@ -955,7 +1010,7 @@ No hardcoded colours; no `text-gray-*`/`bg-gray-*`/`bg-white`; no raw z-index; n
 
 ### Environment Variables
 
-`PABBLY_WEBHOOK_SECRET`, `GUPSHUP_API_KEY`, `GUPSHUP_APP_NAME`, `GUPSHUP_PARTNER_NUMBER`, `GUPSHUP_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_*`, `DEEPGRAM_API_KEY`, Anthropic + Upstash + Trigger.dev keys. (`WHATSAPP_PHONE_NUMBER_ID`/`WHATSAPP_ACCESS_TOKEN` optional — dormant Meta path.) Full list: `.env.example`.
+`PABBLY_WEBHOOK_SECRET`, `GUPSHUP_API_KEY`, `GUPSHUP_APP_NAME`, `GUPSHUP_PARTNER_NUMBER`, `GUPSHUP_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_*`, `DEEPGRAM_API_KEY` (voice transcription), `ANTHROPIC_API_KEY` (Elaya LLM), **Web Push:** `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (server-only, S-11) + `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (the only client-exposed one), plus Upstash + Trigger.dev keys. (`WHATSAPP_PHONE_NUMBER_ID`/`WHATSAPP_ACCESS_TOKEN` optional — dormant Meta path.) Full list: `.env.example`.
 
 ---
 
@@ -975,8 +1030,8 @@ serene/
 │   ├── app/
 │   │   ├── (auth)/                  ← login, forgot-password, update-password
 │   │   ├── (dashboard)/             ← all authenticated pages (+ per-area CLAUDE.md)
-│   │   ├── api/webhooks/{leads,whatsapp}/ · api/elaya/chat/ · api/auth/callback/
-│   │   ├── layout.tsx · globals.css
+│   │   ├── api/webhooks/{leads,whatsapp}/ · api/elaya/chat/ · api/manifest/ · api/auth/callback/
+│   │   ├── layout.tsx · globals.css · manifest.ts (PWA)
 │   ├── components/                  ← ui/ (primitives) + layout/ + per-feature folders
 │   ├── lib/
 │   │   ├── supabase/{client,server,admin,middleware}.ts   ← the only 3 client contexts
@@ -984,11 +1039,11 @@ serene/
 │   │   ├── services/                ← all DB queries
 │   │   ├── elaya/                   ← the AI subsystem (provider, adapters, tools, brain)
 │   │   ├── validations/ · constants/ · utils/ · types/
-│   ├── hooks/                       ← 13 shared hooks
+│   ├── hooks/                       ← 16 shared hooks
 │   ├── styles/design-tokens.css     ← ALL CSS variables, 5 themes
 │   └── proxy.ts                     ← Next.js 16 proxy (replaces middleware.ts)
-├── supabase/migrations/             ← 0001–0118 (RLS-enabled, never edited after run)
-└── src/trigger/{lead-sla,task-reminders}.ts   ← Trigger.dev jobs
+├── supabase/migrations/             ← 0001–0121 (RLS-enabled, never edited after run)
+└── src/trigger/{lead-sla,task-reminders,lead-revival}.ts ← Trigger.dev jobs (lead-revival = the daily 07:30 IST cron)
 ```
 
 ---

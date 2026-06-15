@@ -8,6 +8,7 @@
 // page main (no fixed dvh math) so the chat takes the full remaining height.
 
 import { useEffect, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { ElayaGlyph } from '@/components/ui/elaya-glyph';
 import { MessageBar } from '@/components/ui/MessageBar';
 import { DictationButton } from '@/components/ui/DictationButton';
@@ -39,6 +40,27 @@ type Props = {
   /** Server-computed deterministic greeting shown when the transcript is empty. */
   greeting: string;
   remainingToday: number;
+  /**
+   * Chat-only mode — omits the ElayaIdentityCard sidebar and the dossier grid,
+   * so the chat card fills its container. Used by the floating Elaya widget
+   * (the modal is tight; the page keeps the identity rail). Default false →
+   * byte-identical to the /elaya page. The chat surface itself never diverges.
+   */
+  hideIdentity?: boolean;
+  /**
+   * Embedded mode — the chat is the modal surface itself, not a card inside one.
+   * Strips the card's own border/shadow/radius/min-height so it sits flush
+   * against the host chrome (the floating widget's Dialog panel) — no
+   * card-in-a-card. Implies the chat-only layout. Default false (the /elaya
+   * page is a free-standing card).
+   */
+  embedded?: boolean;
+  /**
+   * When provided, the presence header shows a close affordance (DESIGN-DNA
+   * §15.3 Surface A anatomy). The /elaya page omits it (no close there); the
+   * widget passes its modal close.
+   */
+  onClose?: () => void;
 };
 
 export function ElayaChatShell({
@@ -46,6 +68,9 @@ export function ElayaChatShell({
   initialMessages,
   greeting,
   remainingToday,
+  hideIdentity = false,
+  embedded = false,
+  onClose,
 }: Props) {
   const toast = useToast;
   const [messages, setMessages] = useState<ElayaUiMessage[]>(initialMessages);
@@ -183,52 +208,76 @@ export function ElayaChatShell({
     }
   }
 
+  // Embedded mode is chat-only by definition.
+  const chatOnly = hideIdentity || embedded;
+
   return (
-    <div className="serene-dossier-grid serene-dossier-grid--340 flex-1" style={{ minHeight: 0 }}>
+    <div
+      className={
+        chatOnly
+          ? 'flex-1 flex flex-col'
+          : 'serene-dossier-grid serene-dossier-grid--340 flex-1'
+      }
+      style={{ minHeight: 0 }}
+    >
       <div
-        className="flex flex-col rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"
-        style={{ minHeight: '420px' }}
+        className={
+          embedded
+            ? 'flex flex-col flex-1 bg-(--theme-paper)'
+            : 'flex flex-col flex-1 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)'
+        }
+        style={embedded ? { minHeight: 0 } : { minHeight: '420px' }}
       >
-        {/* Presence header — the glyph always breathes while Elaya is present */}
+        {/* Presence header (DESIGN-DNA §15.3 Surface A) — the glyph always
+            breathes with her signature accent glow while Elaya is present. */}
         <div
-          className="flex items-center gap-3 px-5 py-3"
+          className="flex items-center gap-3 px-5 py-4"
           style={{ borderBottom: '1px solid var(--theme-paper-border)' }}
         >
           <span
             className="flex items-center justify-center"
             style={{
-              width: '36px',
-              height: '36px',
+              width: '40px',
+              height: '40px',
               borderRadius: 'var(--radius-md)',
               background: 'var(--theme-accent-surface)',
+              border: '1px solid color-mix(in srgb, var(--theme-accent) 20%, transparent)',
+              boxShadow: 'var(--shadow-accent-glow)',
               color: 'var(--theme-accent)',
               flexShrink: 0,
             }}
           >
-            <ElayaGlyph size={20} />
+            <ElayaGlyph size={22} />
           </span>
           <div className="flex flex-col min-w-0">
             <span
               style={{
                 fontFamily: 'var(--font-serif)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--weight-medium)',
+                fontSize: 'var(--text-base)',
+                fontWeight: 'var(--weight-normal)',
+                letterSpacing: 'var(--tracking-tight)',
                 color: 'var(--theme-text-primary)',
+                lineHeight: 'var(--leading-snug)',
               }}
             >
               Elaya
             </span>
             <span
-              className="truncate"
-              style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)' }}
+              className="truncate italic"
+              style={{
+                fontFamily: 'var(--font-serif)',
+                fontSize: 'var(--text-2xs)',
+                color: 'var(--theme-text-tertiary)',
+              }}
             >
               {statusLine ?? 'With you'}
             </span>
           </div>
           {capReached && (
             <span
-              className="ml-auto"
+              className={onClose ? '' : 'ml-auto'}
               style={{
+                marginLeft: onClose ? undefined : 'auto',
                 fontSize: 'var(--text-2xs)',
                 whiteSpace: 'nowrap',
                 color: 'var(--color-warning)',
@@ -237,11 +286,40 @@ export function ElayaChatShell({
               Daily limit reached
             </span>
           )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close Elaya"
+              className="serene-pressable serene-icon-rotate-hover serene-touch"
+              style={{
+                marginLeft: capReached ? 'var(--space-3)' : 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '1.75rem',
+                height: '1.75rem',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--theme-paper-border)',
+                background: 'transparent',
+                color: 'var(--theme-text-tertiary)',
+                cursor: 'pointer',
+                flexShrink: 0,
+                transition:
+                  'var(--transition-hover), transform var(--duration-instant) var(--ease-spring)',
+              }}
+            >
+              <X style={{ width: 16, height: 16, strokeWidth: 1.5 }} aria-hidden="true" />
+            </button>
+          )}
         </div>
 
-        {/* Transcript */}
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-          <div className="flex flex-col" style={{ gap: 'var(--space-3)' }}>
+        {/* Transcript — centered reading column so messages never sprawl. */}
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-5 py-5 sm:px-6">
+          <div
+            className="flex flex-col mx-auto w-full"
+            style={{ gap: 'var(--space-4)', maxWidth: '46rem' }}
+          >
             {messages.length === 0 && (
               <ElayaMessageBubble
                 message={{ id: 'greeting', role: 'assistant', content: greeting }}
@@ -273,50 +351,61 @@ export function ElayaChatShell({
           </div>
         </div>
 
-        {/* Composer */}
-        <div className="px-5 py-4" style={{ borderTop: '1px solid var(--theme-paper-border)' }}>
-          {capReached ? (
-            <p
-              className="italic m-0"
-              style={{
-                fontFamily: 'var(--font-serif)',
-                fontSize: 'var(--text-sm)',
-                color: 'var(--theme-text-tertiary)',
-              }}
-            >
-              {formErrors.elayaCapReached}
-            </p>
-          ) : (
-            <MessageBar
-              ref={composerRef}
-              value={input}
-              onChange={setInput}
-              onSend={() => void send()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
+        {/* Composer — same centered reading column as the transcript. */}
+        <div
+          className="px-5 py-4 sm:px-6"
+          style={{
+            borderTop: '1px solid var(--theme-paper-border)',
+            background: 'var(--theme-paper)',
+          }}
+        >
+          <div className="mx-auto w-full" style={{ maxWidth: '46rem' }}>
+            {capReached ? (
+              <p
+                className="italic m-0"
+                style={{
+                  fontFamily: 'var(--font-serif)',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--theme-text-tertiary)',
+                }}
+              >
+                {formErrors.elayaCapReached}
+              </p>
+            ) : (
+              <MessageBar
+                ref={composerRef}
+                value={input}
+                onChange={setInput}
+                onSend={() => void send()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+                loading={isStreaming}
+                maxLength={4000}
+                placeholder="Ask Elaya"
+                leadingSlot={
+                  <DictationButton
+                    onTranscript={handleTranscript}
+                    onError={(message) => toast.danger(message)}
+                    disabled={isStreaming || capReached}
+                    what="a message"
+                  />
                 }
-              }}
-              loading={isStreaming}
-              maxLength={4000}
-              placeholder="Ask Elaya"
-              leadingSlot={
-                <DictationButton
-                  onTranscript={handleTranscript}
-                  onError={(message) => toast.danger(message)}
-                  disabled={isStreaming || capReached}
-                  what="a message"
-                />
-              }
-            />
-          )}
+              />
+            )}
+          </div>
         </div>
       </div>
 
       {/* Identity sidebar — right 340px column on lg (the canonical dossier
-          placement), stacked below the chat on smaller viewports */}
-      <ElayaIdentityCard busy={isStreaming || capReached} onPromptSelect={handlePromptSelect} />
+          placement), stacked below the chat on smaller viewports. Omitted in
+          the floating widget (chat-only) — there the chat fills the modal. */}
+      {!chatOnly && (
+        <ElayaIdentityCard busy={isStreaming || capReached} onPromptSelect={handlePromptSelect} />
+      )}
     </div>
   );
 }

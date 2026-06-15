@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/profile` — every user's self-management page (identity fields, avatar, theme, password).
 > **Audience:** engineers. · **Source-of-truth scope:** the `/profile` route. Admin edits of *other* users: `user-management.md`; theme system law: `../design/DESIGN-DNA.md` §1–2.
-> **Last verified:** 2026-06-09 full pass; 2026-06-11 restructure.
+> **Last verified:** 2026-06-15 (PWA install + app-icon picker + web-push reconcile); 2026-06-09 full pass; 2026-06-11 restructure.
 
 ## 1. Purpose
 
@@ -76,13 +76,14 @@ Notification-sound preference lives in localStorage (`serene:notifications:sound
 | **Eyebrow** | `"Account"` — `className="type-eyebrow"` |
 | **Title** | `Profile Settings` + `page-title-dot` |
 
-**Left column** (`SectionCard` stack — three sections only):
+**Left column** (`SectionCard` stack — four sections):
 
 1. Personal Details → `ProfileDetailsForm`
-2. Appearance → `ThemeSelector`
-3. Security → `PasswordChangeForm`
+2. Appearance → `ThemeSelector` + `IconSelector` + `InstallPrompt` (the **"Add to Home Screen"** card)
+3. Notifications → `PushNotificationSettings` (web-push opt-in, 2026-06-14)
+4. Security → `PasswordChangeForm`
 
-> There is **no Notifications section on `/profile`.** `NotificationPreferences` is not a real component in `src/components/profile/` — the folder contains exactly `ProfileDetailsForm`, `ThemeSelector`, `PasswordChangeForm`, `ProfileAvatarSection`. Notification **sound** is toggled elsewhere (via the `useNotificationSound` hook surfaced from the notifications UI), not on this page. See §7f.
+> Notification **sound** is a separate device-local preference (localStorage) toggled via the `useNotificationSound` hook surfaced from the notifications UI in the Sidebar — not from this page. The push opt-in above and the sound flag are independent. See §7f.
 
 **Right column** (sticky `aside`, `top: var(--space-6)`):
 
@@ -136,9 +137,9 @@ Notification-sound preference lives in localStorage (`serene:notifications:sound
 
 **Action validation:** `updateProfileAvatarSchema` — `avatar_url` must be valid URL. **No** explicit Supabase bucket-prefix check in the action layer as of 2026-06-09 (an intended defence noted in the retired The_Profile doc; not implemented in `profiles.ts` — TODO if avatar URLs are ever attacker-controllable).
 
-#### 7f. Notification sound preference (no `/profile` component)
+#### 7f. Notification sound preference (device-local, alongside the Push `SectionCard`)
 
-There is **no `NotificationPreferences` component** and **no Notifications `SectionCard` on `/profile`.** Notification sound is a device-local preference managed entirely through the `useNotificationSound` hook, surfaced from the notifications UI in the Sidebar — never from the profile page.
+The **"Notifications" `SectionCard`** on `/profile` holds `PushNotificationSettings` (§7k — web-push opt-in, DB-backed via `push_subscriptions`). The notification **sound** preference is a *separate, independent* piece: a device-local flag managed entirely through the `useNotificationSound` hook, surfaced from the notifications UI in the Sidebar — never from the profile page. Push reach and sound state are unrelated.
 
 | Item | Detail |
 | ---- | ------ |
@@ -148,7 +149,46 @@ There is **no `NotificationPreferences` component** and **no Notifications `Sect
 
 **Rule:** Only `useNotifications` should call `play()` — not feature pages directly.
 
-**Important:** The notification **sound preference** is localStorage-only — **not** a `profiles` column. Theme remains DB-backed (`profiles.theme`); sound is device-local. The two are independent.
+**Important:** The notification **sound preference** is localStorage-only — **not** a `profiles` column, and **not** part of `PushNotificationSettings`. Push subscriptions are DB-backed (`push_subscriptions`, per-device); theme and app-icon are DB-backed (`profiles.theme` / `profiles.app_icon`); sound is device-local. They are independent.
+
+#### 7i. `IconSelector` (Appearance card, 2026-06-15)
+
+The PWA home-screen icon picker — one icon grid inside the Appearance `SectionCard`.
+
+| Item | Detail |
+| ---- | ------ |
+| **Component** | `src/components/profile/IconSelector.tsx` |
+| **Persist** | `profiles.app_icon` (`text NOT NULL DEFAULT 'icon-1'`, CHECK `IN ('icon-1'..'icon-4')`) via the **same** `updateProfile` action — no new persist action; mirrors `profiles.theme` exactly |
+| **Vocabulary** | `src/lib/constants/app-icons.ts` (built via `defineEnum` like `themes.ts`): `ICON_KEYS/LABELS/OPTIONS/ENUM`, `DEFAULT_ICON='icon-1'`, `isIconKey()`, `iconSrc(value)` = the only key→path resolver (validates, falls back to `DEFAULT_ICON` so a raw param never becomes an arbitrary `src`), `APP_ICON_COOKIE='serene-app-icon'` + `persistAppIconCookie()` |
+| **Honesty** | A theme repaints the live app, but an installed home-screen icon is **OS-owned** — saving here shows a **manual-reinstall** note and bakes the choice into the NEXT install |
+| **Assets** | 4 single `1254×1254` webp at `/public/icon-1.webp`..`icon-4.webp`; the browser downscales for 192/512 + maskable + apple-touch-icon (maskable valid only because the art is a solid `#0d0c0a` plate) |
+| **Cookie sync** | Root layout `generateMetadata()` reads the cookie → points `<link rel="manifest">` + `icons.apple` at the saved icon (zero-flash). `src/components/layout/IconInitializer.tsx` (a `ThemeInitializer` twin, mounted in the dashboard layout) re-syncs the cookie from `profiles.app_icon` each load |
+
+#### 7j. `InstallPrompt` ("Add to Home Screen" card, 2026-06-15)
+
+The first-install picker — a **separate** `SectionCard` from Appearance.
+
+| Item | Detail |
+| ---- | ------ |
+| **Component** | `src/components/profile/InstallPrompt.tsx` |
+| **Icon state** | Does **not** own icon state — reads `currentIcon`, then swaps the live manifest `<link>` + apple-touch-icon to the saved pick **before** `prompt()` |
+| **Trigger** | `beforeinstallprompt` on Chromium; an Add-to-Home-Screen nudge on iOS |
+| **Manifest twin** | `src/app/manifest.ts` exports `buildManifest(icon)` + `EARTH_CANVAS`; the async default `manifest()` reads the `serene-app-icon` cookie → `buildManifest(saved)`. `src/app/api/manifest/route.ts` (a sanctioned PWA carve-out to P-02) is the dynamic `/api/manifest?icon=` twin sharing `buildManifest`; the proxy bypasses `/api/manifest` |
+
+#### 7k. `PushNotificationSettings` (Notifications card, 2026-06-14)
+
+Web-push opt-in (VAPID, `web-push` lib, no SaaS; migration 0120).
+
+| Item | Detail |
+| ---- | ------ |
+| **Component** | `src/components/profile/PushNotificationSettings.tsx` in the `/profile` "Notifications" `SectionCard` |
+| **Subscribe hook** | `src/hooks/usePushSubscription.ts` — gesture-gated, **never** auto-prompts; iOS detects standalone and reports `'ios-needs-install'` when not installed (never fakes subscribed) |
+| **Actions** | `src/lib/actions/push.ts` — `savePushSubscriptionAction` (upsert) / `removePushSubscriptionAction`; Zod → `requireProfile`; session client, owner-only |
+| **Table** | `push_subscriptions` `(id, profile_id FK, endpoint UNIQUE, p256dh, auth, user_agent, created_at)` — one row per device, many per user. Owner-only RLS (`profile_id = auth.uid()`, SELECT/INSERT/DELETE, no UPDATE); `idx_push_subscriptions_profile` |
+| **Fan-out seam** | Inside `createNotification` (`notifications-service.ts`): after the in-app row insert it calls `dispatchPush(recipient_id, {title,body,url})` — **zero** call-site edits, so every existing caller (lead-assignment-notify, lead-mutations, sla, tasks, task-reminders) gets push free |
+| **Server seam** | `src/lib/services/push-service.ts` (server + Node only — `web-push` throws on Edge): `dispatchPush` reads subscriptions via the **admin** client, sends to all devices in parallel, and **prunes** endpoints answering 404/410 in one batched delete. Non-fatal: it **never throws** — the in-app row is the source of truth. VAPID configured once lazily; absent keys → logged no-op |
+| **Service worker** | `public/sw.js` gained `push` + `notificationclick` handlers (additive; offline-shell bytes unchanged, `CACHE_VERSION` not bumped) |
+| **Env** | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (server-only, S-11) + `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (browser). `web-push@3.6.7` + `@types/web-push@3.6.4` — all already in `.env.example` |
 
 #### 7g. Identity `SectionCard` (right column)
 
@@ -177,7 +217,7 @@ There is **no `NotificationPreferences` component** and **no Notifications `Sect
 
 From `src/lib/validations/profile-schema.ts`:
 
-- **`updateProfileSchema`** — `id` (uuid); optional `full_name`, `username`, `job_title`, `phone`, `theme` enum, `timezone`
+- **`updateProfileSchema`** — `id` (uuid); optional `full_name`, `username`, `job_title`, `phone`, `theme` enum, `app_icon` (`ICON_ENUM` from `app-icons.ts`), `timezone`
 - **`updateProfileAvatarSchema`** — `id`, `avatar_url` (url)
 
 Auth schemas in `src/lib/validations/auth.ts`: `loginSchema`, `forgotPasswordSchema`, `updatePasswordSchema` (with confirm + mismatch refine).

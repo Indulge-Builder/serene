@@ -40,6 +40,8 @@ type HelpdeskSearchProps = {
   initialHooks:     ConversationHook[];
   /** From ?category= (dossier card footer link) — initial filter only. */
   initialCategory?: string | null;
+  /** admin/founder — surfaces the Edit affordance in CaseDetailModal. Server-gated. */
+  canEdit?:         boolean;
 };
 
 type ActiveCategory = 'all' | ServiceCategory;
@@ -54,6 +56,7 @@ export function HelpdeskSearch({
   initialCases,
   initialHooks,
   initialCategory,
+  canEdit = false,
 }: HelpdeskSearchProps) {
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<ActiveCategory>(
@@ -174,6 +177,7 @@ export function HelpdeskSearch({
           open={detailOpen}
           onClose={() => setDetailOpen(false)}
           serviceCase={activeCase}
+          canEdit={canEdit}
         />
       )}
     </div>

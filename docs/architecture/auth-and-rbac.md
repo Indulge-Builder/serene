@@ -2,7 +2,7 @@
 
 > **Purpose:** how identity, sessions, roles, domains, and row-level security work — the authorization architecture every other doc assumes.
 > **Audience:** engineers. · **Source-of-truth scope:** authorization model, session layer, route gating, RLS + SECURITY DEFINER policy. The `profiles` table schema lives in `database.md`; per-page role gates live in each `../pages/*.md`.
-> **Last verified:** 2026-06-11 against `src/proxy.ts`, `src/lib/constants/domains.ts`, `src/lib/actions/_auth.ts`, migrations 0001/0088/0091/0095/0102/0103.
+> **Last verified:** 2026-06-15 against `src/proxy.ts`, `src/lib/constants/domains.ts`, `src/lib/actions/_auth.ts`, `src/lib/actions/auth.ts`, migrations 0001/0088/0091/0095/0102/0103.
 
 ---
 
@@ -182,3 +182,32 @@ Webhooks authenticate **before reading the body** (S-12): `/api/webhooks/leads` 
 (`PABBLY_WEBHOOK_SECRET`, timing-safe compare via `safeSecretCompare`); `/api/webhooks/whatsapp`
 = `x-gupshup-secret` header (`GUPSHUP_WEBHOOK_SECRET`). Both rate-limited. Details:
 `../integrations/lead-ingestion.md` and `../integrations/whatsapp-gupshup.md`.
+
+## 12. Password reset — OTP-code session establishment (shipped 2026-06-13)
+
+Password reset establishes a session via a **6-digit OTP code**, not a magic link. The three
+actions in `src/lib/actions/auth.ts` run in sequence:
+
+1. **`requestPasswordResetAction`** calls `supabase.auth.resetPasswordForEmail(email)` with **no
+   `redirectTo`**. The recovery email renders `{{ .Token }}` — a 6-digit code, not a link. The
+   request never reveals whether the account exists (S-09).
+2. **`verifyResetOtpAction`** calls `supabase.auth.verifyOtp({ email, token, type: 'recovery' })`.
+   **This is where the session is established** — a valid code returns a recovery session.
+   `form-errors.otpInvalid` is used for *both* invalid and expired codes (never reveal which).
+3. **`updatePasswordAction`** calls `supabase.auth.updateUser({ password })` against that session.
+
+The user lands on `/update-password?email=<email>` manually; the page gates only on the `?email`
+param being present — there is **no session gate** on entry (the old `getUser()` recovery-session
+check is gone, since the session does not yet exist until step 2). The flow is a two-step client
+component: a code step, then a new-password step.
+
+**Why OTP-code replaced magic-link:** corporate link-scanners (Google Safe Links and similar)
+pre-fetch URLs in inbound email, which **burns the single-use recovery token before the user
+clicks** — breaking magic-link reset for every protected mailbox. A 6-digit code carries no URL
+to pre-fetch, so the token survives until the user enters it.
+
+`/api/auth/callback` still exists but is **dead code for password reset** — only PKCE / magic-link
+*invite* paths still route through it. Login is unchanged (`loginAction` → `signInWithPassword`
+→ `is_active` deactivation gate).
+
+Full UI spec (two-step form, `PasswordStrengthBar`, error copy): `../pages/auth.md`.

@@ -6,7 +6,9 @@ import {
   getLeadVolumeByDomains,
 } from "@/lib/services/dashboard-service";
 import { getBudgetSummary, filterBudgetRowsByDomain } from "@/lib/services/ad-spend-service";
+import { getNotifications } from "@/lib/services/notifications-service";
 import { GIA_DOMAINS } from "@/lib/constants/domains";
+import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { DashboardCanvas } from "@/components/dashboard/DashboardCanvas";
 import { pickDashboardGreeting } from "@/lib/constants/dashboard-greetings";
 import type { AppDomain, UserRole } from "@/lib/types/database";
@@ -125,6 +127,7 @@ export default async function DashboardPage({
         fromParam={fromParam}
         toParam={toParam}
         dateRange={dateRange}
+        notificationsPromise={TOP_BAR_ENABLED ? getNotifications(profile.id) : undefined}
       />
     </main>
   );

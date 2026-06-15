@@ -532,9 +532,13 @@ export async function createManualLead(
 
   }
 
-  // 10. All assignment side-effects (WhatsApp, in-app, SLA) via shared orchestrator
+  // 10. All assignment side-effects (WhatsApp, in-app, SLA) via shared orchestrator.
+  // Called UNCONDITIONALLY (not gated on assignedTo): the founder must always be
+  // told a new lead entered the system, and the manager/founder escalation timers
+  // (SLA-01B/01C) must arm even when the lead has no agent. notifyLeadAssigned
+  // internally skips the agent WhatsApp + in-app steps when assignedTo is null.
   const manualLeadName = last_name ? `${first_name} ${last_name}` : first_name;
-  if (assignedTo) {
+  {
     const { notifyLeadAssigned } = await import(
       "@/lib/services/lead-assignment-notify"
     );
@@ -544,7 +548,7 @@ export async function createManualLead(
       notifyLeadAssigned({
         leadId,
         assignedTo,
-        agentName:   assignedAgentName,
+        agentName:   assignedTo ? assignedAgentName : null,
         leadName:    manualLeadName,
         leadPhone:   phone,
         domain:      resolvedDomain as string,

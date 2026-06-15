@@ -3,8 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { redis } from "@/lib/redis";
-import { REDIS_KEYS, REDIS_TTL } from "@/lib/constants/redis-keys";
 import {
   CreatePersonalTaskSchema,
   CreateGroupTaskSchema,
@@ -22,69 +20,41 @@ import { formErrors } from "@/lib/validations/form-errors";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { requireProfile } from "@/lib/actions/_auth";
-import { createNotification } from "@/lib/services/notifications-service";
 import { getTaskRemarks } from "@/lib/services/tasks-service";
 import {
-  scheduleTaskReminder,
-  cancelTaskReminder,
-} from "@/trigger/task-reminders";
+  canMutateTask,
+  createPersonalTaskCore,
+  createGroupTaskCore,
+  createSubtaskCore,
+  updateTaskStatusCore,
+  updateTaskCore,
+  deleteTaskCore,
+  type MutationActor,
+  type TaskMutationTarget,
+} from "@/lib/services/task-mutations";
 import type { ActionResult } from "@/lib/types/index";
 import type {
-  Task,
   TaskStatus,
   TaskPriority,
   TaskRemark,
   ChecklistItem,
+  Profile,
 } from "@/lib/types/database";
 import type {
   TaskRemarkWithAuthor,
   SubtaskWithAssignee,
 } from "@/lib/services/tasks-service";
 
-// Terminal statuses — no reminders needed beyond these
-const TERMINAL_STATUSES: TaskStatus[] = ["completed", "cancelled", "error"];
-
-// ─────────────────────────────────────────────
-// Authorization helper — canMutateTask (A-09)
-// Must be called by every mutation action after fetching the task.
-// adminClient bypasses RLS, so the application layer must enforce
-// the same access rules that RLS would enforce. Never skip this.
-//
-// Rules (mirror the tasks RLS UPDATE policy + task_groups domain scope):
-//   agent     → assigned_to = caller.id OR created_by = caller.id
-//   manager   → same as agent, OR group_subtask in caller's domain
-//   admin/founder → always allowed
-// ─────────────────────────────────────────────
-type CallerProfile = { id: string; role: string; domain: string };
-type TaskMutationTarget = {
-  assigned_to: string | null;
-  created_by: string | null;
-  group_id: string | null;
-};
-
-async function canMutateTask(
-  caller: CallerProfile,
-  task: TaskMutationTarget,
-): Promise<boolean> {
-  // admin and founder are unrestricted
-  if (caller.role === "admin" || caller.role === "founder") return true;
-
-  // Direct ownership — applies to every role
-  if (task.assigned_to === caller.id || task.created_by === caller.id)
-    return true;
-
-  // Manager: additionally permitted on group subtasks in their own domain
-  if (caller.role === "manager" && task.group_id) {
-    const supabase = await createClient();
-    const { data: group } = await supabase
-      .from("task_groups")
-      .select("domain")
-      .eq("id", task.group_id)
-      .single();
-    if (group?.domain === caller.domain) return true;
-  }
-
-  return false;
+// Map a verified session profile to the principal-derived MutationActor the
+// task cores take. The session caller IS the principal here — the future Elaya
+// write tool (Brief 3) builds the same actor shape from the Elaya principal.
+function actorFromProfile(p: Profile): MutationActor {
+  return {
+    userId: p.id,
+    role: p.role,
+    domain: p.domain,
+    fullName: p.full_name ?? "A teammate",
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -110,77 +80,32 @@ export async function createPersonalTaskAction(
 
   const resolvedAssignedTo = fields.assigned_to ?? caller.id;
 
-  // 3. If assigning to another user, verify they exist (only manager+ can do this)
+  // 3. If assigning to another user, only manager+ may do so (the per-resource
+  //    gate; the core trusts this — Q-13).
   if (resolvedAssignedTo !== caller.id) {
     if (!["manager", "admin", "founder"].includes(caller.role)) {
       return { data: null, error: formErrors.unauthorized };
     }
   }
 
-  const admin = createAdminClient();
+  // 4. Write body + side-effects (insert, notify, reminder, cache) → core.
+  const result = await createPersonalTaskCore(actorFromProfile(caller), {
+    title: fields.title,
+    description: fields.description ?? null,
+    priority: fields.priority,
+    dueAt: fields.due_at ?? null,
+    assignedTo: fields.assigned_to ?? null,
+    tags: fields.tags ?? [],
+  });
 
-  // 4. Insert task
-  const { data: task, error: insertError } = await admin
-    .from("tasks")
-    .insert({
-      assigned_to: resolvedAssignedTo,
-      created_by: caller.id,
-      module: "gia", // personal tasks default to gia module
-      task_type: "other",
-      task_category: "personal",
-      title: fields.title,
-      description: fields.description ?? null,
-      priority: fields.priority,
-      status: "to_do",
-      due_at: fields.due_at ?? null,
-      group_id: null,
-      tags: fields.tags ?? [],
-    })
-    .select("id")
-    .single();
-
-  if (insertError || !task) return { data: null, error: formErrors.generic };
-
-  const taskId = task.id as string;
-
-  // 5. Notify assignee — fire-and-forget, non-fatal (if different from caller)
-  if (resolvedAssignedTo !== caller.id) {
-    createNotification({
-      recipient_id: resolvedAssignedTo,
-      type: "task_assigned",
-      title: `New task: ${fields.title}`,
-      body: `Assigned to you by ${caller.full_name}`,
-      action_url: `/tasks`,
-    }).catch(() => {});
-  }
-
-  // 6. Schedule reminder if due_at is set
-  if (fields.due_at) {
-    scheduleTaskReminder(
-      taskId,
-      new Date(fields.due_at),
-      resolvedAssignedTo,
-    ).catch(() => {});
-  }
-
-  // 7. Invalidate assignee's page-1 personal task cache — fire-and-forget.
-  void redis
-    .del(REDIS_KEYS.task.personalPage1(resolvedAssignedTo))
-    .catch(() => {});
-
-  // 8. Invalidate caller's dashboard agent-tasks widget cache (30s TTL).
-  //    Caller's id is server-verified — never a client-supplied value.
-  try {
-    await redis.del(REDIS_KEYS.dashboardAgentTasks(caller.id));
-  } catch (e) {
-    console.warn(
-      "[dashboard-invalidation] redis del failed on createPersonalTask",
-      e,
-    );
-  }
+  if (!result.ok) return { data: null, error: formErrors.generic };
 
   return {
-    data: { taskId, assignedTo: resolvedAssignedTo, createdBy: caller.id },
+    data: {
+      taskId: result.taskId,
+      assignedTo: result.assignedTo,
+      createdBy: result.createdBy,
+    },
     error: null,
   };
 }
@@ -205,40 +130,20 @@ export async function createGroupTaskAction(
   if (!auth.ok) return auth.result;
   const caller = auth.profile;
 
-  // 3. Domain enforcement — non-privileged callers locked to own domain
-  const resolvedDomain = ["admin", "founder"].includes(caller.role)
-    ? fields.domain
-    : caller.domain;
+  // 3. Write body + side-effects (domain enforcement, insert, cache) → core.
+  const result = await createGroupTaskCore(actorFromProfile(caller), {
+    title: fields.title,
+    description: fields.description ?? null,
+    priority: fields.priority,
+    dueAt: fields.due_at ?? null,
+    domain: fields.domain,
+  });
 
-  const admin = createAdminClient();
-
-  // 4. Insert task_group
-  const { data: group, error: insertError } = await admin
-    .from("task_groups")
-    .insert({
-      title: fields.title,
-      description: fields.description ?? null,
-      priority: fields.priority,
-      status: "to_do",
-      due_at: fields.due_at ?? null,
-      created_by: caller.id,
-      domain: resolvedDomain,
-    })
-    .select("id")
-    .single();
-
-  if (insertError || !group) return { data: null, error: formErrors.generic };
-
-  // 5. Invalidate creator's group list cache (user-scoped key per migration 0058)
-  try {
-    await redis.del(REDIS_KEYS.task.groupList(caller.id));
-  } catch (e) {
-    console.warn("[tasks-action] redis del failed on createGroupTask", e);
-  }
+  if (!result.ok) return { data: null, error: formErrors.generic };
 
   revalidatePath("/tasks");
 
-  return { data: { groupId: group.id as string }, error: null };
+  return { data: { groupId: result.groupId }, error: null };
 }
 
 // ─────────────────────────────────────────────
@@ -262,7 +167,8 @@ export async function createSubtaskAction(
 
   const supabase = await createClient();
 
-  // 3. Verify the group exists and caller has access
+  // 3. Verify the group exists and caller has access (the per-resource gate;
+  //    the core trusts this — Q-13).
   const { data: group } = await supabase
     .from("task_groups")
     .select("id, domain, created_by")
@@ -276,88 +182,22 @@ export async function createSubtaskAction(
     return { data: null, error: formErrors.unauthorized };
   }
 
-  const admin = createAdminClient();
+  // 5. Write body + side-effects (insert, assignee resolve, cache, notify,
+  //    reminder) → core.
+  const result = await createSubtaskCore(actorFromProfile(caller), {
+    groupId: fields.group_id,
+    title: fields.title,
+    description: fields.description ?? null,
+    priority: fields.priority,
+    dueAt: fields.due_at ?? null,
+    assignedTo: fields.assigned_to,
+  });
 
-  // 5. Insert subtask — select full row for local prepend on the client
-  const { data: task, error: insertError } = await admin
-    .from("tasks")
-    .insert({
-      assigned_to: fields.assigned_to,
-      created_by: caller.id,
-      module: "gia",
-      task_type: "other",
-      task_category: "group_subtask",
-      title: fields.title,
-      description: fields.description ?? null,
-      priority: fields.priority,
-      status: "to_do",
-      due_at: fields.due_at ?? null,
-      group_id: fields.group_id,
-    })
-    .select("*")
-    .single();
-
-  if (insertError || !task) return { data: null, error: formErrors.generic };
-
-  const taskId = task.id as string;
-
-  // 6. Fetch assignee profile in the same action — one extra query, zero extra round-trips
-  //    from the component. Failure is non-fatal; assignee renders as null (avatar falls back).
-  let assignee: SubtaskWithAssignee["assignee"] = null;
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, full_name, avatar_url")
-    .eq("id", fields.assigned_to)
-    .single();
-  if (profile) {
-    assignee = {
-      id: profile.id,
-      full_name: profile.full_name,
-      avatar_url: profile.avatar_url,
-    };
-  }
-
-  // 6b. Invalidate group list cache for caller and assignee (migration 0058: user-scoped key).
-  //     Assignee's cache must refresh so they see the parent group they've just been assigned in.
-  //     Caller's cache also refreshes to show the updated subtask count on their group.
-  const keysToInvalidate = [REDIS_KEYS.task.groupList(caller.id)];
-  if (fields.assigned_to !== caller.id) {
-    keysToInvalidate.push(REDIS_KEYS.task.groupList(fields.assigned_to));
-  }
-  try {
-    await Promise.all(keysToInvalidate.map((k) => redis.del(k)));
-  } catch (e) {
-    console.warn("[tasks-action] redis del failed on createSubtask group lists", e);
-  }
+  if (!result.ok) return { data: null, error: formErrors.generic };
 
   revalidatePath("/tasks");
 
-  // 7. Notify assignee — fire-and-forget, non-fatal (always notify for subtasks)
-  if (fields.assigned_to !== caller.id) {
-    createNotification({
-      recipient_id: fields.assigned_to,
-      type: "task_assigned",
-      title: `New task: ${fields.title}`,
-      body: `Assigned to you by ${caller.full_name}`,
-      action_url: `/tasks`,
-    }).catch(() => {});
-  }
-
-  // 8. Schedule reminder if due_at is set
-  if (fields.due_at) {
-    scheduleTaskReminder(
-      taskId,
-      new Date(fields.due_at),
-      fields.assigned_to,
-    ).catch(() => {});
-  }
-
-  const subtaskWithAssignee: SubtaskWithAssignee = {
-    ...(task as Task),
-    assignee,
-  };
-
-  return { data: subtaskWithAssignee, error: null };
+  return { data: result.subtask, error: null };
 }
 
 // ─────────────────────────────────────────────
@@ -391,53 +231,27 @@ export async function updateTaskStatusAction(
   if (!caller) return { data: null, error: formErrors.unauthorized };
   if (!task) return { data: null, error: "Task not found." };
 
-  // 3. Application-layer authorization check (A-09 — layer 2)
-  const allowed = await canMutateTask(caller, task as TaskMutationTarget);
+  // 3. Application-layer authorization check (A-09 — layer 2). Session client
+  //    runs the manager→group-domain lookup; the core stays ungated.
+  const allowed = await canMutateTask(
+    supabase,
+    caller,
+    task as TaskMutationTarget,
+  );
   if (!allowed) return { data: null, error: formErrors.unauthorized };
 
   // No-op if status is unchanged
   if (task.status === status) return { data: { taskId }, error: null };
 
-  const admin = createAdminClient();
+  // 4. Write body + side-effects (update, reminder cancel, cache) → core. The
+  //    category cache branch keys on actor.userId deliberately (pre-mortem note).
+  const result = await updateTaskStatusCore(
+    actorFromProfile(caller),
+    { taskId, status: status as TaskStatus },
+    { taskCategory: task.task_category },
+  );
 
-  const { error: updateError } = await admin
-    .from("tasks")
-    .update({
-      status,
-      ...(status === "completed"
-        ? { completed_at: new Date().toISOString() }
-        : {}),
-    })
-    .eq("id", taskId);
-
-  if (updateError) return { data: null, error: formErrors.generic };
-
-  // 4. Cancel reminder when moving to terminal status
-  if (TERMINAL_STATUSES.includes(status as TaskStatus)) {
-    cancelTaskReminder(taskId).catch(() => {});
-  }
-
-  // 5. Cache invalidation — three branches, fire-and-forget.
-  //    personal   → del caller's page-1 personal list
-  //    gia_followup → del caller's Gia list (caller.id used, not assigned_to — see pre-mortem note)
-  //    group_subtask → del caller's subtask slot for this group
-  if (task.task_category === "personal") {
-    void redis.del(REDIS_KEYS.task.personalPage1(caller.id)).catch(() => {});
-  } else if (task.task_category === "gia_followup") {
-    void redis
-      .del(REDIS_KEYS.task.giaList(caller.id, caller.role, caller.domain))
-      .catch(() => {});
-  }
-
-  // 6. Invalidate caller's dashboard agent-tasks widget cache.
-  try {
-    await redis.del(REDIS_KEYS.dashboardAgentTasks(caller.id));
-  } catch (e) {
-    console.warn(
-      "[dashboard-invalidation] redis del failed on updateTaskStatus",
-      e,
-    );
-  }
+  if (!result.ok) return { data: null, error: formErrors.generic };
 
   return { data: { taskId }, error: null };
 }
@@ -470,66 +284,33 @@ export async function updateTaskAction(
   if (!caller) return { data: null, error: formErrors.unauthorized };
   if (!existing) return { data: null, error: "Task not found." };
 
-  // 3. Application-layer authorization check (A-09 — layer 2)
-  const allowed = await canMutateTask(caller, existing as TaskMutationTarget);
+  // 3. Application-layer authorization check (A-09 — layer 2). Session client
+  //    runs the manager→group-domain lookup; the core stays ungated.
+  const allowed = await canMutateTask(
+    supabase,
+    caller,
+    existing as TaskMutationTarget,
+  );
   if (!allowed) return { data: null, error: formErrors.unauthorized };
 
-  const admin = createAdminClient();
+  // 4. Write body + side-effects (update, reminder reschedule/cancel) → core.
+  //    `due_at` presence in the parsed payload (not its value) decides a reschedule.
+  const result = await updateTaskCore(
+    actorFromProfile(caller),
+    {
+      taskId,
+      title: fields.title,
+      description: fields.description,
+      priority: fields.priority as TaskPriority | undefined,
+      status: fields.status as TaskStatus | undefined,
+      assignedTo: fields.assigned_to,
+      dueAt: fields.due_at,
+      dueAtChanged: "due_at" in fields,
+    },
+    { assignedTo: existing.assigned_to },
+  );
 
-  // 4. Build typed update payload — only include defined fields
-  const due_at_changed = "due_at" in fields;
-
-  const updatePayload: {
-    title?: string;
-    description?: string | null;
-    priority?: TaskPriority;
-    status?: TaskStatus;
-    assigned_to?: string;
-    due_at?: string | null;
-    completed_at?: string | null;
-  } = {};
-
-  if (fields.title !== undefined) updatePayload.title = fields.title;
-  if (fields.description !== undefined)
-    updatePayload.description = fields.description;
-  if (fields.priority !== undefined)
-    updatePayload.priority = fields.priority as TaskPriority;
-  if (fields.status !== undefined)
-    updatePayload.status = fields.status as TaskStatus;
-  if (fields.assigned_to !== undefined)
-    updatePayload.assigned_to = fields.assigned_to;
-  if (due_at_changed) updatePayload.due_at = fields.due_at ?? null;
-  if (fields.status === "completed")
-    updatePayload.completed_at = new Date().toISOString();
-
-  const { error: updateError } = await admin
-    .from("tasks")
-    .update(updatePayload)
-    .eq("id", taskId);
-
-  if (updateError) return { data: null, error: formErrors.generic };
-
-  // 5. Reminder management — cancel old, schedule new when due_at changes
-  if (due_at_changed) {
-    // Cancel the old reminder regardless
-    await cancelTaskReminder(taskId).catch(() => {});
-
-    const newDueAt = fields.due_at ? new Date(fields.due_at) : null;
-    const assignedTo = (fields.assigned_to ?? existing.assigned_to) as string;
-
-    if (newDueAt && assignedTo) {
-      scheduleTaskReminder(taskId, newDueAt, assignedTo).catch(() => {});
-    }
-  }
-
-  // 6. If status moved to terminal, cancel reminder (safety net)
-  if (
-    fields.status &&
-    TERMINAL_STATUSES.includes(fields.status as TaskStatus) &&
-    !due_at_changed
-  ) {
-    cancelTaskReminder(taskId).catch(() => {});
-  }
+  if (!result.ok) return { data: null, error: formErrors.generic };
 
   return { data: { taskId }, error: null };
 }
@@ -578,36 +359,16 @@ export async function deleteTaskAction(
     `[deleteTaskAction] task_category=${task.task_category} taskId=${taskId} caller=${caller.id}`,
   );
 
-  // 5. Cancel Trigger.dev reminder BEFORE DB delete.
-  //    A cancel failure (no runs found, SDK error, network) is non-fatal —
-  //    log it and continue. A missed reminder cancel is recoverable;
-  //    a broken delete UX is not.
-  try {
-    await cancelTaskReminder(taskId);
-  } catch (e) {
-    console.error("[deleteTaskAction] cancelTaskReminder failed (non-fatal):", e);
-  }
+  // 5. Write body + side-effects → core. NAMED INVARIANT (preserved in the core):
+  //    cancel the Trigger.dev reminder BEFORE the DB delete, cancel failure is
+  //    non-fatal. The category cache branch keys on actor.userId (pre-mortem note).
+  const result = await deleteTaskCore(
+    actorFromProfile(caller),
+    { taskId },
+    { taskCategory: task.task_category },
+  );
 
-  // 6. Delete task — cascade removes task_remarks (ON DELETE CASCADE on task_remarks.task_id)
-  const admin = createAdminClient();
-  const { error: deleteError } = await admin
-    .from("tasks")
-    .delete()
-    .eq("id", taskId);
-
-  if (deleteError) return { data: null, error: formErrors.generic };
-
-  // Cache invalidation — three branches, fire-and-forget.
-  //    personal     → del caller's page-1 personal list
-  //    gia_followup → del caller's Gia list (caller.id, not task.assigned_to — see pre-mortem note)
-  //    group_subtask → del caller's subtask slot for this group
-  if (task.task_category === "personal") {
-    void redis.del(REDIS_KEYS.task.personalPage1(caller.id)).catch(() => {});
-  } else if (task.task_category === "gia_followup") {
-    void redis
-      .del(REDIS_KEYS.task.giaList(caller.id, caller.role, caller.domain))
-      .catch(() => {});
-  }
+  if (!result.ok) return { data: null, error: formErrors.generic };
 
   return { data: null, error: null };
 }
@@ -644,7 +405,11 @@ export async function updateChecklistAction(
   if (!task) return { data: null, error: "Task not found." };
 
   // 3. Application-layer authorization check (A-09 — layer 2)
-  const allowed = await canMutateTask(caller, task as TaskMutationTarget);
+  const allowed = await canMutateTask(
+    supabase,
+    caller,
+    task as TaskMutationTarget,
+  );
   if (!allowed) return { data: null, error: formErrors.unauthorized };
 
   // 4. Write new checklist — adminClient bypasses RLS UPDATE
@@ -691,7 +456,11 @@ export async function updateTaskTagsAction(
   if (!task) return { data: null, error: "Task not found." };
 
   // 3. Application-layer authorization check (A-09 — layer 2)
-  const allowed = await canMutateTask(caller, task as TaskMutationTarget);
+  const allowed = await canMutateTask(
+    supabase,
+    caller,
+    task as TaskMutationTarget,
+  );
   if (!allowed) return { data: null, error: formErrors.unauthorized };
 
   // 4. Write new tags array

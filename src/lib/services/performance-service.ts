@@ -593,6 +593,9 @@ export async function getDomainHealthMetrics(
 
 export type AgentTodayPulse = {
   callsToday: { total: number; newLeads: number; oldLeads: number };
+  /** ALL notes (plain + call) authored since IST midnight — a superset of
+   *  callsToday.total. Backs the Overview "Today" strip Notes value. */
+  notesToday: number;
   /** Oldest-first, 14 entries, day = IST calendar date (YYYY-MM-DD) */
   callTrend:  { day: string; count: number }[];
   deals:      { dealCount: number; revenue: number };
@@ -620,6 +623,7 @@ export async function getAgentTodayPulse(
     console.error("[performance-service] get_agent_today_pulse failed:", error);
     return {
       callsToday: { total: 0, newLeads: 0, oldLeads: 0 },
+      notesToday: 0,
       callTrend:  [],
       deals:      { dealCount: 0, revenue: 0 },
     };
@@ -627,6 +631,7 @@ export async function getAgentTodayPulse(
 
   const payload = data as {
     calls_today?: { total?: number | string; new_leads?: number | string; old_leads?: number | string } | null;
+    notes_today?: number | string | null;
     call_trend?:  { day: string; count: number | string }[] | null;
     deals?:       { deal_count?: number | string; revenue?: number | string } | null;
   };
@@ -637,6 +642,7 @@ export async function getAgentTodayPulse(
       newLeads: Number(payload.calls_today?.new_leads ?? 0),
       oldLeads: Number(payload.calls_today?.old_leads ?? 0),
     },
+    notesToday: Number(payload.notes_today ?? 0),
     callTrend: (payload.call_trend ?? []).map((d) => ({
       day:   d.day,
       count: Number(d.count),

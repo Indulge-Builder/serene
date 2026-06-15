@@ -3,6 +3,7 @@
 > **Purpose:** step-by-step guide to put Serene on your phone's home screen like a real app.
 > **Audience:** everyone on the team — no technical knowledge needed (Part 2 and 3).
 > Part 1 is for whoever deploys the app.
+> **Last updated:** 2026-06-15
 
 Serene is now a PWA (Progressive Web App). That means the website itself can be
 installed on your phone. Same app, same login, same data — just full-screen,
@@ -115,6 +116,25 @@ Nothing you need to do. The installed app is still the live website:
 
 ---
 
+## Part 6 — Pick your home-screen icon
+
+Serene ships with **four** home-screen icons. You choose which one lands on your
+phone, both when you first install and any time later.
+
+1. Go to **Profile** (your name in the sidebar → Profile).
+2. In the **Appearance** card you'll see the four Serene icons. Tap the one you
+   want — your choice saves to your account instantly.
+3. Install Serene (Part 2 or Part 3). The icon you picked is the one that goes
+   onto your home screen.
+
+> **Already installed and want a different icon?** Change the pick on Profile,
+> then **remove the icon from your home screen and add it again.** Once an icon
+> is on your home screen, your phone's operating system owns that picture —
+> Serene cannot reach in and swap it. Removing and re-adding is the only way to
+> refresh it (your account and data are untouched — it's just the shortcut).
+
+---
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -136,5 +156,14 @@ Nothing you need to do. The installed app is still the live website:
 - It does **not** work fully offline. Offline you only get the "you're
   offline" screen — all real data needs internet. This is intentional: lead
   data is private per person and is never stored on the phone.
-- It does **not** send push notifications yet. That is a separate upcoming
-  feature.
+- It **does** send push notifications. Serene now pushes alerts for **lead
+  assignment, status changes, SLA alerts, and task reminders** straight to your
+  phone — even when the app is closed (iPhone on iOS 16.4+, Android, and
+  desktop). The in-app **bell** stays your main notification center; push is
+  simply a second way the same alert reaches you. Turn it on under **Profile →
+  Notifications**.
+
+> **iPhone note:** Web Push on iOS only works when Serene is **installed to your
+> home screen** (Part 3) and opened from that icon. Until you install it, the
+> phone cannot send you push notifications — the in-app bell still works either
+> way.

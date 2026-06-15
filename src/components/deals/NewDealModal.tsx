@@ -7,17 +7,26 @@ import { Modal } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/Spinner';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { createWalkInDeal, listAgentsForDealDomain } from '@/lib/actions/deals';
-import { GIA_DOMAINS, DOMAIN_LABELS } from '@/lib/constants/domains';
+import { GIA_DOMAINS, DOMAIN_LABELS, isGiaDomain, type GiaDomain } from '@/lib/constants/domains';
 import {
-  DEAL_TYPES,
   DEAL_TYPE_LABELS,
   DEAL_DURATIONS,
   DEAL_DURATION_LABELS,
-  type DealType,
+  DEAL_CATEGORY_OPTIONS,
+  DOMAIN_DEAL_CONFIG,
   type DealDuration,
+  type DealCategory,
 } from '@/lib/constants/deal-types';
 import { LEAD_SOURCE_OPTIONS, type LeadSource } from '@/lib/constants/lead-sources';
 import type { UserRole, AppDomain } from '@/lib/types/database';
+
+// deal_type is DERIVED from the selected domain — never a free picker.
+function dealTypeOf(domain: AppDomain) {
+  return isGiaDomain(domain) ? DOMAIN_DEAL_CONFIG[domain as GiaDomain].type : null;
+}
+function dealCategoriesOf(domain: AppDomain): readonly DealCategory[] | null {
+  return isGiaDomain(domain) ? DOMAIN_DEAL_CONFIG[domain as GiaDomain].categories : null;
+}
 
 type Props = {
   open:          boolean;
@@ -59,9 +68,9 @@ export function NewDealModal({
   const [agents, setAgents]           = useState<Agent[]>([]);
   const [loadingAgents, setLoadingAgents] = useState(false);
 
-  // Deal fields
-  const [dealType,     setDealType]     = useState<DealType | null>(null);
+  // Deal fields — deal_type is DERIVED from `domain`, never picked here.
   const [duration,     setDuration]     = useState<DealDuration | null>(null);
+  const [category,     setCategory]     = useState<DealCategory | null>(null);
   const [amountStr,    setAmountStr]    = useState('');
   const [wonAt,        setWonAt]        = useState<Date | null>(new Date());
   const [source,       setSource]       = useState<LeadSource | ''>('');
@@ -72,9 +81,17 @@ export function NewDealModal({
     callerRole === 'manager' || callerRole === 'admin' || callerRole === 'founder';
   const canPickDomain = callerRole === 'admin' || callerRole === 'founder';
 
+  // Derived from the chosen domain.
+  const dealType   = dealTypeOf(domain);
+  const categories = dealCategoriesOf(domain);
+
   async function handleDomainChange(newDomain: AppDomain) {
     setDomain(newDomain);
     setAssignedTo('');
+    // Domain drives the type — reset the type-dependent extras on every change.
+    setDuration(null);
+    setCategory(null);
+    setError(null);
     if (isManagerPlus) {
       setLoadingAgents(true);
       const result = await listAgentsForDealDomain(newDomain);
@@ -101,9 +118,13 @@ export function NewDealModal({
     e.preventDefault();
     setError(null);
 
-    if (!dealType) { setError('Please select a deal type.'); return; }
+    if (!dealType) { setError('Please select a valid domain.'); return; }
     if (dealType === 'membership' && !duration) {
       setError('Please select a membership duration.');
+      return;
+    }
+    if (dealType === 'retail' && !category) {
+      setError('Please select a product category.');
       return;
     }
 
@@ -118,6 +139,7 @@ export function NewDealModal({
     }
 
     startTransition(async () => {
+      // deal_type is intentionally NOT sent — the action derives it from domain.
       const result = await createWalkInDeal({
         contact_name:  contactName.trim(),
         contact_phone: contactPhone.trim(),
@@ -126,8 +148,8 @@ export function NewDealModal({
         assigned_to:   assignedTo || null,
         won_at:        wonAt ? wonAt.toISOString() : new Date().toISOString(),
         source:        (source as LeadSource) || null,
-        deal_type:     dealType,
         deal_duration: dealType === 'membership' ? duration : null,
+        deal_category: dealType === 'retail' ? category : null,
         deal_amount:   amount,
       });
 
@@ -148,8 +170,8 @@ export function NewDealModal({
     setContactEmail('');
     setDomain(callerRole === 'agent' || callerRole === 'manager' ? callerDomain : GIA_DOMAINS[0]);
     setAssignedTo(callerRole === 'agent' ? callerId : '');
-    setDealType(null);
     setDuration(null);
+    setCategory(null);
     setAmountStr('');
     setWonAt(new Date());
     setSource('');
@@ -254,7 +276,6 @@ export function NewDealModal({
               value={contactName}
               onChange={(e) => { setContactName(e.target.value); setError(null); }}
               placeholder="Full name"
-              autoFocus
               style={inputStyle}
               onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--theme-accent)'; }}
               onBlur={(e)  => { e.currentTarget.style.borderColor = 'var(--theme-paper-border)'; }}
@@ -370,77 +391,54 @@ export function NewDealModal({
           onSubmit={handleSubmit}
           style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}
         >
-          {/* Deal type */}
+          {/* Deal type — DERIVED from domain, shown read-only (never picked) */}
           <div>
-            <p style={{ ...labelStyle, margin: '0 0 var(--space-3) 0' }}>
-              Deal Type <span style={{ color: 'var(--color-danger)' }}>*</span>
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              {DEAL_TYPES.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => { setDealType(t); setDuration(null); setError(null); }}
-                  style={{
-                    display:      'flex',
-                    alignItems:   'center',
-                    gap:          'var(--space-3)',
-                    padding:      'var(--space-3) var(--space-4)',
-                    border:       `1.5px solid ${dealType === t ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
-                    borderRadius: 'var(--radius-md)',
-                    background:   dealType === t ? 'var(--theme-accent-surface)' : 'var(--theme-paper)',
-                    cursor:       'pointer',
-                    textAlign:    'left',
-                    width:        '100%',
-                    fontFamily:   'var(--font-sans)',
-                    transition:   'border-color 0.15s ease, background 0.15s ease',
-                  }}
-                >
-                  <span
-                    style={{
-                      width:        '1rem',
-                      height:       '1rem',
-                      borderRadius: 'var(--radius-full)',
-                      border:       `2px solid ${dealType === t ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
-                      background:   dealType === t ? 'var(--theme-accent)' : 'transparent',
-                      flexShrink:   0,
-                      display:      'flex',
-                      alignItems:   'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {dealType === t && (
-                      <span
-                        style={{
-                          width:        '5px',
-                          height:       '5px',
-                          borderRadius: 'var(--radius-full)',
-                          background:   'var(--theme-accent-fg)',
-                        }}
-                      />
-                    )}
-                  </span>
-                  <span>
-                    <span
-                      style={{
-                        display:    'block',
-                        fontSize:   'var(--text-sm)',
-                        fontWeight: 'var(--weight-semibold)',
-                        color:      dealType === t ? 'var(--theme-accent)' : 'var(--theme-text-primary)',
-                      }}
-                    >
-                      {DEAL_TYPE_LABELS[t]}
-                    </span>
-                    <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', marginTop: '2px' }}>
-                      {t === 'membership'
-                        ? 'Club or annual membership with a fixed duration'
-                        : 'One-time retail purchase or product sale'}
-                    </span>
-                  </span>
-                </button>
-              ))}
+            <p style={{ ...labelStyle, margin: '0 0 var(--space-2) 0' }}>Deal Type</p>
+            <div
+              style={{
+                display:      'flex',
+                alignItems:   'center',
+                gap:          'var(--space-2)',
+                padding:      'var(--space-3) var(--space-4)',
+                border:       '1px solid var(--theme-paper-border)',
+                borderRadius: 'var(--radius-md)',
+                background:   'var(--theme-paper-subtle)',
+              }}
+            >
+              <span
+                style={{
+                  fontSize:   'var(--text-sm)',
+                  fontWeight: 'var(--weight-semibold)',
+                  color:      'var(--theme-accent)',
+                }}
+              >
+                {dealType ? DEAL_TYPE_LABELS[dealType] : '—'}
+              </span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
+                · set by {DOMAIN_LABELS[domain]}
+              </span>
             </div>
           </div>
+
+          {/* Category — retail (shop) only */}
+          {dealType === 'retail' && categories && (
+            <div>
+              <p style={{ ...labelStyle, margin: '0 0 var(--space-2) 0' }}>
+                Product Category <span style={{ color: 'var(--color-danger)' }}>*</span>
+              </p>
+              <select
+                value={category ?? ''}
+                onChange={(e) => { setCategory((e.target.value || null) as DealCategory | null); setError(null); }}
+                disabled={isPending}
+                style={selectStyle}
+              >
+                <option value="">— select —</option>
+                {DEAL_CATEGORY_OPTIONS.filter((opt) => categories.includes(opt.id)).map((opt) => (
+                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Duration — membership only */}
           {dealType === 'membership' && (

@@ -138,6 +138,26 @@ body {
   }
 }
 
+/* Page controls (TOP_BAR_ENABLED) — the global domain selector + notification
+   bell, rendered INLINE in each page's title row (right side, beside the page
+   CTA), so they read as part of the page — no separate bar, strip, or divider.
+   The bell sits on paper at every breakpoint → paper-text variant. Below md the
+   selector hides (admin/founder use the per-page filter bar's domain on mobile);
+   the bell stays inline on the title row. SINGLE BELL MOUNT: one NotificationBell
+   per page render; the Sidebar footer bell is gated off (TOP_BAR_ENABLED), so no
+   duplicate `notifications:${userId}` Realtime channel. */
+.serene-page-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+@media (max-width: 767.98px) { /* < --bp-md */
+  .serene-page-controls-selector {
+    display: none;
+  }
+}
+
 /* Sidebar — three modes (DNA §3.2 / §9.2):
    lg+        240px, full labels (default)
    md…lg-1    64px icon rail — labels/sections/footer text hidden, title tooltips
@@ -289,6 +309,48 @@ body {
   /* Soft accent-washed paper — derives from --theme-accent, so it
      follows the user's theme. */
   background: color-mix(in srgb, var(--theme-accent) 7%, var(--theme-paper));
+}
+
+/* Floating Elaya presence — the corner OPPOSITE the top-left nav hamburger
+   (.serene-mobile-trigger). Portaled to document.body, so position: fixed
+   anchors to the viewport (escapes any transformed shell ancestor). Shares the
+   hamburger's accent-washed paper bubble aesthetic, sized up for a primary
+   presence affordance. Below the modal/overlay/toast scale so the chat covers
+   it when open; above sticky page chrome so it always floats over the paper. */
+.serene-elaya-fab {
+  position: fixed;
+  right: calc(var(--space-6) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 18%, transparent);
+  border-radius: var(--radius-full);
+  color: var(--theme-accent);
+  cursor: pointer;
+  box-shadow: var(--shadow-2);
+  background: color-mix(in srgb, var(--theme-accent) 8%, var(--theme-paper));
+  transition: box-shadow var(--duration-base) var(--ease-out-soft),
+    border-color var(--duration-fast) var(--ease-in-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .serene-elaya-fab:hover {
+    box-shadow: var(--shadow-3);
+    border-color: color-mix(in srgb, var(--theme-accent) 32%, transparent);
+  }
+}
+/* Below md the nav hamburger floats top-left and the toast stack docks to the
+   bottom — keep the FAB clear of the toasts by lifting it above the mobile
+   bottom strip the toast provider uses (80px + safe area). */
+@media (max-width: 767.98px) { /* < --bp-md */
+  .serene-elaya-fab {
+    width: 48px;
+    height: 48px;
+    bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* Drawer backdrop — one of the three sanctioned backdrop-blur surfaces (V-06). */

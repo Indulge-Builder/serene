@@ -7,6 +7,9 @@ import { Avatar }                              from '@/components/ui/Avatar';
 import { getAgentDetailMetricsAction }         from '@/lib/actions/performance';
 import { formatCompact, formatCurrency, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { StatAtom, STAT_PALETTES }             from '@/components/performance/StatAtom';
+import { AgentCallsDrillModal }                from '@/components/performance/AgentCallsDrillModal';
+import { AgentLeadsDrillModal }                from '@/components/performance/AgentLeadsDrillModal';
+import { AgentDealsDrillModal }                from '@/components/performance/AgentDealsDrillModal';
 import { DOMAIN_LABELS }                       from '@/lib/constants/domains';
 import { LEAD_STATUS_LABELS }                  from '@/lib/constants/lead-statuses';
 import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
@@ -217,10 +220,16 @@ type Props = {
   customTo?:   string;
 };
 
+// Which drill-down modal is open. Mirrors the founder deck's DrillTarget; the
+// three drill modals are the SAME ones the deck mounts (props open/agentId/
+// agentName/domain/onClose). Won + Revenue both map to 'deals' (deck parity).
+type DrillKind = 'calls' | 'leads' | 'deals';
+
 export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }: Props) {
   const [metrics, setMetrics]     = useState<AgentDetailMetrics | null>(null);
   const [error, setError]         = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [drill, setDrill]         = useState<DrillKind | null>(null);
 
   // Track which agent the current metrics belong to, so we know when to show
   // the full skeleton (new agent) vs the graceful dim overlay (same agent, new period).
@@ -235,6 +244,8 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
     if (isAgentSwitch) {
       setMetrics(null);
       metricsAgentId.current = null;
+      // Close any open drill modal so it can't leak the prior agent's data.
+      setDrill(null);
     }
     setError(null);
     setIsLoading(true);
@@ -404,10 +415,10 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             transition={{ duration: 0.15 }}
             style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}
           >
-            <StatAtom label="Total Calls" value={formatCompact(metrics.totalCallsMade)}     paletteIndex={0} delay={0}   />
-            <StatAtom label="Leads"       value={formatCompact(metrics.totalLeads)}         paletteIndex={1} delay={40}  />
-            <StatAtom label="Won"         value={formatCompact(metrics.leadsWon)}           paletteIndex={2} delay={80}  />
-            <StatAtom label="Revenue"     value={formatCurrencyCompact(metrics.totalDealAmount)} paletteIndex={3} delay={120} />
+            <StatAtom label="Total Calls" value={formatCompact(metrics.totalCallsMade)}     paletteIndex={0} delay={0}   onClick={() => setDrill('calls')} />
+            <StatAtom label="Leads"       value={formatCompact(metrics.totalLeads)}         paletteIndex={1} delay={40}  onClick={() => setDrill('leads')} />
+            <StatAtom label="Won"         value={formatCompact(metrics.leadsWon)}           paletteIndex={2} delay={80}  onClick={() => setDrill('deals')} />
+            <StatAtom label="Revenue"     value={formatCurrencyCompact(metrics.totalDealAmount)} paletteIndex={3} delay={120} onClick={() => setDrill('deals')} />
           </motion.div>
         ) : (
           <motion.div
@@ -576,6 +587,40 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
         </p>
       )}
     </div>
+
+    {/* ── Drill-down modals — the SAME three the founder deck mounts ──────
+        Each fetches ON OPEN only (props open/agentId/agentName/domain/onClose).
+        Won + Revenue both open the deals modal (deck parity). Rendered OUTSIDE
+        the period-refetch dim container (which sets pointerEvents:'none') — and
+        they portal to document.body regardless, so open/close stays live during
+        and after a period refetch. */}
+    {drill === 'calls' && (
+      <AgentCallsDrillModal
+        open
+        agentId={agent.id}
+        agentName={agent.full_name}
+        domain={domain}
+        onClose={() => setDrill(null)}
+      />
+    )}
+    {drill === 'leads' && (
+      <AgentLeadsDrillModal
+        open
+        agentId={agent.id}
+        agentName={agent.full_name}
+        domain={domain}
+        onClose={() => setDrill(null)}
+      />
+    )}
+    {drill === 'deals' && (
+      <AgentDealsDrillModal
+        open
+        agentId={agent.id}
+        agentName={agent.full_name}
+        domain={domain}
+        onClose={() => setDrill(null)}
+      />
+    )}
     </div>
   );
 }

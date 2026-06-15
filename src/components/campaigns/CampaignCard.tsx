@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { m as motion } from 'framer-motion';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
-import { formatCompact } from '@/lib/utils/numbers';
+import { formatCompact, formatCurrency } from '@/lib/utils/numbers';
 import type { CampaignMetrics, AdCreative } from '@/lib/types/database';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import { CampaignPreviewModal } from './CampaignPreviewModal';
@@ -12,6 +12,10 @@ type CampaignCardProps = {
   campaign:     CampaignMetrics;
   index:        number;
   adCreatives?: AdCreative[];
+  /** null when no active range or no spend for this campaign — renders "—", never ₹0 */
+  totalSpend?:  number | null;
+  /** null when leadCount === 0 (or no range) — renders "—", never ₹0 */
+  costPerLead?: number | null;
 };
 
 // ─────────────────────────────────────────────
@@ -92,10 +96,54 @@ function DomainBadge({ domain }: { domain: string }) {
 }
 
 // ─────────────────────────────────────────────
+// Cost cell — micro-label over value (labelled-datum pattern).
+// value === null → "—" (no range or no spend), never ₹0.
+// ─────────────────────────────────────────────
+
+function CostCell({ label, value }: { label: string; value: number | null | undefined }) {
+  const display = value === null || value === undefined ? '—' : formatCurrency(Math.round(value));
+  const isEmpty = display === '—';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem', textAlign: 'right' }}>
+      <span
+        style={{
+          fontFamily:    'var(--font-sans)',
+          fontSize:      'var(--text-2xs)',
+          fontWeight:    'var(--weight-semibold)',
+          letterSpacing: 'var(--tracking-widest)',
+          textTransform: 'uppercase',
+          color:         'var(--theme-text-tertiary)',
+          whiteSpace:    'nowrap',
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize:   'var(--text-sm)',
+          fontWeight: 'var(--weight-medium)',
+          color:      isEmpty ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {display}
+      </span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // CampaignCard
 // ─────────────────────────────────────────────
 
-export function CampaignCard({ campaign, index, adCreatives = [] }: CampaignCardProps) {
+export function CampaignCard({
+  campaign,
+  index,
+  adCreatives = [],
+  totalSpend,
+  costPerLead,
+}: CampaignCardProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const staggerDelay = Math.min(index * 80, 320);
@@ -166,6 +214,22 @@ export function CampaignCard({ campaign, index, adCreatives = [] }: CampaignCard
             {campaign.campaign_name}
           </p>
           <DomainBadge domain={campaign.domain} />
+        </div>
+
+        {/* Cost zone — spend + cost-per-lead for the active range ("—" when no
+            range or no spend). Sits between identity and the status pills. */}
+        <div
+          style={{
+            display:     'flex',
+            alignItems:  'center',
+            gap:         'var(--space-5)',
+            flex:        '0 0 auto',
+            paddingRight: 'var(--space-2)',
+            borderRight: '1px solid var(--theme-paper-border)',
+          }}
+        >
+          <CostCell label="Spend"     value={totalSpend} />
+          <CostCell label="Cost/Lead" value={costPerLead} />
         </div>
 
         {/* Right: metric pills */}

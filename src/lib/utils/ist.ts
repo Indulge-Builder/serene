@@ -104,3 +104,39 @@ export function istToUtc(year: number, month: number, day: number, hour: number,
   const pseudoUtcMs = Date.UTC(year, month, day, hour, minute, 0, 0);
   return new Date(pseudoUtcMs - IST_OFFSET_MS);
 }
+
+// Matches a zone designator at the END of an ISO 8601 date-time: `Z`, or `±HH:MM`/`±HHMM`/`±HH`.
+const ISO_ZONE_SUFFIX = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/;
+// Captures the wall-clock parts of a zoneless `YYYY-MM-DD[T| ]HH:MM[:SS[.sss]]` string.
+const ZONELESS_DATETIME =
+  /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/;
+
+/**
+ * Normalise a model/UI-supplied due date-time to a true UTC ISO instant, interpreting a
+ * ZONELESS wall-clock string as IST (Asia/Kolkata).
+ *
+ * Why this exists: a string like `"2026-06-16T15:00:00"` (no zone) is parsed by
+ * `new Date(...)` as the *server's* local zone — UTC on Vercel — so a "3pm" the user
+ * meant in IST silently lands 5h30m late. This converts the zoneless case through the
+ * canonical `istToUtc` so the persisted instant is the IST wall-clock the user meant.
+ *
+ * - Zoneless `YYYY-MM-DDTHH:MM[:SS]` → interpreted as IST, returned as a UTC ISO instant.
+ * - Already-zoned (`…Z` or `…±HH:MM`) → returned unchanged (the caller already pinned the instant).
+ * - Unparseable / null → returned as-is (the downstream `new Date()` keeps its existing behaviour;
+ *   the caller decides how to handle an invalid value).
+ */
+export function normalizeDueAtToIstInstant(dueAt: string | null | undefined): string | null {
+  if (!dueAt) return null;
+  const trimmed = dueAt.trim();
+  if (trimmed.length === 0) return null;
+
+  // Already carries a zone → the instant is unambiguous; leave it exactly as supplied.
+  if (ISO_ZONE_SUFFIX.test(trimmed)) return trimmed;
+
+  const m = ZONELESS_DATETIME.exec(trimmed);
+  if (!m) return trimmed; // Not a wall-clock shape we recognise — pass through untouched.
+
+  const [, y, mo, d, h, mi] = m;
+  // istToUtc takes a 0-indexed month.
+  return istToUtc(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi)).toISOString();
+}

@@ -2,7 +2,7 @@
 
 > **Purpose:** the complete registry of environment variables — name, purpose, where used, exposure. **Never values.**
 > **Audience:** engineers/ops. · **Source-of-truth scope:** env var registry. Provider setup: `deployment.md`.
-> **Last verified:** 2026-06-11 against `grep process.env src/` (17 vars) + `.env.example`.
+> **Last verified:** 2026-06-15 against `grep process.env src/` (23 vars) + `.env.example`.
 
 ---
 
@@ -23,6 +23,12 @@
 | `PABBLY_WEBHOOK_SECRET` | server | Bearer token for `POST /api/webhooks/leads` | leads webhook route |
 | `UPSTASH_REDIS_REST_URL` | server | Upstash REST endpoint | `lib/redis.ts` (`Redis.fromEnv()`) |
 | `UPSTASH_REDIS_REST_TOKEN` | server | Upstash REST token | `lib/redis.ts` |
+| `DEEPGRAM_API_KEY` | server | Deepgram voice-note transcription auth (S-11) | `transcription-service.ts` (the only Deepgram call site, server-only) |
+| `ANTHROPIC_API_KEY` | server | Anthropic API auth for the Elaya LLM layer (S-11) | `lib/elaya/adapters/anthropic.ts` (the only `@anthropic-ai/sdk` import) |
+| `VAPID_PUBLIC_KEY` | server | Web Push VAPID public key (S-11) | `lib/services/push-service.ts` (VAPID config) |
+| `VAPID_PRIVATE_KEY` | server | Web Push VAPID private key (S-11) | `lib/services/push-service.ts` (VAPID config) |
+| `VAPID_SUBJECT` | server | Web Push VAPID subject (`mailto:` contact, S-11) | `lib/services/push-service.ts` (VAPID config) |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | public | Web Push VAPID public key mirrored to the browser (needed for `pushManager.subscribe`) | client push subscribe flow (`usePushSubscription.ts`) |
 | `GUPSHUP_API_KEY` | server | Gupshup API auth (`apikey` header) | `whatsapp-api.ts` (throws at module load if missing) |
 | `GUPSHUP_APP_NAME` | server | Gupshup app identifier | `whatsapp-api.ts` (required) |
 | `GUPSHUP_PARTNER_NUMBER` | server | the business WhatsApp number | `whatsapp-api.ts` (required) |

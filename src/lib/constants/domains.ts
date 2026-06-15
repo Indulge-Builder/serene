@@ -66,6 +66,44 @@ export function parseGiaDomainParam(raw: string | null | undefined): GiaDomain |
   return raw;
 }
 
+// ─── serene-domain cookie — cross-page memory for the TopBar domain selector ──
+//
+// Mirrors the serene-theme cookie pattern. The TopBar domain selector writes
+// this alongside the ?domain= URL param so an admin/founder's chosen scope
+// survives navigation to a page reached without the param. Domain-aware pages
+// (leads/deals/campaigns) resolve `domain = param ?? cookie ?? null` for
+// admin/founder ONLY — manager/agent never read it (their domain is forced
+// server-side, same as today). NOT a security boundary: pages still ignore
+// both param and cookie for non-admin/founder. Empty value = the "All" scope.
+
+export const DOMAIN_COOKIE = "serene-domain";
+
+const DOMAIN_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
+/**
+ * Client-only (document.cookie) — persist the selector's choice for the next
+ * navigation. Pass `null` for the "All" scope (writes an empty value, which
+ * `parseGiaDomainParam` reads back as null).
+ */
+export function persistDomainCookie(domain: GiaDomain | null) {
+  document.cookie = `${DOMAIN_COOKIE}=${domain ?? ""}; path=/; max-age=${DOMAIN_COOKIE_MAX_AGE}; SameSite=Lax`;
+}
+
+/**
+ * Client-only (document.cookie) — read the saved scope. Returns null when
+ * missing/empty/invalid ("All"). The selector reads `param ?? cookie` so its
+ * displayed value matches what the page renders even on a URL with no ?domain=
+ * (the page does the same param-first, cookie-fallback resolution server-side).
+ * Returns null during SSR (no document) — the param is the SSR truth anyway.
+ */
+export function readDomainCookie(): GiaDomain | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${DOMAIN_COOKIE}=`));
+  return parseGiaDomainParam(match?.slice(DOMAIN_COOKIE.length + 1));
+}
+
 export function getDomainLabel(domain: AppDomain | string): string {
   return DOMAIN_LABELS[domain as AppDomain] ?? domain;
 }

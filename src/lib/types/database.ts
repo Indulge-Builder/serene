@@ -1660,6 +1660,9 @@ export type Deal = {
   deal_amount:   number
   deal_type:     import('@/lib/constants/deal-types').DealType
   deal_duration: import('@/lib/constants/deal-types').DealDuration | null
+  // deal_category — required for retail (shop) deals, null for membership/sale
+  // (migration 0122, deals_retail_category_check). Domain-derived type drives it.
+  deal_category: import('@/lib/constants/deal-types').DealCategory | null
   assigned_to:   string | null
   source:        string | null
   won_at:        string               // immutable after insert
@@ -1764,14 +1767,15 @@ export type CampaignFilters = {
 // DealFilters — no `status` field. status='won' is a structural constraint in the service,
 // never a URL param. agent role constraint is applied before agent_id filter.
 export type DealFilters = {
-  search:    string | null
-  domain:    AppDomain | null   // admin/founder only via parseGiaDomainParam()
-  deal_type: string | null      // 'membership' | 'retail'
-  agent_id:  string | null
-  date_from: string | null
-  date_to:   string | null
-  page:      number
-  pageSize:  number
+  search:        string | null
+  domain:        AppDomain | null   // admin/founder only via parseGiaDomainParam()
+  deal_type:     string | null      // 'membership' | 'retail' | 'sale'
+  deal_category: string | null      // retail product category; surfaced when domain=shop
+  agent_id:      string | null
+  date_from:     string | null
+  date_to:       string | null
+  page:          number
+  pageSize:      number
 }
 
 export type CampaignMetrics = {

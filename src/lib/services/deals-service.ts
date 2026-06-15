@@ -40,14 +40,15 @@ export async function getDealsByRole(
   userId:  string,
   domain:  AppDomain,
   filters: DealFilters = {
-    search:    null,
-    domain:    null,
-    deal_type: null,
-    agent_id:  null,
-    date_from: null,
-    date_to:   null,
-    page:      1,
-    pageSize:  50,
+    search:        null,
+    domain:        null,
+    deal_type:     null,
+    deal_category: null,
+    agent_id:      null,
+    date_from:     null,
+    date_to:       null,
+    page:          1,
+    pageSize:      50,
   },
 ): Promise<DealsResult> {
   const supabase = await createClient();
@@ -88,6 +89,10 @@ export async function getDealsByRole(
   // Optional filters
   if (filters.deal_type) {
     query = query.eq('deal_type', filters.deal_type);
+  }
+
+  if (filters.deal_category) {
+    query = query.eq('deal_category', filters.deal_category);
   }
 
   if (filters.date_from) {

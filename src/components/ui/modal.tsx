@@ -16,6 +16,10 @@ export interface ModalProps {
   /** Footer slot — for standard type. Elaya type enforces Approve / Dismiss only. */
   footer?: React.ReactNode;
   size?: DialogSize;
+  /** Hides the header close button (forwarded to Dialog). */
+  hideCloseButton?: boolean;
+  /** Body padding — pass `false` for a flush, edge-to-edge child (forwarded to Dialog). */
+  bodyPadding?: boolean;
   /**
    * Tailwind max-width class for backward compatibility with existing callers
    * that pass maxWidth="max-w-lg" etc. Overrides the size prop when provided.
@@ -45,6 +49,8 @@ export function Modal({
   children,
   footer,
   size = 'md',
+  hideCloseButton,
+  bodyPadding,
   maxWidth,
   type = 'standard',
   onApprove,
@@ -83,6 +89,8 @@ export function Modal({
       title={title}
       description={description}
       size={size}
+      hideCloseButton={hideCloseButton}
+      bodyPadding={bodyPadding}
       maxWidth={maxWidth}
       footer={resolvedFooter}
     >
