@@ -160,22 +160,29 @@ export const sweepRevivalCandidatesTask = schedules.task({
           continue;
         }
 
+        // alreadyRevived (audit #10): a prior run created the Revived task but
+        // crashed before the candidate row landed. The core returned the existing
+        // task (no duplicate). We STILL write the missing 'actioned' candidate to
+        // close the anti-join gap so the lead isn't re-qualified forever — but this
+        // is a RECOVERY, not a fresh revive, so it must NOT consume today's cap.
         const inserted = await insertRevivalCandidate({
           leadId: lead.id,
           assignedTo: agentId,
           verdict: "revive",
-          reasoning: verdict.reasoning,
+          reasoning: core.alreadyRevived
+            ? `${verdict.reasoning} (candidate backfilled — task already existed from a prior run)`
+            : verdict.reasoning,
           triggerStatus: policy.trigger_status,
           suggestedReviveAt: verdict.suggestedReviveAt,
           status: "actioned",
           resolvedAt: new Date().toISOString(),
         });
 
-        // Only count the cap when the candidate row actually landed (the one-open
-        // guard could reject a racing duplicate — then the task exists but we don't
-        // double-decrement). Either way the task is created; the candidate is the
-        // ledger of record.
-        if (inserted) {
+        // Count the cap only for a FRESH revive whose candidate row actually landed
+        // (the one-open guard could reject a racing duplicate — then the task exists
+        // but we don't double-decrement). A recovery (alreadyRevived) never burns
+        // the cap: the task was already counted on the run that first created it.
+        if (inserted && !core.alreadyRevived) {
           remainingByAgent.set(agentId, remaining - 1);
           autoRevived += 1;
         }

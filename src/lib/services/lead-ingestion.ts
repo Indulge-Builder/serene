@@ -2,10 +2,11 @@ import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { selectAdapter } from '@/lib/leads/adapters';
 import { resolveDomainFromCampaign, DEFAULT_LEAD_DOMAIN } from '@/lib/constants/campaign-domain-map';
+import { isGiaDomain, DEFAULT_GIA_DOMAIN } from '@/lib/constants/domains';
 import { getNextRoundRobinAgent } from '@/lib/services/leads-service';
 import { LEAD_SOURCE_ENUM, type LeadSource } from '@/lib/constants/lead-sources';
 import { getDomainInterests } from '@/lib/constants/interests';
-import type { Database } from '@/lib/types/database';
+import type { Database, AppDomain, JsonValue } from '@/lib/types/database';
 
 type LeadInsert = Database['public']['Tables']['leads']['Insert'];
 
@@ -127,10 +128,21 @@ export async function ingestLead(
 
   const data = parsed.data;
 
-  // 3. Domain: explicit payload value takes precedence over campaign mapping
-  const domain = data.domain ?? resolveDomainFromCampaign(data.utm_campaign ?? null);
+  // 3. Domain: explicit payload value takes precedence over campaign mapping.
+  //    data.domain is untrusted free-form text (raw form field) and the campaign
+  //    map can resolve to a non-Gia domain (e.g. b2b) the leads pipeline does not
+  //    handle. Coerce any non-Gia result to DEFAULT_GIA_DOMAIN so both ingestion
+  //    paths agree on the Gia-only valid-domain set (audit #12/#13 — manual
+  //    creation already enforces GIA_DOMAIN_ENUM). The leads.domain app_domain
+  //    CHECK is the backstop on the INSERT.
+  const resolvedDomain = data.domain ?? resolveDomainFromCampaign(data.utm_campaign ?? null);
+  const domain: AppDomain = isGiaDomain(resolvedDomain) ? resolvedDomain : DEFAULT_GIA_DOMAIN;
 
-  if (domain === DEFAULT_LEAD_DOMAIN && data.utm_campaign) {
+  if (domain === DEFAULT_LEAD_DOMAIN && data.utm_campaign && !isGiaDomain(resolvedDomain)) {
+    console.warn(
+      `[lead-ingestion] Non-Gia domain "${resolvedDomain}" from campaign "${data.utm_campaign}" — coerced to ${DEFAULT_GIA_DOMAIN}`,
+    );
+  } else if (domain === DEFAULT_LEAD_DOMAIN && data.utm_campaign) {
     console.warn(`[lead-ingestion] Unknown campaign prefix: ${data.utm_campaign}`);
   }
 
@@ -242,10 +254,10 @@ export async function ingestLead(
     source:             data.source ?? null,
     medium:             data.medium ?? null,
     utm_campaign:       data.utm_campaign ?? null,
-    attribution:        attributionSnapshot,
+    attribution:        attributionSnapshot as JsonValue,
     city:               cityFromForm,
     service_interests:  serviceInterests,
-    form_data:          formDataRaw,
+    form_data:          formDataRaw as JsonValue,
     last_call_outcome:  null,
     personal_details:   null,
     archived_at:        null,

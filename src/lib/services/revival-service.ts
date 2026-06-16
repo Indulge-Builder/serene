@@ -20,6 +20,7 @@ import { toISTMidnight } from "@/lib/utils/ist";
 import {
   REVIVAL_TRIGGER_STATUSES,
   REVIVAL_SWEEP_BATCH_PER_STATUS,
+  REVIVAL_TASK_MARKER,
   type RevivalTriggerStatus,
 } from "@/lib/constants/revival";
 import type {
@@ -28,6 +29,7 @@ import type {
   RevivalPolicyRow,
   RevivalVerdict,
 } from "@/lib/types/revival";
+import type { Task } from "@/lib/types/database";
 
 // ─────────────────────────────────────────────
 // Config — read PER sweep run, never module-cached (sla_policies convention).
@@ -36,12 +38,7 @@ import type {
 /** Active revival policies (one per trigger status). Admin client — no session. */
 export async function getActiveRevivalPolicies(): Promise<RevivalPolicyRow[]> {
   const admin = createAdminClient();
-  // revival_policies / revival_candidates are not in the generated Database type
-  // until 0119 is applied + types regenerated — same interim cast convention as
-  // elaya-actions-service (admin client + `as any` on .from, result cast to the
-  // hand-declared row type in src/lib/types/revival.ts).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from("revival_policies")
     .select("*")
     .eq("active", true);
@@ -53,11 +50,49 @@ export async function getActiveRevivalPolicies(): Promise<RevivalPolicyRow[]> {
   return data as RevivalPolicyRow[];
 }
 
+/**
+ * The lead's OPEN (non-terminal) 'revived'-marked gia task, if one exists — else
+ * null. The per-lead idempotency guard for reviveLeadCore (audit #10): if the
+ * daily sweep crashes/retries AFTER the Revived task was created but BEFORE the
+ * 'actioned' candidate row landed, the silence anti-join would re-qualify the
+ * lead and revive it a second time. reviveLeadCore short-circuits on a non-null
+ * result here instead of creating a duplicate task.
+ *
+ * Scoped to the 'revived' marker (task_gia_meta.call_outcome) so an ordinary open
+ * RnR/cadence follow-up on the same lead does NOT count — only a prior revive
+ * blocks a fresh one. Admin client (sweep context, no session). Fails OPEN
+ * (returns null) on a transient error: a duplicate task on the rare crash-retry
+ * race is far less harmful than silently skipping every revive.
+ */
+export async function getOpenRevivedTask(leadId: string): Promise<Task | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("tasks")
+    .select("*, task_gia_meta!inner(lead_id, call_outcome)")
+    .eq("task_category", "gia_followup")
+    .eq("task_gia_meta.lead_id", leadId)
+    .eq("task_gia_meta.call_outcome", REVIVAL_TASK_MARKER)
+    .not("status", "in", '("completed","cancelled","error")')
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[revival-service] getOpenRevivedTask error:", error.message);
+    return null;
+  }
+  if (!data) return null;
+
+  // Strip the joined meta — callers expect a plain Task row (mirrors
+  // getOpenGiaFollowupTask in sla-service).
+  const { task_gia_meta: _meta, ...task } = data as Task & { task_gia_meta: unknown };
+  return task as Task;
+}
+
 /** All revival policies (incl. inactive) for the settings panel. Admin client. */
 export async function getAllRevivalPolicies(): Promise<RevivalPolicyRow[]> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from("revival_policies")
     .select("*")
     .order("trigger_status", { ascending: true });
@@ -80,8 +115,7 @@ export async function updateRevivalPolicy(
   patch: { silence_days?: number; daily_cap_per_agent?: number; active?: boolean },
 ): Promise<RevivalPolicyRow | null> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from("revival_policies")
     .update(patch)
     .eq("trigger_status", triggerStatus)
@@ -140,54 +174,36 @@ export async function findSilentLeadsForStatus(
   const admin = createAdminClient();
   const threshold = new Date(Date.now() - silenceDays * 86_400_000).toISOString();
 
-  // The set of lead_ids that ALREADY hold a candidate of any status — anti-joined
-  // below so a judged lead is never re-judged (prevents duplicate dismissals + a
-  // wasted gate call on a settled lead).
+  // The judge-once anti-join (NO revival_candidate of ANY status), the silence
+  // clock (status_changed_at < threshold AND last_activity_at null-or-stale), and
+  // the bounded LIMIT all run in Postgres via get_silent_leads_for_revival
+  // (migration 0128). This replaces the prior Node-side approach that SELECTed the
+  // whole candidate ledger into a Set and inflated the leads LIMIT by its size —
+  // both grew unbounded with the ledger (audit #8/#14). The NOT EXISTS is served
+  // by idx_revival_candidates_lead. Admin client + scope-param RPC (EXECUTE
+  // revoked from authenticated) — the sweep is the trust boundary (Q-13).
+  // Interim cast on .rpc until database.ts is regenerated post-0128.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: judgedRows } = await (admin as any)
-    .from("revival_candidates")
-    .select("lead_id");
-  const judgedLeadIds = new Set(
-    ((judgedRows ?? []) as Array<{ lead_id: string }>).map((r) => r.lead_id),
-  );
-
-  // Silence uses status_changed_at as the primary clock (when the lead entered
-  // this status), falling back to last_activity_at. We filter on status_changed_at
-  // < threshold AND (last_activity_at IS NULL OR last_activity_at < threshold) so a
-  // recent touch (call note) keeps the lead out of the candidate pool.
-  const { data, error } = await admin
-    .from("leads")
-    .select("id, slug, assigned_to, domain, status, first_name, last_name, last_activity_at")
-    .eq("status", triggerStatus)
-    .is("archived_at", null)
-    .not("assigned_to", "is", null)
-    .lt("status_changed_at", threshold)
-    .order("status_changed_at", { ascending: true })
-    .limit(REVIVAL_SWEEP_BATCH_PER_STATUS + judgedLeadIds.size);
+  const { data, error } = await (admin as unknown as any).rpc("get_silent_leads_for_revival", {
+    p_status:    triggerStatus,
+    p_threshold: threshold,
+    p_limit:     REVIVAL_SWEEP_BATCH_PER_STATUS,
+  });
 
   if (error || !data) {
     if (error) console.error("[revival-service] findSilentLeadsForStatus failed:", error.message);
     return [];
   }
 
-  const out: SilentLeadRow[] = [];
-  for (const r of data as Array<Record<string, unknown>>) {
-    if (judgedLeadIds.has(r.id as string)) continue; // already judged — settled disposition
-    // A recent activity (within the window) means the lead isn't actually silent.
-    const lastActivity = r.last_activity_at as string | null;
-    if (lastActivity && lastActivity >= threshold) continue;
-    out.push({
-      id: r.id as string,
-      slug: (r.slug as string | null) ?? null,
-      assigned_to: (r.assigned_to as string | null) ?? null,
-      domain: r.domain as string,
-      status: r.status as string,
-      first_name: (r.first_name as string | null) ?? null,
-      last_name: (r.last_name as string | null) ?? null,
-    });
-    if (out.length >= REVIVAL_SWEEP_BATCH_PER_STATUS) break;
-  }
-  return out;
+  return mapRows<Record<string, unknown>, SilentLeadRow>(data, (r) => ({
+    id: r.id as string,
+    slug: (r.slug as string | null) ?? null,
+    assigned_to: (r.assigned_to as string | null) ?? null,
+    domain: r.domain as string,
+    status: r.status as string,
+    first_name: (r.first_name as string | null) ?? null,
+    last_name: (r.last_name as string | null) ?? null,
+  }));
 }
 
 // ─────────────────────────────────────────────
@@ -207,8 +223,7 @@ export async function countAutoRevivesToday(agentId: string): Promise<number> {
   const admin = createAdminClient();
   const istMidnight = toISTMidnight(new Date()).toISOString();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { count, error } = await (admin as any)
+  const { count, error } = await admin
     .from("revival_candidates")
     .select("id", { count: "exact", head: true })
     .eq("status", "actioned")
@@ -249,8 +264,7 @@ export async function insertRevivalCandidate(input: {
   resolvedAt?: string | null;
 }): Promise<RevivalCandidateRow | null> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from("revival_candidates")
     .insert({
       lead_id: input.leadId,
@@ -291,8 +305,7 @@ export async function markCandidateResolved(
   resolvedBy: string,
 ): Promise<boolean> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from("revival_candidates")
     .update({ status, resolved_at: new Date().toISOString(), resolved_by: resolvedBy })
     .eq("id", candidateId)
@@ -312,8 +325,7 @@ export async function getOpenCandidateForLead(
   leadId: string,
 ): Promise<RevivalCandidateRow | null> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from("revival_candidates")
     .select("*")
     .eq("lead_id", leadId)

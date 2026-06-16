@@ -177,6 +177,29 @@ function policyDeadline(
   return nextBusinessDeadline(from, policy.threshold_minutes, shift);
 }
 
+/**
+ * Log any rejected per-policy schedule from a Promise.allSettled batch (audit #11).
+ * A rejection means the createSlaTimer DB row and/or the Trigger.dev schedule for
+ * that policy did not complete — a silent DB-vs-Trigger gap. We surface it (the
+ * lead write itself already succeeded; scheduling is a non-fatal side-effect), so
+ * the orphan is observable in logs rather than vanishing.
+ */
+function logSlaScheduleRejections(
+  fn:       string,
+  leadId:   string,
+  policies: SlaPolicy[],
+  results:  PromiseSettledResult<unknown>[],
+): void {
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      console.error(
+        `[sla:${fn}] timer schedule failed for lead ${leadId} policy ${policies[i]?.code ?? '?'}:`,
+        r.reason,
+      );
+    }
+  });
+}
+
 // ─── scheduleSlaTimersForLead ─────────────────────────────────────────────────
 
 /**
@@ -219,7 +242,7 @@ export async function scheduleSlaTimersForLead(input: unknown): Promise<ActionRe
   // 7. Schedule each applicable policy
   const { scheduleLeadSlasTask } = await import('@/trigger/lead-sla');
 
-  await Promise.allSettled(
+  const scheduleResults = await Promise.allSettled(
     policies.map(async (policy) => {
       const fireAt = policyDeadline(policy, fromDate, agentShiftOverride);
 
@@ -239,6 +262,11 @@ export async function scheduleSlaTimersForLead(input: unknown): Promise<ActionRe
       );
     }),
   );
+
+  // A rejected timer leaves a DB row (created first) with no scheduled Trigger.dev
+  // run, OR no row at all — either way it is a silent gap. Log so the DB-vs-Trigger
+  // mismatch is observable (audit #11). Non-fatal: the lead write already succeeded.
+  logSlaScheduleRejections('scheduleSlaTimersForLead', leadId, policies, scheduleResults);
 
   return { data: null, error: null };
 }
@@ -312,7 +340,7 @@ export async function refreshActivitySlaTimers(input: unknown): Promise<ActionRe
     (p) => p.trigger_kind === 'status' && p.trigger_value === status,
   );
 
-  await Promise.allSettled(
+  const refreshResults = await Promise.allSettled(
     policies.map(async (policy) => {
       const fireAt = policyDeadline(policy, now, agentShiftOverride);
 
@@ -327,6 +355,8 @@ export async function refreshActivitySlaTimers(input: unknown): Promise<ActionRe
       );
     }),
   );
+
+  logSlaScheduleRejections('refreshActivitySlaTimers', leadId, policies, refreshResults);
 
   return { data: null, error: null };
 }

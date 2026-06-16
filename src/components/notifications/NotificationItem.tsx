@@ -57,8 +57,8 @@ interface NotificationItemProps {
 export function NotificationItem({ notification, onMarkRead, onClose }: NotificationItemProps) {
   const router    = useRouter();
   const isUnread  = notification.read_at === null;
-  const Icon      = getTypeIcon(notification.type);
-  const iconColor = getTypeIconColor(notification.type);
+  const Icon      = getTypeIcon(notification.type as NotificationType);
+  const iconColor = getTypeIconColor(notification.type as NotificationType);
 
   function handleClick() {
     // Optimistic mark-read before navigation

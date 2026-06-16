@@ -42,6 +42,7 @@ import type {
   Task,
   TaskStatus,
   TaskPriority,
+  AppDomain,
 } from "@/lib/types/database";
 import type { SubtaskWithAssignee } from "@/lib/services/tasks-service";
 
@@ -211,9 +212,11 @@ export async function createGroupTaskCore(
   },
 ): Promise<{ ok: true; groupId: string } | { ok: false }> {
   // Domain enforcement — non-privileged actors locked to own domain.
-  const resolvedDomain = ["admin", "founder"].includes(actor.role)
-    ? input.domain
-    : actor.domain;
+  // input.domain is Zod-validated only as a non-empty string (not the enum); the
+  // task_groups.domain app_domain CHECK is the backstop on an invalid value.
+  const resolvedDomain = (
+    ["admin", "founder"].includes(actor.role) ? input.domain : actor.domain
+  ) as AppDomain;
 
   const admin = createAdminClient();
 

@@ -4,6 +4,7 @@ import { createRateLimiter, getClientIp, readJsonBody, safeSecretCompare } from 
 import { ingestLead, sanitizeRawPayload } from '@/lib/services/lead-ingestion';
 import { notifyLeadAssigned } from '@/lib/services/lead-assignment-notify';
 import { LEAD_SOURCES, type LeadSource } from '@/lib/constants/lead-sources';
+import type { JsonValue } from '@/lib/types/database';
 
 const LEAD_SOURCES_SET = new Set<string>(LEAD_SOURCES);
 
@@ -29,7 +30,7 @@ async function logRawPayload(
       .from('lead_raw_payloads')
       .insert({
         source,
-        payload: sanitizeRawPayload(payload) as Record<string, unknown>,
+        payload: sanitizeRawPayload(payload) as JsonValue,
         lead_id: null,
         ingestion_error: null,
       })

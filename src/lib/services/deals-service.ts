@@ -57,8 +57,7 @@ export async function getDealsByRole(
   const pageSize = Math.max(1, Math.min(200, filters.pageSize ?? 50));
   const offset   = (page - 1) * pageSize;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let query = (supabase as any)
+  let query = supabase
     .from('deals')
     .select(
       '*, lead:leads!deals_lead_id_fkey(slug), assignee:profiles!deals_assigned_to_fkey(full_name)',
@@ -159,8 +158,13 @@ export async function getDealsSummary(
     ? filters.date_to.replace(/T.*$/, 'T23:59:59.999Z')
     : null;
 
+  // The generated RPC arg types model SQL-DEFAULT params as `string | undefined`,
+  // but we pass explicit `null` for "no filter" (PostgREST sends JSON null; the
+  // function's DEFAULT/null guards handle it). The cast bridges that gap — same
+  // sanctioned convention as get_leads_status_counts in leads-service.ts (Q-13 /
+  // src/lib/CLAUDE.md "RPC pattern"); the table selects above no longer need it.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc('get_deals_summary', {
+  const { data, error } = await (supabase as unknown as any).rpc('get_deals_summary', {
     p_role:          role,
     p_caller_domain: rpcCallerDomain,
     p_filter_domain: rpcFilterDomain,
@@ -194,8 +198,7 @@ export async function getDealsSummary(
 export async function getLeadDeal(leadId: string): Promise<Deal | null> {
   const supabase = await createClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('deals')
     .select('*')
     .eq('lead_id', leadId)

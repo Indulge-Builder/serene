@@ -1,17 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
 import { m as motion } from 'framer-motion';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { formatCompact, formatCurrency, formatPercent } from '@/lib/utils/numbers';
-import type { CampaignMetrics, AdCreative } from '@/lib/types/database';
+import type { CampaignMetrics } from '@/lib/types/database';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
-import { CampaignPreviewModal } from './CampaignPreviewModal';
 
 type CampaignCardProps = {
   campaign:     CampaignMetrics;
   index:        number;
-  adCreatives?: AdCreative[];
   /** null when no active range or no spend for this campaign — renders "—", never ₹0 */
   totalSpend?:  number | null;
   /** null when leadCount === 0 (or no range) — renders "—", never ₹0 */
@@ -172,16 +170,21 @@ function StatusDatum({
 // CampaignCard
 // ─────────────────────────────────────────────
 
+// Card → detail navigation. Spaces become '+', nothing else encoded — the
+// exact inverse of campaigns/[id]/page.tsx's '+'→space decode (see the
+// "Campaign ID Encoding Contract" in the campaigns CLAUDE.md). Never
+// encodeURIComponent here.
+const MotionLink = motion.create(Link);
+
 export function CampaignCard({
   campaign,
   index,
-  adCreatives = [],
   totalSpend,
   costPerLead,
 }: CampaignCardProps) {
-  const [previewOpen, setPreviewOpen] = useState(false);
-
   const staggerDelay = Math.min(index * 80, 320);
+
+  const href = `/campaigns/${campaign.campaign_name.replace(/\s+/g, '+')}`;
 
   // Conversion = won ÷ total. Guard division by zero — empty look when no leads.
   const hasLeads       = campaign.total_leads > 0;
@@ -195,55 +198,45 @@ export function CampaignCard({
   const hasSpend = totalSpend !== null && totalSpend !== undefined;
   const hasCpl   = costPerLead !== null && costPerLead !== undefined;
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      setPreviewOpen(true);
-    }
-  }
-
   return (
-    <>
-      <motion.div
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{
-          duration: 0.25,
-          delay:    staggerDelay / 1000,
-          ease:     EASE_OUT_EXPO,
-        }}
-        role="button"
-        tabIndex={0}
-        onClick={() => setPreviewOpen(true)}
-        onKeyDown={handleKeyDown}
-        style={{
-          display:       'flex',
-          flexDirection: 'column',
-          gap:           'var(--space-4)',
-          padding:       'var(--space-5)',
-          background:    'var(--theme-paper)',
-          border:        '1px solid var(--theme-paper-border)',
-          borderRadius:  'var(--radius-lg)',
-          boxShadow:     'var(--shadow-1)',
-          cursor:        'pointer',
-          transition:    'box-shadow var(--duration-fast) var(--ease-in-out), transform var(--duration-instant) var(--ease-spring)',
-          outline:       'none',
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-2)';
-          (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-1px)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-1)';
-          (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
-        }}
-        onFocus={(e) => {
-          (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-focus)';
-        }}
-        onBlur={(e) => {
-          (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-1)';
-        }}
-      >
+    <MotionLink
+      href={href}
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        duration: 0.25,
+        delay:    staggerDelay / 1000,
+        ease:     EASE_OUT_EXPO,
+      }}
+      style={{
+        display:        'flex',
+        flexDirection:  'column',
+        gap:            'var(--space-4)',
+        padding:        'var(--space-5)',
+        background:     'var(--theme-paper)',
+        border:         '1px solid var(--theme-paper-border)',
+        borderRadius:   'var(--radius-lg)',
+        boxShadow:      'var(--shadow-1)',
+        cursor:         'pointer',
+        textDecoration: 'none',
+        transition:     'box-shadow var(--duration-fast) var(--ease-in-out), transform var(--duration-instant) var(--ease-spring)',
+        outline:        'none',
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'var(--shadow-2)';
+        (e.currentTarget as HTMLAnchorElement).style.transform = 'translateY(-1px)';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'var(--shadow-1)';
+        (e.currentTarget as HTMLAnchorElement).style.transform = 'translateY(0)';
+      }}
+      onFocus={(e) => {
+        (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'var(--shadow-focus)';
+      }}
+      onBlur={(e) => {
+        (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'var(--shadow-1)';
+      }}
+    >
         {/* Row 1 — identity: name + domain badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', minWidth: 0 }}>
           <p
@@ -314,14 +307,6 @@ export function CampaignCard({
           <StatusDatum count={campaign.junk}          label="junk"          tone="neutral" />
           <StatusDatum count={campaign.rnr}           label="RNR"           tone="neutral" />
         </div>
-      </motion.div>
-
-      <CampaignPreviewModal
-        campaign={campaign}
-        adCreatives={adCreatives}
-        open={previewOpen}
-        onClose={() => setPreviewOpen(false)}
-      />
-    </>
+      </MotionLink>
   );
 }

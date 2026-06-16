@@ -142,8 +142,7 @@ export async function recordDeal(
   );
 
   // Step 1: Insert deals row (must succeed before status flip)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error: insertError } = await (admin as any).from("deals").insert({
+  const { error: insertError } = await admin.from("deals").insert({
     lead_id:       leadId,
     contact_name:  contactName,
     contact_phone: lead.phone ?? "",
@@ -241,8 +240,7 @@ export async function createWalkInDeal(
 
   const admin = createAdminClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: inserted, error: insertError } = await (admin as any)
+  const { data: inserted, error: insertError } = await admin
     .from("deals")
     .insert({
       lead_id:       null,

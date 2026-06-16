@@ -113,11 +113,7 @@ export type HeartbeatInsert = { user_id: string; domain: AppDomain };
 export async function insertUsageHeartbeats(rows: HeartbeatInsert[]): Promise<number> {
   if (rows.length === 0) return 0;
   const admin = createAdminClient();
-  // usage_heartbeats is not in the generated Database type until 0126 is applied
-  // + types regenerated — same interim admin-client cast convention as
-  // revival-service / elaya-actions-service.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any).from("usage_heartbeats").insert(rows);
+  const { error } = await admin.from("usage_heartbeats").insert(rows);
   if (error) {
     console.error("[usage-service] insertUsageHeartbeats failed:", error.message);
     return 0;
@@ -162,8 +158,7 @@ export async function rollupUsageForDays(days: string[]): Promise<number> {
 
     // Pull the raw ticks for the window and aggregate in Node — the distinct
     // minute-bucket count per (user, domain). Volume is tiny (≤1 row/user/min).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (admin as any)
+    const { data, error } = await admin
       .from("usage_heartbeats")
       .select("user_id, domain, captured_at")
       .gte("captured_at", dayStart.toISOString())
@@ -197,8 +192,7 @@ export async function rollupUsageForDays(days: string[]): Promise<number> {
 
     if (upsertRows.length === 0) continue;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: upErr } = await (admin as any)
+    const { error: upErr } = await admin
       .from("usage_daily")
       .upsert(upsertRows, { onConflict: "day,user_id,domain" });
 
@@ -221,7 +215,7 @@ export async function pruneOldHeartbeats(days = 30): Promise<void> {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const admin = createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from("usage_heartbeats")
     .delete()
     .lt("captured_at", cutoff);
@@ -261,10 +255,7 @@ export async function getAgentUsage(historyDays = 30): Promise<AgentUsageReport 
   const historyFrom = istDateString(new Date(historyFromMs));
 
   const admin = createAdminClient();
-  // get_agent_usage is not in the generated Database type until 0126 is applied
-  // + types regenerated — interim admin-client cast (same convention as above).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any).rpc("get_agent_usage", {
+  const { data, error } = await admin.rpc("get_agent_usage", {
     p_today_start: todayStart.toISOString(),
     p_history_from: historyFrom,
   });

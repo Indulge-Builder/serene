@@ -405,7 +405,12 @@ export async function createManualLead(
   if (!auth.ok) return auth.result;
   const caller = auth.profile;
 
-  // 3. Domain enforcement: agents cannot submit to any domain other than their own (Rule S-06, S-14)
+  // 3. Domain enforcement (Rule S-06, S-14): agents are PINNED to their own
+  //    domain — they cannot submit a lead to any other domain. Manager+ MAY pick
+  //    a target domain (the Add Lead modal exposes the Domain dropdown to them);
+  //    by product decision a manager creating into another domain is intentional,
+  //    not a leak (audit #1, confirmed intended). The leads.domain app_domain
+  //    CHECK + the GIA_DOMAIN_ENUM Zod gate on fields.domain bound the value set.
   const resolvedDomain =
     caller.role === "agent" ? caller.domain : fields.domain;
 

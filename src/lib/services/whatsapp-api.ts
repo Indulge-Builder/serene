@@ -14,6 +14,7 @@ import {
 } from '@/lib/constants/whatsapp';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MetaApiResponse, TemplateComponent } from '@/lib/types/whatsapp';
+import type { AppDomain } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
 // Env var guard — fail fast at startup
@@ -312,7 +313,7 @@ async function logNotification(entry: NotificationLogEntry): Promise<void> {
       agent_name:      entry.agentName ?? null,
       lead_name:       entry.leadName ?? null,
       lead_phone:      entry.leadPhone ? entry.leadPhone.slice(-4) : null,
-      domain:          entry.domain ?? null,
+      domain:          (entry.domain ?? null) as AppDomain | null,
       gupshup_status:  entry.gupshupStatus,
       gupshup_body:    entry.gupshupBody.slice(0, 2000),
       delivered:       entry.delivered,

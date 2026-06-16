@@ -57,6 +57,27 @@ function actorFromProfile(p: Profile): MutationActor {
   };
 }
 
+// Validate that a cross-user task assignee exists and is ACTIVE before the write
+// (audit #5). Cross-DOMAIN assignment is intentionally allowed (any active user
+// may be assigned to anyone), so this checks existence + is_active only — never
+// domain. Returns null when ok, or the error ActionResult to bail with. The
+// caller already gated WHO may assign (manager+); this guards WHOM they assign to.
+async function assertAssigneeActive(
+  assigneeId: string,
+): Promise<{ data: null; error: string } | null> {
+  const admin = createAdminClient();
+  const { data: assignee } = await admin
+    .from("profiles")
+    .select("id, is_active")
+    .eq("id", assigneeId)
+    .single();
+
+  if (!assignee || !assignee.is_active) {
+    return { data: null, error: "The selected user is not available." };
+  }
+  return null;
+}
+
 // ─────────────────────────────────────────────
 // Action: createPersonalTaskAction
 // Creates a personal task; notifies assignee if different from caller;
@@ -81,11 +102,14 @@ export async function createPersonalTaskAction(
   const resolvedAssignedTo = fields.assigned_to ?? caller.id;
 
   // 3. If assigning to another user, only manager+ may do so (the per-resource
-  //    gate; the core trusts this — Q-13).
+  //    gate; the core trusts this — Q-13), and that user must exist + be active
+  //    (audit #5 — cross-domain assignment is allowed, inactive users are not).
   if (resolvedAssignedTo !== caller.id) {
     if (!["manager", "admin", "founder"].includes(caller.role)) {
       return { data: null, error: formErrors.unauthorized };
     }
+    const inactive = await assertAssigneeActive(resolvedAssignedTo);
+    if (inactive) return inactive;
   }
 
   // 4. Write body + side-effects (insert, notify, reminder, cache) → core.
@@ -180,6 +204,14 @@ export async function createSubtaskAction(
   // 4. Domain check — agents cannot create subtasks in groups outside their domain
   if (caller.role === "agent" && group.domain !== caller.domain) {
     return { data: null, error: formErrors.unauthorized };
+  }
+
+  // 4b. Assignee must exist + be active when assigning to someone else (audit #5).
+  //     Group subtasks are cross-domain by design (any member from any domain can
+  //     be pulled into a group) — so this checks existence + is_active only.
+  if (fields.assigned_to && fields.assigned_to !== caller.id) {
+    const inactive = await assertAssigneeActive(fields.assigned_to);
+    if (inactive) return inactive;
   }
 
   // 5. Write body + side-effects (insert, assignee resolve, cache, notify,

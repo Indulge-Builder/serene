@@ -309,7 +309,7 @@ export const getGroupTasks = cache(async (
       status:      r.status   as TaskGroup['status'],
       due_at:      r.due_at   ?? null,
       created_by:  r.created_by,
-      domain:      r.domain,
+      domain:      r.domain as TaskGroup['domain'],
       created_at:  r.created_at,
       updated_at:  r.updated_at,
       // Aggregates — bigint arrives as number from JSON; cast with Number() per Q-09
@@ -641,7 +641,9 @@ export async function getAllLeadTasks(leadId: string): Promise<Task[]> {
     return [];
   }
 
-  const tasks = (data ?? []) as Task[];
+  // Generated rows type attachments as Json; Task narrows it to ChecklistItem[]
+  // (the tasks_attachments_is_array CHECK guarantees the shape) — cross once.
+  const tasks = (data ?? []) as unknown as Task[];
 
   // Sort active tasks before terminal ones in JS (PostgREST cannot express a
   // CASE column in ORDER BY across a join).

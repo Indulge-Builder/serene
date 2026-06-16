@@ -128,7 +128,7 @@ export async function getLeadsForAgent(agentId: string): Promise<Lead[]> {
 // ─────────────────────────────────────────────
 // Query: leads for a domain (manager view)
 // ─────────────────────────────────────────────
-export async function getLeadsForDomain(domain: string): Promise<Lead[]> {
+export async function getLeadsForDomain(domain: AppDomain): Promise<Lead[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("leads")
@@ -386,6 +386,10 @@ export async function getLeadsByRole(
   // both sides receive identical bounds).
   const [queryResult, statusCountsResult] = await Promise.all([
     query,
+    // The generated RPC arg types model SQL-DEFAULT params as `string | undefined`,
+    // but we pass explicit `null` for "no filter" (PostgREST sends JSON null; the
+    // function's DEFAULT/empty-array guards handle it). The cast bridges that gap —
+    // see src/lib/CLAUDE.md "RPC pattern" (sanctioned, not interim).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as unknown as any).rpc("get_leads_status_counts", {
       // p_agent_id must mirror the paginated query's assigned_to constraint
@@ -485,10 +489,8 @@ async function getRevivalCandidateLeads(
 
   // Resolve the visible open-candidate lead_ids (RLS-scoped). Bounded — the review
   // tab is a small surface; the partial index idx_revival_candidates_open serves it.
-  // revival_candidates is not in the generated Database type until 0119 is applied —
-  // interim cast convention (cf. elaya-service); RLS still scopes on the session client.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: candidateRows, error: candErr } = await (supabase as any)
+  // RLS scopes the rows on the session client (the review-tab access boundary).
+  const { data: candidateRows, error: candErr } = await supabase
     .from("revival_candidates")
     .select("lead_id")
     .eq("status", "open")
@@ -738,7 +740,9 @@ export async function getNextLeadTask(leadId: string): Promise<Task | null> {
     .limit(1);
 
   if (error || !data || data.length === 0) return null;
-  return data[0] as Task;
+  // The generated row types attachments as Json; Task narrows it to ChecklistItem[]
+  // (the tasks_attachments_is_array CHECK guarantees the array shape) — cross once.
+  return data[0] as unknown as Task;
 }
 
 // ─────────────────────────────────────────────

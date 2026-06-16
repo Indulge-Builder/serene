@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       ad_creatives: {
@@ -72,11 +47,68 @@ export type Database = {
         }
         Relationships: []
       }
+      ad_spend_daily: {
+        Row: {
+          campaign_key: string
+          created_at: string
+          currency: string
+          id: string
+          impressions: number | null
+          link_clicks: number | null
+          reach: number | null
+          results: number | null
+          source: string
+          spend: number
+          spend_date: string
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          campaign_key: string
+          created_at?: string
+          currency?: string
+          id?: string
+          impressions?: number | null
+          link_clicks?: number | null
+          reach?: number | null
+          results?: number | null
+          source?: string
+          spend: number
+          spend_date: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          campaign_key?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          impressions?: number | null
+          link_clicks?: number | null
+          reach?: number | null
+          results?: number | null
+          source?: string
+          spend?: number
+          spend_date?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_spend_daily_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_routing_config: {
         Row: {
           agent_id: string
           id: string
           is_active: boolean
+          shift_days: number[] | null
           shift_end: string | null
           shift_start: string | null
           updated_at: string
@@ -85,6 +117,7 @@ export type Database = {
           agent_id: string
           id?: string
           is_active?: boolean
+          shift_days?: number[] | null
           shift_end?: string | null
           shift_start?: string | null
           updated_at?: string
@@ -93,6 +126,7 @@ export type Database = {
           agent_id?: string
           id?: string
           is_active?: boolean
+          shift_days?: number[] | null
           shift_end?: string | null
           shift_start?: string | null
           updated_at?: string
@@ -137,70 +171,302 @@ export type Database = {
         }
         Relationships: []
       }
-      service_cases: {
+      deals: {
         Row: {
-          category: string
-          city: string | null
-          country: string | null
+          archived_at: string | null
+          assigned_to: string | null
+          client_id: string | null
+          contact_email: string | null
+          contact_name: string
+          contact_phone: string
           created_at: string
-          created_by: string | null
+          deal_amount: number
+          deal_category: string | null
+          deal_duration: string | null
+          deal_type: string
           domain: Database["public"]["Enums"]["app_domain"]
-          embedding: string | null
           id: string
-          is_featured: boolean
-          outcome_note: string | null
-          search_vector: unknown
-          sort_order: number
-          summary: string
-          tags: string[]
-          title: string
+          lead_id: string | null
+          source: string | null
+          updated_at: string
+          won_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          assigned_to?: string | null
+          client_id?: string | null
+          contact_email?: string | null
+          contact_name: string
+          contact_phone: string
+          created_at?: string
+          deal_amount: number
+          deal_category?: string | null
+          deal_duration?: string | null
+          deal_type: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          id?: string
+          lead_id?: string | null
+          source?: string | null
+          updated_at?: string
+          won_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          assigned_to?: string | null
+          client_id?: string | null
+          contact_email?: string | null
+          contact_name?: string
+          contact_phone?: string
+          created_at?: string
+          deal_amount?: number
+          deal_category?: string | null
+          deal_duration?: string | null
+          deal_type?: string
+          domain?: Database["public"]["Enums"]["app_domain"]
+          id?: string
+          lead_id?: string | null
+          source?: string | null
+          updated_at?: string
+          won_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deals_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      domain_targets: {
+        Row: {
+          created_at: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          id: string
+          metric: string
+          period: string
+          set_by: string | null
+          target_value: number
           updated_at: string
         }
         Insert: {
-          category: string
-          city?: string | null
-          country?: string | null
           created_at?: string
-          created_by?: string | null
           domain: Database["public"]["Enums"]["app_domain"]
-          embedding?: string | null
           id?: string
-          is_featured?: boolean
-          outcome_note?: string | null
-          search_vector?: unknown
-          sort_order?: number
-          summary: string
-          tags?: string[]
-          title: string
+          metric: string
+          period?: string
+          set_by?: string | null
+          target_value: number
           updated_at?: string
         }
         Update: {
-          category?: string
-          city?: string | null
-          country?: string | null
           created_at?: string
-          created_by?: string | null
           domain?: Database["public"]["Enums"]["app_domain"]
-          embedding?: string | null
           id?: string
-          is_featured?: boolean
-          outcome_note?: string | null
-          search_vector?: unknown
-          sort_order?: number
-          summary?: string
-          tags?: string[]
-          title?: string
+          metric?: string
+          period?: string
+          set_by?: string | null
+          target_value?: number
           updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "service_cases_created_by_fkey"
-            columns: ["created_by"]
+            foreignKeyName: "domain_targets_set_by_fkey"
+            columns: ["set_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
+      }
+      elaya_actions: {
+        Row: {
+          action_type: string
+          conversation_id: string
+          created_at: string
+          id: string
+          message_id: string | null
+          payload: Json
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          message_id?: string | null
+          payload?: Json
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          message_id?: string | null
+          payload?: Json
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_actions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "elaya_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_actions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "elaya_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_actions_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_actions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_conversations: {
+        Row: {
+          archived_at: string | null
+          channel: string
+          created_at: string
+          id: string
+          last_message_at: string
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          channel?: string
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          channel?: string
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_messages: {
+        Row: {
+          channel: string
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          meta: Json | null
+          role: string
+          sender_id: string | null
+          tool_calls: Json | null
+        }
+        Insert: {
+          channel?: string
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          meta?: Json | null
+          role: string
+          sender_id?: string | null
+          tool_calls?: Json | null
+        }
+        Update: {
+          channel?: string
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          meta?: Json | null
+          role?: string
+          sender_id?: string | null
+          tool_calls?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "elaya_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_settings: {
+        Row: {
+          created_at: string
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          created_at?: string
+          key: string
+          updated_at?: string
+          value: Json
+        }
+        Update: {
+          created_at?: string
+          key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
       }
       lead_activities: {
         Row: {
@@ -215,7 +481,7 @@ export type Database = {
           action_type: string
           actor_id?: string | null
           created_at?: string
-          details?: Json | null | Record<string, unknown>
+          details?: Json | null
           id?: string
           lead_id: string
         }
@@ -299,7 +565,7 @@ export type Database = {
           id?: string
           ingestion_error?: string | null
           lead_id?: string | null
-          payload: Json | Record<string, unknown>
+          payload: Json
           received_at?: string
           source: string
         }
@@ -307,7 +573,7 @@ export type Database = {
           id?: string
           ingestion_error?: string | null
           lead_id?: string | null
-          payload?: Json | Record<string, unknown>
+          payload?: Json
           received_at?: string
           source?: string
         }
@@ -374,7 +640,7 @@ export type Database = {
           call_count: number
           city: string | null
           created_at: string
-          domain: string
+          domain: Database["public"]["Enums"]["app_domain"]
           email: string | null
           first_name: string
           form_data: Json | null
@@ -388,6 +654,8 @@ export type Database = {
           personal_details: Json | null
           phone: string | null
           previous_lead_id: string | null
+          resolution_reason: string | null
+          search_text: string | null
           service_interests: string[]
           slug: string | null
           source: string | null
@@ -400,14 +668,14 @@ export type Database = {
           archived_at?: string | null
           assigned_at?: string | null
           assigned_to?: string | null
-          attribution?: Json | null | Record<string, unknown>
+          attribution?: Json | null
           call_count?: number
           city?: string | null
           created_at?: string
-          domain: string
+          domain: Database["public"]["Enums"]["app_domain"]
           email?: string | null
           first_name: string
-          form_data?: Json | null | Record<string, unknown>
+          form_data?: Json | null
           id?: string
           last_activity_at?: string | null
           last_call_outcome?: string | null
@@ -415,9 +683,11 @@ export type Database = {
           last_name?: string | null
           lead_intent?: string | null
           medium?: string | null
-          personal_details?: Json | null | Record<string, string>
+          personal_details?: Json | null
           phone?: string | null
           previous_lead_id?: string | null
+          resolution_reason?: string | null
+          search_text?: string | null
           service_interests?: string[]
           slug?: string | null
           source?: string | null
@@ -430,11 +700,11 @@ export type Database = {
           archived_at?: string | null
           assigned_at?: string | null
           assigned_to?: string | null
-          attribution?: Json | null | Record<string, unknown>
+          attribution?: Json | null
           call_count?: number
           city?: string | null
           created_at?: string
-          domain?: string
+          domain?: Database["public"]["Enums"]["app_domain"]
           email?: string | null
           first_name?: string
           form_data?: Json | null
@@ -448,6 +718,8 @@ export type Database = {
           personal_details?: Json | null
           phone?: string | null
           previous_lead_id?: string | null
+          resolution_reason?: string | null
+          search_text?: string | null
           service_interests?: string[]
           slug?: string | null
           source?: string | null
@@ -473,6 +745,36 @@ export type Database = {
           },
         ]
       }
+      llm_providers: {
+        Row: {
+          active: boolean
+          created_at: string
+          job_type: string
+          max_tokens: number
+          model: string
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          job_type: string
+          max_tokens?: number
+          model: string
+          provider: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          job_type?: string
+          max_tokens?: number
+          model?: string
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           action_url: string | null
@@ -482,7 +784,7 @@ export type Database = {
           read_at: string | null
           recipient_id: string
           title: string
-          type: NotificationType
+          type: string
         }
         Insert: {
           action_url?: string | null
@@ -492,7 +794,7 @@ export type Database = {
           read_at?: string | null
           recipient_id: string
           title: string
-          type: NotificationType
+          type: string
         }
         Update: {
           action_url?: string | null
@@ -502,50 +804,12 @@ export type Database = {
           read_at?: string | null
           recipient_id?: string
           title?: string
-          type?: NotificationType
+          type?: string
         }
         Relationships: [
           {
             foreignKeyName: "notifications_recipient_id_fkey"
             columns: ["recipient_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      push_subscriptions: {
-        Row: {
-          auth: string
-          created_at: string
-          endpoint: string
-          id: string
-          p256dh: string
-          profile_id: string
-          user_agent: string | null
-        }
-        Insert: {
-          auth: string
-          created_at?: string
-          endpoint: string
-          id?: string
-          p256dh: string
-          profile_id: string
-          user_agent?: string | null
-        }
-        Update: {
-          auth?: string
-          created_at?: string
-          endpoint?: string
-          id?: string
-          p256dh?: string
-          profile_id?: string
-          user_agent?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "push_subscriptions_profile_id_fkey"
-            columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -592,6 +856,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          app_icon: string
           avatar_url: string | null
           created_at: string
           domain: Database["public"]["Enums"]["app_domain"]
@@ -605,13 +870,13 @@ export type Database = {
           phone: string | null
           reports_to: string | null
           role: Database["public"]["Enums"]["user_role"]
-          app_icon: string
           theme: string
           timezone: string
           updated_at: string
           username: string | null
         }
         Insert: {
+          app_icon?: string
           avatar_url?: string | null
           created_at?: string
           domain?: Database["public"]["Enums"]["app_domain"]
@@ -625,13 +890,13 @@ export type Database = {
           phone?: string | null
           reports_to?: string | null
           role?: Database["public"]["Enums"]["user_role"]
-          app_icon?: string
           theme?: string
           timezone?: string
           updated_at?: string
           username?: string | null
         }
         Update: {
+          app_icon?: string
           avatar_url?: string | null
           created_at?: string
           domain?: Database["public"]["Enums"]["app_domain"]
@@ -645,7 +910,6 @@ export type Database = {
           phone?: string | null
           reports_to?: string | null
           role?: Database["public"]["Enums"]["user_role"]
-          app_icon?: string
           theme?: string
           timezone?: string
           updated_at?: string
@@ -660,6 +924,242 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          p256dh: string
+          profile_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          p256dh: string
+          profile_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          profile_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revival_candidates: {
+        Row: {
+          ai_reasoning: string
+          assigned_to: string | null
+          created_at: string
+          id: string
+          lead_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          suggested_revive_at: string | null
+          trigger_status: string
+          verdict: string
+        }
+        Insert: {
+          ai_reasoning: string
+          assigned_to?: string | null
+          created_at?: string
+          id?: string
+          lead_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          suggested_revive_at?: string | null
+          trigger_status: string
+          verdict: string
+        }
+        Update: {
+          ai_reasoning?: string
+          assigned_to?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          suggested_revive_at?: string | null
+          trigger_status?: string
+          verdict?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revival_candidates_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revival_candidates_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revival_candidates_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revival_policies: {
+        Row: {
+          active: boolean
+          created_at: string
+          daily_cap_per_agent: number
+          silence_days: number
+          trigger_status: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          daily_cap_per_agent?: number
+          silence_days: number
+          trigger_status: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          daily_cap_per_agent?: number
+          silence_days?: number
+          trigger_status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      service_cases: {
+        Row: {
+          category: string
+          city: string | null
+          country: string | null
+          created_at: string
+          created_by: string | null
+          domain: Database["public"]["Enums"]["app_domain"]
+          embedding: string | null
+          id: string
+          is_featured: boolean
+          outcome_note: string | null
+          search_vector: unknown
+          sort_order: number
+          summary: string
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain: Database["public"]["Enums"]["app_domain"]
+          embedding?: string | null
+          id?: string
+          is_featured?: boolean
+          outcome_note?: string | null
+          search_vector?: unknown
+          sort_order?: number
+          summary: string
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain?: Database["public"]["Enums"]["app_domain"]
+          embedding?: string | null
+          id?: string
+          is_featured?: boolean
+          outcome_note?: string | null
+          search_vector?: unknown
+          sort_order?: number
+          summary?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_cases_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sla_policies: {
+        Row: {
+          active: boolean
+          auto_task: boolean
+          channels: string[]
+          code: string
+          created_at: string
+          hours_mode: string
+          recipient_role: string
+          threshold_minutes: number
+          trigger_kind: string
+          trigger_value: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          auto_task?: boolean
+          channels?: string[]
+          code: string
+          created_at?: string
+          hours_mode: string
+          recipient_role: string
+          threshold_minutes?: number
+          trigger_kind: string
+          trigger_value: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          auto_task?: boolean
+          channels?: string[]
+          code?: string
+          created_at?: string
+          hours_mode?: string
+          recipient_role?: string
+          threshold_minutes?: number
+          trigger_kind?: string
+          trigger_value?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       task_audit_log: {
         Row: {
@@ -739,54 +1239,12 @@ export type Database = {
           },
         ]
       }
-      sla_policies: {
-        Row: {
-          active: boolean
-          auto_task: boolean
-          channels: string[]
-          code: string
-          created_at: string
-          hours_mode: string
-          recipient_role: string
-          threshold_minutes: number
-          trigger_kind: string
-          trigger_value: string
-          updated_at: string
-        }
-        Insert: {
-          active?: boolean
-          auto_task?: boolean
-          channels?: string[]
-          code: string
-          created_at?: string
-          hours_mode: string
-          recipient_role: string
-          threshold_minutes?: number
-          trigger_kind: string
-          trigger_value: string
-          updated_at?: string
-        }
-        Update: {
-          active?: boolean
-          auto_task?: boolean
-          channels?: string[]
-          code?: string
-          created_at?: string
-          hours_mode?: string
-          recipient_role?: string
-          threshold_minutes?: number
-          trigger_kind?: string
-          trigger_value?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       task_groups: {
         Row: {
           created_at: string
           created_by: string
           description: string | null
-          domain: string
+          domain: Database["public"]["Enums"]["app_domain"]
           due_at: string | null
           id: string
           priority: string
@@ -798,7 +1256,7 @@ export type Database = {
           created_at?: string
           created_by: string
           description?: string | null
-          domain: string
+          domain: Database["public"]["Enums"]["app_domain"]
           due_at?: string | null
           id?: string
           priority?: string
@@ -810,7 +1268,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           description?: string | null
-          domain?: string
+          domain?: Database["public"]["Enums"]["app_domain"]
           due_at?: string | null
           id?: string
           priority?: string
@@ -889,7 +1347,7 @@ export type Database = {
       tasks: {
         Row: {
           assigned_to: string
-          attachments: Json | ChecklistItem[]
+          attachments: Json
           completed_at: string | null
           created_at: string
           created_by: string
@@ -967,6 +1425,93 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "task_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      usage_daily: {
+        Row: {
+          active_minutes: number
+          day: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          user_id: string
+        }
+        Insert: {
+          active_minutes?: number
+          day: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          user_id: string
+        }
+        Update: {
+          active_minutes?: number
+          day?: string
+          domain?: Database["public"]["Enums"]["app_domain"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_daily_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      usage_heartbeats: {
+        Row: {
+          captured_at: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          id: number
+          user_id: string
+        }
+        Insert: {
+          captured_at?: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          id?: never
+          user_id: string
+        }
+        Update: {
+          captured_at?: string
+          domain?: Database["public"]["Enums"]["app_domain"]
+          id?: never
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_heartbeats_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_context: {
+        Row: {
+          context: Json
+          created_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          context?: Json
+          created_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          context?: Json
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_context_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1142,57 +1687,76 @@ export type Database = {
       }
       whatsapp_notification_logs: {
         Row: {
-          id:              string
-          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'elaya_reply'
-          lead_id:         string | null
-          recipient_id:    string | null
+          agent_name: string | null
+          created_at: string
+          delivered: boolean
+          domain: Database["public"]["Enums"]["app_domain"] | null
+          gupshup_body: string | null
+          gupshup_status: number | null
+          id: string
+          lead_id: string | null
+          lead_name: string | null
+          lead_phone: string | null
+          recipient_id: string | null
           recipient_phone: string
-          agent_name:      string | null
-          lead_name:       string | null
-          lead_phone:      string | null
-          domain:          string | null
-          gupshup_status:  number | null
-          gupshup_body:    string | null
-          delivered:       boolean
-          created_at:      string
+          type: string
         }
         Insert: {
-          id?:             string
-          type:            'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'elaya_reply'
-          lead_id?:        string | null
-          recipient_id?:   string | null
-          recipient_phone: string
-          agent_name?:     string | null
-          lead_name?:      string | null
-          lead_phone?:     string | null
-          domain?:         string | null
+          agent_name?: string | null
+          created_at?: string
+          delivered?: boolean
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          gupshup_body?: string | null
           gupshup_status?: number | null
-          gupshup_body?:   string | null
-          delivered?:      boolean
-          created_at?:     string
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          lead_phone?: string | null
+          recipient_id?: string | null
+          recipient_phone: string
+          type: string
         }
         Update: {
-          id?:             string
-          type?:           'agent_assignment' | 'founder_alert'
-          lead_id?:        string | null
-          recipient_id?:   string | null
-          recipient_phone?: string
-          agent_name?:     string | null
-          lead_name?:      string | null
-          lead_phone?:     string | null
-          domain?:         string | null
+          agent_name?: string | null
+          created_at?: string
+          delivered?: boolean
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          gupshup_body?: string | null
           gupshup_status?: number | null
-          gupshup_body?:   string | null
-          delivered?:      boolean
-          created_at?:     string
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          lead_phone?: string | null
+          recipient_id?: string | null
+          recipient_phone?: string
+          type?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_notification_logs_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_notification_logs_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      _agent_core_metrics: {
+        Args: { p_agent: string; p_from: string; p_to: string }
+        Returns: Json
+      }
       add_lead_call_note: {
         Args: {
           p_author_id: string
@@ -1203,22 +1767,163 @@ export type Database = {
         }
         Returns: Json
       }
+      add_lead_plain_note: {
+        Args: {
+          p_author_id: string
+          p_content: string
+          p_lead_id: string
+          p_now?: string
+        }
+        Returns: Json
+      }
+      add_task_remark_with_status: {
+        Args: {
+          p_author_id: string
+          p_content: string
+          p_status_change?: string
+          p_task_id: string
+        }
+        Returns: {
+          author_id: string
+          content: string
+          created_at: string
+          id: string
+          is_suppressed: boolean
+          status_change: string | null
+          suppressed_at: string | null
+          suppressed_by: string | null
+          task_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "task_remarks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       can_access_wa_conversation: {
         Args: { p_lead_id: string }
         Returns: boolean
       }
+      create_lead_gia_task: {
+        Args: {
+          p_assigned_to: string
+          p_created_by: string
+          p_description?: string
+          p_due_at?: string
+          p_lead_id: string
+          p_priority?: string
+          p_task_type: string
+          p_title: string
+        }
+        Returns: {
+          assigned_to: string
+          attachments: Json
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          due_at: string | null
+          group_id: string | null
+          id: string
+          module: string
+          overdue_at: string | null
+          priority: string
+          status: string
+          tags: string[]
+          task_category: string
+          task_type: string
+          title: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "tasks"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      generate_lead_slug: {
+        Args: { p_first_name: string; p_last_name: string; p_phone: string }
+        Returns: string
+      }
       get_active_lead_by_phone: {
         Args: { p_phone: string }
         Returns: {
-          archived_at: string | null
-          assigned_to: string | null
+          archived_at: string
+          assigned_to: string
           domain: Database["public"]["Enums"]["app_domain"]
           first_name: string
           id: string
-          last_name: string | null
-          phone: string | null
-          slug: string | null
+          last_name: string
+          phone: string
+          slug: string
           status: string
+        }[]
+      }
+      get_agent_first_touch_pairs: {
+        Args: { p_agent: string; p_from: string; p_to: string }
+        Returns: {
+          created_at: string
+          first_call_at: string
+          lead_id: string
+        }[]
+      }
+      get_agent_performance: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_prev_from?: string
+          p_prev_to?: string
+        }
+        Returns: Json
+      }
+      get_agent_recent_activity: {
+        Args: {
+          p_domain: Database["public"]["Enums"]["app_domain"]
+          p_role: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      get_agent_roster_performance: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_domain?: Database["public"]["Enums"]["app_domain"]
+        }
+        Returns: {
+          agent_avatar_url: string
+          agent_domain: Database["public"]["Enums"]["app_domain"]
+          agent_id: string
+          agent_name: string
+          avg_response_minutes: number
+          lost_count: number
+          total_deal_amount: number
+          total_leads: number
+          won_count: number
+        }[]
+      }
+      get_agent_today_pulse: {
+        Args: { p_date_from: string; p_date_to: string; p_today_start: string }
+        Returns: Json
+      }
+      get_agent_usage: {
+        Args: { p_history_from: string; p_today_start: string }
+        Returns: Json
+      }
+      get_budget_summary: {
+        Args: { p_date_from: string; p_date_to: string }
+        Returns: {
+          campaign_key: string
+          deal_count: number
+          deal_revenue: number
+          lead_count: number
+          total_impressions: number
+          total_link_clicks: number
+          total_reach: number
+          total_results: number
+          total_spend: number
         }[]
       }
       get_campaign_agent_distribution: {
@@ -1248,7 +1953,11 @@ export type Database = {
         }[]
       }
       get_campaign_metrics: {
-        Args: { p_date_from?: string; p_date_to?: string; p_domain?: string }
+        Args: {
+          p_date_from?: string
+          p_date_to?: string
+          p_domain?: Database["public"]["Enums"]["app_domain"]
+        }
         Returns: {
           campaign_name: string
           domain: string
@@ -1265,9 +1974,93 @@ export type Database = {
           total_leads: number
         }[]
       }
-      get_dashboard_summary: {
-        Args: { p_domain: string; p_role: string; p_user_id: string }
+      get_campaign_pipeline_refresh: {
+        Args: {
+          p_date_from?: string
+          p_date_to?: string
+          p_domain: Database["public"]["Enums"]["app_domain"]
+          p_role: string
+        }
         Returns: Json
+      }
+      get_dashboard_summary: {
+        Args: {
+          p_date_from?: string
+          p_date_to?: string
+          p_domain: Database["public"]["Enums"]["app_domain"]
+          p_initial_domain?: Database["public"]["Enums"]["app_domain"]
+          p_role: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      get_deals_summary: {
+        Args: {
+          p_agent_id?: string
+          p_caller_domain: string
+          p_date_from?: string
+          p_date_to?: string
+          p_deal_type?: string
+          p_filter_domain?: string
+          p_role: string
+        }
+        Returns: {
+          membership_count: number
+          retail_count: number
+          total_deals: number
+          total_revenue: number
+        }[]
+      }
+      get_domain_health_metrics: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_domains: Database["public"]["Enums"]["app_domain"][]
+        }
+        Returns: {
+          calls_logged: number
+          domain: Database["public"]["Enums"]["app_domain"]
+          in_discussion: number
+          leads_lost: number
+          leads_won: number
+          nurturing: number
+          total_calls_made: number
+          total_deals: number
+          total_leads: number
+          total_revenue: number
+        }[]
+      }
+      get_gia_tasks: {
+        Args: {
+          p_domain: Database["public"]["Enums"]["app_domain"]
+          p_role: string
+          p_user_id: string
+        }
+        Returns: {
+          assigned_to: string
+          attachments: Json
+          completed_at: string
+          created_at: string
+          created_by: string
+          description: string
+          due_at: string
+          group_id: string
+          id: string
+          lead_domain: Database["public"]["Enums"]["app_domain"]
+          lead_first_name: string
+          lead_id: string
+          lead_last_name: string
+          lead_phone: string
+          lead_slug: string
+          module: string
+          priority: string
+          status: string
+          tags: string[]
+          task_category: string
+          task_type: string
+          title: string
+          updated_at: string
+        }[]
       }
       get_group_task_summaries: {
         Args: { p_priority?: string[]; p_status?: string[] }
@@ -1285,6 +2078,41 @@ export type Database = {
           subtask_total: number
           title: string
           updated_at: string
+        }[]
+      }
+      get_lead_pipeline_refresh:
+        | {
+            Args: {
+              p_domain: Database["public"]["Enums"]["app_domain"]
+              p_role: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_date_from?: string
+              p_date_to?: string
+              p_domain: Database["public"]["Enums"]["app_domain"]
+              p_role: string
+            }
+            Returns: Json
+          }
+      get_leads_status_counts: {
+        Args: {
+          p_agent_id?: string
+          p_campaign?: string
+          p_date_from?: string
+          p_date_to?: string
+          p_domain?: Database["public"]["Enums"]["app_domain"]
+          p_going_cold?: string
+          p_outcomes?: string[]
+          p_search?: string
+          p_source?: string
+          p_statuses?: string[]
+        }
+        Returns: {
+          cnt: number
+          status: string
         }[]
       }
       get_next_round_robin_agent: {
@@ -1314,6 +2142,7 @@ export type Database = {
           group_id: string | null
           id: string
           module: string
+          overdue_at: string | null
           priority: string
           status: string
           tags: string[]
@@ -1337,6 +2166,7 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      get_wa_unread_count: { Args: never; Returns: number }
       update_lead_status: {
         Args: {
           p_actor_id: string
@@ -1485,9 +2315,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       app_domain: [

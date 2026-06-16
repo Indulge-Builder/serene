@@ -33,6 +33,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
 import { REDIS_KEYS } from "@/lib/constants/redis-keys";
 import { invalidateLeadCaches } from "@/lib/services/lead-cache";
+import { getOpenRevivedTask } from "@/lib/services/revival-service";
 import { createNotification } from "@/lib/services/notifications-service";
 import {
   scheduleSlaTimersForLead,
@@ -174,7 +175,19 @@ export async function reviveLeadCore(
   actor: MutationActor,
   input: { leadId: string; dueAt: string | null },
   leadAssignee: string | null,
-): Promise<{ ok: true; task: Task } | { ok: false }> {
+): Promise<{ ok: true; task: Task; alreadyRevived?: boolean } | { ok: false }> {
+  // Idempotency guard (audit #10): if an OPEN 'revived'-marked gia task already
+  // exists for this lead, do NOT create a second one — return the existing task
+  // flagged alreadyRevived. This closes the daily-sweep crash/retry window where
+  // the Revived task landed but the 'actioned' candidate row did not, which the
+  // silence anti-join would otherwise re-qualify into a duplicate revive. The
+  // manual Revive button inherits the same protection (a no-op double-tap returns
+  // the existing task instead of stacking follow-ups).
+  const existing = await getOpenRevivedTask(input.leadId);
+  if (existing) {
+    return { ok: true, task: existing, alreadyRevived: true };
+  }
+
   // Reuse the E2 task path verbatim — a call-type follow-up, normal priority.
   const created = await createLeadTaskCore(
     actor,
@@ -296,17 +309,30 @@ export async function updateLeadStatusCore(
     }
   }
 
-  // SLA side-effects (fire-and-forget, non-fatal) — identical branch to updateLeadStatus.
-  if (TERMINAL_SLA_STATUSES.has(input.status)) {
-    cancelSlaTimersForLead({ leadId: input.leadId }).catch(() => {});
-  } else if (assignedTo) {
-    scheduleSlaTimersForLead({
-      leadId: input.leadId,
-      status: input.status,
-      assignedAt: now,
-      assignedTo,
-      domain: domain as string,
-    }).catch(() => {});
+  // SLA side-effects (non-fatal). AWAITED inside the core — never bare
+  // `.catch(() => {})`: a detached Trigger.dev call can be orphaned when the
+  // Vercel lambda freezes on response flush (A-16), and the swallow hid every
+  // failure. Both callers keep the lambda alive across this awaited core (the
+  // action returns after it; the Elaya executor runs inside an outer after()/
+  // stream) — the same lifecycle assignLeadCore relies on. Errors are logged,
+  // never thrown: the lead write already succeeded.
+  try {
+    if (TERMINAL_SLA_STATUSES.has(input.status)) {
+      await cancelSlaTimersForLead({ leadId: input.leadId });
+    } else if (assignedTo) {
+      await scheduleSlaTimersForLead({
+        leadId: input.leadId,
+        status: input.status,
+        assignedAt: now,
+        assignedTo,
+        domain: domain as string,
+      });
+    }
+  } catch (err) {
+    console.error(
+      "[lead-mutations:updateLeadStatusCore] SLA side-effect failed (non-fatal):",
+      err,
+    );
   }
 
   return {

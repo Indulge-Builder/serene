@@ -92,6 +92,20 @@ export async function upsertServiceCaseAction(
   // Session client — the admin/founder write RLS on service_cases enforces
   // the same gate as requireProfile (defence in depth, Rule 07).
   const supabase = await createClient();
+
+  // On an UPDATE that moves the row to a different domain, the OLD domain's
+  // helpdesk cache must also be invalidated — otherwise the row lingers on the
+  // old shelf until its 1hr TTL (audit #7). Read the prior domain first.
+  let priorDomain: string | null = null;
+  if (v.id) {
+    const { data: existing } = await supabase
+      .from('service_cases')
+      .select('domain')
+      .eq('id', v.id)
+      .single();
+    priorDomain = existing?.domain ?? null;
+  }
+
   const query = v.id
     ? supabase.from('service_cases').update(row).eq('id', v.id)
     : supabase.from('service_cases').insert({ ...row, created_by: auth.profile.id });
@@ -106,6 +120,9 @@ export async function upsertServiceCaseAction(
   }
 
   await invalidateHelpdeskCache(v.domain);
+  if (priorDomain && priorDomain !== v.domain) {
+    await invalidateHelpdeskCache(priorDomain);
+  }
   revalidatePath('/helpdesk');
   return { data: data as ServiceCase, error: null };
 }
@@ -131,6 +148,20 @@ export async function upsertConversationHookAction(
   };
 
   const supabase = await createClient();
+
+  // Same old-domain invalidation as the case path (audit #7): the helpdesk cache
+  // is a per-domain {cases, hooks} envelope, so a hook moved across domains must
+  // evict the old shelf too.
+  let priorDomain: string | null = null;
+  if (v.id) {
+    const { data: existing } = await supabase
+      .from('conversation_hooks')
+      .select('domain')
+      .eq('id', v.id)
+      .single();
+    priorDomain = existing?.domain ?? null;
+  }
+
   const query = v.id
     ? supabase.from('conversation_hooks').update(row).eq('id', v.id)
     : supabase.from('conversation_hooks').insert(row);
@@ -145,6 +176,9 @@ export async function upsertConversationHookAction(
   }
 
   await invalidateHelpdeskCache(v.domain);
+  if (priorDomain && priorDomain !== v.domain) {
+    await invalidateHelpdeskCache(priorDomain);
+  }
   revalidatePath('/helpdesk');
   return { data: data as ConversationHook, error: null };
 }

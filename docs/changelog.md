@@ -12,6 +12,158 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-16 — Post-regen production audit fixes (security + correctness hardening)
+
+**Goal.** A pre-production, adversarially-verified audit (5 specialist passes across regen
+type-drift, RLS/roles, null/runtime, async/cache/SLA, data-integrity; every finding refuted by an
+independent skeptic before acceptance — 32 candidates → 14 confirmed) surfaced a set of real bugs.
+This entry records the fixes the team chose to ship; the audit's intended-behaviour findings
+(manager cross-domain lead creation, cross-domain group subtasks) were confirmed as product
+decisions and documented in place rather than changed.
+
+**Security / authorization.**
+
+- **Task assignment now validates the assignee is active** (`actions/tasks.ts`). `createPersonalTaskAction`
+  and `createSubtaskAction` previously assigned a task to any supplied user id with no existence/active
+  check. New shared `assertAssigneeActive(id)` guard rejects a missing or deactivated assignee
+  (existence + `is_active` only — cross-**domain** assignment stays intentionally allowed: any active
+  user may be pulled into any group/personal task). Mirrors the `assignLeadCore` S-06 posture.
+- **Manager domain pin on `createManualLead` documented as intentional** (`actions/leads.ts`). The
+  comment that read like an incomplete agent-only guard now states the product decision: agents are
+  pinned to their own domain; manager+ may pick a target domain (the Add Lead modal exposes the
+  dropdown to them) — bounded by `GIA_DOMAIN_ENUM` + the `leads.domain` CHECK.
+
+**Correctness / data-integrity.**
+
+- **Gia-domain-only ingestion** (`services/lead-ingestion.ts`). The webhook path accepted a free-form
+  `domain` and the campaign map could resolve to `b2b` (a valid app_domain but **not** a Gia sales
+  domain — no deal/interest config). A non-Gia resolved domain is now coerced to `DEFAULT_GIA_DOMAIN`,
+  so both ingestion paths agree on the Gia-only set that manual creation already enforced. `b2b`'s
+  not-yet-Gia status is documented in `constants/domains.ts` + `campaign-domain-map.ts` (promote it
+  to a real Gia domain — GIA_DOMAINS + DOMAIN_DEAL_CONFIG + DOMAIN_INTERESTS + CHECK migration — when
+  B2B leads start flowing).
+- **Helpdesk cache eviction on domain change** (`actions/intelligence.ts`). `upsertServiceCase`/`Hook`
+  on the UPDATE path now reads the row's prior domain and, when it changed, evicts the OLD domain's
+  helpdesk cache key too — previously the row lingered on the old shelf until the 1 hr TTL.
+
+**Async / Vercel lifecycle / observability.**
+
+- **SLA side-effects no longer fire-and-forget-and-swallow** (`services/lead-mutations.ts`,
+  `actions/sla.ts`). `updateLeadStatusCore`'s SLA cancel/schedule was a bare `.catch(() => {})` — on
+  Vercel a detached Trigger.dev call can be orphaned on lambda freeze (A-16), and the swallow hid every
+  failure. Now `await`-ed inside the core (both callers keep the lambda alive across the awaited core —
+  the same lifecycle `assignLeadCore` relies on) with error logging. `scheduleSlaTimersForLead` /
+  `refreshActivitySlaTimers` now log rejected per-policy schedules from their `Promise.allSettled`
+  batches (`logSlaScheduleRejections`) — a failed timer schedule was previously silently dropped with
+  no DB-vs-Trigger reconciliation.
+
+**Revival sweep (Lead Revival R1).**
+
+- **Silence-finder anti-join pushed into Postgres** (migration **0128**, `services/revival-service.ts`).
+  `findSilentLeadsForStatus` had loaded EVERY `revival_candidates.lead_id` into a Node `Set` and
+  inflated the leads `LIMIT` by that count — both the transfer and the LIMIT grew unbounded with the
+  ledger. New `get_silent_leads_for_revival(p_status, p_threshold, p_limit)` RPC does the judge-once
+  `NOT EXISTS` anti-join + silence clock + bounded LIMIT in one query (index-backed by
+  `idx_revival_candidates_lead`; Q-13 revoked tier — service-role only). Semantics byte-identical.
+- **Auto-revive is now idempotent per lead** (`services/lead-mutations.ts`,
+  `services/revival-service.ts`, `trigger/lead-revival.ts`). If the daily sweep crashed/retried AFTER
+  the "Revived" task landed but BEFORE the `actioned` candidate row was written, the silence anti-join
+  would re-qualify and revive the lead again (duplicate task). `reviveLeadCore` now short-circuits on an
+  existing OPEN `'revived'`-marked gia task (`getOpenRevivedTask`), returning it flagged
+  `alreadyRevived`; the sweep backfills the missing candidate row to close the anti-join gap but does
+  NOT re-consume the daily cap. The manual Revive button inherits the same double-tap protection.
+
+**Type hygiene.** Removed the stale `(supabase/admin as any)` casts on the now-generated `deals` table
+selects/inserts (`services/deals-service.ts`, `actions/deals.ts`) so the generated Insert types are
+enforced; the `get_deals_summary` RPC call keeps a narrow, documented bridging cast (the
+`string | undefined` vs explicit-`null` SQL-DEFAULT gap — same sanctioned convention as
+`get_leads_status_counts`).
+
+**Verification.** `tsc --noEmit` clean; `check:tokens` clean (461 files). **Migration 0128 is NOT yet
+applied** — Docker was down at author time. Apply it + regenerate `database.ts`, after which the
+interim `as any` on the `get_silent_leads_for_revival` `.rpc` call can drop.
+
+---
+
+## 2026-06-16 — Regenerate `database.ts` (+ migration 0127: restore `lead_activities.actor_id` nullable)
+
+**Goal.** Regenerate the auto-generated Supabase types so the tables/RPCs added since the last
+regen (Elaya 0116/0118, Lead Revival 0119, Push 0120, Usage 0126) are in `Database`, and drop the
+interim `(client as any)` casts the service layer had been carrying "until `database.ts` is
+regenerated."
+
+**How.** Docker was down, so the local `supabase gen types --local` path was unavailable —
+generated against the remote (`xmucqqhbupudnzderchy`, "Serene") via the Supabase MCP
+`generate_typescript_types`. Remote migration list matches local exactly through 0126, so the
+remote is the correct source of truth. The generated block was re-prefixed onto the **hand-authored
+"Derived type aliases" tail** (the `// ===` banner section the file carries below the generated
+`Database` — `AppDomain`/`UserRole`/`Profile`/`Lead`/`Task`/`LeadFilters`/`JsonValue` etc. that the
+whole app imports from `@/lib/types/database`); the first naive regen had dropped it.
+
+**Schema drift found + fixed (migration 0127).** The fresh codegen generated the accurate
+`lead_activities.actor_id: string` (NOT NULL) — the live DB had drifted to NOT NULL with no
+DEFAULT, while migration 0003 declares the column nullable (`-- NULL = system/webhook action`) and
+`lead-ingestion.ts` inserts `actor_id: null` in five system/webhook activity paths. Every one of
+those inserts would throw a NOT NULL violation at runtime (none had fired against this DB yet —
+the existing `lead_created`/`agent_assigned` rows came from the actor-bearing manual path). The old
+hand-loosened `actor_id?: string | null` had masked it. `20260616000127_lead_activities_actor_nullable.sql`
+(`ALTER COLUMN actor_id DROP NOT NULL`) re-aligns the live schema with 0003's documented intent and
+the code; applied to the remote + verified.
+
+**Boundary fixes (17 type errors the tightened types surfaced — all latent looseness, no runtime
+bugs beyond the actor_id one).** The old `database.ts` had its `Enums` block hollowed to
+`[_ in never]: never`, so `app_domain`/`user_role` resolved to `any` and accepted any `string`.
+The real enum unions surfaced 7 files passing widened `string`/`null` into precise columns:
+
+- `campaign-domain-map.ts` — typed `CAMPAIGN_DOMAIN_MAP`/`DEFAULT_LEAD_DOMAIN`/`resolveDomainFromCampaign`
+  as `AppDomain` at the source (every value is a real domain) — propagates the right type to all consumers.
+- `lead-ingestion.ts`, `task-mutations.ts` — `as AppDomain` at the insert boundary for untrusted
+  free-form domain values (the `app_domain` CHECK is the runtime backstop, same as before).
+- `tasks-service.ts` — `r.domain as TaskGroup['domain']` (matches the existing RPC-row narrowing pattern).
+- `whatsapp-api.ts` — `as AppDomain | null` on the notification-log domain.
+- `lead-ingestion.ts` / leads webhook route — `as JsonValue` (the tail's documented JSONB escape hatch).
+- `leads-service.ts` / `tasks-service.ts` — `as unknown as Task[]` (generated `attachments: Json` vs
+  `Task.attachments: ChecklistItem[]`; the `tasks_attachments_is_array` CHECK guarantees the shape).
+- `NotificationItem.tsx` — `notification.type as NotificationType` (the row type keeps `type: string`
+  for service compatibility; the `getTypeIcon` `assertNever` exhaustiveness check requires the narrow type).
+
+**Interim casts removed.** With the tables now in `Database`, dropped 13 `(admin as any)` /
+`(supabase as any)` table-access casts: `revival-service.ts` (8 `.from`), `usage-service.ts`
+(3 `.from` + the `get_agent_usage` `.rpc`), `leads-service.ts` (the `revival_candidates` `.from`).
+The 4 scope-param RPC `.rpc()` casts in `leads-service.ts` (`get_leads_status_counts` + 3 campaign
+RPCs) are **kept** — they pass explicit `null` for "no filter" but the generated arg types model
+SQL-DEFAULT params as `string | undefined`; this is a sanctioned codegen-gap cast (now noted as
+such inline), not interim. The temp type files (`types/revival.ts`/`usage.ts`/`elaya.ts`) are left
+in place — they're imported by 19 files and export domain unions + report envelopes beyond raw row
+mirrors; collapsing them onto generated `Row` types is a separate follow-up, not part of the regen.
+
+**Verification.** `tsc --noEmit` clean (0 errors, from a 0-error baseline on the old file);
+`check-tokens` passes. `database.ts` 2637 lines, `PostgrestVersion` unchanged (`14.5`).
+
+## 2026-06-16 — Campaigns: card click goes straight to the detail page (CampaignPreviewModal removed)
+
+**Goal.** Clicking a campaign on `/campaigns` opened an intermediate `CampaignPreviewModal`
+whose only real action was an "Open Campaign →" button to the detail page. The modal showed
+the same lead-row data already on the list card, so it was pure friction — one extra click to
+reach the page. Removed it.
+
+**Change.**
+
+- `CampaignCard.tsx` — the card is now a `motion.create(Link)` (`MotionLink`) that navigates
+  directly to `/campaigns/${campaign_name.replace(/\s+/g, '+')}` — the same `+`-for-space
+  encoding the modal's "Open" button used (the exact inverse of `campaigns/[id]/page.tsx`'s
+  decode; see the Campaign ID Encoding Contract). Dropped the `previewOpen` `useState`, the
+  manual `role="button"`/`tabIndex`/`onKeyDown` (a real `<a>` is keyboard-navigable for free),
+  and the `adCreatives` prop (only the modal consumed it). Entrance animation + hover/focus
+  shadow chrome are byte-identical.
+- `CampaignPreviewModal.tsx` — **deleted** (sole consumer was `CampaignCard`).
+- `CampaignListAsync.tsx` — dropped the `getAdCreativesForCampaigns` batch fetch and the
+  `adCreatives={…}` prop (both existed only to feed the modal's carousel; the detail page
+  still fetches its own creatives via `getAdCreativesForCampaign`). Spend/cost join unchanged.
+
+`getAdCreativesForCampaigns` (the batch helper in `ad-creatives-service.ts`) is left in place
+— it's a documented service API with no current caller but no cost to keep.
+
 ## 2026-06-16 — Shop lead re-import (full overwrite of `domain='shop'`)
 
 **Goal.** Replace the entire `domain='shop'` lead set with a corrected Zoho export

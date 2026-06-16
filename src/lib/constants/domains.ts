@@ -21,7 +21,17 @@ export type GiaDomain = Extract<
   'onboarding' | 'house' | 'shop' | 'legacy'
 >;
 
-/** Gia module — the four active sales domains. Add new Gia domains here only. */
+/**
+ * Gia module — the four active sales domains. Add new Gia domains here only.
+ *
+ * NOTE: 'b2b' is a valid app_domain (user mgmt / profiles) but is deliberately
+ * NOT a Gia domain yet — we don't run B2B lead campaigns today, so the leads
+ * pipeline (deals via DOMAIN_DEAL_CONFIG, interests via DOMAIN_INTERESTS, Gia
+ * domain filters) does not handle it. The campaign map's TG_B2B → 'b2b' entry is
+ * neutralised at ingestion (non-Gia → DEFAULT_GIA_DOMAIN). When B2B leads start
+ * flowing, add 'b2b' to GIA_DOMAINS + DOMAIN_DEAL_CONFIG + DOMAIN_INTERESTS +
+ * a CHECK migration together (audit #3).
+ */
 export const GIA_DOMAINS = [
   'onboarding',
   'house',
