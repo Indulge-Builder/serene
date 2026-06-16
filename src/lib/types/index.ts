@@ -50,14 +50,32 @@ export type DashboardAgentTask = {
   lead_id:       string | null;
 };
 
-export type DashboardAgentActivity = {
-  id:          string;
-  action_type: string;
-  details:     Record<string, unknown> | null;
-  created_at:  string;
-  lead_id:     string | null;
-  lead_name:   string | null;
+// The dashboard "Recent Activity" widget is a LEAD rollup (migration 0132): one
+// card per lead, most-recently-worked first — current status, latest call
+// outcome, latest note. Not an event stream. Sourced from `leads` (which already
+// denormalises all of this), scoped Mine/Team.
+export type DashboardRecentLead = {
+  lead_id:           string;
+  lead_slug:         string | null;
+  lead_name:         string | null;
+  /** leads.domain — founder/manager domain tag. */
+  lead_domain:       string | null;
+  /** Current lead status. */
+  status:            string;
+  /** Latest call outcome on the lead (rnr | switched_off | …), or null. */
+  last_call_outcome: string | null;
+  /** When the lead was last worked — the card's timestamp + sort key. */
+  last_activity_at:  string | null;
+  /** Currently-assigned agent id. */
+  assigned_to:       string | null;
+  /** Currently-assigned agent name ("by <agent>"). */
+  assignee_name:     string | null;
+  /** The latest note body on the lead (trimmed), or null. */
+  note_body:         string | null;
 };
+
+/** @deprecated kept as an alias for the `agent_activity` seed key; use DashboardRecentLead. */
+export type DashboardAgentActivity = DashboardRecentLead;
 
 export type DashboardLeadStatusCount = {
   status: LeadStatus;

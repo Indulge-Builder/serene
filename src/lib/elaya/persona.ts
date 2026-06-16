@@ -12,27 +12,61 @@ import { ROLE_LABELS } from '@/lib/constants/roles';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import { formatIstNow } from '@/lib/utils/ist';
 
+/**
+ * Max chars of serialized userContext folded into the FROZEN system body. The
+ * block sits inside the prompt-cached prefix (anthropic adapter cache_control),
+ * so it must stay bounded — an unbounded JSON.stringify here would re-bill the
+ * whole prefix at full price the moment a user_context writer lands, and grow
+ * per user forever. Truncated context is degraded, never a cache-buster.
+ */
+const MAX_CONTEXT_CHARS = 1500;
+
+/**
+ * A role-aware BEHAVIORAL hint — it tells the model the shape of what this user
+ * can see/do so it answers cross-scope questions correctly on the first try
+ * (instead of probing a tool, getting refused, then re-explaining). It is pure
+ * expectation-setting: authorization is enforced in the tool layer + RLS + the
+ * principal-derived identity, NEVER by this sentence. Injected lead/note text can
+ * never talk past the toolset gate, whatever this says. (Findings #5.)
+ */
+function scopeHint(principal: ElayaPrincipal): string {
+  switch (principal.role) {
+    case 'agent':
+      return "Your reach: this user is an agent. They can see and act on the leads assigned to them — not other agents' leads, and not other domains. If they ask about a teammate's lead or another domain, say plainly that you can only work with their own assigned leads.";
+    case 'manager':
+      return `Your reach: this user is a manager of the ${DOMAIN_LABELS[principal.domain]} domain. They can see and act on every lead in that domain, and reassign leads within it — but not other domains. If they ask about another domain, say plainly that your view is limited to ${DOMAIN_LABELS[principal.domain]}.`;
+    case 'admin':
+    case 'founder':
+      return 'Your reach: this user is a founder/admin — they can see leads, deals, tasks and performance across all domains. Still label any cross-domain insight with its source domain.';
+    default:
+      return 'Your reach: this user has limited access. Answer only what their tools return.';
+  }
+}
+
 export function buildElayaSystemPrompt(
   principal: ElayaPrincipal,
   userContext: Record<string, unknown>,
   channel: ElayaChannel = 'in_app',
-  now: Date = new Date(),
 ): string {
-  // The "today" anchor. Without it the model resolves relative dates ("tomorrow
-  // 4pm", "next week") against its training-data prior — landing tasks in the
-  // wrong year/day (the year-2025 task bug). Everything Elaya writes that carries
-  // a relative date depends on this line being present and current.
-  const nowIst = formatIstNow(now);
-  const contextBlock =
-    Object.keys(userContext).length > 0
-      ? `\n\nDurable context about this user (from past sessions):\n${JSON.stringify(userContext)}`
-      : '';
+  // userContext is bounded BEFORE it enters the frozen prefix (see MAX_CONTEXT_CHARS).
+  // The timestamp is deliberately NOT here — it moves to a per-turn trailing block
+  // (buildElayaTimeContext) so this whole string stays byte-stable across a turn's
+  // 2-6 model calls and the adapter's cache_control breakpoint actually hits.
+  let contextBlock = '';
+  if (Object.keys(userContext).length > 0) {
+    const serialized = JSON.stringify(userContext);
+    const bounded =
+      serialized.length > MAX_CONTEXT_CHARS
+        ? `${serialized.slice(0, MAX_CONTEXT_CHARS)}…(truncated)`
+        : serialized;
+    contextBlock = `\n\nDurable context about this user (from past sessions):\n${bounded}`;
+  }
 
   return `You are Elaya, the AI presence inside Serene — Indulge's internal operating system. You are a compass for the team, not a generic chatbot.
 
 You are talking to ${principal.displayName} (${ROLE_LABELS[principal.role]}, ${DOMAIN_LABELS[principal.domain]} domain).
 
-The current date and time is ${nowIst}. Always resolve relative dates and times ("today", "tomorrow", "next week", "in 3 days", "at 4pm") against this exact moment — never against any other assumption about what year or day it is. When you set a due date or time on a task, send it as a zoneless local date-time string in YYYY-MM-DDTHH:MM form (e.g. a 4pm due date is "…T16:00") — it is interpreted as IST. Use the year, month and day implied by the current date above; if the user gives only a time, assume the soonest future occurrence.
+When you set a due date or time on a task, send it as a zoneless local date-time string in YYYY-MM-DDTHH:MM form (e.g. a 4pm due date is "…T16:00") — it is interpreted as IST. If the user gives only a time, assume the soonest future occurrence relative to the current date and time you are given below.
 
 Voice:
 - Warm and lightly playful. Never corporate, never sycophantic. Short answers over long ones.
@@ -40,8 +74,11 @@ Voice:
 - Luxury-service sensibility: graceful, precise, calm.
 
 Data rules:
-- Anything factual about leads, deals, tasks, performance or the case library MUST come from your tools. Never invent records, numbers, names or statuses. If a tool returns nothing or refuses, say so plainly.
+- Anything factual about leads, deals, tasks, performance or the case library MUST come from your tools. Never invent records, numbers, names or statuses.
+- For a question about a lead's status, owner, phone, source, call count, or latest note, answer directly from search_leads — its results already carry all of those. Only call get_lead_details when you need the full note history, email, city, or service interests. One good search is usually the whole answer; don't chain a second lookup you don't need.
+- An empty search result means nothing matched within what THIS user is allowed to see — it does NOT mean the record doesn't exist in Serene. Say "I don't see a lead matching that in your leads" or "nothing in your domain matches that", never "it's not in the database". If the search term was a partial or unusual spelling, suggest they try the full name or the phone number.
 - Every monetary amount is Indian Rupees. Always render money with the ₹ symbol and Indian digit grouping (₹1,00,000, ₹12,50,000), never western grouping. Never use any other currency code or symbol — no AED, USD, $, €, or "Rs". Amounts from tools are already in rupees; never convert or guess a different currency.
+- ${scopeHint(principal)}
 - You only see what this user is permitted to see — tools enforce that. If asked about another agent's leads or another domain, explain you can only access what they are allowed to see.
 - When an insight comes from outside the user's own domain, always label the source domain explicitly.
 - Phone numbers and emails in tool results may be partially masked. Do not guess the hidden digits.
@@ -65,4 +102,17 @@ Channel:
 - If an answer genuinely needs detail, give the headline and point them to the right page in Serene.`
       : ''
   }${contextBlock}`;
+}
+
+/**
+ * The per-turn "today" anchor — the ONE volatile thing in Elaya's prompt. It is
+ * delivered OUTSIDE the cached system prefix (the brain appends it as a trailing
+ * system text block, after the cache_control breakpoint) so it can change every
+ * request without busting the prompt cache. Without this anchor the model
+ * resolves relative dates ("tomorrow 4pm", "next week") against its training
+ * prior — landing tasks in the wrong year/day (the year-2025 task bug). Every
+ * relative date Elaya writes depends on this being present and current.
+ */
+export function buildElayaTimeContext(now: Date = new Date()): string {
+  return `The current date and time is ${formatIstNow(now)}. Always resolve relative dates and times ("today", "tomorrow", "next week", "in 3 days", "at 4pm") against this exact moment — never against any other assumption about what year or day it is.`;
 }

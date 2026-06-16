@@ -963,6 +963,40 @@ export type Database = {
           },
         ]
       }
+      // Interim hand-added block (migration 0133) — drop on the next
+      // `supabase gen types` regen. Mirrors the migration exactly.
+      notification_preferences: {
+        Row: {
+          in_app: boolean
+          notification_key: string
+          updated_at: string
+          user_id: string
+          whatsapp: boolean
+        }
+        Insert: {
+          in_app?: boolean
+          notification_key: string
+          updated_at?: string
+          user_id: string
+          whatsapp?: boolean
+        }
+        Update: {
+          in_app?: boolean
+          notification_key?: string
+          updated_at?: string
+          user_id?: string
+          whatsapp?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       revival_candidates: {
         Row: {
           ai_reasoning: string
@@ -2392,6 +2426,7 @@ export type NotificationType =
   | 'sla_breach_manager'
   | 'sla_breach_founder'
   | 'task_overdue_manager'
+  | 'suggestion_resolved' // hand-extended (migration 0136); regen after apply
 
 // sla_policies CHECK-constraint unions (migration 0111)
 export type SlaTriggerKind   = 'status' | 'outcome' | 'task_due'
@@ -2437,6 +2472,10 @@ export type Notification = Database['public']['Tables']['notifications']['Row'] 
 // PushSubscriptionRow — one Web Push endpoint per device (migration 0120).
 // One user holds many rows (phone + desktop + …); UNIQUE key is `endpoint`.
 export type PushSubscriptionRow = Database['public']['Tables']['push_subscriptions']['Row']
+
+// NotificationPreferenceRow — one per-user channel-mute row (migration 0133).
+// Absence of a row for a (user_id, notification_key) pair means both channels ON.
+export type NotificationPreferenceRow = Database['public']['Tables']['notification_preferences']['Row']
 
 export type Task = Omit<
   Database['public']['Tables']['tasks']['Row'],

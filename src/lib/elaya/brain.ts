@@ -8,7 +8,7 @@
 import { resolveLlmForJob } from '@/lib/elaya/registry';
 import type { LlmChatMessage } from '@/lib/elaya/provider';
 import type { ElayaPrincipal } from '@/lib/elaya/principal';
-import { buildElayaSystemPrompt } from '@/lib/elaya/persona';
+import { buildElayaSystemPrompt, buildElayaTimeContext } from '@/lib/elaya/persona';
 import { executeTool, getToolDefinitionsForPrincipal } from '@/lib/elaya/tools/registry';
 import { executeProposedAction } from '@/lib/elaya/tools/write-registry';
 import { classifyConfirmation } from '@/lib/elaya/confirmation';
@@ -82,6 +82,23 @@ export async function runElayaTurn(args: {
         : { role: 'assistant' as const, content: m.content },
     );
 
+  // The per-turn "today" anchor rides on the LATEST user message — outside the
+  // cached system prefix — so the prompt cache (set via cachePrefix below) stays
+  // valid across this turn's 2-6 model calls. The provider contract has no
+  // system role mid-conversation, and the anchor is per-turn volatile anyway, so
+  // the last user turn is its correct home. Prepended so the model reads it as
+  // framing, not as part of the user's question.
+  const timeContext = buildElayaTimeContext();
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') {
+      messages[i] = {
+        role: 'user',
+        content: `${timeContext}\n\n${messages[i].content}`,
+      };
+      break;
+    }
+  }
+
   const toolCtx = { conversationId, channel };
   const allToolCalls: ElayaToolCallRecord[] = [];
   let inputTokens = 0;
@@ -95,6 +112,10 @@ export async function runElayaTurn(args: {
       system,
       messages,
       tools,
+      // The system prefix is byte-stable across this turn (volatile timestamp
+      // rides the user message above, not `system`), so the adapter may cache
+      // tools+system — calls 2..n read it at ~0.1x. See provider.ts cachePrefix.
+      cachePrefix: true,
       onTextDelta: (delta) => emit({ type: 'delta', text: delta }),
     });
 

@@ -1,6 +1,9 @@
 "use client";
 
+import { MessageSquarePlus } from "lucide-react";
 import { EmbeddedElayaChat } from "@/components/elaya/EmbeddedElayaChat";
+import { useSuggestionFeedback } from "@/components/suggestions/SuggestionFeedbackProvider";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 
@@ -13,12 +16,21 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
  * into the widget. The user says hi and gets a reply right here. All the
  * seed-resolve + shell + breathing-glyph logic lives in EmbeddedElayaChat — the
  * SAME body the floating ElayaWidget composes (R-01). No chat code lives here.
+ *
+ * MOBILE-ONLY overlay: a small "Send feedback" trigger floats in the card's
+ * top-right corner below md, opening the shared suggestion composer
+ * (SuggestionFeedbackProvider). On desktop the Sidebar "Send feedback" item is
+ * the entry, so the overlay is hidden there to keep the chat header clean.
  */
 export function ElayaPresenceCard({ size = "md" }: WidgetProps) {
+  const { openComposer } = useSuggestionFeedback();
+  const isMobile = useMediaQuery(MQ.mobile);
+
   return (
     <div
       className="flex flex-col"
       style={{
+        position: "relative",
         height: WIDGET_HEIGHT_BY_SIZE[size],
         background: "var(--theme-paper)",
         border: "1px solid var(--theme-paper-border)",
@@ -27,6 +39,34 @@ export function ElayaPresenceCard({ size = "md" }: WidgetProps) {
         overflow: "hidden",
       }}
     >
+      {isMobile && (
+        <button
+          type="button"
+          aria-label="Send feedback"
+          title="Send feedback"
+          className="serene-pressable serene-touch"
+          onClick={openComposer}
+          style={{
+            position: "absolute",
+            top: "var(--space-3)",
+            right: "var(--space-3)",
+            zIndex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "32px",
+            height: "32px",
+            borderRadius: "var(--radius-full)",
+            border: "1px solid var(--theme-paper-border)",
+            background: "var(--theme-paper-subtle)",
+            color: "var(--theme-text-secondary)",
+            cursor: "pointer",
+          }}
+        >
+          <MessageSquarePlus style={{ width: "16px", height: "16px", strokeWidth: 1.5 }} />
+        </button>
+      )}
+
       <EmbeddedElayaChat />
     </div>
   );

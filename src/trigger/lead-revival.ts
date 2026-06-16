@@ -29,7 +29,10 @@ export const sweepRevivalCandidatesTask = schedules.task({
   id: "sweep-revival-candidates",
   // 07:30 IST daily (02:00 UTC). The gate runs at shift-open so freshly-created
   // Revived tasks are waiting when agents start their day.
-  cron: { pattern: "0 2 * * *", timezone: "Asia/Kolkata" },
+  // NOTE: "Asia/Calcutta" (not "Asia/Kolkata") — Trigger.dev's cloud validator checks the cron
+  // timezone against Intl.supportedValuesOf('timeZone'), whose ICU build canonicalises IST to the
+  // older "Asia/Calcutta" alias and rejects "Asia/Kolkata". Same UTC+5:30 zone — spelling only.
+  cron: { pattern: "0 2 * * *", timezone: "Asia/Calcutta" },
   // The whole sweep must fit the lambda budget; batches are bounded per status.
   maxDuration: 300,
   run: async () => {

@@ -33,7 +33,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Re-roll TODAY (IST) every 15 minutes. */
 export const rollupUsageTodayTask = schedules.task({
   id: "rollup-usage-today",
-  cron: { pattern: "*/15 * * * *", timezone: "Asia/Kolkata" },
+  // "Asia/Calcutta" (not "Asia/Kolkata") — Trigger.dev's cloud validator only accepts the
+  // alias canonicalised by Intl.supportedValuesOf('timeZone'). Same UTC+5:30 zone.
+  cron: { pattern: "*/15 * * * *", timezone: "Asia/Calcutta" },
   maxDuration: 120,
   run: async () => {
     const { rollupUsageForDays, istDateString } = await import(
@@ -55,7 +57,8 @@ export const rollupUsageTodayTask = schedules.task({
  */
 export const rollupUsageNightlyTask = schedules.task({
   id: "rollup-usage-nightly",
-  cron: { pattern: "20 0 * * *", timezone: "Asia/Kolkata" },
+  // "Asia/Calcutta" (not "Asia/Kolkata") — see rollupUsageTodayTask. Same UTC+5:30 zone.
+  cron: { pattern: "20 0 * * *", timezone: "Asia/Calcutta" },
   maxDuration: 300,
   run: async () => {
     const { rollupUsageForDays, pruneOldHeartbeats, istDateString } = await import(

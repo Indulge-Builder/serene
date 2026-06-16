@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { BarChart } from "@/components/ui/charts/BarChart";
@@ -8,8 +8,6 @@ import type { BarChartSeries } from "@/components/ui/charts/BarChart";
 import { getLeadsByCampaignAction } from "@/lib/actions/dashboard";
 import { formatCompact } from "@/lib/utils/numbers";
 import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
-import { DEFAULT_GIA_DOMAIN, DOMAIN_LABELS, GIA_DOMAINS } from "@/lib/constants/domains";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/TabSelector";
 import type { LeadStatus } from "@/lib/types/database";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import type { DashboardCampaignStatusMix } from "@/lib/types";
@@ -18,7 +16,6 @@ import type { DateRange } from "@/lib/utils/date-range";
 import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
 import { useWidgetData } from "@/hooks/useWidgetData";
 import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
-import { resolveWidgetScope, type WidgetDomainMode as DomainMode } from "@/lib/utils/widget-scope";
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: "var(--color-info)",
@@ -47,41 +44,35 @@ const CHART_SERIES: BarChartSeries[] = STATUS_ORDER.map((s) => ({
 }));
 
 export function ManagerCampaignWidget({
-  role,
   initialData,
   size = 'xl',
   dateRange,
+  scopeDomain,
 }: WidgetProps & { dateRange?: DateRange }) {
-  const isManagerRole = role === "manager";
   const isMobile = useMediaQuery(MQ.mobile);
   const rscCampaigns = initialData?.campaigns ?? null;
-  const [domainMode, setDomainMode] = useState<DomainMode>(
-    isManagerRole ? "all" : DEFAULT_GIA_DOMAIN,
-  );
 
-  // The ONE fetcher — auto-fetch effect, tab changes, and refresh all go through it.
+  // The ONE fetcher — the refresh button re-runs it. Domain comes from the
+  // global selector (scopeDomain); managers pass undefined and the server pins
+  // them to their own domain via effectiveWidgetDomain (the trust boundary).
   const loadCampaigns = useCallback(
-    (mode: DomainMode) =>
-      getLeadsByCampaignAction(dateRange?.from, dateRange?.to, resolveWidgetScope(role, mode)),
-    [dateRange?.from, dateRange?.to, role],
+    () =>
+      getLeadsByCampaignAction(dateRange?.from, dateRange?.to, scopeDomain ?? undefined),
+    [dateRange?.from, dateRange?.to, scopeDomain],
   );
 
   const { data, loaded, isPending, refetch, apply } = useWidgetData<DashboardCampaignStatusMix[]>({
     seed: rscCampaigns,
-    fetcher: () => loadCampaigns(domainMode),
-    // RSC seeds the manager view and the admin/founder DEFAULT_GIA_DOMAIN tab; fetch the rest.
-    autoFetch: !isManagerRole && domainMode !== DEFAULT_GIA_DOMAIN,
-    deps: [dateRange?.from, dateRange?.to, domainMode],
+    fetcher: loadCampaigns,
+    // The RSC always seeds the current scope; no mount fetch ever needed.
+    autoFetch: false,
+    deps: [dateRange?.from, dateRange?.to, scopeDomain],
   });
   const campaigns = data ?? [];
 
-  const rscMatchesView = isManagerRole || domainMode === DEFAULT_GIA_DOMAIN;
-  useDashboardCohortSync(rscCampaigns, dateRange, rscMatchesView, apply);
-
-  function handleDomainChange(mode: DomainMode) {
-    setDomainMode(mode);
-    refetch(() => loadCampaigns(mode));
-  }
+  // The RSC payload always matches the rendered scope (a domain pick round-trips
+  // the page and reseeds), so cohort-sync always applies it.
+  useDashboardCohortSync(rscCampaigns, dateRange, true, apply);
 
   function handleRefresh() {
     refetch();
@@ -106,16 +97,14 @@ export function ManagerCampaignWidget({
   //   header:       36px
   //   gap × 2:      32px  (header→chart, chart→legend)
   //   legend pills: 32px  (one row, when data is present)
-  //   domain row:   52px  (borderTop 1px + paddingTop 12px + tab 28px + gap 16px) — admin/founder only
   const totalPx    = parseInt(WIDGET_HEIGHT_BY_SIZE[size], 10);
   const PADDING    = 40;
   const HEADER     = 36;
   const GAP        = 16;
   const LEGEND     = 32;
-  const DOMAIN_ROW = isManagerRole ? 0 : 52 + GAP;
   const chartHeight = Math.max(
     120,
-    totalPx - PADDING - HEADER - GAP * 2 - LEGEND - DOMAIN_ROW,
+    totalPx - PADDING - HEADER - GAP * 2 - LEGEND,
   );
 
   // Background tints for legend pills — mirrors LeadPipeline scorecard
@@ -292,37 +281,6 @@ export function ManagerCampaignWidget({
               </span>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Domain picker — pinned to bottom, admin/founder only */}
-      {!isManagerRole && (
-        <div
-          style={{
-            paddingTop:  "var(--space-3)",
-            borderTop:   "1px solid var(--theme-paper-border)",
-            flexShrink:  0,
-          }}
-        >
-          <Tabs
-            value={domainMode}
-            onValueChange={(v) => handleDomainChange(v as DomainMode)}
-            variant="connected"
-            indicatorLayoutId="campaign-domain"
-            style={{
-              opacity:       isPending ? 0.6 : 1,
-              pointerEvents: isPending ? "none" : undefined,
-            }}
-          >
-            <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
-              {GIA_DOMAINS.map((d) => (
-                <TabsTrigger key={d} value={d}>
-                  {DOMAIN_LABELS[d]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
         </div>
       )}
     </div>

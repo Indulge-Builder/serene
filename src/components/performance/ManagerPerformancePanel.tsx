@@ -11,7 +11,7 @@ import { EmptyState }                            from '@/components/ui/EmptyStat
 import { FilterDropdown }                        from '@/components/ui/FilterDropdown';
 import { useMediaQuery, MQ }                     from '@/hooks/useMediaQuery';
 import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT, BASE_DURATION } from '@/lib/constants/motion';
-import { DOMAIN_LABELS } from '@/lib/constants/domains';
+import { DOMAIN_LABELS, readDomainCookie, parseGiaDomainParam } from '@/lib/constants/domains';
 import {
   buildPerformanceRosterGroups,
   PERFORMANCE_ROSTER_DOMAIN_ORDER,
@@ -321,6 +321,31 @@ export function ManagerPerformancePanel({
   const isMobile                        = useMediaQuery(MQ.mobile);
   const searchParams                    = useSearchParams();
   const searchTerm                      = (searchParams.get('search') ?? '').trim().toLowerCase();
+
+  // Sync the roster domain filter to the global selector (the serene-domain
+  // ?domain= param the header DomainSelector writes; cookie fallback on a URL
+  // with no param after a cross-page nav). "Pick Shop in the header" narrows
+  // the founder roster to Shop too, consistent with the rest of the app.
+  // Founder all-domains view only (the only roster with a domain filter).
+  // Param is reactive (a live pick on /performance re-runs this); the cookie is
+  // read post-mount (client-only) so there is no hydration mismatch on the
+  // controlled FilterDropdown. Gated to a domain present in the roster so a
+  // stale value can never blank the list. The user can still override via the
+  // roster's own FilterDropdown afterward (this only fires on a global change).
+  const globalDomainParam = searchParams.get('domain');
+  useEffect(() => {
+    if (!allDomains) return;
+    const next = parseGiaDomainParam(globalDomainParam) ?? readDomainCookie();
+    if (next && initialRoster.some((a) => a.domain === next)) {
+      setDomainFilter(next);
+    } else if (next === null) {
+      // Global cleared to "All domains" → drop the roster narrowing too.
+      setDomainFilter(null);
+    }
+    // initialRoster/allDomains are stable for the component's lifetime; only the
+    // global param drives a re-sync.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalDomainParam]);
 
   // The roster list is collapsible only below md (full-width stacked layout);
   // on desktop the side column is always expanded.

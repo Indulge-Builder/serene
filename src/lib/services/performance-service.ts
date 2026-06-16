@@ -477,6 +477,7 @@ export async function getAgentDetailMetrics(
     leadsData,
     wonDealsData,
     allAssignedData,
+    callNotesData,
   ] = await Promise.all([
     // Cohort: leads created in the period — drives totalLeads and pipeline breakdown
     supabase
@@ -498,12 +499,29 @@ export async function getAgentDetailMetrics(
       .gte("won_at", dateFrom)
       .lte("won_at", dateTo),
 
-    // Cohort leads with call data — same date filter, drives totalCallsMade and breakdown
+    // Cohort leads — same date filter, drives totalCallsMade (SUM of call_count)
     supabase
       .from("leads")
-      .select("call_count, last_call_outcome")
+      .select("call_count")
       .eq("assigned_to", agentId)
       .is("archived_at", null)
+      .gte("created_at", dateFrom)
+      .lte("created_at", dateTo),
+
+    // Call outcome breakdown source — call notes (lead_notes with a
+    // call_outcome) on THIS AGENT'S leads, filtered by the NOTE's created_at in
+    // the period. Scoped by the lead's assigned_to via the !inner join — the
+    // SAME scoping the Recent-calls drill modal (getAgentCallsPageForManager)
+    // uses, so the two surfaces always agree. (NOT author_id: a call logged by
+    // a covering teammate on this agent's lead still belongs to this agent's
+    // breakdown. The old path counted leads.last_call_outcome — the LATEST
+    // outcome per lead over a created_at cohort — which decoupled outcome from
+    // the period and silently diverged from every other call surface.)
+    supabase
+      .from("lead_notes")
+      .select("call_outcome, lead:leads!inner(assigned_to)")
+      .eq("lead.assigned_to", agentId)
+      .not("call_outcome", "is", null)
       .gte("created_at", dateFrom)
       .lte("created_at", dateTo),
   ]);
@@ -511,6 +529,7 @@ export async function getAgentDetailMetrics(
   const leads       = leadsData.data ?? [];
   const wonDeals    = (wonDealsData.data ?? []) as { deal_amount: number; deal_type: string }[];
   const allAssigned = allAssignedData.data ?? [];
+  const callNotes   = (callNotesData.data ?? []) as unknown as { call_outcome: string | null }[];
 
   // totalLeads: cohort count — leads created in the selected period
   const totalLeads = leads.length;
@@ -553,12 +572,15 @@ export async function getAgentDetailMetrics(
     ([status, count]) => ({ status, count }),
   );
 
-  // Call outcome breakdown — latest outcome per lead (last_call_outcome column),
-  // across all assigned leads. Groups by current outcome state, not historical notes.
+  // Call outcome breakdown — one row per logged call (lead_notes with a
+  // call_outcome) in the period, grouped by outcome. Counts CALL EVENTS, not
+  // leads: a lead called five times contributes five outcomes. Matches
+  // get_agent_performance.outcomes (the agent self-view) and the Recent-calls
+  // drill modal, which read the same lead_notes source.
   type CO = import("@/lib/types/database").CallOutcome;
   const countMap: Partial<Record<CO, number>> = {};
-  for (const row of allAssigned) {
-    const outcome = row.last_call_outcome as CO | null;
+  for (const row of callNotes) {
+    const outcome = row.call_outcome as CO | null;
     if (!outcome) continue;
     countMap[outcome] = (countMap[outcome] ?? 0) + 1;
   }

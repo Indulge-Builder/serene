@@ -553,11 +553,12 @@ export async function fireSlaBreachHandler(
     // ─ Notify agent ───────────────────────────────────────────────────────
     if (sendInApp) {
       await createNotification({
-        recipient_id: assignedTo,
-        type:         'sla_breach_agent',
-        title:        `SLA breach — ${leadName}`,
-        body:         ruleDesc,
-        action_url:   `/leads/${leadId}`,
+        recipient_id:    assignedTo,
+        type:            'sla_breach_agent',
+        notificationKey: 'sla_breach',  // SEAM A — per-user control plane (0133)
+        title:           `SLA breach — ${leadName}`,
+        body:            ruleDesc,
+        action_url:      `/leads/${leadId}`,
       }).catch(() => {}); // fire-and-forget, non-fatal
     }
 
@@ -632,11 +633,12 @@ export async function fireSlaBreachHandler(
       await Promise.allSettled(
         recipientIds.map((recipientId) =>
           createNotification({
-            recipient_id: recipientId,
-            type:         isFounderRule ? 'sla_breach_founder' : 'sla_breach_manager',
-            title:        `SLA escalation — ${leadName}`,
-            body:         ruleDesc,
-            action_url:   `/leads/${leadId}`,
+            recipient_id:    recipientId,
+            type:            isFounderRule ? 'sla_breach_founder' : 'sla_breach_manager',
+            notificationKey: 'sla_escalation',  // SEAM A — per-user control plane (0133)
+            title:           `SLA escalation — ${leadName}`,
+            body:            ruleDesc,
+            action_url:      `/leads/${leadId}`,
           }),
         ),
       );

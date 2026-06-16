@@ -27,7 +27,11 @@ import {
   type ElayaWriteToolName,
   type WriteToolContext,
 } from '@/lib/elaya/tools/write-registry';
-import { getLeadsByRole, getLeadBySlug, getLeadNotesFull } from '@/lib/services/leads-service';
+import {
+  searchLeadsForElaya,
+  getLeadBySlugForElaya,
+  getLeadNotesFullForElaya,
+} from '@/lib/services/leads-service';
 import { getDealsByRole } from '@/lib/services/deals-service';
 import { getGiaTasksForUser, getPersonalTasks, getGroupTasks } from '@/lib/services/tasks-service';
 import {
@@ -108,7 +112,7 @@ const searchLeads: ElayaTool = {
         items: { type: 'string', enum: [...LEAD_STATUSES] },
         description: 'Filter by lead statuses',
       },
-      page: { type: 'integer', minimum: 1, description: 'Page number (15 per page)' },
+      page: { type: 'integer', minimum: 1, description: 'Page number (30 per page)' },
     },
     additionalProperties: false,
   },
@@ -116,20 +120,20 @@ const searchLeads: ElayaTool = {
     const { search, statuses, page } = input as {
       search?: string; statuses?: LeadStatus[]; page?: number;
     };
-    // Identity args are principal-derived — getLeadsByRole enforces the role
-    // constraint unconditionally (agents cannot widen scope via filters).
-    const result = await getLeadsByRole(principal.role, principal.userId, principal.domain, {
-      status: statuses ?? null,
-      last_call_outcome: null,
-      domain: null,
-      agent_id: null,
-      source: null,
-      campaign: null,
-      date_from: null,
-      date_to: null,
-      search: search ?? null,
+    // A 1-2 char search degrades the pg_trgm path (the GIN index needs ≥3 chars to
+    // be selective) and matches half the table — treat it as no search rather than
+    // run the degraded scan. The model should send a fuller name fragment.
+    const term = search && search.trim().length >= 3 ? search.trim() : null;
+    // Identity args are principal-derived — searchLeadsForElaya enforces the role
+    // constraint UNCONDITIONALLY in code (agents see only own assigned leads;
+    // managers only their domain), so it works in the sessionless WhatsApp context
+    // where the cookie-based session client would return zero rows. The model
+    // supplies filter values only, never identity.
+    const result = await searchLeadsForElaya(principal.role, principal.userId, principal.domain, {
+      search: term,
+      statuses: statuses ?? null,
       page: page ?? 1,
-      pageSize: 15,
+      pageSize: 30,
     });
     return {
       totalCount: result.totalCount,
@@ -165,12 +169,15 @@ const getLeadDetails: ElayaTool = {
   },
   run: async (principal, input) => {
     const { slug } = input as { slug: string };
-    const lead = await getLeadBySlug(slug);
+    // Admin-client read (works in the sessionless WhatsApp context); the
+    // canAccessLead gate below is the per-resource trust boundary — it re-checks
+    // role/domain/assignment on the principal, so the broad read is safe.
+    const lead = await getLeadBySlugForElaya(slug);
     if (!lead || !canAccessLead(principal, lead)) {
       // One message for both not-found and not-permitted (S-09 principle).
       return { error: 'Lead not found or you are not permitted to view it.' };
     }
-    const notes = await getLeadNotesFull(lead.id);
+    const notes = await getLeadNotesFullForElaya(lead.id);
     return {
       lead: {
         name: [lead.first_name, lead.last_name].filter(Boolean).join(' '),
@@ -237,7 +244,10 @@ const getMyTasks: ElayaTool = {
         dueAt: t.due_at,
         tags: t.tags,
       })),
-      groupTasks: groups.map((g) => ({
+      // Cap group tasks like followUps (25) and personalTasks (20) already are —
+      // an unbounded list would be the one collection that could blow the 12k
+      // result ceiling and get blunt-truncated mid-JSON as group workspaces grow.
+      groupTasks: groups.slice(0, 25).map((g) => ({
         groupId: g.id,
         title: g.title,
         status: g.status,
@@ -329,7 +339,20 @@ const getPerformanceSnapshot: ElayaTool = {
     // honoured for admin/founder only (null = all domains).
     const domainArg = principal.role === 'manager' ? principal.domain : null;
     const roster = await getAgentRosterPerformance(domainArg, range.from, range.to);
-    return { view: 'roster', period, agents: roster };
+    // Graceful top-N cap, NOT blunt 12k-char string truncation. The roster is
+    // sorted top-performer-first, so a raw truncation would drop the LAGGARDS —
+    // exactly the rows a "who is behind" question needs. Cap with intent and
+    // tell the model how many were omitted so coverage questions stay answerable.
+    const ROSTER_CAP = 40;
+    const shown = roster.slice(0, ROSTER_CAP);
+    return {
+      view: 'roster',
+      period,
+      agents: shown,
+      ...(roster.length > ROSTER_CAP
+        ? { note: `Showing ${ROSTER_CAP} of ${roster.length} agents. Ask to narrow by domain or period for the rest.` }
+        : {}),
+    };
   },
 };
 

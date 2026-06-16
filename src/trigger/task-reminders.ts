@@ -70,6 +70,7 @@ export const sendTaskReminderTask = task({
     await createNotification({
       recipient_id: payload.assignedTo,
       type: "task_due",
+      notificationKey: "task_due",  // SEAM A — per-user control plane (0133)
       title: "Task due now",
       body: "A task assigned to you is due.",
       action_url: `/tasks`,
@@ -206,6 +207,7 @@ export const checkTaskOverdueTask = task({
           createNotification({
             recipient_id: managerId,
             type: "task_overdue_manager",
+            notificationKey: "task_overdue_manager",  // SEAM A — per-user control plane (0133)
             title: `Task overdue — ${leadName}`,
             body: `${agentName}'s task "${ctx.task.title}" was due at ${dueTimeIst} IST with no activity since.`,
             action_url: `/leads/`,

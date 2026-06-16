@@ -6,7 +6,22 @@
 | ---- | ---- |
 | `NotificationBell.tsx` | Bell icon + unread dot. Owns open/close state. Wraps panel. |
 | `NotificationPanel.tsx` | Dropdown panel. Header + scrollable list. Empty state. |
-| `NotificationItem.tsx` | Single row. Unread dot. Icon. Title/body/timestamp. |
+| `NotificationItem.tsx` | Single row. Icon. Title/body/timestamp. One uniform style (no unread dot / read pill — the list is unread-only). |
+
+## Unread-only display contract (2026-06-17)
+
+**The bell shows UNREAD notifications only.** Opening a notification marks it read (optimistic),
+which drops it from the displayed list — it "goes away" once actioned. There is **no lingering
+read-history row** and **no read/unread visual split** in the panel; every shown row is unread and
+renders identically. `markAllRead` empties the list. Never reintroduce a dimmed-read row, an unread
+dot, or a per-item "pill" treatment — those existed when the panel showed read + unread together
+and were removed when the list became unread-only.
+
+The hook keeps the **full** set (read + unread) internally as `allNotifications` purely so a failed
+`markRead`/`markAllRead` can roll an item back into view; it exposes `notifications` as the unread
+slice (`read_at === null`) and `unreadCount` as that slice's length. The `read_at` write still
+persists server-side (`markNotificationRead`) — read state is real, the panel just doesn't surface
+read rows.
 
 ## Hook
 
@@ -15,11 +30,12 @@
 ```typescript
 const { notifications, unreadCount, markRead, markAllRead, isLoading } =
   useNotifications({ userId, initialData });
+// `notifications` is the UNREAD slice; `unreadCount === notifications.length`.
 ```
 
-- Initial data seeded from a server-fetched prop. **Streaming contract (perf A-2, 2026-06-11):** the layout starts `getNotifications(profile.id)` WITHOUT awaiting and passes the promise to `Sidebar` as `notificationsPromise`; `Sidebar` unwraps it with React `use()` inside a `<Suspense>` boundary (`SeededNotificationBell`, static same-size `BellFallback`). Never re-add a blocking `await getNotifications` to the layout — it stalls every navigation's TTFB for a bell seed. `getNotifications` must keep returning `[]` on error (never reject) — a rejected promise would throw from `use()`.
+- Initial data seeded from a server-fetched prop. **Streaming contract (perf A-2, 2026-06-11):** the layout starts `getNotifications(profile.id)` WITHOUT awaiting and passes the promise to `Sidebar` as `notificationsPromise`; `Sidebar` unwraps it with React `use()` inside a `<Suspense>` boundary (`SeededNotificationBell`, static same-size `BellFallback`). Never re-add a blocking `await getNotifications` to the layout — it stalls every navigation's TTFB for a bell seed. `getNotifications` must keep returning `[]` on error (never reject) — a rejected promise would throw from `use()`. (The seed may include read rows; the hook filters them out — so no seed wiring needs to switch to `getUnreadNotifications`.)
 - Realtime subscription via Supabase `postgres_changes` — filtered strictly at channel level by `recipient_id=eq.${userId}`. Not filtered in JS after the event — filtering in JS leaks data.
-- Optimistic updates for `markRead` and `markAllRead` — rollback on error.
+- Optimistic updates for `markRead` and `markAllRead` operate on the full `allNotifications` array (mutate by id) — rollback on error restores the item, which re-enters the unread slice.
 - Subscribe on mount, unsubscribe on unmount.
 
 ## State ownership rule
@@ -69,15 +85,12 @@ Never move the filter into the JS handler. It must be on the channel to prevent 
 
 ### NotificationItem
 
-- Unread: `background: --theme-paper-subtle`, `box-shadow: --shadow-1`, `border-radius: --radius-md`.
-- Read: `background: transparent`, no shadow. Hover adds `--theme-paper-subtle` via inline event handlers.
-- **`box-shadow` is never animated** — it is set via CSS class/style swap only. Animating it causes paint on every frame.
-- Unread dot: 6px `--theme-accent`, `opacity: 1` when unread, `opacity: 0` when read. Always in DOM.
+- **One uniform row (unread-only list, 2026-06-17):** `background: transparent` at rest, `--theme-paper-subtle` on hover (inline event handlers). **No unread dot, no per-item `--shadow-1` / `--radius-md` "pill", no `isUnread` branch** — every shown item is unread (see "Unread-only display contract" above). The old read/unread split was removed when the panel stopped showing read rows.
 - Icon container: 28px, `--theme-accent-surface` bg, `--radius-sm`. Icon: `--theme-accent` (default), warning/danger overrides for SLA types.
-- Title: `--text-sm`, `--weight-medium` (unread) / `--weight-normal` (read), `--theme-text-primary`.
+- Title: `--text-sm`, `--weight-medium`, `--theme-text-primary`.
 - Body: `--text-xs`, `--leading-relaxed`, two-line clamp.
 - Timestamp: `--text-2xs`, `--font-mono`, `--theme-text-tertiary`.
-- Tap: `whileTap scale 0.98` spring. Optimistic mark-read fires before `router.push`.
+- Tap: `whileTap scale 0.98` spring. Optimistic mark-read fires before `router.push` — and (unread-only list) immediately drops the row from view.
 - `willChange` is NOT set statically. Only Framer applies it during active transition.
 
 ## Notification types and their icons
@@ -94,6 +107,7 @@ Never move the filter into the JS handler. It must be on the channel to prevent 
 | `sla_breach_manager` | `AlertTriangle` |
 | `sla_breach_founder` | `AlertTriangle` (SLA-01C — new lead untouched 45 min) |
 | `task_overdue_manager` | `AlertTriangle` (gia task due +30 min, no clearing event) |
+| `suggestion_resolved` | `MessageSquarePlus` (suggestion / bug report marked resolved → sender notified) |
 
 ## Notification sound
 

@@ -9,7 +9,7 @@ export function EmptyConversationState() {
       icon={MessageCircle}
       title="Select a conversation."
       description="Choose from the list to view the full thread."
-      style={{ height: "100%" }}
+      style={{ flex: 1, minHeight: 0 }}
     />
   );
 }

@@ -42,7 +42,7 @@ navigation.
 
 **Sort order toggle** lives in `LeadsTable.tsx` toolbar (right cluster), immediately left of the Columns button — not in `LeadsFilters`. Cycles `'desc' → 'asc' → 'desc'` on click; commits immediately to the URL via `buildFilterParams` (resets `page`). Labels: "Newest first" (default, `desc`) / "Oldest first" (`asc`). `sort_order=asc` is the only value written to the URL; default `desc` omits the param. `clearAll()` in `LeadsFilters` pushes bare `pathname`, which also clears `sort_order`.
 
-**Going Cold chip** lives in `LeadsTable.tsx` toolbar (left cluster, first control) — not in `LeadsFilters`. Immediate-commit via `buildFilterParams`; on activate clears `status` + `outcome` from URL. `activeCount` in `LeadsFilters` still counts `going_cold=true`.
+**Going Cold chip** lives in `LeadsTable.tsx` toolbar (left cluster — first control, or just right of the manager view switcher when that's shown) — not in `LeadsFilters`. Immediate-commit via `buildFilterParams`; on activate clears `status` + `outcome` from URL. `activeCount` in `LeadsFilters` still counts `going_cold=true`.
 
 **Shell composition:** the bar chrome (icon, search, divider, Range trigger + panel, Clear) is `<FilterBar>` from `src/components/ui/FilterBar.tsx` with `layout="scroll"`, `showCountBadge={false}`, `dateRange.trigger="chevron"`. This file owns only the six `FilterDropdown`s + their commit wiring.
 

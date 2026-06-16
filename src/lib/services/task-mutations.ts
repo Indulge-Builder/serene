@@ -160,6 +160,7 @@ export async function createPersonalTaskCore(
     createNotification({
       recipient_id: resolvedAssignedTo,
       type: "task_assigned",
+      notificationKey: "task_assigned",  // SEAM A — per-user control plane (0133)
       title: `New task: ${input.title}`,
       body: `Assigned to you by ${actor.fullName}`,
       action_url: `/tasks`,
@@ -330,6 +331,7 @@ export async function createSubtaskCore(
     createNotification({
       recipient_id: input.assignedTo,
       type: "task_assigned",
+      notificationKey: "task_assigned",  // SEAM A — per-user control plane (0133)
       title: `New task: ${input.title}`,
       body: `Assigned to you by ${actor.fullName}`,
       action_url: `/tasks`,

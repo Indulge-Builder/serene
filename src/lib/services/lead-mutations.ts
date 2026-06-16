@@ -300,6 +300,7 @@ export async function updateLeadStatusCore(
           createNotification({
             recipient_id: m.id,
             type: "lead_won",
+            notificationKey: "lead_won",  // SEAM A — per-user control plane (0133)
             title: `Lead won — ${displayName}`,
             body: `Marked won by ${actor.fullName}`,
             action_url: `/leads/${input.leadId}`,

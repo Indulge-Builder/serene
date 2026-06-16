@@ -278,13 +278,17 @@ export function ConversationPanel({
       style={{
         display:       "flex",
         flexDirection: "column",
-        height:        "100%",
+        flex:          1,
+        minHeight:     0,
         overflow:      "hidden",
       }}
     >
-      {/* ZONE A — Header */}
+      {/* ZONE A — Header. In single-pane mobile mode (onBack present) the
+          floating nav hamburger overlays the top-left, so the header takes the
+          same mobile top offset the rail does (.serene-wa-pane-header) to clear
+          the notch + sit on the trigger's line. */}
       <div
-        className="px-4 py-4 md:px-8 md:pt-8 md:pb-5"
+        className={`px-4 py-4 md:px-8 md:pt-8 md:pb-5${onBack ? " serene-wa-pane-header" : ""}`}
         style={{
           display:        "flex",
           alignItems:     "center",

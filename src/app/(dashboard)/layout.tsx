@@ -12,6 +12,7 @@ import { IconInitializer } from "@/components/layout/IconInitializer";
 import { ToastProvider } from "@/components/ui/toast-provider";
 import { ElayaWidget } from "@/components/elaya/ElayaWidget";
 import { UsagePresence } from "@/components/layout/UsagePresence";
+import { SuggestionFeedbackProvider } from "@/components/suggestions/SuggestionFeedbackProvider";
 
 export default async function DashboardLayout({
   children,
@@ -50,7 +51,11 @@ export default async function DashboardLayout({
       <IconInitializer icon={safeIcon} />
     {/* Responsive frame (.serene-shell* in globals.css — audit D-3): row with
         gutter+paper on md+, column with mobile top strip + full-bleed paper
-        below md. The Sidebar renders its own three modes (full/rail/drawer). */}
+        below md. The Sidebar renders its own three modes (full/rail/drawer).
+        The SuggestionFeedbackProvider wraps the whole shell so the Sidebar
+        "Send feedback" button AND the mobile Elaya-card trigger share one
+        composer instance (mounted once inside the provider). */}
+    <SuggestionFeedbackProvider userId={profile.id}>
     <div className="layout-shell serene-shell">
       <Sidebar profile={profile} notificationsPromise={notificationsPromise} />
 
@@ -77,6 +82,7 @@ export default async function DashboardLayout({
         </div>
       </div>
     </div>
+    </SuggestionFeedbackProvider>
     </>
   );
 }

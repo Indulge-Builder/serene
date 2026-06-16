@@ -1,13 +1,17 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import {
   getDashboardSummary,
   getLeadVolumeByRange,
   getLeadVolumeByDomains,
+  getLeadVolumeForDomain,
+  getAgentRecentActivity,
 } from "@/lib/services/dashboard-service";
 import { getBudgetSummary, filterBudgetRowsByDomain } from "@/lib/services/ad-spend-service";
 import { getNotifications } from "@/lib/services/notifications-service";
 import { GIA_DOMAINS } from "@/lib/constants/domains";
+import { resolveDomainParam } from "@/lib/utils/domain-scope";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { DashboardCanvas } from "@/components/dashboard/DashboardCanvas";
 import { pickDashboardGreeting } from "@/lib/constants/dashboard-greetings";
@@ -55,6 +59,14 @@ export default async function DashboardPage({
   const domain = profile.domain as AppDomain;
   const isManager = role === "manager";
 
+  // ── Global domain scope (admin/founder) ────────────────────────────────────
+  // The SAME serene-domain param/cookie the list pages read — one selector, one
+  // resolver (domain-scope.ts). Admin/founder → the chosen Gia domain or null
+  // ("All domains" → org-wide aggregate). Manager/agent → always null (the
+  // service pins managers to their own domain regardless). Sourcing the seed
+  // scope from here is what unifies the dashboard onto the global selector.
+  const scopeDomain = resolveDomainParam(sp, await cookies(), role);
+
   // Agents never use the date filter (their widgets ignore it).
   // For agents, skip date range resolution for the RPC (pass null).
   const rpcDateRange = role === 'agent' ? undefined : dateRange;
@@ -66,19 +78,41 @@ export default async function DashboardPage({
 
   const isManagerPlus = role === "manager" || role === "admin" || role === "founder";
 
+  // Admin/founder seed scope: the chosen Gia domain, or undefined for the
+  // org-wide "All domains" aggregate (replaces the old hardcoded 'onboarding').
+  const adminFounderScope: AppDomain | undefined = scopeDomain ?? undefined;
+
+  // Admin/founder volume seed split by shape (each key has a distinct type):
+  //   scoped domain → single-line LeadVolumeSummary (lead_volume)
+  //   "All domains" → MultiDomainVolumeSummary       (lead_volume_multi)
+  const adminFounderSingleVolume = isManagerPlus && !isManager && scopeDomain;
+  const adminFounderMultiVolume  = isManagerPlus && !isManager && !scopeDomain;
+
   try {
-    const [rpcData, managerVolume, multiVolume, budgetRows] = await Promise.all([
+    const [rpcData, recentLeads, managerVolume, adminSingleVolume, adminMultiVolume, budgetRows] = await Promise.all([
       getDashboardSummary(
         role,
         domain,
         profile.id,
-        isManager ? undefined : ("onboarding" as AppDomain),
+        isManager ? undefined : adminFounderScope,
         rpcDateRange,
       ),
+      // Recent-leads rollup seed (migration 0132). Always seeded from the
+      // dedicated lead-rollup RPC — NOT from get_dashboard_summary's
+      // agent_activity CTE (that is still the old event shape and would not
+      // match the lead card). Default 'team' scope; admin/founder pass the
+      // global scopeDomain (null = all-org), managers are pinned in SQL.
+      getAgentRecentActivity(profile.id, role, domain, scopeDomain ?? undefined, 'team'),
+      // Manager volume — single line, pinned to the manager's own domain.
       isManager
         ? getLeadVolumeByRange(role, domain, dateRange)
         : Promise.resolve(null),
-      isManagerPlus && !isManager
+      // Admin/founder single-domain volume — only when a domain is scoped.
+      adminFounderSingleVolume
+        ? getLeadVolumeForDomain(scopeDomain, dateRange)
+        : Promise.resolve(null),
+      // Admin/founder multi-domain volume — the "All domains" aggregate.
+      adminFounderMultiVolume
         ? getLeadVolumeByDomains([...GIA_DOMAINS], dateRange)
         : Promise.resolve(null),
       // Budget widget seed (manager+ only) — date-filtered like campaigns;
@@ -87,19 +121,31 @@ export default async function DashboardPage({
         ? getBudgetSummary(dateRange.from, dateRange.to)
         : Promise.resolve(null),
     ]);
+    // Budget pre-filter: managers → own domain; admin/founder → the scoped
+    // domain (or full rows for the all-domains view). Mirrors the manager pin.
+    const budgetFilterDomain: AppDomain | null = isManager
+      ? domain
+      : (scopeDomain ?? null);
     initialData = {
       ...rpcData,
       agent_tasks:       rpcData.agent_tasks    ?? [],
-      agent_activity:    rpcData.agent_activity ?? [],
+      // Recent-leads rollup (migration 0132 — lead cards, not the RPC's old
+      // event-stream agent_activity CTE). Always the dedicated rollup result.
+      agent_activity:    recentLeads ?? [],
       campaigns:         rpcData.campaigns      ?? [],
-      lead_volume:       managerVolume,
-      lead_volume_multi: multiVolume,
-      budget_summary:    budgetRows && isManager
-        ? filterBudgetRowsByDomain(budgetRows, domain)
+      // Manager → own single-domain seed; admin/founder scoped → single seed.
+      lead_volume:       isManager ? managerVolume : adminSingleVolume,
+      lead_volume_multi: adminMultiVolume,
+      budget_summary:    budgetRows && budgetFilterDomain
+        ? filterBudgetRowsByDomain(budgetRows, budgetFilterDomain)
         : budgetRows,
     };
   } catch (e) {
-    console.error("[dashboard/page] RPC failed, rendering with empty initial data:", e);
+    console.error(
+      "[dashboard/page] RPC failed, rendering with empty initial data:",
+      e instanceof Error ? e.message : JSON.stringify(e),
+      e,
+    );
     initialData = {
       agent_tasks:    [],
       agent_activity: [],
@@ -122,6 +168,7 @@ export default async function DashboardPage({
         userId={profile.id}
         role={profile.role}
         domain={profile.domain}
+        scopeDomain={scopeDomain}
         initialData={initialData}
         activePreset={activePreset}
         fromParam={fromParam}

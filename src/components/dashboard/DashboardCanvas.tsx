@@ -27,6 +27,7 @@ import { DashboardDateFilter } from './DashboardDateFilter';
 import { PageControls } from '@/components/layout/PageControls';
 import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import type { DatePreset, DateRange } from '@/lib/utils/date-range';
+import type { GiaDomain } from '@/lib/constants/domains';
 import type { Notification } from '@/lib/types/database';
 
 /*
@@ -85,6 +86,7 @@ function SortableWidget({
   firstName,
   initialData,
   dateRange,
+  scopeDomain,
 }: SortableWidgetProps) {
   const {
     attributes,
@@ -144,6 +146,7 @@ function SortableWidget({
         firstName={firstName}
         initialData={initialData}
         dateRange={dateRange}
+        scopeDomain={scopeDomain}
       />
     </div>
   );
@@ -165,6 +168,7 @@ export function DashboardCanvas({
   userId,
   role,
   domain,
+  scopeDomain,
   initialData,
   greeting,
   firstName,
@@ -174,6 +178,7 @@ export function DashboardCanvas({
   dateRange,
   notificationsPromise,
 }: DashboardCanvasProps) {
+  const isPrivileged = role === 'admin' || role === 'founder';
   const { layout, removeWidget, resizePlacement, reorderWidgets, resetToDefaults } =
     useDashboardLayout(userId, role);
   const [editMode, setEditMode] = useState(false);
@@ -233,13 +238,15 @@ export function DashboardCanvas({
             />
           )}
 
-          {/* Notification bell (TOP_BAR_ENABLED) — dashboard has no standard
-              server title row, so it rides the canvas header cluster. Bell-only
-              (no domain selector — dashboard scopes via widget mode, not ?domain=). */}
+          {/* Notification bell + global domain selector (TOP_BAR_ENABLED) —
+              dashboard has no standard server title row, so they ride the canvas
+              header cluster. admin/founder get the SAME serene-domain selector
+              the list pages use: a pick writes ?domain= (+ cookie), the page RSC
+              re-seeds every cohort widget for that scope (no per-widget tabs). */}
           {TOP_BAR_ENABLED && notificationsPromise && (
             <PageControls
               userId={userId}
-              isPrivileged={false}
+              isPrivileged={isPrivileged}
               notificationsPromise={notificationsPromise}
             />
           )}
@@ -323,6 +330,7 @@ export function DashboardCanvas({
                 firstName={firstName}
                 initialData={initialData}
                 dateRange={dateRange}
+                scopeDomain={scopeDomain}
               />
             ))}
           </div>

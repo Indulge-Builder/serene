@@ -89,10 +89,23 @@ export const anthropicAdapter: LlmProviderAdapter = {
   name: 'anthropic',
 
   async complete(req: LlmCompleteRequest): Promise<LlmCompleteResult> {
+    // Prompt caching (perf): render order is tools → system → messages. One
+    // cache_control breakpoint on the LAST system block caches tools + system
+    // together (the stable prefix), so calls 2..n of a multi-tool turn read it
+    // at ~0.1x instead of re-billing the full ~3-4k-token prefix every call.
+    // A breakpoint below the model's minimum prefix simply doesn't cache — no
+    // error, no behaviour change. The caller (brain) sets cachePrefix only when
+    // the prefix is byte-stable across the turn (volatile timestamp lives in a
+    // trailing message block, never in `system`).
+    const system: Anthropic.MessageCreateParams['system'] =
+      req.cachePrefix && req.system.length > 0
+        ? [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }]
+        : req.system;
+
     const stream = getClient().messages.stream({
       model: req.model,
       max_tokens: req.maxTokens,
-      system: req.system,
+      system,
       messages: toAnthropicMessages(req.messages),
       ...(req.tools && req.tools.length > 0
         ? {

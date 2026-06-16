@@ -720,6 +720,115 @@ export async function getLeadActivitiesFull(
 }
 
 // ─────────────────────────────────────────────
+// Elaya read path — principal-scoped, ADMIN-CLIENT reads (sessionless contexts)
+//
+// Why these exist: the Elaya WhatsApp staff channel runs in the webhook's
+// after() with NO cookie/session. getLeadsByRole / getLeadBySlug / getLeadNotesFull
+// call createClient() (cookie-based) — RLS then returns ZERO rows, and Elaya tells
+// the staff member their leads are "not in the database" (the bug that prompted
+// this). These functions read via the ADMIN client so they work in any context,
+// and replicate EXACTLY the role/domain/assigned_to scoping that getLeadsByRole
+// enforces in code (the sanctioned Q-13 trust-boundary pattern: RLS bypass requires
+// explicit, principal-derived code-side scoping). The CALLER (Elaya read tool) is
+// the trust boundary — it always passes role/userId/domain derived from the VERIFIED
+// principal, never model output. Per-resource access stays the tool's canAccessLead
+// gate. Counts are derived from the page (the self-scoped get_leads_status_counts
+// RPC reads auth.uid() and returns zeros under the admin client — never call it here).
+// ─────────────────────────────────────────────
+
+/**
+ * Elaya search_leads source — the same column subset + assignee join as
+ * getLeadsByRole, scoped in code, read via the admin client so it works in the
+ * sessionless WhatsApp context. statusCounts are derived from the returned page
+ * (NOT the self-scoped RPC). NOT Redis-cached: the list keys embed a session-
+ * scoped shape, and this path is low-volume.
+ */
+export async function searchLeadsForElaya(
+  role: UserRole,
+  userId: string,
+  domain: AppDomain,
+  opts: { search: string | null; statuses: LeadStatus[] | null; page: number; pageSize: number },
+): Promise<LeadsResult> {
+  const admin = createAdminClient();
+  const page = Math.max(1, opts.page);
+  const pageSize = Math.max(1, Math.min(50, opts.pageSize));
+  const offset = (page - 1) * pageSize;
+
+  let query = admin
+    .from("leads")
+    .select(
+      `id, slug, first_name, last_name, phone, email, domain, assigned_to,
+       status, lead_intent, source, medium, utm_campaign,
+       call_count, last_call_outcome, created_at,
+       assignee:profiles!leads_assigned_to_fkey(full_name)`,
+    )
+    .is("archived_at", null)
+    .order("created_at", { ascending: false });
+
+  // Hard role scope — RLS-equivalent, code-enforced (the trust boundary).
+  // Mirrors getLeadsByRole exactly: agent → own assigned leads; manager → own
+  // domain; admin/founder → no pre-constraint. Never weaken this.
+  if (role === "agent") {
+    query = query.eq("assigned_to", userId);
+  } else if (role === "manager") {
+    query = query.eq("domain", domain);
+  }
+
+  if (opts.statuses && opts.statuses.length > 0) {
+    query = query.in("status", opts.statuses);
+  }
+  if (opts.search) {
+    query = query.filter("search_text", "ilike", `%${opts.search.trim().toLowerCase()}%`);
+  }
+  query = query.range(offset, offset + pageSize - 1);
+
+  const { data, error } = await query;
+  if (error || !data) return { leads: [], totalCount: 0, statusCounts: {} };
+
+  const leads = data as unknown as LeadListItemWithAssignee[];
+  // Counts derived from the returned page (sessionless RPC would return zeros).
+  const statusCounts: Partial<Record<LeadStatus, number>> = {};
+  for (const l of leads) {
+    statusCounts[l.status] = (statusCounts[l.status] ?? 0) + 1;
+  }
+  return { leads, totalCount: leads.length, statusCounts };
+}
+
+/**
+ * Elaya get_lead_details source — one lead by slug, via the admin client (works
+ * sessionless). The CALLER must still run canAccessLead on the result before
+ * surfacing it (this returns the row for ANY slug — scoping is the tool's gate,
+ * exactly as with the session getLeadBySlug + the existing canAccessLead check).
+ */
+export async function getLeadBySlugForElaya(slug: string): Promise<LeadWithAssignee | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("leads")
+    .select("*, assignee:profiles!leads_assigned_to_fkey(full_name)")
+    .eq("slug", slug)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as unknown as LeadWithAssignee;
+}
+
+/**
+ * Elaya note-history source — the 5-most-recent notes for an already-access-
+ * checked lead, via the admin client (works sessionless). Caller gates access on
+ * the lead FIRST (canAccessLead), so scoping is by the verified leadId.
+ */
+export async function getLeadNotesFullForElaya(leadId: string): Promise<LeadNoteWithAuthor[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("lead_notes")
+    .select("*, author:profiles!lead_notes_author_id_fkey(full_name)")
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data as LeadNoteWithAuthor[];
+}
+
+// ─────────────────────────────────────────────
 // Query: next pending task for a lead (Gia module) — single joined query
 //
 // Starts from `tasks` (native column filters: status, due_at), joins inward

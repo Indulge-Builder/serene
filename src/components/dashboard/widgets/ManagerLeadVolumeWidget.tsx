@@ -16,7 +16,6 @@ import {
   getLeadVolumeForDomainAction,
 } from "@/lib/actions/dashboard";
 import { formatCompact, formatCount } from "@/lib/utils/numbers";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/TabSelector";
 import { useChartTokens, resolveColorMap } from "@/components/ui/charts/useChartTokens";
 import type {
   LeadVolumeSummary,
@@ -29,14 +28,12 @@ import type {
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import { DOMAIN_LINE_COLORS } from "@/lib/constants/domain-colors";
 import type { WidgetProps } from "../DashboardWidgetSlot";
-import type { AppDomain } from "@/lib/types/database";
-import { DEFAULT_GIA_DOMAIN, DOMAIN_LABELS, GIA_DOMAINS } from "@/lib/constants/domains";
+import { DOMAIN_LABELS, GIA_DOMAINS } from "@/lib/constants/domains";
 import type { GiaDomain } from '@/lib/constants/domains';
 import type { DateRange } from "@/lib/utils/date-range";
 import { resolvePresetToRange } from "@/lib/utils/date-range";
 import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
 import { useWidgetData } from "@/hooks/useWidgetData";
-import type { WidgetDomainMode as DomainMode } from "@/lib/utils/widget-scope";
 
 // One state slot for both chart modes — exactly one side is non-null at a time.
 type VolumeView = {
@@ -121,51 +118,64 @@ export function ManagerLeadVolumeWidget({
   initialData,
   size = 'lg',
   dateRange: dateRangeProp,
+  scopeDomain,
 }: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
 
   const dateRange: DateRange = dateRangeProp ?? resolvePresetToRange('week');
 
-  const managerSeed = isManagerRole
+  // Single-line mode when a manager (own domain) OR admin/founder scoped to one
+  // domain; multi-line ("All domains") only for admin/founder with no scope.
+  const isMultiMode = !isManagerRole && scopeDomain == null;
+
+  // Single-line seed: the manager seed lands in lead_volume; an admin/founder
+  // scoped to one domain ALSO seeds lead_volume (page.tsx). Multi seed only
+  // exists for the all-domains view.
+  const singleSeed = !isMultiMode
     ? (initialData?.lead_volume as DashboardLeadVolumeSummary | null) ?? null
     : null;
-  const multiSeed = !isManagerRole
+  const multiSeed = isMultiMode
     ? (initialData?.lead_volume_multi as DashboardMultiDomainVolumeSummary | null) ?? null
     : null;
-  const seed: VolumeView | null = managerSeed
-    ? { single: managerSeed, multi: null }
+  const seed: VolumeView | null = singleSeed
+    ? { single: singleSeed, multi: null }
     : multiSeed
       ? { single: null, multi: multiSeed }
       : null;
 
-  const [domainMode, setDomainMode] = useState<DomainMode>("all");
   const { series: chartColors } = useChartTokens();
 
-  // The ONE fetcher — the "all" tab uses the multi-domain action (different
-  // return shape), domain tabs use the single-domain action.
+  // The ONE fetcher (refresh button) — multi action for "All domains" (different
+  // return shape), single-domain action when scoped to one domain.
   const loadVolume = useCallback(
-    async (mode: DomainMode): Promise<{ data: VolumeView | null }> => {
-      if (mode === "all") {
+    async (): Promise<{ data: VolumeView | null }> => {
+      if (isMultiMode) {
         const result = await getLeadVolumeByDomainsAction(dateRange.from, dateRange.to, [...GIA_DOMAINS]);
         return { data: result.data ? { single: null, multi: result.data } : null };
       }
-      const result = await getLeadVolumeForDomainAction(dateRange.from, dateRange.to, mode as AppDomain);
+      // scopeDomain may be null here only for managers; the server pins them to
+      // their own domain regardless of what is sent, so pass it through.
+      const result = await getLeadVolumeForDomainAction(
+        dateRange.from,
+        dateRange.to,
+        scopeDomain ?? GIA_DOMAINS[0],
+      );
       return { data: result.data ? { single: result.data, multi: null } : null };
     },
-    [dateRange.from, dateRange.to],
+    [dateRange.from, dateRange.to, isMultiMode, scopeDomain],
   );
 
-  const { data, loaded, isPending, refetch, apply } = useWidgetData<VolumeView>({
+  const { data, loaded, isPending, apply } = useWidgetData<VolumeView>({
     seed,
-    fetcher: () => loadVolume(domainMode),
-    // Manager + admin/founder "all" views are RSC-seeded; single-domain tabs are not.
-    autoFetch: !isManagerRole && domainMode !== "all",
-    deps: [dateRange.from, dateRange.to, domainMode],
+    fetcher: loadVolume,
+    // The RSC always seeds the current scope; no mount fetch ever needed.
+    autoFetch: false,
+    deps: [dateRange.from, dateRange.to, scopeDomain],
   });
   const singleData = data?.single ?? null;
   const multiData = data?.multi ?? null;
 
-  const applyManagerVolume = useCallback(
+  const applySingleVolume = useCallback(
     (next: LeadVolumeSummary) => apply({ single: next, multi: null }),
     [apply],
   );
@@ -175,17 +185,19 @@ export function ManagerLeadVolumeWidget({
     [apply],
   );
 
+  // Single-line sync when scoped (manager or admin/founder domain); multi when
+  // admin/founder on "All domains". The RSC reseeds on every domain pick.
   useDashboardCohortSync(
-    managerSeed,
+    singleSeed,
     dateRange,
-    isManagerRole,
-    applyManagerVolume,
+    !isMultiMode,
+    applySingleVolume,
   );
 
   useDashboardCohortSync(
     multiSeed,
     dateRange,
-    !isManagerRole && domainMode === "all",
+    isMultiMode,
     applyMultiVolume,
   );
 
@@ -202,13 +214,7 @@ export function ManagerLeadVolumeWidget({
     return () => observer.disconnect();
   }, []);
 
-  function handleDomainChange(mode: DomainMode) {
-    setDomainMode(mode);
-    refetch(() => loadVolume(mode));
-  }
-
   // Derived
-  const isMultiMode = !isManagerRole && domainMode === "all";
   const multiSeries = multiData?.series ?? [];
   const singleSeries = singleData?.series ?? [];
   const totalInRange = isMultiMode
@@ -219,12 +225,9 @@ export function ManagerLeadVolumeWidget({
   const PADDING   = 40;
   const HEADER    = 36;
   const GAP       = 16;
-  // domain row: borderTop 1px + paddingTop 12px + natural tab tray — same
-  // constant as ManagerCampaignWidget, which shares the row chrome.
-  const DOMAIN_ROW = isManagerRole ? 0 : 52 + GAP;
   const chartHeight = Math.max(
     120,
-    totalPx - PADDING - HEADER - GAP * 2 - DOMAIN_ROW,
+    totalPx - PADDING - HEADER - GAP * 2,
   );
 
   return (
@@ -452,40 +455,6 @@ export function ManagerLeadVolumeWidget({
           </ResponsiveContainer>
         )}
       </div>
-
-      {/* ── Domain picker — pinned to bottom, admin/founder only.
-          Campaign-widget pattern: natural-width triggers in the TabsList's own
-          horizontally scrollable tray — never flex:1-squeezed (clips labels <md). ── */}
-      {!isManagerRole && (
-        <div
-          style={{
-            paddingTop: "var(--space-3)",
-            borderTop:  "1px solid var(--theme-paper-border)",
-            flexShrink: 0,
-            minWidth:   0,
-          }}
-        >
-          <Tabs
-            value={domainMode}
-            onValueChange={(v) => handleDomainChange(v as DomainMode)}
-            variant="connected"
-            indicatorLayoutId="lead-volume-domain"
-            style={{
-              opacity: isPending ? 0.6 : 1,
-              pointerEvents: isPending ? "none" : undefined,
-            }}
-          >
-            <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
-              {GIA_DOMAINS.map((d) => (
-                <TabsTrigger key={d} value={d}>
-                  {DOMAIN_LABELS[d]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        </div>
-      )}
     </div>
   );
 }

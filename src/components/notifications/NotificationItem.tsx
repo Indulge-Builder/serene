@@ -2,14 +2,16 @@
 
 /**
  * NotificationItem — single row in the notification panel.
- * Unread: paper-subtle bg + shadow-1. Read: transparent, hover adds paper-subtle.
- * Box-shadow state is set via class swap only — never animated (paint cost).
- * Tap: whileTap scale 0.98 spring. Optimistic mark-read before navigation.
+ * The bell shows UNREAD only, so there is no read/unread visual split here:
+ * every row is one clean uniform line (transparent at rest, paper-subtle on
+ * hover) — no unread dot, no per-item card pill. Tap: whileTap scale 0.98
+ * spring. Optimistic mark-read fires before navigation, which drops the row
+ * from the list (it "goes away" once opened).
  */
 
 import { useRouter } from "next/navigation";
 import { m as motion } from "framer-motion";
-import { UserPlus, Trophy, Clock, CheckSquare, AtSign, Info, AlertTriangle } from "lucide-react";
+import { UserPlus, Trophy, Clock, CheckSquare, AtSign, Info, AlertTriangle, MessageSquarePlus } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils/dates";
 import { assertNever } from "@/lib/utils/assert-never";
 import type { Notification, NotificationType } from "@/lib/types/database";
@@ -40,6 +42,7 @@ function getTypeIcon(type: NotificationType): React.ElementType {
     case "sla_breach_manager":   return AlertTriangle;
     case "sla_breach_founder":   return AlertTriangle;
     case "task_overdue_manager": return AlertTriangle;
+    case "suggestion_resolved":  return MessageSquarePlus;
   }
   return assertNever(type);
 }
@@ -56,7 +59,6 @@ interface NotificationItemProps {
 
 export function NotificationItem({ notification, onMarkRead, onClose }: NotificationItemProps) {
   const router    = useRouter();
-  const isUnread  = notification.read_at === null;
   const Icon      = getTypeIcon(notification.type as NotificationType);
   const iconColor = getTypeIconColor(notification.type as NotificationType);
 
@@ -84,42 +86,21 @@ export function NotificationItem({ notification, onMarkRead, onClose }: Notifica
         gap:          "var(--space-3)",
         width:        "100%",
         padding:      "var(--space-3) var(--space-4)",
-        // Unread: paper-subtle + shadow-1. Read: transparent.
-        // box-shadow transition omitted intentionally — animating it causes paint on every frame.
-        background:   isUnread ? "var(--theme-paper-subtle)" : "transparent",
-        boxShadow:    isUnread ? "var(--shadow-1)"           : "none",
-        borderRadius: isUnread ? "var(--radius-md)"          : "0",
+        // One uniform row — every shown item is unread. Transparent at rest,
+        // paper-subtle on hover. No per-item pill chrome, no unread dot.
+        background:   "transparent",
         border:       "none",
         cursor:       "pointer",
         textAlign:    "left",
         transition:   "background var(--transition-hover)",
-        margin:       isUnread ? "0 var(--space-2)" : 0,
       }}
       onMouseEnter={(e) => {
-        if (!isUnread) {
-          (e.currentTarget as HTMLElement).style.background = "var(--theme-paper-subtle)";
-        }
+        (e.currentTarget as HTMLElement).style.background = "var(--theme-paper-subtle)";
       }}
       onMouseLeave={(e) => {
-        if (!isUnread) {
-          (e.currentTarget as HTMLElement).style.background = "transparent";
-        }
+        (e.currentTarget as HTMLElement).style.background = "transparent";
       }}
     >
-      {/* Unread dot — always in DOM, opacity-controlled for layout stability */}
-      <div
-        aria-hidden="true"
-        style={{
-          width:        "6px",
-          height:       "6px",
-          borderRadius: "var(--radius-full)",
-          background:   "var(--theme-accent)",
-          opacity:      isUnread ? 1 : 0,
-          flexShrink:   0,
-          marginTop:    "8px",
-        }}
-      />
-
       {/* Type icon container */}
       <div
         style={{
@@ -144,7 +125,7 @@ export function NotificationItem({ notification, onMarkRead, onClose }: Notifica
             margin:      0,
             fontFamily:  "var(--font-sans)",
             fontSize:    "var(--text-sm)",
-            fontWeight:  isUnread ? "var(--weight-medium)" : "var(--weight-normal)",
+            fontWeight:  "var(--weight-medium)",
             color:       "var(--theme-text-primary)",
             lineHeight:  "var(--leading-snug)",
           }}

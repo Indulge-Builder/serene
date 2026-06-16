@@ -24,8 +24,10 @@ import {
   AlertTriangle,
   Sparkles,
   Activity,
+  MessageSquarePlus,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
+import { useSuggestionFeedback } from "@/components/suggestions/SuggestionFeedbackProvider";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { canAccessRoute } from "@/lib/utils/route-access";
@@ -80,6 +82,7 @@ function getConfigurationNav(isPrivileged: boolean): NavItem[] {
 const ADMIN_NAV: NavItem[] = [
   { href: "/admin/users", label: "User Management", icon: Shield },
   { href: "/admin/usage", label: "Usage", icon: Activity },
+  { href: "/admin/suggestions", label: "Suggestions", icon: MessageSquarePlus },
 ];
 
 // Primary nav pages where the floating mobile drawer trigger renders.
@@ -92,6 +95,7 @@ const MOBILE_TRIGGER_PATHS = new Set<string>([
   "/settings",
   "/admin/users",
   "/admin/usage",
+  "/admin/suggestions",
   "/profile",
 ]);
 
@@ -265,6 +269,7 @@ type SidebarProps = {
 
 export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
   const pathname = usePathname();
+  const { openComposer } = useSuggestionFeedback();
   const isPrivileged = profile.role === "admin" || profile.role === "founder";
   const isManager = profile.role === "manager" || isPrivileged;
   const isOnProfile = pathname === "/profile";
@@ -474,12 +479,54 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
 
       {/* ── Footer ──────────────────────────────────── */}
       <div style={{ padding: "var(--space-3) var(--space-3) var(--space-5)" }}>
+        {/* Send feedback — opens the shared suggestion / bug-report composer
+            (all roles). A button, not a nav link: it opens a modal, no route.
+            Closes the mobile drawer first so the composer isn't hidden behind it.
+            Styled like a nav link; on the md icon rail only the icon shows. */}
+        <button
+          type="button"
+          className="serene-nav-link serene-pressable"
+          title="Send feedback"
+          onClick={() => {
+            setDrawerOpen(false);
+            openComposer();
+          }}
+          style={{
+            width: "100%",
+            color: "var(--theme-sidebar-text)",
+            background: "transparent",
+            border: "1px solid transparent",
+            fontFamily: "var(--font-sans)",
+            fontSize: "var(--text-sm)",
+            fontWeight: "var(--weight-normal)",
+            letterSpacing: "var(--tracking-wide)",
+            cursor: "pointer",
+            transition:
+              "color var(--duration-fast) var(--ease-in-out), background var(--duration-fast) var(--ease-in-out)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "var(--theme-sidebar-hover-bg)";
+            e.currentTarget.style.color = "var(--theme-canvas-text)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "var(--theme-sidebar-text)";
+          }}
+        >
+          <MessageSquarePlus
+            style={{ width: "15px", height: "15px", strokeWidth: 1.5, flexShrink: 0 }}
+          />
+          <span className="serene-sidebar-rail-hide" style={{ flex: 1, textAlign: "left" }}>
+            Send feedback
+          </span>
+        </button>
+
         <div
           aria-hidden="true"
           style={{
             height: "1px",
             background: "var(--theme-sidebar-border)",
-            margin: "0 var(--space-2) var(--space-4)",
+            margin: "var(--space-3) var(--space-2) var(--space-4)",
           }}
         />
 

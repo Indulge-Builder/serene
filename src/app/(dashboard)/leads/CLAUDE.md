@@ -226,7 +226,7 @@ The only exception is `clearAll()`, which pushes `pathname` with no params at al
 
 ---
 
-## Manager "Team Leads" view toggle (`?view=`)
+## Manager "All Leads / My Leads" view toggle (`?view=`)
 
 Managers also carry and call leads, so they default to **their own assigned leads** on `/leads` —
 the same daily worklist an agent gets — not the whole domain.
@@ -238,13 +238,21 @@ the same daily worklist an agent gets — not the whole domain.
   domain constraint. The status-counts RPC `p_agent_id` mirrors it (a manager in My Leads passes their
   own id) so pill counts match the table — **no migration**, the existing RPC already honours
   `p_agent_id` over its self-derived domain scope. `getLeadsForExport` mirrors the same scope.
-- **Toggle UI** — a fixed-label **"Team Leads"** toggle in `LeadsTable`'s toolbar (left cluster, next to
-  Going Cold), gated on `enableViewToggle && role === 'manager'`. OFF (resting, default) = the manager's
-  own leads; ON (accent-lit / `aria-pressed`) writes `?view=all` and shows the whole domain. The label
-  never changes — the pressed state is the switch, not a state mirror (do not flip the label to
-  "My Leads"/"All Leads"). `LeadsTableAsync` sets `enableViewToggle`; the campaign drill-down forces
-  `filters.view = 'all'` and leaves the toggle off (analytics view of every campaign lead — a manager
-  there must see the whole domain).
+- **Toggle UI** — a **sliding-pill segmented switcher** in `LeadsTable`'s toolbar, the **first control
+  in the left cluster** when shown (Going Cold sits to its right), gated on
+  `enableViewToggle && role === 'manager'`. It is the shared `TabSelector`
+  (`variant="accent"`, `indicatorLayoutId="leads-view-switch"`) with two segments — **"My Leads"**
+  (`mine`, default, the manager's own assigned leads) and **"Team Leads"** (`all` → `?view=all`, the
+  whole domain). The accent pill springs between segments via Framer `layoutId`; **the active segment
+  names the CURRENT view** (`activeTab={viewIsAll ? 'all' : 'mine'}`). Selecting `all` writes `?view=all`;
+  selecting `mine` drops the param AND `agent_id`; re-selecting the active segment is a no-op (`setView`
+  early-returns). The control lives in a `.serene-leads-view-switch` wrapper whose CSS (globals.css)
+  grows a hover-gated accent underline under the **inactive** segment's label so it reads as clickable.
+  This supersedes the earlier single-button toggle (the fixed-"Team Leads" button, then the
+  action-labelled button — both 2026-06-17). `LeadsTableAsync` sets `enableViewToggle`; the campaign
+  drill-down forces `filters.view = 'all'` and leaves the switcher off (analytics view of every campaign
+  lead — a manager there must see the whole domain). **Never re-add `indicatorLayoutId` collision:** the
+  distinct id keeps this pill from sharing Framer shared-layout with any other tab group on the page.
 - **Agent filter interaction:** `showAgentFilter` is `true` for a manager only in All Leads (the agent
   pick is a no-op in My Leads, so the dropdown is hidden there). See below.
 - **Cache key** includes `view` (`buildLeadListKey`) — My/All never share a Redis slot.
@@ -352,7 +360,7 @@ Column-header click sort is not implemented and must not be added without a spec
 
 **Immediate-commit:** clicking the chip in `LeadsTable` toolbar fires `router.push` directly — does NOT go through draft → Apply. On activate, also clears `status` and `outcome` from the URL (going cold is logically incompatible with status/outcome filtering). On deactivate, removes `going_cold` from URL only.
 
-**Placement:** left side of `LeadsTable` toolbar (first control), before status summary pills. Not in `LeadsFilters`.
+**Placement:** left cluster of the `LeadsTable` toolbar — first control, or just right of the manager view switcher when that's shown. Not in `LeadsFilters`.
 
 **`committedCount` badge:** `going_cold=true` counts as +1 in `LeadsFilters`, same as any other active filter.
 

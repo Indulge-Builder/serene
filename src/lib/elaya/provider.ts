@@ -34,6 +34,17 @@ export type LlmCompleteRequest = {
   system: string;
   messages: LlmChatMessage[];
   tools?: LlmToolDefinition[];
+  /**
+   * When true, the adapter SHOULD mark the stable prefix (tools + system) with a
+   * provider-native prompt-cache breakpoint so calls 2..n of a multi-tool turn
+   * read it at ~0.1x instead of re-billing it at full input rate. Provider-neutral
+   * by design: an adapter without caching simply ignores it (correctness is
+   * identical either way — caching changes billing only, never what the model
+   * sees). The CALLER guarantees the prefix is byte-stable across the turn (no
+   * per-request timestamp/UUID in `system` or `tools`) — see persona.ts
+   * buildElayaTimeContext, which keeps the volatile "today" anchor OUT of `system`.
+   */
+  cachePrefix?: boolean;
   /** Streamed text deltas (assistant prose only — never tool-call JSON). */
   onTextDelta?: (delta: string) => void;
 };

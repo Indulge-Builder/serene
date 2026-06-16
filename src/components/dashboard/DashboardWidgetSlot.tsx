@@ -11,6 +11,7 @@ import {
 } from "@/lib/constants/dashboard-widgets";
 import { WidgetSkeleton } from "./WidgetSkeleton";
 import type { UserRole, AppDomain } from "@/lib/types/database";
+import type { GiaDomain } from "@/lib/constants/domains";
 import type { DashboardSummary } from "@/lib/types";
 import type { DateRange } from "@/lib/utils/date-range";
 
@@ -89,6 +90,14 @@ export type WidgetProps = {
    * Agent Tasks and Recent Activity always ignore it (they are "live / now").
    */
   dateRange?: DateRange;
+  /**
+   * Global domain scope from the shared selector (serene-domain param/cookie),
+   * resolved server-side per role. Admin/founder → the chosen Gia domain, or
+   * null for the org-wide "All domains" aggregate. Manager/agent → always null
+   * (the server pins managers to their own domain). The three cohort widgets
+   * (pipeline, volume, campaigns) seed from this; there is no per-widget tab.
+   */
+  scopeDomain?: GiaDomain | null;
 };
 
 type DashboardWidgetSlotProps = WidgetProps & {
@@ -326,6 +335,7 @@ export function DashboardWidgetSlot({
   firstName,
   initialData,
   dateRange,
+  scopeDomain,
 }: DashboardWidgetSlotProps) {
   const definition = WIDGET_MAP[widgetId];
   const Component = WIDGET_COMPONENTS[widgetId];
@@ -401,6 +411,7 @@ export function DashboardWidgetSlot({
             initialData={initialData}
             size={size}
             dateRange={dateRange}
+            scopeDomain={scopeDomain}
           />
         </MinSkeletonBoundary>
       </Suspense>

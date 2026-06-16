@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useMemo, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/Spinner';
 import { DatePicker } from '@/components/ui/DatePicker';
+import { FilterDropdown } from '@/components/ui/FilterDropdown';
 import { createWalkInDeal, listAgentsForDealDomain } from '@/lib/actions/deals';
 import { GIA_DOMAINS, DOMAIN_LABELS, isGiaDomain, type GiaDomain } from '@/lib/constants/domains';
 import {
@@ -84,6 +85,30 @@ export function NewDealModal({
   // Derived from the chosen domain.
   const dealType   = dealTypeOf(domain);
   const categories = dealCategoriesOf(domain);
+
+  // FilterDropdown item lists + trigger labels (themed single-select — never a native <select>)
+  const domainItems = useMemo(
+    () => GIA_DOMAINS.map((d) => ({ id: d, label: DOMAIN_LABELS[d] })),
+    [],
+  );
+  const agentItems = useMemo(
+    () => agents.map((a) => ({ id: a.id, label: a.full_name })),
+    [agents],
+  );
+  const categoryItems = useMemo(
+    () =>
+      categories
+        ? DEAL_CATEGORY_OPTIONS.filter((opt) => categories.includes(opt.id))
+        : [],
+    [categories],
+  );
+
+  const assigneeLabel =
+    agents.find((a) => a.id === assignedTo)?.full_name ?? 'Unassigned';
+  const categoryLabel =
+    categoryItems.find((opt) => opt.id === category)?.label ?? 'Select category…';
+  const sourceLabel =
+    LEAD_SOURCE_OPTIONS.find((opt) => opt.id === source)?.label ?? 'Optional';
 
   async function handleDomainChange(newDomain: AppDomain) {
     setDomain(newDomain);
@@ -204,11 +229,6 @@ export function NewDealModal({
     opacity:      isPending ? 0.6 : 1,
   };
 
-  const selectStyle: React.CSSProperties = {
-    ...inputStyle,
-    cursor: 'pointer',
-  };
-
   return (
     <Modal
       open={open}
@@ -316,16 +336,17 @@ export function NewDealModal({
           {canPickDomain && (
             <div>
               <label style={labelStyle}>Domain</label>
-              <select
-                value={domain}
-                onChange={(e) => handleDomainChange(e.target.value as AppDomain)}
-                style={selectStyle}
-                disabled={isPending}
-              >
-                {GIA_DOMAINS.map((d) => (
-                  <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>
-                ))}
-              </select>
+              <div style={{ pointerEvents: isPending ? 'none' : undefined, opacity: isPending ? 0.6 : 1 }}>
+                <FilterDropdown
+                  label={DOMAIN_LABELS[domain]}
+                  items={domainItems}
+                  selected={[domain]}
+                  onChange={(next) => handleDomainChange((next[0] as AppDomain) ?? domain)}
+                  fullWidth
+                  menuPortal
+                  hideCountBadge
+                />
+              </div>
             </div>
           )}
 
@@ -341,17 +362,22 @@ export function NewDealModal({
                   </span>
                 </div>
               ) : (
-                <select
-                  value={assignedTo}
-                  onChange={(e) => setAssignedTo(e.target.value)}
-                  style={selectStyle}
-                  disabled={isPending || agents.length === 0}
+                <div
+                  style={{
+                    pointerEvents: isPending || agents.length === 0 ? 'none' : undefined,
+                    opacity:       isPending || agents.length === 0 ? 0.6 : 1,
+                  }}
                 >
-                  <option value="">Unassigned</option>
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>{a.full_name}</option>
-                  ))}
-                </select>
+                  <FilterDropdown
+                    label={assigneeLabel}
+                    items={agentItems}
+                    selected={assignedTo ? [assignedTo] : []}
+                    onChange={(next) => setAssignedTo(next[0] ?? '')}
+                    fullWidth
+                    menuPortal
+                    hideCountBadge
+                  />
+                </div>
               )}
             </div>
           )}
@@ -426,17 +452,17 @@ export function NewDealModal({
               <p style={{ ...labelStyle, margin: '0 0 var(--space-2) 0' }}>
                 Product Category <span style={{ color: 'var(--color-danger)' }}>*</span>
               </p>
-              <select
-                value={category ?? ''}
-                onChange={(e) => { setCategory((e.target.value || null) as DealCategory | null); setError(null); }}
-                disabled={isPending}
-                style={selectStyle}
-              >
-                <option value="">— select —</option>
-                {DEAL_CATEGORY_OPTIONS.filter((opt) => categories.includes(opt.id)).map((opt) => (
-                  <option key={opt.id} value={opt.id}>{opt.label}</option>
-                ))}
-              </select>
+              <div style={{ pointerEvents: isPending ? 'none' : undefined, opacity: isPending ? 0.6 : 1 }}>
+                <FilterDropdown
+                  label={categoryLabel}
+                  items={categoryItems}
+                  selected={category ? [category] : []}
+                  onChange={(next) => { setCategory((next[0] ?? null) as DealCategory | null); setError(null); }}
+                  fullWidth
+                  menuPortal
+                  hideCountBadge
+                />
+              </div>
             </div>
           )}
 
@@ -491,17 +517,17 @@ export function NewDealModal({
               <label style={{ ...labelStyle, marginBottom: 'var(--space-2)' }}>
                 Source
               </label>
-              <select
-                value={source}
-                onChange={(e) => setSource(e.target.value as LeadSource | '')}
-                disabled={isPending}
-                style={selectStyle}
-              >
-                <option value="">— optional —</option>
-                {LEAD_SOURCE_OPTIONS.map((opt) => (
-                  <option key={opt.id} value={opt.id}>{opt.label}</option>
-                ))}
-              </select>
+              <div style={{ pointerEvents: isPending ? 'none' : undefined, opacity: isPending ? 0.6 : 1 }}>
+                <FilterDropdown
+                  label={sourceLabel}
+                  items={LEAD_SOURCE_OPTIONS}
+                  selected={source ? [source] : []}
+                  onChange={(next) => setSource((next[0] ?? '') as LeadSource | '')}
+                  fullWidth
+                  menuPortal
+                  hideCountBadge
+                />
+              </div>
             </div>
           </div>
 

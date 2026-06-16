@@ -12,7 +12,623 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
-## 2026-06-16 — Post-regen production audit fixes (security + correctness hardening)
+## 2026-06-17 — Fix: Trigger.dev deploy failed on module-load env-var throws (deferred validation)
+
+**Goal.** `npm run trigger:deploy` (Trigger.dev 4.4.6) aborted at the build / module-scan stage —
+*"There was an error importing task files"* — with two root errors: the `GUPSHUP_*` guard in
+`whatsapp-api.ts` (surfaced via `sla.ts` + `lead-mutations.ts`) and the `UPSTASH_REDIS_REST_URL`
+guard in `redis.ts` (surfaced via `usage-service.ts` + `revival-gate.ts`).
+
+**Why.** Trigger.dev imports every `src/trigger/*` task **and all its transitive deps** during the
+build, in an environment without the runtime secrets. The task files already use dynamic
+`await import()`, but that still fully evaluates the imported module's top-level code — and two
+modules read env vars and **`throw` at module-evaluation time**, so the scan crashed before any task
+registered. (The two services named in the Redis error don't read Redis themselves; they're just on
+its import chain.)
+
+**Done.** Moved both throws from *import time* to *first-use time* — the dominant lazy-read pattern
+already used by `createAdminClient` (`supabase/admin.ts`), the Anthropic adapter's `getClient()`,
+and `transcribeAudio`. No new env module, no `trigger.config.ts` `externals`.
+
+- **`src/lib/redis.ts`** — replaced the eager `Redis.fromEnv()` + top-level throw with a lazy
+  singleton `getRedis()` (reads + validates env on first call) exposed through a `Proxy` named
+  `redis`, so every existing `redis.del(...)` / `redis.setex(...)` / `redis.mget(...)` call site is
+  unchanged (Rule 05 — still the only instantiation point).
+- **`src/lib/services/whatsapp-api.ts`** — deleted the top-level `if (!GUPSHUP_*) throw` and replaced
+  it with `assertGupshupConfigured()`, called at the start of `sendTextMessage` and the
+  `sendGupshupTemplate()` core (the two chokepoints every outbound Gupshup send funnels through). A
+  genuinely missing var still throws the identical message — on first send, not on import.
+
+No behaviour change at runtime with secrets present; the deploy module-scan now completes.
+
+**Follow-on (same deploy).** Past the module-scan, the deploy then failed cloud validation with
+*"Invalid IANA timezone: 'Asia/Kolkata'"*. Trigger.dev validates each `schedules.task` cron
+`timezone` against `Intl.supportedValuesOf('timeZone')`, whose ICU build canonicalises IST to the
+older **`Asia/Calcutta`** alias and rejects `Asia/Kolkata`. Changed the cron `timezone` on the three
+scheduled tasks (`sweepRevivalCandidatesTask`, `rollupUsageTodayTask`, `rollupUsageNightlyTask`)
+`Asia/Kolkata` → `Asia/Calcutta` — identical UTC+5:30 zone, spelling only, with a comment so it's
+not "corrected" back. The `Intl.DateTimeFormat` `timeZone` in `task-reminders.ts` is left as
+`Asia/Kolkata` (not cloud-validated; `Intl` accepts both aliases).
+
+## 2026-06-17 — Engine health check (ops): daily green/red signal for SLA/cadence/reminder/revival
+
+**Goal.** The SLA engine schedules timers in the app but *fires* them on a deployed Trigger.dev
+worker. If the worker is down, the app keeps scheduling and nothing fires — silently. Pre-go-live
+audit found exactly this: 519 timers scheduled, **0 ever fired**, 326 past-due (oldest 2026-06-05),
+because no current worker was deployed. Lead-assignment/founder WhatsApp alerts kept working (they
+fire synchronously via `after()`, not Trigger.dev), masking the outage.
+
+**Done.**
+
+- **Go-live cleanup.** Cancelled the 326 overdue-pending timers on imported leads
+  (`status='pending' AND scheduled_fire_at < now()` → `cancelled`) so the worker doesn't fire an
+  alert storm on historical data when it comes up; the 38 future-dated pending timers were left
+  intact. The matching Trigger.dev delayed runs resolve as `STALE_FIRE` no-ops (the fire handler
+  re-reads the lead), so cancelling the DB rows is sufficient — no notifications sent.
+- **`scripts/engine-health-check.sql`** — one query, one row per signal (`metric | value | status`),
+  no Trigger.dev dashboard needed. Top row "SLA timers fired (last 24h)" is the heartbeat: `🔴 0`
+  while timers are being scheduled = worker down → `npm run trigger:deploy`. Plus overdue-pending
+  count + oldest-stuck lag + 24h volume of breaches/reminders/revival as context.
+- **`docs/operations/engine-health-check.md`** — runbook: how to run it, how to read each row, what
+  to do on red. Run each morning during go-live week; the heartbeat flips to `✅ firing` on the
+  first real breach.
+
+No app-code or schema change — an ops query + runbook + one-time data cleanup.
+
+## 2026-06-17 — Suggestion box / bug-report channel
+
+**Goal.** Staff hit bugs and have ideas while using Serene, but there was no in-app way to report
+them — feedback got lost in chat. Any staff member can now open a **"Send feedback"** composer, write
+a message + attach up to **4 screenshots**, and submit. Reports land in an **admin/founder-only inbox**
+at **/admin/suggestions** for triage (open → resolved). Resolving a report **notifies the original
+sender** (in-app), closing the loop. A clean lead-style substrate (table + RLS + service + action) — a
+future AI pass could triage suggestions.
+
+**Triggers (one composer, two entries).** A "Send feedback" button in the **left Sidebar footer**
+(all roles, desktop) and a small overlay trigger on the **Elaya presence card** (mobile dashboard
+only — `useMediaQuery(MQ.mobile)`). Both call `openComposer()` from `SuggestionFeedbackProvider`
+(`src/components/suggestions/`), which mounts the **single** composer instance once in the dashboard
+layout beside `<ElayaWidget>` (heavy modal lazy via `next/dynamic` + `useMountOnFirstOpen`).
+
+**Data model — `suggestions` (migration 0134).** `sender_id` FK, `category` CHECK
+(`bug`/`idea`/`other`), `message`, `image_paths text[]` (CHECK ≤ 4), `status` CHECK
+(`open`/`resolved`), `resolved_by`/`resolved_at`, timestamps; `(status, created_at DESC)` index;
+`update_updated_at` trigger reused. **NOT append-only** — the one narrow admin/founder UPDATE policy
+is the `revival_candidates` carve-out; only `status`/`resolved_by`/`resolved_at` are writable
+(enforced in `resolveSuggestion`, RLS can't restrict columns). RLS (InitPlan-hoisted): sender
+SELECT/INSERT own; admin/founder SELECT all + UPDATE; **no DELETE ever**.
+
+**Screenshots — private `suggestions` Storage bucket (migration 0135).** Unlike `avatars`, the bucket
+is **private** (reports can show sensitive screens) — no public read. The DB stores storage **paths**
+under `${senderId}/...`, never URLs; admin viewing mints short-lived **signed URLs** server-side
+(`createSignedUrls`, TTL 300s). Storage RLS pins writes to the caller's own uid prefix
+(`(storage.foldername(name))[1] = auth.uid()`), and `submitSuggestionAction` **re-checks** the prefix
+(defence in depth). Client upload mirrors `ProfileAvatarSection` (browser `createClient()`,
+`.storage.upload`, inline size/type guards — 5 MB cap).
+
+**Resolve-notify — `notifications.type` += `suggestion_resolved` (migration 0136).** DROP + re-ADD
+`notifications_type_check` re-listing all 10 existing values plus the new one. `resolveSuggestionAction`
+fires `createNotification` (fire-and-forget, **no `notificationKey`** — transactional, never
+silenceable, the `lead_initiation`/`elaya_reply` posture). `database.ts` `NotificationType` union
+hand-extended (drop on next regen).
+
+**New code.** `constants/suggestions.ts` (`defineEnum` category + status, caps, bucket name),
+`types/suggestions.ts` (interim row types — drop on regen), `validations/suggestion-schema.ts` +
+`form-errors.ts` keys, `services/suggestions-service.ts` (admin client + interim `as any`, the
+`revival-service` posture; create / inbox-list-with-signed-urls / resolve / sign), `actions/suggestions.ts`
+(Zod → `requireProfile` → `sanitizeText` → path-ownership check → service), `SuggestionComposerModal`,
+`SuggestionInboxClient`, `SuggestionFeedbackProvider`, `/admin/suggestions` page + `loading.tsx`.
+Sidebar gains an Admin-section `/admin/suggestions` nav link + the footer button + the
+`MOBILE_TRIGGER_PATHS` entry. **⚠️ Migrations 0134–0136 NOT yet applied — apply + regenerate `database.ts`.**
+
+---
+
+## 2026-06-17 — Notification preferences: per-user In-app / WhatsApp control on every notification
+
+**Goal.** Founders (and everyone) get too many notifications — the cross-domain "new lead"
+WhatsApp ping fires on *every* lead, all domains, to *all* founders. Each user now controls their
+own notifications: for each notification **category**, two checkboxes — **In-app** and **WhatsApp**
+— decide whether that channel fires *for them*. **All on by default** (fail-open — behaviour is
+identical to today until a user opts out). Lives on **/profile**, per-user (not an org admin
+setting). The per-user twin of `sla_policies.channels[]`: same per-channel on/off idea, new grain.
+
+**Data model — `notification_preferences` (migration 0133, sparse mute-rows).**
+
+- New table keyed `(user_id, notification_key)` with `in_app`/`whatsapp` booleans + `updated_at`.
+  **Absence = ON**: a row exists *only* once a user opts a channel off. No row → both channels on
+  (the implicit default everywhere). Adding a category is on-for-everyone automatically (zero
+  backfill); at 100× users the table holds only deliberate opt-outs. When a user re-checks both
+  boxes, the action **deletes** the row (back to implicit-on — keeps it sparse).
+- **Owner-only RLS** (the `push_subscriptions` 0120 posture): the user reads/writes their own rows
+  on the session client; the cross-user read at notification fan-out time runs service-role (admin
+  client), exactly like `dispatchPush`. `update_updated_at` trigger reused. `database.ts` interim
+  block + `NotificationPreferenceRow` hand-added (drop on next regen).
+
+**The catalog — `src/lib/constants/notification-categories.ts`.** One entry per category =
+(event × recipient-role-that-differs), so a founder can kill their cross-domain WhatsApp flood
+(`new_lead_founder_alert`) without touching an agent's `lead_assigned` alert. Nine categories:
+`lead_assigned`, `new_lead_founder_alert`, `lead_won`, `deal_created` (NEW — see below),
+`task_assigned`, `task_due`, `task_overdue_manager`, `sla_breach`, `sla_escalation`. Each entry
+declares which `channels` it can ever fire on (the only checkboxes the UI renders) and which
+`roles` can receive it (the only rows that role sees). The SQL CHECK mirrors these keys. The two
+**transactional** sends — `lead_initiation` (opens the legal 24h WhatsApp window, can throw) and
+`elaya_reply` (a direct reply to a staff message) — are deliberately **absent**: they have no key,
+so they can never be muted.
+
+**The gate — two seams, both reading the same per-user table; fails OPEN.**
+
+- **Seam A (in-app + push)** — `createNotification` (`notifications-service.ts`) takes an optional
+  `notificationKey`. When set, the in-app row insert **and** its Web Push (push lives after the
+  insert, so skipping the insert skips push) are suppressed if the recipient muted `in_app` for
+  that category. All 8 in-app call sites now pass a key: `lead-assignment-notify`, `lead-mutations`
+  (lead_won), `task-mutations` (×2), `sla.ts` (×2), `task-reminders` (×2).
+- **Seam B (WhatsApp)** — `src/lib/services/notification-prefs-service.ts` `filterRecipientsByPref`
+  / `isChannelEnabled` gate the 6 broadcast Gupshup wrappers in `whatsapp-api.ts`. Single-recipient
+  wrappers (`sendLeadAssignmentNotification`, `sendSlaAgentNotification`,
+  `sendTaskDueReminderNotification`) early-return when that recipient muted WhatsApp; **fan-out**
+  wrappers (`sendFounderLeadNotification`, `sendSlaManagerNotification`,
+  `sendTaskOverdueManagerNotification`) filter the recipient list per-person via ONE batched
+  `.in('user_id', ids)` query — so one founder opting out drops only them. `sendLeadInitiationMessage`
+  and `sendElayaWhatsAppReply` are never gated.
+- **Fail-open:** a missing row, malformed value, or thrown read resolves to **send** — a missed
+  lead/SLA notification is worse than an extra one, and a half-applied migration must never silence
+  the org. (Inverse of the daily-cap, which fails closed.) `getNotificationPrefs` is React
+  `cache()`-memoised per request; the fan-out filter is one batched query — the gate adds ~0 DB
+  cost at 100×, runs inside the already-`await`ed `after()`/Trigger.dev chain (no A-16 regression).
+
+**New: `deal_created` notification.** No notification fired on deal creation before. `recordDeal`
+(lead → deal) already notifies managers via its `lead_won` flip — adding `deal_created` there would
+double-notify. So `createWalkInDeal` (the no-lead path that fired nothing) now fans out a
+`deal_created` in-app notification to domain managers/admins/founders via a new `notifyDealCreated`
+helper in `actions/deals.ts` (mirrors the `lead_won` fan-out; `after()`-wrapped per A-16; carries
+`notificationKey:'deal_created'` so Seam A honours each recipient's mute).
+
+**UI.** `src/components/profile/NotificationPreferences.tsx` — a role-aware matrix (one row per
+category the user can receive; only that category's channels get a checkbox), optimistic save with
+revert + toast (lifted from `SlaPoliciesPanel`), writes via `setNotificationPrefAction`
+(`actions/notification-prefs.ts`, Zod → `requireProfile()` → owner upsert/delete). Mounted in the
+existing **Notifications** `SectionCard` on `/profile`, above the Web Push device toggle (RSC-seeded
+via `getMyNotificationPrefs`).
+
+**SLA overlap (clarified, no double-gate conflict).** `sla_policies.channels[]` decides whether the
+engine *emits* a notification at all (org rule); this per-user pref decides whether an individual
+*receives* the emitted one. They answer different questions and compose cleanly.
+
+**New files:** migration `20260617000133_notification_preferences.sql`,
+`constants/notification-categories.ts`, `services/notification-prefs-service.ts`,
+`actions/notification-prefs.ts`, `validations/notification-prefs-schema.ts`,
+`components/profile/NotificationPreferences.tsx`. **Touched:** `notifications-service.ts` (Seam A),
+`whatsapp-api.ts` (Seam B ×6), the 8 in-app send call sites, `actions/deals.ts` (deal_created),
+`app/(dashboard)/profile/page.tsx` (mount), `types/database.ts` (interim row type).
+
+**⚠️ Migration 0133 NOT yet applied locally** (Docker down at author time, same as 0129–0132) —
+apply + regenerate `database.ts`, then the interim block drops. Typecheck clean (0 errors);
+token-check passes (465 files).
+
+---
+
+## 2026-06-17 — Notification bell: shows unread only, opening a notification clears it from the list
+
+**Problem.** The bell showed the last 50 notifications (read + unread). Clicking one marked it read
+and navigated, but the row **stayed** in the list as dimmed "read history" with a leftover unread
+dot / paper-subtle pill treatment. Reported: "when opening the list from a notification it should
+mark it done and hide, but it stays there… remove that dot thing, make it aesthetic." Desired:
+opening a notification opens its page and the notification **goes away**; no read/unread visual
+split lingering in the panel.
+
+**Fix.**
+
+- `src/hooks/useNotifications.ts` — the hook now keeps the full set internally as
+  `allNotifications` (so a failed `markRead` still rolls the item back into view) but exposes
+  `notifications` as the **unread slice only** (`read_at === null`); `unreadCount` is that slice's
+  length. The optimistic `markRead` sets `read_at`, which drops the item from the displayed list —
+  so opening a notification removes it from the bell. `markAllRead` empties the list. The realtime
+  INSERT/UPDATE handlers and the `markRead`/`markAllRead` rollback paths are unchanged (they mutate
+  the full array by id). Seed stays `getNotifications` — already-read seed rows are simply filtered
+  out, so no page-level seed wiring changed.
+- `src/components/notifications/NotificationItem.tsx` — removed the read/unread visual split now
+  that every shown row is unread: dropped the unread dot, the per-item paper-subtle + `--shadow-1`
+  + `--radius-md` "pill" chrome and its `isUnread` margin. One clean uniform row — transparent at
+  rest, `--theme-paper-subtle` on hover. Title weight is uniformly `--weight-medium`. The
+  `AnimatePresence` keyed by `n.id` in `NotificationPanel` animates the row out when it leaves the
+  unread slice, so the clear reads as a smooth exit.
+
+No DB, service, or action change — `markNotificationRead` already persisted `read_at` correctly;
+the empty state ("You're all caught up.") and the header "Mark all read" button key off the
+now-consistent `unreadCount`.
+
+## 2026-06-17 — New Deal modal: off-palette native selects replaced with the themed dropdown
+
+**Problem.** In the **New Deal** modal (`AddDealButton` → `NewDealModal`), four pickers were raw
+native `<select>` elements — Product Category, Source, Assign to, and Domain. A native `<select>`
+renders the OS-native option list, which ignores the Serene theme entirely (system fonts, system
+colours, no accent). Reported: "when selecting product category it doesn't follow the design
+palette… same with source… same on assign lead." The sibling **Add Lead** modal already used the
+themed component for the same three fields, so the two creation flows looked different.
+
+**Fix (R-01 — reuse the component that already exists).** Replaced all four native `<select>`s in
+`src/components/deals/NewDealModal.tsx` with `FilterDropdown` (`multi={false}`, `fullWidth`,
+`menuPortal`, `hideCountBadge`) — the canonical single-select for modals, mirroring `AddLeadModal`'s
+Source/Domain/Assign-to wiring byte-for-byte. Option lists derive via `useMemo`
+(`domainItems`/`agentItems`/`categoryItems`) and each trigger shows a resolved label
+(`assigneeLabel`/`categoryLabel`/`sourceLabel`). `menuPortal` keeps the option panel above the modal
+(Framer transform-escape). Disabled/pending state moves to a wrapper `pointerEvents`/`opacity` (the
+same shape `AddLeadModal` uses). Removed the now-dead `selectStyle`.
+
+**Result.** Both lead-creation and deal-creation flows now use one themed dropdown — accent
+selection state, paper surface, app fonts — across Product Category, Source, Assign to, and Domain.
+No behavioural change (same values committed to `createWalkInDeal`); purely the picker chrome.
+
+**Files:** `src/components/deals/NewDealModal.tsx`.
+
+## 2026-06-17 — Dashboard "Recent Activity" → "Recent Leads" rollup + Mine/Team toggle
+
+**What & why.** The earlier same-day rebuild turned the widget into a styled **event stream** (one
+card per `lead_activities` row — the same lead repeating across its call/note/status events). On
+review that wasn't the vision: a manager/founder scrolling the dashboard wants to see **what happened
+on each lead lately** — "called this lead → got RNR → left this note" — one card per lead, not a raw
+log. Reframed accordingly:
+
+- **One card per lead** (`Recent Leads`), most-recently-worked first, three lines:
+  **L1** lead name · `by <agent>` · relative time (all one line); **L2** current status pill **+ the
+  latest call outcome** (e.g. `In Discussion · ☎ Rang, no response`); **L3** the latest note
+  (serif-italic, 2-line clamp). Whole card links to `/leads/[slug]`.
+- **Mine / Team scope toggle** (bespoke curved two-segment switch, themed — paper-subtle track,
+  accent-filled spring thumb, transform-only) in the widget header for **manager/founder**; agents
+  have no toggle (always their own leads) and keep the `Live` chip. Default **Team**. Founder's domain
+  is still scoped by the global top-bar domain selector; `Mine` = leads assigned to the caller.
+
+**Data (simpler + faster).** The card is sourced from **`leads`**, which already denormalises
+everything it needs (`status`, `last_call_outcome`, `last_activity_at`, `assigned_to`, name/slug/
+domain) — so it's a **single indexed descent** `ORDER BY last_activity_at DESC LIMIT 25`, naturally
+one row per lead (no `lead_activities` aggregation, no dedup pass), joined to the latest note. New RPC
+`get_recent_lead_activity(p_role, p_domain, p_user_id, p_scope)` (migration **0132**) — `p_scope`
+`'mine'` (assignee-scoped, any role) | `'team'` (role-scoped: agent always own, manager → domain,
+admin/founder → domain-or-all). Scope-param RPC, **EXECUTE revoked from clients, admin-client only**
+(Q-13 / 0102 posture); the service derives all scope args from the verified profile.
+
+**Supersedes migration 0131** (the event-stream `get_agent_recent_activity` enrich) — 0131 was never
+applied (Docker down since it was authored), so there is no deployed function to drop; it is dead and
+documented as superseded in the migration inventory. The two "Assigned to you" / missing-note-body
+bugs the 0131 rebuild targeted are moot in the rollup model: assignment is shown as the lead's real
+current `assigned_to` ("by <agent>"), and the note body is the lead's latest note (always real).
+
+**Seed.** `dashboard/page.tsx` now **always** seeds `agent_activity` from the dedicated rollup RPC
+(default `team` scope, global `scopeDomain` for admin/founder) — it no longer reads
+`get_dashboard_summary`'s `agent_activity` CTE (still the old event shape; now unused dead work in the
+RPC, left in place — stripping it risks the agent early-return branch and buys nothing). The Mine/Team
+flip re-fetches client-side via `getAgentRecentActivityAction(userId, domain, scope)`.
+
+**Types/shape change.** `DashboardAgentActivity` (event row) → `DashboardRecentLead` (lead rollup:
+`lead_id/slug/name/domain`, `status`, `last_call_outcome`, `last_activity_at`, `assigned_to`,
+`assignee_name`, `note_body`); the old name is kept as a deprecated alias for the `agent_activity`
+seed key.
+
+**Gentle auto-scroll, done right (CSS marquee).** The auto-drift is back, but as an **off-main-thread
+CSS transform marquee** — not the old `requestAnimationFrame` `scrollTop` ticker that juddered by
+fighting the wheel. The inner track renders the card list **twice** and a `@keyframes translateY` loop
+(`.serene-activity-marquee` in `globals.css`, `linear` easing = constant motion) shifts it up by
+exactly one copy's height + the inter-copy gap (`--marquee-shift`, measured in JS), so copy B lands
+where copy A started → seamless wrap. Because it's `transform` (GPU) and never touches `scrollTop`, it
+**can't fight a manual scroll**; hovering the feed pauses it (`animation-play-state: paused`). It runs
+**only when one copy actually overflows** the viewport (measured via `ResizeObserver`, correct at any
+widget size / note length — not a card-count guess); below that, or under `prefers-reduced-motion`, the
+list is static and natively scrollable. (Emil design-eng pass: predetermined constant motion → CSS off
+the main thread, linear easing, decoration gated by reduced-motion.)
+
+**⚠️ Migration 0132 NOT yet applied
+(Docker down at author time) — apply + regenerate `database.ts` to drop the interim untyped `.rpc`
+cast.** Until applied the RPC is absent and the seed throws into the page's `try/catch` → empty feed
+(graceful).
+
+Files: `supabase/migrations/20260617000132_recent_lead_activity_rollup.sql` (new),
+`src/components/dashboard/widgets/AgentActivityWidget.tsx` (rebuilt + `ScopeSwitch`),
+`src/lib/services/dashboard-service.ts` (`get_recent_lead_activity` wrapper + `RecentLeadScope`),
+`src/lib/actions/dashboard.ts` (`scope` param + Zod), `src/lib/types/index.ts` (`DashboardRecentLead`),
+`src/app/(dashboard)/dashboard/page.tsx` (seed always via the rollup RPC).
+
+## 2026-06-17 — Leads toolbar: manager view toggle relabelled "All Leads ↔ My Leads"
+
+**What & why.** The manager-only lead-scope toggle in the `LeadsTable` toolbar (left cluster, next to
+Going Cold) previously carried a **fixed "Team Leads"** label whose only signal was the pressed/lit
+state. It now **labels the action**: at rest (default — the manager's own leads) the button reads
+**"All Leads"** (click to widen to the whole domain); when active (`?view=all`, the whole domain) it
+reads **"My Leads"** (click to narrow back). The label always names where a click takes you.
+
+**Behaviour unchanged — this is a label-only change.** The server-side default is still **My Leads**
+for managers (absent `?view=` ⇒ `'mine'`; only `?view=all` widens). No change to `getLeadsByRole`,
+the status-counts RPC, the Redis cache key, `showAgentFilter`, or the campaign drill-down's forced
+`view='all'`.
+
+- `src/components/leads/LeadsTable.tsx` — label is now `{viewIsAll ? 'My Leads' : 'All Leads'}`;
+  `title` tooltips reworded to describe the action; the `aria-pressed` switch is unchanged.
+- Docs: `src/app/(dashboard)/leads/CLAUDE.md` — the "Toggle UI" bullet + section header updated; the
+  old "do not flip the label to My Leads/All Leads" rule is explicitly superseded.
+
+## 2026-06-17 — Fix: WhatsApp mobile header sat too high vs the floating nav hamburger
+
+**What & why.** On `/whatsapp` below md, the **"WhatsApp" title (and, in single-pane conversation
+view, the back-arrow header) sat visibly higher** than the floating nav hamburger
+(`.serene-mobile-trigger`) at the top-left — they were off the same line. **Root cause:** every
+normal page's `<main>` carries the `p-4` ladder, and the mobile rule
+`.serene-shell-paper main.p-4 { padding-top: calc(--space-7 + safe-area-top) }` drops its title onto
+the trigger's line (the trigger lives at `top: --space-7 + safe-area`). `/whatsapp` is a **full-bleed
+app shell** — its `<main>` is `flex … overflow-hidden` with **no `p-4`**, so that rule explicitly
+skips it (per its own comment), leaving the rail title at a flat `p-4` (16px) top, ~12px+ above the
+trigger and ignoring the notch. (The `52px` left indent already reached it — the title is a
+`.type-page-title` inside the gutter — so only the *vertical* offset was missing.)
+
+**Fix — give the full-bleed WhatsApp surfaces the same mobile top offset normal mains get** (no
+change to the shared `main.p-4` rule):
+
+- `WhatsAppShell.tsx` — the left rail gains a `serene-wa-rail` class; new `<md` CSS rule sets its
+  `padding-top: calc(--space-7 + safe-area-top)` so the "WhatsApp" `<h1>` lands on the hamburger's
+  line + clears the notch. md+ the existing `p-4/sm/lg` ladder takes back over.
+- `ConversationPanel.tsx` — the Zone A header gains `serene-wa-pane-header` **only in single-pane
+  mobile mode** (`onBack` present); CSS gives it the same top offset plus `padding-left: 68px` so the
+  back arrow + contact name clear the overlaying hamburger (the arrow's `-8px` inline margin lands it
+  at ~60px, just past the 16→56px trigger).
+- `globals.css` — two new rules inside the existing `< --bp-md` block, beside the `main.p-4` /
+  `.type-page-title` trigger-alignment rules they mirror.
+
+**Secondary (same pass) — flex-fill the shell height chain** so it matches the proven Elaya/leads/
+deals convention (Tailwind `flex-1 min-h-0 flex flex-col`, never `height: 100%`): `whatsapp/page.tsx`
+`<main>` gains `flex-col`; `WhatsAppShell` root + right pane + loading spinner and `ConversationPanel`
+root moved from `height: 100%` → `flex: 1; minHeight: 0`; `EmptyConversationState` likewise. No change
+to the global `.serene-shell-paper` `overflow-y: auto` (every other page depends on it).
+
+## 2026-06-17 — Elaya cost/scale foundation pass (prompt caching, one-call lead reads, WhatsApp RLS fix)
+
+**What & why.** A multi-agent audit of the Elaya subsystem (cost/scale, internal-staff audience)
+surfaced one correctness bug and a set of efficiency wins. The cost driver at scale is **model
+round-trips × per-turn payload**, not the layering — so every change here reduces round-trips or
+discounts the repeated static prefix. **No authorization moved into the model** (it stays
+code-side: principal-derived identity + toolset gate + per-resource `canAccessLead` + RLS), and
+**no per-domain/per-role model was added** (model selection stays job-type-only — O(1) in domain
+count). Eight changes, all behind the existing provider abstraction:
+
+1. **Prompt caching (the headline lever).** The Anthropic adapter previously set **no
+   `cache_control` anywhere**, so the ~3–4k-token static prefix (system + ~14 tool schemas) was
+   re-billed at full input rate on each of a turn's 2–6 model calls. Added an optional
+   `cachePrefix` flag to the provider contract (`provider.ts`); the adapter
+   (`adapters/anthropic.ts`) now marks the system block with a `cache_control: ephemeral`
+   breakpoint (render order tools→system→messages, so one breakpoint on system caches both).
+   The brain (`brain.ts`) sets it. Caching changes billing only — never what the model sees — so
+   a sub-minimum prefix or a non-caching adapter is a silent no-op. Calls 2..n read the prefix at
+   ~0.1×.
+2. **Byte-stable prefix (makes #1 actually hit).** The volatile "today" timestamp used to sit
+   **inside** the system prompt — caching it would have missed every turn. Split `persona.ts`
+   into a **frozen** `buildElayaSystemPrompt` (cacheable) + a per-turn `buildElayaTimeContext`
+   that the brain prepends to the latest user message (after the cached prefix). `userContext` is
+   now bounded to 1500 chars before it enters the prefix (an unbounded `JSON.stringify` would
+   re-bill full price + grow per user the moment a `user_context` writer lands).
+3. **WhatsApp lead-read bug fixed (the "not in the database" cause).** Elaya's staff WhatsApp
+   channel runs in the webhook's `after()` with **no cookie/session**; the read tools called
+   `getLeadsByRole`/`getLeadBySlug`/`getLeadNotesFull` → `createClient()` (cookie-based) → RLS
+   returned **zero rows** → Elaya told staff their leads were "not in the database." Added
+   `searchLeadsForElaya` / `getLeadBySlugForElaya` / `getLeadNotesFullForElaya` to
+   `leads-service.ts` — **admin-client** reads that replicate the **exact** role/domain/
+   `assigned_to` scoping `getLeadsByRole` already enforces in code (the sanctioned Q-13
+   trust-boundary pattern: RLS bypass requires explicit, principal-derived code-side scoping). The
+   self-scoped `get_leads_status_counts` RPC reads `auth.uid()` (zeros under the admin client), so
+   it is **never called here** — `statusCounts` are derived from the returned page. The tool's
+   per-resource `canAccessLead` gate is unchanged. No session-client call site touched.
+4. **One-call lead answers (round-trip cut).** `search_leads` already returns status/owner/phone/
+   source/latest-note, so the `search_leads → slug → get_lead_details` detour was a
+   model-discretionary redundancy. A read-path persona line tells the model to answer
+   status/owner/phone/last-note straight from `search_leads`, and reach for `get_lead_details`
+   only for the full note history / email / city / service interests. Cuts the common lead
+   question from ~3 model calls to 1.
+5. **Role-aware behavioral hint.** `persona.ts` now states the user's reach (agent → own leads,
+   manager → own domain, founder/admin → all) so cross-scope questions are answered correctly on
+   the first try instead of probe-then-refuse. Expectation-setting only — authorization stays in
+   the tool layer + RLS; injected text can't talk past the toolset gate.
+6. **Empty-result wording.** An empty search now reads as "nothing matched within what you're
+   allowed to see," never "not in the database" — and suggests the full name / phone on a partial
+   term. Also: `search_leads` page size aligned to 30 and a `.min(3)` guard so 1–2-char terms
+   don't run the degraded pg_trgm scan.
+7. **Graceful payload caps.** `get_performance_snapshot` caps the roster at top-40 with a
+   "showing N of M" note (blunt 12k-char truncation drops top-sorted laggards — exactly the
+   "who's behind" rows); `get_my_tasks` caps group tasks at 25 (followUps/personalTasks were
+   already bounded).
+
+**Foundation verdict.** The audit confirmed the foundation is sound and should be kept: authz is
+already entirely code-side, and model selection has no domain axis (10× domains adds zero models).
+The user's proposed "models trained per domain/role with DB privileges" is impossible (general
+Claude, never trained on the data) and insecure (prompt injection) — the codebase already embodies
+the correct alternative. These are proactive efficiency optimizations before scale, not a live
+cost incident.
+
+**Files.** `src/lib/elaya/provider.ts` (+`cachePrefix`), `src/lib/elaya/adapters/anthropic.ts`
+(cache_control), `src/lib/elaya/persona.ts` (frozen body + `buildElayaTimeContext` +
+`scopeHint` + data-rules edits + bounded context), `src/lib/elaya/brain.ts` (time-context
+delivery + `cachePrefix: true`), `src/lib/elaya/tools/registry.ts` (admin-client read tools,
+search guard, payload caps), `src/lib/services/leads-service.ts` (3 Elaya admin-client read
+functions). `tsc --noEmit` clean.
+
+## 2026-06-17 — Dashboard "Recent Activity" rebuilt as a sliding-deck card feed (+ two real bugs fixed)
+
+**What & why.** The dashboard "Recent Activity" widget was a dense one-liner ticker that was
+both **wrong** and (in the user's words) "of no use" — a feed founders and managers can't act on.
+Two of the wrongness were genuine bugs, not just styling:
+
+1. **"Assigned to you" was a lie.** `AgentActivityWidget` hardcoded the sub-label **"Assigned to
+   you"** on every `agent_assigned` row, for **every viewer** — so a founder watching the all-domain
+   feed saw a lead assigned to *Samson* rendered as "Assigned to you." It never read the real
+   assignee.
+2. **The note body never showed.** The widget read the note text from
+   `lead_activities.details.content` — a key that **does not exist**. Note bodies live in
+   `lead_notes`; `details` for `note_added` only carries `call_outcome`. So every note silently
+   fell back to the literal "Note added".
+
+**The rebuild.** Each activity is now a **card** (`--theme-paper-subtle` inset, `--radius-md`) that
+is a **`Link` to the lead dossier** (`/leads/[slug]`): row 1 = action icon · lead name · relative
+time; row 2 = the action as a **styled indicator** (status `from → to` pills via
+`LEAD_STATUS_COLORS`, call outcome, the **real** assignee — "Assigned to Samson" vs "Assigned to
+you" only when the viewer *is* the assignee, "Entered the system", "Duplicate submission"); row 3 =
+the **real note body** (serif-italic, 2-line clamp) when present; and a footer **context line**
+(`by <actor>` + domain tag) shown to **managers/founders only** (an agent's own feed doesn't need
+"by <self>"). The gentle idle auto-drift, hover/touch pause, tab-visibility pause, Realtime live
+stream, paired-call-note dedup, and edge fade masks are all **preserved**. Hover lift
+(`.serene-activity-card` in `globals.css`) is transform/shadow/border only, fine-pointer- and
+reduced-motion-gated (Never-Do list).
+
+**DRY / data path.** No new query path and no client-side fetch — the card rides the **existing**
+seed (`initialData.agent_activity`) + Realtime subscription. The new fields (`lead_slug`,
+`lead_domain`, `actor_name`, `assignee_name`, `note_body`) are added to the existing
+`get_agent_recent_activity` RPC (migration 0131) and threaded through `AgentActivity` /
+`DashboardAgentActivity` as **optional** fields, so a Realtime-arrived row (raw `lead_activities`
+payload, un-joined) degrades gracefully — lead + action render immediately, the joined context
+fills on the next page seed (the same posture the feed already had for `lead_name: null`).
+
+**Migration 0131** (`get_agent_recent_activity` enrich) — strict superset of 0130: adds
+`lead_slug` / `lead_domain` (LEFT JOIN `leads`), `actor_name` (LEFT JOIN `profiles` on `actor_id`),
+`assignee_name` (LEFT JOIN `profiles` on `details->>'assigned_to'`, `agent_assigned` rows only), and
+`note_body` (newest `lead_notes.content` within ±5s of the activity, trimmed to 160 chars,
+`note_added`/`call_logged` rows only). Signature, role scoping, STABLE SECURITY DEFINER, and the
+0102 revoke posture (admin-client only, Q-13) all unchanged. **⚠️ NOT yet applied locally (Docker
+down at author time) — apply + regenerate `database.ts` to retire the interim untyped row cast.**
+Until applied, the old RPC's rows lack the new fields and every card degrades gracefully (as above).
+
+Files: `supabase/migrations/20260617000131_recent_activity_enrich.sql` (new),
+`src/components/dashboard/widgets/AgentActivityWidget.tsx` (rebuilt),
+`src/lib/services/dashboard-service.ts` (`AgentActivity` + mapper passthrough),
+`src/lib/types/index.ts` (`DashboardAgentActivity` enrichment fields),
+`src/app/globals.css` (`.serene-activity-card` hover).
+
+---
+
+## 2026-06-17 — Fix: performance Call Outcome Breakdown counted two different things
+
+**Bug.** The "Call Outcome Breakdown" donut on `/performance` rendered from **two inconsistent data
+sources**, so the same agent showed different outcome numbers in the **agent self-view** vs. a
+**manager/founder's view of that agent**:
+
+- **Agent self-view** (`get_agent_performance` RPC, migration 0101): counts `lead_notes` rows with
+  `call_outcome IS NOT NULL` in the period — i.e. **call events** (one logged call = one count),
+  period-scoped on the note's `created_at`. Correct.
+- **Manager/founder detail panel** (`getAgentDetailMetrics` in `performance-service.ts`): counted
+  `leads.last_call_outcome` — the **latest outcome per lead** — over a `created_at` cohort. This (a)
+  counted **leads, not calls** (5 calls on one lead = 1), and (b) **decoupled outcome from the
+  period entirely**: `last_call_outcome` reflects a call made at *any* time, while the cohort was
+  filtered by lead `created_at`, so a lead created in-period but last called out-of-period was
+  miscounted, and an in-period call on an older lead was invisible. Both surfaces wore the same
+  "Call Outcome Breakdown" / "calls logged this period" label.
+
+**Fix.** `getAgentDetailMetrics` now builds `callOutcomeBreakdown` from a fourth parallel query
+against `lead_notes` — call notes (`call_outcome IS NOT NULL`) on **the agent's leads**, scoped by
+the lead's `assigned_to` via an `!inner` join (NOT `author_id` — a call logged by a covering teammate
+on the agent's lead still belongs to that agent's breakdown), filtered by the note's `created_at` in
+the period. This is the **exact scoping the Recent-calls drill modal** (`getAgentCallsPageForManager`)
+uses, so the two surfaces always agree, and it's the same period-scoped "a call" definition as the
+agent self-view. The `leads.call_count` query is retained for `totalCallsMade` (unchanged); only the
+stale `last_call_outcome` read was dropped. No RPC/migration change, no schema change. Files:
+`src/lib/services/performance-service.ts` (`getAgentDetailMetrics`).
+
+---
+
+## 2026-06-17 — Global founder domain scope: dashboard unified onto the one selector
+
+**Goal.** A founder/admin could already scope **leads / deals / campaigns** to one Gia domain via the
+header `DomainSelector` (the `?domain=` param + `serene-domain` cookie, resolved server-side by
+`resolveDomainParam`). The **dashboard** ran a *second, parallel* mechanism: each of the three cohort
+widgets (Lead Pipeline, Lead Volume, Campaign Performance) carried its **own** bottom domain-tab row
+(`All | Onboarding | House | Shop | Legacy`) via `WidgetDomainMode` + `resolveWidgetScope`, and the
+RSC seeded admin/founder to **Onboarding** on first paint. Two selectors, two models. This collapses
+them into **one**: the dashboard now reads the same global selector, the per-widget tabs are gone, and
+"pick Shop" scopes the dashboard, every list page, and the performance roster at once. A DRY
+consolidation (R-01/R-04) — the second mechanism is deleted, not extended.
+
+**Default view is now all-domains aggregated.** With no domain picked (fresh state / "All domains"),
+the dashboard cohort widgets show the org-wide aggregate (Volume = multi-line, Pipeline = full cohort),
+matching how leads/deals already treat "All". Picking a domain narrows everything to it. The old
+hardcoded `'onboarding'` first-paint seed is gone.
+
+**Dashboard RSC (`dashboard/page.tsx`).** Resolves `scopeDomain = resolveDomainParam(sp, await
+cookies(), role)` — the SAME resolver the list pages use (admin/founder → chosen domain or null;
+manager/agent → always null, so managers stay pinned). The seed is sourced from it:
+`getDashboardSummary`'s `initialDomain` becomes `scopeDomain ?? undefined` (a domain → scoped; undefined
+→ all-org); admin/founder volume seeds **single-line** (`getLeadVolumeForDomain`) when scoped, else the
+**multi-domain** aggregate; budget pre-filters to `scopeDomain` (mirrors the existing manager pin).
+`scopeDomain` threads canvas → `WidgetProps` (alongside `dateRange`).
+
+**Widgets.** `ManagerLeadStatusWidget` / `ManagerCampaignWidget` / `ManagerLeadVolumeWidget` dropped
+their `<Tabs>` domain rows and all `domainMode` state; they read the domain from the new `scopeDomain`
+prop. `autoFetch` is now `false` (the RSC always seeds the current scope — a domain pick round-trips
+the page like the date filter and reseeds every widget, so no per-widget mount fetch); cohort-sync
+applies the fresh RSC payload unconditionally. The refresh buttons still re-fetch the same scope.
+`ManagerLeadVolumeWidget` derives `isMultiMode = !isManager && scopeDomain == null`.
+
+**Selector mounted on the dashboard + performance.** `DashboardCanvas` flips `PageControls
+isPrivileged` to admin/founder (the global `DomainSelector` now renders in the dashboard header cluster
+beside the date filter + bell — previously bell-only). The `/performance` founder/admin branch mounts
+it too; `ManagerPerformancePanel` syncs its client-side roster `domainFilter` to the global selection
+(reactive on the `?domain=` param, cookie fallback on a param-less URL), gated to a domain present in
+the roster so a stale value never blanks the list. Performance keeps its client-side roster filter
+(the server fetch path is unchanged) — only its default is now driven by the global domain.
+
+**Server-side trust boundary unchanged.** The dashboard widget actions still pin managers via
+`effectiveWidgetDomain` (managers can never request another domain); founder narrowing remains an
+**additive service `WHERE domain = …`**, never an RLS change (RLS already grants founders all domains).
+Dashboard service Redis keys already embed the scope domain, so shop / house / all hit distinct entries
+— no cross-domain cache bleed.
+
+**Live Lead Activity scoped too (follow-up).** The Recent Activity widget previously showed
+**all-domain** activity for admin/founder on both the RSC seed (`get_dashboard_summary`'s
+`agent_activity` CTE returns all domains for admin/founder, ignoring `p_initial_domain`) and the
+unfiltered Realtime stream. Now: `getAgentRecentActivity` takes a `targetDomain?` and runs the
+manager-path scope (`get_agent_recent_activity` `l.domain = p_domain`) when a founder/admin has a
+domain selected (the `getLeadStatusSummary` precedent); `getAgentRecentActivityAction` validates it
+and pins managers via `effectiveWidgetDomain`. The dashboard page fetches the scoped feed separately
+and overrides the seed (no SQL change to the summary RPC). The widget re-applies the fresh scoped
+seed on a domain switch and re-subscribes the Realtime channel — when scoped, it falls back to the
+own-actions filter (`lead_activities` has no domain column and Postgres Realtime can't filter on the
+joined `leads.domain`, so streaming all-domain inserts would leak other domains; under-streaming to
+own actions never shows wrong-domain rows). All-domains view keeps the unfiltered live stream.
+
+**Deleted.** `src/lib/utils/widget-scope.ts` (`resolveWidgetScope` + `WidgetDomainMode`) — zero
+importers after the widgets moved to `scopeDomain`. Consolidated forks stay deleted (R-04).
+
+## 2026-06-17 — Manager Lead Pipeline shows the full domain roster
+
+**Goal.** On the dashboard, the **Lead Pipeline** widget's per-agent scorecard
+(`lead_status.byAgent`) was built by `GROUP BY assigned_to` over the date-filtered cohort. For a
+**manager** this rendered "agents who happen to hold a lead this period", not "my team": a teammate
+with zero leads in the window vanished entirely, and the manager themselves only appeared if
+personally assigned leads (managers carry leads since migration 0124). The intended reading is that
+a manager sees **themselves + every agent of their domain**, every member present even at zero.
+Founder/admin keep the cross-domain cohort rollup unchanged.
+
+**Migration 0129 — `manager_pipeline_full_roster`.** `CREATE OR REPLACE` of the two RPCs that carry
+the manager pipeline, each patched identically and isolated to the `byAgent` derivation:
+
+- `get_dashboard_summary` (the RSC first-paint seed) and `get_lead_pipeline_refresh` (the widget
+  refresh / domain-tab action).
+- In the **manager branch only**, `agent_counts` is now a **domain ROSTER CTE**
+  (`profiles WHERE domain = p_domain AND role IN ('agent','manager') AND is_active`) **LEFT JOINed**
+  to the per-(agent, status) cohort counts. Roster members with no leads in the period coalesce to
+  `counts = {}` / `total = 0` and still render (empty bar). The roster role set mirrors
+  `LEAD_ASSIGNABLE_ROLES` / `ROUTING_POOL_ROLES` (`lib/constants/roles.ts`) — agents + managers both
+  carry leads; keep the literal `('agent','manager')` list in sync.
+- `jsonb_object_agg(...) FILTER (WHERE pas.status IS NOT NULL)` drops the all-NULL LEFT-JOIN row for
+  a zero-lead member (a NULL key would otherwise throw); `COALESCE(..., '{}'::jsonb)` supplies the
+  empty mix. `SUM(pas.cnt)` over no matches → NULL → `COALESCE(..., 0)`.
+- **`status_totals` (chip/legend numbers) is UNCHANGED** — totals stay the real cohort counts; only
+  the row *set* of `byAgent` gains the zero members.
+- **Admin/founder are unchanged** — the `ELSE` branch keeps the cohort-only `GROUP BY assigned_to`
+  path verbatim (0070/0115). Note: an admin/founder drilling into a *single domain tab* coerces to
+  `rpcRole = 'manager'` in the service (existing behaviour), so they now also see that domain's full
+  roster — coherent and intended; the "All" tab stays cohort-only.
+- Both functions keep their signatures (no DROP) and re-state the 0102 revoke posture (Q-13:
+  scope-param RPCs, admin client only). **⚠️ NOT yet applied locally (Docker down at author time) —
+  apply + verify.**
+
+**Widget — `ManagerLeadStatusWidget.tsx`.** The manager's own row is **pinned first and marked
+"You"** (accent `--text-2xs` marker + semibold name). The pin is a stable client-side sort over the
+SQL-sorted (`total DESC`) roster using the existing `userId` prop — **no identity arg is threaded
+into SQL**. The per-agent scorecard is now gated on `grandTotal > 0` (alongside `byAgent.length > 0`)
+so a manager whose domain has zero leads in the period sees only the "No leads for this period."
+empty state, never a wall of zero bars. Founder/admin rendering is untouched (no "You", no re-sort).
 
 **Goal.** A pre-production, adversarially-verified audit (5 specialist passes across regen
 type-drift, RLS/roles, null/runtime, async/cache/SLA, data-integrity; every finding refuted by an

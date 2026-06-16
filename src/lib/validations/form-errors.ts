@@ -52,6 +52,15 @@ export const formErrors = {
   elayaCapReached:      "You've reached today's Elaya message limit. It resets at midnight.",
   elayaUnavailable:     "Elaya couldn't respond just now. Please try again.",
 
+  // Suggestion box / bug report
+  suggestionMessageRequired:  "Please write a message before sending.",
+  suggestionMessageTooLong:   "Message must be 2,000 characters or fewer.",
+  suggestionImageTooLarge:    "Each image must be 5 MB or smaller.",
+  suggestionImageInvalidType: "Please attach image files only (JPEG, PNG, WebP, etc.).",
+  suggestionTooManyImages:    "You can attach up to 4 images.",
+  suggestionUploadFailed:     "Image upload failed. Please check your connection and try again.",
+  suggestionSubmitFailed:     "Couldn't send your feedback. Please try again.",
+
   // Password change
   passwordCurrentIncorrect: "Current password is incorrect.",
   passwordSameAsCurrent:    "New password must differ from your current password.",

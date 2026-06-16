@@ -8,6 +8,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dispatchPush } from "@/lib/services/push-service";
+import { resolveChannels } from "@/lib/services/notification-prefs-service";
 import type { Notification, NotificationType } from "@/lib/types/database";
 
 export interface CreateNotificationPayload {
@@ -16,6 +17,13 @@ export interface CreateNotificationPayload {
   title:        string;
   body?:        string;
   action_url?:  string;   // relative path only
+  /**
+   * The per-user control-plane category key (notification-categories.ts) — the
+   * SEAM A gate. When set, this in-app insert + its Web Push are SUPPRESSED if the
+   * recipient has muted the in_app channel for this category. Absent → unconditional
+   * (back-compat / fail-open). Transactional notifications never pass a key.
+   */
+  notificationKey?: string;
 }
 
 // ─── Reads ────────────────────────────────────────────────────────────────────
@@ -122,6 +130,17 @@ export async function markAllNotificationsRead(
 export async function createNotification(
   payload: CreateNotificationPayload,
 ): Promise<{ error: string | null }> {
+  // SEAM A — per-user control plane (migration 0133). When a category key is
+  // supplied, suppress BOTH the in-app row AND the Web Push (push lives after the
+  // insert below, so skipping the insert skips push too) if the recipient has
+  // muted the in_app channel for this category. Fails OPEN: resolveChannels returns
+  // in_app:true on any error / missing row, so a notification is never lost to a
+  // gate failure. Silent success — callers are fire-and-forget.
+  if (payload.notificationKey) {
+    const { in_app } = await resolveChannels(payload.recipient_id, payload.notificationKey);
+    if (!in_app) return { error: null };
+  }
+
   const admin = createAdminClient();
   const { error } = await admin
     .from("notifications")

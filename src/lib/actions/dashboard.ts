@@ -89,16 +89,37 @@ export async function getAgentTasksSummaryAction(
 }
 
 // ─────────────────────────────────────────────
-// Agent Recent Activity
+// Recent Lead Activity (lead rollup — migration 0132)
+// scope 'team' (default): role-scoped — agent: own leads; manager: own domain;
+// admin/founder: targetDomain when set, else all-org. scope 'mine': leads
+// assigned to the caller, any role (agents see no toggle; their feed is always
+// own). targetDomain is the global domain selector for admin/founder.
 // ─────────────────────────────────────────────
 export async function getAgentRecentActivityAction(
   _agentId: string,
+  targetDomain?: AppDomain,
+  scope: 'mine' | 'team' = 'team',
 ): Promise<{ data: AgentActivity[] | null; error: string | null }> {
+  // Validate the optional drill-down target is a real Gia domain (a crafted
+  // value can never widen scope — effectiveWidgetDomain pins non-admin/founder)
+  // and the scope is one of the two literals.
+  const parsed = z.object({
+    domain: z.enum(GIA_DOMAIN_ENUM).optional(),
+    scope:  z.enum(['mine', 'team']),
+  }).safeParse({ domain: targetDomain, scope });
+  if (!parsed.success) return { data: null, error: 'Invalid domain or scope.' };
+
   const auth = await requireProfile();
   if (!auth.ok) return auth.result;
   const profile = auth.profile;
 
-  const data = await getAgentRecentActivity(profile.id, profile.role, profile.domain);
+  const data = await getAgentRecentActivity(
+    profile.id,
+    profile.role,
+    profile.domain,
+    effectiveWidgetDomain(profile.role, profile.domain as AppDomain, parsed.data.domain),
+    parsed.data.scope,
+  );
   return { data, error: null };
 }
 

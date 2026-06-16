@@ -1,8 +1,10 @@
 "use server";
 
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/actions/_auth";
 import { getAssignableUsers } from "@/lib/services/profiles-service";
+import { createNotification } from "@/lib/services/notifications-service";
 import { RecordDealSchema, CreateWalkInDealSchema } from "@/lib/validations/deal-schema";
 import { formErrors } from "@/lib/validations/form-errors";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -78,6 +80,48 @@ function resolveDealShapeForDomain(
     ok: true,
     shape: { deal_type: dealType, deal_duration: null, deal_category: null },
   };
+}
+
+// ─────────────────────────────────────────────
+// notifyDealCreated — fan out a 'deal_created' in-app notification to the active
+// managers/admins/founders in the deal's domain. Mirrors the lead_won fan-out in
+// lead-mutations.ts. Fire-and-forget, non-fatal — a deal write never fails on a
+// notification error. Carries notificationKey:'deal_created' so SEAM A honours
+// each recipient's per-user mute (migration 0133).
+//
+// Only the WALK-IN path calls this. The lead→deal path (recordDeal) flips the lead
+// to 'won', whose own lead_won notification already reaches the same recipients —
+// firing deal_created there too would double-notify the one event.
+// ─────────────────────────────────────────────
+async function notifyDealCreated(opts: {
+  domain:      AppDomain;
+  dealId:      string;
+  contactName: string;
+  amount:      number;
+  byName:      string;
+}): Promise<void> {
+  const admin = createAdminClient();
+  const { data: recipients } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("domain", opts.domain)
+    .in("role", ["manager", "admin", "founder"])
+    .eq("is_active", true);
+
+  if (!recipients || recipients.length === 0) return;
+
+  await Promise.all(
+    recipients.map((r: { id: string }) =>
+      createNotification({
+        recipient_id:    r.id,
+        type:            "system",
+        notificationKey: "deal_created",  // SEAM A — per-user control plane (0133)
+        title:           `New deal — ${opts.contactName}`,
+        body:            `Recorded by ${opts.byName}`,
+        action_url:      `/deals`,
+      }),
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────
@@ -262,7 +306,24 @@ export async function createWalkInDeal(
 
   if (insertError || !inserted) return { data: null, error: formErrors.generic };
 
-  return { data: { dealId: (inserted as { id: string }).id }, error: null };
+  const dealId = (inserted as { id: string }).id;
+
+  // Notify domain managers/admins/founders — non-fatal. after() keeps the lambda
+  // alive past the response so the in-app insert + push fan-out inside
+  // createNotification settles on Vercel (A-16); a bare void would be orphaned.
+  after(
+    notifyDealCreated({
+      domain:      finalDomain,
+      dealId,
+      contactName: data.contact_name,
+      amount:      data.deal_amount,
+      byName:      caller.full_name,
+    }).catch((err) =>
+      console.error("[deals] notifyDealCreated failed (non-fatal):", err),
+    ),
+  );
+
+  return { data: { dealId }, error: null };
 }
 
 // ─────────────────────────────────────────────

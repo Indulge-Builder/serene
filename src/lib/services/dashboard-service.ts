@@ -158,54 +158,78 @@ export async function getAgentTasksSummary(agentId: string): Promise<import('@/l
 }
 
 // ─────────────────────────────────────────────
-// Agent Activity Widget
-// Used as initial data; client subscribes to Realtime for updates.
-// Role-scoped:
-//   admin/founder → all activities (cross-domain)
-//   manager       → activities on leads in their domain
-//   agent         → only activities where actor_id = agentId
+// Recent Lead Activity Widget (migration 0132 — lead rollup, NOT an event stream)
+// One card per lead, most-recently-worked first: status + latest call outcome +
+// latest note. Sourced from `leads` (denormalised). Used as initial data; the
+// widget re-fetches on scope toggle / refresh.
+// Scope:
+//   'mine' → leads assigned to the caller, any role.
+//   'team' → agent: own leads; manager: own domain; admin/founder: targetDomain
+//            when set, else all-org.
 // ─────────────────────────────────────────────
 
+export type RecentLeadScope = 'mine' | 'team';
+
 export type AgentActivity = {
-  id:          string;
-  action_type: string;
-  details:     Record<string, unknown> | null;
-  created_at:  string;
-  lead_id:     string | null;
-  lead_name:   string | null;
+  lead_id:           string;
+  lead_slug:         string | null;
+  lead_name:         string | null;
+  lead_domain:       string | null;
+  status:            string;
+  last_call_outcome: string | null;
+  last_activity_at:  string | null;
+  assigned_to:       string | null;
+  assignee_name:     string | null;
+  note_body:         string | null;
 };
 
 export async function getAgentRecentActivity(
   agentId: string,
   role?: string,
   domain?: string,
+  targetDomain?: AppDomain,
+  scope: RecentLeadScope = 'team',
 ): Promise<AgentActivity[]> {
-  // EXECUTE revoked from `authenticated` (0102, F-1) — admin client; scope args
-  // are session-derived by the dashboard action/page (Q-13).
+  // 'team' is role-scoped in SQL (agent → own, manager → domain, admin/founder →
+  // targetDomain or all). For a manager, p_domain is always their own domain;
+  // admin/founder pass the global-selector targetDomain (null = all-org). 'mine'
+  // ignores domain entirely — it is assignee-scoped to p_user_id in SQL.
+  const rpcDomain = role === 'manager' ? (domain ?? null) : (targetDomain ?? null);
+
+  // EXECUTE revoked from `authenticated` (0102/0132, Q-13) — admin client; scope
+  // args are session-derived by the dashboard action/page (caller = trust boundary).
   const supabase = createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc('get_agent_recent_activity', {
+  const { data, error } = await (supabase as any).rpc('get_recent_lead_activity', {
     p_role:    role ?? 'agent',
-    p_domain:  domain ?? null,
+    p_domain:  rpcDomain,
     p_user_id: agentId,
+    p_scope:   scope,
   });
   if (error) throw error;
   const rows = (data ?? []) as Array<{
-    id:          string;
-    action_type: string;
-    details:     Record<string, unknown> | null;
-    created_at:  string;
-    lead_id:     string | null;
-    actor_id:    string | null;
-    lead_name:   string | null;
+    lead_id:           string;
+    lead_slug:         string | null;
+    lead_name:         string | null;
+    lead_domain:       string | null;
+    status:            string;
+    last_call_outcome: string | null;
+    last_activity_at:  string | null;
+    assigned_to:       string | null;
+    assignee_name:     string | null;
+    note_body:         string | null;
   }>;
   return rows.map((row) => ({
-    id:          row.id,
-    action_type: row.action_type,
-    details:     row.details,
-    created_at:  row.created_at,
-    lead_id:     row.lead_id,
-    lead_name:   row.lead_name,
+    lead_id:           row.lead_id,
+    lead_slug:         row.lead_slug,
+    lead_name:         row.lead_name,
+    lead_domain:       row.lead_domain,
+    status:            row.status,
+    last_call_outcome: row.last_call_outcome,
+    last_activity_at:  row.last_activity_at,
+    assigned_to:       row.assigned_to,
+    assignee_name:     row.assignee_name,
+    note_body:         row.note_body,
   }));
 }
 

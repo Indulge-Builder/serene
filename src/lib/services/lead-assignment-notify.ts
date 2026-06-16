@@ -116,6 +116,7 @@ export async function notifyLeadAssigned(input: LeadAssignedNotifyInput): Promis
     createNotification({
       recipient_id: assignedTo,
       type: 'lead_assigned',
+      notificationKey: 'lead_assigned',  // SEAM A — per-user control plane (0133)
       title: 'New lead assigned to you',
       body: actorId ? undefined : 'Assigned automatically',
       action_url: `/leads/${leadId}`,

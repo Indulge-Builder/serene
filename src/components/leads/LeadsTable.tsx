@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
-import { ArrowDownUp, Clock, Columns, Users } from 'lucide-react';
+import { ArrowDownUp, Clock, Columns } from 'lucide-react';
 import { buildFilterParams } from '@/lib/utils/filter-params';
 import type { LeadListItemWithAssignee } from '@/lib/services/leads-service';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
@@ -17,6 +17,7 @@ import { useLeadColumnPreferences } from '@/hooks/useLeadColumnPreferences';
 import { useMountOnFirstOpen } from '@/hooks/useMountOnFirstOpen';
 import { LeadsSelectionToolbar } from '@/components/leads/LeadsSelectionToolbar';
 import { ExportButton } from '@/components/leads/ExportButton';
+import { TabSelector } from '@/components/ui/TabSelector';
 import type { LeadFilters, UserRole } from '@/lib/types/database';
 
 // Load-on-intent (perf audit G-1): the picker (@dnd-kit chain) stays out of the
@@ -53,19 +54,23 @@ export function LeadsTable({ leads, userId, role, filters, hasActiveFilters = fa
   const showViewToggle = enableViewToggle && role === 'manager';
   const viewIsAll = params.get('view') === 'all';
 
-  function toggleView() {
-    const next = buildFilterParams(
+  // The segmented control passes the TARGET view ('mine' | 'all'), not a flip.
+  // Selecting the already-active segment is a no-op (no needless navigation).
+  function setView(next: 'mine' | 'all') {
+    const wantAll = next === 'all';
+    if (wantAll === viewIsAll) return;
+    const params2 = buildFilterParams(
       params,
-      viewIsAll
+      wantAll
+        // To Team Leads → write ?view=all.
+        ? { view: 'all' }
         // Back to My Leads (default) → drop the param AND any agent_id (a no-op
         // in My Leads, and the Agent filter is hidden there so it can't be cleared).
-        ? { view: null, agent_id: null }
-        // To All Leads → write ?view=all.
-        : { view: 'all' },
+        : { view: null, agent_id: null },
       { resetKeys: ['page'] },
     );
     startTransition(() => {
-      router.push(`${pathname}?${next.toString()}`);
+      router.push(`${pathname}?${params2.toString()}`);
     });
   }
 
@@ -162,7 +167,7 @@ export function LeadsTable({ leads, userId, role, filters, hasActiveFilters = fa
         boxShadow:    'var(--shadow-1)',
       }}
     >
-      {/* Table toolbar — going cold | sort + columns + export. One line at
+      {/* Table toolbar — view switcher (manager) · going cold | sort + columns + export. One line at
           every viewport: below md the sort/export labels compress to icons
           (same language as the dashboard header settings button) and Columns
           hides entirely — it configures table columns and the table only
@@ -178,6 +183,29 @@ export function LeadsTable({ leads, userId, role, filters, hasActiveFilters = fa
           flexWrap:     'wrap',
         }}
       >
+        {/* Lead-scope switcher — managers only, FIRST control (left cluster). A
+            sliding-pill segmented toggle (TabSelector accent variant): "My Leads"
+            (default, the manager's own assigned leads) and "Team Leads"
+            (?view=all, the whole domain). The accent pill springs between
+            segments on click via layoutId — the active segment names the CURRENT
+            view, not the action. Distinct indicatorLayoutId so the pill never
+            shares Framer shared-layout with any other tab group on the page
+            (TabSelector collision rule). */}
+        {showViewToggle && (
+          <div className="serene-leads-view-switch" style={{ flexShrink: 0 }}>
+            <TabSelector
+              variant="accent"
+              indicatorLayoutId="leads-view-switch"
+              activeTab={viewIsAll ? 'all' : 'mine'}
+              onChange={(id) => setView(id === 'all' ? 'all' : 'mine')}
+              tabs={[
+                { id: 'mine', label: 'My Leads' },
+                { id: 'all', label: 'Team Leads' },
+              ]}
+            />
+          </div>
+        )}
+
         <button
           type="button"
           onClick={toggleGoingCold}
@@ -209,42 +237,6 @@ export function LeadsTable({ leads, userId, role, filters, hasActiveFilters = fa
           />
           <span>Going Cold</span>
         </button>
-
-        {/* Team Leads toggle — managers only. Fixed label; the on/pressed state
-            is the switch, not a state mirror. OFF (default, resting) = the
-            manager's own assigned leads. ON (accent-lit) = the whole domain's
-            team leads (?view=all). */}
-        {showViewToggle && (
-          <button
-            type="button"
-            onClick={toggleView}
-            aria-pressed={viewIsAll}
-            title={viewIsAll ? 'Showing the whole team’s leads' : 'Showing your assigned leads — toggle for the whole team'}
-            className="serene-touch"
-            style={{
-              display:      'inline-flex',
-              alignItems:   'center',
-              gap:          'var(--space-1)',
-              height:       '2.25rem',
-              padding:      '0 var(--space-3)',
-              background:   viewIsAll ? 'var(--theme-accent-surface)' : 'transparent',
-              border:       `1px solid ${viewIsAll ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
-              borderRadius: 'var(--radius-sm)',
-              fontSize:     'var(--text-sm)',
-              fontFamily:   'var(--font-sans)',
-              fontWeight:   'var(--weight-medium)',
-              color:        viewIsAll ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
-              cursor:       'pointer',
-              transition:   'var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
-              whiteSpace:   'nowrap',
-              flexShrink:   0,
-              outline:      'none',
-            }}
-          >
-            <Users style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} aria-hidden="true" />
-            <span>Team Leads</span>
-          </button>
-        )}
 
         <div style={{ flex: 1, minWidth: 0 }} aria-hidden="true" />
 

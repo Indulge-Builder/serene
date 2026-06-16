@@ -1,328 +1,422 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { m as motion } from "framer-motion";
-import { Phone, UserPlus, ArrowRight, Copy, User, FileText } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import { getAgentRecentActivityAction } from "@/lib/actions/dashboard";
+import { Phone } from "lucide-react";
 import { CALL_OUTCOME_LABELS } from "@/lib/constants/call-outcomes";
-import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
+import {
+  LEAD_STATUS_LABELS,
+  LEAD_STATUS_COLORS,
+} from "@/lib/constants/lead-statuses";
+import { DOMAIN_LABELS } from "@/lib/constants/domains";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
+import { EASE_OUT_EXPO, BASE_DURATION } from "@/lib/constants/motion";
 import { formatRelativeTime } from "@/lib/utils/dates";
-import type { DashboardAgentActivity } from "@/lib/types";
+import { getAgentRecentActivityAction } from "@/lib/actions/dashboard";
+import { useWidgetData } from "@/hooks/useWidgetData";
+import type { DashboardRecentLead } from "@/lib/types";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { CallOutcome, LeadStatus } from "@/lib/types/database";
-import { useWidgetData } from "@/hooks/useWidgetData";
 
-// A call note writes call_logged + note_added as a pair — the paired note adds
-// no signal, so it is dropped. STANDALONE notes (dossier "Add note") have no
-// twin call_logged within the window and stay in the feed (2026-06-12 enrich).
-const PAIRED_NOTE_WINDOW_MS = 5000;
+type RecentLeadScope = "mine" | "team";
 
-function isPairedNote(
-  activity: DashboardAgentActivity,
-  pool: DashboardAgentActivity[],
-): boolean {
-  if (activity.action_type !== "note_added") return false;
-  const t = new Date(activity.created_at).getTime();
-  return pool.some(
-    (b) =>
-      b.action_type === "call_logged" &&
-      b.lead_id != null &&
-      b.lead_id === activity.lead_id &&
-      Math.abs(new Date(b.created_at).getTime() - t) < PAIRED_NOTE_WINDOW_MS,
+// ── Status chip ──────────────────────────────────────────────────────────────
+function StatusChip({ status }: { status: string }) {
+  const colors = LEAD_STATUS_COLORS[status as LeadStatus];
+  const label = LEAD_STATUS_LABELS[status as LeadStatus] ?? status;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "1px 8px",
+        fontSize: "var(--text-2xs)",
+        fontWeight: "var(--weight-medium)",
+        lineHeight: 1.5,
+        borderRadius: "var(--radius-full)",
+        color: colors?.text ?? "var(--theme-text-secondary)",
+        background: colors?.light ?? "var(--theme-paper-subtle)",
+        border: `1px solid ${colors?.border ?? "var(--theme-paper-border)"}`,
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+      }}
+    >
+      {label}
+    </span>
   );
 }
 
-function enrichFeed(rows: DashboardAgentActivity[]): DashboardAgentActivity[] {
-  return rows.filter((a) => !isPairedNote(a, rows));
-}
+// ── One lead card — the lead's latest touch, three lines ─────────────────────
+function LeadActivityCard({
+  lead,
+  showActor,
+}: {
+  lead: DashboardRecentLead;
+  // Manager/founder see "by <agent>"; an agent's own feed doesn't need it.
+  showActor: boolean;
+}) {
+  const leadName = lead.lead_name?.trim() || "Lead";
+  const noteBody = lead.note_body?.trim() || null;
+  const outcome = lead.last_call_outcome as CallOutcome | null;
+  const outcomeLabel = outcome
+    ? (CALL_OUTCOME_LABELS[outcome] ?? outcome)
+    : null;
+  const domainLabel = lead.lead_domain
+    ? (DOMAIN_LABELS[lead.lead_domain as keyof typeof DOMAIN_LABELS] ??
+      lead.lead_domain)
+    : null;
 
-type ActivityMeta = {
-  icon: React.ElementType;
-  color: string;
-  label: (activity: DashboardAgentActivity) => string;
-  sub: (activity: DashboardAgentActivity) => string | null;
-};
-
-const ACTIVITY_MAP: Record<string, ActivityMeta> = {
-  call_logged: {
-    icon: Phone,
-    color: "var(--color-info-text)",
-    label: (a) => a.lead_name ?? "Unknown lead",
-    sub: (a) => {
-      const outcome = a.details?.outcome as CallOutcome | undefined;
-      return outcome
-        ? (CALL_OUTCOME_LABELS[outcome] ?? outcome)
-        : "Call logged";
-    },
-  },
-  status_changed: {
-    icon: ArrowRight,
-    color: "var(--theme-accent)",
-    label: (a) => a.lead_name ?? "Unknown lead",
-    sub: (a) => {
-      const from = a.details?.old_status as LeadStatus | undefined;
-      const to = a.details?.new_status as LeadStatus | undefined;
-      if (from && to) {
-        return `${LEAD_STATUS_LABELS[from] ?? from} → ${LEAD_STATUS_LABELS[to] ?? to}`;
-      }
-      return "Status changed";
-    },
-  },
-  note_added: {
-    icon: FileText,
-    color: "var(--theme-text-secondary)",
-    label: (a) => a.lead_name ?? "Lead",
-    sub: (a) => {
-      const content = a.details?.content;
-      if (typeof content === "string" && content.trim().length > 0) {
-        const text = content.trim();
-        return text.length > 60 ? `${text.slice(0, 59)}…` : text;
-      }
-      return "Note added";
-    },
-  },
-  lead_created: {
-    icon: UserPlus,
-    color: "var(--color-success-text)",
-    label: (a) => a.lead_name ?? "New lead",
-    sub: () => "Entered the system",
-  },
-  agent_assigned: {
-    icon: User,
-    color: "var(--theme-text-secondary)",
-    label: (a) => a.lead_name ?? "Lead",
-    sub: () => "Assigned to you",
-  },
-  duplicate_submission: {
-    icon: Copy,
-    color: "var(--color-warning-text)",
-    label: (a) => a.lead_name ?? "Lead",
-    sub: () => "Duplicate submission",
-  },
-};
-
-const FALLBACK_META: ActivityMeta = {
-  icon: ArrowRight,
-  color: "var(--theme-text-tertiary)",
-  label: (a) => a.lead_name ?? "Lead",
-  sub: (a) => a.action_type.replace(/_/g, " "),
-};
-
-function ActivityItem({ activity }: { activity: DashboardAgentActivity }) {
-  const meta = ACTIVITY_MAP[activity.action_type] ?? FALLBACK_META;
-  const Icon = meta.icon;
-  const label = meta.label(activity);
-  const sub = meta.sub(activity);
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: -6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-3)",
-        padding: "var(--space-2) 0",
-        borderBottom: "1px solid var(--theme-paper-border)",
-      }}
-    >
-      {/* Icon */}
-      <span
+  const cardInner = (
+    <>
+      {/* Line 1 — name · by <agent> · time (one line) */}
+      <div
         style={{
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 28,
-          height: 28,
-          borderRadius: "var(--radius-full)",
-          background: "var(--theme-paper-subtle)",
-          flexShrink: 0,
-          color: meta.color,
+          alignItems: "baseline",
+          gap: "var(--space-2)",
         }}
       >
-        <Icon size={13} strokeWidth={1.5} />
-      </span>
-
-      {/* Label + sub */}
-      <span style={{ flex: 1, minWidth: 0 }}>
         <span
           style={{
-            display: "block",
             fontSize: "var(--text-sm)",
-            color: "var(--theme-text-primary)",
             fontWeight: "var(--weight-medium)",
+            color: "var(--theme-text-primary)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            flexShrink: 1,
+            minWidth: 0,
           }}
         >
-          {label}
+          {leadName}
         </span>
-        {sub && (
+
+        {showActor && lead.assignee_name && (
           <span
             style={{
-              display: "block",
               fontSize: "var(--text-xs)",
-              color: "var(--theme-text-tertiary)",
+              color: "var(--theme-text-secondary)",
+              whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              flexShrink: 1,
+              minWidth: 0,
             }}
           >
-            {sub}
+            <span style={{ color: "var(--theme-text-tertiary)" }}>by </span>
+            <span style={{ fontWeight: "var(--weight-medium)" }}>
+              {lead.assignee_name}
+            </span>
           </span>
         )}
-      </span>
 
-      {/* Timestamp */}
-      <span
+        {/* spacer pushes the time to the far right */}
+        <span style={{ flex: 1 }} />
+
+        {lead.last_activity_at && (
+          <span
+            style={{
+              fontSize: "var(--text-2xs)",
+              color: "var(--theme-text-tertiary)",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            {formatRelativeTime(lead.last_activity_at)}
+          </span>
+        )}
+      </div>
+
+      {/* Line 2 — status + latest call outcome */}
+      <div
         style={{
-          fontSize: "var(--text-2xs)",
-          color: "var(--theme-text-tertiary)",
-          whiteSpace: "nowrap",
-          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+          flexWrap: "wrap",
         }}
       >
-        {formatRelativeTime(activity.created_at)}
-      </span>
+        <StatusChip status={lead.status} />
+        {outcomeLabel && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              fontSize: "var(--text-xs)",
+              color: "var(--theme-text-secondary)",
+            }}
+          >
+            <Phone
+              size={11}
+              strokeWidth={1.5}
+              style={{ color: "var(--color-info-text)" }}
+            />
+            {outcomeLabel}
+          </span>
+        )}
+        {domainLabel && (
+          <span
+            style={{
+              marginLeft: "auto",
+              padding: "0 6px",
+              borderRadius: "var(--radius-full)",
+              fontSize: "var(--text-2xs)",
+              background: "var(--theme-paper)",
+              border: "1px solid var(--theme-paper-border)",
+              color: "var(--theme-text-tertiary)",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            {domainLabel}
+          </span>
+        )}
+      </div>
+
+      {/* Line 3 — latest note. Sans + secondary (the canonical note-body
+          treatment in LeadNotesSection) — serif-italic + tertiary read as
+          washed-out body copy on the paper-subtle card. */}
+      {noteBody && (
+        <p
+          style={{
+            margin: 0,
+            fontSize: "var(--text-xs)",
+            fontFamily: "var(--font-sans)",
+            color: "var(--theme-text-secondary)",
+            lineHeight: "var(--leading-normal)",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {noteBody}
+        </p>
+      )}
+    </>
+  );
+
+  const cardStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: "var(--space-2)",
+    padding: "var(--space-3)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--theme-paper-subtle)",
+    border: "1px solid var(--theme-paper-border)",
+    textDecoration: "none",
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
+    >
+      {lead.lead_slug ? (
+        <Link
+          href={`/leads/${lead.lead_slug}`}
+          className="serene-activity-card"
+          style={cardStyle}
+        >
+          {cardInner}
+        </Link>
+      ) : (
+        <div style={cardStyle}>{cardInner}</div>
+      )}
     </motion.div>
   );
 }
 
-const ACTIVITY_CAP = 25;
-const SCROLL_SPEED = 0.11; // px per frame (~7px/s at 60fps) — gentle drift
+// ── Mine / Team scope switch — bespoke curved toggle, themed ─────────────────
+// A small two-segment pill: paper-subtle track, an accent-filled thumb that
+// slides under the active label (transform/opacity only — Never-Do list).
+function ScopeSwitch({
+  scope,
+  onChange,
+  disabled,
+}: {
+  scope: RecentLeadScope;
+  onChange: (next: RecentLeadScope) => void;
+  disabled?: boolean;
+}) {
+  const options: { value: RecentLeadScope; label: string }[] = [
+    { value: "mine", label: "Mine" },
+    { value: "team", label: "Team" },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Activity scope"
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        padding: "2px",
+        borderRadius: "var(--radius-full)",
+        background: "var(--theme-paper-subtle)",
+        border: "1px solid var(--theme-paper-border)",
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {/* sliding thumb */}
+      <motion.span
+        aria-hidden
+        initial={false}
+        animate={{ x: scope === "mine" ? 0 : "100%" }}
+        transition={{ type: "spring", stiffness: 420, damping: 34 }}
+        style={{
+          position: "absolute",
+          top: 2,
+          bottom: 2,
+          left: 2,
+          width: "calc(50% - 2px)",
+          borderRadius: "var(--radius-full)",
+          background: "var(--theme-accent)",
+          boxShadow: "var(--shadow-1)",
+        }}
+      />
+      {options.map((opt) => {
+        const active = scope === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            disabled={disabled}
+            onClick={() => !active && onChange(opt.value)}
+            style={{
+              position: "relative",
+              zIndex: 1,
+              minWidth: 44,
+              padding: "3px 10px",
+              border: "none",
+              background: "transparent",
+              borderRadius: "var(--radius-full)",
+              fontSize: "var(--text-2xs)",
+              fontWeight: "var(--weight-medium)",
+              letterSpacing: "0.02em",
+              cursor: disabled ? "not-allowed" : "pointer",
+              color: active
+                ? "var(--theme-accent-fg)"
+                : "var(--theme-text-secondary)",
+              transition: "color var(--duration-fast) var(--ease-in-out)",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
-export function AgentActivityWidget({ userId, role, initialData, size = 'lg' }: WidgetProps) {
-  const rawSeed = initialData?.agent_activity ?? null;
-  const seed = rawSeed ? enrichFeed(rawSeed) : null;
-  const { data, loaded, setData: setActivities } = useWidgetData<DashboardAgentActivity[]>({
+export function AgentActivityWidget({
+  userId,
+  role,
+  initialData,
+  size = "lg",
+  scopeDomain,
+}: WidgetProps) {
+  // Manager/founder can flip Mine / Team; agents always see their own leads.
+  const canToggle =
+    role === "manager" || role === "admin" || role === "founder";
+  const [scope, setScope] = useState<RecentLeadScope>("team");
+
+  const seed = (initialData?.agent_activity ?? null) as
+    | DashboardRecentLead[]
+    | null;
+  const { data, loaded, apply } = useWidgetData<DashboardRecentLead[]>({
     seed,
     fetcher: async () => {
-      const result = await getAgentRecentActivityAction(userId);
-      return {
-        data: result.data ? enrichFeed(result.data) : null,
-      };
+      const result = await getAgentRecentActivityAction(
+        userId,
+        scopeDomain ?? undefined,
+        scope,
+      );
+      return { data: result.data ?? null };
     },
     deps: [userId],
   });
-  const activities = data ?? [];
-  const mountId = useId();
+
+  // A global domain pick round-trips the page and re-seeds `agent_activity` for
+  // the new scope; useWidgetData ignores seed-prop changes (seed-once), so
+  // re-apply the fresh scoped seed when the selector changes. Keyed on
+  // scopeDomain only so it never fights a Mine/Team refetch.
+  const firstSeedSync = useRef(true);
+  useEffect(() => {
+    if (firstSeedSync.current) {
+      firstSeedSync.current = false;
+      return; // initial seed already applied by useWidgetData
+    }
+    if (seed) apply(seed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeDomain]);
+
+  // Mine/Team flip → fetch the scoped feed and apply it. (The seed always lands
+  // as 'team' from the RSC; flipping to 'mine' is a client fetch.)
+  const [scopeLoading, setScopeLoading] = useState(false);
+  const firstScopeSync = useRef(true);
+  useEffect(() => {
+    if (firstScopeSync.current) {
+      firstScopeSync.current = false;
+      return; // seed is the initial 'team' view — no fetch needed
+    }
+    let cancelled = false;
+    setScopeLoading(true);
+    getAgentRecentActivityAction(userId, scopeDomain ?? undefined, scope)
+      .then((result) => {
+        if (!cancelled && result.data) apply(result.data);
+      })
+      .finally(() => {
+        if (!cancelled) setScopeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope]);
+
+  const leads = data ?? [];
   const viewportRef = useRef<HTMLDivElement>(null);
-  const scrollPosRef = useRef(0); // fractional auto-scroll position
-  const pausedRef = useRef(false); // true while hovered / touch-scrolling
-  const rafRef = useRef<number>(0);
-  const touchResumeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const channelRef = useRef<ReturnType<
-    ReturnType<typeof createClient>["channel"]
-  > | null>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
 
-  // Auto-advance ticker over a NATIVELY SCROLLABLE viewport — the pointer can
-  // scroll the list directly (hover pauses the drift; onScroll keeps the
-  // ticker position in sync so resuming never jumps). Pauses on hidden tab.
+  // Run the marquee only when ONE copy of the list actually overflows the
+  // viewport — otherwise there's nothing to scroll and a loop would be pointless
+  // motion. Measured (not a card-count guess) so it's correct at any widget size
+  // and any note length. The shift = one copy's height + the inter-copy gap; the
+  // keyframe translates by exactly that so copy B lands where copy A started
+  // (seamless wrap). ResizeObserver re-checks on resize / content change.
+  const GAP_PX = 8; // --space-2, the gap between cards and between the two copies
+  const [marquee, setMarquee] = useState(false);
+  const [shiftPx, setShiftPx] = useState(0);
   useEffect(() => {
-    if (!loaded) return;
-
-    const tick = () => {
-      const vp = viewportRef.current;
-      if (!pausedRef.current && vp) {
-        const maxScroll = vp.scrollHeight - vp.clientHeight;
-        if (maxScroll > 0) {
-          let next = scrollPosRef.current + SCROLL_SPEED;
-          if (next >= maxScroll) next = 0; // wrap to top
-          scrollPosRef.current = next;
-          vp.scrollTop = next;
-        }
-      }
-      rafRef.current = requestAnimationFrame(tick);
+    const viewport = viewportRef.current;
+    const content = measureRef.current;
+    if (!viewport || !content) {
+      setMarquee(false);
+      return;
+    }
+    // Reduced-motion users get a static, natively-scrollable list — never the
+    // drift (which is pure decoration). Gating it here (not just in CSS) also
+    // keeps the viewport on overflow:auto for them so they can scroll the list.
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const check = () => {
+      const copyHeight = content.scrollHeight; // one copy (the measured wrapper)
+      setMarquee(!reduced && copyHeight > viewport.clientHeight + 8);
+      setShiftPx(copyHeight + GAP_PX);
     };
-
-    rafRef.current = requestAnimationFrame(tick);
-
-    // Pause loop when tab is hidden; resume when visible — prevents CPU burn on long shifts
-    const handleVisibility = () => {
-      if (document.hidden) {
-        cancelAnimationFrame(rafRef.current);
-      } else {
-        rafRef.current = requestAnimationFrame(tick);
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [loaded, activities.length]);
-
-  useEffect(() => {
-    return () => {
-      if (touchResumeRef.current) clearTimeout(touchResumeRef.current);
-    };
-  }, []);
-
-  // Realtime subscription — scoped by role (P-06 compliance)
-  // admin/founder: no filter (all activities); agent: filter by actor_id
-  // manager: filter by actor_id (domain-scoped initial load; Realtime limited to own actions for simplicity)
-  useEffect(() => {
-    const supabase = createClient();
-    const channelName = `agent-activity:${userId}:${mountId}`;
-
-    const isAdminOrFounder = role === 'admin' || role === 'founder';
-
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "lead_activities",
-          // P-06: admin/founder subscribe with no filter (all activity); agents filter to own actor_id
-          ...(isAdminOrFounder ? {} : { filter: `actor_id=eq.${userId}` }),
-        },
-        (payload) => {
-          const newRow = payload.new as {
-            id: string;
-            action_type: string;
-            details: Record<string, unknown> | null;
-            created_at: string;
-            lead_id: string | null;
-          };
-
-          const activity: DashboardAgentActivity = {
-            id: newRow.id,
-            action_type: newRow.action_type,
-            details: newRow.details,
-            created_at: newRow.created_at,
-            lead_id: newRow.lead_id,
-            lead_name: null,
-          };
-
-          setActivities((prev) => {
-            // Drop the note half of a call-note pair (same rule as the seed filter)
-            if (isPairedNote(activity, prev ?? [])) return prev;
-            return [activity, ...(prev ?? [])].slice(0, ACTIVITY_CAP);
-          });
-
-          // Surface the new item — slide-in entrance plays at the top
-          scrollPosRef.current = 0;
-          if (viewportRef.current) viewportRef.current.scrollTop = 0;
-        },
-      )
-      .subscribe();
-
-    channelRef.current = channel;
-
-    return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
-    };
-  }, [userId, mountId]);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(viewport);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [leads, size]);
 
   return (
     <div
@@ -339,7 +433,15 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'lg' }: 
       }}
     >
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "var(--space-2)",
+          flexShrink: 0,
+        }}
+      >
         <p
           style={{
             fontSize: "var(--text-md)",
@@ -347,38 +449,51 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'lg' }: 
             fontStyle: "italic",
             color: "var(--theme-text-primary)",
             margin: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
           {!loaded ? (
             "Loading…"
-          ) : activities.length === 0 ? (
-            "No activity yet."
           ) : (
             <>
-              Live Lead Activity<span className="page-title-dot">.</span>
+              Recent Leads<span className="page-title-dot">.</span>
             </>
           )}
         </p>
-        <span
-          title="Always shows live data — not affected by date filter"
-          style={{
-            fontSize:     "var(--text-2xs)",
-            fontWeight:   "var(--weight-medium)",
-            color:        "var(--color-success-text)",
-            background:   "var(--color-success-light)",
-            border:       "1px solid var(--color-success-text)",
-            borderRadius: "var(--radius-full)",
-            padding:      "1px 6px",
-            letterSpacing: "0.03em",
-            flexShrink:   0,
-          }}
-        >
-          Live
-        </span>
+
+        {canToggle ? (
+          <ScopeSwitch
+            scope={scope}
+            onChange={setScope}
+            disabled={scopeLoading}
+          />
+        ) : (
+          <span
+            title="Always shows live data — not affected by date filter"
+            style={{
+              fontSize: "var(--text-2xs)",
+              fontWeight: "var(--weight-medium)",
+              color: "var(--color-success-text)",
+              background: "var(--color-success-light)",
+              border: "1px solid var(--color-success-text)",
+              borderRadius: "var(--radius-full)",
+              padding: "1px 6px",
+              letterSpacing: "0.03em",
+              flexShrink: 0,
+            }}
+          >
+            Live
+          </span>
+        )}
       </div>
 
-      {/* Feed — natively scrollable; gentle auto-drift when idle, fades at edges */}
+      {/* Feed — gentle CSS-transform marquee (off main thread; never touches
+          scrollTop, so it can't fight a manual scroll). Hover pauses it. The
+          viewport stays natively scrollable underneath. */}
       <div
+        className="serene-activity-viewport"
         style={{
           position: "relative",
           flex: 1,
@@ -387,35 +502,21 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'lg' }: 
       >
         <div
           ref={viewportRef}
-          onMouseEnter={() => {
-            pausedRef.current = true;
-          }}
-          onMouseLeave={() => {
-            pausedRef.current = false;
-          }}
-          onTouchStart={() => {
-            pausedRef.current = true;
-            if (touchResumeRef.current) clearTimeout(touchResumeRef.current);
-          }}
-          onTouchEnd={() => {
-            if (touchResumeRef.current) clearTimeout(touchResumeRef.current);
-            touchResumeRef.current = setTimeout(() => {
-              pausedRef.current = false;
-            }, 1500);
-          }}
-          onScroll={(e) => {
-            // Keep the ticker in sync with manual scrolling — resuming the
-            // drift continues from wherever the pointer left the list.
-            scrollPosRef.current = e.currentTarget.scrollTop;
-          }}
           style={{
             position: "absolute",
             inset: 0,
-            overflowY: "auto",
+            // While the marquee drifts it IS the scroll mechanism — hide native
+            // overflow so the duplicated copy can't be manually scrolled into
+            // view (hover pauses the drift to read). When not drifting (few
+            // cards, or reduced-motion), fall back to native scroll.
+            overflowY: marquee ? "hidden" : "auto",
+            WebkitOverflowScrolling: "touch",
+            overscrollBehavior: "contain",
             scrollbarWidth: "none",
+            padding: "var(--space-1) 0",
           }}
         >
-          {loaded && activities.length === 0 ? (
+          {loaded && leads.length === 0 ? (
             <p
               style={{
                 fontFamily: "var(--font-serif)",
@@ -427,12 +528,65 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'lg' }: 
                 margin: 0,
               }}
             >
-              Nothing logged yet.
+              {scope === "mine"
+                ? "No leads worked yet."
+                : "Nothing logged yet."}
             </p>
           ) : (
-            activities.map((activity) => (
-              <ActivityItem key={activity.id} activity={activity} />
-            ))
+            // The animated track. When `marquee` is on, the keyframe translates
+            // it up by exactly one copy's height + the inter-copy gap
+            // (--marquee-shift, measured), so copy B lands where copy A started —
+            // a seamless loop. The list renders once in the measured copy
+            // (measureRef → one-copy height for the overflow test + shift), and a
+            // second aria-hidden copy ONLY while the marquee runs.
+            <div
+              className={marquee ? "serene-activity-marquee" : undefined}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-2)",
+                // Constant visual speed: ~5.2s per card for ONE copy — a slow,
+                // eye-pleasing drift (halved from the first 2.6s pass).
+                ["--marquee-duration" as string]: `${Math.max(leads.length, 1) * 8}s`,
+                // Exact one-copy-plus-gap distance for the seamless wrap.
+                ["--marquee-shift" as string]: shiftPx ? `${shiftPx}px` : "50%",
+              }}
+            >
+              <div
+                ref={measureRef}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--space-2)",
+                }}
+              >
+                {leads.map((lead) => (
+                  <LeadActivityCard
+                    key={lead.lead_id}
+                    lead={lead}
+                    showActor={canToggle}
+                  />
+                ))}
+              </div>
+              {marquee && (
+                <div
+                  aria-hidden
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "var(--space-2)",
+                  }}
+                >
+                  {leads.map((lead) => (
+                    <LeadActivityCard
+                      key={`dup-${lead.lead_id}`}
+                      lead={lead}
+                      showActor={canToggle}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -444,8 +598,8 @@ export function AgentActivityWidget({ userId, role, initialData, size = 'lg' }: 
             zIndex: 1,
             background: `linear-gradient(to bottom,
             var(--theme-paper) 0%,
-            transparent 12%,
-            transparent 88%,
+            transparent 10%,
+            transparent 90%,
             var(--theme-paper) 100%
           )`,
             pointerEvents: "none",

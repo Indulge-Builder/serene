@@ -253,7 +253,9 @@ export default async function PerformancePage({
         {TOP_BAR_ENABLED && (
           <PageControls
             userId={profile.id}
-            isPrivileged={false}
+            // Founder/admin: the global domain selector seeds the roster filter
+            // (ManagerPerformancePanel reads serene-domain on mount).
+            isPrivileged
             notificationsPromise={getNotifications(profile.id)}
           />
         )}

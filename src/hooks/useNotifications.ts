@@ -8,6 +8,11 @@
  * Initial data is seeded from a server-fetched prop.
  * Realtime subscription filtered strictly by recipient_id to prevent
  * receiving other users' notifications (pre-mortem item 1).
+ *
+ * Display contract: the bell shows UNREAD only. Opening a notification marks
+ * it read (optimistic) which drops it from the displayed list — it "goes away"
+ * once actioned, with no lingering read-history row. The full array is kept
+ * internally so a failed mark-read rolls the item back into view.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,13 +41,17 @@ export function useNotifications({
   userId,
   initialData,
 }: UseNotificationsOptions): UseNotificationsReturn {
-  const [notifications, setNotifications] = useState<Notification[]>(initialData);
-  const [isLoading, setIsLoading]         = useState(false);
+  // `allNotifications` holds the full set (read + unread) so a failed mark-read
+  // can roll an item back. The bell only ever renders the unread slice below.
+  const [allNotifications, setNotifications] = useState<Notification[]>(initialData);
+  const [isLoading, setIsLoading]            = useState(false);
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
 
   const sound = useNotificationSound();
 
-  const unreadCount = notifications.filter((n) => n.read_at === null).length;
+  // Displayed list = unread only. Marking read drops the item from view.
+  const notifications = allNotifications.filter((n) => n.read_at === null);
+  const unreadCount    = notifications.length;
 
   // ── Realtime subscription ─────────────────────────────────────────────────
 

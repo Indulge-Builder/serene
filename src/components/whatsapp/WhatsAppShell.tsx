@@ -264,7 +264,8 @@ export function WhatsAppShell({
       style={{
         display: "flex",
         width: "100%",
-        height: "100%",
+        flex: 1,
+        minHeight: 0,
         overflow: "hidden",
       }}
     >
@@ -272,7 +273,7 @@ export function WhatsAppShell({
           Full-width pane <md; fixed 320px rail at md+ (w-80 = 320px). */}
       {showRail && (
       <div
-        className="w-full md:w-80 p-4 pb-0 sm:p-6 sm:pb-0 lg:p-8 lg:pb-0"
+        className="serene-wa-rail w-full md:w-80 p-4 pb-0 sm:p-6 sm:pb-0 lg:p-8 lg:pb-0"
         style={{
           flexShrink: 0,
           display: "flex",
@@ -330,6 +331,8 @@ export function WhatsAppShell({
           flex: 1,
           minWidth: 0,
           minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
           background: "var(--theme-paper-subtle)",
           overflow: "hidden",
         }}
@@ -341,7 +344,8 @@ export function WhatsAppShell({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                height: "100%",
+                flex: 1,
+                minHeight: 0,
               }}
             >
               <MessageCircle

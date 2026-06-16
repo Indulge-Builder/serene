@@ -1,5 +1,7 @@
 // SERVER ONLY — do not import in client components.
-// Reads secret env vars at module load. Throws at startup if required vars are missing.
+// Reads secret env vars at module load (plain process.env reads — no throw at import,
+// so the Trigger.dev build scan can import this module without the runtime secrets).
+// Validation is deferred: assertGupshupConfigured() throws on first SEND if a var is missing.
 
 import { createHmac, timingSafeEqual } from 'crypto';
 import {
@@ -13,11 +15,15 @@ import {
   GUPSHUP_TASK_OVERDUE_MANAGER_TEMPLATE_ID,
 } from '@/lib/constants/whatsapp';
 import { createAdminClient } from '@/lib/supabase/admin';
+import {
+  isChannelEnabled,
+  filterRecipientsByPref,
+} from '@/lib/services/notification-prefs-service';
 import type { MetaApiResponse, TemplateComponent } from '@/lib/types/whatsapp';
 import type { AppDomain } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
-// Env var guard — fail fast at startup
+// Env var guard — deferred to first send (NOT module load)
 // ─────────────────────────────────────────────
 
 const WEBHOOK_SECRET        = process.env.WHATSAPP_WEBHOOK_SECRET;
@@ -31,10 +37,15 @@ const GUPSHUP_APP_NAME       = process.env.GUPSHUP_APP_NAME;
 const GUPSHUP_PARTNER_NUMBER = process.env.GUPSHUP_PARTNER_NUMBER;
 const GUPSHUP_WEBHOOK_SECRET = process.env.GUPSHUP_WEBHOOK_SECRET;
 
-if (!GUPSHUP_API_KEY || !GUPSHUP_APP_NAME || !GUPSHUP_PARTNER_NUMBER || !GUPSHUP_WEBHOOK_SECRET) {
-  throw new Error(
-    '[whatsapp-api] Missing required env vars: GUPSHUP_API_KEY, GUPSHUP_APP_NAME, GUPSHUP_PARTNER_NUMBER, and GUPSHUP_WEBHOOK_SECRET must be set.',
-  );
+// Fail-fast guard, called at the start of every outbound Gupshup send (sendTextMessage +
+// the sendGupshupTemplate core). The throw fires on first USE, not on import — so the
+// Trigger.dev build scan can import this module without the Gupshup secrets present.
+function assertGupshupConfigured(): void {
+  if (!GUPSHUP_API_KEY || !GUPSHUP_APP_NAME || !GUPSHUP_PARTNER_NUMBER || !GUPSHUP_WEBHOOK_SECRET) {
+    throw new Error(
+      '[whatsapp-api] Missing required env vars: GUPSHUP_API_KEY, GUPSHUP_APP_NAME, GUPSHUP_PARTNER_NUMBER, and GUPSHUP_WEBHOOK_SECRET must be set.',
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -70,6 +81,7 @@ export async function sendTextMessage(
   to:   string,
   text: string,
 ): Promise<MetaApiResponse> {
+  assertGupshupConfigured();
   const source = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
   const destination = to.replace(/^\+/, '');
 
@@ -344,6 +356,7 @@ async function sendGupshupTemplate(opts: {
   log:            Omit<NotificationLogEntry, 'recipientPhone' | 'gupshupStatus' | 'gupshupBody' | 'delivered'>;
   throwOnError?:  boolean;
 }): Promise<{ delivered: boolean; gupshupBody: string }> {
+  assertGupshupConfigured();
   const source      = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
   const destination = opts.destination.replace(/^\+/, '');
 
@@ -426,6 +439,10 @@ export async function sendLeadAssignmentNotification(
       return;
     }
 
+    // SEAM B — per-user control plane (0133). Skip if this agent muted WhatsApp
+    // for 'lead_assigned'. Fails open (sends) on any gate error.
+    if (!(await isChannelEnabled(agentId, 'lead_assigned', 'whatsapp'))) return;
+
     const agentFirstName = agent.full_name?.trim().split(/\s+/)[0] || 'there';
 
     await sendGupshupTemplate({
@@ -471,9 +488,21 @@ export async function sendFounderLeadNotification(
 
     if (!founders || founders.length === 0) return;
 
+    // SEAM B — per-user control plane (0133). Drop founders who muted WhatsApp for
+    // 'new_lead_founder_alert' (the cross-domain flood). ONE batched read; each
+    // founder opts out individually, the rest still notified. Fails open.
+    const allowedFounderIds = new Set(
+      await filterRecipientsByPref(
+        founders.map((f) => f.id),
+        'new_lead_founder_alert',
+        'whatsapp',
+      ),
+    );
+
     // Send to all founders in parallel — sequential sends meant the second founder
     // was only attempted after the first fetch completed, risking timeout mid-loop.
     await Promise.all(founders.map(async (founder) => {
+      if (!allowedFounderIds.has(founder.id)) return;
       if (!founder.phone) {
         console.warn(`[whatsapp-api] Founder ${founder.id} (${founder.full_name}) has no phone — skipping lead notification`);
         return;
@@ -527,6 +556,10 @@ export async function sendSlaAgentNotification(
       return;
     }
 
+    // SEAM B — per-user control plane (0133). Skip if this agent muted WhatsApp
+    // for 'sla_breach'. Fails open.
+    if (!(await isChannelEnabled(agentId, 'sla_breach', 'whatsapp'))) return;
+
     await sendGupshupTemplate({
       templateId:     GUPSHUP_SLA_AGENT_TEMPLATE_ID,
       destination:    agent.phone,
@@ -564,11 +597,16 @@ export async function sendSlaManagerNotification(
   try {
     if (recipientIds.length === 0) return;
 
+    // SEAM B — per-user control plane (0133). Drop recipients who muted WhatsApp
+    // for 'sla_escalation' before the fetch. ONE batched read; fails open.
+    const allowedIds = await filterRecipientsByPref(recipientIds, 'sla_escalation', 'whatsapp');
+    if (allowedIds.length === 0) return;
+
     const admin = createAdminClient();
     const { data: recipients } = await admin
       .from('profiles')
       .select('id, phone')
-      .in('id', recipientIds);
+      .in('id', allowedIds);
 
     if (!recipients || recipients.length === 0) return;
 
@@ -625,6 +663,10 @@ export async function sendTaskDueReminderNotification(
       return;
     }
 
+    // SEAM B — per-user control plane (0133). Skip if this agent muted WhatsApp
+    // for 'task_due'. Fails open.
+    if (!(await isChannelEnabled(agentId, 'task_due', 'whatsapp'))) return;
+
     const agentFirstName = agent.full_name?.trim().split(/\s+/)[0] || 'there';
 
     await sendGupshupTemplate({
@@ -666,11 +708,16 @@ export async function sendTaskOverdueManagerNotification(
   try {
     if (recipientIds.length === 0) return;
 
+    // SEAM B — per-user control plane (0133). Drop managers who muted WhatsApp
+    // for 'task_overdue_manager' before the fetch. ONE batched read; fails open.
+    const allowedIds = await filterRecipientsByPref(recipientIds, 'task_overdue_manager', 'whatsapp');
+    if (allowedIds.length === 0) return;
+
     const admin = createAdminClient();
     const { data: recipients } = await admin
       .from('profiles')
       .select('id, phone, full_name')
-      .in('id', recipientIds);
+      .in('id', allowedIds);
 
     if (!recipients || recipients.length === 0) return;
 

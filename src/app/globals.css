@@ -289,6 +289,26 @@ body {
   .serene-shell-paper main.p-4 {
     padding-top: calc(var(--space-7) + env(safe-area-inset-top, 0px));
   }
+  /* WhatsApp is a full-bleed app shell (no main.p-4 ladder), so the rule above
+     skips it — its left rail keeps the flat p-4 (16px) top and the "WhatsApp"
+     <h1> ends up hugging the screen top, sitting visibly higher than the
+     floating hamburger (which lives at --space-7 + safe-area). Give the rail
+     the SAME mobile top offset so the title baseline lands on the trigger's
+     line. (md+ the p-4/sm/lg ladder takes back over — this is <md only.) */
+  .serene-shell-paper .serene-wa-rail {
+    padding-top: calc(var(--space-7) + env(safe-area-inset-top, 0px));
+  }
+  /* Single-pane conversation header (mobile) — same top offset as the rail so
+     the back arrow + contact name clear the notch and sit on the floating
+     trigger's line, plus a left indent so its content clears the hamburger
+     that overlays the top-left corner (the rail title gets the same 52px via
+     the .type-page-title rule below). */
+  .serene-shell-paper .serene-wa-pane-header {
+    padding-top: calc(var(--space-7) + env(safe-area-inset-top, 0px));
+    /* 68px: the back arrow carries a -8px inline margin, so its left edge lands
+       at ~60px — just past the 40px-wide hamburger that spans 16→56px. */
+    padding-left: 68px;
+  }
   /* Page title clears the floating trigger — fires only when the trigger
      is mounted (general-sibling scope: topbar and gutter share .serene-shell). */
   .serene-mobile-topbar ~ .serene-shell-gutter .type-page-title {
@@ -785,6 +805,62 @@ body {
 }
 .serene-auth-link:hover {
   color: var(--theme-accent);
+}
+
+/* Dashboard "Recent Activity" deck card — a Link to the lead dossier.
+   Rest = paper-subtle inset; hover lifts with shadow + accent-muted border +
+   a 1px transform (transform/opacity/shadow only — never layout; Never-Do list).
+   Gated to fine pointers so a tap never sticks a hover state. */
+.serene-activity-card {
+  transition:
+    box-shadow var(--duration-base) var(--ease-out-soft),
+    border-color var(--duration-fast) var(--ease-in-out),
+    transform var(--duration-fast) var(--ease-out-soft);
+}
+@media (hover: hover) and (pointer: fine) {
+  .serene-activity-card:hover {
+    box-shadow: var(--shadow-2);
+    border-color: var(--theme-accent-muted);
+    transform: translateY(-1px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .serene-activity-card:hover {
+    transform: none;
+  }
+}
+
+/* Recent-leads marquee — a gentle continuous auto-scroll done as an off-main-thread
+   CSS transform loop (NOT a JS scrollTop ticker — that fought the wheel and juddered).
+   The inner track renders the card list TWICE; the keyframe translates it up by exactly
+   one copy's height + the inter-copy gap (--marquee-shift, measured in JS), so copy B
+   lands pixel-identical to where copy A started → seamless wrap. linear easing = constant
+   motion (Emil: marquee/progress = linear). transform-only → GPU. --marquee-duration is
+   set inline from item count so the drift speed is consistent regardless of card count. */
+@keyframes serene-marquee-up {
+  from { transform: translateY(0); }
+  to   { transform: translateY(calc(-1 * var(--marquee-shift, 50%))); }
+}
+.serene-activity-marquee {
+  /* Runtime-computed (set inline from the measured one-copy height + item count);
+     declared here with sane defaults so they resolve before JS measures and so
+     the token guard sees them defined. NOT design tokens. */
+  --marquee-shift: 50%;
+  --marquee-duration: 40s;
+  animation: serene-marquee-up var(--marquee-duration) linear infinite;
+  will-change: transform;
+}
+/* Pause when the pointer is over the feed (hover the scroll viewport). */
+@media (hover: hover) and (pointer: fine) {
+  .serene-activity-viewport:hover .serene-activity-marquee {
+    animation-play-state: paused;
+  }
+}
+/* Pure decoration — reduced-motion users get a static, manually-scrollable list. */
+@media (prefers-reduced-motion: reduce) {
+  .serene-activity-marquee {
+    animation: none;
+  }
 }
 
 /* Paper surface texture — design-dna.md Section 6.6

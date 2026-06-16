@@ -1,18 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { RefreshCcw } from "lucide-react";
 import { getLeadStatusSummaryAction } from "@/lib/actions/dashboard";
 import { Button } from "@/components/ui/Button";
 import { formatCompact } from "@/lib/utils/numbers";
 import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/TabSelector";
 import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
-import {
-  DEFAULT_GIA_DOMAIN,
-  DOMAIN_LABELS,
-  GIA_DOMAINS,
-} from "@/lib/constants/domains";
 import type { LeadStatus } from "@/lib/types/database";
 import type {
   DashboardLeadStatusCount,
@@ -22,7 +16,6 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { DateRange } from "@/lib/utils/date-range";
 import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
 import { useWidgetData } from "@/hooks/useWidgetData";
-import { resolveWidgetScope, type WidgetDomainMode as DomainMode } from "@/lib/utils/widget-scope";
 
 // Chip surfaces — semantic token system, theme-aware.
 const STATUS_TEXT: Record<LeadStatus, string> = {
@@ -176,41 +169,45 @@ function StackedBar({ mix, total }: { mix: Partial<Record<LeadStatus, number>>; 
   );
 }
 
-export function ManagerLeadStatusWidget({ role, initialData, size = 'lg', dateRange }: WidgetProps & { dateRange?: DateRange }) {
+export function ManagerLeadStatusWidget({ userId, role, initialData, size = 'lg', dateRange, scopeDomain }: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
-  const initialMode: DomainMode = isManagerRole ? "all" : DEFAULT_GIA_DOMAIN;
 
   const rscLeadStatus = initialData?.lead_status ?? null;
-  const [domainMode, setDomainMode] = useState<DomainMode>(initialMode);
 
-  // The ONE fetcher — auto-fetch effect, tab changes, and refresh all go through it.
+  // The ONE fetcher — the refresh button re-runs it. The domain comes from the
+  // global selector (scopeDomain); managers pass undefined and the server pins
+  // them to their own domain via effectiveWidgetDomain (the trust boundary).
   const loadStatus = useCallback(
-    (mode: DomainMode) =>
-      getLeadStatusSummaryAction(dateRange?.from, dateRange?.to, resolveWidgetScope(role, mode)),
-    [dateRange?.from, dateRange?.to, role],
+    () =>
+      getLeadStatusSummaryAction(dateRange?.from, dateRange?.to, scopeDomain ?? undefined),
+    [dateRange?.from, dateRange?.to, scopeDomain],
   );
 
   const { data, loaded, isPending, refetch, apply } = useWidgetData<StatusData>({
     seed: rscLeadStatus,
-    fetcher: () => loadStatus(domainMode),
-    // RSC seeds the manager view and the admin/founder DEFAULT_GIA_DOMAIN tab; fetch the rest.
-    autoFetch: !isManagerRole && domainMode !== DEFAULT_GIA_DOMAIN,
-    deps: [dateRange?.from, dateRange?.to, domainMode],
+    fetcher: loadStatus,
+    // The RSC always seeds the current scope (manager → own domain; admin/founder
+    // → scopeDomain or the all-domains aggregate). No mount fetch ever needed.
+    autoFetch: false,
+    deps: [dateRange?.from, dateRange?.to, scopeDomain],
   });
 
-  // RSC scopes admin/founder pipeline to onboarding on first paint — same as DEFAULT_GIA_DOMAIN tab.
-  const rscMatchesView = isManagerRole || domainMode === DEFAULT_GIA_DOMAIN;
-  useDashboardCohortSync(rscLeadStatus, dateRange, rscMatchesView, apply);
+  // The RSC payload always matches the rendered scope now (a domain pick
+  // round-trips the page and reseeds), so cohort-sync always applies it.
+  useDashboardCohortSync(rscLeadStatus, dateRange, true, apply);
 
   const totals    = data?.totals ?? [];
-  const byAgent   = data?.byAgent ?? [];
+  const rawByAgent = data?.byAgent ?? [];
+  // Manager view: pin the caller's own row first (SQL sorts by total DESC; the
+  // manager's full domain roster is the row set since migration 0129). The "You"
+  // marker + pin is purely client-side — SQL carries no identity arg.
+  const byAgent   = isManagerRole
+    ? [...rawByAgent].sort((a, b) =>
+        a.agent_id === userId ? -1 : b.agent_id === userId ? 1 : 0,
+      )
+    : rawByAgent;
   const mixMap    = Object.fromEntries(totals.map((t) => [t.status, t.count])) as Partial<Record<LeadStatus, number>>;
   const grandTotal = totals.reduce((s, t) => s + t.count, 0);
-
-  function handleDomainChange(mode: DomainMode) {
-    setDomainMode(mode);
-    refetch(() => loadStatus(mode));
-  }
 
   function handleRefresh() {
     refetch();
@@ -384,19 +381,21 @@ export function ManagerLeadStatusWidget({ role, initialData, size = 'lg', dateRa
         )}
 
         {/* ── Per-agent scorecard — all agents, sorted by total DESC ── */}
-        {loaded && byAgent.length > 0 && (
+        {loaded && grandTotal > 0 && byAgent.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-            {byAgent.map((agent) => (
+            {byAgent.map((agent) => {
+              const isSelf = isManagerRole && agent.agent_id === userId;
+              return (
               <div
                 key={agent.agent_id}
                 style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", paddingBottom: "var(--space-2)" }}
               >
-                {/* Agent name only */}
-                <div style={{ flexShrink: 0, width: "72px", overflow: "hidden" }}>
+                {/* Agent name (+ "You" marker on the manager's own row) */}
+                <div style={{ flexShrink: 0, width: "72px", overflow: "hidden", display: "flex", alignItems: "baseline", gap: "4px" }}>
                   <span
                     style={{
                       fontSize:     "var(--text-xs)",
-                      fontWeight:   "var(--weight-medium)",
+                      fontWeight:   isSelf ? "var(--weight-semibold)" : "var(--weight-medium)",
                       color:        "var(--theme-text-primary)",
                       overflow:     "hidden",
                       textOverflow: "ellipsis",
@@ -406,6 +405,18 @@ export function ManagerLeadStatusWidget({ role, initialData, size = 'lg', dateRa
                   >
                     {agent.agent_name.split(" ")[0]}
                   </span>
+                  {isSelf && (
+                    <span
+                      style={{
+                        fontSize:   "var(--text-2xs)",
+                        color:      "var(--theme-accent)",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      You
+                    </span>
+                  )}
                 </div>
 
                 {/* Stacked bar — fills remaining width */}
@@ -413,7 +424,8 @@ export function ManagerLeadStatusWidget({ role, initialData, size = 'lg', dateRa
                   <StackedBar mix={agent.counts} total={agent.total} />
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -435,42 +447,6 @@ export function ManagerLeadStatusWidget({ role, initialData, size = 'lg', dateRa
           </p>
         )}
       </div>
-
-      {/* ── Domain tabs — pinned to bottom, admin/founder only ── */}
-      {!isManagerRole && (
-        <div
-          style={{
-            paddingTop: "var(--space-3)",
-            borderTop:  "1px solid var(--theme-paper-border)",
-            flexShrink: 0,
-            minWidth:   0,
-            width:      "100%",
-          }}
-        >
-          {/* Campaign-widget pattern: natural-width triggers in the TabsList's
-              own horizontally scrollable tray — never flex:1-squeezed (clips
-              labels <md). */}
-          <Tabs
-            value={domainMode}
-            onValueChange={(v) => handleDomainChange(v as DomainMode)}
-            variant="connected"
-            indicatorLayoutId="lead-status-domain"
-            style={{
-              opacity:       isPending ? 0.6 : 1,
-              pointerEvents: isPending ? "none" : undefined,
-            }}
-          >
-            <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
-              {GIA_DOMAINS.map((d) => (
-                <TabsTrigger key={d} value={d}>
-                  {DOMAIN_LABELS[d]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        </div>
-      )}
     </div>
   );
 }

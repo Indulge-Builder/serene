@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { getMyNotificationPrefs } from "@/lib/services/notification-prefs-service";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ProfileAvatarSection } from "@/components/profile/ProfileAvatarSection";
 import { ProfileDetailsForm }   from "@/components/profile/ProfileDetailsForm";
@@ -8,6 +9,7 @@ import { IconSelector }           from "@/components/profile/IconSelector";
 import { InstallPrompt }          from "@/components/profile/InstallPrompt";
 import { PasswordChangeForm }    from "@/components/profile/PasswordChangeForm";
 import { PushNotificationSettings } from "@/components/profile/PushNotificationSettings";
+import { NotificationPreferences } from "@/components/profile/NotificationPreferences";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { Button } from "@/components/ui/Button";
 import { ROLE_LABELS } from "@/lib/constants/roles";
@@ -19,6 +21,9 @@ export const metadata = { title: "Profile — Serene" };
 export default async function ProfilePage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
+
+  // Seed the per-user notification matrix (migration 0133) — owner-scoped read.
+  const notificationPrefs = await getMyNotificationPrefs();
 
   const memberSince = formatDate(profile.created_at, "MMM yyyy");
 
@@ -41,8 +46,13 @@ export default async function ProfilePage() {
         className="serene-dossier-grid serene-dossier-grid--340"
         style={{ alignItems: "start" }}
       >
-        {/* Left column — editable sections */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
+        {/* Left column — editable sections.
+            order-2 below lg pushes it under the identity card on mobile;
+            lg:order-none restores source order so the grid columns line up. */}
+        <div
+          className="order-2 lg:order-0"
+          style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}
+        >
           <ProfileDetailsForm profile={profile} />
 
           <SectionCard
@@ -73,16 +83,31 @@ export default async function ProfilePage() {
 
           <SectionCard
             title="Notifications"
-            description="Get alerts on your phone or desktop even when Serene is closed."
+            description="Choose which alerts reach you, and on which channels."
           >
-            <PushNotificationSettings />
+            <NotificationPreferences role={profile.role} initialPrefs={notificationPrefs} />
+
+            {/* Web Push device subscription — separated by a full-width rule
+                (the labelled-datum-group convention). */}
+            <div
+              style={{
+                marginTop:  "var(--space-5)",
+                paddingTop: "var(--space-5)",
+                borderTop:  "1px solid var(--theme-paper-border)",
+              }}
+            >
+              <PushNotificationSettings />
+            </div>
           </SectionCard>
 
           <PasswordChangeForm />
         </div>
 
-        {/* Right column — identity sidebar, sticky */}
+        {/* Right column — identity sidebar, sticky.
+            order-1 below lg lifts it above the editable sections on mobile;
+            lg:order-0 restores source order (right column) on desktop. */}
         <aside
+          className="order-1 lg:order-0"
           style={{
             display:       "flex",
             flexDirection: "column",
