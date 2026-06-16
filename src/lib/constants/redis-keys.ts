@@ -79,7 +79,20 @@ export const REDIS_KEYS = {
   // indexed lookup, lead-specific — see intelligence-service.ts header).
   helpdeskCases: (domain: string) =>
     `helpdesk:cases:${domain}`,
+
+  // Usage / active-presence (adoption tracking). The client heartbeat SETs
+  // this every 60s while the tab is visible AND interacted-with in the last
+  // ~2 min — one SET per active user, value { domain, role, ts }, EX
+  // PRESENCE_TTL. NO DB write on this path. The 1-min snapshot job reads all
+  // live presence:* keys (SCAN) and appends to usage_heartbeats. TTL > the
+  // 60s heartbeat interval so a key survives one missed beat but expires
+  // within ~1 snapshot window of the user going idle/hidden.
+  presence: (userId: string) =>
+    `presence:${userId}`,
 } as const;
+
+// The glob the snapshot job SCANs to enumerate live presence keys.
+export const PRESENCE_KEY_PATTERN = 'presence:*';
 
 // ─────────────────────────────────────────────
 // buildLeadListKey — deterministic cache key for getLeadsByRole results
@@ -154,4 +167,5 @@ export const REDIS_TTL = {
   LEAD_NOTES:             120,
   LEAD_ACTIVITIES:        120,
   HELPDESK_CASES:        3600,  // brag library changes rarely; explicit del on admin write
+  PRESENCE:              150,   // > 60s heartbeat interval; survives one missed beat, expires ~1 snapshot window after idle/hidden
 } as const;

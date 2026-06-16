@@ -12,6 +12,107 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-16 — Shop lead re-import (full overwrite of `domain='shop'`)
+
+**Goal.** Replace the entire `domain='shop'` lead set with a corrected Zoho export
+(1117 leads + 657 notes) without creating duplicates — overwrite, not append.
+
+**Scripts.**
+
+- `scripts/import-shop.ts` — the new overwrite importer (the old `import-zoho*.ts` were
+  append-only and matched a different CSV shape; left in place, not reused). Four guarded
+  phases: **(1) BACKUP** every existing `domain='shop'` lead + child rows
+  (`lead_notes`, `lead_activities`, `lead_raw_payloads`, `lead_sla_timers`,
+  `whatsapp_notification_logs`) to `scripts/data/backup-shop-<ts>/*.json` (lossless JSON,
+  no new dep); **(2) DELETE** shop children then shop leads in FK-safe order, aborting if
+  any unexpected child (`deals`/`task_gia_meta`/`revival_candidates`/`whatsapp_conversations`)
+  is present; **(3) IMPORT LEADS** — agent full names → `profiles.id`, status normalised
+  (`Lost`→`lost`, `Nurturing`→`nurturing`), bare-IST timestamps → UTC, single
+  `service_interests` label → `text[]`; `slug`/`search_text` left to the DB
+  (`trg_lead_slug` + generated column — never supplied); the Zoho id is stashed in
+  `form_data._zoho_id` to link notes; **(4) IMPORT NOTES** linked via that map, author
+  names → `profiles.id` (`"Admin @ Indulge"` → the Tech Wizard founder). `--dry-run`
+  validates and resolves every name without writing; `--confirm` required for the live run.
+- `scripts/revert-shop-import.ts` — restores a `backup-shop-<ts>` dump verbatim (original
+  PKs/slugs/timestamps preserved): deletes the current shop set, re-inserts the backed-up
+  rows parent-first, re-attaches `whatsapp_notification_logs.lead_id`.
+
+**Result (verified).** 1117 leads + 657 notes imported, 0 errors; all owner/author names
+resolved (0 unmapped); slugs auto-generated (1117 distinct); agent split matches the source
+(Katya 541, Vikram 297, Harsh Gupta 277, Meghana Singh 2). Pre-import state backed up to
+`scripts/data/backup-shop-2026-06-16T09-53-12-028Z/`.
+
+---
+
+## 2026-06-16 — Agent usage / active-time tracking (adoption monitoring)
+
+**Goal.** An admin/founder dashboard showing how much **active** time each team member
+spends in Serene, per agent and per domain, today + 30 days of daily history. Purpose:
+surface low-adoption users so the usability problems driving low usage can be fixed.
+"Active" = tab visible **and** a real interaction in the last ~2 min — **not** merely logged
+in (agents stay logged in 24/7, so login spans are meaningless).
+
+**Architecture — Redis hot path, two Trigger.dev jobs, RPC read (the agreed shape).**
+
+1. **Hot path (Redis only, fails open).** A new always-mounted client component
+   `UsagePresence` (`src/components/layout/UsagePresence.tsx`, mounted once in the dashboard
+   layout) beats every 60s **only when** `document.visibilityState === 'visible'` AND the last
+   interaction was < 120s ago. The gate is the feature: a hidden tab stops beating within one
+   interval; an idle tab stops once the last interaction ages past 120s. Each beat calls
+   `recordPresenceAction` (`src/lib/actions/usage.ts`) → `recordPresence`
+   (`usage-service.ts`) → **one** `redis.setex(presence:{userId}, 150, {domain,role,ts})`.
+   **Zero DB writes on this path** (a per-beat insert would be a write storm at scale).
+   Key + TTL live in `redis-keys.ts` (`REDIS_KEYS.presence`, `PRESENCE_KEY_PATTERN`,
+   `REDIS_TTL.PRESENCE`) — no inline strings.
+
+2. **Snapshot job — `snapshotUsagePresenceTask`** (`src/trigger/usage-snapshot.ts`, every 1
+   min). Reads all live `presence:*` keys (`listLivePresence`, Upstash SCAN + MGET) and appends
+   one row per active user into **`usage_heartbeats`** (admin client). The ONLY writer of that
+   table — the request path never touches it.
+
+3. **Rollup jobs (Option 2 — both write the same `usage_daily` via the same idempotent UPSERT
+   core).** `rollupUsageTodayTask` re-rolls **today** every 15 min; `rollupUsageNightlyTask`
+   finalises the **prior IST day** nightly (00:20 IST) then **prunes raw `usage_heartbeats`
+   older than 30 days** (the rollup already captured them; `usage_daily` is never pruned).
+   `rollupUsageForDays` **recomputes** `active_minutes` = `COUNT(DISTINCT minute-bucket)` per
+   `(IST day, user, domain)` and UPSERTs on the `(day,user_id,domain)` PK — **overwrite, never
+   increment**, so re-running the today-rollup twice yields identical rows.
+
+4. **Read path.** `get_agent_usage(p_today_start, p_history_from)` — `SECURITY DEFINER SET
+   search_path = public`, takes **no caller-supplied role/scope** and exposes all agents'
+   usage by design (admin/founder adoption tool) → **Q-13 revoked tier**: `EXECUTE` revoked
+   from `PUBLIC/anon/authenticated`, `GRANT`ed `service_role`. `today` is recomputed live from
+   raw ticks (≤1 snapshot stale); `history` reads `usage_daily`. The **founder/admin gate lives
+   in the service layer** (`getAgentUsage` re-reads `getCurrentProfile()` and rejects non-admin/
+   founder — defence in depth alongside the page redirect + the action's
+   `requireProfile(['admin','founder'])`). Bigint `active_minutes` coerced via `Number()` (Q-09).
+
+**Migration 0126** (`20260616000126_usage_tracking.sql`): `usage_heartbeats` (append-only A-11
+raw ticks, `domain public.app_domain`, `usage_heartbeats_user_time_idx`) + `usage_daily`
+(rollup, PK `(day,user_id,domain)`, `usage_daily_day_idx`). Both **RLS enabled, no policies =
+deny-by-default** — jobs write via the admin client; the dashboard reads only through the RPC.
+**⚠️ NOT yet applied to prod.** Regenerate `database.ts` after applying (interim types:
+`src/lib/types/usage.ts`).
+
+**Dashboard.** `/admin/usage` (admin/founder only — new `ADMIN_NAV` entry, reachable via the
+admin/founder `canAccessRoute` bypass). RSC seeds via `getAgentUsage`; `UsageDashboard`
+(`src/components/admin/usage/`) shows a headline stat strip (active today, people active today)
++ a **Today** per-agent table with per-domain breakdown (`UsageTodayTable`, sorted by active
+minutes DESC so low-adoption users surface) + a **Last 30 days** stacked-area chart by domain
+(`UsageHistoryChart`, lazy `next/dynamic`, composes `ChartFrame`/`cartesianDefaults`/
+`resolveColorMap(DOMAIN_LINE_COLORS)` — G-3). Reuses `formatDuration` (R-01), `EmptyState`,
+`StatTile`, `TabSelector`, `Avatar`, `PageSkeletons`.
+
+**Files.** New: migration 0126; `src/lib/types/usage.ts`; `src/lib/services/usage-service.ts`;
+`src/lib/actions/usage.ts`; `src/components/layout/UsagePresence.tsx`;
+`src/trigger/usage-snapshot.ts`; `src/trigger/usage-rollup.ts`;
+`src/app/(dashboard)/admin/usage/{page,loading}.tsx`;
+`src/components/admin/usage/{UsageDashboard,UsageTodayTable,UsageHistoryChart}.tsx`. Edited:
+`redis-keys.ts` (presence key + TTL), `(dashboard)/layout.tsx` (mount `UsagePresence`),
+`Sidebar.tsx` (`/admin/usage` nav + mobile trigger). `pnpm tsc --noEmit` + `check:tokens` clean.
+
+---
+
 ## 2026-06-16 — Performance filtering unified onto the shared FilterBar (mobile + DRY)
 
 **Problem.** `/performance` forked its own filter chrome instead of reusing the app's

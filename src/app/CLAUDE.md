@@ -21,6 +21,7 @@ Thin orchestrators in `src/app/`. Data fetching lives in async children (`*Async
 | `api/manifest` | dynamic per-icon Web App Manifest (sanctioned PWA P-02 carve-out — static JSON, the dynamic twin of `app/manifest.ts`). `GET ?icon=<key>` → validate via `isIconKey` (fallback `DEFAULT_ICON`) → `buildManifest(icon)`. No DB/session/business logic; fetched outside any auth context (proxy bypass). The root layout's `generateMetadata` points `<link rel="manifest">` here so an install bakes the user's saved icon. |
 | `(dashboard)/profile` | — |
 | `(dashboard)/admin/users`, `admin/ad-creatives` | `admin/ad-creatives/CLAUDE.md` |
+| `(dashboard)/admin/usage` | adoption monitoring (admin/founder only) — active-time per agent per domain, today + 30-day history. RSC seeds via `usage-service.getAgentUsage`; `UsageDashboard` (`components/admin/usage/`). Active time is collected by the Redis-only heartbeat (`UsagePresence` in the dashboard layout → `recordPresenceAction`, **no DB write**), snapshotted + rolled up by two Trigger.dev jobs (`usage-snapshot` / `usage-rollup`). See changelog 2026-06-16 + `docs/architecture/caching.md` (`presence:*`). |
 | `(dashboard)/settings` | `(dashboard)/settings/CLAUDE.md` |
 | `api/webhooks/*` | `api/webhooks/CLAUDE.md` |
 

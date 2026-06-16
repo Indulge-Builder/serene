@@ -23,6 +23,7 @@ import {
   BookOpen,
   AlertTriangle,
   Sparkles,
+  Activity,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ROLE_LABELS } from "@/lib/constants/roles";
@@ -78,6 +79,7 @@ function getConfigurationNav(isPrivileged: boolean): NavItem[] {
 
 const ADMIN_NAV: NavItem[] = [
   { href: "/admin/users", label: "User Management", icon: Shield },
+  { href: "/admin/usage", label: "Usage", icon: Activity },
 ];
 
 // Primary nav pages where the floating mobile drawer trigger renders.
@@ -89,6 +91,7 @@ const MOBILE_TRIGGER_PATHS = new Set<string>([
   "/admin/ad-creatives",
   "/settings",
   "/admin/users",
+  "/admin/usage",
   "/profile",
 ]);
 

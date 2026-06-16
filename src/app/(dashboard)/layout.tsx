@@ -11,6 +11,7 @@ import { ThemeInitializer } from "@/components/layout/ThemeInitializer";
 import { IconInitializer } from "@/components/layout/IconInitializer";
 import { ToastProvider } from "@/components/ui/toast-provider";
 import { ElayaWidget } from "@/components/elaya/ElayaWidget";
+import { UsagePresence } from "@/components/layout/UsagePresence";
 
 export default async function DashboardLayout({
   children,
@@ -60,6 +61,11 @@ export default async function DashboardLayout({
           SAME ElayaChatShell as /elaya (it portals to document.body and hides
           itself on /elaya, so it's safe to mount once for every dashboard route). */}
       <ElayaWidget />
+
+      {/* Active-time heartbeat (adoption tracking) — renders nothing; beats
+          every 60s ONLY while the tab is visible AND recently interacted with.
+          Mounted once here so it covers every authenticated page. */}
+      <UsagePresence />
 
       {/* Flat canvas gutter (matches sidebar) — paper fills the padded area.
           The global controls (domain selector + notification bell) live in each
