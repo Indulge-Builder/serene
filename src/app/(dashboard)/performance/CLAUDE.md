@@ -15,18 +15,36 @@
 
 ```text
 performance/page.tsx              ← Server component (thin orchestrator)
-  │  role = agent → fetches initialData server-side for 'this_month'
-  │  via ONE getAgentPerformanceSummary() call → get_agent_performance RPC
-  │  (core four + previous period + effort + outcomes + team benchmarks)
+  │  role = agent → derives the range from date_from/date_to URL params via
+  │  resolvePerformanceDateParams (default This Month), then fetches initialData
+  │  server-side via ONE getAgentPerformanceSummary(period, from?, to?) call →
+  │  get_agent_performance RPC (core four + previous period + effort + outcomes
+  │  + team benchmarks)
   │
-  ├── <AgentPerformanceShell agentId agentDomain initialData />
-  │     'use client' — owns period state (no URL params); refetches on period
-  │     change via getAgentSelfMetricsAction → the same single RPC
+  ├── <PerformanceFilters showSearch={false} />   ← the SAME shared bar as manager/founder
+  │
+  ├── <AgentPerformanceShell key={period:from:to} agentId agentDomain period customFrom customTo initialData />
+  │     'use client' — period/range arrive as PROPS (URL-driven, no in-shell
+  │     period state). The shell KEY-REMOUNTS per range with the server-fetched
+  │     data — there is NO client metrics refetch (one-RPC-per-view, D-2). Only
+  │     the Today pulse stays a client action (the ONE-pulse-fetch invariant).
   │     Renders: CoreFourGrid + EffortGrid + CallOutcomeBar
   │
   └── <PerformanceMotivationalFooter leadsWon inDiscussionCount period />
         Server component — Elaya's quiet sentence. Playfair italic. No glyph.
 ```
+
+**Date model (2026-06-16):** all three role branches read pure `date_from`/`date_to`
+URL params (the shared `PerformanceFilters` → `<FilterBar>` Range presets + custom
+Dates, same contract as `/leads`). `resolvePerformanceDateParams(date_from, date_to)`
+(`performance-service.ts`) is THE single boundary that derives the `PerformancePeriod`
++ IST range the RPC layer keys on: no params → `this_month`; a preset-matched range →
+that enum (so previous-period benchmarks survive for `this_week`/`this_month`/
+`last_month`=`prev_month`/`today`); any other range → `custom` + explicit from/to
+(benchmarks null). `date_to` is widened to IST end-of-day (the RPCs filter
+`created_at <= p_date_to` inclusive). **`all_time` and the old `?period=`/`?from=`/`?to=`
+params + the bespoke "Period" dropdown are gone** — `period` is internal/derived, never
+URL-reachable.
 
 The RPC is **self-scoped**: the agent is always `auth.uid()` and the benchmark
 domain is always `get_user_domain()` inside the function — no identity params
@@ -62,7 +80,7 @@ performance/page.tsx              ← role = manager
 
 ```text
 performance/page.tsx              ← role = founder | admin
-  │  filter bar: period, search, custom dates (no domain selector in bar)
+  │  filter bar: Range presets + custom Dates (date_from/date_to) + search; no domain selector in bar
   │  fetches initialDomainHealth server-side via getDomainHealthMetrics(GIA_DOMAINS, from, to)
   │
   ├── <PerformanceFilters showSearch />
@@ -72,18 +90,20 @@ performance/page.tsx              ← role = founder | admin
         │
         ├── Agents tab: agentsSlot = <Suspense><ManagerPerformanceAsync allDomains={true} /></Suspense>
         │     Roster: all agents across Gia domains, sorted A-Z within domain groups
-        │     Domain filter: client-side popover in ManagerPerformancePanel roster header
+        │     Domain filter: client-side FilterDropdown in ManagerPerformancePanel roster header
         │     Detail metrics: per-agent (no domain restriction on fetch)
         │
         └── Domains tab: <DomainOverviewPanel initialData period customFrom customTo />
               Four domain cards (2×2 grid): Total Leads, Total Calls, Total Revenue per GIA domain
-              Comparative BarChart with metric toggle (Leads | Calls | Revenue)
+              Comparative BarChart with a metric toggle (Leads | Calls | Revenue) — the shared
+              TabSelector (variant "accent", indicatorLayoutId "domain-metric-toggle" so its pill
+              never collides with the founder shell's "founder-perf-tabs" pill)
               Refetches via getManagerRosterAction on period/date change
 ```
 
-## Domain filter placement — 2026-05-31
+## Domain filter placement — 2026-05-31 (component updated 2026-06-16)
 
-Founder/admin **do not** use `?domain=` or a filter-bar domain control. Domain scoping is **client-side only** via the sliders icon on the agent roster (`ManagerPerformancePanel` → `domainFilter` state). The filter bar holds period, agent search (`?search=`), and custom dates.
+Founder/admin **do not** use `?domain=` or a page-level filter-bar domain control. Domain scoping is **client-side only** via a shared `<FilterDropdown>` ("Domains", single-select, `menuPortal`, synthetic `__all__` = "All domains") in the `ManagerPerformancePanel` roster header (`domainFilter` state). The page filter bar holds the date range (`date_from`/`date_to`) + agent search (`?search=`). *(The bespoke `DomainFilterPopover` was replaced by `FilterDropdown` on 2026-06-16 — `menuPortal` fixes the mobile clipping; the placement decision itself stands.)*
 
 ---
 
@@ -95,7 +115,7 @@ Founder/admin **do not** use `?domain=` or a filter-bar domain control. Domain s
 | founder / admin | `allDomains={true}` on `ManagerPerformanceAsync`; roster filter client-side |
 
 **Never read `?domain=` from URL params.** Manager path uses `profile.domain` only.
-Founder/admin path fetches the full cross-domain roster server-side; domain narrowing is the roster popover only.
+Founder/admin path fetches the full cross-domain roster server-side; domain narrowing is the roster `FilterDropdown` only.
 
 ## Page shell layout (2026-06-04)
 
@@ -307,11 +327,11 @@ Manager role: `caller.domain !== domain` → 403. Domain never trusted from clie
 
 | Component                    | Location                                                                |
 | ---------------------------- | ----------------------------------------------------------------------- |
-| `PerformanceFilters`         | `src/components/performance/` — unified filter bar; `buildFilterParams` |
+| `PerformanceFilters`         | `src/components/performance/` — the shared filter bar (all roles); composes `<FilterBar dateRange>` (Range presets + custom Dates) + `useUrlFilters` |
 | `CoreFourGrid`               | `src/components/performance/`                                           |
 | `EffortGrid`                 | `src/components/performance/`                                           |
 | `CallOutcomeBar`             | `src/components/performance/` (reused in detail panel)                  |
-| `ManagerPerformancePanel`    | `src/components/performance/` — roster domain popover + URL `search`    |
+| `ManagerPerformancePanel`    | `src/components/performance/` — roster domain `FilterDropdown` + URL `search` |
 | `AgentDetailPanel`           | `src/components/performance/`                                           |
 | `PerformanceRosterEmptyState`| `src/components/performance/` — null-selection prompt on Agents tab       |
 | `DomainHealthGrid`           | `src/components/performance/` — legacy card grid (not on Agents tab)      |
@@ -390,6 +410,13 @@ export type PerformancePeriod =
   | "all_time"
   | "custom";
 ```
+
+**The enum is still the service-layer key, but it is now DERIVED, not URL-reachable
+(2026-06-16).** The UI carries pure `date_from`/`date_to`; `resolvePerformanceDateParams`
+maps them to this enum (`matchDateRangePreset` for the four preset-mapped periods, else
+`custom`). `all_time` is no longer selectable from the UI (Last 3 Months is the widest
+preset); `getPeriodDateRange('all_time')` + the `case "all_time"` branches stay for the
+type's completeness and any internal caller. Never re-add `?period=` parsing.
 
 ## Period Date Range — IST Offset
 

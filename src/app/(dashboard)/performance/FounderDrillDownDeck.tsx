@@ -12,10 +12,13 @@
 // ("Deals won" was dropped 2026-06-15 — three tiles, one row.)
 //
 // Below the tiles each card carries a toggleable breakdown chart
-// (Call outcome <-> Lead status). The breakdown is fed by getAgentDetailMetrics
-// (callOutcomeBreakdown + pipelineBreakdown — no new RPC), fetched LAZILY the
-// first time a card becomes active and cached per agent in `metricsByAgent` so a
-// swipe back to a seen card never refetches and a re-render never refires.
+// (Call outcome <-> Lead status) and, beneath it, the First-Touch Speed
+// scorecard. Both are fetched LAZILY the first time a card becomes active and
+// cached per agent in `breakdowns` (one Promise.all per agent — getAgentDetail
+// Metrics for the breakdown + getAgentFirstTouchScorecard for the speed card) so
+// a swipe back to a seen card never refetches and a re-render never refires. The
+// scorecard is nullable in the ready state — its fetch can fail independently
+// (it just doesn't render), without taking down the breakdown.
 //
 // The deck is a Dialog size="full" (opts OUT of the <md bottom-sheet). The drill
 // modals stack ABOVE it via the nested-modal z contract (DrillModalShell).
@@ -33,16 +36,17 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Avatar } from '@/components/ui/Avatar';
 import { Carousel } from '@/components/ui/Carousel';
 import { PipelineBar } from '@/components/performance/PipelineBar';
+import { FirstTouchScorecard } from '@/components/performance/FirstTouchScorecard';
 import { AgentCallsDrillModal } from '@/components/performance/AgentCallsDrillModal';
 import { AgentLeadsDrillModal } from '@/components/performance/AgentLeadsDrillModal';
 import { AgentDealsDrillModal } from '@/components/performance/AgentDealsDrillModal';
-import { getAgentDetailMetricsAction } from '@/lib/actions/performance';
+import { getAgentDetailMetricsAction, getAgentFirstTouchScorecardAction } from '@/lib/actions/performance';
 import { formatCount, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
 import type { AppDomain } from '@/lib/types/database';
-import type { PerformancePeriod } from '@/lib/services/performance-service';
+import type { PerformancePeriod, FirstTouchScorecard as FirstTouchScorecardData } from '@/lib/services/performance-service';
 
 // Recharts importer — lazy per perf G-3 so the chart chunk never lands in the
 // /performance initial bundle. Same same-shape skeleton placeholder pattern as
@@ -72,7 +76,7 @@ interface Props {
 type BreakdownState =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; metrics: AgentDetailMetrics };
+  | { status: 'ready'; metrics: AgentDetailMetrics; scorecard: FirstTouchScorecardData | null };
 
 export function FounderDrillDownDeck({
   open,
@@ -122,13 +126,25 @@ export function FounderDrillDownDeck({
     let cancelled = false;
     setBreakdowns((prev) => ({ ...prev, [agentId]: { status: 'loading' } }));
 
-    getAgentDetailMetricsAction(agentId, domain, period, customFrom, customTo)
-      .then((result) => {
+    // Both reads in parallel, one settle. The breakdown drives the error state;
+    // the scorecard is best-effort (null on failure → card simply omits it).
+    Promise.all([
+      getAgentDetailMetricsAction(agentId, domain, period, customFrom, customTo),
+      getAgentFirstTouchScorecardAction(agentId, domain, period, customFrom, customTo),
+    ])
+      .then(([metricsResult, scorecardResult]) => {
         if (cancelled) return;
-        if (result.error || !result.data) {
+        if (metricsResult.error || !metricsResult.data) {
           setBreakdowns((prev) => ({ ...prev, [agentId]: { status: 'error' } }));
         } else {
-          setBreakdowns((prev) => ({ ...prev, [agentId]: { status: 'ready', metrics: result.data! } }));
+          setBreakdowns((prev) => ({
+            ...prev,
+            [agentId]: {
+              status: 'ready',
+              metrics: metricsResult.data!,
+              scorecard: scorecardResult.data ?? null,
+            },
+          }));
         }
       })
       .catch(() => {
@@ -229,7 +245,6 @@ function DeckAgentCard({
   onModeChange: (mode: BreakdownMode) => void;
   onDrill: (kind: DrillKind) => void;
 }) {
-  const conv = agent.conversionRate;
   return (
     <div
       style={{
@@ -275,11 +290,6 @@ function DeckAgentCard({
             {DOMAIN_LABELS[agent.domain] ?? agent.domain}
           </span>
         </div>
-        {conv !== null && (
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--theme-text-secondary)' }}>
-            {conv.toFixed(0)}% conversion
-          </span>
-        )}
       </div>
 
       {/* Metric tiles — three tap targets, one row */}
@@ -357,7 +367,7 @@ function DeckBreakdown({
         />
       </div>
 
-      {/* Body */}
+      {/* Body — the toggled breakdown chart */}
       {breakdown === undefined || breakdown.status === 'loading' ? (
         <div
           className="skeleton"
@@ -415,6 +425,14 @@ function DeckBreakdown({
           </p>
           <PipelineBar breakdown={breakdown.metrics.pipelineBreakdown} />
         </motion.div>
+      )}
+
+      {/* First-Touch Speed — below the breakdown (deck parity with the desktop
+          AgentDetailPanel order). Only when the scorecard fetch succeeded. */}
+      {breakdown?.status === 'ready' && breakdown.scorecard && (
+        <div style={{ marginTop: 'var(--space-4)' }}>
+          <FirstTouchScorecard data={breakdown.scorecard} />
+        </div>
       )}
     </div>
   );

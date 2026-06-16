@@ -106,7 +106,7 @@ Name and phone are always read-only `InfoRow`s. Email: click → inline text inp
 - On click: a dropdown opens with a search input (auto-focused) and a list of agents from the `agents` prop.
 - Selecting an agent calls `assignLead` from `lib/actions/leads.ts`, optimistically updates `currentAssigneeName` in local state, and shows a `Check` tick for 2 seconds. No page reload needed.
 - `canReassign` is derived server-side from `profile.role` — never computed in the component.
-- `agents` is fetched once in `LeadInfoCardAsync` via `getAssignableUsers({ domain: lead.domain, agentsOnly: true })` and is `[]` for agent-role callers (the field falls back to read-only `InfoRow`).
+- `agents` is fetched once in `LeadInfoCardAsync` via `getAssignableUsers({ domain: lead.domain, roles: LEAD_ASSIGNABLE_ROLES })` (agents + managers — managers carry leads) and is `[]` for agent-role callers (the field falls back to read-only `InfoRow`).
 
 **Ad creative trigger rules:**
 
@@ -350,7 +350,7 @@ the only dossier call site for its service function, delegates rendering to a di
 
 | Component | Props | Fetches | Renders |
 | --------- | ----- | ------- | ------- |
-| `LeadInfoCardAsync` | `lead: LeadWithAssignee`, `canEdit`, `canEditDomain`, `canReassign` | `Promise.all`: `getAdCreativesForCampaign(utm_campaign)` (when present) + `getAssignableUsers({ domain, agentsOnly: true })` (when `canReassign`) | `<LeadInfoCard>` (derives `assigneeName` from `lead.assignee`) |
+| `LeadInfoCardAsync` | `lead: LeadWithAssignee`, `canEdit`, `canEditDomain`, `canReassign` | `Promise.all`: `getAdCreativesForCampaign(utm_campaign)` (when present) + `getAssignableUsers({ domain, roles: LEAD_ASSIGNABLE_ROLES })` (when `canReassign`) | `<LeadInfoCard>` (derives `assigneeName` from `lead.assignee`) |
 | `LeadDealCardAsync` | `leadId` | `getLeadDeal(leadId)` | `<LeadDealCard>` in a `--space-6` top-margin wrapper; `null` when no deal — pair with `fallback={null}` |
 | `LeadNotesSectionAsync` | `leadId` | `getLeadNotesFull(leadId)` | `<LeadNotesSection>` |
 | `LeadActivitiesAsync` | `lead: Lead` | `getLeadActivitiesFull(lead.id)` **once** | `<LeadJourneyTimeline>` + `<LeadActivityLog>` (owns both sections' margins — never split into two boundaries) |

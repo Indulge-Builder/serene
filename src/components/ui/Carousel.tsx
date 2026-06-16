@@ -144,56 +144,60 @@ export function Carousel<T>({
             </div>
           ))}
         </motion.div>
-
-        {multiple && (
-          <>
-            <CarouselArrow side="left"  disabled={safeIndex === 0}          onClick={() => go(-1)} />
-            <CarouselArrow side="right" disabled={safeIndex === count - 1}  onClick={() => go(1)} />
-          </>
-        )}
       </div>
 
-      {/* Dots + counter */}
-      {multiple && !hideDots && (
+      {/* Controls bar — prev · dots+counter · next, in a single themed row below
+          the viewport. The arrows used to overlay the slide edges (absolute,
+          on top of card content); docking them in this row keeps them off the
+          content and reads as one navigation cluster. */}
+      {multiple && (
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 'var(--space-2)',
+            gap: 'var(--space-4)',
             flexShrink: 0,
           }}
         >
-          {items.map((item, i) => (
-            <button
-              key={getKey ? getKey(item, i) : String(i)}
-              type="button"
-              aria-label={`Go to item ${i + 1}`}
-              aria-current={i === safeIndex}
-              onClick={() => onIndexChange(i)}
-              style={{
-                width: i === safeIndex ? '18px' : '6px',
-                height: '6px',
-                padding: 0,
-                border: 'none',
-                borderRadius: 'var(--radius-full)',
-                background: i === safeIndex ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
-                cursor: 'pointer',
-                transition:
-                  'width var(--duration-fast) var(--ease-out-expo), background var(--duration-fast) var(--ease-in-out)',
-              }}
-            />
-          ))}
-          <span
-            style={{
-              marginLeft: 'var(--space-2)',
-              fontSize: 'var(--text-xs)',
-              fontFamily: 'var(--font-mono)',
-              color: 'var(--theme-text-tertiary)',
-            }}
-          >
-            {safeIndex + 1} / {count}
-          </span>
+          <CarouselArrow side="left" disabled={safeIndex === 0} onClick={() => go(-1)} />
+
+          {!hideDots && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              {items.map((item, i) => (
+                <button
+                  key={getKey ? getKey(item, i) : String(i)}
+                  type="button"
+                  aria-label={`Go to item ${i + 1}`}
+                  aria-current={i === safeIndex}
+                  onClick={() => onIndexChange(i)}
+                  style={{
+                    width: i === safeIndex ? '18px' : '6px',
+                    height: '6px',
+                    padding: 0,
+                    border: 'none',
+                    borderRadius: 'var(--radius-full)',
+                    background: i === safeIndex ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
+                    cursor: 'pointer',
+                    transition:
+                      'width var(--duration-fast) var(--ease-out-expo), background var(--duration-fast) var(--ease-in-out)',
+                  }}
+                />
+              ))}
+              <span
+                style={{
+                  marginLeft: 'var(--space-2)',
+                  fontSize: 'var(--text-xs)',
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--theme-text-tertiary)',
+                }}
+              >
+                {safeIndex + 1} / {count}
+              </span>
+            </div>
+          )}
+
+          <CarouselArrow side="right" disabled={safeIndex === count - 1} onClick={() => go(1)} />
         </div>
       )}
     </div>
@@ -201,7 +205,9 @@ export function Carousel<T>({
 }
 
 // ─────────────────────────────────────────────
-// Arrow button — overlaid on the viewport edges
+// Arrow button — sits in the controls bar below the viewport (no longer
+// overlaid on the slide). Secondary-button chrome (paper-subtle + paper-border,
+// --shadow-1) so it reads as quiet navigation, not a floating accent.
 // ─────────────────────────────────────────────
 
 function CarouselArrow({
@@ -222,28 +228,25 @@ function CarouselArrow({
       aria-label={side === 'left' ? 'Previous' : 'Next'}
       className="serene-pressable serene-touch"
       style={{
-        position: 'absolute',
-        top: '50%',
-        [side]: 'var(--space-3)',
-        transform: 'translateY(-50%)',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         width: '2.25rem',
         height: '2.25rem',
+        flexShrink: 0,
         borderRadius: 'var(--radius-full)',
-        background: 'var(--theme-paper)',
+        background: 'var(--theme-paper-subtle)',
         border: '1px solid var(--theme-paper-border)',
-        boxShadow: 'var(--shadow-2)',
-        color: 'var(--theme-text-primary)',
+        boxShadow: 'var(--shadow-1)',
+        color: disabled ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)',
         cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.4 : 1,
+        opacity: disabled ? 0.45 : 1,
         pointerEvents: disabled ? 'none' : undefined,
-        transition: 'opacity var(--duration-fast) var(--ease-in-out)',
-        zIndex: 1,
-      } as React.CSSProperties}
+        transition:
+          'opacity var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
+      }}
     >
-      <Icon style={{ width: '1.1rem', height: '1.1rem', strokeWidth: 1.5 }} aria-hidden="true" />
+      <Icon style={{ width: '1.05rem', height: '1.05rem', strokeWidth: 1.5 }} aria-hidden="true" />
     </button>
   );
 }

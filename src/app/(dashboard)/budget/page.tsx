@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { getNotifications } from "@/lib/services/notifications-service";
-import { getPeriodDateRange, type PerformancePeriod } from "@/lib/services/performance-service";
+import { resolvePerformanceDateParams } from "@/lib/services/performance-service";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
 import { PerformanceFilters } from "@/components/performance/PerformanceFilters";
@@ -16,22 +16,6 @@ import { BudgetContentSkeleton } from "./BudgetContentSkeleton";
 // live Meta API call. Always-live reads, no Redis (like /campaigns).
 // Access: manager (read), admin/founder (read + upload).
 // ─────────────────────────────────────────────
-
-const VALID_PERIODS: PerformancePeriod[] = [
-  "today",
-  "this_week",
-  "this_month",
-  "last_month",
-  "all_time",
-  "custom",
-];
-
-function parsePeriod(raw: string | undefined): PerformancePeriod {
-  if (raw && (VALID_PERIODS as string[]).includes(raw)) {
-    return raw as PerformancePeriod;
-  }
-  return "this_month";
-}
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -47,15 +31,11 @@ export default async function BudgetPage({
   }
 
   const params = await searchParams;
-  const period = parsePeriod(
-    typeof params.period === "string" ? params.period : undefined,
-  );
-  const rawFrom = typeof params.from === "string" ? params.from : undefined;
-  const rawTo   = typeof params.to   === "string" ? params.to   : undefined;
-
-  const range = getPeriodDateRange(period);
-  const from  = period === "custom" && rawFrom ? rawFrom : range.from;
-  const to    = period === "custom" && rawTo   ? rawTo   : range.to;
+  // Shared date_from/date_to → ISO range (default This Month), the same
+  // boundary the /performance page uses. /budget consumes from/to directly.
+  const dateFrom = typeof params.date_from === "string" ? params.date_from : null;
+  const dateTo   = typeof params.date_to === "string" ? params.date_to : null;
+  const { from, to } = resolvePerformanceDateParams(dateFrom, dateTo);
 
   const canUpload = profile.role === "admin" || profile.role === "founder";
 
@@ -78,14 +58,9 @@ export default async function BudgetPage({
         </div>
       </div>
 
-      {/* Row 2 — filter bar (shared period system, IST presets) */}
+      {/* Row 2 — filter bar (shared FilterBar Range presets + custom Dates) */}
       <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-        <PerformanceFilters
-          period={period}
-          customFrom={rawFrom ?? null}
-          customTo={rawTo ?? null}
-          showSearch={false}
-        />
+        <PerformanceFilters showSearch={false} />
       </div>
 
       {/* Row 3 — content */}

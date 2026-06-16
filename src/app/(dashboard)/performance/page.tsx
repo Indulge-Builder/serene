@@ -13,38 +13,18 @@ import { FounderPerformanceShell } from "./FounderPerformanceShell";
 import { PerformanceFilters } from "@/components/performance/PerformanceFilters";
 import { AgentPerformanceShell } from "@/components/performance/AgentPerformanceShell";
 import type { AppDomain } from "@/lib/types/database";
-// ─────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────
-
-const VALID_PERIODS: PerformancePeriod[] = [
-  "today",
-  "this_week",
-  "this_month",
-  "last_month",
-  "all_time",
-  "custom",
-];
-
-const PERIOD_LABELS: Record<PerformancePeriod, string> = {
-  today: "Today",
-  this_week: "This Week",
-  this_month: "This Month",
-  last_month: "Last Month",
-  all_time: "All Time",
-  custom: "Custom",
-};
-
-function parsePeriod(raw: string | undefined): PerformancePeriod {
-  if (raw && (VALID_PERIODS as string[]).includes(raw)) {
-    return raw as PerformancePeriod;
-  }
-  return "this_month";
-}
 
 // ─────────────────────────────────────────────
 // Motivational footer — server component, Elaya's voice (agent view only)
 // ─────────────────────────────────────────────
+
+// Periods that read as "this <period>" in the footer; any other range
+// (custom, today) gets a neutral phrasing.
+const PERIOD_PHRASE: Partial<Record<PerformancePeriod, string>> = {
+  this_week: "week",
+  this_month: "month",
+  last_month: "month",
+};
 
 function PerformanceMotivationalFooter({
   leadsWon,
@@ -56,11 +36,11 @@ function PerformanceMotivationalFooter({
   period: PerformancePeriod;
 }) {
   let message: string;
-  const periodLabel = PERIOD_LABELS[period].toLowerCase();
+  const phrase = PERIOD_PHRASE[period];
 
   if (leadsWon > 0) {
     message = `You've closed ${leadsWon} lead${leadsWon === 1 ? "" : "s"} ${
-      period === "all_time" ? "in total" : `this ${periodLabel}`
+      phrase ? `this ${phrase}` : "in this period"
     }.`;
   } else if (inDiscussionCount > 0) {
     message = `${inDiscussionCount} lead${inDiscussionCount === 1 ? "" : "s"} in discussion — almost there.`;
@@ -102,28 +82,44 @@ function PerformanceMotivationalFooter({
 async function AgentPerformanceAsync({
   agentId,
   agentDomain,
+  period,
+  customFrom,
+  customTo,
 }: {
   agentId: string;
   agentDomain: AppDomain;
+  period: PerformancePeriod;
+  customFrom: string | null;
+  customTo: string | null;
 }) {
   // One self-scoped RPC round trip (perf audit D-2) — replaces the previous
   // 5-function / ~17-query fan-out. The RPC reads auth.uid() internally.
+  // Fetched server-side for the resolved range; the shell key-remounts per
+  // range (no client refetch effect — honours the one-RPC-per-view rule).
   const { getAgentPerformanceSummary } = await import(
     "@/lib/services/performance-service"
   );
-  const initialData = await getAgentPerformanceSummary("this_month");
+  const initialData = await getAgentPerformanceSummary(
+    period,
+    customFrom ?? undefined,
+    customTo ?? undefined,
+  );
 
   return (
     <>
       <AgentPerformanceShell
+        key={`${period}:${customFrom ?? ""}:${customTo ?? ""}`}
         agentId={agentId}
         agentDomain={agentDomain}
+        period={period}
+        customFrom={customFrom}
+        customTo={customTo}
         initialData={initialData}
       />
       <PerformanceMotivationalFooter
         leadsWon={initialData.core.leadsWon}
         inDiscussionCount={initialData.effort.inDiscussionCount}
-        period="this_month"
+        period={period}
       />
     </>
   );
@@ -146,17 +142,23 @@ export default async function PerformancePage({
   if (profile.role === "guest") redirect("/dashboard");
 
   const params = await searchParams;
-  const rawPeriod =
-    typeof params.period === "string" ? params.period : undefined;
-  const period = parsePeriod(rawPeriod);
 
-  // Custom date params — only meaningful when period === 'custom'
-  const rawFrom = typeof params.from === "string" ? params.from : undefined;
-  const rawTo = typeof params.to === "string" ? params.to : undefined;
+  // Pure date_from/date_to URL params (the FilterBar Range/Dates contract, same
+  // as /leads) → the PerformancePeriod + ISO range the service layer keys on.
+  // resolvePerformanceDateParams is THE single boundary; default = This Month.
+  const { resolvePerformanceDateParams } = await import(
+    "@/lib/services/performance-service"
+  );
+  const dateFrom = typeof params.date_from === "string" ? params.date_from : null;
+  const dateTo   = typeof params.date_to === "string" ? params.date_to : null;
+  const { period, from, to, customFrom, customTo } = resolvePerformanceDateParams(
+    dateFrom,
+    dateTo,
+  );
 
   // ── Agent view ──────────────────────────────────────────────────────────
-  // Fully client-driven shell — period state lives in the component, no URL params.
-  // We fetch initial data server-side for 'this_month' so first paint is instant.
+  // URL-driven: the shared PerformanceFilters writes date_from/date_to, the
+  // shell key-remounts per range with the server-fetched data.
   if (profile.role === "agent") {
     return (
       <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
@@ -172,8 +174,17 @@ export default async function PerformancePage({
             />
           )}
         </div>
+        <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
+          <PerformanceFilters showSearch={false} />
+        </div>
         <Suspense fallback={<PerformanceSkeleton />}>
-          <AgentPerformanceAsync agentId={profile.id} agentDomain={profile.domain} />
+          <AgentPerformanceAsync
+            agentId={profile.id}
+            agentDomain={profile.domain}
+            period={period}
+            customFrom={customFrom}
+            customTo={customTo}
+          />
         </Suspense>
       </main>
     );
@@ -197,19 +208,14 @@ export default async function PerformancePage({
           )}
         </div>
         <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-          <PerformanceFilters
-            period={period}
-            customFrom={rawFrom ?? null}
-            customTo={rawTo ?? null}
-            showSearch
-          />
+          <PerformanceFilters showSearch />
         </div>
         <Suspense fallback={<ManagerPerformanceSkeleton />}>
           <ManagerPerformanceAsync
             domain={profile.domain}
             period={period}
-            customFrom={rawFrom}
-            customTo={rawTo}
+            customFrom={customFrom ?? undefined}
+            customTo={customTo ?? undefined}
           />
         </Suspense>
       </main>
@@ -219,15 +225,13 @@ export default async function PerformancePage({
   // ── Founder / admin view ────────────────────────────────────────────────
   // All domains in one roster; domain filtering is client-side in ManagerPerformancePanel.
   // Fetch domain health server-side so the Domains tab has initial data on first paint.
+  // from/to are already resolved (boundary-ISO) by resolvePerformanceDateParams.
   const { getDomainHealthMetrics, getPeriodDateRange } = await import("@/lib/services/performance-service");
   const { getDomainTargets } = await import("@/lib/services/domain-targets-service");
-  const founderRange = getPeriodDateRange(period);
-  const founderFrom  = (period === 'custom' && rawFrom) ? rawFrom : founderRange.from;
-  const founderTo    = (period === 'custom' && rawTo)   ? rawTo   : founderRange.to;
-  const monthRange   = getPeriodDateRange('this_month');
+  const monthRange = getPeriodDateRange('this_month');
 
   const [initialDomainHealth, monthHealth, domainTargets] = await Promise.all([
-    getDomainHealthMetrics([...GIA_DOMAINS] as AppDomain[], founderFrom, founderTo),
+    getDomainHealthMetrics([...GIA_DOMAINS] as AppDomain[], from, to),
     // The target meter is month-pinned; when the active period IS this month,
     // reuse the same fetch instead of a second RPC round trip.
     period === 'this_month'
@@ -256,19 +260,14 @@ export default async function PerformancePage({
       </div>
 
       <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-        <PerformanceFilters
-          period={period}
-          customFrom={rawFrom ?? null}
-          customTo={rawTo ?? null}
-          showSearch
-        />
+        <PerformanceFilters showSearch />
       </div>
 
       <FounderPerformanceShell
         domain={DEFAULT_GIA_DOMAIN}
         period={period}
-        customFrom={rawFrom}
-        customTo={rawTo}
+        customFrom={customFrom ?? undefined}
+        customTo={customTo ?? undefined}
         initialDomainHealth={initialDomainHealth}
         initialTargets={domainTargets}
         monthDeals={monthDeals}
@@ -278,8 +277,8 @@ export default async function PerformancePage({
             <ManagerPerformanceAsync
               domain={DEFAULT_GIA_DOMAIN}
               period={period}
-              customFrom={rawFrom}
-              customTo={rawTo}
+              customFrom={customFrom ?? undefined}
+              customTo={customTo ?? undefined}
               allDomains={true}
             />
           </Suspense>

@@ -272,7 +272,7 @@ export function WhatsAppShell({
           Full-width pane <md; fixed 320px rail at md+ (w-80 = 320px). */}
       {showRail && (
       <div
-        className="w-full md:w-80 pt-4 pl-4 md:pt-8 md:pl-8"
+        className="w-full md:w-80 p-4 pb-0 sm:p-6 sm:pb-0 lg:p-8 lg:pb-0"
         style={{
           flexShrink: 0,
           display: "flex",
@@ -282,10 +282,7 @@ export function WhatsAppShell({
           overflow: "hidden",
         }}
       >
-        <div
-          className="mb-6 flex shrink-0 items-center justify-between gap-4"
-          style={{ paddingRight: "var(--space-4)" }}
-        >
+        <div className="mb-6 flex shrink-0 items-center justify-between gap-4">
           <h1 className="type-page-title m-0">
             WhatsApp<span className="page-title-dot">.</span>
           </h1>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
+import { createClient } from "@/lib/supabase/server";
 import { UpdatePasswordForm } from "./update-password-form";
 
 export const metadata: Metadata = {
@@ -13,6 +14,19 @@ export default async function UpdatePasswordPage({
   searchParams: Promise<{ email?: string }>;
 }) {
   const params = await searchParams;
+
+  // Invite flow: the invitee arrives here ALREADY authenticated — /auth/callback
+  // exchanged the invite token and set the session before forwarding here. When a
+  // live session exists, skip the 6-digit-code step entirely (they have no code to
+  // type) and go straight to "choose your password". On success the form logs them
+  // into /dashboard — one click from the email button to inside the app.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    return <UpdatePasswordForm invited />;
+  }
 
   // OTP-code recovery: the user arrives here WITHOUT a session — they establish
   // it by entering the 6-digit code from their email (step 1 of the form). The

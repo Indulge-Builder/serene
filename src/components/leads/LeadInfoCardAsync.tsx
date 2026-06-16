@@ -1,5 +1,6 @@
 import { getAdCreativesForCampaign } from '@/lib/services/ad-creatives-service';
 import { getAssignableUsers } from '@/lib/services/profiles-service';
+import { LEAD_ASSIGNABLE_ROLES } from '@/lib/constants/roles';
 import type { LeadWithAssignee } from '@/lib/services/leads-service';
 import { LeadInfoCard } from '@/components/leads/LeadInfoCard';
 
@@ -14,7 +15,7 @@ type Props = {
 export async function LeadInfoCardAsync({ lead, canEdit, canEditDomain, canReassign }: Props) {
   const [adCreatives, agents] = await Promise.all([
     lead.utm_campaign ? getAdCreativesForCampaign(lead.utm_campaign) : Promise.resolve([]),
-    canReassign ? getAssignableUsers({ domain: lead.domain, agentsOnly: true }) : Promise.resolve([]),
+    canReassign ? getAssignableUsers({ domain: lead.domain, roles: LEAD_ASSIGNABLE_ROLES }) : Promise.resolve([]),
   ]);
 
   return (

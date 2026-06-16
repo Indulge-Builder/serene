@@ -13,7 +13,7 @@ initial bundle. Import these three statically only from another lazy chunk.
 
 | File | Role |
 | --- | --- |
-| `PerformanceFilters.tsx` | Unified period + custom date filter bar |
+| `PerformanceFilters.tsx` | THE shared filter bar for ALL performance roles (and `/budget`). Composes `<FilterBar dateRange>` (Range presets + custom Dates, `date_from`/`date_to` — the `/leads` contract) + `useUrlFilters`; props are just `{ showSearch }`. No bespoke Period dropdown / DatePicker. The page derives `PerformancePeriod` from the params via `resolvePerformanceDateParams` |
 | `CoreFourGrid.tsx` | Agent KPI row (leads, calls, conversion, response time) |
 | `EffortGrid.tsx` | Agent effort metric cards |
 | `CallOutcomeBar.tsx` | Donut + legend (agent self-view, detail panel, AND the deck card's "Call outcome" breakdown mode). Loaded via `next/dynamic` from each Recharts call site (perf G-3) |
@@ -21,8 +21,8 @@ initial bundle. Import these three statically only from another lazy chunk.
 | `ManagerPerformancePanel.tsx` | Two-column shell — roster left, detail right |
 | `AgentDetailPanel.tsx` | Manager / founder agent detail: stats, pipeline, outcomes. The four `StatAtom` tiles are tap targets that open the deck's three drill modals (Total Calls→calls, Leads→leads, Won+Revenue→deals); same props the deck passes, fetch-on-open, `drill` state resets on agent switch |
 | `StatAtom.tsx` | Single pastel stat tile (`AgentDetailPanel` stats row + `DomainOverviewPanel` health cards). Optional `onClick` → pressable `motion.button` (`.serene-pressable` press-scale + cursor + focus ring, matching the deck's `DeckTile`); absent → original static `motion.div`. **`DomainOverviewPanel` passes no `onClick`, so its tiles stay byte-identical — never add a tap affordance there** |
-| `FirstTouchScorecard.tsx` | Display-only (A-06) first-touch SPEED card below `CallOutcomeBar` in `AgentDetailPanel`. Buckets the period cohort by how fast each lead's first call note arrived, in BUSINESS minutes per the agent's shift (`< 15m / 15–30m / ≤ 1h / 1–3h / 3h+`, `FIRST_TOUCH_BUCKETS` in `lib/constants/performance.ts`). Segmented bar + chip legend (the `PipelineBar` language). Takes the resolved `FirstTouchScorecard` data — all math is server-side (`getAgentFirstTouchScorecard`, React `cache()`, `businessMinutesBetween`); untouched cohort leads (no call yet) shown as a footnote, never a bucket. **`AgentDetailPanel` only — NOT the `FounderDrillDownDeck` card** (the deck's zero-per-swipe-fetch invariant) |
-| `DomainOverviewPanel.tsx` | Founder Domains tab — 4 stats per domain (incl. Deals Closed) + month-pinned `DomainTargetMeter` + founder/admin inline target edit (`upsertDomainTargetAction`); mobile = CSS scroll-snap carousel (no library) |
+| `FirstTouchScorecard.tsx` | Display-only (A-06) first-touch SPEED card below `CallOutcomeBar` in `AgentDetailPanel`. Buckets the period cohort by how fast each lead's first call note arrived, in BUSINESS minutes per the agent's shift (`< 15m / 15–30m / ≤ 1h / 1–3h / 3h+`, `FIRST_TOUCH_BUCKETS` in `lib/constants/performance.ts`). Segmented bar + chip legend (the `PipelineBar` language). Takes the resolved `FirstTouchScorecard` data — all math is server-side (`getAgentFirstTouchScorecard`, React `cache()`, `businessMinutesBetween`); untouched cohort leads (no call yet) shown as a footnote, never a bucket. **TWO mount sites (2026-06-16):** `AgentDetailPanel` (below `CallOutcomeBar`) AND the `FounderDrillDownDeck` card (below the breakdown toggle). On the deck it is a **gated lazy read** — fetched in the same per-agent `Promise.all` as the breakdown, cached per agent, best-effort (its `getAgentFirstTouchScorecardAction` failure → card omits it, breakdown still renders). This does NOT break the deck's zero-per-swipe-fetch rule: that rule governs the **tiles** (in-memory roster fields only); the scorecard, like the breakdown, is a separate once-per-agent fetch |
+| `DomainOverviewPanel.tsx` | Founder Domains tab — 4 stats per domain (incl. Deals Closed) + month-pinned `DomainTargetMeter` + founder/admin inline target edit (`upsertDomainTargetAction`); mobile = CSS scroll-snap carousel (no library). The comparative BarChart's Leads/Calls/Revenue toggle is the shared `TabSelector` (variant `accent`, `indicatorLayoutId="domain-metric-toggle"` — distinct from the founder shell's `founder-perf-tabs` pill, which is co-mounted) |
 | `DomainTargetMeter.tsx` | Radial deals-vs-target meter (Recharts `RadialBarChart`, 2 colours via `useChartTokens`); target null/0 → `EmptyState` inline "No target set." — never a division |
 | `AgentCallTrendChart.tsx` | 14-day daily-calls area chart — composes `ChartFrame` + `cartesianDefaults` (Cartesian frame rule); loaded via `next/dynamic` from the shell |
 | `AgentRecentActivityList.tsx` | Agent Today view — keyset "load more" (composite cursor, page 15, button not infinite scroll) via `getAgentRecentLeadActivityAction` |
@@ -75,9 +75,15 @@ deck-level `breakdowns` state map keyed by agent id. A `requested` ref-Set gates
 fires **exactly once per agent** across swipes and re-renders (the cache map alone would re-enter
 between request and `setState`). A period/date/domain change clears both the cache and the guard so
 the active card refetches against the new range; cards never seen never fetch. The mode toggle is
-shared across the deck (flipping it on one card carries to the next). This is the **only** sanctioned
-fetch in the deck — the tile-level zero-per-swipe-fetch rule is intact; the breakdown is a separate,
-gated, cached read.
+shared across the deck (flipping it on one card carries to the next). The tile-level
+zero-per-swipe-fetch rule is intact; the breakdown is a separate, gated, cached read.
+
+**First-Touch Speed on the deck (2026-06-16).** Below the breakdown each card also renders
+`FirstTouchScorecard` (deck parity with the desktop panel's order). It rides the SAME per-agent lazy
+fetch — `getAgentFirstTouchScorecardAction` runs in the breakdown effect's `Promise.all` and its
+result is folded into the cached `breakdowns[agentId]` ready state (`scorecard: … | null`). The
+breakdown drives the error state; the scorecard is best-effort (null → the card simply omits it).
+Still once per agent, still cached — the two gated reads share one settle.
 
 **Authz:** all four drill actions go through `assertDrillAccess` in `actions/performance.ts`, which
 mirrors `getAgentDetailMetricsAction` exactly — `requireProfile(['manager','admin','founder'])` then
@@ -90,8 +96,15 @@ manager domain-pass ambiguity.
 
 ## AgentPerformanceShell — the ONE pulse fetch (Today tab + Overview strip)
 
+**URL-driven since 2026-06-16.** The shell no longer owns period state or a `PeriodSelector` —
+`period`/`customFrom`/`customTo` arrive as **props** derived from the `date_from`/`date_to` URL
+params (the shared `PerformanceFilters` bar, rendered by the page above the shell). The page
+**key-remounts** the shell per range (`key={period:from:to}`) with server-fetched `initialData`, so
+there is **no client metrics refetch effect** — `data = initialData` (one-RPC-per-view, D-2). The
+only client fetch left is the Today pulse below; "today" is detected as `period === 'today'`.
+
 `AgentPerformanceShell` fetches the Today pulse (`getAgentPulseAction` → `get_agent_today_pulse`,
-since-IST-midnight) exactly **once** per period/date change, and that single fetch feeds **both**
+since-IST-midnight) exactly **once** per range (remount), and that single fetch feeds **both**
 surfaces:
 
 - the **Today tab** (calls split, 14-day trend, Notes Today hero, period deals), and

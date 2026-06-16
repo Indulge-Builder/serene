@@ -39,11 +39,12 @@ a `redis.del` block in a lead action. See the helper header and root `CLAUDE.md`
 ## Assignable users — one pipeline (dry-audit M-11)
 
 `getAssignableUsersAction(domain?)` in `actions/profiles.ts` is THE client-callable
-"who can I assign this to?" read. It wraps `getAssignableUsers({ domain?, agentsOnly? })`
+"who can I assign this to?" read. It wraps `getAssignableUsers({ domain?, roles? })`
 (`lib/services/profiles-service.ts`) and returns the canonical `AssignableUser` type from
 `lib/types`. No domain → all active non-guest users, any role/domain (subtask pickers, all
 roles). With domain → admin/founder get every active user in that domain; everyone else gets
-that domain's agents only. The old forks (`listAgentsForDomain` in `leads.ts`, a second
+that domain's lead-carrying roles (`LEAD_ASSIGNABLE_ROLES = ['agent','manager']` — managers
+carry leads too). The old forks (`listAgentsForDomain` in `leads.ts`, a second
 `getAssignableUsersAction` in `tasks.ts`, `getAgentsForDomain`/`getActiveUsersForDomain` in
 `leads-service.ts`) are deleted — never re-add a parallel agents/users list; extend the
 options instead. RSC call sites (leads pages, `TasksAsync`) call the service directly.

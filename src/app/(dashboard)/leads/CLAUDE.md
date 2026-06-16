@@ -226,20 +226,49 @@ The only exception is `clearAll()`, which pushes `pathname` with no params at al
 
 ---
 
+## Manager "Team Leads" view toggle (`?view=`)
+
+Managers also carry and call leads, so they default to **their own assigned leads** on `/leads` —
+the same daily worklist an agent gets — not the whole domain.
+
+- **`view` is a `LeadFilters` flag** (`'mine' | 'all' | null`, `database.ts`), parsed in `parseFilters`.
+- **Manager default resolved in `page.tsx`:** absent param ⇒ `'mine'`; only `?view=all` widens to the
+  whole domain. Agents and admin/founder never get this default (their `view` is unused below).
+- **Service (`getLeadsByRole`):** manager + `view === 'mine'` ⇒ `assigned_to = userId` on top of the
+  domain constraint. The status-counts RPC `p_agent_id` mirrors it (a manager in My Leads passes their
+  own id) so pill counts match the table — **no migration**, the existing RPC already honours
+  `p_agent_id` over its self-derived domain scope. `getLeadsForExport` mirrors the same scope.
+- **Toggle UI** — a fixed-label **"Team Leads"** toggle in `LeadsTable`'s toolbar (left cluster, next to
+  Going Cold), gated on `enableViewToggle && role === 'manager'`. OFF (resting, default) = the manager's
+  own leads; ON (accent-lit / `aria-pressed`) writes `?view=all` and shows the whole domain. The label
+  never changes — the pressed state is the switch, not a state mirror (do not flip the label to
+  "My Leads"/"All Leads"). `LeadsTableAsync` sets `enableViewToggle`; the campaign drill-down forces
+  `filters.view = 'all'` and leaves the toggle off (analytics view of every campaign lead — a manager
+  there must see the whole domain).
+- **Agent filter interaction:** `showAgentFilter` is `true` for a manager only in All Leads (the agent
+  pick is a no-op in My Leads, so the dropdown is hidden there). See below.
+- **Cache key** includes `view` (`buildLeadListKey`) — My/All never share a Redis slot.
+- **Clear** (`LeadsFilters`) pushes a bare pathname, which resets a manager back to the My Leads default.
+
 ## showAgentFilter Prop Contract
 
 `LeadsFilters` receives `showAgentFilter: boolean`.
 
-- `true`  → agent dropdown is rendered (manager / admin / founder)
+- `true`  → agent dropdown is rendered (admin / founder always; manager only in **All Leads** view)
 - `false` → agent dropdown is **absent from the DOM entirely** — not hidden with CSS, not rendered at all
 
 This is enforced in `page.tsx`:
 
 ```typescript
-const showAgentFilter = profile.role !== 'agent';
+const showAgentFilter =
+  profile.role === 'manager'
+    ? filters.view === 'all'        // manager: only meaningful in All Leads
+    : profile.role !== 'agent';     // admin/founder always; agent never
 ```
 
-Never set `showAgentFilter={true}` for agent-role users.
+A manager in **My Leads** view is already scoped to their own leads, so the agent dropdown would be a
+silent no-op — it is hidden there and reappears when they switch to All Leads. Never set
+`showAgentFilter={true}` for agent-role users.
 
 ---
 
@@ -305,6 +334,7 @@ Column-header click sort is not implemented and must not be added without a spec
 | date to         | `date_to`    | ISO date string                         |
 | going cold      | `going_cold` | `'true'` only (omitted = off)           |
 | revival         | `revival`    | `'true'` only — the revival review view |
+| view (manager)  | `view`       | `'all'` only — omitted = My Leads view  |
 | sort order      | `sort_order` | `'asc'` only (omitted = `'desc'`)       |
 | page            | `page`       | integer (default 1)                     |
 

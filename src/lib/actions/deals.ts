@@ -11,6 +11,7 @@ import { updateLeadStatus } from "@/lib/actions/leads";
 import type { ActionResult } from "@/lib/types/index";
 import type { AppDomain } from "@/lib/types/database";
 import { isGiaDomain, type GiaDomain } from "@/lib/constants/domains";
+import { LEAD_ASSIGNABLE_ROLES } from "@/lib/constants/roles";
 import {
   DOMAIN_DEAL_CONFIG,
   type DealType,
@@ -197,11 +198,11 @@ export async function createWalkInDeal(
   } else if (caller.role === "manager") {
     // Manager: domain locked to their own domain
     finalDomain = caller.domain;
-    // assigned_to may be any agent in their domain — verify
+    // assigned_to may be any lead-carrier (agent or manager) in their domain — verify
     if (finalAssignedTo) {
-      const agents = await getAssignableUsers({ domain: caller.domain, agentsOnly: true });
-      if (!agents.some((a) => a.id === finalAssignedTo)) {
-        return { data: null, error: "Selected agent is not in your domain." };
+      const assignees = await getAssignableUsers({ domain: caller.domain, roles: LEAD_ASSIGNABLE_ROLES });
+      if (!assignees.some((a) => a.id === finalAssignedTo)) {
+        return { data: null, error: "Selected assignee is not in your domain." };
       }
     }
   } else {
@@ -211,9 +212,9 @@ export async function createWalkInDeal(
     }
     // Verify assignee is in the chosen domain if provided
     if (finalAssignedTo) {
-      const agents = await getAssignableUsers({ domain: finalDomain, agentsOnly: true });
-      if (!agents.some((a) => a.id === finalAssignedTo)) {
-        return { data: null, error: "Selected agent is not in the chosen domain." };
+      const assignees = await getAssignableUsers({ domain: finalDomain, roles: LEAD_ASSIGNABLE_ROLES });
+      if (!assignees.some((a) => a.id === finalAssignedTo)) {
+        return { data: null, error: "Selected assignee is not in the chosen domain." };
       }
     }
   }
@@ -291,6 +292,6 @@ export async function listAgentsForDealDomain(
     return { data: null, error: formErrors.unauthorized };
   }
 
-  const agents = await getAssignableUsers({ domain: domain as AppDomain, agentsOnly: true });
+  const agents = await getAssignableUsers({ domain: domain as AppDomain, roles: LEAD_ASSIGNABLE_ROLES });
   return { data: agents, error: null };
 }

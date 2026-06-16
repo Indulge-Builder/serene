@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ROUTING_POOL_ROLES } from "@/lib/constants/roles";
 import type { AgentRoutingConfig, AgentRosterRow, AppDomain } from "@/lib/types/database";
 
 /** Get routing config for a single agent. Returns null if not found. Session client — UI/action use only. */
@@ -65,10 +66,16 @@ export async function getActiveRoutingConfigs(): Promise<AgentRoutingConfig[]> {
 }
 
 /**
- * Get a joined roster of agents + their routing config.
+ * Get a joined roster of pool members (agents + managers) + their routing config.
  *
- * domain = '*' → all agents (admin/founder access only — caller must enforce)
- * domain = specific → agents in that domain only
+ * domain = '*' → everyone in the routing pool (admin/founder access only — caller must enforce)
+ * domain = specific → pool members in that domain only (includes the requesting
+ *   manager's own row + any peer managers, so a manager can edit their own
+ *   shift/pool the same way they edit their agents')
+ *
+ * Pool membership = ROUTING_POOL_ROLES (agents + managers). The `!inner` join on
+ * agent_routing_config means a pool member with no config row is absent until the
+ * auto-create trigger / backfill gives them one (migration 0124).
  *
  * Uses adminClient — this is a cross-profiles read that RLS would block
  * for managers. Two-layer security: caller must verify domain at action level.
@@ -97,7 +104,7 @@ export async function getAgentRosterByDomain(
         shift_days
       )
     `)
-    .eq('role', 'agent')
+    .in('role', ROUTING_POOL_ROLES)
     .order('domain', { ascending: true })
     .order('full_name', { ascending: true });
 

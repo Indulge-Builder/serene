@@ -4,10 +4,11 @@ import { useState, useRef, useEffect, useMemo }  from 'react';
 import dynamic                                   from 'next/dynamic';
 import { useSearchParams }                      from 'next/navigation';
 import { m as motion, AnimatePresence }               from 'framer-motion';
-import { SlidersHorizontal, Check, ChevronDown, LayoutGrid } from 'lucide-react';
+import { SlidersHorizontal, ChevronDown, LayoutGrid } from 'lucide-react';
 import { Avatar }                                from '@/components/ui/Avatar';
 import { CollapseReveal }                        from '@/components/ui/CollapseReveal';
 import { EmptyState }                            from '@/components/ui/EmptyState';
+import { FilterDropdown }                        from '@/components/ui/FilterDropdown';
 import { useMediaQuery, MQ }                     from '@/hooks/useMediaQuery';
 import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT, BASE_DURATION } from '@/lib/constants/motion';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
@@ -131,130 +132,7 @@ function DomainSectionLabel({ label }: { label: string }) {
 }
 
 // ─────────────────────────────────────────────
-// DomainFilterPopover — inline filter panel
-// ─────────────────────────────────────────────
-
-function DomainFilterPopover({
-  availableDomains,
-  selected,
-  onSelect,
-  onClose,
-}: {
-  availableDomains: AppDomain[];
-  selected:         AppDomain | null;
-  onSelect:         (d: AppDomain | null) => void;
-  onClose:          () => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [onClose]);
-
-  return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, y: -4, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0,  scale: 1    }}
-      exit={{    opacity: 0, y: -4, scale: 0.97 }}
-      transition={{ duration: 0.15, ease: EASE_OUT_EXPO }}
-      style={{
-        position:     'absolute',
-        top:          'calc(100% + 6px)',
-        right:        0,
-        zIndex:       'var(--z-dropdown)' as React.CSSProperties['zIndex'],
-        background:   'var(--theme-paper)',
-        border:       '1px solid var(--theme-paper-border)',
-        borderRadius: 'var(--radius-md)',
-        boxShadow:    'var(--shadow-3)',
-        minWidth:     '180px',
-        padding:      'var(--space-1)',
-        overflow:     'hidden',
-      }}
-    >
-      {/* All domains option */}
-      <button
-        onClick={() => { onSelect(null); onClose(); }}
-        style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-2)',
-          width:        '100%',
-          padding:      'var(--space-2) var(--space-3)',
-          borderRadius: 'var(--radius-sm)',
-          background:   selected === null ? 'var(--theme-accent-surface)' : 'transparent',
-          border:       'none',
-          cursor:       'pointer',
-          textAlign:    'left',
-          transition:   'background var(--duration-fast) var(--ease-in-out)',
-        }}
-        onMouseEnter={(e) => { if (selected !== null) e.currentTarget.style.background = 'var(--theme-paper-subtle)'; }}
-        onMouseLeave={(e) => { if (selected !== null) e.currentTarget.style.background = 'transparent'; }}
-      >
-        <span
-          style={{
-            flex:       1,
-            fontFamily: 'var(--font-sans)',
-            fontSize:   'var(--text-sm)',
-            color:      selected === null ? 'var(--theme-accent)' : 'var(--theme-text-primary)',
-            fontWeight: selected === null ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-          }}
-        >
-          All domains
-        </span>
-        {selected === null && <Check style={{ width: 13, height: 13, color: 'var(--theme-accent)', flexShrink: 0 }} strokeWidth={2} />}
-      </button>
-
-      {/* Separator */}
-      <div style={{ height: '1px', background: 'var(--theme-paper-border)', margin: 'var(--space-1) 0' }} />
-
-      {/* Per-domain options */}
-      {availableDomains.map((d) => (
-        <button
-          key={d}
-          onClick={() => { onSelect(d); onClose(); }}
-          style={{
-            display:      'flex',
-            alignItems:   'center',
-            gap:          'var(--space-2)',
-            width:        '100%',
-            padding:      'var(--space-2) var(--space-3)',
-            borderRadius: 'var(--radius-sm)',
-            background:   selected === d ? 'var(--theme-accent-surface)' : 'transparent',
-            border:       'none',
-            cursor:       'pointer',
-            textAlign:    'left',
-            transition:   'background var(--duration-fast) var(--ease-in-out)',
-          }}
-          onMouseEnter={(e) => { if (selected !== d) e.currentTarget.style.background = 'var(--theme-paper-subtle)'; }}
-          onMouseLeave={(e) => { if (selected !== d) e.currentTarget.style.background = 'transparent'; }}
-        >
-          <span
-            style={{
-              flex:       1,
-              fontFamily: 'var(--font-sans)',
-              fontSize:   'var(--text-sm)',
-              color:      selected === d ? 'var(--theme-accent)' : 'var(--theme-text-primary)',
-              fontWeight: selected === d ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-            }}
-          >
-            {DOMAIN_LABELS[d as keyof typeof DOMAIN_LABELS]}
-          </span>
-          {selected === d && <Check style={{ width: 13, height: 13, color: 'var(--theme-accent)', flexShrink: 0 }} strokeWidth={2} />}
-        </button>
-      ))}
-    </motion.div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Roster header — "Agents" label + filter icon
+// Roster header — "Agents" label + domain filter
 // ─────────────────────────────────────────────
 
 function RosterHeader({
@@ -279,9 +157,6 @@ function RosterHeader({
   agentCount:      number;
   selectedName:    string | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const isFiltered = domainFilter !== null;
-
   const label = (
     <span
       style={{
@@ -383,55 +258,32 @@ function RosterHeader({
         label
       )}
 
-      {/* Filter icon — only shown in all-domains mode */}
+      {/* Domain filter — shared FilterDropdown (single-select, portaled).
+          menuPortal is REQUIRED: the roster card sits inside the paper scroll
+          container, so a non-portaled menu would clip against the overflow /
+          Framer transforms (this is the mobile fix). The synthetic '__all__'
+          item preserves the explicit "All domains" affordance the popover had
+          (mirrors layout/DomainSelector). accentBorderOnOpen=false keeps the
+          accent treatment tied to an active selection, not the open panel. */}
       {allDomains && (
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setOpen((v) => !v)}
-            title="Filter by domain"
-            style={{
-              display:      'flex',
-              alignItems:   'center',
-              justifyContent: 'center',
-              width:        '26px',
-              height:       '26px',
-              borderRadius: 'var(--radius-sm)',
-              border:       isFiltered
-                ? '1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent)'
-                : '1px solid transparent',
-              background:   isFiltered ? 'var(--theme-accent-surface)' : 'transparent',
-              cursor:       'pointer',
-              transition:   'background var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out)',
-            }}
-            onMouseEnter={(e) => {
-              if (!isFiltered) e.currentTarget.style.background = 'var(--theme-paper-subtle)';
-            }}
-            onMouseLeave={(e) => {
-              if (!isFiltered) e.currentTarget.style.background = 'transparent';
-            }}
-          >
-            <SlidersHorizontal
-              style={{
-                width:  14,
-                height: 14,
-                color:  isFiltered ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
-                transition: 'color var(--duration-fast) var(--ease-in-out)',
-              }}
-              strokeWidth={1.5}
-            />
-          </button>
-
-          <AnimatePresence>
-            {open && (
-              <DomainFilterPopover
-                availableDomains={availableDomains}
-                selected={domainFilter}
-                onSelect={onFilterChange}
-                onClose={() => setOpen(false)}
-              />
-            )}
-          </AnimatePresence>
-        </div>
+        <FilterDropdown
+          label="Domains"
+          icon={SlidersHorizontal}
+          items={[
+            { id: '__all__', label: 'All domains' },
+            ...availableDomains.map((d) => ({
+              id: d,
+              label: DOMAIN_LABELS[d as keyof typeof DOMAIN_LABELS],
+            })),
+          ]}
+          selected={domainFilter ? [domainFilter] : []}
+          onChange={(sel) => {
+            const picked = sel[0] ?? null;
+            onFilterChange(picked === '__all__' ? null : (picked as AppDomain));
+          }}
+          menuPortal
+          accentBorderOnOpen={false}
+        />
       )}
     </div>
   );

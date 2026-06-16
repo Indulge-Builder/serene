@@ -12,6 +12,360 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-16 — Performance filtering unified onto the shared FilterBar (mobile + DRY)
+
+**Problem.** `/performance` forked its own filter chrome instead of reusing the app's
+primitives, and it broke on a phone. Four divergences:
+
+1. `AgentPerformanceShell` built a **bespoke `PeriodSelector`** (chevron-separated buttons,
+   `whiteSpace: 'nowrap'`, **no overflow handling**) → it overflowed on a narrow viewport. The
+   agent self-view didn't use the shared filter bar at all; it kept period in React state (no URL).
+2. `PerformanceFilters` composed `<FilterBar>` only for search + a bespoke "Period" dropdown +
+   its **own** custom `<DatePicker>` pair — never FilterBar's built-in `dateRange` (Range presets
+   + custom Dates) panels that `/leads` uses.
+3. `DomainOverviewPanel` rendered a **bespoke 3-button** Leads/Calls/Revenue toggle.
+4. `ManagerPerformancePanel` used a **bespoke Framer popover** (26×26 icon, no portal) for the
+   roster domain filter — it clipped against the scroll overflow on mobile.
+
+**Decision.** One shared, mobile-correct filter bar for **all** performance roles, the agent view
+moved onto URL params, and the two selectors adopting the shared `TabSelector` / `FilterDropdown`
+(R-01). Date selection = FilterBar **Range presets + custom Dates** (`date_from`/`date_to`, the
+same contract as `/leads`); `all_time` and the `custom`/`Period`-dropdown concept are dropped from
+the URL. Default range = This Month. Below `md`, FilterBar auto-collapses to horizontal-scroll —
+the mobile fix.
+
+**Key design — the service/action layer is untouched.** A new pure helper
+`resolvePerformanceDateParams(date_from, date_to)` (in `performance-service.ts`) is THE single
+boundary that turns the URL date params into the `PerformancePeriod` + ISO range the RPC layer
+already keys on: no params → `this_month`; a preset-matched range → that enum (so previous-period
+benchmarks survive for `this_week`/`this_month`/`last_month`=`prev_month`/`today`); any other range
+→ `custom` + explicit from/to (benchmarks null, as before). `date_to` is widened to **IST
+end-of-day** because the RPCs filter `created_at <= p_date_to` inclusive — a bare `YYYY-MM-DD`
+would have dropped the final day (this also fixes a latent last-day under-count in the old custom
+path). Both `/performance` and `/budget` (the only two `PerformanceFilters` consumers) call the
+helper.
+
+**Changes.**
+
+- `PerformanceFilters.tsx` — rewritten to `useUrlFilters` + `<FilterBar dateRange={…}>` (the
+  `LeadsFilters` pattern); props shrink to `{ showSearch }`. No bespoke Period dropdown / DatePicker.
+- `performance/page.tsx` — parses `date_from`/`date_to`, derives period via the helper; the **agent
+  branch** now renders the shared bar and the shell **key-remounts per range** with server-fetched
+  data (no client metrics refetch effect — honours the one-RPC-per-view rule, D-2).
+- `AgentPerformanceShell.tsx` — `PeriodSelector` + the in-shell filter strip + custom DatePicker
+  pair + the `period`/`customFrom`/`customTo`/`isLoading` state + the metrics effect all deleted;
+  period/range now arrive as props. The **ONE-pulse-fetch invariant is preserved** (single
+  `needsPulse` gate, plain `.then()/.catch()` + `cancelled` ref); a tab switch still fires no
+  request. "today" is detected as `period === 'today'`.
+- `budget/page.tsx` — mirrors the helper (reads `date_from`/`date_to`; feeds `from`/`to` to
+  `BudgetAsync`).
+- `DomainOverviewPanel.tsx` — metric toggle → shared `<TabSelector variant="accent"
+  indicatorLayoutId="domain-metric-toggle">` (distinct id avoids a Framer shared-layout collision
+  with the founder shell's pill).
+- `ManagerPerformancePanel.tsx` — `DomainFilterPopover` → shared `<FilterDropdown … menuPortal>`
+  (single-select, synthetic `__all__` "All domains" item mirroring `DomainSelector`; `menuPortal`
+  escapes the scroll overflow — the mobile fix). Kept in the roster header per the 2026-05-31
+  domain-placement decision (still client-side, never `?domain=`).
+- `actions/performance.ts` — removed the now-orphaned `getAgentSelfMetricsAction` (the page fetches
+  the agent summary server-side; the pulse stays a client action). `AgentSelfMetrics` type alias kept.
+
+**Reuse note.** Net new code is one pure helper + a doc; everything else is *adopting* existing
+primitives (`FilterBar.dateRange`, `useUrlFilters`, `TabSelector`, `FilterDropdown`,
+`resolveDateRangePreset`/`matchDateRangePreset`, the IST boundary utils). No service query, RPC,
+migration, or Zod change.
+
+---
+
+## 2026-06-16 — Invite-by-email onboarding fixed end-to-end (email → set password → in)
+
+**Problem.** Inviting a user from `/admin/users` (Send invite link mode) was broken at three
+points, only the first of which was visible:
+
+1. **No email arrived.** The Supabase "Invite user" email template was never set up (OTP /
+   password-reset templates were, which is why those worked). The invite request returned `200`
+   with the `auth.users` row created — the auth logs showed `action: user_invited` with **no
+   mail-send activity following it**. *(Resolved in the Supabase dashboard: the invite template
+   now ships, styled to the Serene dark-canvas/cream-paper system with `{{ .ConfirmationURL }}`.)*
+
+2. **The link dead-ended at `/login`.** `inviteUserByEmail` was called with **no `redirectTo`**, so
+   `{{ .ConfirmationURL }}` resolved to the Site URL root. The root page (`page.tsx`) only knows
+   `/dashboard` or `/login` — it has no invite concept — so the freshly-invited user landed on
+   `/login` being asked for a password they had never set. There was **zero `type=invite` handling**
+   anywhere; `/update-password` was built solely for the password-reset OTP flow (requires `?email=`
+   + a 6-digit code the invitee doesn't have).
+
+3. **`job_title` was silently dropped.** The invite stuffed `job_title` into
+   `raw_user_meta_data`, but the `handle_new_user()` signup trigger only copied
+   `full_name`/`role`/`domain` into `public.profiles`. (The password-mode `createUser` path set it
+   via a follow-up `updateProfileFields`, so only invites lost it.)
+
+**Decision (fast · secure · easy — one click from email to inside the app).**
+
+- `inviteUser` (`lib/actions/profiles.ts`) now passes
+  `redirectTo: ${NEXT_PUBLIC_SITE_URL}/auth/callback?next=/update-password`. The existing
+  `/auth/callback` route exchanges the invite token, establishes the session, and forwards to
+  `/update-password`.
+- `/update-password/page.tsx` now reads the session first: **a live session = the invite case**
+  → render the password form in `invited` mode (skip the OTP step entirely — there is no code to
+  type) → on success "Continue to Dashboard". No live session → the unchanged password-reset
+  OTP path (`?email=` → verify code → set password → `/login`). One component, two modes; no
+  fork of the form (R-01).
+- Migration `20260616000125_handle_new_user_job_title.sql` — `handle_new_user()` now also copies
+  `job_title` (`NULLIF(... ,'')`, nullable column). `CREATE OR REPLACE`, body otherwise identical;
+  applied to the live DB.
+
+**Files:** `src/lib/actions/profiles.ts` (invite `redirectTo`), `src/app/(auth)/update-password/page.tsx`
+(session-aware branch), `src/app/(auth)/update-password/update-password-form.tsx` (`invited` mode +
+dashboard landing), `supabase/migrations/20260616000125_handle_new_user_job_title.sql`. No new
+component, hook, or route.
+
+---
+
+## 2026-06-16 — Dashboard Elaya widget goes live (the /elaya chat, shrunk into the widget)
+
+**Problem.** The `elaya-presence` dashboard widget (`ElayaPresenceCard`) shipped as a dead
+shell: breathing glyph + IST greeting + daily line, but a **disabled** `MessageBar`
+(`onSend={() => {}}`, placeholder "Elaya is on her way…"). Meanwhile the entire live chat
+surface already existed and had been built *for this exact widget* — `ElayaChatShell` carries an
+`embedded`/`hideIdentity` chat-only mode, and `getElayaChatSeedAction()` exists solely as "THE
+client entry for seeding ElayaChatShell from a client context." Nobody had wired the card up.
+
+**Decision (DRY — R-01/R-03).** The widget IS the conversation, not a teaser. It renders the
+**same `ElayaChatShell`** the `/elaya` page renders — in `embedded` mode (flush, chat-only) — sized
+into the widget box, seeded with the user's **single active conversation** via
+`getElayaChatSeedAction` (the SAME seed `/elaya` resolves — never a fork). The user says hi and gets
+a reply right inside the widget — no modal, no second send. The SSE loop, transcript, cap, and voice
+all stay in the one shared shell.
+
+**Changes.**
+
+- `ElayaPresenceCard.tsx` — rewritten to resolve the seed on mount (a `'use client'` widget can't
+  call `elaya-service` directly — A-15 — so it crosses the boundary via `getElayaChatSeedAction`)
+  and render `<ElayaChatShell embedded />` filling the widget box; until the seed lands, her
+  breathing glyph holds the seat (a static glyph = Elaya absent). Lazy `next/dynamic` import keeps
+  the chat bundle out of the dashboard route chunk.
+- `ElayaChatShell.tsx` — unchanged. Its existing `embedded` mode is the exact fit.
+
+**Reuse note.** Zero new chat infrastructure. The widget composes `ElayaChatShell` (its pre-existing
+`embedded` mode) and `getElayaChatSeedAction` (the pre-built widget seed action) — both already
+existed; nothing was added to the chat layer.
+
+---
+
+## 2026-06-16 — Managers join the round-robin routing pool (fix: managers can't set own shift/pool)
+
+**Problem.** In `/settings` an agent could set their shift hours, work days, and pool
+(in/out) status, but a manager could not do the same for themselves. The roster the Settings
+table renders came from `getAgentRosterByDomain`, which filtered `role = 'agent'` — so a
+manager's own profile never appeared. Underneath, the gap was structural: the
+`agent_routing_config` auto-create trigger only minted a config row for `role = 'agent'` (most
+managers had no shift/pool row to edit at all), and `get_next_round_robin_agent` only assigned
+leads to agents. Managers already carry and call leads (`LEAD_ASSIGNABLE_ROLES`), but were
+invisible to the routing/shift layer.
+
+**Decision (confirmed with the user).** Managers become **full pool members**: they receive
+round-robin leads in the **same fair queue** as agents (oldest-assignment-first, gated on their
+pool toggle), and they can edit **their own row plus every agent in their domain** in Settings.
+
+**Fix.**
+
+- **`lib/constants/roles.ts`** — added `ROUTING_POOL_ROLES`, an alias of the existing
+  `LEAD_ASSIGNABLE_ROLES` (`['agent','manager']`). The routing pool and the assignment pool are
+  the same set by design; no second list (R-01). Both constants document the SQL mirror.
+- **`getAgentRosterByDomain`** (`agent-routing-service.ts`) — `.eq('role','agent')` →
+  `.in('role', ROUTING_POOL_ROLES)`. A manager's domain-scoped roster now includes their own row
+  and any peer managers. The `!inner` join means a manager with no config row stays absent until
+  the migration backfills one.
+- **`getNextRoundRobinAgent`** (the JS fallback in `leads-service.ts`) — same role-filter widen.
+- **Migration `0124_managers_in_routing_pool.sql`** — (1) `handle_agent_routing_config()` now
+  auto-creates a config row for `role IN ('agent','manager')` on insert and on a role change into
+  the pool; (2) backfills config rows for all existing managers (`ON CONFLICT DO NOTHING`);
+  (3) `get_next_round_robin_agent` widens both eligibility passes to `role IN ('agent','manager')`
+  (body otherwise identical to 0007; EXECUTE posture unchanged — service-role only).
+- **Authorization unchanged.** `setAgentShiftAction` / `toggleAgentRouting` already gate managers
+  to `agentProfile.domain === caller.domain` — a manager editing their own row passes (same
+  domain). `AgentSettingsTable` is role-agnostic about row contents; it renders whatever roster it
+  is given, so no component change was needed.
+
+**⚠️ NOT yet applied to prod** — apply migration 0124 before relying on the manager pool/shift
+behaviour. Until then, existing managers have no `agent_routing_config` row, so they remain absent
+from both the Settings roster and the round-robin pool.
+
+---
+
+## 2026-06-16 — Campaigns list card redesign (fix: cluttered, mobile-broken, off-system rows)
+
+**Problem.** The `/campaigns` list rendered each campaign as a single horizontal flex row:
+name + domain on the left, two floating cost cells in the middle, and **seven status pills**
+(total · won · in discussion · nurturing · lost · junk · RNR) crammed against the right edge.
+At normal data volume the pills wrapped and competed for attention — you could not compare two
+campaigns at a glance. On narrow viewports the fixed-width identity column plus the right-justified
+pill cluster overflowed (no responsive collapse). The bespoke pill row + floating cost cells also
+drifted from the rest of Serene (no hero number, no conversion signal, `total_leads` reduced to
+just another pill).
+
+**Fix — `CampaignCard` restructured into a three-row, vertically-stacked layout** (same data, same
+page structure, same props/contracts — `CampaignPreviewModal`, entrance stagger, hover lift, focus
+ring, the `totalSpend`/`costPerLead` null→"—" contract all unchanged):
+
+1. **Identity row** — campaign name (`--text-base` semibold, ellipsised) + domain badge.
+2. **Hero stats strip** — Leads · **Conversion** (won ÷ total, the previously-absent comparison
+   metric; success ≥10%, danger <5%, guards total=0 → "—") · Spend · Cost/Lead, as labelled
+   data (micro-uppercase label over mono `--text-lg` value — the canonical labelled-datum pattern).
+   `flex-wrap`, so it reflows instead of overflowing.
+3. **Status breakdown** — the six lifecycle counts as **semantic dots + count + label** (won/
+   in-discussion/nurturing/lost/junk/RNR), `flex-wrap`, zero-count entries dimmed. Replaces the
+   seven competing pills with a calm, scannable row.
+
+Column-flex stacking makes the card responsive by construction — no horizontal overflow at any
+width. A neutral `1px --theme-paper-border` divider separates the hero strip from the breakdown
+(structural zone separator, **not** a single-edge semantic accent strip — Never-Do list). All
+colours are tokens; semantic dots use `--color-success/info/warning/danger`; `m as motion` alias
+preserved (A-17).
+
+`CampaignListSkeleton.tsx` and `campaigns/loading.tsx` rewritten to mirror the new three-row shape
+so the skeleton→card swap is a settle, not a relayout jolt. Files: `CampaignCard.tsx`,
+`CampaignListSkeleton.tsx`, `src/app/(dashboard)/campaigns/loading.tsx`. No data-layer or service
+change.
+
+---
+
+## 2026-06-16 — WhatsApp page title aligns with the canonical header (fix: title sat too high/tight)
+
+**Bug.** The `/whatsapp` left-rail page title ("WhatsApp.") sat higher and tighter than the title
+on every other primary nav page. The rail used `pt-4 pl-4 md:pt-8 md:pl-8` — it **skipped the
+24px tablet tier** (jumping 16px→32px at `md`) and carried **no right padding at all**, so the
+title hugged the rail edges. An inline `paddingRight: var(--space-4)` hack on the title row faked
+the missing right gutter for the unread badge.
+
+**Fix.** The rail now follows the canonical page-padding ladder (`p-4 sm:p-6 lg:p-8` — DNA §9.2)
+on top/left/right, with `pb-0` at each tier so the `ConversationList` (own-scroll, `flex: 1
+minHeight: 0`) still runs flush to the bottom edge. The inline `paddingRight` hack is removed —
+the rail's own `pr-*` now provides the badge gutter consistently and at the correct responsive
+value. "WhatsApp." now breathes from the top and aligns vertically with the title on every other
+page. Single file: `src/components/whatsapp/WhatsAppShell.tsx`. No behavioural change.
+
+---
+
+## 2026-06-16 — Helpdesk respects the domain selector (fix: no add button / wrong shelf for non-onboarding domains)
+
+**Bug.** `/helpdesk` always showed the **onboarding** Call Intelligence library, regardless of the
+viewer's domain or the global domain selector. Consequently the "+ Suggestion" Add affordance (and
+the Suggestion modal it opens) could only ever target the onboarding shelf — there was no way to
+view or add suggestions for another domain's library.
+
+**Root cause.** The page hard-coerced the shelf to a single value —
+`isGiaDomain(profile.domain) ? profile.domain : DEFAULT_GIA_DOMAIN` — and never read the `?domain=`
+param or the `serene-domain` cookie. The global `DomainSelector` (already mounted on the helpdesk
+title row via `PageControls` for admin/founder) wrote both, but the page ignored them, so picking a
+domain did nothing. The DB already supported every shelf (read RLS is `USING (true)`;
+`ServiceCaseSchema.domain` accepts all app domains; the modal's Domain `<select>` already lists all
+four Gia domains and pre-selects the page's), so this was purely a page-level resolution gap.
+
+**What.** Admin/founder now pick the helpdesk shelf with the **same** global domain selector that
+drives leads/deals/campaigns — the library shown, the Add button's target, and the Suggestion
+modal's pre-selected domain all follow the pick (param → cookie → onboarding default). Non-privileged
+viewers continue to read their own Gia shelf (concierge/finance/etc. fall back to the default Gia
+library). The admin/founder-only write gate is unchanged.
+
+**How (R-01 — reuse the canonical resolver, no new mechanism).** `/helpdesk/page.tsx` now resolves
+the domain via the shared `resolveDomainParam(searchParams, await cookies(), profile.role)` from
+`lib/utils/domain-scope.ts` (the same resolver leads/deals/campaigns use), falling back to the
+viewer's own Gia domain. No new selector, no new action, no schema/migration change — the existing
+`DomainSelector` + `serene-domain` cookie + Suggestion modal all already supported this; the page
+just wasn't reading the scope. Typecheck clean.
+
+**Bug.** Creating a lead from **Add Lead** never offered managers in the "Assign to" dropdown —
+a manager (who carries and calls leads alongside agents) could not assign a new lead to themselves
+or another manager. The same restriction applied to dossier reassignment and deal recording.
+
+**Root cause.** The canonical assignable-users query `getAssignableUsers` took a binary
+`agentsOnly` flag, and every lead/deal assignment pool passed `agentsOnly: true` — hard-filtering
+the picker to `role = 'agent'`. The server-side assignee validators (`createManualLead`,
+`assignLeadCore`, `recordDeal`) already accepted any active in-domain user regardless of role, so
+this was purely a picker-population gap, not an authorization change.
+
+**What.** Lead/deal assignment pickers now offer **agents + managers** (the lead-carrying roles).
+Admins/founders remain out of the picker (not lead-carriers) — admin/founder *callers* still see
+every active user, unchanged. Applied everywhere a lead or deal is assigned: Add Lead (page-level
+initial list + the domain-switch refetch action), dossier reassignment (`LeadInfoCardAsync`), and
+deal recording (`recordDeal` manager + admin/founder branches, `listAgentsForDealDomain`).
+
+**How (R-01 — one query, generalized, not forked).** Replaced the binary `agentsOnly` on
+`getAssignableUsers` with a `roles?: UserRole[]` filter (`.in('role', roles)`); the React `cache()`
+memo now keys on the sorted-comma-joined role set so call sites still dedupe per render pass. Added
+`LEAD_ASSIGNABLE_ROLES = ['agent', 'manager']` to `constants/roles.ts` as THE single source for the
+lead/deal assignment role set — every assignment call site passes it instead of hardcoding the pair.
+Cosmetic copy in `AddLeadModal` updated ("agent" → "assignee"); the `deals.ts` validation error
+strings updated ("Selected agent" → "Selected assignee"). No migration, no schema change, no new
+service query. Typecheck clean.
+
+---
+
+## 2026-06-16 — Performance deck: surface the First-Touch Speed scorecard on each card
+
+**What.** The deck cards (`FounderDrillDownDeck`) were missing the First-Touch Speed scorecard
+(`< 15m / 15–30m / ≤ 1h / 1–3h / 3h+`) that the desktop `AgentDetailPanel` already shows — so on
+mobile, where the deck is the default view, the speed cards never appeared. Each deck card now renders
+`FirstTouchScorecard` below the breakdown toggle (same vertical order as the desktop panel).
+
+**How (no new fetch logic).** The scorecard rides the breakdown's existing per-agent lazy fetch:
+`getAgentFirstTouchScorecardAction` now runs in the same `Promise.all` as `getAgentDetailMetricsAction`
+the first time a card becomes active, and its result folds into the cached `breakdowns[agentId]` ready
+state (`scorecard: FirstTouchScorecardData | null`). Still **once per agent**, still cached on swipe
+back, still cleared+refetched on a period/date/domain change. The breakdown drives the error state;
+the scorecard is **best-effort** — its independent failure just omits the card, the breakdown still
+renders. The tile zero-per-swipe-fetch invariant is unchanged (it governs the in-memory tiles, not
+the gated breakdown/scorecard reads). `FirstTouchScorecard` is unchanged — reused as-is (R-01).
+
+**Files.** `src/app/(dashboard)/performance/FounderDrillDownDeck.tsx` (parallel scorecard fetch +
+render). Docs: `src/components/performance/CLAUDE.md`, `docs/pages/performance.md`.
+`pnpm tsc --noEmit` clean; `check:tokens` clean.
+
+---
+
+## 2026-06-16 — Leads: manager "Team Leads" view toggle (own leads by default)
+
+**What.** A manager landing on `/leads` now sees **only their own assigned leads by default** — the
+same daily worklist an agent gets — instead of the whole domain. A **"Team Leads" toggle** in the
+`LeadsTable` toolbar (left cluster, next to Going Cold) is **off** by default (own leads); switching it
+**on** (accent-lit) shows the whole domain's team leads. Fixed label — the on/pressed state is the
+switch, not a state mirror. When on, the existing Agent filter appears so they can narrow to one agent.
+Agents are untouched (always own-scoped); admin/founder are untouched (no toggle, no default change —
+their domain picker / all-org behaviour stands).
+
+**Why.** Managers also carry leads — they call and sell like agents — so their default landing should be
+their own pipeline, not a domain-wide list they have to filter down every visit. The whole-domain view is
+one click away when they need to check the team's lead statuses.
+
+**How.**
+
+- **URL param `view`** (`'mine' | 'all' | null`) added to `LeadFilters` (`database.ts`). Parsed in
+  `leads/page.tsx` (`?view=`). **Manager default resolved server-side:** an absent param ⇒ `'mine'`;
+  only `?view=all` widens to the domain. The toggle writes `?view=all` (My Leads = no param).
+- **Service (`getLeadsByRole`)** — manager branch: `filters.view === 'mine'` ⇒ `assigned_to = userId`
+  (composes with the domain constraint); `agent_id` only applies in All Leads. The status-counts RPC
+  `p_agent_id` mirrors this exactly (param-sync rule, C-1) — a manager in My Leads passes their own id,
+  so the pill counts match the table. **No migration** — the existing `get_leads_status_counts` already
+  honours `p_agent_id` on top of its self-derived domain scope.
+- **Cache key** — `view` added to `buildLeadListKey` (`redis-keys.ts`) so My/All never share a slot.
+- **Export** — `getLeadsForExport` mirrors the scope; `exportLeadsAction` re-applies the manager default
+  (the action re-derives identity from the verified profile, so `view` can only *narrow* a manager,
+  never widen access); `view` threaded through `ExportLeadsSchema` + `ExportButton`.
+- **Agent filter** — `showAgentFilter` in `leads/page.tsx` is now `true` for a manager only in All Leads
+  (a no-op in My Leads, so it's hidden there).
+- **Toggle UI** — `LeadsTable` gains `role` + `enableViewToggle` props; the toggle renders only when
+  `enableViewToggle && role === 'manager'`. `LeadsTableAsync` sets `enableViewToggle`; the campaign
+  drill-down (`/campaigns/[id]`) passes `role` and forces `filters.view = 'all'` (analytics view of every
+  campaign lead — a manager there must see the whole domain, and the toggle stays hidden).
+
+**Files.** `lib/types/database.ts`, `app/(dashboard)/leads/page.tsx`, `lib/services/leads-service.ts`,
+`lib/constants/redis-keys.ts`, `lib/validations/lead-schema.ts`, `lib/actions/leads.ts`,
+`components/leads/LeadsTable.tsx`, `components/leads/LeadsTableAsync.tsx`, `components/leads/ExportButton.tsx`,
+`app/(dashboard)/campaigns/[id]/page.tsx`.
+
+---
+
 ## 2026-06-15 — Performance: first-touch speed scorecard below the agent detail breakdown
 
 **What.** A new `FirstTouchScorecard` sits below the `CallOutcomeBar` donut in `AgentDetailPanel`

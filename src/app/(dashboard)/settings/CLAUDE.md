@@ -17,8 +17,11 @@ src/components/settings/
 
 ## Architecture
 
-Single page. No tabs. Agent roster table for manager+; the SLA panel renders below it for
-admin/founder only. Each agent row in `AgentSettingsTable` exposes:
+Single page. No tabs. Pool-member roster table for manager+; the SLA panel renders below it for
+admin/founder only. **Pool members = `ROUTING_POOL_ROLES` (agents + managers)** — managers carry
+leads and sit in the same round-robin queue as agents, so a manager appears in their own domain's
+roster and can edit their own shift/pool the same way they edit their agents' (migration 0124).
+Each row in `AgentSettingsTable` exposes:
 - **Shift Start** — `<TimePicker>` (`src/components/ui/TimePicker.tsx`); saves immediately on each pick when both fields are valid
 - **Shift End** — `<TimePicker>`; saves immediately on each pick when both fields are valid
 - **Active Hours** — computed client-side from start/end strings; displays as "Xh Ym"
@@ -28,8 +31,9 @@ admin/founder only. Each agent row in `AgentSettingsTable` exposes:
 ## Data Flow
 
 - `page.tsx` fetches `getAgentRosterByDomain(domain)` once at load.
-- `domain = '*'` for admin/founder — all agents across all domains.
-- `domain = caller.domain` for manager — only their domain.
+- `domain = '*'` for admin/founder — all pool members (agents + managers) across all domains.
+- `domain = caller.domain` for manager — only their domain (now **including the manager's own row**
+  and any peer managers, since the roster query gates on `ROUTING_POOL_ROLES`, not `'agent'`).
 - The fetched `AgentRosterRow[]` is passed as `initialRoster` to `AgentSettingsTable`.
 - No re-fetches from the server — mutations use server actions + optimistic/local updates.
 
@@ -133,5 +137,7 @@ assignment that re-arms the same rule dedupes against the unassigned timer (no d
 
 - Page redirects agent/guest server-side.
 - `setAgentShiftAction`: manager checked against `getProfileById(agentId).domain === caller.domain`.
-- `toggleAgentRouting`: existing action; RLS covers it.
-- `getAgentRosterByDomain`: `adminClient` bypasses RLS for the cross-profile join; domain filtering enforced in service code.
+  A manager editing **their own** row passes this same-domain check — no special-case needed.
+- `toggleAgentRouting`: existing action; RLS covers it. Same domain gate for managers (own row passes).
+- `getAgentRosterByDomain`: `adminClient` bypasses RLS for the cross-profile join; domain filtering
+  enforced in service code; role filter is `ROUTING_POOL_ROLES` (agents + managers).

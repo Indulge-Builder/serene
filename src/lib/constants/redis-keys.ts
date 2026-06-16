@@ -112,6 +112,8 @@ export function buildLeadListKey(
     date_from?:         string | null;
     date_to?:           string | null;
     sort_order?:        string | null;
+    // Manager My/All view — distinct cache slots so the two never collide
+    view?:              string | null;
   },
 ): string {
   const status  = [...(filters.status  ?? [])].sort().join(',');
@@ -130,6 +132,7 @@ export function buildLeadListKey(
     filters.date_from  ?? '',
     filters.date_to    ?? '',
     filters.sort_order ?? 'desc',
+    filters.view       ?? '',
   ].join(':');
 
   return REDIS_KEYS.leadList(role, callerDomain, userId, filterHash);

@@ -266,18 +266,22 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
       >
         {isMobile ? (
           /* Mobile: pill + Called on the top row, stage actions in an
-             equal-width row below — no orphaned dividers, no wrap drift. */
+             equal-width row below — no orphaned dividers, no wrap drift.
+             The pill takes the remaining width and truncates its label; the
+             Called button stays pinned to the right at its natural size so
+             the two never collide or misalign on a narrow viewport. */
           <>
             <div
               style={{
                 display:        'flex',
                 alignItems:     'center',
-                justifyContent: 'space-between',
                 gap:            'var(--space-3)',
               }}
             >
-              {statusPill}
-              {calledButton}
+              <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex' }}>
+                {statusPill}
+              </div>
+              <div style={{ flexShrink: 0 }}>{calledButton}</div>
             </div>
             {stageActions.length > 0 && (
               <div

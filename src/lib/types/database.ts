@@ -1752,6 +1752,11 @@ export type LeadFilters = {
   search:            string | null
   going_cold?:       boolean
   revival?:          boolean
+  // Manager "My Leads" vs "All Leads" toggle. 'mine' force-scopes a manager to
+  // their own assigned leads; 'all' = the whole domain. Managers default to
+  // 'mine' (resolved in leads/page.tsx — an absent param means My Leads for a
+  // manager). Ignored for agent (always own) and admin/founder (no toggle).
+  view?:             'mine' | 'all' | null
   sort_order?:       'asc' | 'desc'
   page:              number
   pageSize:          number

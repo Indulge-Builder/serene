@@ -171,9 +171,9 @@ export function AddLeadModal({
   );
 
   const assigneeLabel = useMemo(() => {
-    if (agents.length === 0) return 'No active agents in this domain';
+    if (agents.length === 0) return 'No one to assign in this domain';
     const match = agents.find((a) => a.id === watchedAssignedTo);
-    return match?.full_name ?? 'Select agent…';
+    return match?.full_name ?? 'Select assignee…';
   }, [agents, watchedAssignedTo]);
 
   // When domain changes (manager/admin/founder), refetch agents for the new domain.

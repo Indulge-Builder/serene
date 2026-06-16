@@ -75,6 +75,7 @@ async function CampaignLeadsAsync({
       <LeadsTable
         leads={leads}
         userId={userId}
+        role={role}
         filters={filters}
         hasActiveFilters={!!campaignName}
       />
@@ -141,6 +142,10 @@ export default async function CampaignDetailPage({
     date_from:         dateFrom,
     date_to:           dateTo,
     search:            null,
+    // Campaign drill-down is an analytics view of EVERY lead in the campaign —
+    // a manager here must see the whole domain, never be scoped to their own
+    // leads. 'all' overrides the My-Leads default getLeadsByRole applies.
+    view:              'all',
     page,
     pageSize:          50,
   };

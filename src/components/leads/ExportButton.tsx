@@ -32,6 +32,7 @@ export function ExportButton({ filters }: ExportButtonProps) {
         date_from:         filters.date_from ?? undefined,
         date_to:           filters.date_to ?? undefined,
         search:            filters.search ?? undefined,
+        view:              filters.view ?? undefined,
         sort_order:        filters.sort_order ?? undefined,
       },
     });

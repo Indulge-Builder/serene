@@ -22,6 +22,8 @@ import {
 } from "@/lib/utils/ist";
 import { businessMinutesBetween, buildAgentShiftOverride } from "@/lib/utils/sla";
 import type { AgentShiftOverride } from "@/lib/utils/sla";
+import { dateFromUrlParam } from "@/lib/utils/filter-params";
+import { matchDateRangePreset } from "@/lib/constants/date-range-presets";
 import { getAgentRoutingConfigAdmin } from "@/lib/services/agent-routing-service";
 import { firstTouchBucketForMinutes } from "@/lib/constants/performance";
 import type { FirstTouchBucketId } from "@/lib/constants/performance";
@@ -159,6 +161,68 @@ export function getPreviousPeriodDateRange(
       // No meaningful previous period exists for these cases.
       return null;
   }
+}
+
+// ─────────────────────────────────────────────
+// URL date params → the (period, from, to) the services expect.
+//
+// The /performance + /budget filter bars carry pure date_from/date_to URL
+// params (YYYY-MM-DD, the FilterBar Range/Dates contract — same as /leads).
+// This pure helper is THE single boundary that turns those into the
+// PerformancePeriod + ISO range the RPC layer keys on, so the service/action
+// signatures stay untouched. Both server pages call it.
+//
+//   no params              → 'this_month' (the service computes the range)
+//   matchDateRangePreset() → that period enum (benchmarks survive for
+//                            this_week/this_month/last_month=prev_month/today)
+//   otherwise              → 'custom' + the explicit from/to
+//
+// IST boundary contract: date_to is widened to IST END-OF-DAY (23:59:59.999),
+// because the RPCs filter `created_at <= p_date_to` (inclusive) — a bare
+// YYYY-MM-DD coerces to 00:00:00 and would drop the entire final day. date_from
+// is IST midnight. (Pure — no cookies()/DB, safe in a server component.)
+// ─────────────────────────────────────────────
+
+const PRESET_TO_PERIOD: Record<string, PerformancePeriod> = {
+  today:      "today",
+  this_week:  "this_week",
+  this_month: "this_month",
+  prev_month: "last_month",
+};
+
+export type ResolvedPerformanceDates = {
+  period:     PerformancePeriod;
+  from:       string;
+  to:         string;
+  customFrom: string | null;
+  customTo:   string | null;
+};
+
+export function resolvePerformanceDateParams(
+  dateFrom: string | null | undefined,
+  dateTo:   string | null | undefined,
+): ResolvedPerformanceDates {
+  const fromDate = dateFromUrlParam(dateFrom ?? null);
+  const toDate   = dateFromUrlParam(dateTo ?? null);
+
+  // No (or partial) range → default to This Month; the service owns the math.
+  if (!fromDate || !toDate) {
+    const range = getPeriodDateRange("this_month");
+    return { period: "this_month", from: range.from, to: range.to, customFrom: null, customTo: null };
+  }
+
+  const fromIso = toISTMidnight(fromDate).toISOString();
+  const toIso   = toISTEndOfDay(toDate).toISOString();
+
+  // A preset-matched range keeps its enum so previous-period benchmarks work.
+  const preset = matchDateRangePreset(dateFrom ?? null, dateTo ?? null);
+  const matched = preset ? PRESET_TO_PERIOD[preset] : undefined;
+  if (matched) {
+    return { period: matched, from: fromIso, to: toIso, customFrom: null, customTo: null };
+  }
+
+  // Arbitrary range → 'custom' (benchmarks null, same as the prior custom path).
+  return { period: "custom", from: fromIso, to: toIso, customFrom: fromIso, customTo: toIso };
 }
 
 // ─────────────────────────────────────────────

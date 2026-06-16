@@ -248,6 +248,7 @@ export const ExportLeadsSchema = z.object({
     date_from:         z.string().nullable().optional(),
     date_to:           z.string().nullable().optional(),
     search:            z.string().nullable().optional(),
+    view:              z.enum(['mine', 'all']).nullable().optional(),
     sort_order:        z.enum(['asc', 'desc']).optional(),
     page:              z.number().optional(),
     pageSize:          z.number().optional(),

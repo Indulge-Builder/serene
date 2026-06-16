@@ -4,6 +4,7 @@ import type { SearchParams } from 'next/dist/server/request/search-params';
 import { cookies } from 'next/headers';
 import { getCurrentProfile, getAssignableUsers } from '@/lib/services/profiles-service';
 import { isGiaDomain, parseGiaDomainParam } from '@/lib/constants/domains';
+import { LEAD_ASSIGNABLE_ROLES } from '@/lib/constants/roles';
 import { resolveDomainParam } from '@/lib/utils/domain-scope';
 import { getLeadFilterOptions } from '@/lib/services/leads-service';
 import { getNotifications } from '@/lib/services/notifications-service';
@@ -47,6 +48,7 @@ function parseFilters(searchParams: Awaited<SearchParams>): LeadFilters {
     search:            getString('search'),
     going_cold:        searchParams.going_cold === 'true' ? true : undefined,
     revival:           searchParams.revival === 'true' ? true : undefined,
+    view:              getString('view') === 'all' ? 'all' : getString('view') === 'mine' ? 'mine' : null,
     sort_order:        (searchParams.sort_order === 'asc' || searchParams.sort_order === 'desc')
                          ? searchParams.sort_order
                          : 'desc',
@@ -78,20 +80,40 @@ export default async function LeadsPage({
   // force-scopes them regardless). Overwrites the param-only value parseFilters set.
   filters.domain = resolveDomainParam(resolvedParams, cookieStore, profile.role);
 
+  // Manager "My Leads" default: a manager lands on their own assigned leads
+  // (same daily experience as an agent) unless they explicitly switch to All
+  // Leads via the table's View toggle (?view=all). An absent param = 'mine'.
+  // The toggle is manager-only — agents are always own-scoped, admin/founder
+  // have no toggle (their param stays whatever parseFilters set, unused below).
+  if (profile.role === 'manager' && filters.view !== 'all') {
+    filters.view = 'mine';
+  }
+
   const [filterOptions, initialAgents] = await Promise.all([
     getLeadFilterOptions(
       profile.role,
       profile.domain,
       filters.domain && isGiaDomain(filters.domain) ? filters.domain : null,
     ),
-    // Admin/founder: all active users in their domain; everyone else: agents only.
+    // Admin/founder: all active users in their domain; everyone else: the
+    // lead-carrying roles (agents + managers, LEAD_ASSIGNABLE_ROLES).
     getAssignableUsers({
-      domain:     profile.domain,
-      agentsOnly: profile.role !== 'admin' && profile.role !== 'founder',
+      domain: profile.domain,
+      roles:
+        profile.role === 'admin' || profile.role === 'founder'
+          ? undefined
+          : LEAD_ASSIGNABLE_ROLES,
     }),
   ]);
 
-  const showAgentFilter  = profile.role !== 'agent';
+  // Agent filter: never for agents (they only see their own). For a manager it
+  // is meaningful only in the "All Leads" view — in My Leads the list is already
+  // force-scoped to the manager, so an agent pick would be a silent no-op; hide
+  // it there. Admin/founder always get it.
+  const showAgentFilter =
+    profile.role === 'manager'
+      ? filters.view === 'all'
+      : profile.role !== 'agent';
 
   return (
     <>

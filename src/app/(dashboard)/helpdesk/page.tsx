@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getHelpdeskLibrary } from '@/lib/services/intelligence-service';
 import { getNotifications } from '@/lib/services/notifications-service';
 import { DEFAULT_GIA_DOMAIN, isGiaDomain } from '@/lib/constants/domains';
+import { resolveDomainParam } from '@/lib/utils/domain-scope';
 import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import { PageControls } from '@/components/layout/PageControls';
 import { HelpdeskSearch } from '@/components/intelligence/HelpdeskSearch';
@@ -15,11 +17,21 @@ import { AddSuggestionButton } from '@/components/intelligence/AddSuggestionButt
 type Props = { searchParams: Promise<Record<string, string>> };
 
 export default async function HelpdeskPage({ searchParams }: Props) {
-  const [profile, sp] = await Promise.all([getCurrentProfile(), searchParams]);
+  const [profile, sp, cookieStore] = await Promise.all([
+    getCurrentProfile(),
+    searchParams,
+    cookies(),
+  ]);
   if (!profile) redirect('/login');
 
-  // Library is domain-scoped; non-Gia callers read the default Gia library.
-  const domain = isGiaDomain(profile.domain) ? profile.domain : DEFAULT_GIA_DOMAIN;
+  // Library is domain-scoped. Admin/founder pick the shelf via the global
+  // DomainSelector (?domain= param → serene-domain cookie), resolved by the
+  // shared resolveDomainParam — so the page, the Add button, and the Suggestion
+  // modal all target the SAME shelf. Non-privileged callers read their own Gia
+  // shelf (concierge/finance/etc. fall back to the default Gia library).
+  const domain =
+    resolveDomainParam(sp, cookieStore, profile.role) ??
+    (isGiaDomain(profile.domain) ? profile.domain : DEFAULT_GIA_DOMAIN);
   const { cases, hooks } = await getHelpdeskLibrary(domain);
 
   // The write path (upsertServiceCaseAction + service_cases RLS) is admin/founder-

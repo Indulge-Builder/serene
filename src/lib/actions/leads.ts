@@ -1002,6 +1002,14 @@ export async function exportLeadsAction(
     date_from:         filters.date_from ?? null,
     date_to:           filters.date_to ?? null,
     search:            filters.search ?? null,
+    // Manager My/All view — re-apply the same default as leads/page.tsx so an
+    // export from the default (My Leads) view scopes to the manager's own leads,
+    // matching the table. 'view' only ever narrows a manager to assigned_to =
+    // caller.id; it can never widen access (agent stays own-scoped regardless).
+    view:
+      caller.role === "manager"
+        ? (filters.view === "all" ? "all" : "mine")
+        : (filters.view ?? null),
     sort_order:        filters.sort_order ?? "desc",
     page:              1,
     pageSize:          5000,

@@ -20,6 +20,7 @@ import { getDomainHealthMetricsAction, upsertDomainTargetAction } from '@/lib/ac
 import { GIA_DOMAINS } from '@/lib/constants/domains';
 import { formatCompact, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { useChartTokens, resolveColorMap } from '@/components/ui/charts/useChartTokens';
+import { TabSelector } from '@/components/ui/TabSelector';
 import { StatAtom } from '@/components/performance/StatAtom';
 import { DomainTargetMeter } from '@/components/performance/DomainTargetMeter';
 import { useToast } from '@/hooks/useToast';
@@ -517,40 +518,20 @@ export function DomainOverviewPanel({
             padding:      'var(--space-5)',
           }}
         >
-          {/* Metric toggle */}
-          <div
-            style={{
-              display:        'flex',
-              alignItems:     'center',
-              gap:            'var(--space-2)',
-              marginBottom:   'var(--space-5)',
-            }}
-          >
-            {(['leads', 'calls', 'revenue'] as MetricKey[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMetric(m)}
-                style={{
-                  display:      'inline-flex',
-                  alignItems:   'center',
-                  padding:      '4px 12px',
-                  borderRadius: 'var(--radius-full)',
-                  border:       '1px solid transparent',
-                  fontFamily:   'var(--font-sans)',
-                  fontSize:     'var(--text-xs)',
-                  fontWeight:   activeMetric === m ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                  cursor:       'pointer',
-                  transition:   'background 150ms ease, color 150ms ease, border-color 150ms ease',
-                  background:   activeMetric === m ? 'var(--theme-accent-surface)' : 'transparent',
-                  color:        activeMetric === m ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
-                  borderColor:  activeMetric === m ? 'color-mix(in srgb, var(--theme-accent) 20%, transparent)' : 'transparent',
-                }}
-              >
-                {metricLabel[m]}
-              </button>
-            ))}
-          </div>
+          {/* Metric toggle — shared TabSelector (accent). Distinct
+              indicatorLayoutId from the founder shell's pill (co-mounted on the
+              Domains tab) so Framer's shared-layout pill never jumps groups. */}
+          <TabSelector
+            tabs={(['leads', 'calls', 'revenue'] as MetricKey[]).map((m) => ({
+              id: m,
+              label: metricLabel[m],
+            }))}
+            activeTab={activeMetric}
+            onChange={(id) => setMetric(id as MetricKey)}
+            variant="accent"
+            indicatorLayoutId="domain-metric-toggle"
+            style={{ marginBottom: 'var(--space-5)' }}
+          />
 
           <ResponsiveContainer width="100%" height={220}>
             <BarChart

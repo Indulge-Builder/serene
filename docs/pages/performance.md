@@ -107,8 +107,13 @@ Added 2026-06-15 (first-touch speed scorecard):
   (`leadsWithFirstCall + untouched = totalCohort`). A 2am-arrival / 9:15am-call lead lands in
   `< 15m` (business-adjusted), not 3h+.
 - **Cached, not per-render.** The per-row business-minute loop runs once per (agent, period) — the
-  React `cache()` aggregate, not a render-time computation. Mount point is `AgentDetailPanel` only;
-  the `FounderDrillDownDeck` card keeps its zero-per-swipe-fetch invariant.
+  React `cache()` aggregate, not a render-time computation. Mount points are `AgentDetailPanel`
+  (below `CallOutcomeBar`) AND, since 2026-06-16, the `FounderDrillDownDeck` card (below the
+  breakdown toggle). On the deck it rides the breakdown's per-agent lazy `Promise.all` —
+  `getAgentFirstTouchScorecardAction` runs alongside `getAgentDetailMetricsAction`, folded into the
+  cached `breakdowns[agentId]` ready state (best-effort: null → the card omits it). The tile
+  zero-per-swipe-fetch invariant is unaffected — that governs the tiles, not the gated breakdown/
+  scorecard reads.
 
 ## 7. Open items
 

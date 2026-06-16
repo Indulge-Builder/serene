@@ -3,7 +3,6 @@
 import { z }                         from 'zod';
 import { requireProfile }            from '@/lib/actions/_auth';
 import {
-  getAgentPerformanceSummary,
   getAgentDetailMetrics,
   getAgentRosterPerformance,
   getDomainHealthMetrics,
@@ -119,35 +118,11 @@ export async function getAgentFirstTouchScorecardAction(
   }
 }
 
-// ─────────────────────────────────────────────
-// Action: getAgentSelfMetricsAction
-// Agent self-view only. Returns all data needed for the performance shell.
-// ─────────────────────────────────────────────
-
-// Shape alias kept for the client shell's import — the payload now arrives
-// from the single get_agent_performance RPC (perf audit D-2).
+// Shape alias kept for the client shell's import — the agent self-view payload
+// arrives from the single get_agent_performance RPC (perf audit D-2), fetched
+// server-side in the page (the shell key-remounts per range, so there is no
+// client-side self-metrics refetch action; the pulse stays a client action).
 export type AgentSelfMetrics = AgentPerformanceSummary;
-
-export async function getAgentSelfMetricsAction(
-  period:      PerformancePeriod,
-  customFrom?: string,
-  customTo?:   string,
-): Promise<ActionResult<AgentSelfMetrics>> {
-  const parsed = GetAgentSelfSchema.safeParse({ period, customFrom, customTo });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
-
-  // The RPC is self-scoped (auth.uid() inside) — the role gate here is the
-  // action-layer check; no caller id is passed anywhere.
-  const auth = await requireProfile(['agent']);
-  if (!auth.ok) return auth.result;
-
-  try {
-    const data = await getAgentPerformanceSummary(period, customFrom, customTo);
-    return { data, error: null };
-  } catch {
-    return { data: null, error: 'Failed to load performance data.' };
-  }
-}
 
 // ─────────────────────────────────────────────
 // Action: getManagerRosterAction

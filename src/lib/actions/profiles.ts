@@ -24,7 +24,7 @@ import { requireProfile } from "@/lib/actions/_auth";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { normalizeToE164 } from "@/lib/utils/phone";
 import type { ActionResult, Profile, AppDomain, AssignableUser } from "@/lib/types";
-import { ROLES_CAN_CREATE_USER } from "@/lib/constants/roles";
+import { ROLES_CAN_CREATE_USER, LEAD_ASSIGNABLE_ROLES } from "@/lib/constants/roles";
 
 // ─────────────────────────────────────────────────────────
 // createUser
@@ -286,6 +286,12 @@ export async function inviteUser(
         domain,
         job_title:  sanitizedJobTitle,
       },
+      // The invite magic link must return to OUR app, not the Supabase Site URL
+      // root (which dead-ends at /login asking for a password the invitee never
+      // set). /auth/callback exchanges the token → establishes the session →
+      // forwards to /update-password, which detects the live session and shows
+      // the "choose your password" step directly (no OTP code to type).
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/update-password`,
     },
   );
 
@@ -345,7 +351,8 @@ export async function updateProfileAvatar(
 // No domain → all active non-guest users, any role, any domain
 // (subtask assignee pickers — available to all roles).
 // With domain → admin/founder get every active user in that domain;
-// everyone else gets that domain's agents only (assignment pools).
+// everyone else gets that domain's lead-carrying roles (agents + managers,
+// LEAD_ASSIGNABLE_ROLES) — the lead/deal assignment pool.
 // ─────────────────────────────────────────────────────────
 export async function getAssignableUsersAction(
   domain?: AppDomain,
@@ -353,10 +360,12 @@ export async function getAssignableUsersAction(
   const auth = await requireProfile();
   if (!auth.ok) return auth.result;
 
-  const agentsOnly =
+  const restrictToCarriers =
     domain !== undefined && !["admin", "founder"].includes(auth.profile.role);
 
-  const users = await getAssignableUsers(domain ? { domain, agentsOnly } : {});
+  const users = await getAssignableUsers(
+    domain ? { domain, roles: restrictToCarriers ? LEAD_ASSIGNABLE_ROLES : undefined } : {},
+  );
   return { data: users, error: null };
 }
 

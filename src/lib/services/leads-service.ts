@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isGiaDomain, type GiaDomain } from "@/lib/constants/domains";
 import { COLD_LEAD_THRESHOLD_DAYS } from "@/lib/constants/leads";
+import { ROUTING_POOL_ROLES } from "@/lib/constants/roles";
 import { redis } from "@/lib/redis";
 import {
   REDIS_KEYS,
@@ -317,7 +318,13 @@ export async function getLeadsByRole(
     // agent_id filter intentionally NOT applied here — role constraint wins
   } else if (role === "manager") {
     query = query.eq("domain", domain);
-    if (filters.agent_id) {
+    // "My Leads" view — force-scope the manager to their own assigned leads.
+    // Composes with the domain constraint above; the explicit agent_id filter
+    // only applies in the "All Leads" view (the My-Leads scope is the manager's
+    // own id, so an agent_id filter would be contradictory / always-empty).
+    if (filters.view === "mine") {
+      query = query.eq("assigned_to", userId);
+    } else if (filters.agent_id) {
       query = query.eq("assigned_to", filters.agent_id);
     }
   } else {
@@ -381,7 +388,13 @@ export async function getLeadsByRole(
     query,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as unknown as any).rpc("get_leads_status_counts", {
-      p_agent_id:    role === "agent" ? userId : (filters.agent_id ?? null),
+      // p_agent_id must mirror the paginated query's assigned_to constraint
+      // exactly (param-sync rule): agent → own id; manager in "My Leads" view →
+      // own id; otherwise the explicit agent_id filter (null when absent).
+      p_agent_id:
+        role === "agent" || (role === "manager" && filters.view === "mine")
+          ? userId
+          : (filters.agent_id ?? null),
       p_date_from:   dateFrom,
       p_date_to:     dateTo,
       p_campaign:    filters.campaign ?? null,
@@ -952,7 +965,9 @@ export async function getCampaignAgentDistribution(
 }
 
 // ─────────────────────────────────────────────
-// Round-robin: next eligible agent in a domain
+// Round-robin: next eligible pool member in a domain
+// Pool = ROUTING_POOL_ROLES (agents + managers), one fair queue. This JS path is
+// the fallback; the atomic SQL `get_next_round_robin_agent` is the primary picker.
 // ─────────────────────────────────────────────
 export async function getNextRoundRobinAgent(
   domain: string,
@@ -961,12 +976,12 @@ export async function getNextRoundRobinAgent(
   // authenticated session. RLS would block all three queries with auth.uid() = null.
   const supabase = createAdminClient();
 
-  // Fetch all active agents in this domain
+  // Fetch all active pool members (agents + managers) in this domain
   const { data: agents, error } = await supabase
     .from("profiles")
     .select("id")
     .eq("domain", domain as AppDomain)
-    .eq("role", "agent")
+    .in("role", ROUTING_POOL_ROLES)
     .eq("is_active", true);
 
   if (error || !agents || agents.length === 0) return null;
@@ -1133,7 +1148,11 @@ export async function getLeadsForExport(
       query = query.eq("assigned_to", userId);
     } else if (role === "manager") {
       query = query.eq("domain", domain);
-      if (filters.agent_id) {
+      // "My Leads" view scopes the export to the manager's own leads, exactly
+      // like the list. agent_id only applies in the "All Leads" view.
+      if (filters.view === "mine") {
+        query = query.eq("assigned_to", userId);
+      } else if (filters.agent_id) {
         query = query.eq("assigned_to", filters.agent_id);
       }
     } else {

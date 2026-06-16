@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
-import { ArrowDownUp, Clock, Columns } from 'lucide-react';
+import { ArrowDownUp, Clock, Columns, Users } from 'lucide-react';
 import { buildFilterParams } from '@/lib/utils/filter-params';
 import type { LeadListItemWithAssignee } from '@/lib/services/leads-service';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
@@ -17,7 +17,7 @@ import { useLeadColumnPreferences } from '@/hooks/useLeadColumnPreferences';
 import { useMountOnFirstOpen } from '@/hooks/useMountOnFirstOpen';
 import { LeadsSelectionToolbar } from '@/components/leads/LeadsSelectionToolbar';
 import { ExportButton } from '@/components/leads/ExportButton';
-import type { LeadFilters } from '@/lib/types/database';
+import type { LeadFilters, UserRole } from '@/lib/types/database';
 
 // Load-on-intent (perf audit G-1): the picker (@dnd-kit chain) stays out of the
 // /leads route chunk until the Columns button is first clicked.
@@ -29,18 +29,45 @@ const LeadColumnPicker = dynamic(
 type LeadsTableProps = {
   leads:            LeadListItemWithAssignee[];
   userId:           string;
+  role:             UserRole;
   filters:          LeadFilters;
   hasActiveFilters?: boolean;
   goingCold?:       boolean;
+  // The My/All Leads view toggle is meaningful only on the main /leads list.
+  // Campaign-scoped lead tables leave this false (they're analytics drill-downs
+  // showing every campaign lead, not the manager's personal worklist).
+  enableViewToggle?: boolean;
 };
 
-export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, goingCold = false }: LeadsTableProps) {
+export function LeadsTable({ leads, userId, role, filters, hasActiveFilters = false, goingCold = false, enableViewToggle = false }: LeadsTableProps) {
   const router       = useRouter();
   const pathname     = usePathname();
   const params       = useSearchParams();
   const [, startTransition] = useTransition();
 
   const sortOrder = params.get('sort_order') === 'asc' ? 'asc' : 'desc';
+
+  // Manager "My Leads" / "All Leads" toggle — manager-only. The default (no
+  // ?view= param) is My Leads; ?view=all shows the whole domain. Agents and
+  // admin/founder never see the toggle (resolved server-side in leads/page.tsx).
+  const showViewToggle = enableViewToggle && role === 'manager';
+  const viewIsAll = params.get('view') === 'all';
+
+  function toggleView() {
+    const next = buildFilterParams(
+      params,
+      viewIsAll
+        // Back to My Leads (default) → drop the param AND any agent_id (a no-op
+        // in My Leads, and the Agent filter is hidden there so it can't be cleared).
+        ? { view: null, agent_id: null }
+        // To All Leads → write ?view=all.
+        : { view: 'all' },
+      { resetKeys: ['page'] },
+    );
+    startTransition(() => {
+      router.push(`${pathname}?${next.toString()}`);
+    });
+  }
 
   function toggleGoingCold() {
     if (goingCold) {
@@ -182,6 +209,42 @@ export function LeadsTable({ leads, userId, filters, hasActiveFilters = false, g
           />
           <span>Going Cold</span>
         </button>
+
+        {/* Team Leads toggle — managers only. Fixed label; the on/pressed state
+            is the switch, not a state mirror. OFF (default, resting) = the
+            manager's own assigned leads. ON (accent-lit) = the whole domain's
+            team leads (?view=all). */}
+        {showViewToggle && (
+          <button
+            type="button"
+            onClick={toggleView}
+            aria-pressed={viewIsAll}
+            title={viewIsAll ? 'Showing the whole team’s leads' : 'Showing your assigned leads — toggle for the whole team'}
+            className="serene-touch"
+            style={{
+              display:      'inline-flex',
+              alignItems:   'center',
+              gap:          'var(--space-1)',
+              height:       '2.25rem',
+              padding:      '0 var(--space-3)',
+              background:   viewIsAll ? 'var(--theme-accent-surface)' : 'transparent',
+              border:       `1px solid ${viewIsAll ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
+              borderRadius: 'var(--radius-sm)',
+              fontSize:     'var(--text-sm)',
+              fontFamily:   'var(--font-sans)',
+              fontWeight:   'var(--weight-medium)',
+              color:        viewIsAll ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
+              cursor:       'pointer',
+              transition:   'var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
+              whiteSpace:   'nowrap',
+              flexShrink:   0,
+              outline:      'none',
+            }}
+          >
+            <Users style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} aria-hidden="true" />
+            <span>Team Leads</span>
+          </button>
+        )}
 
         <div style={{ flex: 1, minWidth: 0 }} aria-hidden="true" />
 

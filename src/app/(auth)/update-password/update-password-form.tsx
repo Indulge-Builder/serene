@@ -8,13 +8,28 @@ import { PasswordStrengthBar } from "@/components/ui/PasswordStrengthBar";
 import { updatePasswordAction, verifyResetOtpAction } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/Button";
 
-export function UpdatePasswordForm({ email }: { email: string }) {
+// `invited` = the user reached this page already authenticated via the invite
+// magic link (session established in /auth/callback). They have no 6-digit code,
+// so the OTP step is skipped and they go straight to setting their password; on
+// success they are sent into the app. `email` = the password-reset OTP path
+// (step 1 verifies the code, step 2 sets the password, success → /login).
+export function UpdatePasswordForm({
+  email,
+  invited = false,
+}: {
+  email?: string;
+  invited?: boolean;
+}) {
   // Two steps: (1) enter the 6-digit code from the email → verifyOtp establishes
   // the session; (2) set the new password → updateUser on that session.
   const [verified, setVerified] = useState(false);
 
+  if (invited) {
+    return <PasswordStep invited />;
+  }
+
   if (!verified) {
-    return <CodeStep email={email} onVerified={() => setVerified(true)} />;
+    return <CodeStep email={email!} onVerified={() => setVerified(true)} />;
   }
 
   return <PasswordStep />;
@@ -117,7 +132,7 @@ function CodeStep({
 
 // ─── Step 2: set the new password ────────────────────────
 
-function PasswordStep() {
+function PasswordStep({ invited = false }: { invited?: boolean }) {
   const [state, action, isPending] = useActionState(updatePasswordAction, null);
   const [showNew, setShowNew] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -134,11 +149,12 @@ function PasswordStep() {
                 color: "var(--theme-sidebar-text)",
               }}
             >
-              Your password has been updated. You can now sign in with your new
-              password.
+              {invited
+                ? "Your password is set and your account is ready. Welcome to Serene."
+                : "Your password has been updated. You can now sign in with your new password."}
             </p>
             <Link
-              href="/login"
+              href={invited ? "/dashboard" : "/login"}
               style={{
                 marginTop: "var(--space-2)",
                 display: "block",
@@ -154,7 +170,7 @@ function PasswordStep() {
                 width: "100%",
               }}
             >
-              Sign In
+              {invited ? "Continue to Dashboard" : "Sign In"}
             </Link>
           </div>
         ) : (
@@ -169,7 +185,9 @@ function PasswordStep() {
                   marginBottom: "var(--space-2)",
                 }}
               >
-                Choose a strong new password for your account.
+                {invited
+                  ? "Welcome! Choose a strong password to finish setting up your account."
+                  : "Choose a strong new password for your account."}
               </p>
 
               {/* New password + strength bar */}

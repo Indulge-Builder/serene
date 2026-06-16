@@ -74,9 +74,11 @@ export async function LeadsTableAsync({
       <LeadsTable
         leads={leads}
         userId={userId}
+        role={role}
         filters={filters}
         hasActiveFilters={hasActiveFilters}
         goingCold={!!filters.going_cold}
+        enableViewToggle
       />
 
       {/* Pagination — absent when all results fit on one page */}

@@ -202,27 +202,37 @@ export async function setProfileActive(
  * THE canonical "who can I assign this to?" query (dry-audit M-11).
  * Default (no options): all active non-guest users, any role, any domain
  * (subtask/Gia assignee pickers).
- * `domain`     — restrict to one domain.
- * `agentsOnly` — restrict to role 'agent' (lead/deal assignment pools).
+ * `domain` — restrict to one domain.
+ * `roles`  — restrict to a specific role set (lead/deal assignment pools pass
+ *            LEAD_ASSIGNABLE_ROLES = ['agent', 'manager'] from constants/roles).
+ *            Empty array is treated as "no role filter" (same as omitting it).
  * Always sorted by full_name. Never fork another profiles query for
  * assignability — extend this one.
  */
 export async function getAssignableUsers(
-  options: { domain?: AppDomain; agentsOnly?: boolean } = {},
+  options: { domain?: AppDomain; roles?: UserRole[] } = {},
 ): Promise<AssignableUser[]> {
-  return getAssignableUsersCached(options.domain ?? null, options.agentsOnly ?? false);
+  // Serialize roles to a stable primitive key — cache() keys object/array args
+  // by reference, so a fresh array literal per call site would never dedupe.
+  // Sort first so ['agent','manager'] and ['manager','agent'] share a slot.
+  const rolesKey =
+    options.roles && options.roles.length > 0
+      ? [...options.roles].sort().join(",")
+      : "";
+  return getAssignableUsersCached(options.domain ?? null, rolesKey);
 }
 
 /**
  * React cache() memo behind getAssignableUsers (perf audit E-3) — the page and
  * its Async children (e.g. dossier wave 1 + LeadInfoCardAsync) share one query
  * per render pass. Primitive args only: cache() keys object args by reference,
- * so a fresh `options` literal per call site would never dedupe.
+ * so a fresh `options` literal per call site would never dedupe — `rolesKey`
+ * is the sorted-comma-joined role set ("" = no role filter).
  * Deliberately NOT Redis-cached: profiles is tiny, and a 60s-stale assignee
  * list could offer a just-deactivated user in pickers.
  */
 const getAssignableUsersCached = cache(
-  async (domain: AppDomain | null, agentsOnly: boolean): Promise<AssignableUser[]> => {
+  async (domain: AppDomain | null, rolesKey: string): Promise<AssignableUser[]> => {
     const supabase = await createClient();
     let query = supabase
       .from("profiles")
@@ -231,7 +241,9 @@ const getAssignableUsersCached = cache(
       .neq("role", "guest");
 
     if (domain) query = query.eq("domain", domain);
-    if (agentsOnly) query = query.eq("role", "agent");
+    // rolesKey is the sorted-comma-joined UserRole set (built in the public
+    // wrapper from a typed UserRole[]) — split back to the column's enum type.
+    if (rolesKey) query = query.in("role", rolesKey.split(",") as UserRole[]);
 
     const { data, error } = await query.order("full_name", { ascending: true });
 

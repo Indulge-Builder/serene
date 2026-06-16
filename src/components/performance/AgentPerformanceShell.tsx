@@ -1,20 +1,17 @@
 'use client';
 
-import { useState, useEffect, useRef, useTransition } from 'react';
+import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { m as motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight } from 'lucide-react';
-import { DatePicker } from '@/components/ui/DatePicker';
 import { TabSelector } from '@/components/ui/TabSelector';
 import { EffortGrid } from './EffortGrid';
 import { AgentRecentActivityList } from './AgentRecentActivityList';
 import {
-  getAgentSelfMetricsAction,
   getAgentPulseAction,
   type AgentSelfMetrics,
 } from '@/lib/actions/performance';
 import { formatCurrencyCompact, formatCount } from '@/lib/utils/numbers';
-import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
+import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import type { PerformancePeriod, AgentTodayPulse } from '@/lib/services/performance-service';
 
 // Recharts stays out of the /performance initial chunk (perf audit G-3): the
@@ -57,101 +54,10 @@ function OutcomeBarFallback() {
 
 type ContentTab = 'overview' | 'today';
 
-type PeriodOption = {
-  id:    PerformancePeriod;
-  label: string;
-};
-
-const PERIOD_OPTIONS: PeriodOption[] = [
-  { id: 'today',      label: 'Today'      },
-  { id: 'this_week',  label: 'This Week'  },
-  { id: 'this_month', label: 'This Month' },
-  { id: 'custom',     label: 'Custom'     },
-];
-
 const CONTENT_TABS: { id: ContentTab; label: string }[] = [
   { id: 'overview', label: 'Overview'   },
   { id: 'today',    label: 'Today'      },
 ];
-
-// ─────────────────────────────────────────────
-// Period selector — chevron-style inline buttons
-// ─────────────────────────────────────────────
-
-function PeriodSelector({
-  period,
-  onChange,
-  disabled,
-}: {
-  period:   PerformancePeriod;
-  onChange: (p: PerformancePeriod) => void;
-  disabled: boolean;
-}) {
-  return (
-    <div
-      style={{
-        display:        'flex',
-        alignItems:     'center',
-        gap:            'var(--space-1)',
-        background:     'var(--theme-paper-subtle)',
-        border:         '1px solid var(--theme-paper-border)',
-        borderRadius:   'var(--radius-full)',
-        padding:        '3px',
-        opacity:        disabled ? 0.6 : 1,
-        transition:     'opacity var(--duration-fast) var(--ease-in-out)',
-        pointerEvents:  disabled ? 'none' : undefined,
-      }}
-    >
-      {PERIOD_OPTIONS.map((opt, idx) => {
-        const isActive = period === opt.id;
-        const isLast   = idx === PERIOD_OPTIONS.length - 1;
-        return (
-          <div key={opt.id} style={{ display: 'flex', alignItems: 'center' }}>
-            <button
-              type="button"
-              onClick={() => onChange(opt.id)}
-              style={{
-                display:      'inline-flex',
-                alignItems:   'center',
-                gap:          '3px',
-                padding:      '5px 14px',
-                borderRadius: 'var(--radius-full)',
-                border:       'none',
-                cursor:       'pointer',
-                background:   isActive
-                  ? 'var(--theme-paper)'
-                  : 'transparent',
-                boxShadow:    isActive ? 'var(--shadow-1)' : 'none',
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-sm)',
-                fontWeight:   isActive ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                color:        isActive ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
-                transition:   'background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out)',
-                whiteSpace:   'nowrap',
-              }}
-            >
-              {opt.label}
-            </button>
-            {!isLast && (
-              <ChevronRight
-                aria-hidden="true"
-                style={{
-                  width:   12,
-                  height:  12,
-                  color:   'var(--theme-paper-border)',
-                  flexShrink: 0,
-                  strokeWidth: 2,
-                  marginLeft: '2px',
-                  marginRight: '2px',
-                }}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────
 // Skeleton rows — matches metric card height
@@ -459,55 +365,41 @@ function OverviewTab({ data, pulse, showTodayRow }: { data: AgentSelfMetrics | n
 type Props = {
   agentId:     string;
   agentDomain: string;
+  /** Derived by the page from the date_from/date_to URL params (the shared
+      PerformanceFilters bar). The shell key-remounts per range, so these are
+      effectively immutable for a given mount — no in-shell period state. */
+  period:      PerformancePeriod;
+  /** ISO range bounds — non-null only for an arbitrary ('custom') range. */
+  customFrom:  string | null;
+  customTo:    string | null;
   initialData: AgentSelfMetrics;
 };
 
-export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props) {
-  const [period, setPeriod]       = useState<PerformancePeriod>('this_month');
+export function AgentPerformanceShell({
+  agentId: _agentId,
+  period,
+  customFrom,
+  customTo,
+  initialData,
+}: Props) {
   const [activeTab, setActiveTab] = useState<ContentTab>('overview');
-  const [data, setData]           = useState<AgentSelfMetrics>(initialData);
-  const [isLoading, setIsLoading] = useState(false);
-  const [, startTransition]       = useTransition();
 
-  // Custom date state
-  const [customFrom, setCustomFrom] = useState<Date | null>(null);
-  const [customTo, setCustomTo]     = useState<Date | null>(null);
+  // Metrics arrive server-fetched for the resolved range via initialData; the
+  // page key-remounts this component per range, so there is no client metrics
+  // refetch effect (honours the one-RPC-per-view rule, perf audit D-2).
+  const data = initialData;
 
-  // Today-tab pulse (calls split, 14-day trend, period deals) — fetched on
-  // first Today-tab open and refetched on period/date change while visible.
+  // Today-tab pulse (calls split, 14-day trend, period deals) — the genuine
+  // since-IST-midnight source for BOTH the Today tab and the Overview strip.
   const [pulse, setPulse] = useState<AgentTodayPulse | null>(null);
-
-  // Track whether this is the first render (use initialData, no fetch)
-  const hasFetched = useRef(false);
-
-  useEffect(() => {
-    // Skip the first mount — we already have initialData for 'this_month'
-    if (!hasFetched.current) {
-      hasFetched.current = true;
-      if (period === 'this_month') return;
-    }
-
-    let cancelled = false;
-    setIsLoading(true);
-
-    startTransition(async () => {
-      const from = period === 'custom' ? customFrom?.toISOString() : undefined;
-      const to   = period === 'custom' ? customTo?.toISOString()   : undefined;
-      const result = await getAgentSelfMetricsAction(period, from, to);
-      if (cancelled) return;
-      setIsLoading(false);
-      if (result.data) setData(result.data);
-    });
-
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period, customFrom, customTo]);
 
   // Pulse fetch gate — the pulse is the genuine since-IST-midnight source for
   // BOTH the Today tab AND the Overview "Today" strip. The strip renders on the
   // Overview tab whenever period !== 'today' (showOverviewTodayRow), so the gate
   // must cover that case too — not just the Today tab. There is exactly ONE
   // pulse fetch path; widening this boolean is the whole fix (no second fetch).
+  // Because one of the two conditions is always true at the current range,
+  // needsPulse does not flip on a tab switch → a tab switch fires no request.
   // Plain promise chain with a cancelled ref (no startTransition — would defer
   // setPulse(null)).
   const showingTodayTab = period === 'today' || activeTab === 'today';
@@ -519,9 +411,7 @@ export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props)
     let cancelled = false;
     setPulse(null);
 
-    const from = period === 'custom' ? customFrom?.toISOString() : undefined;
-    const to   = period === 'custom' ? customTo?.toISOString()   : undefined;
-    getAgentPulseAction(period, from, to)
+    getAgentPulseAction(period, customFrom ?? undefined, customTo ?? undefined)
       .then((result) => {
         if (cancelled) return;
         if (result.data) setPulse(result.data);
@@ -532,138 +422,58 @@ export function AgentPerformanceShell({ agentId: _agentId, initialData }: Props)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsPulse, period, customFrom, customTo]);
 
-  function handlePeriodChange(p: PerformancePeriod) {
-    if (p === period) return;
-    // When switching to today tab, mirror it
-    if (p === 'today') setActiveTab('today');
-    setPeriod(p);
-  }
-
-  // When 'today' period is selected and user clicks 'Today' tab, always show today content
-  // When overview is active but period is 'today', overview shows today metrics
+  // When the selected range IS today, the Today tab/content is always shown.
+  // When overview is active but the range is today, overview shows today metrics.
   const effectiveTab: ContentTab =
     period === 'today' ? 'today' : activeTab;
 
-  // Overview tab shows a "Calls Today" snapshot row when not already in 'today' period
+  // Overview tab shows a "Calls Today" snapshot row when the range is not today.
   const showOverviewTodayRow = period !== 'today';
 
   return (
     <div>
-      {/* ── Filter bar ──────────────────────────────────────────────── */}
-      <div
-        className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"
-        style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap' }}
-      >
-        <PeriodSelector
-          period={period}
-          onChange={handlePeriodChange}
-          disabled={isLoading}
-        />
-
-        {/* Custom date pickers */}
-        <AnimatePresence>
-          {period === 'custom' && (
-            <motion.div
-              key="custom-pickers"
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -6 }}
-              transition={{ duration: 0.15, ease: EASE_OUT_EXPO }}
-              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
-            >
-              <DatePicker
-                value={customFrom}
-                onChange={setCustomFrom}
-                placeholder="From…"
-                maxDate={customTo ?? undefined}
-                aria-label="From date"
-              />
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>→</span>
-              <DatePicker
-                value={customTo}
-                onChange={setCustomTo}
-                placeholder="To…"
-                minDate={customFrom ?? undefined}
-                aria-label="To date"
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* ── Content area ────────────────────────────────────────────── */}
-      <div style={{ position: 'relative' }}>
-        {/* Loading bar */}
-        <AnimatePresence>
-          {isLoading && (
-            <motion.div
-              key="loading-bar"
-              initial={{ scaleX: 0, opacity: 1 }}
-              animate={{ scaleX: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: PAGE_DURATION, ease: EASE_IN_OUT }}
-              style={{
-                position:        'absolute',
-                top:             0,
-                left:            0,
-                right:           0,
-                height:          '2px',
-                background:      'var(--theme-accent)',
-                borderRadius:    'var(--radius-full)',
-                transformOrigin: 'left center',
-                zIndex:          2,
-              }}
-            />
-          )}
-        </AnimatePresence>
-
-        <div
-          style={{
-            opacity:    isLoading ? 0.5 : 1,
-            transition: 'opacity 180ms var(--ease-in-out)',
-            pointerEvents: isLoading ? 'none' : undefined,
-          }}
-        >
-          {/* Tab bar — hidden when period='today' since tabs are redundant.
-              TabSelector 'connected' variant (distinct indicatorLayoutId from
-              the founder shell's pills, per the shared-layout rule). */}
-          {period !== 'today' && (
-            <div style={{ marginBottom: 'var(--space-5)' }}>
-              <TabSelector
-                tabs={CONTENT_TABS}
-                activeTab={effectiveTab}
-                onChange={(id) => setActiveTab(id as ContentTab)}
-                variant="connected"
-                indicatorLayoutId="agent-content-tabs"
-              />
-            </div>
-          )}
-
-          <AnimatePresence mode="wait">
-            {effectiveTab === 'today' ? (
-              <motion.div
-                key="tab-today"
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
-              >
-                <TodayTab data={data} pulse={pulse} />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="tab-overview"
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
-              >
-                <OverviewTab data={data} pulse={pulse} showTodayRow={showOverviewTodayRow} />
-              </motion.div>
-            )}
-          </AnimatePresence>
+      {/* ── Content area ────────────────────────────────────────────────
+          The page renders the shared <PerformanceFilters> strip above this
+          shell; the range arrives as props and the shell key-remounts per
+          range (no in-shell period selector / loading bar). */}
+      {/* Tab bar — hidden when the range is today (tabs redundant).
+          TabSelector 'connected' variant (distinct indicatorLayoutId from
+          the founder shell's pills, per the shared-layout rule). */}
+      {period !== 'today' && (
+        <div style={{ marginBottom: 'var(--space-5)' }}>
+          <TabSelector
+            tabs={CONTENT_TABS}
+            activeTab={effectiveTab}
+            onChange={(id) => setActiveTab(id as ContentTab)}
+            variant="connected"
+            indicatorLayoutId="agent-content-tabs"
+          />
         </div>
-      </div>
+      )}
+
+      <AnimatePresence mode="wait">
+        {effectiveTab === 'today' ? (
+          <motion.div
+            key="tab-today"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
+          >
+            <TodayTab data={data} pulse={pulse} />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="tab-overview"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
+          >
+            <OverviewTab data={data} pulse={pulse} showTodayRow={showOverviewTodayRow} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
