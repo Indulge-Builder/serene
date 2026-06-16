@@ -156,3 +156,5 @@ In
 [10:40 PM, 6/14/2026] ^_^: Send syndia the dashboard data
 
 Enhance the campagin page it is not working correct also remove the mask the beitifuwr it has on title we will show the raw name, and when click on it thsoukd soo al the leads fork the comapginnit will be like the lead table data with filer on campagin name on for. That soeficnlead so we stay dry
+
+dgsd
