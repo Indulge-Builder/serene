@@ -2,9 +2,13 @@
 
 // Floating Elaya widget — a circular presence button in the bottom-opposite
 // corner from the mobile nav hamburger (which floats top-left), on every
-// dashboard route EXCEPT /elaya. Clicking it opens a modal that renders the
-// SAME ElayaChatShell the /elaya page renders (hideIdentity, chat-only) — zero
-// fork, so anything built on the main chat surface appears here automatically.
+// dashboard route EXCEPT /elaya. Clicking it opens a modal whose body is the
+// shared EmbeddedElayaChat (the SAME seed→ElayaChatShell render the dashboard
+// card composes — R-01) — zero fork, so anything built on the main chat surface
+// appears here automatically. This widget owns only the container concerns:
+// the FAB, the Dialog, and the conversation lifecycle (prefetch on hover,
+// in-flight dedup, cold-open, re-fetch on reopen) — it hands its resolved seed
+// down to EmbeddedElayaChat.
 //
 // Seeding crosses a server boundary: a 'use client' component can't call
 // elaya-service (A-15), so getElayaChatSeedAction() resolves the exact same seed
@@ -18,20 +22,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
-import dynamic from 'next/dynamic';
 import { AnimatePresence, m as motion, useReducedMotion } from 'framer-motion';
 import { ElayaGlyph } from '@/components/ui/elaya-glyph';
 import { Dialog } from '@/components/ui/Dialog';
 import { useToast } from '@/hooks/useToast';
 import { getElayaChatSeedAction } from '@/lib/actions/elaya';
+import { EmbeddedElayaChat, loadElayaChatShell } from '@/components/elaya/EmbeddedElayaChat';
 import { SPRING_CONFIG, ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import type { ElayaChatSeed } from '@/lib/services/elaya-service';
-
-// The chat surface is heavy (SSE loop, MessageBar, DictationButton). Load it on
-// intent — never into the dashboard route chunk (perf audit G-1, heavy-modal rule).
-const loadChatShell = () =>
-  import('@/components/elaya/ElayaChatShell').then((m) => m.ElayaChatShell);
-const ElayaChatShell = dynamic(loadChatShell, { ssr: false });
 
 export function ElayaWidget() {
   const toast = useToast;
@@ -79,7 +77,7 @@ export function ElayaWidget() {
   // a fetch. Never prefetch on /elaya (the button isn't even rendered there).
   const handlePrefetch = useCallback(() => {
     if (onElayaPage || open || prefetched.current || inFlight.current) return;
-    void loadChatShell();
+    void loadElayaChatShell();
     void fetchSeed().then((data) => {
       if (data) prefetched.current = data;
     });
@@ -157,46 +155,24 @@ export function ElayaWidget() {
         bodyPadding={false}
       >
         {/* Bounded height so the flex-fill chat renders a real chat area. The
-            shell only mounts with a seed, so it always opens on the user's
-            current conversation. */}
+            seed→shell→breathing-glyph render is the SHARED EmbeddedElayaChat —
+            the same body the dashboard card composes (R-01). This widget owns
+            the conversation lifecycle (prefetch, cold-open, re-fetch on reopen)
+            and hands its resolved seed down; the cold-path glyph fallback lives
+            inside EmbeddedElayaChat (seed is null until fetchSeed lands). The
+            AnimatePresence keys on the conversation so a fresh open fades in. */}
         <div className="flex flex-col" style={{ height: 'min(78dvh, 680px)' }}>
           <AnimatePresence mode="wait">
-            {seed ? (
-              <motion.div
-                key={seed.conversationId}
-                className="flex flex-1 flex-col"
-                style={{ minHeight: 0 }}
-                initial={reduceMotion ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
-              >
-                <ElayaChatShell
-                  conversationId={seed.conversationId}
-                  initialMessages={seed.initialMessages}
-                  greeting={seed.greeting}
-                  remainingToday={seed.remainingToday}
-                  embedded
-                  onClose={handleClose}
-                />
-              </motion.div>
-            ) : (
-              // Cold path: the modal opened instantly; the conversation is still
-              // resolving. A breathing glyph keeps Elaya present (never a static
-              // glyph) while the seed lands — far better than a spinning button.
-              <motion.div
-                key="elaya-widget-loading"
-                className="flex flex-1 flex-col items-center justify-center gap-4"
-                style={{ minHeight: 0 }}
-                initial={reduceMotion ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
-              >
-                <ElayaGlyph size={36} />
-                <span className="type-eyebrow text-(--theme-text-tertiary)">
-                  Gathering her thoughts…
-                </span>
-              </motion.div>
-            )}
+            <motion.div
+              key={seed?.conversationId ?? 'elaya-widget-loading'}
+              className="flex flex-1 flex-col"
+              style={{ minHeight: 0 }}
+              initial={reduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
+            >
+              <EmbeddedElayaChat seed={seed} onClose={handleClose} glyphSize={36} />
+            </motion.div>
           </AnimatePresence>
         </div>
       </Dialog>

@@ -76,6 +76,44 @@ migration, or Zod change.
 
 ---
 
+## 2026-06-16 — Invite landing rebuilt for the hash/implicit flow (the 404 fix)
+
+**Problem.** After the first invite fix, clicking the invite button 404'd. Two causes, found
+from the actual landed URL
+(`https://…/auth/callback?next=/update-password#access_token=…&type=invite`):
+
+1. **Wrong path.** The only callback handler was a server route at `/api/auth/callback`
+   (`app/api/auth/callback/route.ts`). The invite `redirectTo` pointed at `/auth/callback` — a
+   path that did not exist → 404.
+2. **Hash/implicit flow — unreadable by any server.** The session came back in the URL **hash
+   fragment** (`#access_token=…&refresh_token=…&type=invite`), Supabase's implicit grant. The
+   browser **never sends the fragment to the server**, so a route handler / RSC physically cannot
+   read it. The existing server route only handles `?code=` (PKCE) and `?token_hash=` (OTP) — it
+   would never see the invite token even at the right path.
+
+**Decision (robust to BOTH flows).** New **client** page at `/auth/callback`
+(`src/app/(auth)/auth/callback/page.tsx` + `callback-client.tsx`) — placed inside the URL-transparent
+`(auth)` group so it inherits the canvas shell. On mount it:
+
+- **Implicit (hash):** the browser Supabase client (`createBrowserClient`, `detectSessionInUrl`)
+  parses `#access_token` and persists the session; the client polls `getSession()` (~2s) to confirm
+  before forwarding.
+- **PKCE (`?code=`):** `exchangeCodeForSession`.
+- **OTP/recovery (`?token_hash=&type=`):** `verifyOtp`.
+- Then `router.replace(next)` (sanitised to a same-origin relative path; default `/update-password`),
+  which strips the spent token from history. An `error`/`error_code` in the query **or** hash, or no
+  recognisable credential, renders the on-brand invalid-link card.
+
+`/update-password` already detects the now-live session and shows the password step (prior entry).
+The invite `redirectTo` is unchanged — it already targets `/auth/callback?next=/update-password`,
+which now resolves. The legacy server route at `/api/auth/callback` stays for backward compatibility.
+
+**Files:** `src/app/(auth)/auth/callback/page.tsx` (new), `src/app/(auth)/auth/callback/callback-client.tsx`
+(new). No change to `profiles.ts` (the redirect target was already correct). Production build passes;
+`/auth/callback` appears in the route manifest.
+
+---
+
 ## 2026-06-16 — Invite-by-email onboarding fixed end-to-end (email → set password → in)
 
 **Problem.** Inviting a user from `/admin/users` (Send invite link mode) was broken at three
@@ -139,16 +177,29 @@ all stay in the one shared shell.
 
 **Changes.**
 
-- `ElayaPresenceCard.tsx` — rewritten to resolve the seed on mount (a `'use client'` widget can't
-  call `elaya-service` directly — A-15 — so it crosses the boundary via `getElayaChatSeedAction`)
-  and render `<ElayaChatShell embedded />` filling the widget box; until the seed lands, her
-  breathing glyph holds the seat (a static glyph = Elaya absent). Lazy `next/dynamic` import keeps
-  the chat bundle out of the dashboard route chunk.
+- `ElayaPresenceCard.tsx` — rewritten to compose the new shared `EmbeddedElayaChat` inside the
+  widget card frame. No chat code on the card.
 - `ElayaChatShell.tsx` — unchanged. Its existing `embedded` mode is the exact fit.
 
-**Reuse note.** Zero new chat infrastructure. The widget composes `ElayaChatShell` (its pre-existing
+**Reuse note.** Zero new chat infrastructure. The widget reuses `ElayaChatShell` (its pre-existing
 `embedded` mode) and `getElayaChatSeedAction` (the pre-built widget seed action) — both already
 existed; nothing was added to the chat layer.
+
+**Follow-up DRY — `EmbeddedElayaChat` (R-01/R-03).** Wiring the card surfaced that the floating
+`ElayaWidget` already does the identical thing the card now does: resolve the seed via
+`getElayaChatSeedAction`, render `<ElayaChatShell embedded />`, and hold the seat with a breathing
+glyph while it lands. That shared spine was extracted into **`src/components/elaya/EmbeddedElayaChat.tsx`**
+— THE single body of every embedded Elaya surface. It seeds two ways: a caller-supplied seed renders
+immediately (the floating widget, which prefetches on hover and owns re-fetch-on-reopen), or it
+resolves on mount itself (the always-on card). It also exports `loadElayaChatShell` so callers can
+warm the heavy chat chunk on intent (the widget's hover prefetch). Both surfaces now compose it:
+
+- `ElayaPresenceCard.tsx` → `<EmbeddedElayaChat />` (self-seeds on mount).
+- `ElayaWidget.tsx` → keeps ONLY its container concerns (the FAB, the `Dialog`, and the conversation
+  lifecycle: hover prefetch, in-flight dedup, cold-open, re-fetch on reopen) and hands its resolved
+  seed down to `<EmbeddedElayaChat seed={seed} onClose={…} />`. The duplicated seed→shell→glyph JSX
+  (the `AnimatePresence` branch) is gone; the breathing-glyph fallback now lives once, in the shared
+  component.
 
 ---
 
