@@ -1083,17 +1083,51 @@ export async function getCampaignAgentDistribution(
 
 // ─────────────────────────────────────────────
 // Round-robin: next eligible pool member in a domain
-// Pool = ROUTING_POOL_ROLES (agents + managers), one fair queue. This JS path is
-// the fallback; the atomic SQL `get_next_round_robin_agent` is the primary picker.
+// Pool = ROUTING_POOL_ROLES (agents + managers), one fair queue.
+//
+// THE picker is the atomic SQL `get_next_round_robin_agent` (migration
+// 0007/0124): it selects the oldest-assigned eligible member under
+// `FOR UPDATE OF arc SKIP LOCKED`, so two concurrent ingests can never pick
+// the SAME agent (audit #5 — the previous JS implementation read an
+// `assigned_at` snapshot with no lock and handed two simultaneous leads to one
+// agent). The SQL is also the single source of eligibility truth — it filters
+// `is_on_leave = false`, which the old JS path silently ignored.
+//
+// The JS scan below is a DEFENSIVE FALLBACK, used only if the RPC itself errors
+// (e.g. not yet deployed). It is NOT race-safe — it exists purely so ingestion
+// degrades to a best-effort pick rather than always-unassigned on RPC failure.
 // ─────────────────────────────────────────────
 export async function getNextRoundRobinAgent(
   domain: string,
 ): Promise<string | null> {
   // Must use admin client — this runs inside the webhook handler which has no
-  // authenticated session. RLS would block all three queries with auth.uid() = null.
+  // authenticated session, and the RPC's EXECUTE is service-role only.
   const supabase = createAdminClient();
 
-  // Fetch all active pool members (agents + managers) in this domain
+  const { data, error } = await supabase.rpc("get_next_round_robin_agent", {
+    p_domain: domain,
+  });
+
+  if (!error) {
+    // RPC succeeded — `data` is the chosen uuid or null (empty pool). This is
+    // the atomic, race-safe path and the only one used in normal operation.
+    return (data as string | null) ?? null;
+  }
+
+  console.error(
+    "[leads-service] get_next_round_robin_agent RPC failed, using non-atomic JS fallback:",
+    error.message,
+  );
+  return getNextRoundRobinAgentFallback(supabase, domain);
+}
+
+// Non-atomic best-effort fallback (RPC-error path only). Mirrors the RPC's
+// eligibility (active pool member, active routing config, oldest assignment
+// first) but WITHOUT locking and WITHOUT the is_on_leave filter the SQL owns.
+async function getNextRoundRobinAgentFallback(
+  supabase: ReturnType<typeof createAdminClient>,
+  domain: string,
+): Promise<string | null> {
   const { data: agents, error } = await supabase
     .from("profiles")
     .select("id")
@@ -1105,7 +1139,6 @@ export async function getNextRoundRobinAgent(
 
   const agentIds = agents.map((a) => a.id);
 
-  // Check which agents have an active routing config (holiday switch)
   const { data: routingConfigs } = await supabase
     .from("agent_routing_config")
     .select("agent_id")
@@ -1117,7 +1150,6 @@ export async function getNextRoundRobinAgent(
   const eligibleAgents = agentIds.filter((id) => activeAgentIds.has(id));
   if (eligibleAgents.length === 0) return null;
 
-  // For each eligible agent, find their most recent lead assignment timestamp
   const { data: recentLeads } = await supabase
     .from("leads")
     .select("assigned_to, assigned_at")
@@ -1125,7 +1157,6 @@ export async function getNextRoundRobinAgent(
     .is("archived_at", null)
     .order("assigned_at", { ascending: false });
 
-  // Build a map: agentId → most recent assigned_at
   const lastAssigned: Record<string, Date | null> = {};
   for (const agentId of eligibleAgents) {
     lastAssigned[agentId] = null;
@@ -1142,7 +1173,6 @@ export async function getNextRoundRobinAgent(
     }
   }
 
-  // Sort: agents with no previous assignment first (null), then by oldest assignment
   eligibleAgents.sort((a, b) => {
     const aTime = lastAssigned[a];
     const bTime = lastAssigned[b];

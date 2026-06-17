@@ -31,6 +31,9 @@ import {
 } from "@/lib/validations/lead-schema";
 import { formErrors } from "@/lib/validations/form-errors";
 import { sanitizeText } from "@/lib/utils/sanitize";
+import { canonicalizePhone } from "@/lib/utils/phone";
+import { LEAD_ASSIGNABLE_ROLES } from "@/lib/constants/roles";
+import { isGiaDomain } from "@/lib/constants/domains";
 import {
   searchLeadsForTask,
   getLeadsForExport,
@@ -414,6 +417,15 @@ export async function createManualLead(
   const resolvedDomain =
     caller.role === "agent" ? caller.domain : fields.domain;
 
+  // 3b. The leads.domain app_domain CHECK only admits Gia domains. fields.domain
+  //     (manager+) is already gated by GIA_DOMAIN_ENUM in the schema, but an
+  //     agent's pinned caller.domain bypasses that gate — an agent whose profile
+  //     domain isn't a Gia domain would throw an unhandled INSERT CHECK violation.
+  //     Reject cleanly instead (audit #17).
+  if (!resolvedDomain || !isGiaDomain(resolvedDomain)) {
+    return { data: null, error: "Your account is not set up for a lead domain. Contact an admin." };
+  }
+
   // 4. Resolve assigned_to — defaults to caller; verify cross-domain if explicitly provided
   const admin = createAdminClient();
   let assignedTo: string | null = fields.assigned_to ?? caller.id;
@@ -440,6 +452,15 @@ export async function createManualLead(
         error: "The selected user is not available in this domain.",
       };
     }
+    // The target must be a lead-carrying role (agent/manager). Without this, a
+    // manager could assign a lead to a guest/admin/founder who isn't in the pool
+    // and isn't meant to carry leads (audit #6).
+    if (!LEAD_ASSIGNABLE_ROLES.includes(targetAgent.role)) {
+      return {
+        data: null,
+        error: "The selected user cannot be assigned leads.",
+      };
+    }
     assignedTo = fields.assigned_to;
   }
 
@@ -456,8 +477,11 @@ export async function createManualLead(
       : caller.full_name;
 
   // 5. sanitizeText on text fields (already done by Zod transforms in schema)
-  //    normalizeToE164 on phone (already done by Zod transform in schema)
-  const { first_name, last_name, phone, email, source } = fields;
+  //    Canonicalize phone so the stored value + dedup key match the webhook and
+  //    WhatsApp paths exactly (audit #3) — the schema already produced E.164, so
+  //    this is idempotent here, but it keeps all three paths on one key.
+  const { first_name, last_name, email, source } = fields;
+  const phone = canonicalizePhone(fields.phone);
 
   // 5b. Interests: drop out-of-vocabulary values for the RESOLVED domain —
   //     the exact same best-effort dropper as the webhook/WhatsApp paths
@@ -467,17 +491,46 @@ export async function createManualLead(
     resolvedDomain,
   );
 
-  // 6. Duplicate check via get_active_lead_by_phone (Rule S-09 / dedup spec)
+  // 6. Duplicate check via get_active_lead_by_phone (Rule S-09 / dedup spec).
+  //    The RPC returns ONLY active leads (new/touched/in_discussion/nurturing).
   const { data: existingLeads } = await admin.rpc("get_active_lead_by_phone", {
     p_phone: phone,
   });
 
   if (existingLeads && existingLeads.length > 0) {
+    // Active duplicate — log a duplicate_submission on the existing lead so the
+    // re-enquiry is visible in its timeline (parity with the webhook path, audit #15),
+    // then return the existing lead without inserting.
+    const existingId = existingLeads[0].id;
+    const { error: dupActivityError } = await admin.from("lead_activities").insert({
+      lead_id: existingId,
+      actor_id: caller.id,
+      action_type: "duplicate_submission",
+      details: { source: "manual", lead_source: source ?? null, domain: resolvedDomain },
+    });
+    if (dupActivityError) {
+      console.error("[leads:createManualLead] duplicate_submission activity insert failed:", dupActivityError.message);
+    }
     return {
-      data: { leadId: existingLeads[0].id, duplicate: true },
+      data: { leadId: existingId, duplicate: true },
       error: null,
     };
   }
+
+  // 6b. Returning-prospect chain: if a TERMINAL (won/lost/junk) lead exists for
+  //     this phone, link the new lead to it via previous_lead_id — parity with
+  //     the webhook path, which the manual path previously skipped (audit #3 dedup).
+  let previousLeadId: string | null = null;
+  const { data: terminalLead } = await admin
+    .from("leads")
+    .select("id")
+    .eq("phone", phone)
+    .is("archived_at", null)
+    .in("status", ["won", "lost", "junk"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (terminalLead) previousLeadId = terminalLead.id as string;
 
   // 7. INSERT lead — source from modal when set; form_data empty for manual leads
   const now = new Date().toISOString();
@@ -488,6 +541,7 @@ export async function createManualLead(
       last_name: last_name ?? null,
       email: email ?? null,
       phone,
+      previous_lead_id: previousLeadId,
       domain: resolvedDomain,
       assigned_to: assignedTo,
       assigned_at: assignedTo ? now : null,
@@ -509,13 +563,22 @@ export async function createManualLead(
     .single();
 
   if (insertError || !inserted) {
+    // 23505 = the active-phone unique index (0137) rejected a concurrent insert
+    // that raced past dedup (audit #1). Resolve to the lead that won the race.
+    if (insertError?.code === "23505") {
+      const { data: raced } = await admin.rpc("get_active_lead_by_phone", { p_phone: phone });
+      if (raced && raced.length > 0) {
+        return { data: { leadId: raced[0].id, duplicate: true }, error: null };
+      }
+    }
     return { data: null, error: formErrors.generic };
   }
 
   const leadId = inserted.id as string;
 
-  // 8. INSERT lead_created activity
-  await admin.from("lead_activities").insert({
+  // 8. INSERT lead_created activity — error-checked (audit #14); non-fatal, the
+  //    lead row stands even if the audit log insert fails.
+  const { error: createdActivityError } = await admin.from("lead_activities").insert({
     lead_id: leadId,
     actor_id: caller.id,
     action_type: "lead_created",
@@ -525,16 +588,21 @@ export async function createManualLead(
       domain: resolvedDomain,
     },
   });
+  if (createdActivityError) {
+    console.error("[leads:createManualLead] lead_created activity insert failed:", createdActivityError.message);
+  }
 
   // 9. INSERT agent_assigned activity if assigned_to is set
   if (assignedTo) {
-    await admin.from("lead_activities").insert({
+    const { error: assignedActivityError } = await admin.from("lead_activities").insert({
       lead_id: leadId,
       actor_id: caller.id,
       action_type: "agent_assigned",
       details: { assigned_to: assignedTo, method: "manual" },
     });
-
+    if (assignedActivityError) {
+      console.error("[leads:createManualLead] agent_assigned activity insert failed:", assignedActivityError.message);
+    }
   }
 
   // 10. All assignment side-effects (WhatsApp, in-app, SLA) via shared orchestrator.

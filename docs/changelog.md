@@ -12,6 +12,86 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-17 — Audit + fix: lead-creation workflow (dedup races, broken round-robin, message loss, assignment gaps)
+
+**Context.** A full audit of the three lead-creation paths — webhook ingestion
+(`ingestLead`), manual creation (`createManualLead`), and WhatsApp inbound
+(`processInboundMessage` → `createLeadFromWhatsApp`) — surfaced a cluster of
+correctness, race, and data-integrity defects (multi-agent review, adversarially
+verified; 26 confirmed, 9 false positives discarded). This entry covers the fixes
+the team approved.
+
+**Done.**
+
+- **Migration `0137_lead_phone_dedup_uniqueness.sql`** — `lead_phone_key(text)`
+  IMMUTABLE canonical-phone function (digits-only collapse, mirrors
+  `canonicalizePhone()` and the existing `generate_lead_slug` regex) + a **partial
+  UNIQUE index** `idx_leads_phone_key_active` on `lead_phone_key(phone)` for ACTIVE
+  leads only (`archived_at IS NULL`, non-empty phone, status
+  `new/touched/in_discussion/nurturing` — matches `get_active_lead_by_phone` so the
+  index and the dedup read agree). This is the **structural backstop for the dedup
+  TOCTOU race**: two concurrent submissions for the same new number can no longer
+  both create active leads — the loser gets `23505`, which the app catches and
+  resolves to the existing lead. Terminal/archived leads are excluded so the
+  returning-prospect `previous_lead_id` chain is never blocked. The migration
+  detects pre-existing active-phone collisions and degrades to a non-unique index
+  with a `RAISE WARNING` (lists the keys) rather than hard-failing on dirty data.
+  **⚠️ NOT yet applied — apply, then re-create the index UNIQUE if the warning fired.**
+
+- **`src/lib/utils/phone.ts`** — new **`canonicalizePhone()`** — THE canonical
+  lead-phone normalizer (never throws, never drops a lead): E.164 when parseable,
+  else a digits-only fallback so `'98765 43210'`, `'098765-43210'`, and
+  `'9876543210'` collapse to one dedup key. Fixes the **format mismatch** where the
+  webhook stored the raw value on E.164 failure while manual/WhatsApp normalized,
+  so variants never deduped (audit #3/#7).
+
+- **Round-robin (`getNextRoundRobinAgent`, `leads-service.ts`)** — now calls the
+  **atomic SQL `get_next_round_robin_agent` RPC** (`FOR UPDATE OF arc SKIP LOCKED`)
+  instead of the non-atomic JS scan. The JS path had no locking (two concurrent
+  ingests picked the SAME oldest agent) and silently ignored `is_on_leave` (the SQL
+  enforces it). The JS scan is retained ONLY as a defensive fallback on RPC error
+  (audit #5).
+
+- **`createManualLead` (`actions/leads.ts`)** —
+  (a) **assignable-role guard**: a manual lead can no longer be assigned to a
+      non-pool role (guest/admin/founder) — target role must be in
+      `LEAD_ASSIGNABLE_ROLES` (audit #6);
+  (b) **Gia-domain guard**: an agent whose pinned `caller.domain` isn't a Gia domain
+      is rejected cleanly instead of throwing an unhandled `app_domain` CHECK
+      violation on insert (audit #17);
+  (c) **canonical phone** + **`23505` race catch** → returns the existing lead;
+  (d) **`duplicate_submission` activity** now logged on active dups (parity with the
+      webhook, audit #15);
+  (e) **returning-prospect chain**: a terminal (won/lost/junk) predecessor now sets
+      `previous_lead_id` (parity with the webhook, audit #3);
+  (f) **error-checked** `lead_created` / `agent_assigned` activity inserts (audit #14).
+
+- **`ingestLead` (`lead-ingestion.ts`)** — canonical phone storage; **rejects an
+  empty phone** (422) instead of inserting a blank-phone lead that dedup forever
+  misses (audit #4/#7); **`23505` race catch**; **error-checked** all activity
+  inserts incl. `duplicate_submission` (audit #9/#10/#11/#25); now calls
+  **`invalidateLeadCaches`** (`lists` + `dashboard`) so webhook leads appear in the
+  agent's list immediately instead of after the 30s TTL (audit #8).
+
+- **`createLeadFromWhatsApp` (`lead-ingestion.ts`)** — canonical phone; **non-empty
+  `first_name`** fallback to phone when the sender name is blank (audit #22);
+  **`23505` race catch** returns the existing lead with a new **`alreadyExisted`**
+  flag; error-checked activities (audit #2/#9).
+
+- **`processInboundMessage` (`whatsapp-ingestion.ts`)** — the re-fetch of the
+  just-created lead, if it returns null, **no longer abandons the inbound message**;
+  it falls back to a minimal lead object so the conversation + message are still
+  recorded (audit #12 — was silent message loss). Honors `alreadyExisted` to skip a
+  duplicate assignment notification on a lead race. **Error-checks** the inbound
+  message insert (bails before the conversation timestamp bump if it failed) and the
+  conversation update (audit #13). Calls `invalidateLeadCaches` on new-lead creation
+  (audit #8). `insertInboundMessage` now returns `{ error }`.
+
+**Deferred (by product decision, not bugs in this pass):** no-phone leads (LinkedIn
+/ email / Instagram-only) — phone stays the required dedup identity for now;
+multi-identifier dedup is a future change. Un-normalizable phones are NEVER dropped —
+they get the digits-only canonical fallback above.
+
 ## 2026-06-17 — Fix: Elaya write tools refused valid leads (session-client lead resolve in a sessionless context)
 
 **Symptom.** A user asked Elaya to add a note, create a task, and change a lead's status on a lead

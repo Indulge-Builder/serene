@@ -13,6 +13,7 @@ import { normalizeWaPhone } from '@/lib/utils/phone';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { getMediaDownloadUrl } from '@/lib/services/whatsapp-api';
 import { createLeadFromWhatsApp } from '@/lib/services/lead-ingestion';
+import { invalidateLeadCaches } from '@/lib/services/lead-cache';
 import { notifyLeadAssigned } from '@/lib/services/lead-assignment-notify';
 import type { MetaWebhookPayload, MetaInboundMessage, MetaStatusUpdate, WhatsAppConversation, MetaMediaObject } from '@/lib/types/whatsapp';
 import type { Lead } from '@/lib/types/database';
@@ -99,8 +100,10 @@ export async function processInboundMessage(
 
   // 4. If no lead → create from WhatsApp
   if (!lead) {
-    const { leadId, assignedTo, assignedAt, domain: newLeadDomain } = await createLeadFromWhatsApp(waId, normalizedPhone, senderName ?? null);
-    // Re-fetch so we have the full Lead row (createAdminClient returns typed client for leads)
+    const { leadId, assignedTo, assignedAt, domain: newLeadDomain, alreadyExisted } =
+      await createLeadFromWhatsApp(waId, normalizedPhone, senderName ?? null);
+
+    // Re-fetch so we have the full Lead row for downstream steps.
     const adminClient = createAdminClient();
     const { data: created } = await adminClient
       .from('leads')
@@ -108,48 +111,77 @@ export async function processInboundMessage(
       .eq('id', leadId)
       .single();
     lead = created as Lead | null;
+
+    // The lead row provably exists (createLeadFromWhatsApp just inserted it, or
+    // resolved an existing one). If the re-fetch returns null (transient DB
+    // glitch / read replica lag), DO NOT abandon the message — fall back to a
+    // minimal row so the conversation + message are still recorded. Losing the
+    // inbound message was the prior bug (audit #12).
     if (!lead) {
-      console.error('[whatsapp-ingestion] Failed to re-fetch created lead:', leadId);
-      return;
+      console.error('[whatsapp-ingestion] Re-fetch of created lead returned null, using minimal fallback:', leadId);
+      const nameParts = senderName?.split(' ') ?? [];
+      lead = {
+        id:          leadId,
+        first_name:  nameParts[0]?.trim() || normalizedPhone,
+        last_name:   nameParts.slice(1).join(' ').trim() || null,
+        phone:       normalizedPhone,
+        domain:      newLeadDomain,
+        assigned_to: assignedTo,
+        // Minimal shape — only the fields the steps below read. Cast is safe
+        // because we never persist this object; the row exists in the DB.
+      } as unknown as Lead;
     }
 
-    // Fire all assignment side-effects via the shared orchestrator
-    const newLeadId = lead.id;
-    const leadName = lead.last_name
-      ? `${lead.first_name} ${lead.last_name}`
-      : lead.first_name;
+    // On a duplicate-lead race (alreadyExisted), another inbound message already
+    // created the lead AND fired its assignment notifications — skip the second
+    // founder/agent alert + SLA arm; just attach this message to the conversation.
+    if (!alreadyExisted) {
+      // Fire all assignment side-effects via the shared orchestrator
+      const newLeadId = lead.id;
+      const leadName = lead.last_name
+        ? `${lead.first_name} ${lead.last_name}`
+        : lead.first_name;
 
-    // Fetch agent name for founder alert — one query, non-fatal if absent
-    let assignedAgentName: string | null = null;
-    if (assignedTo) {
-      const adminForAgent = createAdminClient();
-      const { data: assignedAgent } = await adminForAgent
-        .from('profiles')
-        .select('full_name')
-        .eq('id', assignedTo)
-        .single();
-      assignedAgentName = assignedAgent?.full_name ?? null;
+      // Fetch agent name for founder alert — one query, non-fatal if absent
+      let assignedAgentName: string | null = null;
+      if (assignedTo) {
+        const adminForAgent = createAdminClient();
+        const { data: assignedAgent } = await adminForAgent
+          .from('profiles')
+          .select('full_name')
+          .eq('id', assignedTo)
+          .single();
+        assignedAgentName = assignedAgent?.full_name ?? null;
+      }
+
+      // Bust the leads list + dashboard caches so the assigned agent sees the
+      // new lead immediately rather than after the 30s list TTL (audit #8).
+      await invalidateLeadCaches(
+        'processInboundMessage',
+        { leadId: newLeadId, domain: newLeadDomain },
+        { lists: true, dashboard: true },
+      );
+
+      // Awaited (not void): processInboundMessage runs inside the whatsapp route's
+      // after(), which keeps the lambda alive only for promises it can track. A bare
+      // void here would detach the send from that tracked chain and Vercel would
+      // freeze the lambda before Gupshup is reached. await keeps it in the chain.
+      await notifyLeadAssigned({
+        leadId:      newLeadId,
+        assignedTo,
+        agentName:   assignedAgentName,
+        leadName,
+        leadPhone:   normalizedPhone,
+        domain:      newLeadDomain,
+        isNew:       true,
+        isDuplicate: false,
+        actorId:     null,
+        scheduleSla: true,
+        assignedAt:  assignedAt ?? undefined,
+      }).catch((err) => {
+        console.error('[whatsapp-ingestion] notifyLeadAssigned failed (non-fatal):', err);
+      });
     }
-
-    // Awaited (not void): processInboundMessage runs inside the whatsapp route's
-    // after(), which keeps the lambda alive only for promises it can track. A bare
-    // void here would detach the send from that tracked chain and Vercel would
-    // freeze the lambda before Gupshup is reached. await keeps it in the chain.
-    await notifyLeadAssigned({
-      leadId:      newLeadId,
-      assignedTo,
-      agentName:   assignedAgentName,
-      leadName,
-      leadPhone:   normalizedPhone,
-      domain:      newLeadDomain,
-      isNew:       true,
-      isDuplicate: false,
-      actorId:     null,
-      scheduleSla: true,
-      assignedAt:  assignedAt ?? undefined,
-    }).catch((err) => {
-      console.error('[whatsapp-ingestion] notifyLeadAssigned failed (non-fatal):', err);
-    });
   }
 
   const leadId = lead.id;
@@ -170,14 +202,25 @@ export async function processInboundMessage(
     }
   }
 
-  // 7. Insert inbound message row
-  await insertInboundMessage(conversationId, leadId, message, mediaUrl);
+  // 7. Insert inbound message row — error-checked: a failed insert means the
+  //    user's message is lost, so surface it loudly rather than returning a
+  //    silent success (audit #13). Bail before the conversation timestamp bump
+  //    so we don't advertise activity for a message that was never stored.
+  const { error: messageError } = await insertInboundMessage(conversationId, leadId, message, mediaUrl);
+  if (messageError) {
+    console.error('[whatsapp-ingestion] insertInboundMessage failed — message not stored:', messageError.message);
+    return;
+  }
 
-  // 8. Update conversation last_message_at
-  await supabase
+  // 8. Update conversation last_message_at — non-fatal: the message row already
+  //    persisted; a stale timestamp only affects sort/unread ordering.
+  const { error: convUpdateError } = await supabase
     .from('whatsapp_conversations')
     .update({ last_message_at: new Date().toISOString() })
     .eq('id', conversationId);
+  if (convUpdateError) {
+    console.warn('[whatsapp-ingestion] conversation last_message_at update failed (non-fatal):', convUpdateError.message);
+  }
 
   // 9. Realtime broadcast is automatic via supabase_realtime publication — no explicit call needed
 }
@@ -299,7 +342,7 @@ export async function insertInboundMessage(
   leadId:         string,
   message:        MetaInboundMessage,
   mediaUrl?:      string,
-): Promise<void> {
+): Promise<{ error: { message: string } | null }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createAdminClient() as any;
 
@@ -318,7 +361,7 @@ export async function insertInboundMessage(
     }
   }
 
-  await supabase.from('whatsapp_messages').insert({
+  const { error } = await supabase.from('whatsapp_messages').insert({
     conversation_id: conversationId,
     lead_id:         leadId,
     direction:       'inbound',
@@ -333,4 +376,6 @@ export async function insertInboundMessage(
     status_at:       null,
     is_bot:          false,
   });
+
+  return { error: error ? { message: error.message } : null };
 }

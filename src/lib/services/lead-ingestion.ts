@@ -6,7 +6,14 @@ import { isGiaDomain, DEFAULT_GIA_DOMAIN } from '@/lib/constants/domains';
 import { getNextRoundRobinAgent } from '@/lib/services/leads-service';
 import { LEAD_SOURCE_ENUM, type LeadSource } from '@/lib/constants/lead-sources';
 import { getDomainInterests } from '@/lib/constants/interests';
+import { canonicalizePhone } from '@/lib/utils/phone';
+import { invalidateLeadCaches } from '@/lib/services/lead-cache';
 import type { Database, AppDomain, JsonValue } from '@/lib/types/database';
+
+// PostgreSQL unique-violation — thrown by the active-phone partial UNIQUE index
+// (migration 0137) when a concurrent insert races dedup. Caught so the loser of
+// the race returns the existing active lead instead of erroring (audit #1/#2).
+const PG_UNIQUE_VIOLATION = '23505';
 
 type LeadInsert = Database['public']['Tables']['leads']['Insert'];
 
@@ -149,7 +156,18 @@ export async function ingestLead(
   // 4. Dedup check — phone is the identity key (migration 0008)
   //    Active statuses: new | touched | in_discussion | nurturing → log duplicate_submission, no insert
   //    Terminal statuses: lost | junk | won → allow new lead with previous_lead_id chain
-  const phone = data.phone;
+  //
+  //    canonicalizePhone makes the stored value consistent across paths (E.164
+  //    when parseable, else digits-only) so dedup and the 0137 unique index can
+  //    never miss a format variant (audit #3/#7). An empty phone is NOT a valid
+  //    lead identity (phone is the required dedup key) — reject rather than insert
+  //    a blank-phone lead that dedup would forever miss (audit #4/#7).
+  const phone = canonicalizePhone(data.phone);
+  if (!phone) {
+    console.error('[lead-ingestion] Empty/unusable phone after canonicalization');
+    await markIngestionError(rawPayloadId, 'empty_phone');
+    return { success: false, error: 'Lead has no usable phone number', status: 422 };
+  }
   let previousLeadId: string | null = null;
 
   if (phone) {
@@ -162,8 +180,9 @@ export async function ingestLead(
       const activeStatuses = ['new', 'touched', 'in_discussion', 'nurturing'];
 
       if (activeStatuses.includes(existing.status)) {
-        // Log a duplicate_submission activity on the existing lead — non-fatal
-        await supabase.from('lead_activities').insert({
+        // Log a duplicate_submission activity on the existing lead — non-fatal,
+        // but surface failures so a silently-missing re-enquiry is detectable (audit #25).
+        const { error: dupActivityError } = await supabase.from('lead_activities').insert({
           lead_id:     existing.id,
           actor_id:    null,
           action_type: 'duplicate_submission',
@@ -174,6 +193,9 @@ export async function ingestLead(
             raw_payload_id: rawPayloadId,
           },
         });
+        if (dupActivityError) {
+          console.error('[lead-ingestion] duplicate_submission activity insert failed:', dupActivityError.message);
+        }
 
         if (rawPayloadId) {
           await supabase
@@ -244,7 +266,7 @@ export async function ingestLead(
     first_name:         data.first_name,
     last_name:          data.last_name ?? null,
     email:              data.email ?? null,
-    phone:              data.phone,
+    phone,
     previous_lead_id:   previousLeadId,
     domain,
     assigned_to:        assignedTo ?? null,
@@ -270,6 +292,30 @@ export async function ingestLead(
     .single();
 
   if (insertError || !inserted) {
+    // 23505 = the active-phone unique index (0137) rejected a concurrent insert
+    // that raced past dedup (audit #1). The other submission won — re-read and
+    // return its lead as a duplicate rather than failing this request.
+    if (insertError?.code === PG_UNIQUE_VIOLATION) {
+      console.warn('[lead-ingestion] active-phone race lost (23505) — returning existing lead');
+      const { data: raced } = await supabase.rpc('get_active_lead_by_phone', { p_phone: phone });
+      if (raced && raced.length > 0) {
+        const existing = raced[0];
+        if (rawPayloadId) {
+          await supabase.from('lead_raw_payloads').update({ lead_id: existing.id }).eq('id', rawPayloadId);
+        }
+        return {
+          success:      true,
+          leadId:       existing.id,
+          rawPayloadId: rawPayloadId ?? '',
+          assigned_to:  existing.assigned_to,
+          agent_name:   null,
+          domain,
+          lead_name:    data.last_name ? `${data.first_name} ${data.last_name}` : data.first_name,
+          lead_phone:   phone,
+          is_duplicate: true,
+        };
+      }
+    }
     console.error('[lead-ingestion] Insert failed:', insertError?.message);
     await markIngestionError(rawPayloadId, `db_insert_failed: ${insertError?.message ?? 'unknown'}`);
     return { success: false, error: 'Failed to create lead', status: 500 };
@@ -285,8 +331,10 @@ export async function ingestLead(
       .eq('id', rawPayloadId);
   }
 
-  // 8. Log lead_created activity
-  await supabase.from('lead_activities').insert({
+  // 8. Log lead_created activity — error-checked so a missing creation event in
+  //    the dossier timeline is surfaced, not silent (audit #9/#10/#11). Non-fatal:
+  //    the lead row is the source of truth and must stand even if the log fails.
+  const { error: createdActivityError } = await supabase.from('lead_activities').insert({
     lead_id:     leadId,
     actor_id:    null,
     action_type: 'lead_created',
@@ -297,10 +345,14 @@ export async function ingestLead(
       raw_payload_id: rawPayloadId,
     },
   });
+  if (createdActivityError) {
+    console.error('[lead-ingestion] lead_created activity insert failed:', createdActivityError.message);
+    await markIngestionError(rawPayloadId, `activity_insert_failed: ${createdActivityError.message}`);
+  }
 
   // 9. Log agent_assigned activity if an agent was found
   if (assignedTo) {
-    await supabase.from('lead_activities').insert({
+    const { error: assignedActivityError } = await supabase.from('lead_activities').insert({
       lead_id:     leadId,
       actor_id:    null,
       action_type: 'agent_assigned',
@@ -309,7 +361,20 @@ export async function ingestLead(
         method:      'round_robin',
       },
     });
+    if (assignedActivityError) {
+      console.error('[lead-ingestion] agent_assigned activity insert failed:', assignedActivityError.message);
+    }
   }
+
+  // 10. Invalidate the leads list + dashboard caches so the assigned agent sees
+  //     the new lead immediately instead of after the 30s list TTL (audit #8 —
+  //     previously only the manual path did this). Awaited inside the webhook
+  //     route's lifecycle; Redis failure is non-fatal (the helper warns).
+  await invalidateLeadCaches(
+    'ingestLead',
+    { leadId, domain },
+    { lists: true, dashboard: true },
+  );
 
   const ingestionLeadName = data.last_name
     ? `${data.first_name} ${data.last_name}`
@@ -323,7 +388,7 @@ export async function ingestLead(
     agent_name:   assignedAgentName,
     domain,
     lead_name:    ingestionLeadName,
-    lead_phone:   data.phone,
+    lead_phone:   phone,
     is_duplicate: false,
   };
 }
@@ -338,21 +403,34 @@ export async function ingestLead(
 // If multi-domain WhatsApp routing is ever needed, extend this function to accept a
 // domain parameter and update the webhook routing logic in whatsapp-ingestion.ts.
 //
-// Dedup is the caller's responsibility: this function always inserts.
+// Dedup is the caller's responsibility (resolveLeadByPhone runs first), but two
+// distinct first-messages from the same new number can race past that read and
+// both reach here (audit #2). The active-phone UNIQUE index (0137) is the
+// backstop: the loser gets 23505, which we catch and resolve to the existing
+// active lead — and we flag it via `alreadyExisted` so the caller skips the
+// duplicate assignment notification.
 // ─────────────────────────────────────────────
 export async function createLeadFromWhatsApp(
   waId:        string,
   phone:       string,
   senderName?: string | null,
-): Promise<{ leadId: string; assignedTo: string | null; assignedAt: string | null; domain: string }> {
+): Promise<{ leadId: string; assignedTo: string | null; assignedAt: string | null; domain: string; alreadyExisted: boolean }> {
   const supabase = createAdminClient();
   const domain   = DEFAULT_LEAD_DOMAIN;
+
+  // Canonicalize so the stored value matches the manual/webhook paths and the
+  // 0137 unique index keys consistently. The caller already normalizes via
+  // normalizeWaPhone; this is idempotent on an E.164 value.
+  const canonicalPhone = canonicalizePhone(phone);
+
   const assignedTo = await getNextRoundRobinAgent(domain);
   const assignedAt = assignedTo ? new Date().toISOString() : null;
 
   const nameParts  = senderName?.split(' ') ?? [];
-  const first_name = nameParts[0] ?? phone;
-  const last_name  = nameParts.slice(1).join(' ') || null;
+  // first_name must never be empty (a blank sender name yields ['']) — fall back
+  // to the phone so slug generation and the dossier header always have a value (audit #22).
+  const first_name = (nameParts[0]?.trim() || canonicalPhone || phone);
+  const last_name  = nameParts.slice(1).join(' ').trim() || null;
 
   const { data: inserted, error } = await supabase
     .from('leads')
@@ -360,7 +438,7 @@ export async function createLeadFromWhatsApp(
       first_name,
       last_name,
       email:              null,
-      phone,
+      phone:              canonicalPhone,
       domain,
       assigned_to:        assignedTo ?? null,
       assigned_at:        assignedAt,
@@ -382,26 +460,40 @@ export async function createLeadFromWhatsApp(
     .single();
 
   if (error || !inserted) {
+    // Lost the active-phone race — resolve to the existing active lead instead
+    // of throwing and losing the inbound message (audit #2/#12).
+    if (error?.code === PG_UNIQUE_VIOLATION) {
+      const { data: raced } = await supabase.rpc('get_active_lead_by_phone', { p_phone: canonicalPhone });
+      if (raced && raced.length > 0) {
+        return { leadId: raced[0].id, assignedTo: raced[0].assigned_to, assignedAt: null, domain, alreadyExisted: true };
+      }
+    }
     throw new Error(`[createLeadFromWhatsApp] Insert failed: ${error?.message ?? 'unknown'}`);
   }
 
   const leadId = inserted.id;
 
-  await supabase.from('lead_activities').insert({
+  const { error: createdActivityError } = await supabase.from('lead_activities').insert({
     lead_id:     leadId,
     actor_id:    null,
     action_type: 'lead_created',
     details:     { source: 'whatsapp', domain, wa_id: waId },
   });
+  if (createdActivityError) {
+    console.error('[createLeadFromWhatsApp] lead_created activity insert failed:', createdActivityError.message);
+  }
 
   if (assignedTo) {
-    await supabase.from('lead_activities').insert({
+    const { error: assignedActivityError } = await supabase.from('lead_activities').insert({
       lead_id:     leadId,
       actor_id:    null,
       action_type: 'agent_assigned',
       details:     { assigned_to: assignedTo, method: 'round_robin' },
     });
+    if (assignedActivityError) {
+      console.error('[createLeadFromWhatsApp] agent_assigned activity insert failed:', assignedActivityError.message);
+    }
   }
 
-  return { leadId, assignedTo, assignedAt, domain };
+  return { leadId, assignedTo, assignedAt, domain, alreadyExisted: false };
 }

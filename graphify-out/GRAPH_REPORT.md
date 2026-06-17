@@ -1,16 +1,16 @@
 # Graph Report - serene  (2026-06-17)
 
 ## Corpus Check
-- 738 files · ~4,048,725 words
+- 739 files · ~4,051,973 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 6691 nodes · 12350 edges · 450 communities (414 shown, 36 thin omitted)
+- 6694 nodes · 12373 edges · 462 communities (425 shown, 37 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 41 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `dd01a7f1`
+- Built from commit: `763875c3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -307,6 +307,7 @@
 - [[_COMMUNITY_Changelog Archive · Cluster 292|Changelog Archive · Cluster 292]]
 - [[_COMMUNITY_Changelog Archive · Cluster 293|Changelog Archive · Cluster 293]]
 - [[_COMMUNITY_Community 294|Community 294]]
+- [[_COMMUNITY_Community 296|Community 296]]
 - [[_COMMUNITY_Community 297|Community 297]]
 - [[_COMMUNITY_Design DNA · Cluster 298|Design DNA · Cluster 298]]
 - [[_COMMUNITY_Community 299|Community 299]]
@@ -383,6 +384,7 @@
 - [[_COMMUNITY_Community 370|Community 370]]
 - [[_COMMUNITY_Community 371|Community 371]]
 - [[_COMMUNITY_Community 372|Community 372]]
+- [[_COMMUNITY_Community 373|Community 373]]
 - [[_COMMUNITY_Community 374|Community 374]]
 - [[_COMMUNITY_Community 375|Community 375]]
 - [[_COMMUNITY_Community 376|Community 376]]
@@ -397,6 +399,7 @@
 - [[_COMMUNITY_Community 385|Community 385]]
 - [[_COMMUNITY_Community 386|Community 386]]
 - [[_COMMUNITY_Community 387|Community 387]]
+- [[_COMMUNITY_Community 388|Community 388]]
 - [[_COMMUNITY_Community 389|Community 389]]
 - [[_COMMUNITY_Community 390|Community 390]]
 - [[_COMMUNITY_Community 391|Community 391]]
@@ -404,29 +407,39 @@
 - [[_COMMUNITY_Community 393|Community 393]]
 - [[_COMMUNITY_Community 394|Community 394]]
 - [[_COMMUNITY_Community 395|Community 395]]
+- [[_COMMUNITY_Community 396|Community 396]]
 - [[_COMMUNITY_Community 397|Community 397]]
 - [[_COMMUNITY_Community 398|Community 398]]
 - [[_COMMUNITY_Community 399|Community 399]]
 - [[_COMMUNITY_Community 400|Community 400]]
 - [[_COMMUNITY_Community 401|Community 401]]
+- [[_COMMUNITY_Community 402|Community 402]]
 - [[_COMMUNITY_Community 403|Community 403]]
 - [[_COMMUNITY_Community 404|Community 404]]
 - [[_COMMUNITY_Community 405|Community 405]]
 - [[_COMMUNITY_Community 406|Community 406]]
+- [[_COMMUNITY_Community 407|Community 407]]
 - [[_COMMUNITY_Community 408|Community 408]]
 - [[_COMMUNITY_Community 409|Community 409]]
+- [[_COMMUNITY_Community 410|Community 410]]
 - [[_COMMUNITY_Community 411|Community 411]]
 - [[_COMMUNITY_Community 412|Community 412]]
 - [[_COMMUNITY_Community 413|Community 413]]
+- [[_COMMUNITY_Community 414|Community 414]]
 - [[_COMMUNITY_Community 415|Community 415]]
 - [[_COMMUNITY_Community 416|Community 416]]
 - [[_COMMUNITY_Community 417|Community 417]]
+- [[_COMMUNITY_Community 418|Community 418]]
+- [[_COMMUNITY_Community 419|Community 419]]
+- [[_COMMUNITY_Community 420|Community 420]]
 - [[_COMMUNITY_Community 421|Community 421]]
 - [[_COMMUNITY_Community 422|Community 422]]
 - [[_COMMUNITY_Community 423|Community 423]]
 - [[_COMMUNITY_Community 424|Community 424]]
 - [[_COMMUNITY_Community 425|Community 425]]
+- [[_COMMUNITY_Community 426|Community 426]]
 - [[_COMMUNITY_Community 428|Community 428]]
+- [[_COMMUNITY_Community 429|Community 429]]
 - [[_COMMUNITY_Community 431|Community 431]]
 - [[_COMMUNITY_Community 432|Community 432]]
 - [[_COMMUNITY_Community 434|Community 434]]
@@ -449,7 +462,6 @@
 - [[_COMMUNITY_Community 454|Community 454]]
 - [[_COMMUNITY_Community 455|Community 455]]
 - [[_COMMUNITY_Community 458|Community 458]]
-- [[_COMMUNITY_Community 460|Community 460]]
 - [[_COMMUNITY_Community 461|Community 461]]
 - [[_COMMUNITY_Community 464|Community 464]]
 - [[_COMMUNITY_Community 465|Community 465]]
@@ -460,7 +472,7 @@
 - [[_COMMUNITY_Community 475|Community 475]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `Serene — Changelog` - 567 edges
+1. `Serene — Changelog` - 568 edges
 2. `createAdminClient()` - 174 edges
 3. `Serene — Design DNA` - 161 edges
 4. `createClient()` - 138 edges
@@ -480,63 +492,63 @@
   scripts/import-shop.ts → src/components/ui/TimePicker.tsx
 - `loadCsv()` --calls--> `parse()`  [INFERRED]
   scripts/import-zoho-2.ts → src/components/ui/TimePicker.tsx
-- `loadCsv()` --calls--> `parse()`  [INFERRED]
-  scripts/import-zoho.ts → src/components/ui/TimePicker.tsx
+- `Auth Pages Documentation` --references--> `Indulge OS Logo`  [EXTRACTED]
+  src/app/(auth)/CLAUDE.md → public/logo.webp
 
 ## Import Cycles
 - 2-file cycle: `src/lib/actions/deals.ts -> src/lib/actions/leads.ts -> src/lib/actions/deals.ts`
 - 3-file cycle: `src/lib/elaya/principal.ts -> src/lib/elaya/tools/registry.ts -> src/lib/elaya/tools/write-registry.ts -> src/lib/elaya/principal.ts`
 - 3-file cycle: `src/app/(dashboard)/tasks/TasksAsync.tsx -> src/app/(dashboard)/tasks/TasksShell.tsx -> src/app/(dashboard)/tasks/page.tsx -> src/app/(dashboard)/tasks/TasksAsync.tsx`
 
-## Communities (450 total, 36 thin omitted)
+## Communities (462 total, 37 thin omitted)
 
 ### Community 0 - "Changelog Archive"
 Cohesion: 0.00
-Nodes (537): 2026-05-27 — Raw payload logging, 2026-05-28 — assertNever moved to shared util, 2026-05-28 — AssigneePickerModal: fix z-index arithmetic V-05 violation (Fix), 2026-05-28 — Campaign analytics command center — list + detail pages, get_campaign_metrics RPC, two indexes — Phase 8, 2026-05-28 — Campaign detail: metrics strip (6 stat cards + agent distribution) — Phase 8, 2026-05-28 — Dashboard widget system: canvas, registry, useDashboardLayout hook, 5 Gia widgets (agent tasks, agent activity, manager status, manager volume, manager campaigns) — Phase 7, 2026-05-28 — Dashboard widgets — fix: startTransition called during render, 2026-05-28 — Documentation (+529 more)
+Nodes (538): 2026-05-27 — Raw payload logging, 2026-05-28 — assertNever moved to shared util, 2026-05-28 — AssigneePickerModal: fix z-index arithmetic V-05 violation (Fix), 2026-05-28 — Campaign analytics command center — list + detail pages, get_campaign_metrics RPC, two indexes — Phase 8, 2026-05-28 — Campaign detail: metrics strip (6 stat cards + agent distribution) — Phase 8, 2026-05-28 — Dashboard widget system: canvas, registry, useDashboardLayout hook, 5 Gia widgets (agent tasks, agent activity, manager status, manager volume, manager campaigns) — Phase 7, 2026-05-28 — Dashboard widgets — fix: startTransition called during render, 2026-05-28 — Documentation (+530 more)
 
 ### Community 1 - "Design DNA"
 Cohesion: 0.01
 Nodes (137): 01 — The Sidebar Active State Is Three Layers, 02 — The Sidebar Logo Divider, 03 — The TopBar Title Has a Period, 04 — Empty States Use Playfair Italic, 05 — The Card Border Is the Primary Elevation Signal, 06 — The Focus Ring Has a White Gap, 07 — Pill Shadows Are What Make Them Feel Lifted, 08 — Skeleton Widths Are Not Uniform (+129 more)
 
 ### Community 2 - "Task Schemas & Actions"
-Cohesion: 0.05
-Nodes (47): CALL_OUTCOME_DEF, WIDGET_HEIGHT_BY_SIZE, defineEnum(), EnumDef, DOMAIN_LABELS, JOURNEY_STATUSES, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS (+39 more)
+Cohesion: 0.06
+Nodes (37): MODAL_VARIANTS, ALWAYS_ALLOWED_PREFIXES, DOMAIN_ROUTE_MAP, AgentCallsDrillModal(), Props, AgentDealsDrillModal(), DealRow, Props (+29 more)
 
 ### Community 3 - "Notification Feed"
 Cohesion: 0.08
-Nodes (29): DASHBOARD_WIDGETS, DEFAULT_LAYOUT_BY_ROLE, isValidWidgetId(), WIDGET_MAP, WIDGET_SIZE_LABELS, WidgetColSpan, WidgetDefinition, WidgetModule (+21 more)
+Nodes (32): REVIVAL_CANDIDATE_STATUSES, REVIVAL_DEFAULT_SILENCE_DAYS, REVIVAL_TASK_PRIORITY, REVIVAL_TASK_TYPE, REVIVAL_TRIGGER_STATUSES, REVIVAL_VERDICTS, RevivalTriggerStatus, maskPii() (+24 more)
 
 ### Community 4 - "Group Tasks Tab"
 Cohesion: 0.06
 Nodes (40): BM25, detect_domain(), _load_csv(), Lowercase, split, remove punctuation, filter short words, Build BM25 index from documents, Score all documents against query, Load CSV and return list of dicts, Core search function using BM25 (+32 more)
 
 ### Community 5 - "WhatsApp Webhooks"
-Cohesion: 0.06
-Nodes (49): Props, AddSuggestionModal(), AddSuggestionModalProps, borderFor(), fieldChrome, FieldErrors, Agent, CallerProfile (+41 more)
+Cohesion: 0.08
+Nodes (43): TASK_PRIORITY, TASK_STATUS_DEF, TASK_TYPE_DEF, Agent, CallerProfile, fieldError, fieldInput, fieldLabel (+35 more)
 
 ### Community 6 - "Lead Schemas & Actions"
-Cohesion: 0.05
-Nodes (26): BudgetContentSkeleton(), ElayaLoading(), ErrorLogTableSkeleton(), EscalationsSkeleton(), DossierCardSkeleton(), Props, ROW_WIDTHS, COL_WIDTHS (+18 more)
+Cohesion: 0.15
+Nodes (11): ElayaLoading(), EscalationsSkeleton(), FilterBarSkeleton(), FilterBarSkeletonProps, PageHeaderSkeleton(), PageHeaderSkeletonProps, Shimmer(), ShimmerProps (+3 more)
 
 ### Community 7 - "Time Picker"
-Cohesion: 0.09
-Nodes (38): BudgetPage(), SearchParams, FIRST_TOUCH_BUCKETS, FirstTouchBucket, firstTouchBucketForMinutes(), FirstTouchBucketId, FirstTouchScorecard(), LABEL_STYLE (+30 more)
+Cohesion: 0.05
+Nodes (76): ActivityCursorSchema, assertDrillAccess(), DrillCursorSchema, getAgentActivityForManagerAction(), getAgentCallsForManagerAction(), getAgentDetailMetricsAction(), GetAgentDetailSchema, GetAgentDrillSchema (+68 more)
 
 ### Community 8 - "Subtask Workspace"
-Cohesion: 0.07
-Nodes (45): addLeadCallNote(), addLeadNote(), assertLeadFieldEditAccess(), ExportPayload, LeadEditContext, recordDeal(), revalidateLeadDossier(), updateLeadCity() (+37 more)
+Cohesion: 0.06
+Nodes (54): addLeadNote(), assertLeadFieldEditAccess(), assignLead(), exportLeadsAction(), ExportPayload, LeadEditContext, revalidateLeadDossier(), updateLeadCity() (+46 more)
 
 ### Community 9 - "DRY Audit"
-Cohesion: 0.12
-Nodes (21): CampaignFilters(), CampaignFiltersProps, GIA_DOMAIN_FILTER_ITEMS, LEAD_STATUSES, CATEGORY_DOMAIN, DealsFilters(), DealsFiltersProps, useDebounce() (+13 more)
+Cohesion: 0.32
+Nodes (6): useDebounce(), CreateGiaTaskModal(), ConversationList(), RAIL_CARD, RAIL_CARD_HEADER, RAIL_CARD_LABEL
 
 ### Community 10 - "Auth & Sessions"
 Cohesion: 0.47
 Nodes (4): Next.js 16 Proxy, config, proxy(), updateSession()
 
 ### Community 11 - "Project Config"
-Cohesion: 0.07
-Nodes (51): getGroupSubtasksAction(), getPersonalTasksAction(), getPersonalTaskTagsAction(), getTaskRemarksAction(), WorkspaceAsync(), WorkspaceAsyncProps, AssigneeSlim, getGiaTasksForUser() (+43 more)
+Cohesion: 0.09
+Nodes (27): CreatePersonalTaskModal(), buildTaskDots(), CalendarTaskRow, CalendarTaskRowProps, getDueDateColor(), groupTasksByDate(), isOverdueDate(), isTaskActionable() (+19 more)
 
 ### Community 12 - "SLA Engine"
 Cohesion: 0.04
@@ -551,28 +563,28 @@ Cohesion: 0.04
 Nodes (46): dependencies, @anthropic-ai/sdk, date-fns, date-fns-tz, @dnd-kit/core, @dnd-kit/sortable, @dnd-kit/utilities, framer-motion (+38 more)
 
 ### Community 15 - "Task Client Filters"
-Cohesion: 0.07
-Nodes (37): useDashboardCohortSync(), useWidgetData(), UseWidgetDataOptions, WidgetFetcher, LeadVolumeSummary, MultiDomainVolumeSummary, DashboardAgentStatusBreakdown, DashboardLeadStatusCount (+29 more)
+Cohesion: 0.04
+Nodes (79): DASHBOARD_WIDGETS, DEFAULT_LAYOUT_BY_ROLE, isValidWidgetId(), WIDGET_HEIGHT_BY_SIZE, WIDGET_MAP, WIDGET_SIZE_LABELS, WidgetColSpan, WidgetDefinition (+71 more)
 
 ### Community 16 - "Manager Lead Status Widget"
 Cohesion: 0.05
 Nodes (42): 10. Known Invariants (must never be violated), 1. Module Overview, 2. Root Route — `src/app/page.tsx`, 3. The Three Supabase Client Files, 3a. `src/lib/supabase/client.ts`, 3b. `src/lib/supabase/server.ts`, 3c. `src/lib/supabase/middleware.ts`, 4. `src/proxy.ts` — Session Layer (+34 more)
 
 ### Community 17 - "WhatsApp Spec"
-Cohesion: 0.25
-Nodes (3): AuthCallbackClient(), Phase, metadata
+Cohesion: 0.12
+Nodes (22): SCHEMA_ERROR_COPY, transcribeAudioAction(), ElayaChatShell(), AudioRecorderStatus, AudioRecording, formatRecorderElapsed(), MIME_CANDIDATES, useAudioRecorder() (+14 more)
 
 ### Community 18 - "Lead-Linked Tasks"
-Cohesion: 0.05
-Nodes (63): ADMIN_ROLES, deleteAdCreative(), upsertAdCreative(), ADMIN_ROLES, uploadAdSpendAction(), UploadAdSpendSummary, requireProfile(), getAgentTasksSummaryAction() (+55 more)
+Cohesion: 0.04
+Nodes (101): ADMIN_ROLES, deleteAdCreative(), upsertAdCreative(), setAgentShiftAction(), toggleAgentRouting(), toggleRoutingSchema, requireProfile(), createWalkInDeal() (+93 more)
 
 ### Community 19 - "Ad Creatives Spec"
-Cohesion: 0.07
-Nodes (42): AreaChart(), AreaChartProps, AreaChartSeries, BarChart(), BarChartProps, BarChartSeries, ButterflyChart(), ButterflyChartProps (+34 more)
+Cohesion: 0.05
+Nodes (55): AreaChart(), AreaChartProps, AreaChartSeries, BarChart(), BarChartProps, BarChartSeries, ButterflyChart(), ButterflyChartProps (+47 more)
 
 ### Community 20 - "My Tasks Calendar View"
-Cohesion: 0.07
-Nodes (29): ALWAYS_ALLOWED_PREFIXES, DOMAIN_ROUTE_MAP, CreateRuleDraft, CreateRuleForm(), HOURS_MODE_OPTIONS, RECIPIENT_LABELS, RECIPIENT_OPTIONS, SlaPoliciesPanelProps (+21 more)
+Cohesion: 0.05
+Nodes (46): AgentDistributionBarProps, SEGMENT_COLORS, CALL_OUTCOME_DEF, JOURNEY_STATUSES, LEAD_STATUS_BADGE, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, LEAD_STATUSES (+38 more)
 
 ### Community 21 - "Lead Services"
 Cohesion: 0.06
@@ -591,40 +603,40 @@ Cohesion: 0.05
 Nodes (38): 10. Access Control Summary, 11. Known Invariants (must never be violated), 1. Module Overview, 2. Data Model, 2a. `whatsapp_conversations`, 2b. `whatsapp_messages`, 2c. `whatsapp_conversation_reads`, 2d. `whatsapp_notification_logs` (+30 more)
 
 ### Community 25 - "Use Chart Tokens"
-Cohesion: 0.07
-Nodes (49): BudgetScopeSchema, DomainsVolumeSchema, effectiveWidgetDomain(), getAgentRecentActivityAction(), getBudgetSummaryWidgetAction(), getLeadsByCampaignAction(), getLeadStatusSummaryAction(), getLeadVolumeForDomainAction() (+41 more)
+Cohesion: 0.08
+Nodes (46): BudgetScopeSchema, DomainsVolumeSchema, effectiveWidgetDomain(), getAgentRecentActivityAction(), getAgentTasksSummaryAction(), getBudgetSummaryWidgetAction(), getLeadsByCampaignAction(), getLeadStatusSummaryAction() (+38 more)
 
 ### Community 26 - "Dev Guide"
-Cohesion: 0.11
-Nodes (17): APP_DOMAINS, EASE_IN_EXPO, EASE_IN_OUT, useFounderPerfActions(), FounderDrillDownDeck, ManagerPerformancePanel(), Props, PerformanceRosterEmptyState() (+9 more)
+Cohesion: 0.08
+Nodes (25): AddTaskRemarkInput, AddTaskRemarkSchema, ChecklistItemSchema, CreateGroupTaskInput, CreateGroupTaskSchema, CreatePersonalTaskInput, CreatePersonalTaskSchema, CreateSubtaskInput (+17 more)
 
 ### Community 27 - "Creative Form"
-Cohesion: 0.17
-Nodes (23): useCreateTriggerModal(), GroupTasksTab(), Tab, TasksFilters(), TasksFiltersProps, TasksShell(), countVisiblePersonalTasks(), domainsInGroupRows() (+15 more)
+Cohesion: 0.09
+Nodes (47): useCreateTriggerModal(), GiaTask, PersonalTasksResult, TaskGroupRow, GiaDaySection(), GiaDaySectionProps, GiaDateSection, GiaTasksTab() (+39 more)
 
 ### Community 28 - "Campaign Cards"
-Cohesion: 0.05
-Nodes (70): getElayaChatSeedAction(), SCHEMA_ERROR_COPY, transcribeAudioAction(), encoder, isRateLimited, POST(), SseEvent, ELAYA_DAILY_LINES (+62 more)
+Cohesion: 0.13
+Nodes (33): encoder, isRateLimited, POST(), SseEvent, ELAYA_DAILY_LINES, getElayaTimeGreeting(), pickElayaDailyLine(), ElayaPage() (+25 more)
 
 ### Community 29 - "Lead Info Card"
-Cohesion: 0.11
-Nodes (22): AdCreativeFormModal(), AdCreativeFormModalProps, chevronStyle, inputBase, selectBase, actionBtnStyle, AdCreativesManager(), AdCreativesManagerProps (+14 more)
+Cohesion: 0.09
+Nodes (28): AdCreativeFormModal(), AdCreativeFormModalProps, chevronStyle, inputBase, selectBase, actionBtnStyle, AdCreativesManager(), AdCreativesManagerProps (+20 more)
 
 ### Community 30 - "Dashboard"
-Cohesion: 0.05
-Nodes (39): DEAL_CATEGORY_DEF, DEAL_DURATION_DEF, DEAL_TYPE_DEF, DealCategory, DealDuration, DealType, DomainDealConfig, DOMAIN_ICONS (+31 more)
+Cohesion: 0.06
+Nodes (32): recordDeal(), DEAL_CATEGORY_DEF, DEAL_DURATION_DEF, DEAL_TYPE_DEF, DealCategory, DealDuration, DealType, DomainDealConfig (+24 more)
 
 ### Community 31 - "Performance Services"
-Cohesion: 0.07
-Nodes (42): dismissRevivalCandidateAction(), reviveLeadAction(), updateRevivalPolicyAction(), REVIVAL_CANDIDATE_STATUSES, REVIVAL_DEFAULT_SILENCE_DAYS, REVIVAL_TASK_PRIORITY, REVIVAL_TASK_TYPE, REVIVAL_TRIGGER_STATUSES (+34 more)
+Cohesion: 0.12
+Nodes (22): dismissRevivalCandidateAction(), reviveLeadAction(), updateRevivalPolicyAction(), RevivalDossierAction(), ReviveLeadButton(), ReviveLeadButtonProps, getAgentRosterByDomain(), countAutoRevivesToday() (+14 more)
 
 ### Community 32 - "Add Lead Flow"
 Cohesion: 0.15
-Nodes (18): DateRangePreset, DEF, matchDateRangePreset(), mondayOf(), resolveDateRangePreset(), serialize(), shiftDays(), DashboardDateFilter() (+10 more)
+Nodes (21): ElayaTurnEvent, ElayaTurnResult, resolvePendingAction(), runElayaTurn(), AFFIRMATIVE_PHRASES, AFFIRMATIVE_TOKENS, classifyConfirmation(), ConfirmationVerdict (+13 more)
 
 ### Community 33 - "Dev Guide · Cluster 33"
 Cohesion: 0.13
-Nodes (21): CategoryPill(), CategoryPillProps, ActiveCategory, CaseDetailModal, HelpdeskSearch(), HelpdeskSearchProps, parseCategory(), HookList() (+13 more)
+Nodes (18): HookList(), HookListProps, Props, ServiceInterestCard(), Props, ServiceInterestCardAsync(), ConversationHook, ConversationHookRow (+10 more)
 
 ### Community 34 - "Deal Schemas"
 Cohesion: 0.06
@@ -651,8 +663,8 @@ Cohesion: 0.05
 Nodes (39): 10. Known Invariants (must never be violated), 1. Purpose, 2. Data Model, 2. Who sees it, 2a. Tables, 2b. Indexes (partial on `leads` unless noted), 2c. RPCs, 2d. Lead Status Enum (+31 more)
 
 ### Community 40 - "Dev Guide · Cluster 40"
-Cohesion: 0.14
-Nodes (16): ColdLeadJoinRow, FiredTimerJoinRow, getProfileFullName(), getSlaTimerForLeadAndRule(), getSlaTimersForLead(), getTaskWithGiaContext(), hasLeadActivityAfter(), markTaskOverdueOnce() (+8 more)
+Cohesion: 0.15
+Nodes (12): dateSeparatorLabel(), LeadWhatsAppCardProps, WhatsAppConversation, WhatsAppMessage, formatRelativeTime(), ConversationListProps, ConversationPanelProps, ConversationRow() (+4 more)
 
 ### Community 41 - "Lead Webhooks"
 Cohesion: 0.08
@@ -667,16 +679,16 @@ Cohesion: 0.05
 Nodes (39): 10. Access Control Summary, 11. Known Invariants (must never be violated), 1. Module Overview, 1. Purpose, 2. Data Model, 2. Who sees it, 2a. `whatsapp_conversations`, 2b. `whatsapp_messages` (+31 more)
 
 ### Community 44 - "Lead WhatsApp Card"
-Cohesion: 0.06
-Nodes (44): ElayaTurnEvent, ElayaTurnResult, resolvePendingAction(), runElayaTurn(), AFFIRMATIVE_PHRASES, AFFIRMATIVE_TOKENS, classifyConfirmation(), ConfirmationVerdict (+36 more)
+Cohesion: 0.09
+Nodes (23): ElayaPersona, ElayaPrincipal, searchLeadsForElaya(), ALL_TOOLS, ElayaReadToolName, ElayaTool, ElayaToolExecution, ElayaToolName (+15 more)
 
 ### Community 45 - "Create User Form"
 Cohesion: 0.09
 Nodes (21): Actions registry, addLeadCallNote and updateLeadStatus — RPC-backed writes, addTaskRemarkAction — RPC-backed (perf-02), Browser Supabase client — singleton contract, Composite cursor pattern for nullable sort columns, Constants registry, createNotification() call sites, getPersonalTasks — fully RPC-backed (TD-003 resolved 2026-05-29) (+13 more)
 
 ### Community 46 - "Route Page"
-Cohesion: 0.28
-Nodes (16): istDateKey(), policyDeadline(), scheduleCadenceTick(), BUSINESS_HOURS, createSlaTimer(), istToUtc(), normalizeDueAtToIstInstant(), toIst() (+8 more)
+Cohesion: 0.14
+Nodes (14): loadCsv(), DEFAULT_STATE, displayLabel(), HOURS, Meridiem, MINUTES, parse(), TimePicker() (+6 more)
 
 ### Community 47 - "Tasks Skeleton"
 Cohesion: 0.12
@@ -687,8 +699,8 @@ Cohesion: 0.06
 Nodes (33): Agent self-view layout (2026-06-01), Agent view — single RPC round trip (perf audit D-2, 2026-06-11), AgentDetailMetrics, AgentDetailPanel — fetch contract, AgentRosterRow, Architecture, callsToday IST boundary contract, Canonical import paths (+25 more)
 
 ### Community 49 - "Profile Schemas"
-Cohesion: 0.07
-Nodes (47): AdSpendUploadModal(), BudgetAsync(), Props, BudgetEmptyState(), BudgetTable(), BudgetTableRow, COLUMNS, AgentDistributionBar() (+39 more)
+Cohesion: 0.05
+Nodes (56): getAgentUsageAction(), BudgetAsync(), Props, BudgetEmptyState(), BudgetTable(), BudgetTableRow, COLUMNS, AgentDistributionBar() (+48 more)
 
 ### Community 50 - "Sidebar Navigation"
 Cohesion: 0.06
@@ -699,8 +711,8 @@ Cohesion: 0.05
 Nodes (41): 1. Accessibility (CRITICAL), 2. Touch & Interaction (CRITICAL), 3. Performance (HIGH), 4. Layout & Responsive (HIGH), 5. Typography & Color (MEDIUM), 6. Animation (MEDIUM), 7. Style Selection (MEDIUM), 8. Charts & Data (LOW) (+33 more)
 
 ### Community 52 - "Dynamic Form Responses"
-Cohesion: 0.11
-Nodes (18): EscalatedLeadsSection(), GoingColdSection(), OverdueTasksSection(), secondaryCell, tertiaryCell, EscalationsAsync(), EscalationsPage(), metadata (+10 more)
+Cohesion: 0.18
+Nodes (14): getHelpdeskLibraryAction(), HelpdeskDomainSchema, invalidateHelpdeskCache(), resolveHelpdeskDomain(), upsertServiceCaseAction(), APP_DOMAIN_ENUM, isGiaDomain(), HelpdeskPage() (+6 more)
 
 ### Community 53 - "Agent Detail Panel"
 Cohesion: 0.12
@@ -716,31 +728,31 @@ Nodes (19): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModu
 
 ### Community 56 - "Export"
 Cohesion: 0.04
-Nodes (72): chevronStyle, filterSelectStyle, getRolePillStyle(), UserCard(), UsersTableProps, compareDomainDisplayOrder(), DROPDOWN_VARIANTS, DROPDOWN_VARIANTS_UP (+64 more)
+Nodes (74): CampaignFilters(), CampaignFiltersProps, DateRangePreset, DEF, matchDateRangePreset(), mondayOf(), resolveDateRangePreset(), serialize() (+66 more)
 
 ### Community 57 - "Agent Settings Table"
 Cohesion: 0.10
 Nodes (20): 1. Purpose, 2. Who sees it, 3. Data sources, 4. Components, 5. States, 6. Invariants, 7. Open items, 7. The Lead Dossier Page (`/leads/[id]`) (+12 more)
 
 ### Community 58 - "Community 58"
-Cohesion: 0.06
-Nodes (67): notifyDealCreated(), createLeadTaskAction(), actorFromProfile(), assertAssigneeActive(), createGroupTaskAction(), createPersonalTaskAction(), createSubtaskAction(), deleteTaskAction() (+59 more)
+Cohesion: 0.08
+Nodes (57): createLeadTaskAction(), actorFromProfile(), assertAssigneeActive(), createGroupTaskAction(), createPersonalTaskAction(), createSubtaskAction(), deleteTaskAction(), updateChecklistAction() (+49 more)
 
 ### Community 59 - "Dev Guide · Cluster 59"
 Cohesion: 0.06
 Nodes (30): 10. Known Invariants (must never be violated), 1. Module Overview, 1. Purpose, 2. Root Route — `src/app/page.tsx`, 2. Who sees it, 3. Data sources, 4. Components, 5. Pre-Auth Pages (+22 more)
 
 ### Community 60 - "Deals Filters"
-Cohesion: 0.12
-Nodes (18): AddSuggestionButton(), AddSuggestionModal, Props, AddLeadButton(), AddLeadModal, Agent, CallerProfile, Props (+10 more)
+Cohesion: 0.13
+Nodes (17): AddSuggestionButton(), AddSuggestionModal, Props, AddLeadButton(), AddLeadModal, Agent, CallerProfile, Props (+9 more)
 
 ### Community 61 - "TypeScript Config"
 Cohesion: 0.04
 Nodes (45): 10. `beautifyCampaignTitle()`, 11. Access Control Summary, 12. Known Invariants (must never be violated), 1. Module Overview, 1. Purpose, 2. Data Model — `ad_creatives` table, 2. Who sees it, 2a. Migration history (critical) (+37 more)
 
 ### Community 62 - "Dev Guide · Cluster 62"
-Cohesion: 0.12
-Nodes (30): isNotificationCategoryKey(), DEFAULT_ON, filterRecipientsByPref(), getNotificationPrefs, isChannelEnabled(), resolveChannels(), ResolvedChannels, CreateNotificationPayload (+22 more)
+Cohesion: 0.14
+Nodes (28): createManualLead(), isNotificationCategoryKey(), LeadAssignedNotifyInput, notifyLeadAssigned(), DEFAULT_ON, filterRecipientsByPref(), getNotificationPrefs, isChannelEnabled() (+20 more)
 
 ### Community 63 - "Lead Status Panel"
 Cohesion: 0.12
@@ -751,8 +763,8 @@ Cohesion: 0.08
 Nodes (23): AddLeadModal, CampaignVideoModal, Component inventory, CreateLeadTaskModal, Dossier async children (perf audit 2026-06-11 item B), LeadColumnPicker, LeadDealCard, LeadDossierSkeletons (+15 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.07
-Nodes (37): TASK_STATUS, TASK_STATUS_DEF, TASK_TYPE_DEF, useTaskCompletionToggle(), CreateLeadTaskModal(), CreateLeadTaskModalProps, LeadTasksAsync(), Props (+29 more)
+Cohesion: 0.16
+Nodes (17): AdSpendUploadModal(), Props, CardBody(), formatTimestamp(), LeadDealCard(), LeadDealCardProps, LeadDossierTasksAsync(), Props (+9 more)
 
 ### Community 66 - "Route Page · Founder View"
 Cohesion: 0.05
@@ -775,16 +787,16 @@ Cohesion: 0.14
 Nodes (13): 10. File Map — Where Everything Lives, 11. Services Registry, 12. Actions Registry, 18. The Never-Do List, 19. Decision Log, 1. What Eia Is, 20. How to Fix Anything, 2. Tech Stack (+5 more)
 
 ### Community 71 - "Community 71"
-Cohesion: 0.08
-Nodes (18): loginAction(), loginSchema, RequireProfileResult, signOut(), updatePasswordAction(), verifyResetOtpAction(), PasswordStrengthBar(), metadata (+10 more)
+Cohesion: 0.14
+Nodes (6): updatePasswordAction(), verifyResetOtpAction(), PasswordStrengthBar(), metadata, UpdatePasswordPage(), UpdatePasswordForm()
 
 ### Community 73 - "Dev Guide · Cluster 73"
 Cohesion: 0.11
 Nodes (18): /admin/ad-creatives, /admin/users (+ /new, /[id]), Auth pages (/login, /forgot-password, /update-password), /budget, /campaigns and /campaigns/[id], /dashboard, /deals, /elaya (+10 more)
 
 ### Community 74 - "Design System"
-Cohesion: 0.07
-Nodes (36): GROUP_TASK_ACCENT_COLORS, GROUP_TASK_ICONS, TASK_CATEGORY, TASK_PRIORITY, TASK_REMARK_STATUS_LABELS, SubtaskWithAssignee, TaskRemarkWithAuthor, BOARD_COLUMNS (+28 more)
+Cohesion: 0.14
+Nodes (4): GROUP_STAGGER, ROW_STAGGER, TasksSkeleton(), TasksSkeletonProps
 
 ### Community 75 - "Design System · Cluster 75"
 Cohesion: 0.12
@@ -799,12 +811,12 @@ Cohesion: 0.15
 Nodes (13): 5.01 — Button, 5.02 — Input, 5.03 — Badge / Pill, 5.04 — Card, 5.05 — Avatar, 5.06 — Modal, 5.07 — Table, 5.08 — Toggle (+5 more)
 
 ### Community 78 - "Conversation List"
-Cohesion: 0.06
-Nodes (35): deleteGroupTaskAction(), AssigneePickerModal(), AssigneePickerModalProps, ROLE_BADGE_COLORS, GroupTaskWithMeta, CreateGroupTaskModal, getAccentForRow(), getIconForRow() (+27 more)
+Cohesion: 0.04
+Nodes (59): GROUP_TASK_ACCENT_COLORS, GROUP_TASK_ICONS, TASK_CATEGORY, TASK_REMARK_STATUS_LABELS, TASK_STATUS, useTaskCompletionToggle(), ProfileAvatarSection(), Props (+51 more)
 
 ### Community 79 - "Community 79"
-Cohesion: 0.06
-Nodes (37): setNotificationPrefAction(), signOutUser(), resolveSuggestionAction(), submitSuggestionAction(), CampaignAdCard(), FormNotice(), FormNoticeProps, TONES (+29 more)
+Cohesion: 0.05
+Nodes (36): AuthCallbackClient(), Phase, metadata, CreateLeadTaskModal(), CreateLeadTaskModalProps, CreateLeadTaskModal, LeadTasksCardProps, TERMINAL (+28 more)
 
 ### Community 80 - "Date Filter"
 Cohesion: 0.12
@@ -815,8 +827,8 @@ Cohesion: 0.20
 Nodes (10): Charts — `src/components/ui/charts/`, Core Primitives, Data Display, Icon micro-interaction family — `.serene-icon-*-hover` (design-tokens.css §15), Inputs & Date, Motion Constants — `src/lib/constants/motion.ts`, Navigation & Selection, Overlay/backdrop contract (2026-06-11 — Decision Log in `docs/design/decision-log.md`) (+2 more)
 
 ### Community 82 - "Tasks Spec"
-Cohesion: 0.10
-Nodes (25): ACTIVITY_EXPORT_HEADERS, ExportHeader, LEAD_EXPORT_HEADERS, NOTE_EXPORT_HEADERS, ExportButton(), ExportButtonProps, ExportModal(), formatTimestamp() (+17 more)
+Cohesion: 0.14
+Nodes (17): ACTIVITY_EXPORT_HEADERS, ExportHeader, LEAD_EXPORT_HEADERS, NOTE_EXPORT_HEADERS, ExportButton(), ExportButtonProps, LeadsSelectionToolbar(), LeadsSelectionToolbarProps (+9 more)
 
 ### Community 83 - "Tasks Spec · Cluster 83"
 Cohesion: 0.14
@@ -831,8 +843,8 @@ Cohesion: 0.12
 Nodes (15): Animation contracts (post-redesign 2026-05-31), Component inventory, Hook, Notification sound, Notification types and their icons, NotificationBell, NotificationItem, NotificationPanel (+7 more)
 
 ### Community 86 - "Core Four Grid"
-Cohesion: 0.13
-Nodes (25): CampaignListSkeleton(), CampaignsPage(), parseFilters(), parseGiaDomainParam(), persistDomainCookie(), readDomainCookie(), DealsSkeleton(), DealsPage() (+17 more)
+Cohesion: 0.07
+Nodes (35): CampaignListAsync(), CampaignListAsyncProps, CampaignListSkeleton(), CampaignsPage(), parseFilters(), DealsSkeleton(), DealsPage(), parseFilters() (+27 more)
 
 ### Community 87 - "Dev Guide · Cluster 87"
 Cohesion: 0.12
@@ -847,16 +859,16 @@ Cohesion: 0.15
 Nodes (12): Auth layout — composed atmosphere (2026-06-11), Auth Pages — CLAUDE.md, Error banners on dark surfaces, Eye/EyeOff toggles, `is_active` gate — two-layer defence, Label colour override, New CSS classes in `globals.css`, PasswordStrengthBar (+4 more)
 
 ### Community 90 - "Gia Spec"
-Cohesion: 0.25
-Nodes (15): cancelSlaTimersForLeadInternal(), logSlaScheduleRejections(), refreshActivitySlaTimers(), resolveAgentShift(), scheduleSlaTimersForLead(), SlaRuleCode, getAgentRoutingConfigAdmin(), cancelSlaTimersForLeadInDb() (+7 more)
+Cohesion: 0.19
+Nodes (12): loginAction(), loginSchema, RequireProfileResult, signOut(), ForgotPasswordInput, forgotPasswordSchema, LoginInput, loginSchema (+4 more)
 
 ### Community 91 - "Engineering Rules"
 Cohesion: 0.13
 Nodes (14): Decision Log, Sanctioned hardcoded-colour exceptions, Section 0 — Reuse First (the DRY law), Section 1 — Architecture, Section 2 — Security, Section 3 — Data & Privacy, Section 4 — Performance, Section 5 — Design (+6 more)
 
 ### Community 92 - "Community 92"
-Cohesion: 0.06
-Nodes (48): setAgentShiftAction(), toggleAgentRouting(), toggleRoutingSchema, toggleUserActive(), chevronStyle, EditAuthorizationForm(), initialState, labelStyle (+40 more)
+Cohesion: 0.11
+Nodes (21): chevronStyle, EditAuthorizationForm(), initialState, labelStyle, Props, selectStyle, chevronStyle, filterSelectStyle (+13 more)
 
 ### Community 93 - "Community 93"
 Cohesion: 0.14
@@ -871,20 +883,20 @@ Cohesion: 0.15
 Nodes (12): 10. Behavioural Notes & Open Product Decisions, 1. Architecture Overview, 2. Gupshup Configuration, 3. Pipeline A: Webhook Lead Ingestion, 4. Pipeline B: Inbound WhatsApp Lead Creation, 5. Assignment Paths, 6. The Orchestrator — `notifyLeadAssigned()`, 7. The 5 Send Functions (`whatsapp-api.ts`) (+4 more)
 
 ### Community 97 - "Performance Spec"
-Cohesion: 0.18
-Nodes (13): createSlaPolicyAction(), generateUserPolicyCode(), RESERVED_CODE_PREFIXES, updateSlaPolicyAction(), createSlaPolicy(), updateSlaPolicy(), CALL_OUTCOME_SET, CreateSlaPolicyInput (+5 more)
+Cohesion: 0.08
+Nodes (29): createSlaPolicyAction(), generateUserPolicyCode(), RESERVED_CODE_PREFIXES, updateSlaPolicyAction(), NewSlaPolicy, SlaPolicyPatch, updateSlaPolicy(), channelsAreTaskOnly() (+21 more)
 
 ### Community 98 - "Tasks Spec · Cluster 98"
 Cohesion: 0.18
 Nodes (12): Ad Creatives Admin Documentation, App Router Index, Campaigns Page Documentation, Dashboard Documentation, Deals Page Documentation, Leads Components Documentation, Performance Page Documentation, Performance Components Documentation (+4 more)
 
 ### Community 99 - "Dev Guide · Cluster 99"
-Cohesion: 0.17
-Nodes (14): SUGGESTION_CATEGORY_DEF, SUGGESTION_STATUS_DEF, SuggestionCategory, SuggestionStatus, CreateSuggestionPayload, getSuggestionsForInbox(), signPaths(), SuggestionInboxRow (+6 more)
+Cohesion: 0.13
+Nodes (20): resolveSuggestionAction(), submitSuggestionAction(), SUGGESTION_CATEGORY_DEF, SUGGESTION_STATUS_DEF, SuggestionCategory, SuggestionStatus, createSuggestion(), CreateSuggestionPayload (+12 more)
 
 ### Community 100 - "Community 100"
-Cohesion: 0.32
-Nodes (5): ElayaWidget(), IconInitializer(), Props, INTERACTION_EVENTS, UsagePresence()
+Cohesion: 0.10
+Nodes (25): getElayaChatSeedAction(), ELAYA_STARTER_PROMPTS, Props, SseEvent, TOOL_STATUS_LABELS, CAPABILITIES, ElayaIdentityCard(), Props (+17 more)
 
 ### Community 101 - "Community 101"
 Cohesion: 0.15
@@ -923,8 +935,8 @@ Cohesion: 0.20
 Nodes (9): 10. New Files Map, 14. Build Sequence, 15. Sign-off Conditions, 1. What This Is, 2. The Problem It Solves, Call Intelligence & Helpdesk — Full Feature Specification, Files Modified (not created), Quick Reference Summary (+1 more)
 
 ### Community 110 - "Community 110"
-Cohesion: 0.27
-Nodes (10): adaptGoogle(), adaptMeta(), adaptWebsite(), LeadSource, META_COLUMN_KEYS, NormalizedLeadPayload, normalizePhone(), parseFieldDataString() (+2 more)
+Cohesion: 0.11
+Nodes (32): CAMPAIGN_DOMAIN_MAP, resolveDomainFromCampaign(), adaptGoogle(), adaptMeta(), adaptWebsite(), LeadSource, META_COLUMN_KEYS, NormalizedLeadPayload (+24 more)
 
 ### Community 111 - "Dashboard Spec"
 Cohesion: 0.17
@@ -939,12 +951,12 @@ Cohesion: 0.17
 Nodes (11): Adding a New Widget, Component Hierarchy, Dashboard — CLAUDE.md, Data Access Rules, Dynamic Import Pattern, Phase B Widgets — File Locations, useDashboardLayout Hook, What currently renders at `/dashboard` (+3 more)
 
 ### Community 114 - "Domain Health Grid"
-Cohesion: 0.21
-Nodes (8): inter, playfairDisplay, RootLayout(), viewport, isThemeKey(), loadFeatures(), MotionProvider(), ServiceWorkerRegistration()
+Cohesion: 0.19
+Nodes (11): Props, LeadActivityLog(), buildStatusTimestamps(), CORE_STAGES, formatLocalDate(), getTerminalConfig(), LeadJourneyTimeline(), Props (+3 more)
 
 ### Community 115 - "Whatsapp"
-Cohesion: 0.17
-Nodes (10): removePushSubscriptionAction(), savePushSubscriptionAction(), PushSupport, usePushSubscription(), UsePushSubscriptionReturn, PushNotificationSettings(), RemovePushSubscriptionInput, RemovePushSubscriptionSchema (+2 more)
+Cohesion: 0.28
+Nodes (4): PushSupport, usePushSubscription(), UsePushSubscriptionReturn, PushNotificationSettings()
 
 ### Community 116 - "Whatsapp · Whats App Shell"
 Cohesion: 0.22
@@ -955,8 +967,8 @@ Cohesion: 0.18
 Nodes (11): 7. The Lead Dossier Page (`/leads/[id]`), 7a. Page Component, 7b. StatusActionPanel, 7c. LeadInfoCard, 7d. PersonalDetailsCard, 7f. CalledModal, 7g. LeadNotesInput vs LeadNotesSection, 7h. LeadJourneyTimeline (+3 more)
 
 ### Community 118 - "Community 118"
-Cohesion: 0.08
-Nodes (30): LEAD_ASSIGNABLE_ROLES, CampaignDetailPage(), LeadDossierPage(), DynamicFormResponses(), Props, LeadActivitiesAsync(), Props, LeadActivityLog() (+22 more)
+Cohesion: 0.10
+Nodes (26): LeadDossierPage(), DynamicFormResponses(), Props, LeadActivitiesAsync(), LeadDealCardAsync(), Props, LeadInfoCardAsync(), Props (+18 more)
 
 ### Community 119 - "Design System · Cluster 119"
 Cohesion: 0.18
@@ -964,7 +976,7 @@ Nodes (10): 1. Provider & configuration, 2. Service-file boundaries (three files
 
 ### Community 120 - "Community 120"
 Cohesion: 0.08
-Nodes (33): getAgentUsageAction(), recordPresenceAction(), resolveColorMap(), DOMAIN_LINE_COLORS, CallOutcomeBar(), OUTCOME_COLOR_VARS, OUTCOME_CONFIG, OUTCOME_ORDER (+25 more)
+Nodes (28): markAllReadAction(), markNotificationReadAction(), markReadSchema, recordPresenceAction(), DashboardLayout(), INTERACTION_EVENTS, UsagePresence(), CreateNotificationPayload (+20 more)
 
 ### Community 121 - "Leads Spec · Cluster 121"
 Cohesion: 0.22
@@ -1027,12 +1039,12 @@ Cohesion: 0.25
 Nodes (8): 4.1 Display & Heading — Playfair Display, 4.2 Body & UI — Geist Sans, 4.3 Micro Labels — Geist Sans, uppercase, 4.4 Technical Values — Geist Mono, 4.5 Typography Hierarchy, 4.6 The Rules That Prevent the Common Failures, 4. Typography Rules, Philosophy
 
 ### Community 136 - "Gia Spec · Cluster 136"
-Cohesion: 0.20
-Nodes (9): BADGE, BadgeVariant, categoriseError(), ERROR_CATEGORY_LABELS, ErrorLogTableProps, ErrorRow(), errorVariant(), SourceFilter (+1 more)
+Cohesion: 0.12
+Nodes (15): BADGE, BadgeVariant, categoriseError(), ERROR_CATEGORY_LABELS, ErrorLogTable(), ErrorLogTableProps, ErrorRow(), errorVariant() (+7 more)
 
 ### Community 137 - "Community 137"
-Cohesion: 0.14
-Nodes (13): categoriesForRole(), CATEGORY_BY_KEY, NOTIFICATION_CATEGORY_ENUM, NOTIFICATION_CATEGORY_KEYS, NotificationCategory, NotificationCategoryKey, NotificationChannel, ChannelState (+5 more)
+Cohesion: 0.12
+Nodes (17): categoriesForRole(), CATEGORY_BY_KEY, NOTIFICATION_CATEGORY_ENUM, NOTIFICATION_CATEGORY_KEYS, NotificationCategory, NotificationCategoryKey, NotificationChannel, WorkspaceAsyncProps (+9 more)
 
 ### Community 138 - "User Management Spec · Cluster 138"
 Cohesion: 0.20
@@ -1043,8 +1055,8 @@ Cohesion: 0.14
 Nodes (14): 2026-05-26 — Phase 0 complete, 2026-05-26 — Phase 1 complete, 2026-05-27 — Phase 2 complete, 2026-05-27 — Phase 3 complete, 2026-05-27 — Phase 4 complete, 2026-05-27 — Phase 5 complete, 2026-05-27 — Phase 6 complete, Foundation (+6 more)
 
 ### Community 140 - "Community 140"
-Cohesion: 0.33
-Nodes (7): getServiceCategoryLabel(), SERVICE_CATEGORY_DEF, ServiceCategory, ServiceInterest, CaseCard(), CaseCardProps, CategoryTag()
+Cohesion: 0.14
+Nodes (18): getServiceCategoryLabel(), SERVICE_CATEGORY_DEF, ServiceCategory, ServiceInterest, CaseCard(), CaseCardProps, CaseListRow(), CaseListRowProps (+10 more)
 
 ### Community 141 - "Dev Guide · Cluster 141"
 Cohesion: 0.29
@@ -1179,8 +1191,8 @@ Cohesion: 0.33
 Nodes (6): 16.4 — Chart-Specific Colour Rules, Bar Chart, Donut / Pie Chart, Line Chart, Progress Bar / Pipeline Stage Chart, Scatter Plot
 
 ### Community 174 - "Dev Guide · Cluster 174"
-Cohesion: 0.22
-Nodes (9): 2. Data Model, 8. Access Control Summary, 8. Deep dive, 9. Known Invariants (must never be violated), `ad_creatives` (migration `20260528000012_ad_creatives.sql`, multi-video migration `20260601000058_ad_creatives_multi_video.sql`), Campaign components inventory (`src/components/campaigns/`), Enforcement layers, Indexes on `leads` (migration `20260528000014_campaign_analytics.sql`) (+1 more)
+Cohesion: 0.15
+Nodes (13): 2. Data Model, 4. Services (inside `leads-service.ts`), 8. Access Control Summary, 8. Deep dive, 9. Known Invariants (must never be violated), `ad_creatives` (migration `20260528000012_ad_creatives.sql`, multi-video migration `20260601000058_ad_creatives_multi_video.sql`), Campaign components inventory (`src/components/campaigns/`), Enforcement layers (+5 more)
 
 ### Community 175 - "Dev Guide · Cluster 175"
 Cohesion: 0.33
@@ -1191,8 +1203,8 @@ Cohesion: 0.22
 Nodes (8): 1. Purpose, 2. Who sees it, 3. Data sources, 4. Components, 5. States, 6. Invariants, 7. Open items, Dashboard — Page Spec
 
 ### Community 177 - "Community 177"
-Cohesion: 0.07
-Nodes (45): selectAdapter(), isRateLimited, LEAD_SOURCES_SET, logRawPayload(), POST(), createLeadFromWhatsApp(), extractServiceInterests(), IngestionResult (+37 more)
+Cohesion: 0.18
+Nodes (17): isRateLimited, LEAD_SOURCES_SET, logRawPayload(), POST(), sanitizeRawPayload(), verifyMetaSignature(), parseWebhookPayload(), JsonValue (+9 more)
 
 ### Community 178 - "Call Intelligence · Cluster 178"
 Cohesion: 0.33
@@ -1243,8 +1255,8 @@ Cohesion: 0.20
 Nodes (9): AgentDetailPanel — fetch pattern, AgentPerformanceShell — the ONE pulse fetch (Today tab + Overview strip), Component inventory, Component remount contract, Founder drill-down deck (Phase 5), `isLoading` state — not `useTransition`, Recharts loading rule (perf audit G-3), src/components/performance/ — CLAUDE.md (+1 more)
 
 ### Community 190 - "Community 190"
-Cohesion: 0.47
-Nodes (4): CaseListRow(), CaseListRowProps, CATEGORY_ICONS, getCategoryIcon()
+Cohesion: 0.14
+Nodes (13): appDomainEnum, CreateUserInput, createUserSchema, InviteUserInput, inviteUserSchema, ToggleUserActiveInput, toggleUserActiveSchema, UpdateAuthorizationInput (+5 more)
 
 ### Community 191 - "Community 191"
 Cohesion: 0.50
@@ -1323,8 +1335,8 @@ Cohesion: 0.29
 Nodes (7): 3a. `get_campaign_metrics` (migration `20260528000014`, fixed `20260530000044`), Aggregate technique, Domain type fix (migration 0044), List RPC parameters, Manager domain constraint, Returns one row per `(utm_campaign, domain)`, Security
 
 ### Community 210 - "Gia Spec · Cluster 210"
-Cohesion: 0.07
-Nodes (38): anthropicAdapter, maskPii(), maskString(), LlmChatMessage, LlmCompleteRequest, LlmCompleteResult, LlmProviderAdapter, LlmStopReason (+30 more)
+Cohesion: 0.11
+Nodes (21): anthropicAdapter, LlmChatMessage, LlmCompleteRequest, LlmCompleteResult, LlmProviderAdapter, LlmStopReason, LlmToolDefinition, LlmUsage (+13 more)
 
 ### Community 211 - "Gia Spec · Cluster 211"
 Cohesion: 0.29
@@ -1343,8 +1355,8 @@ Cohesion: 0.29
 Nodes (6): "I want X" → read Y, Maintenance rules, Reading orders, Serene Documentation, The page-spec template, The tree
 
 ### Community 215 - "Community 215"
-Cohesion: 0.09
-Nodes (21): getManagerRosterAction(), conversionBadgeBg(), conversionBadgeText(), conversionPipColor(), DomainCard(), Props, FounderPerfActionsContext, FounderPerfActionsContextValue (+13 more)
+Cohesion: 0.18
+Nodes (4): ManagerPerformanceSkeleton(), STAGGER, PerformanceSkeleton(), STAGGER
 
 ### Community 216 - "Agent Skill · Cluster 216"
 Cohesion: 0.33
@@ -1495,8 +1507,8 @@ Cohesion: 0.50
 Nodes (4): Debugging Animations, Frame-by-frame inspection, Slow motion testing, Test on real devices
 
 ### Community 253 - "Table"
-Cohesion: 0.07
-Nodes (25): chevronStyle, CreateUserForm(), CreateUserFormProps, CreateUserMode, FieldProps, FooterProps, formStyle, initialState (+17 more)
+Cohesion: 0.10
+Nodes (14): chevronStyle, CreateUserForm(), CreateUserFormProps, CreateUserMode, FieldProps, FooterProps, formStyle, initialState (+6 more)
 
 ### Community 254 - "Dev Guide · Cluster 254"
 Cohesion: 0.29
@@ -1507,8 +1519,8 @@ Cohesion: 0.83
 Nodes (3): layer_of(), main(), sanitize()
 
 ### Community 256 - "Community 256"
-Cohesion: 0.09
-Nodes (17): EASE_SPRING, Calendar(), CalendarProps, MONTHS, MONTHS_SHORT, PickerProps, TaskDotMeta, WEEKDAYS (+9 more)
+Cohesion: 0.19
+Nodes (10): EASE_SPRING, ChecklistEntry, ChecklistProps, ChecklistItem(), ChecklistItemProps, INTENT_COLOURS, ProgressBar(), ProgressBarIntent (+2 more)
 
 ### Community 257 - "Call Intelligence · Cluster 257"
 Cohesion: 0.67
@@ -1559,8 +1571,8 @@ Cohesion: 0.29
 Nodes (7): 12. Group Tasks Tab — `GroupTasksTab`, Callbacks, Delete group — portal pattern, Expanded subtasks, Group card, New group, `TaskGroupRow` (service type + UI meta)
 
 ### Community 270 - "Community 270"
-Cohesion: 0.13
-Nodes (16): markAllReadAction(), markNotificationReadAction(), markReadSchema, markAllNotificationsRead(), markNotificationRead(), ProfileAuditLog, ActionResult, DashboardAgentActivity (+8 more)
+Cohesion: 0.22
+Nodes (9): ADMIN_ROLES, uploadAdSpendAction(), UploadAdSpendSummary, getExistingSpendKeys(), ActionResult, normalizeCampaignKey(), adSpendRowSchema, UploadAdSpendInput (+1 more)
 
 ### Community 271 - "Community 271"
 Cohesion: 0.25
@@ -1575,8 +1587,8 @@ Cohesion: 0.50
 Nodes (3): Services CLAUDE.md, Template sends in whatsapp-api.ts — `sendGupshupTemplate()` is the only pipeline, Web Push — `createNotification` is the fan-out seam; `push-service.ts` is the sender
 
 ### Community 274 - "Community 274"
-Cohesion: 0.10
-Nodes (32): armCadenceForOutcome(), ArmCadenceSchema, CadenceLeadRow, CancelSlaSchema, describePolicy(), fireSlaBreachAction(), fireSlaBreachHandler(), FireSlaBreachSchema (+24 more)
+Cohesion: 0.06
+Nodes (80): addLeadCallNote(), armCadenceForOutcome(), ArmCadenceSchema, CadenceLeadRow, CancelSlaSchema, cancelSlaTimersForLeadInternal(), describePolicy(), fireSlaBreachAction() (+72 more)
 
 ### Community 283 - "Changelog Archive · Cluster 283"
 Cohesion: 0.50
@@ -1590,9 +1602,13 @@ Nodes (4): 6. Retrieval Strategy — Why Client-Side Wins, Helpdesk Page Strateg
 Cohesion: 0.18
 Nodes (10): Calibration eval — the regression check (`scripts/test-revival-gate.ts`), Constants, File map (what's new vs. reused), Lead Revival, `revival_candidates` — the candidate ledger (append-only-ish state machine), `revival_policies` — config (the sla_policies pattern), Schema (migration 0119), The daily sweep (`src/trigger/lead-revival.ts`) (+2 more)
 
+### Community 296 - "Community 296"
+Cohesion: 0.25
+Nodes (7): GroupTaskWorkspacePage(), WorkspaceAsync(), STAGGER, WorkspaceSkeleton(), getGroupSubtasks, getTaskGroupById(), Props
+
 ### Community 297 - "Community 297"
-Cohesion: 0.07
-Nodes (40): assignLead(), createManualLead(), ElayaActionPayload, ElayaActionTarget, ElayaActionType, ElayaLeadTarget, ElayaTaskTarget, insertExecutedAction() (+32 more)
+Cohesion: 0.06
+Nodes (37): ElayaActionPayload, ElayaActionTarget, ElayaActionType, ElayaLeadTarget, ElayaTaskTarget, insertExecutedAction(), insertProposedAction(), supersedePriorProposals() (+29 more)
 
 ### Community 299 - "Community 299"
 Cohesion: 0.67
@@ -1631,8 +1647,8 @@ Cohesion: 0.67
 Nodes (3): 7. Redis Caching Layer, `getAllServiceCases` — Helpdesk Cache, `getCasesForLead` — Dossier Card
 
 ### Community 312 - "Community 312"
-Cohesion: 0.50
-Nodes (4): 4. Services (inside `leads-service.ts`), `getCampaignAgentDistribution(campaignName, filters)`, `getCampaignDetailMetrics(campaignName, filters)`, `getCampaignMetrics(role, callerDomain, filters)`
+Cohesion: 0.22
+Nodes (9): inputStyle, RevivalPoliciesPanel(), RevivalPoliciesPanelProps, RevivalPolicyRow, THUMB, Toggle(), ToggleProps, ToggleSize (+1 more)
 
 ### Community 313 - "Community 313"
 Cohesion: 0.40
@@ -1874,6 +1890,10 @@ Nodes (4): Notification Components, NotificationBell, NotificationItem, Notifica
 Cohesion: 0.50
 Nodes (4): Toast System, ToastItem, ToastProvider, useToast hook
 
+### Community 373 - "Community 373"
+Cohesion: 0.18
+Nodes (10): MetaApiResponse, MetaContact, MetaInboundMessage, MetaMediaObject, MetaStatusUpdate, MetaWebhookChange, MetaWebhookEntry, MetaWebhookValue (+2 more)
+
 ### Community 374 - "Community 374"
 Cohesion: 0.40
 Nodes (5): 9. Manager View, 9a. `ManagerPerformanceAsync`, 9b. `ManagerPerformanceSkeleton`, 9c. `ManagerPerformancePanel`, 9d. `AgentDetailPanel` (updated 2026-06-04)
@@ -1907,8 +1927,8 @@ Cohesion: 0.67
 Nodes (3): 7. The `/performance` Page — Role Branching, 7a. `page.tsx`, 7b. `PerformanceFilters`
 
 ### Community 382 - "Community 382"
-Cohesion: 0.19
-Nodes (10): insertActivityBatches(), insertLeadBatches(), insertNoteBatches(), istToUtc(), loadCsv(), main(), normaliseOutcome(), OUTCOME_MAP (+2 more)
+Cohesion: 0.20
+Nodes (9): insertActivityBatches(), insertLeadBatches(), insertNoteBatches(), istToUtc(), main(), normaliseOutcome(), OUTCOME_MAP, STATUS_MAP (+1 more)
 
 ### Community 383 - "Community 383"
 Cohesion: 0.67
@@ -1925,6 +1945,10 @@ Nodes (4): 2. The Core Authorization Principle, How a role change takes effect, 
 ### Community 387 - "Community 387"
 Cohesion: 0.50
 Nodes (4): 7. The Lead Dossier Page, Access gates (page-level, mirrors action-level), Component Layout, Component Responsibilities
+
+### Community 388 - "Community 388"
+Cohesion: 0.36
+Nodes (7): isWhatsAppPeriod(), WHATSAPP_PERIOD_LABELS, WHATSAPP_PERIODS, WhatsAppPeriod, WhatsAppPeriodRange, periodOptionRow(), WhatsAppConversationPeriodFilter()
 
 ### Community 389 - "Community 389"
 Cohesion: 0.67
@@ -1954,6 +1978,10 @@ Nodes (4): 9. Notes System, Call Notes (via CalledModal), Display, Plain Notes (
 Cohesion: 0.20
 Nodes (10): insertLeadBatches(), insertNoteBatches(), istToUtc(), loadCsv(), main(), NAME_ALIASES, normaliseOutcome(), OUTCOME_MAP (+2 more)
 
+### Community 396 - "Community 396"
+Cohesion: 0.24
+Nodes (6): AddSuggestionModal(), AddSuggestionModalProps, borderFor(), fieldChrome, FieldErrors, ServiceCase
+
 ### Community 397 - "Community 397"
 Cohesion: 0.50
 Nodes (4): Component inventory, `src/app/(dashboard)/performance/`, `src/components/performance/`, `src/lib/actions/performance.ts`
@@ -1963,8 +1991,12 @@ Cohesion: 0.14
 Nodes (11): ADMIN_NAV, ANALYTICS_NAV, getConfigurationNav(), MAIN_NAV, MOBILE_TRIGGER_PATHS, NavItem, Sidebar(), SidebarProps (+3 more)
 
 ### Community 401 - "Community 401"
-Cohesion: 0.10
-Nodes (23): LEAD_STATUS_BADGE, DealCard(), DealsAsync(), DealsAsyncProps, DealsSummaryStrip(), DealsSummaryStripProps, get_deals_summary, LeadsPagination() (+15 more)
+Cohesion: 0.11
+Nodes (17): getAgentDealsScopedAction(), cardStyle, DealCard(), DealCardProps, DealsAsync(), DealsAsyncProps, DealsSummaryStrip(), DealsSummaryStripProps (+9 more)
+
+### Community 402 - "Community 402"
+Cohesion: 0.33
+Nodes (7): getUnreadCount(), parseWhatsAppPeriodFromSearchParams(), EmptyConversationState(), PageProps, WhatsAppPage(), WhatsAppShell(), WhatsAppShellProps
 
 ### Community 404 - "Community 404"
 Cohesion: 0.20
@@ -1978,6 +2010,10 @@ Nodes (8): `Dialog` — `Dialog.tsx` — `DialogProps`, `FilterDropdown` — `Fi
 Cohesion: 0.40
 Nodes (3): requestPasswordResetAction(), ForgotPasswordForm(), metadata
 
+### Community 407 - "Community 407"
+Cohesion: 0.22
+Nodes (8): WHATSAPP_API_BASE, WHATSAPP_API_VERSION, WHATSAPP_CONVERSATION_STATUS, WHATSAPP_DIRECTION, WHATSAPP_MESSAGE_STATUS, WHATSAPP_MESSAGE_TYPES, WHATSAPP_NOTIFICATION_TEMPLATES, WHATSAPP_SENDER_TYPE
+
 ### Community 408 - "Community 408"
 Cohesion: 0.26
 Nodes (8): DEF, persistThemeCookie(), ThemeKey, useNotificationSound(), Props, ThemeInitializer(), Props, ThemeSelector()
@@ -1986,13 +2022,21 @@ Nodes (8): DEF, persistThemeCookie(), ThemeKey, useNotificationSound(), Props, T
 Cohesion: 0.18
 Nodes (10): inner, KEYS, nextDir, OUT_DIR, pad, PLATE, require, ROOT (+2 more)
 
+### Community 410 - "Community 410"
+Cohesion: 0.29
+Nodes (6): NewUserClient(), EASE_OUT_SOFT, NewUserPage(), BackButton(), BackButtonProps, MotionLink
+
 ### Community 411 - "Community 411"
 Cohesion: 0.13
-Nodes (14): 15. Cross-Feature Interaction Map, 17. Things You Must Know Before Changing Code (Gotchas), 18. Technical Reference & Glossary, 19. Directory Map, 3. System Architecture, 4. Request Flow & Data Flow, Environment Variables, Glossary (+6 more)
+Nodes (14): 15. Cross-Feature Interaction Map, 17. Things You Must Know Before Changing Code (Gotchas), 19. Directory Map, 2. Tech Stack & Conventions, 3. System Architecture, 4. Request Flow & Data Flow, Layering Convention, One Navigation (RSC page) (+6 more)
 
 ### Community 412 - "Community 412"
 Cohesion: 0.20
 Nodes (8): CATEGORIES, errors, FORCE, raw, SeedCase, SeedFile, SeedHook, supabase
+
+### Community 414 - "Community 414"
+Cohesion: 0.29
+Nodes (5): EditProfileForm(), FieldProps, initialState, inputStyle, Props
 
 ### Community 415 - "Community 415"
 Cohesion: 0.25
@@ -2006,9 +2050,25 @@ Nodes (5): 15.3 — Elaya's Surfaces, Surface A — The Elaya Panel (persistent 
 Cohesion: 0.18
 Nodes (11): 16. Design System Reference, Core Component Library (`src/components/ui/`), Five Themes (`data-theme` on `<html>`, default Earth), Motion Rules (M-01–M-06), Never-Do List (visual subset), Sanctioned `backdrop-filter` surfaces (only three), Standard Page Layouts, The Surface Contract (text colour by surface) (+3 more)
 
+### Community 418 - "Community 418"
+Cohesion: 0.29
+Nodes (3): BudgetContentSkeleton(), COL_WIDTHS, LeadsTableSkeleton()
+
+### Community 419 - "Community 419"
+Cohesion: 0.40
+Nodes (3): DossierCardSkeleton(), Props, ROW_WIDTHS
+
+### Community 420 - "Community 420"
+Cohesion: 0.50
+Nodes (4): LeadTasksAsync(), Props, LeadTasksCard(), getAllLeadTasks()
+
 ### Community 428 - "Community 428"
 Cohesion: 0.40
 Nodes (4): Access, Behaviour, /elaya — Elaya Chat, Never
+
+### Community 429 - "Community 429"
+Cohesion: 0.50
+Nodes (4): 18. Technical Reference & Glossary, Environment Variables, Glossary, Key Files Quick Index
 
 ### Community 431 - "Community 431"
 Cohesion: 0.15
@@ -2039,8 +2099,8 @@ Cohesion: 0.33
 Nodes (6): 9. Feature: OS Tasks, Data Model, Pages & Components, Read Paths (`src/lib/services/tasks-service.ts`, read-only), Trigger.dev (`src/trigger/task-reminders.ts`), Write Paths (`src/lib/actions/tasks.ts`)
 
 ### Community 440 - "Community 440"
-Cohesion: 0.06
-Nodes (46): exportLeadsAction(), AdCreativesPage(), EMPTY_FILTERS, UsersTable(), RootPage(), GET(), buildLeadListKey(), ErrorLogTable() (+38 more)
+Cohesion: 0.07
+Nodes (31): AdCreativesPage(), EMPTY_FILTERS, buildLeadListKey(), ROUTING_POOL_ROLES, getAllAdCreatives(), ExportActivitiesAndNotes, ExportResult, fetchCampaignMetricsFromRpc() (+23 more)
 
 ### Community 441 - "Community 441"
 Cohesion: 0.22
@@ -2051,8 +2111,8 @@ Cohesion: 0.33
 Nodes (5): Engine Health Check — daily runbook, Go-live week, Read it, Related, Run it
 
 ### Community 443 - "Community 443"
-Cohesion: 0.18
-Nodes (15): generateMetadata(), buildManifest(), manifest(), DEF, IconKey, iconSrc(), isIconKey(), persistAppIconCookie() (+7 more)
+Cohesion: 0.10
+Nodes (25): generateMetadata(), inter, playfairDisplay, RootLayout(), viewport, buildManifest(), manifest(), DEF (+17 more)
 
 ### Community 444 - "Community 444"
 Cohesion: 0.40
@@ -2083,8 +2143,8 @@ Cohesion: 0.50
 Nodes (4): 10. Feature: Dashboard, Architecture, The RPC (`get_dashboard_summary`, migration 0115), Widget Registry (`src/lib/constants/dashboard-widgets.ts`, pure data)
 
 ### Community 451 - "Community 451"
-Cohesion: 0.09
-Nodes (19): buildStatusTimestamps(), CORE_STAGES, formatLocalDate(), getTerminalConfig(), LeadJourneyTimeline(), Props, TERMINAL_OUTCOMES, DETAILS_FIELD (+11 more)
+Cohesion: 0.17
+Nodes (10): DETAILS_FIELD, inputStyle, JSONB_FIELD_KEYS, JSONB_GRID_FIELDS, labelStyle, PersonalDetailsCard(), Props, readValueStyle() (+2 more)
 
 ### Community 454 - "Community 454"
 Cohesion: 0.25
@@ -2094,21 +2154,17 @@ Nodes (7): Env, Invariants (never weaken), Related, The five surfaces, The piece
 Cohesion: 0.29
 Nodes (6): Assembly chain, Currency / AED — summary, Elaya — Currency / AED grep + system-prompt assembler, Prompt does NOT mention currency, System-prompt assembler — files containing `system`, Where deal amounts surface in Elaya tools
 
-### Community 460 - "Community 460"
-Cohesion: 0.50
-Nodes (4): 2. Tech Stack & Conventions, Layering Convention, Stack (final — do not propose alternatives), The 12 Non-Negotiable Rules (command-layer summary)
-
 ### Community 464 - "Community 464"
 Cohesion: 0.33
 Nodes (8): args, CONFIRM, deleteIn(), fetchCurrentShopLeadIds(), insertAll(), loadBackup(), main(), supabase
 
 ### Community 465 - "Community 465"
 Cohesion: 0.05
-Nodes (51): ActivityCursorSchema, AgentSelfMetrics, assertDrillAccess(), DrillCursorSchema, getAgentActivityForManagerAction(), getAgentCallsForManagerAction(), getAgentDealsScopedAction(), getAgentDetailMetricsAction() (+43 more)
+Nodes (35): AgentSelfMetrics, getAgentPulseAction(), DROPDOWN_VARIANTS, DROPDOWN_VARIANTS_UP, EASE_IN_EXPO, EASE_IN_OUT, EASE_OUT_EXPO, FADE_VARIANTS (+27 more)
 
 ### Community 466 - "Community 466"
-Cohesion: 0.05
-Nodes (67): ConversationIdSchema, getConversationsAction(), getMessagesAction(), initiateWhatsAppConversationAction(), markConversationAsRead(), reopenConversation(), resolveConversation(), searchConversationsAction() (+59 more)
+Cohesion: 0.17
+Nodes (11): MetaStatusUpdateInput, MetaStatusUpdateSchema, MetaWebhookPayloadInput, MetaWebhookPayloadSchema, ResolveConversationInput, ResolveConversationSchema, SendMessageInput, SendMessageSchema (+3 more)
 
 ### Community 468 - "Community 468"
 Cohesion: 0.18
@@ -2119,24 +2175,24 @@ Cohesion: 0.33
 Nodes (5): Component map, Create AND edit share ONE form, ONE action (R-01), Edit affordance gating — server is the gate, the hide is cosmetic, Heavy-modal loading, Intelligence Components — CLAUDE.md
 
 ## Knowledge Gaps
-- **3863 isolated node(s):** `PreToolUse`, `nextConfig`, `name`, `version`, `private` (+3858 more)
+- **3864 isolated node(s):** `PreToolUse`, `nextConfig`, `name`, `version`, `private` (+3859 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **36 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **37 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `AppDomain` connect `Task Schemas & Actions` to `Notification Feed`, `WhatsApp Webhooks`, `Time Picker`, `Subtask Workspace`, `Project Config`, `Community 270`, `Task Client Filters`, `Community 401`, `Lead-Linked Tasks`, `Community 274`, `My Tasks Calendar View`, `Use Chart Tokens`, `Dev Guide`, `Creative Form`, `Dashboard`, `Dev Guide · Cluster 33`, `Dev Guide · Cluster 40`, `Community 297`, `Lead WhatsApp Card`, `Profile Schemas`, `Community 177`, `Dynamic Form Responses`, `Community 440`, `Export`, `Community 58`, `Deals Filters`, `Dev Guide · Cluster 62`, `Community 65`, `Design System`, `Conversation List`, `Community 465`, `Core Four Grid`, `Community 215`, `Community 92`, `Community 120`?**
+- **Why does `AppDomain` connect `Task Schemas & Actions` to `WhatsApp Webhooks`, `Time Picker`, `Subtask Workspace`, `Community 137`, `Project Config`, `Community 396`, `Task Client Filters`, `Community 401`, `Lead-Linked Tasks`, `Community 274`, `My Tasks Calendar View`, `Ad Creatives Spec`, `Use Chart Tokens`, `Creative Form`, `Dashboard`, `Dev Guide · Cluster 33`, `Community 296`, `Community 297`, `Lead WhatsApp Card`, `Profile Schemas`, `Dynamic Form Responses`, `Export`, `Community 440`, `Community 58`, `Deals Filters`, `Dev Guide · Cluster 62`, `Conversation List`, `Core Four Grid`, `Community 110`, `Community 120`?**
+  _High betweenness centrality (0.010) - this node is a cross-community bridge._
+- **Why does `createAdminClient()` connect `Community 58` to `Notification Feed`, `Time Picker`, `Subtask Workspace`, `Community 270`, `Community 401`, `Lead-Linked Tasks`, `Community 274`, `Use Chart Tokens`, `Campaign Cards`, `Lead Info Card`, `Performance Services`, `Add Lead Flow`, `Community 297`, `Lead WhatsApp Card`, `Community 177`, `Community 440`, `Dev Guide · Cluster 62`, `Gia Spec · Cluster 210`, `Core Four Grid`, `Performance Spec`, `Dev Guide · Cluster 99`, `Community 110`, `Community 120`?**
   _High betweenness centrality (0.009) - this node is a cross-community bridge._
 - **Why does `Serene — Changelog` connect `Changelog Archive` to `Dev Guide · Cluster 69`, `Changelog Archive · Cluster 230`, `Design DNA · Cluster 231`, `Changelog Archive · Cluster 264`, `Changelog Archive · Cluster 265`, `Dashboard Spec · Cluster 266`, `Agent Skill · Cluster 139`, `Design DNA · Cluster 232`, `Changelog Archive · Cluster 281`, `Changelog Archive · Cluster 282`, `Dev Guide · Cluster 175`, `Community 280`, `Tasks Spec · Cluster 153`, `Tasks Spec · Cluster 154`?**
-  _High betweenness centrality (0.008) - this node is a cross-community bridge._
-- **Why does `createAdminClient()` connect `Community 58` to `Time Picker`, `Subtask Workspace`, `Project Config`, `Community 401`, `Lead-Linked Tasks`, `Community 274`, `Use Chart Tokens`, `Campaign Cards`, `Performance Services`, `Dev Guide · Cluster 40`, `Community 297`, `Lead WhatsApp Card`, `Route Page`, `Community 177`, `Dynamic Form Responses`, `Community 440`, `Dev Guide · Cluster 62`, `Conversation List`, `Community 79`, `Community 465`, `Community 466`, `Gia Spec · Cluster 210`, `Core Four Grid`, `Gia Spec`, `Community 92`, `Performance Spec`, `Dev Guide · Cluster 99`, `Community 120`, `Table`?**
-  _High betweenness centrality (0.008) - this node is a cross-community bridge._
+  _High betweenness centrality (0.009) - this node is a cross-community bridge._
 - **Are the 6 inferred relationships involving `getCurrentProfile` (e.g. with `loginAction()` and `requireProfile()`) actually correct?**
   _`getCurrentProfile` has 6 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `PreToolUse`, `BM25 ranking algorithm for text search`, `Lowercase, split, remove punctuation, filter short words` to the rest of the system?**
-  _3889 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _3890 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Changelog Archive` be split into smaller, more focused modules?**
-  _Cohesion score 0.0037174721189591076 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0037105751391465678 - nodes in this community are weakly interconnected._
 - **Should `Design DNA` be split into smaller, more focused modules?**
   _Cohesion score 0.014492753623188406 - nodes in this community are weakly interconnected._

@@ -1110,8 +1110,8 @@
     "semantic_hash": ""
   },
   "src/lib/actions/leads.ts": {
-    "mtime": 1781623616.2277288,
-    "ast_hash": "287b90d2e497344c45c50e00964114cc",
+    "mtime": 1781681103.7653525,
+    "ast_hash": "fa494e2980dba981512c6b6a24b7fce0",
     "semantic_hash": ""
   },
   "src/lib/actions/notifications.ts": {
@@ -1295,13 +1295,13 @@
     "semantic_hash": ""
   },
   "src/lib/services/lead-ingestion.ts": {
-    "mtime": 1781623206.4794836,
-    "ast_hash": "f1d2e426e5ed57d13b610573a2cbfc6d",
+    "mtime": 1781680922.0217655,
+    "ast_hash": "4d896702159f29e14112ee6e68d3705f",
     "semantic_hash": ""
   },
   "src/lib/services/leads-service.ts": {
-    "mtime": 1781678596.2254045,
-    "ast_hash": "75fcde393a2053854886090b08e01865",
+    "mtime": 1781680768.9733577,
+    "ast_hash": "57d3ed970bd194f1c2a3589b809f866f",
     "semantic_hash": ""
   },
   "src/lib/services/notifications-service.ts": {
@@ -1335,8 +1335,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/whatsapp-ingestion.ts": {
-    "mtime": 1781342835.1595395,
-    "ast_hash": "579f729ee159c45818582ec5d5d1d568",
+    "mtime": 1781681002.5262086,
+    "ast_hash": "ebb7c50f537e7b4f6fde56706bd0a4f6",
     "semantic_hash": ""
   },
   "src/lib/services/whatsapp-service.ts": {
@@ -1430,8 +1430,8 @@
     "semantic_hash": "eab1efc4f6b9c0d95bd41d0c6a5df3ed"
   },
   "src/lib/utils/phone.ts": {
-    "mtime": 1781342835.1252358,
-    "ast_hash": "121ab37d0dce6b994107530288b7035d",
+    "mtime": 1781680696.1464972,
+    "ast_hash": "ed82593149aa1655acb561580f525ca5",
     "semantic_hash": ""
   },
   "src/lib/utils/route-access.ts": {
@@ -2055,8 +2055,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1781678698.9064143,
-    "ast_hash": "8974383d16584b83837695c7748f7567",
+    "mtime": 1781681208.7883074,
+    "ast_hash": "acc39deed80a711e07cf75ebb8033e06",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -2165,8 +2165,8 @@
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {
-    "mtime": 1781648281.601788,
-    "ast_hash": "498eb02b3e89084ade4c8b1e665c5c67",
+    "mtime": 1781681230.3345003,
+    "ast_hash": "a3e1fba1ce3c410de3b7d08056ef1be0",
     "semantic_hash": ""
   },
   "imgs/DB-Schema-img-2.png": {
@@ -3857,6 +3857,11 @@
   "docs/operations/engine-health-check.md": {
     "mtime": 1781648242.963923,
     "ast_hash": "43a5816605fda41b00b849a84b795477",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260617000137_lead_phone_dedup_uniqueness.sql": {
+    "mtime": 1781680733.2062802,
+    "ast_hash": "86f9946eb529ddc921b1f536e2f93950",
     "semantic_hash": ""
   }
 }
