@@ -659,6 +659,10 @@ export async function getLeadNotes(leadId: string): Promise<LeadNote[]> {
 
 // ─────────────────────────────────────────────
 // Query: lead notes with author names — single joined query
+//
+// SESSION-CLIENT ONLY (createClient() + RLS). A sessionless caller (Trigger.dev
+// job, WhatsApp webhook, Elaya brain after the cookie session is off the request)
+// gets 0 rows → must use the admin-client twin getLeadNotesFullForElaya instead.
 // ─────────────────────────────────────────────
 export async function getLeadNotesFull(
   leadId: string,

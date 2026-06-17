@@ -24,7 +24,15 @@
 
 import { z } from "zod";
 import type { ElayaPrincipal } from "@/lib/elaya/principal";
-import { getLeadBySlug } from "@/lib/services/leads-service";
+// Elaya runs in BOTH a session context (in-app SSE) AND sessionless contexts
+// (WhatsApp webhook; the SSE stream after the cookie session is no longer on the
+// request). The write tools must resolve the lead the same way the READ tool does
+// — via the ADMIN-client getLeadBySlugForElaya, NEVER the session-client
+// getLeadBySlug (.single() on a cookie client returns 0 rows → 406 → null →
+// REFUSE_LEAD even for a lead the user owns). Identity is re-checked immediately
+// after via canAccessLead(principal, …) (the per-resource trust boundary, Q-13),
+// so the broad admin read is safe — exactly the get_lead_details pattern.
+import { getLeadBySlugForElaya } from "@/lib/services/leads-service";
 import type { LeadWithAssignee } from "@/lib/services/leads-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -193,7 +201,7 @@ const addLeadNote: ElayaWriteTool = {
   },
   run: async (principal, input, ctx) => {
     const { slug, content } = input as { slug: string; content: string };
-    const lead = await getLeadBySlug(slug);
+    const lead = await getLeadBySlugForElaya(slug);
     if (!lead || !canAccessLead(principal, lead)) return { error: REFUSE_LEAD };
 
     const clean = sanitizeText(content);
@@ -262,7 +270,7 @@ const createLeadTask: ElayaWriteTool = {
       priority: "urgent" | "high" | "normal";
       dueAt?: string;
     };
-    const lead = await getLeadBySlug(slug);
+    const lead = await getLeadBySlugForElaya(slug);
     if (!lead || !canAccessLead(principal, lead)) return { error: REFUSE_LEAD };
 
     const cleanDescription = description ? sanitizeText(description) : null;
@@ -343,7 +351,7 @@ const updateLeadStatus: ElayaWriteTool = {
   },
   run: async (principal, input, ctx) => {
     const { slug, status, reason } = input as { slug: string; status: LeadStatus; reason?: string };
-    const lead = await getLeadBySlug(slug);
+    const lead = await getLeadBySlugForElaya(slug);
     if (!lead || !canAccessLead(principal, lead)) return { error: REFUSE_LEAD };
 
     // No mutation. Supersede any prior live proposal, then record this one.
@@ -395,7 +403,7 @@ const reassignLead: ElayaWriteTool = {
   },
   run: async (principal, input, ctx) => {
     const { slug, agentId } = input as { slug: string; agentId: string };
-    const lead = await getLeadBySlug(slug);
+    const lead = await getLeadBySlugForElaya(slug);
     if (!lead || !canAccessLead(principal, lead)) return { error: REFUSE_LEAD };
 
     await supersedePriorProposals(ctx.conversationId, principal.userId, principal.userId);
@@ -891,7 +899,7 @@ export async function executeProposedAction(
   const slug = payload.target?.slug ?? null;
 
   // Re-resolve by slug (immutable across turns) + re-check access with the principal.
-  const lead = slug ? await getLeadBySlug(slug) : null;
+  const lead = slug ? await getLeadBySlugForElaya(slug) : null;
   if (!lead || !canAccessLead(principal, lead)) {
     await markActionResolved(action.id, "failed", principal.userId);
     return { status: "failed", line: "I couldn't complete that — I can no longer act on that lead." };

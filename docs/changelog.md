@@ -12,7 +12,55 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
-## 2026-06-17 — Fix: Trigger.dev deploy failed on module-load env-var throws (deferred validation)
+## 2026-06-17 — Fix: Elaya write tools refused valid leads (session-client lead resolve in a sessionless context)
+
+**Symptom.** A user asked Elaya to add a note, create a task, and change a lead's status on a lead
+assigned to them. Elaya found the lead correctly ("slug is arfam--2345, assigned to you") but then
+replied that "the system can't write to it — maybe a permissions issue," told the user to open Serene
+and do it manually, and offered to flag support. The note and task never landed; no `elaya_actions`
+row was written for the attempt.
+
+**Root cause.** Elaya's WRITE tools (`add_lead_note`, `create_lead_task`, `update_lead_status`,
+`reassign_lead`, and the proposal resolver `executeProposedAction`) resolved the target lead via
+`getLeadBySlug` — the **session (cookie) Supabase client** + `.single()`. Elaya runs in sessionless
+contexts (the WhatsApp staff channel; and the SSE stream after the cookie session is no longer on the
+request), where an RLS-scoped query returns **zero rows** → PostgREST answers **406** → `getLeadBySlug`
+returns `null` → the tool hits its `!lead` guard and returns `REFUSE_LEAD`. The READ tool
+(`get_lead_details`) already used the correct `getLeadBySlugForElaya` — the **admin client** +
+`.maybeSingle()` — which is exactly why the read succeeded while the write failed (the message's
+self-contradiction was the fingerprint). Confirmed against prod: the two RPCs (`add_lead_plain_note`,
+`create_lead_gia_task`) are intact and succeed when called directly; the API log showed the two `406`s
+on `slug=eq.arfam--2345`.
+
+**Done.**
+
+- **`src/lib/elaya/tools/write-registry.ts`** — swapped the import and all 5 call sites
+  `getLeadBySlug` → `getLeadBySlugForElaya` (admin-client, `.maybeSingle()` — null, never 406, on
+  0 rows). Identity stays gated: every write tool calls `canAccessLead(principal, lead)` immediately
+  after the read (and the resolver re-checks before mutating), so the broad admin read does NOT widen
+  access — the established `get_lead_details` pattern (Q-13: the caller gates, the read is broad). No
+  core, schema, or RPC change.
+- **`src/lib/elaya/persona.ts`** — honesty fix (the symptom's *phrasing*). The old "if a write isn't
+  permitted, say so plainly" made Elaya attribute *any* tool error to permissions. Replaced with: read
+  the tool's error and relay THAT; only the verbatim "couldn't find that lead among the ones you can
+  act on" message means a permission/scope limit; any other failure ("couldn't save that just now") is
+  a temporary glitch — say it didn't go through and offer to retry, never call it permissions, never
+  tell the user to do it manually or that you'll flag support. Static system-body text only — the
+  prompt-cache byte-stability contract holds.
+
+**Sibling defect found in adversarial review — same root cause, different subsystem.** A 3-lens
+verification of the fix surfaced an identical session-vs-sessionless mismatch in the Lead Revival gate:
+
+- **`src/lib/services/revival-gate.ts`** — `judgeLeadForRevival` read lead notes via the session-client
+  `getLeadNotesFull`. Its ONLY caller is the daily `sweepRevivalCandidatesTask` (a sessionless
+  Trigger.dev scheduled job), so the RLS read returned **0 rows for every lead** → the gate fell closed
+  to `'unsure'` on all of them, dumping every candidate into the review tab and defeating the
+  suppression gate's whole purpose (this failed *safe*, not loud — so it was invisible). Swapped to the
+  admin-client twin `getLeadNotesFullForElaya` (the revival service is admin-client by design; the sweep
+  is the trust boundary).
+- **`src/lib/services/leads-service.ts`** — added a "SESSION-CLIENT ONLY" header comment on
+  `getLeadNotesFull` (mirroring the `getLeadBySlug`/`*ForElaya` convention) so no future sessionless
+  caller repeats this.
 
 **Goal.** `npm run trigger:deploy` (Trigger.dev 4.4.6) aborted at the build / module-scan stage —
 *"There was an error importing task files"* — with two root errors: the `GUPSHUP_*` guard in

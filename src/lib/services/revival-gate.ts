@@ -19,7 +19,13 @@ import "server-only";
 import { resolveLlmForJob } from "@/lib/elaya/registry";
 import { maskPii } from "@/lib/elaya/pii";
 import { getPiiMaskingDepth } from "@/lib/services/llm-providers-service";
-import { getLeadNotesFull } from "@/lib/services/leads-service";
+// The daily revival sweep (src/trigger/lead-revival.ts) is the ONLY caller of
+// judgeLeadForRevival, and it runs as a Trigger.dev scheduled job — a SESSIONLESS
+// context. The session-client getLeadNotesFull (.single()/RLS) returns 0 rows with
+// no auth.uid(), which would make EVERY lead fail closed to 'unsure' and defeat the
+// suppression gate. Use the ADMIN-client twin getLeadNotesFullForElaya — the sweep
+// is the trust boundary (the whole revival service is admin-client by design).
+import { getLeadNotesFullForElaya } from "@/lib/services/leads-service";
 import {
   REVIVAL_GATE_MAX_NOTES,
   REVIVAL_GATE_MAX_NOTES_CHARS,
@@ -144,8 +150,9 @@ export function buildRevivalNotesBlob(
 }
 
 /**
- * Judge one lead. Reads its recent notes (getLeadNotesFull — the canonical notes
- * read path), masks them through the PII gateway, and runs the routing-tier gate.
+ * Judge one lead. Reads its recent notes (getLeadNotesFullForElaya — the admin-
+ * client read, since the only caller is the sessionless daily sweep), masks them
+ * through the PII gateway, and runs the routing-tier gate.
  *
  * FAILS CLOSED: an empty notes set, a malformed model response, or any throw
  * returns a conservative 'unsure' verdict — never 'revive'.
@@ -155,7 +162,7 @@ export async function judgeLeadForRevival(input: {
   triggerStatus: RevivalTriggerStatus;
 }): Promise<RevivalGateVerdict> {
   try {
-    const notes = await getLeadNotesFull(input.leadId);
+    const notes = await getLeadNotesFullForElaya(input.leadId);
     if (notes.length === 0) {
       return {
         verdict: "unsure",
