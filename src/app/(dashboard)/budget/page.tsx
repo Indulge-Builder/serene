@@ -7,6 +7,7 @@ import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
 import { PerformanceFilters } from "@/components/performance/PerformanceFilters";
 import { AdSpendUploadButton } from "@/components/budget/AdSpendUploadButton";
+import { AddRechargeButton } from "@/components/budget/AddRechargeButton";
 import { BudgetAsync } from "./BudgetAsync";
 import { BudgetContentSkeleton } from "./BudgetContentSkeleton";
 
@@ -47,6 +48,7 @@ export default async function BudgetPage({
           Budget<span className="page-title-dot">.</span>
         </h1>
         <div className="flex items-center gap-3">
+          {canUpload && <AddRechargeButton />}
           {canUpload && <AdSpendUploadButton />}
           {TOP_BAR_ENABLED && (
             <PageControls

@@ -3,7 +3,7 @@
 > **Purpose:** the whole system in one read — what Serene is, the stack, how the services connect, what happens on a request, and where every code-layer concept is documented.
 > **Audience:** engineers (new-engineer entry point; non-technical readers start at `../00-for-the-board.md`).
 > **Source-of-truth scope:** topology, request flow, cross-page shell features, Realtime registry, client-pattern/hook index, service-file → home-doc map.
-> **Last verified:** 2026-06-15.
+> **Last verified:** 2026-06-20 (Trigger.dev cron set + usage/suggestions/notification-prefs service rows added against `src/trigger/usage-snapshot.ts`, `src/trigger/usage-rollup.ts`, `src/trigger/lead-revival.ts`).
 
 ---
 
@@ -66,7 +66,8 @@ server-side (P-03).
    Supabase (Postgres 17,  Upstash     Trigger.dev v4     Gupshup v1 API
    Auth, Realtime,         Redis       (SLA timers,       (outbound WhatsApp
    Storage)                (cache-     task reminders,    sends, in after())
-                           aside)      revival sweep)
+                           aside)      revival sweep,
+                                       usage tracking)
 
    Other external services (call-out, not in the core navigation path):
    • Elaya LLM provider (Anthropic adapter) — per-turn brain calls + revival/routing judge
@@ -79,8 +80,13 @@ server-side (P-03).
 - **No API routes** except the two webhooks, the auth callback, and two sanctioned carve-outs —
   `/api/elaya/chat` (SSE streaming) and `/api/manifest` (dynamic PWA manifest) (P-02) — all
   mutations are Server Actions.
-- **Daily cron:** one Trigger.dev `schedules.task` (`src/trigger/lead-revival.ts`) runs at
-  07:30 IST — the Lead Revival silence sweep (`../modules/revival.md`). Project's only cron task.
+- **Scheduled / cron tasks:** four `schedules.task`s across the five `src/trigger/` files —
+  the Lead Revival silence sweep (`lead-revival.ts`, daily 07:30 IST, `../modules/revival.md`);
+  the usage-presence snapshot (`usage-snapshot.ts`, every minute); and the two usage rollups
+  (`usage-rollup.ts` — `rollupUsageTodayTask` every 15 min + `rollupUsageNightlyTask` at 00:20 IST,
+  which also prunes raw heartbeats > 30 days). All four are adoption / follow-up periodic jobs;
+  everything else in `src/trigger/` is per-lead/per-task delayed work, not cron. (Cron timezone in
+  code is `Asia/Calcutta` — Trigger.dev rejects the `Asia/Kolkata` alias; same UTC+5:30.)
 - **Outward sends** (Gupshup, any external fetch that must complete) run inside `after()` from
   `next/server` with the send awaited — never `void fetch().catch()` (A-16; Vercel freezes the
   lambda on response flush).
@@ -125,6 +131,9 @@ All DB access lives in `src/lib/services/` (A-03). Each file's owning doc:
 | `intelligence-service.ts` | `../modules/call-intelligence.md` |
 | `transcription-service.ts` | §7 below (voice dictation — Deepgram) |
 | `push-service.ts` | §7 below (Web Push fan-out — VAPID) |
+| `usage-service.ts` | adoption / active-time tracking (migration 0126) — Redis presence hot path + snapshot/rollup/read |
+| `suggestions-service.ts` | staff suggestion / bug-report channel (migrations 0134–0135) |
+| `notification-prefs-service.ts` | per-user notification channel control gate (migration 0133) |
 | `revival-service.ts`, `revival-gate.ts` | `../modules/revival.md` |
 | `lead-mutations.ts` | `../modules/elaya.md` (shared write cores — Elaya + UI) |
 | `elaya-service.ts`, `elaya-actions-service.ts`, `elaya-whatsapp.ts`, `llm-providers-service.ts` | `../modules/elaya.md` |

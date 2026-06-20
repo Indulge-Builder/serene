@@ -254,7 +254,7 @@ export async function updateTaskStatusAction(
     supabase
       .from("tasks")
       .select(
-        "id, assigned_to, created_by, group_id, status, due_at, task_category",
+        "id, assigned_to, created_by, group_id, status, due_at, task_category, task_gia_meta(task_id)",
       )
       .eq("id", taskId)
       .single(),
@@ -280,7 +280,12 @@ export async function updateTaskStatusAction(
   const result = await updateTaskStatusCore(
     actorFromProfile(caller),
     { taskId, status: status as TaskStatus },
-    { taskCategory: task.task_category },
+    {
+      taskCategory: task.task_category,
+      hasGiaMeta: Array.isArray(task.task_gia_meta)
+        ? task.task_gia_meta.length > 0
+        : !!task.task_gia_meta,
+    },
   );
 
   if (!result.ok) return { data: null, error: formErrors.generic };
@@ -373,7 +378,9 @@ export async function deleteTaskAction(
   // 3. Fetch task to check authorization
   const { data: task } = await supabase
     .from("tasks")
-    .select("id, assigned_to, created_by, group_id, task_category")
+    .select(
+      "id, assigned_to, created_by, group_id, task_category, task_gia_meta(task_id)",
+    )
     .eq("id", taskId)
     .single();
 
@@ -397,7 +404,12 @@ export async function deleteTaskAction(
   const result = await deleteTaskCore(
     actorFromProfile(caller),
     { taskId },
-    { taskCategory: task.task_category },
+    {
+      taskCategory: task.task_category,
+      hasGiaMeta: Array.isArray(task.task_gia_meta)
+        ? task.task_gia_meta.length > 0
+        : !!task.task_gia_meta,
+    },
   );
 
   if (!result.ok) return { data: null, error: formErrors.generic };

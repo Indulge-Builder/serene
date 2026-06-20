@@ -352,7 +352,7 @@ export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetPro
               borderTop: "1px solid var(--theme-paper-border)",
             }}
           >
-            {(["personal", "group_subtask", "gia_followup"] as const).map(
+            {(["personal", "group_subtask"] as const).map(
               (cat) => (
                 <span
                   key={cat}

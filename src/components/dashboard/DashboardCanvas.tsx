@@ -214,13 +214,16 @@ export function DashboardCanvas({
       {/* Inject bento grid CSS once */}
       <style>{GRID_CSS}</style>
 
-      {/* Page header — greeting left, control cluster (date filter + edit)
-          right. Below md the name drops to its own line (never truncated —
-          the greeting + name don't fit one line next to the controls) and
-          the edit control compresses to an icon-only button so the top
-          elements share the title row. Desktop wraps if it must (audit F1). */}
-      <div className="flex flex-wrap max-md:flex-nowrap items-center justify-between gap-x-4 gap-y-3 mb-4">
-        <h1 className="type-page-title m-0 max-md:min-w-0">
+      {/* Page header — greeting left, control cluster (date filter, domain
+          selector, bell, edit) right. Mobile: ONE row (`flex-nowrap`) — every
+          control is icon-compact there (icon-only domain chip + edit gear, ~36px
+          each), so the whole cluster fits beside the greeting instead of dropping
+          to a second row. The greeting `h1` shrinks (`min-w-0`) and drops the
+          name to its own LINE within the title (`max-md:block` — vertical space
+          inside the h1, not a new flex row). Desktop (`md:flex-wrap`): the
+          labelled controls are wider, so the row may wrap if it must (audit F1). */}
+      <div className="flex flex-nowrap md:flex-wrap items-center justify-between gap-x-4 gap-y-3 mb-4">
+        <h1 className="type-page-title m-0 min-w-0">
           {greeting},{' '}
           <span className="max-md:block">
             <span style={{ color: 'var(--theme-accent)' }}>{firstName}</span>
@@ -228,7 +231,7 @@ export function DashboardCanvas({
           </span>
         </h1>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-nowrap shrink-0 items-center justify-end gap-2">
           {/* Global date filter — only shown to manager/admin/founder roles */}
           {(role === 'manager' || role === 'admin' || role === 'founder') && (
             <DashboardDateFilter

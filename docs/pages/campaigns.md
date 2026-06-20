@@ -338,7 +338,7 @@ const campaignName = id.replace(/%2B/gi, ' ').replace(/\+/g, ' ');
 - **Two independent `Suspense` boundaries:** metrics (`CampaignMetricsStripSkeleton` → `CampaignMetricsAsync`) and leads (`LeadsTableSkeleton` → `CampaignLeadsAsync`) so slow table queries do not block stat cards and vice versa.
 - **`CampaignMetricsAsync`:** `Promise.all([getCampaignDetailMetrics(...), getCampaignAgentDistribution(...)])` — parallel, never sequential.
 - **Leads table:** `getLeadsByRoleCached(role, userId, domain, filters)` where `filters.campaign = campaignName` plus `date_from`, `date_to`, `page`, `pageSize: 50`; other filter fields null.
-- **Ad creatives:** `getAdCreativesForCampaign(campaignName)` awaited outside Suspense (small read); `CampaignAdCard` between header and metrics.
+- **Ad creatives:** `getAdCreativesForCampaign(campaignName)` awaited outside Suspense (small read); `CampaignAdPanel` (replaced `CampaignAdCard` 2026-06-20) is the **left column** of the video↔metrics row, with the metrics strip to its right. Empty + admin/founder → an add-a-video tile that opens the shared `AdCreativeFormModal` inline.
 
 #### 6c. `CampaignMetricsStrip`
 
@@ -524,7 +524,7 @@ Sidebar hides the Campaigns link from agent/guest (UI); direct URL still hits pa
 | `CampaignMetricsStrip.tsx` | Detail stat cards (server) |
 | `CampaignMetricsStripSkeleton.tsx` | Detail metrics Suspense fallback |
 | `AgentDistributionBar.tsx` | Stacked agent bar (client) |
-| `CampaignAdCard.tsx` | Detail ad carousel section |
+| `CampaignAdPanel.tsx` | Detail ad carousel / add-a-video panel (left column) |
 | `AdCreativeCarousel.tsx` | Multi-video carousel |
 | `AdCreativePlayer.tsx` | Single native video player |
 

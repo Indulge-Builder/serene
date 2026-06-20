@@ -1,6 +1,6 @@
 # Serene — Pages Summary (Claude Project digest)
 
-> Generated digest of the 17 specs in `docs/pages/` — 2026-06-15. Each spec's "Deep dive"
+> Generated digest of the per-route specs in `docs/pages/` — 2026-06-20. Each spec's "Deep dive"
 > holds the full invariant lists; attach the individual spec to a chat for page-level work.
 
 All list pages follow the canonical layout: `<h1 class="type-page-title">Title<span
@@ -10,12 +10,17 @@ Suspense-wrapped async content. Loading files compose `PageSkeletons`; empty sta
 
 ## /dashboard
 
-Personalised bento grid of independently code-split widgets. One server-side
+Personalised bento grid of independently code-split widgets (`dashboard-widgets.ts` registers
+10: 5 agent — `agent-tasks`, `agent-activity`, `agent-pending-calls`, `agent-new-leads`,
+`elaya-presence`; 5 manager cohort — `manager-lead-status`, `manager-lead-volume`,
+`manager-campaigns`, `manager-cold-leads`, `manager-budget`). One server-side
 `get_dashboard_summary` RPC (React `cache()`) seeds first paint; a global URL-param date filter
 scopes pipeline/campaign/volume by `leads.created_at` (IST). Agents: `agent-tasks` +
-`agent-activity` (own data, date filter n/a). Manager: all six widgets, domain-scoped.
-Admin/founder: all six + domain picker tabs. Layout persists per user in localStorage
-(`useDashboardLayout`); widget fetch lifecycle via `useWidgetData`; manager scope re-enforced
+`agent-activity` (own data, date filter n/a). Managers: the 5-widget manager cohort plus
+`agent-tasks` + `agent-activity` (7 total). Admin/founder: the full set. Domain scope is a
+**single global selector** (`resolveDomainParam`; default = all-domains aggregated) — the old
+per-widget domain picker tabs were **removed 2026-06-17**. Layout persists per user in localStorage
+(`useDashboardLayout`); widget fetch lifecycle via `useWidgetData`; manager scope re-pinned
 server-side (`effectiveWidgetDomain()`). Page never throws on RPC failure — renders zeroed data.
 
 ## /elaya
@@ -120,6 +125,19 @@ when any row's reporting-start ≠ reporting-end (a range-grain file would perma
 — never soften to a per-row skip). `campaign_key` is always `normalizeCampaignKey()` (lowercase +
 trim), matched in SQL as `lower(trim(utm_campaign))`. IST period presets reuse `PerformanceFilters`.
 
+**Per-account recharge ledger (2026-06-20):** a second finance plane — `ad_account_recharges`
+(migration 0139, manager+ read / admin/founder write, mirrors `ad_spend_daily`) records money sent
+to each Meta ad account. The **Accounts** tab groups spend by ad account (DERIVED from the campaign
+key — `resolveAccountFromCampaign`, the index-2 `TG_<Domain>_<Account>_…` segment, in
+`lib/constants/ad-accounts.ts`; 3 live accounts `april`/`gmr`/`dubai` + a documented "Indulge New
+Gen" placeholder) and shows recharged · spent · **balance** per account + a grand total, with an
+**Unattributed** block for any campaign whose account can't be resolved (visible, never merged).
+Balance is **INR-only** — non-INR recharges are recorded but excluded (footnoted). `method` is a
+payment-method label, card-PAN-rejected at Zod + DB CHECK (no card data persists). Add Recharge is a
+`Modal` form (admin/founder); history is a `Table<T>`. Upload copy clarified: weekly cadence works
+(a multi-day daily-breakdown export uploads as one row per day, idempotent) — the grain guard
+(rejects date-RANGE exports) is unchanged.
+
 ## /escalations
 
 manager+ "what needs intervention right now" (agents/guests → `redirect('/dashboard')`; manager
@@ -131,6 +149,17 @@ dropped; CAD cadence ticks excluded), **overdue tasks** (open gia_followup tasks
 `tasks.overdue_at` stamp), and **going cold** (the byte-equivalent `/leads?going_cold=true`
 predicate — `last_activity_at` older than 5 days). Reads are **never cached** — an escalation
 surface must never show a stale breach.
+
+## /helpdesk
+
+The Call Intelligence library (all roles, `ALWAYS_ALLOWED_PREFIXES`). RSC fetches the **full**
+domain-scoped library once (`getHelpdeskLibrary(domain)` — Redis 1hr `{cases,hooks}` envelope →
+Supabase) and hands it to `<HelpdeskSearch>` as `initialData`; **all filtering is client-side**
+— never a per-keystroke server search. Domain shelf resolved via the shared `resolveDomainParam`
+(admin/founder pick via the global DomainSelector; others read their own Gia shelf, default Gia
+fallback). Tables `service_cases` + `conversation_hooks` (all-authenticated read / admin+founder
+write); the same library powers the dossier `ServiceInterestCard`. The "+ Suggestion" CTA + the
+in-modal Edit are admin/founder-only (cosmetic gate; the server re-checks role on every save).
 
 ## /whatsapp
 
@@ -169,6 +198,23 @@ keyed by normalised `campaign_key` matching `leads.utm_campaign` (string equalit
 multiple videos per campaign). Read-only surfaces: dossier video modal, campaign detail card,
 campaign list carousel. **No Redis** for this service — freshness via `revalidatePath`
 (the former cache was removed as a P-08 bug; do not re-add).
+
+## /admin/usage
+
+Admin/founder adoption dashboard (`redirect('/dashboard')` for anyone else; `getAgentUsage`
+re-gates founder/admin in the service layer — defence in depth). Built over `usage_daily`
+(migration 0126) via the `get_agent_usage` RPC, seeded server-side into `<UsageDashboard>`. The
+daily rows are rolled up by the Trigger.dev usage jobs (1-min `usage-snapshot.ts` → `usage_heartbeats`;
+15-min + nightly `usage-rollup.ts` → `usage_daily`). RSC returns `null` on failure — never throws.
+
+## /admin/suggestions
+
+Admin/founder staff suggestion/bug triage (`redirect('/dashboard')` otherwise; the service
+re-gates). Reads the `suggestions` table (migration 0134); screenshots live in the **private**
+`suggestions` Storage bucket (0135) — the row stores **paths**, never URLs, with short-lived
+signed URLs minted server-side at read time. Resolving a suggestion fires a `suggestion_resolved`
+notification (`notifications.type` extended in 0136). Anyone can *file* a suggestion via the
+`AddSuggestionButton` (mounted on `/helpdesk`); triage is admin/founder-only.
 
 ## /error-log
 

@@ -47,7 +47,7 @@ export const REVIVAL_VERDICTS = ["revive", "unsure", "dismiss"] as const;
 export const REVIVAL_CANDIDATE_STATUSES = ["open", "actioned", "dismissed"] as const;
 
 // ─── Revived task tagging ────────────────────────────────────────────────────
-// The revive task is a normal gia_followup created through createLeadTaskCore (the
+// The revive task is a normal lead follow-up task created through createLeadTaskCore (the
 // E2 path). Its ONLY difference from any other follow-up is the source marker
 // (persisted on task_gia_meta.call_outcome) + the "Revived" badge keyed off it.
 

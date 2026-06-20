@@ -20,6 +20,8 @@ interface TabsContextValue {
   layoutId: string;
   animatedContent: boolean;
   variant: TabSelectorVariant;
+  /** When true, the tray spans its container and triggers split the width evenly. */
+  fullWidth: boolean;
 }
 
 const TabsContext = createContext<TabsContextValue | null>(null);
@@ -55,6 +57,13 @@ export interface TabsProps {
   /** Whether TabsContent panels animate in/out. Default true. */
   animatedContent?: boolean;
   variant?: TabSelectorVariant;
+  /**
+   * When true, the tray fills its container's width and the triggers stretch to
+   * split that width evenly (flex: 1). Default false — the tray sizes to its
+   * content (the inline-pill look). Used to make a 2-tab bar span a row on
+   * mobile so it doesn't read as off-cut next to a sibling action.
+   */
+  fullWidth?: boolean;
   children: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
@@ -67,6 +76,7 @@ export function Tabs({
   indicatorLayoutId = 'serene-tab-indicator',
   animatedContent = true,
   variant = 'pill',
+  fullWidth = false,
   children,
   className,
   style,
@@ -89,6 +99,7 @@ export function Tabs({
         layoutId: indicatorLayoutId,
         animatedContent,
         variant,
+        fullWidth,
       }}
     >
       <div className={className} style={style}>
@@ -107,7 +118,7 @@ export interface TabsListProps {
 }
 
 export function TabsList({ children, className, style }: TabsListProps) {
-  const { variant } = useTabsContext();
+  const { variant, fullWidth } = useTabsContext();
 
   const containerStyle: React.CSSProperties = {
     display: 'flex',
@@ -118,6 +129,9 @@ export function TabsList({ children, className, style }: TabsListProps) {
     // Consumers that squeeze triggers (flex: 1, minWidth: 0) never overflow,
     // so they are unaffected. Scrollbar hidden — the cut-off chip affords it.
     maxWidth: '100%',
+    // fullWidth: the tray spans its container so its flex:1 triggers split the
+    // row evenly (mobile 2-tab bar). Default stays content-sized (the pill look).
+    ...(fullWidth && { width: '100%' }),
     overflowX: 'auto',
     scrollbarWidth: 'none',
     WebkitOverflowScrolling: 'touch',
@@ -175,7 +189,7 @@ export function TabsTrigger({
   className,
   style,
 }: TabsTriggerProps) {
-  const { value: activeValue, onValueChange, layoutId, variant } = useTabsContext();
+  const { value: activeValue, onValueChange, layoutId, variant, fullWidth } = useTabsContext();
   const isActive = value === activeValue;
   const isConnected = variant === 'connected';
   const isAccent    = variant === 'accent';
@@ -214,8 +228,10 @@ export function TabsTrigger({
     outline: 'none',
     zIndex: 1,
     marginBottom: 0,
-    flex: isConnected ? 1 : undefined,
-    justifyContent: isConnected ? 'center' : undefined,
+    // fullWidth makes every variant's triggers split the tray evenly (the
+    // connected variant always does so by design).
+    flex: isConnected || fullWidth ? 1 : undefined,
+    justifyContent: isConnected || fullWidth ? 'center' : undefined,
     opacity: disabled ? 0.5 : 1,
     pointerEvents: disabled ? 'none' : undefined,
     ...style,
@@ -427,6 +443,8 @@ export interface TabSelectorProps {
    * instances are simultaneously visible on the same page.
    */
   indicatorLayoutId?: string;
+  /** Tray fills its container; triggers split the width evenly (mobile bars). */
+  fullWidth?: boolean;
 }
 
 export function TabSelector({
@@ -437,6 +455,7 @@ export function TabSelector({
   className,
   style,
   indicatorLayoutId,
+  fullWidth = false,
 }: TabSelectorProps) {
   return (
     <Tabs
@@ -445,6 +464,7 @@ export function TabSelector({
       variant={variant}
       indicatorLayoutId={indicatorLayoutId}
       animatedContent={false}
+      fullWidth={fullWidth}
       className={className}
       style={style}
     >

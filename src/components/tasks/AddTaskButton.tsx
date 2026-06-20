@@ -14,7 +14,6 @@ export function AddTaskButton({ activeTab, validTabs }: AddTaskButtonProps) {
   const { requestCreate } = useTasksCreate();
 
   const labelMap: Record<TaskTab, string> = {
-    gia:      'Gia Task',
     personal: 'My Task',
     group:    'Group Task',
   };

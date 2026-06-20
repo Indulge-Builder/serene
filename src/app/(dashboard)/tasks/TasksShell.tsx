@@ -1,34 +1,25 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState, useTransition, useMemo } from "react";
-import { AnimatePresence } from "framer-motion";
+import { useEffect, useState, useTransition, useMemo } from "react";
 import { MyTasksCalendarView } from "@/components/tasks/MyTasksCalendarView";
 import { GroupTasksTab } from "@/components/tasks/GroupTasksTab";
-import { GiaTasksTab } from "@/components/tasks/GiaTasksTab";
-import { CreateGiaTaskModal } from "@/components/tasks/CreateGiaTaskModal";
 import { TasksFilters } from "@/components/tasks/TasksFilters";
 import { TabSelector, type TabItem } from "@/components/ui/TabSelector";
 import { useTasksCreate } from "@/components/tasks/TasksCreateContext";
-import { useCreateTriggerModal } from "@/hooks/useCreateTriggerModal";
 import { getPersonalTaskTagsAction } from "@/lib/actions/tasks";
 import { DOMAIN_LABELS, compareDomainDisplayOrder } from "@/lib/constants/domains";
 import type { AssignableUser } from "@/lib/types";
 import {
   EMPTY_PERSONAL_TASK_FILTERS,
   EMPTY_GROUP_TASK_FILTERS,
-  EMPTY_GIA_TASK_FILTERS,
   domainsInGroupRows,
-  filterGiaTasks,
-  giaFiltersActiveCount,
   type PersonalTaskFiltersState,
   type GroupTaskFiltersState,
-  type GiaTaskFiltersState,
 } from "@/lib/utils/task-client-filters";
 import type {
   PersonalTasksResult,
   TaskGroupRow,
-  GiaTask,
 } from "@/lib/services/tasks-service";
 import type { UserRole, AppDomain, Task } from "@/lib/types/database";
 import type { TaskTab } from "./page";
@@ -38,7 +29,6 @@ interface TasksShellProps {
   validTabs:     TaskTab[];
   personalResult: PersonalTasksResult;
   groupRows:     TaskGroupRow[];
-  giaTasks:      GiaTask[];
   currentUserId: string;
   currentUserName: string;
   callerRole:    UserRole;
@@ -52,7 +42,6 @@ export function TasksShell({
   validTabs,
   personalResult,
   groupRows,
-  giaTasks,
   currentUserId,
   currentUserName,
   callerRole,
@@ -72,9 +61,6 @@ export function TasksShell({
   const [groupFilters, setGroupFilters] = useState<GroupTaskFiltersState>(
     EMPTY_GROUP_TASK_FILTERS,
   );
-  const [giaFilters, setGiaFilters] = useState<GiaTaskFiltersState>(
-    EMPTY_GIA_TASK_FILTERS,
-  );
   const [personalTagItems, setPersonalTagItems] = useState<string[]>(initialTags);
 
   // TasksAsync fetches tags only when the personal tab is active, and this
@@ -88,11 +74,6 @@ export function TasksShell({
     personalResult.tasks.length,
   );
   const [groupVisibleCount, setGroupVisibleCount] = useState(groupRows.length);
-  const [giaVisibleCount, setGiaVisibleCount] = useState(giaTasks.length);
-
-  // Gia modal state (create trigger from AddTaskButton → requestCreate)
-  const [giaCreateOpen, setGiaCreateOpen] = useState(false);
-  const [giaTasksList, setGiaTasksList] = useState<GiaTask[]>(giaTasks);
 
   const activeTab = initialTab;
   const isPrivileged = callerRole === "admin" || callerRole === "founder";
@@ -104,11 +85,6 @@ export function TasksShell({
         .map((d) => ({ id: d, label: DOMAIN_LABELS[d] ?? d })),
     [groupRows],
   );
-
-  const openGiaCreateIfActive = useCallback(() => {
-    if (activeTab === "gia") setGiaCreateOpen(true);
-  }, [activeTab]);
-  useCreateTriggerModal(createTrigger, openGiaCreateIfActive);
 
   function setTab(tab: TaskTab) {
     const params = new URLSearchParams(searchParams.toString());
@@ -122,7 +98,6 @@ export function TasksShell({
   // This is the only correct source — rebuilding it client-side from initialTab
   // breaks when the user navigates between tabs (initialTab changes each RSC pass).
   const TAB_LABELS: Record<TaskTab, string> = {
-    gia:      "Gia Tasks",
     personal: "My Tasks",
     group:    "Group Tasks",
   };
@@ -178,15 +153,11 @@ export function TasksShell({
           onGroupFiltersChange={setGroupFilters}
           groupDomainItems={groupDomainItems}
           showGroupDomainFilter={isPrivileged}
-          giaFilters={giaFilters}
-          onGiaFiltersChange={setGiaFilters}
           resultCount={
-            activeTab === "gia"      ? giaVisibleCount :
             activeTab === "personal" ? personalVisibleCount :
                                        groupVisibleCount
           }
           resultNoun={
-            activeTab === "gia"      ? (giaVisibleCount === 1 ? "task" : "tasks") :
             activeTab === "personal" ? (personalVisibleCount === 1 ? "task" : "tasks") :
                                        (groupVisibleCount === 1 ? "group" : "groups")
           }
@@ -194,37 +165,7 @@ export function TasksShell({
       </div>
 
       {/* Tab panels */}
-      {activeTab === "gia" ? (
-        <>
-          <GiaTasksTab
-            initialTasks={giaTasksList}
-            filters={giaFilters}
-            currentUserId={currentUserId}
-            currentUserName={currentUserName}
-            callerRole={callerRole}
-            callerDomain={callerDomain}
-            createTrigger={createTrigger}
-            onFilteredCountChange={setGiaVisibleCount}
-            onTaskCreated={(task) => {
-              setGiaTasksList((prev) => [task, ...prev]);
-            }}
-          />
-          <AnimatePresence>
-            {giaCreateOpen && (
-              <CreateGiaTaskModal
-                open={giaCreateOpen}
-                onClose={() => setGiaCreateOpen(false)}
-                onTaskCreated={(task) => {
-                  setGiaTasksList((prev) => [task, ...prev]);
-                  setGiaVisibleCount((n) => n + 1);
-                  setGiaCreateOpen(false);
-                }}
-                callerRole={callerRole}
-              />
-            )}
-          </AnimatePresence>
-        </>
-      ) : activeTab === "personal" ? (
+      {activeTab === "personal" ? (
         <MyTasksCalendarView
           initialResult={personalResult}
           currentUserId={currentUserId}
@@ -258,5 +199,5 @@ export function TasksShell({
   );
 }
 
-// Re-export type for consumers that need to import GiaTask from the shell layer
+// Re-export type for consumers that need to import Task from the shell layer
 export type { Task };

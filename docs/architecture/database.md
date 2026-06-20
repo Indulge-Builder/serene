@@ -2,7 +2,7 @@
 
 > **Purpose:** the schema narrative — every table, its purpose, key columns, and relationships. Companion to the raw dump in `database_architecture.sql`.
 > **Audience:** engineers. · **Source-of-truth scope:** what each table is *for* and its contracts. Exact DDL = the dump + `supabase/migrations/`; per-page query usage = `../pages/*.md`; RLS/authorization = `auth-and-rbac.md`.
-> **Last verified:** 2026-06-15 against the migration files (through 0121). The `database_architecture.sql` dump is pre-0098 — refresh via `supabase db dump` after applying 0098–0121; the dump lacks `leads.search_text`, `leads.service_interests`, `profiles.app_icon`, and the Call Intelligence / SLA / Elaya / Lead Revival / push tables.
+> **Last verified:** 2026-06-20 against the migration files (through 0137; sequence skips 0131, superseded by 0132). The `database_architecture.sql` dump is pre-0098 — refresh via `supabase db dump` after applying 0098–0137; the dump lacks `leads.search_text`, `leads.service_interests`, `profiles.app_icon`, and the Call Intelligence / SLA / Elaya / Lead Revival / push / usage-tracking / notification-preferences / suggestions tables. Newly verified: `20260616000124_managers_in_routing_pool.sql`, `20260616000126_usage_tracking.sql`, `20260617000133_notification_preferences.sql`, `20260617000134_suggestions_table.sql`, `20260617000135_suggestions_storage_bucket.sql`, `20260617000136_notification_type_suggestion_resolved.sql`.
 
 ---
 
@@ -40,8 +40,12 @@ history cannot be hard-deleted. Trigger `log_profile_changes()` uses
 
 ### `agent_routing_config`
 
-The round-robin on-duty switch — one row per agent, auto-created by trigger when a profile gets
-`role = 'agent'`. `is_active = false` removes the agent from the assignment pool instantly.
+The round-robin on-duty switch — one row per pool-member profile, auto-created by trigger when a
+profile's `role` becomes `'agent'` **or** `'manager'` (migration 0124 — managers now carry
+round-robin leads alongside agents). The round-robin pool is `role IN ('agent','manager')`:
+`get_next_round_robin_agent` assigns into the same fair queue for both roles, and the literal list
+mirrors `ROUTING_POOL_ROLES` in `lib/constants/roles.ts` (keep in sync).
+`is_active = false` removes the member from the assignment pool instantly.
 `shift_start`/`shift_end` (time) + `shift_days integer[]` (0059; JS day-of-week, NULL = global
 `BUSINESS_HOURS`) are advisory — read by ingestion, not DB-enforced.
 
@@ -84,13 +88,26 @@ See `../modules/gia.md` § SLA Engine.
 
 ## Tasks (5 tables)
 
-One `tasks` table for all three categories, discriminated by `task_category`
-(`personal` | `group_subtask` | `gia_followup`):
+One `tasks` table, with `task_category` describing **structure only**
+(`personal` | `group_subtask` — `gia_followup` was removed in 20260617000138). A lead
+follow-up is no longer its own category: it is a `personal` task that **has a `task_gia_meta`
+row** — that meta row *is* the task→lead link.
 
 - **`tasks`** — `status`: `to_do | in_progress | in_review | completed | error | cancelled`
   (legacy `pending`/`done` no longer exist; default fixed to `to_do` in 0086); `priority`:
   `urgent | high | normal`; `attachments jsonb` = checklist array; `tags text[]` + GIN;
   `task_type`: `call | whatsapp_message | other` (0057); `group_id` → task_groups.
+  `module`: native enum `task_module` (`gia` | `sia` | `core`, was free text before
+  20260617000138) — `gia` = lead follow-up, `sia` = future tickets, `core` = everything else.
+
+  **THE SINGLE-WRITER RULE (load-bearing):** `create_lead_gia_task` (and the
+  `update_lead_status` nurturing branch) is the **sole writer** of both a `task_gia_meta` row
+  **and** `module = 'gia'`, always together in one transaction. Every other insert writes
+  `module = 'core'` and **no** meta row. Therefore meta-presence and `module = 'gia'` are
+  interchangeable, permanent signals of a lead follow-up — reads detect a lead task via
+  EXISTS `task_gia_meta` / `module = 'gia'` / a `task_gia_meta!inner` join, **never** by a
+  category check. (Unaffected: `sla_policies.trigger_value = 'gia_followup'` is a separate
+  column — the SLA "task due" rule catalog — and still exists.)
 - **`task_groups`** — domain-scoped group containers. Visibility is flat (0058b): creator OR
   assigned a subtask within.
 - **`task_remarks`** — append-only progress timeline (replaced `task_messages`, 0022).
@@ -100,8 +117,11 @@ One `tasks` table for all three categories, discriminated by `task_category`
 - **`task_audit_log`** — append-only; logs exactly six fields (title, description, status,
   priority, due_at, assigned_to — `attachments` deliberately excluded). `ON DELETE CASCADE`
   on task — deleting a task removes its trail (logged decision, 2026-05-28).
-- **`task_gia_meta`** — one row per Gia follow-up task: `task_id` + `lead_id` +
-  `call_outcome`. Created atomically with the task via `create_lead_gia_task` (0054).
+- **`task_gia_meta`** — one row per lead follow-up task: `task_id` + `lead_id` +
+  `call_outcome`. Created atomically with the task via `create_lead_gia_task` (0054). Its
+  presence (kept in lockstep with `tasks.module = 'gia'` by the single-writer rule above) is
+  *the* signal that a `personal` task is a lead follow-up — `task_category` no longer carries
+  this distinction (20260617000138).
 
 ## WhatsApp (4 tables)
 
@@ -138,10 +158,13 @@ campaign). Files live in the `ad-creatives` Storage bucket.
 ### `notifications`
 
 In-app inbox rows: `recipient_id`, `type` CHECK (`lead_assigned`, `lead_won`, `task_due`,
-`task_assigned`, `mention`, `system`, `sla_breach_agent`, `sla_breach_manager`), `title`,
+`task_assigned`, `mention`, `system`, `sla_breach_agent`, `sla_breach_manager`,
+`sla_breach_founder`, `task_overdue_manager`, `suggestion_resolved`), `title`,
 `body`, `action_url` (relative paths only — CHECK rejects `http%`), `read_at`. Realtime
 enabled — drives the bell badge live. The `type` CHECK has grown over time —
-`sla_breach_founder` + `task_overdue_manager` were added in 0113.
+`sla_breach_founder` + `task_overdue_manager` were added in 0113; `suggestion_resolved` in 0136
+(transactional, non-silenceable — sent to the original sender when admin/founder resolves a
+suggestion; has no `notification_preferences` key).
 
 ### `push_subscriptions` (0120)
 
@@ -272,12 +295,73 @@ Small key/value config (same read-per-request contract). `key` PK, `value jsonb`
 `daily_message_cap=200`, `pii_masking_depth='light'`, `session_expiry_hours=24`. RLS admin/founder
 SELECT; writes service-role.
 
+## Usage / adoption tracking (2 tables, 0126)
+
+Measures how much **active** time each member spends in Serene (per agent, per domain, today and
+historically) — an admin/founder adoption tool. "Active" = tab visible AND a real interaction in
+the last ~2 min, NOT merely logged in. Three-job architecture: the client SETs a Redis
+`presence:{userId}` key every 60s while active (hot path, **no DB write**); a 1-min snapshot job
+appends the live presence keys into `usage_heartbeats` (admin client); a rollup job re-rolls today
+every 15 min + the prior IST day nightly into `usage_daily`. Both tables **RLS-enabled with NO
+policies = deny-by-default** — jobs write via the admin client, the dashboard reads ONLY through
+the `get_agent_usage` SECURITY DEFINER RPC (no caller-supplied scope → Q-13 revoked tier: EXECUTE
+revoked from `PUBLIC, anon, authenticated`, GRANTed `service_role` only; the founder/admin gate
+lives in the service layer, never the RPC).
+
+### `usage_heartbeats`
+
+**Append-only (A-11)** raw active-presence ticks — one row per active user per snapshot-job run
+(`user_id`, `domain app_domain`, `captured_at`). The ONLY writer is the snapshot job (admin
+client); `usage_heartbeats_user_time_idx (user_id, captured_at)`. Never read by the dashboard;
+pruned after 30 days by the nightly rollup (admin-client maintenance, not a user mutation).
+
+### `usage_daily`
+
+The rollup the dashboard reads — PK `(day, user_id, domain)` makes the rollup UPSERT idempotent
+(recompute distinct minute-ticks, **overwrite never increment**); `active_minutes integer`;
+`usage_daily_day_idx (day)`. Read live (today recomputed from `usage_heartbeats`) + historical
+(`day >= p_history_from`) via `get_agent_usage`.
+
+## Notification preferences (1 table, 0133)
+
+### `notification_preferences`
+
+Per-user In-app/WhatsApp on/off for each notification CATEGORY. PK `(user_id, notification_key)`;
+`in_app`/`whatsapp` booleans (DEFAULT true); `notification_key` CHECK mirrors the 9 keys in
+`lib/constants/notification-categories.ts` (`lead_assigned`, `new_lead_founder_alert`, `lead_won`,
+`deal_created`, `task_assigned`, `task_due`, `task_overdue_manager`, `sla_breach`,
+`sla_escalation`); `update_updated_at` trigger. **Sparse mute-rows — ABSENCE = ON:** a row exists
+only as an opt-out; no row → both channels on. The gate (`notification-prefs-service.ts`) **fails
+OPEN** (missing/malformed/thrown → send), so a new category is on-for-everyone with zero backfill
+and the table holds only deliberate opt-outs. **Owner-only RLS** (the `push_subscriptions` 0120
+posture): owner SELECT/INSERT/UPDATE/DELETE (`user_id = auth.uid()`, InitPlan-hoisted); the
+cross-user read at notification fan-out runs service-role (admin client), like `dispatchPush`.
+Transactional sends (`lead_initiation`, `elaya_reply`) have NO key here — never silenceable.
+
+## Suggestions (1 table, 0134)
+
+### `suggestions`
+
+Staff-submitted suggestion / bug-report channel for admin/founder triage. `sender_id` FK,
+`category` CHECK (`bug` | `idea` | `other`), `message`, `image_paths text[]` (CHECK ≤ 4 — mirrors
+`MAX_SUGGESTION_IMAGES`; stores storage PATHS in the private `suggestions` bucket, never URLs),
+`status` CHECK (`open` | `resolved`), `resolved_by`/`resolved_at`, timestamps;
+`idx_suggestions_status_created (status, created_at DESC)`; `update_updated_at` trigger.
+**NOT append-only** — a suggestion has a status lifecycle, so it gets exactly ONE narrow
+admin/founder UPDATE policy (the `revival_candidates` carve-out); only
+`status`/`resolved_by`/`resolved_at` are writable (enforced in `resolveSuggestion` — RLS cannot
+restrict columns). RLS (InitPlan-hoisted per 0088): sender SELECT/INSERT own
+(`sender_id = auth.uid()`); admin/founder SELECT all + UPDATE
+(`get_user_role() IN ('admin','founder')`); **no DELETE policy, ever**. Screenshots live in the
+private `suggestions` storage bucket (0135 — see Storage buckets).
+
 ## Storage buckets
 
 | Bucket | Access | RLS |
 | ------ | ------ | --- |
 | `avatars` (0071) | public read | `avatars_public_read` / `_insert_own` / `_update_own` / `_delete_own` (the quoted-name duplicates were dropped in 0093) |
 | `ad-creatives` (0012) | public read | INSERT/DELETE restricted to admin/founder (0092), matching the table RLS |
+| `suggestions` (0135) | **PRIVATE** (no public read — reports can show sensitive screens) | `suggestions_storage_insert_own` (write only under the caller's own `${auth.uid()}/` prefix) / `_read_own` (same prefix) / `_read_admin` (admin/founder read all — backs `createSignedUrl` for the triage inbox). No UPDATE/DELETE — screenshots are write-once. Admin viewing mints short-lived signed URLs; the `suggestions` row stores PATHS, never URLs |
 
 ## RPC inventory
 

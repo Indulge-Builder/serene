@@ -69,7 +69,6 @@ export async function getOpenRevivedTask(leadId: string): Promise<Task | null> {
   const { data, error } = await admin
     .from("tasks")
     .select("*, task_gia_meta!inner(lead_id, call_outcome)")
-    .eq("task_category", "gia_followup")
     .eq("task_gia_meta.lead_id", leadId)
     .eq("task_gia_meta.call_outcome", REVIVAL_TASK_MARKER)
     .not("status", "in", '("completed","cancelled","error")')

@@ -32,6 +32,14 @@ export interface FilterDropdownProps {
   hideCountBadge?: boolean;
   /** When false, open state does not switch trigger border to accent (filter bars). */
   accentBorderOnOpen?: boolean;
+  /**
+   * Collapse the trigger to a square icon-only button (label + chevron hidden;
+   * `icon` required). When something is selected, an accent dot replaces the
+   * numeric count badge. The menu still opens with full text labels. Used on
+   * mobile where the labelled trigger has no room (e.g. the domain selector).
+   * `aria-label` is taken from `label` so the control stays accessible.
+   */
+  iconOnly?: boolean;
 }
 
 const MENU_ITEM_HEIGHT = 36;
@@ -53,6 +61,7 @@ export function FilterDropdown({
   menuPortal = false,
   hideCountBadge = false,
   accentBorderOnOpen = true,
+  iconOnly = false,
 }: FilterDropdownProps) {
   const [open, setOpen] = React.useState(false);
   const [mounted, setMounted] = useState(false);
@@ -360,12 +369,16 @@ export function FilterDropdown({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-label={iconOnly ? label : undefined}
+        title={iconOnly ? label : undefined}
         style={{
+          position:       iconOnly ? 'relative' : undefined,
           display:        'inline-flex',
           alignItems:     'center',
-          gap:            'var(--space-2)',
+          gap:            iconOnly ? 0 : 'var(--space-2)',
           height:         '2.25rem',
-          padding:        'var(--space-1) var(--space-3)',
+          width:          iconOnly ? '2.25rem' : (fullWidth ? '100%' : undefined),
+          padding:        iconOnly ? 0 : 'var(--space-1) var(--space-3)',
           background:     activeCount > 0 ? 'var(--theme-accent-surface)' : 'var(--theme-paper-subtle)',
           border:         `1px solid ${triggerAccentBorder ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
           borderRadius:   'var(--radius-md)',
@@ -377,65 +390,89 @@ export function FilterDropdown({
           transition:     'var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out)',
           whiteSpace:     'nowrap',
           outline:        'none',
-          width:          fullWidth ? '100%' : undefined,
-          minWidth:       fullWidth ? 0 : undefined,
-          justifyContent: fullWidth ? 'space-between' : undefined,
+          minWidth:       fullWidth && !iconOnly ? 0 : undefined,
+          justifyContent: iconOnly ? 'center' : (fullWidth ? 'space-between' : undefined),
         }}
       >
-        <span
-          style={{
-            display:      'inline-flex',
-            alignItems:   'center',
-            gap:          'var(--space-2)',
-            minWidth:     0,
-            flex:         fullWidth ? 1 : undefined,
-            overflow:     'hidden',
-          }}
-        >
-          {TriggerIcon && (
-            <TriggerIcon style={{ width: 14, height: 14, strokeWidth: 1.5, flexShrink: 0 }} aria-hidden="true" />
-          )}
-          <span
-            style={{
-              overflow:     'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {label}
-          </span>
-          {showCountBadge && (
+        {iconOnly ? (
+          <>
+            {TriggerIcon && (
+              <TriggerIcon style={{ width: 16, height: 16, strokeWidth: 1.5, flexShrink: 0 }} aria-hidden="true" />
+            )}
+            {/* Accent dot replaces the numeric count — "a domain is scoped". */}
+            {showCountBadge && (
+              <span
+                aria-hidden="true"
+                style={{
+                  position:     'absolute',
+                  top:          4,
+                  right:        4,
+                  width:        6,
+                  height:       6,
+                  borderRadius: 'var(--radius-full)',
+                  background:   'var(--theme-accent)',
+                }}
+              />
+            )}
+          </>
+        ) : (
+          <>
             <span
               style={{
-                display:        'inline-flex',
-                alignItems:     'center',
-                justifyContent: 'center',
-                minWidth:       18,
-                height:         18,
-                padding:        '0 var(--space-1)',
-                borderRadius:   'var(--radius-full)',
-                background:     'var(--theme-accent)',
-                color:          'var(--theme-accent-fg)',
-                fontSize:       'var(--text-2xs)',
-                fontWeight:     'var(--weight-semibold)',
-                lineHeight:     1,
-                flexShrink:     0,
+                display:      'inline-flex',
+                alignItems:   'center',
+                gap:          'var(--space-2)',
+                minWidth:     0,
+                flex:         fullWidth ? 1 : undefined,
+                overflow:     'hidden',
               }}
             >
-              {activeCount}
+              {TriggerIcon && (
+                <TriggerIcon style={{ width: 14, height: 14, strokeWidth: 1.5, flexShrink: 0 }} aria-hidden="true" />
+              )}
+              <span
+                style={{
+                  overflow:     'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {label}
+              </span>
+              {showCountBadge && (
+                <span
+                  style={{
+                    display:        'inline-flex',
+                    alignItems:     'center',
+                    justifyContent: 'center',
+                    minWidth:       18,
+                    height:         18,
+                    padding:        '0 var(--space-1)',
+                    borderRadius:   'var(--radius-full)',
+                    background:     'var(--theme-accent)',
+                    color:          'var(--theme-accent-fg)',
+                    fontSize:       'var(--text-2xs)',
+                    fontWeight:     'var(--weight-semibold)',
+                    lineHeight:     1,
+                    flexShrink:     0,
+                  }}
+                >
+                  {activeCount}
+                </span>
+              )}
             </span>
-          )}
-        </span>
-        <ChevronDown
-          style={{
-            width:       14,
-            height:      14,
-            strokeWidth: 1.5,
-            flexShrink:  0,
-            transform:   open ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition:  'transform var(--duration-fast) var(--ease-in-out)',
-          }}
-          aria-hidden="true"
-        />
+            <ChevronDown
+              style={{
+                width:       14,
+                height:      14,
+                strokeWidth: 1.5,
+                flexShrink:  0,
+                transform:   open ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition:  'transform var(--duration-fast) var(--ease-in-out)',
+              }}
+              aria-hidden="true"
+            />
+          </>
+        )}
       </button>
 
       {menuPortal

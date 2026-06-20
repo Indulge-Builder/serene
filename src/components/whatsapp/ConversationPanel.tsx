@@ -11,16 +11,12 @@ import {
 } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
-import { Button } from "@/components/ui/Button";
 import { MessageBar } from "@/components/ui/MessageBar";
 import { DictationButton } from "@/components/ui/DictationButton";
-import { Spinner } from "@/components/ui/Spinner";
 import { MessageBubble } from "@/components/whatsapp/MessageBubble";
 import { createClient } from "@/lib/supabase/client";
 import {
   sendWhatsAppMessage,
-  resolveConversation,
-  reopenConversation,
   markConversationAsRead,
 } from "@/lib/actions/whatsapp";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -34,12 +30,10 @@ interface ConversationPanelProps {
   conversation:      WhatsAppConversation;
   initialMessages:   WhatsAppMessage[];
   callerProfile:     { id: string; full_name: string; avatar_url?: string | null; role: UserRole };
-  onConversationUpdate: (updated: Partial<WhatsAppConversation>) => void;
   /** Single-pane mode (<md): renders a back-to-list button in the header. */
   onBack?: () => void;
 }
 
-const MANAGER_ROLES: UserRole[] = ["manager", "admin", "founder"];
 const MAX_CHARS = 4096;
 const WARN_CHARS = 3000;
 
@@ -49,7 +43,6 @@ export function ConversationPanel({
   conversation,
   initialMessages,
   callerProfile,
-  onConversationUpdate,
   onBack,
 }: ConversationPanelProps) {
   const mountId       = useId();
@@ -69,8 +62,6 @@ export function ConversationPanel({
 
   const [messages,       setMessages]       = useState<WhatsAppMessage[]>(initialMessages);
   const [draft,          setDraft]          = useState("");
-  const [convStatus,     setConvStatus]     = useState(conversation.status);
-  const [isResolving,    startResolveTransition]  = useTransition();
   const [isSending,      startSendTransition]     = useTransition();
 
   // ── Seed / reset on conversation change ─────────────────────────────────────
@@ -80,7 +71,6 @@ export function ConversationPanel({
     setDraft("");
     seenIds.current       = new Set(initialMessages.map((m) => m.id));
     optimisticIds.current = new Set();
-    setConvStatus(conversation.status);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation.id]);
 
@@ -169,7 +159,7 @@ export function ConversationPanel({
 
   const handleSend = useCallback(() => {
     const content = draft.trim();
-    if (!content || isSending || convStatus === "resolved") return;
+    if (!content || isSending) return;
 
     const sanitized     = sanitizeText(content);
     const optimisticId  = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -222,7 +212,7 @@ export function ConversationPanel({
         });
       }
     });
-  }, [draft, isSending, convStatus, conversation.id, conversation.lead_id, callerProfile]);
+  }, [draft, isSending, conversation.id, conversation.lead_id, callerProfile]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -239,33 +229,6 @@ export function ConversationPanel({
     composerRef.current?.focus();
   }, []);
 
-  // ── Resolve / Reopen ─────────────────────────────────────────────────────────
-
-  function handleResolve() {
-    startResolveTransition(async () => {
-      const result = await resolveConversation({ conversationId: conversation.id });
-      if (result.error) {
-        toast.danger("Couldn't resolve conversation", { message: result.error });
-        return;
-      }
-      setConvStatus("resolved");
-      onConversationUpdate({ status: "resolved" });
-    });
-  }
-
-  function handleReopen() {
-    startResolveTransition(async () => {
-      const result = await reopenConversation({ conversationId: conversation.id });
-      if (result.error) {
-        toast.danger("Couldn't reopen conversation", { message: result.error });
-        return;
-      }
-      setConvStatus("open");
-      onConversationUpdate({ status: "open" });
-    });
-  }
-
-  const canManage  = MANAGER_ROLES.includes(callerProfile.role);
   const showCharCount = draft.length > WARN_CHARS;
 
   // Group messages by date
@@ -360,49 +323,6 @@ export function ConversationPanel({
             {conversation.lead_phone ?? conversation.phone}
           </p>
         </div>
-
-        {/* Status badge */}
-        {convStatus === "resolved" && (
-          <span
-            style={{
-              display:      "inline-flex",
-              alignItems:   "center",
-              flexShrink:   0,
-              padding:      "2px var(--space-2)",
-              borderRadius: "var(--radius-full)",
-              background:   "var(--color-success)",
-              color:        "var(--color-success-text)",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "var(--text-xs)",
-              fontWeight:   "var(--weight-semibold)",
-            }}
-          >
-            Resolved
-          </span>
-        )}
-
-        {/* Resolve / Reopen button — manager+ only */}
-        {canManage && (
-          convStatus === "open" ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleResolve}
-              disabled={isResolving}
-            >
-              {isResolving ? <Spinner size="sm" /> : "Resolve"}
-            </Button>
-          ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleReopen}
-              disabled={isResolving}
-            >
-              {isResolving ? <Spinner size="sm" /> : "Reopen"}
-            </Button>
-          )
-        )}
       </div>
 
       {/* ZONE B — Message list */}
@@ -478,77 +398,49 @@ export function ConversationPanel({
 
       {/* ZONE C — Composer. safe-area inset (DNA R-02): this is the
           viewport-bottom surface in single-pane mode on notched devices. */}
-      {convStatus === "resolved" ? (
-        <div
-          style={{
-            padding:        "var(--space-4)",
-            paddingBottom:  "calc(var(--space-4) + env(safe-area-inset-bottom, 0px))",
-            flexShrink:     0,
-            display:        "flex",
-            alignItems:     "center",
-            justifyContent: "center",
-            gap:            "var(--space-3)",
-          }}
-        >
+      <div
+        style={{
+          padding:       "var(--space-3) var(--space-4)",
+          paddingBottom: "calc(var(--space-3) + env(safe-area-inset-bottom, 0px))",
+          flexShrink:    0,
+        }}
+      >
+        <MessageBar
+          ref={composerRef}
+          value={draft}
+          onChange={setDraft}
+          onSend={handleSend}
+          onKeyDown={handleKeyDown}
+          loading={isSending}
+          maxLength={MAX_CHARS}
+          maxHeight={96}
+          leadingSlot={
+            <DictationButton
+              onTranscript={handleTranscript}
+              onError={(message) => toast.danger(message)}
+              disabled={isSending}
+              what="a message"
+            />
+          }
+        />
+
+        {/* Character count warning */}
+        {showCharCount && (
           <p
             style={{
-              fontFamily: "var(--font-serif)",
-              fontStyle:  "italic",
-              fontSize:   "var(--text-sm)",
-              color:      "var(--theme-text-tertiary)",
-              margin:     0,
-              textAlign:  "center",
+              fontFamily: "var(--font-sans)",
+              fontSize:   "var(--text-2xs)",
+              color:      draft.length > MAX_CHARS - 100
+                ? "var(--color-danger-text)"
+                : "var(--theme-text-tertiary)",
+              margin:     "var(--space-1) var(--space-1) 0",
+              textAlign:  "right",
             }}
           >
-            This conversation is resolved. Reopen to send messages.
+            {draft.length} / {MAX_CHARS}
           </p>
-        </div>
-      ) : (
-        <div
-          style={{
-            padding:       "var(--space-3) var(--space-4)",
-            paddingBottom: "calc(var(--space-3) + env(safe-area-inset-bottom, 0px))",
-            flexShrink:    0,
-          }}
-        >
-          <MessageBar
-            ref={composerRef}
-            value={draft}
-            onChange={setDraft}
-            onSend={handleSend}
-            onKeyDown={handleKeyDown}
-            loading={isSending}
-            maxLength={MAX_CHARS}
-            maxHeight={96}
-            leadingSlot={
-              <DictationButton
-                onTranscript={handleTranscript}
-                onError={(message) => toast.danger(message)}
-                disabled={isSending}
-                what="a message"
-              />
-            }
-          />
-
-          {/* Character count warning */}
-          {showCharCount && (
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize:   "var(--text-2xs)",
-                color:      draft.length > MAX_CHARS - 100
-                  ? "var(--color-danger-text)"
-                  : "var(--theme-text-tertiary)",
-                margin:     "var(--space-1) var(--space-1) 0",
-                textAlign:  "right",
-              }}
-            >
-              {draft.length} / {MAX_CHARS}
-            </p>
-          )}
-
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

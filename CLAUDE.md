@@ -641,6 +641,5 @@ This project has a knowledge graph at graphify-out/ with god nodes, community st
 
 Rules:
 - For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- Read graphify-out/GRAPH_REPORT.md (god nodes + Claude-labelled community structure) only for broad architecture review or when query/path/explain do not surface enough context. There is no longer a curated wiki/ — the graph is the navigation layer.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost). To re-name communities after a re-cluster, run `graphify label . --backend claude` (uses the Claude API; ANTHROPIC_API_KEY is in .env.local). To regenerate the interactive visual, run `GRAPHIFY_VIZ_NODE_LIMIT=10000 graphify cluster-only .` (writes graphify-out/graph.html; the default 5000-node limit skips this repo's ~6.6k-node graph).

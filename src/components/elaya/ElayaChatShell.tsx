@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/useToast';
 import { scrollToBottom } from '@/lib/utils/scroll';
 import { formErrors } from '@/lib/validations/form-errors';
 import { ElayaIdentityCard } from '@/components/elaya/ElayaIdentityCard';
+import { ElayaFeedbackCard } from '@/components/elaya/ElayaFeedbackCard';
 import { ElayaMessageBubble, type ElayaUiMessage } from '@/components/elaya/ElayaMessageBubble';
 
 type SseEvent =
@@ -400,11 +401,16 @@ export function ElayaChatShell({
         </div>
       </div>
 
-      {/* Identity sidebar — right 340px column on lg (the canonical dossier
-          placement), stacked below the chat on smaller viewports. Omitted in
-          the floating widget (chat-only) — there the chat fills the modal. */}
+      {/* Right 340px column on lg (the canonical dossier placement), stacked
+          below the chat on smaller viewports. The feedback card sits on top of
+          the identity card — so the stack reads chat → feedback → identity once
+          the grid collapses to one column on mobile. Omitted in the floating
+          widget (chat-only) — there the chat fills the modal. */}
       {!chatOnly && (
-        <ElayaIdentityCard busy={isStreaming || capReached} onPromptSelect={handlePromptSelect} />
+        <div className="flex flex-col" style={{ gap: 'var(--space-6)', minHeight: 0 }}>
+          <ElayaFeedbackCard />
+          <ElayaIdentityCard busy={isStreaming || capReached} onPromptSelect={handlePromptSelect} />
+        </div>
       )}
     </div>
   );

@@ -3,7 +3,7 @@
 > **Purpose:** the product vision, the module roadmap, and what "done" means per module.
 > **Audience:** everyone technical; the non-technical version is `00-for-the-board.md`.
 > **Source-of-truth scope:** forward direction + module status. Build *history* is `changelog.md` (single source of truth for what shipped).
-> **Last verified:** 2026-06-15.
+> **Last verified:** 2026-06-20 (migration range re-verified against `supabase/migrations/`).
 
 ---
 
@@ -42,8 +42,8 @@ open items live in the design/security audit tables (`audits/`) and in `design/d
 
 ## Where history lives
 
-- **What shipped, when:** `changelog.md` (425+ dated entries since 2026-05-26) — the single
+- **What shipped, when:** `changelog.md` (hundreds of dated entries since 2026-05-26) — the single
   source of truth.
-- **Schema history:** `architecture/migrations.md` (121 migrations, 0001–0121).
+- **Schema history:** `architecture/migrations.md` (full migration index, through 0137; the numbered sequence skips 0131).
 - **Decisions and reversals:** `rules/The_Rules.md` Decision Log (engineering/architecture)
   and `design/decision-log.md` (design).

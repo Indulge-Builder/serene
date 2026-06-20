@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getNotifications } from '@/lib/services/notifications-service';
-import { GIA_DOMAINS } from '@/lib/constants/domains';
 import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import { PageControls } from '@/components/layout/PageControls';
 import { AddTaskButton } from '@/components/tasks/AddTaskButton';
@@ -11,7 +10,7 @@ import { TasksCreateProvider } from '@/components/tasks/TasksCreateContext';
 import { TasksAsync } from './TasksAsync';
 import { TasksSkeleton } from './TasksSkeleton';
 
-export type TaskTab = 'gia' | 'personal' | 'group';
+export type TaskTab = 'personal' | 'group';
 
 export default async function TasksPage({
   searchParams,
@@ -24,17 +23,11 @@ export default async function TasksPage({
   if (!profile) redirect('/login');
   if (profile.role === 'guest') redirect('/dashboard');
 
-  // Compute which tabs this caller can access.
-  // GIA_DOMAINS agents/managers see the Gia Tasks tab; others do not.
-  const isGiaDomain = (GIA_DOMAINS as readonly string[]).includes(profile.domain);
-
-  // All non-guest roles get the Group Tasks tab.
-  // Gia domain adds the Gia tab regardless of role.
-  const validTabs: TaskTab[] = isGiaDomain
-    ? ['gia', 'personal', 'group']
-    : ['personal', 'group'];
+  // All non-guest roles get My Tasks + Group Tasks.
+  const validTabs: TaskTab[] = ['personal', 'group'];
 
   // Resolve ?tab= against valid tabs — default is always 'personal' (My Tasks).
+  // A legacy ?tab=gia (Gia tab removed) or any invalid value falls back to 'personal'.
   const resolvedParams = await searchParams;
   const rawTab = typeof resolvedParams.tab === 'string' ? resolvedParams.tab : '';
   const tab = (validTabs as string[]).includes(rawTab)

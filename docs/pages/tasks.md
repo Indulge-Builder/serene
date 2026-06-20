@@ -1,16 +1,27 @@
 # Tasks — Page Spec
 
-> **Purpose:** spec for `/tasks` (Gia / My Tasks / Group Tasks tabbed hub) and `/tasks/[id]` (group workspace) — the whole OS Tasks module.
+> **Purpose:** spec for `/tasks` (My Tasks / Group Tasks tabbed hub) and `/tasks/[id]` (group workspace) — the whole OS Tasks module.
 > **Audience:** engineers. · **Source-of-truth scope:** the task system (tables-usage, RPCs, actions, tabs, modals, flows, invariants). Schema rows: `../architecture/database.md`; reminder-job mechanics: `../integrations/trigger-dev.md`.
-> **Last verified:** 2026-06-11 (restructure pass over the 2026-06-11 intelligence doc).
+> **Last verified:** 2026-06-17 (gia-category collapse — migration `20260617000138`).
 
 ## 1. Purpose
 
-One `tasks` table carries three categories, discriminated by `task_category`: **personal**
-(individual todos), **group_subtask** (under a `task_groups` parent), **gia_followup**
-(system/agent-created, lead-linked via `task_gia_meta`). Each task has an append-only
-`task_remarks` narrative; meaningful status changes ride a remark via
-`add_task_remark_with_status` (accountability through narrative).
+One `tasks` table carries **two structural categories**, discriminated by `task_category`:
+**personal** (individual todos) and **group_subtask** (under a `task_groups` parent).
+`task_category` describes **structure only** — it never encodes a lead link.
+
+A **lead follow-up** is a `personal` task that **has a `task_gia_meta` row**: the meta table
+*is* the task→lead link. Orthogonally, `tasks.module` (a native `task_module` enum —
+`'gia'` = lead follow-up, `'sia'` = future tickets, `'core'` = everything else) classifies
+the task's origin. **Single-writer invariant:** a `task_gia_meta` row exists **iff** the task
+is a lead follow-up, and `module = 'gia'` **iff** a meta row exists. `create_lead_gia_task`
+(and the `update_lead_status` nurturing branch) is the **sole writer** of both, always
+together; every other insert writes `module = 'core'` with **no** meta row. Detect a lead
+task by meta-presence (`EXISTS task_gia_meta` / `module = 'gia'` / a `task_gia_meta!inner`
+join) — **never** via a category check.
+
+Each task has an append-only `task_remarks` narrative; meaningful status changes ride a
+remark via `add_task_remark_with_status` (accountability through narrative).
 
 ## 2. Who sees it
 
@@ -23,19 +34,24 @@ operation×role matrix + RLS notes: Deep dive §20.
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `tasks-service.ts` (read-only) — `getPersonalTasks` (cursor RPC), `getGroupTasks`, `getGroupSubtasks`, `getTaskRemarks`, `getGiaTasksForUser`, `getAllLeadTasks`; Redis per `../architecture/caching.md` (`task:*`) |
-| RPCs | `get_personal_tasks` (0026), `get_group_task_summaries` (0020), `add_task_remark_with_status` (0035/0051), `get_gia_tasks` (0055), `create_lead_gia_task` (0054) |
+| Service | `tasks-service.ts` (read-only) — `getPersonalTasks` (cursor RPC), `getGroupTasks`, `getGroupSubtasks`, `getTaskRemarks`, `getGiaTasksForUser` (lead-task reader — dossier + Elaya tool, no longer a tab), `getAllLeadTasks`; Redis per `../architecture/caching.md` (`task:*`) |
+| RPCs | `get_personal_tasks` (0026), `get_group_task_summaries` (0020), `add_task_remark_with_status` (0035/0051), `get_gia_tasks` (0055 — survives the tab removal; consumed by the lead dossier + Elaya read tool), `create_lead_gia_task` (0054 — the sole atomic writer of a lead follow-up: `personal` task + `task_gia_meta` + `module='gia'`) |
 | Actions | `tasks.ts` — create personal/group/subtask, update status/brief/checklist/tags, delete, remarks (+ suppression); all `{ data, error }` |
 | Jobs | task due reminders — `../integrations/trigger-dev.md` |
 
 ## 4. Components
 
-`TasksShell` + `TasksAsync` (RSC seed) · `TasksFilters` (client-state `<FilterBar>`) · tabs:
-`GiaTasksTab`, `MyTasksCalendarView` (the personal view), `GroupTasksTab` ·
+`TasksShell` + `TasksAsync` (RSC seed) · `TasksFilters` (client-state `<FilterBar>`) · two tabs:
+`MyTasksCalendarView` (the personal view) + `GroupTasksTab` ·
 `GroupTaskWorkspace` (`/tasks/[id]`, list/board, Realtime) · `SubTaskModal` (two-zone) +
 `TaskRemarksPanel` + `AssigneePickerModal` + `TaskStatusIcon` · create modals
-(`CreatePersonalTaskModal`, `CreateGroupTaskModal`, `CreateGiaTaskModal`) — all composing
-`TaskFormFields`. Component contracts live code-adjacent in `src/components/tasks/CLAUDE.md`.
+(`CreatePersonalTaskModal`, `CreateGroupTaskModal`) — all composing `TaskFormFields`.
+Component contracts live code-adjacent in `src/components/tasks/CLAUDE.md`.
+
+> **Gia tab removed (2026-06-17).** `GiaTasksTab`, `GiaTaskRow`, `GiaDaySection`, and
+> `CreateGiaTaskModal` are **DELETED**. Lead follow-ups now surface in the My Tasks calendar
+> (they are `personal` tasks) and on the lead dossier task card — there is no standalone Gia
+> tab. `?tab=gia` falls back to `personal`.
 
 ## 5. States
 
@@ -47,7 +63,9 @@ operation×role matrix + RLS notes: Deep dive §20.
 
 Deep dive §22 — append-only remarks (suppression is the only mutation), `status_change` CHECK
 coupled to `tasks.status`, audit-log excludes `attachments`, reminder idempotency keys,
-cancel-before-delete, `PersonalTasksTab` deleted (was legacy/unmounted — removed 2026-06-11,
+cancel-before-delete, the gia-category single-writer invariant (`task_gia_meta` + `module='gia'`
+exist iff lead follow-up; sole writer `create_lead_gia_task`; detect via meta-presence, never a
+category check), `PersonalTasksTab` deleted (was legacy/unmounted — removed 2026-06-11,
 design-audit L-02), no JS sort on `getPersonalTasks` output, channel nonces.
 
 ## 7. Open items
@@ -71,17 +89,17 @@ design-audit L-02), no JS sort on `getPersonalTasks` output, channel nonces.
 | `id` | uuid | NOT NULL | `gen_random_uuid()` | PK |
 | `assigned_to` | uuid | NOT NULL | — | FK → `profiles(id)` |
 | `created_by` | uuid | NOT NULL | — | FK → `profiles(id)` |
-| `module` | text | NOT NULL | — | OS inserts use `'gia'` |
+| `module` | `task_module` enum | NOT NULL | `'core'` | `'gia'` = lead follow-up, `'sia'` = future tickets, `'core'` = everything else (migration `20260617000138`). `module='gia'` **iff** a `task_gia_meta` row exists — written **only** by `create_lead_gia_task` / `update_lead_status` nurturing branch. Replaced the old free `text` column whose OS inserts hardcoded `'gia'`. |
 | `task_type` | text | NOT NULL | — | `call`, `whatsapp_message`, `other` (migration 0057) |
 | `title` | text | NOT NULL | — | Backfilled `'(untitled)'` in 0017 |
 | `description` | text | NULL | — | |
 | `status` | text | NOT NULL | `'to_do'` | CHECK: 6 values (post-0017). Column DEFAULT corrected `'pending'` → `'to_do'` in 0086 (0017 left a stale default that violated the CHECK on default INSERTs) |
 | `priority` | text | NOT NULL | `'normal'` | CHECK: `urgent`, `high`, `normal` |
-| `task_category` | text | NOT NULL | `'personal'` | CHECK: `personal`, `group_subtask`, `gia_followup` |
+| `task_category` | text | NOT NULL | `'personal'` | CHECK: `personal`, `group_subtask` (migration `20260617000138` dropped `gia_followup`). **Structure only** — a lead follow-up is a `personal` task with a `task_gia_meta` row, never a distinct category. |
 | `group_id` | uuid | NULL | — | FK → `task_groups(id)` ON DELETE CASCADE |
 | `due_at` | timestamptz | NULL | — | |
 | `completed_at` | timestamptz | NULL | — | Set when `status = 'completed'` |
-| `overdue_at` | timestamptz | NULL | — | Stamped **exactly once** by the `check-task-overdue` job (0113) when a `gia_followup` task passes due+30 min with no clearing event; deliberately not a status value |
+| `overdue_at` | timestamptz | NULL | — | Stamped **exactly once** by the `check-task-overdue` job (0113) when a lead follow-up task (`module='gia'`) passes due+30 min with no clearing event; deliberately not a status value |
 | `attachments` | jsonb | NOT NULL | `'[]'` | Checklist items; CHECK `jsonb_typeof = 'array'` (0023) |
 | `tags` | text[] | NOT NULL | `'{}'` | Personal tasks; GIN partial index (0024) |
 | `created_at` | timestamptz | NOT NULL | `now()` | |
@@ -120,7 +138,7 @@ design-audit L-02), no JS sort on `getPersonalTasks` output, channel nonces.
 
 > **0088 InitPlan note:** all five policies above wrap `get_user_role()` in `(SELECT public.get_user_role())` so the STABLE function runs once per statement, not per row. Logic is identical to the pre-0088 form — only the scalar-subquery wrapping changed.
 
-**INSERT/DELETE RLS now exists (0094) but app writes still bypass it.** `tasks_insert` covers only personal self-assigned rows; gia-followup and group-subtask inserts have **no** direct policy and are blocked by default — created only via SECURITY DEFINER RPCs (`create_lead_gia_task`, `update_lead_status`) or `adminClient`. Mutations from server actions continue to use `adminClient` with `canMutateTask` / delete rules; the RLS policies are defence-in-depth for any direct client access, not the primary enforcement path.
+**INSERT/DELETE RLS now exists (0094) but app writes still bypass it.** `tasks_insert` covers only personal self-assigned rows; lead-follow-up and group-subtask inserts have **no** direct policy and are blocked by default — created only via SECURITY DEFINER RPCs (`create_lead_gia_task`, `update_lead_status`) or `adminClient`. (`tasks_insert` checks `task_category = 'personal'` and is unaffected by the gia-category collapse — a lead follow-up *is* a `personal` row; what blocks a direct-client lead-task insert is the absence of any policy that can also write the coupled `task_gia_meta` row + `module='gia'`, which only the RPC does.) Mutations from server actions continue to use `adminClient` with `canMutateTask` / delete rules; the RLS policies are defence-in-depth for any direct client access, not the primary enforcement path.
 
 ---
 
@@ -219,6 +237,13 @@ Realtime: **enabled**.
 
 **RLS:** SELECT via EXISTS on tasks (agent: assigned; manager+: broader).
 
+**This table is the task→lead link.** A row here exists **iff** the task is a lead follow-up
+(and `tasks.module = 'gia'` is kept in lockstep). It is the **only** correct way to detect a
+lead task — a `task_gia_meta!inner` join, an `EXISTS` subquery, or `module = 'gia'`. There is
+no `gia_followup` category to check anymore. Written only by `create_lead_gia_task` (and the
+`update_lead_status` nurturing branch), always atomically alongside the `tasks` insert and
+`module='gia'`.
+
 ---
 
 #### 2f. Notification types relevant to tasks
@@ -227,7 +252,7 @@ Realtime: **enabled**.
 | --- | --- | --- |
 | `task_assigned` | `createPersonalTaskAction`, `createSubtaskAction` when assignee ≠ caller | `/tasks` (relative only) |
 | `task_due` | `sendTaskReminderTask` (Trigger.dev) | `/tasks` |
-| `task_overdue_manager` | `checkTaskOverdueTask` (Trigger.dev — gia tasks, due+30 min, no clearing event) | `/leads/[id]` |
+| `task_overdue_manager` | `checkTaskOverdueTask` (Trigger.dev — lead follow-ups, `module='gia'`, due+30 min, no clearing event) | `/leads/[id]` |
 
 `notifications.action_url` CHECK: `NOT LIKE 'http%'` — relative paths only.
 
@@ -276,7 +301,11 @@ Realtime: **enabled**.
 
 ---
 
-#### 3c. `get_gia_tasks` (migrations 0055, 0056)
+#### 3c. `get_gia_tasks` (migrations 0055, 0056) — survives the tab removal
+
+The Gia **tab** is gone (2026-06-17), but this RPC is **kept**: it is the lead-task reader for
+the **lead dossier** path and for **Elaya's read-tool registry**. It selects lead follow-ups via
+the `task_gia_meta` join (not a category filter) and returns the joined lead fields.
 
 | Parameter | Type | Purpose |
 | --- | --- | --- |
@@ -315,9 +344,16 @@ Realtime: **enabled**.
 
 ---
 
-#### 3e. `create_lead_gia_task` (migration 0054)
+#### 3e. `create_lead_gia_task` (migration 0054, updated `20260617000138`)
 
-**Two-INSERT transaction:** `tasks` (`task_category = 'gia_followup'`) + `task_gia_meta` in same function. Orphan `tasks` row without meta is invisible on all Gia surfaces — RPC prevents that.
+**The sole writer of a lead follow-up.** Two-INSERT transaction in one function: `tasks`
+(`task_category = 'personal'`, `module = 'gia'`) + `task_gia_meta`. After the gia-category
+collapse a lead follow-up is a `personal` task whose *link* is the meta row — so the RPC now
+writes `task_category = 'personal'` and `module = 'gia'`, then the coupled `task_gia_meta` row,
+atomically. This RPC (and the `update_lead_status` nurturing branch) is the **only** place that
+ever writes `module = 'gia'` or inserts a `task_gia_meta` row. An orphan `tasks` row without
+its meta row would be undetectable as a lead task — the RPC's atomicity is what guarantees the
+single-writer invariant.
 
 ---
 
@@ -332,8 +368,8 @@ Realtime: **enabled**.
 | `getTaskRemarks` | `taskId` | `TaskRemarkWithAuthor[]` | Redis 30s → PostgREST ASC + batch authors; React `cache()` | `getTaskRemarksAction` |
 | `getTaskGroupById` | `groupId` | `TaskGroup \| null` | Single row; RLS | `getTaskGroupByIdAction`, `WorkspaceAsync` |
 | `getPersonalTaskTags` | `userId` | `string[]` | Active personal tasks; dedupe sort | `getPersonalTaskTagsAction`, `TasksShell` |
-| `getGiaTasksForUser` | `userId`, `role`, `domain` | `GiaTask[]` | RPC `get_gia_tasks` | `TasksAsync` (gia tab) |
-| `getAllLeadTasks` | `leadId` | `Task[]` | PostgREST + inner join meta | Lead dossier |
+| `getGiaTasksForUser` | `userId`, `role`, `domain` | `GiaTask[]` | RPC `get_gia_tasks` | Elaya read-tool registry + lead dossier reader (**no longer a tab** — kept after the 2026-06-17 Gia-tab removal) |
+| `getAllLeadTasks` | `leadId` | `Task[]` | PostgREST + `task_gia_meta!inner` join (meta-presence, not a category filter) | Lead dossier task card |
 
 `PERSONAL_TASKS_PAGE_SIZE = 50` (default). `getPersonalTasks` accepts an optional `filters.limit` override capped at **500** (`Math.min(filters.limit ?? PERSONAL_TASKS_PAGE_SIZE, 500)`) — used for bulk/export-style reads. On RPC error: logs + empty result (TD-002).
 
@@ -348,9 +384,9 @@ Realtime: **enabled**.
 | `createPersonalTaskAction` | `CreatePersonalTaskSchema` | Session; manager+ to assign others | INSERT tasks | `task_assigned` notification; `scheduleTaskReminder` if due; del `task:personal:page1:{assignedTo}` | Yes |
 | `createGroupTaskAction` | `CreateGroupTaskSchema` | Any non-guest; domain locked to own unless admin/founder | INSERT task_groups | `revalidatePath('/tasks')`; **await** del `task:group-list:{callerId}` | Yes |
 | `createSubtaskAction` | `CreateSubtaskSchema` | Group exists; agent domain check | INSERT tasks | notification; reminder; `revalidatePath('/tasks')`; **await** del `task:group-list:{callerId}` + `task:group-list:{assignedTo}` (if different); del `task:subtasks:{groupId}:{callerId}` | Yes |
-| `updateTaskStatusAction` | `UpdateTaskStatusSchema` | `canMutateTask` | UPDATE status/completed_at | `cancelTaskReminder` on terminal; del by `task_category`: `personal` → `task:personal:page1:{callerId}`; `gia_followup` → `task:gia:{callerId}:{role}:{domain}`; `group_subtask` → `task:subtasks:{groupId}:{callerId}` | Yes |
+| `updateTaskStatusAction` | `UpdateTaskStatusSchema` | `canMutateTask` | UPDATE status/completed_at | `cancelTaskReminder` on terminal; del by structure: `group_subtask` → `task:subtasks:{groupId}:{callerId}`; otherwise `personal` → `task:personal:page1:{callerId}`, and a lead follow-up (meta-presence / `module='gia'`) additionally dels `task:gia:{callerId}:{role}:{domain}` | Yes |
 | `updateTaskAction` | `UpdateTaskSchema` | `canMutateTask` | Partial UPDATE | Reminder reschedule on due change; del `task:subtasks:{groupId}:{callerId}` if group subtask | Yes |
-| `deleteTaskAction` | `DeleteTaskSchema` | Agent: both created_by AND assigned_to; else open | DELETE | **Awaited** `cancelTaskReminder` before delete; del by `task_category` (same three-branch as `updateTaskStatusAction`) | Yes |
+| `deleteTaskAction` | `DeleteTaskSchema` | Agent: both created_by AND assigned_to; else open | DELETE | **Awaited** `cancelTaskReminder` before delete; del by structure (same branching as `updateTaskStatusAction`) | Yes |
 | `updateChecklistAction` | `UpdateChecklistSchema` | `canMutateTask` | UPDATE attachments | Excluded from audit trigger | Yes |
 | `updateTaskTagsAction` | `UpdateTaskTagsSchema` | `canMutateTask` | UPDATE tags | — | Yes |
 | `addTaskRemarkAction` | `AddTaskRemarkSchema` | View = post (tasks SELECT) | RPC `add_task_remark_with_status` | del `task:remarks:{taskId}` | Yes (RPC) |
@@ -361,11 +397,11 @@ Realtime: **enabled**.
 | `getTaskGroupByIdAction` | — | Session | read service | — | No |
 | `getTaskRemarksAction` | — | Session | read service | — | No |
 
-**`adminClient` why:** `task_groups` has no INSERT RLS; `tasks` gained explicit INSERT/DELETE policies in 0094 but they cover only personal self-assigned rows (gia-followup / group-subtask creation is blocked by default and goes through RPCs). All task writes from actions still use `adminClient` and bypass RLS, so the application layer must enforce the same rules RLS would (`canMutateTask`, role checks, view = post gate).
+**`adminClient` why:** `task_groups` has no INSERT RLS; `tasks` gained explicit INSERT/DELETE policies in 0094 but they cover only personal self-assigned rows (lead-follow-up / group-subtask creation is blocked by default and goes through RPCs). All task writes from actions still use `adminClient` and bypass RLS, so the application layer must enforce the same rules RLS would (`canMutateTask`, role checks, view = post gate).
 
 **`canMutateTask`:** admin/founder always; assignee or creator; manager + group in domain.
 
-**Redis invalidation — three-branch rule (2026-06-02):** `updateTaskStatusAction` and `deleteTaskAction` read `task_category` from the task object already fetched by `canMutateTask` (no extra DB round-trip). `personal` → del caller's `personalPage1` key; `gia_followup` → del caller's `giaList` key (uses `caller.id`/`role`/`domain` — not `task.assigned_to`; manager's slot cleared, agent's expires at 60s TTL); `group_subtask` → del caller's `subtasks` key for that group. All dels are fire-and-forget (`void redis.del(...).catch(() => {})`).
+**Redis invalidation rule (2026-06-02):** `updateTaskStatusAction` and `deleteTaskAction` read the task's structure + lead-link from the object already fetched by `canMutateTask` (no extra DB round-trip). `group_subtask` → del caller's `subtasks` key for that group; otherwise (`personal`) → del caller's `personalPage1` key, and if the task is a lead follow-up (meta-presence / `module='gia'`) **also** del caller's `giaList` key (uses `caller.id`/`role`/`domain` — not `task.assigned_to`; manager's slot cleared, agent's expires at 60s TTL). All dels are fire-and-forget (`void redis.del(...).catch(() => {})`). The lead-follow-up branch keys on meta-presence, **never** a `task_category === 'gia_followup'` check.
 
 **Redis key namespace:** All task keys use `REDIS_KEYS.task.*` builders from `src/lib/constants/redis-keys.ts`. Legacy flat aliases (`REDIS_KEYS.taskSubtasks`, `REDIS_KEYS.taskRemarks`) are kept for backward compatibility but new code must use the namespaced form.
 
@@ -399,13 +435,15 @@ Realtime: **enabled**.
 
 | Function | Purpose |
 | --- | --- |
-| `filterGiaTasks` | Gia tab list |
 | `filterGroupRows` | Group tab cards |
 | `countVisiblePersonalTasks` | Personal count (legacy helper; calendar uses inline filter) |
-| `personalFiltersActiveCount` / `groupFiltersActiveCount` / `giaFiltersActiveCount` | Badge counts |
+| `personalFiltersActiveCount` / `groupFiltersActiveCount` | Badge counts |
 | `domainsInGroupRows` | Domain dropdown options |
 | `resolvePersonalTaskAssignee` | Modal assignee chip |
 | `EMPTY_*_FILTERS` | Initial state |
+
+(The former `filterGiaTasks` / `giaFiltersActiveCount` Gia-tab helpers were removed with the
+Gia tab — 2026-06-17.)
 
 My Tasks applies filters inside `MyTasksCalendarView` via the same predicate rules as `personalTaskPasses` (search, tags `@>` semantics all tags required, status, priority).
 
@@ -415,7 +453,6 @@ My Tasks applies filters inside `MyTasksCalendarView` via the same predicate rul
 | --- | --- | --- |
 | personal | `personalFilters` | `MyTasksCalendarView` |
 | group | `groupFilters` | `GroupTasksTab` → `filterGroupRows` |
-| gia | `giaFilters` | `GiaTasksTab` → `filterGiaTasks` |
 
 #### Why client-side (vs leads server-side)
 
@@ -423,7 +460,7 @@ Task list payloads are loaded once per tab via RSC (`TasksAsync`). Tab switches 
 
 #### Separate state per tab
 
-`personalFilters`, `groupFilters`, and `giaFilters` are independent `useState` objects in `TasksShell` — switching tabs preserves each tab's filter selections.
+`personalFilters` and `groupFilters` are independent `useState` objects in `TasksShell` — switching tabs preserves each tab's filter selections.
 
 ---
 
@@ -433,21 +470,20 @@ Task list payloads are loaded once per tab via RSC (`TasksAsync`). Tab switches 
 
 - **`createTrigger`:** number incremented by `requestCreate()`
 - **`requestCreate()`:** called from `AddTaskButton` (`onClick`)
-- **Listeners:** `useEffect` in `MyTasksCalendarView`, `GroupTasksTab`, `TasksShell` (gia → `setGiaCreateOpen(true)`)
+- **Listeners:** `useEffect` in `MyTasksCalendarView` (personal tab) and `GroupTasksTab` (group tab)
 - **Why context:** Header button and tab modals are siblings under `page.tsx`; context avoids prop drilling through `TasksShell` only for the counter
 
-#### 8b. `page.tsx` — domain-aware tabs (updated migration 0058)
+#### 8b. `page.tsx` — two tabs, no domain gating
 
-`isGiaDomain = GIA_DOMAINS.includes(profile.domain)`
+`validTabs = ['personal', 'group']` for **every** caller (all non-guest roles). There is **no
+Gia tab** and **no domain branching** — the old `GIA_DOMAINS`-gated three-tab model
+(`['gia', 'personal', 'group']`) was removed with the Gia tab (2026-06-17).
 
 | Caller | `validTabs` | Default (`?tab` invalid) |
 | --- | --- | --- |
-| Gia domain (any role) | `['gia', 'personal', 'group']` | `gia` |
-| Non-Gia (any role) | `['personal', 'group']` | `personal` |
+| Any non-guest role | `['personal', 'group']` | `personal` |
 
-All non-guest roles now receive the Group Tasks tab. The old `profile.role === 'agent'` exclusion that gave Gia agents only `['gia', 'personal']` was removed in migration 0058.
-
-`?tab=gia` for non-Gia callers → resolves to `validTabs[0]` (`personal`) — silent, no error.
+`?tab=gia` → resolves to `validTabs[0]` (`personal`) — silent fallback, no error.
 
 **SSR:** Only active tab data fetched in `TasksAsync`; inactive tab gets empty sentinel.
 
@@ -457,28 +493,26 @@ All non-guest roles now receive the Group Tasks tab. The old `profile.role === '
 | --- | --- |
 | `personal` | `getPersonalTasks(userId)` |
 | `group` | `getGroupTasks({})` |
-| `gia` | `getGiaTasksForUser(userId, role, domain)` |
 
-Passes serialisable props to `TasksShell` only.
+Passes serialisable props to `TasksShell` only. (Lead follow-ups are `personal` tasks — they
+arrive through `getPersonalTasks` and appear in the My Tasks calendar like any other personal
+task. `getGiaTasksForUser` is no longer called by this page; it serves the dossier + Elaya.)
 
 #### 8d. `TasksShell`
 
-- **Tabs:** `TabSelector` `variant="accent"`, `indicatorLayoutId="tasks-page-tabs"`; labels Gia Tasks / My Tasks / Group Tasks from `validTabs`
+- **Tabs:** `TabSelector` `variant="accent"`, `indicatorLayoutId="tasks-page-tabs"`; labels My Tasks / Group Tasks from `validTabs`
 - **Filters:** `TasksFilters` right; `onFilteredCountChange` per tab
-- **Panels:** `gia` → `GiaTasksTab` + `CreateGiaTaskModal` (`AnimatePresence`); `personal` → `MyTasksCalendarView`; `group` → `GroupTasksTab`
+- **Panels:** `personal` → `MyTasksCalendarView`; `group` → `GroupTasksTab`
 - **Tags:** `getPersonalTaskTagsAction` when `activeTab === 'personal'`
 
 #### 8e. `AddTaskButton`
 
 | Tab | Label | Hidden when |
 | --- | --- | --- |
-| gia | `Gia Task` | — |
 | personal | `My Task` | — |
 | group | `Group Task` | — |
 
-The `callerRole === 'agent'` hidden condition was removed. All roles that can reach the Group tab (all non-guest roles after migration 0058) see the button.
-
-Uses `MotionButton` + `requestCreate()`.
+All non-guest roles see the button. Uses `MotionButton` + `requestCreate()`.
 
 #### 8f. `TasksFilters`
 
@@ -486,9 +520,9 @@ Uses `MotionButton` + `requestCreate()`.
 | --- | --- |
 | **My Tasks** | Search (title + description), Tags (multi), Status (multi), Priority (multi) |
 | **Group Tasks** | Search (title), Status, Priority, Domain (admin/founder only, options from roster), Progress (`in_progress` / `complete` / `empty`) |
-| **Gia Tasks** | Search (lead name + task fields), Task Type (multi), **Range** date picker (trigger button + portal panel — matches `LeadsFilters` pattern; `dateFromUrlParam`/`dateToUrlParam` bridge `Date ↔ YYYY-MM-DD`; tasks without `due_at` hidden when either bound is set) |
 
-**Gia date range picker pattern:** a "Range" trigger button opens a `motion.div` portal panel (portaled to `document.body`; positioned via `getBoundingClientRect()` + `visualViewport` offset correction; closes on outside `pointerdown`). Panel contains two `DatePicker` components (From / To) with cross-constraints (`minDate`/`maxDate`) and a clear × button. Active state shown via accent border + count badge. State lives in `giaFilters.dateFrom` / `giaFilters.dateTo` as `YYYY-MM-DD` strings (empty string = no bound).
+(The former **Gia Tasks** filter column — lead-name search, Task Type multi, and the "Range"
+date-range picker — was removed with the Gia tab, 2026-06-17.)
 
 **Result count:** `{resultCount} {resultNoun}` from active tab's `onFilteredCountChange`.
 
@@ -500,7 +534,6 @@ Uses `MotionButton` + `requestCreate()`.
 | --- | --- |
 | `personal` | Two-column: 280px calendar + stats + quick-add; right: 3 date sections with rows; stagger 0/80/160/240/320ms |
 | `group` | 4 group cards |
-| `gia` | Paper card with 3 date-group row skeletons |
 
 Uses `var(--theme-paper-subtle)` shimmer only.
 
@@ -553,50 +586,23 @@ Row click → `getTaskRemarksAction` → `SubTaskModal` only when `selectedTaskR
 
 ---
 
-### 10. Gia Tasks Tab — `GiaTasksTab`
+### 10–11. Gia tab + `CreateGiaTaskModal` — DELETED (2026-06-17)
 
-#### `GiaTask` fields
+`GiaTasksTab`, `GiaTaskRow`, `GiaDaySection`, and `CreateGiaTaskModal` were **removed** when the
+Gia category collapsed (migration `20260617000138`). The `GiaTask` shape
+(`Task` columns + `lead_id`, `lead_first_name`, `lead_last_name`, `lead_phone`, `lead_slug`,
+`lead_domain`) is **kept** — it's the return type of `getGiaTasksForUser`, still consumed by
+Elaya's read-tool registry and the dossier reader.
 
-All `Task` columns plus: `lead_id`, `lead_first_name`, `lead_last_name`, `lead_phone`, `lead_slug`, `lead_domain`.
+**Where lead follow-ups surface now:**
 
-#### `GiaDaySection`
+- **My Tasks calendar** — a lead follow-up is a `personal` task, so it flows through
+  `getPersonalTasks` and renders in `MyTasksCalendarView` like any other personal task.
+- **Lead dossier task card** (`LeadTasksCard`) — unchanged in behaviour; creates personal+meta
+  lead tasks via `createLeadTaskAction → create_lead_gia_task`, and reads via `getAllLeadTasks`.
 
-`.label-micro` heading + 1px bottom border — matches My Tasks date headers.
-
-#### `GiaTaskRow`
-
-- `TaskCompletionCircle` + lead link `/leads/[slug ?? id]`
-- Type icon (`call` / `whatsapp_message` / `other`) in accent colour
-- `TASK_TYPE_LABELS` label; due time; overdue → `var(--color-danger)`
-- Completed: `opacity: 0.5` + strikethrough on lead name
-
-#### Empty state
-
-Playfair italic (in tab wrapper when no rows after filter).
-
-#### Stagger
-
-Framer Motion per `GiaDaySection` (`opacity` + `y`, `EASE_OUT_EXPO`).
-
-#### Primitives
-
-Reuses `TaskCompletionCircle` + `useTaskCompletionToggle` — no duplicate toggle logic.
-
----
-
-### 11. `CreateGiaTaskModal`
-
-1. Lead search — **300ms** debounce → `searchLeadsAction` (max 8)
-2. Task type — `TASK_TYPES` / `TASK_TYPE_LABELS`
-3. Priority chips — Urgent / High / Normal
-4. `DatePicker` `showTime={true}`
-5. Notes — optional, max 1000 chars
-
-**Action:** `createLeadTaskAction` (same as lead dossier `CreateLeadTaskModal`).
-
-**On success:** builds `GiaTask` from returned `Task` + selected lead fields → `onTaskCreated`.
-
-**`AnimatePresence`:** at call site in `TasksShell`, not inside modal.
+There is no standalone in-app surface for creating a lead follow-up from the Tasks page anymore —
+lead-task creation lives on the dossier (§5b `createLeadTaskAction`).
 
 ---
 
@@ -849,9 +855,9 @@ Header **+ My Task** → `requestCreate()` → `createTrigger++` → `CreatePers
 
 Calendar sidebar or inline row → `createPersonalTaskAction` → prepend — no full list refetch.
 
-#### C. Inline complete (My Tasks + Gia + group subtask rows)
+#### C. Inline complete (My Tasks + group subtask rows)
 
-`TaskCompletionCircle` → `useTaskCompletionToggle` → `updateTaskStatusAction` (`completed` ↔ `to_do`) → on error rollback + toast. Completed My Tasks / Gia rows leave date sections (not a COMPLETED accordion).
+`TaskCompletionCircle` → `useTaskCompletionToggle` → `updateTaskStatusAction` (`completed` ↔ `to_do`) → on error rollback + toast. Completed My Tasks rows leave date sections (not a COMPLETED accordion). Lead follow-ups are `personal` rows in this same calendar — no separate flow.
 
 #### D. Create group task
 
@@ -889,14 +895,17 @@ Confirm → **awaited** `cancelTaskReminder` → `deleteTaskAction` → cascade 
 
 Trigger.dev at **`dueAt`** (not 30 minutes early) → `task_due` notification → bell → `/tasks`.
 
-#### N. Gia follow-up created
+#### N. Lead follow-up created
 
 | Trigger | Path |
 | --- | --- |
-| UI | `createLeadTaskAction` / `CreateGiaTaskModal` / dossier |
+| UI | lead dossier task card → `createLeadTaskAction` |
 | Lead RPCs | `add_lead_call_note`, `update_lead_status` (nurturing — migration 0039 fix) |
 
-Displayed: Gia tab (`get_gia_tasks`), dashboard widget, lead task cards (`getAllLeadTasks`).
+All paths go through `create_lead_gia_task` (the sole atomic writer of `personal` task +
+`task_gia_meta` + `module='gia'`). Displayed: My Tasks calendar (it's a `personal` task),
+dashboard widget, lead dossier task cards (`getAllLeadTasks`); also readable via `get_gia_tasks`
+(dossier + Elaya read tool). There is no longer a Gia tab.
 
 ---
 
@@ -950,13 +959,14 @@ Displayed: Gia tab (`get_gia_tasks`), dashboard widget, lead task cards (`getAll
 | 0047 | `20260531000047_dashboard_agent_tasks_all_categories.sql` | Dashboard tasks CTE all categories |
 | 0051 | `20260531000051_task_remark_rpc_auth_fix.sql` | Remark RPC auth; tasks agent `created_by` SELECT |
 | 0054 | `20260531000054_create_lead_gia_task.sql` | `create_lead_gia_task` two-INSERT RPC |
-| 0055 | `20260531000055_get_gia_tasks.sql` | `get_gia_tasks` for Gia tab |
+| 0055 | `20260531000055_get_gia_tasks.sql` | `get_gia_tasks` (originally the Gia tab; the RPC survives the 2026-06-17 tab removal as the dossier + Elaya read tool) |
 | 0056 | `20260531000056_get_gia_tasks_slug_prereq.sql` | `leads.slug` + RPC recreate |
 | 0057 | `20260531000057_task_type_other.sql` | `task_type` CHECK: call / whatsapp_message / other |
 | 0058 | `20260605000058_task_groups_flat_visibility.sql` | Flat group visibility: creator OR subtask assignee for all roles; drops `get_user_role()`/`get_user_domain()` from RLS + RPC; agents unblocked from Group tab; `idx_tasks_group_assignee`; `task:group-list:{userId}` Redis key |
 | 0086 | `20260608000086_fix_tasks_status_default.sql` | `ALTER COLUMN status SET DEFAULT 'to_do'` — 0017 migrated CHECK values but left the column default at legacy `'pending'`, which violated `tasks_status_check` on any INSERT that omitted `status` |
 | 0088 | `20260608000088_rls_initplan_hoist.sql` | InitPlan optimisation — rewrites every task-table SELECT/UPDATE policy (`tasks_agent_select`, `tasks_manager_admin_founder_select`, `tasks_update`, `task_gia_meta_select`, `task_remarks_select`, `task_remarks_insert`, `task_remarks_suppression_update`, `task_audit_log_select`) to wrap `get_user_role()`/`get_user_domain()` in uncorrelated `(SELECT …)` subqueries so the STABLE function is evaluated once per statement, not once per row. **Logic unchanged — only the InitPlan wrapping.** Also confirms `task_remarks_select`/`_insert` use `assigned_to = auth.uid() OR created_by = auth.uid() OR role IN (manager,admin,founder)` directly (creator path explicit). |
-| 0094 | `20260608000094_explicit_insert_delete_policies.sql` | **Adds explicit task INSERT/DELETE RLS** (defence-in-depth — app writes still use `adminClient`): `tasks_insert` (`created_by = auth.uid() AND assigned_to = auth.uid() AND task_category = 'personal'`); `tasks_delete` (agent: personal, self-owned, status IN `to_do`/`in_progress`); `tasks_delete_privileged` (manager/admin/founder: any). Gia-followup and group-subtask inserts have **no** direct policy — blocked by default, created only via SECURITY DEFINER RPCs or `adminClient`. |
+| 0094 | `20260608000094_explicit_insert_delete_policies.sql` | **Adds explicit task INSERT/DELETE RLS** (defence-in-depth — app writes still use `adminClient`): `tasks_insert` (`created_by = auth.uid() AND assigned_to = auth.uid() AND task_category = 'personal'`); `tasks_delete` (agent: personal, self-owned, status IN `to_do`/`in_progress`); `tasks_delete_privileged` (manager/admin/founder: any). Lead-follow-up and group-subtask inserts have **no** direct policy — blocked by default, created only via SECURITY DEFINER RPCs or `adminClient`. |
+| `20260617000138` | `20260617000138_collapse_gia_category_module_enum.sql` | **Gia-category collapse (applied to prod).** Drops `gia_followup` from `task_category` (now `personal` \| `group_subtask` — structure only); converts `tasks.module` from free `text` to the native `task_module` enum (`gia` \| `sia` \| `core`); establishes the single-writer invariant — a lead follow-up is a `personal` task with a `task_gia_meta` row + `module='gia'`, written only by `create_lead_gia_task` / `update_lead_status`. Deletes the Gia tab + `GiaTasksTab`/`GiaTaskRow`/`GiaDaySection`/`CreateGiaTaskModal`. **Not** related to `sla_policies.trigger_value='gia_followup'` (a different column — the SLA "task due" rule catalog, retained). |
 
 ---
 
@@ -974,7 +984,7 @@ Displayed: Gia tab (`get_gia_tasks`), dashboard widget, lead task cards (`getAll
 
 6. **Client-side filtering:** All filtering is client-side via `src/lib/utils/task-client-filters.ts`. Never add server refetches for filter changes.
 
-7. **Separate filter state:** `personalFilters` / `groupFilters` / `giaFilters` in `TasksShell` — switching tabs preserves each tab's filters.
+7. **Separate filter state:** `personalFilters` / `groupFilters` in `TasksShell` — switching tabs preserves each tab's filters.
 
 8. **Inactive tab:** Inactive tab component never mounts; zero-value sentinel never visible.
 
@@ -988,7 +998,7 @@ Displayed: Gia tab (`get_gia_tasks`), dashboard widget, lead task cards (`getAll
 
 13. **View = post (remarks):** `addTaskRemarkAction` runs a user-scoped `tasks` SELECT first; only if RLS returns the row does it call `add_task_remark_with_status` with `adminClient`. Agents see tasks they created or are assigned to (`tasks_agent_select`).
 
-14. **`adminClient` justification:** No INSERT/UPDATE RLS on `task_groups`, and the `tasks` INSERT/DELETE policies added in 0094 cover only personal self-assigned rows (gia-followup / group-subtask inserts have no policy and are blocked by default). `adminClient` bypasses RLS for all task mutations so the application layer must enforce the same access rules RLS would (`canMutateTask`, role checks, view = post gate). The 0094 policies are defence-in-depth for direct client access — they are **not** the path server actions take. Never skip the pre-write auth fetch.
+14. **`adminClient` justification:** No INSERT/UPDATE RLS on `task_groups`, and the `tasks` INSERT/DELETE policies added in 0094 cover only personal self-assigned rows (lead-follow-up / group-subtask inserts have no policy and are blocked by default — a lead follow-up needs the coupled `task_gia_meta` row + `module='gia'` that only `create_lead_gia_task` writes). `adminClient` bypasses RLS for all task mutations so the application layer must enforce the same access rules RLS would (`canMutateTask`, role checks, view = post gate). The 0094 policies are defence-in-depth for direct client access — they are **not** the path server actions take. Never skip the pre-write auth fetch.
 
 15. **`deleteTaskAction`:** Cancel Trigger.dev reminder **before** DB delete. If cancel throws, the delete is aborted.
 
@@ -998,13 +1008,15 @@ Displayed: Gia tab (`get_gia_tasks`), dashboard widget, lead task cards (`getAll
 
 18. **`GroupTasksTab` agents:** assignable users provided once at tab level (`initialAgents` prop) — `GroupRow` must never fetch them per group.
 
-19. **`AnimatePresence`:** Required at **call site** for `SubTaskModal` and `CreateGiaTaskModal` — exit animation does not run if omitted.
+19. **`AnimatePresence`:** Required at **call site** for `SubTaskModal` — exit animation does not run if omitted.
 
 20. **My Tasks vs legacy:** `MyTasksCalendarView` is the active My Tasks UI. The legacy `PersonalTasksTab` was deleted (2026-06-11) — do not recreate its COMPLETED accordion in the calendar view.
 
 21. **Realtime channel names:** Include `mountId` from `useId()` — e.g. `task-remarks-${taskId}-${mountId}`, `workspace-subtasks-${groupId}-${mountId}`.
 
 22. **Leads vs tasks filtering:** Tasks filter client-side on already-fetched tab data. Leads filter server-side via URL — do not conflate the two patterns.
+
+23. **Single-writer invariant (gia-category collapse, 2026-06-17):** A `task_gia_meta` row exists **iff** the task is a lead follow-up, and `module = 'gia'` **iff** that meta row exists. `create_lead_gia_task` (+ the `update_lead_status` nurturing branch) is the **sole** writer of both, always together; every other insert writes `module = 'core'` and no meta row. `task_category` is now `personal` | `group_subtask` only — **structure**, never the lead link. Detect a lead task by meta-presence (`EXISTS task_gia_meta` / `module = 'gia'` / `task_gia_meta!inner`), **never** a category check. There is no `gia_followup` value and no Gia tab.
 
 ---
 
@@ -1028,12 +1040,8 @@ Exports used by tasks UI: `TASK_PRIORITY`, `TASK_STATUS` (incl. `pillBg`/`pillTe
 | --- | --- |
 | `AddTaskButton.tsx` | Header CTA + `requestCreate` |
 | `AssigneePickerModal.tsx` | Nested assignee picker |
-| `CreateGiaTaskModal.tsx` | Gia task create |
 | `CreateGroupTaskModal.tsx` | Group + optional subtask drafts |
-| `CreatePersonalTaskModal.tsx` | Personal task create |
-| `GiaDaySection.tsx` | Gia date heading |
-| `GiaTaskRow.tsx` | Gia row |
-| `GiaTasksTab.tsx` | Gia tab |
+| `CreatePersonalTaskModal.tsx` | Personal task create (also the lead-task path's sibling — lead follow-ups are created on the dossier, not here) |
 | `GroupTaskWorkspace.tsx` | `/tasks/[id]` workspace |
 | `GroupTasksTab.tsx` | Group tab |
 | `MyTasksCalendarView.tsx` | **Active** My Tasks |
@@ -1044,6 +1052,9 @@ Exports used by tasks UI: `TASK_PRIORITY`, `TASK_STATUS` (incl. `pillBg`/`pillTe
 | `TasksCreateContext.tsx` | `createTrigger` provider |
 | `TasksFilters.tsx` | Filter strip controls |
 
+**Deleted (2026-06-17, gia-category collapse):** `GiaTasksTab.tsx`, `GiaTaskRow.tsx`,
+`GiaDaySection.tsx`, `CreateGiaTaskModal.tsx`.
+
 ---
 
-*End of document. Source of truth: migrations, `tasks-service.ts`, `actions/tasks.ts`, route files, and components as of 2026-06-09 (migrations 0086 / 0088 / 0094).*
+*End of document. Source of truth: migrations, `tasks-service.ts`, `actions/tasks.ts`, route files, and components as of 2026-06-17 (gia-category collapse — `20260617000138`; prior: 0086 / 0088 / 0094).*

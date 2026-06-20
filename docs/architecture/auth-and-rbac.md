@@ -2,7 +2,7 @@
 
 > **Purpose:** how identity, sessions, roles, domains, and row-level security work — the authorization architecture every other doc assumes.
 > **Audience:** engineers. · **Source-of-truth scope:** authorization model, session layer, route gating, RLS + SECURITY DEFINER policy. The `profiles` table schema lives in `database.md`; per-page role gates live in each `../pages/*.md`.
-> **Last verified:** 2026-06-15 against `src/proxy.ts`, `src/lib/constants/domains.ts`, `src/lib/actions/_auth.ts`, `src/lib/actions/auth.ts`, migrations 0001/0088/0091/0095/0102/0103.
+> **Last verified:** 2026-06-20 against `src/proxy.ts`, `src/lib/constants/domains.ts`, `src/lib/constants/route-permissions.ts`, `src/lib/actions/_auth.ts`, `src/lib/actions/auth.ts`, migrations 0001/0088/0091/0095/0102/0103.
 
 ---
 
@@ -138,8 +138,12 @@ What `proxy.ts` actually does (verified):
 | 3. Sidebar filter | `src/components/layout/Sidebar.tsx` | Never renders links the profile cannot access |
 
 Domain gating is `canAccessRoute(profile, pathname)` (`src/lib/utils/route-access.ts` — pure,
-client-safe) over `DOMAIN_ROUTE_MAP` + `ALWAYS_ALLOWED_PREFIXES` (`['/dashboard', '/profile']`)
-in `src/lib/constants/route-permissions.ts`. Admin/founder bypass all domain checks. The layout
+client-safe) over `DOMAIN_ROUTE_MAP` + `ALWAYS_ALLOWED_PREFIXES`
+(`['/dashboard', '/profile', '/helpdesk', '/elaya']`) in
+`src/lib/constants/route-permissions.ts`. `/helpdesk` (the Call Intelligence library) and `/elaya`
+(Elaya's AI chat surface) are universally accessible to every role and domain — what Elaya can
+*access* is enforced per-principal in the tool layer, not by route gating; `/helpdesk` is read-only
+with RLS-gated writes. Admin/founder bypass all domain checks. The layout
 guard and the Sidebar filter are independent — neither trusts the other (defense-in-depth,
 Decision Log 2026-06-03). Page-level privilege checks remain in each page; `canAccessRoute` is
 additive, not a replacement.

@@ -2,7 +2,7 @@
 
 > **Purpose:** the index — what every file in `docs/` is, the reading orders, and where to find anything.
 > **Audience:** everyone. · **Source-of-truth scope:** the docs tree itself. Code is always the ultimate source of truth — docs describe reality, never aspiration; where a doc and the code disagree, the code wins and the doc gets fixed.
-> **Last verified:** 2026-06-15.
+> **Last verified:** 2026-06-20 (against `supabase/migrations/` through 0137, `docs/operations/`, `src/trigger/`).
 
 ---
 
@@ -21,7 +21,7 @@ docs/
 │   ├── database_architecture.sql ← raw pg_dump schema snapshot
 │   ├── auth-and-rbac.md     ← roles×domains, profiles foundation, sessions, RLS policy
 │   ├── caching.md           ← Redis key registry, TTLs, invalidation contracts
-│   └── migrations.md        ← conventions + full migration index (0001–0121)
+│   └── migrations.md        ← conventions + full migration index (0001–0137)
 ├── design/
 │   ├── DESIGN-DNA.md        ← the design constitution (law)
 │   ├── design-system.md     ← component implementation reference
@@ -31,7 +31,7 @@ docs/
 ├── pages/                   ← one spec per route (template below)
 │   dashboard · leads · lead-dossier · tasks · deals · campaigns · performance
 │   whatsapp · settings · auth · profile · user-management · ad-creatives · error-log
-│   budget · escalations · elaya
+│   budget · escalations · elaya · helpdesk · usage · suggestions
 ├── modules/
 │   ├── gia.md               ← the CRM module: lifecycle, end-to-end flow, SLA engine
 │   ├── revival.md           ← Lead Revival: silence detection → note-AI suppression gate → revive/review
@@ -43,11 +43,13 @@ docs/
 ├── integrations/
 │   ├── lead-ingestion.md    ← Pabbly/Meta webhook pipeline + raw-payload policy
 │   ├── whatsapp-gupshup.md  ← Gupshup config, webhook, templates, orchestrator, logs
-│   ├── trigger-dev.md       ← async jobs: SLA timers + task reminders
+│   ├── trigger-dev.md       ← async jobs: SLA timers, task reminders, the daily lead-revival sweep, and usage rollup/snapshot
 │   └── upstash-redis.md     ← Redis connection + failure policy
 ├── operations/
 │   ├── environments.md      ← every env var: purpose, where used, exposure (no values)
-│   └── deployment.md        ← providers, build commands, runtime constraints, checklist
+│   ├── deployment.md        ← providers, build commands, runtime constraints, checklist
+│   ├── engine-health-check.md ← daily SLA/revival engine runbook
+│   └── pwa-install-guide.md ← PWA install guide
 ├── audits/                  ← dated point-in-time audit reports (design, security; the
 │                               performance audit was deleted once fully fixed — 2026-06-11)
 ├── claude-project/          ← generated digests for the Claude.ai Project knowledge

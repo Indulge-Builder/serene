@@ -2,7 +2,8 @@
 
 > **Purpose:** spec for `/profile` — every user's self-management page (identity fields, avatar, theme, password).
 > **Audience:** engineers. · **Source-of-truth scope:** the `/profile` route. Admin edits of *other* users: `user-management.md`; theme system law: `../design/DESIGN-DNA.md` §1–2.
-> **Last verified:** 2026-06-15 (PWA install + app-icon picker + web-push reconcile); 2026-06-09 full pass; 2026-06-11 restructure.
+> **Last verified:** 2026-06-20 (per-category notification controls — `NotificationPreferences`, migration 0133); 2026-06-15 (PWA install + app-icon picker + web-push reconcile); 2026-06-09 full pass; 2026-06-11 restructure.
+> **Source files verified:** `src/app/(dashboard)/profile/page.tsx`, `src/components/profile/NotificationPreferences.tsx`, `src/lib/constants/notification-categories.ts`, `src/lib/services/notification-prefs-service.ts`.
 
 ## 1. Purpose
 
@@ -28,7 +29,9 @@ themselves; there is no user switcher here.
 
 Composed on `SectionCard` (the canonical detail-surface shell): `ProfileDetailsForm`
 (email read-only — truth is `auth.users`), `ProfileAvatarSection` (uses `--overlay-scrim`),
-`ThemeSelector` (five theme cards), `PasswordChangeForm` + `PasswordStrengthBar`.
+`ThemeSelector` (five theme cards), `NotificationPreferences` (per-category notification controls,
+migration 0133) + `PushNotificationSettings` (web-push opt-in), `PasswordChangeForm` +
+`PasswordStrengthBar`.
 
 > **Appearance also holds `IconSelector`** (2026-06-15) — the PWA home-screen icon picker,
 > saved to `profiles.app_icon` via the SAME `updateProfile` action (no new action). It is honest
@@ -37,8 +40,10 @@ Composed on `SectionCard` (the canonical detail-surface shell): `ProfileDetailsF
 > separate **"Add to Home Screen"** SectionCard holds `InstallPrompt` — the first-install picker
 > that swaps the manifest `<link>` + apple-touch-icon to the pick and triggers install
 > (`beforeinstallprompt` on Chromium; Add-to-Home-Screen nudge on iOS). A **"Notifications"**
-> SectionCard (`PushNotificationSettings`, 2026-06-14) now also exists — superseding the
-> "no Notifications section" note further down (kept for history; that claim is stale).
+> SectionCard now also exists — superseding the "no Notifications section" note further down
+> (kept for history; that claim is stale). It renders **`NotificationPreferences`** (the
+> per-category notification-control matrix, migration 0133, 2026-06-20) **above**
+> **`PushNotificationSettings`** (web-push opt-in, 2026-06-14), separated by a full-width rule.
 
 ## 5. States
 
@@ -80,7 +85,7 @@ Notification-sound preference lives in localStorage (`serene:notifications:sound
 
 1. Personal Details → `ProfileDetailsForm`
 2. Appearance → `ThemeSelector` + `IconSelector` + `InstallPrompt` (the **"Add to Home Screen"** card)
-3. Notifications → `PushNotificationSettings` (web-push opt-in, 2026-06-14)
+3. Notifications → `NotificationPreferences` (per-category controls, migration 0133; §7l) **above** `PushNotificationSettings` (web-push opt-in, 2026-06-14)
 4. Security → `PasswordChangeForm`
 
 > Notification **sound** is a separate device-local preference (localStorage) toggled via the `useNotificationSound` hook surfaced from the notifications UI in the Sidebar — not from this page. The push opt-in above and the sound flag are independent. See §7f.
@@ -189,6 +194,21 @@ Web-push opt-in (VAPID, `web-push` lib, no SaaS; migration 0120).
 | **Server seam** | `src/lib/services/push-service.ts` (server + Node only — `web-push` throws on Edge): `dispatchPush` reads subscriptions via the **admin** client, sends to all devices in parallel, and **prunes** endpoints answering 404/410 in one batched delete. Non-fatal: it **never throws** — the in-app row is the source of truth. VAPID configured once lazily; absent keys → logged no-op |
 | **Service worker** | `public/sw.js` gained `push` + `notificationclick` handlers (additive; offline-shell bytes unchanged, `CACHE_VERSION` not bumped) |
 | **Env** | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (server-only, S-11) + `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (browser). `web-push@3.6.7` + `@types/web-push@3.6.4` — all already in `.env.example` |
+
+#### 7l. `NotificationPreferences` (Notifications card, migration 0133)
+
+The per-category notification-control matrix — renders **above** `PushNotificationSettings` inside
+the same "Notifications" `SectionCard`, separated by a full-width rule.
+
+| Item | Detail |
+| ---- | ------ |
+| **Component** | `src/components/profile/NotificationPreferences.tsx` |
+| **Seed** | `page.tsx` calls `getMyNotificationPrefs()` (`notification-prefs-service.ts`, owner-scoped session read) and passes it as `initialPrefs`; the user's `role` filters which category rows render |
+| **Catalog** | `src/lib/constants/notification-categories.ts` (`NOTIFICATION_CATEGORIES`) — THE single source the UI, the SQL `CHECK` on `notification_preferences.notification_key`, and the gate all key on. One entry per **category** = an (event × recipient-role-that-differs) pair: `key`, `label`, `channels` (the only checkboxes rendered — no dead toggles), `roles` (the only users who see the row) |
+| **Granularity** | per-user × category × channel (`in_app` / `whatsapp`). Muting one channel of one category never touches the others |
+| **Absence = ON** | the gate (`notification-prefs-service.ts`) **fails OPEN** — a missing/malformed/thrown pref row means the notification still sends. A row exists only to record an OFF choice |
+| **Owner edits** | `src/lib/actions/notification-prefs.ts` (session client, owner-only) |
+| **Never muteable** | `lead_initiation` (opens the legal 24h WhatsApp window) and `elaya_reply` (a direct reply to a staff message) are **transactional**, deliberately ABSENT from the catalog — the gate has no key for them, so they can never be silenced. Never gate either |
 
 #### 7g. Identity `SectionCard` (right column)
 

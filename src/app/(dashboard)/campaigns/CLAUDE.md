@@ -33,11 +33,10 @@ campaigns/[id]/page.tsx              ← Server component
 
 `utm_campaign` values may contain spaces but **never** a literal `+` character.
 
-- **List page → detail page:** `campaign.campaign_name.replace(/\s+/g, '+')` — spaces become `+`, nothing else is encoded.
-- **Detail page → leads query:** `params.id.replace(/\+/g, ' ')` — exact inverse, `+` decoded back to spaces.
-- **Never** use `encodeURIComponent` / `decodeURIComponent` for campaign names. The `+` convention keeps the address bar readable (`TG_House_Meta+Leads_Goa+Resort` vs `TG_House_Meta%20Leads_Goa%20Resort`).
-- **`+` must never appear in a utm_campaign name.** If it does, the `+` decodes as a space, the DB lookup finds the wrong campaign, and the leads list is empty with no error. Verify all real campaign keys contain no `+` before adding new ones.
-- **Defensive `%2B` decode.** `campaigns/[id]/page.tsx` strips `%2B` (case-insensitive) before the `+→space` swap. This handles double-encoded links from address-bar pastes or external referrers. Without this, the heading would render `%2B` literally.
+- **List page → detail page:** `encodeURIComponent(campaign.campaign_name)` (in `CampaignCard` — the only href builder).
+- **Detail page → leads query:** `decodeURIComponent(params.id)`, wrapped in try/catch (a hand-typed bad `%` escape falls back to the raw param). Exact, lossless inverse.
+- **Use `encodeURIComponent` / `decodeURIComponent` — never the old `+`→space scheme.** Real `utm_campaign` keys contain literal `+` (Meta "Advantage+" campaigns) and `/` (e.g. `TG_Global_9/Jan…`). The previous `\s+`→`+` / `+`→`\s` pair corrupted both: the literal `+` decoded to a space, the normalised lookup key stopped matching, and the detail page silently found **nothing** — no ad-creative video, an empty leads table, AND empty metrics (fixed 2026-06-20; the corruption was confirmed against live data — `TG_Global_Advantage+_14th May` had 38 leads + 2 creatives that the corrupted key missed entirely). `encodeURIComponent` round-trips `+`, `/`, and spaces losslessly, so no character is forbidden in a campaign key anymore.
+- **The address bar shows `%20`/`%2B` instead of `+`** — that is the correct trade-off for a key that round-trips. Do not "restore readability" by reviving the `+` scheme; it re-introduces the silent-corruption bug.
 
 ---
 
@@ -45,7 +44,7 @@ campaigns/[id]/page.tsx              ← Server component
 
 `campaigns/[id]/page.tsx` renders **two** derived values from `params.id`:
 
-- `campaignName` — the un-beautified key used for **all** DB lookups. Spaces only; `+` and `%2B` decoded to spaces. Never modified beyond that.
+- `campaignName` — the un-beautified key used for **all** DB lookups. `decodeURIComponent(params.id)` (try/catch → raw param fallback). Never modified beyond that.
 - `campaignTitle` — display-only. Derived by `beautifyCampaignTitle(campaignName)` from `src/lib/utils/campaigns.ts`. Used only in the H1 and modal title.
 
 **Rule:** never pass `campaignTitle` to a service function or RPC. The DB stores raw `utm_campaign` keys (with underscores) and the lookup must match exactly. `beautifyCampaignTitle` is the single source of truth — never inline the split/join logic in a component.
@@ -72,7 +71,7 @@ Reusable single-video primitive. Native `<video autoPlay muted playsInline contr
 
 Props: `creatives: AdCreative[]`, `showMeta?: boolean`
 
-Looping single-video carousel. Renders one `AdCreativePlayer` at a time with `key={current.id}` (clean remount per video → each autoplays). Prev/next arrows wrap around; **hidden entirely when `creatives.length === 1`**. Dot indicators + "n / total" counter. With `showMeta`, shows the current video's `ad_name` + `notes` beneath. Returns `null` on empty array. Shared by `CampaignPreviewModal`, `CampaignAdCard`, and the lead dossier's `CampaignVideoModal`.
+Looping single-video carousel. Renders one `AdCreativePlayer` at a time with `key={current.id}` (clean remount per video → each autoplays). Prev/next arrows wrap around; **hidden entirely when `creatives.length === 1`**. Dot indicators + "n / total" counter. With `showMeta`, shows the current video's `ad_name` + `notes` beneath. Returns `null` on empty array. Shared by `CampaignPreviewModal`, `CampaignAdPanel`, and the lead dossier's `CampaignVideoModal`.
 
 ### CampaignPreviewModal
 
@@ -82,13 +81,21 @@ Props: `campaign: CampaignMetrics`, `adCreatives: AdCreative[]`, `open: boolean`
 
 Composes `ui/modal.tsx` with `maxWidth="max-w-3xl"`. Two-column grid when `adCreatives.length > 0` (`40% carousel | 60% info`), single-column when empty. Info column: `beautifyCampaignTitle` output, domain badge, 6 metric cells in a `2×3` grid. Per-video ad_name/notes live in the carousel (`showMeta`), not the info column. Footer: "Open Campaign →" → `router.push` then `onClose`; "Close" → `onClose`. Navigation always lives in the modal footer — never in `CampaignCard.onClick`.
 
-### CampaignAdCard
+### CampaignAdPanel
 
-`src/components/campaigns/CampaignAdCard.tsx` — `'use client'`
+`src/components/campaigns/CampaignAdPanel.tsx` — `'use client'` (replaced the old `CampaignAdCard`, deleted 2026-06-20).
 
-Props: `adCreatives: AdCreative[]`
+Props: `adCreatives: AdCreative[]`, `campaignKey: string` (normalised), `canUpload: boolean`.
 
-Returns `null` when empty — no conditional wrapper at the call site. Composes `SectionCard`. Header: `label-micro` "AD CREATIVE" + "N ads" count (when > 1). Body: `AdCreativeCarousel` (`showMeta`) constrained to `max-width: 320px`. Framer Motion entrance: `opacity 0→1, y 8→0, 350ms ease-out-expo`. Rendered between the page header row and the first Suspense boundary on the detail page.
+THE left-column ad-creative panel on the detail page. Composes `SectionCard` ("AD CREATIVE" + "N ads" count when > 1). Framer Motion entrance: `opacity 0→1, y 8→0, 350ms ease-out-expo`. Three states:
+
+- **Has creatives** → the looping `AdCreativeCarousel` (`showMeta`, `align="center"`).
+- **No creatives + `canUpload`** → an **add-a-video tile** (same 9:16 footprint as the player, dashed border, Plus icon). Clicking it opens the **same `AdCreativeFormModal`** the `/admin/ad-creatives` page uses (R-01 — never a second uploader), with this campaign **pre-selected + locked** via `defaultCampaignKey`. A saved upload prepends to local state (newest-first) — no refetch.
+- **No creatives + `!canUpload`** → the tile without the Plus, "No video yet." serif-italic copy.
+
+**The card frame ALWAYS renders** (unlike the old `CampaignAdCard`, which returned `null` when empty) — the detail page puts it in the left column of the video↔metrics row, so it must hold its place whether or not a video exists. `AdCreativeFormModal` is `next/dynamic` (perf G-1) and mounted only after first open.
+
+`canUpload` is `role === 'admin' || 'founder'` (set in `[id]/page.tsx`) — the SAME gate `upsertAdCreative` enforces server-side; managers view the page but never see the Plus.
 
 ---
 
@@ -204,26 +211,50 @@ calling the RPC. This is done in `getCampaignMetrics()`, not in the component or
 
 ```text
 [id]/page.tsx                        ← Server component
-  │  decodes id with decodeURIComponent → notFound() on throw (Q-10)
-  │  campaignName used identically for BOTH the metrics RPC and leads query
-  │  so metrics and table rows always cover the same set of leads
+  │  decodes id with decodeURIComponent (try/catch → raw param fallback)
+  │  resolves the window: URL date_from+date_to (both) ELSE the `this_month`
+  │    preset (resolveDateRangePreset) — the page default, so spend always shows
+  │  campaignName + the SAME date_from/date_to feed metrics, leads, AND spend
+  │  so all three always cover the same set of leads / one window
   │
-  ├── <Suspense fallback={<CampaignMetricsStripSkeleton />}>
-  │     <CampaignMetricsAsync />     ← async server component
-  │           Promise.all([
-  │             getCampaignDetailMetrics(campaignName, { date_from, date_to }),
-  │             getCampaignAgentDistribution(campaignName, { date_from, date_to }),
-  │           ])
-  │           → <CampaignMetricsStrip metrics={...} distribution={...} />
+  ├── VIDEO ↔ METRICS ROW (grid lg:[320px_1fr]; stacks <lg)
+  │   ├── <CampaignAdPanel adCreatives campaignKey canUpload />   ← LEFT, instant
+  │   │     creatives awaited up-front; carousel OR add-a-video tile (Plus →
+  │   │     AdCreativeFormModal, admin/founder only). Card frame ALWAYS renders.
+  │   └── <Suspense fallback={<CampaignMetricsStripSkeleton />}>  ← RIGHT, streams
+  │         <CampaignMetricsAsync />     ← async server component
+  │               Promise.all([
+  │                 getCampaignDetailMetrics(campaignName, { date_from, date_to }),
+  │                 getCampaignAgentDistribution(campaignName, { date_from, date_to }),
+  │                 getBudgetSummary(date_from, date_to),   ← spend, SAME window
+  │               ])
+  │               spend matched on normalizeCampaignKey(campaignName) → totalSpend
+  │               → <CampaignMetricsStrip metrics distribution totalSpend />
+  │                 (8 tiles, 2×4 in the right column; "—" never ₹0)
   │
   └── <Suspense fallback={<LeadsTableSkeleton />}>
-        <CampaignLeadsAsync />       ← async server component
+        <CampaignLeadsAsync />       ← async server component, FULL WIDTH below
               getLeadsByRoleCached with { campaign: campaignName }
               → <LeadsTable> + <LeadsPagination>
 ```
 
-**Two independent Suspense boundaries.** Metrics and table stream separately.
-A slow table does not block the stat cards from appearing, and vice versa.
+**Video left, metrics right.** The video panel renders immediately (creatives are
+awaited up-front in the page); the metrics stream into the **right column** via their
+own Suspense boundary, so a slow RPC never blocks the video. Below `lg` the row stacks.
+The leads table is a **separate** Suspense boundary, full width below the row.
+
+**Spend reuses the list-page source (R-01).** `getBudgetSummary` is the SAME
+`/budget` function the list cards use — no new query, no new RPC. It runs in the
+metrics `Promise.all` (NOT the leads boundary) and is matched on the normalised
+campaign key. `totalSpend` is `null` when no spend row exists for the window →
+the Amount Spent / Cost-per-Lead tiles render `—`, never ₹0 (the same null
+contract as the list-page `CostCell`).
+
+**Default window = `this_month`.** Unlike the list page (which skips spend when
+no range is set), the detail page defaults to the `this_month` preset so Amount
+Spent always shows a real figure. A picked range (both bounds present) overrides
+it; the Range filter's presets write the same `date_from`/`date_to`. Resolve via
+`resolveDateRangePreset('this_month')` — never re-fork the IST month-boundary math.
 
 ---
 
@@ -250,13 +281,14 @@ Called from: `getCampaignAgentDistribution(campaignName, { date_from, date_to })
 ## Promise.all Contract (detail page)
 
 ```typescript
-const [metrics, distribution] = await Promise.all([
+const [metrics, distribution, spendRows] = await Promise.all([
   getCampaignDetailMetrics(campaignName, { date_from, date_to }),
   getCampaignAgentDistribution(campaignName, { date_from, date_to }),
+  getBudgetSummary(date_from, date_to),                       // spend, same window
 ]);
 ```
 
-Never sequential awaits. Both RPCs run in parallel inside `CampaignMetricsAsync`.
+Never sequential awaits. All three reads run in parallel inside `CampaignMetricsAsync`.
 The leads query runs in a **separate** async component (`CampaignLeadsAsync`) under
 its own Suspense boundary — it does not participate in the same Promise.all.
 

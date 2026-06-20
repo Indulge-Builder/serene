@@ -31,7 +31,7 @@
 import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { m as motion } from 'framer-motion';
-import { Phone, Users, IndianRupee, BarChart3, ListChecks } from 'lucide-react';
+import { Phone, Users, IndianRupee, Trophy, BarChart3, ListChecks } from 'lucide-react';
 import { Dialog } from '@/components/ui/Dialog';
 import { Avatar } from '@/components/ui/Avatar';
 import { Carousel } from '@/components/ui/Carousel';
@@ -160,8 +160,19 @@ export function FounderDrillDownDeck({
       open={open}
       onClose={onClose}
       size="full"
-      title="Agent deck"
-      description={activeAgent ? activeAgent.full_name : undefined}
+      // Title bar carries the active agent's identity — name in the serif
+      // page-title style, domain as the subtitle. The card body below no longer
+      // repeats the identity block (it leads with the avatar + scorecards).
+      title={
+        activeAgent ? (
+          <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 'var(--weight-light)', fontSize: 'var(--text-xl)' }}>
+            {activeAgent.full_name}
+          </span>
+        ) : (
+          'Agent deck'
+        )
+      }
+      description={activeAgent ? (DOMAIN_LABELS[activeAgent.domain] ?? activeAgent.domain) : undefined}
     >
       {roster.length === 0 ? (
         <p
@@ -211,6 +222,9 @@ export function FounderDrillDownDeck({
           agentId={drill.agent.id}
           agentName={drill.agent.full_name}
           domain={domain}
+          period={period}
+          customFrom={customFrom}
+          customTo={customTo}
           onClose={() => setDrill(null)}
         />
       )}
@@ -250,72 +264,68 @@ function DeckAgentCard({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
         gap: 'var(--space-6)',
         maxWidth: '720px',
         margin: '0 auto',
         padding: 'var(--space-6) var(--space-4)',
+        width: '100%',
       }}
     >
-      {/* Identity */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-3)' }}>
-        <Avatar src={agent.avatar_url} name={agent.full_name} size="xl" />
-        <div style={{ textAlign: 'center' }}>
-          <h3
-            style={{
-              fontFamily: 'var(--font-serif)',
-              fontSize: 'var(--text-2xl)',
-              fontWeight: 'var(--weight-light)',
-              color: 'var(--theme-text-primary)',
-              margin: 0,
-              lineHeight: 1.1,
-            }}
-          >
-            {agent.full_name}
-          </h3>
-          <span
-            style={{
-              display: 'inline-block',
-              marginTop: 'var(--space-2)',
-              padding: '2px 10px',
-              borderRadius: 'var(--radius-full)',
-              background: 'var(--theme-accent-surface)',
-              color: 'var(--theme-accent)',
-              fontSize: 'var(--text-2xs)',
-              fontWeight: 'var(--weight-medium)',
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-            }}
-          >
-            {DOMAIN_LABELS[agent.domain] ?? agent.domain}
-          </span>
-        </div>
-      </div>
-
-      {/* Metric tiles — three tap targets, one row */}
+      {/* Identity + scorecards — avatar on the left, a 2×2 grid of four tap
+          targets on the right (Recent calls · Leads · Won · Revenue). The agent
+          name + domain live in the Dialog title bar, so the body leads straight
+          with the avatar and metrics. The left column stretches to the grid
+          height; the avatar is vertically centered in it (balanced space above
+          and below). */}
       <div
-        className="grid grid-cols-3"
-        style={{ gap: 'var(--space-3)', width: '100%' }}
+        style={{
+          display:    'flex',
+          alignItems: 'stretch',
+          gap:        'var(--space-4)',
+          width:      '100%',
+        }}
       >
-        <DeckTile
-          icon={<Phone style={ICON} aria-hidden="true" />}
-          label="Total Calls"
-          value="View"
-          hint="Recent calls"
-          onClick={() => onDrill('calls')}
-        />
-        <DeckTile
-          icon={<Users style={ICON} aria-hidden="true" />}
-          label="Leads"
-          value={formatCount(agent.totalLeads)}
-          onClick={() => onDrill('leads')}
-        />
-        <DeckTile
-          icon={<IndianRupee style={ICON} aria-hidden="true" />}
-          label="Revenue"
-          value={formatCurrencyCompact(agent.totalDealAmount)}
-          onClick={() => onDrill('deals')}
-        />
+        <div
+          style={{
+            display:        'flex',
+            flexDirection:  'column',
+            alignItems:     'center',
+            justifyContent: 'center',
+            flexShrink:     0,
+          }}
+        >
+          <Avatar src={agent.avatar_url} name={agent.full_name} size="xl" />
+        </div>
+
+        <div
+          className="grid grid-cols-2"
+          style={{ gap: 'var(--space-3)', flex: 1, minWidth: 0 }}
+        >
+          <DeckTile
+            icon={<Phone style={ICON} aria-hidden="true" />}
+            label="Recent calls"
+            value="View"
+            onClick={() => onDrill('calls')}
+          />
+          <DeckTile
+            icon={<Users style={ICON} aria-hidden="true" />}
+            label="Leads"
+            value={formatCount(agent.totalLeads)}
+            onClick={() => onDrill('leads')}
+          />
+          <DeckTile
+            icon={<Trophy style={ICON} aria-hidden="true" />}
+            label="Won"
+            value={formatCount(agent.leadsWon)}
+            onClick={() => onDrill('deals')}
+          />
+          <DeckTile
+            icon={<IndianRupee style={ICON} aria-hidden="true" />}
+            label="Revenue"
+            value={formatCurrencyCompact(agent.totalDealAmount)}
+            onClick={() => onDrill('deals')}
+          />
+        </div>
       </div>
 
       {/* Breakdown — toggleable outcome <-> status, lazily fed on card open */}
@@ -339,12 +349,14 @@ function DeckBreakdown({
 }) {
   return (
     <div style={{ width: '100%' }}>
-      {/* Mode toggle */}
+      {/* Mode toggle — full-width tray so the two tabs split the row evenly
+          (the content-sized inline tray read as cramped/off-cut on mobile). */}
       <div
         role="group"
         aria-label="Breakdown mode"
         style={{
-          display: 'inline-flex',
+          display: 'flex',
+          width: '100%',
           gap: '2px',
           padding: '2px',
           marginBottom: 'var(--space-3)',
@@ -458,8 +470,11 @@ function BreakdownTab({
       aria-pressed={active}
       className="serene-pressable serene-touch"
       style={{
+        flex: 1,
+        minWidth: 0,
         display: 'inline-flex',
         alignItems: 'center',
+        justifyContent: 'center',
         gap: 'var(--space-2)',
         padding: 'var(--space-2) var(--space-3)',
         borderRadius: 'var(--radius-sm)',
@@ -471,6 +486,7 @@ function BreakdownTab({
         fontFamily: 'var(--font-sans)',
         fontSize: 'var(--text-xs)',
         fontWeight: 'var(--weight-medium)',
+        whiteSpace: 'nowrap',
         transition: 'background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
       }}
     >
@@ -505,26 +521,31 @@ function DeckTile({
         flexDirection: 'column',
         alignItems: 'flex-start',
         gap: 'var(--space-2)',
-        padding: 'var(--space-4) var(--space-5)',
+        padding: 'var(--space-4)',
         background: 'var(--theme-paper)',
         border: '1px solid var(--theme-paper-border)',
         borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--shadow-1)',
         cursor: 'pointer',
         textAlign: 'left',
+        minWidth: 0,
         transition: 'box-shadow var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out)',
       }}
     >
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-        {icon}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0, maxWidth: '100%' }}>
+        <span style={{ display: 'inline-flex', flexShrink: 0 }}>{icon}</span>
         <span
           style={{
             fontFamily: 'var(--font-sans)',
             fontSize: 'var(--text-2xs)',
             fontWeight: 'var(--weight-medium)',
-            letterSpacing: '0.10em',
+            letterSpacing: '0.08em',
             textTransform: 'uppercase',
             color: 'var(--theme-text-tertiary)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            minWidth: 0,
           }}
         >
           {label}

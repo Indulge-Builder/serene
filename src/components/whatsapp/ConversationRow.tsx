@@ -26,20 +26,15 @@ export function ConversationRow({
   const [hovered, setHovered] = useState(false);
   const isHighlighted = isActive || hovered;
 
-  const isResolved = conversation.status === "resolved";
   const displayName = conversation.lead_name ?? conversation.phone;
 
-  const trailing = isResolved
-    ? "Resolved"
-    : conversation.last_message_at
-      ? formatRelativeTime(conversation.last_message_at)
-      : null;
+  const trailing = conversation.last_message_at
+    ? formatRelativeTime(conversation.last_message_at)
+    : null;
 
-  const trailingColor = isResolved
-    ? "var(--color-success)"
-    : isHighlighted
-      ? "var(--theme-accent)"
-      : "var(--theme-text-tertiary)";
+  const trailingColor = isHighlighted
+    ? "var(--theme-accent)"
+    : "var(--theme-text-tertiary)";
 
   return (
     <motion.button

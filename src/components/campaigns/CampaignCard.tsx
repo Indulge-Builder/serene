@@ -170,10 +170,12 @@ function StatusDatum({
 // CampaignCard
 // ─────────────────────────────────────────────
 
-// Card → detail navigation. Spaces become '+', nothing else encoded — the
-// exact inverse of campaigns/[id]/page.tsx's '+'→space decode (see the
-// "Campaign ID Encoding Contract" in the campaigns CLAUDE.md). Never
-// encodeURIComponent here.
+// Card → detail navigation. encodeURIComponent is lossless — it round-trips a
+// literal '+' (Meta "Advantage+" campaigns), '/', and spaces, all of which
+// appear in real utm_campaign keys. The detail page decodes with
+// decodeURIComponent. The old '+'→space scheme silently corrupted any key
+// containing a literal '+' or '/' (see the "Campaign ID Encoding Contract" in
+// the campaigns CLAUDE.md).
 const MotionLink = motion.create(Link);
 
 export function CampaignCard({
@@ -184,7 +186,7 @@ export function CampaignCard({
 }: CampaignCardProps) {
   const staggerDelay = Math.min(index * 80, 320);
 
-  const href = `/campaigns/${campaign.campaign_name.replace(/\s+/g, '+')}`;
+  const href = `/campaigns/${encodeURIComponent(campaign.campaign_name)}`;
 
   // Conversion = won ÷ total. Guard division by zero — empty look when no leads.
   const hasLeads       = campaign.total_leads > 0;

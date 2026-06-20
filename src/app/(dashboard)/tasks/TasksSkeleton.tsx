@@ -205,118 +205,10 @@ function GroupTabSkeleton() {
   );
 }
 
-// ─── Gia skeleton (date-grouped rows) ─────────────────────────────────────────
-
-function GiaRowSkeleton({ delay, width }: { delay: number; width: string }) {
-  return (
-    <div
-      style={{
-        display:    'flex',
-        alignItems: 'center',
-        gap:        'var(--space-3)',
-        padding:    'var(--space-3) 0',
-      }}
-    >
-      {/* completion circle */}
-      <div
-        className="skeleton"
-        style={{
-          width:          '24px',
-          height:         '24px',
-          borderRadius:   'var(--radius-full)',
-          flexShrink:     0,
-          animationDelay: `${delay}ms`,
-        }}
-      />
-      {/* task type icon */}
-      <div
-        className="skeleton"
-        style={{
-          width:          '16px',
-          height:         '16px',
-          borderRadius:   'var(--radius-sm)',
-          flexShrink:     0,
-          animationDelay: `${delay}ms`,
-        }}
-      />
-      {/* lead name + label */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-        <div
-          className="skeleton"
-          style={{
-            width:          width,
-            height:         '14px',
-            borderRadius:   'var(--radius-full)',
-            animationDelay: `${delay}ms`,
-          }}
-        />
-        <div
-          className="skeleton"
-          style={{
-            width:          '60px',
-            height:         '10px',
-            borderRadius:   'var(--radius-full)',
-            animationDelay: `${delay}ms`,
-          }}
-        />
-      </div>
-      {/* due time */}
-      <div
-        className="skeleton"
-        style={{
-          width:          '48px',
-          height:         '12px',
-          borderRadius:   'var(--radius-full)',
-          animationDelay: `${delay}ms`,
-        }}
-      />
-    </div>
-  );
-}
-
-function GiaDaySectionSkeleton({ delay, widths }: { delay: number; widths: string[] }) {
-  return (
-    <div style={{ marginBottom: 'var(--space-4)' }}>
-      {/* date label */}
-      <div
-        className="skeleton"
-        style={{
-          width:          '80px',
-          height:         '10px',
-          borderRadius:   'var(--radius-full)',
-          marginBottom:   'var(--space-2)',
-          animationDelay: `${delay}ms`,
-        }}
-      />
-      {widths.map((w, i) => (
-        <GiaRowSkeleton key={i} delay={delay + i * 80} width={w} />
-      ))}
-    </div>
-  );
-}
-
-function GiaTabSkeleton() {
-  return (
-    <div
-      style={{
-        background:   'var(--theme-paper)',
-        border:       '1px solid var(--theme-paper-border)',
-        borderRadius: 'var(--radius-lg)',
-        boxShadow:    'var(--shadow-1)',
-        padding:      'var(--space-5)',
-      }}
-    >
-      <GiaDaySectionSkeleton delay={0}   widths={['80%', '60%']} />
-      <GiaDaySectionSkeleton delay={160} widths={['75%']} />
-      <GiaDaySectionSkeleton delay={240} widths={['65%', '50%']} />
-    </div>
-  );
-}
-
 // ─── Public export ────────────────────────────────────────────────────────────
 
 interface TasksSkeletonProps {
-  tab: 'personal' | 'group' | 'gia';
+  tab: 'personal' | 'group';
 }
 
 export function TasksSkeleton({ tab }: TasksSkeletonProps) {
@@ -356,11 +248,9 @@ export function TasksSkeleton({ tab }: TasksSkeletonProps) {
         />
       </div>
 
-      {tab === 'gia'
-        ? <GiaTabSkeleton />
-        : tab === 'personal'
-          ? <PersonalTabSkeleton />
-          : <GroupTabSkeleton />}
+      {tab === 'personal'
+        ? <PersonalTabSkeleton />
+        : <GroupTabSkeleton />}
     </div>
   );
 }

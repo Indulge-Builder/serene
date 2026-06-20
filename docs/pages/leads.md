@@ -556,7 +556,7 @@ main
 
 **LeadsTableAsync:** `getLeadsByRoleCached(role, userId, domain, filters)` → `{ leads, totalCount, statusCounts }`; passes all three to `LeadsTable` alongside `hasActiveFilters`. Direct child of `<Suspense>`.
 
-**Columns (14):** Registry `src/lib/constants/lead-columns.ts`
+**Columns (13):** Registry `src/lib/constants/lead-columns.ts`
 
 | ID | Label | Default visible | Locked |
 | -- | ----- | --------------- | ------ |
@@ -566,7 +566,6 @@ main
 | `email` | Email | no | no |
 | `campaign` | Campaign | yes | no |
 | `source` | Source | no | no |
-| `platform` | Platform | no | no |
 | `medium` | Medium | no | no |
 | `assigned_to` | Assigned To | no | no |
 | `created_at` | Created | yes | no |
@@ -575,7 +574,7 @@ main
 | `domain` | Domain | no | no |
 | `latest_note` | Latest Note | no | no |
 
-`platform` renders as a pill (`var(--theme-accent-subtle)` bg, `var(--theme-text-secondary)` text). `medium` renders plain text via `getMetaMediumLabel()` from `lib/constants/lead-sources.ts` — shows `—` when null.
+There is **no `platform` column** in the leads table — the platform value surfaces on the dossier (`LeadInfoCard` via `attribution.platform`), not as a list column. `medium` renders plain text via `getMetaMediumLabel()` from `lib/constants/lead-sources.ts` — shows `—` when null.
 
 **Column prefs:** `useLeadColumnPreferences(userId)` — key `serene:leads:columns:${userId}:v1`. Locked columns always visible; drag reorder via `@dnd-kit/sortable` in `LeadColumnPicker`; locked columns pinned to front on reorder.
 

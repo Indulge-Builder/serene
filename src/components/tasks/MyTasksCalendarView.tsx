@@ -269,7 +269,7 @@ export function MyTasksCalendarView({
         assigned_to: result.data!.assignedTo,
         created_by:  result.data!.createdBy,
         group_id:    null,
-        task_category: 'personal', task_type: 'other', module: 'gia',
+        task_category: 'personal', task_type: 'other', module: 'core',
         completed_at: null, overdue_at: null, attachments: [], tags: [], created_at: now, updated_at: now,
       };
       setActiveTasks((prev) => [syntheticTask, ...prev]);

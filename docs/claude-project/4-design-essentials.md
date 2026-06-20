@@ -1,6 +1,6 @@
 # Serene — Design Essentials (Claude Project digest)
 
-> Generated digest of `docs/design/DESIGN-DNA.md` (7,076 lines — the law) — 2026-06-15.
+> Generated digest of `docs/design/DESIGN-DNA.md` (7,087 lines — the law) — 2026-06-20.
 > The Surface Contract, theme table, and Never-Do list live in `CLAUDE.md` (uploaded
 > alongside); this file adds the rest of the design law. Exact token values:
 > `src/styles/design-tokens.css`.
@@ -110,8 +110,8 @@ on all non-Earth themes — every accent holds ≥4.5:1 AA with its fg). Theme i
 ## Elaya design language (DNA §15 — partially built, design law unchanged)
 
 Elaya is now **live in code** — read-only tools + SSE chat at `/api/elaya/chat`, Phase 2 agentic
-writes (4 write tools; `update_lead_status`/`reassign_lead` are propose-only via a pure-code
-confirmation resolver), a WhatsApp staff channel, and Deepgram voice input. The **four surfaces**
+writes (9 write tools — 4 lead writes + 5 task writes; `update_lead_status`/`reassign_lead`/`delete_task`
+are propose-only via a pure-code confirmation resolver), a WhatsApp staff channel, and Deepgram voice input. The **four surfaces**
 below remain the **design target** (still being built out), but the design law itself is current
 and still governs every surface.
 

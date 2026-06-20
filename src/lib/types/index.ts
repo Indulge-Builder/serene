@@ -40,7 +40,7 @@ import type { LeadStatus, AppDomain, Profile } from "./database";
 export type DashboardAgentTask = {
   id:            string;
   title:         string;
-  task_category: 'personal' | 'group_subtask' | 'gia_followup';
+  task_category: 'personal' | 'group_subtask';
   task_type:     string;
   priority:      'urgent' | 'high' | 'normal';
   status:        'to_do' | 'in_progress' | 'in_review';

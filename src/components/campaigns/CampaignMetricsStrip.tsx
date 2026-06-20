@@ -2,7 +2,7 @@
 // Renders 6 stat cards + agent distribution bar for the campaign detail page.
 // Zero DB calls — all data comes via props from the page's Promise.all.
 
-import { formatCompact, formatPercent } from '@/lib/utils/numbers';
+import { formatCompact, formatCurrency, formatPercent } from '@/lib/utils/numbers';
 import { StatTile, type StatTileSub } from '@/components/ui/StatTile';
 import { AgentDistributionBar } from '@/components/campaigns/AgentDistributionBar';
 import type { CampaignDetailMetrics, AgentDistributionRow } from '@/lib/types/database';
@@ -64,24 +64,35 @@ function firstTouchColor(hours: number | null): string {
 type CampaignMetricsStripProps = {
   metrics:      CampaignDetailMetrics;
   distribution: AgentDistributionRow[];
+  /** Ad spend for the active window (BudgetCampaignRow.totalSpend, same source
+   *  as the /campaigns list cards). null → no spend row → tile renders "—". */
+  totalSpend?:  number | null;
 };
 
 export function CampaignMetricsStrip({
   metrics,
   distribution,
+  totalSpend = null,
 }: CampaignMetricsStripProps) {
   const { total_leads, won, in_discussion, nurturing, junk, rnr, avg_hours_to_first_touch } =
     metrics;
 
   const activePipeline = in_discussion + nurturing;
 
+  const hasSpend = totalSpend !== null && totalSpend !== undefined;
+  // Cost per lead is derived from the SAME window's spend + leads — "—" (never
+  // ₹0) when there is no spend row or no leads, matching the list-page contract.
+  const costPerLead = hasSpend && total_leads > 0 ? totalSpend / total_leads : null;
+
   return (
-    <div style={{ marginBottom: 'var(--space-6)' }}>
-      {/* Row 1 — 6 stat cards */}
-      {/* Inline grid-template-columns would override the md:/lg: classes —
-          the column count must live in classes only. */}
+    <div>
+      {/* 8 stat cards (6 pipeline + Amount Spent + Cost/Lead) as a 2×4 grid —
+          sits in the right column beside the ad video on the detail page.
+          Inline grid-template-columns would override the responsive classes —
+          the column count must live in classes only.
+          Below sm it drops to a single column; from sm up it is the 2×4 grid. */}
       <div
-        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6"
+        className="grid grid-cols-1 sm:grid-cols-2"
         style={{ gap: 'var(--space-3)' }}
       >
         <StatTile
@@ -126,6 +137,20 @@ export function CampaignMetricsStrip({
                   : 'on track',
             color: firstTouchColor(avg_hours_to_first_touch),
           }}
+        />
+
+        {/* Amount Spent — ad spend for the active window (from /budget uploads,
+            reusing getBudgetSummary). "—" when no spend row, never ₹0. */}
+        <StatTile
+          label="Amount Spent"
+          value={hasSpend ? formatCurrency(Math.round(totalSpend as number)) : '—'}
+        />
+
+        {/* Cost / Lead — spend ÷ leads for the SAME window. "—" at zero leads or
+            no spend (the costPerLead null contract), never ₹0. */}
+        <StatTile
+          label="Cost / Lead"
+          value={costPerLead === null ? '—' : formatCurrency(Math.round(costPerLead))}
         />
       </div>
 

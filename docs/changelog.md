@@ -12,6 +12,481 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-20 — Performance founder deck: full-width breakdown toggle + fill the avatar column
+
+Two follow-up polish fixes to the deck card (`FounderDrillDownDeck.tsx`):
+
+- **Breakdown toggle (Call outcome / Lead status) spans the row.** The toggle tray was a content-sized
+  `inline-flex` that read as cramped/off-cut on mobile. It is now a `display: flex; width: 100%` tray and
+  each `BreakdownTab` is `flex: 1` + centered, so the two tabs split the row evenly (clean on phone and
+  on the 720px-max desktop card alike).
+- **Dead space below the avatar filled.** The `xl` avatar sat next to a taller 2×2 scorecard grid,
+  leaving an empty column beneath it. The left column is now a `stretch` flex column (avatar at the top,
+  conversion-rate readout `space-between` beneath) — the avatar's empty space carries a real metric
+  (`agent.conversionRate`, serif value + "Conversion" micro-label; null → "—" per the null contract)
+  instead of emptiness.
+
+## 2026-06-20 — Campaign detail: video-left / metrics-right layout + inline ad-video upload
+
+Restructures the campaign detail page so the ad video and the score metrics sit **side by side**
+on desktop, and lets admins add a video for the campaign **without leaving the page**.
+
+- **Two-column row (`campaigns/[id]/page.tsx`).** The ad video moves to a fixed **320px left
+  column**; the 8 score tiles (6 pipeline + Amount Spent + Cost/Lead) render as a **2×4 grid in the
+  right column** (`lg:grid-cols-[320px_1fr]`). Stacks to one column below `lg`. The video renders
+  immediately (creatives are awaited up-front); the metrics still stream into the right column via
+  their own Suspense boundary, so a slow RPC never blocks the video.
+- **`CampaignAdPanel` (new, `components/campaigns/`)** — the left-column panel. Has creatives → the
+  existing `AdCreativeCarousel`. No creatives → an **add-a-video tile** (9:16 footprint, Plus icon)
+  that opens the **same `AdCreativeFormModal`** the `/admin/ad-creatives` page uses (R-01 — no second
+  uploader), with this campaign **pre-selected + locked**. New uploads prepend without a refetch.
+  The card frame always renders so the two columns stay balanced whether or not a video exists.
+- **Inline upload is admin/founder only** — the same gate `upsertAdCreative` enforces server-side;
+  managers see the page and the empty tile's "No video yet." copy but not the Plus.
+- **`AdCreativeFormModal` gains `defaultCampaignKey`** — pre-selects + locks the campaign for a fresh
+  inline create (the campaign is fixed to the page); the pre-selected key always shows as an option
+  even if it is not in the active `campaignKeys` list. Editing behaviour unchanged.
+- **`CampaignMetricsStrip` reflows for a column** — tiles are now `grid-cols-1 sm:grid-cols-2`
+  (single column on narrow, 2×4 in the right column) and the outer page margin was dropped (the page
+  grid owns spacing); the agent-distribution bar still renders below the tiles. Skeleton matched.
+- **`CampaignAdCard` deleted** — fully superseded by `CampaignAdPanel` (R-04; a dead duplicate would
+  itself be a reuse violation).
+
+## 2026-06-20 — Campaign detail: fix `+`/`/` key corruption (video + leads + metrics) + Amount Spent / Cost-per-Lead tiles
+
+Two campaign-detail-page fixes. The first is a silent data-corruption bug; the second reuses the
+existing budget source to add spend to the metrics strip.
+
+- **Campaign-id encoding bug (root cause + fix).** `CampaignCard` built the detail href with
+  `campaign_name.replace(/\s+/g, '+')` and `campaigns/[id]/page.tsx` decoded it with
+  `'+' → ' '`. Any `utm_campaign` containing a **literal `+`** (Meta "Advantage+" campaigns) or
+  `/` (e.g. `TG_Global_9/Jan…`) was corrupted on decode — the literal `+` became a space, the
+  normalised lookup key no longer matched, and the detail page found **nothing**: no ad-creative
+  video, an empty leads table, and empty metrics. Verified against live data — e.g.
+  `TG_Global_Advantage+_14th May` had 38 leads + 2 creatives under the correct key and 0 under the
+  corrupted key. **Fix:** switch both sides to `encodeURIComponent` / `decodeURIComponent`
+  (lossless; round-trips `+`, `/`, spaces). Decode is wrapped in try/catch (a hand-typed bad `%`
+  escape falls back to the raw param). `CampaignCard` is the only href builder; no other site
+  changed. This single change restores the video card, the leads list, and the metrics together.
+- **Amount Spent + Cost / Lead tiles (`CampaignMetricsStrip`).** Two new tiles in the strip (now 8:
+  6 pipeline + Amount Spent + Cost/Lead, `lg:grid-cols-4`). Spend reuses the **existing
+  `getBudgetSummary(from, to)`** (`ad-spend-service`, the `/budget` source — no new query, no new
+  RPC, R-01) fetched in the same `Promise.all` as the metrics RPCs and matched on the normalised
+  campaign key. Cost/Lead is derived from the same window's spend ÷ leads. Both render **"—" (never
+  ₹0)** when there is no spend row or no leads — the list-page `costPerLead` null contract.
+- **"This Month" default window.** The detail page now defaults the date window to the `this_month`
+  preset (via the shared `resolveDateRangePreset`) when no range is in the URL, so Amount Spent
+  always shows a real figure and metrics/leads/spend describe one coherent window. A picked range
+  (both bounds) overrides it; the Range filter's presets feed the same param. `CampaignMetricsAsync`
+  passes the identical `date_from`/`date_to` to all three reads — no date drift.
+- **Skeleton parity.** `CampaignMetricsStripSkeleton` bumped to 8 tiles / `lg:grid-cols-4` so the
+  loading shape matches the live strip.
+
+## 2026-06-20 — Budget: per-account recharge ledger + grouped account report + weekly-upload clarity
+
+Adds a finance-side record of money sent to each Meta ad account (a *recharge*), kept separate
+from campaign spend, and a per-account report on `/budget` (recharged · spent · balance + a grand
+total). Also clarifies upload copy that wrongly implied daily-only uploads — weekly cadence already
+works.
+
+- **Account derivation (`lib/constants/ad-accounts.ts`, new):** `AD_ACCOUNTS` (3 live accounts —
+  `april`/`gmr`/`dubai` with display names + Meta account ids; "Indulge New Gen" documented as a
+  one-line-edit placeholder) + `resolveAccountFromCampaign(key)`. Convention
+  `TG_<Domain>_<Account>_<Type>_<Date>` (normalised lowercase) → account is the **third `_` segment
+  (index 2)**, the index-2 twin of `resolveDomainFromCampaign`. Any miss → the **visible**
+  `'unattributed'` bucket — never a wrong account, never a silent drop (finance data; a
+  misattributed recharge is a real-money error). `ad_spend_daily` is empty + pre-convention names
+  get renamed after this ships, so index-2 parsing is correct for every row that will land.
+
+- **Migration 0139 `ad_account_recharges`:** finance ledger, mirrors `ad_spend_daily`'s
+  table/RLS/trigger pattern. `ad_account` CHECK in (`april`,`gmr`,`dubai`) (SQL mirror of
+  `AD_ACCOUNT_KEY_VALUES`, extend for New Gen); `amount > 0`; `currency` default INR;
+  `recharged_at date`; `done_by → profiles`; `method`/`note` free-text labels with a **card-PAN
+  CHECK** (`ad_account_recharges_no_card_pan` — no 13–19 digit run, separator-tolerant). Indexes
+  `(recharged_at DESC)` + `(ad_account)`; reuses `update_updated_at()`. RLS manager+ read,
+  admin/founder write; hard DELETE permitted (mirrors `ad_spend_daily` — recharges are an editable
+  finance figure, not an append-only log). **⚠️ NOT yet applied — Docker down at author time;
+  apply via `supabase db push` + regenerate `database.ts` (the interim `as any` casts on
+  `.from('ad_account_recharges')` then drop).**
+
+- **Read path (`ad-spend-service.ts`):** `getAccountRecharges(from,to)` (admin client, no Redis —
+  matches the file's posture; joins recharger name) + `buildAccountReport(campaignRows, recharges)`
+  (pure, testable): groups spend by `resolveAccountFromCampaign`, recharges by `ad_account`,
+  `balance = INR recharged − INR spent`. **INR-only burn** — non-INR recharges summed per currency
+  into `nonInr` (display-only, excluded from balance), `hasNonInr` drives a footnote. `ad_spend_daily`
+  untouched — no account column, no new RPC.
+
+- **`createRechargeAction` (`lib/actions/recharge.ts`, new):** Zod (`recharge-schema.ts`) →
+  `requireProfile(['admin','founder'])` → re-`sanitizeText` labels → insert → `revalidatePath('/budget')`.
+  Zod rejects card PANs in `method`/`note`; internal issue codes mapped to user copy (Q-04).
+
+- **Page (`/budget`):** header gains `Add Recharge` (admin/founder, dynamic modal). Below the
+  totals strip, a `BudgetWorkspace` (client tabs): **Accounts** = `AccountReportSection`
+  (per-account `StatTile` cells — balance red when negative — each expandable to its campaign rows
+  reusing `BudgetTable`; visible Unattributed block; grand-total line) + `RechargeHistoryTable`
+  (`Table<T>`); **Campaigns** = the original grid. Date range stays on `PerformanceFilters`.
+
+- **Upload copy fix (no logic change):** `AdSpendUploadModal` copy now states plainly that a
+  multi-day daily-breakdown export (Breakdown → By time → Day) over any range uploads in one go as
+  one row per day and re-uploads idempotently — so weekly cadence is supported. The grain guard
+  (rejects date-RANGE exports) is correct and untouched.
+
+- **Sign-off:** `pnpm tsc --noEmit` clean; `check-tokens` clean (all CSS vars, no hardcoded
+  colours). `ad_spend_daily` and the grain guard untouched; no card number reaches the DB; no
+  non-INR value inside the INR burn.
+
+**Files:** `supabase/migrations/20260620000139_ad_account_recharges.sql`,
+`src/lib/constants/ad-accounts.ts`, `src/lib/validations/recharge-schema.ts`,
+`src/lib/services/ad-spend-service.ts`, `src/lib/actions/recharge.ts`,
+`src/app/(dashboard)/budget/{page.tsx,BudgetAsync.tsx,CLAUDE.md}`,
+`src/components/budget/{AddRechargeButton,AddRechargeModal,AccountReportSection,RechargeHistoryTable,BudgetWorkspace,AdSpendUploadModal}.tsx`,
+`docs/modules/budget.md` (new), `docs/claude-project/3-pages-summary.md`,
+`supabase/migrations/CLAUDE.md`, this entry.
+
+---
+
+## 2026-06-20 — Performance founder deck: card redesign, leads card⇄modal consistency, readable first-touch graph
+
+Four fixes to the founder/admin agent deck (`/performance` → Agents tab → deck), driven by the
+swipeable card being the genuine mobile view.
+
+- **"Total Calls" tile → "Recent calls"** (`FounderDrillDownDeck.tsx`). The label now matches the
+  modal it opens (the title was already "Recent calls"); the redundant `hint` was dropped.
+
+- **Leads card ⇄ drill-modal consistency (the data bug).** The deck/detail **Leads** tile shows
+  `agent.totalLeads` — a **period-scoped** count (the roster RPC counts `leads.created_at` within
+  the active date range). But `AgentLeadsDrillModal` opened `getAgentLeadsScopedAction` with
+  `date_from/date_to = null` → **all-time** assigned leads, so the front number and the opened total
+  disagreed. Fixed by threading the period range through: `GetAgentDrillSchema` gains optional
+  `period/customFrom/customTo`; `getAgentLeadsScopedAction` resolves the range the SAME way
+  `getAgentDetailMetricsAction` does (`getPeriodDateRange` + custom override) and passes
+  `date_from/date_to` into `getLeadsByRole` (filters `created_at`). Both mount sites
+  (`FounderDrillDownDeck`, `AgentDetailPanel`) now pass the period. No period supplied (legacy
+  callers) → no date filter, prior behaviour preserved. The card and the opened list now show the
+  same true period count.
+
+- **First-Touch Speed graph redesigned** (`FirstTouchScorecard.tsx`). The old single thin segmented
+  proportion line + chip legend was hard to read. Replaced with **five labeled horizontal-bar rows**
+  (one per speed bucket: `< 15m / 15–30m / ≤ 1h / 1–3h / 3h+`, all always shown, zeros dimmed): a
+  fixed label column, a proportional fill bar scaled to the **peak bucket** (so the tallest bar fills
+  its row and the distribution shape reads at a glance), then `count · pct`. Bars animate width in via
+  the existing motion constants. Empty/untouched-footnote states unchanged.
+
+- **Deck card layout reflow** (`FounderDrillDownDeck.tsx`). The active agent's **name + domain** moved
+  into the Dialog **title bar** (name in the serif page-title style, domain as the subtitle). The card
+  body now leads with the **avatar on the left + a 2×2 grid of four tap-target scorecards on the
+  right** — **Recent calls · Leads · Won · Revenue** (the **Won** count tile, `agent.leadsWon`, is the
+  new fourth; Revenue stays the compact `formatCurrencyCompact` ₹k/L amount — reused, not re-rolled).
+  Below the scorecards: the toggleable breakdown (Call outcome ↔ Lead status), then the redesigned
+  First-Touch graph — the requested order. Tile padding tightened + labels ellipsis-guarded so the
+  2×2 fits the phone width.
+
+## 2026-06-20 — Task model: collapse `gia_followup`, model module-links by the meta table
+
+**Context.** `tasks.task_category` carried three values: `personal`, `group_subtask`, `gia_followup`.
+The first two describe **structure** (standalone vs child-of-a-group); the third described a
+**link** (task → lead) that was *already*, redundantly, recorded by the existence of a
+`task_gia_meta` row. Every new module (Sia → tickets, later finance/b2b) would otherwise force a new
+enum value, RLS branch, RPC and index. That doesn't scale.
+
+**Done.** The category is now **two structural values** (`personal`, `group_subtask`). A lead
+follow-up = a `personal` task that **has a `task_gia_meta` row** — nothing more. The module a task
+belongs to is carried by a corrected `module` column, now a native enum
+**`task_module ('gia','sia','core')`**. The Tasks page drops the Gia tab entirely (My Tasks + Group
+Tasks only); lead follow-ups appear in the My Tasks calendar like any other personal task. The lead
+dossier task card is unchanged — still shows/creates only that lead's tasks, now `personal` + meta
+via the same RPC.
+
+**THE SINGLE-WRITER INVARIANT (the load-bearing future-proofing).** A `task_gia_meta` row exists
+**IFF** the task is a lead follow-up, and `module='gia'` **IFF** a meta row exists — because
+`create_lead_gia_task` (the link-creating RPC) is the **only** writer of both, always in one
+transaction; a future `create_lead_sia_task` will own `module='sia'`. Every other insert writes
+`module='core'` and no meta row. So meta-presence (`EXISTS(task_gia_meta)` / `module='gia'`) is a
+**permanently correct** substitute for the retired `task_category='gia_followup'` check — the
+rewritten reads borrow their correctness from the write path, commented inline at each site.
+
+- **Migration `0138`** (applied to prod via MCP + verified): backfill `gia_followup→personal`;
+  re-constrain `tasks_category_check` to the two values; convert `module` text → `task_module` enum
+  (backfill meta-row→`gia` else `core`); repoint `create_lead_gia_task`, `update_lead_status`
+  (nurturing branch), `get_gia_tasks` (drop the now-redundant category predicate — its inner join
+  scopes it), and `get_dashboard_summary` (§1 agent-tasks + agent `pending_calls_count` re-keyed to
+  meta-presence — diff-verified byte-identical to live 0129 except those spots). Index hygiene: tag
+  indexes guarded `module <> 'gia'` (standalone-personal-only); `get_personal_tasks` widened (lead
+  tasks belong in the My Tasks calendar). **One-time §0 cleanup:** 60 pre-`0054` lead-less orphans
+  (no meta row, irrecoverable link) — 35 terminal deleted, 25 active cancelled (audit-preserving).
+- **SLA breach handler** (`actions/sla.ts` `fireSlaBreachHandler`): the non-atomic
+  `tasks.insert` + separate `task_gia_meta.insert` (the orphan source) replaced with a single
+  `create_lead_gia_task` RPC call — the RPC is now the **only** lead-task writer in app code.
+- **Service readers** (`tasks-service` `getAllLeadTasks`, `sla-service` `getOpenGiaFollowupTask`,
+  `revival-service` `getOpenRevivedTask`): dropped the `.eq('task_category','gia_followup')` line —
+  each already `!inner`-joins `task_gia_meta`, which scopes it.
+- **Cores** (`task-mutations.ts`): `createPersonalTaskCore`/`createSubtaskCore` now write
+  `module:'core'`; `updateTaskStatusCore`/`deleteTaskCore` take a caller-supplied `hasGiaMeta`
+  boolean (cores stay context-free — never query the meta table) and del the `giaList` Redis key on
+  meta-presence (kept, because Elaya's read tool consumes `getGiaTasksForUser`). The action layer
+  (`actions/tasks.ts`) + Elaya's `write-registry.ts` fetch `task_gia_meta(task_id)` and pass the flag.
+- **Trigger.dev** (`task-reminders.ts`): both reminder gates switched from
+  `task.task_category !== 'gia_followup'` to `!ctx.lead` (the meta-presence signal from
+  `getTaskWithGiaContext`) — without this, the lead-only WhatsApp/overdue path would silently never
+  fire post-collapse.
+- **Frontend:** Gia tab removed (`TasksAsync`/`TasksShell`/`page.tsx`/`AddTaskButton`/`TasksFilters`/
+  `TasksSkeleton`/`task-client-filters`); `?tab=gia` falls back to `personal`; `GiaTasksTab`,
+  `GiaTaskRow`, `GiaDaySection`, `CreateGiaTaskModal` deleted. `getGiaTasksForUser`/`get_gia_tasks`
+  **kept** (Elaya tool dependency, not just the old tab).
+- **Types/constants:** `database.ts` regenerated (`TaskCategory` drops `gia_followup`; `module` typed
+  as the enum); `TASK_CATEGORY` record, `DashboardAgentTask`, `dashboard-service` mapper, and the
+  `AgentTasksWidget` legend collapsed to two categories; the two personal-task synthetic objects
+  fixed to `module:'core'`.
+- **NOT touched:** `sla_policies.trigger_value='gia_followup'` (`sla-policy-schema.ts`,
+  `SlaPoliciesPanel.tsx`) — a **different column** (the SLA "task due" rule catalog, migration 0111),
+  deliberately preserved. A repo grep for `gia_followup` is therefore not zero; the only survivors are
+  those two SLA refs + descriptive comments.
+
+`pnpm tsc --noEmit` clean. Full contract: `docs/pages/tasks.md` (two-tab model + the meta-link
+concept), `docs/architecture/database.md` (category vocabulary, `task_module` enum, the one-writer
+rule).
+
+---
+
+## 2026-06-20 — WhatsApp: removed the conversation Resolve/Reopen feature
+
+**Context.** Opening a WhatsApp conversation showed a green "Resolved" badge once a manager+
+had marked it resolved, which also locked the composer ("This conversation is resolved. Reopen
+to send messages.") and showed "Resolved" in the list row's trailing slot. The feature was
+removed — conversations no longer have a resolved state in the UI; every thread stays open and
+replyable.
+
+**Done.**
+
+- **`src/components/whatsapp/ConversationPanel.tsx`** — removed the header "Resolved" badge, the
+  manager+ Resolve/Reopen button, the `handleResolve`/`handleReopen` handlers, the `convStatus`
+  state + `isResolving` transition, the resolved-banner composer branch (composer now always
+  renders), and the `convStatus === "resolved"` guard in `handleSend`. Dropped the
+  `onConversationUpdate` prop and the now-unused `Button`/`Spinner`/`MANAGER_ROLES` imports.
+- **`src/components/whatsapp/ConversationRow.tsx`** — dropped the `isResolved` branch; the
+  trailing slot always shows the last-message relative time.
+- **`src/components/whatsapp/WhatsAppShell.tsx`** — removed `handleConversationUpdate` (only the
+  resolve/reopen path used it) and its prop pass; simplified the Realtime UPDATE unread predicate
+  (the `updated.status !== "open"` term was dead once status is always `open`).
+- **`src/lib/actions/whatsapp.ts`** — deleted the `resolveConversation` and `reopenConversation`
+  server actions and the dead `status === "resolved"` send guard.
+- **`src/lib/validations/whatsapp-schema.ts`** — deleted the unused `ResolveConversationSchema`.
+- **`src/lib/services/whatsapp-service.ts`** — dropped the `c.status === 'open'` term from the
+  unread-count mapper (always true now).
+
+**Not touched (deliberate).** The `whatsapp_conversations.status` column, its CHECK constraint,
+and the `get_wa_unread_count` RPC's `WHERE wc.status = 'open'` are left in place — every row
+stays `open`, so the predicate is harmless, and dropping the column would be an irreversible
+migration the removal doesn't require. The `WHATSAPP_CONVERSATION_STATUS` constant and the
+`status: 'open' | 'resolved'` row type stay to mirror the still-present column.
+
+---
+
+## 2026-06-20 — Performance founder view: mobile tab bar spans the row + the deck is the genuine mobile view (no list→deck flash)
+
+**Context.** Two related mobile defects on `/performance` (founder/admin all-domains view):
+
+1. **Tab bar looked off-cut.** The Agents/Domains `TabSelector` (pill variant) sizes to its content,
+   so on a phone it sat cramped on the left of a `space-between` row next to the hoisted "Deck view"
+   trigger — it never spanned the row, reading as mis-aligned/cut.
+2. **A visible list→deck shift on load.** The swipeable deck is the intended mobile default, but it
+   was implemented as a `Dialog size="full"` overlay that **auto-opened after hydration**.
+   `useMediaQuery` returns `false` on SSR + the first client paint, so the two-column roster/detail
+   **list painted first**, then hydration flipped `isMobile → true` and the deck **slammed over the
+   already-painted list** — the shift the user saw.
+
+**Done.**
+
+- **`src/components/ui/TabSelector.tsx`** — new additive `fullWidth?` prop (threaded through `Tabs`
+  context → `TabsList` (`width: 100%`) → `TabsTrigger` (`flex: 1` + centered, the same treatment the
+  `connected` variant always had) and the flat `TabSelector` wrapper). Default `false` → byte-identical
+  content-sized pill for every existing consumer (R-01 — extended the shared component, did not fork).
+- **`src/app/(dashboard)/performance/FounderPerformanceShell.tsx`** — passes `fullWidth={isMobile}`
+  (+ `flex: 1` on the tray) so the 2-tab bar spans the row on phones; and **suppresses the hoisted
+  "Deck view" trigger on mobile** (the deck is the Agents view there, and the panel owns its own
+  reopen prompt — the tab row stays just the full-width tabs).
+- **`src/components/performance/ManagerPerformancePanel.tsx`** — the founder mobile path
+  (`isMobileDeck = isMobile && allDomains`) now renders the **deck only** — the roster/detail list is
+  never in the tree on a phone. The deck auto-opens once per mount (latch unchanged; a manual close is
+  respected); a **closed** deck shows a calm inline "Open agent deck" prompt (`EmptyState` + reopen
+  button), never the list. Because the list no longer renders on mobile, the overlay can't slam over it
+  — the deck *replaces* the list instead of stacking on top of it. Desktop/tablet are unchanged: the
+  list two-column view + trigger-driven deck overlay are untouched (the new branch is an early return
+  guarded on `isMobileDeck`).
+
+**Residual.** The one-frame pre-hydration list paint on mobile is the same `useMediaQuery`
+SSR-`false`→`true` hydration window every consumer in the app already accepts (FilterBar, DatePicker,
+DomainSelector); the deck is `ssr:false` so a pure-CSS swap isn't possible. The fix removes the
+*overlay slam* (the jarring part) — the list is gone from the tree after hydration, not buried under
+the deck.
+
+## 2026-06-20 — Elaya can answer "Which of my leads are going cold?" (new `get_cold_leads` tool)
+
+**Context.** `src/lib/constants/elaya.ts` ships the suggested prompt *"Which of my leads are
+going cold?"*, but Elaya had **no tool that could answer it.** The only lead tool, `search_leads`,
+filters on `{ search, statuses, page }` only — it never reads `last_activity_at`, the single
+timestamp that *defines* "going cold" (non-terminal lead, no activity for
+`COLD_LEAD_THRESHOLD_DAYS = 5` days). So the model improvised: it dumped the pipeline and guessed
+which were cold, producing wrong answers. (`searchLeadsForElaya` also reports page-only
+`totalCount`/`statusCounts`, compounding the error past 30 leads — noted, not fixed here.)
+
+**Done.** Reuse-first (R-01): a new read tool wraps the EXISTING, correct going-cold predicate
+(`getGoingColdLeads`) — the same one behind `/leads?going_cold=true` and the dashboard Going Cold
+widget — so the chat answer is guaranteed to match the UI definition. No new query, no duplicated
+threshold logic.
+
+- **`src/lib/services/sla-service.ts`** — `getGoingColdLeads(domain)` → `getGoingColdLeads(scope?)`
+  where `scope = { domain?, assignedTo? }` (both additive). The new `assignedTo` filter lets an
+  agent get **only their own** cold leads (the per-caller identity contract), which the old
+  domain-only signature couldn't express. Predicate unchanged (status not won/lost/junk,
+  `last_activity_at < now − 5d`, NULL excluded = SLA-01A's job, coldest first, limit 100).
+- **`src/app/(dashboard)/escalations/page.tsx`** — the sole prior caller updated to the object
+  signature: `getGoingColdLeads({ domain })`. Behaviour identical.
+- **`src/lib/elaya/tools/registry.ts`** — new `get_cold_leads` read tool (empty input schema —
+  the model supplies no scope). Identity-derived scope mirrors `searchLeadsForElaya`/`canAccessLead`:
+  agent → `{ assignedTo: userId }`, manager → `{ domain }`, admin/founder → all domains. Added to
+  `ElayaReadToolName`, `ALL_TOOLS` (so `READ_TOOLSET`/`TOOLSET_BY_ROLE` pick it up automatically),
+  result passes the PII gateway like every tool. Description explicitly tells the model NOT to
+  improvise going-cold from `search_leads`.
+
+---
+
+## 2026-06-20 — Deals summary strip respects the active domain (type-count cells)
+
+**Context.** The `/deals` page already respects the app-wide domain selector for the deal list
+(via `resolveDomainParam` → `filters.domain`, plus the server-side role pin for managers/agents).
+But the top summary strip (`DealsSummaryStrip`) always rendered four cells — Total Deals, Total
+Revenue, **Memberships**, **Retail** — regardless of scope. Memberships are an `onboarding`-only
+concept and Retail a `shop`-only one (the domain-derived `deal_type` law, `DOMAIN_DEAL_CONFIG`),
+so both cells showed even when the scoped domain made one (or both) meaningless.
+
+**Done.** Pure display change — no DB/RPC/service change (`getDealsSummary` already returns
+`membership_count`/`retail_count` unconditionally).
+
+- **`src/components/deals/DealsSummaryStrip.tsx`** — new optional `domain?: AppDomain | null`
+  prop. The two type-count cells (Memberships, Retail) now render conditionally off the scoped
+  domain's derived `deal_type` via `DOMAIN_DEAL_CONFIG` (`isGiaDomain`-guarded): `onboarding` →
+  Memberships only, `shop` → Retail only, `house`/`legacy` (`sale`) → neither extra cell (there
+  is no `sale_count`), `null` (all-domains) → both, as before. Total Deals + Total Revenue always
+  show. Each cell carries its own `StatDivider` so the strip never renders a leading/trailing rule.
+- **`src/app/(dashboard)/deals/DealsAsync.tsx`** — resolves the effective `summaryDomain`:
+  admin/founder → `filters.domain` (their picked scope; `null` = all domains); manager/agent →
+  their own `profile.domain` (always single-domain). The role branch is required because
+  `resolveDomainParam` returns `null` for manager/agent, so `filters.domain` alone would wrongly
+  show both cells for a domain-pinned manager.
+
+## 2026-06-20 — Feedback card on /elaya (reuses the existing suggestion composer)
+
+**Context.** The "Send feedback" mechanism (the shared `SuggestionComposerModal` opened
+via `useSuggestionFeedback()` from `SuggestionFeedbackProvider`, submitting through
+`submitSuggestionAction`) already lived in the Sidebar (desktop) and as a mobile overlay
+on the dashboard `ElayaPresenceCard`. The full `/elaya` page had no on-surface entry — only
+the always-present sidebar item. Goal: give `/elaya` its own feedback card, **without** a
+second mechanism (R-01).
+
+**Done.**
+
+- **New `src/components/elaya/ElayaFeedbackCard.tsx`** — display-only (A-06) card matching the
+  `ElayaIdentityCard` design language exactly: `rounded-lg` + `1px --theme-paper-border` +
+  `--shadow-1` paper surface, a 40px `--theme-accent-surface` icon tile, serif heading
+  ("Share your thoughts"), one secondary line, and a full-width "Send feedback" button. The
+  button calls `openComposer()` from the **existing** `useSuggestionFeedback()` hook — zero new
+  submit logic, zero new modal, zero new action. The dashboard layout already wraps `/elaya` in
+  `SuggestionFeedbackProvider`, so the hook is in scope. Framer entrance is opacity + `y` only
+  (`m as motion`, `ENTER_DURATION`/`EASE_OUT_EXPO`).
+- **`ElayaChatShell.tsx`** — the right `.serene-dossier-grid--340` column became a vertical flex
+  stack (`gap: --space-6`): `ElayaFeedbackCard` on top of `ElayaIdentityCard`. On desktop the
+  feedback card sits above the Elaya identity card in the right rail; when the dossier grid
+  collapses to one column (mobile), the source order reads **chat → feedback → identity**, the
+  requested stacking. The floating-widget / embedded chat-only path is untouched (it omits the
+  whole rail).
+
+**Result.** `/elaya` shows a feedback card in the right rail above Elaya's identity card on
+desktop, and chat → feedback → identity stacked on mobile. Same composer, action, storage bucket,
+and `/admin/suggestions` inbox as every other entry point — no new feedback workflow.
+
+---
+
+## 2026-06-20 — Lead Pipeline widget: add a "Lost" stat chip (5 → 6 cards, one row)
+
+**Context.** The Lead Pipeline dashboard widget (`ManagerLeadStatusWidget`) surfaced
+five status stat chips — New, Touched, In Discussion, Won, Junk — but no count for
+leads marked **Lost**, even though `lost` is a first-class `LeadStatus` already present
+in the RPC totals (`mixMap`) and every token map (text/bg/border/solid).
+
+**Done.**
+
+- **`ManagerLeadStatusWidget.tsx`** — added `"lost"` to `CHIP_STATUSES` (now
+  `new, touched, in_discussion, won, lost, junk`) so the Lost count renders as a sixth
+  chip. No data-layer change: the count comes straight from the existing `mixMap[lost]`.
+- Switched the chip grid from width-driven `auto-fit` to a **fixed column count per
+  breakpoint** via `useMediaQuery(MQ.mobile)`: `repeat(6, …)` on desktop, `repeat(3, …)`
+  on mobile. `auto-fit, minmax(64px, 1fr)` on a full-width phone widget packed an uneven
+  4+2 split; the fixed count gives all six chips one row on desktop and a clean 3+3 (two
+  even rows) on mobile. Columns use `minmax(0, 1fr)` so a chip never overflows.
+
+**Result.** Six status chips in one row on desktop, a clean 3+3 on mobile, Lost included.
+
+---
+
+## 2026-06-20 — Fix: admin/founder domain selector hidden on mobile (dashboard had no fallback)
+
+**Context.** On mobile (`< md`, 768px), the global admin/founder domain selector
+in `PageControls` was hidden by `.serene-page-controls-selector { display: none }`.
+The original rationale was "admin/founder use the per-page filter bar's domain on
+mobile" — but the **dashboard has no filter bar**. Its only domain-scope control is
+the `PageControls` selector that rides the `DashboardCanvas` header cluster. So a
+founder on a phone saw the date/time filter (`DashboardDateFilter`, never hidden)
+but had no way to switch domain scope — the asymmetry the report flagged ("the time
+selector is there but not the domain").
+
+**Done.**
+
+- **`globals.css`** — removed the `@media (max-width: 767.98px)` rule that hid
+  `.serene-page-controls-selector`. The selector now renders at every breakpoint.
+  Safe on a narrow viewport because `DomainSelector` composes
+  `<FilterDropdown menuPortal>` — its menu body-portals out and never clips (the
+  same mechanism the list-page filter bars use below md).
+- **`DashboardDateFilter.tsx`** — on mobile (`useMediaQuery(MQ.mobile)`) the
+  trigger also collapses to an icon-only 36px `Calendar` chip (label + chevron
+  hidden), mirroring the domain selector so the dashboard header is one consistent
+  row of icon chips. No accent dot — the date range is always active, so a dot
+  would always be on (noise); the existing accent-surface chrome already signals
+  it. The current preset label rides `aria-label`/`title`; the panel still opens
+  with full preset labels. Desktop trigger unchanged.
+- **`DashboardCanvas.tsx`** — mobile header stays **one row** (`flex-nowrap`,
+  `md:flex-wrap`): because the controls are icon-compact on mobile (icon-only date
+  chip + domain chip + edit gear, ~36px each) they fit beside the greeting, so the
+  cluster no longer drops to a second row. The greeting `h1` shrinks (`min-w-0`)
+  and the name drops to its own line *within* the title (`max-md:block` — vertical
+  space inside the h1, not a new flex row). Desktop keeps the F1 wrap safety
+  (`md:flex-wrap`) for the wider labelled controls.
+- **`FilterDropdown.tsx`** — new `iconOnly` prop: collapses the trigger to a
+  square 2.25rem icon-only button (label + chevron hidden; an accent dot replaces
+  the numeric count badge when something is selected). The menu still opens with
+  full text labels. `aria-label`/`title` come from `label` so the control stays
+  accessible.
+- **`DomainSelector.tsx`** — on mobile (`useMediaQuery(MQ.mobile)`) it now passes
+  `iconOnly` so the selector reads as a single icon chip beside the date filter +
+  bell + edit control instead of a wide labelled trigger that crowded the title
+  row and "looked odd" (the reported follow-up). A scoped domain shows the accent
+  dot + the domain name via `aria-label`/`title`; tapping opens the same full-text
+  menu. SSR/first paint use the desktop trigger (matches the server) until
+  `mounted` flips — no hydration mismatch.
+- **`constants/domains.ts`** — new `DOMAIN_ICONS` map (the single source for the
+  per-Gia-domain glyph) + `ALL_DOMAINS_ICON`: onboarding → `UserRound` (client),
+  house → `Home`, shop → `ShoppingBag`, legacy → `Trees` (heritage/generations),
+  unscoped → `Globe`. `GIA_DOMAIN_FILTER_ITEMS` now carry the icon, so the
+  selector menu rows show the glyph beside each label, and the icon-only mobile
+  trigger shows the **active domain's** glyph (not a static globe) — the chip
+  tells you which domain is in scope at a glance.
+- Stale "selector hides below md" comments updated in `PageControls.tsx` (JSDoc),
+  `globals.css`, and `src/components/layout/CLAUDE.md`.
+
+No token, schema, or data changes — pure responsive/layout fix. `tsc --noEmit` clean.
+
+---
+
 ## 2026-06-17 — Audit + fix: lead-creation workflow (dedup races, broken round-robin, message loss, assignment gaps)
 
 **Context.** A full audit of the three lead-creation paths — webhook ingestion

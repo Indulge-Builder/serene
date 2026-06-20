@@ -80,10 +80,9 @@ async function attachUnreadCounts(
   return conversations.map((c) => {
     const lastRead = lastReadByConversation.get(c.id);
     const unread =
-      c.status === 'open' &&
-      (lastRead === undefined ||
-        (c.last_message_at !== null &&
-          new Date(c.last_message_at).getTime() > new Date(lastRead).getTime()));
+      lastRead === undefined ||
+      (c.last_message_at !== null &&
+        new Date(c.last_message_at).getTime() > new Date(lastRead).getTime());
     return { ...c, unread_count: unread ? 1 : 0 };
   });
 }

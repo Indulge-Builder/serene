@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, ChevronDown } from 'lucide-react';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import { DatePicker } from '@/components/ui/DatePicker';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { buildFilterParams, dateToUrlParam, dateFromUrlParam } from '@/lib/utils/filter-params';
 import { DATE_PRESET_LABELS, type DatePreset } from '@/lib/utils/date-range';
 import { DROPDOWN_VARIANTS } from '@/lib/constants/motion';
@@ -30,6 +31,13 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
   const searchParams  = useSearchParams();
   const [open, setOpen] = useState(false);
   const containerRef  = useRef<HTMLDivElement>(null);
+
+  // Mobile: collapse the trigger to an icon-only Calendar chip (label + chevron
+  // hidden), mirroring the domain selector's icon-only treatment so the dashboard
+  // header reads as one consistent row of icon chips. The panel still opens with
+  // full preset labels. SSR/first paint use the desktop trigger (matches the
+  // server) until hydration — useMediaQuery returns false server-side.
+  const isMobile = useMediaQuery(MQ.mobile);
 
   // Custom range draft state — only used when the panel is open
   const [customFrom, setCustomFrom] = useState<Date | null>(() => dateFromUrlParam(fromParam));
@@ -90,18 +98,26 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
 
   return (
     <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
-      {/* Trigger */}
+      {/* Trigger — mobile collapses to an icon-only 36px Calendar chip (label +
+          chevron hidden), matching the domain selector so the header is one
+          consistent row of icon chips. No accent dot: the date range is always
+          active, so a dot would always be on (noise) — the accent-surface chrome
+          already signals it. The current label rides aria-label/title. */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
+        aria-label={isMobile ? `Date range: ${activeLabel}` : undefined}
+        title={isMobile ? activeLabel : undefined}
         style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-2)',
-          height:       '36px',
-          padding:      '0 var(--space-3)',
-          borderRadius: 'var(--radius-md)',
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: isMobile ? 'center' : undefined,
+          gap:            isMobile ? 0 : 'var(--space-2)',
+          height:         '36px',
+          width:          isMobile ? '36px' : undefined,
+          padding:        isMobile ? 0 : '0 var(--space-3)',
+          borderRadius:   'var(--radius-md)',
           border:       `1px solid ${open || isActive ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
           background:   open || isActive ? 'var(--theme-accent-surface)' : 'var(--theme-paper)',
           color:        open || isActive ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
@@ -109,18 +125,23 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
           fontWeight:   'var(--weight-medium)',
           cursor:       'pointer',
           whiteSpace:   'nowrap',
+          flexShrink:   0,
           transition:   'border-color var(--duration-fast) var(--ease-in-out), background var(--duration-fast) var(--ease-in-out)',
         }}
       >
-        <Calendar size={14} strokeWidth={1.5} />
-        {activeLabel}
-        <motion.span
-          animate={{ rotate: open ? 180 : 0 }}
-          transition={{ duration: 0.15, ease: 'easeInOut' }}
-          style={{ display: 'flex', alignItems: 'center' }}
-        >
-          <ChevronDown size={14} strokeWidth={1.5} />
-        </motion.span>
+        <Calendar size={isMobile ? 16 : 14} strokeWidth={1.5} />
+        {!isMobile && (
+          <>
+            {activeLabel}
+            <motion.span
+              animate={{ rotate: open ? 180 : 0 }}
+              transition={{ duration: 0.15, ease: 'easeInOut' }}
+              style={{ display: 'flex', alignItems: 'center' }}
+            >
+              <ChevronDown size={14} strokeWidth={1.5} />
+            </motion.span>
+          </>
+        )}
       </button>
 
       {/* Dropdown panel */}

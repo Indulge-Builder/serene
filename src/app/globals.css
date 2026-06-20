@@ -141,22 +141,23 @@ body {
 /* Page controls (TOP_BAR_ENABLED) — the global domain selector + notification
    bell, rendered INLINE in each page's title row (right side, beside the page
    CTA), so they read as part of the page — no separate bar, strip, or divider.
-   The bell sits on paper at every breakpoint → paper-text variant. Below md the
-   selector hides (admin/founder use the per-page filter bar's domain on mobile);
-   the bell stays inline on the title row. SINGLE BELL MOUNT: one NotificationBell
-   per page render; the Sidebar footer bell is gated off (TOP_BAR_ENABLED), so no
-   duplicate `notifications:${userId}` Realtime channel. */
+   The bell sits on paper at every breakpoint → paper-text variant. The domain
+   selector stays inline at every breakpoint too (it used to hide below md, but
+   the dashboard has no per-page filter bar to fall back to — see the selector
+   note below). SINGLE BELL MOUNT: one NotificationBell per page render; the
+   Sidebar footer bell is gated off (TOP_BAR_ENABLED), so no duplicate
+   `notifications:${userId}` Realtime channel. */
 .serene-page-controls {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
   flex-shrink: 0;
 }
-@media (max-width: 767.98px) { /* < --bp-md */
-  .serene-page-controls-selector {
-    display: none;
-  }
-}
+/* The domain selector stays visible on mobile. The dashboard has no per-page
+   filter bar to fall back to, so hiding it there stranded admin/founder with the
+   date filter but no domain scope (the time selector showed, the domain didn't).
+   DomainSelector composes <FilterDropdown menuPortal>, so its menu body-portals
+   out and never clips on a narrow viewport. */
 
 /* Sidebar — three modes (DNA §3.2 / §9.2):
    lg+        240px, full labels (default)

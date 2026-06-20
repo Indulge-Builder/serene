@@ -329,6 +329,12 @@ const GetAgentDrillSchema = z.object({
   domain:  z.string().min(1).nullable(),
   page:    z.number().int().positive().max(1000).optional(),
   cursor:  DrillCursorSchema,
+  // Optional period scoping — when supplied, the leads drill mirrors the deck
+  // card's period-scoped count (created_at within the resolved range) so the
+  // front tile number and the opened list stay consistent.
+  period:     z.enum(PERIOD_VALUES).optional(),
+  customFrom: z.string().datetime().optional(),
+  customTo:   z.string().datetime().optional(),
 });
 
 /** Shared authz preamble — returns the verified caller or an ActionResult error.
@@ -390,11 +396,14 @@ export async function getAgentActivityForManagerAction(
 /** Leads assigned to the target agent — drill-down via the existing
  *  getLeadsByRole path scoped by filters.agent_id. Called by AgentLeadsDrillModal. */
 export async function getAgentLeadsScopedAction(
-  agentId: string,
-  domain:  AppDomain | null,
-  page?:   number,
+  agentId:     string,
+  domain:      AppDomain | null,
+  page?:       number,
+  period?:     PerformancePeriod,
+  customFrom?: string,
+  customTo?:   string,
 ): Promise<ActionResult<LeadsResult>> {
-  const parsed = GetAgentDrillSchema.safeParse({ agentId, domain, page });
+  const parsed = GetAgentDrillSchema.safeParse({ agentId, domain, page, period, customFrom, customTo });
   if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
 
   const access = await assertDrillAccess(domain);
@@ -402,6 +411,18 @@ export async function getAgentLeadsScopedAction(
   const caller = access.caller;
 
   try {
+    // Resolve the period range the SAME way getAgentDetailMetricsAction does, so
+    // this list filters leads.created_at on exactly the window the roster RPC
+    // counted for the card's totalLeads — the front tile and the opened list agree.
+    // No period supplied (legacy callers) → no date filter (all-time, prior behaviour).
+    let dateFrom: string | null = null;
+    let dateTo:   string | null = null;
+    if (parsed.data.period) {
+      const range = getPeriodDateRange(parsed.data.period);
+      dateFrom = (parsed.data.period === 'custom' && parsed.data.customFrom) ? parsed.data.customFrom : range.from;
+      dateTo   = (parsed.data.period === 'custom' && parsed.data.customTo)   ? parsed.data.customTo   : range.to;
+    }
+
     const filters: LeadFilters = {
       status:            null,
       last_call_outcome: null,
@@ -409,8 +430,8 @@ export async function getAgentLeadsScopedAction(
       agent_id:          agentId,
       source:            null,
       campaign:          null,
-      date_from:         null,
-      date_to:           null,
+      date_from:         dateFrom,
+      date_to:           dateTo,
       search:            null,
       page:              parsed.data.page ?? 1,
       pageSize:          30,

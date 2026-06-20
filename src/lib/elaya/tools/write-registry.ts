@@ -637,7 +637,7 @@ const updateTaskStatus: ElayaWriteTool = {
     const admin = createAdminClient();
     const { data: task } = await admin
       .from("tasks")
-      .select("id, assigned_to, created_by, group_id, status, task_category")
+      .select("id, assigned_to, created_by, group_id, status, task_category, task_gia_meta(task_id)")
       .eq("id", taskId)
       .single();
     if (!task) return { error: REFUSE_TASK };
@@ -651,7 +651,12 @@ const updateTaskStatus: ElayaWriteTool = {
     const core = await updateTaskStatusCore(
       actorFromPrincipal(principal),
       { taskId, status },
-      { taskCategory: task.task_category as string | null },
+      {
+        taskCategory: task.task_category as string | null,
+        hasGiaMeta: Array.isArray(task.task_gia_meta)
+          ? task.task_gia_meta.length > 0
+          : !!task.task_gia_meta,
+      },
     );
     if (!core.ok) return { error: "I couldn't change that task's status just now." };
 
@@ -1062,7 +1067,7 @@ async function executeProposedTaskDelete(
     const admin = createAdminClient();
     const { data: task } = await admin
       .from("tasks")
-      .select("id, assigned_to, created_by, group_id, task_category")
+      .select("id, assigned_to, created_by, group_id, task_category, task_gia_meta(task_id)")
       .eq("id", taskId)
       .single();
 
@@ -1085,8 +1090,14 @@ async function executeProposedTaskDelete(
     const core = await deleteTaskCore(
       actorFromPrincipal(principal),
       { taskId },
-      // Prefer the live row's category over the propose-time snapshot.
-      { taskCategory: (task.task_category as string | null) ?? payload.args?.taskCategory ?? null },
+      // Prefer the live row's category over the propose-time snapshot. hasGiaMeta
+      // comes from the live row's task_gia_meta embed (meta-presence = lead task).
+      {
+        taskCategory: (task.task_category as string | null) ?? payload.args?.taskCategory ?? null,
+        hasGiaMeta: Array.isArray(task.task_gia_meta)
+          ? task.task_gia_meta.length > 0
+          : !!task.task_gia_meta,
+      },
     );
     if (!core.ok) {
       await markActionResolved(action.id, "failed", principal.userId);

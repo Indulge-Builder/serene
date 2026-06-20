@@ -625,7 +625,7 @@ export async function getGiaTasksForUser(
 // Lead tasks for one dossier
 // ─────────────────────────────────────────────
 
-/** All gia_followup tasks for one lead, ordered active-first then due_at ASC. */
+/** All lead follow-up tasks for one lead, ordered active-first then due_at ASC. */
 export async function getAllLeadTasks(leadId: string): Promise<Task[]> {
   const supabase = await createClient();
 
@@ -633,7 +633,6 @@ export async function getAllLeadTasks(leadId: string): Promise<Task[]> {
     .from('tasks')
     .select('*, task_gia_meta!inner(lead_id)')
     .eq('task_gia_meta.lead_id', leadId)
-    .eq('task_category', 'gia_followup')
     .order('due_at', { ascending: true, nullsFirst: false });
 
   if (error) {

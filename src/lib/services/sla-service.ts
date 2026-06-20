@@ -209,7 +209,7 @@ export async function getManagersByDomain(
 }
 
 /**
- * Returns an open (non-terminal) gia_followup task for a lead assigned to a specific agent.
+ * Returns an open (non-terminal) lead follow-up task for a lead assigned to a specific agent.
  * Used before auto-task creation (SLA breach handler + cadence tick) to avoid duplicates.
  *
  * "Open" = status NOT IN (completed, cancelled, error).
@@ -227,7 +227,6 @@ export async function getOpenGiaFollowupTask(
   const { data, error } = await admin
     .from('tasks')
     .select('*, task_gia_meta!inner(lead_id)')
-    .eq('task_category', 'gia_followup')
     .eq('assigned_to', assignedTo)
     .eq('task_gia_meta.lead_id', leadId)
     .not('status', 'in', '("completed","cancelled","error")')
@@ -670,8 +669,21 @@ interface ColdLeadJoinRow {
  * Non-terminal leads with no activity for COLD_LEAD_THRESHOLD_DAYS — the exact
  * predicate behind /leads?going_cold=true and the dashboard Going Cold widget.
  * Coldest (oldest activity) first.
+ *
+ * Admin client (the escalations page + the Elaya tool are the trust boundary —
+ * both pass session-derived scope). `scope` is optional and additive:
+ *   • `{ domain }`     → one Gia domain (the escalations call; manager pinned).
+ *   • `{ assignedTo }` → one agent's own leads (the Elaya agent caller — the
+ *                        per-caller identity contract: an agent sees only their
+ *                        own cold leads, never the whole domain's).
+ * Both may be combined; absent → unscoped (admin/founder all-domains).
+ *
+ * NOTE: NULL `last_activity_at` (never-contacted) is excluded by `lt()` — those
+ * are SLA-01A's job, not the going-cold preset (mirrors getLeadsByRole).
  */
-export async function getGoingColdLeads(domain: AppDomain | null): Promise<GoingColdLeadRow[]> {
+export async function getGoingColdLeads(
+  scope?: { domain?: AppDomain | null; assignedTo?: string | null },
+): Promise<GoingColdLeadRow[]> {
   const admin = createAdminClient();
   const threshold = new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString();
 
@@ -686,7 +698,8 @@ export async function getGoingColdLeads(domain: AppDomain | null): Promise<Going
     .lt('last_activity_at', threshold)
     .order('last_activity_at', { ascending: true })
     .limit(100);
-  if (domain) query = query.eq('domain', domain);
+  if (scope?.domain) query = query.eq('domain', scope.domain);
+  if (scope?.assignedTo) query = query.eq('assigned_to', scope.assignedTo);
 
   const { data, error } = await query;
   if (error) {

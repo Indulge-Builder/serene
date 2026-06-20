@@ -21,6 +21,9 @@ interface AdCreativeFormModalProps {
   editing:       AdCreative | null;
   /** Known utm_campaign names for the dropdown. */
   campaignKeys:  string[];
+  /** Pre-selected campaign for a fresh create (e.g. inline from the campaign
+   *  detail page). Ignored when editing (the row's own key wins). */
+  defaultCampaignKey?: string;
   /** Called with the saved row so the parent can update its list without a refetch. */
   onSaved:       (row: AdCreative, wasEdit: boolean) => void;
 }
@@ -64,6 +67,7 @@ export function AdCreativeFormModal({
   onClose,
   editing,
   campaignKeys,
+  defaultCampaignKey,
   onSaved,
 }: AdCreativeFormModalProps) {
   const toast = useToast;
@@ -79,14 +83,16 @@ export function AdCreativeFormModal({
   const [error, setError]         = useState<string | null>(null);
 
   // Reset fields whenever the modal opens (create) or the editing target changes.
+  // On a fresh create, seed the campaign from defaultCampaignKey (inline upload
+  // from the campaign detail page pre-selects + locks it); editing wins as before.
   useEffect(() => {
     if (!open) return;
-    setCampaignKey(editing?.campaign_key ?? "");
+    setCampaignKey(editing?.campaign_key ?? defaultCampaignKey ?? "");
     setAdName(editing?.ad_name ?? "");
     setNotes(editing?.notes ?? "");
     setVideoUrl(editing?.video_url ?? null);
     setError(null);
-  }, [open, editing]);
+  }, [open, editing, defaultCampaignKey]);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -167,6 +173,9 @@ export function AdCreativeFormModal({
   }
 
   const busy = uploading || saving;
+  // Lock the campaign select when it's pre-determined: editing an existing row,
+  // or a fresh create launched inline from a specific campaign's detail page.
+  const campaignLocked = !!editing || !!defaultCampaignKey;
 
   return (
     <Modal
@@ -219,13 +228,14 @@ export function AdCreativeFormModal({
               id="ac-campaign"
               value={campaignKey}
               onChange={(e) => setCampaignKey(e.target.value)}
-              disabled={!!editing}
-              style={{ ...selectBase, cursor: editing ? "not-allowed" : "pointer", opacity: editing ? 0.6 : 1 }}
+              disabled={campaignLocked}
+              style={{ ...selectBase, cursor: campaignLocked ? "not-allowed" : "pointer", opacity: campaignLocked ? 0.6 : 1 }}
             >
               <option value="">Select a campaign…</option>
-              {/* When editing, the stored key may not be in the active campaign list — show it regardless. */}
-              {editing && !campaignKeys.includes(editing.campaign_key) && (
-                <option value={editing.campaign_key}>{beautifyCampaignTitle(editing.campaign_key)}</option>
+              {/* The pre-selected key (editing row, or a fresh inline create) may
+                  not be in the active campaign list — show it regardless. */}
+              {campaignKey && !campaignKeys.includes(campaignKey) && (
+                <option value={campaignKey}>{beautifyCampaignTitle(campaignKey)}</option>
               )}
               {campaignKeys.map((k) => (
                 <option key={k} value={k}>{beautifyCampaignTitle(k)}</option>

@@ -1,12 +1,18 @@
-// Async server component — fetches the budget summary and renders the
-// totals strip + per-campaign table. Streams behind the page Suspense.
+// Async server component — fetches the budget summary + account recharges and
+// renders: the totals strip, the per-account report (recharged/spent/balance +
+// grand total), the per-campaign table, and the recharge history. Streams
+// behind the page Suspense.
 
-import { getBudgetSummary } from "@/lib/services/ad-spend-service";
+import {
+  getBudgetSummary,
+  getAccountRecharges,
+  buildAccountReport,
+} from "@/lib/services/ad-spend-service";
 import { beautifyCampaignTitle } from "@/lib/utils/campaigns";
 import { formatCount, formatCurrency, formatCurrencyCompact, formatCompact } from "@/lib/utils/numbers";
 import { StatTile } from "@/components/ui/StatTile";
 import { BudgetEmptyState } from "@/components/budget/BudgetEmptyState";
-import { BudgetTable } from "@/components/budget/BudgetTable";
+import { BudgetWorkspace } from "@/components/budget/BudgetWorkspace";
 
 type Props = {
   from:      string;
@@ -15,11 +21,18 @@ type Props = {
 };
 
 export async function BudgetAsync({ from, to, canUpload }: Props) {
-  const rows = await getBudgetSummary(from, to);
+  const [rows, recharges] = await Promise.all([
+    getBudgetSummary(from, to),
+    getAccountRecharges(from, to),
+  ]);
 
-  if (rows.length === 0) {
+  // Empty only when there is NO spend AND NO recharge — a recharge with no spend
+  // yet is still worth showing (the account has a balance).
+  if (rows.length === 0 && recharges.length === 0) {
     return <BudgetEmptyState canUpload={canUpload} />;
   }
+
+  const report = buildAccountReport(rows, recharges);
 
   const totalSpend   = rows.reduce((s, r) => s + r.totalSpend, 0);
   const totalLeads   = rows.reduce((s, r) => s + r.leadCount, 0);
@@ -49,12 +62,14 @@ export async function BudgetAsync({ from, to, canUpload }: Props) {
         <StatTile variant="cell" label="Revenue"       value={formatCurrencyCompact(totalRevenue)} />
       </div>
 
-      {/* Per-campaign table */}
-      <BudgetTable
-        rows={rows.map((r) => ({
+      {/* Accounts / Campaigns / Recharges workspace (client tabs) */}
+      <BudgetWorkspace
+        report={report}
+        campaignRows={rows.map((r) => ({
           ...r,
           campaignTitle: beautifyCampaignTitle(r.campaignKey),
         }))}
+        recharges={recharges}
       />
     </div>
   );

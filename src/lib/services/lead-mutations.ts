@@ -146,10 +146,18 @@ export async function createLeadTaskCore(
     scheduleTaskReminder(task.id, new Date(input.dueAt), assignedTo).catch(() => {});
   }
 
-  // Refresh the assignee's dashboard agent-tasks widget cache (the person who now
-  // owns the task — assignedTo, not necessarily the actor).
+  // Refresh the assignee's cached lists (the person who now owns the task —
+  // assignedTo, not necessarily the actor). Since the gia_followup collapse
+  // (0138) a lead task is a `personal` task, so it now also lives in the
+  // assignee's My Tasks page-1 list — del that key too or the new task is
+  // invisible there (and on the calendar) until the 30s TTL lapses, even though
+  // the dossier (live read) shows it. That split is exactly the "task shows on
+  // the lead but not in My Tasks" symptom this del fixes.
   try {
-    await redis.del(REDIS_KEYS.dashboardAgentTasks(assignedTo));
+    await Promise.all([
+      redis.del(REDIS_KEYS.dashboardAgentTasks(assignedTo)),
+      redis.del(REDIS_KEYS.task.personalPage1(assignedTo)),
+    ]);
   } catch (e) {
     console.warn("[lead-mutations] redis del failed on createLeadTaskCore", e);
   }

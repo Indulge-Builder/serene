@@ -137,7 +137,7 @@ export async function createPersonalTaskCore(
     .insert({
       assigned_to: resolvedAssignedTo,
       created_by: actor.userId,
-      module: "gia", // personal tasks default to gia module
+      module: "core", // a plain personal task belongs to the core module
       task_type: "other",
       task_category: "personal",
       title: input.title,
@@ -277,7 +277,7 @@ export async function createSubtaskCore(
     .insert({
       assigned_to: input.assignedTo,
       created_by: actor.userId,
-      module: "gia",
+      module: "core", // a group subtask is core, not gia
       task_type: "other",
       task_category: "group_subtask",
       title: input.title,
@@ -354,19 +354,25 @@ export async function createSubtaskCore(
 // ─────────────────────────────────────────────
 // updateTaskStatusCore — targeted status change.
 // Mirrors updateTaskStatusAction. Cancels the Trigger.dev reminder on terminal
-// status; the THREE category cache branches key on actor.userId DELIBERATELY
-// (the pre-mortem note in actions/tasks.ts — gia_followup dels the actor's Gia
-// list, NOT task.assigned_to). actor.userId/role/domain preserve that exact
-// keying; do NOT "fix" it to assigned_to. Plus the actor's dashboard widget del.
+// status; the cache branches key on actor.userId DELIBERATELY (the pre-mortem
+// note in actions/tasks.ts — the giaList del targets the ACTOR's Gia list, NOT
+// task.assigned_to). actor.userId/role/domain preserve that exact keying; do NOT
+// "fix" it to assigned_to. The giaList del now triggers on hasGiaMeta
+// (meta-presence) — a lead follow-up IFF a task_gia_meta row exists, never via a
+// (deleted) task_category check. A lead follow-up is BOTH personal AND hasGiaMeta,
+// so it dels personalPage1 AND giaList (correct). Plus the actor's dashboard
+// widget del.
 //
 // Caller contract: the caller has fetched the task, confirmed it exists, and run
-// canMutateTask. The core trusts it. Takes the task's current category so it can
-// pick the right cache branch without re-fetching.
+// canMutateTask. The core trusts it — and never queries task_gia_meta itself; the
+// caller fetches the meta-presence flag and passes it in (hard invariant for Elaya
+// reuse — the cores stay context-free). Takes the task's current category +
+// hasGiaMeta so it can pick the right cache branches without re-fetching.
 // ─────────────────────────────────────────────
 export async function updateTaskStatusCore(
   actor: MutationActor,
   input: { taskId: string; status: TaskStatus },
-  taskCtx: { taskCategory: string | null },
+  taskCtx: { taskCategory: string | null; hasGiaMeta: boolean },
 ): Promise<{ ok: true } | { ok: false }> {
   const admin = createAdminClient();
 
@@ -387,13 +393,15 @@ export async function updateTaskStatusCore(
     cancelTaskReminder(input.taskId).catch(() => {});
   }
 
-  // Awaited Redis dels (P-08). Category branch + dashboard widget collapsed into
-  // one awaited Promise.all. The category branch keys on actor.userId/role/domain
-  // — the deliberate pre-mortem keying, preserved exactly.
+  // Awaited Redis dels (P-08). Cache branches + dashboard widget collapsed into
+  // one awaited Promise.all, all keyed on actor.userId/role/domain — the
+  // deliberate pre-mortem keying, preserved exactly. A lead follow-up is BOTH a
+  // personal task AND hasGiaMeta, so it dels personalPage1 AND giaList (correct).
   const dels = [redis.del(REDIS_KEYS.dashboardAgentTasks(actor.userId))];
   if (taskCtx.taskCategory === "personal") {
     dels.push(redis.del(REDIS_KEYS.task.personalPage1(actor.userId)));
-  } else if (taskCtx.taskCategory === "gia_followup") {
+  }
+  if (taskCtx.hasGiaMeta) {
     dels.push(
       redis.del(REDIS_KEYS.task.giaList(actor.userId, actor.role, actor.domain)),
     );
@@ -491,17 +499,22 @@ export async function updateTaskCore(
 // NAMED INVARIANT (failure mode c): the Trigger.dev reminder is cancelled BEFORE
 // the DB delete, and a cancel FAILURE is non-fatal (logged, then proceed) — a
 // missed reminder cancel is recoverable, a broken delete UX is not. The ordering
-// is preserved exactly: cancel → delete. Same THREE category cache branches as
+// is preserved exactly: cancel → delete. Same cache branches as
 // updateTaskStatusCore, keyed on actor.userId (the deliberate pre-mortem keying).
+// The giaList del now triggers on hasGiaMeta (meta-presence) — a lead follow-up
+// IFF a task_gia_meta row exists, never via a (deleted) task_category check; a
+// lead follow-up is BOTH personal AND hasGiaMeta, so it dels both keys.
 //
 // Caller contract: the caller has fetched the task, confirmed it exists, and run
-// the delete-authorization check. The core takes the task's category for the
-// cache branch.
+// the delete-authorization check. The core trusts it — and never queries
+// task_gia_meta itself; the caller fetches the meta-presence flag and passes it in
+// (hard invariant for Elaya reuse — the cores stay context-free). The core takes
+// the task's category + hasGiaMeta for the cache branches.
 // ─────────────────────────────────────────────
 export async function deleteTaskCore(
   actor: MutationActor,
   input: { taskId: string },
-  taskCtx: { taskCategory: string | null },
+  taskCtx: { taskCategory: string | null; hasGiaMeta: boolean },
 ): Promise<{ ok: true } | { ok: false }> {
   // Cancel Trigger.dev reminder BEFORE the DB delete. A cancel failure (no runs
   // found, SDK error, network) is non-fatal — log and continue.
@@ -520,15 +533,17 @@ export async function deleteTaskCore(
 
   if (deleteError) return { ok: false };
 
-  // Awaited Redis del (P-08). Category branch keyed on actor.userId — the
-  // deliberate pre-mortem keying, preserved exactly (NOT task.assigned_to).
+  // Awaited Redis del (P-08). Cache branches keyed on actor.userId — the
+  // deliberate pre-mortem keying, preserved exactly (NOT task.assigned_to). A lead
+  // follow-up is BOTH personal AND hasGiaMeta, so it dels both keys (correct).
   if (taskCtx.taskCategory === "personal") {
     try {
       await redis.del(REDIS_KEYS.task.personalPage1(actor.userId));
     } catch (e) {
       console.warn("[task-mutations] redis del failed on deleteTaskCore", e);
     }
-  } else if (taskCtx.taskCategory === "gia_followup") {
+  }
+  if (taskCtx.hasGiaMeta) {
     try {
       await redis.del(
         REDIS_KEYS.task.giaList(actor.userId, actor.role, actor.domain),

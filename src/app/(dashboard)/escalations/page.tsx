@@ -68,7 +68,7 @@ async function EscalationsAsync({
   const [breached, overdue, cold] = await Promise.all([
     getEscalatedLeads(domain),
     getOverdueGiaTasks(domain),
-    getGoingColdLeads(domain),
+    getGoingColdLeads({ domain }),
   ]);
 
   return (

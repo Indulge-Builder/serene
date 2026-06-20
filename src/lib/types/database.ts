@@ -1389,7 +1389,7 @@ export type Database = {
           due_at: string | null
           group_id: string | null
           id: string
-          module: string
+          module: Database["public"]["Enums"]["task_module"]
           overdue_at: string | null
           priority: string
           status: string
@@ -1409,7 +1409,7 @@ export type Database = {
           due_at?: string | null
           group_id?: string | null
           id?: string
-          module: string
+          module?: Database["public"]["Enums"]["task_module"]
           overdue_at?: string | null
           priority?: string
           status?: string
@@ -1429,7 +1429,7 @@ export type Database = {
           due_at?: string | null
           group_id?: string | null
           id?: string
-          module?: string
+          module?: Database["public"]["Enums"]["task_module"]
           overdue_at?: string | null
           priority?: string
           status?: string
@@ -1860,7 +1860,7 @@ export type Database = {
           due_at: string | null
           group_id: string | null
           id: string
-          module: string
+          module: Database["public"]["Enums"]["task_module"]
           overdue_at: string | null
           priority: string
           status: string
@@ -2175,7 +2175,7 @@ export type Database = {
           due_at: string | null
           group_id: string | null
           id: string
-          module: string
+          module: Database["public"]["Enums"]["task_module"]
           overdue_at: string | null
           priority: string
           status: string
@@ -2223,6 +2223,7 @@ export type Database = {
         | "b2b"
         | "house"
         | "legacy"
+      task_module: "gia" | "sia" | "core"
       user_role: "founder" | "admin" | "manager" | "agent" | "guest"
     }
     CompositeTypes: {
@@ -2362,6 +2363,7 @@ export const Constants = {
         "house",
         "legacy",
       ],
+      task_module: ["gia", "sia", "core"],
       user_role: ["founder", "admin", "manager", "agent", "guest"],
     },
   },
@@ -2413,7 +2415,7 @@ export type LeadPlatform = 'meta' | 'google' | 'website' | 'whatsapp'
 export type TaskType     = 'call' | 'whatsapp_message' | 'other'
 export type TaskStatus   = 'to_do' | 'in_progress' | 'in_review' | 'completed' | 'error' | 'cancelled'
 export type TaskPriority = 'urgent' | 'high' | 'normal'
-export type TaskCategory = 'personal' | 'group_subtask' | 'gia_followup'
+export type TaskCategory = 'personal' | 'group_subtask'
 
 export type NotificationType =
   | 'lead_assigned'

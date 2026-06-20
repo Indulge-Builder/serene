@@ -7,6 +7,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapRows } from "@/lib/utils/rows";
 import { resolveDomainFromCampaign } from "@/lib/constants/campaign-domain-map";
+import {
+  AD_ACCOUNTS,
+  resolveAccountFromCampaign,
+  accountLabel,
+  UNATTRIBUTED_ACCOUNT_KEY,
+  type AccountKeyOrUnattributed,
+} from "@/lib/constants/ad-accounts";
 
 export type BudgetCampaignRow = {
   campaignKey:     string;
@@ -124,4 +131,218 @@ export async function getExistingSpendKeys(
       (r) => `${r.campaign_key}::${r.spend_date}`,
     ),
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Per-account recharge ledger + the /budget per-account report.
+//
+// Recharges live in ad_account_recharges (a finance ledger, separate from
+// ad_spend_daily). Account on the SPEND side is DERIVED from the campaign key
+// via resolveAccountFromCampaign — never stored on spend. Balance = recharged −
+// spent, INR-ONLY (never subtract a non-INR recharge from INR spend).
+//
+// No Redis, admin client — same posture as the rest of this file.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type AccountRecharge = {
+  id:          string;
+  adAccount:   string;
+  platform:    string;
+  amount:      number;
+  currency:    string;
+  rechargedAt: string;   // YYYY-MM-DD
+  method:      string | null;
+  note:        string | null;
+  doneBy:      string;
+  doneByName:  string | null;
+};
+
+/**
+ * All recharges with recharged_at inside the period, newest first, with the
+ * recharger's name joined for the history table. Admin client (manager+ read
+ * gate is the /budget page).
+ */
+export async function getAccountRecharges(
+  dateFrom: string,
+  dateTo: string,
+): Promise<AccountRecharge[]> {
+  const supabase = createAdminClient();
+
+  // The page resolves from/to as ISO timestamps (IST-anchored); recharged_at is
+  // a calendar date — compare against the date portion of each bound so the
+  // window matches the day the recharge is dated to.
+  const fromDate = dateFrom.slice(0, 10);
+  const toDate   = dateTo.slice(0, 10);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
+    .from("ad_account_recharges")
+    // Explicit FK-constraint embed (the leads/deals service convention) — the
+    // bare `profiles:done_by(...)` shorthand can be ambiguous to PostgREST.
+    .select(
+      "id, ad_account, platform, amount, currency, recharged_at, method, note, done_by, profiles:profiles!ad_account_recharges_done_by_fkey(full_name)",
+    )
+    .gte("recharged_at", fromDate)
+    .lte("recharged_at", toDate)
+    .order("recharged_at", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    if (error) console.error("[ad-spend-service] getAccountRecharges failed:", error);
+    return [];
+  }
+
+  type RechargeRow = {
+    id:           string;
+    ad_account:   string;
+    platform:     string | null;
+    amount:       number | string | null;
+    currency:     string | null;
+    recharged_at: string;
+    method:       string | null;
+    note:         string | null;
+    done_by:      string;
+    profiles:     { full_name: string | null } | null;
+  };
+
+  return mapRows<RechargeRow, AccountRecharge>(data, (row) => ({
+    id:          row.id,
+    adAccount:   row.ad_account,
+    platform:    row.platform ?? "meta",
+    amount:      Number(row.amount ?? 0),
+    currency:    row.currency ?? "INR",
+    rechargedAt: row.recharged_at,
+    method:      row.method,
+    note:        row.note,
+    doneBy:      row.done_by,
+    doneByName:  row.profiles?.full_name ?? null,
+  }));
+}
+
+export type AccountReportBlock = {
+  key:          AccountKeyOrUnattributed;
+  label:        string;
+  /** INR recharged into this account in the period. */
+  recharged:    number;
+  /** INR spend attributed to this account's campaigns in the period. */
+  spent:        number;
+  /** recharged − spent (INR only). Can be negative (overspent). */
+  balance:      number;
+  /** The campaign rows that attributed to this account (for the expander). */
+  campaigns:    BudgetCampaignRow[];
+  /** Non-INR recharges into this account — recorded, excluded from `balance`. */
+  nonInr:       { currency: string; total: number }[];
+};
+
+export type AccountReport = {
+  blocks:           AccountReportBlock[];
+  /** Grand-total INR Meta spend across all accounts (incl. Unattributed). */
+  grandTotalSpend:  number;
+  /** Grand-total INR recharged across all accounts. */
+  grandTotalRecharged: number;
+  /** True when any non-INR recharge exists in the period (drives the footnote). */
+  hasNonInr:        boolean;
+};
+
+/**
+ * Build the /budget per-account report from already-fetched budget rows +
+ * recharges. Pure (no IO) so it is trivially testable and the caller controls
+ * the two queries.
+ *
+ * - Spend is grouped by resolveAccountFromCampaign over the campaign rows; an
+ *   unresolved campaign lands in the visible "Unattributed" block, never merged
+ *   into a real account.
+ * - Balance arithmetic is INR-ONLY. Non-INR recharges are summed per currency
+ *   into `nonInr` for display and EXCLUDED from `recharged`/`balance`.
+ * - Every live account in AD_ACCOUNTS gets a block even with zero activity, so
+ *   the report is a stable 3-up grid; "Unattributed" appears only when it has
+ *   spend or a (mis-keyed) recharge.
+ */
+export function buildAccountReport(
+  campaignRows: BudgetCampaignRow[],
+  recharges: AccountRecharge[],
+): AccountReport {
+  type Bucket = {
+    spent:     number;
+    recharged: number;
+    campaigns: BudgetCampaignRow[];
+    nonInr:    Map<string, number>;
+  };
+  const buckets = new Map<AccountKeyOrUnattributed, Bucket>();
+  const bucket = (key: AccountKeyOrUnattributed): Bucket => {
+    let b = buckets.get(key);
+    if (!b) {
+      b = { spent: 0, recharged: 0, campaigns: [], nonInr: new Map() };
+      buckets.set(key, b);
+    }
+    return b;
+  };
+
+  // Seed the three live accounts so they always render (stable grid).
+  for (const a of AD_ACCOUNTS) bucket(a.key);
+
+  // Spend → account by campaign key.
+  for (const row of campaignRows) {
+    const key = resolveAccountFromCampaign(row.campaignKey);
+    const b = bucket(key);
+    b.spent += row.totalSpend;
+    b.campaigns.push(row);
+  }
+
+  // Recharges → account. INR into `recharged`; non-INR into `nonInr` only.
+  for (const r of recharges) {
+    // A recharge always carries a real account key (the dropdown is AD_ACCOUNTS);
+    // resolve defensively so a future stray value can't crash the report.
+    const key: AccountKeyOrUnattributed =
+      AD_ACCOUNTS.some((a) => a.key === r.adAccount)
+        ? (r.adAccount as AccountKeyOrUnattributed)
+        : UNATTRIBUTED_ACCOUNT_KEY;
+    const b = bucket(key);
+    if (r.currency === "INR") {
+      b.recharged += r.amount;
+    } else {
+      b.nonInr.set(r.currency, (b.nonInr.get(r.currency) ?? 0) + r.amount);
+    }
+  }
+
+  const blocks: AccountReportBlock[] = [];
+  let grandTotalSpend = 0;
+  let grandTotalRecharged = 0;
+  let hasNonInr = false;
+
+  for (const [key, b] of buckets) {
+    // Drop an empty Unattributed bucket (only show it when it has signal).
+    if (
+      key === UNATTRIBUTED_ACCOUNT_KEY &&
+      b.spent === 0 &&
+      b.recharged === 0 &&
+      b.nonInr.size === 0
+    ) {
+      continue;
+    }
+    grandTotalSpend += b.spent;
+    grandTotalRecharged += b.recharged;
+    const nonInr = [...b.nonInr.entries()].map(([currency, total]) => ({ currency, total }));
+    if (nonInr.length > 0) hasNonInr = true;
+    blocks.push({
+      key,
+      label:     accountLabel(key),
+      recharged: b.recharged,
+      spent:     b.spent,
+      balance:   b.recharged - b.spent,
+      campaigns: b.campaigns.sort((x, y) => y.totalSpend - x.totalSpend),
+      nonInr,
+    });
+  }
+
+  // Live accounts first (in AD_ACCOUNTS order), Unattributed last.
+  const order = new Map<AccountKeyOrUnattributed, number>(
+    AD_ACCOUNTS.map((a, i) => [a.key, i]),
+  );
+  blocks.sort(
+    (x, y) =>
+      (order.get(x.key) ?? 99) - (order.get(y.key) ?? 99),
+  );
+
+  return { blocks, grandTotalSpend, grandTotalRecharged, hasNonInr };
 }

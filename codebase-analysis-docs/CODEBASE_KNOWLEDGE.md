@@ -3,7 +3,7 @@
 > **A complete breakdown of the Serene codebase for engineers and LLMs.** Self-contained: a reader with no repo access can implement features, fix bugs, and refactor safely from this document alone.
 >
 > - **Repo:** `/Users/alam/Desktop/serene`
-> - **Generated:** 2026-06-13 · **Refreshed:** 2026-06-15 against `main` (migrations through 0121) — added Lead Revival, Web Push, PWA app-icon, voice dictation, OTP-code password reset, Call Intelligence.
+> - **Generated:** 2026-06-13 · **Refreshed:** 2026-06-19 against `main` (migrations through 0137) — adds Notification Preferences (per-user channel control), Suggestion box / bug-report channel, Agent usage / active-time tracking, domain-derived deal type + deal category, managers in the round-robin pool, the canonical lead-phone dedup key, and the revival silence-finder RPC. (Prior refresh 2026-06-15 / migration 0121 added Lead Revival, Web Push, PWA app-icon, voice dictation, OTP-code password reset, Call Intelligence.)
 > - **Method:** direct exploration of source + the authoritative in-repo docs (`docs/`, `CLAUDE.md`, the per-area `CLAUDE.md` registries).
 >
 > **Authority hierarchy (when this doc and the repo disagree, the repo wins):**
@@ -87,6 +87,9 @@ The architecture is deliberately **modular**: a base OS layer (Serene — shell,
 | **PWA install + app icon**           | Install Serene to the home screen and pick the installed-app icon (`profiles.app_icon`)                                                                                                                                   | [§14](#14-feature-user-management--profiles)          |
 | **User management**                  | Admin/founder creation, role/domain assignment, agent shift/routing config                                                                                                                                                | [§14](#14-feature-user-management--profiles)          |
 | **Helpdesk / Call Intelligence**     | A library of service cases + conversation hooks surfaced on the lead dossier + a standalone `/helpdesk` page (Phase 1 live — migrations 0109/0110)                                                                        | [§15](#15-cross-feature-interaction-map)              |
+| **Notification preferences**         | Per-user In-app / WhatsApp on-off control for every silenceable notification category (the per-user twin of `sla_policies.channels[]`; absence = ON) — migration 0133                                                     | [§7](#7-caching-architecture)                         |
+| **Suggestion box / bug reports**     | Any staff member submits a suggestion or bug report (message + ≤4 private screenshots); admin/founder triage in `/admin/suggestions` (open → resolved, sender notified) — migrations 0134–0136                            | [§14](#14-feature-user-management--profiles)          |
+| **Usage / active-time tracking**     | Measures genuine active time per user/domain (visibility + interaction heartbeat → Redis → Trigger.dev snapshot/rollup) for adoption monitoring — migration 0126                                                          | [§14](#14-feature-user-management--profiles)          |
 
 
 ---
@@ -177,7 +180,9 @@ Supabase clients (3 only: client.ts / server.ts / admin.ts)
  Supabase (Postgres 17, Upstash  Trigger.dev v4  Gupshup v1   Anthropic API  Deepgram    Web Push
  Auth, Realtime,        Redis    (SLA timers,    API (out-    (Elaya, via    (voice      (VAPID,
  Storage)               (cache-  task reminders, bound WA,    adapter)       trans-      installed
-                        aside)   revival sweep)  in after())                 cription)   PWAs)
+                        aside +  revival sweep,  in after())                 cription)   PWAs)
+                        live     usage snapshot
+                        presence)+ rollup)
 ```
 
 **Core invariants:**
@@ -207,6 +212,7 @@ Supabase clients (3 only: client.ts / server.ts / admin.ts)
 | `(dashboard)/error-log`                              | Errored webhook payloads                                                           | admin/founder                               |
 | `(dashboard)/admin/users`, `users/new`, `users/[id]` | User management                                                                    | admin/founder                               |
 | `(dashboard)/admin/ad-creatives`                     | Campaign video assets                                                              | admin/founder                               |
+| `(dashboard)/admin/suggestions`                      | Suggestion / bug-report triage inbox (open → resolved)                             | admin/founder                               |
 | `(dashboard)/settings`                               | SLA policies, agent routing/shifts                                                 | admin/founder + manager                     |
 | `api/webhooks/leads`, `api/webhooks/whatsapp`        | Inbound webhooks                                                                   | secret-authed                               |
 | `api/elaya/chat`                                     | Elaya SSE streaming                                                                | authed                                      |
@@ -350,7 +356,7 @@ Webhooks authenticate **before reading the body**: `/api/webhooks/leads` = Beare
 
 ## 6. Database Schema
 
-> Enums via migration 0001. Other "enums" (lead/task statuses, deal types, notification types) are `text` + CHECK constraints, mirrored as typed constants in `src/lib/constants/`. ~38 SECURITY DEFINER RPC functions exist. Migrations run **0001–0121**.
+> Enums via migration 0001. Other "enums" (lead/task statuses, deal types, deal categories, notification types, notification-preference keys) are `text` + CHECK constraints, mirrored as typed constants in `src/lib/constants/`. ~40 SECURITY DEFINER RPC functions exist. Migrations run **0001–0137**.
 
 ### Entity-Relationship Overview
 
@@ -369,6 +375,10 @@ erDiagram
     leads ||--o{ revival_candidates : "lead_id"
     profiles ||--o{ revival_candidates : "assigned_to"
     profiles ||--o{ push_subscriptions : "profile_id"
+    profiles ||--o{ notification_preferences : "user_id"
+    profiles ||--o{ suggestions : "submitted_by"
+    profiles ||--o{ usage_heartbeats : "user_id"
+    profiles ||--o{ usage_daily : "user_id"
     task_groups ||--o{ tasks : "group_id"
     tasks ||--o{ task_remarks : "task_id"
     tasks ||--o{ task_audit_log : "task_id"
@@ -386,7 +396,7 @@ erDiagram
 
 - `**profiles**` — one row per team member, `id` = `auth.users.id`. The root of all authorization. Key columns: `role user_role` (default `agent`), `domain app_domain` (default `concierge`), `is_active` (soft-deactivate — never delete), `is_on_leave`, `theme` (5-value CHECK, DB-stored so it follows the user across devices), `app_icon` (migration 0121 — CHECK `'icon-1'..'icon-4'`, default `'icon-1'`; the chosen PWA install icon, mirrors `theme` exactly; no new RLS — the existing self-update policy covers it), `timezone` (default `Asia/Kolkata`), `reports_to` (self-FK), `phone` (E.164), `last_seen_at` (**dormant** — no code writes it). Rows created **only** by the `on_auth_user_created` trigger; `email` not editable after creation.
 - `**profile_audit_log`** — append-only audit of `role`, `domain`, `is_active`, `is_on_leave`, `full_name`, `email`, `username` (not theme/timezone). `ON DELETE RESTRICT` on `profile_id` — profiles with history cannot be hard-deleted.
-- `**agent_routing_config**` — round-robin on-duty switch, one row per agent, auto-created by trigger when a profile gets `role = 'agent'`. `is_active = false` removes from the pool instantly. `shift_start`/`shift_end` (time) + `shift_days integer[]` are advisory (read by ingestion, not DB-enforced).
+- `**agent_routing_config**` — round-robin on-duty switch, one row per pool member, auto-created by trigger when a profile gets `role IN ('agent','manager')` (migration 0124 — **managers now carry and call leads alongside agents**, so they joined the pool; `get_next_round_robin_agent` assigns to both). `is_active = false` removes from the pool instantly. `shift_start`/`shift_end` (time) + `shift_days integer[]` are advisory (read by ingestion, not DB-enforced).
 
 ### Leads (5 tables)
 
@@ -414,12 +424,13 @@ One `tasks` table for all three categories, discriminated by `task_category` (`p
 
 ### Commerce & Content (2 tables)
 
-- `**deals`** — first-class closed-deal record (0072–0074). `lead_id` **nullable** (walk-in sales have no lead). `contact_name`/`contact_phone` denormalised at close. `deal_type`: `membership | retail` (membership requires `deal_duration`: `3_months | 6_months | 1_year`). `deal_amount numeric(12,2)` CHECK 0–100M. `won_at` immutable after insert. `source` carries attribution. **No INSERT/UPDATE/DELETE RLS policies by design** — all writes via the admin client in `recordDeal`/`createWalkInDeal`.
+- `**deals`** — first-class closed-deal record (0072–0074). `lead_id` **nullable** (walk-in sales have no lead). `contact_name`/`contact_phone` denormalised at close. `deal_type`: `membership | retail | sale` — **domain-derived server-side**, never client-supplied (migration 0122 `deal_category_and_domain_type`): `onboarding → membership`, `shop → retail`, `house/legacy → sale` (the one source is `DOMAIN_DEAL_CONFIG` in `src/lib/constants/deal-types.ts`). `membership` requires `deal_duration` (`3_months | 6_months | 1_year`); `deal_category` (added 0122) is **required iff `deal_type = 'retail'` and NULL otherwise** (CHECK-coupled, the `deal_duration` precedent). `deal_amount numeric(12,2)` CHECK 0–100M. `won_at` immutable after insert. `source` carries attribution. **No INSERT/UPDATE/DELETE RLS policies by design** — all writes via the admin client in `recordDeal`/`createWalkInDeal`.
 - `**ad_creatives`** — campaign video assets keyed by `campaign_key` (UNIQUE dropped in 0058a — multiple videos per campaign). Files in the `ad-creatives` Storage bucket.
 
 ### Notifications (2 tables)
 
-- `**notifications**` — in-app inbox: `recipient_id`, `type` CHECK (`lead_assigned`, `lead_won`, `task_due`, `task_assigned`, `mention`, `system`, `sla_breach_agent`, `sla_breach_manager`, `sla_breach_founder`, `task_overdue_manager` — the last two added in 0113), `title`, `body`, `action_url` (relative paths only — CHECK rejects `http%`), `read_at`. Realtime enabled — drives the bell badge live. **The in-app row is the source of truth**; Web Push (below) is a best-effort second channel fanned out behind `createNotification`.
+- `**notifications**` — in-app inbox: `recipient_id`, `type` CHECK (`lead_assigned`, `lead_won`, `task_due`, `task_assigned`, `mention`, `system`, `sla_breach_agent`, `sla_breach_manager`, `sla_breach_founder`, `task_overdue_manager` — the last two added in 0113 — and `suggestion_resolved`, added in 0136), `title`, `body`, `action_url` (relative paths only — CHECK rejects `http%`), `read_at`. Realtime enabled — drives the bell badge live. **The in-app row is the source of truth**; Web Push (below) is a best-effort second channel fanned out behind `createNotification`.
+- `**notification_preferences**` (migration 0133) — per-user channel mute table: `(user_id, notification_key)` PK, `in_app`/`whatsapp` booleans. **Sparse: a row exists only once a user has opted out of something — absence = both channels ON** (re-checking both boxes DELETEs the row). The gate **fails OPEN** (missing/malformed/thrown → send). `notification_key` CHECK whitelist of 9 keys (`lead_assigned`, `new_lead_founder_alert`, `lead_won`, `deal_created`, `task_assigned`, `task_due`, `task_overdue_manager`, `sla_breach`, `sla_escalation`) mirrors `src/lib/constants/notification-categories.ts`. **`lead_initiation`/`elaya_reply` are deliberately ABSENT — transactional sends, never silenceable.** Owner-only RLS (the `push_subscriptions` posture); the cross-user fan-out read runs service-role. See [§7](#7-caching-architecture).
 - `**push_subscriptions`** (migration 0120) — per-device Web Push endpoints: `(id, profile_id FK, endpoint UNIQUE, p256dh, auth, user_agent, created_at)` + `idx_push_subscriptions_profile`. **One row per device, many per user** (re-subscribe upserts on `endpoint`). Owner-only RLS (`profile_id = auth.uid()`, SELECT/INSERT/DELETE, **no UPDATE policy**). The cross-user read + the 404/410 dead-endpoint prune in `dispatchPush` run service-role.
 
 ### Call Intelligence (2 tables — migration 0110)
@@ -440,18 +451,25 @@ One `tasks` table for all three categories, discriminated by `task_category` (`p
 - `**elaya_actions**` — the agentic-write ledger (0118): proposed → executed/failed/dismissed + before/after snapshots.
 - `**llm_providers**` (config: `routing` → claude-haiku, `reasoning` → claude-sonnet) + `**elaya_settings**` (`daily_message_cap` 200, `pii_masking_depth` 'light', `session_expiry_hours` 24).
 
+### Suggestions & Usage (3 tables — migrations 0126 / 0134)
+
+- `**suggestions**` (migration 0134) — staff suggestion / bug-report channel: `category` CHECK (`bug | idea | other`), `message`, `image_paths text[]` (≤4, CHECK mirrors `MAX_SUGGESTION_IMAGES` in `src/lib/constants/suggestions.ts`), `status` CHECK (`open | resolved` default `open`), `submitted_by`, `resolved_by`/`resolved_at`. Append-mostly: the only permitted UPDATE flips `status`/`resolved_by`/`resolved_at` (admin/founder). Submitted via `submitSuggestionAction`; triaged in `/admin/suggestions` (`getSuggestionsForInbox`, open-first newest-first; `resolveSuggestionAction` → `createNotification` type `suggestion_resolved` to the sender). Screenshots live in a **private** bucket (0135).
+- `**usage_heartbeats**` (migration 0126) — raw append-only tick log (A-11), one row per active user per snapshot: `(id, user_id, domain, captured_at)`. **Never read by the dashboard**; pruned after 30 days by the rollup job (admin client). "Active" = tab visible AND a real interaction in the last ~2 min — the gate lives in the client `UsagePresence` heartbeat, which SETs a `presence:{userId}` Redis key every 60s (the request path never inserts here).
+- `**usage_daily**` (migration 0126) — the per-(user, day) rollup the dashboard reads via a SECURITY DEFINER RPC (`getAgentUsage`). Idempotent UPSERT (recompute distinct minute-ticks, never accumulate). Two Trigger.dev jobs feed it: a 1-min snapshot job (live presence keys → `usage_heartbeats`) + a rollup job (re-rolls today every 15 min, prior IST day nightly). See [§14](#14-feature-user-management--profiles).
+
 ### Storage Buckets
 
 
-| Bucket         | Access      | RLS                              |
-| -------------- | ----------- | -------------------------------- |
-| `avatars`      | public read | own insert/update/delete         |
-| `ad-creatives` | public read | INSERT/DELETE admin/founder only |
+| Bucket         | Access      | RLS                                                   |
+| -------------- | ----------- | ----------------------------------------------------- |
+| `avatars`      | public read | own insert/update/delete                              |
+| `ad-creatives` | public read | INSERT/DELETE admin/founder only                      |
+| `suggestions`  | **private** | owner insert; admin/founder read (signed URLs) — 0135 |
 
 
 ### Load-Bearing RPCs
 
-`get_user_role`/`get_user_domain` (RLS helpers) · `get_next_round_robin_agent` (0007) · `get_active_lead_by_phone` (0008/0090) · `add_lead_call_note` (0030) · `update_lead_status` (0031) · `add_lead_plain_note` (0040) · `get_dashboard_summary` (0029/0062/0115) · `get_leads_status_counts` (0080/0099) · `get_campaign_metrics`/`_detail_metrics`/`_agent_distribution` (0014–0015) · `get_personal_tasks` (0026) · `get_group_task_summaries` (0020) · `add_task_remark_with_status` (0035/0051) · `create_lead_gia_task` (0054) · `get_gia_tasks` (0055) · `get_deals_summary` (0052/0074) · `get_wa_unread_count` (0036/0085) · `get_agent_performance`/`get_agent_roster_performance` (0101) · `get_budget_summary` (0106) · `get_agent_today_pulse` (0108).
+`get_user_role`/`get_user_domain` (RLS helpers) · `get_next_round_robin_agent` (0007/0124 — pool is now `role IN ('agent','manager')`) · `lead_phone_key` (0137 — canonical digits-only dedup key, IMMUTABLE) · `get_active_lead_by_phone` (0008/0090) · `add_lead_call_note` (0030) · `update_lead_status` (0031) · `add_lead_plain_note` (0040) · `get_dashboard_summary` (0029/0062/0115) · `get_leads_status_counts` (0080/0099) · `get_recent_lead_activity` (0132 — "recent leads worked" rollup) · `get_campaign_metrics`/`_detail_metrics`/`_agent_distribution` (0014–0015) · `get_personal_tasks` (0026) · `get_group_task_summaries` (0020) · `add_task_remark_with_status` (0035/0051) · `create_lead_gia_task` (0054) · `get_gia_tasks` (0055) · `get_deals_summary` (0052/0074) · `get_wa_unread_count` (0036/0085) · `get_agent_performance`/`get_agent_roster_performance` (0101/0129 — full domain roster) · `get_agent_first_touch_pairs` (0123) · `get_budget_summary` (0106) · `get_agent_today_pulse` (0108/0122 — `+notes_today`) · `get_silent_leads_for_revival` (0128 — pushes the revival judge-once anti-join into Postgres).
 
 ---
 
@@ -475,6 +493,7 @@ Read services check Redis first; on a miss they query Postgres, write back with 
 | `dashboard:*`                    | dashboard status/volume/campaigns                    | 30–120s | TTL-only (keys are `from:to`-namespaced — a del cannot enumerate them)                                                                                                                                               |
 | `task:*`                         | tasks gia/group-list/personal-page1/subtasks/remarks | 30–120s | Explicit `del`; `task:group-list` is **user-scoped**                                                                                                                                                                 |
 | `helpdesk:cases:{domain}`        | `getHelpdeskLibrary`                                 | 3600s   | `del` before `revalidatePath('/helpdesk')`                                                                                                                                                                           |
+| `presence:{userId}`              | `recordPresence` / `listLivePresence`               | ~120s   | TTL-only — the usage-tracking live-presence flag (SET on the client heartbeat, read by the snapshot job). Not a read cache; the source of truth for "active now."                                                     |
 
 
 **No `campaign:*`, `perf:*`, or `ad-creatives:*` namespaces** — campaign/budget/performance RPCs and ad-creatives are **always live**; freshness via `revalidatePath`. (Doc claims of these caches are stale corrections — do not re-add.)
@@ -493,6 +512,15 @@ Read services check Redis first; on a miss they query Postgres, write back with 
 ### Notification Fan-Out & Web Push (`createNotification` + `push-service.ts`)
 
 `createNotification` (`notifications-service.ts`) is the single chokepoint every event site routes through (lead-assignment-notify, lead-mutations, sla, tasks, task-reminders). After the in-app row insert it calls `**dispatchPush(recipient_id, {title, body, url})`** — so **every** trigger gets Web Push with **zero call-site edits**. `dispatchPush` (`src/lib/services/push-service.ts`, **server + Node only** — `web-push` throws on Edge) reads the recipient's `push_subscriptions` via the admin client, sends to all devices in parallel, and **prunes endpoints answering 404/410** in one batched delete (mandatory — else the table fills with corpses). It is **non-fatal**: it never throws, and the in-app row stands regardless. iOS Web Push works only inside the installed PWA (standalone); `usePushSubscription` reports `'ios-needs-install'` otherwise and shows an install nudge. VAPID keys are server-only (`VAPID_PUBLIC_KEY`/`PRIVATE_KEY`/`SUBJECT`); the browser gets only `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. `push_subscriptions` itself is not Redis-cached. Full doc: `docs/modules/web-push.md`.
+
+### Notification Preferences Gate (`notification-prefs-service.ts`, migration 0133)
+
+The per-user channel control layer that sits **inside** the fan-out, between an event and the send. Two seams:
+
+- **Seam A — `createNotification`'s optional `notificationKey`**: when present, it gates the in-app row **and** the push together (one decision).
+- **Seam B — the broadcast WhatsApp wrappers** (`whatsapp-api.ts`): `resolveChannels`/`isChannelEnabled` for a single recipient; `filterRecipientsByPref(ids, key, channel)` for a fan-out (ONE batched `.in` query).
+
+The model is **sparse / absence = ON**: a `notification_preferences` row exists only once a user opts out; no row = both channels on. The gate **fails OPEN** — missing, malformed, or thrown → send. `getNotificationPrefs` is React `cache()`-memoised per request; the cross-user fan-out read runs on the **admin client** (the `dispatchPush` posture). Owner edits via `actions/notification-prefs.ts` (session client); `getMyNotificationPrefs` seeds the `/profile` UI. **Never gate `lead_initiation`/`elaya_reply`** — they have no key and are hard-skipped (transactional). The 9 silenceable keys live in `src/lib/constants/notification-categories.ts` (one entry per event × recipient-role-that-differs); adding one = an entry there + a CHECK-extending migration.
 
 ---
 
@@ -539,7 +567,7 @@ All transitions run through the atomic `update_lead_status` RPC (migration 0031)
 1. Normalize via source adapter (`adaptMeta` / `adaptGoogle` / `adaptWebsite`). `adaptMeta` tries native `field_data` → Pabbly `raw_meta_fields` → flat keys. `sanitizeText()` on every text field; phone normalization in try/catch (webhook leads **never rejected** for unparseable phone).
 2. Zod validate.
 3. **Domain resolution:** explicit `domain` → `resolveDomainFromCampaign()` (prefix map: `TG_Global→onboarding`, `TG_Shop→shop`, `TG_Legacy→legacy`, `TG_House→house`) → `DEFAULT_LEAD_DOMAIN` (`onboarding`).
-4. **Phone dedup** via `get_active_lead_by_phone()` RPC: active lead → log `duplicate_submission` activity, no new row, `is_duplicate: true`; terminal lead → create new with `previous_lead_id`.
+4. **Phone dedup** via `get_active_lead_by_phone()` RPC: active lead → log `duplicate_submission` activity, no new row, `is_duplicate: true`; terminal lead → create new with `previous_lead_id`. Migration 0137 hardens this against the SELECT-then-INSERT race: `lead_phone_key(phone)` (canonical digits-only, IMMUTABLE) backs a **partial UNIQUE index on ACTIVE leads only** (status set matches `get_active_lead_by_phone` exactly, so terminal/archived predecessors never block a re-enquiry) — two concurrent submissions can no longer both win.
 5. **Round-robin assign** via `get_next_round_robin_agent()` RPC (migration 0007) — `SELECT FOR UPDATE SKIP LOCKED`, race-free; pool = active agents with `agent_routing_config.is_active = true`. Empty pool → unassigned (founder alert still fires).
 6. INSERT lead (`status='new'`, attribution snapshot written once).
 7. INSERT `lead_created` + `agent_assigned` activities.
@@ -676,7 +704,7 @@ Returns 7 keys: `agent_tasks`, `agent_activity`, `lead_status` ({totals, byAgent
 | id                    | label                | roles                   | size |
 | --------------------- | -------------------- | ----------------------- | ---- |
 | `agent-tasks`         | My Tasks             | all except guest        | md   |
-| `agent-activity`      | Recent Activity      | all except guest        | lg   |
+| `agent-activity`      | Recent Leads         | all except guest        | lg   |
 | `agent-pending-calls` | Pending Calls        | agent                   | sm   |
 | `agent-new-leads`     | New Leads            | agent                   | sm   |
 | `elaya-presence`      | Elaya                | agent                   | md   |
@@ -686,6 +714,8 @@ Returns 7 keys: `agent_tasks`, `agent_activity`, `lead_status` ({totals, byAgent
 | `manager-cold-leads`  | Going Cold           | manager, admin, founder | sm   |
 | `manager-budget`      | Campaign Budget      | manager, admin, founder | sm   |
 
+
+> **Recent Leads rollup (migration 0132, 2026-06-17):** the `agent-activity` widget (id unchanged) was reframed from a raw event stream (one row per `lead_activities` insert — the same lead repeating) into a **"recent leads worked" rollup** via `get_recent_lead_activity`, rendered as a sliding-deck card feed with a Mine/Team toggle for managers. The widget id and registry slot are the same; only the data shape and the label ("Recent Activity" → "Recent Leads") changed.
 
 ### Architecture
 
@@ -718,7 +748,9 @@ One URL, three role layouts (`src/lib/services/performance-service.ts`):
 | guest         | redirect `/dashboard`                               | —                                                                                                                                    |
 
 
-**Core-four metrics:** Leads Won (count `status='won'`, by `status_changed_at`), Touch Rate (% past `new`, by `created_at` cohort — intentional asymmetry), Avg Response Time (lateral join on `lead_activities`), Conversion Rate (`won / (won+lost)`, null when zero). **No Redis** — `cache()` only. `getAgentTodayPulse` uses IST day boundaries from `lib/utils/ist`. `getAgentLeadActivityPage` uses a composite `(created_at, id)` cursor.
+**Core-four metrics:** Leads Won (count `status='won'`, by `status_changed_at`), Touch Rate (% past `new`, by `created_at` cohort — intentional asymmetry), Avg Response Time (lateral join on `lead_activities`), Conversion Rate (`won / (won+lost)`, null when zero). **No Redis** — `cache()` only. `getAgentTodayPulse` uses IST day boundaries from `lib/utils/ist` and (since migration 0122) reports `notes_today` alongside `calls_today`. The agent detail breakdown carries a **first-touch speed scorecard** (bucketed lead→first-call latency) backed by `get_agent_first_touch_pairs` (0123). `getAgentLeadActivityPage` uses a composite `(created_at, id)` cursor.
+
+The **manager view's Lead Pipeline shows the full domain roster** (migration 0129) — every agent/manager in the domain, including those with zero leads in the period — not just rows that happen to have activity.
 
 ### Campaigns (`/campaigns`)
 
@@ -726,10 +758,10 @@ Campaigns are distinct non-null `leads.utm_campaign` values — **no dedicated t
 
 ### Deals (`/deals`)
 
-A deal is any `public.deals` row (first-class since 0072 — not a "won lead" view). Two creation paths:
+A deal is any `public.deals` row (first-class since 0072 — not a "won lead" view). **`deal_type` is derived from the domain server-side**, never client-supplied (migration 0122): `onboarding → membership`, `shop → retail`, `house/legacy → sale` (the one source is `DOMAIN_DEAL_CONFIG` in `src/lib/constants/deal-types.ts`; the form auto-sets it). `deal_category` is required only for `retail` (the `shop` domain) and NULL otherwise — a forged client type can't bypass the DB CHECK. Two creation paths:
 
-- `recordDeal` (from dossier Won flow): insert deals row (must succeed first) → delegate `updateLeadStatus('won')`.
-- `createWalkInDeal`: standalone, `lead_id=null`, `won_at` may be back-dated.
+- `recordDeal` (from dossier Won flow): insert deals row (must succeed first) → delegate `updateLeadStatus('won')`. Type/category resolved from the lead's domain.
+- `createWalkInDeal`: standalone, `lead_id=null`, `won_at` may be back-dated; the form picks a Gia domain and the type/category follow from it.
 
 `getDealsByRole(role, userId, domain, filters)` → `{ deals, totalCount }`. RPC `get_deals_summary` (0074): `{ total_deals, total_revenue, membership_count, retail_count }`. **Date filters apply to `won_at`**, never `created_at`. `p_caller_domain` (manager gate) is separate from `p_filter_domain` (admin/founder URL filter). All writes via adminClient (no deals write RLS). Deal has no detail page — `DealCard` links to the source lead.
 
@@ -761,7 +793,7 @@ Every inbound message passes through `tryHandleElayaWhatsAppMessage(phone, messa
 
 ### Outbound — Seven Notification Templates (`whatsapp-api.ts`, server-only)
 
-All seven are thin wrappers over the internal `sendGupshupTemplate()` core (owns the `/template/msg` fetch, status/delivered capture, and the one-log-row-per-attempt `finally { await logNotification }`). Templates: `sendLeadAssignmentNotification`, `sendFounderLeadNotification`, `sendSlaAgentNotification`, `sendSlaManagerNotification`, `sendLeadInitiationMessage` (**the only one that throws** — action layer catches), `sendTaskDueReminderNotification`, `sendTaskOverdueManagerNotification`. Plus `sendElayaWhatsAppReply` (free-form session reply, `type 'elaya_reply'`). `logNotification` stores **last-4 phone digits only**. Gupshup POSTs to `https://api.gupshup.io/wa/api/v1/msg` as form-urlencoded with `apikey` header (not Bearer). Required env: `GUPSHUP_API_KEY`, `GUPSHUP_APP_NAME`, `GUPSHUP_PARTNER_NUMBER`, `GUPSHUP_WEBHOOK_SECRET`.
+All seven are thin wrappers over the internal `sendGupshupTemplate()` core (owns the `/template/msg` fetch, status/delivered capture, and the one-log-row-per-attempt `finally { await logNotification }`). The **broadcast** wrappers (assignment, founder alert, SLA agent/manager, task due/overdue) are **Seam B** of the notification-preferences gate (migration 0133) — each filters recipients through `filterRecipientsByPref(ids, key, 'whatsapp')` before sending; `sendLeadInitiationMessage`/`sendElayaWhatsAppReply` are **never gated** (transactional). See [§7 Notification Preferences Gate](#7-caching-architecture). Templates: `sendLeadAssignmentNotification`, `sendFounderLeadNotification`, `sendSlaAgentNotification`, `sendSlaManagerNotification`, `sendLeadInitiationMessage` (**the only one that throws** — action layer catches), `sendTaskDueReminderNotification`, `sendTaskOverdueManagerNotification`. Plus `sendElayaWhatsAppReply` (free-form session reply, `type 'elaya_reply'`). `logNotification` stores **last-4 phone digits only**. Gupshup POSTs to `https://api.gupshup.io/wa/api/v1/msg` as form-urlencoded with `apikey` header (not Bearer). Required env: `GUPSHUP_API_KEY`, `GUPSHUP_APP_NAME`, `GUPSHUP_PARTNER_NUMBER`, `GUPSHUP_WEBHOOK_SECRET`.
 
 ### Assignment Orchestrator — `notifyLeadAssigned()` (`lead-assignment-notify.ts`)
 
@@ -864,7 +896,7 @@ Speech-to-text is one reusable seam, not an Elaya-only feature:
 - **Set password (`createUser`):** `createAdminClient().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: {...} })`. Trigger inserts profile with `id/email/full_name/role/domain`; if `phone`/`job_title` provided, a second `updateProfileFields` write follows.
 - **Magic-link invite (`inviteUser`):** `auth.admin.inviteUserByEmail(email, { data: {...} })`. **Profile row does not exist until first sign-in** — created by the trigger from invite metadata.
 
-`**handle_new_user()` trigger (migration 0001, SECURITY DEFINER):** inserts `(id, email, full_name, role, domain)` with COALESCE fallbacks `'Unknown'` / `'agent'` / `'concierge'`.
+`**handle_new_user()` trigger (migration 0001, SECURITY DEFINER; extended 0125):** inserts `(id, email, full_name, role, domain)` with COALESCE fallbacks `'Unknown'` / `'agent'` / `'concierge'`. Migration 0125 also persists `job_title` from the invite metadata, so an invited user lands with their title already set (no second `updateProfileFields` write needed on the invite path).
 
 ### `profiles` RLS
 
@@ -873,7 +905,15 @@ Speech-to-text is one reusable seam, not an Elaya-only feature:
 
 ### Agent Routing (`agent_routing_config`)
 
-Auto-created via `handle_agent_routing_config()` trigger on `role = 'agent'` (ON CONFLICT DO NOTHING — idempotent for promotions). `is_active` is the round-robin on-duty switch; `shift_start`/`shift_end`/`shift_days` are advisory shift hints read by ingestion. Managed via `toggleAgentRouting` / `setAgentShiftAction` (`src/lib/actions/agent-routing.ts`). The assignable-users read is `getAssignableUsersAction(domain?)` → `getAssignableUsers({ domain?, agentsOnly? })` (the ONE pipeline — never fork another agents list).
+Auto-created via `handle_agent_routing_config()` trigger on `role IN ('agent','manager')` (migration 0124 — managers joined the pool; ON CONFLICT DO NOTHING — idempotent for promotions, so an agent→manager keeps its row). `is_active` is the round-robin on-duty switch; `shift_start`/`shift_end`/`shift_days` are advisory shift hints read by ingestion. Managed via `toggleAgentRouting` / `setAgentShiftAction` (`src/lib/actions/agent-routing.ts`) — managers can set their own pool membership and shift. The assignable-users read is `getAssignableUsersAction(domain?)` → `getAssignableUsers({ domain?, agentsOnly? })` (the ONE pipeline — never fork another agents list).
+
+### Suggestion Box / Bug Reports (migrations 0134–0136)
+
+Any staff member submits a suggestion or bug report (a message + up to **4 screenshots** in the **private** `suggestions` storage bucket) via `submitSuggestionAction` (`src/lib/actions/suggestions.ts` → `createSuggestion` in `suggestions-service.ts`). `category` is `bug | idea | other`; rows start `open`. Admin/founder triage them in `/admin/suggestions` (`getSuggestionsForInbox` — open-first, newest-first within a status; screenshots served via signed URLs). `resolveSuggestionAction` flips `status → resolved` (+ `resolved_by`/`resolved_at`, the only permitted UPDATE) and fires `createNotification` type `**suggestion_resolved**` (0136) back to the original sender — a transactional notification with **no preference key**, never silenceable.
+
+### Usage / Active-Time Tracking (migration 0126)
+
+Measures **genuine active time** per user/domain for adoption monitoring — "active" = tab visible **AND** a real interaction in the last ~2 min (agents stay logged in 24/7, so login spans are meaningless). The visibility+interaction gate lives entirely in the client `**UsagePresence**` heartbeat (`src/components/layout/UsagePresence.tsx`, mounted once in the dashboard layout), which calls `recordPresenceAction` → `recordPresence` to **SET a `presence:{userId}` Redis key every 60s** — the request path never writes the DB. Two Trigger.dev jobs do the DB work: `**usage-snapshot.ts`** (1-min) reads live presence keys and appends to `usage_heartbeats` (raw append-only ticks, A-11, admin client); `**usage-rollup.ts`** re-rolls today every 15 min + the prior IST day nightly into `usage_daily` (idempotent UPSERT on distinct minute-ticks; also prunes heartbeats >30 days). The dashboard reads **only** `usage_daily` via `getAgentUsageAction` → `getAgentUsage` (SECURITY DEFINER RPC). `istDateString()` in `usage-service.ts` does the IST day bucketing.
 
 ---
 
@@ -912,6 +952,7 @@ flowchart TD
 - `**lead-mutations.ts` cores** are the single seam where session actions and Elaya's tools converge — a mutation behaves identically whichever path triggers it (R-01).
 - `**notifyLeadAssigned`** is the single seam for all assignment side-effects (WhatsApp + in-app + SLA).
 - `**invalidateLeadCaches**` is the single seam for lead Redis invalidation.
+- `**createNotification** + the broadcast WhatsApp wrappers` are the two seams the **notification-preferences gate** (migration 0133) lives inside — Seam A gates in-app + push together via `notificationKey`, Seam B filters WhatsApp recipients. `lead_initiation`/`elaya_reply` bypass both (transactional).
 - **Tasks** are produced by three features: users (personal/group), the SLA engine (gia_followup auto-tasks), and the dossier (lead-linked tasks).
 - **Deals** are produced by the lead Won flow and by walk-in creation; consumed by performance, deals, and budget analytics.
 - **Call Intelligence / Helpdesk** (`intelligence-service.ts`, tables `service_cases` + `conversation_hooks`, migration 0110) is read on `/helpdesk` (full library, Redis 1hr, client-side filter) and on the dossier `ServiceInterestCard` (≤6 cases for the lead).
@@ -1044,7 +1085,10 @@ No hardcoded colours; no `text-gray-*`/`bg-gray-*`/`bg-white`; no raw z-index; n
 | Tasks                   | `src/lib/services/tasks-service.ts`, `src/lib/actions/tasks.ts`, `src/trigger/task-reminders.ts`                     |
 | Dashboard               | `src/lib/services/dashboard-service.ts`, `src/lib/constants/dashboard-widgets.ts`, `src/hooks/useDashboardLayout.ts` |
 | Performance             | `src/lib/services/performance-service.ts`                                                                            |
-| Deals / Budget          | `src/lib/services/deals-service.ts`, `ad-spend-service.ts`                                                           |
+| Deals / Budget          | `src/lib/services/deals-service.ts`, `ad-spend-service.ts`, `src/lib/constants/deal-types.ts` (`DOMAIN_DEAL_CONFIG`) |
+| Notification prefs gate | `src/lib/services/notification-prefs-service.ts`, `actions/notification-prefs.ts`, `constants/notification-categories.ts` |
+| Suggestions / bug reports | `src/lib/services/suggestions-service.ts`, `actions/suggestions.ts`, `app/(dashboard)/admin/suggestions/`          |
+| Usage tracking          | `src/lib/services/usage-service.ts`, `actions/usage.ts`, `components/layout/UsagePresence.tsx`, `src/trigger/usage-{snapshot,rollup}.ts` |
 | WhatsApp                | `src/lib/services/whatsapp-{api,ingestion,service}.ts`, `lead-assignment-notify.ts`                                  |
 | Elaya                   | `src/lib/elaya/*` + `src/lib/services/elaya-*.ts` + `src/app/api/elaya/chat/route.ts`                                |
 | Design tokens           | `src/styles/design-tokens.css`, `src/lib/constants/motion.ts`                                                        |
@@ -1085,8 +1129,8 @@ serene/
 │   ├── hooks/                       ← 16 shared hooks
 │   ├── styles/design-tokens.css     ← ALL CSS variables, 5 themes
 │   └── proxy.ts                     ← Next.js 16 proxy (replaces middleware.ts)
-├── supabase/migrations/             ← 0001–0121 (RLS-enabled, never edited after run)
-└── src/trigger/{lead-sla,task-reminders,lead-revival}.ts ← Trigger.dev jobs (lead-revival = the daily 07:30 IST cron)
+├── supabase/migrations/             ← 0001–0137 (RLS-enabled, never edited after run)
+└── src/trigger/{lead-sla,task-reminders,lead-revival,usage-snapshot,usage-rollup}.ts ← Trigger.dev jobs (lead-revival = daily 07:30 IST cron; usage-snapshot = 1-min presence → heartbeats; usage-rollup = 15-min/nightly → usage_daily)
 ```
 
 ---

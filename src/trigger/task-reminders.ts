@@ -7,8 +7,9 @@
  *   cancelTaskReminder(taskId)                      — cancels any pending run for this task
  *                                                     (due reminder AND overdue check — same tag)
  *   sendTaskReminderTask  — at due: task_due in-app for every category; for
- *                           gia_followup additionally the TASK-01A WhatsApp
- *                           reminder and arming of the TASK-01B overdue check
+ *                           lead-linked tasks (a task_gia_meta row exists)
+ *                           additionally the TASK-01A WhatsApp reminder and
+ *                           arming of the TASK-01B overdue check
  *   checkTaskOverdueTask  — at due + TASK-01B threshold: clearing-event checks,
  *                           exactly-once tasks.overdue_at stamp, domain-manager
  *                           escalation (in-app + WhatsApp)
@@ -78,9 +79,10 @@ export const sendTaskReminderTask = task({
       console.error("[send-task-reminder] notification failed:", err);
     });
 
-    // ── Phase 2 (config-driven engine): gia_followup due-time extension ──────
-    // TASK-01A: WhatsApp reminder to the assigned agent — gia tasks ONLY (the
-    // template is lead-shaped; personal/group tasks stay in-app only, above).
+    // ── Phase 2 (config-driven engine): lead-linked due-time extension ───────
+    // TASK-01A: WhatsApp reminder to the assigned agent — lead-linked tasks
+    // (tasks with a task_gia_meta row) ONLY (the template is lead-shaped;
+    // personal/group tasks stay in-app only, above).
     // TASK-01B: arm the overdue check at due + threshold.
     // Policies are read PER RUN — never cached at module scope.
     try {
@@ -88,7 +90,7 @@ export const sendTaskReminderTask = task({
         await import("@/lib/services/sla-service");
 
       const ctx = await getTaskWithGiaContext(payload.taskId);
-      if (!ctx || ctx.task.task_category !== "gia_followup" || !ctx.lead) return;
+      if (!ctx || !ctx.lead) return;
       if (!ctx.task.due_at) return;
       if (!["to_do", "in_progress", "in_review"].includes(ctx.task.status)) return;
 
@@ -153,7 +155,7 @@ export const checkTaskOverdueTask = task({
     if (!policy?.active) return;
 
     const ctx = await getTaskWithGiaContext(payload.taskId);
-    if (!ctx || ctx.task.task_category !== "gia_followup" || !ctx.lead) return;
+    if (!ctx || !ctx.lead) return;
     const lead = ctx.lead; // capture — narrowing doesn't survive into closures below
 
     // Clearing event 1: task closed.

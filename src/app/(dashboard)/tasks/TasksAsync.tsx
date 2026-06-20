@@ -17,12 +17,11 @@
  *     TasksShell never needs to POST getPersonalTaskTagsAction on mount.
  */
 
-import { getPersonalTasks, getGroupTasks, getGiaTasksForUser, getPersonalTaskTags } from '@/lib/services/tasks-service';
+import { getPersonalTasks, getGroupTasks, getPersonalTaskTags } from '@/lib/services/tasks-service';
 import { getAssignableUsers } from '@/lib/services/profiles-service';
 import type {
   PersonalTasksResult,
   TaskGroupRow,
-  GiaTask,
 } from '@/lib/services/tasks-service';
 import type { UserRole, AppDomain } from '@/lib/types/database';
 import type { AssignableUser } from '@/lib/types';
@@ -45,7 +44,6 @@ const EMPTY_PERSONAL: PersonalTasksResult = {
 };
 
 const EMPTY_GROUP: TaskGroupRow[] = [];
-const EMPTY_GIA:  GiaTask[]      = [];
 
 export async function TasksAsync({
   tab,
@@ -61,20 +59,16 @@ export async function TasksAsync({
   // Tags are fetched ONLY on the personal tab — TasksShell re-seeds its
   // tag state from the prop on every personal-tab RSC pass, so a user
   // landing on gia/group and switching later still gets fresh tags.
-  const [initialAgents, initialTags, personalResult, groupRows, giaTasks]: [
+  const [initialAgents, initialTags, personalResult, groupRows]: [
     AssignableUser[],
     string[],
     PersonalTasksResult,
     TaskGroupRow[],
-    GiaTask[],
   ] = await Promise.all([
     getAssignableUsers(),
     tab === 'personal' ? getPersonalTaskTags(userId) : Promise.resolve([] as string[]),
     tab === 'personal' ? getPersonalTasks(userId) : Promise.resolve(EMPTY_PERSONAL),
     tab === 'group' ? getGroupTasks({}, { userId }) : Promise.resolve(EMPTY_GROUP),
-    tab === 'gia'
-      ? getGiaTasksForUser(userId, callerRole, callerDomain)
-      : Promise.resolve(EMPTY_GIA),
   ]);
 
   return (
@@ -83,7 +77,6 @@ export async function TasksAsync({
       validTabs={validTabs}
       personalResult={personalResult}
       groupRows={groupRows}
-      giaTasks={giaTasks}
       currentUserId={userId}
       currentUserName={callerName}
       callerRole={callerRole}

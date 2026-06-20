@@ -8,12 +8,17 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { getAgentLeadsScopedAction } from '@/lib/actions/performance';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants/lead-statuses';
 import type { LeadsResult } from '@/lib/services/leads-service';
+import type { PerformancePeriod } from '@/lib/services/performance-service';
 import type { AppDomain, LeadStatus } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
 // AgentLeadsDrillModal — the target agent's assigned leads (founder/manager deck).
 // Reuses the existing getLeadsByRole path via getAgentLeadsScopedAction
 // (filters.agent_id = agentId). Page-based load-more. Fetch on open only.
+//
+// Period-consistency (2026-06-20): when a period is passed, the list is scoped to
+// leads.created_at within the resolved range — the SAME window the deck/detail card
+// counts for its totalLeads tile, so the front number and the opened total agree.
 // ─────────────────────────────────────────────
 
 type LeadRow = LeadsResult['leads'][number];
@@ -23,10 +28,14 @@ interface Props {
   agentId: string;
   agentName: string;
   domain: AppDomain | null;
+  /** Period scoping — keeps the modal total equal to the card's period count. */
+  period?: PerformancePeriod;
+  customFrom?: string;
+  customTo?: string;
   onClose: () => void;
 }
 
-export function AgentLeadsDrillModal({ open, agentId, agentName, domain, onClose }: Props) {
+export function AgentLeadsDrillModal({ open, agentId, agentName, domain, period, customFrom, customTo, onClose }: Props) {
   const [rows, setRows] = useState<LeadRow[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -37,7 +46,7 @@ export function AgentLeadsDrillModal({ open, agentId, agentName, domain, onClose
     async (nextPage: number) => {
       setLoading(true);
       setError(false);
-      const result = await getAgentLeadsScopedAction(agentId, domain, nextPage);
+      const result = await getAgentLeadsScopedAction(agentId, domain, nextPage, period, customFrom, customTo);
       setLoading(false);
       if (!result.data) {
         setError(true);
@@ -47,7 +56,7 @@ export function AgentLeadsDrillModal({ open, agentId, agentName, domain, onClose
       setTotal(result.data.totalCount);
       setPage(nextPage);
     },
-    [agentId, domain],
+    [agentId, domain, period, customFrom, customTo],
   );
 
   useEffect(() => {

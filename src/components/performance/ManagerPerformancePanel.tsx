@@ -399,18 +399,29 @@ export function ManagerPerformancePanel({
     if (isMobile && selectedId === null) setRosterOpen(true);
   }, [isMobile, selectedId]);
 
-  // Mobile-only: the swipeable deck is the DEFAULT view (desktop/tablet
-  // unchanged — there the deck stays a trigger-driven overlay). Auto-open it once
-  // per mount when on a phone with a non-empty all-domains roster; a manual close
-  // is respected (the latch never reopens it).
+  // Mobile (founder all-domains only): the swipeable deck is the GENUINE view —
+  // the roster/detail list is never rendered on a phone (see the render branch
+  // below). Desktop/tablet are unchanged: the deck stays a trigger-driven overlay
+  // on top of the list. `isMobileDeck` is the single switch both the auto-open and
+  // the render branch read.
+  //
+  // Why this replaced the old "auto-open an overlay over the list" approach:
+  // useMediaQuery is false on SSR + first client paint, so the list painted, then
+  // hydration flipped isMobile→true and the overlay slammed over it (the visible
+  // list→deck shift). Not rendering the list on mobile at all removes the slam —
+  // the deck is the only thing in the tree.
+  const isMobileDeck = isMobile && allDomains;
+
+  // Auto-open the deck once per mount on the mobile deck path; a manual close is
+  // respected (the latch never reopens it — a closed deck shows the inline prompt).
   const autoOpenedDeck = useRef(false);
   useEffect(() => {
     if (autoOpenedDeck.current) return;
-    if (isMobile && allDomains && agentRoster.length > 0) {
+    if (isMobileDeck && agentRoster.length > 0) {
       autoOpenedDeck.current = true;
       setDeckOpen(true);
     }
-  }, [isMobile, allDomains, agentRoster.length]);
+  }, [isMobileDeck, agentRoster.length]);
 
   // Unique domains that actually have agents, in roster display order
   const presentDomains = PERFORMANCE_ROSTER_DOMAIN_ORDER.filter((d) =>
@@ -496,6 +507,98 @@ export function ManagerPerformancePanel({
   // Clamp stagger so large rosters don't take forever
   function delay(i: number) {
     return Math.min(i * 35, 280);
+  }
+
+  // Mobile (founder all-domains): the deck IS the view. The roster/detail list is
+  // never rendered — only the deck (auto-opened) plus an inline prompt when the
+  // user has closed it. This removes the list→deck overlay slam entirely (the deck
+  // no longer opens on top of an already-painted list). Refetch overlay bar kept.
+  if (isMobileDeck) {
+    return (
+      <div style={{ position: 'relative' }}>
+        <AnimatePresence>
+          {isRefetching && (
+            <motion.div
+              key="roster-refetch-bar"
+              initial={{ scaleX: 0, opacity: 1 }}
+              animate={{ scaleX: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: PAGE_DURATION, ease: EASE_IN_OUT }}
+              style={{
+                position:        'absolute',
+                top:             0,
+                left:            0,
+                right:           0,
+                height:          '2px',
+                background:      'var(--theme-accent)',
+                borderRadius:    'var(--radius-full)',
+                transformOrigin: 'left center',
+                zIndex:          2,
+                pointerEvents:   'none',
+              }}
+            />
+          )}
+        </AnimatePresence>
+
+        {deckOpen ? (
+          <FounderDrillDownDeck
+            open={deckOpen}
+            onClose={() => setDeckOpen(false)}
+            roster={visibleAgents}
+            domain={domainFilter}
+            period={period}
+            customFrom={customFrom}
+            customTo={customTo}
+            initialAgentId={selectedId ?? undefined}
+          />
+        ) : (
+          // Closed deck → a calm prompt to reopen it (never the list on mobile).
+          <div
+            style={{
+              display:        'flex',
+              flexDirection:  'column',
+              alignItems:     'center',
+              gap:            'var(--space-4)',
+              background:     'var(--theme-paper)',
+              border:         '1px solid var(--theme-paper-border)',
+              borderRadius:   'var(--radius-lg)',
+              padding:        'var(--space-10) var(--space-6)',
+              textAlign:      'center',
+              boxShadow:      'var(--shadow-1)',
+            }}
+          >
+            <EmptyState
+              title="Swipe through your team."
+              size="lg"
+              style={{ padding: 0 }}
+            />
+            <button
+              type="button"
+              onClick={() => setDeckOpen(true)}
+              className="serene-pressable serene-touch"
+              style={{
+                display:      'inline-flex',
+                alignItems:   'center',
+                gap:          'var(--space-2)',
+                padding:      'var(--space-2) var(--space-4)',
+                borderRadius: 'var(--radius-md)',
+                border:       '1px solid var(--theme-paper-border)',
+                background:   'var(--theme-paper)',
+                boxShadow:    'var(--shadow-1)',
+                color:        'var(--theme-text-primary)',
+                fontFamily:   'var(--font-sans)',
+                fontSize:     'var(--text-sm)',
+                fontWeight:   'var(--weight-medium)',
+                cursor:       'pointer',
+              }}
+            >
+              <LayoutGrid style={{ width: 15, height: 15, strokeWidth: 1.5 }} aria-hidden="true" />
+              Open agent deck
+            </button>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (

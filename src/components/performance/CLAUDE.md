@@ -21,7 +21,7 @@ initial bundle. Import these three statically only from another lazy chunk.
 | `ManagerPerformancePanel.tsx` | Two-column shell — roster left, detail right |
 | `AgentDetailPanel.tsx` | Manager / founder agent detail: stats, pipeline, outcomes. The four `StatAtom` tiles are tap targets that open the deck's three drill modals (Total Calls→calls, Leads→leads, Won+Revenue→deals); same props the deck passes, fetch-on-open, `drill` state resets on agent switch |
 | `StatAtom.tsx` | Single pastel stat tile (`AgentDetailPanel` stats row + `DomainOverviewPanel` health cards). Optional `onClick` → pressable `motion.button` (`.serene-pressable` press-scale + cursor + focus ring, matching the deck's `DeckTile`); absent → original static `motion.div`. **`DomainOverviewPanel` passes no `onClick`, so its tiles stay byte-identical — never add a tap affordance there** |
-| `FirstTouchScorecard.tsx` | Display-only (A-06) first-touch SPEED card below `CallOutcomeBar` in `AgentDetailPanel`. Buckets the period cohort by how fast each lead's first call note arrived, in BUSINESS minutes per the agent's shift (`< 15m / 15–30m / ≤ 1h / 1–3h / 3h+`, `FIRST_TOUCH_BUCKETS` in `lib/constants/performance.ts`). Segmented bar + chip legend (the `PipelineBar` language). Takes the resolved `FirstTouchScorecard` data — all math is server-side (`getAgentFirstTouchScorecard`, React `cache()`, `businessMinutesBetween`); untouched cohort leads (no call yet) shown as a footnote, never a bucket. **TWO mount sites (2026-06-16):** `AgentDetailPanel` (below `CallOutcomeBar`) AND the `FounderDrillDownDeck` card (below the breakdown toggle). On the deck it is a **gated lazy read** — fetched in the same per-agent `Promise.all` as the breakdown, cached per agent, best-effort (its `getAgentFirstTouchScorecardAction` failure → card omits it, breakdown still renders). This does NOT break the deck's zero-per-swipe-fetch rule: that rule governs the **tiles** (in-memory roster fields only); the scorecard, like the breakdown, is a separate once-per-agent fetch |
+| `FirstTouchScorecard.tsx` | Display-only (A-06) first-touch SPEED card below `CallOutcomeBar` in `AgentDetailPanel`. Buckets the period cohort by how fast each lead's first call note arrived, in BUSINESS minutes per the agent's shift (`< 15m / 15–30m / ≤ 1h / 1–3h / 3h+`, `FIRST_TOUCH_BUCKETS` in `lib/constants/performance.ts`). **Five labeled horizontal-bar rows (2026-06-20)** — one row per bucket (all five always shown, zeros dimmed): label column + a proportional fill bar **scaled to the peak bucket** (tallest bar fills its row → the distribution shape reads at a glance) + `count · pct`; bars animate width in. (Replaced the old single thin segmented line + chip legend, which was unreadable.) Takes the resolved `FirstTouchScorecard` data — all math is server-side (`getAgentFirstTouchScorecard`, React `cache()`, `businessMinutesBetween`); untouched cohort leads (no call yet) shown as a footnote, never a bucket. **TWO mount sites (2026-06-16):** `AgentDetailPanel` (below `CallOutcomeBar`) AND the `FounderDrillDownDeck` card (below the breakdown toggle). On the deck it is a **gated lazy read** — fetched in the same per-agent `Promise.all` as the breakdown, cached per agent, best-effort (its `getAgentFirstTouchScorecardAction` failure → card omits it, breakdown still renders). This does NOT break the deck's zero-per-swipe-fetch rule: that rule governs the **tiles** (in-memory roster fields only); the scorecard, like the breakdown, is a separate once-per-agent fetch |
 | `DomainOverviewPanel.tsx` | Founder Domains tab — 4 stats per domain (incl. Deals Closed) + month-pinned `DomainTargetMeter` + founder/admin inline target edit (`upsertDomainTargetAction`); mobile = CSS scroll-snap carousel (no library). The comparative BarChart's Leads/Calls/Revenue toggle is the shared `TabSelector` (variant `accent`, `indicatorLayoutId="domain-metric-toggle"` — distinct from the founder shell's `founder-perf-tabs` pill, which is co-mounted) |
 | `DomainTargetMeter.tsx` | Radial deals-vs-target meter (Recharts `RadialBarChart`, 2 colours via `useChartTokens`); target null/0 → `EmptyState` inline "No target set." — never a division |
 | `AgentCallTrendChart.tsx` | 14-day daily-calls area chart — composes `ChartFrame` + `cartesianDefaults` (Cartesian frame rule); loaded via `next/dynamic` from the shell |
@@ -44,21 +44,49 @@ card deck, mounted from `ManagerPerformancePanel` on the **founder/admin `allDom
 (`next/dynamic`, `ssr:false` — Heavy-modal rule). It is a `Dialog size="full"`
 (which opts OUT of the `<md` bottom-sheet) wrapping the generic `<Carousel>` (`ui/Carousel.tsx`).
 
-**Mobile = default view (2026-06-15).** Desktop/tablet behaviour is unchanged — the deck stays a
-trigger-driven overlay opened from the "Deck view" button. On a **phone** (`useMediaQuery(MQ.mobile)`)
-with a non-empty `allDomains` roster, `ManagerPerformancePanel` auto-opens the deck once per mount via
-an `autoOpenedDeck` ref latch (a manual close is respected — the latch never reopens it). The trigger
-still exists on mobile for re-opening after a close. **Never** auto-open on desktop/tablet, and never
-auto-open for managers (the latch is gated on `allDomains`).
+**Mobile = the GENUINE view (2026-06-15; flash fix 2026-06-20).** Desktop/tablet behaviour is
+unchanged — the deck stays a trigger-driven overlay opened from the "Deck view" button, layered over
+the roster/detail list. On a **phone** (`isMobileDeck = useMediaQuery(MQ.mobile) && allDomains`),
+`ManagerPerformancePanel` takes an **early-return branch that renders the deck ONLY** — the two-column
+list is never in the tree. The deck auto-opens once per mount via an `autoOpenedDeck` ref latch (a
+manual close is respected — the latch never reopens it); a **closed** deck shows a calm inline
+"Open agent deck" prompt (`EmptyState` + reopen button), **never** the list. The founder shell also
+suppresses the hoisted "Deck view" trigger on mobile (the tab row is just the full-width tabs there).
 
-**Three tiles, one row (2026-06-15).** Each slide's `DeckAgentCard` shows a `grid grid-cols-3` of
-**Total Calls · Leads · Revenue**. "Deals won" was dropped. Tiles render ONLY in-memory
-`AgentRosterRow` fields (zero per-swipe fetch for the tiles). Tap behaviour: Total Calls→`calls`,
-Leads→`leads`, Revenue→`deals` (unchanged from the 4-tile version, minus the Won→deals tile).
+**Why deck-only, not auto-open-an-overlay (the 2026-06-20 fix):** `useMediaQuery` is `false` on SSR +
+first client paint, so the old "auto-open a `Dialog` over the list" approach painted the list, then
+hydration flipped `isMobile → true` and the deck **slammed over the already-painted list** (the visible
+list→deck shift). Not rendering the list on mobile at all removes the slam — the deck *replaces* the
+list. The residual one-frame pre-hydration list paint is the same `useMediaQuery` hydration window the
+whole app accepts; the deck is `ssr:false` so a pure-CSS swap isn't possible. **Never** revert to
+auto-opening the deck as an overlay on top of a rendered mobile list. **Never** auto-open on
+desktop/tablet, and never auto-open for managers (the branch is gated on `allDomains`).
 
-**`AgentRosterRow` has no `totalCallsMade`** — so the card's "Total Calls" tile is a **label-only**
+**Card layout — avatar + 2×2 scorecards (2026-06-20).** The active agent's **name + domain** live in
+the Dialog **title bar** (name in the serif page-title style, domain as the subtitle — the card body
+no longer repeats an identity block). `DeckAgentCard` leads with the **avatar on the left + a
+`grid grid-cols-2` of four tap targets on the right**: **Recent calls · Leads · Won · Revenue**. The
+left column is a `stretch` flex column with the avatar **vertically centered** (`justify-content:
+center`) so the space above/below it stays balanced against the taller grid. The breakdown toggle
+(Call outcome / Lead status) is a
+**full-width** tray (`display: flex; width: 100%`, each tab `flex: 1`) — never the content-sized
+`inline-flex` (it read as cramped on mobile). The
+**Won** tile (`agent.leadsWon`, `formatCount`) is the fourth, re-added 2026-06-20 (it was dropped to
+3 tiles on 2026-06-15); Revenue stays the compact `formatCurrencyCompact` ₹k/L amount. Tiles render
+ONLY in-memory `AgentRosterRow` fields (zero per-swipe fetch for the tiles). Tap behaviour: Recent
+calls→`calls`, Leads→`leads`, Won→`deals`, Revenue→`deals`. Below the scorecards: the toggleable
+breakdown, then the First-Touch graph.
+
+**`AgentRosterRow` has no `totalCallsMade`** — so the card's "Recent calls" tile is a **label-only**
 tap target ("View"), never a number. The call COUNT exists only inside the Recent-calls modal
 (`items.length`), never on the card — this is the structural side of the count contract.
+
+**Leads tile ⇄ drill-modal consistency (2026-06-20).** The Leads tile shows `agent.totalLeads` — a
+**period-scoped** count (roster RPC counts `leads.created_at` in the active range). The
+`AgentLeadsDrillModal` it opens is passed the deck's `period/customFrom/customTo` so
+`getAgentLeadsScopedAction` filters `created_at` on the SAME window — the front number and the opened
+total agree. Never drop the period props from the leads-modal mount (the deck AND `AgentDetailPanel`
+both pass them); a null period reverts to the old all-time list and re-opens the inconsistency.
 
 **Tapping a tile** opens one of the three drill modals (the deck reuses `AgentCallsDrillModal` /
 `AgentLeadsDrillModal` / `AgentDealsDrillModal` directly, which portal above the full Dialog via the

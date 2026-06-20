@@ -422,7 +422,7 @@ Component: `src/components/leads/ServiceInterestCard.tsx` — `'use client'` sin
 - Each hook: italic quote-style text, `--theme-text-secondary`
 - Small label: *"Talking points"* in `--theme-text-tertiary` uppercase tracking
 
-**No search bar on the dossier card.** It is read-only, auto-populated. Agents who want to search type go to the Helpdesk page. The card is the curated preview; the Helpdesk is the full library.
+**The card always carries an inline library search** (2026-06-12). `ServiceInterestCard.tsx` is `'use client'` and is never null-rendered — it is always in the DOM. At rest it shows the curated cases (≤6, auto-populated); typing in the `SearchBar` searches the full helpdesk library for the lead's domain (one lazy `getHelpdeskLibraryAction(lead.domain)` fetch on the first keystroke, then synchronous `caseMatchesQuery` filtering). The card is the curated preview *and* an inline search surface; the Helpdesk page is the full standalone library.
 
 ### Animation
 
@@ -432,7 +432,7 @@ Component: `src/components/leads/ServiceInterestCard.tsx` — `'use client'` sin
 
 ### Empty State
 
-When `lead.service_interests` is empty AND `lead.city` yields no tag matches: the card is not rendered at all. No empty state placeholder — the section simply doesn't exist in the DOM.
+When `lead.service_interests` is empty AND `lead.city` yields no tag matches (2026-06-12): the card is **still rendered** — it always sits in the DOM. With no curated cases or hooks to show, it presents the search-first view: the header + the inline library `SearchBar`, so an empty-interests lead can still search the full library. The card is never hidden; the hide-gate that previously dropped it from the DOM is gone on both the page and `ServiceInterestCardAsync`.
 
 When `lead.service_interests` is set but no cases match (unlikely once data is seeded): show a single muted line *"No examples on file for this category yet."* in `--theme-text-tertiary`.
 
@@ -578,10 +578,10 @@ src/
 │
 ├── lib/
 │   ├── services/
-│   │   └── intelligence-service.ts   ← getAllServiceCases(), getCasesForLead(), getHooksForCategory()
+│   │   └── intelligence-service.ts   ← getHelpdeskLibrary(), getCasesForLead(), getHooksForCategories()
 │   │
 │   ├── actions/
-│   │   └── intelligence.ts           ← getAllServiceCasesAction(), upsertServiceCaseAction() (admin)
+│   │   └── intelligence.ts           ← getHelpdeskLibraryAction(), upsertServiceCaseAction(), upsertConversationHookAction() (admin)
 │   │
 │   ├── validations/
 │   │   └── intelligence-schemas.ts   ← ServiceCaseSchema, ConversationHookSchema (Zod)
@@ -751,11 +751,12 @@ Step 3 — CONSTANTS & TYPES
 
 Step 4 — SERVICES
   src/lib/services/intelligence-service.ts
-  (getAllServiceCases, getCasesForLead, getHooksForCategory)
+  (getHelpdeskLibrary, getCasesForLead, getHooksForCategories)
 
 Step 5 — ACTIONS
   src/lib/actions/intelligence.ts
-  (getAllServiceCasesAction for helpdesk, upsertServiceCaseAction for admin)
+  (getHelpdeskLibraryAction for helpdesk, upsertServiceCaseAction +
+   upsertConversationHookAction for admin)
 
 Step 6 — INGESTION UPDATE
   src/lib/services/lead-ingestion.ts — extractServiceInterests() + write on INSERT

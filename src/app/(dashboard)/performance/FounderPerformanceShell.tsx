@@ -8,6 +8,7 @@
 import { useCallback, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { TabSelector } from '@/components/ui/TabSelector';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { FounderPerfActionsProvider } from './founder-perf-actions';
 import type { PerformancePeriod } from '@/lib/services/performance-service';
 import type { DomainHealthCard, DomainTarget } from '@/lib/types/index';
@@ -61,6 +62,9 @@ export function FounderPerformanceShell({
   agentsSlot,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('agents');
+  // Below md the 2-tab bar spans the row (otherwise the content-sized pill tray
+  // reads as off-cut next to the hoisted Deck-view action).
+  const isMobile = useMediaQuery(MQ.mobile);
 
   // The Agents-tab roster panel registers its "Deck view" trigger here so it
   // renders on this tab row (aligned opposite the tabs) instead of stacking on
@@ -90,8 +94,14 @@ export function FounderPerformanceShell({
           onChange={(id) => setActiveTab(id as Tab)}
           variant="pill"
           indicatorLayoutId="founder-perf-tabs"
+          // Span the row on phones; content-sized inline pill on desktop.
+          fullWidth={isMobile}
+          style={isMobile ? { flex: 1, minWidth: 0 } : undefined}
         />
-        {activeTab === 'agents' && tabAction}
+        {/* Desktop only: the hoisted "Deck view" trigger. On mobile the deck IS
+            the Agents view (the panel auto-opens it and owns its own reopen
+            prompt), so the tab row stays just the full-width tabs. */}
+        {!isMobile && activeTab === 'agents' && tabAction}
       </div>
 
       {/* Tab content — agentsSlot is a server-rendered subtree. The provider

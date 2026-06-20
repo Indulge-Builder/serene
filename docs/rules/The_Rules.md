@@ -2,7 +2,7 @@
 
 > **Purpose:** the engineering constitution — every coded non-negotiable rule (R/A/S/D/P/V/Q) plus the rule-change Decision Log.
 > **Audience:** engineers and coding agents. · **Source-of-truth scope:** ALL engineering rules. Design law lives in `../design/DESIGN-DNA.md`; the §5 V-rules below are the coded subset enforced in reviews. New *design* decisions are logged in `../design/decision-log.md`; rule changes and architecture decisions are logged here.
-> **Last verified:** 2026-06-11 (full sweep against the live codebase — every rule below describes something that exists, or is explicitly marked a forward contract).
+> **Last verified:** 2026-06-11 (full sweep against the live codebase — every rule below describes something that exists, or is explicitly marked a forward contract). Repeat-offender table re-verified 2026-06-20 against `src/lib/actions/dashboard.ts` (`effectiveWidgetDomain()`; `resolveWidgetScope()` never existed).
 
 ## Serene — Non-Negotiable Codebase Laws
 
@@ -43,7 +43,7 @@ most-duplicated subset — the full registry (R-02) is always the real check.
 | `loading.tsx` scaffold | `PageSkeletons` blocks (`PageHeaderSkeleton`, `FilterBarSkeleton`, `SkeletonCard`, `Shimmer`) |
 | Labelled stat tile | `<StatTile variant="card"\|"cell">` |
 | Task-form fields (priority chips, due presets, type radios) | `TaskFormFields` exports |
-| Dashboard widget data lifecycle | `useWidgetData()` (+ `resolveWidgetScope()` for manager-vs-picker scope) |
+| Dashboard widget data lifecycle | `useWidgetData()` (+ `effectiveWidgetDomain()` — `lib/actions/dashboard.ts` — for manager-vs-picker scope) |
 | Heavy-modal mount latch | `useMountOnFirstOpen()` |
 | Debounce | `useDebounce()` |
 | IST day/week/month boundary math | `lib/utils/ist.ts` — never re-fork UTC+5:30 arithmetic |

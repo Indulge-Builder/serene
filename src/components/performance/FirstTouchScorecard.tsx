@@ -73,85 +73,80 @@ export function FirstTouchScorecard({
     );
   }
 
-  const visible = FIRST_TOUCH_BUCKETS.filter((b) => buckets[b.id] > 0);
+  // Readable bar-graph: one row per speed bucket (all five always shown, zeros
+  // dimmed) — a fixed label column, a proportional fill bar, then the count · pct.
+  // The bar is scaled to the LARGEST bucket (peak = full track) so the tallest bar
+  // fills its row and the shape of the distribution reads at a glance — far clearer
+  // than the old single thin segmented line.
+  const maxBucket = Math.max(1, ...FIRST_TOUCH_BUCKETS.map((b) => buckets[b.id]));
 
   return (
     <CardShell delay={delay}>
-      {/* Segmented proportion bar — one slice per non-empty bucket. Proportions
-          are of leads-WITH-a-first-call (the measured set), not the full cohort. */}
-      {leadsWithFirstCall > 0 && (
-        <div
-          style={{
-            display:      'flex',
-            height:       '10px',
-            borderRadius: 'var(--radius-full)',
-            overflow:     'hidden',
-            gap:          '2px',
-            marginBottom: 'var(--space-4)',
-            background:   'var(--theme-paper-border)',
-          }}
-        >
-          {visible.map((b) => (
-            <div
-              key={b.id}
-              title={`${b.label}: ${buckets[b.id]}`}
-              style={{
-                width:      `${(buckets[b.id] / leadsWithFirstCall) * 100}%`,
-                background: b.color,
-                minWidth:   '4px',
-                opacity:    0.9,
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Legend — every bucket shown (including zeros) so the five-bucket grid is
-          always complete and the eye can scan the full speed distribution. */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
         {FIRST_TOUCH_BUCKETS.map((b) => {
           const count = buckets[b.id];
           const pct = leadsWithFirstCall > 0 ? Math.round((count / leadsWithFirstCall) * 100) : 0;
+          const barPct = (count / maxBucket) * 100;
+          const empty = count === 0;
           return (
             <div
               key={b.id}
               style={{
-                display:      'inline-flex',
-                alignItems:   'center',
-                gap:          'var(--space-1)',
-                padding:      '3px 8px 3px 6px',
-                borderRadius: 'var(--radius-full)',
-                background:   'var(--theme-paper-subtle)',
-                border:       '1px solid var(--theme-paper-border)',
-                opacity:      count > 0 ? 1 : 0.55,
+                display:             'grid',
+                gridTemplateColumns: '54px 1fr auto',
+                alignItems:          'center',
+                gap:                 'var(--space-3)',
+                opacity:             empty ? 0.5 : 1,
               }}
             >
-              <span
-                style={{
-                  display:      'inline-block',
-                  width:        '6px',
-                  height:       '6px',
-                  borderRadius: 'var(--radius-full)',
-                  background:   b.color,
-                  opacity:      0.9,
-                  flexShrink:   0,
-                }}
-              />
+              {/* Label */}
               <span
                 style={{
                   fontFamily: 'var(--font-sans)',
                   fontSize:   'var(--text-2xs)',
-                  color:      'var(--theme-text-secondary)',
                   fontWeight: 'var(--weight-medium)',
+                  color:      'var(--theme-text-secondary)',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {b.label}
               </span>
+
+              {/* Track + proportional fill */}
+              <div
+                style={{
+                  position:     'relative',
+                  height:       '8px',
+                  borderRadius: 'var(--radius-full)',
+                  background:   'var(--theme-paper-subtle)',
+                  border:       '1px solid var(--theme-paper-border)',
+                  overflow:     'hidden',
+                }}
+              >
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${barPct}%` }}
+                  transition={{ duration: ENTER_DURATION, delay: delay / 1000, ease: EASE_OUT_EXPO }}
+                  style={{
+                    position:     'absolute',
+                    inset:        0,
+                    right:        'auto',
+                    borderRadius: 'var(--radius-full)',
+                    background:   b.color,
+                    opacity:      0.92,
+                  }}
+                />
+              </div>
+
+              {/* Count · pct */}
               <span
                 style={{
                   fontFamily: 'var(--font-mono)',
                   fontSize:   'var(--text-2xs)',
                   color:      'var(--theme-text-tertiary)',
+                  whiteSpace: 'nowrap',
+                  textAlign:  'right',
+                  minWidth:   '52px',
                 }}
               >
                 {count} · {pct}%

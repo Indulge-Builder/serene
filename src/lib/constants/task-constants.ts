@@ -178,5 +178,4 @@ export const TASK_CATEGORY: Record<
 > = {
   personal:      { label: 'Personal',      color: 'var(--theme-accent)',    dotColor: 'var(--theme-accent)'    },
   group_subtask: { label: 'Group Task',    color: 'var(--theme-text-primary)', dotColor: 'var(--color-info)'  },
-  gia_followup:  { label: 'Gia Follow-up', color: 'var(--color-info)',      dotColor: 'var(--color-warning)'   },
 };

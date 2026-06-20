@@ -2,18 +2,20 @@
 
 > **Purpose:** the async-job layer — what runs on Trigger.dev, the idempotency/tag conventions, and the hook points in the action layer.
 > **Audience:** engineers. · **Source-of-truth scope:** job mechanics and conventions. The SLA *business rules* (thresholds, recipients) live in `../modules/gia.md` § SLA Engine.
-> **Last verified:** 2026-06-15 against `trigger.config.ts`, `src/trigger/lead-sla.ts`, `src/trigger/task-reminders.ts`, `src/trigger/lead-revival.ts`, `src/lib/actions/sla.ts`.
+> **Last verified:** 2026-06-20 against `trigger.config.ts`, `src/trigger/lead-sla.ts`, `src/trigger/task-reminders.ts`, `src/trigger/lead-revival.ts`, `src/trigger/usage-snapshot.ts`, `src/trigger/usage-rollup.ts`, `src/lib/services/revival-service.ts`, `src/lib/actions/sla.ts`.
 
 ---
 
 ## 1. Why it exists (A-12)
 
 Any async work over 3 seconds or needing retry/delayed execution runs on Trigger.dev — never in
-a route handler. In Serene that is three job families: **lead SLA timers**, **task due
-reminders**, and the daily **lead-revival sweep**. The first two are event/queue jobs (scheduled
-or cancelled in response to a lead/task action); the third is the project's **first scheduled
-(cron) task** — it fires on a fixed clock, not in response to an event. (Sub-3-second
-post-response work — notification sends — uses `after()` instead; see `whatsapp-gupshup.md` §4.)
+a route handler. In Serene that is four job families across **five trigger files**: **lead SLA
+timers**, **task due reminders**, the daily **lead-revival sweep**, and the **usage
+snapshot/rollup** pair (adoption tracking). The first two are event/queue jobs (scheduled or
+cancelled in response to a lead/task action); the rest are scheduled (cron) tasks that fire on a
+fixed clock, not in response to an event — the lead-revival sweep was the project's **first**
+`schedules.task`. (Sub-3-second post-response work — notification sends — uses `after()` instead;
+see `whatsapp-gupshup.md` §4.)
 
 ## 2. Configuration
 
@@ -79,7 +81,7 @@ It is the single periodic entry point the revival spec calls for — **not** a s
 
 | Export | What it does |
 | ------ | ------------ |
-| `sweepRevivalCandidatesTask` | `schedules.task`, `id: 'sweep-revival-candidates'`, cron `0 2 * * *` timezone `Asia/Kolkata` = **07:30 IST daily** (the gate runs at shift-open so freshly-created "Revived" tasks are waiting when agents start their day). `maxDuration: 300`. Server-only modules are pulled in via dynamic `import()` inside `run()` to keep them out of the Trigger.dev module scan |
+| `sweepRevivalCandidatesTask` | `schedules.task`, `id: 'sweep-revival-candidates'`, cron `0 2 * * *` timezone `Asia/Calcutta` = **07:30 IST daily** (the gate runs at shift-open so freshly-created "Revived" tasks are waiting when agents start their day). `maxDuration: 300`. Server-only modules are pulled in via dynamic `import()` inside `run()` to keep them out of the Trigger.dev module scan. **Timezone alias:** use `Asia/Calcutta`, **never** `Asia/Kolkata` — Trigger.dev's cloud validator checks the cron timezone against `Intl.supportedValuesOf('timeZone')`, whose ICU build canonicalises IST to the older `Asia/Calcutta` alias and **rejects** `Asia/Kolkata`. Same UTC+5:30 zone — spelling only. Copying a `Asia/Kolkata` value into code would fail at deploy |
 
 **The sweep, per run:**
 
@@ -87,8 +89,10 @@ It is the single periodic entry point the revival spec calls for — **not** a s
    `sla_policies` pattern). Each policy is keyed by `trigger_status` and carries a per-status
    `silence_days` threshold + a `daily_cap_per_agent`. Editable from `/settings`; empty → no-op.
 2. Per status: `findSilentLeadsForStatus(status, silence_days)` returns leads silent past the
-   threshold with **no open candidate** (an anti-join, backstopped by the partial UNIQUE index —
-   together the **one-open-candidate guard**).
+   threshold with **no `revival_candidate` of ANY status** — the **judge-once anti-join**: a lead
+   already judged (including one previously `dismissed`) is **never re-judged**, so dead leads
+   don't re-enter the pool nightly. The partial UNIQUE index additionally **backstops the one-OPEN
+   race** (a concurrent double-insert).
 3. Per lead: the **note-AI suppression gate** (`judgeLeadForRevival`, `revival-gate.ts`) — ONE
    structured call returning one of **three verdicts** + reasoning, reusing the Elaya `routing`/Haiku
    provider + `maskPii` (no tools, no new SDK import). It **fails closed to `unsure`** on any
@@ -116,6 +120,41 @@ It is the single periodic entry point the revival spec calls for — **not** a s
   the next sweep — the cap isn't burned.)
 - **Layer over leads, never a mutation:** the sweep only writes `revival_candidates` and creates
   tasks. It never updates lead status or columns. Full contract: `../modules/revival.md`.
+
+### `src/trigger/usage-snapshot.ts` — the 1-minute active-presence snapshot (adoption tracking)
+
+A `schedules.task` (migration 0126) — the second cron family. It powers `/admin/usage`.
+
+| Export | What it does |
+| ------ | ------------ |
+| `snapshotUsagePresenceTask` | `schedules.task`, `id: 'snapshot-usage-presence'`, cron `* * * * *` (every minute, no timezone — a minute-grain tick is timezone-agnostic), `maxDuration: 60`. Reads the **live Redis `presence:*` keys** (`listLivePresence` — the client heartbeat SETs them only while active: visible + recently interacted, 150s TTL) and appends one `usage_heartbeats` row per active user (`insertUsageHeartbeats`, admin client). Server-only deps via dynamic `import()` inside `run()` |
+
+- **The ONLY writer of `usage_heartbeats`:** the request/heartbeat path never touches Postgres
+  (that would be a write storm at 300 users; the hot path is one Redis SET). The rollup job turns
+  these ticks into `usage_daily`.
+- **Idempotency:** each tick is an independent append of "who was active in the last interval". A
+  same-minute duplicate adds at most one extra row per user — and the rollup counts DISTINCT
+  minute-buckets, so it collapses to the same active minute. No dedup key needed; Trigger.dev also
+  dedups the scheduled tick.
+
+### `src/trigger/usage-rollup.ts` — the `usage_daily` rollup (adoption tracking)
+
+Two `schedules.task` exports (migration 0126), both writing the SAME `usage_daily` table via the
+SAME idempotent `rollupUsageForDays` core (Option 2). Also feeds `/admin/usage`. Both use timezone
+`Asia/Calcutta` (never `Asia/Kolkata` — same validator constraint as the revival sweep above; same
+UTC+5:30 zone). Server-only deps via dynamic `import()` inside `run()`.
+
+| Export | What it does |
+| ------ | ------------ |
+| `rollupUsageTodayTask` | `id: 'rollup-usage-today'`, cron `*/15 * * * *` timezone `Asia/Calcutta`, `maxDuration: 120`. Re-rolls **today (IST)** every 15 min so `/admin/usage` shows near-current active minutes without waiting for the nightly pass |
+| `rollupUsageNightlyTask` | `id: 'rollup-usage-nightly'`, cron `20 0 * * *` timezone `Asia/Calcutta` (00:20 IST — a 20-min cushion past midnight so the last ticks have been snapshotted), `maxDuration: 300`. Finalises the **prior IST day** (+ today as cheap boundary insurance), then `pruneOldHeartbeats(30)` drops raw `usage_heartbeats` > 30 days (`usage_daily` is never pruned) |
+
+- **Idempotent recompute-and-UPSERT:** `rollupUsageForDays` RECOMPUTES `active_minutes` from the
+  raw ticks (`COUNT(DISTINCT minute-bucket)`) and UPSERTs on the `(day, user_id, domain)` PK — it
+  **OVERWRITES, never increments**. Running either task twice yields identical `usage_daily` rows;
+  the two may even overlap on "today" near midnight with no double-count.
+- IST dates are derived via `istDateString()` in `usage-service` — never re-fork the IST offset
+  math here.
 
 ## 4. Hook points in the action layer (`lib/actions/leads.ts`)
 

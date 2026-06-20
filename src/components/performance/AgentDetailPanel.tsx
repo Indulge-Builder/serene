@@ -506,6 +506,9 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
         agentId={agent.id}
         agentName={agent.full_name}
         domain={domain}
+        period={period}
+        customFrom={customFrom}
+        customTo={customTo}
         onClose={() => setDrill(null)}
       />
     )}

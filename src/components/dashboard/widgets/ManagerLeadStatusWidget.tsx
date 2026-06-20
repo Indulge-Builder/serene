@@ -16,6 +16,7 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { DateRange } from "@/lib/utils/date-range";
 import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
 import { useWidgetData } from "@/hooks/useWidgetData";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 
 // Chip surfaces — semantic token system, theme-aware.
 const STATUS_TEXT: Record<LeadStatus, string> = {
@@ -71,7 +72,7 @@ const STATUS_ORDER: LeadStatus[] = [
   "junk",
 ];
 
-const CHIP_STATUSES: LeadStatus[] = ["new", "touched", "in_discussion", "won", "junk"];
+const CHIP_STATUSES: LeadStatus[] = ["new", "touched", "in_discussion", "won", "lost", "junk"];
 
 type StatusData = {
   totals: DashboardLeadStatusCount[];
@@ -216,6 +217,12 @@ export function ManagerLeadStatusWidget({ userId, role, initialData, size = 'lg'
   // Active statuses present in the data (for legend — skip zeros)
   const activeStatuses = STATUS_ORDER.filter((s) => (mixMap[s] ?? 0) > 0);
 
+  // Chip grid is a behavioural breakpoint, not a width-guess: 6-up on desktop,
+  // a clean 3+3 on mobile. auto-fit on a full-width phone widget packed 4 then 2
+  // (an uneven split); a fixed count per breakpoint keeps two even rows.
+  const isMobile = useMediaQuery(MQ.mobile);
+  const chipColumns = isMobile ? 3 : CHIP_STATUSES.length;
+
   return (
     <div
       style={{
@@ -274,10 +281,11 @@ export function ManagerLeadStatusWidget({ userId, role, initialData, size = 'lg'
           <div
             style={{
               display: "grid",
-              // auto-fit (audit F1): 5-up on a half-width desktop widget,
-              // 3+2 / 2-up as the widget narrows — repeat(5, 1fr) clipped
-              // the nowrap labels below ~480px of widget width.
-              gridTemplateColumns: "repeat(auto-fit, minmax(88px, 1fr))",
+              // Fixed column count per breakpoint (not width-driven auto-fit):
+              // 6-up on the half-width desktop widget, a clean 3+3 on mobile.
+              // auto-fit on a full-width phone packed an uneven 4+2 — this keeps
+              // two even rows. Each column min-0s so the chip never overflows.
+              gridTemplateColumns: `repeat(${chipColumns}, minmax(0, 1fr))`,
               gap: "var(--space-2)",
             }}
           >

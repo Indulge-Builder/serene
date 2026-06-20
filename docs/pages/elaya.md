@@ -1,8 +1,8 @@
 # /elaya — Elaya Chat
 
-> **Purpose:** spec for the Elaya chat page (foundation phase — read-only).
+> **Purpose:** spec for the Elaya chat page.
 > **Audience:** engineers. · **Source-of-truth scope:** this route's behaviour.
-> **Last verified:** 2026-06-15 · **Status:** shipped.
+> **Last verified:** 2026-06-20 (Elaya Phase 2 agentic writes shipped on this surface) · **Status:** shipped.
 
 Module architecture + phase contracts: `docs/modules/elaya.md`. Build record: `docs/changelog.md`
 (2026-06-12 Elaya foundation entry).
@@ -19,8 +19,17 @@ Sidebar: MAIN_NAV, Sparkles icon, directly under Dashboard.
   server-side session window from `elaya_settings.session_expiry_hours`) → transcript (last 50)
   + remaining-today message budget. Deterministic greeting from `getElayaTimeGreeting` +
   `pickElayaDailyLine` (no model call on load — ever).
-- **Streaming:** `ElayaChatShell` POSTs to `/api/elaya/chat` and consumes SSE frames. Tool calls
-  surface as a serif-italic status line ("Looking through your leads…").
+- **Streaming:** `ElayaChatShell` POSTs to `/api/elaya/chat` and consumes SSE frames. The route
+  runs the full brain (`runElayaTurn`) — the tool-calling loop plus its read ∪ write registry. Tool
+  calls surface as a serif-italic status line ("Looking through your leads…").
+- **Agentic writes (Phase 2, migration 0118 `elaya_actions`; `tools/write-registry.ts`):** the brain
+  executes low-risk write tools **INLINE** (`add_lead_note`, `create_lead_task`) and **PROPOSES**
+  state-changing tools (`update_lead_status`, `reassign_lead`), which mutate only later via the
+  confirmation resolver → `executeProposedAction` on an affirmative human reply. Every write — inline
+  or resolved — is logged to `elaya_actions` (executed/proposed rows with before/after snapshots).
+  This applies identically on **both** the `/elaya` in-app channel and the WhatsApp staff channel.
+  (Five task write tools — `create_personal_task`, `create_group_task`, `update_task_status`,
+  `update_task` inline; `delete_task` propose-only — also exist via `services/task-mutations.ts`.)
 - **Daily cap:** 200/day (config row), counted from IST midnight, enforced in the route before
   any persistence or model call. The composer swaps to the cap notice when exhausted; the server
   remains the authority.
@@ -41,4 +50,6 @@ Sidebar: MAIN_NAV, Sparkles icon, directly under Dashboard.
 
 - Never render Elaya data without a tool round-trip (no model-fabricated records).
 - Never enforce the cap or session expiry client-side only.
-- Never add a write/mutating tool to this surface — Phase 2 goes through `elaya_actions` proposals.
+- Never let a state-changing write tool mutate in its own proposal turn — `update_lead_status`,
+  `reassign_lead`, and `delete_task` propose only; the mutation lands solely in the confirmation
+  resolver (`executeProposedAction`) on an affirmative human reply.

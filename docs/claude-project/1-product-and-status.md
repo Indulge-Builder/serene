@@ -1,6 +1,6 @@
 # Serene — Product & Status (Claude Project digest)
 
-> Generated digest of `docs/00-for-the-board.md`, `docs/01-vision.md`, `docs/modules/*` — 2026-06-15.
+> Generated digest of `docs/00-for-the-board.md`, `docs/01-vision.md`, `docs/modules/*` — 2026-06-20.
 > Source of truth is the repo docs; regenerate when they change.
 
 ## What Serene is
@@ -19,7 +19,7 @@ the building:
 | **Serene** (base OS) | Login, theming (5 themes), role/domain authorization at three layers, dashboard shell, notifications, tasks | ✅ live |
 | **Gia** (CRM) | The sales floor — full lead journey: ad → ingestion → fair assignment → worked dossier → resolution → deal, with SLA guardrails and role-correct reporting | ✅ live, daily use |
 | **Client records** | Post-won flow — a won deal opens a client record (`deals.client_id` is the reserved hook) | 🔨 current focus |
-| **Elaya** (AI presence) | Not a chatbot — a presence/compass. **Live**: 6 read-only tools + SSE chat at `/api/elaya/chat` (Phase 1); Phase 2 agentic writes (E3) — 4 write tools (`add_lead_note`/`create_lead_task` execute inline; `update_lead_status`/`reassign_lead` propose-only, run through a pure-code confirmation resolver before each turn), `elaya_actions` state-machine ledger, every write wraps the shared `lead-mutations.ts` core (cache/activity/SLA/notify inherited identically); WhatsApp staff channel (a staff number routes to the same brain/tools/cap, one reply); voice input (Deepgram Nova-2 Hinglish, in-app composer mic + inbound WhatsApp voice notes; audio never stored, never auto-sends) | ✅ live |
+| **Elaya** (AI presence) | Not a chatbot — a presence/compass. **Live**: 6 read-only tools + SSE chat at `/api/elaya/chat` (Phase 1); Phase 2 agentic writes (E3) — 9 write tools (4 lead writes via `lead-mutations.ts` + 5 task writes via `task-mutations.ts`; `add_lead_note`/`create_lead_task`/`create_personal_task`/`create_group_task`/`update_task_status`/`update_task` execute inline; `update_lead_status`/`reassign_lead`/`delete_task` propose-only, run through a pure-code confirmation resolver before each turn), `elaya_actions` state-machine ledger, every write wraps the shared mutation core (cache/activity/SLA/notify inherited identically); WhatsApp staff channel (a staff number routes to the same brain/tools/cap, one reply); voice input (Deepgram Nova-2 Hinglish, in-app composer mic + inbound WhatsApp voice notes; audio never stored, never auto-sends) | ✅ live |
 | **Sia** (Concierge) | Won clients as ongoing relationships, on top of client records | ⏸ not started |
 | **Call intelligence / Helpdesk** | Phase 1 live (migrations 0109/0110): `leads.service_interests text[]` + `service_cases` + `conversation_hooks`, `/helpdesk` page, dossier ServiceInterestCard, Redis-cached library (client-side filtering) | ✅ live |
 | **Lead Revival** (R1) | Daily Trigger.dev cron sweep (07:30 IST) finds silent leads → note-AI 3-verdict gate (revive/dismiss/unsure, reuses Elaya routing model, fails closed) → confident revive opens a "Revived" follow-up task (never mutates the lead row); unsure/overflow → review tab `/leads?revival=true`. Migration 0119 (`revival_policies` + `revival_candidates`) | ✅ live |
@@ -78,6 +78,7 @@ unbuilt piece is the customer-facing bot specifically.)
 
 ## Where history lives (repo)
 
-`docs/changelog.md` — single source of truth, 425+ dated entries since 2026-05-26 ·
-`docs/architecture/migrations.md` — 121 migrations indexed (0001–0121) · Decision Logs in
+`docs/changelog.md` — single source of truth, 600+ dated entries since 2026-05-26 ·
+`docs/architecture/migrations.md` — migrations indexed through 0137 (latest:
+`lead_phone_dedup_uniqueness`) · Decision Logs in
 `docs/rules/The_Rules.md` (engineering) and `docs/design/decision-log.md` (design).

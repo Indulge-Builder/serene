@@ -1,15 +1,17 @@
-// CampaignMetricsStripSkeleton — 6 stat card skeletons per §11.3
+// CampaignMetricsStripSkeleton — 8 stat card skeletons per §11.3
+// (6 pipeline + Amount Spent + Cost/Lead — mirrors CampaignMetricsStrip)
 // Staggered pulse 0→320ms per §11.4
 
 export function CampaignMetricsStripSkeleton() {
-  const staggerDelays = [0, 80, 160, 240, 320, 320];
+  const staggerDelays = [0, 80, 160, 240, 320, 320, 320, 320];
 
   return (
-    <div style={{ marginBottom: 'var(--space-6)' }}>
+    <div>
       {/* Column count lives in classes only — inline grid-template-columns
-          would override the md:/lg: variants (mirrors CampaignMetricsStrip) */}
+          would override the responsive variants (mirrors CampaignMetricsStrip:
+          single column below sm, 2×4 from sm up — it sits in the right column). */}
       <div
-        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6"
+        className="grid grid-cols-1 sm:grid-cols-2"
         style={{ gap: 'var(--space-3)' }}
       >
         {staggerDelays.map((delay, i) => (

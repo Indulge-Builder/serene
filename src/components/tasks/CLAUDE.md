@@ -18,7 +18,7 @@ task-type radio list inline (dry-audit H-3 + L-4).
 
 `SubTaskModal.tsx` — `'use client'`
 
-The canonical task detail modal. Used for personal tasks, group subtasks, and (via `GiaTasksTab`) Gia follow-up tasks.
+The canonical task detail modal. Used for personal tasks and group subtasks. A lead follow-up is just a `personal` task that carries a `task_gia_meta` row (the meta table is the task→lead link), so those open through the same modal — surfaced in My Tasks and on the lead dossier card, never a separate Gia tab.
 
 Props: `open`, `onClose`, `task`, `group?`, `assignee?`, `initialRemarks`, `callerProfile`, `currentUserName?`, `onTaskUpdated?`, `onTaskDeleted?`
 
@@ -44,7 +44,7 @@ Seeded from `initialRemarks` — no mount fetch. Call sites must fetch remarks v
 
 Props: `checked`, `disabled?`, `highlighted?`, `onToggle`
 
-24px completion control. Used on My Tasks rows, group subtask rows, and Gia task rows.
+24px completion control. Used on My Tasks rows and group subtask rows.
 **Always pair with `useTaskCompletionToggle` — never re-implement the toggle logic.**
 
 ---
@@ -110,98 +110,10 @@ FAB add-subtask panel. No drag-and-drop.
 
 ---
 
-### GiaTasksTab
-
-`GiaTasksTab.tsx` — `'use client'`
-
-Props:
-
-```
-initialTasks:          GiaTask[]      — pre-fetched by TasksAsync
-currentUserId:         string
-currentUserName:       string
-callerRole:            UserRole
-callerDomain:          AppDomain
-createTrigger?:        number
-onFilteredCountChange?: (count: number) => void
-onTaskCreated:         (task: GiaTask) => void
-```
-
-Groups tasks by date bucket (Today / Tomorrow / future dates / Overdue / No Due Date) using
-local-clock date keys (never `toISOString().slice(0,10)` — timezone-correct, same pattern as
-`MyTasksCalendarView`). Completed tasks are hidden from date sections (same rule as calendar view).
-Framer Motion staggered section entrance (opacity + y). Empty state: Playfair italic.
-Uses `TaskCompletionCircle` + `useTaskCompletionToggle` — zero reimplementation.
-
----
-
-### GiaTaskRow
-
-`GiaTaskRow.tsx` — `'use client'`
-
-Props:
-
-```
-task:            GiaTask
-effectiveStatus: TaskStatus    — from useTaskCompletionToggle.getEffectiveStatus
-onToggle:        (e, task: { id, status }) => void
-currentUserId:   string
-```
-
-Single Gia task row: completion circle + task-type icon (accent colour) + lead name link +
-type label + optional due time. Lead name links to `/leads/[slug ?? id]`.
-Overdue `due_at` renders in `var(--color-danger-text)` via `formatTaskDueAt()`. Completed rows at `opacity: 0.5` + strikethrough.
-
----
-
-### GiaDaySection
-
-`GiaDaySection.tsx` — server-component-safe
-
-Props: `label: string`, `children: ReactNode`
-
-Date-group heading: `.label-micro` style (2xs, medium, uppercase, widest tracking, tertiary).
-1px `--theme-paper-border` bottom rule. Same visual weight as `MyTasksCalendarView` date headers.
-
----
-
-### CreateGiaTaskModal
-
-`CreateGiaTaskModal.tsx` — `'use client'`
-
-Props:
-
-```
-open:          boolean
-onClose:       () => void
-onTaskCreated: (task: GiaTask) => void
-callerRole:    UserRole
-```
-
-Composes `src/components/ui/modal.tsx` with `maxWidth="max-w-md"`. Five fields (in order):
-
-1. Lead search — 300ms debounced input calling `searchLeadsAction`, dropdown of results (name + phone + domain badge), selection locks the lead; scoped to caller's domain via action layer.
-2. Task type — `TaskTypeField` from `ui/TaskFormFields.tsx` (same as `CreateLeadTaskModal`).
-3. Priority — `PriorityChipRow` (Urgent / High / Normal), default Normal.
-4. Due date + time — `DueDateField` (no presets) wrapping `DatePicker` with `showTime`.
-5. Notes — optional `<textarea>` max 1000 chars.
-
-Calls `createLeadTaskAction` from `lib/actions/leads.ts` — **no new action**. On success builds a
-`GiaTask` shape by merging the returned `Task` with the selected lead's identity fields and calls
-`onTaskCreated`.
-
-**`AnimatePresence` required at call site** (in `TasksShell`) — not inside this component.
-
----
-
 ## Service dependency map
 
 | Component           | Data source                                                  |
 |---------------------|--------------------------------------------------------------|
-| GiaTasksTab         | `GiaTask[]` via prop (fetched by `TasksAsync` → `getGiaTasksForUser`) |
-| GiaTaskRow          | props only                                                   |
-| GiaDaySection       | props only                                                   |
-| CreateGiaTaskModal  | `searchLeadsAction` (lead picker), `createLeadTaskAction` (create) |
 | MyTasksCalendarView | `getPersonalTasksAction`, `getPersonalTaskTagsAction` (assignable users via `initialAgents` prop) |
 | GroupTasksTab       | `getGroupSubtasksAction`, `createSubtaskAction` (assignable users via `initialAgents` prop) |
 | GroupTaskWorkspace  | `createSubtaskAction`, `getGroupSubtasksAction`, `getTaskRemarksAction` |

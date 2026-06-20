@@ -152,15 +152,13 @@ export function WhatsAppShell({
               !!updated.last_message_at &&
               (!prevRow.last_message_at ||
                 updated.last_message_at > prevRow.last_message_at);
-            // Mirrors the get_wa_unread_count predicate: only open
-            // conversations count, and the one currently on screen is read
-            // (the panel keeps the server-side read position in step).
-            const nextUnread =
-              updated.status !== "open" || isActive
-                ? 0
-                : hasNewMessage
-                  ? 1
-                  : (prevRow.unread_count ?? 0);
+            // The conversation currently on screen is always read (the panel
+            // keeps the server-side read position in step).
+            const nextUnread = isActive
+              ? 0
+              : hasNewMessage
+                ? 1
+                : (prevRow.unread_count ?? 0);
 
             const wasUnread = (prevRow.unread_count ?? 0) > 0;
             if (nextUnread > 0 && !wasUnread) setUnreadBadge((n) => n + 1);
@@ -239,15 +237,6 @@ export function WhatsAppShell({
   }
 
   // ── Conversation status update from panel ────────────────────────────────────
-
-  function handleConversationUpdate(updated: Partial<WhatsAppConversation>) {
-    if (!activeConversationId) return;
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === activeConversationId ? { ...c, ...updated } : c,
-      ),
-    );
-  }
 
   const activeConversation =
     conversations.find((c) => c.id === activeConversationId) ?? null;
@@ -364,7 +353,6 @@ export function WhatsAppShell({
               conversation={activeConversation}
               initialMessages={activeMessages}
               callerProfile={callerProfile}
-              onConversationUpdate={handleConversationUpdate}
               onBack={isMobile ? () => setActiveConversationId(null) : undefined}
             />
           )

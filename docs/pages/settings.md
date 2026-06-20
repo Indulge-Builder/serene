@@ -32,7 +32,8 @@ cross-row reads; the action layer enforces the domain). Since 2026-06-11 (securi
 
 `AgentSettingsTable` (client; optimistic toggles) with inline `WorkDayPicker` ·
 `TimePicker` (`src/components/ui/` primitive — wheel columns, measured item height) ·
-`Toggle` for pool membership · `SlaPoliciesPanel` (admin/founder only, below the roster).
+`Toggle` for pool membership · `SlaPoliciesPanel` (admin/founder only, below the roster) ·
+`RevivalPoliciesPanel` (admin/founder only, below the SLA panel — Lead Revival R1 config).
 
 ### Follow-up Engine panel (`SlaPoliciesPanel`, 2026-06-12; "New rule" authoring 2026-06-15)
 
@@ -75,6 +76,19 @@ Writes: **`createSlaPolicyAction`** (`actions/sla-policies.ts`) — mirrors `upd
   not just the dropdown.
 
 No delete path — switch a rule off via its active toggle.
+
+### Revival Policies panel (`RevivalPoliciesPanel`, Lead Revival R1)
+
+Below the Follow-up Engine, admin/founder also see the **Revival Policies** panel — the Lead
+Revival R1 config surface. One row per `revival_policies` rule (migration 0119): a per-status
+**silence threshold** (days a lead may sit silent in that trigger status before the daily sweep
+considers it) plus the **daily cap per agent** (how many leads the sweep may auto-revive for one
+agent). Both are editable inline; writes go through `updateRevivalPolicyAction`
+(`actions/revival.ts` — Zod → `requireProfile(['admin','founder'])` → `updateRevivalPolicy` admin
+client → `revalidatePath('/settings')`). The daily sweep (`sweepRevivalCandidatesTask`) reads the
+policies per run, so an edit applies on the next sweep with no deploy. Seeded server-side via
+`getAllRevivalPolicies` (`revival-service`) in the same `page.tsx` `Promise.all`; rendered only
+for `isPrivileged` and only when policies exist. Full module contract: `../modules/revival.md`.
 
 ## 5. States
 

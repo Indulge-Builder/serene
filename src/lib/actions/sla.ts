@@ -579,33 +579,27 @@ export async function fireSlaBreachHandler(
     // ─ Auto-task (policy-gated, agent rules only) ─────────────────────────
     const taskTitle = SLA_AUTO_TASK_TITLES[ruleCode as keyof typeof SLA_AUTO_TASK_TITLES];
     if (policy.auto_task && taskTitle) {
-      // Check for existing open gia_followup task for this lead + agent
+      // Check for existing open lead follow-up task for this lead + agent
       const existingTask = await getOpenGiaFollowupTask(leadId, assignedTo);
       if (!existingTask) {
-        // Create auto-task — mirrors nurturing side-effect pattern in updateLeadStatus
-        const { data: newTask } = await admin
-          .from('tasks')
-          .insert({
-            assigned_to:   assignedTo,
-            created_by:    assignedTo, // system-generated; use agent as owner
-            module:        'gia',
-            task_type:     'other',
-            title:         taskTitle,
-            description:   `SLA rule ${ruleCode} — ${ruleDesc}`,
-            status:        'to_do',
-            priority:      ruleCode === 'SLA-01A' ? 'urgent' : 'high',
-            task_category: 'gia_followup',
-            due_at:        null,
-          } as const)
-          .select('id')
-          .single();
+        // Atomic two-INSERT via the canonical RPC (tasks + task_gia_meta) —
+        // tasks only ever via create_lead_gia_task (Phase 2 reuse directive).
+        // Mirrors runCadenceTick; closes the orphan hole the prior split-insert left.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: rpcError } = await (admin as any).rpc('create_lead_gia_task', {
+          p_lead_id:     leadId,
+          p_assigned_to: assignedTo,
+          p_created_by:  assignedTo, // system-generated; use agent as owner
+          p_task_type:   'other',
+          p_title:       taskTitle,
+          p_description: `SLA rule ${ruleCode} — ${ruleDesc}`,
+          p_priority:    ruleCode === 'SLA-01A' ? 'urgent' : 'high',
+          p_due_at:      null,
+        });
 
-        if (newTask) {
-          await admin.from('task_gia_meta').insert({
-            task_id:      newTask.id as string,
-            lead_id:      leadId,
-            call_outcome: null,
-          });
+        if (rpcError) {
+          console.error(`[sla] auto-task creation failed: lead=${leadId} rule=${ruleCode}`, rpcError);
+          // Non-fatal — the breach notification already fired; do not crash the handler.
         }
       }
     }

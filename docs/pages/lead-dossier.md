@@ -177,11 +177,11 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 #### 7j. LeadTasksAsync + LeadTasksCard + CreateLeadTaskModal
 
-**Fetch:** `getAllLeadTasks(leadId)` in `tasks-service.ts` — `task_category = 'gia_followup'`, inner join `task_gia_meta`, sort active before terminal in JS.
+**Fetch:** `getAllLeadTasks(leadId)` in `tasks-service.ts` — a lead's tasks are detected via the `task_gia_meta` link (inner join `task_gia_meta`, **not** a category check), sort active before terminal in JS. (`task_gia_meta` is the task→lead link; its presence IFF the task is a lead follow-up — `module = 'gia'` — so the inner join is what scopes the card to this lead.)
 
 **Task types (CreateLeadTaskModal / `TASK_TYPE_LABELS`):** `call` → "Call", `whatsapp_message` → "WhatsApp", `other` → "Other".
 
-**Action:** `createLeadTaskAction` → RPC `create_lead_gia_task`; `revalidatePath(/leads/${slug ?? id})`; optional `scheduleTaskReminder`.
+**Action:** `createLeadTaskAction` → RPC `create_lead_gia_task` — atomically writes a **personal** task (`task_category = 'personal'`, `module = 'gia'`) **plus** its `task_gia_meta` row (the task→lead link) together; `create_lead_gia_task` is the sole writer of both. The card's behaviour is otherwise unchanged: it shows only this lead's tasks and creates tasks for this lead. The card title may still read "Gia Tasks" in the UI — the underlying model is a personal task + meta row, not a former `'gia_followup'` category. `revalidatePath(/leads/${slug ?? id})`; optional `scheduleTaskReminder`.
 
 **Overdue due date colour:** `var(--color-danger)` when overdue; else `var(--theme-text-tertiary)`.
 

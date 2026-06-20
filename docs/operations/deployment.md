@@ -2,7 +2,7 @@
 
 > **Purpose:** how Serene is built and deployed — providers, build commands, runtime constraints.
 > **Audience:** engineers/ops. · **Source-of-truth scope:** deployment topology and commands. Env vars: `environments.md`.
-> **Last verified:** 2026-06-11 against `package.json`, `trigger.config.ts`, route `maxDuration` exports.
+> **Last verified:** 2026-06-20 against `package.json`, `trigger.config.ts`, `src/trigger/` (five files), route `maxDuration` exports.
 
 ---
 
@@ -13,7 +13,7 @@
 | **Vercel** | hosts the Next.js 16 app (RSC + Server Actions + the two webhook routes) | lambdas freeze on response flush — the A-16 `after()` contract exists because of this |
 | **Supabase** | Postgres 17 + Auth + Realtime + Storage | migrations applied via Supabase CLI from `supabase/migrations/` |
 | **Upstash** | Redis (REST) | `../integrations/upstash-redis.md` |
-| **Trigger.dev** | delayed jobs (SLA timers, task reminders) | project `proj_xfyyvwjmrumreyvawcwg`; `../integrations/trigger-dev.md` |
+| **Trigger.dev** | delayed jobs + scheduled cron tasks (SLA timers, task reminders, daily lead-revival sweep, usage rollup/snapshot) | project `proj_xfyyvwjmrumreyvawcwg`; `../integrations/trigger-dev.md` |
 | **Gupshup** | WhatsApp BSP | `../integrations/whatsapp-gupshup.md` |
 | **Pabbly** | webhook middleware for Meta/Google/website lead forms | `../integrations/lead-ingestion.md` |
 

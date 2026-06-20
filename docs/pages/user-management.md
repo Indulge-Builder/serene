@@ -368,6 +368,7 @@ Migration: `supabase/migrations/20260526000002_agent_routing_config.sql`.
 | `is_active` | `boolean` | NO | `true` | On-duty / round-robin pool switch |
 | `shift_start` | `time` | YES | — | Advisory |
 | `shift_end` | `time` | YES | — | Advisory |
+| `shift_days` | `integer[]` | YES | `NULL` | JS day-of-week array (0=Sun…6=Sat); `NULL` = inherit global `BUSINESS_HOURS`. Migration `20260602000059_agent_shift_days.sql` (0059). Full routing-config schema: `settings.md` §3 |
 | `updated_at` | `timestamptz` | NO | `now()` | `update_updated_at()` trigger |
 
 **Indexes:** `idx_agent_routing_config_agent_id`; `idx_agent_routing_config_active` on `(is_active) WHERE is_active = true`.

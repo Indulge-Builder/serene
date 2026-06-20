@@ -66,7 +66,7 @@ None recorded.
 | Surface | Route / context | Component |
 | --- | --- | --- |
 | Lead dossier | `/leads/[id]` | `CampaignVideoModal` |
-| Campaign detail | `/campaigns/[id]` | `CampaignAdCard` |
+| Campaign detail | `/campaigns/[id]` | `CampaignAdPanel` (left column; inline upload via `AdCreativeFormModal` for admin/founder) |
 | Campaign list | `/campaigns` | `CampaignPreviewModal` (via `CampaignCard`) |
 
 **Access gate — admin page:** `page.tsx` calls `getCurrentProfile()`; missing profile → `/login`; role not `admin` or `founder` → `/dashboard`.

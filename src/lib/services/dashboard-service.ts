@@ -104,7 +104,7 @@ export async function getAgentTasksSummary(agentId: string): Promise<import('@/l
     .order('due_at', { ascending: true, nullsFirst: false })
     .limit(30);
 
-  type TaskCategory = 'personal' | 'group_subtask' | 'gia_followup';
+  type TaskCategory = 'personal' | 'group_subtask';
   type Priority     = 'urgent' | 'high' | 'normal';
   type Status       = 'to_do' | 'in_progress' | 'in_review';
 
@@ -115,8 +115,13 @@ export async function getAgentTasksSummary(agentId: string): Promise<import('@/l
       const group    = Array.isArray(row.task_groups) ? row.task_groups[0] : row.task_groups;
       const lead     = meta?.lead as { first_name: string; last_name: string | null } | null;
 
+      // A task_gia_meta row exists IFF the task is a lead follow-up (single-writer
+      // invariant) — meta-presence is the lead-task signal, replacing the retired
+      // task_category='gia_followup' check (a lead task is now category 'personal').
+      const isLeadTask = meta != null;
+
       let contextLabel: string | null = null;
-      if (category === 'gia_followup' && lead) {
+      if (isLeadTask && lead) {
         contextLabel = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
       } else if (category === 'group_subtask' && group) {
         contextLabel = (group as { title: string }).title;
@@ -132,7 +137,7 @@ export async function getAgentTasksSummary(agentId: string): Promise<import('@/l
         due_at:        row.due_at,
         is_overdue:    !!row.due_at && row.due_at < now,
         context_label: contextLabel,
-        lead_id:       category === 'gia_followup' ? ((meta?.lead_id as string) ?? null) : null,
+        lead_id:       isLeadTask ? ((meta?.lead_id as string) ?? null) : null,
       };
     })
     .sort((a, b) => {

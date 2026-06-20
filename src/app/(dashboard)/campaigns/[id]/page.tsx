@@ -8,14 +8,16 @@ import {
   getCampaignAgentDistribution,
 } from '@/lib/services/leads-service';
 import { getAdCreativesForCampaign } from '@/lib/services/ad-creatives-service';
-import { beautifyCampaignTitle } from '@/lib/utils/campaigns';
+import { getBudgetSummary } from '@/lib/services/ad-spend-service';
+import { beautifyCampaignTitle, normalizeCampaignKey } from '@/lib/utils/campaigns';
+import { resolveDateRangePreset } from '@/lib/constants/date-range-presets';
 import type { LeadFilters, CampaignDetailMetrics, AgentDistributionRow } from '@/lib/types/database';
 import { LeadsTable } from '@/components/leads/LeadsTable';
 import { LeadsPagination } from '@/components/leads/LeadsPagination';
 import { LeadsTableSkeleton } from '@/components/leads/LeadsTableSkeleton';
 import { CampaignMetricsStrip } from '@/components/campaigns/CampaignMetricsStrip';
 import { CampaignMetricsStripSkeleton } from '@/components/campaigns/CampaignMetricsStripSkeleton';
-import { CampaignAdCard } from '@/components/campaigns/CampaignAdCard';
+import { CampaignAdPanel } from '@/components/campaigns/CampaignAdPanel';
 import { BackButton } from '@/components/ui/BackButton';
 
 // ─────────────────────────────────────────────
@@ -28,22 +30,34 @@ async function CampaignMetricsAsync({
   dateTo,
 }: {
   campaignName: string;
-  dateFrom:     string | null;
-  dateTo:       string | null;
+  dateFrom:     string;
+  dateTo:       string;
 }) {
-  // All fetches run in parallel — never sequential awaits
-  const [metrics, distribution] = await Promise.all([
+  // All fetches run in parallel — never sequential awaits. Spend reuses the
+  // SAME getBudgetSummary source as the /campaigns list cards (R-01 — no new
+  // query, no new RPC) and the IDENTICAL date_from/date_to that drive the
+  // metrics RPC, so spend and lead counts always describe the same window.
+  const [metrics, distribution, spendRows] = await Promise.all([
     getCampaignDetailMetrics(campaignName, { date_from: dateFrom, date_to: dateTo }),
     getCampaignAgentDistribution(campaignName, { date_from: dateFrom, date_to: dateTo }),
+    getBudgetSummary(dateFrom, dateTo),
   ]);
 
   // Campaign not found or no leads — render nothing (table empty state covers it)
   if (!metrics) return null;
 
+  // Spend matched on the normalised campaign key — the same toLowerCase().trim()
+  // invariant the ad_spend_daily.campaign_key column and the list-page map use.
+  // null when no spend row exists for this campaign/window → the tile shows "—".
+  const spend = spendRows.find(
+    (r) => r.campaignKey === normalizeCampaignKey(campaignName),
+  );
+
   return (
     <CampaignMetricsStrip
       metrics={metrics as CampaignDetailMetrics}
       distribution={distribution as AgentDistributionRow[]}
+      totalSpend={spend ? spend.totalSpend : null}
     />
   );
 }
@@ -108,11 +122,17 @@ export default async function CampaignDetailPage({
 
   const { id } = await params;
 
-  // Decode: spaces were encoded as '+' by CampaignCard (no encodeURIComponent).
-  // Exact inverse: replace every '+' with a space.
-  // Also handle '%2B' defensively — a browser address-bar paste or external
-  // link may have URL-encoded the '+' once more.
-  const campaignName = id.replace(/%2B/gi, ' ').replace(/\+/g, ' ');
+  // Decode the campaign key. CampaignCard encodes with encodeURIComponent, so
+  // the lossless inverse is decodeURIComponent — it round-trips a literal '+'
+  // (Meta "Advantage+" campaigns), '/', and spaces, all of which appear in real
+  // utm_campaign keys. Falls back to the raw param if a hand-typed URL is not
+  // valid percent-encoding (decodeURIComponent throws on a stray '%').
+  let campaignName: string;
+  try {
+    campaignName = decodeURIComponent(id);
+  } catch {
+    campaignName = id;
+  }
 
   // Display-only beautified title via shared utility.
   // campaignName is used for all DB lookups — never campaignTitle.
@@ -126,9 +146,19 @@ export default async function CampaignDetailPage({
     return typeof val === 'string' ? val : Array.isArray(val) ? (val[0] ?? null) : null;
   }
 
-  const dateFrom = getString('date_from');
-  const dateTo   = getString('date_to');
-  const page     = Math.max(1, parseInt(getString('page') ?? '1', 10) || 1);
+  const urlFrom = getString('date_from');
+  const urlTo   = getString('date_to');
+  const page    = Math.max(1, parseInt(getString('page') ?? '1', 10) || 1);
+
+  // Effective window. The detail page defaults to "This Month" (the same preset
+  // the Range filter offers) so Amount Spent always shows a real figure and the
+  // metrics/leads/spend all describe one window. A picked range (both bounds)
+  // overrides it; a half-set range falls back to the default so the three reads
+  // never diverge. resolveDateRangePreset is the shared IST-anchored resolver —
+  // never re-fork the month-boundary math here.
+  const thisMonth = resolveDateRangePreset('this_month');
+  const dateFrom  = urlFrom && urlTo ? urlFrom : thisMonth.from;
+  const dateTo    = urlFrom && urlTo ? urlTo   : thisMonth.to;
 
   // campaignName is used identically in both the metrics RPC and the leads query
   // so the metrics and table rows are always for the same set.
@@ -153,6 +183,11 @@ export default async function CampaignDetailPage({
   // A campaign may have multiple ad videos — fetch them all (newest first).
   const adCreatives = await getAdCreativesForCampaign(campaignName);
 
+  // Inline ad-creative upload is admin/founder only — the same gate
+  // upsertAdCreative enforces server-side (managers can view this page but
+  // never see the add-a-video affordance).
+  const canUpload = profile.role === 'admin' || profile.role === 'founder';
+
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
       {/* Page header — back button + Playfair title */}
@@ -171,17 +206,30 @@ export default async function CampaignDetailPage({
         </h1>
       </div>
 
-      {/* Ad creative card — between header and metrics; null when no creatives */}
-      <CampaignAdCard adCreatives={adCreatives} />
-
-      {/* Metrics strip — own Suspense boundary, streams independently of the table */}
-      <Suspense fallback={<CampaignMetricsStripSkeleton />}>
-        <CampaignMetricsAsync
-          campaignName={campaignName}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
+      {/* Video + metrics row — ad video on the left, the 8 score tiles (2×4) on
+          the right. The video panel renders immediately (creatives awaited
+          up-front); the metrics stream into the right column via Suspense, so a
+          slow RPC never delays the video. Stacks to one column below lg. */}
+      <div
+        className="grid grid-cols-1 lg:grid-cols-[320px_1fr]"
+        style={{ gap: 'var(--space-6)', marginBottom: 'var(--space-6)', alignItems: 'start' }}
+      >
+        {/* Left — ad video (or the add-a-video tile when empty) */}
+        <CampaignAdPanel
+          adCreatives={adCreatives}
+          campaignKey={normalizeCampaignKey(campaignName)}
+          canUpload={canUpload}
         />
-      </Suspense>
+
+        {/* Right — metrics strip, own Suspense boundary */}
+        <Suspense fallback={<CampaignMetricsStripSkeleton />}>
+          <CampaignMetricsAsync
+            campaignName={campaignName}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+          />
+        </Suspense>
+      </div>
 
       {/* Leads table — own Suspense boundary */}
       <Suspense fallback={<LeadsTableSkeleton />}>

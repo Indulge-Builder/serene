@@ -1,8 +1,8 @@
 # WhatsApp / Gupshup
 
-> **Purpose:** the WhatsApp integration — Gupshup configuration, the inbound webhook contract, the inbound-message pipeline (incl. WhatsApp-origin lead creation), the five outbound templates, the `notifyLeadAssigned` orchestrator, and the notification log.
+> **Purpose:** the WhatsApp integration — Gupshup configuration, the inbound webhook contract, the inbound-message pipeline (incl. WhatsApp-origin lead creation), the seven outbound templates, the `notifyLeadAssigned` orchestrator, and the notification log.
 > **Audience:** engineers. · **Source-of-truth scope:** everything between Serene and Gupshup/Meta. The `/whatsapp` page UI lives in `../pages/whatsapp.md`; the WhatsApp tables in `../architecture/database.md`; form-lead ingestion in `lead-ingestion.md`.
-> **Last verified:** 2026-06-11 against `src/app/api/webhooks/whatsapp/route.ts`, `src/lib/services/whatsapp-api.ts`, `whatsapp-ingestion.ts`, `lead-assignment-notify.ts`, `src/lib/constants/whatsapp.ts`.
+> **Last verified:** 2026-06-20 against `src/app/api/webhooks/whatsapp/route.ts`, `src/lib/services/whatsapp-api.ts`, `whatsapp-ingestion.ts`, `lead-assignment-notify.ts`, `src/lib/constants/whatsapp.ts`, `src/lib/services/elaya-whatsapp.ts`.
 
 ---
 
@@ -53,6 +53,23 @@ non-JSON body is trusted as delivered. Delivered = `res.ok` AND body not `status
   dormant.
 - The route is excluded from the Next.js proxy session refresh (see
   `../architecture/auth-and-rbac.md` §7).
+
+### Elaya staff routing gate — runs BEFORE the lead pipeline (both branches)
+
+Every inbound `message` event (the active Gupshup branch **and** the dormant Meta branch) first
+calls `tryHandleElayaWhatsAppMessage(phone, message)` (`src/lib/services/elaya-whatsapp.ts`)
+**before** `processInboundMessage`. The sender number is matched (via the shared `normalizeWaPhone`)
+against active `profiles`:
+
+- **Known staff number → Elaya staff channel.** The gate runs Elaya's full brain turn to
+  completion inside the route's existing `after()` (cap/session/tools — same brain, cap, and 24h
+  session as in-app), sends one reply via `sendElayaWhatsAppReply` (`elaya_reply` audit row,
+  migration 0117), and returns `true`. A staff message **never enters the lead pipeline** — it
+  writes only `elaya_messages`, never `leads`/`whatsapp_conversations`/`whatsapp_messages`. Once a
+  profile matches, the gate returns `true` on every path including failures, so a staff message can
+  never fall through and mint a lead.
+- **Unknown number → falls through.** The gate returns `false` and the lead pipeline
+  (`processInboundMessage`) runs byte-identical to before — only an unknown number reaches it.
 
 ### `processInboundMessage()` — the 9-step pipeline (`whatsapp-ingestion.ts`)
 

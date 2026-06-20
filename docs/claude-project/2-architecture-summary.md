@@ -1,6 +1,6 @@
 # Serene — Architecture Summary (Claude Project digest)
 
-> Generated digest of `docs/architecture/*` and `docs/integrations/*` — 2026-06-15.
+> Generated digest of `docs/architecture/*` and `docs/integrations/*` — 2026-06-20.
 > Source of truth is the repo docs; regenerate when they change.
 
 ## Tech stack (final — never propose alternatives)
@@ -21,7 +21,7 @@ Big lists paginate server-side.
 Meta/Pabbly lead webhooks and Gupshup WhatsApp webhooks POST into Vercel (Next.js). Browser
 agents hit RSC pages + Server Actions. Behind Vercel: Supabase (source of truth + Auth +
 Realtime + Storage), Upstash Redis (read cache only), Trigger.dev (SLA timers, task
-reminders, daily lead-revival sweep), Gupshup API (outbound WhatsApp, always inside
+reminders, daily lead-revival sweep, usage snapshot/rollup), Gupshup API (outbound WhatsApp, always inside
 `after()`), the Elaya LLM provider (Anthropic adapter — chat + the `routing`/Haiku note-AI
 gate), Deepgram (inbound voice transcription, in-memory), and Web Push/VAPID (outbound push).
 
@@ -85,7 +85,10 @@ Enums: `user_role`, `app_domain`. Other "enums" are text + CHECK, mirrored in
 | Notifications | `notifications` (typed CHECK; `action_url` relative-only; Realtime → bell badge) · `push_subscriptions` 0120 (one row per device; owner-only RLS, **no UPDATE policy**; cross-user read + 404/410 dead-endpoint prune run service-role) |
 | Call Intelligence | `service_cases` + `conversation_hooks` 0110 (RLS all-auth read / admin+founder write; weighted FTS; dormant `embedding vector(1536)`, no HNSW yet) — power `/helpdesk` + the dossier `ServiceInterestCard`; helpdesk library is a Redis 1hr `{cases,hooks}` envelope, filtering is client-side |
 | SLA / Revival | `sla_policies` 0111 (the SLA rules, formerly hard-coded `SLA_RULES` constants; seeded with the 8 live rules + cadence (CAD) + task-due (TASK) families) · `revival_policies` 0119 (per-status silence thresholds + daily cap) · `revival_candidates` 0119 (`open→actioned\|dismissed` ledger; never mutates the leads row) |
-| AI / Elaya | `elaya_conversations` + `elaya_messages` 0116 (append-only message inserts; one active session per user across channels) · `user_context` 0116 (per-user memory) · `elaya_actions` 0118 (write-proposal state-machine ledger `proposed→executed\|failed\|dismissed`; before/after snapshots) · `llm_providers` + `elaya_settings` 0116 (provider config + PII depth; read per turn, never module-cached) |
+| Usage | `usage_heartbeats` + `usage_daily` 0126 (presence/adoption tracking; 1-min `usage-snapshot.ts` → heartbeats, 15-min + nightly `usage-rollup.ts` → daily; power `/admin/usage` via `get_agent_usage`) |
+| Notifications (prefs) | `notification_preferences` 0133 (per-user × category channel mutes; `in_app`/`whatsapp` booleans DEFAULT true — **absence = ON, fails OPEN**; the gate for `createNotification`'s `notificationKey` seam + the broadcast wrappers) |
+| Suggestions | `suggestions` 0134 (staff suggestion/bug triage) + the **private** `suggestions` Storage bucket 0135 (screenshots may contain sensitive screens — no public read; the row stores paths, never URLs); `notifications.type` gains `suggestion_resolved` 0136 |
+| AI / Elaya | `elaya_conversations` + `elaya_messages` 0116 (append-only message inserts; one active session per user across channels) · `user_context` 0116 (per-user memory) · `elaya_actions` 0118 (write-proposal state-machine ledger `proposed→executed\|failed\|dismissed`; before/after snapshots — backs the **9 write tools**: 4 lead writes (`add_lead_note`/`create_lead_task` inline; `update_lead_status`/`reassign_lead` propose-only) wrapping `lead-mutations.ts`, + 5 task writes (`create_personal_task`/`create_group_task`/`update_task_status`/`update_task` inline; `delete_task` propose-only) wrapping `task-mutations.ts` — the shared task-write substrate, the twin of `lead-mutations.ts`) · `llm_providers` + `elaya_settings` 0116 (provider config + PII depth; read per turn, never module-cached) |
 
 Storage buckets: `avatars` (public read, own-row write), `ad-creatives` (public read,
 admin/founder write). ~38 SECURITY DEFINER RPCs; load-bearing ones include
@@ -145,12 +148,16 @@ admin/founder write). ~38 SECURITY DEFINER RPCs; load-bearing ones include
   Edge); iOS delivers only inside the installed PWA (standalone), else `usePushSubscription`
   reports `ios-needs-install`. `sw.js` gained `push` + `notificationclick` handlers.
 - **Trigger.dev** (async > 3s or needing retry/delay; sub-3s post-response work uses
-  `after()`): three job families — lead SLA timers (`lead-sla.ts`; idempotency key
+  `after()`): five task files / four job families — lead SLA timers (`lead-sla.ts`; idempotency key
   `lead-sla-${leadId}-${ruleCode}`, tag-based cancellation, stale-fire guard re-reads the
-  lead), task due reminders (`task-reminders.ts`; cancel-before-delete contract), and the
+  lead), task due reminders (`task-reminders.ts`; cancel-before-delete contract), the
   daily **lead-revival sweep** (`lead-revival.ts`; the project's first `schedules.task`/cron,
-  `0 2 * * *` Asia/Kolkata = 07:30 IST). SLA actions run sessionless via admin client (the
-  documented `requireProfile` exception).
+  `0 2 * * *` Asia/Calcutta = 07:30 IST), and **usage tracking** (migration 0126, powering
+  `/admin/usage`): `usage-snapshot.ts` (`snapshotUsagePresenceTask`, 1-min cron `* * * * *` →
+  `usage_heartbeats`) + `usage-rollup.ts` (`rollupUsageTodayTask` 15-min cron `*/15 * * * *` +
+  `rollupUsageNightlyTask` prior-day + `pruneOldHeartbeats` → `usage_daily`). Cron timezone in
+  code is `Asia/Calcutta` (Trigger.dev rejects the `Asia/Kolkata` alias; same UTC+5:30). SLA
+  actions run sessionless via admin client (the documented `requireProfile` exception).
 - **Lead revival** (R1, 0119): the sweep reads `revival_policies`, finds silent leads with no
   open candidate, runs a note-AI **3-verdict gate** (revive/dismiss/unsure — reuses the Elaya
   `routing`/Haiku provider + `maskPii`, no tools, **fails closed to unsure**). Confident revive

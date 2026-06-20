@@ -32,6 +32,7 @@ import {
   getLeadBySlugForElaya,
   getLeadNotesFullForElaya,
 } from '@/lib/services/leads-service';
+import { getGoingColdLeads } from '@/lib/services/sla-service';
 import { getDealsByRole } from '@/lib/services/deals-service';
 import { getGiaTasksForUser, getPersonalTasks, getGroupTasks } from '@/lib/services/tasks-service';
 import {
@@ -41,6 +42,7 @@ import {
 } from '@/lib/services/performance-service';
 import { getCasesForLead, getHooksForCategories, getHelpdeskLibrary } from '@/lib/services/intelligence-service';
 import { LEAD_STATUSES } from '@/lib/constants/lead-statuses';
+import { COLD_LEAD_THRESHOLD_DAYS } from '@/lib/constants/leads';
 import { DEAL_TYPE_ENUM, DEAL_CATEGORY_ENUM } from '@/lib/constants/deal-types';
 import { DEFAULT_GIA_DOMAIN, isGiaDomain } from '@/lib/constants/domains';
 import type { UserRole } from '@/lib/types';
@@ -57,6 +59,7 @@ const PERIODS = ['today', 'this_week', 'this_month', 'last_month'] as const;
 
 export type ElayaReadToolName =
   | 'search_leads'
+  | 'get_cold_leads'
   | 'get_lead_details'
   | 'get_my_tasks'
   | 'search_deals'
@@ -150,6 +153,43 @@ const searchLeads: ElayaTool = {
         createdAt: l.created_at,
         assignee: l.assignee?.full_name ?? null,
         latestNote: l.latest_note?.content ?? null,
+      })),
+    };
+  },
+};
+
+const getColdLeads: ElayaTool = {
+  name: 'get_cold_leads',
+  description:
+    'List the user’s leads that are going cold — non-terminal leads (not won/lost/junk) with no ' +
+    `activity for over ${COLD_LEAD_THRESHOLD_DAYS} days, coldest first. ` +
+    'Call this when the user asks which of their leads are going cold, stale, dormant, or need ' +
+    'attention. This is the SAME definition as the /leads going-cold view — do NOT improvise it ' +
+    'from search_leads (which has no recency filter).',
+  schema: z.object({}),
+  jsonSchema: { type: 'object', properties: {}, additionalProperties: false },
+  run: async (principal) => {
+    // Identity-derived scope (the per-caller contract — mirrors searchLeadsForElaya
+    // and canAccessLead): agent → own assigned leads only; manager → own domain;
+    // admin/founder → all domains. The model supplies NO scope (empty schema).
+    const scope =
+      principal.role === 'agent'
+        ? { assignedTo: principal.userId }
+        : principal.role === 'manager'
+          ? { domain: principal.domain }
+          : {}; // admin / founder — all domains
+    const cold = await getGoingColdLeads(scope);
+    return {
+      thresholdDays: COLD_LEAD_THRESHOLD_DAYS,
+      totalCount: cold.length,
+      leads: cold.map((l) => ({
+        name: l.name,
+        slug: l.slug,
+        status: l.status,
+        phone: l.phone,
+        domain: l.domain,
+        assignee: l.assigneeName,
+        lastActivityAt: l.lastActivityAt,
       })),
     };
   },
@@ -399,6 +439,7 @@ const getHelpdeskContent: ElayaTool = {
 
 const ALL_TOOLS = [
   searchLeads,
+  getColdLeads,
   getLeadDetails,
   getMyTasks,
   searchDeals,

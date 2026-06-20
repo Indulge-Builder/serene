@@ -15,7 +15,7 @@ tasks/page.tsx          ← thin orchestrator (session read + URL parse only —
 
 **SSR hoists (perf — 2026-06-01, single-wave 2026-06-11):** `TasksAsync` fetches `initialAgents` (from `getAssignableUsers()` in profiles-service), `initialTags` (from `getPersonalTaskTags` — **personal tab only**, perf audit E-2), and the active tab's data in ONE `Promise.all` (perf audit E-1) — never re-split into sequential waves. These are passed as props to `TasksShell`, then threaded to `GroupTasksTab` and `MyTasksCalendarView`. Neither component calls `getAssignableUsersAction` or `getPersonalTaskTagsAction` on mount — the SSR data is always present. The `onTagsMayHaveChanged` callback in `TasksShell` still calls `getPersonalTaskTagsAction` for post-create tag refresh, which is correct — that is a user-triggered update, not a mount fetch.
 
-**`personalTagItems` re-seed effect (required by E-2):** `TasksShell` never remounts on tab switches (per-tab filter state must survive), so its mount-time `useState(initialTags)` seed alone would freeze the tag filter at `[]` for a user who lands on gia/group and switches to My Tasks. A `useEffect` re-seeds `personalTagItems` from the `initialTags` prop whenever `initialTab === 'personal'`. Do not remove it, and do not widen the tags fetch back to all tabs to "fix" stale tags — the effect is the fix.
+**`personalTagItems` re-seed effect (required by E-2):** `TasksShell` never remounts on tab switches (per-tab filter state must survive), so its mount-time `useState(initialTags)` seed alone would freeze the tag filter at `[]` for a user who lands on group and switches to My Tasks. A `useEffect` re-seeds `personalTagItems` from the `initialTags` prop whenever `initialTab === 'personal'`. Do not remove it, and do not widen the tags fetch back to all tabs to "fix" stale tags — the effect is the fix.
 
 **`TasksSkeleton.tsx`:** `<Suspense>` fallback. Two variants: `personal` (3 priority sections × 5 task rows) and `group` (4 group cards). Stagger delays: 0/80/160/240/320ms per §11.4. Uses `var(--theme-paper-subtle)` for shimmer — never hardcoded colours.
 
@@ -34,7 +34,7 @@ tasks/page.tsx          ← thin orchestrator (session read + URL parse only —
 
 The legacy `PersonalTasksTab` (deleted 2026-06-11, design-audit Phase 3) used a lazy-loaded COMPLETED accordion — do not recreate that pattern in `MyTasksCalendarView`.
 
-## Redis cache-aside — active on 3 tab-load functions (2026-06-02)
+## Redis cache-aside — active on 3 task-load functions (2026-06-02)
 
 All keys use the `task:` namespace defined in `src/lib/constants/redis-keys.ts`.
 
@@ -48,7 +48,7 @@ All keys use the `task:` namespace defined in `src/lib/constants/redis-keys.ts`.
 
 - `getGroupTasks` caches only when `filters.status` and `filters.priority` are both empty/undefined. Filtered calls bypass Redis entirely (too many combinations).
 - `getPersonalTasks` caches only page 1 — defined as: `cursor === null` AND no status/priority/tag filters AND no `due_before`. Pages 2+ bypass Redis entirely.
-- `getGiaTasksForUser` caches every call — it has no cursor pagination. The key includes all three scoping dimensions (userId, role, domain).
+- `getGiaTasksForUser` caches every call — it has no cursor pagination. The key includes all three scoping dimensions (userId, role, domain). **No Gia tab consumes this** — its consumers are now Elaya's read tool (`tools/registry.ts`) and the lead-dossier reader path. The Tasks page no longer reads it.
 - All cache operations are non-fatal — a Redis error falls through to the RPC, never blocks.
 
 **Invalidation table:**
@@ -64,7 +64,7 @@ All keys use the `task:` namespace defined in `src/lib/constants/redis-keys.ts`.
 | `updateTaskAction` (group subtask) | `task:subtasks:{group_id}:{callerUserId}` |
 | `deleteTaskAction` (group subtask) | `task:subtasks:{group_id}:{callerUserId}` |
 
-Note: Gia task list (`task:gia:*`) has no explicit invalidation — TTL-only (60s). Creating a Gia task goes through `createLeadTaskAction` in `leads.ts`, which does not currently del this key. New Gia tasks appear within 60s.
+Note: the lead-task list (`task:gia:*`) is invalidated on **meta-presence** — `updateTaskStatusCore` / `deleteTaskCore` del it when the touched task is a lead follow-up (`personal` + a `task_gia_meta` row; detected via meta-presence / `module='gia'`, never a category check), plus TTL-only (60s) as the backstop. Creating a lead task goes through `createLeadTaskAction` in `leads.ts` (→ `create_lead_gia_task` RPC). New lead tasks appear within 60s.
 
 ## getGroupTasks cache
 
@@ -105,49 +105,30 @@ tasks/[id]/page.tsx          ← thin orchestrator (session read + params only �
 
 ---
 
-## Gia Tasks tab — domain-aware logic (updated 2026-06-05)
+## Lead follow-up tasks — no tab (gia category collapsed, 2026-06-17)
 
-`page.tsx` computes `isGiaDomain = GIA_DOMAINS.includes(profile.domain)`.
+**There is no Gia tab.** A lead follow-up is a `personal` task that carries a `task_gia_meta` row (the meta table IS the task→lead link; `module='gia'` iff a meta row exists). It shows up in **My Tasks** like any other personal task — there is no separate surface for it. The lead dossier card (`LeadTasksCard`) owns lead-task creation via `createLeadTaskAction → create_lead_gia_task` RPC. `page.tsx` resolves `validTabs = ['personal', 'group']` always; `?tab=gia` falls back to `'personal'` server-side (no error, no blank page).
 
-- **Gia domain (any role):** `validTabs = ['gia', 'personal', 'group']` — Gia tab is the default.
-- **Non-Gia:** `validTabs = ['personal', 'group']` — Gia tab never rendered or reachable.
+The components `GiaTasksTab` / `GiaTaskRow` / `GiaDaySection` / `CreateGiaTaskModal` are **DELETED** — never recreate them.
 
-All roles (agent, manager, admin, founder) now get the Group Tasks tab — the old
-`profile.role === 'agent'` exclusion was removed in migration 0058.
+**`get_gia_tasks` RPC + `getGiaTasksForUser` are KEPT** (not a tab):
 
-`?tab=gia` for a non-Gia caller resolves to `validTabs[0]` server-side — no error, no blank page.
-
-**Gia tab data path:**
-
-```text
-page.tsx   ← getGiaTasksForUser not called here (thin orchestrator)
-  └─ <Suspense fallback={<TasksSkeleton tab="gia" />}>
-       └─ TasksAsync   ← calls getGiaTasksForUser(userId, role, domain) when tab === 'gia'
-            └─ TasksShell  ← renders GiaTasksTab with giaTasks prop
-                 └─ GiaTasksTab  ← date-groups tasks, renders GiaTaskRow items
-```
-
-**`get_gia_tasks` RPC (migration 0055):**
-
-- `p_role = 'agent'` → `tasks.assigned_to = p_user_id`
-- Other roles → `leads.domain = p_domain`
-- `p_domain` cast to `app_domain` enum inside the function — no `42883` on `=` operator mismatch.
+- Consumed by **Elaya's read tool** (`tools/registry.ts`) and the **lead-dossier reader path**, not the Tasks page.
+- `p_role = 'agent'` → `tasks.assigned_to = p_user_id`; other roles → `leads.domain = p_domain` (cast to `app_domain` inside the function — no `42883` on the `=` operator).
 - Order: active tasks first, then `due_at ASC NULLS LAST, created_at ASC`.
 
-**`searchLeadsAction`** in `lib/actions/leads.ts`:
+**`searchLeadsAction`** in `lib/actions/leads.ts` (still live — feeds the dossier lead picker):
 
-- Calls `searchLeadsForTask` in `leads-service.ts`.
-- Scoped by caller role: agent → `assigned_to = userId`; manager → `domain`; admin/founder → all.
-- Returns max 8 results. Used by `CreateGiaTaskModal` lead picker (300ms debounce).
+- Calls `searchLeadsForTask` in `leads-service.ts`. Scoped by caller role: agent → `assigned_to = userId`; manager → `domain`; admin/founder → all. Returns max 8 results (300ms debounce).
 
-**`TaskTab` type** exported from `page.tsx`: `'gia' | 'personal' | 'group'`.
-All shell components (`TasksAsync`, `TasksShell`, `AddTaskButton`, `TasksSkeleton`) consume this type — do not widen or narrow it elsewhere.
+**`TaskTab` type** exported from `page.tsx`: `'personal' | 'group'`.
+All shell components (`TasksAsync`, `TasksShell`, `AddTaskButton`, `TasksSkeleton`) consume this type — do not widen it back to include `gia`.
 
 ---
 
 ## TasksShell — prop contract (updated 2026-06-01)
 
-`src/app/(dashboard)/tasks/TasksShell.tsx` — `'use client'`. Two tabs: personal / group / gia.
+`src/app/(dashboard)/tasks/TasksShell.tsx` — `'use client'`. Two tabs: personal / group.
 
 **Props added by perf-hoisting pass:**
 

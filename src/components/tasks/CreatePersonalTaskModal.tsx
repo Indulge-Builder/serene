@@ -189,7 +189,7 @@ export function CreatePersonalTaskModal({
         group_id:      null,
         task_category: 'personal',
         task_type:     'other',
-        module:        'gia',
+        module:        'core',
         completed_at:  null,
         overdue_at:    null,
         attachments:   [],

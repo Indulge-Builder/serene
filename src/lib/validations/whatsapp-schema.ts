@@ -75,16 +75,6 @@ export const SendMessageSchema = z.object({
 export type SendMessageInput = z.infer<typeof SendMessageSchema>;
 
 // ─────────────────────────────────────────────
-// Resolve conversation
-// ─────────────────────────────────────────────
-
-export const ResolveConversationSchema = z.object({
-  conversationId: z.string().uuid('Invalid conversation ID'),
-});
-
-export type ResolveConversationInput = z.infer<typeof ResolveConversationSchema>;
-
-// ─────────────────────────────────────────────
 // Conversation list period filter
 // ─────────────────────────────────────────────
 

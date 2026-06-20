@@ -146,8 +146,9 @@ export function AdSpendUploadModal({ open, onClose }: Props) {
             : fileName ?? "Choose a Meta export (.csv / .xlsx)"}
         </button>
 
-        {/* Multi-day exports ingest in one upload — a 30-day daily breakdown
-            lands as 30 day-grain rows, no need to split by day. */}
+        {/* Weekly cadence works today: a multi-day daily-breakdown export
+            uploads in one go (one row per day) and re-uploading is idempotent.
+            The only requirement is the Day time-breakdown — never a date range. */}
         <p
           style={{
             margin:     0,
@@ -157,8 +158,11 @@ export function AdSpendUploadModal({ open, onClose }: Props) {
             lineHeight: "var(--leading-snug)",
           }}
         >
-          A multi-day export (e.g. a 30-day daily breakdown) ingests in a single
-          upload — one day-grain row per day. No need to split it up.
+          Export with <strong style={{ color: "var(--theme-text-secondary)", fontWeight: "var(--weight-semibold)" }}>Breakdown → By time → Day</strong>{" "}
+          and pick any range — a week, a month, whatever cadence you run. The whole
+          range uploads in one go as one row per day, and re-uploading an
+          overlapping range is safe: matching days are updated in place, never
+          double-counted.
         </p>
 
         {/* Grain / parse error */}

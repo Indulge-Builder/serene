@@ -28,9 +28,16 @@ export async function DealsAsync({
   const hasActiveFilters =
     !!(filters.search || filters.domain || filters.deal_type || filters.agent_id || filters.date_from || filters.date_to);
 
+  // Effective domain for the summary strip's type-count cells:
+  //   admin/founder → filters.domain (their picked scope; null = all domains → both cells)
+  //   manager/agent → their own profile domain (always single-domain → one cell)
+  // resolveDomainParam returns null for manager/agent, so filters.domain alone
+  // would wrongly show both cells for a domain-pinned manager.
+  const summaryDomain = role === 'admin' || role === 'founder' ? filters.domain : domain;
+
   return (
     <>
-      <DealsSummaryStrip summary={summary} />
+      <DealsSummaryStrip summary={summary} domain={summaryDomain} />
 
       {deals.length === 0 ? (
         <div

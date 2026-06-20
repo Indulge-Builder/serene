@@ -1,3 +1,5 @@
+import type { LucideIcon } from 'lucide-react';
+import { Globe, UserRound, Home, ShoppingBag, Trees } from 'lucide-react';
 import type { AppDomain } from '@/lib/types/database';
 
 /**
@@ -60,6 +62,24 @@ export const DOMAIN_LABELS: Record<AppDomain, string> = {
   legacy:     'Indulge Legacy',
 };
 
+/**
+ * Per-Gia-domain glyph — the visual shorthand for each domain (the icon-only
+ * mobile domain selector renders the active domain's icon; the full menu shows
+ * it beside the label). Onboarding = a client (person), House = a house, Shop =
+ * a shopping bag, Legacy = a heritage/family tree (generations). The "All
+ * domains" scope falls back to ALL_DOMAINS_ICON (Globe). Only the four Gia
+ * domains carry an icon — the user-mgmt-only app_domains never appear here.
+ */
+export const DOMAIN_ICONS: Record<GiaDomain, LucideIcon> = {
+  onboarding: UserRound,
+  house:      Home,
+  shop:       ShoppingBag,
+  legacy:     Trees,
+};
+
+/** Fallback glyph for the unscoped "All domains" selection. */
+export const ALL_DOMAINS_ICON: LucideIcon = Globe;
+
 export function isGiaDomain(domain: string): domain is GiaDomain {
   return (GIA_DOMAINS as readonly string[]).includes(domain);
 }
@@ -68,6 +88,7 @@ export function isGiaDomain(domain: string): domain is GiaDomain {
 export const GIA_DOMAIN_FILTER_ITEMS = GIA_DOMAINS.map((d) => ({
   id:    d,
   label: DOMAIN_LABELS[d],
+  icon:  DOMAIN_ICONS[d],
 }));
 
 /** Parse a URL search param into a Gia domain, or null if missing/invalid */

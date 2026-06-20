@@ -1,5 +1,5 @@
-import type { Task, TaskStatus, TaskPriority, TaskType, AppDomain } from '@/lib/types/database';
-import type { TaskGroupRow, GiaTask } from '@/lib/services/tasks-service';
+import type { Task, TaskStatus, TaskPriority, AppDomain } from '@/lib/types/database';
+import type { TaskGroupRow } from '@/lib/services/tasks-service';
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_TYPES, TASK_TYPE_LABELS } from '@/lib/constants/task-types';
 import { TASK_PRIORITY } from '@/lib/constants/task-constants';
 
@@ -9,14 +9,6 @@ export type PersonalTaskFiltersState = {
   tags:       string[];
   statuses:   TaskStatus[];
   priorities: TaskPriority[];
-};
-
-/** Client-side filters for Gia Tasks tab */
-export type GiaTaskFiltersState = {
-  search:    string;
-  taskTypes: TaskType[];
-  dateFrom:  string; // ISO date string YYYY-MM-DD, '' = no lower bound
-  dateTo:    string; // ISO date string YYYY-MM-DD, '' = no upper bound
 };
 
 /** Client-side filters for Group Tasks list */
@@ -43,13 +35,6 @@ export function resolvePersonalTaskAssignee(
     ? { id: match.id, full_name: match.full_name, avatar_url: match.avatar_url }
     : undefined;
 }
-
-export const EMPTY_GIA_TASK_FILTERS: GiaTaskFiltersState = {
-  search:    '',
-  taskTypes: [],
-  dateFrom:  '',
-  dateTo:    '',
-};
 
 export const TASK_TYPE_FILTER_ITEMS = TASK_TYPES.map((t) => ({
   id:    t,
@@ -181,47 +166,4 @@ export function groupFiltersActiveCount(filters: GroupTaskFiltersState): number 
 
 export function domainsInGroupRows(rows: TaskGroupRow[]): AppDomain[] {
   return Array.from(new Set(rows.map((r) => r.domain as AppDomain)));
-}
-
-export function filterGiaTasks(
-  tasks: GiaTask[],
-  optimisticStatus: Record<string, TaskStatus>,
-  filters: GiaTaskFiltersState,
-): GiaTask[] {
-  return tasks.filter((task) => {
-    const effectiveStatus = optimisticStatus[task.id] ?? task.status;
-    // Always hide completed tasks from date sections (same rule as MyTasksCalendarView)
-    if (effectiveStatus === 'completed') return false;
-
-    if (filters.search.trim()) {
-      const leadName = [task.lead_first_name, task.lead_last_name].filter(Boolean).join(' ');
-      const haystack = `${leadName} ${task.title} ${task.description ?? ''}`;
-      if (!matchesSearch(haystack, filters.search)) return false;
-    }
-
-    if (filters.taskTypes.length > 0 && !filters.taskTypes.includes(task.task_type as TaskType)) {
-      return false;
-    }
-
-    if (filters.dateFrom && task.due_at) {
-      if (task.due_at.slice(0, 10) < filters.dateFrom) return false;
-    }
-    if (filters.dateTo && task.due_at) {
-      if (task.due_at.slice(0, 10) > filters.dateTo) return false;
-    }
-    // Tasks with no due_at pass date filters (same as MyTasksCalendarView "No Due Date" bucket)
-    // UNLESS a dateFrom/dateTo is set — then no-date tasks are hidden since they don't match.
-    if ((filters.dateFrom || filters.dateTo) && !task.due_at) return false;
-
-    return true;
-  });
-}
-
-export function giaFiltersActiveCount(filters: GiaTaskFiltersState): number {
-  return (
-    (filters.search.trim() ? 1 : 0) +
-    (filters.taskTypes.length > 0 ? 1 : 0) +
-    (filters.dateFrom ? 1 : 0) +
-    (filters.dateTo ? 1 : 0)
-  );
 }

@@ -6,10 +6,12 @@
  * the page — no separate bar, no strip, no divider (TOP_BAR_ENABLED).
  *
  * Hosts the admin/founder domain selector + the notification bell. Pages render
- * it in their `flex items-center justify-between` title row; on md+ it sits at
- * the far right next to the page CTA. Below md it collapses to just the bell
- * (the selector hides — admin/founder use the per-page filter bar's domain on
- * mobile), kept inline on the title row.
+ * it in their `flex items-center justify-between` title row; it sits at the far
+ * right next to the page CTA. The domain selector stays visible at every
+ * breakpoint — it used to hide below md, but the dashboard has no per-page filter
+ * bar to fall back to, so hiding it stranded admin/founder with the date filter
+ * but no domain scope. DomainSelector composes <FilterDropdown menuPortal>, so
+ * its menu body-portals out and never clips on a narrow viewport.
  *
  * SINGLE BELL MOUNT — one `NotificationBell` per page render. `useNotifications`
  * keys its Realtime channel by userId only (no mount suffix), so this must be

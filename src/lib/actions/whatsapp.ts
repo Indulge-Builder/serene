@@ -51,7 +51,6 @@ export async function sendWhatsAppMessage(
   // Load conversation to get wa_id and verify access
   const conversation = await getConversation(conversationId);
   if (!conversation) return { data: null, error: "Conversation not found" };
-  if (conversation.status === "resolved") return { data: null, error: "Conversation is resolved" };
 
   // Send via Meta Cloud API
   const apiResult = await sendTextMessage(conversation.wa_id, content);
@@ -128,54 +127,6 @@ export async function markConversationAsRead(
   if (!auth.ok) return auth.result;
 
   await markConversationRead(parsed.data.conversationId, auth.profile.id);
-  return { data: null, error: null };
-}
-
-// ─── resolveConversation ──────────────────────────────────────────────────────
-
-export async function resolveConversation(
-  input: { conversationId: string },
-): Promise<ActionResult<null>> {
-  const parsed = ConversationIdSchema.safeParse(input);
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
-
-  const auth = await requireProfile(["manager", "admin", "founder"]);
-  if (!auth.ok) return auth.result;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
-  const { error } = await supabase
-    .from("whatsapp_conversations")
-    .update({ status: "resolved", updated_at: new Date().toISOString() })
-    .eq("id", parsed.data.conversationId);
-
-  if (error) return { data: null, error: "Failed to resolve conversation" };
-  return { data: null, error: null };
-}
-
-// ─── reopenConversation ───────────────────────────────────────────────────────
-
-export async function reopenConversation(
-  input: { conversationId: string },
-): Promise<ActionResult<null>> {
-  const parsed = ConversationIdSchema.safeParse(input);
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
-
-  const auth = await requireProfile(["manager", "admin", "founder"]);
-  if (!auth.ok) return auth.result;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
-  const { error } = await supabase
-    .from("whatsapp_conversations")
-    .update({ status: "open", updated_at: new Date().toISOString() })
-    .eq("id", parsed.data.conversationId);
-
-  if (error) return { data: null, error: "Failed to reopen conversation" };
   return { data: null, error: null };
 }
 
