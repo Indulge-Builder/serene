@@ -10,7 +10,6 @@ import {
   LEAD_STATUS_COLORS,
 } from "@/lib/constants/lead-statuses";
 import { DOMAIN_LABELS } from "@/lib/constants/domains";
-import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import { EASE_OUT_EXPO, BASE_DURATION } from "@/lib/constants/motion";
 import { formatRelativeTime } from "@/lib/utils/dates";
 import { getAgentRecentActivityAction } from "@/lib/actions/dashboard";
@@ -318,7 +317,6 @@ export function AgentActivityWidget({
   userId,
   role,
   initialData,
-  size = "lg",
   scopeDomain,
 }: WidgetProps) {
   // Manager/founder can flip Mine / Team; agents always see their own leads.
@@ -416,7 +414,9 @@ export function AgentActivityWidget({
     ro.observe(viewport);
     ro.observe(content);
     return () => ro.disconnect();
-  }, [leads, size]);
+    // The ResizeObserver above re-measures on any height change (the slot now
+    // drives a continuous height), so `size` is no longer a dep.
+  }, [leads]);
 
   return (
     <div
@@ -429,7 +429,7 @@ export function AgentActivityWidget({
         display: "flex",
         flexDirection: "column",
         gap: "var(--space-3)",
-        height: WIDGET_HEIGHT_BY_SIZE[size],
+        height: "100%",
       }}
     >
       {/* Header */}

@@ -40,14 +40,16 @@ campaigns/[id]/page.tsx              ← Server component
 
 ---
 
-## Detail Page Title — Beautification Rule
+## Detail Page Title — Raw Key Rule
 
-`campaigns/[id]/page.tsx` renders **two** derived values from `params.id`:
+`campaigns/[id]/page.tsx` derives the campaign key from `params.id` via
+`decodeURIComponent(params.id)` (try/catch → raw param fallback). It is used for
+**all** DB lookups AND shown verbatim in the H1.
 
-- `campaignName` — the un-beautified key used for **all** DB lookups. `decodeURIComponent(params.id)` (try/catch → raw param fallback). Never modified beyond that.
-- `campaignTitle` — display-only. Derived by `beautifyCampaignTitle(campaignName)` from `src/lib/utils/campaigns.ts`. Used only in the H1 and modal title.
-
-**Rule:** never pass `campaignTitle` to a service function or RPC. The DB stores raw `utm_campaign` keys (with underscores) and the lookup must match exactly. `beautifyCampaignTitle` is the single source of truth — never inline the split/join logic in a component.
+**Campaign names are shown exactly as stored — no decoration.** `beautifyCampaignTitle`
+(the old `·`-separator decorator) was deleted 2026-06-23 — the raw key is the display value
+everywhere (detail H1, budget tables, ad-creative cards/options). Never reintroduce a
+campaign-title beautifier.
 
 ---
 
@@ -79,7 +81,7 @@ Looping single-video carousel. Renders one `AdCreativePlayer` at a time with `ke
 
 Props: `campaign: CampaignMetrics`, `adCreatives: AdCreative[]`, `open: boolean`, `onClose: () => void`
 
-Composes `ui/modal.tsx` with `maxWidth="max-w-3xl"`. Two-column grid when `adCreatives.length > 0` (`40% carousel | 60% info`), single-column when empty. Info column: `beautifyCampaignTitle` output, domain badge, 6 metric cells in a `2×3` grid. Per-video ad_name/notes live in the carousel (`showMeta`), not the info column. Footer: "Open Campaign →" → `router.push` then `onClose`; "Close" → `onClose`. Navigation always lives in the modal footer — never in `CampaignCard.onClick`.
+Composes `ui/modal.tsx` with `maxWidth="max-w-3xl"`. Two-column grid when `adCreatives.length > 0` (`40% carousel | 60% info`), single-column when empty. Info column: the raw campaign key, domain badge, 6 metric cells in a `2×3` grid. Per-video ad_name/notes live in the carousel (`showMeta`), not the info column. Footer: "Open Campaign →" → `router.push` then `onClose`; "Close" → `onClose`. Navigation always lives in the modal footer — never in `CampaignCard.onClick`.
 
 ### CampaignAdPanel
 

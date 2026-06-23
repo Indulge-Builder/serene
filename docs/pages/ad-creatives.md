@@ -1,15 +1,15 @@
 # Ad Creatives — Page Spec
 
-> **Purpose:** spec for `/admin/ad-creatives` — campaign-video upload/management, plus the three read surfaces that consume creatives.
+> **Purpose:** spec for `/admin/ad-creatives` — campaign-video upload/management, plus the two read surfaces that consume creatives.
 > **Audience:** engineers. · **Source-of-truth scope:** the admin route, `ad-creatives-service.ts`, `ad-creatives.ts` actions, the `ad-creatives` Storage bucket usage.
-> **Last verified:** 2026-06-09 full pass; 2026-06-11 restructure.
+> **Last verified:** 2026-06-24 full pass (2026-06-09 original; 2026-06-11 restructure).
 
 ## 1. Purpose
 
 `public.ad_creatives` rows are campaign videos uploaded by admin/founder, keyed by a normalised
 `campaign_key` matching `leads.utm_campaign` — string equality, **no FK**. A campaign may have
-multiple videos (UNIQUE dropped in migration 0058a). The videos surface read-only on the lead
-dossier, campaign detail, and campaign list.
+multiple videos (UNIQUE dropped in migration 0058). The videos surface read-only on the lead
+dossier and campaign detail.
 
 ## 2. Who sees it
 
@@ -21,17 +21,20 @@ videos). Sidebar item appears only for admin/founder, above Settings in Configur
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `ad-creatives-service.ts` — `getAdCreativesForCampaign`, `getAdCreativesForCampaigns` (batch `Map`), `getAllAdCreatives`. **No Redis** — freshness via `revalidatePath` (the former cache was removed as a P-08 bug; do not re-add) |
-| Actions | `ad-creatives.ts` — `upsertAdCreative` (normalises `campaign_key`; 23505 → friendly error), `deleteAdCreative` |
+| Service | `ad-creatives-service.ts` — `getAdCreativesForCampaign` (one campaign → `AdCreative[]`), `getAdCreativesForCampaigns` (batch `Map`, **no live caller** — retained as a documented service API), `getAllAdCreatives`. **No Redis** — freshness via `revalidatePath` (the former cache was removed as a P-08 bug; do not re-add) |
+| Actions | `ad-creatives.ts` — `upsertAdCreative` (normalises `campaign_key` via `normalizeCampaignKey()`; 23505 → friendly error), `deleteAdCreative`. Both admin/founder via `requireProfile(ADMIN_ROLES)`; adminClient writes |
 | Storage | `ad-creatives` bucket — public read; INSERT/DELETE admin/founder (0092) |
 | Validation | `ad-creative-schema.ts` (`upsertAdCreativeSchema` — id optional = create/update) |
 
 ## 4. Components
 
 `AdCreativesManager` (+ `<ConfirmDialog>` for deletes) · `AdCreativeFormModal` · video
-primitives (Deep dive §8) · read surfaces: `CampaignVideoModal` (dossier), `CampaignAdCard`
-(campaign detail), `CampaignPreviewModal`/`AdCreativeCarousel` (campaign list) ·
-`beautifyCampaignTitle()` for display names.
+primitives (Deep dive §8) · read surfaces: `CampaignVideoModal` (lead dossier),
+`CampaignAdPanel` (campaign detail left column; `AdCreativeCarousel` inside, plus an inline
+upload tile via `AdCreativeFormModal` for admin/founder) · raw campaign keys for display
+names (no decoration). The campaign list (`/campaigns`) no longer surfaces creatives —
+`CampaignCard` is a `MotionLink` straight to `/campaigns/{name}` (the old `CampaignPreviewModal`
+was deleted 2026-06-16).
 
 ## 5. States
 
@@ -61,13 +64,16 @@ None recorded.
 
 **Admin route:** `/admin/ad-creatives` — management UI (`AdCreativesManager` + `AdCreativeFormModal`).
 
-**Three read surfaces (consume creatives, no writes):**
+**Two read surfaces (consume creatives, no writes):**
 
 | Surface | Route / context | Component |
 | --- | --- | --- |
 | Lead dossier | `/leads/[id]` | `CampaignVideoModal` |
 | Campaign detail | `/campaigns/[id]` | `CampaignAdPanel` (left column; inline upload via `AdCreativeFormModal` for admin/founder) |
-| Campaign list | `/campaigns` | `CampaignPreviewModal` (via `CampaignCard`) |
+
+The campaign **list** (`/campaigns`) is no longer a creative read surface. `CampaignCard` is a
+`MotionLink` (`motion.create(Link)`) that navigates straight to `/campaigns/{name}` on click;
+the intermediate `CampaignPreviewModal` (and its carousel) was deleted 2026-06-16.
 
 **Access gate — admin page:** `page.tsx` calls `getCurrentProfile()`; missing profile → `/login`; role not `admin` or `founder` → `/dashboard`.
 
@@ -146,10 +152,10 @@ None recorded.
 
 **Enforced in:**
 
-- `upsertAdCreative` action — `normalisedKey = campaign_key.toLowerCase().trim()` before DB write
+- `upsertAdCreative` action — `normalizeCampaignKey(campaign_key)` before DB write (shared util)
 - `getAdCreativesForCampaign` / `getAdCreativesForCampaigns` — normalise input keys before query
 - Admin `page.tsx` — `campaignKeys` from metrics: `c.campaign_name.toLowerCase().trim()`
-- `CampaignListAsync` map lookup — `campaign.campaign_name.toLowerCase().trim()`
+- `campaigns/[id]/page.tsx` — `CampaignAdPanel campaignKey={normalizeCampaignKey(campaignName)}` (the inline-upload lock key)
 
 **Why:** `utm_campaign` values from Meta/Google/Pabbly arrive with inconsistent casing; DB CHECK requires stored keys to be normalised.
 
@@ -195,7 +201,7 @@ All functions use `createClient()` from `src/lib/supabase/server.ts`. On any err
 | Query | Single round trip: `.in('campaign_key', normalisedKeys).order('created_at', { ascending: false })` — equivalent to `WHERE campaign_key IN (...)`; **never** loop per campaign |
 | Return | `Map<campaignKey, AdCreative[]>` — each array newest-first |
 | Empty | `new Map()` on error or empty input |
-| Called by | **`CampaignListAsync` only** (after `getCampaignMetrics`) — prevents N+1 on campaign list cards |
+| Called by | **No live caller.** Retained as a documented service API (was `CampaignListAsync`'s batch fetch; dropped 2026-06-16 when `CampaignPreviewModal` was deleted). The batch-map shape is preserved for any future list-card use — never loop `getAdCreativesForCampaign` per campaign instead |
 
 #### `getAllAdCreatives(): Promise<AdCreative[]>`
 
@@ -208,15 +214,17 @@ All functions use `createClient()` from `src/lib/supabase/server.ts`. On any err
 
 ### 5. Actions — `ad-creatives.ts`
 
-Both actions: Zod first line → `getCurrentProfile()` → `ADMIN_ROLES = ['admin', 'founder']`.
+Both actions: Zod first line → `requireProfile(ADMIN_ROLES)` (the A-18 session/role guard from
+`lib/actions/_auth.ts`; `ADMIN_ROLES: UserRole[] = ['admin', 'founder']`) → `{ data, error }`.
+Never a hand-rolled `getCurrentProfile()` + role check.
 
 #### `upsertAdCreative`
 
 | Step | Behaviour |
 | --- | --- |
-| Input | `FormData` via `upsertAdCreativeSchema` |
-| Auth | Unauthorized if not admin/founder |
-| Normalise | `campaign_key.toLowerCase().trim()` in action (in addition to schema `.trim()`) |
+| Input | `FormData` via `upsertAdCreativeSchema` (Zod parsed before the auth guard) |
+| Auth | `requireProfile(ADMIN_ROLES)` — `formErrors.unauthorized` if not admin/founder |
+| Normalise | `normalizeCampaignKey(campaign_key)` (shared util, `lib/utils/campaigns.ts` — lowercase + trim) before DB write; never an inline `.toLowerCase().trim()` |
 | Sanitize | `sanitizeText()` on `ad_name` and `notes` when non-empty |
 | DB | `id` present → `adminClient.update`; absent → `adminClient.insert` |
 | `23505` | On insert failure: `"A creative already exists for that campaign."` (legacy message; post-0058 duplicate `campaign_key` is allowed — this path only fires if another unique violation occurs) |
@@ -227,7 +235,9 @@ Both actions: Zod first line → `getCurrentProfile()` → `ADMIN_ROLES = ['admi
 | Step | Behaviour |
 | --- | --- |
 | Schema | `deleteAdCreativeSchema` — `id` uuid |
-| DB | `adminClient.delete().eq('id', id)` — row only; **Storage object not deleted** |
+| Auth | `requireProfile(ADMIN_ROLES)` after Zod |
+| DB | `adminClient.delete().eq('id', id).select('campaign_key').maybeSingle()` — reads the row back; `error \|\| !deleted` → `formErrors.generic` (a delete that matched no row fails, not silently succeeds). Row only — the **Storage object is intentionally not deleted** (orphaned bucket files are harmless and cheap) |
+| Returns | `{ data: { id }, error }` |
 | Revalidate | Same two paths as upsert |
 
 ---
@@ -276,13 +286,13 @@ Zod failures map to `formErrors.generic` in actions — never raw Zod text in UI
 | 2 | Filter strip: `SlidersHorizontal`, active-count badge (1 when search non-empty), `SearchBar`, result count (`N creative(s)`) |
 | 3 | Card list or Playfair italic empty state |
 
-**Search:** Client-side `useMemo`; haystack = `campaign_key`, `beautifyCampaignTitle(campaign_key)`, `ad_name`, `notes` (joined, case-insensitive substring).
+**Search:** Client-side `useMemo`; haystack = `campaign_key`, `ad_name`, `notes` (joined, case-insensitive substring).
 
-**Cards:** Thumbnail (`<video>` muted cover or `Film` placeholder); title = `ad_name` if set else beautified campaign; subtitle = beautified campaign when `ad_name` set else raw key; optional notes line. Edit/Delete: bordered ghost buttons (UsersTable-style hover). Hover: `translateY(-1px)` + `--shadow-2`. Framer Motion: `opacity 0→1`, `y 4→0`, stagger `min(index * 80, 320) ms`, `EASE_OUT_EXPO`.
+**Cards:** Thumbnail (`<video>` muted cover or `Film` placeholder); title = `row.ad_name?.trim() || row.campaign_key` (raw key fallback); subtitle = `row.campaign_key` **always** (raw key, never beautified — `beautifyCampaignTitle` was deleted 2026-06-23); optional notes line. Edit/Delete: bordered ghost buttons (UsersTable-style hover). Hover: `translateY(-1px)` + `--shadow-2`. Framer Motion: `opacity 0→1`, `y 4→0`, stagger `min(index * 80, 320) ms`, `EASE_OUT_EXPO`.
 
 **State:** `useState(initialCreatives)` — on save/delete, updates local array (`handleSaved` / filter delete). **No `router.refresh()`** on success — avoids round trip; parent owns list.
 
-**Delete:** `window.confirm` then `deleteAdCreative` — simple destructive action on non-critical metadata; no modal chrome.
+**Delete:** themed `<ConfirmDialog>` (title "Delete creative?", body naming `confirmTarget.campaign_key`, `danger`, `pending`/`pendingLabel="Deleting…"`) → on confirm, `deleteAdCreative` inside a `useTransition`, optimistic local filter on success + toast. No `window.confirm` (replaced 2026-06-11 — the one intentional UX change in the `ConfirmDialog` adoption).
 
 **Empty states (V-09):** Playfair italic — "No ad creatives yet." / "Nothing matches your search." with tertiary subcopy.
 
@@ -292,7 +302,7 @@ Zod failures map to `formErrors.generic` in actions — never raw Zod text in UI
 | --- | --- |
 | Mode | `editing` prop null → create; `AdCreative` → edit (`id` sent in FormData) |
 | Campaign dropdown | **Disabled when editing** — `campaign_key` is the join key for all consumers; changing it orphans links. Helper text: delete and re-add to relink. If stored key missing from `campaignKeys`, still shown as an option. |
-| Display | Options use `beautifyCampaignTitle(k)` |
+| Display | Options show the raw campaign key |
 | Upload | Hidden file input → `createClient().storage.from('ad-creatives').upload(path, file)` → `getPublicUrl` → `videoUrl` state → `upsertAdCreative` on Save (same flow as avatar upload, different path) |
 | Guards | 100 MB + `video/*` at file selection |
 | Preview | Live `<video>` after upload in subtle panel; Replace video link |
@@ -313,7 +323,7 @@ Zod failures map to `formErrors.generic` in actions — never raw Zod text in UI
 
 **Unmount cleanup:** `video.pause()` only — **`video.src` is intentionally not cleared.** Clearing `src` blanks the element under React Strict Mode double-mount (JSX `src` unchanged on remount → black box). `pause()` stops audio bleed; DOM node is removed on real unmount.
 
-**Used by:** `AdCreativeCarousel`; not used directly on `CampaignAdCard` (carousel wraps player).
+**Used by:** `AdCreativeCarousel` only (the carousel wraps the player; `CampaignAdPanel` and `CampaignVideoModal` mount the carousel, never the player directly).
 
 #### `AdCreativeCarousel`
 
@@ -323,11 +333,13 @@ Zod failures map to `formErrors.generic` in actions — never raw Zod text in UI
 
 **`key={current.id}`** on `AdCreativePlayer` — forces remount per slide so each video autoplays from start and previous effect cleanup runs `pause()`.
 
-**Used by:** `CampaignVideoModal`, `CampaignPreviewModal`, `CampaignAdCard`.
+**Player width:** the carousel constrains its `AdCreativePlayer` to `maxWidth: 270px` (≈ 480px tall × 9/16); `align="center"` (default) centres it via `marginInline: auto`, `align="start"` left-aligns. `CampaignAdPanel` passes `align="center"`.
+
+**Used by:** `CampaignVideoModal` (lead dossier), `CampaignAdPanel` (campaign detail).
 
 ---
 
-### 9. The Three Read Surfaces
+### 9. The Two Read Surfaces
 
 #### 9a. `CampaignVideoModal` (lead dossier)
 
@@ -346,47 +358,47 @@ leads/[id]/page.tsx
 
 **UI:** `Modal` `max-w-2xl`, footer `null`. Title = single creative's `ad_name` if exactly one row and `ad_name` set; else `campaignName`. Body: `<AdCreativeCarousel creatives={adCreatives} showMeta />`.
 
-#### 9b. `CampaignAdCard` (campaign detail `/campaigns/[id]`)
+#### 9b. `CampaignAdPanel` (campaign detail `/campaigns/[id]`)
 
 ##### Campaign detail data path
 
 ```text
 campaigns/[id]/page.tsx
   getAdCreativesForCampaign(campaignName)   // same string as metrics + leads filter
-  → <CampaignAdCard adCreatives={...} />
+  canUpload = role === 'admin' || role === 'founder'
+  → <CampaignAdPanel
+       adCreatives={...}
+       campaignKey={normalizeCampaignKey(campaignName)}
+       canUpload={canUpload}
+     />
 ```
 
-**Layout:** Between page header and metrics strip. Returns `null` if `adCreatives.length === 0`. `SectionCard` "AD CREATIVE" with optional `{N} ads` header when multiple. Carousel in `maxWidth: 320px`, `align="start"`, `showMeta`. Framer Motion wrapper: `opacity 0→1`, `y 8→0`, 350ms ease-out-expo.
+**Props:** `adCreatives: AdCreative[]` (newest-first, may be empty) · `campaignKey: string` (normalised; the inline-upload lock key) · `canUpload: boolean` (admin/founder gate for the empty-tile Plus).
 
-#### 9c. `CampaignPreviewModal` (campaign list)
+**Layout:** The page grid (`lg:grid-cols-[320px_1fr]`) puts the panel in a **320px left column** beside the 2×4 metrics grid; stacks below `lg`. The panel **always renders** the `SectionCard` "AD CREATIVE" (the card frame stays so the two columns balance whether or not a video exists) — it **never returns `null`**.
 
-##### Campaign list data path
+- **Has creatives** → `<AdCreativeCarousel creatives showMeta align="center" />` (the player itself caps at `maxWidth: 270px`). Header shows a `{N} ads` count only when `creatives.length > 1`.
+- **No creatives** → an `EmptyAdTile` with the same 9:16 footprint (`maxWidth: 270px`, dashed border). `canUpload` → a Plus button that opens the **same `AdCreativeFormModal`** (`next/dynamic`, R-01 — no second uploader) with this campaign pre-selected + locked via `defaultCampaignKey`; new uploads prepend to local state without a refetch. `!canUpload` → the tile shows serif-italic "No video yet." with no Plus.
 
-```text
-campaigns/page.tsx → Suspense → CampaignListAsync
-  getCampaignMetrics(...)
-  getAdCreativesForCampaigns(campaigns.map(c => c.campaign_name))   // ONE batch query
-  CampaignCard adCreatives={creativesMap.get(normalisedKey) ?? []}
-  → CampaignPreviewModal
-```
+Framer Motion wrapper: `opacity 0→1`, `y 8→0`, 350ms `EASE_OUT_EXPO`.
 
-**Trigger:** `CampaignCard` `onClick` / Enter/Space opens preview — **not** immediate `router.push`.
-
-**Layout:** `max-w-3xl`. Grid `40% / 60%` when videos present; single column when absent. Left: `AdCreativeCarousel` `showMeta`. Right: domain badge + 2×3 metric grid (Total, Won, In Discussion, Nurturing, Lost, Junk). Footer: Close + **Open Campaign →** (`router.push` to `/campaigns/{encodedName}` then `onClose`). Title: `beautifyCampaignTitle(campaign.campaign_name)`.
+> **Campaign list — no creative surface.** `/campaigns` cards (`CampaignCard`) are a `MotionLink`
+> (`motion.create(Link)`) that navigate straight to `/campaigns/{encodeURIComponent(name)}` on
+> click. The old intermediate `CampaignPreviewModal` (the `max-w-3xl` 40/60 preview with a carousel)
+> and the `getAdCreativesForCampaigns` batch fetch behind it were **deleted 2026-06-16**. There is
+> no creative read on the list page.
 
 ---
 
-### 10. `beautifyCampaignTitle()`
+### 10. Campaign name display
 
-**File:** `src/lib/utils/campaigns.ts`
+**Rule:** Campaign names are shown RAW everywhere — the same `utm_campaign` key used
+for DB lookups (no decoration). The old `beautifyCampaignTitle` ` · `-separator decorator
+was deleted 2026-06-23; never reintroduce a campaign-title beautifier.
 
-**Behaviour:** Split on `_` and whitespace, filter empty, join with ` · ` (middle dot).
-
-Example: `TG_House_Meta Leads` → `TG · House · Meta · Leads`
-
-**Rule:** Display only — never pass output to DB queries or RPCs.
-
-**Used in:** `AdCreativeFormModal` dropdown labels, `AdCreativesManager` search/cards, `CampaignPreviewModal` title, admin card subtitles.
+**Display sites:** `AdCreativeFormModal` dropdown labels, `AdCreativesManager` search/cards,
+admin card titles + subtitles (raw `campaign_key`), `CampaignVideoModal`/`CampaignAdPanel` titles,
+the campaign detail H1, budget tables.
 
 ---
 
@@ -406,8 +418,8 @@ Campaign pages: agent/guest redirected from `/campaigns`; manager+ can see read 
 
 ### 12. Known Invariants (must never be violated)
 
-1. **`campaign_key` always normalised** (`toLowerCase` + `trim`) before read and write.
-2. **`getAdCreativesForCampaigns` is one query** — `.in('campaign_key', keys)`; never call `getAdCreativesForCampaign` in a loop over campaign cards.
+1. **`campaign_key` always normalised** — via `normalizeCampaignKey()` (`lib/utils/campaigns.ts`) on write; `toLowerCase` + `trim` on every read key. Never an inline `.toLowerCase().trim()` in an action.
+2. **`getAdCreativesForCampaigns` is one query** — `.in('campaign_key', keys)`; if it is ever re-wired to a list surface, never call `getAdCreativesForCampaign` in a loop over campaign cards. (Currently no live caller — kept as a documented batch API.)
 3. **`AdCreativePlayer` unmount** must call `video.pause()` to prevent audio bleed; do not clear `video.src` (Strict Mode regression).
 4. **`key={current.id}`** on carousel player is mandatory for correct autoplay and cleanup per slide.
 5. **`campaign_key` locked on edit** in `AdCreativeFormModal` — changing it orphans consumer links.
@@ -417,7 +429,7 @@ Campaign pages: agent/guest redirected from `/campaigns`; manager+ can see read 
 9. **Multiple videos per `campaign_key` are allowed** since migration 0058 — any code assuming `.single()` or one row per campaign is a bug.
 10. **Admin list uses optimistic local state** after upsert/delete — do not rely on full-page refetch for manager UX.
 11. **`video_url` comes from Storage public URL** — bucket must allow public read for playback surfaces.
-12. **Batch map lookup** in `CampaignListAsync` must use the same normalisation as the DB column: `campaign_name.toLowerCase().trim()`.
+12. **Writes are role-gated then admin-client** — `requireProfile(ADMIN_ROLES)` (A-18) is the trust boundary; the DB write uses `adminClient` (bypasses RLS, but RLS still mirrors the same admin/founder gate as defence in depth). `deleteAdCreative` reads the row back (`.select('campaign_key').maybeSingle()`) and fails when no row matched.
 
 ---
 
@@ -434,8 +446,8 @@ Campaign pages: agent/guest redirected from `/campaigns`; manager+ can see read 
 | `src/components/campaigns/AdCreativePlayer.tsx` | Video primitive |
 | `src/components/campaigns/AdCreativeCarousel.tsx` | Multi-video UI |
 | `src/components/leads/CampaignVideoModal.tsx` | Dossier modal |
-| `src/components/campaigns/CampaignAdCard.tsx` | Detail inline card |
-| `src/components/campaigns/CampaignPreviewModal.tsx` | List preview modal |
+| `src/components/campaigns/CampaignAdPanel.tsx` | Campaign-detail left-column panel (carousel + inline upload tile) |
+| `src/components/campaigns/CampaignCard.tsx` | List card — `MotionLink` to `/campaigns/{name}` (no creative read; `CampaignPreviewModal` deleted 2026-06-16) |
 | `supabase/migrations/20260528000012_ad_creatives.sql` | Table + RLS |
 | `supabase/migrations/20260601000058_ad_creatives_multi_video.sql` | Drop UNIQUE |
 | `supabase/migrations/20260608000092_fix_ad_creatives_storage_rls.sql` | Storage bucket INSERT/DELETE → admin/founder |

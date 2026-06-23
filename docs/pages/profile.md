@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/profile` — every user's self-management page (identity fields, avatar, theme, password).
 > **Audience:** engineers. · **Source-of-truth scope:** the `/profile` route. Admin edits of *other* users: `user-management.md`; theme system law: `../design/DESIGN-DNA.md` §1–2.
-> **Last verified:** 2026-06-20 (per-category notification controls — `NotificationPreferences`, migration 0133); 2026-06-15 (PWA install + app-icon picker + web-push reconcile); 2026-06-09 full pass; 2026-06-11 restructure.
+> **Last verified:** 2026-06-24 (page-structure patch — header is a single "Profile" `<h1>`, no eyebrow; responsive `serene-dossier-grid--340` + `p-4 sm:p-6 lg:p-8` layout); 2026-06-20 (per-category notification controls — `NotificationPreferences`, migration 0133); 2026-06-15 (PWA install + app-icon picker + web-push reconcile); 2026-06-09 full pass; 2026-06-11 restructure.
 > **Source files verified:** `src/app/(dashboard)/profile/page.tsx`, `src/components/profile/NotificationPreferences.tsx`, `src/lib/constants/notification-categories.ts`, `src/lib/services/notification-prefs-service.ts`.
 
 ## 1. Purpose
@@ -77,9 +77,8 @@ Notification-sound preference lives in localStorage (`serene:notifications:sound
 | Item | Detail |
 | ---- | ------ |
 | **Access** | `getCurrentProfile()`; redirect `/login` if null. Own record only — no `id` param; admins use `/admin/users/[id]` for others |
-| **Layout** | `gridTemplateColumns: minmax(0, 1fr) 340px`, `maxWidth: 1280px`, `padding: var(--space-8)` |
-| **Eyebrow** | `"Account"` — `className="type-eyebrow"` |
-| **Title** | `Profile Settings` + `page-title-dot` |
+| **Layout** | Two-column grid via the `serene-dossier-grid serene-dossier-grid--340` responsive utility (the 340px identity-sidebar variant — single column below `lg`). `<main>` is `className="flex-1 p-4 sm:p-6 lg:p-8"` with inline `paddingBottom: var(--space-16)` + `maxWidth: 1280px`. No inline `gridTemplateColumns`/flat padding anymore |
+| **Header** | A single `<h1 className="type-page-title m-0">Profile<span className="page-title-dot">.</span></h1>` inside a `div` with `marginBottom: var(--space-6)`. **No eyebrow** — there is no `type-eyebrow` element on the page, and the title is just **"Profile"** (not "Profile Settings") |
 
 **Left column** (`SectionCard` stack — four sections):
 

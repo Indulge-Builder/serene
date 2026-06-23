@@ -17,8 +17,11 @@ import {
 } from '@/lib/services/dashboard-service';
 import {
   getBudgetSummary,
+  getAccountRecharges,
   filterBudgetRowsByDomain,
+  buildBudgetGaugeSummary,
   type BudgetCampaignRow,
+  type BudgetGaugeSummary,
 } from '@/lib/services/ad-spend-service';
 import type { DashboardAgentTask } from '@/lib/types';
 import type { AppDomain } from '@/lib/types/database';
@@ -261,6 +264,40 @@ export async function getBudgetSummaryWidgetAction(
     data: scopeDomain ? filterBudgetRowsByDomain(rows, scopeDomain) : rows,
     error: null,
   };
+}
+
+// ─────────────────────────────────────────────
+// Campaign Budget fuel gauge (manager budget widget refresh / cohort change)
+// The org-wide ad-account "tank": recharged → spent → remaining + an ROI
+// roll-up, for the active date range. ALWAYS org-wide regardless of role —
+// recharges carry no domain, so there is no domain param and no manager pin
+// (a per-domain "remaining" would mix domain-filtered spend with org recharges
+// = a finance error). manager+ gate only; the gauge is finance-visible.
+// ─────────────────────────────────────────────
+const GaugeScopeSchema = z.object({
+  from: z.string().datetime({ message: 'Invalid from date.' }),
+  to:   z.string().datetime({ message: 'Invalid to date.'   }),
+}).refine(
+  ({ from, to }) => new Date(from) < new Date(to),
+  { message: 'from must be before to.' },
+);
+
+export async function getBudgetGaugeWidgetAction(
+  from: string,
+  to:   string,
+): Promise<{ data: BudgetGaugeSummary | null; error: string | null }> {
+  const parsed = GaugeScopeSchema.safeParse({ from, to });
+  if (!parsed.success) return { data: null, error: 'Invalid date range.' };
+
+  const auth = await requireProfile(['manager', 'admin', 'founder']);
+  if (!auth.ok) return auth.result;
+
+  const [rows, recharges] = await Promise.all([
+    getBudgetSummary(parsed.data.from, parsed.data.to),
+    getAccountRecharges(parsed.data.from, parsed.data.to),
+  ]);
+
+  return { data: buildBudgetGaugeSummary(rows, recharges), error: null };
 }
 
 // Re-export resolvePresetToRange so client components can call it for default range labels

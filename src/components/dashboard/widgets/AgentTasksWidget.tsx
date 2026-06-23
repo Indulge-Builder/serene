@@ -11,10 +11,10 @@ import {
   TASK_PRIORITY,
   TASK_STATUS,
 } from "@/lib/constants/task-constants";
-import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import type { DashboardAgentTask } from "@/lib/types";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 import { useWidgetData } from "@/hooks/useWidgetData";
+import { useWidgetDensityTier } from "@/hooks/useWidgetDensity";
 
 // Keyframe injected once — GPU-only pulse on the category dot.
 // scale + opacity only, no layout properties.
@@ -179,7 +179,7 @@ function TaskRow({ task }: { task: DashboardAgentTask }) {
   );
 }
 
-export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetProps) {
+export function AgentTasksWidget({ userId, initialData }: WidgetProps) {
   const seed = initialData?.agent_tasks ?? null;
   const { data, loaded, isPending, refetch } = useWidgetData<DashboardAgentTask[]>({
     seed,
@@ -201,6 +201,10 @@ export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetPro
   const overdue = tasks.filter((t) => t.is_overdue);
   const active = tasks.filter((t) => !t.is_overdue);
 
+  // Density tier — compact cells show a single summary line instead of the list.
+  const tier = useWidgetDensityTier();
+  const isCompact = tier === "compact";
+
   return (
     <>
       {/* Inject pulse keyframe once */}
@@ -216,7 +220,7 @@ export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetPro
           display: "flex",
           flexDirection: "column",
           gap: "var(--space-4)",
-          height: WIDGET_HEIGHT_BY_SIZE[size],
+          height: "100%",
           overflow: "hidden",
         }}
       >
@@ -256,7 +260,46 @@ export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetPro
           />
         </div>
 
-        {/* Scrollable task list — flex:1 fills the fixed-height card */}
+        {/* Compact tier — the cell is too small for a list; show a summary. */}
+        {isCompact ? (
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              gap: "var(--space-1)",
+            }}
+          >
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--text-2xl)",
+                fontWeight: "var(--weight-semibold)",
+                lineHeight: 1,
+                color: "var(--theme-text-primary)",
+              }}
+            >
+              {tasks.length}
+            </span>
+            <span
+              style={{
+                fontSize: "var(--text-xs)",
+                color:
+                  overdue.length > 0
+                    ? "var(--color-danger-text)"
+                    : "var(--theme-text-tertiary)",
+              }}
+            >
+              {tasks.length === 0
+                ? "All clear"
+                : overdue.length > 0
+                  ? `${overdue.length} overdue`
+                  : "open tasks"}
+            </span>
+          </div>
+        ) : (
+        /* Scrollable task list — flex:1 fills the fixed-height card */
         <div
           style={{
             flex: 1,
@@ -340,9 +383,10 @@ export function AgentTasksWidget({ userId, initialData, size = 'md' }: WidgetPro
             </p>
           )}
         </div>
+        )}
 
-        {/* Category legend */}
-        {loaded && tasks.length > 0 && (
+        {/* Category legend — hidden in compact tier */}
+        {!isCompact && loaded && tasks.length > 0 && (
           <div
             style={{
               display: "flex",

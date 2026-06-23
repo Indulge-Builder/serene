@@ -8,7 +8,12 @@ import {
   getLeadVolumeForDomain,
   getAgentRecentActivity,
 } from "@/lib/services/dashboard-service";
-import { getBudgetSummary, filterBudgetRowsByDomain } from "@/lib/services/ad-spend-service";
+import {
+  getBudgetSummary,
+  getAccountRecharges,
+  filterBudgetRowsByDomain,
+  buildBudgetGaugeSummary,
+} from "@/lib/services/ad-spend-service";
 import { getNotifications } from "@/lib/services/notifications-service";
 import { GIA_DOMAINS } from "@/lib/constants/domains";
 import { resolveDomainParam } from "@/lib/utils/domain-scope";
@@ -89,7 +94,7 @@ export default async function DashboardPage({
   const adminFounderMultiVolume  = isManagerPlus && !isManager && !scopeDomain;
 
   try {
-    const [rpcData, recentLeads, managerVolume, adminSingleVolume, adminMultiVolume, budgetRows] = await Promise.all([
+    const [rpcData, recentLeads, managerVolume, adminSingleVolume, adminMultiVolume, budgetRows, budgetRecharges] = await Promise.all([
       getDashboardSummary(
         role,
         domain,
@@ -120,6 +125,12 @@ export default async function DashboardPage({
       isManagerPlus
         ? getBudgetSummary(dateRange.from, dateRange.to)
         : Promise.resolve(null),
+      // Fuel-gauge recharges (manager+ only) — the gauge is ALWAYS org-wide
+      // (recharges carry no domain, so a per-domain "remaining" would be a
+      // finance error); fetched unscoped alongside the spend rows.
+      isManagerPlus
+        ? getAccountRecharges(dateRange.from, dateRange.to)
+        : Promise.resolve(null),
     ]);
     // Budget pre-filter: managers → own domain; admin/founder → the scoped
     // domain (or full rows for the all-domains view). Mirrors the manager pin.
@@ -139,6 +150,11 @@ export default async function DashboardPage({
       budget_summary:    budgetRows && budgetFilterDomain
         ? filterBudgetRowsByDomain(budgetRows, budgetFilterDomain)
         : budgetRows,
+      // Fuel gauge — org-wide (UNFILTERED spend + recharges); recharges have no
+      // domain, so this is the same tank for every manager+ viewer.
+      budget_gauge:      budgetRows
+        ? buildBudgetGaugeSummary(budgetRows, budgetRecharges ?? [])
+        : null,
     };
   } catch (e) {
     console.error(
@@ -154,6 +170,7 @@ export default async function DashboardPage({
       lead_volume:       null,
       lead_volume_multi: null,
       budget_summary:    null,
+      budget_gauge:      null,
     };
   }
 

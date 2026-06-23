@@ -37,6 +37,7 @@ import {
   scheduleTaskReminder,
   cancelTaskReminder,
 } from "@/trigger/task-reminders";
+import { emitTaskEvent, resolveTaskDomain } from "@/lib/services/task-events";
 import type { MutationActor } from "@/lib/services/lead-mutations";
 import type {
   Task,
@@ -188,6 +189,23 @@ export async function createPersonalTaskCore(
   } catch (e) {
     console.warn("[task-mutations] redis del failed on createPersonalTaskCore", e);
   }
+
+  // Oversight event (best-effort, non-fatal). Personal task → no group, so the
+  // derived domain is the assignee's. resolveTaskDomain owns that lookup (R-01).
+  const admin2 = createAdminClient();
+  const domain = await resolveTaskDomain(admin2, {
+    groupId: null,
+    assignedTo: resolvedAssignedTo,
+  });
+  await emitTaskEvent({
+    taskId,
+    domain,
+    actorId: actor.userId,
+    subjectId: resolvedAssignedTo,
+    eventType: "created",
+    taskTitle: input.title,
+    meta: { priority: input.priority, task_type: "other" },
+  });
 
   return {
     ok: true,
@@ -345,6 +363,22 @@ export async function createSubtaskCore(
     );
   }
 
+  // Oversight event (best-effort, non-fatal). A subtask's domain is its group's
+  // domain (resolveTaskDomain prefers the group path). subject = the assignee.
+  const domain = await resolveTaskDomain(admin, {
+    groupId: input.groupId,
+    assignedTo: input.assignedTo,
+  });
+  await emitTaskEvent({
+    taskId,
+    domain,
+    actorId: actor.userId,
+    subjectId: input.assignedTo,
+    eventType: "created",
+    taskTitle: input.title,
+    meta: { priority: input.priority, task_type: "other" },
+  });
+
   return {
     ok: true,
     subtask: { ...(task as Task), assignee },
@@ -373,6 +407,16 @@ export async function updateTaskStatusCore(
   actor: MutationActor,
   input: { taskId: string; status: TaskStatus },
   taskCtx: { taskCategory: string | null; hasGiaMeta: boolean },
+  // The caller already fetched the task — pass its snapshot so the oversight
+  // event can resolve domain/subject + the old→new status WITHOUT a re-fetch
+  // (the core stays context-free, same discipline as taskCtx). Optional so any
+  // legacy caller still compiles; absent → the event is skipped.
+  eventCtx?: {
+    groupId: string | null;
+    assignedTo: string | null;
+    title: string | null;
+    fromStatus: string | null;
+  },
 ): Promise<{ ok: true } | { ok: false }> {
   const admin = createAdminClient();
 
@@ -412,6 +456,24 @@ export async function updateTaskStatusCore(
     console.warn("[task-mutations] redis del failed on updateTaskStatusCore", e);
   }
 
+  // Oversight event (best-effort, non-fatal) — proves the live rail without a
+  // remark (the sign-off case: a status change that writes NO remark row).
+  if (eventCtx) {
+    const domain = await resolveTaskDomain(admin, {
+      groupId: eventCtx.groupId,
+      assignedTo: eventCtx.assignedTo,
+    });
+    await emitTaskEvent({
+      taskId: input.taskId,
+      domain,
+      actorId: actor.userId,
+      subjectId: eventCtx.assignedTo,
+      eventType: "status_changed",
+      taskTitle: eventCtx.title,
+      meta: { from: eventCtx.fromStatus, to: input.status },
+    });
+  }
+
   return { ok: true };
 }
 
@@ -437,7 +499,15 @@ export async function updateTaskCore(
     dueAt?: string | null;
     dueAtChanged: boolean;
   },
-  existing: { assignedTo: string | null },
+  // `groupId`/`title`/`fromStatus` are optional so the existing single-field
+  // callers still compile; when present the oversight event(s) fire (a
+  // reassigned and/or status_changed). The caller already fetched the task.
+  existing: {
+    assignedTo: string | null;
+    groupId?: string | null;
+    title?: string | null;
+    fromStatus?: string | null;
+  },
 ): Promise<{ ok: true } | { ok: false }> {
   const admin = createAdminClient();
 
@@ -488,6 +558,48 @@ export async function updateTaskCore(
     !input.dueAtChanged
   ) {
     cancelTaskReminder(input.taskId).catch(() => {});
+  }
+
+  // Oversight events (best-effort, non-fatal). One full update can carry both a
+  // reassign and a status change — emit each that actually happened. Domain is
+  // resolved against the NEW assignee (a cross-team reassignment legitimately
+  // moves the task's events to the new team — docs/oversight.md §4c, correct).
+  if (existing.groupId !== undefined) {
+    const newAssignee = input.assignedTo ?? existing.assignedTo;
+    const reassigned =
+      input.assignedTo !== undefined &&
+      input.assignedTo !== existing.assignedTo;
+    const statusChanged =
+      input.status !== undefined && input.status !== existing.fromStatus;
+
+    if (reassigned || statusChanged) {
+      const domain = await resolveTaskDomain(admin, {
+        groupId: existing.groupId,
+        assignedTo: newAssignee,
+      });
+      if (reassigned) {
+        await emitTaskEvent({
+          taskId: input.taskId,
+          domain,
+          actorId: actor.userId,
+          subjectId: newAssignee,
+          eventType: "reassigned",
+          taskTitle: input.title ?? existing.title ?? null,
+          meta: { from: existing.assignedTo, to: newAssignee },
+        });
+      }
+      if (statusChanged) {
+        await emitTaskEvent({
+          taskId: input.taskId,
+          domain,
+          actorId: actor.userId,
+          subjectId: newAssignee,
+          eventType: "status_changed",
+          taskTitle: input.title ?? existing.title ?? null,
+          meta: { from: existing.fromStatus, to: input.status },
+        });
+      }
+    }
   }
 
   return { ok: true };

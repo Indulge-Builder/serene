@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/campaigns` (analytics command center) and `/campaigns/[id]` (single-campaign drill-down).
 > **Audience:** engineers. · **Source-of-truth scope:** both campaign routes, the three campaign RPCs, campaign components. Ad-creative assets: `ad-creatives.md`; lead schema: `../architecture/database.md`.
-> **Last verified:** 2026-06-09 full pass; 2026-06-11 restructure.
+> **Last verified:** 2026-06-24 — UI/interaction-layer patch (preview-modal removal, `encodeURIComponent` key contract, 8-tile metrics strip, redesigned card, `this_month` default window, 3-way detail `Promise.all`). Data-layer spine (the three RPCs, the `leads-service.ts` functions, the no-Redis posture, the leads-table reuse) verified accurate against code.
 
 ## 1. Purpose
 
@@ -16,7 +16,10 @@ an optional ad-creative carousel.
 
 manager / admin / founder only — agent and guest are redirected to `/dashboard` on both routes
 before any fetch; the Sidebar additionally hides the link. Managers are domain-locked
-(page + service force `callerDomain`); admin/founder get an optional domain filter.
+(page + service force `callerDomain`); admin/founder get an optional domain scope resolved by the
+global `resolveDomainParam(searchParams, cookieStore, role)` selector (`?domain=` param ?? the
+`serene-domain` cookie ?? null — the same selector the dashboard/leads/deals use). Managers always
+resolve to `null` there and are re-locked to `callerDomain` inside `parseFilters`.
 Full matrix: Deep dive §8.
 
 ## 3. Data sources
@@ -25,22 +28,23 @@ Full matrix: Deep dive §8.
 | ----- | --------- |
 | RPCs | `get_campaign_metrics` (0014), `get_campaign_detail_metrics` (0015/0087), `get_campaign_agent_distribution` (0015) — SECURITY DEFINER; client EXECUTE revoked (0102); always live, **no Redis** |
 | Service | campaign functions live in `leads-service.ts` (campaign data derives from `leads` — logged decision); detail leads table via `getLeadsByRoleCached` |
-| Spend | `getBudgetSummary(from, to)` (`ad-spend-service.ts`) — list-only; one batched fetch in `CampaignListAsync`, mapped onto cards by normalised key. Reused from `/budget`; no new query. Skipped when no range. |
-| Decoration | `beautifyCampaignTitle()` (`lib/utils/campaigns.ts`) — the only title decorator |
-| Creatives | `getAdCreativesForCampaigns` batch map on the list; carousel on detail — home: `ad-creatives.md` |
+| Spend | `getBudgetSummary(from, to)` (`ad-spend-service.ts`) — reused from `/budget`, no new query, always-live (admin client, no Redis). **List:** one batched fetch in `CampaignListAsync`, mapped onto cards by normalised key, skipped when no range. **Detail:** the same fetch runs in `CampaignMetricsAsync`'s `Promise.all`, matched on `normalizeCampaignKey(campaignName)` → the Amount Spent / Cost-per-Lead tiles. |
+| Decoration | None — campaign names display RAW (the `beautifyCampaignTitle` decorator was deleted 2026-06-23; never reintroduce a title beautifier) |
+| Creatives | `getAdCreativesForCampaigns` batch map on the list; `getAdCreativesForCampaign` + `AdCreativeCarousel` inside `CampaignAdPanel` on detail — home: `ad-creatives.md` |
 
 ## 4. Components
 
-`CampaignCard` (card-list reference implementation) · `CampaignFilters` (composes
-`<FilterBar>`) · `CampaignMetricsStrip` (composes `StatTile variant="card"`) ·
-`AgentDistributionBar` (non-semantic `--domain-*` palette — design decision 2026-06-11) ·
+`CampaignCard` (card-list reference implementation; navigates straight to the detail page — no
+preview modal) · `CampaignFilters` (composes `<FilterBar>`) · `CampaignMetricsStrip` (8 tiles via
+`StatTile variant="card"`) · `AgentDistributionBar` (non-semantic `--domain-*` palette — design
+decision 2026-06-11; single `scaleX` entrance, not a width animation) · `CampaignAdPanel` +
 `AdCreativeCarousel` · detail leads table reusing the leads-table pattern.
 
 ## 5. States
 
 - **Loading:** `campaigns/loading.tsx` (PageSkeletons); detail metrics behind Suspense.
 - **Empty:** `<EmptyState>` (no campaigns in range / no leads in campaign).
-- **Error:** malformed `[id]` decode → `notFound()` (Q-10 guard); RPC errors degrade with logged warnings.
+- **Error:** a malformed `[id]` (invalid percent-encoding) is caught by the detail page's `try/catch` and falls back to the **raw param** (no `notFound()`); a campaign with no leads → `getCampaignDetailMetrics` returns null → the metrics strip renders nothing and the leads table shows its empty state. RPC errors degrade with logged warnings.
 
 ## 6. Invariants
 
@@ -103,7 +107,7 @@ These support grouped campaign queries and status-filtered aggregates without sc
 - **Join model:** string match only — no FK from `leads`. Lookup key is `campaign_key`, not `leads.id`.
 - **`campaign_key` normalisation:** DB CHECK `campaign_key = lower(trim(campaign_key))`. Application lookups use `campaignName.toLowerCase().trim()` (same rule in `getAdCreativesForCampaign`, `getAdCreativesForCampaigns`, and list-page map keys).
 - **Connection to campaigns:** `campaign_key` is the normalised form of the raw `utm_campaign` string. A lead’s `utm_campaign` value (spaces/underscores as stored) is normalised at query time to find matching creative rows.
-- **Multi-video (migration 0058):** `ad_creatives_campaign_key_key` UNIQUE dropped. Many rows may share one `campaign_key`; each row is one video. Queries order `created_at DESC` (newest first). List page batch-fetches via `getAdCreativesForCampaigns` (single `.in('campaign_key', uniqueKeys)` query — no N+1); detail page uses `getAdCreativesForCampaign`. Surfaces: `CampaignPreviewModal`, `CampaignAdCard`, lead dossier `CampaignVideoModal` (via `AdCreativeCarousel`).
+- **Multi-video (migration 0058):** `ad_creatives_campaign_key_key` UNIQUE dropped. Many rows may share one `campaign_key`; each row is one video. Queries order `created_at DESC` (newest first). List page batch-fetches via `getAdCreativesForCampaigns` (single `.in('campaign_key', uniqueKeys)` query — no N+1); detail page uses `getAdCreativesForCampaign`. Surfaces: the detail-page `CampaignAdPanel` and the lead dossier `CampaignVideoModal`, both via `AdCreativeCarousel`. (The list card no longer surfaces video — `CampaignPreviewModal` was removed 2026-06-16 and `CampaignAdCard` was replaced by `CampaignAdPanel` 2026-06-20.)
 - **Storage RLS (migration `20260608000092_fix_ad_creatives_storage_rls.sql`, 2026-06-08):** the `ad-creatives` Storage bucket now restricts INSERT/DELETE to `admin`/`founder` only (`ad_creatives_storage_insert` / `ad_creatives_storage_delete`, role read from `public.profiles`), replacing the older permissive "Ad Creative Modal insert/delete" policies. SELECT is unchanged — public bucket read so campaign + lead-dossier video surfaces can stream without an extra policy. This mirrors the `ad_creatives` table RLS from migration 0012.
 - **No Redis layer:** the ad-creative read functions in `ad-creatives-service.ts` are plain Supabase queries. There is no `redis.get`/`setex` and no `campaign:ad-creative:*` key. Freshness is `revalidatePath('/campaigns')` + `revalidatePath('/admin/ad-creatives')` on `upsertAdCreative` / `deleteAdCreative`.
 
@@ -290,29 +294,53 @@ All three functions use `createClient()` from `src/lib/supabase/server.ts` and c
 
 #### 5d. `CampaignCard`
 
-- **Left zone:** raw `campaign.campaign_name` + `DomainBadge` (`DOMAIN_LABELS`).
-- **Cost zone (between identity and pills):** two `CostCell`s — **Spend** + **Cost/Lead** for the active range. Micro-label over a mono value (`formatCurrency(Math.round(v))`). `value === null` → `—` in tertiary (no range, or no spend / zero leads) — **never ₹0**. Separated from the pills by a structural `--theme-paper-border` divider (a neutral zone divider, not a semantic single-edge accent strip).
-- **Right zone — seven metric pills in order:** total, won, in discussion, nurturing, lost, junk, RNR (variants: accent, success, info, warning, danger, neutral, neutral).
-- **`MetricPill`:** count displayed via `formatCompact(count)` — never raw integer in the pill.
-- **Hover:** `box-shadow: var(--shadow-2)` and `transform: translateY(-1px)` on mouse enter; reset to `--shadow-1` / `translateY(0)` on leave. Focus uses `--shadow-focus`.
-- **Click behaviour:** opens `CampaignPreviewModal` (does not navigate directly). **Detail navigation** is in the modal footer: `router.push(\`/campaigns/${encodedName}\`)` then `onClose`.
+The card is a `motion.create(Link)` (a `MotionLink`) — the **whole card is the link** to the
+detail page; clicking it navigates directly. It is NOT a button that opens a preview modal
+(`CampaignPreviewModal` was removed 2026-06-16). Layout is three stacked rows:
+
+- **Row 1 — identity:** raw `campaign.campaign_name` (ellipsised, `flex: 1`) + a `DomainBadge`
+  (`DOMAIN_LABELS`) pill on the right.
+- **Row 2 — hero stats strip:** four `HeroDatum` cells (in-file; micro-label over a mono value),
+  flex-wrapping — **Leads** (`tone="accent"`), **Conversion** (`won / total_leads` via `formatPercent`;
+  tone is success ≥ 0.1 / danger < 0.05 / primary otherwise; `—` in tertiary when `total_leads === 0`),
+  **Spend** (`formatCurrency(Math.round(totalSpend))`; `—` in tertiary when `null`), **Cost / Lead**
+  (`formatCurrency(Math.round(costPerLead))`; `—` in tertiary when `null`). `Spend`/`Cost / Lead`
+  render `—`, **never ₹0** (the `null` contract — no range, no spend row, or zero leads upstream).
+- **Divider:** a structural `1px var(--theme-paper-border)` zone separator (a neutral divider — **not**
+  a semantic single-edge accent strip, which is forbidden).
+- **Row 3 — status breakdown:** six `StatusDatum` entries (in-file; each is a 6px semantic dot, a
+  `formatCompact(count)` value, and a label), flex-wrapping — **won** (success), **in discussion** (info),
+  **nurturing** (warning), **lost** (danger), **junk** (neutral), **RNR** (neutral). Zero-count entries
+  dim to `opacity: 0.45`. There is **no "total" pill and no 7-pill row** — the old `MetricPill`/`CostCell`
+  are gone.
+- **Hover:** `box-shadow: var(--shadow-2)` + `transform: translateY(-1px)` on mouse enter; reset to
+  `--shadow-1` / `translateY(0)` on leave. Focus → `--shadow-focus`, blur resets.
 - **URL encoding contract (critical):**
 
 ```ts
-const encodedName = campaign.campaign_name.replace(/\s+/g, '+');
-router.push(`/campaigns/${encodedName}`);
+const href = `/campaigns/${encodeURIComponent(campaign.campaign_name)}`;
 ```
 
-- Spaces become `+` only — **not** `encodeURIComponent` (which would produce `%20` and hurt address-bar readability, e.g. `TG_House_Meta+Leads` vs `TG_House_Meta%20Leads`).
-- **`+` must never appear in a real `utm_campaign` value** — it decodes as space and breaks the DB match silently.
-- Underscores and other characters pass through unchanged in the path segment.
+- The card href uses `encodeURIComponent` — the **lossless** inverse of the detail page's
+  `decodeURIComponent`. The old `\s+`→`+` / `+`→space scheme was **removed 2026-06-20** because it
+  silently corrupted real keys: a literal `+` (Meta "Advantage+" campaigns) decoded to a space, the
+  normalised lookup key stopped matching, and the detail page found nothing — no video, empty leads
+  table, empty metrics (`TG_Global_Advantage+_14th May` had 38 leads + 2 creatives the corrupted key
+  missed). `encodeURIComponent` round-trips `+`, `/`, and spaces losslessly.
+- **No character is forbidden in a `utm_campaign` value anymore.** The address bar shows `%20`/`%2B`
+  instead of `+` — that is the correct trade-off for a key that round-trips. Never revive the `+`
+  scheme to "restore readability" (it reintroduces the silent-corruption bug). See the area
+  CLAUDE.md "Campaign ID Encoding Contract".
 
-- **Framer Motion entrance:** `opacity 0→1`, `y 4→0`, duration **250ms**, delay `Math.min(index * 80, 320) / 1000` seconds, ease `[0.16, 1, 0.3, 1]` (ease-out-expo family, design-dna §11.4).
+- **Framer Motion entrance:** `opacity 0→1`, `y 4→0`, duration **250ms**, delay
+  `Math.min(index * 80, 320) / 1000` seconds, ease `EASE_OUT_EXPO` (design-dna §11.4).
 
 #### 5e. `CampaignListSkeleton`
 
+Mirrors the three-row `CampaignCard` shape so the swap from skeleton to card settles rather than jolts.
+
 - **Row count:** 5
-- **Shape per row:** left block (160×14 name bar + 80×18 domain pill) + right row of **7** pill-shaped skeletons (varying widths 52–60px)
+- **Shape per row:** Row 1 = name bar (`flex: 1`, max 220px, 16px tall) + 64×18 domain pill; Row 2 = a hero-datum strip of **4** label-over-value stacks (value widths `[64, 56, 60, 68]`px, label ≈ 70% of each); a `1px` divider; Row 3 = **6** status-datum blocks (widths `[78, 96, 80, 70, 66, 62]`px, 14px tall). No "7 pill" row.
 - **Stagger:** `animationDelay` 0, 80, 160, 240, 320 ms per row (§11.4)
 
 ---
@@ -321,28 +349,73 @@ router.push(`/campaigns/${encodedName}`);
 
 #### 6a. URL contract
 
-- **`[id]` route param:** raw path segment as stored in the URL — spaces appear as `+` from list navigation.
+- **`[id]` route param:** the `encodeURIComponent`-encoded `utm_campaign` from the list card.
 - **Decode (once at top of page):**
 
 ```ts
-const campaignName = id.replace(/%2B/gi, ' ').replace(/\+/g, ' ');
+let campaignName: string;
+try {
+  campaignName = decodeURIComponent(id);
+} catch {
+  campaignName = id; // hand-typed URL with a stray '%' is not valid percent-encoding
+}
 ```
 
-- **Not** `decodeURIComponent` for the campaign key — the `+` convention is intentional.
-- **Defensive `%2B`:** stripped before `+`→space so double-encoded links do not show literal `%2B` in the UI or break lookups.
-- **`campaignTitle`:** `beautifyCampaignTitle(campaignName)` — **display only** (H1). Never passed to services or RPCs.
-- **Single source of truth:** `campaignName` is computed once and passed identically to `CampaignMetricsAsync`, `getAdCreativesForCampaign`, and `LeadFilters.campaign` inside `CampaignLeadsAsync`. Do not decode `params.id` again in child components.
+- `decodeURIComponent` is the **lossless inverse** of the card's `encodeURIComponent` — it round-trips
+  a literal `+` (Meta "Advantage+"), `/`, and spaces, all of which appear in real keys. The old
+  `%2B`/`+`→space replace chain was **removed 2026-06-20** (it corrupted any key with a literal `+`/`/`).
+  The `try/catch` falls back to the raw param so a malformed hand-typed URL never throws.
+- **`campaignTitle`:** the raw `campaignName` shown verbatim in the H1 (which renders with
+  `fontStyle: 'italic'`) — no decoration (the `beautifyCampaignTitle` decorator was deleted 2026-06-23;
+  never reintroduce it).
+- **Default window (`this_month`):** when the URL has **both** `date_from` and `date_to`, those drive
+  the page; otherwise the page falls back to the `this_month` preset (`resolveDateRangePreset('this_month')`,
+  the shared IST-anchored resolver — never re-fork the month-boundary math). This means Amount Spent
+  always shows a real figure on first load. A picked range (both bounds) overrides it; a half-set range
+  falls back to the default so metrics, leads, and spend never diverge. (The list page, by contrast,
+  skips spend entirely when no range is set.)
+- **Single source of truth:** `campaignName` (decoded once) and the resolved `dateFrom`/`dateTo` are
+  passed identically to `CampaignMetricsAsync`, `getAdCreativesForCampaign`, and `LeadFilters.campaign`
+  inside `CampaignLeadsAsync`. Do not decode `params.id` or re-resolve the window in child components.
 
 #### 6b. `page.tsx` structure
 
-- **Two independent `Suspense` boundaries:** metrics (`CampaignMetricsStripSkeleton` → `CampaignMetricsAsync`) and leads (`LeadsTableSkeleton` → `CampaignLeadsAsync`) so slow table queries do not block stat cards and vice versa.
-- **`CampaignMetricsAsync`:** `Promise.all([getCampaignDetailMetrics(...), getCampaignAgentDistribution(...)])` — parallel, never sequential.
-- **Leads table:** `getLeadsByRoleCached(role, userId, domain, filters)` where `filters.campaign = campaignName` plus `date_from`, `date_to`, `page`, `pageSize: 50`; other filter fields null.
-- **Ad creatives:** `getAdCreativesForCampaign(campaignName)` awaited outside Suspense (small read); `CampaignAdPanel` (replaced `CampaignAdCard` 2026-06-20) is the **left column** of the video↔metrics row, with the metrics strip to its right. Empty + admin/founder → an add-a-video tile that opens the shared `AdCreativeFormModal` inline.
+- **Video ↔ metrics row** (`grid grid-cols-1 lg:grid-cols-[320px_1fr]`, stacks below `lg`): the
+  `CampaignAdPanel` sits **left**, the metrics strip **right**. The creatives are awaited up-front
+  (so the video panel renders immediately); the metrics stream into the right column via their own
+  Suspense boundary, so a slow RPC never blocks the video.
+- **Two independent `Suspense` boundaries:** metrics (`CampaignMetricsStripSkeleton` → `CampaignMetricsAsync`,
+  in the right column) and leads (`LeadsTableSkeleton` → `CampaignLeadsAsync`, **full width below** the row)
+  so a slow table query never blocks the stat cards and vice versa.
+- **`CampaignMetricsAsync`** runs a **three-way** `Promise.all` — never sequential:
+
+```ts
+const [metrics, distribution, spendRows] = await Promise.all([
+  getCampaignDetailMetrics(campaignName, { date_from: dateFrom, date_to: dateTo }),
+  getCampaignAgentDistribution(campaignName, { date_from: dateFrom, date_to: dateTo }),
+  getBudgetSummary(dateFrom, dateTo), // spend — SAME window, reuses the /budget source (R-01)
+]);
+```
+
+- **Spend match:** `normalizeCampaignKey(campaignName)` against `spendRows[].campaignKey`, passed to the
+  strip as `totalSpend` (`null` when no matching row → the Amount Spent / Cost-per-Lead tiles show `—`,
+  never ₹0). If `metrics` is null (no leads), the strip renders nothing — the leads table's empty state
+  covers it.
+- **Leads table:** `getLeadsByRoleCached(role, userId, domain, filters)` where `filters.campaign = campaignName`,
+  `filters.view = 'all'` (a manager here sees the whole domain — the analytics view overrides the My-Leads
+  default), the resolved `date_from`/`date_to`, `page`, `pageSize: 50`; other filter fields null.
+- **Ad creatives:** `getAdCreativesForCampaign(campaignName)` awaited outside Suspense (small read);
+  `CampaignAdPanel` (replaced `CampaignAdCard` 2026-06-20) is the left column. Its card frame **always
+  renders**; empty + admin/founder → an add-a-video tile that opens the shared `AdCreativeFormModal`
+  (`canUpload = role === 'admin' || 'founder'`, the same gate `upsertAdCreative` enforces server-side).
 
 #### 6c. `CampaignMetricsStrip`
 
-- **Server component** — no `'use client'`; zero DB calls; props only.
+- **Server component** — no `'use client'`; zero DB calls; props only (`metrics`, `distribution`, `totalSpend?`).
+- **8 tiles** (6 pipeline + the two spend tiles), each a `StatTile variant="card"`, laid out
+  `grid grid-cols-1 sm:grid-cols-2` — a 2×4 grid from `sm` up that sits in the right column beside the ad
+  video, dropping to a single column below `sm`. The column count lives in classes only (an inline
+  `grid-template-columns` would override the responsive variants).
 
 | Card label | Field(s) | Formatting |
 | ---------- | -------- | ---------- |
@@ -352,6 +425,12 @@ const campaignName = id.replace(/%2B/gi, ' ').replace(/\+/g, ' ');
 | Junk Rate | `junk / total_leads` | primary: `formatPercent(junk / total)` when `total_leads > 0`, else `"—"`; sub: junk rate helper |
 | RNR | `rnr` | `formatCompact`; sub: RNR share of total |
 | Avg. First Touch | `avg_hours_to_first_touch` | `<1h`, `Nh`, or `—`; sub: qualitative label |
+| Amount Spent | `totalSpend` | `formatCurrency(Math.round(totalSpend))` when `hasSpend`, else `"—"` (never ₹0) |
+| Cost / Lead | `totalSpend / total_leads` | `formatCurrency(Math.round(…))` when `hasSpend && total_leads > 0`, else `"—"` (the null/zero-leads contract) |
+
+> Amount Spent + Cost / Lead were added 2026-06-20. `costPerLead` is derived in the strip from the
+> SAME window's spend ÷ leads — it is `—` (never ₹0) at zero leads or no spend row, matching the
+> list-page `HeroDatum` contract.
 
 **Division-by-zero guards** (all use `total_leads` as denominator):
 
@@ -368,18 +447,31 @@ const campaignName = id.replace(/%2B/gi, ' ').replace(/\+/g, ' ');
 
 - **Client component** (`'use client'`).
 - **Stacked bar:** height **8px**, `borderRadius: var(--radius-full)`, `overflow: hidden`, track `var(--theme-paper-subtle)`.
-- **Segments:** `motion.div` per agent with `layoutId={dist-seg-${agent_id}}`, `initial={{ width: 0 }}`, `animate={{ width: '${pct}%' }}`, transition 500ms + stagger `i * 0.05`, ease `[0.16, 1, 0.3, 1]`.
-- **Legend:** 8px colour dot (`SEGMENT_COLORS` cycle: accent, info, success, warning, danger) + `full_name` + `formatCompact(lead_count)`.
+- **Segments:** static `flex: 0 0 ${pct}%` slices (`pct = lead_count / total * 100`) — they are **not**
+  individually animated. The entrance is a **single** `motion.div` wrapper (`transformOrigin: left center`)
+  animating `scaleX 0 → 1` once on mount (`transition={{ duration: PAGE_DURATION, ease: EASE_OUT_EXPO }}`
+  — `PAGE_DURATION = 0.5`). No per-segment `layoutId`, no `width` animation, no `i * 0.05` stagger.
+- **Palette:** `SEGMENT_COLORS` is the non-semantic `--domain-*` cycle — `concierge`, `finance`,
+  `marketing`, `tech`, `b2b` (5 entries, indexed `i % 5`). Agents are categorical data; the bar
+  deliberately never rotates the semantic success/warning/danger tokens positionally (agent #5 reading
+  as "danger red" would be a false signal — V-01/V-03).
+- **Legend:** an 8px colour dot from the same `SEGMENT_COLORS` cycle + `full_name` + `formatCompact(lead_count)`.
 - **Hidden when:** `distribution.length <= 1` or `total === 0`.
 
-##### Width animation exception
+##### scaleX entrance (not a width animation)
 
-Project rule V-19 forbids **CSS** `transition` on layout properties (`width`, `height`, `padding`, `margin`) because they trigger main-thread layout and jank — the “never animate width” rule. Here, Framer Motion animates **percentage width on flex children inside a fixed-height flex row** — compositor-friendly segment growth on mount, coordinated with `layoutId` for shared-layout stability. This is not a card or table column resizing; it is a one-time data visualization entrance. **Do not copy this pattern to general UI chrome** — only this distribution bar uses width animation in the codebase.
+The bar is **not** an exception to the "never animate `width`/`height`/`padding`/`margin`" rule
+(Never-Do list / V-19) — it sidesteps it. The segments are static `flex-basis` slices; the only animated
+property is a single `scaleX` transform on their wrapper, which is compositor-friendly (no layout
+reflow). This is a one-time data-visualisation entrance, not resizing UI chrome — but because it uses a
+`transform`, not a layout property, no carve-out is needed. (The area CLAUDE.md's "Agent Distribution Bar
+Rule" still describes an `animate={{ width }}` + `layoutId` shape; the live code is the `scaleX` form
+documented here.)
 
 #### 6e. `CampaignMetricsStripSkeleton`
 
-- **6** stat-card placeholders in a responsive grid (`repeat(2)` → `md:grid-cols-3` → `lg:grid-cols-6`).
-- **Stagger:** delays 0, 80, 160, 240, 320, 320 ms on inner `.skeleton` blocks (§11.4).
+- **8** stat-card placeholders (mirrors the 8-tile strip) in `grid grid-cols-1 sm:grid-cols-2` — the same 2×4-from-`sm` layout the strip uses (the column count lives in classes only).
+- **Stagger:** `staggerDelays = [0, 80, 160, 240, 320, 320, 320, 320]` ms on the inner `.skeleton` blocks (§11.4 cap).
 
 #### 6f. Leads table reuse (explicit reuse decision)
 
@@ -488,11 +580,11 @@ Sidebar hides the Campaigns link from agent/guest (UI); direct URL still hits pa
 
 6. **No campaigns table** — all metrics derive from `leads.utm_campaign` (and `ad_creatives` for video assets only).
 
-7. **Campaign URL encoding uses `+` for spaces, not `%20`** — `campaign.campaign_name.replace(/\s+/g, '+')` on navigate; inverse `replace(/\+/g, ' ')` on read; never `encodeURIComponent` / `decodeURIComponent` for the campaign key.
+7. **Campaign URL encoding is `encodeURIComponent` / `decodeURIComponent`** — `encodeURIComponent(campaign.campaign_name)` on the list card's href; `decodeURIComponent(id)` (in `try/catch` → raw fallback) on the detail page. The pair is lossless, so a literal `+` ("Advantage+"), `/`, and spaces all round-trip. The old `\s+`→`+` / `+`→space scheme is **forbidden** (removed 2026-06-20 — it silently corrupted keys with a literal `+`/`/`); no character is forbidden in a `utm_campaign` value anymore.
 
 8. **One RPC for list aggregates** — `get_campaign_metrics` must stay a single grouped query; per-campaign queries from the list page are a bug.
 
-9. **Detail metrics RPCs in parallel** — `Promise.all` for detail + distribution inside `CampaignMetricsAsync`; never sequential awaits.
+9. **Detail reads in parallel** — `CampaignMetricsAsync` runs a single three-way `Promise.all`: `getCampaignDetailMetrics` + `getCampaignAgentDistribution` + `getBudgetSummary` (spend, same window); never sequential awaits. The leads table is a separate Suspense boundary, not in this `Promise.all`.
 
 10. **Agent distribution: single GROUP BY** — `get_campaign_agent_distribution` must not become N+1 per agent.
 
@@ -502,13 +594,17 @@ Sidebar hides the Campaigns link from agent/guest (UI); direct URL still hits pa
 
     **Batch spend on list (same rule):** `getBudgetSummary` is called **once** in `CampaignListAsync` (in the metrics `Promise.all`) and mapped by normalised key; never a per-card spend call. Both `getBudgetSummary` and `get_campaign_metrics` receive the **identical** resolved `date_from`/`date_to` — cost and lead counts must describe the same window. No range → no spend fetch, cost cells render `—`. Spend/cost render `—` (never ₹0) when `null`.
 
-13. **`beautifyCampaignTitle` / `campaignTitle` never in DB calls** — raw `utm_campaign` string only for lookups.
+13. **Campaign names display raw** — the same `utm_campaign` string used for lookups is shown verbatim (no beautifier).
 
 14. **Leads table reuse** — detail page uses `LeadsTable` + `LeadsPagination`; do not fork a campaign-only table. `filters` is passed through to `LeadsTable` (required prop; powers the table's `ExportButton` scope) but filtering itself stays server-side in `getLeadsByRoleCached`.
 
 15. **`get_campaign_metrics` N campaigns = 1 round trip** — conditional `COUNT(*) FILTER` aggregates only.
 
 16. **`avg_hours_to_first_touch` activity key** — the `get_campaign_detail_metrics` lateral join must match `lead_activities.details->>'new_status' = 'touched'` (migration 0087), **not** `details->>'to'`. The `status_changed` activity payload is `jsonb_build_object('old_status', …, 'new_status', …)` — there is no `to` key. Re-introducing `'to'` silently zeroes the metric.
+
+17. **Detail-page default window = `this_month`** — when the URL lacks both `date_from` and `date_to`, the detail page resolves the window via `resolveDateRangePreset('this_month')` so the metrics, leads, and spend reads always share one window and Amount Spent shows a real figure on first load. A picked range (both bounds) overrides it; never re-fork the IST month-boundary math here. (The list page differs: no range → spend skipped entirely.)
+
+18. **Spend matches on the normalised key** — detail-page spend is matched on `normalizeCampaignKey(campaignName)` against `spendRows[].campaignKey`; the list page maps by `campaign_name.toLowerCase().trim()`. Both equal the `ad_spend_daily.campaign_key` CHECK form. `totalSpend`/`costPerLead` render `—`, never ₹0, when there is no matching row (or zero leads upstream).
 
 ---
 
@@ -519,14 +615,15 @@ Sidebar hides the Campaigns link from agent/guest (UI); direct URL still hits pa
 | `CampaignFilters.tsx` | List filter bar (client, URL-only) |
 | `CampaignListAsync.tsx` | List data + cards (async server) |
 | `CampaignListSkeleton.tsx` | List Suspense fallback |
-| `CampaignCard.tsx` | List row card + preview trigger |
-| `CampaignPreviewModal.tsx` | Preview + navigate to detail |
-| `CampaignMetricsStrip.tsx` | Detail stat cards (server) |
-| `CampaignMetricsStripSkeleton.tsx` | Detail metrics Suspense fallback |
-| `AgentDistributionBar.tsx` | Stacked agent bar (client) |
+| `CampaignCard.tsx` | List row card — a `MotionLink` navigating straight to the detail page (client) |
+| `CampaignMetricsStrip.tsx` | Detail stat cards — 8 tiles (server) |
+| `CampaignMetricsStripSkeleton.tsx` | Detail metrics Suspense fallback (8 placeholders) |
+| `AgentDistributionBar.tsx` | Stacked agent bar — `--domain-*` palette, single `scaleX` entrance (client) |
 | `CampaignAdPanel.tsx` | Detail ad carousel / add-a-video panel (left column) |
 | `AdCreativeCarousel.tsx` | Multi-video carousel |
 | `AdCreativePlayer.tsx` | Single native video player |
+
+> **Removed — do not recreate:** `CampaignPreviewModal.tsx` (deleted 2026-06-16 — the card now links straight to the detail page) and `CampaignAdCard.tsx` (replaced by `CampaignAdPanel.tsx` 2026-06-20).
 
 ---
 

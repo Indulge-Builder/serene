@@ -80,51 +80,136 @@ function MediaPlaceholder({ message }: { message: WhatsAppMessage }) {
     audio:    "Audio",
   };
   const label = labels[message.message_type] ?? "Media";
+  // Media messages may carry a caption — stored in content (insertInboundMessage
+  // writes the WhatsApp caption there). Show it under the media chip.
+  const caption = (message.content ?? "").trim();
+  const url     = message.media_url;
+
+  // Inline preview for image/video when a url is present; everything else (and a
+  // url-less media row) falls back to the labelled chip below.
+  const inlinePreview =
+    url && message.message_type === "image" ? (
+      <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: "block" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={caption || "Image"}
+          loading="lazy"
+          style={{
+            display:      "block",
+            maxWidth:     "240px",
+            maxHeight:    "240px",
+            width:        "auto",
+            height:       "auto",
+            borderRadius: "var(--radius-sm)",
+            objectFit:    "cover",
+          }}
+        />
+      </a>
+    ) : url && message.message_type === "video" ? (
+      <video
+        src={url}
+        controls
+        preload="metadata"
+        style={{
+          display:      "block",
+          maxWidth:     "240px",
+          maxHeight:    "240px",
+          borderRadius: "var(--radius-sm)",
+        }}
+      />
+    ) : null;
+
+  if (inlinePreview) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+        {inlinePreview}
+        {caption && (
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize:   "var(--text-sm)",
+              color:      "var(--theme-text-primary)",
+              margin:     0,
+              lineHeight: "var(--leading-relaxed)",
+              wordBreak:  "break-word",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {caption}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
       style={{
-        display:      "flex",
-        alignItems:   "center",
-        gap:          "var(--space-2)",
-        padding:      "var(--space-3)",
-        background:   "var(--theme-paper-border)",
-        borderRadius: "var(--radius-sm)",
+        display:        "flex",
+        flexDirection:  "column",
+        gap:            "var(--space-2)",
       }}
     >
-      <Icon
+      <div
         style={{
-          width:       "18px",
-          height:      "18px",
-          strokeWidth: 1.5,
-          flexShrink:  0,
-          color:       "var(--theme-text-secondary)",
-        }}
-      />
-      <span
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize:   "var(--text-xs)",
-          color:      "var(--theme-text-secondary)",
+          display:      "flex",
+          alignItems:   "center",
+          gap:          "var(--space-2)",
+          padding:      "var(--space-3)",
+          background:   "var(--theme-paper-border)",
+          borderRadius: "var(--radius-sm)",
         }}
       >
-        {label}
-      </span>
-      {message.media_url && (
-        <a
-          href={message.media_url}
-          target="_blank"
-          rel="noopener noreferrer"
+        <Icon
           style={{
-            fontFamily:     "var(--font-sans)",
-            fontSize:       "var(--text-xs)",
-            color:          "var(--theme-accent)",
-            textDecoration: "none",
-            marginLeft:     "auto",
+            width:       "18px",
+            height:      "18px",
+            strokeWidth: 1.5,
+            flexShrink:  0,
+            color:       "var(--theme-text-secondary)",
+          }}
+        />
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize:   "var(--text-xs)",
+            color:      "var(--theme-text-secondary)",
           }}
         >
-          View
-        </a>
+          {label}
+        </span>
+        {message.media_url && (
+          <a
+            href={message.media_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontFamily:     "var(--font-sans)",
+              fontSize:       "var(--text-xs)",
+              color:          "var(--theme-accent)",
+              textDecoration: "none",
+              marginLeft:     "auto",
+            }}
+          >
+            View
+          </a>
+        )}
+      </div>
+      {caption && (
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize:   "var(--text-sm)",
+            color:      "var(--theme-text-primary)",
+            margin:     0,
+            lineHeight: "var(--leading-relaxed)",
+            wordBreak:  "break-word",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {caption}
+        </p>
       )}
     </div>
   );
@@ -134,6 +219,11 @@ export function MessageBubble({ message, isOptimistic = false, entrance = false 
   const isOutbound = message.direction === "outbound";
   const isMedia    = ["image", "video", "document", "audio"].includes(message.message_type);
   const senderName = message.sender_name ?? (isOutbound ? "You" : "Lead");
+  // A text message with no body is an un-renderable type (sticker, location,
+  // reaction, or a payload shape we didn't parse) that was stored as text with
+  // an empty content. Show a muted placeholder rather than a blank bubble.
+  const hasText        = (message.content ?? "").trim().length > 0;
+  const isUnsupported  = !isMedia && !hasText;
 
   return (
     <motion.div
@@ -209,6 +299,19 @@ export function MessageBubble({ message, isOptimistic = false, entrance = false 
       >
         {isMedia ? (
           <MediaPlaceholder message={message} />
+        ) : isUnsupported ? (
+          <p
+            style={{
+              fontFamily: "var(--font-serif)",
+              fontStyle:  "italic",
+              fontSize:   "var(--text-sm)",
+              color:      "var(--theme-text-tertiary)",
+              margin:     0,
+              lineHeight: "var(--leading-relaxed)",
+            }}
+          >
+            Unsupported message
+          </p>
         ) : (
           <p
             style={{

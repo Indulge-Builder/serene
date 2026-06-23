@@ -8,7 +8,6 @@ import {
   getAccountRecharges,
   buildAccountReport,
 } from "@/lib/services/ad-spend-service";
-import { beautifyCampaignTitle } from "@/lib/utils/campaigns";
 import { formatCount, formatCurrency, formatCurrencyCompact, formatCompact } from "@/lib/utils/numbers";
 import { StatTile } from "@/components/ui/StatTile";
 import { BudgetEmptyState } from "@/components/budget/BudgetEmptyState";
@@ -67,7 +66,7 @@ export async function BudgetAsync({ from, to, canUpload }: Props) {
         report={report}
         campaignRows={rows.map((r) => ({
           ...r,
-          campaignTitle: beautifyCampaignTitle(r.campaignKey),
+          campaignTitle: r.campaignKey,
         }))}
         recharges={recharges}
       />

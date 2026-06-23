@@ -25,6 +25,7 @@ import {
   Sparkles,
   Activity,
   MessageSquarePlus,
+  Telescope,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { useSuggestionFeedback } from "@/components/suggestions/SuggestionFeedbackProvider";
@@ -56,10 +57,13 @@ const MAIN_NAV: NavItem[] = [
   { href: "/helpdesk",  label: "Helpdesk",  icon: BookOpen        },
 ];
 
-// Analytics section — Performance for all roles; Campaigns + Budget +
-// Escalations for manager+ (the shared isManager gate below)
+// Analytics section — Performance for all roles; Oversight + Campaigns + Budget
+// + Escalations for manager+ (the shared isManager gate below). Oversight sits
+// directly below Performance and is manager+ only (it rides the isManager gate,
+// unlike Performance which is the all-roles special-case in the filter below).
 const ANALYTICS_NAV: NavItem[] = [
   { href: "/performance", label: "Performance", icon: BarChart2 },
+  { href: "/oversight", label: "Oversight", icon: Telescope },
   { href: "/campaigns", label: "Campaigns", icon: TrendingUp },
   { href: "/budget", label: "Budget", icon: Wallet },
   { href: "/escalations", label: "Escalations", icon: AlertTriangle },

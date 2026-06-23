@@ -12,6 +12,715 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-24 — Feature: `/oversight` — a 3-tier work-in-progress drill (manager+)
+
+A new top-level page `/oversight` (Sidebar slot directly below Performance, manager/admin/founder
+only) — a read surface over existing task data plus one new append-only event stream. Three tiers,
+one `card → open` grammar at each:
+
+- **Tier 1 Teams** (founder/admin) — one card per `app_domain` with an active-agent roster:
+  open/overdue/completed task counts + agent count + a live "present agents now" pulse.
+- **Tier 2 Team detail** (managers land here, clamped to their own team) — per-agent cards + a live
+  team activity rail.
+- **Tier 3 Agent detail** — that agent's personal + group tasks + their task metrics + a live rail
+  scoped to the agent.
+
+**Data layer (net-new):**
+
+- **Migration `20260624000144_oversight_task_events`** — `task_events` append-only table
+  (`task_event_type` enum `created`/`status_changed`/`reassigned`/`remark_added`/`overdue`;
+  `domain app_domain NOT NULL`, `actor_id`/`subject_id`, `task_title` snapshot, `meta jsonb`,
+  FK→`tasks` CASCADE; indexes `(domain, created_at DESC)` + `(subject_id, created_at DESC)`;
+  **manager+ SELECT, NO INSERT/UPDATE/DELETE policy ever** (A-11); Realtime ENABLED) + three
+  SECURITY DEFINER scope-param RPCs (`get_team_task_overview`, `get_team_agent_breakdown`,
+  `get_agent_tasks_oversight`) — EXECUTE REVOKEd from `authenticated` → admin-client only (Q-13).
+  Applied via Supabase MCP; `database.ts` types pending regen (interim hand-declared
+  `lib/types/oversight.ts` + `as any` RPC/`.from` casts, the `revival`/`usage` pattern).
+- **`emitTaskEvent` + `resolveTaskDomain`** (`lib/services/task-events.ts`) — THE single emit point,
+  and THE single task→domain derivation (group → `task_groups.domain`, else assignee's
+  `profiles.domain`; `tasks` has no domain column). Best-effort, non-fatal, admin-client only.
+- **Emit wired into the existing task-mutation cores** (`task-mutations.ts`:
+  create/status/reassign) + `addTaskRemarkAction` (`remark_added`) + `checkTaskOverdueTask`
+  (`overdue`, once, after the once-only `overdue_at` stamp). Emitted from the **cores**, never the
+  UI/actions — so Elaya's write tools inherit it (R-01). The cores take the caller's pre-fetched
+  task snapshot (the `taskCtx` discipline) — no extra fetch, still context-free.
+- **`oversight-service.ts`** (3 readers plus 2 rail seeds; one aggregation query per tier; Tier-3
+  metric counts derived in the mapper) and **`oversight.ts` actions** (the manager-clamp trust
+  boundary: a manager requesting another `domain`/`agentId` is **denied**, not served their own).
+
+**Why the clamp is in the action/RPC, not RLS:** the manager `tasks` SELECT RLS is role-only (no
+domain predicate) — a manager can read every team at the DB level. Oversight isolation is enforced
+in three layers: the action (deny mismatch), the page (redirect/`notFound`), and each RPC
+(force-clamp `p_caller_domain` in SQL). The oversight readers are **never `auth.uid()`-scoped** —
+they take an explicit `p_agent`/`p_domain`, so they can read another user's load (the self-scope
+trap that makes `getPersonalTasks`/`get_group_task_summaries` unusable here).
+
+**UI:** `oversight/{page,[domain]/page,[domain]/[agentId]/page}.tsx` + `OversightSkeleton`;
+`components/oversight/{TeamOverviewGrid,AgentBreakdownGrid,OversightStatRow,AgentOversightMetricsRow,AgentTaskList,OversightRail}.tsx`.
+The live rails subscribe to `task_events` Realtime (filtered by `domain`/`subject_id`, `useId()`
+nonce, `removeChannel` teardown) seeded from an RSC read. Tier-1/2 presence overlays reuse
+`listLivePresence()`. Cards reuse `.serene-activity-card`; the only new CSS is the
+`serene-oversight-pulse` keyframe. Nav: `/oversight` added to `ANALYTICS_NAV` (rides the `isManager`
+gate) + the GIA-domain slice of `DOMAIN_ROUTE_MAP`. `isAppDomain` added to `domains.ts`.
+
+**Verified:** `pnpm tsc --noEmit` clean; the manager clamp (a `shop` manager reading `onboarding`
+agents → 0 rows), founder 1→2→3 across all teams, a Tier-3 agent's tasks read by a different user,
+and — the key proof — a `status_changed` event readable via both rail filters with **zero
+`task_remarks` rows** (the rail reads `task_events`, not a remarks stream). `task_events` confirmed
+SELECT-only (no UPDATE/DELETE policy). Full contract: `docs/oversight.md` +
+`src/app/(dashboard)/oversight/CLAUDE.md`.
+
+> **Cross-team reassignment note (not a bug):** a task created in one team and reassigned to another
+> has its `created` event under the old domain and its `reassigned`/later events under the new —
+> each team's rail shows the events that happened while the task was theirs. The point-in-time RPCs
+> compute the current team (assignee's domain) live.
+
+---
+
+## 2026-06-24 — Fix: dashboard chart widgets logged Recharts `width(-1) height(-1)`
+
+After the dashboard moved to the react-grid-layout (RGL) spatial grid (v4), every
+chart widget logged Recharts' `The width(-1) and height(-1) of chart should be
+greater than 0` on each `/dashboard` load. The chart's `ResponsiveContainer`
+measured a zero/near-zero box.
+
+- **Two compounding causes:**
+  1. **Broken height chain.** RGL writes the resolved pixel height onto
+     `.react-grid-item`, but the chain below it (`.react-grid-item` → canvas
+     wrapper `<div>` → slot → widget → chart) relied on every link declaring
+     `height: 100%` at the same commit. The anonymous wrapper `<div key={…}>` in
+     `DashboardCanvas` had no height, collapsing the `100%` chain to 0.
+  2. **Mount-timing race.** RGL mounts items collapsed (WidthProvider resolves
+     width first; row height lands on a later commit). During that gap
+     `useWidgetDensity`'s ResizeObserver could fire with a positive-but-tiny
+     height, flip `measured=true`, and mount the chart against a near-zero box.
+- **Fix 1 — structural CSS** (`globals.css`, `.serene-dashboard-grid .react-grid-item`):
+  make the item a flex column and force its single child (`> *`) to
+  `flex: 1; min-height: 0; min-width: 0`. The child's height now resolves
+  directly from the item's pixel height with no dependency on intermediate
+  wrappers each declaring `height: 100%` — so the chart's first measure is always
+  against a concrete pixel box. (`ChartFrame`'s existing `isFill` branch already
+  handled the leaf correctly given a sized parent.)
+- **Fix 2 — harden the mount gate** (`useWidgetDensity.ts`): require
+  `rect.height >= GRID_ROW_HEIGHT` (one grid row, below every widget's `minH`)
+  before flipping `measured`, so a transient collapsed box can never let the
+  chart through while a real cell always clears the floor.
+- No widget signatures changed; `tsc --noEmit` clean.
+
+---
+
+## 2026-06-24 — Fix: Going Cold widget now follows the domain selector
+
+The dashboard **Going Cold** count was the one cohort widget that never changed
+when an admin/founder switched the global domain selector — it was always org-wide.
+
+- **Cause:** in `get_dashboard_summary`, the cold-leads predicate scoped admin/founder
+  as `p_role IN ('admin','founder') THEN true` (org-wide), ignoring `p_initial_domain` —
+  while the `lead_status` and `campaigns` CTEs in the same RPC already honoured it.
+- **Fix (migration `20260624000143_dashboard_cold_leads_honor_domain.sql`):**
+  `CREATE OR REPLACE get_dashboard_summary` from the live 0140 body, changing ONLY
+  the cold predicate to the same scoping CASE the other two CTEs use (manager →
+  own domain, admin/founder → the picked domain or all-org). Cutoff stays
+  `cold_lead_cutoff()`; date filter still not applied (going-cold is a live state).
+- **Verified against prod by calling the RPC per domain:** all-domains 2286,
+  onboarding 1154, shop 730, house 329, legacy 73 (sum = 2286). The TS wiring
+  (`dashboard-service` spread → `page.tsx` `initialData` → `ManagerColdLeadsWidget`)
+  was already correct — this was purely the SQL scope.
+- Applied to prod via MCP (a first attempt hit a transient Cloudflare 502 and did
+  NOT land — caught by calling the RPC, not just reading the function text; re-applied).
+
+---
+
+## 2026-06-24 — Dashboard: Campaign Budget widget rebuilt as the ad-account fuel gauge
+
+The dashboard `Campaign Budget` widget was a cramped 2×2 grid of spend stat
+cells in a narrow 3-column slot (the cells overflowed their `minWidth:120px`
+floor). It is now a **fuel gauge**: the org-wide ad-account tank — total
+recharged is the full tank, spend is fuel burned, remaining balance is fuel
+left — with a ROI sub-line (ROAS · CPL · leads · deals). This is the headline
+finance surface for founders and the performance marketer.
+
+- **New pure roll-up `buildBudgetGaugeSummary(campaignRows, recharges)`**
+  (`ad-spend-service.ts`) — built **on top of** `buildAccountReport` (R-01), so
+  the gauge can never disagree with the `/budget` per-account report. Returns
+  `{ recharged, spent, remaining, consumed, leadCount, dealCount, dealRevenue,
+  costPerLead, roas, campaignCount, hasNonInr }`. **INR-only** balance, exactly
+  like the per-account rule: a non-INR recharge is never subtracted from INR
+  spend; its presence only sets `hasNonInr` for the footnote. CPL/ROAS are
+  `null` at zero denominators (render "—", never ₹0 / 0×). Covered by the
+  existing `buildAccountReport` invariants the gauge inherits.
+- **Always org-wide.** Recharges carry no domain, so a per-domain "remaining"
+  would mix domain-filtered spend with org-wide recharges (a finance error).
+  The gauge is the same tank for every manager+ viewer regardless of the global
+  domain scope. (The per-domain spend filter still applies to the legacy
+  `budget_summary` seed, untouched.)
+- **RSC seed + refresh.** `dashboard/page.tsx` now fetches `getAccountRecharges`
+  alongside `getBudgetSummary` (manager+ only, unscoped) and seeds
+  `initialData.budget_gauge` via the pure builder. New
+  `getBudgetGaugeWidgetAction(from, to)` (`actions/dashboard.ts`, manager+ gate,
+  **no domain param**) backs the refresh button + date-cohort change.
+  `DashboardSummary.budget_gauge` added to `lib/types`.
+- **Density-adaptive widget** (`ManagerBudgetWidget.tsx`, full rewrite). Reads
+  `useWidgetDensityTier()`: **compact** → remaining headline + % burned + the
+  tank; **standard** → + the Recharged/Spent/Remaining trio; **rich** → + the
+  ROI sub-line. The tank fill animates via `scaleX` from `transformOrigin:left`
+  (never `width` — Never-Do list / DNA M-06), same mechanism as `ProgressBar`.
+  Fuel-depletion intent (inverse of `ProgressBar`'s auto-intent): success while
+  fuel remains, warning past 85% burned, **danger when overspent** (remaining
+  < 0) with an overflow nub at the far right so the bar reads "past full". All
+  colours are tokens; the one `borderTop` is a neutral structural divider (the
+  sanctioned use — not a semantic edge accent).
+- **Wider default footprint.** `manager-budget` `defaultGrid` bumped
+  `{w:3,h:5} → {w:6,h:8}` (`minW:4,minH:5`); module reclassified `gia → finance`;
+  `defaultSize sm → md`. `MANAGER_GRID` places the gauge half-width on its own
+  row with the cold-leads count beside it. Layout storage key bumped
+  **v4 → v5** so a saved v4 layout (which would restore the old cramped 3-col
+  footprint) resets to the corrected role default.
+
+Files: `lib/services/ad-spend-service.ts`, `lib/types/index.ts`,
+`app/(dashboard)/dashboard/page.tsx`, `lib/actions/dashboard.ts`,
+`lib/constants/dashboard-widgets.ts`, `hooks/useDashboardLayout.ts`,
+`components/dashboard/widgets/ManagerBudgetWidget.tsx`.
+
+---
+
+## 2026-06-24 — Performance: domain drill rows carry assignee / last-call-outcome meta
+
+Refined the founder Domains-tab card drills (above) with a calm secondary line per
+row, so each list reads at a glance without leaving the modal:
+
+- **Leads drill** → the **assignee** under each name (an `xs` initials `Avatar` +
+  the agent's name; "Unassigned" stays quiet, italic-tertiary).
+- **Calls drill** → the lead's **last call outcome** (a quiet `PhoneCall` glyph +
+  `CALL_OUTCOME_LABELS`).
+- Won drill adds nothing — the Won status pill already carries the meaning.
+
+DRY: `LeadDrillRow` gained an optional **`meta?: ReactNode`** slot and `LeadDrillModal`
+an optional **`renderMeta?: (lead) => ReactNode`** passthrough — `DomainLeadsDrillModal`
+supplies the per-`kind` line. Every existing drill (first-touch, predicate, agent
+leads/calls/deals) omits both and renders the byte-identical original row. Token-only,
+no accent pill — the status pill stays the row's single coloured element (surface
+contract). The data was already on the row (`last_call_outcome`, `assignee.full_name`
+from `getLeadsByRole`) — no new fetch/field.
+
+Files: `components/performance/LeadDrillRow.tsx` (`meta` slot),
+`LeadDrillModal.tsx` (`renderMeta` passthrough), `DomainLeadsDrillModal.tsx`
+(per-`kind` `AssigneeMeta` / `OutcomeMeta`).
+
+## 2026-06-24 — Performance: founder Domains-tab cards are drillable to the leads → dossier
+
+Made the four tiles on each **domain card** (Domains tab, founder/admin) tap
+targets that open the leads behind that metric — every row a `/leads/[id]` Link —
+matching the agent stat-tile drills exactly (consistency + R-01).
+
+- **Tiles → shared `LeadDrillModal`.** Leads → all leads in the domain+period;
+  Calls → leads with a logged call (a non-null latest outcome); Deals Closed +
+  Revenue → won leads. Each opens the SAME `LeadDrillModal` (the generic
+  fetch-on-open flat lead list → `LeadDrillRow` → dossier) the agent panel uses —
+  no new modal/row/fetch lifecycle.
+- **One new gated action, no new query.** `getDomainLeadsDrillAction(domain,
+  kind, period, …)` reuses `getLeadsByRole` domain-scoped (`filters.domain`, no
+  `agent_id`) with the existing indexed predicates per `kind` (`'all'` → none,
+  `'calls'` → `last_call_outcome IN (…all outcomes…)`, `'won'` → `status='won'`).
+  Same `assertDrillAccess` gate as every other performance drill (the Domains tab
+  is founder/admin-only).
+- **`StatAtom` opt-in pressable reused** — the tiles pass `onClick`, becoming the
+  pressable `motion.button` variant (no component change). One
+  `DomainLeadsDrillModal` (thin `LeadDrillModal` caller, mirrors
+  `AgentLeadsPredicateDrillModal`) mounts once at the panel level; drill state
+  lives in `DomainOverviewPanel`.
+
+Files: `lib/actions/performance.ts` (`getDomainLeadsDrillAction`),
+`components/performance/DomainLeadsDrillModal.tsx` (new),
+`components/performance/DomainOverviewPanel.tsx` (tile `onClick` + drill state +
+modal mount).
+
+---
+
+## 2026-06-24 — Performance: Agents/Domains tabs into the filter strip, Domains default, deck for managers
+
+Restructured the `/performance` founder/admin chrome onto the `/tasks`
+single-paper-strip layout, and removed the now-redundant per-roster domain
+dropdown (the global top-bar domain selector already narrows the roster).
+
+- **Tabs moved into the filter bar.** The `Agents` / `Domains` `TabSelector` no
+  longer sits on its own row above `PerformanceFilters` — it now renders inside
+  the same paper strip, on the **leading edge** (left), exactly like the
+  `/tasks` page. `FilterBar` gained a `leading` slot (rendered before the
+  sliders icon); `PerformanceFilters` forwards `leading`/`trailing` through to
+  it. `FounderPerformanceShell` now owns and renders the filter strip
+  (`page.tsx` no longer renders a separate `<PerformanceFilters>` for
+  founder/admin).
+- **Domains is the first tab and the default selection** (was `agents`). A
+  founder/admin lands on the Domains overview; Agents is one click away. The
+  active tab is seeded from `?tab=` and mirrored back via `history.replaceState`
+  (no navigation / RSC re-run), so a back-nav from a lead dossier **restores the
+  tab** the user was on — the `?agent=` precedent already on this page.
+- **"Deck view" trigger now lives on the filter bar's trailing edge** (right
+  side) when the Agents tab is active — hoisted there via the existing
+  `FounderPerfActions` registration bridge instead of a separate row.
+- **Roster domain dropdown removed.** The `FilterDropdown` ("Domains") in
+  `ManagerPerformancePanel`'s `RosterHeader` is gone — the global `serene-domain`
+  selector (top bar) is the single domain narrowing control. The `domainFilter`
+  state + its global-selector sync effect stay (that is how the global pick
+  narrows the roster); only the manual per-roster control was dropped.
+- **Deck view enabled for managers.** `showDeckTrigger` no longer requires the
+  `allDomains` path. A new thin `ManagerPerformanceShell` wraps the manager
+  view's `PerformanceFilters` + roster and hosts the deck trigger on the filter
+  bar's trailing edge, reusing the SAME `FounderPerfActions` bridge (R-01 — no
+  second hoist mechanism). The deck (and its drill actions) are passed the
+  resolved `deckDomain` (`allDomains ? domainFilter : domain`) so the manager
+  drill guard (`domain === caller.domain`) passes instead of failing closed on a
+  null.
+
+Files: `components/ui/FilterBar.tsx` (`leading` slot),
+`components/performance/PerformanceFilters.tsx` (`leading`/`trailing`
+passthrough), `components/performance/ManagerPerformancePanel.tsx` (drop the
+dropdown, `deckDomain`, manager deck), `app/(dashboard)/performance/`
+`FounderPerformanceShell.tsx` (owns the strip, Domains-first),
+`ManagerPerformanceShell.tsx` (new), `page.tsx` (wire both shells).
+
+## 2026-06-24 — Task reminders: agent WhatsApp 30 min before due + at-due overdue (every task)
+
+Extended the OS-task reminder chain with two **lead-agnostic, agent-facing**
+WhatsApp pings — for **every** task with a due date, not just lead-linked ones —
+reusing the existing `sendGupshupTemplate` pipeline, the `task_due` control-plane
+key, and the `task-reminder-${taskId}` tag/cancel machinery wholesale.
+
+- **Due-soon (−30 min)** — new `sendTaskDueSoonTask` Trigger.dev job fires 30 min
+  before the deadline (or immediately if <30 min remain at schedule time). Armed
+  inside `scheduleTaskReminder` so **every** existing call site (task-mutations
+  create/update, lead-mutations) gets it for free; the shared tag means
+  `cancelTaskReminder` already sweeps it on delete / due-edit / terminal status.
+  Exits silently if the task is closed or `due_at` moved.
+- **Agent overdue (at due)** — `sendTaskReminderTask` now also sends the assigned
+  agent a task-shaped overdue WhatsApp when the task is still open at its due time.
+- **Manager escalation now covers NON-lead tasks** — the TASK-01B overdue check is
+  now armed for **every** task (was lead-only), and `checkTaskOverdueTask` branches:
+  a **lead** task escalates to the lead's domain managers via the existing
+  lead-shaped template (byte-identical behaviour); a **non-lead** task escalates to
+  the assignee's **direct manager** (`profiles.reports_to`, falling back to the
+  assignee's domain managers) via a new task-shaped template, at the same due +
+  threshold. Closes the gap where a manager-assigned non-lead task (e.g. a tech-team
+  task) escalated to nobody. *(Also fixed two latent bugs in the lead path: the
+  in-app `action_url` was `/leads/` with no id, and the `leadName` template literal
+  was malformed.)*
+- **New service readers** — `getTaskWithAssignee(taskId)` in `sla-service.ts` (the
+  lead-agnostic twin of `getTaskWithGiaContext` — task + assignee phone/first-name/
+  domain/`reports_to`, no `task_gia_meta` dependency) + `getAssigneeManagers({domain,
+  reports_to})` (reports_to → domain-managers fallback).
+- **Three new wrappers** — `sendTaskDueSoonAgentNotification` /
+  `sendTaskOverdueAgentNotification` (gated by `task_due`) +
+  `sendTaskOverdueManagerGenericNotification` (gated by `task_overdue_manager`) in
+  `whatsapp-api.ts`, all thin over `sendGupshupTemplate`. No notification-category
+  migration — the agent pings reuse `task_due`, the manager escalation reuses
+  `task_overdue_manager`.
+- **Templates** — two task-shaped agent templates live (`eia_task_due_soon` →
+  `GUPSHUP_TASK_DUE_SOON_TEMPLATE_ID`, `eia_task_overdue_agent` →
+  `GUPSHUP_TASK_OVERDUE_AGENT_TEMPLATE_ID`). A third — the task-shaped manager
+  escalation (`eia_task_overdue_manager_generic`,
+  `GUPSHUP_TASK_OVERDUE_MANAGER_GENERIC_TEMPLATE_ID`), params `{{1}}` manager first
+  name · `{{2}}` agent name · `{{3}}` task title · `{{4}}` due time IST — is also
+  live.
+- **Migration 0142** — extends `whatsapp_notification_logs.type` CHECK with
+  `task_due_soon` + `task_overdue_agent` + `task_overdue_manager_generic` (log
+  types, not gate categories). **Applied to prod + verified 2026-06-24.**
+
+## 2026-06-24 — Performance: pipeline + outcome charts drill to leads; selection survives back-nav
+
+Extended the `/performance` "click a metric/chart → see the leads → open the
+dossier" pattern to the **Lead Pipeline** and **Call Outcome** charts (the 4 stat
+tiles + First-Touch bars already drilled). One reusable path, wired on both
+`AgentDetailPanel` (desktop) and the `FounderDrillDownDeck` card.
+
+- **Shared modal (`LeadDrillModal`, new)** — THE generic fetch-on-open lead-list
+  drill (flat, bounded, no load-more): caller supplies a `title` + `fetcher`; it
+  renders `Spinner → LeadDrillRow list → EmptyState` and composes `DrillModalShell`.
+  `AgentFirstTouchDrillModal` was refactored into a thin caller of it (its fetch
+  lifecycle/row/chrome are now the shared body — R-01).
+- **One new action (`getAgentLeadsByPredicateAction`)** — the drill behind a clicked
+  pipeline status OR outcome slice. Reuses `getLeadsByRole`'s indexed
+  `status` / `last_call_outcome` predicates with `agent_id` + the period range —
+  **no new query**. Returns a bounded flat array (one agent × one slice × one
+  period). Predicate validated against `LEAD_STATUSES` / `CALL_OUTCOMES`; same
+  `assertDrillAccess` gate. Outcome drill = distinct leads whose **latest** call was
+  that outcome (the modal says "leads", never a count implying donut parity).
+- **`AgentLeadsPredicateDrillModal` (new)** — one thin wrapper serving both chart
+  drills via a `{ kind: 'status' | 'outcome' }` discriminated union.
+- **Charts emit clicks** — `PipelineBar` gains optional `onSegmentClick(status)`
+  (bar segments + legend chips become buttons); `CallOutcomeBar` gains optional
+  `onSliceClick(outcome)` (legend rows become buttons). Absent → display-only
+  (backward-safe, the `FirstTouchScorecard.onBucketClick` pattern). Fetch-on-open
+  only — nothing runs until a click, so the page's initial render is untouched.
+- **Selection survives back-nav (UX fix)** — `ManagerPerformancePanel`'s
+  `selectedId` is now seeded from `?agent=<id>` (lazy init) and mirrored back via
+  `history.replaceState` (no navigation, no RSC re-run). Clicking a lead → dossier
+  → back now **restores the selected agent + detail panel** instead of collapsing
+  to the empty "select an agent" state. Pairs with the `from=/performance` the lead
+  links already carry.
+- **Recent Calls + Won Deals rows now open the dossier too** — the two remaining
+  tile drills (`AgentCallsDrillModal`, `AgentDealsDrillModal`) had plain rows; each
+  row is now a `Link` to `/leads/${slug ?? id}?from=/performance`, like every other
+  drill. The Recent-Calls row keeps its rich call timeline (note + outcome chip +
+  time — NOT replaced by the simple `LeadDrillRow`). A walk-in deal (no `lead_id`)
+  stays a non-link row (no dossier to open). Every metric/chart drill on
+  `/performance` now ends at the lead dossier.
+- **Detail panel no longer reloads on back-nav (perf)** — `AgentDetailPanel`
+  always re-fetched its metrics + scorecard on mount, so a back-nav from a lead
+  dossier showed the skeleton and round-tripped again. Added a module-level
+  per-slice memory cache (`detailSliceCache`, keyed `agent|domain|period|from|to`
+  — the founder-deck `breakdowns` pattern, R-01): the panel seeds state
+  synchronously from it and the mount effect returns early on a hit, so a
+  back-nav (which restores `?agent=<id>` and remounts the panel) **paints
+  instantly — no skeleton, no fetch**. A miss fetches as before (now one
+  `Promise.all`) and caches the whole slice. In-memory only (cleared on full
+  reload); a period change is a new key, so it never serves the wrong window.
+- **Founder tab survives back-nav (the real "page reloads on back" fix)** —
+  `FounderPerformanceShell`'s `activeTab` was plain `useState('domains')`, so a
+  back-nav from a lead dossier snapped the founder/admin view back to the
+  **Domains** tab (re-mounting it + its Recharts chunk) even though the user left
+  from **Agents**. `activeTab` is now seeded from `?tab=agents` (lazy init) and
+  mirrored back via `history.replaceState` (no navigation, no RSC re-run — the
+  `?agent=` precedent). Back-nav now lands on the **same tab** (Agents), so the
+  Domains panel never mounts/reloads; combined with the `?agent=` + detail-cache
+  fixes, the user returns to the exact agent + panel they left, instantly.
+  Supersedes the old "tab never in URL" Invariant 14. Domains stays the default
+  when `?tab=` is absent.
+
+## 2026-06-24 — Performance: First-Touch Speed bars drill to their leads
+
+The `FirstTouchScorecard` bars on `/performance` are now tap targets — clicking a
+speed bucket (`< 15m`…`3h+`) opens the leads that make up that count, for the same
+agent/period the scorecard was computed for. Wired on **both** mount sites
+(`AgentDetailPanel` desktop + the `FounderDrillDownDeck` mobile card).
+
+- **Service (`performance-service.ts`)** — extracted the per-pair bucketing into a
+  shared `classifyFirstTouchPairs` (fetch raw pairs → resolve the agent's shift once
+  → assign each pair to a bucket in business minutes). `getAgentFirstTouchScorecard`
+  (counts) and the new `getAgentFirstTouchBucketLeadIds` (lead-id list per bucket)
+  both read it, so a bar's count and its drill list can never diverge (R-01 — one
+  classification, two views). React `cache()` memoised, same posture.
+- **Lead reader (`leads-service.ts`)** — extracted the id-set → `LeadsResult`-rows
+  logic (column subset + assignee join + latest-note batch + role scope) out of the
+  revival review predicate into a shared `fetchLeadsByIds`; `getRevivalCandidateLeads`
+  now reuses it, and the new public `getLeadsByIds` serves the drill. No new query.
+- **Action (`performance.ts`)** — `getFirstTouchBucketLeadsAction` behind the shared
+  `assertDrillAccess` gate (manager own-domain, admin/founder unrestricted): resolves
+  the bucket's lead ids → `getLeadsByIds` scoped by the caller's role/domain.
+- **UI** — extracted the lead row from `AgentLeadsDrillModal` into a shared
+  `LeadDrillRow` (name + phone + status pill). The whole row is now a `Link` to
+  the lead dossier (`/leads/${slug ?? id}?from=/performance` — the LeadsTable
+  convention, so the dossier back-arrow returns to `/performance`); a route change
+  unmounts the portaled drill modal, so no manual close. Applies to BOTH drill
+  modals (the shared row). New `AgentFirstTouchDrillModal`
+  composes the existing `DrillModalShell` (nested-modal z) + `LeadDrillRow` (fetch
+  on open, no load-more — one bucket is a bounded set). `FirstTouchScorecard` gains
+  an optional `onBucketClick` — absent → bars stay display-only (backward-safe);
+  present → each non-empty bar is a `.serene-pressable` button.
+
+## 2026-06-24 — Dashboard: true spatial grid (free placement + adaptive content)
+
+Rebuilt the dashboard into a **2-D spatial canvas** — every widget is an
+`{x,y,w,h}` rectangle on a 12-column grid, freely moved/resized/auto-packed, and
+each widget's **content adapts to the cell size** (a count card shows just the
+number when tiny, the full card when large). This **supersedes the same-day
+continuous-drag-to-resize entry below** (that kept a 2-column flow with free
+height only); the flow model and its `useWidgetResize` hook were removed.
+
+- **Library — `react-grid-layout@1.5.3`** (the classic, battle-tested line, NOT
+  the unrelated 2.x rewrite that now holds the `latest` tag — its API diverges
+  and bundled types conflict). `WidthProvider(Responsive)` owns geometry:
+  drag-move, corner-resize, collision, vertical compaction, and the mobile
+  collapse (single column below 768px) for free. Installed with **pnpm** (this
+  repo's package manager — `pnpm-lock.yaml`; npm corrupts the store layout).
+  Its CSS is **not** imported — replaced wholesale by token-styled chrome.
+- **Spatial model (`useDashboardLayout.ts`, rewritten)** — stores
+  `GridPlacement[]` (`{widgetId,x,y,w,h}` in grid units) instead of an ordered
+  flow list. localStorage bumped **v3 → v4**: v2/v3 layouts can't map to 2-D
+  placement, so the key bump resets stale layouts to the role default (a
+  flow→grid reconcile would be worse than the designed default). New API:
+  `applyLayout(placements)` (RGL hands us the full layout on every change; the
+  hook no-ops when nothing changed). `addWidget`/`removeWidget`/`resetToDefaults`
+  kept. `DEFAULT_GRID_BY_ROLE` gives each role a designed `{x,y,w,h}` first paint.
+- **Adaptive content (`hooks/useWidgetDensity.ts` + `resolveWidgetDensity`, new)**
+  — the slot measures its cell (ResizeObserver, rAF-throttled, setState only on a
+  tier *crossing*) and resolves `compact | standard | rich` from the px box, then
+  hands it to the widget via `WidgetDensityProvider` context. Widgets read it with
+  `useWidgetDensityTier()`. Wired on `SnapshotCountWidget` (compact → number-only,
+  bigger number; rich → number + label + hint) and `AgentTasksWidget` (compact →
+  open/overdue summary line instead of the scrollable list). The system is
+  available to every widget; the rest fill their cell unchanged.
+- **Canvas (`DashboardCanvas.tsx`)** — `@dnd-kit` reorder + the bento `<style>`
+  block replaced by `<ResponsiveGridLayout>`. Read-only until **edit mode**
+  (no accidental drags); only the grip handle drags (`draggableHandle`), so
+  clicking widget content always works; single SE resize handle.
+- **Chrome (`globals.css` "DASHBOARD SPATIAL GRID")** — token-styled
+  `.react-grid-item` transitions (transform/width/height, killed while dragging),
+  `.react-grid-placeholder` (accent-surface drop preview), and a custom resize
+  handle glyph (edit-mode only). Reduced-motion gated.
+- **Slot (`DashboardWidgetSlot.tsx`)** — fills its RGL cell (`height:100%`),
+  owns the density measurement + provider, renders edit chrome (drag grip +
+  remove). The custom `useWidgetResize` drag hook is **deleted** (RGL owns
+  geometry now).
+
+**Glitch fixes (same day, post-integration):**
+- **Recharts `width(-1)/height(-1)` errors** — a `ResponsiveContainer height="100%"`
+  inside a `flex:1; minHeight:0` parent measures `-1` during RGL's deferred layout
+  pass (the flex chain has no resolved height when Recharts measures). Fixed by
+  giving the container a concrete box: `ChartFrame` (shared) now makes the frame
+  `position:relative; height:100%` and absolutely-positions the `ResponsiveContainer`
+  (`inset:0`) **only when `height==='100%'`** — numeric-height consumers (all
+  non-dashboard charts) keep the original block layout. `ManagerLeadVolumeWidget`
+  (raw `ResponsiveContainer`, not via `ChartFrame`) got the same `position:relative`
+  region + absolute-inset wrapper.
+- **First-paint flash** — `measureBeforeMount` set true so RGL renders items only
+  after the container width is known (no 0-width first frame feeding charts `-1`).
+- **Layout-reset-on-load guard** — `handleLayoutChange` ignores RGL's pre-hydration
+  `onLayoutChange` echo (`!isHydrated`), so the synchronous default can't overwrite
+  the user's saved localStorage layout before it loads.
+
+---
+
+## 2026-06-24 — Dashboard widgets: continuous drag-to-resize
+
+Replaced the dashboard widget resize model. Height was four fixed buckets
+(`sm`/`md`/`lg`/`xl` → 200/300/420/540px) chosen from a dropdown menu; it is now
+a **free pixel value the user drags**, like resizing a panel. Width keeps the
+half ↔ full snap (the 2-up bento has no use for fractional columns).
+
+- **Data model (`useDashboardLayout.ts`)** — `WidgetPlacement` gains `heightPx`
+  (the height source of truth, clamped 160–720); `size` is retained only as the
+  default-height tier seed. localStorage key bumped **v2 → v3**: a stored v2
+  layout migrates once (the `size` enum → its px height) instead of fighting the
+  new model. New callbacks `resizeHeight` / `resizeWidth` replace
+  `resizeWidget` / `resizePlacement`.
+- **Smoothness (`hooks/useWidgetResize.ts`, new)** — Pointer Events drag that
+  writes the live height **directly to the slot DOM node** (rAF-batched) during
+  the drag, so a resize never re-renders the widget subtree (no per-frame chart
+  re-mount); state + localStorage commit **once on pointer-up**. Same
+  "mutate-the-node, commit-on-release" pattern as the mobile drawer.
+- **Slot owns height (`DashboardWidgetSlot.tsx`)** — the slot is the height
+  container; the `ResizePopover` (size/width menu) is deleted and replaced by a
+  bottom-edge grip (height) + bottom-right corner (height + width snap), both
+  keyboard-operable (`role="slider"`, arrow nudge, Enter toggles width). Height
+  changes ease at rest (`--duration-base`/`--ease-out-expo`), no transition mid-drag.
+- **Width-snap animation (`DashboardCanvas.tsx`)** — the half ↔ full flip and its
+  reflow animate via framer `layout` (transform only — never an animated `width`,
+  per the Never-Do list); disabled while dnd-kit owns the transform (reorder
+  drag + drop-settle) so the two engines don't fight.
+- **Widgets made height-agnostic** — every widget root dropped
+  `height: WIDGET_HEIGHT_BY_SIZE[size]` for `height: 100%`; the two chart widgets
+  (`ManagerCampaignWidget`, `ManagerLeadVolumeWidget`) dropped their manual
+  `chartHeight = totalPx - PADDING - HEADER - GAP…` math for a `flex: 1; minHeight: 0`
+  chart region with `ResponsiveContainer height="100%"`. `WidgetSkeleton` now
+  fills (`fill` prop) instead of reading a size→px map. `WIDGET_HEIGHT_BY_SIZE`
+  survives only as the migration/default-seed source (now `Record<WidgetSize, number>`).
+
+---
+
+## 2026-06-24 — Backfill: campaign names gain the ad-account segment
+
+Meta campaigns were renamed **in place** to carry the ad account in the key
+(`TG_<Domain>_<Account>_<Type>_<Date>`, account = slot-3 segment `april`/`gmr`/`dubai`,
+read by `resolveAccountFromCampaign` for budget attribution). New leads already arrive with
+the new names; this migration rewrites the **existing** leads so old + new merge into one
+campaign on `/campaigns` and `/budget`.
+
+- **Migration `20260624000141_backfill_campaign_account_segment.sql`** — a DML backfill of
+  `leads.utm_campaign` across ALL leads (active + archived). Mapping = the reviewed
+  `final.csv` (root), validated row-by-row against live prod data before applying.
+- **Intentional merges** (17 keys collapse): the Goa Resort typo'd name + canonical name
+  (244 leads → one campaign); the 6 Bogey golf-event rows → one; the 4 numeric Meta ad-set-id
+  leaks (`120247…`) folded into their named campaigns (user verified each id against Meta);
+  `/` → `Organic`.
+- **Non-Meta traffic left Unattributed by design** — `Organic`, the Google Search ads
+  (`TG-Leads-Search-*` / `TG-Search-*`), `Google_Ads`, `meta_luxury_new`, `TG-Remarketing-Dec25`
+  keep no account segment → shown visibly as "Unattributed" on `/budget` (the honest result for
+  non-Meta leads), never given a fake account.
+- **Result (verified):** 5 → **3,217** leads attributable to an account (april 2,877 / gmr 225 /
+  dubai 115 / unattributed 411); **0 leads lost** (5,181 before and after); 81 → 64 distinct keys.
+- Isolated write: `utm_campaign` has no FK or generated-column dependency (`search_text` excludes
+  it), the only UPDATE trigger is `updated_at`, and `trg_lead_slug` is INSERT-only — so slugs and
+  search are untouched. Applied to prod via MCP `apply_migration` + ledger-recorded.
+
+---
+
+## 2026-06-23 — WhatsApp inbound media: ingest image/video/PDF/audio (no more blank bubbles)
+
+**Symptom (founder report):** opening a WhatsApp conversation showed the lead/header but blank
+message bubbles. Root cause was **not** RLS or the founder role (admin/founder can read every
+`whatsapp_message` unconditionally) — it was a data problem from an ingestion gap. The live DB had
+a conversation with 7 inbound rows stored as `message_type='text'` with `content=''`, and the UI
+painted one empty `<p>` per row.
+
+**Why the content was empty:** the Gupshup webhook branch only built two message shapes — `audio`
+(Elaya voice notes) and `text`. Every other inbound type (image/video/document/sticker/location/
+reaction/button reply) was coerced to `{ type: 'text', text: { body: inner.text ?? '' } }`. Media
+payloads have no `inner.text`, so they stored as blank text. Gupshup *does* deliver media — as a
+direct, time-limited CDN url on `inner.url` (+ `inner.contentType`/`inner.caption`/`inner.name`),
+the same shape the audio path already used — so the data was always there; we just dropped it.
+
+**Fix (Part B — graceful bubble):** `src/components/whatsapp/MessageBubble.tsx` — a non-media
+message with blank/whitespace `content` now renders a muted serif-italic **"Unsupported message"**
+placeholder instead of an empty bubble (retroactively cleans up the existing 7 rows + any future
+un-parsed type). `MediaPlaceholder` now also renders the media **caption** (stored in `content`)
+beneath the media chip.
+
+**Fix (Part C — ingest media at the source):**
+
+- `src/app/api/webhooks/whatsapp/route.ts` — replaced the binary `audio ? … : text` ternary with
+  a `buildGupshupMessage(innerType, inner, messageId, waId)` mapper: `image`/`video`/`audio`/`file`
+  (Gupshup's name for `document`) → the matching `MetaInboundMessage` with the media object built
+  from `inner.url`/`contentType`/`caption`/`name`; `text` preserved **byte-identically**; truly
+  un-renderable types (sticker/location/contact/reaction/button/list reply) → a **labelled** text
+  message (`[Location]`, `[Contact card]`, …) so nothing ever stores blank. Media maps to a media
+  message only when a `url` is present, else it takes the labelled-text fallback.
+- `src/lib/services/whatsapp-ingestion.ts` — `processInboundMessage` step 6 now uses the media
+  object's direct `.url` when present (Gupshup) and only falls back to the Meta-only
+  `getMediaDownloadUrl(id)` when there is no url (dormant Meta path). `insertInboundMessage` already
+  stored `message_type`/`media_url`/`media_mime_type`/caption correctly — it just never received a
+  media-typed message before.
+
+**Elaya is untouched.** The staff routing gate (`tryHandleElayaWhatsAppMessage`) runs first and has
+its own `message.type` switch: `text` → reads body, `audio` → transcribes, anything else → already
+replies "I can only read text and voice notes here." The fix only *adds* media branches in the
+webhook; the `text`/`audio` shapes Elaya consumes are produced exactly as before. The single
+behavioural change is that a staff-sent image now takes Elaya's `else` branch (real `image` type)
+instead of accidentally hitting its empty-content guard — same user-facing reply either way.
+
+**Deferred:** Gupshup CDN urls are time-limited, so old inbound media may stop loading once the link
+expires; durable storage (download → Supabase Storage) is a follow-up (the ingestion assignment is
+isolated for a clean swap). Outbound media (attach image/PDF from the composer) is a separate future
+task. No migration, no schema change.
+
+---
+
+## 2026-06-23 — WhatsApp inbound media durability (Phase 1): CDN → private Supabase Storage
+
+Follow-up to the inbound-media ingestion above. Gupshup media urls are **time-limited** — storing
+the raw CDN url means old images/videos/PDFs 404 once the link expires. Inbound media is now
+**downloaded and re-hosted** so it persists.
+
+- **Migration 0141** — new **private** `whatsapp-media` Storage bucket (`public=false`, mirrors the
+  `suggestions` 0135 pattern, not the public `avatars`/`ad-creatives`). One defence-in-depth
+  admin/founder `SELECT` policy on `storage.objects`; no authenticated INSERT/UPDATE/DELETE — all
+  writes + reads run through the **admin client** (the webhook has no session; the page/action role
+  layer is the trust boundary, same posture as `whatsapp_messages` RLS). Applied to prod + verified.
+- **New module `src/lib/services/whatsapp-media.ts`** (SERVER ONLY) — `storeInboundMedia(cdnUrl,
+  mime, leadId, messageId)` downloads the bytes (32 MB cap, content-type sniff, 0-byte guard) and
+  uploads to `whatsapp-media/{leadId}/{messageId}.{ext}` via the admin client, returning the durable
+  **storage path** (never a url); `signMediaPath(pathOrUrl)` mints a 1-hour signed url on read and
+  passes raw `http(s)` values through untouched (legacy/fallback rows); `mediaExtFromMime` helper.
+  **Never throws** — durability is best-effort and must never lose the message.
+- **Ingestion** (`whatsapp-ingestion.ts` step 6) — resolves the source url (Gupshup `.url` or the
+  dormant Meta `getMediaDownloadUrl`), then `storeInboundMedia` → stores the path in
+  `media_url`; **falls back to the raw CDN url** if download/upload fails (loads until it expires,
+  never blank).
+- **Read side** — `getMessages` (`whatsapp-service.ts`) signs every media row's path before
+  returning (`Promise.all` over the mapped rows). `signWhatsAppMediaAction(path)` (new client-callable
+  action) signs a single path; `ConversationPanel`'s realtime INSERT handler calls it so media
+  arriving **live** while the panel is open renders too (the realtime payload carries the raw path).
+- **Storage choice:** private + signed urls (lead chats can be sensitive). Typecheck clean; no
+  behaviour change for text/audio. Outbound media is Phase 2 (next).
+
+---
+
+## 2026-06-23 — WhatsApp outbound media (Phase 2): attach image/video/PDF/audio from the composer
+
+Staff can now **send** media from the conversation panel — the receiving half of the media work.
+
+- **Gupshup send** (`whatsapp-api.ts`) — new `sendGupshupMediaMessage(to, type, url, caption?,
+  filename?)` posts to the same `/wa/api/v1/msg` endpoint as text with
+  `message: { type, originalUrl, caption?, filename? }`. Gupshup sends media **by url**, so the
+  caller passes a signed url to the stored object. Throws on HTTP error (action catches).
+- **Storage** (`whatsapp-media.ts`) — new `storeOutboundMedia(bytes, mime, leadId, key)` uploads the
+  attached file to the same private bucket under `{leadId}/out-{key}.{ext}`, returns the durable path.
+- **Action** (`actions/whatsapp.ts`) — new `sendWhatsAppMediaMessage(formData)`: Zod
+  (`SendMediaMessageSchema` — Blob, ≤16MB, MIME allowlist) → `requireProfile()` → conversation
+  access → `storeOutboundMedia` → `signMediaPath` → `sendGupshupMediaMessage` → persist outbound row
+  (`message_type`, `media_url`=PATH, caption in `content`) → return the row with a signed url for
+  optimistic display.
+- **Constants** (`constants/whatsapp.ts`) — `WHATSAPP_OUTBOUND_MEDIA_MIME` allowlist +
+  `resolveOutboundMediaType(mime)` (→ `image`/`video`/`document`/`audio` or null) +
+  `WHATSAPP_OUTBOUND_MEDIA_MAX_BYTES` (16 MB). The schema + the composer client-validation + the
+  action all read these — one source.
+- **Composer UI** (`ConversationPanel.tsx`) — a **paperclip** attach button sits beside the dictation
+  mic in the `MessageBar` `leadingSlot`; a hidden file input drives it. On pick: client-side
+  validate (type/size, instant toast) → optimistic media bubble with a local object-url preview →
+  `sendWhatsAppMediaMessage` → swap in the confirmed row (signed url) or remove on error.
+- **Inline previews** (`MessageBubble.tsx`) — `MediaPlaceholder` now renders an inline `<img>`
+  thumbnail (≤240px, click → open) for images and an inline `<video controls>` for videos, with the
+  caption beneath; document/audio (and any url-less media) keep the labelled chip + View link. Covers
+  both inbound and outbound media.
+- Typecheck clean. No new migration (reuses the Phase 1 `whatsapp-media` bucket).
+
+---
+
+## 2026-06-23 — Campaign names display raw: delete `beautifyCampaignTitle`
+
+The campaign-title decorator `beautifyCampaignTitle` (split on `_`/whitespace → join with
+` · `, e.g. `TG_House_Meta Leads` → `TG · House · Meta · Leads`) was **removed everywhere** at
+the user's request — campaign names now display **exactly as stored** (the raw `utm_campaign`
+key), with no transformation.
+
+- **Deleted** the `beautifyCampaignTitle` function from `src/lib/utils/campaigns.ts`
+  (`normalizeCampaignKey` is untouched — the DB-key normalisation is unrelated).
+- **Five call sites** now use the raw `campaign_key` directly: `campaigns/[id]/page.tsx`
+  (detail H1), `budget/BudgetAsync.tsx` + `budget/AccountReportSection.tsx`
+  (`campaignTitle` field now carries the raw key), `admin/AdCreativeFormModal.tsx`
+  (`<option>` labels), `admin/AdCreativesManager.tsx` (search haystack — the redundant
+  beautified entry dropped, since `campaign_key` was already in it — plus delete-confirm
+  target and card title/subtitle).
+- No DB/behaviour change — the keys were always raw in every lookup; only the display label
+  changed. Authority files (`CLAUDE.md`, `.cursorrules`, the campaigns area `CLAUDE.md`) and
+  the page specs (`campaigns.md`, `budget.md`, `ad-creatives.md`) updated; the registry now
+  records "never reintroduce a campaign-title beautifier."
+
+---
+
+## 2026-06-23 — Going Cold filter: DRY the cutoff to one source per layer (no behaviour change)
+
+The "going cold" window (`COLD_LEAD_THRESHOLD_DAYS = 5`) was duplicated across **six** predicates,
+and two of them — the dashboard "Going Cold" widget and the manager-pipeline RPC — carried the
+threshold as a **hardcoded `interval '5 days'`** literal re-stamped by every `CREATE OR REPLACE` of
+`get_dashboard_summary` (0081 → 0115 → 0129 → 0138). The only thing keeping the SQL side in step with
+the TS constant was a code comment; a change to the constant would have silently left the dashboard on 5.
+The TS side also copy-pasted the exact cutoff expression `new Date(Date.now() - … * 86_400_000)` in
+three files. This is the R-01 (Reuse First) violation the user flagged, plus the UTC/`now()` clock
+inconsistency.
+
+**The fix — one cutoff source per layer, zero behaviour change (rolling now − 5×24h window kept):**
+
+- **TS:** new `goingColdCutoff(now = Date.now())` helper in `src/lib/constants/leads.ts` (+ exported
+  `COLD_LEAD_THRESHOLD_MS`). The three inline copies — `getLeadsByRole` + `getLeadsForExport`
+  (`leads-service.ts`) and `getGoingColdLeads` (`sla-service.ts`) — now call it. The count RPC
+  (`get_leads_status_counts`) still receives the cutoff as `p_going_cold` from `getLeadsByRole`, so the
+  list, its count pills, and the export cannot drift. `elaya/tools/registry.ts` keeps importing the raw
+  constant — it only *describes* the window to the model (`thresholdDays: 5`), it doesn't compute a cutoff.
+- **SQL:** new `public.cold_lead_cutoff()` (`STABLE`, returns `now() - interval '5 days'`) is THE single
+  SQL source; `get_dashboard_summary`'s cold predicate now calls it instead of the literal. The number
+  lives in exactly two places now — the TS constant and this function's interval — cross-linked by comment.
+- **Clock note (documented, deliberate):** TS uses `Date.now()`, SQL uses `now()`. For a *rolling* window
+  (a relative offset computed at query time) this is correct and intentional — forcing a single frozen
+  value would be *worse* (it'd drift from the DB clock). Not IST-anchored on purpose; "going cold" is a
+  rolling 120h window, not a calendar-day metric. Comments at both sites warn against "fixing" it.
+
+**Ledger reconciliation:** the deployed `get_dashboard_summary` had drifted ahead of every on-disk
+migration (it was the 0138 shape — `tgm.lead_id IS NOT NULL` task CTE, roster CTE,
+`pending_calls_count`/`new_leads_count` — with no matching file). Migration `0140` recreates it from the
+**live body**, changing only the one cold line, bringing file and DB back into sync.
+
+**Verification:** before applying, proved the old literal and the new function return the identical cold
+count on prod (2283); after applying, re-confirmed the count via the live function is still 2283, the
+predicate references `cold_lead_cutoff()` with no literal remaining, and the `authenticated` GRANT
+survived the `CREATE OR REPLACE`. `tsc --noEmit` clean. Migration `0140` applied to prod via MCP.
+
+Touched: `src/lib/constants/leads.ts`, `src/lib/services/leads-service.ts`,
+`src/lib/services/sla-service.ts`, `supabase/migrations/20260623000140_cold_lead_cutoff_dry.sql`,
+`src/app/(dashboard)/leads/CLAUDE.md`, `supabase/migrations/CLAUDE.md`.
+
+---
+
 ## 2026-06-20 — Performance founder deck: full-width breakdown toggle + fill the avatar column
 
 Two follow-up polish fixes to the deck card (`FounderDrillDownDeck.tsx`):

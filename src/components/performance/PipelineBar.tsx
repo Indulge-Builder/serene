@@ -28,7 +28,15 @@ const STATUS_FILL: Record<string, string> = {
 
 const STATUS_ORDER = ['new', 'touched', 'in_discussion', 'nurturing', 'won', 'lost', 'junk'];
 
-export function PipelineBar({ breakdown }: { breakdown: { status: string; count: number }[] }) {
+export function PipelineBar({
+  breakdown,
+  onSegmentClick,
+}: {
+  breakdown: { status: string; count: number }[];
+  /** When provided, each segment + legend chip becomes a tap target opening the
+   *  leads in that status. Absent → display-only (unchanged, backward-safe). */
+  onSegmentClick?: (status: string) => void;
+}) {
   const total = breakdown.reduce((s, b) => s + b.count, 0);
 
   if (total === 0) {
@@ -65,37 +73,46 @@ export function PipelineBar({ breakdown }: { breakdown: { status: string; count:
           background:   'var(--theme-paper-border)',
         }}
       >
-        {ordered.map(({ status, count }) => (
-          <div
-            key={status}
-            title={`${LEAD_STATUS_LABELS[status as keyof typeof LEAD_STATUS_LABELS] ?? status}: ${count}`}
-            style={{
-              width:      `${(count / total) * 100}%`,
-              background: STATUS_FILL[status] ?? 'var(--color-neutral)',
-              minWidth:   '4px',
-              opacity:    0.9,
-            }}
-          />
-        ))}
+        {ordered.map(({ status, count }) => {
+          const segStyle = {
+            width:      `${(count / total) * 100}%`,
+            background: STATUS_FILL[status] ?? 'var(--color-neutral)',
+            minWidth:   '4px',
+            opacity:    0.9,
+          } as const;
+          const title = `${LEAD_STATUS_LABELS[status as keyof typeof LEAD_STATUS_LABELS] ?? status}: ${count}`;
+          return onSegmentClick ? (
+            <button
+              key={status}
+              type="button"
+              title={title}
+              aria-label={`Show ${count} ${LEAD_STATUS_LABELS[status as keyof typeof LEAD_STATUS_LABELS] ?? status} lead${count === 1 ? '' : 's'}`}
+              onClick={() => onSegmentClick(status)}
+              className="serene-touch"
+              style={{ ...segStyle, border: 'none', padding: 0, cursor: 'pointer' }}
+            />
+          ) : (
+            <div key={status} title={title} style={segStyle} />
+          );
+        })}
       </div>
 
       {/* Legend — compact chip row */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
         {ordered.map(({ status, count }) => {
           const pct = Math.round((count / total) * 100);
-          return (
-            <div
-              key={status}
-              style={{
-                display:      'inline-flex',
-                alignItems:   'center',
-                gap:          'var(--space-1)',
-                padding:      '3px 8px 3px 6px',
-                borderRadius: 'var(--radius-full)',
-                background:   'var(--theme-paper-subtle)',
-                border:       '1px solid var(--theme-paper-border)',
-              }}
-            >
+          const chipStyle = {
+            display:      'inline-flex',
+            alignItems:   'center',
+            gap:          'var(--space-1)',
+            padding:      '3px 8px 3px 6px',
+            borderRadius: 'var(--radius-full)',
+            background:   'var(--theme-paper-subtle)',
+            border:       '1px solid var(--theme-paper-border)',
+          } as const;
+          const label = LEAD_STATUS_LABELS[status as keyof typeof LEAD_STATUS_LABELS] ?? status;
+          const chipInner = (
+            <>
               <span
                 style={{
                   display:      'inline-block',
@@ -115,7 +132,7 @@ export function PipelineBar({ breakdown }: { breakdown: { status: string; count:
                   fontWeight: 'var(--weight-medium)',
                 }}
               >
-                {LEAD_STATUS_LABELS[status as keyof typeof LEAD_STATUS_LABELS] ?? status}
+                {label}
               </span>
               <span
                 style={{
@@ -126,6 +143,22 @@ export function PipelineBar({ breakdown }: { breakdown: { status: string; count:
               >
                 {count} · {pct}%
               </span>
+            </>
+          );
+          return onSegmentClick ? (
+            <button
+              key={status}
+              type="button"
+              onClick={() => onSegmentClick(status)}
+              aria-label={`Show ${count} ${label} lead${count === 1 ? '' : 's'}`}
+              className="serene-pressable serene-touch"
+              style={{ ...chipStyle, cursor: 'pointer' }}
+            >
+              {chipInner}
+            </button>
+          ) : (
+            <div key={status} style={chipStyle}>
+              {chipInner}
             </div>
           );
         })}

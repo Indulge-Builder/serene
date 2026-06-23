@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { Phone } from 'lucide-react';
 import { DrillModalShell } from './DrillModalShell';
 import { Button } from '@/components/ui/Button';
@@ -94,8 +95,10 @@ export function AgentCallsDrillModal({ open, agentId, agentName, domain, onClose
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           {items.map((c) => (
-            <div
+            <Link
               key={c.id}
+              href={`/leads/${c.leadSlug ?? c.leadId}?from=${encodeURIComponent('/performance')}`}
+              className="serene-pressable serene-touch"
               style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -104,6 +107,8 @@ export function AgentCallsDrillModal({ open, agentId, agentName, domain, onClose
                 background: 'var(--theme-paper-subtle)',
                 border: '1px solid var(--theme-paper-border)',
                 borderRadius: 'var(--radius-md)',
+                textDecoration: 'none',
+                cursor: 'pointer',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
@@ -164,7 +169,7 @@ export function AgentCallsDrillModal({ open, agentId, agentName, domain, onClose
                   {c.note}
                 </p>
               )}
-            </div>
+            </Link>
           ))}
 
           {hasMore && (

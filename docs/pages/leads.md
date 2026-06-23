@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/leads` — the Gia pipeline list: URL-driven server-side filters, Suspense streaming, column preferences, Add Lead, export.
 > **Audience:** engineers. · **Source-of-truth scope:** the list route + `leads-service.ts` reads + `leads.ts` actions + the export system. The dossier is `lead-dossier.md`; ingestion is `../integrations/lead-ingestion.md`; schema narrative is `../architecture/database.md`.
-> **Last verified:** 2026-06-15 (Lead Revival review surface + voice dictation in dossier note inputs added); 2026-06-09 full pass; 2026-06-11 restructure (perf C-1/C-2 totalCount fold + `search_text` reflected; stale scratchpad rows corrected).
+> **Last verified:** 2026-06-24 (manager All Leads ↔ My Leads `?view=` toggle; `getAssignableUsers({ roles })` refactor; FilterBar immediate-commit model; going-cold cutoff DRY (migration 0140); phone-dedup uniqueness (migration 0137); shared `fetchLeadsByIds` id-set reader); 2026-06-15 (Lead Revival review surface + voice dictation in dossier note inputs); 2026-06-09 full pass; 2026-06-11 restructure (perf C-1/C-2 totalCount fold + `search_text` reflected).
 
 ## 1. Purpose
 
@@ -14,9 +14,10 @@ user in `localStorage`.
 
 ## 2. Who sees it
 
-Agents: own assigned leads. Managers: their domain. Admin/founder: all (optional domain slice).
-Non-Gia domains never reach the route (`DOMAIN_ROUTE_MAP`). Full operation×layer matrix:
-Deep dive §8.
+Agents: own assigned leads. Managers: **their own assigned leads by default** (the "My Leads"
+view — managers carry and call leads too), and the whole domain via the **All Leads / My Leads**
+toggle (`?view=all`, §6f). Admin/founder: all (optional domain slice). Non-Gia domains never
+reach the route (`DOMAIN_ROUTE_MAP`). Full operation×layer matrix: Deep dive §8.
 
 ## 3. Data sources
 
@@ -26,15 +27,19 @@ Deep dive §8.
 | RPCs | `get_leads_status_counts` (0080/0099 — single predicate scan; totalCount = sum of rows), `get_active_lead_by_phone` (dedup) |
 | Actions | `leads.ts` — `createManualLead`, `assignLead`, `searchLeadsAction`, `exportLeadsAction`, … (full table: Deep dive §5) |
 | Search | `leads.search_text` STORED column + `idx_leads_search_trgm` (0098) — all four search paths use it |
-| Cache | `../architecture/caching.md` — `lead:list:*` namespace |
+| Going-cold cutoff | `goingColdCutoff()` in `src/lib/constants/leads.ts` (`COLD_LEAD_THRESHOLD_DAYS = 5`, rolling window) — the ONE TS source (migration 0140); the count RPC receives it as `p_going_cold`; the dashboard widget reads `public.cold_lead_cutoff()` in SQL. Never re-inline `new Date(Date.now() − …)`. See §6 Going Cold + leads/CLAUDE.md |
+| Phone dedup | `lead_phone_key(text)` normalisation + the `idx_leads_phone_key_active` UNIQUE backstop (migration 0137) collapse format variants (`+919876543210` / `919876543210` / `9876543210`) to one dedup key; `get_active_lead_by_phone` resolves the existing active lead. See §2c + §2d |
+| Cache | `../architecture/caching.md` — `lead:list:*` namespace (one MGET: version counter + entry; cache key includes `view` so My/All never share a slot) |
 
 ## 4. Components
 
 `page.tsx` + `LeadsTableAsync` (Suspense child) · `LeadsFilters` (composes `<FilterBar>` +
-`useUrlFilters`) · `LeadsTable` (bespoke — never `Table<T>`; status pills toolbar; memoised
-`LeadRow`) · `LeadColumnPicker` + `useLeadColumnPreferences`
-(`serene:leads:columns:${userId}:v1`) · `LeadsPagination` (hidden ≤30 rows) · `AddLeadButton` +
-`AddLeadModal` (on-intent `next/dynamic`) · `ExportButton`.
+`useUrlFilters`; **immediate-commit only** — the Apply/draft model was removed 2026-06-12, never
+reintroduce it) · `LeadsTable` (bespoke — never `Table<T>`; toolbar holds the manager All Leads /
+My Leads `TabSelector`, Going Cold chip, sort toggle, Columns, Export; memoised `LeadRow`) ·
+`LeadColumnPicker` + `useLeadColumnPreferences` (`serene:leads:columns:${userId}:v1`) ·
+`LeadsPagination` (hidden ≤30 rows) · `AddLeadButton` + `AddLeadModal` (on-intent `next/dynamic`)
+· `ExportButton`.
 
 ## 5. States
 
@@ -44,9 +49,9 @@ Deep dive §8.
 
 ## 6. Invariants
 
-Maintained in Deep dive §10 (24 items) — Suspense direct-child rule, `LeadsResult` shape,
+Maintained in Deep dive §10 (34 items) — Suspense direct-child rule, `LeadsResult` shape,
 no-second-count-scan rule, `page`-param reset, fixed pageSize 30, search ownership, dual-key
-cache invalidation, slug immutability, …
+cache invalidation, slug immutability, manager My-Leads view scope, …
 
 ## 7. Open items
 
@@ -72,12 +77,17 @@ endpoint.
 The list route doubles as the **Lead Revival review tab** — no new list component, no second
 dossier. Full module contract: `../modules/revival.md`.
 
-- **`?revival=true` URL predicate** — a chip on `/leads` (modelled on `going_cold`) that filters
-  the list to leads holding an **open** `revival_candidates` row. The predicate resolves candidate
-  `lead_id`s first (indexed `WHERE status='open'`), then `.in('id', ids)` on the leads query; when
-  active, the total is derived from the resolved set length — the `get_leads_status_counts` RPC is
-  **bypassed** for this predicate (it cannot express the cross-table subquery, C-1). A `dismissed`
-  candidate is never `open`, so confident-junk leads are structurally excluded from review.
+- **`?revival=true` URL predicate** — filters the list to leads holding an **open**
+  `revival_candidates` row. `getLeadsByRole` short-circuits to the private `getRevivalCandidateLeads`
+  when `filters.revival` is set: it resolves candidate `lead_id`s first (indexed `WHERE
+  status='open'`, RLS-scoped on the session client), pages the id set, then delegates the row fetch
+  to the shared private **`fetchLeadsByIds`** (2026-06-24, R-01 — THE id-set → list-rows reader with
+  the identical column subset + assignee join + latest-note batch + role scope as the main query; the
+  public `getLeadsByIds` for the performance first-touch bucket drill reuses the same function). The
+  total is the resolved-set length; the `get_leads_status_counts` RPC and the Redis list cache are
+  **bypassed** for this predicate (it is a cross-table subquery the RPC can't express, C-1).
+  A `dismissed` candidate is never `open`, so confident-junk leads are structurally excluded from
+  review. There is no toolbar chip today — the view is reached from the dossier / a saved link.
 - **`RevivalReviewBanner`** renders above the reused `LeadsTable` when the predicate is active —
   it frames the surface as "leads the nightly sweep flagged for a human call" rather than the
   generic pipeline list.
@@ -352,13 +362,13 @@ Performance indexes on related tables: `idx_lead_activities_actor_status`, `idx_
 
 | Function | Parameters | One-line behaviour | Migration |
 | -------- | ------------ | ------------------ | --------- |
-| `get_active_lead_by_phone` | `p_phone text` | Returns newest active lead row (`new`/`touched`/`in_discussion`/`nurturing`, not archived) or empty set. | `20260527000008_lead_dedup.sql` |
+| `get_active_lead_by_phone` | `p_phone text` | Returns newest active lead row (`new`/`touched`/`in_discussion`/`nurturing`, not archived) or empty set. Format variants of the same number collapse via `lead_phone_key()` normalisation (migration 0137), backed by the `idx_leads_phone_key_active` UNIQUE index on `lead_phone_key(phone)` for active leads — so `+919876543210` / `919876543210` / `9876543210` resolve to one dedup key. | `20260527000008_lead_dedup.sql`; normalisation + uniqueness backstop in `20260617000137_lead_phone_dedup_uniqueness.sql` |
 | `get_next_round_robin_agent` | `p_domain text` | Atomic pick of next eligible agent (`FOR UPDATE SKIP LOCKED` on routing config); returns `uuid` or NULL. | `20260527000007_round_robin_fn.sql` |
 | `add_lead_call_note` | `p_lead_id uuid`, `p_author_id uuid`, `p_content text`, `p_call_outcome text`, `p_now timestamptz` | Note + increment `call_count` + optional `new→touched` + activities; returns `jsonb`. | `20260529000030_rpc_add_lead_call_note.sql` |
 | `update_lead_status` | `p_lead_id uuid`, `p_actor_id uuid`, `p_status text`, `p_reason text`, `p_now timestamptz` | Status update + activity; nurturing creates 3-month `gia_followup` task + `task_gia_meta`; returns `jsonb`. | `20260529000031_rpc_update_lead_status.sql` (+ nurturing fix `00039`) |
 | `add_lead_plain_note` | `p_lead_id uuid`, `p_author_id uuid`, `p_content text`, `p_now timestamptz` | Plain note + `last_activity_at` + `note_added` activity; returns `{ note_id }`. | `20260530000040_rpc_add_lead_plain_note.sql` |
 | `create_lead_gia_task` | `p_lead_id`, `p_assigned_to`, `p_created_by`, `p_task_type`, `p_title`, `p_description`, `p_priority`, `p_due_at` | Atomic `tasks` + `task_gia_meta` insert; returns `tasks` row. | `20260531000054_create_lead_gia_task.sql` |
-| `get_leads_status_counts` | `p_agent_id uuid`, `p_date_from timestamptz`, `p_date_to timestamptz`, `p_campaign text`, `p_search text`, `p_source text`, `p_outcomes text[]`, `p_statuses text[]`, `p_domain app_domain`, `p_going_cold timestamptz` (all DEFAULT NULL) | Returns `TABLE(status text, cnt bigint)` for the full filtered dataset — and, summed, the list's `totalCount` (the paginated query carries no `{ count: 'exact' }` since perf C-1). Role/domain self-enforced via `get_user_role()`/`get_user_domain()`; `p_domain` is honoured only on the admin/founder branch (Gia slice); `p_going_cold` is the cold-threshold timestamp (now − `COLD_LEAD_THRESHOLD_DAYS`); search is `search_text ILIKE` (same generated column as the table query); `p_date_to` inclusive. Empty arrays treated as "no filter". | `20260611000099_status_counts_total_fold.sql` (v3 — supersedes `...083`/`...080`; note: a pre-0099 version of this row documented `p_going_cold` that the DB never had — that doc/DB drift was the empty-pills bug) |
+| `get_leads_status_counts` | `p_agent_id uuid`, `p_date_from timestamptz`, `p_date_to timestamptz`, `p_campaign text`, `p_search text`, `p_source text`, `p_outcomes text[]`, `p_statuses text[]`, `p_domain app_domain`, `p_going_cold timestamptz` (all DEFAULT NULL) | Returns `TABLE(status text, cnt bigint)` for the full filtered dataset — and, summed, the list's `totalCount` (the paginated query carries no `{ count: 'exact' }` since perf C-1). Role/domain self-enforced via `get_user_role()`/`get_user_domain()`; `p_domain` is honoured only on the admin/founder branch (Gia slice). `p_agent_id` mirrors the table query's `assigned_to` constraint exactly (param-sync rule): agent → own id; **manager in "My Leads" view → own id**; otherwise the explicit `agent_id` filter (null when absent) — so the pills match the table in every view. `p_going_cold` is the rolling cold cutoff supplied by `getLeadsByRole` from `goingColdCutoff()` (`COLD_LEAD_THRESHOLD_DAYS = 5`, `src/lib/constants/leads.ts`) so the RPC and the table can never drift; search is `search_text ILIKE` (same generated column as the table query); `p_date_to` inclusive. Empty arrays treated as "no filter". (The revival `?revival=true` predicate **bypasses** this RPC entirely — it is a cross-table subquery the RPC can't express; §8a.) | `20260611000099_status_counts_total_fold.sql` (v3 — supersedes `...083`/`...080`; note: a pre-0099 version of this row documented `p_going_cold` that the DB never had — that doc/DB drift was the empty-pills bug) |
 | `get_campaign_metrics` | `p_domain app_domain`, `p_date_from`, `p_date_to` | Campaign aggregates for `/campaigns`. | `20260528000014_campaign_analytics.sql` |
 | `get_campaign_detail_metrics` | `p_campaign`, `p_date_from`, `p_date_to` | Single-campaign metrics. | `20260528000015_campaign_detail_metrics.sql` |
 | `get_deals_summary` | (role-scoped args) | Won-lead aggregates for `/deals`. | `20260531000052_get_deals_summary.sql` |
@@ -401,16 +411,19 @@ Performance indexes on related tables: `idx_lead_activities_actor_status`, `idx_
 | `getLeadsForAgent` | `agentId: string` | `Promise<Lead[]>` | `assigned_to`, not archived, `created_at DESC` | Legacy |
 | `getLeadsForDomain` | `domain: string` | `Promise<Lead[]>` | `domain`, not archived | Legacy |
 | `getAllLeads` | — | `Promise<Lead[]>` | All non-archived | Legacy |
-| `getLeadsByRole` | `role`, `userId`, `domain`, `filters?` | `Promise<LeadsResult>` | Single query: explicit column list (no `*`); role constraints → filters → search via `search_text ILIKE` (generated column, trgm-indexed; term trimmed+lowercased) → optional `going_cold` (`last_activity_at < threshold AND status NOT IN (won,lost,junk)`) → `.range()`; **no count option** — `totalCount` is the sum of the `get_leads_status_counts` rows (perf C-1). Filter values hoisted once and shared verbatim by the query and the RPC. Redis cache-aside (versioned list key). Runs the RPC in `Promise.all` alongside the paginated query, then batch-fetches latest note per lead (one `.in()` query). Returns `LeadListItemWithAssignee[]`, not `LeadWithAssignee[]`. | `LeadsTableAsync` |
+| `getLeadsByRole` | `role`, `userId`, `domain`, `filters?` | `Promise<LeadsResult>` | Single query: explicit column list (no `*`); role constraints (agent → own; **manager → domain, plus `assigned_to = userId` when `filters.view === 'mine'`** — the My Leads default; admin/founder → optional Gia slice) → filters → search via `search_text ILIKE` (generated column, trgm-indexed; term trimmed+lowercased) → optional `going_cold` (`last_activity_at < goingColdCutoff() AND status NOT IN (won,lost,junk)`) → `.range()`; **no count option** — `totalCount` is the sum of the `get_leads_status_counts` rows (perf C-1). Filter values hoisted once and shared verbatim by the query and the RPC. Redis cache-aside (versioned list key, scoped by `view`). Runs the RPC in `Promise.all` alongside the paginated query, then batch-fetches latest note per lead (one `.in()` query). Returns `LeadListItemWithAssignee[]`, not `LeadWithAssignee[]`. **Short-circuits to `getRevivalCandidateLeads` when `filters.revival` is set** (§8a — the only path that does not call the count RPC). | `LeadsTableAsync` |
 | `getLeadsByRoleCached` | same | `Promise<LeadsResult>` | React `cache(getLeadsByRole)` | `LeadsTableAsync` (primary) |
-| `getLeadFilterOptions` | `role`, `callerDomain`, `filterDomain?` | `Promise<LeadFilterOptions>` | Distinct `utm_campaign`; agents from `profiles` | `leads/page.tsx` once |
+| `getLeadFilterOptions` | `role`, `callerDomain`, `filterDomain?` | `Promise<LeadFilterOptions>` | Distinct `utm_campaign`; agents (`role = 'agent'`) from `profiles`. Signature is `(role, callerDomain, filterDomain: GiaDomain \| null = null)`. | `leads/page.tsx` once |
+| `getRevivalCandidateLeads` (private) | `role`, `userId`, `domain`, `filters` | `Promise<LeadsResult>` | Revival predicate (§8a): resolve OPEN `revival_candidates` `lead_id`s (session client, RLS-scoped), page the id set, then delegate row fetch to `fetchLeadsByIds`. `totalCount` = resolved-set length; `statusCounts` = `{}`; count RPC + Redis bypassed. | `getLeadsByRole` (when `filters.revival`) |
+| `fetchLeadsByIds` (private) | `role`, `userId`, `domain`, `ids`, `ascending?` | `Promise<LeadListItemWithAssignee[]>` | THE id-set → list-rows reader (2026-06-24, R-01): same column subset + assignee join + latest-note batch + role scope as `getLeadsByRole`. Both `getRevivalCandidateLeads` and the public `getLeadsByIds` reuse it — never re-inline an id-set lead fetch. | `getRevivalCandidateLeads`, `getLeadsByIds` |
+| `getLeadsByIds` | `role`, `userId`, `domain`, `ids` | `Promise<LeadListItemWithAssignee[]>` | Public wrapper over `fetchLeadsByIds` for the performance First-Touch bucket drill-down (`getFirstTouchBucketLeadsAction`). | `actions/performance.ts` |
 | `getLeadActivities` | `leadId` | `Promise<LeadActivity[]>` | No join | Rare |
 | `getLeadNotes` | `leadId` | `Promise<LeadNote[]>` | No join | Rare |
 | `getLeadNotesFull` | `leadId` | `Promise<LeadNoteWithAuthor[]>` | Join `author:profiles!lead_notes_author_id_fkey(full_name)` | Dossier (see §7a note) |
 | `getLeadActivitiesFull` | `leadId` | `Promise<LeadActivityWithActor[]>` | Join `actor:profiles!lead_activities_actor_id_fkey(full_name)` | Dossier (see §7a note) |
 | `getNextLeadTask` | `leadId` | `Promise<Task \| null>` | From `tasks` + inner `task_gia_meta` | Retired on dossier |
 | `getErroredPayloads` | — | `Promise<LeadRawPayload[]>` | `ingestion_error IS NOT NULL` | Admin error log |
-| `getAssignableUsers` (profiles-service) | `{ domain?, agentsOnly? }` | `Promise<AssignableUser[]>` | Active non-guest; `agentsOnly` → `role=agent` | Dossier reassign, Add Lead (THE assignable-users query — dry-audit M-11) |
+| `getAssignableUsers` (profiles-service) | `{ domain?, roles? }` | `Promise<AssignableUser[]>` | Active non-guest; `domain` scopes to one domain; `roles` restricts to a role set (lead/deal pools pass `LEAD_ASSIGNABLE_ROLES = ['agent','manager']` from `constants/roles` — managers carry leads; empty/omitted = no role filter). React `cache()`-memoised per request behind the public wrapper (primitive `domain` + sorted `rolesKey` args). The old boolean `agentsOnly` param no longer exists. | Dossier reassign, Add Lead (THE assignable-users query — dry-audit M-11) |
 | `getCampaignMetrics` | `role`, `callerDomain`, `filters` | `Promise<CampaignMetrics[]>` | RPC `get_campaign_metrics` | Campaigns list |
 | `getCampaignDetailMetrics` | `campaignName`, `filters` | `Promise<CampaignDetailMetrics \| null>` | RPC | Campaign detail |
 | `getCampaignAgentDistribution` | `campaignName`, `filters` | `Promise<AgentDistributionRow[]>` | RPC | Campaign detail |
@@ -461,7 +474,7 @@ export type LeadsResult = {
 | `updateLeadInterests` | `UpdateLeadInterestsSchema` | Field edit access (`assertLeadFieldEditAccess` — same gate, no widening/narrowing) | Drops unknowns vs lead domain via `extractServiceInterests`; UPDATE `service_interests`; activity `lead_interests_updated` `{old, new}` (no-op edits skip write + activity) | `revalidateLeadDossier` (dual-key row del via `invalidateLeadCaches`) → `ServiceInterestCard` re-matches | `{ data: { leadId, interests }, error }` |
 | `addLeadNote` | `AddLeadNoteSchema` | Standard lead access | RPC `add_lead_plain_note` | `last_activity_at` only (in RPC) | `{ data: { noteId }, error }` |
 | `recordDeal` | `RecordDealSchema` | Standard lead access | Thin re-export → `recordDeal` in `actions/deals.ts`: **INSERT into `public.deals`** (`deal_type`, `deal_amount`, `deal_duration` membership-only, `won_at`) via `adminClient`; then `updateLeadStatus({ status: 'won' })`. Never writes `leads.deal_*` (dropped, migration 0097). | Won notifications + SLA via nested `updateLeadStatus` | `{ data: { leadId }, error }` |
-| `getAssignableUsersAction` (in `actions/profiles.ts`) | — (`domain?`) | Logged in | `getAssignableUsers({ domain, agentsOnly })` — admin/founder get all active users, others agents only | None | `{ data: AssignableUser[], error }` |
+| `getAssignableUsersAction` (in `actions/profiles.ts`) | — (`domain?`) | Logged in | `getAssignableUsers(...)` — no domain → all active non-guest users; with domain → admin/founder get every active user in it, others agents only | None | `{ data: AssignableUser[], error }` |
 | `createLeadTaskAction` | `CreateLeadTaskSchema` | Standard lead access | RPC `create_lead_gia_task` | `scheduleTaskReminder` if `dueAt`; `revalidatePath(/leads/${slug\|id})` | `{ data: Task, error }` |
 | `searchLeadsAction` | `SearchLeadsSchema` | Profile | `searchLeadsForTask` | None | `{ data: LeadSearchResult[], error }` |
 
@@ -484,7 +497,12 @@ the four voice surfaces; the other two are the Elaya and WhatsApp composers via 
 **Fetches (parallel):**
 
 - `getLeadFilterOptions(profile.role, profile.domain, filters.domain if Gia)` — once per page load.  
-- `getAssignableUsers({ domain: profile.domain, agentsOnly: !admin/founder })` for Add Lead modal.
+- `getAssignableUsers({ domain: profile.domain, roles: admin|founder ? undefined : LEAD_ASSIGNABLE_ROLES })` for the Add Lead modal — admin/founder get every active user in their domain; everyone else gets the lead-carrying roles (`['agent','manager']`).
+
+**Manager My Leads default (resolved here):** after `parseFilters`, `page.tsx` force-sets
+`filters.view = 'mine'` for a manager unless the URL carries `?view=all`. Agents are always
+own-scoped; admin/founder have no toggle (their `view` is unused downstream). The manager toggle
+is documented in §6f.
 
 **No date-range soft default (2026-06-09 verified):** `page.tsx` does **not** redirect to inject a `date_from`. `parseFilters` reads `date_from` straight from the URL (`getString('date_from')`); when absent, `filters.date_from` is `null` and the query has **no lower bound** — the list shows all-time by default. A previous "30-day soft default" redirect has been removed. `date_from`/`date_to` are applied only when the user picks a range in the portaled Range panel.
 
@@ -503,12 +521,18 @@ the four voice surfaces; the other two are the Elaya and WhatsApp composers via 
 | `date_from` | `date_from`; absent = no lower bound (all-time); YYYY-MM-DD |
 | `date_to` | `date_to`; absent = no upper bound |
 | `search` | `search` |
-| `going_cold` | `'true'` → `true`; absent → `undefined` |
+| `going_cold` | `going_cold='true'` → `true`; absent → `undefined` |
+| `revival` | `revival='true'` → `true`; absent → `undefined` (the Lead Revival review predicate, §8a) |
+| `view` | `view='all'` → `'all'`; `view='mine'` → `'mine'`; else `null`. Managers are force-set to `'mine'` in `page.tsx` unless `?view=all` (§6f); ignored for agent/admin/founder |
 | `sort_order` | `'asc'` or `'desc'`; default `'desc'` |
 | `page` | `page`, default `1` |
 | `pageSize` | fixed `30` |
 
-**Gates:** guest → `/dashboard`; `showAgentFilter = role !== 'agent'`; `showDomainFilter = admin \| founder`.
+**Gates:** guest → `/dashboard`; `showDomainFilter = admin \| founder`.
+`showAgentFilter` is role-dependent: for a **manager** it is `filters.view === 'all'` (the agent
+dropdown is hidden in My Leads, where the list is already scoped to the manager — an agent pick
+would be a silent no-op); for everyone else it is `role !== 'agent'` (admin/founder always; agent
+never). The dropdown is absent from the DOM when false — never CSS-hidden.
 
 **Tree:**
 
@@ -521,40 +545,53 @@ main
 
 #### 6b. LeadsFilters
 
+`LeadsFilters` composes `<FilterBar layout="scroll">` + `useUrlFilters`. **Immediate-commit only**
+— the Apply/draft model was removed 2026-06-12 (root CLAUDE.md FilterBar contract); there is no
+`FilterDraft`, no `draftFromParams`, no `isDirty`, and no Apply button — never reintroduce them.
+Every change pushes the URL the moment it happens, and each `push` merges into the existing params
+(`buildFilterParams`) so selections compound.
+
 | Control | URL param | Options source | Commit path |
 | ------- | --------- | -------------- | ----------- |
-| Search | `search` | Draft state, 350ms debounce | URL on debounce |
-| Status | `status` | `LEAD_STATUSES` / `LEAD_STATUS_LABELS` | Draft → Apply |
-| Outcome | `outcome` | `CALL_OUTCOMES` | Draft → Apply |
-| Source | `source` | `LEAD_SOURCES` | Draft → Apply |
-| Campaign | `campaign` | `options.campaigns` from page | Draft → Apply |
-| Agent | `agent_id` | `options.agents` — only if `showAgentFilter` | Draft → Apply |
-| Domain | `domain` | `GIA_DOMAIN_FILTER_ITEMS` — only if `showDomainFilter` | Draft → Apply |
-| Going Cold | `going_cold` | — | Immediate commit (bypasses draft/Apply) |
-| Date from / to | `date_from`, `date_to` | `DatePicker` in portaled Range panel | Draft → Apply |
-| Sort order | `sort_order` | Toggle in filter bar | Draft → Apply |
+| Search | `search` | `useUrlFilters` `searchInput`, 350ms debounce | URL on debounce |
+| Status | `status` | `LEAD_STATUSES` / `LEAD_STATUS_LABELS` | Multi-select via `useMultiSelectUrlParam` — instant checkbox echo, toggle burst → one debounced (350ms) `router.push` |
+| Outcome | `outcome` | `CALL_OUTCOMES` / `CALL_OUTCOME_LABELS` | Same multi-select path |
+| Source | `source` | `LEAD_SOURCES` / `LEAD_SOURCE_LABELS` | Immediate `push({ source })` |
+| Campaign | `campaign` | `options.campaigns` from page (rendered only if non-empty) | Immediate `push({ campaign })` |
+| Agent | `agent_id` | `options.agents` — only if `showAgentFilter` && items exist | Immediate `push({ agent_id })` |
+| Domain | `domain` | `GIA_DOMAIN_FILTER_ITEMS` — only if `showDomainFilter` | Immediate `push({ domain, agent_id: null, campaign: null })` |
+| Date from / to | `date_from`, `date_to` | `<FilterBar>` Range/Dates panels (`DateRangeFields` / preset list) | Immediate `push` |
+
+The **Going Cold chip**, the **sort-order toggle**, and the manager **All Leads / My Leads
+`TabSelector`** are NOT in `LeadsFilters` — they live in the `LeadsTable` toolbar (§6c, §6f).
 
 > **Health filter removed.** The `health` control and `p_health` RPC param were dropped (migration `20260608000083_status_counts_drop_health.sql`). It no longer exists in `LeadsFilters.tsx` or the `LeadFilters` type — do not reintroduce.
 
-**`buildParams`:** delegates to `buildFilterParams(current, updates, { resetKeys: ['page'] })` — every filter change deletes `page`.
+**`push` / `buildParams`:** every commit goes through `useUrlFilters`'s `push(updates)` →
+`buildFilterParams(current, updates, { resetKeys: ['page'] })` — every filter change deletes
+`page` (back to page 1). Single-select `push` and the debounced multi-select `pushDebounced` drain
+the same accumulator ref, so an immediate single-select can never race a pending multi-select into
+dropping a key.
 
-**FilterDraft:** All filter controls (except search and Going Cold) write into a local `FilterDraft` state. URL updated only on Apply. `isDirty` is a computed boolean comparing `draft` against live `params` — never a `useState`. `committedCount` (badge) counts active URL params, not draft values. With no date soft-default, `committedCount` can legitimately be `0` (no filters applied → all-time view).
+**Search:** `useUrlFilters` owns `searchInput` (controlled, updates every keystroke), debounced
+350ms via `useDebounce`; the push effect guards `trimmed === (params.get('search') ?? '')`.
+`clearAll()` calls `setSearchInput('')` immediately (no 350ms wait).
 
-**Search:** `searchInput` state debounced 350ms via `useDebounce`. URL pushed on debounce (not on Apply). `clearAll()` calls `setSearchInput('')` immediately without waiting for debounce.
+**`activeCount`:** counts active URL params (what the table is showing) — used only to show/hide
+the Clear button. `showCountBadge={false}` — there is no numeric badge in the bar.
 
-**Going Cold chip:** immediate-commit — `router.push` fires directly; clears `status` and `outcome` from URL when activating. Bypasses `FilterDraft` entirely. Active when `params.get('going_cold') === 'true'`.
+**Single-row layout** (`layout="scroll"`, `flexWrap: nowrap`, `overflowX: auto`): SlidersHorizontal
+icon → `SearchBar` (`flex 1 1 180px`, max 280px) → 1px divider → Status → Outcome → Source →
+Campaign (if options exist) → Agent (if `showAgentFilter`) → Domain (if `showDomainFilter`) →
+Range/Dates triggers → Clear (when `activeCount > 0`). All `FilterDropdown` chips pass `menuPortal`
+so menus render `position: fixed` on `document.body` — required by the `overflowX: auto` parent.
 
-**Single-row layout:** `flexWrap: nowrap`, `overflowX: auto`. Left to right: SlidersHorizontal icon + `committedCount` badge → `SearchBar` (flex 1, max 280px) → 1px divider → Status → Outcome → Source → Campaign (if options exist) → Agent (if `showAgentFilter`) → Domain (if `showDomainFilter`) → Going Cold → Range trigger → Sort order toggle → Apply (animated, `isDirty` only) → Clear. All `FilterDropdown` chips use `menuPortal` so menus render `position: fixed` on `document.body` — required by `overflowX: auto` parent.
-
-**Apply button:** `Button variant="primary" size="sm"` (not `MotionButton`) wrapped in `AnimatePresence motion.div` (`scale 0.95→1`, 150ms). Rendered only when `isDirty`.
-
-**Active count (badge) vs committed count:** badge shows `committedCount` (URL state). `isDirty` compares draft against URL. Never swap these.
-
-**Domain change:** atomically sets `domain`, clears `agent_id` and `campaign` in the same `setDraft` call — invariant 17.
+**Domain change:** atomically sets `domain` and clears `agent_id` + `campaign` in the same `push()`
+call — invariant 17. Never a separate `useEffect`.
 
 #### 6c. LeadsTable + LeadsTableAsync + LeadsTableSkeleton
 
-**LeadsTableAsync:** `getLeadsByRoleCached(role, userId, domain, filters)` → `{ leads, totalCount, statusCounts }`; passes all three to `LeadsTable` alongside `hasActiveFilters`. Direct child of `<Suspense>`.
+**LeadsTableAsync:** destructures `{ leads, totalCount } = getLeadsByRoleCached(role, userId, domain, filters)` (it does **not** read `statusCounts` — the summary pills toolbar was removed 2026-06-12). Passes `leads, userId, role, filters, hasActiveFilters, goingCold, enableViewToggle` to `LeadsTable`; renders `<LeadsPagination>` below when `totalCount > pageSize`; and, when `filters.revival`, builds `RevivalReviewRow[]` from `getOpenCandidatesForCaller(sessionClient)` and renders `<RevivalReviewBanner>` above the table (§8a). Direct child of `<Suspense>`. `hasActiveFilters` is true when any of status/outcome/domain/agent_id/source/campaign/date_from/date_to/search/going_cold/revival is set.
 
 **Columns (13):** Registry `src/lib/constants/lead-columns.ts`
 
@@ -586,8 +623,18 @@ There is **no `platform` column** in the leads table — the platform value surf
 - `hasActiveFilters === false`: heading *"No leads yet."*; sub *"Leads will appear here once the webhook receives its first submission."*
 
 Playfair italic heading (`var(--font-serif)`). Table has **zero** filter/sort/count logic.
+When `goingCold` is set, the empty state uses dedicated copy ("No cold leads." / "All leads have
+had recent activity.") ahead of the generic `hasActiveFilters` text.
 
-**Status pills (toolbar):** Derived exclusively from the `statusCounts` prop (`Partial<Record<LeadStatus, number>>`), which comes from the `get_leads_status_counts` RPC via `LeadsTableAsync`. Counts reflect the full filtered dataset, not just the current page slice. Pills are hidden when count is 0. `LeadsTable` never reads `leads[]` for count display.
+**Status summary pills toolbar removed (2026-06-12):** `LeadsTable` no longer renders a per-status
+count strip and no longer receives `statusCounts` — the `get_leads_status_counts` RPC still runs in
+`getLeadsByRole`, but only to derive `totalCount` (the sum of its rows, perf C-1). **Per-row** status
+pills (`.status-pill--lead-*` in `design-tokens.css`, theme-invariant) remain on each `LeadRow`.
+
+**Toolbar (one line):** left cluster — the manager All Leads / My Leads `TabSelector` (§6f, when
+shown) then the Going Cold chip; right cluster — sort-order toggle ("Newest first" / "Oldest
+first"), Columns picker, Export. Below md the sort and Export labels compress to icons and the
+Columns picker is hidden (the mobile card stack ignores column prefs); Going Cold keeps its label.
 
 #### 6d. LeadsPagination
 
@@ -608,13 +655,40 @@ Playfair italic heading (`var(--font-serif)`). Table has **zero** filter/sort/co
 
 **Service interests (call-intelligence Phase 1.1):** optional `FormChip` multi-select row below the Source/Domain/Assign grid — options from `getDomainInterests(watchedDomain)`, labels via `getServiceCategoryLabel()` (never a re-typed list). The domain-change effect filters the current selection to the new domain's vocabulary on every switch (out-of-vocabulary picks never silently submit). Server side, `createManualLead` drops unknown values against the *resolved* domain via `extractServiceInterests` — the same dropper as webhook/WhatsApp ingestion — and writes `text[]` on the same INSERT (no path fork; assignment/SLA/notifications untouched). Empty selection = `'{}'`, byte-identical to pre-1.1 behaviour.
 
+#### 6f. Manager All Leads / My Leads view toggle (`?view=`)
+
+Managers carry and call leads too, so on `/leads` they default to **their own assigned leads** (My
+Leads) — the same daily worklist an agent gets — not the whole domain. Full feature contract:
+`src/app/(dashboard)/leads/CLAUDE.md` § "Manager All Leads / My Leads view toggle".
+
+- **`view` is a `LeadFilters` flag** (`'mine' | 'all' | null`, `database.ts`), parsed in
+  `parseFilters` and force-set to `'mine'` for a manager in `page.tsx` unless `?view=all`. Agents and
+  admin/founder never get this default (their `view` is unused downstream).
+- **Service:** `getLeadsByRole` applies `assigned_to = userId` on top of the domain constraint when
+  `role === 'manager' && filters.view === 'mine'`; the count RPC's `p_agent_id` mirrors it (manager
+  in My Leads passes their own id) so pills/totals match — **no migration** (the existing RPC already
+  honours `p_agent_id`). `getLeadsForExport` mirrors the same scope.
+- **Toggle UI:** a sliding-pill `TabSelector` (`variant="accent"`,
+  `indicatorLayoutId="leads-view-switch"`) — the **first control in the `LeadsTable` toolbar's left
+  cluster** (Going Cold sits to its right), gated on `enableViewToggle && role === 'manager'`
+  (`LeadsTableAsync` sets `enableViewToggle`). Two segments — **"My Leads"** (`mine`, default) and
+  **"Team Leads"** (`all` → `?view=all`). The active segment names the CURRENT view
+  (`activeTab={viewIsAll ? 'all' : 'mine'}`). Selecting `all` writes `?view=all`; selecting `mine`
+  drops the param AND `agent_id`; re-selecting the active segment is a no-op (`setView` early-returns).
+- **Agent filter interaction:** `showAgentFilter` is `true` for a manager only in All Leads (§6a) —
+  the agent dropdown is hidden in My Leads (it would be a no-op).
+- **Cache key** includes `view` (`buildLeadListKey`) — My/All never share a Redis slot.
+- **Clear** (`LeadsFilters`) pushes a bare pathname → a manager resets back to the My Leads default.
+- The campaign drill-down forces `filters.view = 'all'` with the switcher off (analytics view of
+  every campaign lead — a manager there must see the whole domain).
+
 ---
 
 ### 8. Access Control Summary
 
 | Operation | RLS enforces | Action-level check |
 | --------- | ------------ | ------------------ |
-| List leads | Agent: own; manager: domain; admin/founder: all | `getLeadsByRole` role constraints before filters |
+| List leads | Agent: own; manager: domain (RLS ceiling); admin/founder: all | `getLeadsByRole` role constraints before filters; a manager's default `view='mine'` further narrows to `assigned_to=userId` as an additive WHERE (UI default, not an RLS change — §6f) |
 | View dossier | Same via lead SELECT | Page redirect if no access |
 | View notes/activities | EXISTS on lead access | — |
 | View raw payloads | Admin/founder only | — |
@@ -682,9 +756,9 @@ Playfair italic heading (`var(--font-serif)`). Table has **zero** filter/sort/co
 
 6. **`LeadsPagination` absent from DOM when `totalCount <= 30`.** `pageSize` is fixed at 30. Do not add a page size selector.
 
-7. **Search is debounced 350ms and pushed directly to URL** (not gated behind Apply). `searchInput` state + `useDebounce` + `useEffect` guarded by equality check. `clearAll()` calls `setSearchInput('')` immediately.
+7. **Search is debounced 350ms and pushed directly to URL** (immediate-commit, like every filter — there is no Apply step). `useUrlFilters` owns `searchInput` + `useDebounce` + a push effect guarded by an equality check against the live param. `clearAll()` calls `setSearchInput('')` immediately.
 
-8. **`showAgentFilter`:** `true` → agent dropdown rendered; `false` → **absent from DOM entirely** (not CSS-hidden). `showAgentFilter = profile.role !== 'agent'`.
+8. **`showAgentFilter`:** `true` → agent dropdown rendered; `false` → **absent from DOM entirely** (not CSS-hidden). Computed in `page.tsx` as `role === 'manager' ? filters.view === 'all' : role !== 'agent'` — admin/founder always; agent never; a manager only in the All Leads view (in My Leads the list is already self-scoped, so the dropdown is hidden). Never set `true` for an agent.
 
 9. **`date_to` end-of-day:** `filters.date_to.replace(/T.*$/, 'T23:59:59.999Z')` in `leads-service.ts` only. **`date_from` IST midnight:** bare `YYYY-MM-DD` suffixed to `T00:00:00+05:30` in `leads-service.ts` only.
 
@@ -722,7 +796,7 @@ Playfair italic heading (`var(--font-serif)`). Table has **zero** filter/sort/co
 
 26. **`useLeadColumnPreferences`:** locked columns always in `visibleColumns`; invalid stored ids dropped on load.
 
-27. **Sort order (`sort_order`):** `LeadFilters.sort_order?: 'asc' | 'desc'` (default `'desc'`). Authored in `LeadsFilters.tsx` draft. URL param `sort_order=asc` written by Apply; omitted when default. `getLeadsByRole` applies `.order('created_at', { ascending: filters.sort_order === 'asc' })`. `LeadsTable.tsx` owns zero sort logic.
+27. **Sort order (`sort_order`):** `LeadFilters.sort_order?: 'asc' | 'desc'` (default `'desc'`). The toggle lives in the **`LeadsTable` toolbar** (right cluster, left of Columns), commits immediately to the URL via `buildFilterParams` (resets `page`) — not in `LeadsFilters`, not behind any Apply step. `sort_order=asc` is the only value written; default `desc` omits the param. `getLeadsByRole` applies `.order('created_at', { ascending: filters.sort_order === 'asc' })`.
 
 28. **`LeadsTable.tsx` has zero sort logic.** No sort props, no column-header click handlers, no `.sort()` on the `leads` array. Sort is entirely service-layer via `sort_order` filter.
 
@@ -730,9 +804,9 @@ Playfair italic heading (`var(--font-serif)`). Table has **zero** filter/sort/co
 
 30. **Latest-note batch fetch — one query, never per-row.** `getLatestNotesForLeads(leadIds, supabase)` (private, not exported) runs one `.in('lead_id', leadIds)` query ordered `created_at DESC`. The `Map<leadId, LatestNote>` is built by iterating the result once, skipping duplicate `lead_id` keys (first = latest). Empty `leadIds` returns an empty Map without querying. Any loop or per-lead call against `lead_notes` in `getLeadsByRole` is a violation of this invariant.
 
-31. **Status pill counts come only from `statusCounts` prop — never from `leads[]`.** `LeadsTable` receives `statusCounts: Partial<Record<LeadStatus, number>>` from `LeadsTableAsync`. The `useMemo` that counted from `leads[]` is deleted. Any reintroduction of counting logic inside `LeadsTable` is a violation.
+31. **No status-count display lives in `LeadsTable`.** The summary status-pills toolbar was removed 2026-06-12 — `LeadsTable` no longer receives `statusCounts` and `LeadsTableAsync` no longer reads it; the `useMemo` that counted from `leads[]` is deleted. The `statusCounts` map exists only inside `getLeadsByRole` to derive `totalCount` (its row-sum). Per-row status pills remain. Never reintroduce a count strip (or count logic) inside `LeadsTable`.
 
-32. **`statusCounts` and the paginated query run in `Promise.all` — never sequentially.** The `get_leads_status_counts` RPC params (incl. `p_domain`, `p_going_cold`) must mirror the filter chain in `getLeadsByRole` exactly — the hoisted filter-value block exists so both sides receive identical bounds, and `totalCount` is the sum of the RPC rows. When a new filter is added to `LeadFilters`, update the paginated query, the RPC call, **and** the RPC itself (migration) simultaneously. On RPC error, `statusCounts` is `{}` (pills show no counts) and `totalCount` degrades to `offset + rows.length`.
+32. **The count RPC and the paginated query run in `Promise.all` — never sequentially.** The `get_leads_status_counts` RPC params (incl. `p_agent_id`, `p_domain`, `p_going_cold`) must mirror the filter chain in `getLeadsByRole` exactly — the hoisted filter-value block exists so both sides receive identical bounds, and `totalCount` is the sum of the RPC rows. `p_agent_id` carries the manager My-Leads scope (own id) so the total matches the table in every view. When a new filter is added to `LeadFilters`, update the paginated query, the RPC call, **and** the RPC itself (migration) simultaneously. On RPC error, `totalCount` degrades to `offset + rows.length` with a logged warning. (The `?revival=true` predicate bypasses this RPC — §8a.)
 
 33. **`/leads` has no date soft-default.** `page.tsx` does not redirect to inject `date_from`; an absent `date_from` means an all-time list (no lower bound). "Clear" (`clearAll()`) pushes `pathname` with no params → all-time. Do not reintroduce a 30-day-redirect default without a spec change. (Superseded 2026-06-09 — the prior 30-day redirect was removed.)
 

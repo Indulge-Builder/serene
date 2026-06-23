@@ -4,7 +4,6 @@ import { MessageSquarePlus } from "lucide-react";
 import { EmbeddedElayaChat } from "@/components/elaya/EmbeddedElayaChat";
 import { useSuggestionFeedback } from "@/components/suggestions/SuggestionFeedbackProvider";
 import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
-import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 
 /**
@@ -22,7 +21,7 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
  * (SuggestionFeedbackProvider). On desktop the Sidebar "Send feedback" item is
  * the entry, so the overlay is hidden there to keep the chat header clean.
  */
-export function ElayaPresenceCard({ size = "md" }: WidgetProps) {
+export function ElayaPresenceCard(_props: WidgetProps) {
   const { openComposer } = useSuggestionFeedback();
   const isMobile = useMediaQuery(MQ.mobile);
 
@@ -31,7 +30,7 @@ export function ElayaPresenceCard({ size = "md" }: WidgetProps) {
       className="flex flex-col"
       style={{
         position: "relative",
-        height: WIDGET_HEIGHT_BY_SIZE[size],
+        height: "100%",
         background: "var(--theme-paper)",
         border: "1px solid var(--theme-paper-border)",
         borderRadius: "var(--radius-lg)",

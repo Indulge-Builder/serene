@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/deals` — every closed commercial transaction (lead-won and walk-in), list + summary strip + New Deal write path.
 > **Audience:** engineers. · **Source-of-truth scope:** the deals page, `deals-service.ts`, `deals.ts` actions, `get_deals_summary`. Table schema: `../architecture/database.md` § deals; the dossier's Won flow UI: `lead-dossier.md`.
-> **Last verified:** 2026-06-09 full pass; 2026-06-11 restructure.
+> **Last verified:** 2026-06-24 (post 0122 domain-derived `deal_type`, `deal_created` notification, summary-strip domain scoping).
 
 ## 1. Purpose
 
@@ -11,7 +11,10 @@ A deal is a closed commercial transaction — every `public.deals` row is one by
 "deals = won leads" model; Decision Log in `../rules/The_Rules.md`). Two creation paths:
 **lead → deal** (`recordDeal` from the dossier's Won flow — inserts the deal, then delegates
 `updateLeadStatus('won')` for all side-effects) and **walk-in** (`createWalkInDeal`,
-`lead_id = null`, no lead lifecycle, via `AddDealButton` on the page).
+`lead_id = null`, no lead-row lifecycle, via `AddDealButton` on the page). The walk-in path
+fans out a `deal_created` notification to the domain's managers/admins/founders (the lead → deal
+path does not — its `lead_won` flip already notifies the same recipients). Neither path touches
+the `leads` row, SLA timers, or activity logs.
 
 ## 2. Who sees it
 
@@ -52,31 +55,6 @@ dropped `leads.deal_*`).
 
 `client_id` is a reserved column — FK lands with the future clients module (post-won flow).
 
-### Two won leads with no `deals` row — founder decision required (2026-06-12)
-
-`/deals` and `/performance` disagree on win count by exactly 2 until this is resolved. The 0073
-backfill skipped both (its `deal_amount IS NOT NULL` condition); on inspection **both look like
-internal test leads, not real revenue** — founders should confirm before any deal row is written:
-
-| Lead (dossier) | Phone | Domain | Agent | Won at (UTC) | Evidence it's a test |
-| -------------- | ----- | ------ | ----- | ------------ | -------------------- |
-| `/leads/ram--9139` ("Aram") | +917481879139 | onboarding | Amit Agarwal | 2026-06-05 09:54 | note "km;kl"; new→won in 16s of clicks; WhatsApp-sourced; name matches the developer |
-| `/leads/testing--6087` ("testing") | +915476586087 | house | Sailee | 2026-05-30 12:47 | name "testing"; note "lklk"; new→won in 4.5 min |
-
-**Resolution paths (pick one per lead, never raw ad-hoc SQL):**
-
-- **Test lead (expected):** archive it — `archived_at = now()` via a ledger-recorded data
-  migration. Archived leads drop out of every win cohort, so the /deals vs /performance counts
-  reconcile without inventing revenue.
-- **Real win (if a founder confirms an amount):** insert its `deals` row via a ledger-recorded
-  data migration mirroring the 0073 column mapping (`lead_id`, contact fields from the lead row,
-  `domain`, the founder-confirmed `deal_amount`, `deal_type`, `assigned_to`,
-  `won_at = status_changed_at`), or have an admin re-drive `recordDeal` for the lead.
-
-Either way the migration gets the next free number, lands in `supabase/migrations/`, and is
-recorded in `supabase_migrations.schema_migrations` on apply — the ledger stays gap-free
-(see `../architecture/migrations.md`, ledger-repair note).
-
 ---
 
 ## 8. Deep dive
@@ -98,8 +76,10 @@ lifecycle) cannot be represented at all in the old model. Decision Log: `../rule
 1. **Lead → deal** (`recordDeal`): Agent marks a lead won via `StatusActionPanel` → `WonDealModal`.
    Inserts a `deals` row with `lead_id` set, then delegates `updateLeadStatus('won')` for all
    side-effects (notifications, SLA cancel, Redis, revalidation).
-2. **Walk-in deal** (`createWalkInDeal`): Standalone deal with `lead_id = null`. No lead lifecycle,
-   no side-effects. Created via the New Deal button on `/deals`.
+2. **Walk-in deal** (`createWalkInDeal`): Standalone deal with `lead_id = null`. No lead-row
+   lifecycle (no `updateLeadStatus`, no SLA, no activity log). It **does** fan out a `deal_created`
+   notification to the domain's managers/admins/founders (see §4c). Created via the New Deal button
+   on `/deals`.
 
 **Route:** Single primary nav page at `/deals` — `src/app/(dashboard)/deals/page.tsx`.
 
@@ -246,15 +226,19 @@ Composes `src/components/ui/modal.tsx` (`maxWidth="max-w-md"`).
 
 **Two-step flow:**
 
-1. **Contact:** Name, Phone (E.164), Email (optional), Domain picker (`GIA_DOMAINS` — admin/founder
-   only; agent and manager locked to own domain), Assign to (manager+ — dropdown pre-loaded via
-   `listAgentsForDealDomain`; agent shows read-only self chip).
+All four pickers are the themed `FilterDropdown` (`multi={false}`), never a native `<select>`
+(2026-06-17 — off-palette native selects were replaced for accent focus rings + themed panels;
+purely the picker chrome, same values committed).
+
+1. **Contact:** Name, Phone (E.164), Email (optional), Domain picker (`FilterDropdown`, `GIA_DOMAINS`
+   — admin/founder only; agent and manager locked to own domain), Assign to (manager+ —
+   `FilterDropdown` pre-loaded via `listAgentsForDealDomain`; agent shows read-only self chip).
 2. **Deal:** Deal **type is shown read-only** ("set by {domain}") — it is derived from the chosen
    domain (`DOMAIN_DEAL_CONFIG`), not picked. The type-dependent extra surfaces accordingly:
-   **Product Category** `<select>` for shop (retail), **Duration** chips for onboarding (membership),
-   nothing for house/legacy (sale). Plus a side-by-side **Deal Date** (`DatePicker`,
+   **Product Category** (`FilterDropdown`) for shop (retail), **Duration** chips for onboarding
+   (membership), nothing for house/legacy (sale). Plus a side-by-side **Deal Date** (`DatePicker`,
    `maxDate={new Date()}` — defaults to today, allows back-dating a past sale) + **Source**
-   (`<select>` from `LEAD_SOURCE_OPTIONS`, optional), and Amount (₹ prefix, decimal).
+   (`FilterDropdown` from `LEAD_SOURCE_OPTIONS`, optional), and Amount (₹ prefix, decimal).
 
 **Domain/assignee enforcement (server-side):**
 - Agent: `domain = caller.domain`, `assigned_to = caller.id` — always forced server-side.
@@ -272,11 +256,21 @@ On success: `router.refresh()` — no manual cache invalidation needed.
 **File:** `src/lib/actions/deals.ts`
 **Schema:** `CreateWalkInDealSchema` in `src/lib/validations/deal-schema.ts`
 
-Inserts a single `deals` row with `lead_id = null`, `client_id = null`. No lead status side-effects.
-`contact_phone` normalised to E.164 via `normalizeToE164()` (throws on invalid — caught, returns error).
-`source` is written from the optional picker (or null); `won_at` is the supplied Deal Date
-(`data.won_at`) or `now()` when omitted. `CreateWalkInDealSchema` validates `source` against
-`LEAD_SOURCE_ENUM` and `won_at` as an optional ISO datetime.
+Inserts a single `deals` row with `lead_id = null`, `client_id = null`. No `leads`-row side-effects
+(no `updateLeadStatus`, no SLA, no activity log). `contact_phone` normalised to E.164 via
+`normalizeToE164()` (throws on invalid — caught, returns error). `source` is written from the
+optional picker (or null); `won_at` is the supplied Deal Date (`data.won_at`) or `now()` when
+omitted. `CreateWalkInDealSchema` validates `source` against `LEAD_SOURCE_ENUM` and `won_at` as an
+optional ISO datetime.
+
+**`deal_created` notification (2026-06-16).** After a successful insert, `createWalkInDeal` fires a
+`deal_created` in-app + push notification fan-out to the active managers/admins/founders in the
+deal's domain via the local `notifyDealCreated` helper (mirrors the `lead_won` fan-out). The send is
+wrapped in `after()` from `next/server` (A-16 — never a bare `void`) and is non-fatal (a deal write
+never fails on a notification error). It carries `notificationKey: 'deal_created'` so Seam A honours
+each recipient's per-user mute (migration `0133` — see §12 File Index). The lead → deal path
+(`recordDeal`) deliberately does **not** fire it — its `lead_won` flip already reaches the same
+recipients, and firing both would double-notify the single event.
 
 ---
 
@@ -510,8 +504,17 @@ instead of joined `first_name + last_name`. Uses `contact_phone` instead of join
 
 #### 8e. `DealsSummaryStrip`, `DealsSkeleton`
 
-Unchanged in structure. Strip: 4 stat cells (total deals, revenue, memberships, retail).
-Skeleton: summary strip + 5 staggered card rows.
+**Domain-conditional cells (2026-06-20).** The strip composes `StatTile variant="cell"` and takes a
+`domain?: AppDomain | null` prop. **Total Deals** and **Total Revenue** always render. The
+**Memberships** cell shows only when the scoped domain's derived `deal_type` is `membership` (or the
+all-domains/`null` view); **Retail** only when it is `retail` (or `null`). So an all-domains view
+shows all 4 cells, while a domain-pinned manager/agent (e.g. `house` → `sale`) sees just the two
+always-on cells — there is no `sale_count`. The effective scope is resolved in `DealsAsync` as
+`summaryDomain` (admin/founder → `filters.domain`; manager/agent → their own profile `domain`,
+because `resolveDomainParam` returns `null` for them and `filters.domain` alone would wrongly widen
+to both type cells). Pure display change — `getDealsSummary` still returns all four counts.
+
+`DealsSkeleton`: summary strip + 5 staggered card rows.
 
 ---
 
@@ -577,7 +580,10 @@ user-scoped INSERT/DELETE policy for deals.
 
 11. **`recordDeal` inserts a `deals` row before `updateLeadStatus('won')`** — if insert fails, status is NOT flipped.
 
-12. **`createWalkInDeal` has no lead side-effects** — no `updateLeadStatus`, no SLA, no notifications.
+12. **`createWalkInDeal` has no `leads`-row side-effects** — no `updateLeadStatus`, no SLA, no
+    activity log. It DOES fan out one `deal_created` notification to the deal's domain
+    managers/admins/founders (after-wrapped, non-fatal, `notificationKey: 'deal_created'`). The
+    lead → deal path does not fire it (its `lead_won` flip already notifies the same recipients).
 
 13. **`client_id` is always null** — FK deferred to clients module. Never populate it from application code until the clients migration runs.
 
@@ -614,5 +620,5 @@ user-scoped INSERT/DELETE policy for deals.
 | Back-compat re-export | `src/lib/validations/lead-schema.ts` (`RecordDealSchema` re-export) |
 | Types | `src/lib/types/database.ts` (`Deal`, `DealWithRelations`, `DealFilters`) |
 | Constants | `src/lib/constants/deal-types.ts` |
-| Migrations | `0072` (table), `0073` (backfill), `0074` (`get_deals_summary` rewrite over deals), `0075` (add `source` column), `0076` (`get_domain_health_metrics` revenue → deals), `0094` (intentional INSERT/DELETE policy gap), `0097` (drop dead `leads.deal_*` columns) |
+| Migrations | `0072` (table), `0073` (backfill), `0074` (`get_deals_summary` rewrite over deals), `0075` (add `source` column), `0076` (`get_domain_health_metrics` revenue → deals), `0094` (intentional INSERT/DELETE policy gap), `0097` (drop dead `leads.deal_*` columns), `0122` (`deal_category` + domain-derived `deal_type` CHECKs: `'sale'`, `deals_deal_category_check`, `deals_retail_category_check`), `0133` (notification preferences — defines the `deal_created` category the walk-in fan-out gates on; see §4c) |
 | Pagination reuse | `src/components/leads/LeadsPagination.tsx` |

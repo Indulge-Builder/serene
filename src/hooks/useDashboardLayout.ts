@@ -4,25 +4,25 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   WIDGET_MAP,
   isValidWidgetId,
-  DEFAULT_LAYOUT_BY_ROLE,
-  type WidgetSize,
-  type WidgetColSpan,
+  DEFAULT_GRID_BY_ROLE,
+  GRID_COLS,
+  type GridPlacement,
 } from '@/lib/constants/dashboard-widgets';
 import type { UserRole } from '@/lib/types/database';
 
 const STORAGE_KEY_PREFIX = 'serene:dashboard:layout';
-// v2 — 2026-06-12 agent dashboard redesign (new grid: snapshot counts, Elaya,
-// budget). Versioning the key orphans stale v1 layouts instead of letting
-// them fight the new default grid.
-const STORAGE_VERSION    = 'v2';
+// v5 — 2026-06-24 the Campaign Budget widget became the fuel gauge and grew from
+// {w:3,h:5} to {w:6,h:8}; a stored v4 layout would keep the old cramped footprint
+// (RGL restores the saved w/h, not the new minW), so the gauge would render
+// squeezed. Bumping resets stale layouts to the corrected role default — the same
+// honest reset v4 documented (a partial reconcile would leave the gauge cramped).
+// v4 — 2026-06-24 spatial grid. Layout is now a 2-D {x,y,w,h} grid (grid units,
+// 12-col) instead of an ordered flow list. v2 (size enum) and v3 (free heightPx,
+// still 2-column flow) layouts cannot be mapped to arbitrary 2-D placement.
+const STORAGE_VERSION = 'v5';
 
-export type WidgetPlacement = {
-  widgetId: string;
-  col:      number;
-  row:      number;
-  size:     WidgetSize;
-  colSpan:  WidgetColSpan;
-};
+/** One widget's footprint on the grid (grid units). */
+export type WidgetPlacement = GridPlacement;
 
 type StoredLayout = {
   placements: WidgetPlacement[];
@@ -33,51 +33,55 @@ function storageKey(userId: string): string {
 }
 
 function getDefaults(role: UserRole): StoredLayout {
-  const widgetIds = DEFAULT_LAYOUT_BY_ROLE[role] ?? [];
-  const placements: WidgetPlacement[] = widgetIds.map((id, i) => ({
-    widgetId: id,
-    col:      i % 2,
-    row:      Math.floor(i / 2),
-    size:     WIDGET_MAP[id]?.defaultSize ?? 'md',
-    colSpan:  WIDGET_MAP[id]?.colSpan ?? 1,
-  }));
+  // Clone so callers can never mutate the shared default array.
+  const placements = (DEFAULT_GRID_BY_ROLE[role] ?? []).map((p) => ({ ...p }));
   return { placements };
 }
 
-// Validate stored layout against the registry.
-// Unrecognised widget ids are silently dropped.
+// Validate a stored layout against the registry + the caller's role.
+// Unrecognised / role-forbidden / malformed placements are silently dropped.
 function sanitizeStored(raw: unknown, role: UserRole): StoredLayout {
-  const defaults = getDefaults(role);
-
-  if (!raw || typeof raw !== 'object') return defaults;
+  if (!raw || typeof raw !== 'object') return getDefaults(role);
 
   const obj = raw as Record<string, unknown>;
+  if (!Array.isArray(obj.placements)) return getDefaults(role);
 
-  if (!Array.isArray(obj.placements)) return defaults;
-
-  const validSizes: WidgetSize[] = ['sm', 'md', 'lg', 'xl'];
-
-  const validColSpans: WidgetColSpan[] = [1, 2];
-
+  const seen = new Set<string>();
   const placements: WidgetPlacement[] = (obj.placements as unknown[])
     .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
-    .filter((p) =>
-      typeof p.widgetId === 'string' &&
-      isValidWidgetId(p.widgetId) &&
-      WIDGET_MAP[p.widgetId].roles.includes(role),
+    .filter(
+      (p) =>
+        typeof p.widgetId === 'string' &&
+        isValidWidgetId(p.widgetId) &&
+        WIDGET_MAP[p.widgetId].roles.includes(role),
     )
-    .map((p) => ({
-      widgetId: p.widgetId as string,
-      col:      typeof p.col === 'number' ? p.col : 0,
-      row:      typeof p.row === 'number' ? p.row : 0,
-      size:     validSizes.includes(p.size as WidgetSize) ? (p.size as WidgetSize) : 'md',
-      // colSpan: fall back to the widget definition default for older stored layouts
-      colSpan:  validColSpans.includes(p.colSpan as WidgetColSpan)
-        ? (p.colSpan as WidgetColSpan)
-        : (WIDGET_MAP[p.widgetId as string]?.colSpan ?? 1),
-    }));
+    .map((p) => {
+      const def = WIDGET_MAP[p.widgetId as string];
+      const minW = def.defaultGrid.minW ?? 1;
+      const minH = def.defaultGrid.minH ?? 1;
+      // Coerce + clamp every geometry field defensively.
+      const w = clampInt(p.w, minW, GRID_COLS, def.defaultGrid.w);
+      const x = clampInt(p.x, 0, GRID_COLS - w, 0);
+      const h = Math.max(minH, toInt(p.h, def.defaultGrid.h));
+      const y = Math.max(0, toInt(p.y, 0));
+      return { widgetId: p.widgetId as string, x, y, w, h };
+    })
+    // de-dupe by widgetId (a corrupted store could repeat one)
+    .filter((p) => (seen.has(p.widgetId) ? false : (seen.add(p.widgetId), true)));
 
+  // An empty result from a non-empty default role → fall back to defaults.
+  if (placements.length === 0 && (DEFAULT_GRID_BY_ROLE[role] ?? []).length > 0) {
+    return getDefaults(role);
+  }
   return { placements };
+}
+
+function toInt(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : fallback;
+}
+function clampInt(v: unknown, min: number, max: number, fallback: number): number {
+  const n = toInt(v, fallback);
+  return Math.min(Math.max(n, min), Math.max(min, max));
 }
 
 function readFromStorage(userId: string, role: UserRole): StoredLayout {
@@ -99,32 +103,28 @@ function writeToStorage(userId: string, layout: StoredLayout): void {
 }
 
 export type UseDashboardLayoutReturn = {
-  layout:           WidgetPlacement[];
-  isHydrated:       boolean;
-  addWidget:        (widgetId: string) => void;
-  removeWidget:     (widgetId: string) => void;
-  moveWidget:       (widgetId: string, col: number, row: number) => void;
-  resizeWidget:     (widgetId: string, size: WidgetSize) => void;
-  resizePlacement:  (widgetId: string, size: WidgetSize, colSpan: WidgetColSpan) => void;
-  reorderWidgets:   (newOrder: string[]) => void;
-  resetToDefaults:  () => void;
+  layout: WidgetPlacement[];
+  isHydrated: boolean;
+  /** Commit a full new layout (react-grid-layout hands us every item on change). */
+  applyLayout: (placements: WidgetPlacement[]) => void;
+  addWidget: (widgetId: string) => void;
+  removeWidget: (widgetId: string) => void;
+  resetToDefaults: () => void;
 };
 
 export function useDashboardLayout(userId: string, role: UserRole): UseDashboardLayoutReturn {
-  const [stored, setStored]         = useState<StoredLayout>(() => getDefaults(role));
+  const [stored, setStored] = useState<StoredLayout>(() => getDefaults(role));
   const [isHydrated, setIsHydrated] = useState(false);
 
   // Hydrate from localStorage after mount — prevents SSR layout mismatch.
   // Only calls setStored when the persisted layout actually differs from the
-  // default that was already initialised synchronously. This keeps the widget
-  // subtree alive (no unmount/remount) when the stored layout matches defaults.
+  // default already initialised synchronously, keeping the widget subtree alive.
   useEffect(() => {
     const persisted = readFromStorage(userId, role);
     const persistedJson = JSON.stringify(persisted);
-    setStored((current) => {
-      const currentJson = JSON.stringify(current);
-      return persistedJson !== currentJson ? persisted : current;
-    });
+    setStored((current) =>
+      persistedJson !== JSON.stringify(current) ? persisted : current,
+    );
     setIsHydrated(true);
   }, [userId, role]);
 
@@ -136,18 +136,40 @@ export function useDashboardLayout(userId: string, role: UserRole): UseDashboard
     [userId],
   );
 
+  // react-grid-layout emits the COMPLETE layout on every drag/resize. We keep
+  // only the geometry fields and re-pair with the stored widgetIds (RGL items
+  // carry their id as `i`). Items not currently in our set are ignored.
+  const applyLayout = useCallback(
+    (placements: WidgetPlacement[]) => {
+      const valid = placements.filter(
+        (p) => isValidWidgetId(p.widgetId) && WIDGET_MAP[p.widgetId].roles.includes(role),
+      );
+      // Only persist if something actually changed (RGL fires on mount too).
+      const sameLength = valid.length === stored.placements.length;
+      const unchanged =
+        sameLength &&
+        valid.every((p) => {
+          const prev = stored.placements.find((q) => q.widgetId === p.widgetId);
+          return prev && prev.x === p.x && prev.y === p.y && prev.w === p.w && prev.h === p.h;
+        });
+      if (unchanged) return;
+      persist({ placements: valid });
+    },
+    [stored, persist, role],
+  );
+
   const addWidget = useCallback(
     (widgetId: string) => {
       if (!isValidWidgetId(widgetId)) return;
       if (stored.placements.some((p) => p.widgetId === widgetId)) return;
 
-      const maxRow = stored.placements.reduce((m, p) => Math.max(m, p.row), -1);
-      const widget = WIDGET_MAP[widgetId];
-
+      const def = WIDGET_MAP[widgetId];
+      // Drop the new widget at the bottom-left; RGL compaction tucks it in.
+      const maxY = stored.placements.reduce((m, p) => Math.max(m, p.y + p.h), 0);
       persist({
         placements: [
           ...stored.placements,
-          { widgetId, col: 0, row: maxRow + 1, size: widget?.defaultSize ?? 'md', colSpan: widget?.colSpan ?? 1 },
+          { widgetId, x: 0, y: maxY, w: def.defaultGrid.w, h: def.defaultGrid.h },
         ],
       });
     },
@@ -156,61 +178,7 @@ export function useDashboardLayout(userId: string, role: UserRole): UseDashboard
 
   const removeWidget = useCallback(
     (widgetId: string) => {
-      persist({
-        placements: stored.placements.filter((p) => p.widgetId !== widgetId),
-      });
-    },
-    [stored, persist],
-  );
-
-  const moveWidget = useCallback(
-    (widgetId: string, col: number, row: number) => {
-      persist({
-        placements: stored.placements.map((p) =>
-          p.widgetId === widgetId ? { ...p, col, row } : p,
-        ),
-      });
-    },
-    [stored, persist],
-  );
-
-  const resizeWidget = useCallback(
-    (widgetId: string, size: WidgetSize) => {
-      persist({
-        placements: stored.placements.map((p) =>
-          p.widgetId === widgetId ? { ...p, size } : p,
-        ),
-      });
-    },
-    [stored, persist],
-  );
-
-  const resizePlacement = useCallback(
-    (widgetId: string, size: WidgetSize, colSpan: WidgetColSpan) => {
-      persist({
-        placements: stored.placements.map((p) =>
-          p.widgetId === widgetId ? { ...p, size, colSpan } : p,
-        ),
-      });
-    },
-    [stored, persist],
-  );
-
-  const reorderWidgets = useCallback(
-    (newOrder: string[]) => {
-      const ordered = newOrder
-        .filter((id) => isValidWidgetId(id))
-        .map((id, i) => {
-          const existing = stored.placements.find((p) => p.widgetId === id);
-          return {
-            widgetId: id,
-            col:      i % 2,
-            row:      Math.floor(i / 2),
-            size:     existing?.size    ?? WIDGET_MAP[id]?.defaultSize ?? 'md',
-            colSpan:  existing?.colSpan ?? WIDGET_MAP[id]?.colSpan    ?? 1,
-          };
-        });
-      persist({ placements: ordered });
+      persist({ placements: stored.placements.filter((p) => p.widgetId !== widgetId) });
     },
     [stored, persist],
   );
@@ -220,14 +188,11 @@ export function useDashboardLayout(userId: string, role: UserRole): UseDashboard
   }, [role, persist]);
 
   return {
-    layout:           stored.placements,
+    layout: stored.placements,
     isHydrated,
+    applyLayout,
     addWidget,
     removeWidget,
-    moveWidget,
-    resizeWidget,
-    resizePlacement,
-    reorderWidgets,
     resetToDefaults,
   };
 }

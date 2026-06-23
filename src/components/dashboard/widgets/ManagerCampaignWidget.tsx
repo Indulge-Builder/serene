@@ -9,7 +9,6 @@ import { getLeadsByCampaignAction } from "@/lib/actions/dashboard";
 import { formatCompact } from "@/lib/utils/numbers";
 import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
 import type { LeadStatus } from "@/lib/types/database";
-import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import type { DashboardCampaignStatusMix } from "@/lib/types";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { DateRange } from "@/lib/utils/date-range";
@@ -45,7 +44,6 @@ const CHART_SERIES: BarChartSeries[] = STATUS_ORDER.map((s) => ({
 
 export function ManagerCampaignWidget({
   initialData,
-  size = 'xl',
   dateRange,
   scopeDomain,
 }: WidgetProps & { dateRange?: DateRange }) {
@@ -92,21 +90,6 @@ export function ManagerCampaignWidget({
   // Compute a concrete pixel chart height so ResponsiveContainer always gets a
   // positive number. height="100%" on a flex:1 parent returns -1 in Recharts.
   //
-  // Fixed chrome:
-  //   padding:      40px (20 top + 20 bottom)
-  //   header:       36px
-  //   gap × 2:      32px  (header→chart, chart→legend)
-  //   legend pills: 32px  (one row, when data is present)
-  const totalPx    = parseInt(WIDGET_HEIGHT_BY_SIZE[size], 10);
-  const PADDING    = 40;
-  const HEADER     = 36;
-  const GAP        = 16;
-  const LEGEND     = 32;
-  const chartHeight = Math.max(
-    120,
-    totalPx - PADDING - HEADER - GAP * 2 - LEGEND,
-  );
-
   // Background tints for legend pills — mirrors LeadPipeline scorecard
   const STATUS_BG: Record<LeadStatus, string> = {
     new:           "var(--color-info-light)",
@@ -129,7 +112,7 @@ export function ManagerCampaignWidget({
         display: "flex",
         flexDirection: "column",
         gap: "var(--space-4)",
-        height: WIDGET_HEIGHT_BY_SIZE[size],
+        height: "100%",
         overflow: "hidden",
       }}
     >
@@ -191,8 +174,8 @@ export function ManagerCampaignWidget({
       ) : loaded ? (
         <div
           style={{
-            height: chartHeight,
-            flexShrink: 0,
+            flex: 1,
+            minHeight: 0,
             opacity: isPending ? 0.5 : 1,
             transition: "opacity 200ms",
           }}
@@ -201,7 +184,7 @@ export function ManagerCampaignWidget({
             data={chartData}
             series={CHART_SERIES}
             xKey="campaign"
-            height={chartHeight}
+            height="100%"
             stacked
             colorMap={STATUS_COLORS}
             margin={{ top: 4, right: 4, bottom: 48, left: -24 }}

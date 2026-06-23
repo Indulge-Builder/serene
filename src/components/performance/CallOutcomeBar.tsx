@@ -41,9 +41,12 @@ const OUTCOME_COLOR_VARS: Record<CallOutcome, string> = {
 
 type Props = {
   breakdown: OutcomeBreakdownItem[];
+  /** When provided, each legend row + donut slice becomes a tap target opening
+   *  the leads with that outcome. Absent → display-only (backward-safe). */
+  onSliceClick?: (outcome: CallOutcome) => void;
 };
 
-export function CallOutcomeBar({ breakdown }: Props) {
+export function CallOutcomeBar({ breakdown, onSliceClick }: Props) {
   const tokens = useChartTokens();
   const total = breakdown.reduce((sum, item) => sum + item.count, 0);
 
@@ -137,18 +140,20 @@ export function CallOutcomeBar({ breakdown }: Props) {
           {orderedItems.map(({ outcome, count }) => {
             const config = OUTCOME_CONFIG[outcome];
             const pct = Math.round((count / total) * 100);
-            return (
-              <div
-                key={outcome}
-                style={{
-                  display:        'flex',
-                  alignItems:     'center',
-                  gap:            'var(--space-3)',
-                  padding:        '6px var(--space-3)',
-                  borderRadius:   'var(--radius-sm)',
-                  background:     config.bgColor,
-                }}
-              >
+            const rowStyle = {
+              display:        'flex',
+              alignItems:     'center',
+              gap:            'var(--space-3)',
+              padding:        '6px var(--space-3)',
+              borderRadius:   'var(--radius-sm)',
+              background:     config.bgColor,
+              width:          '100%',
+              textAlign:      'left' as const,
+              border:         'none',
+              cursor:         onSliceClick ? 'pointer' : 'default',
+            };
+            const rowInner = (
+              <>
                 {/* Colour dot */}
                 <span
                   aria-hidden="true"
@@ -201,6 +206,22 @@ export function CallOutcomeBar({ breakdown }: Props) {
                     {pct}%
                   </span>
                 </div>
+              </>
+            );
+            return onSliceClick ? (
+              <button
+                key={outcome}
+                type="button"
+                onClick={() => onSliceClick(outcome)}
+                aria-label={`Show leads whose latest call was ${config.label}`}
+                className="serene-pressable serene-touch"
+                style={rowStyle}
+              >
+                {rowInner}
+              </button>
+            ) : (
+              <div key={outcome} style={rowStyle}>
+                {rowInner}
               </div>
             );
           })}

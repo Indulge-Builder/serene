@@ -84,6 +84,11 @@ export function isGiaDomain(domain: string): domain is GiaDomain {
   return (GIA_DOMAINS as readonly string[]).includes(domain);
 }
 
+/** Validate an unknown string against the full platform domain enum. */
+export function isAppDomain(domain: string): domain is AppDomain {
+  return (APP_DOMAINS as readonly string[]).includes(domain);
+}
+
 /** FilterDropdown / select items — single source for Gia domain pickers */
 export const GIA_DOMAIN_FILTER_ITEMS = GIA_DOMAINS.map((d) => ({
   id:    d,

@@ -72,18 +72,38 @@ export interface ChartFrameProps {
 
 /** The paper-background container + ResponsiveContainer every Cartesian chart renders. */
 export function ChartFrame({ height, className, style, children }: ChartFrameProps) {
+  // height="100%" means "fill my flex parent" (the dashboard spatial-grid case).
+  // A plain block + ResponsiveContainer height="100%" measures -1 inside a
+  // flex:1/min-h-0 parent during react-grid-layout's deferred layout pass — the
+  // flex chain has no resolved height at the moment Recharts measures. Fix: make
+  // the frame fill the parent (position:relative) and absolutely position the
+  // ResponsiveContainer (inset:0) so 100% always resolves against a concrete box.
+  // Numeric heights (every non-dashboard chart) keep the original block layout.
+  const isFill = height === '100%';
+
   return (
     <div
       className={className}
       style={{
         background:   'var(--theme-paper)',
         borderRadius: 'var(--radius-md)',
+        ...(isFill
+          ? { position: 'relative', width: '100%', height: '100%', minHeight: 0 }
+          : null),
         ...style,
       }}
     >
-      <ResponsiveContainer width="100%" height={height as number | `${number}%`}>
-        {children}
-      </ResponsiveContainer>
+      {isFill ? (
+        <div style={{ position: 'absolute', inset: 0 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            {children}
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={height as number | `${number}%`}>
+          {children}
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }

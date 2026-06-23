@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { m as motion } from "framer-motion";
 import { EXIT_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { useWidgetDensityTier } from "@/hooks/useWidgetDensity";
 
 /**
  * THE dashboard snapshot-count card (R-01) — one big live count, a label, a
@@ -12,6 +13,11 @@ import { EXIT_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
  * Snapshot counts are LIVE pipeline states: they are seeded from the summary
  * RPC only — no fetch, no refresh button, and the global date filter never
  * applies. Display-only by design.
+ *
+ * Density-adaptive (v4): when the cell is small (`compact`) the hint line is
+ * dropped and the number scales down to fit; at `rich` the number scales up and
+ * everything breathes. The tier comes from the slot's ResizeObserver — the
+ * widget just reads it.
  */
 export function SnapshotCountWidget({
   count,
@@ -27,6 +33,12 @@ export function SnapshotCountWidget({
   /** Count colour when count > 0; zero always renders --theme-text-secondary. */
   positiveColor: string;
 }) {
+  const tier = useWidgetDensityTier();
+  // The number's scale follows the tier; the hint hides when compact.
+  const countSize =
+    tier === "rich" ? "var(--text-3xl)" : tier === "compact" ? "var(--text-xl)" : "var(--text-2xl)";
+  const showHint = tier !== "compact";
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -59,12 +71,12 @@ export function SnapshotCountWidget({
         <p
           style={{
             fontFamily:  "var(--font-mono)",
-            fontSize:    "var(--text-3xl)",
+            fontSize:    countSize,
             fontWeight:  "var(--weight-semibold)",
             lineHeight:  1,
             color:       count > 0 ? positiveColor : "var(--theme-text-secondary)",
             marginBottom: "var(--space-3)",
-            transition:  "color var(--duration-fast) var(--ease-in-out)",
+            transition:  "color var(--duration-fast) var(--ease-in-out), font-size var(--duration-base) var(--ease-out-expo)",
           }}
         >
           {count}
@@ -82,15 +94,17 @@ export function SnapshotCountWidget({
           {label}
         </p>
 
-        <p
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize:   "var(--text-xs)",
-            color:      "var(--theme-text-tertiary)",
-          }}
-        >
-          {hint}
-        </p>
+        {showHint && (
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize:   "var(--text-xs)",
+              color:      "var(--theme-text-tertiary)",
+            }}
+          >
+            {hint}
+          </p>
+        )}
       </Link>
     </motion.div>
   );

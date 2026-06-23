@@ -10,7 +10,6 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { AdCreativeFormModal } from "./AdCreativeFormModal";
 import { deleteAdCreative } from "@/lib/actions/ad-creatives";
 import { useToast } from "@/hooks/useToast";
-import { beautifyCampaignTitle } from "@/lib/utils/campaigns";
 import { EASE_OUT_EXPO } from "@/lib/constants/motion";
 import type { AdCreative } from "@/lib/types/database";
 
@@ -46,7 +45,6 @@ export function AdCreativesManager({ initialCreatives, campaignKeys }: AdCreativ
     return creatives.filter((row) => {
       const haystack = [
         row.campaign_key,
-        beautifyCampaignTitle(row.campaign_key),
         row.ad_name ?? "",
         row.notes ?? "",
       ]
@@ -212,7 +210,7 @@ export function AdCreativesManager({ initialCreatives, campaignKeys }: AdCreativ
             <>
               The creative for{" "}
               <strong style={{ color: "var(--theme-text-primary)" }}>
-                {beautifyCampaignTitle(confirmTarget.campaign_key)}
+                {confirmTarget.campaign_key}
               </strong>{" "}
               will be permanently deleted. This cannot be undone.
             </>
@@ -243,10 +241,8 @@ function CreativeCard({
   onDelete:   () => void;
 }) {
   const staggerDelay = Math.min(index * 80, 320);
-  const displayTitle = row.ad_name?.trim() || beautifyCampaignTitle(row.campaign_key);
-  const subtitle = row.ad_name?.trim()
-    ? beautifyCampaignTitle(row.campaign_key)
-    : row.campaign_key;
+  const displayTitle = row.ad_name?.trim() || row.campaign_key;
+  const subtitle = row.campaign_key;
 
   return (
     <motion.div

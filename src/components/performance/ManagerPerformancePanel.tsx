@@ -4,18 +4,14 @@ import { useState, useRef, useEffect, useMemo }  from 'react';
 import dynamic                                   from 'next/dynamic';
 import { useSearchParams }                      from 'next/navigation';
 import { m as motion, AnimatePresence }               from 'framer-motion';
-import { SlidersHorizontal, ChevronDown, LayoutGrid } from 'lucide-react';
+import { ChevronDown, LayoutGrid }               from 'lucide-react';
 import { Avatar }                                from '@/components/ui/Avatar';
 import { CollapseReveal }                        from '@/components/ui/CollapseReveal';
 import { EmptyState }                            from '@/components/ui/EmptyState';
-import { FilterDropdown }                        from '@/components/ui/FilterDropdown';
 import { useMediaQuery, MQ }                     from '@/hooks/useMediaQuery';
 import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT, BASE_DURATION } from '@/lib/constants/motion';
 import { DOMAIN_LABELS, readDomainCookie, parseGiaDomainParam } from '@/lib/constants/domains';
-import {
-  buildPerformanceRosterGroups,
-  PERFORMANCE_ROSTER_DOMAIN_ORDER,
-} from '@/lib/utils/performance-roster-display';
+import { buildPerformanceRosterGroups } from '@/lib/utils/performance-roster-display';
 import { getManagerRosterAction }                from '@/lib/actions/performance';
 import { useFounderPerfActions }                 from '@/app/(dashboard)/performance/founder-perf-actions';
 import { AgentDetailPanel }              from './AgentDetailPanel';
@@ -132,24 +128,17 @@ function DomainSectionLabel({ label }: { label: string }) {
 }
 
 // ─────────────────────────────────────────────
-// Roster header — "Agents" label + domain filter
+// Roster header — "Agents" label (domain narrowing is the GLOBAL selector
+// in the top bar now; the per-roster domain dropdown was removed 2026-06-24)
 // ─────────────────────────────────────────────
 
 function RosterHeader({
-  allDomains,
-  availableDomains,
-  domainFilter,
-  onFilterChange,
   collapsible,
   expanded,
   onToggle,
   agentCount,
   selectedName,
 }: {
-  allDomains:      boolean;
-  availableDomains: AppDomain[];
-  domainFilter:    AppDomain | null;
-  onFilterChange:  (d: AppDomain | null) => void;
   // Mobile collapse (design-system CollapseReveal at the panel level)
   collapsible:     boolean;
   expanded:        boolean;
@@ -257,34 +246,6 @@ function RosterHeader({
       ) : (
         label
       )}
-
-      {/* Domain filter — shared FilterDropdown (single-select, portaled).
-          menuPortal is REQUIRED: the roster card sits inside the paper scroll
-          container, so a non-portaled menu would clip against the overflow /
-          Framer transforms (this is the mobile fix). The synthetic '__all__'
-          item preserves the explicit "All domains" affordance the popover had
-          (mirrors layout/DomainSelector). accentBorderOnOpen=false keeps the
-          accent treatment tied to an active selection, not the open panel. */}
-      {allDomains && (
-        <FilterDropdown
-          label="Domains"
-          icon={SlidersHorizontal}
-          items={[
-            { id: '__all__', label: 'All domains' },
-            ...availableDomains.map((d) => ({
-              id: d,
-              label: DOMAIN_LABELS[d as keyof typeof DOMAIN_LABELS],
-            })),
-          ]}
-          selected={domainFilter ? [domainFilter] : []}
-          onChange={(sel) => {
-            const picked = sel[0] ?? null;
-            onFilterChange(picked === '__all__' ? null : (picked as AppDomain));
-          }}
-          menuPortal
-          accentBorderOnOpen={false}
-        />
-      )}
     </div>
   );
 }
@@ -311,7 +272,14 @@ export function ManagerPerformancePanel({
   customTo,
   allDomains = false,
 }: Props) {
-  const [selectedId, setSelectedId]     = useState<string | null>(null);
+  // Selection is seeded from the URL (?agent=<id>) so it survives a round-trip to
+  // a lead dossier and back (the lead links carry from=/performance). Lazy init
+  // reads the param once on mount; a state→URL mirror (window.history.replaceState,
+  // NOT router.replace — no RSC re-run, no history spam) keeps the param current.
+  const [selectedId, setSelectedId]     = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return new URLSearchParams(window.location.search).get('agent') || null;
+  });
   const [domainFilter, setDomainFilter] = useState<AppDomain | null>(null);
   const [agentRoster, setAgentRoster]   = useState<AgentRosterRow[]>(initialRoster);
   const [isRefetching, setIsRefetching] = useState(false);
@@ -381,6 +349,24 @@ export function ManagerPerformancePanel({
 
   const selectedAgent = selectedId ? (agentRoster.find((a) => a.id === selectedId) ?? null) : null;
 
+  // Mirror the selection into ?agent=<id> (or strip it) WITHOUT a navigation —
+  // history.replaceState keeps the URL shareable + back-nav-safe with zero RSC
+  // re-run. A back-nav from a lead dossier remounts the page, which re-seeds
+  // selectedId from this param (the lazy init above).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const current = url.searchParams.get('agent');
+    if (selectedId) {
+      if (current === selectedId) return;
+      url.searchParams.set('agent', selectedId);
+    } else {
+      if (current === null) return;
+      url.searchParams.delete('agent');
+    }
+    window.history.replaceState(window.history.state, '', url.toString());
+  }, [selectedId]);
+
   // When filters hide the selected agent, clear selection (empty state on the right).
   useEffect(() => {
     if (!selectedId) return;
@@ -423,11 +409,6 @@ export function ManagerPerformancePanel({
     }
   }, [isMobileDeck, agentRoster.length]);
 
-  // Unique domains that actually have agents, in roster display order
-  const presentDomains = PERFORMANCE_ROSTER_DOMAIN_ORDER.filter((d) =>
-    agentRoster.some((a) => a.domain === d),
-  );
-
   // Apply domain + search filters (client-side, no refetch — URL is source of truth)
   const visibleAgents = agentRoster.filter((a) => {
     if (domainFilter && a.domain !== domainFilter) return false;
@@ -437,10 +418,16 @@ export function ManagerPerformancePanel({
 
   const groups = buildPerformanceRosterGroups(visibleAgents, { allDomains, domain });
 
-  // Deck-view trigger — founder/admin all-domains view only. Opens the
+  // The domain passed to the deck (and through it to the drill actions):
+  // - founder/admin all-domains → the active client-side narrowing (null = all).
+  // - manager single-domain → the manager's own domain (the drill guard checks
+  //   `domain === caller.domain`, so a null here would fail it CLOSED).
+  const deckDomain = allDomains ? domainFilter : domain;
+
+  // Deck-view trigger — available to managers too now (2026-06-24). Opens the
   // full-screen swipeable per-agent deck over the IN-MEMORY roster (respecting
   // the active client-side domain filter — zero new fetch).
-  const showDeckTrigger = allDomains && visibleAgents.length > 0;
+  const showDeckTrigger = visibleAgents.length > 0;
   // Memoised on the only input that changes its content/visibility so the
   // shell-registration effect below doesn't re-fire (and re-render the shell)
   // on every panel render. setDeckOpen is a stable setter.
@@ -545,7 +532,7 @@ export function ManagerPerformancePanel({
             open={deckOpen}
             onClose={() => setDeckOpen(false)}
             roster={visibleAgents}
-            domain={domainFilter}
+            domain={deckDomain}
             period={period}
             customFrom={customFrom}
             customTo={customTo}
@@ -643,7 +630,7 @@ export function ManagerPerformancePanel({
           open={deckOpen}
           onClose={() => setDeckOpen(false)}
           roster={visibleAgents}
-          domain={domainFilter}
+          domain={deckDomain}
           period={period}
           customFrom={customFrom}
           customTo={customTo}
@@ -673,25 +660,11 @@ export function ManagerPerformancePanel({
         }}
       >
         <RosterHeader
-          allDomains={allDomains}
-          availableDomains={presentDomains}
-          domainFilter={domainFilter}
           collapsible={isMobile}
           expanded={rosterExpanded}
           onToggle={() => setRosterOpen((v) => !v)}
           agentCount={visibleAgents.length}
           selectedName={selectedAgent?.full_name ?? null}
-          onFilterChange={(d) => {
-            setDomainFilter(d);
-            const stillVisible = agentRoster.filter((a) => {
-              if (d && a.domain !== d) return false;
-              if (searchTerm && !a.full_name.toLowerCase().includes(searchTerm)) return false;
-              return true;
-            });
-            if (selectedId && !stillVisible.find((a) => a.id === selectedId)) {
-              setSelectedId(null);
-            }
-          }}
         />
 
         <AnimatePresence initial={false}>

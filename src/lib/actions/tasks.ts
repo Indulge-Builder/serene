@@ -21,6 +21,7 @@ import { sanitizeText } from "@/lib/utils/sanitize";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { requireProfile } from "@/lib/actions/_auth";
 import { getTaskRemarks } from "@/lib/services/tasks-service";
+import { emitTaskEvent, resolveTaskDomain } from "@/lib/services/task-events";
 import {
   canMutateTask,
   createPersonalTaskCore,
@@ -254,7 +255,7 @@ export async function updateTaskStatusAction(
     supabase
       .from("tasks")
       .select(
-        "id, assigned_to, created_by, group_id, status, due_at, task_category, task_gia_meta(task_id)",
+        "id, assigned_to, created_by, group_id, status, due_at, title, task_category, task_gia_meta(task_id)",
       )
       .eq("id", taskId)
       .single(),
@@ -277,6 +278,8 @@ export async function updateTaskStatusAction(
 
   // 4. Write body + side-effects (update, reminder cancel, cache) → core. The
   //    category cache branch keys on actor.userId deliberately (pre-mortem note).
+  //    eventCtx carries the already-fetched snapshot so the oversight event
+  //    (status_changed) resolves domain/subject + old→new without a re-fetch.
   const result = await updateTaskStatusCore(
     actorFromProfile(caller),
     { taskId, status: status as TaskStatus },
@@ -285,6 +288,12 @@ export async function updateTaskStatusAction(
       hasGiaMeta: Array.isArray(task.task_gia_meta)
         ? task.task_gia_meta.length > 0
         : !!task.task_gia_meta,
+    },
+    {
+      groupId: task.group_id,
+      assignedTo: task.assigned_to,
+      title: task.title,
+      fromStatus: task.status,
     },
   );
 
@@ -313,7 +322,7 @@ export async function updateTaskAction(
     getCurrentProfile(),
     supabase
       .from("tasks")
-      .select("id, assigned_to, created_by, group_id, due_at, status")
+      .select("id, assigned_to, created_by, group_id, due_at, status, title")
       .eq("id", taskId)
       .single(),
   ]);
@@ -344,7 +353,12 @@ export async function updateTaskAction(
       dueAt: fields.due_at,
       dueAtChanged: "due_at" in fields,
     },
-    { assignedTo: existing.assigned_to },
+    {
+      assignedTo: existing.assigned_to,
+      groupId: existing.group_id,
+      title: existing.title,
+      fromStatus: existing.status,
+    },
   );
 
   if (!result.ok) return { data: null, error: formErrors.generic };
@@ -614,7 +628,7 @@ export async function addTaskRemarkAction(
   const supabase = await createClient();
   const { data: task } = await supabase
     .from("tasks")
-    .select("id")
+    .select("id, group_id, assigned_to, title")
     .eq("id", taskId)
     .single();
 
@@ -643,6 +657,25 @@ export async function addTaskRemarkAction(
   }
 
   if (!remark) return { data: null, error: formErrors.generic };
+
+  // Oversight event (best-effort, non-fatal). A remark's optional status change
+  // rides the RPC (not updateTaskStatusCore), so the rail only learns of it via
+  // this remark_added event — meta carries the status_change when present.
+  const eventDomain = await resolveTaskDomain(admin, {
+    groupId: task.group_id,
+    assignedTo: task.assigned_to,
+  });
+  if (eventDomain) {
+    await emitTaskEvent({
+      taskId,
+      domain: eventDomain,
+      actorId: caller.id,
+      subjectId: task.assigned_to,
+      eventType: "remark_added",
+      taskTitle: task.title,
+      meta: statusChange ? { status_change: statusChange } : {},
+    });
+  }
 
   return { data: remark as TaskRemark, error: null };
 }

@@ -1031,18 +1031,25 @@ type FirstTouchPairRow = {
   first_call_at: string | null;
 };
 
-export const getAgentFirstTouchScorecard = cache(async (
+// Per-bucket lead-id lists (drill-down) + the untouched-lead ids. Same
+// classification as the scorecard counts — they share `classifyFirstTouchPairs`,
+// so a bucket count and the bucket's drill list can never diverge.
+export type FirstTouchLeadIds = {
+  buckets:   Record<FirstTouchBucketId, string[]>;
+  untouched: string[];
+};
+
+// THE single first-touch classification pass. Fetches the raw (lead, created_at,
+// first_call_at) pairs (admin client — RPC EXECUTE revoked from authenticated,
+// 0123), resolves the agent's shift ONCE, and assigns each pair to a speed bucket
+// in BUSINESS minutes (or to `untouched` when the lead has no call note yet).
+// Returns the lead-id list per bucket; both the scorecard COUNTS and the
+// drill-down LEADS derive from this one result — never re-fork the bucketing.
+async function classifyFirstTouchPairs(
   agentId:  string,
   dateFrom: string,
   dateTo:   string,
-): Promise<FirstTouchScorecard> => {
-  const empty: FirstTouchScorecard = {
-    buckets:            { lt15: 0, lt30: 0, lte1h: 0, lt3h: 0, gte3h: 0 },
-    untouched:          0,
-    leadsWithFirstCall: 0,
-    totalCohort:        0,
-  };
-
+): Promise<FirstTouchLeadIds | null> {
   const admin = createAdminClient();
 
   // Raw pairs — RPC EXECUTE is revoked from authenticated (0123); admin only.
@@ -1055,7 +1062,7 @@ export const getAgentFirstTouchScorecard = cache(async (
 
   if (error) {
     console.error("[performance-service] first-touch pairs failed:", error);
-    return empty;
+    return null;
   }
 
   const rows = mapRows<FirstTouchPairRow, FirstTouchPairRow>(
@@ -1066,24 +1073,19 @@ export const getAgentFirstTouchScorecard = cache(async (
   // Resolve the agent's shift ONCE — the Map<agentId, shift> pattern. A NULL
   // shift (no shift_start/end/days configured) → undefined override → the global
   // BUSINESS_HOURS ruler inside businessMinutesBetween. Mixed-ruler safe.
-  const shiftByAgent = new Map<string, AgentShiftOverride | undefined>();
   const config = await getAgentRoutingConfigAdmin(agentId);
-  shiftByAgent.set(
-    agentId,
-    config
-      ? (buildAgentShiftOverride(config.shift_start, config.shift_end, config.shift_days) ?? undefined)
-      : undefined,
-  );
-  const shift = shiftByAgent.get(agentId);
+  const shift: AgentShiftOverride | undefined = config
+    ? (buildAgentShiftOverride(config.shift_start, config.shift_end, config.shift_days) ?? undefined)
+    : undefined;
 
-  const buckets: Record<FirstTouchBucketId, number> = { lt15: 0, lt30: 0, lte1h: 0, lt3h: 0, gte3h: 0 };
-  let untouched = 0;
+  const buckets: Record<FirstTouchBucketId, string[]> = { lt15: [], lt30: [], lte1h: [], lt3h: [], gte3h: [] };
+  const untouched: string[] = [];
 
   for (const row of rows) {
     if (!row.first_call_at) {
       // Cohort lead created in the period with no call note yet — counted, never
       // dropped, never miscounted into a speed bucket.
-      untouched += 1;
+      untouched.push(row.lead_id);
       continue;
     }
     const minutes = businessMinutesBetween(
@@ -1091,9 +1093,35 @@ export const getAgentFirstTouchScorecard = cache(async (
       new Date(row.first_call_at),
       shift,
     );
-    buckets[firstTouchBucketForMinutes(minutes)] += 1;
+    buckets[firstTouchBucketForMinutes(minutes)].push(row.lead_id);
   }
 
+  return { buckets, untouched };
+}
+
+export const getAgentFirstTouchScorecard = cache(async (
+  agentId:  string,
+  dateFrom: string,
+  dateTo:   string,
+): Promise<FirstTouchScorecard> => {
+  const empty: FirstTouchScorecard = {
+    buckets:            { lt15: 0, lt30: 0, lte1h: 0, lt3h: 0, gte3h: 0 },
+    untouched:          0,
+    leadsWithFirstCall: 0,
+    totalCohort:        0,
+  };
+
+  const classified = await classifyFirstTouchPairs(agentId, dateFrom, dateTo);
+  if (!classified) return empty;
+
+  const buckets: Record<FirstTouchBucketId, number> = {
+    lt15:  classified.buckets.lt15.length,
+    lt30:  classified.buckets.lt30.length,
+    lte1h: classified.buckets.lte1h.length,
+    lt3h:  classified.buckets.lt3h.length,
+    gte3h: classified.buckets.gte3h.length,
+  };
+  const untouched = classified.untouched.length;
   const leadsWithFirstCall = buckets.lt15 + buckets.lt30 + buckets.lte1h + buckets.lt3h + buckets.gte3h;
 
   return {
@@ -1102,6 +1130,21 @@ export const getAgentFirstTouchScorecard = cache(async (
     leadsWithFirstCall,
     totalCohort: leadsWithFirstCall + untouched,
   };
+});
+
+// Lead-id list for ONE first-touch bucket (the drill-down behind a clicked bar).
+// Reuses classifyFirstTouchPairs — identical bucketing to the scorecard counts,
+// so the list length always equals the count the bar showed. React cache()
+// memoised per request (same posture as getAgentFirstTouchScorecard); the page
+// pass classifies once and both the scorecard count and the drill list read it.
+export const getAgentFirstTouchBucketLeadIds = cache(async (
+  agentId:  string,
+  dateFrom: string,
+  dateTo:   string,
+  bucketId: FirstTouchBucketId,
+): Promise<string[]> => {
+  const classified = await classifyFirstTouchPairs(agentId, dateFrom, dateTo);
+  return classified ? classified.buckets[bucketId] : [];
 });
 
 export async function getDomainsWithLeads(

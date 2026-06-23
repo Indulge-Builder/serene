@@ -7,7 +7,7 @@ import { WEBHOOK_VERIFY_TOKEN, verifyMetaSignature } from '@/lib/services/whatsa
 import { createRateLimiter, getClientIp, parseJsonBody, safeSecretCompare } from '@/lib/utils/webhook';
 import { parseWebhookPayload, processInboundMessage, processStatusUpdate } from '@/lib/services/whatsapp-ingestion';
 import { tryHandleElayaWhatsAppMessage } from '@/lib/services/elaya-whatsapp';
-import type { MetaInboundMessage, MetaWebhookPayload } from '@/lib/types/whatsapp';
+import type { MetaInboundMessage, MetaMediaObject, MetaWebhookPayload } from '@/lib/types/whatsapp';
 
 // ─────────────────────────────────────────────
 // Gupshup secret — resolved once at module load
@@ -29,6 +29,74 @@ export const maxDuration = 60;
 // Gupshup's egress IPs. A 429 only triggers a BSP retry, but headroom means
 // real traffic is never throttled.
 const isRateLimited = createRateLimiter({ windowMs: 60_000, max: 300 });
+
+// ─────────────────────────────────────────────
+// buildGupshupMessage — Gupshup inner payload → MetaInboundMessage
+//
+// Gupshup media (image/video/document/audio) arrives as a direct CDN url on
+// `inner.url` (+ inner.contentType / inner.caption / inner.name) — NOT a Meta
+// media-id, so the media object carries `url` and the ingestion path skips the
+// Meta getMediaDownloadUrl fetch. Gupshup names the document type `file`; Meta
+// names it `document`. text/audio are preserved exactly as before. Anything we
+// can't render (sticker/location/contact/reaction/button/list reply) becomes a
+// labelled text message so it is never stored blank.
+// ─────────────────────────────────────────────
+
+function buildGupshupMessage(
+  innerType: string,
+  inner:     Record<string, unknown>,
+  messageId: string,
+  waId:      string,
+): MetaInboundMessage {
+  const timestamp = String(Date.now());
+  const url       = typeof inner.url === 'string' ? inner.url : null;
+  const caption   = typeof inner.caption === 'string' ? inner.caption : undefined;
+  const filename  = typeof inner.name === 'string' ? inner.name : undefined;
+  const mimeType  = typeof inner.contentType === 'string' ? inner.contentType : '';
+
+  const media = (fallbackMime: string): MetaMediaObject => ({
+    id:        messageId,
+    url:       url ?? '',
+    mime_type: mimeType || fallbackMime,
+    sha256:    '',
+    ...(caption ? { caption } : {}),
+    ...(filename ? { filename } : {}),
+  });
+
+  // Media types only map to a media message when a url is actually present;
+  // otherwise they fall through to the labelled-text fallback below.
+  if (url) {
+    if (innerType === 'image') return { type: 'image',    id: messageId, from: waId, timestamp, image:    media('image/jpeg') };
+    if (innerType === 'video') return { type: 'video',    id: messageId, from: waId, timestamp, video:    media('video/mp4') };
+    if (innerType === 'audio') return { type: 'audio',    id: messageId, from: waId, timestamp, audio:    media('audio/ogg') };
+    if (innerType === 'file' || innerType === 'document')
+      return { type: 'document', id: messageId, from: waId, timestamp, document: media('application/octet-stream') };
+  }
+
+  if (innerType === 'text') {
+    return { type: 'text', id: messageId, from: waId, timestamp, text: { body: typeof inner.text === 'string' ? inner.text : '' } };
+  }
+
+  // Un-renderable type (sticker/location/contact/reaction/button/list reply) or a
+  // media type that arrived without a url: store a human label so the bubble is
+  // never blank and Elaya's empty-content guard isn't hit accidentally.
+  return {
+    type:      'text',
+    id:        messageId,
+    from:      waId,
+    timestamp,
+    text:      { body: GUPSHUP_TYPE_LABELS[innerType] ?? '[Unsupported message]' },
+  };
+}
+
+const GUPSHUP_TYPE_LABELS: Record<string, string> = {
+  sticker:      '[Sticker]',
+  location:     '[Location]',
+  contact:      '[Contact card]',
+  reaction:     '[Reaction]',
+  button_reply: '[Button reply]',
+  list_reply:   '[List reply]',
+};
 
 // ─────────────────────────────────────────────
 // GET — Meta hub challenge (unchanged for both BSPs)
@@ -87,32 +155,37 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           const waId      = payload.source as string;
           const senderName = (typeof sender?.name === 'string' ? sender.name.trim() : null) || null;
 
-          // Gupshup delivers voice notes as an audio media payload with a direct,
-          // time-limited CDN url (inner.url + inner.contentType) — no Meta media-id
-          // token fetch. Build an `audio` MetaInboundMessage so the Elaya gate can
-          // transcribe it; everything else stays a text message (unknown media types
-          // fall through to text and the gate's "text only" reply handles them).
-          const message: MetaInboundMessage =
-            innerType === 'audio' && typeof inner.url === 'string'
-              ? {
-                  type:      'audio',
-                  id:        messageId,
-                  from:      waId,
-                  timestamp: String(Date.now()),
-                  audio: {
-                    id:        messageId,
-                    url:       inner.url,
-                    mime_type: typeof inner.contentType === 'string' ? inner.contentType : 'audio/ogg',
-                    sha256:    '',
-                  },
-                }
-              : {
-                  type:      'text',
-                  id:        messageId,
-                  from:      waId,
-                  timestamp: String(Date.now()),
-                  text:      { body: typeof inner.text === 'string' ? inner.text : '' },
-                };
+          // TEMP DEBUG (remove once inbound media field shapes are confirmed): log
+          // the raw Gupshup inner payload for any non-text/non-audio inbound message
+          // so the first real image/video/pdf reveals the exact field names
+          // (inner.url / contentType / caption / name) the mapper expects. Gated on
+          // WHATSAPP_DEBUG_MEDIA so it never spams prod logs unless explicitly on.
+          if (
+            process.env.WHATSAPP_DEBUG_MEDIA === 'true' &&
+            innerType !== 'text' &&
+            innerType !== 'audio'
+          ) {
+            console.log(
+              `[whatsapp/webhook] DEBUG inbound type="${innerType}" inner=`,
+              JSON.stringify(inner),
+            );
+          }
+
+          // Gupshup delivers media (image/video/document/audio) as a payload with a
+          // direct, time-limited CDN url (inner.url + inner.contentType + optional
+          // inner.caption/inner.name) — NOT a Meta media-id token, so no
+          // getMediaDownloadUrl fetch is needed (the ingestion path uses inner.url
+          // directly). Build the matching MetaInboundMessage so both the Elaya gate
+          // and the lead pipeline see the real type. text/audio shapes are preserved
+          // byte-identically (Elaya reads body / transcribes audio unchanged). Truly
+          // un-renderable types (sticker/location/contact/reaction/button replies)
+          // fall through to a labelled text message so they never store as blank.
+          const message: MetaInboundMessage = buildGupshupMessage(
+            innerType,
+            inner,
+            messageId,
+            waId,
+          );
 
           // Routing gate: sender number matches an active profile → Elaya
           // (staff channel); otherwise the existing lead pipeline, unchanged.

@@ -23,6 +23,35 @@ export const WHATSAPP_MESSAGE_TYPES = [
 ] as const;
 
 // ─────────────────────────────────────────────
+// Outbound media (staff → lead, composer attach flow)
+// MIME allowlist → message_type + per-type size caps mirror WhatsApp's limits.
+// resolveOutboundMediaType returns null for any disallowed MIME (reject upload).
+// ─────────────────────────────────────────────
+
+export const WHATSAPP_OUTBOUND_MEDIA_MIME: Record<string, 'image' | 'video' | 'document' | 'audio'> = {
+  'image/jpeg':       'image',
+  'image/png':        'image',
+  'image/webp':       'image',
+  'video/mp4':        'video',
+  'video/3gpp':       'video',
+  'audio/mpeg':       'audio',
+  'audio/ogg':        'audio',
+  'audio/mp4':        'audio',
+  'audio/amr':        'audio',
+  'application/pdf':  'document',
+};
+
+export function resolveOutboundMediaType(
+  mime: string,
+): 'image' | 'video' | 'document' | 'audio' | null {
+  const base = mime.split(';')[0]?.trim().toLowerCase() ?? '';
+  return WHATSAPP_OUTBOUND_MEDIA_MIME[base] ?? null;
+}
+
+// WhatsApp caps: image 5MB, video/audio/document 16MB. Use 16MB as the single cap.
+export const WHATSAPP_OUTBOUND_MEDIA_MAX_BYTES = 16 * 1024 * 1024;
+
+// ─────────────────────────────────────────────
 // Conversation status
 // ─────────────────────────────────────────────
 
@@ -92,3 +121,17 @@ export const GUPSHUP_TASK_DUE_REMINDER_TEMPLATE_ID          = '05411e50-30c6-432
 // Params: {{1}} manager first name, {{2}} agent name, {{3}} lead name, {{4}} task title,
 //         {{5}} due time in IST human format ("4:00 PM") — never UTC, never ISO
 export const GUPSHUP_TASK_OVERDUE_MANAGER_TEMPLATE_ID       = 'c7ddd983-9472-453d-a712-e1daecc03a05';
+
+// Task-shaped reminders to the assigned agent — fire for EVERY task (lead or not),
+// so these templates carry NO lead fields (the lead-shaped reminder above stays
+// the lead path). Both: {{1}} agent first name, {{2}} task title,
+// {{3}} due time in IST human format ("4:00 PM") — never UTC, never ISO.
+export const GUPSHUP_TASK_DUE_SOON_TEMPLATE_ID             = '123e5939-cf2e-420f-baef-702aaf84a4df'; // eia_task_due_soon (fires 30 min before due)
+export const GUPSHUP_TASK_OVERDUE_AGENT_TEMPLATE_ID        = '7b926598-714d-4396-a78f-5fe583fcceb0'; // eia_task_overdue_agent (fires at due, task still open)
+
+// Task-shaped manager escalation for NON-lead overdue tasks — fired at due +
+// TASK-01B threshold to the assignee's manager (reports_to → domain fallback).
+// Params: {{1}} manager first name, {{2}} agent name, {{3}} task title,
+//         {{4}} due time IST ("4:00 PM"). NO lead fields (the lead path keeps
+//         GUPSHUP_TASK_OVERDUE_MANAGER_TEMPLATE_ID, which carries a lead name).
+export const GUPSHUP_TASK_OVERDUE_MANAGER_GENERIC_TEMPLATE_ID = '80aa1747-e948-4e3c-9409-c13d0b41194b'; // eia_task_overdue_manager_generic

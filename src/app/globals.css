@@ -831,6 +831,24 @@ body {
   }
 }
 
+/* Oversight "present agents now" pulse — a gentle opacity breathe on the live
+   presence dot (Tier 1 team cards + Tier 2 agent cards). Opacity-only (never
+   layout), reduced-motion-gated. The dot's colour is set inline (success when
+   present). This is the only oversight-specific keyframe — the cards reuse
+   .serene-activity-card for hover. */
+@keyframes serene-oversight-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+.serene-oversight-pulse {
+  animation: serene-oversight-pulse 2.4s var(--ease-in-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .serene-oversight-pulse {
+    animation: none;
+  }
+}
+
 /* Recent-leads marquee — a gentle continuous auto-scroll done as an off-main-thread
    CSS transform loop (NOT a JS scrollTop ticker — that fought the wheel and juddered).
    The inner track renders the card list TWICE; the keyframe translates it up by exactly
@@ -880,4 +898,112 @@ body {
     auto,
     200px 200px;
   background-repeat: no-repeat, repeat;
+}
+
+/* ================================================================
+   DASHBOARD SPATIAL GRID — react-grid-layout chrome (v4, 2026-06-24)
+   We do NOT import react-grid-layout/css/styles.css; these token-styled
+   rules are the complete replacement so the grid matches the design system.
+   Geometry (translate/width/height) is written inline by RGL via
+   useCSSTransforms — we only style transitions, the placeholder, and the
+   resize handle. Never add a coloured one-edge accent here (Never-Do).
+   ================================================================ */
+
+.serene-dashboard-grid {
+  position: relative;
+  width: 100%;
+}
+
+/* RGL's OWN positioned container (it sets the computed grid height inline on
+   this node). Without position:relative here the absolute .react-grid-item
+   children anchor to the viewport and "float" — not scrolling with the page.
+   This is the base rule from react-grid-layout/css/styles.css, which we do NOT
+   import; it MUST be replicated or the layout breaks. transition:height eases
+   the container as widgets reflow. */
+.serene-dashboard-grid .react-grid-layout {
+  position: relative;
+  transition: height var(--duration-base) var(--ease-out-expo);
+}
+
+/* RGL positions each item absolutely and writes transform/width/height inline. */
+.serene-dashboard-grid .react-grid-item {
+  box-sizing: border-box;
+  position: absolute;
+  /* The item carries RGL's resolved pixel height inline. Make it a flex column
+     and force its single child (RGL's cloned wrapper around DashboardWidgetSlot)
+     to FILL that height — `flex: 1; min-height: 0`. This is the structural fix
+     for the Recharts "width(-1) height(-1)" warning: a chart's ResponsiveContainer
+     measures its parent's box, and a bare `height: 100%` chain only resolves once
+     EVERY ancestor has an explicit height at the same commit. Flex-fill resolves
+     the child's height directly from the item's pixel height, with no dependency
+     on the intermediate wrappers each declaring `height: 100%` — so the chart's
+     first measure is always against a concrete pixel box. */
+  display: flex;
+  flex-direction: column;
+  /* Ease position + size changes (compaction, a neighbour's resize). transform
+     + width/height are what RGL animates; gated for reduced motion below. */
+  transition:
+    transform var(--duration-base) var(--ease-out-expo),
+    width var(--duration-base) var(--ease-out-expo),
+    height var(--duration-base) var(--ease-out-expo);
+}
+.serene-dashboard-grid .react-grid-item > * {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* The item actively being dragged/resized must track the pointer 1:1 — kill the
+   transition while it carries RGL's state classes. */
+.serene-dashboard-grid .react-grid-item.react-draggable-dragging,
+.serene-dashboard-grid .react-grid-item.resizing {
+  transition: none;
+  z-index: var(--z-raised);
+  cursor: grabbing;
+}
+
+/* The drop-target preview that follows the dragged item. A calm accent wash,
+   not a hard box — reads as "this is where it lands". */
+.serene-dashboard-grid .react-grid-placeholder {
+  background: var(--theme-accent-surface);
+  border: 1px dashed var(--theme-accent-muted);
+  border-radius: var(--radius-lg);
+  opacity: 0.6;
+  transition: transform var(--duration-fast) var(--ease-out-expo);
+}
+
+/* RGL's built-in SE resize handle — we render our own glyph via ::after and
+   hide its default background image. Only visible in edit mode. */
+.serene-dashboard-grid .react-resizable-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+  background: none;
+  padding: 0;
+  touch-action: none;
+}
+.serene-dashboard-grid.is-editing .react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--theme-accent-muted);
+  border-bottom: 2px solid var(--theme-accent-muted);
+  border-bottom-right-radius: 3px;
+}
+/* No resize affordance when not editing. */
+.serene-dashboard-grid:not(.is-editing) .react-resizable-handle {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .serene-dashboard-grid .react-grid-item,
+  .serene-dashboard-grid .react-grid-placeholder {
+    transition: none;
+  }
 }

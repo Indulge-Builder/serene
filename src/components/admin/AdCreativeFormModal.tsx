@@ -8,7 +8,6 @@ import { Spinner } from "@/components/ui/Spinner";
 import { createClient } from "@/lib/supabase/client";
 import { upsertAdCreative } from "@/lib/actions/ad-creatives";
 import { useToast } from "@/hooks/useToast";
-import { beautifyCampaignTitle } from "@/lib/utils/campaigns";
 import type { AdCreative } from "@/lib/types/database";
 
 const BUCKET = "ad-creatives";
@@ -235,10 +234,10 @@ export function AdCreativeFormModal({
               {/* The pre-selected key (editing row, or a fresh inline create) may
                   not be in the active campaign list — show it regardless. */}
               {campaignKey && !campaignKeys.includes(campaignKey) && (
-                <option value={campaignKey}>{beautifyCampaignTitle(campaignKey)}</option>
+                <option value={campaignKey}>{campaignKey}</option>
               )}
               {campaignKeys.map((k) => (
-                <option key={k} value={k}>{beautifyCampaignTitle(k)}</option>
+                <option key={k} value={k}>{k}</option>
               ))}
             </select>
             <ChevronDown style={chevronStyle} />

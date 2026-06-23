@@ -87,10 +87,15 @@ No raw card number can persist.
 
 ```text
 lib/constants/ad-accounts.ts        ← AD_ACCOUNTS + resolveAccountFromCampaign (THE attribution primitive)
-lib/services/ad-spend-service.ts    ← getBudgetSummary, getAccountRecharges, buildAccountReport (pure)
-scripts/test-account-report.ts      ← committed regression check for the two PURE functions above
+lib/services/ad-spend-service.ts    ← getBudgetSummary, getAccountRecharges, buildAccountReport (pure),
+                                       buildBudgetGaugeSummary (pure — the dashboard fuel-gauge roll-up,
+                                       layered OVER buildAccountReport; org-wide, INR-only; never fork it
+                                       to build another budget summary — R-01)
+scripts/test-account-report.ts      ← committed regression check for the PURE functions above
                                        (resolve index-2 + Unattributed fallback; INR-only balance;
-                                       non-INR exclusion; zero-state = ₹0 not negative). Deterministic,
+                                       non-INR exclusion; zero-state = ₹0 not negative) AND
+                                       buildBudgetGaugeSummary (tank fill, overspend, ÷0 CPL/ROAS guards,
+                                       org-wide ROI roll-up, non-INR exclusion). Deterministic,
                                        self-asserting, hard-exits non-zero. Run:
                                        npx tsx --tsconfig tsconfig.json scripts/test-account-report.ts
 lib/actions/recharge.ts             ← createRechargeAction (admin/founder)

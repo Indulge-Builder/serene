@@ -74,6 +74,29 @@ The POST handler detects the BSP by header, then branches:
 - `waId` → `body.payload.source` (no prefix)
 - text content → `body.payload.payload.text`
 
+**Inbound type mapping — `buildGupshupMessage(innerType, inner, messageId, waId)`** (in the route).
+Gupshup's `body.payload.type` is mapped to a typed `MetaInboundMessage` before the routing gate so
+BOTH the Elaya gate and the lead pipeline see the real type. **Never re-flatten media to text.**
+
+| Gupshup `inner` type | → MetaInboundMessage | Media source |
+| --- | --- | --- |
+| `text` | `text` (body = `inner.text`) | — (preserved byte-identically) |
+| `image` / `video` / `audio` | same type | direct CDN url `inner.url` + `inner.contentType` + `inner.caption` |
+| `file` | `document` | same (Gupshup calls it `file`, Meta calls it `document`) |
+| sticker/location/contact/reaction/button_reply/list_reply, or a media type with no `url` | `text` with a **label** (`[Location]`, `[Contact card]`, … or `[Unsupported message]`) | — (never stored blank) |
+
+- Gupshup media carries a **direct, time-limited CDN url** (not a Meta media-id), so the media
+  object sets `url`; `getMediaDownloadUrl` (Meta media-id fetch) only runs on the dormant Meta path.
+  **CDN urls expire**, so `processInboundMessage` step 6 calls `storeInboundMedia`
+  (`src/lib/services/whatsapp-media.ts`) to download the bytes and re-host them in the private
+  `whatsapp-media` bucket (migration 0141), storing the durable **path** in `media_url` (reads mint
+  signed urls via `signMediaPath`). On download/upload failure it falls back to the raw CDN url.
+- The blank-bubble guard is also in the UI: `MessageBubble` renders an "Unsupported message"
+  placeholder for any non-media message whose `content` is blank (defence in depth).
+- **Elaya impact: none.** The gate's own `message.type` switch handles `text`/`audio` (reads body /
+  transcribes) and replies "text only" for everything else; the mapper only changed which branch a
+  staff-sent media message takes (now the real `else` branch instead of the empty-content guard).
+
 **Silent 200 types (no processing):**
 - `body.type === 'message-event'` — delivery receipts
 - `body.type === 'billing-event'` — billing pings

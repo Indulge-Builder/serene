@@ -7,7 +7,10 @@
 ## 1. Purpose
 
 The triage inbox for the staff suggestion / bug-report channel. Any staff member submits a report
-(a message + up to 4 screenshots) via the "Send feedback" composer (Sidebar / Elaya card); the
+(a message + up to 4 screenshots) via the "Send feedback" composer — opened from the Sidebar footer
+(desktop), the mobile dashboard `ElayaPresenceCard` overlay + `MOBILE_TRIGGER_PATHS` trigger, and the
+`ElayaFeedbackCard` in the `/elaya` right rail (added 2026-06-20); all route through the one
+`SuggestionFeedbackProvider` → `SuggestionComposerModal` → `submitSuggestionAction`. The reports
 reports land here for admin/founder to read and triage — flipping each from **open → resolved**,
 which notifies the original sender. A clean substrate for a future AI triage pass.
 

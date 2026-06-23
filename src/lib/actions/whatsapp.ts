@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 import { requireProfile } from "@/lib/actions/_auth";
-import { sendTextMessage, sendLeadInitiationMessage } from "@/lib/services/whatsapp-api";
+import { sendTextMessage, sendLeadInitiationMessage, sendGupshupMediaMessage } from "@/lib/services/whatsapp-api";
+import { resolveOutboundMediaType } from "@/lib/constants/whatsapp";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   markConversationRead,
@@ -13,10 +14,12 @@ import {
   searchConversations as serviceSearchConversations,
 } from "@/lib/services/whatsapp-service";
 import { createClient } from "@/lib/supabase/server";
+import { signMediaPath, storeOutboundMedia } from "@/lib/services/whatsapp-media";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import {
   WhatsAppListFilterSchema,
   WhatsAppSearchFilterSchema,
+  SendMediaMessageSchema,
 } from "@/lib/validations/whatsapp-schema";
 import type { ActionResult } from "@/lib/types/index";
 import type { WhatsAppConversation, WhatsAppMessage } from "@/lib/types/whatsapp";
@@ -113,6 +116,124 @@ export async function sendWhatsAppMessage(
   return { data: message, error: null };
 }
 
+// ─── sendWhatsAppMediaMessage ─────────────────────────────────────────────────
+// Staff attaches an image/video/PDF/audio in the composer. Flow:
+//   validate file → store in whatsapp-media (durable path) → sign → Gupshup media
+//   send (by url) → persist outbound row (media_url = PATH) → return the row with
+//   a signed url for optimistic display.
+// The stored PATH is canonical; the signed url is read-time only (mirrors inbound).
+
+export async function sendWhatsAppMediaMessage(
+  formData: FormData,
+): Promise<ActionResult<WhatsAppMessage>> {
+  const parsed = SendMediaMessageSchema.safeParse({
+    conversationId: formData.get("conversationId"),
+    caption:        formData.get("caption") ?? undefined,
+    file:           formData.get("file"),
+  });
+  if (!parsed.success) {
+    return { data: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const profile = auth.profile;
+
+  const { conversationId, file } = parsed.data;
+  const caption = parsed.data.caption ? sanitizeText(parsed.data.caption) : undefined;
+
+  const conversation = await getConversation(conversationId);
+  if (!conversation) return { data: null, error: "Conversation not found" };
+
+  const mediaType = resolveOutboundMediaType(file.type);
+  if (!mediaType) return { data: null, error: "Unsupported file type" };
+
+  // 1. Persist the bytes durably (private bucket). A unique key avoids collisions.
+  const bytes = await file.arrayBuffer();
+  const key   = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const path  = await storeOutboundMedia(bytes, file.type, conversation.lead_id, key);
+  if (!path) return { data: null, error: "Couldn't upload the file" };
+
+  // 2. Sign for Gupshup (it fetches the url during the send window).
+  const signedUrl = await signMediaPath(path);
+  if (!signedUrl) return { data: null, error: "Couldn't prepare the file for sending" };
+
+  const filename = file instanceof File ? file.name : undefined;
+
+  // 3. Send via Gupshup (by url). Throws on HTTP error — caught here.
+  let waMessageId: string | null = null;
+  try {
+    const apiResult = await sendGupshupMediaMessage(
+      conversation.wa_id,
+      mediaType,
+      signedUrl,
+      caption,
+      filename,
+    );
+    waMessageId = apiResult.messages?.[0]?.id ?? null;
+  } catch (err) {
+    console.error("[sendWhatsAppMediaMessage] Gupshup send failed:", err);
+    return { data: null, error: "Failed to send media" };
+  }
+
+  // 4. Persist the outbound row — media_url holds the PATH (read signs it).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = (await createClient()) as any;
+  const { data: row, error: insertError } = await supabase
+    .from("whatsapp_messages")
+    .insert({
+      conversation_id: conversationId,
+      lead_id:         conversation.lead_id,
+      direction:       "outbound",
+      sender_type:     "agent",
+      sender_id:       profile.id,
+      wa_message_id:   waMessageId,
+      message_type:    mediaType,
+      content:         caption ?? null,
+      media_url:       path,
+      media_mime_type: file.type,
+      status:          "sent",
+      status_at:       new Date().toISOString(),
+      is_bot:          false,
+    })
+    .select("*")
+    .single();
+
+  if (insertError || !row) {
+    console.error("[sendWhatsAppMediaMessage] insert failed:", insertError?.message ?? "row was null");
+    return { data: null, error: "Media sent but not recorded" };
+  }
+
+  // 5. Bump conversation timestamp (non-fatal).
+  await supabase
+    .from("whatsapp_conversations")
+    .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", conversationId);
+
+  // Return with the signed url so the composer can render the bubble immediately.
+  const message: WhatsAppMessage = {
+    id:              (row as Record<string, unknown>)["id"] as string,
+    conversation_id: conversationId,
+    lead_id:         conversation.lead_id,
+    direction:       "outbound",
+    sender_type:     "agent",
+    sender_id:       profile.id,
+    wa_message_id:   waMessageId,
+    message_type:    mediaType,
+    content:         caption ?? null,
+    media_url:       signedUrl,
+    media_mime_type: file.type,
+    status:          "sent",
+    status_at:       new Date().toISOString(),
+    is_bot:          false,
+    created_at:      (row as Record<string, unknown>)["created_at"] as string,
+    sender_name:       profile.full_name,
+    sender_avatar_url: profile.avatar_url ?? undefined,
+  };
+
+  return { data: message, error: null };
+}
+
 // ─── markConversationAsRead ───────────────────────────────────────────────────
 
 export async function markConversationAsRead(
@@ -128,6 +249,22 @@ export async function markConversationAsRead(
 
   await markConversationRead(parsed.data.conversationId, auth.profile.id);
   return { data: null, error: null };
+}
+
+// ─── signWhatsAppMediaAction ──────────────────────────────────────────────────
+// A realtime INSERT payload carries the raw storage PATH in media_url (the DB
+// row), not a signed url — so a media message arriving live while the panel is
+// open needs the path signed before it can render. getMessages already signs on
+// open; this covers the live-arrival window. Returns null on any failure so the
+// bubble degrades gracefully.
+
+export async function signWhatsAppMediaAction(
+  path: string,
+): Promise<{ url: string | null }> {
+  const auth = await requireProfile();
+  if (!auth.ok) return { url: null };
+  if (typeof path !== "string" || path.length === 0) return { url: null };
+  return { url: await signMediaPath(path) };
 }
 
 // ─── Read action wrappers (client-callable) ───────────────────────────────────

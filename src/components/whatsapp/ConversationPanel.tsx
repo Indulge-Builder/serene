@@ -9,7 +9,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Paperclip } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { MessageBar } from "@/components/ui/MessageBar";
 import { DictationButton } from "@/components/ui/DictationButton";
@@ -17,9 +17,15 @@ import { MessageBubble } from "@/components/whatsapp/MessageBubble";
 import { createClient } from "@/lib/supabase/client";
 import {
   sendWhatsAppMessage,
+  sendWhatsAppMediaMessage,
   markConversationAsRead,
+  signWhatsAppMediaAction,
 } from "@/lib/actions/whatsapp";
 import { sanitizeText } from "@/lib/utils/sanitize";
+import {
+  resolveOutboundMediaType,
+  WHATSAPP_OUTBOUND_MEDIA_MAX_BYTES,
+} from "@/lib/constants/whatsapp";
 import { toast } from "@/lib/toast";
 import type { WhatsAppConversation, WhatsAppMessage } from "@/lib/types/whatsapp";
 import type { UserRole } from "@/lib/types/database";
@@ -48,6 +54,7 @@ export function ConversationPanel({
   const mountId       = useId();
   const listRef       = useRef<HTMLDivElement>(null);
   const composerRef   = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef  = useRef<HTMLInputElement>(null);
   const seenIds       = useRef<Set<string>>(new Set());
   const optimisticIds = useRef<Set<string>>(new Set());
 
@@ -63,6 +70,7 @@ export function ConversationPanel({
   const [messages,       setMessages]       = useState<WhatsAppMessage[]>(initialMessages);
   const [draft,          setDraft]          = useState("");
   const [isSending,      startSendTransition]     = useTransition();
+  const [isUploading,    setIsUploading]          = useState(false);
 
   // ── Seed / reset on conversation change ─────────────────────────────────────
 
@@ -108,6 +116,25 @@ export function ConversationPanel({
 
             if (seenIds.current.has(incoming.id)) return;
             seenIds.current.add(incoming.id);
+
+            // The realtime payload carries the raw storage PATH in media_url (the
+            // DB row), not a signed url. Sign it before the bubble tries to load
+            // it; on failure the path stays and the bubble degrades gracefully.
+            const isMediaMsg = ["image", "video", "document", "audio"].includes(
+              incoming.message_type,
+            );
+            if (isMediaMsg && incoming.media_url) {
+              signWhatsAppMediaAction(incoming.media_url)
+                .then(({ url }) => {
+                  if (!url) return;
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === incoming.id ? { ...m, media_url: url } : m,
+                    ),
+                  );
+                })
+                .catch(() => {});
+            }
 
             // The conversation is on screen — advance the read position so
             // this message never counts as unread (it bumped last_message_at
@@ -218,6 +245,93 @@ export function ConversationPanel({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  }
+
+  // ── Attach / send media ──────────────────────────────────────────────────────
+  // Validate client-side for instant feedback (the action re-validates), show an
+  // optimistic media bubble, upload+send via the action, then swap in the
+  // confirmed row (with a signed url). On error the optimistic bubble is removed.
+
+  function handleAttachClick() {
+    if (isUploading) return;
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Reset the input so re-selecting the same file fires change again.
+    e.target.value = "";
+    if (!file) return;
+
+    const mediaType = resolveOutboundMediaType(file.type);
+    if (!mediaType) {
+      toast.danger("Unsupported file type", { message: "Send an image, video, PDF, or audio file." });
+      return;
+    }
+    if (file.size === 0) {
+      toast.danger("That file is empty");
+      return;
+    }
+    if (file.size > WHATSAPP_OUTBOUND_MEDIA_MAX_BYTES) {
+      toast.danger("File too large", { message: "Files must be 16MB or smaller." });
+      return;
+    }
+
+    const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    optimisticIds.current.add(optimisticId);
+
+    // A local object url so the bubble can preview the media while it uploads.
+    const localUrl = URL.createObjectURL(file);
+
+    const optimistic: WhatsAppMessage = {
+      id:              optimisticId,
+      conversation_id: conversation.id,
+      lead_id:         conversation.lead_id,
+      direction:       "outbound",
+      sender_type:     "agent",
+      sender_id:       callerProfile.id,
+      wa_message_id:   null,
+      message_type:    mediaType,
+      content:         null,
+      media_url:       localUrl,
+      media_mime_type: file.type,
+      status:          "sent",
+      status_at:       new Date().toISOString(),
+      is_bot:          false,
+      created_at:      new Date().toISOString(),
+      sender_name:     callerProfile.full_name,
+      sender_avatar_url: callerProfile.avatar_url ?? undefined,
+    };
+
+    setMessages((prev) => [...prev, optimistic]);
+    setIsUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("conversationId", conversation.id);
+      formData.append("file", file);
+
+      const result = await sendWhatsAppMediaMessage(formData);
+
+      if (result.error || !result.data) {
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+        optimisticIds.current.delete(optimisticId);
+        toast.danger("Couldn't send file", { message: result.error ?? undefined });
+        return;
+      }
+
+      const confirmed: WhatsAppMessage = result.data;
+      seenIds.current.add(confirmed.id);
+      optimisticIds.current.delete(optimisticId);
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === optimisticId);
+        if (idx === -1) return prev;
+        return [...prev.slice(0, idx), confirmed, ...prev.slice(idx + 1)];
+      });
+    } finally {
+      URL.revokeObjectURL(localUrl);
+      setIsUploading(false);
     }
   }
 
@@ -405,6 +519,17 @@ export function ConversationPanel({
           flexShrink:    0,
         }}
       >
+        {/* Hidden file input — driven by the attach button. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/mpeg,audio/ogg,audio/mp4,audio/amr,application/pdf"
+          onChange={handleFileSelected}
+          style={{ display: "none" }}
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+
         <MessageBar
           ref={composerRef}
           value={draft}
@@ -415,12 +540,38 @@ export function ConversationPanel({
           maxLength={MAX_CHARS}
           maxHeight={96}
           leadingSlot={
-            <DictationButton
-              onTranscript={handleTranscript}
-              onError={(message) => toast.danger(message)}
-              disabled={isSending}
-              what="a message"
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
+              <button
+                type="button"
+                onClick={handleAttachClick}
+                disabled={isUploading}
+                aria-label="Attach a file"
+                title="Attach a file"
+                className="serene-pressable"
+                style={{
+                  width:          "32px",
+                  height:         "32px",
+                  borderRadius:   "var(--radius-sm)",
+                  border:         "none",
+                  background:     "transparent",
+                  display:        "flex",
+                  alignItems:     "center",
+                  justifyContent: "center",
+                  flexShrink:     0,
+                  cursor:         isUploading ? "not-allowed" : "pointer",
+                  color:          "var(--theme-text-tertiary)",
+                  opacity:        isUploading ? 0.5 : 1,
+                }}
+              >
+                <Paperclip style={{ width: "18px", height: "18px", strokeWidth: 1.5 }} />
+              </button>
+              <DictationButton
+                onTranscript={handleTranscript}
+                onError={(message) => toast.danger(message)}
+                disabled={isSending}
+                what="a message"
+              />
+            </div>
           }
         />
 

@@ -1,16 +1,13 @@
-import { WIDGET_HEIGHT_BY_SIZE, type WidgetSize } from "@/lib/constants/dashboard-widgets";
-
 type WidgetSkeletonProps = {
-  size?: WidgetSize;
+  /** When true (the slot default), fill the slot's height (continuous resize). */
+  fill?: boolean;
 };
 
-export function WidgetSkeleton({ size = "md" }: WidgetSkeletonProps) {
-  const minHeight = WIDGET_HEIGHT_BY_SIZE[size];
-
+export function WidgetSkeleton({ fill = true }: WidgetSkeletonProps) {
   return (
     <div
       style={{
-        minHeight,
+        height: fill ? "100%" : undefined,
         borderRadius: "var(--radius-lg)",
         border: "1px solid var(--theme-paper-border)",
         background: "var(--theme-paper)",

@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/leads/[id]` — the per-lead workspace: lifecycle actions, call/team notes, inline field edits, Gia tasks, WhatsApp card, journey timeline, activity log, linked deal.
 > **Audience:** engineers. · **Source-of-truth scope:** the dossier route and its async children. List page + actions tables + invariants: `leads.md`; lifecycle/status semantics: `../modules/gia.md`.
-> **Last verified:** 2026-06-11 (streaming rewrite of perf-audit item B reflected; stale scratchpad rows corrected — the scratchpad was removed in migration 0061).
+> **Last verified:** 2026-06-24 (streaming rewrite of perf-audit item B reflected; stale scratchpad rows corrected — the scratchpad was removed in migration 0061; the two post-2026-06-11 dossier surfaces folded in — `ServiceInterestCardAsync` (Call Intelligence, 2026-06-12) and `RevivalDossierAction` (Lead Revival R1, migration 0119); `city` corrected to a dedicated `leads.city` column).
 
 ## 1. Purpose
 
@@ -23,16 +23,23 @@ Wave 1: `getCurrentProfile()` + `getLeadBySlug(id)` → `getLeadById(id)` fallba
 (Redis 120s, dual-key — `../architecture/caching.md`). Streamed children fetch by `lead.id`
 (UUID, **never the URL param**): `getAdCreativesForCampaign`, `getAssignableUsers`,
 `getLeadDeal`, `getLeadNotesFull`, `getLeadActivitiesFull`, `getConversationByLeadId`,
-`getAllLeadTasks`. Mutations: the `leads.ts` actions table in `leads.md` §5 (Deep dive).
+`getAllLeadTasks`, `getOpenCandidateForLead` (Lead Revival — `revival-service.ts`),
+`getCasesForLead` + `getHooksForCategories` (Call Intelligence — `intelligence-service.ts`).
+Mutations: the `leads.ts` actions table in `leads.md` §5 (Deep dive); Lead Revival mutations
+(`reviveLeadAction` / `dismissRevivalCandidateAction`) are in `revival.ts` (`../modules/revival.md`).
 
 ## 4. Components
 
 All in `src/components/leads/`: `StatusActionPanel` (lifecycle CTAs + `CalledModal` /
-`WonDealModal` / resolution confirms), `LeadInfoCardAsync`→`LeadInfoCard` (inline per-field
-edits via `InlineSelectField`/`InfoRow`), `PersonalDetailsCard`, `DynamicFormResponses`,
-`LeadNotesInput` + `LeadNotesSectionAsync`, `LeadActivitiesAsync` (journey timeline + activity
-log), `LeadDealCardAsync`→`LeadDealCard`, `LeadWhatsAppCardAsync`→`LeadWhatsAppCard`,
-`LeadTasksCard` (+ on-intent `CreateLeadTaskModal`), `LeadDossierSkeletons`.
+`WonDealModal` / resolution confirms), `RevivalDossierAction` (Lead Revival R1 — surfaces an
+open `revival_candidate` + `ReviveLeadButton`; renders `null` otherwise),
+`LeadInfoCardAsync`→`LeadInfoCard` (inline per-field edits via `InlineSelectField`/`InfoRow` —
+incl. `InterestsInlineField` for `service_interests`), `PersonalDetailsCard`, `DynamicFormResponses`,
+`ServiceInterestCardAsync`→`ServiceInterestCard` (Call Intelligence Surface A — top of the right
+column, always mounted), `LeadNotesInput` + `LeadNotesSectionAsync`, `LeadActivitiesAsync`
+(journey timeline + activity log), `LeadDealCardAsync`→`LeadDealCard`,
+`LeadWhatsAppCardAsync`→`LeadWhatsAppCard`, `LeadTasksCard` (+ on-intent `CreateLeadTaskModal`),
+`LeadDossierSkeletons`.
 
 ## 5. States
 
@@ -71,8 +78,10 @@ which may be a slug. `leads/[id]/loading.tsx` provides the dossier-shaped naviga
 
 | Async child | Fetch | Fallback |
 | ----------- | ----- | -------- |
-| `LeadInfoCardAsync` | `Promise.all`: `getAdCreativesForCampaign(utm_campaign)` (skipped if no campaign) + `getAssignableUsers({ domain: lead.domain, agentsOnly: true })` (only if `canReassign`) | `DossierCardSkeleton` |
+| `LeadInfoCardAsync` | `Promise.all`: `getAdCreativesForCampaign(utm_campaign)` (skipped if no campaign) + `getAssignableUsers({ domain: lead.domain, roles: LEAD_ASSIGNABLE_ROLES })` (only if `canReassign`; agents **and** managers — managers carry leads) | `DossierCardSkeleton` |
 | `LeadDealCardAsync` | `getLeadDeal(lead.id)` — non-null only for won leads with a linked `public.deals` row; RLS-scoped (null if caller can't see the deal) | `null` — most leads have no deal; a skeleton would flash + shift layout |
+| `RevivalDossierAction` | `getOpenCandidateForLead(lead.id)` — non-null only when the lead holds an OPEN `revival_candidate` (Lead Revival R1); renders `null` otherwise. Mounted directly under `StatusActionPanel`, above the deal card | `null` — most leads have no open candidate; a skeleton would flash for nothing |
+| `ServiceInterestCardAsync` | `Promise.all`: `getCasesForLead(service_interests, city, domain)` + `getHooksForCategories(service_interests, domain)` (hooks skipped when `service_interests` empty — a city-only tag match shows cases, no hooks). Call Intelligence Surface A; **top of the right column, always mounted** | `DossierCardSkeleton` (`headerWidth=150`, `rows=2`) |
 | `LeadTasksAsync` | `getAllLeadTasks(lead.id)` | `LeadTasksCardSkeleton` |
 | `LeadWhatsAppCardAsync` | `getConversationByLeadId(lead.id)` then (serial, **inside the boundary** — never a page-level wave) `getMessages(conversation.id, { limit: 30 })` | `DossierCardSkeleton` |
 | `LeadNotesSectionAsync` | `getLeadNotesFull(lead.id)` | `DossierCardSkeleton` |
@@ -92,7 +101,7 @@ Agent = own leads; manager = domain; admin/founder = all. *(Corrected 2026-06-11
 `canEditScratchpad` row and a reference to the deleted `gia-workflow.md` doc were removed —
 the private scratchpad was dropped in migration 0061.)*
 
-**Layout:** `StatusActionPanel` → `LeadDealCardAsync` (renders only when the lead has a deal; full-width, Framer fade-in, links to `/deals`) → 2-col grid (LeadInfoCardAsync, Form data, PersonalDetails | LeadTasksAsync, LeadNotesInput, LeadWhatsAppCardAsync) → Notes → Journey → Activity log.
+**Layout:** `StatusActionPanel` → `RevivalDossierAction` (`Suspense fallback={null}`; renders only when an open `revival_candidate` exists) → `LeadDealCardAsync` (renders only when the lead has a deal; full-width, Framer fade-in, links to `/deals`) → 2-col grid (**left:** LeadInfoCardAsync, Form data, PersonalDetails | **right:** ServiceInterestCardAsync, LeadTasksAsync, LeadNotesInput, LeadWhatsAppCardAsync) → Notes → Journey → Activity log.
 
 **Tasks:** `<Suspense fallback={<LeadTasksCardSkeleton />}><LeadTasksAsync leadId={lead.id} /></Suspense>`.
 
@@ -123,7 +132,7 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 **Domain (`canEditDomain`):** `updateLeadDomain` — `GIA_DOMAIN_FILTER_ITEMS`; agents cannot.
 
-**Assignee (`canReassign`):** `assignLead` via `AssigneeCombobox` (searchable); optimistic name + checkmark.
+**Assignee (`canReassign`):** `assignLead` via the same inline `InlineSelectField` menu as domain/source (searchable agent list — no separate combobox component); optimistic name + 2s checkmark.
 
 **Attribution (no separate `AttributionStrip` component):** Source and Campaign live in the contact grid. Campaign uses `CampaignLinkTrigger` when `adCreatives.length > 0` — hover `var(--theme-accent)`, opens modal.
 
@@ -131,11 +140,13 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 #### 7d. PersonalDetailsCard
 
-**Fields (JSONB keys):** `company`, `occupation`, `interests`, `city`, `notes` (wide textarea).
+**Fields:** `company`, `occupation`, `interests`, `notes` (wide textarea) — the four `leads.personal_details` JSONB keys (`JSONB_FIELD_KEYS` in the component) — **plus `city`**.
+
+**`city` is a dedicated `leads.city` column (migration 0066), NOT a JSONB key.** It carries its own component state (`cityValue` / `savedCity`) and is saved through a **separate** action. `PERSONAL_DETAIL_FIELDS` / `JSONB_GRID_FIELDS` explicitly omit `city` — the file comments "city is intentionally absent (it lives in `leads.city`)".
 
 **Edit mode:** Click dormant card → form with Save/Cancel footer.
 
-**Storage:** `leads.personal_details` via `updatePersonalDetails`.
+**Storage:** the JSONB keys → `leads.personal_details` via `updatePersonalDetails`; `city` → `leads.city` via `updateLeadCity`. Save runs **both actions in parallel** (`Promise.all`) inside one `startTransition`; either `error` aborts the save and surfaces inline (fields never cleared).
 
 #### 7f. CalledModal
 
@@ -190,6 +201,49 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 **Source:** `leads.form_data` JSONB from props.
 
 **Render:** Key/value pairs when `form_data` has keys; omitted from tree when empty.
+
+#### 7l. ServiceInterestCardAsync + ServiceInterestCard (Call Intelligence Surface A, 2026-06-12)
+
+**Mount:** top of the dossier's right column, **always mounted** behind its own
+`<Suspense fallback={<DossierCardSkeleton headerWidth={150} rows={2} />}>`. The card owns a
+library search, so leads with no interests/matches get the search-first view rather than nothing —
+both old hide-gates were removed. Self-fetching async server child (no page-level waterfall).
+
+**Fetch (`ServiceInterestCardAsync`):** `Promise.all` of
+`getCasesForLead(service_interests, lead.city, domain)` + `getHooksForCategories(service_interests, domain)`
+from `intelligence-service.ts`. `getCasesForLead` returns `[]` itself when interests AND city are both
+empty; hooks are scoped to the lead's stated interest categories, so an empty `service_interests`
+short-circuits hooks to `[]` (a city-only tag match shows cases but no hooks — no category to scope to).
+This is the **only** dossier call site for both functions. `lead.domain` is narrowed to `AppDomain` once
+at this boundary.
+
+**`service_interests`:** a `text[]` column (per-domain vocabulary via `DOMAIN_INTERESTS` /
+`getDomainInterests`), **never an enum** — unknown values are dropped at ingestion
+(`extractServiceInterests`), never rejected. Edited inline on `LeadInfoCard` via `InterestsInlineField`
+(§7c); `onSaved` → `router.refresh()` re-renders this card with the new matches.
+
+**`ServiceInterestCard` (display, `'use client'`):** "Why we're perfect." header + a library `SearchBar`
+(lazy `getHelpdeskLibraryAction(lead.domain)` on the first keystroke; filtered client-side via
+`caseMatchesQuery`) + matched `CaseCard`s + `HookList` + a quiet `/helpdesk?category=` footer link.
+Composes the shared `components/intelligence/` primitives — never re-inlines a case/hook renderer.
+
+#### 7m. RevivalDossierAction (Lead Revival R1, migration 0119)
+
+**Mount:** directly under `StatusActionPanel`, behind `<Suspense fallback={null}>` (most leads have no
+open candidate — a skeleton would flash for nothing). Async server component; the **second** of
+`ReviveLeadButton`'s two mount points (the first is `RevivalReviewBanner` on `?revival=true`).
+
+**Fetch:** `getOpenCandidateForLead(leadId)` (`revival-service.ts`, admin client). Returns `null` →
+the component renders `null` (no card). Non-null → a paper card with a `Sparkles` glyph, "Revival
+suggested" eyebrow, the candidate's `ai_reasoning`, an optional suggested-revive date, and an inline
+`<ReviveLeadButton showDismiss size="sm" />`.
+
+**Action — task-only, NEVER changes the lead row:** the button calls `reviveLeadAction` → `reviveLeadCore`
+(`lead-mutations.ts`), which wraps the E2 `createLeadTaskCore` path + a "Revived" marker and resolves the
+`revival_candidate` (open → actioned). **It does NOT mutate `leads.status` or any lead column** — that is
+the separate `StatusActionPanel` junk → "Revive Lead" button (§7b), which DOES set `in_discussion`. The
+two share only the word "revive". `showDismiss` exposes `dismissRevivalCandidateAction` (open → dismissed).
+Full contract: `../modules/revival.md`.
 
 ---
 

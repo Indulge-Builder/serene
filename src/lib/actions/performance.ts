@@ -10,6 +10,7 @@ import {
   getAgentLeadActivityPage,
   getAgentCallsPageForManager,
   getAgentFirstTouchScorecard,
+  getAgentFirstTouchBucketLeadIds,
   getPeriodDateRange,
   type PerformancePeriod,
   type AgentPerformanceSummary,
@@ -18,12 +19,15 @@ import {
   type AgentCallsPage,
   type FirstTouchScorecard,
 } from '@/lib/services/performance-service';
-import { getLeadsByRole, type LeadsResult }   from '@/lib/services/leads-service';
+import { getLeadsByRole, getLeadsByIds, type LeadsResult, type LeadListItemWithAssignee } from '@/lib/services/leads-service';
+import { FIRST_TOUCH_BUCKETS, type FirstTouchBucketId } from '@/lib/constants/performance';
+import { LEAD_STATUSES } from '@/lib/constants/lead-statuses';
+import { CALL_OUTCOMES } from '@/lib/constants/call-outcomes';
 import { getDealsByRole, type DealsResult }   from '@/lib/services/deals-service';
 import { upsertDomainTarget }        from '@/lib/services/domain-targets-service';
 import { GIA_DOMAINS, GIA_DOMAIN_ENUM } from '@/lib/constants/domains';
 import type { ActionResult, AgentDetailMetrics, AgentRosterRow, DomainHealthCard, DomainTarget } from '@/lib/types/index';
-import type { AppDomain, LeadFilters, DealFilters } from '@/lib/types/database';
+import type { AppDomain, LeadFilters, DealFilters, LeadStatus, CallOutcome } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
 // Schemas
@@ -115,6 +119,58 @@ export async function getAgentFirstTouchScorecardAction(
     return { data, error: null };
   } catch {
     return { data: null, error: 'Failed to load first-touch scorecard.' };
+  }
+}
+
+// ─────────────────────────────────────────────
+// Action: getFirstTouchBucketLeadsAction
+// The drill-down behind a clicked First-Touch Speed bar — the leads that make up
+// that bucket's count, for the SAME agent/period the scorecard was computed for.
+//
+// DRY: the bucket membership comes from getAgentFirstTouchBucketLeadIds (which
+// reuses the scorecard's own classification, so the list length equals the bar's
+// count), and the lead rows come from getLeadsByIds (the same id-set reader the
+// revival review predicate uses). No new query, no re-bucketing. Same authz as
+// every other drill-down (assertDrillAccess): manager own-domain, admin/founder
+// unrestricted; the caller's role/domain scope getLeadsByIds (defence in depth).
+// ─────────────────────────────────────────────
+
+const FIRST_TOUCH_BUCKET_IDS = FIRST_TOUCH_BUCKETS.map((b) => b.id) as [FirstTouchBucketId, ...FirstTouchBucketId[]];
+
+const GetFirstTouchBucketSchema = z.object({
+  agentId:    z.string().uuid(),
+  domain:     z.string().min(1).nullable().optional(),
+  bucketId:   z.enum(FIRST_TOUCH_BUCKET_IDS),
+  period:     z.enum(PERIOD_VALUES),
+  customFrom: z.string().datetime().optional(),
+  customTo:   z.string().datetime().optional(),
+});
+
+export async function getFirstTouchBucketLeadsAction(
+  agentId:    string,
+  domain:     AppDomain | null,
+  bucketId:   FirstTouchBucketId,
+  period:     PerformancePeriod,
+  customFrom?: string,
+  customTo?:   string,
+): Promise<ActionResult<LeadListItemWithAssignee[]>> {
+  const parsed = GetFirstTouchBucketSchema.safeParse({ agentId, domain, bucketId, period, customFrom, customTo });
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  const access = await assertDrillAccess(domain);
+  if (!access.ok) return access.result;
+  const caller = access.caller;
+
+  try {
+    const range = getPeriodDateRange(period);
+    const from  = (period === 'custom' && customFrom) ? customFrom : range.from;
+    const to    = (period === 'custom' && customTo)   ? customTo   : range.to;
+
+    const leadIds = await getAgentFirstTouchBucketLeadIds(agentId, from, to, bucketId);
+    const leads   = await getLeadsByIds(caller.role, caller.id, caller.domain, leadIds);
+    return { data: leads, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load leads.' };
   }
 }
 
@@ -440,6 +496,165 @@ export async function getAgentLeadsScopedAction(
     // target agent within that scope (honoured on the manager/founder branch).
     const result = await getLeadsByRole(caller.role, caller.id, caller.domain, filters);
     return { data: result, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load leads.' };
+  }
+}
+
+// ─────────────────────────────────────────────
+// Action: getAgentLeadsByPredicateAction
+// THE drill behind a clicked Lead-Pipeline segment OR Call-Outcome slice — the
+// distinct leads matching that status / latest-outcome, for the SAME agent+period
+// the chart was computed for.
+//
+// DRY: reuses getLeadsByRole exactly like getAgentLeadsScopedAction (agent_id +
+// period + the existing indexed status / last_call_outcome predicates), so there
+// is NO new query. Returns the full bounded slice as a flat array (one agent ×
+// one status/outcome × one period is small) — the shared LeadDrillModal renders
+// it without pagination, matching the chart segment. Same assertDrillAccess gate.
+//
+// Note on the outcome drill: getLeadsByRole filters leads.last_call_outcome (the
+// lead's LATEST outcome), so this is "distinct leads whose latest call was X" —
+// distinct leads, not call events. The donut counts call events, so this list's
+// length can be ≤ the slice count; the modal subtitle says "leads", never a count
+// that implies parity with the donut.
+// ─────────────────────────────────────────────
+
+const GetAgentLeadsByPredicateSchema = z.object({
+  agentId:    z.string().uuid(),
+  domain:     z.string().min(1).nullable(),
+  period:     z.enum(PERIOD_VALUES),
+  customFrom: z.string().datetime().optional(),
+  customTo:   z.string().datetime().optional(),
+  status:     z.string().min(1).optional(),
+  outcome:    z.string().min(1).optional(),
+});
+
+export async function getAgentLeadsByPredicateAction(
+  agentId:     string,
+  domain:      AppDomain | null,
+  period:      PerformancePeriod,
+  predicate:   { status?: string; outcome?: string },
+  customFrom?: string,
+  customTo?:   string,
+): Promise<ActionResult<LeadListItemWithAssignee[]>> {
+  const parsed = GetAgentLeadsByPredicateSchema.safeParse({
+    agentId, domain, period, customFrom, customTo,
+    status:  predicate.status,
+    outcome: predicate.outcome,
+  });
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  // Validate the predicate against the canonical vocabularies (never trust the
+  // client string into the query). Exactly one of status/outcome must be present.
+  const status  = parsed.data.status  && (LEAD_STATUSES as string[]).includes(parsed.data.status)  ? (parsed.data.status  as LeadStatus)  : null;
+  const outcome = parsed.data.outcome && (CALL_OUTCOMES as string[]).includes(parsed.data.outcome) ? (parsed.data.outcome as CallOutcome) : null;
+  if ((status ? 1 : 0) + (outcome ? 1 : 0) !== 1) {
+    return { data: null, error: 'Invalid parameters.' };
+  }
+
+  const access = await assertDrillAccess(domain);
+  if (!access.ok) return access.result;
+  const caller = access.caller;
+
+  try {
+    const range = getPeriodDateRange(period);
+    const dateFrom = (period === 'custom' && parsed.data.customFrom) ? parsed.data.customFrom : range.from;
+    const dateTo   = (period === 'custom' && parsed.data.customTo)   ? parsed.data.customTo   : range.to;
+
+    const filters: LeadFilters = {
+      status:            status  ? [status]  : null,
+      last_call_outcome: outcome ? [outcome] : null,
+      domain:            null,
+      agent_id:          agentId,
+      source:            null,
+      campaign:          null,
+      date_from:         dateFrom,
+      date_to:           dateTo,
+      search:            null,
+      // One bounded slice for one agent — a single large page covers it; the
+      // shared modal renders the flat array with no load-more.
+      page:              1,
+      pageSize:          200,
+    };
+    const result = await getLeadsByRole(caller.role, caller.id, caller.domain, filters);
+    return { data: result.leads, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load leads.' };
+  }
+}
+
+// ─────────────────────────────────────────────
+// Action: getDomainLeadsDrillAction
+// THE drill behind a clicked DOMAIN-card tile on the founder Domains tab
+// (Leads / Calls / Deals Closed / Revenue). The leads behind that domain's
+// metric, for the active period — every tile opens the SAME shared LeadDrillModal
+// (consistency with the agent stat-tile drills), each row a dossier Link.
+//
+// DRY: reuses getLeadsByRole exactly like getAgentLeadsByPredicateAction —
+// domain-scoped (filters.domain), NO agent_id, plus the existing indexed
+// predicates per `kind` (R-01, no new service query):
+//   'all'   → every lead in the domain+period (Leads tile)
+//   'calls' → leads with a logged call = a non-null latest outcome
+//             (last_call_outcome IN all CALL_OUTCOMES) (Calls tile)
+//   'won'   → status = 'won' (Deals Closed + Revenue tiles)
+//
+// The Domains tab is founder/admin-only, so assertDrillAccess (admin/founder
+// unrestricted; manager would need domain === caller.domain) is the correct gate.
+// ─────────────────────────────────────────────
+
+const DOMAIN_LEADS_DRILL_KINDS = ['all', 'calls', 'won'] as const;
+type DomainLeadsDrillKind = (typeof DOMAIN_LEADS_DRILL_KINDS)[number];
+
+const GetDomainLeadsDrillSchema = z.object({
+  domain:     z.enum(GIA_DOMAIN_ENUM),
+  kind:       z.enum(DOMAIN_LEADS_DRILL_KINDS),
+  period:     z.enum(PERIOD_VALUES),
+  customFrom: z.string().datetime().optional(),
+  customTo:   z.string().datetime().optional(),
+});
+
+export async function getDomainLeadsDrillAction(
+  domain:      AppDomain,
+  kind:        DomainLeadsDrillKind,
+  period:      PerformancePeriod,
+  customFrom?: string,
+  customTo?:   string,
+): Promise<ActionResult<LeadListItemWithAssignee[]>> {
+  const parsed = GetDomainLeadsDrillSchema.safeParse({ domain, kind, period, customFrom, customTo });
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  // Same gate as every other performance drill (manager own-domain, admin/founder
+  // unrestricted). A non-null domain is mandatory here — the card IS a domain.
+  const access = await assertDrillAccess(parsed.data.domain);
+  if (!access.ok) return access.result;
+  const caller = access.caller;
+
+  try {
+    const range = getPeriodDateRange(period);
+    const dateFrom = (period === 'custom' && parsed.data.customFrom) ? parsed.data.customFrom : range.from;
+    const dateTo   = (period === 'custom' && parsed.data.customTo)   ? parsed.data.customTo   : range.to;
+
+    const filters: LeadFilters = {
+      status:            parsed.data.kind === 'won' ? (['won'] as LeadStatus[]) : null,
+      // "Calls" = leads with a logged call → a non-null latest outcome. Passing
+      // the full outcome vocabulary turns the indexed `last_call_outcome IN (…)`
+      // predicate into an "is not null" over the known set (no new query/index).
+      last_call_outcome: parsed.data.kind === 'calls' ? ([...CALL_OUTCOMES] as CallOutcome[]) : null,
+      domain:            parsed.data.domain,
+      agent_id:          null,
+      source:            null,
+      campaign:          null,
+      date_from:         dateFrom,
+      date_to:           dateTo,
+      search:            null,
+      // One bounded slice for one domain × one metric × one period — a single
+      // large page covers it; the shared modal renders the flat array, no load-more.
+      page:              1,
+      pageSize:          200,
+    };
+    const result = await getLeadsByRole(caller.role, caller.id, caller.domain, filters);
+    return { data: result.leads, error: null };
   } catch {
     return { data: null, error: 'Failed to load leads.' };
   }

@@ -346,3 +346,88 @@ export function buildAccountReport(
 
   return { blocks, grandTotalSpend, grandTotalRecharged, hasNonInr };
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Budget fuel gauge — the org-wide "tank" the dashboard widget renders.
+//
+// A single roll-up of the /budget per-account report (R-01: built ON TOP of
+// buildAccountReport so the gauge can never disagree with the per-account
+// blocks): total recharged = the full tank, total spend = fuel burned,
+// remaining = recharged − spent. INR-ONLY, exactly like the per-account
+// balance — a non-INR recharge is NEVER subtracted from INR spend; its
+// presence only sets `hasNonInr` so the widget can footnote it.
+//
+// Lead/deal outcomes (leadCount/dealCount/dealRevenue) ride along from the
+// campaign rows so the gauge can show the ROI sub-line (ROAS, CPL) without a
+// second query.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type BudgetGaugeSummary = {
+  /** INR recharged across all accounts in the period (the full tank). */
+  recharged:   number;
+  /** INR Meta spend across all accounts in the period (fuel burned). */
+  spent:       number;
+  /** recharged − spent (INR only). Negative = overspent past recharge. */
+  remaining:   number;
+  /**
+   * Fraction of the tank consumed, 0–1+ (spent / recharged). null when there
+   * is no recharge to measure against (render "no recharge yet", never ÷0).
+   * Can exceed 1 when overspent — the widget clamps the BAR but shows the raw %.
+   */
+  consumed:    number | null;
+  /** Total leads attributed to spend in the period. */
+  leadCount:   number;
+  /** Deals closed (won) attributed in the period. */
+  dealCount:   number;
+  /** Won-deal revenue attributed in the period (for ROAS). */
+  dealRevenue: number;
+  /** spend ÷ leads — null at zero leads (render "—", never ₹0). */
+  costPerLead: number | null;
+  /** dealRevenue ÷ spent — null at zero spend (render "—", never 0×). */
+  roas:        number | null;
+  /** Campaigns with spend in the period (the "N campaigns" footnote). */
+  campaignCount: number;
+  /** True when any non-INR recharge exists — drives the gauge footnote. */
+  hasNonInr:   boolean;
+};
+
+/**
+ * Collapse spend + recharges into ONE org-wide fuel gauge. Pure (no IO).
+ * Built over `buildAccountReport` so it inherits the INR-only balance rule and
+ * the resolve-account-from-campaign attribution wholesale (never re-implement
+ * the grouping). Used by the dashboard Campaign Budget widget (seed + refresh).
+ */
+export function buildBudgetGaugeSummary(
+  campaignRows: BudgetCampaignRow[],
+  recharges: AccountRecharge[],
+): BudgetGaugeSummary {
+  const report = buildAccountReport(campaignRows, recharges);
+
+  const recharged = report.grandTotalRecharged;
+  const spent     = report.grandTotalSpend;
+
+  // Lead/deal roll-up straight off the campaign rows (same numbers the totals
+  // strip on /budget sums).
+  let leadCount = 0;
+  let dealCount = 0;
+  let dealRevenue = 0;
+  for (const r of campaignRows) {
+    leadCount   += r.leadCount;
+    dealCount   += r.dealCount;
+    dealRevenue += r.dealRevenue;
+  }
+
+  return {
+    recharged,
+    spent,
+    remaining:     recharged - spent,
+    consumed:      recharged > 0 ? spent / recharged : null,
+    leadCount,
+    dealCount,
+    dealRevenue,
+    costPerLead:   leadCount > 0 ? spent / leadCount : null,
+    roas:          spent > 0 ? dealRevenue / spent : null,
+    campaignCount: campaignRows.length,
+    hasNonInr:     report.hasNonInr,
+  };
+}

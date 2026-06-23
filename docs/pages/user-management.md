@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/admin/users`, `/admin/users/new`, `/admin/users/[id]` — the team-management pages over the `profiles` foundation.
 > **Audience:** engineers. · **Source-of-truth scope:** the three admin routes, `profiles-service.ts`, `profiles.ts` actions, and the deep operational detail of the `profiles` data model (the architecture docs summarise it and point here). Authorization *architecture*: `../architecture/auth-and-rbac.md`.
-> **Last verified:** 2026-06-11 (restructure pass over the 2026-06-11 intelligence doc).
+> **Last verified:** 2026-06-24 (patch pass: invite-onboarding job_title trigger fix (0125), managers in the routing pool (0124), `app_icon` field (0121), `requireProfile()` action guard).
 
 ## 1. Purpose
 
@@ -44,7 +44,7 @@ primitives — Deep dive §11).
 
 Deep dive §14 — profiles rows trigger-created only; email immutable; self-elevation blocked by
 `WITH CHECK`; deactivation never deletes; role/domain changes audited; routing config
-auto-created for agents.
+auto-created for pool roles (agents **and** managers, migration 0124).
 
 ## 7. Open items
 
@@ -62,7 +62,7 @@ None recorded.
 
 #### What this module owns
 
-The user management module is the **authorization foundation of the entire Serene platform**. Every RLS policy in every table calls `get_user_role()` and/or `get_user_domain()`, which read exclusively from `public.profiles`. User creation, role/domain assignment, deactivation, and agent round-robin eligibility all flow through this module. If `profiles` or its policies are wrong, every module built on top is wrong.
+The user management module is the **authorization foundation of the entire Serene platform**. Every RLS policy in every table calls `get_user_role()` and/or `get_user_domain()`, which read exclusively from `public.profiles`. User creation, role/domain assignment, deactivation, and round-robin pool eligibility (agents **and** managers since migration 0124) all flow through this module. If `profiles` or its policies are wrong, every module built on top is wrong.
 
 #### Three routes and their purposes
 
@@ -147,7 +147,7 @@ Defined in `supabase/migrations/20260526000001_profiles.sql`.
 | Trigger | Event | Function |
 | ------- | ----- | -------- |
 | `profiles_updated_at` | BEFORE UPDATE | `update_updated_at()` — sets `NEW.updated_at = now()` |
-| `on_auth_user_created` | AFTER INSERT on `auth.users` | `handle_new_user()` — inserts `profiles` row (see §3d) |
+| `on_auth_user_created` | AFTER INSERT on `auth.users` | `handle_new_user()` — inserts `profiles` row with `id`, `email`, `full_name`, `role`, `domain`, `job_title` (6 columns; `job_title` added in migration 0125 — see §3d) |
 | `profiles_audit` | AFTER UPDATE | `log_profile_changes()` — append-only audit (see §3e) |
 | `on_agent_profile_created` | AFTER INSERT OR UPDATE on `profiles` | `handle_agent_routing_config()` (migration 0002; see §3f) |
 
@@ -260,15 +260,15 @@ $$;
 
 **Trigger:** `on_auth_user_created` — `AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION handle_new_user()`.
 
-**Function (full SQL):**
+**Function (full SQL — current, after migration 0125 `handle_new_user_job_title.sql`):**
 
 ```sql
-CREATE OR REPLACE FUNCTION handle_new_user()
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public AS $$
 BEGIN
-  INSERT INTO profiles (id, email, full_name, role, domain)
+  INSERT INTO profiles (id, email, full_name, role, domain, job_title)
   VALUES (
     NEW.id,
     NEW.email,
@@ -280,39 +280,41 @@ BEGIN
     COALESCE(
       (NEW.raw_user_meta_data->>'domain')::app_domain,
       'concierge'::app_domain
-    )
+    ),
+    NULLIF(NEW.raw_user_meta_data->>'job_title', '')
   );
   RETURN NEW;
 END;
 $$;
 ```
 
-**`raw_user_meta_data` fields used on insert:** `full_name`, `role`, `domain` (as text cast to enums).
+**`raw_user_meta_data` fields used on insert:** `full_name`, `role`, `domain` (text cast to enums), and `job_title` (`NULLIF(..., '')` → NULL when blank). Migration **0125** (applied to prod 2026-06-16) added `job_title` to the INSERT — before that, the trigger copied only the first three and silently dropped `job_title` for every **invited** user (the password-mode `createUser` path set it via a follow-up `updateProfileFields`, so only invites lost it). Body otherwise byte-identical to the original 0001 definition.
 
-**COALESCE fallbacks if metadata absent:**
+**COALESCE / NULLIF fallbacks if metadata absent:**
 
 | Field | Fallback |
 | ----- | -------- |
 | `full_name` | `'Unknown'` |
 | `role` | `'agent'` |
 | `domain` | `'concierge'` |
+| `job_title` | `NULL` (no fallback — nullable column; blank string → NULL) |
 
 ##### Flow 1 — Set password (`createUser` action)
 
 1. Admin/founder submits `CreateUserForm` → `createUser` server action.
 2. Zod `createUserSchema` → `createAdminClient().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name, role, domain, job_title, phone } })`.
-3. Supabase inserts `auth.users` → **`on_auth_user_created` fires** → `profiles` row with `id`, `email`, `full_name`, `role`, `domain` from metadata (only those four columns in trigger).
-4. If `phone` or `job_title` provided: **`updateProfileFields(id, { phone, job_title })`** second write via session/admin path after trigger completes.
+3. Supabase inserts `auth.users` → **`on_auth_user_created` fires** → `profiles` row with `id`, `email`, `full_name`, `role`, `domain`, `job_title` from metadata (6 columns since migration 0125).
+4. If `phone` or `job_title` provided: **`updateProfileFields(id, { phone, job_title })`** second write via session/admin path after trigger completes (the action still issues this — see note).
 
-**Why two steps for phone/job_title:** `handle_new_user()` only inserts five columns. Metadata may carry `phone`/`job_title`, but the trigger does not map them into `profiles`. Reliable persistence uses an explicit `UPDATE` after the row exists.
+**Why the second step for phone/job_title:** the trigger now maps `job_title` (0125) but **not** `phone` — `phone` has no metadata mapping in `handle_new_user()`, so `createUser` always issues an explicit `UPDATE` after the row exists to persist it. The action re-writes `job_title` in that same `UPDATE` (harmless idempotent overwrite of the value the trigger already copied). Net effect: a password-mode user's `phone` and `job_title` are both persisted.
 
 ##### Flow 2 — Magic link invite (`inviteUser` action)
 
 1. Admin/founder submits invite form → `inviteUser`.
 2. `createAdminClient().auth.admin.inviteUserByEmail(email, { data: { full_name, role, domain, job_title } })`.
 3. User receives email; **profile row does not exist until first sign-in.**
-4. User clicks link → Supabase creates/completes `auth.users` → **`on_auth_user_created` fires** → profile with `role`/`domain` from invite `data` (stored in `raw_user_meta_data`).
-5. `job_title` in invite metadata is **not** written by trigger; no second-step update in `inviteUser` today unless added later.
+4. User clicks link → Supabase creates/completes `auth.users` → **`on_auth_user_created` fires** → profile with `full_name`/`role`/`domain`/`job_title` from invite `data` (stored in `raw_user_meta_data`).
+5. `job_title` **is** now copied from invite metadata by the trigger (migration 0125, applied 2026-06-16). Invited users no longer lose their `job_title` — the trigger insert is the same 6-column write as the password path, so `inviteUser` needs no follow-up `updateProfileFields`. This was the end-to-end invite-onboarding fix (changelog 2026-06-16): the invite redirect routes through `/auth/callback?next=/update-password` (the magic link exchanges the token → session → choose-password step), and `job_title` survives the round trip.
 
 **Return shapes:** `createUser` / `inviteUser` return `ActionResult<{ id: string }>` — `{ data: { id }, error: null }` on success.
 
@@ -382,14 +384,18 @@ Migration: `supabase/migrations/20260526000002_agent_routing_config.sql`.
 
 No app-layer INSERT (trigger only). No DELETE.
 
-**`handle_agent_routing_config()` trigger:**
+**`handle_agent_routing_config()` trigger (migration 0124 — pool = agents **and** managers):**
 
 - **Event:** `AFTER INSERT OR UPDATE ON profiles`
-- **INSERT path:** `TG_OP = 'INSERT' AND NEW.role = 'agent'` → `INSERT INTO agent_routing_config (agent_id, is_active) VALUES (NEW.id, true) ON CONFLICT (agent_id) DO NOTHING`
-- **UPDATE path:** `TG_OP = 'UPDATE' AND NEW.role = 'agent' AND OLD.role <> 'agent'` → same insert, idempotent
-- **`ON CONFLICT DO NOTHING`:** Safe if row already exists (promotion back to agent, re-run).
+- **INSERT path:** `TG_OP = 'INSERT' AND NEW.role IN ('agent', 'manager')` → `INSERT INTO agent_routing_config (agent_id, is_active) VALUES (NEW.id, true) ON CONFLICT (agent_id) DO NOTHING`
+- **UPDATE path:** `TG_OP = 'UPDATE' AND NEW.role IN ('agent', 'manager') AND OLD.role NOT IN ('agent', 'manager')` → same insert, idempotent (role changed *into* a pool role)
+- **`ON CONFLICT DO NOTHING`:** Safe if row already exists (agent→manager keeps its row, promotion back into pool, re-run).
 
-**`is_active` semantics:** `false` removes agent from round-robin pool immediately (ingestion reads active configs). **`shift_start` / `shift_end`:** advisory; application may respect them; DB does not auto-enforce schedule.
+**Migration 0124 (`managers_in_routing_pool.sql`)** widened the pool from agents-only to `role IN ('agent','manager')`: the trigger now auto-creates a config row for managers, the migration **backfilled** config rows for existing managers, and `get_next_round_robin_agent` includes `role IN ('agent','manager')` in **both** eligibility passes — managers sit in the same fair (oldest-assignment-first) queue as agents, gated on their own pool toggle (`is_active`). The literal `('agent','manager')` mirrors `ROUTING_POOL_ROLES` (alias of `LEAD_ASSIGNABLE_ROLES`) in `src/lib/constants/roles.ts` — keep them in sync.
+
+**`is_active` semantics:** `false` removes the agent/manager from the round-robin pool immediately (ingestion reads active configs). **`shift_start` / `shift_end`:** advisory; application may respect them; DB does not auto-enforce schedule.
+
+**Detail-page UI gap (post-0124):** the routing config row now exists for managers, but `/admin/users/[id]` still fetches `routingConfig` (and thus shows the routing toggle) only when `user.role === 'agent'` (see §10). A manager's pool toggle is therefore reachable only via `/settings`, not the user-detail page. This is a known UI lag behind the DB change, not a data inconsistency.
 
 ---
 
@@ -401,14 +407,14 @@ No app-layer INSERT (trigger only). No DELETE.
 | ----- | ---------------------------------------------- | ------- |
 | **RLS policies** (all migrations) | Yes | Primary consumer — every domain/role gate |
 | **`profiles-service.ts`** | No | Uses `createClient()` + direct `profiles` queries; auth via RLS + page/action gates |
-| **Server actions** | No | `getCurrentProfile()` → `getProfileById(auth user id)` |
+| **Server actions** | No | `requireProfile(roles?)` (A-18) → `getCurrentProfile()` → `getProfileById(auth user id)` |
 | **Client components** | **Must never** | Would bundle server-only code; use server actions |
 
-`getCurrentProfile()` is the application-layer equivalent: reads `profiles` for `auth.uid()` once per action, never JWT role claims.
+`requireProfile()` (which wraps `getCurrentProfile()`) is the application-layer equivalent: reads `profiles` for `auth.uid()` once per action, returns `formErrors.unauthorized` on no-session or denied-role, never trusts JWT role claims.
 
 #### Why never from client components
 
-Helper functions are SQL executed in Postgres. Client components must not import `profiles-service` or call Supabase RPCs that embed authorization without re-validation. All mutations go through server actions that call `getCurrentProfile()` first (Rule A-09 two-layer: action check + RLS).
+Helper functions are SQL executed in Postgres. Client components must not import `profiles-service` or call Supabase RPCs that embed authorization without re-validation. All mutations go through server actions that call `requireProfile()` first (Rule A-09 two-layer: action check + RLS).
 
 ---
 
@@ -425,12 +431,12 @@ All use **`createClient()`** from `src/lib/supabase/server.ts` (session/cookie c
 | `getActiveAgentsByDomain` | `domain: AppDomain` | `Profile[]` | session | Round-robin, agent lists |
 | `isUsernameTaken` | `username`, `excludeId?` | `boolean` | session | `updateProfile` action |
 | `getCurrentProfile` | — | `Profile \| null` | session | All profile actions, most pages |
-| `updateProfileFields` | `id`, partial of `full_name \| username \| phone \| job_title \| theme \| timezone \| is_on_leave \| avatar_url` | `{ data, error }` | session | `updateProfile`, `updateProfileAvatar`, `createUser` (phone/job_title) |
+| `updateProfileFields` | `id`, partial of `full_name \| username \| phone \| job_title \| theme \| app_icon \| timezone \| is_on_leave \| avatar_url` | `{ data, error }` | session | `updateProfile`, `updateProfileAvatar`, `createUser` (phone/job_title) |
 | `updateAuthorization` | `id`, `role`, `domain` | `{ data, error }` | session | `updateUserAuthorization` |
 | `setProfileActive` | `id`, `is_active` | `{ data, error }` | session | `toggleUserActive` |
-| `getAssignableUsers` | `{ domain?, agentsOnly? }` | `AssignableUser[]` | session | THE assignable-users query (dry-audit M-11) — default all active non-guest users any domain (subtask/Gia pickers); `domain`/`agentsOnly` scope it for lead/deal assignment pools |
+| `getAssignableUsers` | `{ domain?, roles? }` | `AssignableUser[]` | session | THE assignable-users query (dry-audit M-11) — default all active non-guest users any domain (subtask/Gia pickers); `domain` scopes to one domain; `roles` restricts to a role set (lead/deal pools pass `LEAD_ASSIGNABLE_ROLES = ['agent','manager']` — managers carry leads). React `cache()`-memoised per request. |
 
-**Note on `updateProfileFields` allow-list:** the `Pick` includes `is_on_leave`, but no user-management UI writes it today (the `is_on_leave` flag is set elsewhere / reserved). The `updateProfile` action only maps `full_name`, `username`, `job_title`, `phone`, `theme`, `timezone` into the field set — never `is_on_leave`, `avatar_url` (avatar has its own action), or auth fields.
+**Note on `updateProfileFields` allow-list:** the `Pick` includes `is_on_leave`, but no user-management UI writes it today (the `is_on_leave` flag is set elsewhere / reserved). The `updateProfile` action maps `full_name`, `username`, `job_title`, `phone`, `theme`, `app_icon`, `timezone` into the field set — never `is_on_leave`, `avatar_url` (avatar has its own action), or auth fields. (`app_icon` rides this existing action — the PWA icon picker on `/profile` persists `profiles.app_icon` exactly like `theme`; no new persist action.)
 
 **No admin client in profiles-service.** User **creation** uses `createAdminClient()` only inside `src/lib/actions/profiles.ts` for Auth Admin API.
 
@@ -438,7 +444,7 @@ All use **`createClient()`** from `src/lib/supabase/server.ts` (session/cookie c
 
 ### 6. Actions — profiles.ts
 
-Every action: Zod first (Rule 02) → `getCurrentProfile()` (Rule 09) → service → `{ data, error }` (Rule 10).
+Every action: Zod first (Rule 02) → `requireProfile(roles?)` from `lib/actions/_auth.ts` (Rule 09 / A-18) → service → `{ data, error }` (Rule 10). `requireProfile` is THE session/role guard — never a hand-rolled `getCurrentProfile()` + role-`includes` block. `createUser`/`inviteUser` pass `ROLES_CAN_CREATE_USER`; `updateUserAuthorization`/`toggleUserActive` pass `['admin','founder']`; `updateProfile`/`updateProfileAvatar`/`getAssignableUsersAction` call bare `requireProfile()` then check own-vs-privileged. `getCurrentProfile()` remains the RSC/page-layer helper (the detail/list pages use it); the action-layer guard is `requireProfile`.
 
 #### createUser
 
@@ -498,7 +504,7 @@ Every action: Zod first (Rule 02) → `getCurrentProfile()` (Rule 09) → servic
 | Schema | Fields | Key constraints |
 | ------ | ------ | --------------- |
 | `createUserSchema` | full_name, email, password, role, domain, job_title?, phone? | role/domain ∈ enums; empty strings → null for optional text |
-| `updateProfileSchema` | id (uuid), optional full_name, username, job_title, phone, theme, timezone | username regex `^[a-z0-9_]+$`; theme enum |
+| `updateProfileSchema` | id (uuid), optional full_name, username, job_title, phone, theme, app_icon, timezone | username regex `^[a-z0-9_]+$`; theme enum (`THEME_ENUM`); `app_icon` enum (`ICON_ENUM`, migration 0121 PWA icon picker) |
 | `updateAuthorizationSchema` | id, role, domain | both required enums |
 | `toggleUserActiveSchema` | id, is_active (boolean) | |
 | `inviteUserSchema` | full_name, email, role, domain, job_title? | no password |
@@ -521,9 +527,9 @@ Every action: Zod first (Rule 02) → `getCurrentProfile()` (Rule 09) → servic
 #### UsersTable
 
 - **Filtering:** **Client-side** `useMemo` over full `users` prop — **not** server-side URL params (deliberate; team size is low, single `getAllProfiles()` fetch)
-- **Controls:** `SearchBar` (name/email/job_title haystack); role `<select>` (single); domain `<select>` (single)
-- **Filter bar chrome:** `SlidersHorizontal` + **active-count badge** (accent pill, `--theme-accent` bg / `--theme-accent-fg`) when search/role/domain active; trailing `N members` count (`marginLeft: auto`)
-- **Display:** Card list — `UserCard` is a `motion.div` row, **not** `Table<T>`. (Note: the `src/components/CLAUDE.md` "Component Sweep — 2026-05-29" table lists UsersTable under "Raw `<table>` → `Table`"; that entry is stale for this file — the shipped component is the card-list pattern. `SearchBar` and `Avatar` adoption *are* accurate.) Each card links to `/admin/users/[id]` via a `Pencil` "Edit" link.
+- **Controls:** composes the shared **`<FilterBar>`** (`src/components/ui/FilterBar.tsx`) — it owns the search box (name/email/job_title haystack), the sliders icon, and the active-count badge; UsersTable passes role and domain `<select>` dropdowns as children. UsersTable migrated onto `<FilterBar>` on 2026-06-12 (changelog "Consolidation (R-01/R-04): … admin UsersTable … now compose `<FilterBar>`") — it no longer imports `SearchBar` directly or hand-rolls a search input.
+- **Filter bar chrome:** the `SlidersHorizontal` icon + **active-count badge** (accent pill, `--theme-accent` bg / `--theme-accent-fg`) when search/role/domain active are now `<FilterBar>`'s built-in chrome; trailing `N members` count (`marginLeft: auto`).
+- **Display:** Card list — `UserCard` is a `motion.div` row, **not** `Table<T>`. (Note: the `src/components/CLAUDE.md` "Component Sweep — 2026-05-29" table lists UsersTable under "Raw `<table>` → `Table`"; that entry is stale for this file — the shipped component is the card-list pattern. The Sweep's "SearchBar adoption" detail is likewise superseded: the search field now arrives via `<FilterBar>`, not a standalone `SearchBar` import. `Avatar` adoption *is* accurate.) Each card links to `/admin/users/[id]` via a `Pencil` "Edit" link.
 - **Role pill colours:** `getRolePillStyle()` — founder/admin → accent surface; manager → `--color-info-*`; agent → paper-subtle; guest → tertiary. Status dot: `--color-success` active / tertiary inactive; label shows "On leave" when `is_on_leave`.
 - **Motion:** staggered Framer Motion `opacity 0→1, y 4→0`, delay `min(index * 80, 320) ms`, `EASE_OUT_EXPO`; hover `translateY(-1px)` + `--shadow-2`
 - **Empty state:** Playfair italic — "No team members yet." / "No members match your filters." with tertiary subcopy (inline in component, not shared empty-state component)
@@ -614,7 +620,7 @@ Every action: Zod first (Rule 02) → `getCurrentProfile()` (Rule 09) → servic
 #### UserStatusControls
 
 - **Account toggle:** `toggleUserActive` — only if `isPrivileged`; flips `is_active`; copy explains login lockout
-- **Routing toggle:** `toggleAgentRouting` — if `user.role === 'agent'` && `canToggleRouting` && `routingConfig` loaded; manager/admin/founder
+- **Routing toggle:** `toggleAgentRouting` — rendered only when `user.role === 'agent'` && `canToggleRouting` && `routingConfig` loaded; actor is manager/admin/founder. **Post-0124 gap:** the page gates the `routingConfig` fetch on `user.role === 'agent'` (page.tsx ~L34), so even though migration 0124 put **managers** in the routing pool (and auto-creates their config row), a manager's pool toggle is **not** surfaced here — it lives only in `/settings`. The detail page intentionally still exposes the toggle for agents only.
 - **Manager view-only strip:** if neither toggle shown, shows Active/Inactive + on-leave text
 
 #### ProfileAvatarSection (cross-reference — `/profile`)
@@ -738,7 +744,7 @@ Detail pages use back + title; **no** page-title-dot on detail titles in admin u
 
 8. **Two-layer security (A-09):** server action role check **and** RLS — never rely on one alone.
 
-9. **`agent_routing_config` auto-created idempotently** — `ON CONFLICT (agent_id) DO NOTHING` on agent insert/role promotion.
+9. **`agent_routing_config` auto-created idempotently** — `ON CONFLICT (agent_id) DO NOTHING` on insert / role-change into a pool role. Pool roles = `('agent','manager')` since migration 0124 (mirrors `ROUTING_POOL_ROLES` / `LEAD_ASSIGNABLE_ROLES`).
 
 10. **Never hard-delete a profile** — soft deactivate only; no DELETE policy on `profiles`.
 

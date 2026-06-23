@@ -352,9 +352,9 @@ Column-header click sort is not implemented and must not be added without a spec
 
 **URL param:** `going_cold=true`
 
-**Threshold constant:** `COLD_LEAD_THRESHOLD_DAYS = 5` in `src/lib/constants/leads.ts`.
+**Threshold constant:** `COLD_LEAD_THRESHOLD_DAYS = 5` in `src/lib/constants/leads.ts`. **The cutoff is computed ONLY via `goingColdCutoff()`** (same file) — never re-inline `new Date(Date.now() - …)`. The three TS consumers (`getLeadsByRole`, `getLeadsForExport`, `getGoingColdLeads`) call it; the count RPC (`get_leads_status_counts`) receives the cutoff as `p_going_cold` from `getLeadsByRole` so it cannot drift. The dashboard widget reads the same window in SQL via `public.cold_lead_cutoff()` (migration 0140), whose `interval` is pinned to the constant. **Rolling window (now − 5×24h), not an IST calendar boundary** — every consumer measures the same relative offset at query time, so TS `Date.now()` and SQL `now()` are correct as-is (do not "unify the clock").
 
-**Service logic:** `last_activity_at < (now - 5 days)` AND `status NOT IN ('won','lost','junk')`. Applied in `getLeadsByRole` and `getLeadsForExport` after the search filter, before `.range()`.
+**Service logic:** `last_activity_at < goingColdCutoff()` AND `status NOT IN ('won','lost','junk')`. Applied in `getLeadsByRole` and `getLeadsForExport` after the search filter, before `.range()`.
 
 **NULL `last_activity_at` leads are intentionally excluded** by PostgreSQL `<` semantics — NULL is never less than a timestamp. Those leads (never updated since backfill) are handled by SLA-01A.
 

@@ -22,6 +22,7 @@ import { formatCompact, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { useChartTokens, resolveColorMap } from '@/components/ui/charts/useChartTokens';
 import { TabSelector } from '@/components/ui/TabSelector';
 import { StatAtom } from '@/components/performance/StatAtom';
+import { DomainLeadsDrillModal, type DomainDrillKind } from '@/components/performance/DomainLeadsDrillModal';
 import { DomainTargetMeter } from '@/components/performance/DomainTargetMeter';
 import { useToast } from '@/hooks/useToast';
 import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
@@ -61,6 +62,7 @@ function DomainStatCard({
   target,
   canEditTargets,
   onSaveTarget,
+  onTileClick,
 }: {
   card:              DomainHealthCard;
   resolvedDotColors: Record<string, string>;
@@ -69,6 +71,8 @@ function DomainStatCard({
   target:            number | null;
   canEditTargets:    boolean;
   onSaveTarget:      (domain: AppDomain, value: number) => Promise<boolean>;
+  /** Opens the shared leads drill for this domain's metric (dossier rows). */
+  onTileClick:       (domain: AppDomain, kind: DomainDrillKind) => void;
 }) {
   const domainColor = resolvedDotColors[card.domain] ?? 'var(--theme-accent)';
   const domainLabel = DOMAIN_LABELS[card.domain] ?? card.domain;
@@ -145,31 +149,37 @@ function DomainStatCard({
         </h2>
       </div>
 
-      {/* Stats row */}
+      {/* Stats row — each tile is a tap target opening the shared leads drill
+          (rows link to the dossier), mirroring the agent panel's stat tiles.
+          Leads→all · Calls→called leads · Deals Closed/Revenue→won leads. */}
       <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
         <StatAtom
           label="Leads"
           value={formatCompact(card.totalLeads)}
           paletteIndex={0}
           delay={baseDelay + 40}
+          onClick={() => onTileClick(card.domain, 'all')}
         />
         <StatAtom
           label="Calls"
           value={formatCompact(card.totalCallsMade)}
           paletteIndex={1}
           delay={baseDelay + 80}
+          onClick={() => onTileClick(card.domain, 'calls')}
         />
         <StatAtom
           label="Deals Closed"
           value={formatCompact(card.totalDeals)}
           paletteIndex={2}
           delay={baseDelay + 120}
+          onClick={() => onTileClick(card.domain, 'won')}
         />
         <StatAtom
           label="Revenue"
           value={formatCurrencyCompact(card.totalRevenue)}
           paletteIndex={3}
           delay={baseDelay + 160}
+          onClick={() => onTileClick(card.domain, 'won')}
         />
       </div>
 
@@ -348,6 +358,10 @@ export function DomainOverviewPanel({
   const [, startTransition]           = useTransition();
   const isMountedRef                  = useRef(false);
 
+  // Domain-card tile drill — one modal at the panel level (the AgentDetailPanel
+  // pattern), fetch-on-open. null = closed.
+  const [drill, setDrill] = useState<{ domain: AppDomain; kind: DomainDrillKind } | null>(null);
+
   // domain → monthly deals-closed target (null = not set)
   const [targets, setTargets] = useState<Partial<Record<AppDomain, number>>>(() =>
     Object.fromEntries(initialTargets.map((t) => [t.domain, t.target_value])),
@@ -503,6 +517,7 @@ export function DomainOverviewPanel({
                 target={targets[domain] ?? null}
                 canEditTargets={canEditTargets}
                 onSaveTarget={handleSaveTarget}
+                onTileClick={(d, kind) => setDrill({ domain: d, kind })}
               />
             );
           })}
@@ -579,6 +594,19 @@ export function DomainOverviewPanel({
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Domain-card tile drill — the leads behind the clicked metric, each row a
+          dossier Link. Portals to document.body (DrillModalShell), so it stays
+          interactive through the refetch dim above. */}
+      <DomainLeadsDrillModal
+        open={drill !== null}
+        domain={drill?.domain ?? null}
+        kind={drill?.kind ?? null}
+        period={period}
+        customFrom={customFrom}
+        customTo={customTo}
+        onClose={() => setDrill(null)}
+      />
     </motion.div>
   );
 }

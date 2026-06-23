@@ -16,6 +16,7 @@ import {
 import type { WhatsAppPeriod } from '@/lib/constants/whatsapp-period';
 import { getWhatsAppPeriodRange } from '@/lib/utils/whatsapp-period';
 import { mapRows } from '@/lib/utils/rows';
+import { signMediaPath } from '@/lib/services/whatsapp-media';
 import type { WhatsAppConversation, WhatsAppMessage } from '@/lib/types/whatsapp';
 
 export type WhatsAppConversationListFilters = {
@@ -258,7 +259,16 @@ export async function getMessages(
 
   if (error || !data) return [];
 
-  return mapRows<WaMessageRow, WhatsAppMessage>(data, mapMessageRow);
+  const messages = mapRows<WaMessageRow, WhatsAppMessage>(data, mapMessageRow);
+
+  // Media rows store a durable bucket PATH in media_url (migration 0141); mint a
+  // short-lived signed url so the client can render it. Legacy/fallback rows that
+  // hold a raw url pass through unchanged (signMediaPath detects http(s)).
+  return Promise.all(
+    messages.map(async (m) =>
+      m.media_url ? { ...m, media_url: await signMediaPath(m.media_url) } : m,
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────

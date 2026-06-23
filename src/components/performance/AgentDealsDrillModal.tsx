@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { DrillModalShell } from './DrillModalShell';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
@@ -89,20 +90,23 @@ export function AgentDealsDrillModal({ open, agentId, agentName, domain, onClose
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           {rows.map((deal) => {
             const type = dealTypeLabel(deal.deal_type);
-            return (
-              <div
-                key={deal.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 'var(--space-3)',
-                  padding: 'var(--space-3) var(--space-4)',
-                  background: 'var(--theme-paper-subtle)',
-                  border: '1px solid var(--theme-paper-border)',
-                  borderRadius: 'var(--radius-md)',
-                }}
-              >
+            // A deal links to its LEAD dossier only when it has one — walk-in deals
+            // (lead_id null) have nowhere to navigate, so they stay a plain row.
+            const leadHref = deal.lead_id
+              ? `/leads/${deal.lead?.slug ?? deal.lead_id}?from=${encodeURIComponent('/performance')}`
+              : null;
+            const rowStyle = {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 'var(--space-3)',
+              padding: 'var(--space-3) var(--space-4)',
+              background: 'var(--theme-paper-subtle)',
+              border: '1px solid var(--theme-paper-border)',
+              borderRadius: 'var(--radius-md)',
+            } as const;
+            const rowInner = (
+              <>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <span
                     style={{
@@ -139,6 +143,20 @@ export function AgentDealsDrillModal({ open, agentId, agentName, domain, onClose
                 >
                   {formatCurrency(deal.deal_amount)}
                 </span>
+              </>
+            );
+            return leadHref ? (
+              <Link
+                key={deal.id}
+                href={leadHref}
+                className="serene-pressable serene-touch"
+                style={{ ...rowStyle, textDecoration: 'none', cursor: 'pointer' }}
+              >
+                {rowInner}
+              </Link>
+            ) : (
+              <div key={deal.id} style={rowStyle}>
+                {rowInner}
               </div>
             );
           })}

@@ -3,13 +3,22 @@
  * One-time Trigger.dev reminder jobs for OS Tasks.
  *
  * Exports:
- *   scheduleTaskReminder(taskId, dueAt, assignedTo) — fires at dueAt; no-op if dueAt is in the past
+ *   scheduleTaskReminder(taskId, dueAt, assignedTo) — arms the at-due reminder
+ *                                                     AND the -30m due-soon
+ *                                                     WhatsApp; no-op if dueAt
+ *                                                     is in the past
  *   cancelTaskReminder(taskId)                      — cancels any pending run for this task
- *                                                     (due reminder AND overdue check — same tag)
- *   sendTaskReminderTask  — at due: task_due in-app for every category; for
- *                           lead-linked tasks (a task_gia_meta row exists)
- *                           additionally the TASK-01A WhatsApp reminder and
- *                           arming of the TASK-01B overdue check
+ *                                                     (due-soon, due reminder AND
+ *                                                     overdue check — same tag)
+ *   sendTaskDueSoonTask   — at due − 30 min: TASK-01A WhatsApp "due soon" to the
+ *                           assigned agent for EVERY still-open task (lead or
+ *                           not), via getTaskWithAssignee
+ *   sendTaskReminderTask  — at due: task_due in-app for every category; the
+ *                           TASK-01A agent overdue WhatsApp for EVERY still-open
+ *                           task (lead-agnostic, getTaskWithAssignee); plus for
+ *                           lead-linked tasks (a task_gia_meta row exists) the
+ *                           lead-shaped TASK-01A reminder and arming of the
+ *                           TASK-01B overdue check
  *   checkTaskOverdueTask  — at due + TASK-01B threshold: clearing-event checks,
  *                           exactly-once tasks.overdue_at stamp, domain-manager
  *                           escalation (in-app + WhatsApp)
@@ -57,6 +66,39 @@
 import { task, tasks, runs } from "@trigger.dev/sdk/v3";
 
 // ─────────────────────────────────────────────
+// Oversight overdue event — emit ONE task_events 'overdue' row after the
+// once-only overdue_at stamp (checkTaskOverdueTask). System actor (no human).
+// Server-only deps are dynamic-imported so they stay out of the Trigger.dev
+// build scan (the file's convention). Best-effort: emitTaskEvent never throws.
+// Domain is the ASSIGNEE's (work-ownership axis), via resolveTaskDomain — lead
+// overdue tasks are personal (no group), so groupId: null falls to the assignee.
+// ─────────────────────────────────────────────
+async function emitOverdueEvent(
+  taskId: string,
+  assignedTo: string | null,
+  title: string | null,
+  dueAt: string | null,
+): Promise<void> {
+  const { emitTaskEvent, resolveTaskDomain } = await import(
+    "@/lib/services/task-events"
+  );
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const domain = await resolveTaskDomain(createAdminClient(), {
+    groupId: null,
+    assignedTo,
+  });
+  await emitTaskEvent({
+    taskId,
+    domain,
+    actorId: null,
+    subjectId: assignedTo,
+    eventType: "overdue",
+    taskTitle: title,
+    meta: { due_at: dueAt },
+  });
+}
+
+// ─────────────────────────────────────────────
 // Task definition — must be exported for Trigger.dev scan
 // ─────────────────────────────────────────────
 
@@ -79,11 +121,77 @@ export const sendTaskReminderTask = task({
       console.error("[send-task-reminder] notification failed:", err);
     });
 
+    // ── Agent overdue WhatsApp — EVERY task (lead or not), at the due moment ──
+    // This is the agent's own "your task just went overdue" ping. It fires for
+    // any still-open task via getTaskWithAssignee (no task_gia_meta dependency).
+    // The lead manager escalation below (TASK-01B) is separate and unchanged.
+    // Gated by TASK-01A.active + the 'whatsapp' channel so it shares the same
+    // on/off switch as the due-soon reminder.
+    try {
+      const { getSlaPolicy, getTaskWithAssignee } =
+        await import("@/lib/services/sla-service");
+
+      const duePolicy = await getSlaPolicy("TASK-01A");
+      if (duePolicy?.active && duePolicy.channels.includes("whatsapp")) {
+        const actx = await getTaskWithAssignee(payload.taskId);
+        // Only ping if the task is still open at its due time.
+        if (
+          actx?.assignee &&
+          actx.task.due_at &&
+          ["to_do", "in_progress", "in_review"].includes(actx.task.status)
+        ) {
+          const dueTimeIst = new Date(actx.task.due_at).toLocaleTimeString("en-US", {
+            timeZone: "Asia/Kolkata",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          });
+          const { sendTaskOverdueAgentNotification } =
+            await import("@/lib/services/whatsapp-api");
+          // Awaited so the Gupshup send settles before the run completes.
+          await sendTaskOverdueAgentNotification(
+            actx.assignee.id,
+            actx.assignee.phone,
+            actx.assignee.first_name,
+            actx.task.title,
+            dueTimeIst,
+          );
+        }
+      }
+    } catch (err) {
+      console.error("[send-task-reminder] agent overdue WhatsApp failed:", err);
+    }
+
+    // ── Overdue check arming — EVERY task (lead or not) ──────────────────────
+    // TASK-01B fires at due + threshold and escalates to a manager. For lead
+    // tasks the manager pool is the lead's domain; for non-lead tasks it is the
+    // assignee's manager (reports_to → domain). The check itself branches; here
+    // we just arm it for any still-open task with a due date.
+    try {
+      const { getSlaPolicy, getTaskWithAssignee } =
+        await import("@/lib/services/sla-service");
+
+      const actx = await getTaskWithAssignee(payload.taskId);
+      const overduePolicy = await getSlaPolicy("TASK-01B");
+      if (
+        overduePolicy?.active &&
+        actx?.task.due_at &&
+        ["to_do", "in_progress", "in_review"].includes(actx.task.status)
+      ) {
+        await scheduleTaskOverdueCheck(
+          payload.taskId,
+          new Date(actx.task.due_at),
+          overduePolicy.threshold_minutes,
+        );
+      }
+    } catch (err) {
+      console.error("[send-task-reminder] overdue-check arming failed:", err);
+    }
+
     // ── Phase 2 (config-driven engine): lead-linked due-time extension ───────
-    // TASK-01A: WhatsApp reminder to the assigned agent — lead-linked tasks
-    // (tasks with a task_gia_meta row) ONLY (the template is lead-shaped;
-    // personal/group tasks stay in-app only, above).
-    // TASK-01B: arm the overdue check at due + threshold.
+    // TASK-01A: lead-shaped WhatsApp reminder to the assigned agent — lead-linked
+    // tasks (a task_gia_meta row exists) ONLY (the template carries lead name +
+    // phone; non-lead tasks already got the task-shaped agent ping above).
     // Policies are read PER RUN — never cached at module scope.
     try {
       const { getSlaPolicy, getTaskWithGiaContext } =
@@ -113,15 +221,6 @@ export const sendTaskReminderTask = task({
           ctx.lead.id,
         );
       }
-
-      const overduePolicy = await getSlaPolicy("TASK-01B");
-      if (overduePolicy?.active) {
-        await scheduleTaskOverdueCheck(
-          payload.taskId,
-          new Date(ctx.task.due_at),
-          overduePolicy.threshold_minutes,
-        );
-      }
     } catch (err) {
       console.error("[send-task-reminder] gia due-time extension failed:", err);
     }
@@ -130,11 +229,13 @@ export const sendTaskReminderTask = task({
 
 // ─────────────────────────────────────────────
 // Overdue escalation — check-task-overdue (Phase 2, policy TASK-01B)
-// Fires at due_at + threshold. Clearing events (any one exits silently):
-//   task completed/cancelled · due_at moved · a lead activity logged after due.
-// Otherwise stamps tasks.overdue_at EXACTLY ONCE (UPDATE … WHERE overdue_at IS
-// NULL — the losing racer gets zero rows and must not notify) and notifies the
-// lead's domain managers in-app + WhatsApp.
+// Fires at due_at + threshold for EVERY task. Clearing events (any one exits
+// silently): task completed/cancelled · due_at moved · (lead tasks only) a lead
+// activity logged after due. Otherwise stamps tasks.overdue_at EXACTLY ONCE
+// (UPDATE … WHERE overdue_at IS NULL — the losing racer gets zero rows and must
+// not notify), then escalates to a manager:
+//   • lead task     → the lead's domain managers, lead-shaped template
+//   • non-lead task → the assignee's manager (reports_to → domain), task-shaped
 // ─────────────────────────────────────────────
 
 export const checkTaskOverdueTask = task({
@@ -144,6 +245,8 @@ export const checkTaskOverdueTask = task({
     const {
       getSlaPolicy,
       getTaskWithGiaContext,
+      getTaskWithAssignee,
+      getAssigneeManagers,
       hasLeadActivityAfter,
       markTaskOverdueOnce,
       getManagersByDomain,
@@ -155,8 +258,7 @@ export const checkTaskOverdueTask = task({
     if (!policy?.active) return;
 
     const ctx = await getTaskWithGiaContext(payload.taskId);
-    if (!ctx || !ctx.lead) return;
-    const lead = ctx.lead; // capture — narrowing doesn't survive into closures below
+    if (!ctx) return;
 
     // Clearing event 1: task closed.
     if (["completed", "cancelled"].includes(ctx.task.status)) return;
@@ -170,36 +272,98 @@ export const checkTaskOverdueTask = task({
       return;
     }
 
-    // Clearing event 2: the agent did something on this lead after due time.
-    if (await hasLeadActivityAfter(lead.id, ctx.task.due_at)) return;
-
-    // Exactly-once stamp — losing a race (or a retry after a crash mid-notify
-    // already stamped) exits without a duplicate escalation.
-    const stamped = await markTaskOverdueOnce(payload.taskId, new Date());
-    if (!stamped) return;
-
-    const managers = await getManagersByDomain(lead.domain);
-    if (managers.length === 0) {
-      console.error(
-        `[check-task-overdue] no escalation target: task=${payload.taskId} domain=${lead.domain}`,
-      );
-      return;
-    }
-    const managerIds = managers.map((m) => m.id);
-
-    const leadFirst = lead.first_name ?? "A lead";
-    const leadName = lead.last_name
-      ? ` `
-      : leadFirst;
-    const agentName =
-      (await getProfileFullName(ctx.task.assigned_to)) ?? "Unassigned";
-    // IST human time, "4:00 PM" — never UTC, never ISO (template {{5}} contract).
+    // IST human time, "4:00 PM" — never UTC, never ISO (template due-time contract).
     const dueTimeIst = new Date(ctx.task.due_at).toLocaleTimeString("en-US", {
       timeZone: "Asia/Kolkata",
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
     });
+    const agentName =
+      (await getProfileFullName(ctx.task.assigned_to)) ?? "Unassigned";
+
+    // ── Lead task path — byte-identical to the original behaviour ────────────
+    if (ctx.lead) {
+      const lead = ctx.lead; // capture — narrowing doesn't survive into closures
+
+      // Clearing event 2 (lead only): the agent did something on this lead after due.
+      if (await hasLeadActivityAfter(lead.id, ctx.task.due_at)) return;
+
+      // Exactly-once stamp — losing a race (or a retry after a crash mid-notify
+      // already stamped) exits without a duplicate escalation.
+      const stamped = await markTaskOverdueOnce(payload.taskId, new Date());
+      if (!stamped) return;
+
+      // Oversight event — emitted ONCE, right after the once-only stamp (a retry
+      // that lost the stamp returns above, so no duplicate event). System actor
+      // (no human caused it); domain = the assignee's (work-ownership axis), not
+      // the lead's — resolveTaskDomain owns that derivation (R-01).
+      await emitOverdueEvent(payload.taskId, ctx.task.assigned_to, ctx.task.title, ctx.task.due_at);
+
+      const managers = await getManagersByDomain(lead.domain);
+      if (managers.length === 0) {
+        console.error(
+          `[check-task-overdue] no escalation target: task=${payload.taskId} domain=${lead.domain}`,
+        );
+        return;
+      }
+      const managerIds = managers.map((m) => m.id);
+
+      const leadFirst = lead.first_name ?? "A lead";
+      const leadName = lead.last_name ? `${leadFirst} ${lead.last_name}` : leadFirst;
+
+      if (policy.channels.includes("in_app")) {
+        const { createNotification } =
+          await import("@/lib/services/notifications-service");
+        await Promise.allSettled(
+          managerIds.map((managerId) =>
+            createNotification({
+              recipient_id: managerId,
+              type: "task_overdue_manager",
+              notificationKey: "task_overdue_manager",  // SEAM A — per-user control plane (0133)
+              title: `Task overdue — ${leadName}`,
+              body: `${agentName}'s task "${ctx.task.title}" was due at ${dueTimeIst} IST with no activity since.`,
+              action_url: `/leads/${lead.id}`,
+            }),
+          ),
+        );
+      }
+
+      if (policy.channels.includes("whatsapp")) {
+        const { sendTaskOverdueManagerNotification } =
+          await import("@/lib/services/whatsapp-api");
+        // Awaited — the run must outlive the Gupshup sends. Swallows its own errors.
+        await sendTaskOverdueManagerNotification(
+          managerIds,
+          agentName,
+          leadName,
+          ctx.task.title,
+          dueTimeIst,
+          lead.id,
+        );
+      }
+      return;
+    }
+
+    // ── Non-lead task path — escalate to the assignee's manager ──────────────
+    const actx = await getTaskWithAssignee(payload.taskId);
+    if (!actx?.assignee) return; // no assignee → no manager to resolve
+
+    // Exactly-once stamp (same guard as the lead path).
+    const stamped = await markTaskOverdueOnce(payload.taskId, new Date());
+    if (!stamped) return;
+
+    // Oversight event — once, after the once-only stamp (same guard).
+    await emitOverdueEvent(payload.taskId, ctx.task.assigned_to, ctx.task.title, ctx.task.due_at);
+
+    const managers = await getAssigneeManagers(actx.assignee);
+    if (managers.length === 0) {
+      console.error(
+        `[check-task-overdue] no escalation target: non-lead task=${payload.taskId} assignee=${actx.assignee.id}`,
+      );
+      return;
+    }
+    const managerIds = managers.map((m) => m.id);
 
     if (policy.channels.includes("in_app")) {
       const { createNotification } =
@@ -210,25 +374,23 @@ export const checkTaskOverdueTask = task({
             recipient_id: managerId,
             type: "task_overdue_manager",
             notificationKey: "task_overdue_manager",  // SEAM A — per-user control plane (0133)
-            title: `Task overdue — ${leadName}`,
-            body: `${agentName}'s task "${ctx.task.title}" was due at ${dueTimeIst} IST with no activity since.`,
-            action_url: `/leads/`,
+            title: `Task overdue — ${ctx.task.title}`,
+            body: `${agentName}'s task "${ctx.task.title}" was due at ${dueTimeIst} IST and is still open.`,
+            action_url: `/tasks`,
           }),
         ),
       );
     }
 
     if (policy.channels.includes("whatsapp")) {
-      const { sendTaskOverdueManagerNotification } =
+      const { sendTaskOverdueManagerGenericNotification } =
         await import("@/lib/services/whatsapp-api");
       // Awaited — the run must outlive the Gupshup sends. Swallows its own errors.
-      await sendTaskOverdueManagerNotification(
+      await sendTaskOverdueManagerGenericNotification(
         managerIds,
         agentName,
-        leadName,
         ctx.task.title,
         dueTimeIst,
-        lead.id,
       );
     }
   },
@@ -262,6 +424,82 @@ async function scheduleTaskOverdueCheck(
 }
 
 // ─────────────────────────────────────────────
+// "Due soon" reminder — WhatsApp to the assigned agent 30 min BEFORE the
+// deadline, for EVERY task (lead or not). Lead-agnostic + task-shaped, via
+// getTaskWithAssignee. Exits silently if the task is already closed, the due
+// date moved, or the agent has no phone. Gated by TASK-01A.active + 'whatsapp'.
+// Must be exported for the Trigger.dev build scan.
+// ─────────────────────────────────────────────
+
+export const sendTaskDueSoonTask = task({
+  id: "send-task-due-soon",
+  retry: { maxAttempts: 3 },
+  run: async (payload: { taskId: string; dueAt: string }) => {
+    const { getSlaPolicy, getTaskWithAssignee } =
+      await import("@/lib/services/sla-service");
+
+    // Policy per run — a deactivated TASK-01A silences pending due-soon jobs too.
+    const policy = await getSlaPolicy("TASK-01A");
+    if (!policy?.active || !policy.channels.includes("whatsapp")) return;
+
+    const ctx = await getTaskWithAssignee(payload.taskId);
+    if (!ctx?.assignee || !ctx.task.due_at) return;
+
+    // Due date moved since this job was armed — the new due's own chain owns it.
+    if (new Date(ctx.task.due_at).getTime() !== new Date(payload.dueAt).getTime()) {
+      return;
+    }
+
+    // Only remind for still-open tasks.
+    if (!["to_do", "in_progress", "in_review"].includes(ctx.task.status)) return;
+
+    const dueTimeIst = new Date(ctx.task.due_at).toLocaleTimeString("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    const { sendTaskDueSoonAgentNotification } =
+      await import("@/lib/services/whatsapp-api");
+    await sendTaskDueSoonAgentNotification(
+      ctx.assignee.id,
+      ctx.assignee.phone,
+      ctx.assignee.first_name,
+      ctx.task.title,
+      dueTimeIst,
+    );
+  },
+});
+
+// Minutes before the deadline that the due-soon WhatsApp fires.
+const DUE_SOON_LEAD_MINUTES = 30;
+
+// ─────────────────────────────────────────────
+// Arm the due-soon WhatsApp at dueAt − 30 min. If less than 30 min remains
+// (or the deadline is already past but still in the future for the main
+// reminder), fire immediately (no delay). The due timestamp is embedded in the
+// idempotency key so a due_at edit gets its own job while retries dedupe.
+// Tagged with the same task-reminder-${taskId} tag so cancelTaskReminder
+// (delete / due edit / terminal status) sweeps it too.
+// ─────────────────────────────────────────────
+
+async function scheduleTaskDueSoon(taskId: string, dueAt: Date): Promise<void> {
+  const fireAt = new Date(dueAt.getTime() - DUE_SOON_LEAD_MINUTES * 60_000);
+
+  await tasks.trigger(
+    "send-task-due-soon",
+    { taskId, dueAt: dueAt.toISOString() },
+    {
+      // <30 min to deadline → fire immediately (no delay key).
+      ...(fireAt > new Date() ? { delay: fireAt } : {}),
+      idempotencyKey: `task-due-soon-${taskId}-${dueAt.toISOString()}`,
+      tags: [`task-reminder-${taskId}`],
+    },
+  );
+}
+
+// ─────────────────────────────────────────────
 // Schedule a one-time reminder at dueAt
 // Pre-mortem: if dueAt <= now(), this is a no-op (never errors).
 // ─────────────────────────────────────────────
@@ -275,6 +513,14 @@ export async function scheduleTaskReminder(
     // Due date is in the past — skip scheduling, do not error.
     return;
   }
+
+  // The -30m "due soon" WhatsApp rides alongside the at-due reminder. Armed
+  // here (rather than at each call site) so every scheduleTaskReminder caller
+  // gets it for free; the shared task-reminder-${taskId} tag means
+  // cancelTaskReminder sweeps it on delete / due edit / terminal status.
+  await scheduleTaskDueSoon(taskId, dueAt).catch((err) => {
+    console.error("[scheduleTaskReminder] due-soon arm failed (non-fatal):", err);
+  });
 
   await tasks.trigger(
     "send-task-reminder",

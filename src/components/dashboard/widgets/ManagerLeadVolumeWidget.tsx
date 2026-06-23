@@ -25,7 +25,6 @@ import type {
   DashboardLeadVolumeSummary,
   DashboardMultiDomainVolumeSummary,
 } from "@/lib/types";
-import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import { DOMAIN_LINE_COLORS } from "@/lib/constants/domain-colors";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 import { DOMAIN_LABELS, GIA_DOMAINS } from "@/lib/constants/domains";
@@ -116,7 +115,6 @@ function MultiLineTooltip({
 export function ManagerLeadVolumeWidget({
   role,
   initialData,
-  size = 'lg',
   dateRange: dateRangeProp,
   scopeDomain,
 }: WidgetProps & { dateRange?: DateRange }) {
@@ -221,15 +219,6 @@ export function ManagerLeadVolumeWidget({
     ? Object.values(multiData?.totals ?? {}).reduce((s, n) => s + n, 0)
     : (singleData?.total ?? 0);
 
-  const totalPx = parseInt(WIDGET_HEIGHT_BY_SIZE[size], 10);
-  const PADDING   = 40;
-  const HEADER    = 36;
-  const GAP       = 16;
-  const chartHeight = Math.max(
-    120,
-    totalPx - PADDING - HEADER - GAP * 2,
-  );
-
   return (
     <div
       style={{
@@ -241,7 +230,7 @@ export function ManagerLeadVolumeWidget({
         display: "flex",
         flexDirection: "column",
         gap: "var(--space-4)",
-        height: WIDGET_HEIGHT_BY_SIZE[size],
+        height: "100%",
         overflow: "hidden",
       }}
     >
@@ -315,19 +304,24 @@ export function ManagerLeadVolumeWidget({
       </div>
 
       {/* ── Chart — fills remaining space dynamically ── */}
+      {/* position:relative + an absolute-inset inner box so ResponsiveContainer
+          height="100%" resolves against a concrete pixel box — a bare flex:1
+          parent reports -1 during react-grid-layout's deferred layout pass. */}
       <div
         style={{
+          position: "relative",
           flex: 1,
           minHeight: 0,
           opacity: isPending ? 0.5 : 1,
           transition: "opacity 200ms",
         }}
       >
+       <div style={{ position: "absolute", inset: 0 }}>
         {!loaded ? null : isMultiMode ? (
           multiSeries.length === 0 ? (
-            <ChartEmpty height={chartHeight} />
+            <ChartEmpty height="100%" />
           ) : (
-            <ResponsiveContainer width="100%" height={chartHeight}>
+            <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={multiSeries}
                 margin={{ top: 4, right: 4, bottom: 0, left: -24 }}
@@ -400,9 +394,9 @@ export function ManagerLeadVolumeWidget({
             </ResponsiveContainer>
           )
         ) : singleSeries.length === 0 ? (
-          <ChartEmpty height={chartHeight} />
+          <ChartEmpty height="100%" />
         ) : (
-          <ResponsiveContainer width="100%" height={chartHeight}>
+          <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={singleSeries}
               margin={{ top: 4, right: 4, bottom: 0, left: -24 }}
@@ -454,12 +448,13 @@ export function ManagerLeadVolumeWidget({
             </LineChart>
           </ResponsiveContainer>
         )}
+       </div>
       </div>
     </div>
   );
 }
 
-function ChartEmpty({ height }: { height: number }) {
+function ChartEmpty({ height }: { height: number | string }) {
   return (
     <div
       style={{

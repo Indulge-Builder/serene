@@ -12,10 +12,13 @@ import { FirstTouchScorecard }                 from '@/components/performance/Fi
 import { AgentCallsDrillModal }                from '@/components/performance/AgentCallsDrillModal';
 import { AgentLeadsDrillModal }                from '@/components/performance/AgentLeadsDrillModal';
 import { AgentDealsDrillModal }                from '@/components/performance/AgentDealsDrillModal';
+import { AgentFirstTouchDrillModal }           from '@/components/performance/AgentFirstTouchDrillModal';
+import { AgentLeadsPredicateDrillModal, type DrillPredicate } from '@/components/performance/AgentLeadsPredicateDrillModal';
 import { DOMAIN_LABELS }                       from '@/lib/constants/domains';
+import type { FirstTouchBucketId }             from '@/lib/constants/performance';
 import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
 import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
-import type { AppDomain }                      from '@/lib/types/database';
+import type { AppDomain, LeadStatus, CallOutcome } from '@/lib/types/database';
 import type { PerformancePeriod, FirstTouchScorecard as FirstTouchScorecardData } from '@/lib/services/performance-service';
 
 // Recharts chunk loads in parallel with the panel's own metrics fetch (perf
@@ -100,12 +103,38 @@ type Props = {
 // agentName/domain/onClose). Won + Revenue both map to 'deals' (deck parity).
 type DrillKind = 'calls' | 'leads' | 'deals';
 
+// ─────────────────────────────────────────────
+// Module-level per-slice cache (the founder-deck `breakdowns` pattern, R-01).
+// Keyed by agent + domain + period + range, holding the already-fetched metrics +
+// scorecard. A remount for a slice we've already loaded this session (the common
+// case: click a drill lead → dossier → browser back) seeds instantly — no
+// skeleton, no round-trip. Cleared on a full reload; a period/range change is a
+// new key, so it never serves data for the wrong window. In-memory only.
+// ─────────────────────────────────────────────
+type DetailSlice = { metrics: AgentDetailMetrics; scorecard: FirstTouchScorecardData | null };
+const detailSliceCache = new Map<string, DetailSlice>();
+const sliceKey = (
+  agentId: string,
+  domain: AppDomain | null,
+  period: PerformancePeriod,
+  customFrom?: string,
+  customTo?: string,
+) => `${agentId}|${domain ?? ''}|${period}|${customFrom ?? ''}|${customTo ?? ''}`;
+
 export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }: Props) {
-  const [metrics, setMetrics]     = useState<AgentDetailMetrics | null>(null);
-  const [scorecard, setScorecard] = useState<FirstTouchScorecardData | null>(null);
+  // Seed synchronously from the cache so a back-nav / re-click paints the panel
+  // instantly with no skeleton flash and no fetch (the effect below confirms).
+  const seededKey   = sliceKey(agent.id, domain, period, customFrom, customTo);
+  const seeded      = detailSliceCache.get(seededKey) ?? null;
+  const [metrics, setMetrics]     = useState<AgentDetailMetrics | null>(seeded?.metrics ?? null);
+  const [scorecard, setScorecard] = useState<FirstTouchScorecardData | null>(seeded?.scorecard ?? null);
   const [error, setError]         = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(seeded === null);
   const [drill, setDrill]         = useState<DrillKind | null>(null);
+  // First-touch bucket drill — the bucket whose leads are being shown (null = closed).
+  const [ftBucket, setFtBucket]   = useState<FirstTouchBucketId | null>(null);
+  // Pipeline-status / call-outcome drill — the chart slice whose leads are shown.
+  const [predicateDrill, setPredicateDrill] = useState<DrillPredicate | null>(null);
 
   // Track which agent the current metrics belong to, so we know when to show
   // the full skeleton (new agent) vs the graceful dim overlay (same agent, new period).
@@ -113,6 +142,20 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
 
   useEffect(() => {
     let cancelled = false;
+    const key = sliceKey(agent.id, domain, period, customFrom, customTo);
+
+    // Cache hit (back-nav / re-click of an already-loaded slice): seed instantly,
+    // no skeleton, no round-trip. metricsAgentId is set so a later period change
+    // dims rather than full-skeletons.
+    const cached = detailSliceCache.get(key);
+    if (cached) {
+      setMetrics(cached.metrics);
+      setScorecard(cached.scorecard);
+      metricsAgentId.current = agent.id;
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
 
     const isAgentSwitch = metricsAgentId.current !== agent.id;
 
@@ -123,36 +166,42 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
       metricsAgentId.current = null;
       // Close any open drill modal so it can't leak the prior agent's data.
       setDrill(null);
+      setFtBucket(null);
+      setPredicateDrill(null);
     }
     setError(null);
     setIsLoading(true);
 
-    getAgentDetailMetricsAction(agent.id, domain, period, customFrom, customTo)
-      .then((result) => {
+    // Both reads settle together so the per-slice cache entry holds the whole
+    // panel (metrics + scorecard) — a later remount seeds in one shot. The
+    // scorecard stays best-effort (null on failure → card omits it).
+    let fetchedMetrics: AgentDetailMetrics | null = null;
+    let fetchedScorecard: FirstTouchScorecardData | null = null;
+
+    Promise.all([
+      getAgentDetailMetricsAction(agent.id, domain, period, customFrom, customTo),
+      getAgentFirstTouchScorecardAction(agent.id, domain, period, customFrom, customTo),
+    ])
+      .then(([metricsResult, scorecardResult]) => {
         if (cancelled) return;
         setIsLoading(false);
-        if (result.error || !result.data) {
-          setError(result.error ?? 'Failed to load.');
-        } else {
-          metricsAgentId.current = agent.id;
-          setMetrics(result.data);
+        if (metricsResult.error || !metricsResult.data) {
+          setError(metricsResult.error ?? 'Failed to load.');
+          return;
         }
+        fetchedMetrics   = metricsResult.data;
+        fetchedScorecard = scorecardResult.data ?? null;
+        metricsAgentId.current = agent.id;
+        setMetrics(fetchedMetrics);
+        setScorecard(fetchedScorecard);
+        // Cache the whole slice so a back-nav / re-click serves it instantly.
+        detailSliceCache.set(key, { metrics: fetchedMetrics, scorecard: fetchedScorecard });
       })
       .catch(() => {
         if (cancelled) return;
         setIsLoading(false);
         setError('Failed to load metrics.');
       });
-
-    // First-touch scorecard — independent fetch on the same agent/period effect
-    // (its own cached aggregate). A failure degrades silently to no card; the
-    // panel's main metrics error already covers the visible failure surface.
-    getAgentFirstTouchScorecardAction(agent.id, domain, period, customFrom, customTo)
-      .then((result) => {
-        if (cancelled) return;
-        if (result.data) setScorecard(result.data);
-      })
-      .catch(() => { /* non-fatal — card simply does not render */ });
 
     return () => { cancelled = true; };
   }, [agent.id, domain, period, customFrom, customTo]);
@@ -392,7 +441,10 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
       <AnimatePresence mode="wait">
         {metrics ? (
           <SectionCard label="Lead Pipeline" delay={240}>
-            <PipelineBar breakdown={metrics.pipelineBreakdown} />
+            <PipelineBar
+              breakdown={metrics.pipelineBreakdown}
+              onSegmentClick={(status) => setPredicateDrill({ kind: 'status', value: status as LeadStatus })}
+            />
           </SectionCard>
         ) : (
           <motion.div
@@ -429,7 +481,10 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             exit={{ opacity: 0 }}
             transition={{ duration: ENTER_DURATION, delay: 0.28, ease: EASE_OUT_EXPO }}
           >
-            <CallOutcomeBar breakdown={metrics.callOutcomeBreakdown} />
+            <CallOutcomeBar
+              breakdown={metrics.callOutcomeBreakdown}
+              onSliceClick={(outcome) => setPredicateDrill({ kind: 'outcome', value: outcome as CallOutcome })}
+            />
           </motion.div>
         ) : (
           <motion.div
@@ -462,7 +517,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
           rides the same agent/period fetch. Renders only once both have resolved. */}
       <AnimatePresence>
         {metrics && scorecard && (
-          <FirstTouchScorecard data={scorecard} delay={320} />
+          <FirstTouchScorecard data={scorecard} delay={320} onBucketClick={setFtBucket} />
         )}
       </AnimatePresence>
 
@@ -519,6 +574,32 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
         agentName={agent.full_name}
         domain={domain}
         onClose={() => setDrill(null)}
+      />
+    )}
+    {ftBucket && (
+      <AgentFirstTouchDrillModal
+        open
+        agentId={agent.id}
+        agentName={agent.full_name}
+        domain={domain}
+        bucketId={ftBucket}
+        period={period}
+        customFrom={customFrom}
+        customTo={customTo}
+        onClose={() => setFtBucket(null)}
+      />
+    )}
+    {predicateDrill && (
+      <AgentLeadsPredicateDrillModal
+        open
+        agentId={agent.id}
+        agentName={agent.full_name}
+        domain={domain}
+        predicate={predicateDrill}
+        period={period}
+        customFrom={customFrom}
+        customTo={customTo}
+        onClose={() => setPredicateDrill(null)}
       />
     )}
     </div>

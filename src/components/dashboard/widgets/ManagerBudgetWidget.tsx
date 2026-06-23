@@ -1,43 +1,49 @@
 "use client";
 
-import { RefreshCcw } from "lucide-react";
+import { useMemo } from "react";
+import { m as motion } from "framer-motion";
+import { RefreshCcw, Fuel } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { StatTile } from "@/components/ui/StatTile";
-import { getBudgetSummaryWidgetAction } from "@/lib/actions/dashboard";
+import { getBudgetGaugeWidgetAction } from "@/lib/actions/dashboard";
 import { resolvePresetToRange } from "@/lib/utils/date-range";
 import { formatCount, formatCurrencyCompact } from "@/lib/utils/numbers";
-import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
+import { EASE_SPRING, SLOW_DURATION } from "@/lib/constants/motion";
 import { useWidgetData } from "@/hooks/useWidgetData";
 import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
-import type { BudgetCampaignRow } from "@/lib/services/ad-spend-service";
+import { useWidgetDensityTier } from "@/hooks/useWidgetDensity";
+import type { BudgetGaugeSummary } from "@/lib/services/ad-spend-service";
 import type { WidgetProps } from "../DashboardWidgetSlot";
 
 /**
- * Campaign Budget — ad spend joined to lead/deal outcomes for the active
- * date range. Data is the /budget pipeline (getBudgetSummary) reused as a
- * widget: RSC-seeded on first paint, refetched through
- * getBudgetSummaryWidgetAction on range changes/refresh. Managers see only
- * their own domain's campaigns (pinned server-side via effectiveWidgetDomain).
+ * Campaign Budget — the ad-account FUEL GAUGE. The org-wide tank: total
+ * recharged is the full tank, spend is fuel burned, remaining is fuel left
+ * (recharged − spent, INR-only — the same balance rule as the /budget
+ * per-account report). A ROI sub-line (ROAS · CPL · leads) rides along.
+ *
+ * Data is the /budget pipeline (getBudgetSummary + getAccountRecharges) rolled
+ * into one gauge by buildBudgetGaugeSummary: RSC-seeded on first paint
+ * (initialData.budget_gauge), refetched through getBudgetGaugeWidgetAction on
+ * range change / refresh. ALWAYS org-wide — recharges carry no domain, so there
+ * is no per-domain "remaining" (that would be a finance error).
+ *
+ * Density-adaptive (the v4 spatial dashboard): a tiny cell shows the remaining
+ * headline + a thin gauge; a tall cell shows the full tank trio + the ROI line.
  */
-export function ManagerBudgetWidget({ role, initialData, size = "md", dateRange }: WidgetProps) {
-  const rscBudget = initialData?.budget_summary ?? null;
+export function ManagerBudgetWidget({ initialData, dateRange }: WidgetProps) {
+  const rscGauge = initialData?.budget_gauge ?? null;
   const range = dateRange ?? resolvePresetToRange("week");
+  const tier = useWidgetDensityTier();
 
-  const { data, loaded, isPending, refetch, apply } = useWidgetData<BudgetCampaignRow[]>({
-    seed: rscBudget,
+  const { data, loaded, isPending, refetch, apply } = useWidgetData<BudgetGaugeSummary>({
+    seed: rscGauge,
     fetcher: async () => {
-      const result = await getBudgetSummaryWidgetAction(range.from, range.to);
+      const result = await getBudgetGaugeWidgetAction(range.from, range.to);
       return { data: result.data };
     },
+    autoFetch: false,
     deps: [range.from, range.to],
   });
-  useDashboardCohortSync(rscBudget, dateRange, true, apply);
-
-  const rows = data ?? [];
-  const totalSpend   = rows.reduce((s, r) => s + r.totalSpend, 0);
-  const totalLeads   = rows.reduce((s, r) => s + r.leadCount, 0);
-  const totalRevenue = rows.reduce((s, r) => s + r.dealRevenue, 0);
-  const costPerLead  = totalLeads > 0 ? totalSpend / totalLeads : null;
+  useDashboardCohortSync(rscGauge, dateRange, true, apply);
 
   return (
     <div
@@ -49,13 +55,13 @@ export function ManagerBudgetWidget({ role, initialData, size = "md", dateRange 
         padding:       "var(--space-5)",
         display:       "flex",
         flexDirection: "column",
-        gap:           "var(--space-3)",
-        height:        WIDGET_HEIGHT_BY_SIZE[size],
+        gap:           "var(--space-4)",
+        height:        "100%",
         overflow:      "hidden",
       }}
     >
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: "var(--space-3)" }}>
         <p
           style={{
             fontSize:   "var(--text-md)",
@@ -63,9 +69,16 @@ export function ManagerBudgetWidget({ role, initialData, size = "md", dateRange 
             fontStyle:  "italic",
             color:      "var(--theme-text-primary)",
             margin:     0,
+            display:    "flex",
+            alignItems: "center",
+            gap:        "var(--space-2)",
+            minWidth:   0,
           }}
         >
-          Campaign Budget<span className="page-title-dot">.</span>
+          <Fuel style={{ width: 15, height: 15, strokeWidth: 1.5, color: "var(--theme-text-tertiary)", flexShrink: 0 }} />
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            Campaign Fuel<span className="page-title-dot">.</span>
+          </span>
         </p>
         <Button
           variant="ghost"
@@ -84,46 +97,143 @@ export function ManagerBudgetWidget({ role, initialData, size = "md", dateRange 
         />
       </div>
 
-      {loaded && rows.length === 0 ? (
-        <p
-          style={{
-            fontFamily: "var(--font-serif)",
-            fontStyle:  "italic",
-            fontSize:   "var(--text-sm)",
-            color:      "var(--theme-text-tertiary)",
-            textAlign:  "center",
-            margin:     0,
-            flex:       1,
-            display:        "flex",
-            alignItems:     "center",
-            justifyContent: "center",
-          }}
-        >
-          No ad spend recorded in this period.
-        </p>
+      {!loaded ? null : data === null || data.recharged === 0 ? (
+        <EmptyGauge spent={data?.spent ?? 0} />
       ) : (
+        <FuelGaugeBody gauge={data} tier={tier} isPending={isPending} />
+      )}
+    </div>
+  );
+}
+
+// ── The gauge body ──────────────────────────────────────────────────────────
+
+function FuelGaugeBody({
+  gauge,
+  tier,
+  isPending,
+}: {
+  gauge:     BudgetGaugeSummary;
+  tier:      "compact" | "standard" | "rich";
+  isPending: boolean;
+}) {
+  const consumed = gauge.consumed ?? 0; // recharged > 0 guaranteed by caller
+  const overspent = gauge.remaining < 0;
+  const pct = Math.round(consumed * 100);
+
+  // Fuel-tank intent: a depletion semantic (high consumption = low fuel = bad).
+  // Inverse of ProgressBar's auto-intent — here a near-full tank is success.
+  const { fill, accentText } = useMemo(() => {
+    if (overspent) return { fill: "var(--color-danger)", accentText: "var(--color-danger-text)" };
+    if (consumed >= 0.85) return { fill: "var(--color-warning)", accentText: "var(--color-warning-text)" };
+    return { fill: "var(--color-success)", accentText: "var(--color-success-text)" };
+  }, [overspent, consumed]);
+
+  // Remaining is the hero number; overspend renders the deficit in danger.
+  const remainingLabel = overspent
+    ? `−${formatCurrencyCompact(Math.abs(gauge.remaining))}`
+    : formatCurrencyCompact(gauge.remaining);
+
+  const showTrio  = tier !== "compact";
+  const showRoi   = tier === "rich";
+
+  return (
+    <div
+      style={{
+        display:        "flex",
+        flexDirection:  "column",
+        gap:            "var(--space-4)",
+        flex:           1,
+        minHeight:      0,
+        justifyContent: "center",
+        opacity:        isPending ? 0.5 : 1,
+        transition:     "opacity 200ms",
+      }}
+    >
+      {/* Hero — remaining fuel + % consumed */}
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "var(--space-3)" }}>
+        <div style={{ minWidth: 0 }}>
+          <p className="label-micro" style={{ color: "var(--theme-text-tertiary)", marginBottom: "var(--space-1)" }}>
+            {overspent ? "Over budget" : "Fuel remaining"}
+          </p>
+          <p
+            style={{
+              fontFamily:         "var(--font-mono)",
+              fontSize:           "var(--text-3xl)",
+              fontWeight:         "var(--weight-semibold)",
+              fontVariantNumeric: "tabular-nums",
+              color:              overspent ? "var(--color-danger)" : "var(--theme-text-primary)",
+              lineHeight:         "var(--leading-none)",
+              margin:             0,
+              whiteSpace:         "nowrap",
+            }}
+          >
+            {remainingLabel}
+          </p>
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <p
+            style={{
+              fontFamily:         "var(--font-mono)",
+              fontSize:           "var(--text-xl)",
+              fontWeight:         "var(--weight-semibold)",
+              fontVariantNumeric: "tabular-nums",
+              color:              accentText,
+              lineHeight:         "var(--leading-none)",
+              margin:             "0 0 var(--space-1)",
+            }}
+          >
+            {pct}%
+          </p>
+          <p className="label-micro" style={{ color: "var(--theme-text-tertiary)", margin: 0 }}>
+            burned
+          </p>
+        </div>
+      </div>
+
+      {/* The tank — transform-scaled fill (never animate width; DNA M-06) */}
+      <FuelTank consumed={consumed} fill={fill} overspent={overspent} />
+
+      {/* Recharged · Spent · Remaining trio (standard + rich) */}
+      {showTrio && (
         <div
           style={{
             display:             "grid",
-            gridTemplateColumns: "1fr 1fr",
-            alignContent:        "center",
-            flex:                1,
-            minHeight:           0,
-            opacity:             isPending ? 0.5 : 1,
-            transition:          "opacity 200ms",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap:                 "var(--space-2)",
+            paddingTop:          "var(--space-1)",
           }}
         >
-          <StatTile variant="cell" label="Spend" value={formatCurrencyCompact(totalSpend)} />
-          <StatTile variant="cell" label="Leads" value={formatCount(totalLeads)} />
-          <StatTile
-            variant="cell"
-            label="Cost / Lead"
-            value={costPerLead === null ? "—" : formatCurrencyCompact(costPerLead)}
+          <TankStat label="Recharged" value={formatCurrencyCompact(gauge.recharged)} color="var(--theme-text-primary)" />
+          <TankStat label="Spent"     value={formatCurrencyCompact(gauge.spent)}     color="var(--theme-text-primary)" />
+          <TankStat
+            label="Remaining"
+            value={remainingLabel}
+            color={overspent ? "var(--color-danger)" : "var(--color-success-text)"}
           />
-          <StatTile variant="cell" label="Deal Revenue" value={formatCurrencyCompact(totalRevenue)} />
         </div>
       )}
 
+      {/* ROI sub-line (rich only) */}
+      {showRoi && (
+        <div
+          style={{
+            display:        "flex",
+            alignItems:     "center",
+            gap:            "var(--space-3)",
+            flexWrap:       "wrap",
+            paddingTop:     "var(--space-3)",
+            borderTop:      "1px solid var(--theme-paper-border)",
+          }}
+        >
+          <RoiChip label="ROAS"  value={gauge.roas === null ? "—" : `${gauge.roas.toFixed(1)}×`} />
+          <RoiChip label="CPL"   value={gauge.costPerLead === null ? "—" : formatCurrencyCompact(gauge.costPerLead)} />
+          <RoiChip label="Leads" value={formatCount(gauge.leadCount)} />
+          <RoiChip label="Deals" value={formatCount(gauge.dealCount)} />
+        </div>
+      )}
+
+      {/* Footnotes — campaign count + non-INR exclusion */}
       <p
         style={{
           fontSize:   "var(--text-2xs)",
@@ -132,9 +242,166 @@ export function ManagerBudgetWidget({ role, initialData, size = "md", dateRange 
           flexShrink: 0,
         }}
       >
-        {formatCount(rows.length)} campaign{rows.length === 1 ? "" : "s"} with spend in this period
-        {role === "manager" ? " · your domain" : ""}
+        {formatCount(gauge.campaignCount)} campaign{gauge.campaignCount === 1 ? "" : "s"} with spend
+        {gauge.hasNonInr ? " · balance is INR only" : ""}
       </p>
+    </div>
+  );
+}
+
+/**
+ * The fuel tank bar. A rounded track with a transform-scaled fill (scaleX from
+ * the left — never animates width, per the Never-Do list / DNA M-06). When
+ * overspent the fill saturates to danger and a hatched overflow cap renders at
+ * the right edge so the bar reads "past full", not silently pinned at 100%.
+ */
+function FuelTank({
+  consumed,
+  fill,
+  overspent,
+}: {
+  consumed:  number;
+  fill:      string;
+  overspent: boolean;
+}) {
+  // Clamp the bar to the track; the % label above carries the true (possibly
+  // >100%) value, so the visual never lies about being "full" yet stays bounded.
+  const scaleX = Math.min(1, Math.max(0, consumed));
+
+  return (
+    <div
+      role="progressbar"
+      aria-valuenow={Math.round(consumed * 100)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label="Ad budget consumed"
+      style={{
+        position:     "relative",
+        width:        "100%",
+        height:       12,
+        background:   "var(--theme-paper-subtle)",
+        border:       "1px solid var(--theme-paper-border)",
+        borderRadius: "var(--radius-full)",
+        overflow:     "hidden",
+      }}
+    >
+      <motion.div
+        initial={{ scaleX: 0 }}
+        animate={{ scaleX }}
+        transition={{ duration: SLOW_DURATION, ease: EASE_SPRING }}
+        style={{
+          width:           "100%",
+          height:          "100%",
+          background:      fill,
+          borderRadius:    "var(--radius-full)",
+          transformOrigin: "left center",
+        }}
+      />
+      {/* Overflow cap — a danger nub at the far right when past full */}
+      {overspent && (
+        <div
+          style={{
+            position:    "absolute",
+            top:         0,
+            right:       0,
+            bottom:      0,
+            width:       4,
+            background:  "var(--color-danger-text)",
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function TankStat({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+      <span className="label-micro" style={{ color: "var(--theme-text-tertiary)" }}>
+        {label}
+      </span>
+      <span
+        style={{
+          fontFamily:         "var(--font-mono)",
+          fontSize:           "var(--text-sm)",
+          fontWeight:         "var(--weight-semibold)",
+          fontVariantNumeric: "tabular-nums",
+          color,
+          lineHeight:         "var(--leading-none)",
+          whiteSpace:         "nowrap",
+          overflow:           "hidden",
+          textOverflow:       "ellipsis",
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function RoiChip({ label, value }: { label: string; value: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "baseline", gap: "4px" }}>
+      <span style={{ fontSize: "var(--text-2xs)", color: "var(--theme-text-tertiary)" }}>{label}</span>
+      <span
+        style={{
+          fontFamily:         "var(--font-mono)",
+          fontSize:           "var(--text-xs)",
+          fontWeight:         "var(--weight-semibold)",
+          fontVariantNumeric: "tabular-nums",
+          color:              "var(--theme-text-primary)",
+        }}
+      >
+        {value}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * No recharge to gauge against. If there is spend-with-no-recharge we still
+ * surface the spend so the card isn't blank (and it hints the recharge log is
+ * behind); otherwise the period simply has nothing.
+ */
+function EmptyGauge({ spent }: { spent: number }) {
+  return (
+    <div
+      style={{
+        flex:           1,
+        display:        "flex",
+        flexDirection:  "column",
+        alignItems:     "center",
+        justifyContent: "center",
+        gap:            "var(--space-2)",
+        textAlign:      "center",
+      }}
+    >
+      <Fuel style={{ width: 22, height: 22, strokeWidth: 1.5, color: "var(--theme-text-tertiary)" }} />
+      <p
+        style={{
+          fontFamily: "var(--font-serif)",
+          fontStyle:  "italic",
+          fontSize:   "var(--text-sm)",
+          color:      "var(--theme-text-tertiary)",
+          margin:     0,
+        }}
+      >
+        {spent > 0 ? "No recharge logged for this period." : "No spend or recharge yet."}
+      </p>
+      {spent > 0 && (
+        <p
+          style={{
+            fontFamily:         "var(--font-mono)",
+            fontSize:           "var(--text-sm)",
+            fontWeight:         "var(--weight-semibold)",
+            fontVariantNumeric: "tabular-nums",
+            color:              "var(--theme-text-secondary)",
+            margin:             0,
+          }}
+        >
+          {formatCurrencyCompact(spent)} spent
+        </p>
+      )}
     </div>
   );
 }

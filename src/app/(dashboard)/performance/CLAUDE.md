@@ -66,34 +66,50 @@ the real agent view). `PerformanceSkeleton` remains: `loading.tsx` uses it.
 performance/page.tsx              ← role = manager
   │  domain ALWAYS from profile (server-verified) — never from URL params
   │
-  ├── <PerformanceFilters showSearch />
-  │
-  └── <Suspense fallback={<ManagerPerformanceSkeleton />}>
-        <ManagerPerformanceAsync domain={profile.domain} period={period} />
-              1. Fetches getAgentRosterPerformance(domain, from, to)
-              Renders: <ManagerPerformancePanel key={period}>
-                  Left: agent roster list (AgentCard with conversion rate pill), sorted by totalWon DESC
-                  Right: <AgentDetailPanel> — always fetches via getAgentDetailMetricsAction on mount
+  └── <ManagerPerformanceShell>            'use client' — owns the filter strip
+        ├── <PerformanceFilters showSearch trailing={deckTrigger} />   (single paper strip)
+        │     deckTrigger = the roster's "Deck view" button, hoisted onto the
+        │     bar's trailing edge via the FounderPerfActions bridge (reused; the
+        │     deck is available to managers since 2026-06-24, desktop only)
+        │
+        └── rosterSlot = <Suspense fallback={<ManagerPerformanceSkeleton />}>
+              <ManagerPerformanceAsync domain={profile.domain} period={period} />
+                    1. Fetches getAgentRosterPerformance(domain, from, to)
+                    Renders: <ManagerPerformancePanel key={period}>
+                        Left: agent roster list (AgentCard), no domain dropdown
+                        Right: <AgentDetailPanel> — fetches on mount, seeded from cache on back-nav
 ```
+
+**`ManagerPerformanceShell`** (`src/app/(dashboard)/performance/`, `'use client'`)
+mirrors `FounderPerformanceShell`'s single-paper-strip layout **minus the tabs**
+(a manager has one domain, one roster). It owns the `PerformanceFilters` strip and
+hosts the roster panel's "Deck view" trigger on the bar's trailing edge via the
+**same** `FounderPerfActions` bridge the founder shell uses (R-01 — no second
+trigger-hoist mechanism). `page.tsx` no longer renders the manager filter strip
+directly.
 
 ### Founder / Admin view
 
 ```text
 performance/page.tsx              ← role = founder | admin
-  │  filter bar: Range presets + custom Dates (date_from/date_to) + search; no domain selector in bar
   │  fetches initialDomainHealth server-side via getDomainHealthMetrics(GIA_DOMAINS, from, to)
-  │
-  ├── <PerformanceFilters showSearch />
+  │  (NO separate filter strip here — the shell owns it)
   │
   └── <FounderPerformanceShell period customFrom customTo initialDomainHealth agentsSlot />
-        'use client' — owns activeTab: 'agents' | 'domains' (useState, never URL)
+        'use client' — owns activeTab: 'domains' | 'agents' (Domains is FIRST +
+        the DEFAULT; seeded from ?tab= and mirrored back via history.replaceState
+        — no navigation/RSC re-run — so a back-nav from a lead dossier RESTORES
+        the tab, the ?agent= precedent on this page). Renders the SINGLE filter strip:
+        │  <PerformanceFilters showSearch
+        │     leading={<Domains/Agents TabSelector>}   ← tabs share the strip (the /tasks layout)
+        │     trailing={Agents-tab "Deck view" trigger} />  ← right edge, desktop only
         │
         ├── Agents tab: agentsSlot = <Suspense><ManagerPerformanceAsync allDomains={true} /></Suspense>
         │     Roster: all agents across Gia domains, sorted A-Z within domain groups
-        │     Domain filter: client-side FilterDropdown in ManagerPerformancePanel roster header
+        │     Domain narrowing: the GLOBAL serene-domain selector (top bar) — NO per-roster dropdown
         │     Detail metrics: per-agent (no domain restriction on fetch)
         │
-        └── Domains tab: <DomainOverviewPanel initialData period customFrom customTo />
+        └── Domains tab (default): <DomainOverviewPanel initialData period customFrom customTo />
               Four domain cards (2×2 grid): Total Leads, Total Calls, Total Revenue per GIA domain
               Comparative BarChart with a metric toggle (Leads | Calls | Revenue) — the shared
               TabSelector (variant "accent", indicatorLayoutId "domain-metric-toggle" so its pill
@@ -101,9 +117,19 @@ performance/page.tsx              ← role = founder | admin
               Refetches via getManagerRosterAction on period/date change
 ```
 
-## Domain filter placement — 2026-05-31 (component updated 2026-06-16)
+## Domain narrowing — the GLOBAL selector only (2026-06-24)
 
-Founder/admin **do not** use `?domain=` or a page-level filter-bar domain control. Domain scoping is **client-side only** via a shared `<FilterDropdown>` ("Domains", single-select, `menuPortal`, synthetic `__all__` = "All domains") in the `ManagerPerformancePanel` roster header (`domainFilter` state). The page filter bar holds the date range (`date_from`/`date_to`) + agent search (`?search=`). *(The bespoke `DomainFilterPopover` was replaced by `FilterDropdown` on 2026-06-16 — `menuPortal` fixes the mobile clipping; the placement decision itself stands.)*
+Founder/admin **do not** use `?domain=` or a page-level filter-bar domain control, and there
+is **no per-roster domain dropdown** anymore. Domain narrowing is the **global `serene-domain`
+selector** in the top bar: `ManagerPerformancePanel` keeps a `domainFilter` state that **syncs
+from** that global pick (the `?domain=` param ?? `serene-domain` cookie effect — read post-mount,
+client-only) and filters `visibleAgents` client-side. The old per-roster `FilterDropdown`
+("Domains") in the roster header was **removed** (it duplicated the global selector); the
+`domainFilter` state + its global-sync effect stay (that is the narrowing mechanism). The page
+filter strip holds the Agents/Domains tabs (leading) + date range (`date_from`/`date_to`) + agent
+search (`?search=`) + the Deck-view trigger (trailing). *(History: a bespoke `DomainFilterPopover`
+→ shared `FilterDropdown` 2026-06-16 → removed entirely 2026-06-24 in favour of the global
+selector.)*
 
 ---
 
@@ -112,10 +138,12 @@ Founder/admin **do not** use `?domain=` or a page-level filter-bar domain contro
 | Role            | Domain source                                                               |
 | --------------- | --------------------------------------------------------------------------- |
 | manager         | `profile.domain` (server profile, not URL)                                  |
-| founder / admin | `allDomains={true}` on `ManagerPerformanceAsync`; roster filter client-side |
+| founder / admin | `allDomains={true}` on `ManagerPerformanceAsync`; roster narrowing = global `serene-domain` selector |
 
-**Never read `?domain=` from URL params.** Manager path uses `profile.domain` only.
-Founder/admin path fetches the full cross-domain roster server-side; domain narrowing is the roster `FilterDropdown` only.
+**Never read `?domain=` from URL params directly for scoping.** Manager path uses `profile.domain`
+only. Founder/admin path fetches the full cross-domain roster server-side; narrowing is the global
+selector synced into `ManagerPerformancePanel`'s `domainFilter` state (client-side filter, additive
+WHERE, never an RLS change).
 
 ## Page shell layout (2026-06-04)
 
@@ -172,14 +200,24 @@ the null contract stays in one visible place.
 - **Founder/admin (`allDomains`):** `PERFORMANCE_ROSTER_DOMAIN_ORDER` (Gia domains first), A–Z by name within each domain
 - **Manager (single domain):** A–Z by name
 
-## ManagerPerformancePanel — default agent selection (null = overview)
+## ManagerPerformancePanel — agent selection (null = overview; URL-backed)
 
-`ManagerPerformancePanel` initialises `selectedId` to `null`. No agent is pre-selected.
+`ManagerPerformancePanel` seeds `selectedId` from the `?agent=<id>` URL param (lazy
+`useState` init), defaulting to `null` when absent. No agent is pre-selected on a fresh load.
 
 - `selectedId === null` → right panel shows `<PerformanceRosterEmptyState>` (select-an-agent prompt).
 - `selectedId !== null` → right panel shows `<AgentDetailPanel>` for that agent.
 - Clicking an agent row sets `selectedId`; `AnimatePresence mode="wait"` cross-fades the panels.
 - When domain/search filters narrow the visible roster and the selected agent is no longer visible, `selectedId` resets to `null` (back to overview).
+- **Selection survives back-nav (2026-06-24):** an effect mirrors `selectedId` into
+  `?agent=<id>` via `window.history.replaceState` — **NOT** `router.replace` (no
+  navigation, no RSC re-run, no history spam). So clicking a drill lead → its dossier
+  (the lead links carry `from=/performance`) → browser back remounts the page and the
+  lazy init re-reads the param, **restoring the selected agent + open detail panel**.
+  Never switch the mirror to `router.replace`/`router.push` — that would refetch the
+  whole page on every agent click. A stale `?agent=` (agent not in the current filtered
+  roster) self-heals via the existing "hide-selected-when-filtered-out" effect, which
+  also strips the param.
 
 `getFirstAgentInPerformanceRosterList` is no longer called from `ManagerPerformancePanel`. It remains in `performance-roster-display.ts` as a utility.
 
@@ -252,17 +290,71 @@ SQL — reuse `lib/utils/sla` (R-01).**
   gated action `getAgentFirstTouchScorecardAction` (shared `assertDrillAccess`:
   manager own-domain, admin/founder unrestricted) is the trust boundary — the
   `get_agent_roster_performance` posture.
-- **Mount point:** `AgentDetailPanel` only. The `FounderDrillDownDeck` card stays
-  zero-per-swipe-fetch (its hard invariant) — the scorecard needs a per-agent
-  fetch, so it rides the detail panel's existing agent/period fetch effect, not
-  the deck.
+- **Mount point:** TWO sites — `AgentDetailPanel` (below `CallOutcomeBar`) AND the
+  `FounderDrillDownDeck` card. On the deck the scorecard rides the SAME per-agent
+  lazy fetch as the breakdown (best-effort, cached per agent) — the tile-level
+  zero-per-swipe-fetch rule governs only the in-memory roster tiles, not this
+  separate gated read.
+- **Bars drill to their leads (2026-06-24):** clicking a non-empty bucket bar opens
+  `AgentFirstTouchDrillModal` — the leads behind that count, for the same
+  agent/period. The membership comes from `getAgentFirstTouchBucketLeadIds` (reuses
+  `classifyFirstTouchPairs`, so the list length equals the bar's count) and the rows
+  from `getLeadsByIds`; the action `getFirstTouchBucketLeadsAction` shares the
+  `assertDrillAccess` gate. `FirstTouchScorecard` exposes an optional `onBucketClick`
+  — absent → display-only (backward-safe). Both mount sites wire it.
+
+## Lead drill-down — ONE reusable path (metrics + charts → leads → dossier, 2026-06-24)
+
+Every "click a metric/bar → see the leads → open the dossier" surface on
+`/performance` funnels through one shared stack — never a per-surface fetch/list/row:
+
+- **`LeadDrillModal`** (`components/performance/`) — THE generic fetch-on-open
+  lead-list drill (flat, bounded, no load-more). Caller passes `title` + `fetcher` +
+  `fetchKey`; it renders `Spinner → LeadDrillRow → EmptyState` inside `DrillModalShell`.
+- **`LeadDrillRow`** — the one row (name + phone + status pill), a `Link` to
+  `/leads/${slug ?? id}?from=/performance`.
+- **Thin callers:** `AgentFirstTouchDrillModal` (fetcher = `getFirstTouchBucketLeadsAction`),
+  `AgentLeadsPredicateDrillModal` (fetcher = `getAgentLeadsByPredicateAction`; one
+  `{ kind:'status'|'outcome' }` union serves BOTH the Lead-Pipeline segment drill and
+  the Call-Outcome slice drill), `DomainLeadsDrillModal` (fetcher =
+  `getDomainLeadsDrillAction`; the founder **Domains-tab** card tiles — `kind:
+  'all'|'calls'|'won'`, domain-scoped via `getLeadsByRole` `filters.domain`, no agent).
+  The four AGENT stat tiles keep their own paginated modals (`AgentCalls/Leads/Deals
+  DrillModal`) — those predate this and are load-more, not flat.
+- **Charts emit clicks, never fetch:** `PipelineBar.onSegmentClick(status)` /
+  `CallOutcomeBar.onSliceClick(outcome)` are optional (absent → display-only). The
+  drill state lives in the consumer (`AgentDetailPanel` `predicateDrill`; the deck's
+  `PredicateTarget`), so the chart stays display-only (A-06).
+- **Fast by construction:** every drill is fetch-on-open only (nothing until a click),
+  reuses the indexed `getLeadsByRole` path, and the modal portals — zero added cost to
+  the page's first paint, and the query scales with the slice, not the lead count.
+
+When adding a new drillable metric/chart: write a gated action returning
+`LeadListItemWithAssignee[]`, then mount `LeadDrillModal` with it — do NOT add a new
+modal/row/fetch-lifecycle (R-01).
 
 ## AgentDetailPanel — fetch contract
 
-`AgentDetailPanel` always fetches via `getAgentDetailMetricsAction` on mount. There is no seed
-prefetch from the server — `ManagerPerformanceAsync` fetches only the roster. The panel shows
-a skeleton on first paint (`isLoading` initialises to `true`) and populates when the action
-resolves. On agent change or period change the component remounts and fetches fresh data.
+`AgentDetailPanel` fetches its metrics + first-touch scorecard on mount via
+`getAgentDetailMetricsAction` + `getAgentFirstTouchScorecardAction` (one `Promise.all`).
+There is no server seed — `ManagerPerformanceAsync` fetches only the roster.
+
+**Per-slice memory cache (2026-06-24 — back-nav perf).** A module-level
+`detailSliceCache: Map<key, { metrics, scorecard }>` keyed by `agent|domain|period|from|to`
+holds each fetched slice for the session (the founder-deck `breakdowns` pattern, R-01).
+The component **seeds `metrics`/`scorecard`/`isLoading` synchronously from the cache** (lazy
+`useState` init), and the mount effect **returns early on a cache hit** — so clicking a drill
+lead → its dossier → browser **back** (which restores `?agent=<id>`, remounting the panel)
+paints **instantly with no skeleton and no round-trip**. A cache miss fetches as before and
+writes the whole slice (both reads settle together so one remount seeds in one shot). The
+cache is in-memory only (cleared on a full reload); a period/range change is a new key, so it
+never serves the wrong window — the accepted tradeoff is up-to-a-session-stale detail until the
+period changes. The founder mobile deck keeps its own component-local `breakdowns` cache
+(different surface; they do not share).
+
+The panel shows a skeleton on first paint **only on a cache miss** (`isLoading` seeds `true`
+when the slice isn't cached, `false` when it is). On agent change or period change the
+component remounts; a cached slice seeds instantly, else it fetches fresh.
 
 ## Types
 
@@ -320,6 +412,7 @@ const todayStart = new Date(nowIst.getTime() - IST_OFFSET_MS).toISOString();
 | ----------------------------------- | ----------------------------------------- |
 | `getAgentDetailMetricsAction`       | manager (own domain only), admin, founder |
 | `getAgentFirstTouchScorecardAction` | manager (own domain only), admin, founder (shared `assertDrillAccess`) |
+| `getDomainLeadsDrillAction`         | manager (own domain only), admin, founder (shared `assertDrillAccess`) — domain-card tile drill; the Domains tab is founder/admin-only in practice |
 
 Manager role: `caller.domain !== domain` → 403. Domain never trusted from client payload.
 

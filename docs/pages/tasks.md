@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/tasks` (My Tasks / Group Tasks tabbed hub) and `/tasks/[id]` (group workspace) — the whole OS Tasks module.
 > **Audience:** engineers. · **Source-of-truth scope:** the task system (tables-usage, RPCs, actions, tabs, modals, flows, invariants). Schema rows: `../architecture/database.md`; reminder-job mechanics: `../integrations/trigger-dev.md`.
-> **Last verified:** 2026-06-17 (gia-category collapse — migration `20260617000138`).
+> **Last verified:** 2026-06-24 (gia-category collapse — migration `20260617000138`; task-mutation cores + the config-driven reminder/overdue pipeline absorbed).
 
 ## 1. Purpose
 
@@ -23,6 +23,15 @@ join) — **never** via a category check.
 Each task has an append-only `task_remarks` narrative; meaningful status changes ride a
 remark via `add_task_remark_with_status` (accountability through narrative).
 
+**Every task mutation also emits one `task_events` row** (migration 0144 — the spine of the
+`/oversight` live rails): `created`/`status_changed`/`reassigned` from the `task-mutations.ts`
+cores, `remark_added` from `addTaskRemarkAction`, `overdue` from the overdue job. Emitted from the
+**cores** (so Elaya write tools inherit it, R-01) via `emitTaskEvent` (`services/task-events.ts`),
+best-effort and non-fatal. `task_events` is append-only (no UPDATE/DELETE, A-11) and manager+
+SELECT only. The cores take the caller's pre-fetched task snapshot to resolve the event's
+domain/subject — they never re-fetch (the `taskCtx` context-free discipline). Full contract:
+`../oversight.md`.
+
 ## 2. Who sees it
 
 `/tasks` is in every domain's route map. Agents see tasks they own or created; group
@@ -34,9 +43,9 @@ operation×role matrix + RLS notes: Deep dive §20.
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `tasks-service.ts` (read-only) — `getPersonalTasks` (cursor RPC), `getGroupTasks`, `getGroupSubtasks`, `getTaskRemarks`, `getGiaTasksForUser` (lead-task reader — dossier + Elaya tool, no longer a tab), `getAllLeadTasks`; Redis per `../architecture/caching.md` (`task:*`) |
-| RPCs | `get_personal_tasks` (0026), `get_group_task_summaries` (0020), `add_task_remark_with_status` (0035/0051), `get_gia_tasks` (0055 — survives the tab removal; consumed by the lead dossier + Elaya read tool), `create_lead_gia_task` (0054 — the sole atomic writer of a lead follow-up: `personal` task + `task_gia_meta` + `module='gia'`) |
-| Actions | `tasks.ts` — create personal/group/subtask, update status/brief/checklist/tags, delete, remarks (+ suppression); all `{ data, error }` |
+| Service | `tasks-service.ts` (read-only) — `getPersonalTasks` (cursor RPC), `getGroupTasks`, `getGroupSubtasks`, `getTaskRemarks`, `getGiaTasksForUser` (lead-task reader — dossier + Elaya tool, no longer a tab; its RPC's EXECUTE was revoked from `authenticated` in 0102, so it calls via the **admin client**), `getAllLeadTasks`; Redis per `../architecture/caching.md` (`task:*`) |
+| RPCs | `get_personal_tasks` (0026), `get_group_task_summaries` (0020), `add_task_remark_with_status` (0035/0051), `get_gia_tasks` (0055 — survives the tab removal; consumed by the lead dossier + Elaya read tool; EXECUTE revoked from `authenticated` in 0102, called via admin client), `create_lead_gia_task` (0054 — the sole atomic writer of a lead follow-up: `personal` task + `task_gia_meta` + `module='gia'`) |
+| Actions | `tasks.ts` — create personal/group/subtask (delegating to `task-mutations.ts` cores), update status/brief/checklist/tags, delete, delete group, remarks (+ suppression); all `{ data, error }` |
 | Jobs | task due reminders — `../integrations/trigger-dev.md` |
 
 ## 4. Components
@@ -99,7 +108,7 @@ design-audit L-02), no JS sort on `getPersonalTasks` output, channel nonces.
 | `group_id` | uuid | NULL | — | FK → `task_groups(id)` ON DELETE CASCADE |
 | `due_at` | timestamptz | NULL | — | |
 | `completed_at` | timestamptz | NULL | — | Set when `status = 'completed'` |
-| `overdue_at` | timestamptz | NULL | — | Stamped **exactly once** by the `check-task-overdue` job (0113) when a lead follow-up task (`module='gia'`) passes due+30 min with no clearing event; deliberately not a status value |
+| `overdue_at` | timestamptz | NULL | — | Stamped **exactly once** by the `check-task-overdue` job (0113) when **any** still-open task passes `due_at` + the TASK-01B `threshold_minutes` with no clearing event (`UPDATE … WHERE overdue_at IS NULL`); deliberately not a status value |
 | `attachments` | jsonb | NOT NULL | `'[]'` | Checklist items; CHECK `jsonb_typeof = 'array'` (0023) |
 | `tags` | text[] | NOT NULL | `'{}'` | Personal tasks; GIN partial index (0024) |
 | `created_at` | timestamptz | NOT NULL | `now()` | |
@@ -123,7 +132,7 @@ design-audit L-02), no JS sort on `getPersonalTasks` output, channel nonces.
 | Name | Event | Function | Fields watched / excluded |
 | --- | --- | --- | --- |
 | `tasks_updated_at` | BEFORE UPDATE | `update_updated_at()` | — |
-| `tasks_audit` | AFTER UPDATE FOR EACH ROW | `log_task_changes()` | **Watches:** `title`, `description`, `status`, `priority`, `due_at`, `assigned_to`. **Excluded:** `attachments`, `tags`, `task_category`, `group_id`, `created_at`, `updated_at`, `completed_at` (checklist toggles must not flood audit log) |
+| `tasks_audit` | AFTER UPDATE FOR EACH ROW | `log_task_changes()` | **Watches (6 fields only):** `title`, `description`, `status`, `priority`, `due_at`, `assigned_to`. **Excluded:** `attachments`, `tags`, `task_category`, `group_id`, `module`, `created_at`, `updated_at`, `completed_at`, `overdue_at` (checklist toggles must not flood audit log) |
 
 **RLS policies:**
 
@@ -219,7 +228,7 @@ Realtime: **enabled**.
 
 **Trigger watches (only):** `title`, `description`, `status`, `priority`, `due_at`, `assigned_to`.
 
-**Intentionally excluded:** `attachments` (checklist flood), `tags`, `task_category`, `group_id`, timestamps, `completed_at`.
+**Intentionally excluded:** `attachments` (checklist flood), `tags`, `task_category`, `group_id`, `module`, timestamps, `completed_at`, `overdue_at`.
 
 **RLS:** `task_audit_log_select` — manager/admin/founder only (0088 wraps the role check in `(SELECT …)`). No INSERT/UPDATE/DELETE policies (trigger + service role only).
 
@@ -248,11 +257,23 @@ no `gia_followup` category to check anymore. Written only by `create_lead_gia_ta
 
 #### 2f. Notification types relevant to tasks
 
-| Type | Created by | `action_url` |
-| --- | --- | --- |
-| `task_assigned` | `createPersonalTaskAction`, `createSubtaskAction` when assignee ≠ caller | `/tasks` (relative only) |
-| `task_due` | `sendTaskReminderTask` (Trigger.dev) | `/tasks` |
-| `task_overdue_manager` | `checkTaskOverdueTask` (Trigger.dev — lead follow-ups, `module='gia'`, due+30 min, no clearing event) | `/leads/[id]` |
+The reminder/overdue pipeline fires for **every** task, not just lead follow-ups (config-driven
+since the TASK-01A/B SLA policies — full mechanics in `../integrations/trigger-dev.md`; Flow M
+summarises the three jobs). The in-app rows are:
+
+| Type | Created by | Recipient | `action_url` |
+| --- | --- | --- | --- |
+| `task_assigned` | `createPersonalTaskCore`, `createSubtaskCore` when assignee ≠ actor | assignee | `/tasks` (relative only) |
+| `task_due` | `sendTaskReminderTask` (Trigger.dev, at `due_at`) | assignee | `/tasks` |
+| `task_overdue_manager` (lead task) | `checkTaskOverdueTask` (Trigger.dev — at `due_at` + TASK-01B `threshold_minutes`, no clearing event) | the lead's **domain managers** | `/leads/[id]` |
+| `task_overdue_manager` (non-lead task) | `checkTaskOverdueTask` — same job, non-lead branch | the assignee's **manager** (`reports_to` → domain) | `/tasks` |
+
+> **Both overdue recipients use the same `task_overdue_manager` type/key** but branch on whether
+> the task is lead-linked (a `task_gia_meta` row exists): lead task → lead-shaped template +
+> `/leads/[id]`; non-lead task → generic task-shaped template + `/tasks`. The threshold is the
+> TASK-01B policy's `threshold_minutes` (config-driven), **not** a hardcoded 30 minutes. There are
+> also WhatsApp pings at the due moment (a "due soon" −30 min ping and an at-due agent-overdue
+> ping) for **every** still-open task — see §6.
 
 `notifications.action_url` CHECK: `NOT LIKE 'http%'` — relative paths only.
 
@@ -379,31 +400,57 @@ single-writer invariant.
 
 #### 5a. `tasks.ts` — all actions
 
-| Action | Zod schema | Auth | DB | Side effects | `adminClient`? |
+**The six write actions delegate their write body + side-effects to shared cores in
+`src/lib/services/task-mutations.ts`** (the Elaya-Phase-2 substrate — same cores a future Elaya
+write tool will call, so a tool-driven task write inherits reminder/notify/cache identically).
+Each action keeps the request-context shell: Zod → auth → per-resource gate (`canMutateTask`,
+**imported from `task-mutations.ts`** and passed the session client) → `actorFromProfile(caller)`
+→ `*Core(...)` → `revalidatePath`. `canMutateTask` itself moved out of the action layer into
+`task-mutations.ts` so a non-action caller can import it. The "DB / side effects" columns below
+describe what the **core** performs.
+
+| Action | Zod schema | Auth | Core / DB | Side effects | `adminClient`? |
 | --- | --- | --- | --- | --- | --- |
-| `createPersonalTaskAction` | `CreatePersonalTaskSchema` | Session; manager+ to assign others | INSERT tasks | `task_assigned` notification; `scheduleTaskReminder` if due; del `task:personal:page1:{assignedTo}` | Yes |
-| `createGroupTaskAction` | `CreateGroupTaskSchema` | Any non-guest; domain locked to own unless admin/founder | INSERT task_groups | `revalidatePath('/tasks')`; **await** del `task:group-list:{callerId}` | Yes |
-| `createSubtaskAction` | `CreateSubtaskSchema` | Group exists; agent domain check | INSERT tasks | notification; reminder; `revalidatePath('/tasks')`; **await** del `task:group-list:{callerId}` + `task:group-list:{assignedTo}` (if different); del `task:subtasks:{groupId}:{callerId}` | Yes |
-| `updateTaskStatusAction` | `UpdateTaskStatusSchema` | `canMutateTask` | UPDATE status/completed_at | `cancelTaskReminder` on terminal; del by structure: `group_subtask` → `task:subtasks:{groupId}:{callerId}`; otherwise `personal` → `task:personal:page1:{callerId}`, and a lead follow-up (meta-presence / `module='gia'`) additionally dels `task:gia:{callerId}:{role}:{domain}` | Yes |
-| `updateTaskAction` | `UpdateTaskSchema` | `canMutateTask` | Partial UPDATE | Reminder reschedule on due change; del `task:subtasks:{groupId}:{callerId}` if group subtask | Yes |
-| `deleteTaskAction` | `DeleteTaskSchema` | Agent: both created_by AND assigned_to; else open | DELETE | **Awaited** `cancelTaskReminder` before delete; del by structure (same branching as `updateTaskStatusAction`) | Yes |
-| `updateChecklistAction` | `UpdateChecklistSchema` | `canMutateTask` | UPDATE attachments | Excluded from audit trigger | Yes |
-| `updateTaskTagsAction` | `UpdateTaskTagsSchema` | `canMutateTask` | UPDATE tags | — | Yes |
-| `addTaskRemarkAction` | `AddTaskRemarkSchema` | View = post (tasks SELECT) | RPC `add_task_remark_with_status` | del `task:remarks:{taskId}` | Yes (RPC) |
-| `suppressTaskRemarkAction` | `SuppressTaskRemarkSchema` | admin/founder | UPDATE 3 suppression cols only | del `task:remarks:{taskId}` | Yes |
+| `createPersonalTaskAction` | `CreatePersonalTaskSchema` | Session; manager+ to assign others | `createPersonalTaskCore` → INSERT tasks (`module='core'`) | `task_assigned` notification (assignee ≠ actor); `scheduleTaskReminder` if due; del `task:personal:page1:{assignedTo}` | Yes (core) |
+| `createGroupTaskAction` | `CreateGroupTaskSchema` | Any non-guest; domain locked to own unless admin/founder | `createGroupTaskCore` → INSERT task_groups | `revalidatePath('/tasks')`; **await** del `task:group-list:{callerId}` | Yes (core) |
+| `createSubtaskAction` | `CreateSubtaskSchema` | Group exists; agent domain check | `createSubtaskCore` → INSERT tasks (`group_subtask`, `module='core'`) | notification; reminder; `revalidatePath('/tasks')`; **await** del `task:group-list:{callerId}` + `task:group-list:{assignedTo}` (if different) | Yes (core) |
+| `updateTaskStatusAction` | `UpdateTaskStatusSchema` | parallel `getCurrentProfile()` + task fetch (`…, task_category, task_gia_meta(task_id)`) → `canMutateTask` | `updateTaskStatusCore` → UPDATE status/completed_at | no-op short-circuit if status unchanged; `cancelTaskReminder` on terminal; cache dels driven by a caller-supplied `taskCtx = { taskCategory, hasGiaMeta }` keyed on `actor.userId`: `personal` → `task:personal:page1:{callerId}`, and a lead follow-up (`hasGiaMeta`, meta-presence) **also** dels `task:gia:{callerId}:{role}:{domain}` | Yes (core) |
+| `updateTaskAction` | `UpdateTaskSchema` | `getCurrentProfile()` + task fetch → `canMutateTask` | `updateTaskCore` → partial UPDATE | reminder reschedule on `due_at` change (cancel old + schedule new); no Redis del (intentional) | Yes (core) |
+| `deleteTaskAction` | `DeleteTaskSchema` | Agent: both created_by AND assigned_to; else open. Fetches `task_gia_meta(task_id)` → `hasGiaMeta` for `taskCtx` | `deleteTaskCore` → DELETE (cascades remarks) | **Awaited** `cancelTaskReminder` **before** delete; same `taskCtx`-driven cache dels as status (`personalPage1` + `giaList` on `hasGiaMeta`) | Yes (core) |
+| `updateChecklistAction` | `UpdateChecklistSchema` | `canMutateTask` | UPDATE attachments (**not cored**) | excluded from audit trigger | Yes |
+| `updateTaskTagsAction` | `UpdateTaskTagsSchema` | `canMutateTask` | UPDATE tags (**not cored**) | — | Yes |
+| `addTaskRemarkAction` | `AddTaskRemarkSchema` | View = post (tasks SELECT) | RPC `add_task_remark_with_status` (**not cored**) | del `task:remarks:{taskId}` | Yes (RPC) |
+| `suppressTaskRemarkAction` | `SuppressTaskRemarkSchema` | admin/founder | UPDATE 3 suppression cols only (**not cored**) | del `task:remarks:{taskId}` | Yes |
+| `deleteGroupTaskAction` | `DeleteGroupTaskSchema` | `requireProfile(['admin','founder'])` | DELETE task_groups (cascades to subtasks → task_remarks; **not cored**) | `revalidatePath('/tasks')` | Yes |
 | `getGroupSubtasksAction` | — | Session | read service | — | No |
 | `getPersonalTasksAction` | filters | Session | read service | — | No |
 | `getPersonalTaskTagsAction` | — | Session | read service | — | No |
 | `getTaskGroupByIdAction` | — | Session | read service | — | No |
 | `getTaskRemarksAction` | — | Session | read service | — | No |
 
-**`adminClient` why:** `task_groups` has no INSERT RLS; `tasks` gained explicit INSERT/DELETE policies in 0094 but they cover only personal self-assigned rows (lead-follow-up / group-subtask creation is blocked by default and goes through RPCs). All task writes from actions still use `adminClient` and bypass RLS, so the application layer must enforce the same rules RLS would (`canMutateTask`, role checks, view = post gate).
+**`adminClient` why:** `task_groups` has no INSERT RLS; `tasks` gained explicit INSERT/DELETE
+policies in 0094 but they cover only personal self-assigned rows (lead-follow-up / group-subtask
+creation is blocked by default and goes through RPCs). All task writes still run via `adminClient`
+and bypass RLS — but the write itself now lives in a `task-mutations.ts` **core** (direct
+admin-client insert/update/delete, no RPC), with the action enforcing the rules RLS would
+(`canMutateTask`, role checks, view = post gate) **before** calling the core. The cores stay
+ungated (Q-13) — the caller is the trust boundary.
 
 **`canMutateTask`:** admin/founder always; assignee or creator; manager + group in domain.
 
-**Redis invalidation rule (2026-06-02):** `updateTaskStatusAction` and `deleteTaskAction` read the task's structure + lead-link from the object already fetched by `canMutateTask` (no extra DB round-trip). `group_subtask` → del caller's `subtasks` key for that group; otherwise (`personal`) → del caller's `personalPage1` key, and if the task is a lead follow-up (meta-presence / `module='gia'`) **also** del caller's `giaList` key (uses `caller.id`/`role`/`domain` — not `task.assigned_to`; manager's slot cleared, agent's expires at 60s TTL). All dels are fire-and-forget (`void redis.del(...).catch(() => {})`). The lead-follow-up branch keys on meta-presence, **never** a `task_category === 'gia_followup'` check.
+**Redis invalidation rule (status/delete, in the cores):** the action fetches
+`task_gia_meta(task_id)` alongside the task and passes `taskCtx = { taskCategory, hasGiaMeta }`
+into `updateTaskStatusCore` / `deleteTaskCore`. The core's cache dels key on **`actor.userId`**
+(the caller), deliberately **not** `task.assigned_to` — the manager's slot is cleared and the
+agent's expires at the 60s TTL: `personal` → del `personalPage1` (+ the actor's
+`dashboardAgentTasks`); a lead follow-up (`hasGiaMeta`, meta-presence) **also** dels `giaList`. A
+lead follow-up is BOTH `personal` and `hasGiaMeta`, so it dels both keys. Since the 0138 collapse
+the lead-follow-up branch keys on the caller-supplied `hasGiaMeta` flag — **never** a
+`task_category === 'gia_followup'` check (that value no longer exists) — and the cores never query
+`task_gia_meta` themselves (the caller fetches it). Dels are **awaited inside a try/catch-warn**
+(P-08 — the older `void redis.del(...).catch(() => {})` fire-and-forget shape was retired).
 
-**Redis key namespace:** All task keys use `REDIS_KEYS.task.*` builders from `src/lib/constants/redis-keys.ts`. Legacy flat aliases (`REDIS_KEYS.taskSubtasks`, `REDIS_KEYS.taskRemarks`) are kept for backward compatibility but new code must use the namespaced form.
+**Redis key namespace:** All task keys use `REDIS_KEYS.task.*` builders from `src/lib/constants/redis-keys.ts`. The legacy `task:subtasks` key is gone (`getGroupSubtasks` now memoises per-request via React `cache()` only); `REDIS_KEYS.taskRemarks` flat alias is kept for backward compatibility but new code uses the namespaced form.
 
 ---
 
@@ -411,15 +458,20 @@ single-writer invariant.
 
 ##### `createLeadTaskAction`
 
+`createLeadTaskAction` is one of the four `leads.ts` actions that **delegate their write body to a
+shared core in `services/lead-mutations.ts`** (`createLeadTaskCore`) so Elaya's write tools run the
+identical mutation + side-effects. The action keeps the request-context shell; the core owns the
+RPC + reminder + cache. Net behaviour (RPC + side-effects) is unchanged from the pre-core inline
+shape:
+
 1. `CreateLeadTaskSchema` (Zod)
-2. `getCurrentProfile()`
-3. Lead SELECT + access: agent → assigned; manager → domain; admin/founder → all
+2. `requireProfile()`
+3. Lead SELECT + access (`hasAccess`): agent → assigned; manager → domain; admin/founder → all
 4. Title from `TASK_TYPE_LABELS[taskType]` — never hardcoded
 5. Assignee: `lead.assigned_to ?? caller.id`
-6. RPC `create_lead_gia_task` (atomic tasks + meta)
-7. Fire-and-forget `scheduleTaskReminder` if due
-8. `revalidatePath(/leads/${slug ?? id})`
-9. Returns `ActionResult<Task>`
+6. `createLeadTaskCore(actor, …)` → RPC `create_lead_gia_task` (atomic `personal` task + `task_gia_meta` + `module='gia'`) + `scheduleTaskReminder` if due + cache invalidation
+7. `revalidatePath(/leads/${slug ?? id})` (stays in the caller — request-context only)
+8. Returns `ActionResult<Task>`
 
 ##### `searchLeadsAction`
 
@@ -893,7 +945,16 @@ Confirm → **awaited** `cancelTaskReminder` → `deleteTaskAction` → cascade 
 
 #### M. Reminder fires
 
-Trigger.dev at **`dueAt`** (not 30 minutes early) → `task_due` notification → bell → `/tasks`.
+Three Trigger.dev jobs, all armed by `scheduleTaskReminder` (full mechanics: `../integrations/trigger-dev.md`):
+
+- **`dueAt − 30 min`** → `sendTaskDueSoonTask` → TASK-01A WhatsApp "due soon" ping to the assigned
+  agent for **every** still-open task with a phone.
+- **`dueAt`** → `sendTaskReminderTask` → in-app `task_due` notification (every category) → bell →
+  `/tasks`; plus the TASK-01A at-due agent-overdue WhatsApp for every still-open task, and (lead
+  tasks only) the lead-shaped WhatsApp reminder + arming of the overdue check.
+- **`dueAt + TASK-01B threshold_minutes`** → `checkTaskOverdueTask` → clearing-event checks →
+  exactly-once `overdue_at` stamp → manager escalation (lead → domain managers + `/leads/[id]`;
+  non-lead → assignee's manager + `/tasks`).
 
 #### N. Lead follow-up created
 
@@ -1057,4 +1118,4 @@ Exports used by tasks UI: `TASK_PRIORITY`, `TASK_STATUS` (incl. `pillBg`/`pillTe
 
 ---
 
-*End of document. Source of truth: migrations, `tasks-service.ts`, `actions/tasks.ts`, route files, and components as of 2026-06-17 (gia-category collapse — `20260617000138`; prior: 0086 / 0088 / 0094).*
+*End of document. Source of truth: migrations, `tasks-service.ts`, `task-mutations.ts`, `actions/tasks.ts`, `src/trigger/task-reminders.ts`, route files, and components — re-verified 2026-06-24 (gia-category collapse — `20260617000138`; task-mutation cores + config-driven reminder/overdue pipeline; prior: 0086 / 0088 / 0094 / 0102).*

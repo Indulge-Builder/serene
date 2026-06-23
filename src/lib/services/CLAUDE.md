@@ -2,9 +2,11 @@
 
 ## Template sends in whatsapp-api.ts — `sendGupshupTemplate()` is the only pipeline
 
-All seven template senders (`sendLeadAssignmentNotification`, `sendFounderLeadNotification`,
+All ten template senders (`sendLeadAssignmentNotification`, `sendFounderLeadNotification`,
 `sendSlaAgentNotification`, `sendSlaManagerNotification`, `sendLeadInitiationMessage`,
-`sendTaskDueReminderNotification`, `sendTaskOverdueManagerNotification`) are thin
+`sendTaskDueReminderNotification`, `sendTaskOverdueManagerNotification`,
+`sendTaskDueSoonAgentNotification`, `sendTaskOverdueAgentNotification`,
+`sendTaskOverdueManagerGenericNotification`) are thin
 wrappers over one internal core, **`sendGupshupTemplate(opts)`** (dry-audit H-8). The core owns,
 in exactly one place:
 

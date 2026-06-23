@@ -6,6 +6,18 @@ import { useUrlFilters } from '@/hooks/useUrlFilters';
 type PerformanceFiltersProps = {
   /** Agent roster search — hidden on the agent self-view (no roster to search). */
   showSearch: boolean;
+  /**
+   * Left-edge slot rendered before the filter icon — the founder/admin
+   * Agents/Domains TabSelector lives here so the tabs share the filter-bar
+   * paper strip (the /tasks single-strip layout). Omitted = the bar starts
+   * with the sliders icon as before (agent + manager).
+   */
+  leading?: React.ReactNode;
+  /**
+   * Right-edge slot (FilterBar `trailing`) — the Agents-tab "Deck view"
+   * trigger mounts here when active. Null otherwise.
+   */
+  trailing?: React.ReactNode;
 };
 
 // ─── PerformanceFilters ───────────────────────────────────────────────────────
@@ -16,7 +28,7 @@ type PerformanceFiltersProps = {
 // service layer is untouched. Immediate-commit only; below md the bar
 // auto-collapses to the horizontal-scroll layout (the mobile fix).
 
-export function PerformanceFilters({ showSearch }: PerformanceFiltersProps) {
+export function PerformanceFilters({ showSearch, leading, trailing }: PerformanceFiltersProps) {
   const url = useUrlFilters();
   const { params, push } = url;
 
@@ -31,6 +43,8 @@ export function PerformanceFilters({ showSearch }: PerformanceFiltersProps) {
   return (
     <FilterBar
       layout="scroll"
+      leading={leading}
+      trailing={trailing}
       searchValue={url.searchInput}
       onSearchChange={url.setSearchInput}
       searchPlaceholder="Search agents…"

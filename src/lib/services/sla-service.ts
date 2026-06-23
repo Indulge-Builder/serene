@@ -11,7 +11,7 @@ import { createClient }      from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { mapRows }           from '@/lib/utils/rows';
 import { isCadenceCode }     from '@/lib/constants/sla';
-import { COLD_LEAD_THRESHOLD_DAYS } from '@/lib/constants/leads';
+import { goingColdCutoff } from '@/lib/constants/leads';
 import type { LeadSlaTimer, Profile, Task, AppDomain, SlaPolicy, SlaHoursMode } from '@/lib/types/database';
 
 // Engine rule codes are free text since the config-driven engine (0111):
@@ -321,6 +321,94 @@ export async function getTaskWithGiaContext(taskId: string): Promise<TaskGiaCont
 
   const leadRow = (meta as { leads?: TaskGiaContext['lead'] } | null)?.leads ?? null;
   return { task: task as Task, lead: leadRow };
+}
+
+// ─── Task + assignee context for the lead-agnostic task reminders ────────────
+
+export interface TaskAssigneeContext {
+  task: Task;
+  assignee: {
+    id:         string;
+    phone:      string | null;
+    first_name: string; // already split from full_name; 'there' fallback
+    full_name:  string | null;
+    domain:     string;
+    reports_to: string | null; // the assignee's direct manager (profiles.id)
+  } | null; // null when the task has no assignee or the profile is missing
+}
+
+/**
+ * Re-reads a task at job-fire time with its ASSIGNED agent's phone + first name.
+ * The lead-agnostic twin of getTaskWithGiaContext — used by the due-soon (-30m)
+ * and agent-overdue (at-due) WhatsApp reminders, which fire for EVERY task, not
+ * just lead-linked ones. Never depends on a task_gia_meta row.
+ */
+export async function getTaskWithAssignee(taskId: string): Promise<TaskAssigneeContext | null> {
+  const admin = createAdminClient();
+  const { data: task, error } = await admin
+    .from('tasks')
+    .select('*')
+    .eq('id', taskId)
+    .maybeSingle();
+
+  if (error || !task) {
+    if (error) console.error('[sla-service] getTaskWithAssignee task error:', error);
+    return null;
+  }
+
+  const assignedTo = (task as Task).assigned_to;
+  if (!assignedTo) return { task: task as Task, assignee: null };
+
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('id, phone, full_name, domain, reports_to')
+    .eq('id', assignedTo)
+    .maybeSingle();
+
+  if (!profile) return { task: task as Task, assignee: null };
+
+  const first =
+    (profile.full_name as string | null)?.trim().split(/\s+/)[0] || 'there';
+
+  return {
+    task: task as Task,
+    assignee: {
+      id:         profile.id as string,
+      phone:      (profile.phone as string | null) ?? null,
+      first_name: first,
+      full_name:  (profile.full_name as string | null) ?? null,
+      domain:     profile.domain as string,
+      reports_to: (profile.reports_to as string | null) ?? null,
+    },
+  };
+}
+
+/**
+ * Resolves the escalation targets for a NON-lead overdue task: the assignee's
+ * direct manager (profiles.reports_to) when set, else all managers/admins/
+ * founders in the assignee's domain (the lead-task escalation pool, keyed off
+ * the assignee instead of a lead). Returns [] only when neither yields a target.
+ */
+export async function getAssigneeManagers(assignee: {
+  domain:     string;
+  reports_to: string | null;
+}): Promise<Pick<Profile, 'id' | 'full_name'>[]> {
+  // Prefer the direct manager.
+  if (assignee.reports_to) {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from('profiles')
+      .select('id, full_name')
+      .eq('id', assignee.reports_to)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (error) console.error('[sla-service] getAssigneeManagers reports_to error:', error);
+    if (data) return [data as Pick<Profile, 'id' | 'full_name'>];
+    // reports_to set but inactive/missing → fall through to domain managers.
+  }
+
+  return getManagersByDomain(assignee.domain);
 }
 
 /**
@@ -685,7 +773,7 @@ export async function getGoingColdLeads(
   scope?: { domain?: AppDomain | null; assignedTo?: string | null },
 ): Promise<GoingColdLeadRow[]> {
   const admin = createAdminClient();
-  const threshold = new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString();
+  const threshold = goingColdCutoff();
 
   let query = admin
     .from('leads')

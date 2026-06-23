@@ -1,156 +1,32 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
-  arrayMove,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { useState, useCallback, useMemo } from 'react';
+import { Responsive, WidthProvider, type Layout } from 'react-grid-layout';
 import { GripVertical, LayoutDashboard, RotateCcw, Settings } from 'lucide-react';
-import { useDashboardLayout } from '@/hooks/useDashboardLayout';
+import { useDashboardLayout, type WidgetPlacement } from '@/hooks/useDashboardLayout';
 import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
-import { WIDGET_MAP, type WidgetSize, type WidgetColSpan } from '@/lib/constants/dashboard-widgets';
+import {
+  GRID_COLS,
+  GRID_ROW_HEIGHT,
+  GRID_MARGIN,
+  WIDGET_MAP,
+} from '@/lib/constants/dashboard-widgets';
 import { DashboardWidgetSlot, type WidgetProps } from './DashboardWidgetSlot';
 import { DashboardDateFilter } from './DashboardDateFilter';
 import { PageControls } from '@/components/layout/PageControls';
 import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import type { DatePreset, DateRange } from '@/lib/utils/date-range';
-import type { GiaDomain } from '@/lib/constants/domains';
 import type { Notification } from '@/lib/types/database';
 
-/*
- * Bento grid — 12 equal columns.
- * col-span-1 widgets → 6 columns (half width) on ≥ 768 px, 12 columns (full) below.
- * col-span-2 widgets → 12 columns always (campaign chart needs the room).
- *
- * The grid is 12 columns. Each "design column" is 6 grid columns.
- * This gives us clean halves without fractional arithmetic.
- *
- * Responsive rule lives in the injected <style> block so it works without
- * a Tailwind breakpoint (we use inline styles for the grid).
- */
+// WidthProvider measures the container and feeds `width` to Responsive — no
+// manual ResizeObserver, no fixed width. Responsive gives us the mobile-collapse
+// breakpoint for free (xs → 1 column). Created once at module scope.
+const ResponsiveGridLayout = WidthProvider(Responsive);
 
-const GRID_CSS = `
-.serene-bento-grid {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: var(--space-4);
-  width: 100%;
-  align-items: start;
-}
-.serene-bento-cell-1 { grid-column: span 6; }
-.serene-bento-cell-2 { grid-column: span 12; }
-
-/* Below md — all widgets stack full-width (< --bp-md 768; DNA §9.1: canonical
-   breakpoints only, the former 820 was arbitrary — responsive audit F-4) */
-@media (max-width: 767.98px) {
-  .serene-bento-cell-1,
-  .serene-bento-cell-2 { grid-column: span 12; }
-}
-
-/* From md up — both half-width widgets stay halves
-   but campaign spans full (already 12, no change needed) */
-`;
-
-type SortableWidgetProps = WidgetProps & {
-  widgetId:  string;
-  size:      WidgetSize;
-  colSpan:   WidgetColSpan;
-  editMode:  boolean;
-  onRemove:  (id: string) => void;
-  onResize:  (id: string, size: WidgetSize, colSpan: WidgetColSpan) => void;
-};
-
-function SortableWidget({
-  widgetId,
-  size,
-  colSpan,
-  editMode,
-  onRemove,
-  onResize,
-  userId,
-  role,
-  domain,
-  firstName,
-  initialData,
-  dateRange,
-  scopeDomain,
-}: SortableWidgetProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: widgetId, disabled: !editMode });
-
-  const style = {
-    transform:  CSS.Transform.toString(transform),
-    transition,
-    opacity:    isDragging ? 0.4 : 1,
-    zIndex:     isDragging ? 50 : undefined,
-  };
-
-  const dragHandle = editMode ? (
-    <button
-      {...attributes}
-      {...listeners}
-      aria-label="Drag to reorder"
-      style={{
-        cursor:         'grab',
-        width:          '24px',
-        height:         '24px',
-        display:        'flex',
-        alignItems:     'center',
-        justifyContent: 'center',
-        color:          'var(--theme-text-tertiary)',
-        background:     'var(--theme-paper)',
-        border:         '1px solid var(--theme-paper-border)',
-        borderRadius:   'var(--radius-sm)',
-      }}
-    >
-      <GripVertical size={14} strokeWidth={1.5} />
-    </button>
-  ) : undefined;
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`serene-bento-cell-${colSpan}`}
-      style={style}
-    >
-      <DashboardWidgetSlot
-        widgetId={widgetId}
-        size={size}
-        colSpan={colSpan}
-        editMode={editMode}
-        onRemove={onRemove}
-        onResize={onResize}
-        dragHandle={dragHandle}
-        userId={userId}
-        role={role}
-        domain={domain}
-        firstName={firstName}
-        initialData={initialData}
-        dateRange={dateRange}
-        scopeDomain={scopeDomain}
-      />
-    </div>
-  );
-}
+// Two breakpoints only: the full 12-col grid on tablet+ and a single stacked
+// column below md (a spatial grid is unusable on a phone — widgets stack).
+const RGL_BREAKPOINTS = { lg: 768, xs: 0 } as const;
+const RGL_COLS = { lg: GRID_COLS, xs: 1 } as const;
 
 type DashboardCanvasProps = WidgetProps & {
   greeting:     string;
@@ -179,41 +55,52 @@ export function DashboardCanvas({
   notificationsPromise,
 }: DashboardCanvasProps) {
   const isPrivileged = role === 'admin' || role === 'founder';
-  const { layout, removeWidget, resizePlacement, reorderWidgets, resetToDefaults } =
+  const { layout, isHydrated, applyLayout, removeWidget, resetToDefaults } =
     useDashboardLayout(userId, role);
   const [editMode, setEditMode] = useState(false);
   const isMobile = useMediaQuery(MQ.mobile);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+  // Our placements → RGL's Layout[] (the `i` key carries the widgetId, and we
+  // pin per-widget min sizes so a chart can't be dragged below a usable cell).
+  const rglLayout: Layout[] = useMemo(
+    () =>
+      layout.map((p) => {
+        const def = WIDGET_MAP[p.widgetId];
+        return {
+          i: p.widgetId,
+          x: p.x,
+          y: p.y,
+          w: p.w,
+          h: p.h,
+          minW: def?.defaultGrid.minW,
+          minH: def?.defaultGrid.minH,
+        };
+      }),
+    [layout],
   );
 
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
-
-      const oldOrder = layout.map((p) => p.widgetId);
-      const oldIndex = oldOrder.indexOf(active.id as string);
-      const newIndex = oldOrder.indexOf(over.id as string);
-
-      if (oldIndex === -1 || newIndex === -1) return;
-
-      reorderWidgets(arrayMove(oldOrder, oldIndex, newIndex));
+  // RGL emits the full Layout[] on every drag/resize. Map back to our shape and
+  // commit (the hook no-ops when nothing actually changed, incl. RGL's mount fire).
+  const handleLayoutChange = useCallback(
+    (next: Layout[]) => {
+      // Ignore RGL's pre-hydration echo: before localStorage settles, `layout`
+      // is the synchronous default — persisting RGL's mount layout here would
+      // overwrite the user's saved layout with the default. Wait for hydration.
+      if (!isHydrated) return;
+      const placements: WidgetPlacement[] = next.map((l) => ({
+        widgetId: l.i,
+        x: l.x,
+        y: l.y,
+        w: l.w,
+        h: l.h,
+      }));
+      applyLayout(placements);
     },
-    [layout, reorderWidgets],
+    [applyLayout, isHydrated],
   );
-
-  const widgetIds = layout.map((p) => p.widgetId);
 
   return (
     <div>
-      {/* Inject bento grid CSS once */}
-      <style>{GRID_CSS}</style>
-
       {/* Page header — greeting left, control cluster (date filter, domain
           selector, bell, edit) right. Mobile: ONE row (`flex-nowrap`) — every
           control is icon-compact there (icon-only domain chip + edit gear, ~36px
@@ -310,23 +197,63 @@ export function DashboardCanvas({
         </div>
       </div>
 
-      {/* Bento grid */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={widgetIds} strategy={verticalListSortingStrategy}>
-          <div className="serene-bento-grid">
-            {layout.map((placement) => (
-              <SortableWidget
-                key={placement.widgetId}
+      {/* Spatial grid — react-grid-layout owns move/resize/pack/responsive.
+          Read-only until edit mode (no accidental drags); only the grip handle
+          drags so clicking widget content still works. All chrome is token-styled
+          in globals.css (.serene-dashboard-grid …). */}
+      <div className={editMode ? 'serene-dashboard-grid is-editing' : 'serene-dashboard-grid'}>
+        <ResponsiveGridLayout
+          layouts={{ lg: rglLayout, xs: rglLayout }}
+          breakpoints={RGL_BREAKPOINTS}
+          cols={RGL_COLS}
+          rowHeight={GRID_ROW_HEIGHT}
+          margin={[GRID_MARGIN, GRID_MARGIN]}
+          containerPadding={[0, 0]}
+          isDraggable={editMode}
+          isResizable={editMode}
+          draggableHandle=".serene-widget-drag"
+          resizeHandles={['se']}
+          compactType="vertical"
+          onLayoutChange={handleLayoutChange}
+          // measureBeforeMount MUST stay false: WidthProvider measures its own
+          // node's offsetWidth on mount, and mounting with the pre-measure width
+          // (0) collapses every widget to a sliver on the left. The chart -1
+          // problem is handled independently by the slot's `measured` render gate
+          // (useWidgetDensity) — not by this flag.
+          useCSSTransforms
+          measureBeforeMount={false}
+          style={{ width: '100%' }}
+        >
+          {layout.map((placement) => (
+            <div key={placement.widgetId}>
+              <DashboardWidgetSlot
                 widgetId={placement.widgetId}
-                size={placement.size}
-                colSpan={placement.colSpan ?? (WIDGET_MAP[placement.widgetId]?.colSpan ?? 1)}
+                size={WIDGET_MAP[placement.widgetId]?.defaultSize ?? 'md'}
                 editMode={editMode}
                 onRemove={removeWidget}
-                onResize={resizePlacement}
+                dragHandle={
+                  editMode ? (
+                    <button
+                      className="serene-widget-drag"
+                      aria-label="Drag to move"
+                      style={{
+                        cursor:         'grab',
+                        width:          '24px',
+                        height:         '24px',
+                        display:        'flex',
+                        alignItems:     'center',
+                        justifyContent: 'center',
+                        color:          'var(--theme-text-tertiary)',
+                        background:     'var(--theme-paper)',
+                        border:         '1px solid var(--theme-paper-border)',
+                        borderRadius:   'var(--radius-sm)',
+                        touchAction:    'none',
+                      }}
+                    >
+                      <GripVertical size={14} strokeWidth={1.5} />
+                    </button>
+                  ) : undefined
+                }
                 userId={userId}
                 role={role}
                 domain={domain}
@@ -335,10 +262,10 @@ export function DashboardCanvas({
                 dateRange={dateRange}
                 scopeDomain={scopeDomain}
               />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
+            </div>
+          ))}
+        </ResponsiveGridLayout>
+      </div>
     </div>
   );
 }

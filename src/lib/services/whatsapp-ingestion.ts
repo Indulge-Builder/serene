@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { normalizeWaPhone } from '@/lib/utils/phone';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { getMediaDownloadUrl } from '@/lib/services/whatsapp-api';
+import { storeInboundMedia } from '@/lib/services/whatsapp-media';
 import { createLeadFromWhatsApp } from '@/lib/services/lead-ingestion';
 import { invalidateLeadCaches } from '@/lib/services/lead-cache';
 import { notifyLeadAssigned } from '@/lib/services/lead-assignment-notify';
@@ -190,15 +191,31 @@ export async function processInboundMessage(
   const conversation = await getOrCreateConversation(leadId, waId, normalizedPhone);
   const conversationId = conversation.id;
 
-  // 6. Resolve media URL for media messages
+  // 6. Resolve media for media messages, and persist it durably.
+  //    Gupshup (active BSP) delivers media with a direct CDN url already on the
+  //    media object — but that url is TIME-LIMITED, so we download the bytes and
+  //    re-upload them to the private `whatsapp-media` bucket (migration 0141),
+  //    storing the durable storage PATH in media_url (reads mint signed urls).
+  //    If durable storage fails (non-fatal), fall back to the raw CDN url so the
+  //    media at least loads until the link expires.
+  //    Meta (dormant) delivers a media-id only → getMediaDownloadUrl resolves a
+  //    temporary url; the same store-then-fallback path applies.
   let mediaUrl: string | undefined;
   const mediaObj = resolveMediaObject(message);
   if (mediaObj) {
-    try {
-      mediaUrl = await getMediaDownloadUrl(mediaObj.id);
-    } catch (err) {
-      console.error('[whatsapp-ingestion] Failed to fetch media URL:', err);
-      // Non-fatal — store message without media URL
+    let sourceUrl: string | null = mediaObj.url ?? null;
+    if (!sourceUrl) {
+      try {
+        sourceUrl = await getMediaDownloadUrl(mediaObj.id);
+      } catch (err) {
+        console.error('[whatsapp-ingestion] Failed to fetch media URL:', err);
+        // Non-fatal — store message without media URL
+      }
+    }
+    if (sourceUrl) {
+      const storedPath = await storeInboundMedia(sourceUrl, mediaObj.mime_type, leadId, message.id);
+      // storedPath = durable bucket path; null = download/upload failed → raw url
+      mediaUrl = storedPath ?? sourceUrl;
     }
   }
 

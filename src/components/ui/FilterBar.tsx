@@ -74,6 +74,12 @@ type FilterBarProps = {
   style?: React.CSSProperties;
   /** Page-specific FilterDropdowns. Rendered between search and range. */
   children?: React.ReactNode;
+  /**
+   * Left-edge slot rendered BEFORE the sliders icon — e.g. a page-level
+   * TabSelector that shares the filter-bar strip (the /performance
+   * Agents/Domains tabs). Omitted = the bar starts with the sliders icon.
+   */
+  leading?: React.ReactNode;
   /** Right-edge slot (e.g. tasks result count). */
   trailing?: React.ReactNode;
 };
@@ -137,6 +143,7 @@ export function FilterBar({
   onClearAll,
   clearLabel = 'Clear filters',
   style,
+  leading,
   children,
   trailing,
 }: FilterBarProps) {
@@ -174,6 +181,8 @@ export function FilterBar({
         ...style,
       }}
     >
+      {leading}
+
       {/* Filter icon + optional active count badge */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
         <SlidersHorizontal

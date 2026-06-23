@@ -13,6 +13,9 @@ import {
   GUPSHUP_LEAD_INITIATION_TEMPLATE_ID,
   GUPSHUP_TASK_DUE_REMINDER_TEMPLATE_ID,
   GUPSHUP_TASK_OVERDUE_MANAGER_TEMPLATE_ID,
+  GUPSHUP_TASK_DUE_SOON_TEMPLATE_ID,
+  GUPSHUP_TASK_OVERDUE_AGENT_TEMPLATE_ID,
+  GUPSHUP_TASK_OVERDUE_MANAGER_GENERIC_TEMPLATE_ID,
 } from '@/lib/constants/whatsapp';
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
@@ -104,6 +107,63 @@ export async function sendTextMessage(
 
   if (!res.ok) {
     throw new Error(`[whatsapp-api] Gupshup API error: ${res.status}`);
+  }
+
+  const data = (await res.json()) as { messageId?: string };
+
+  return {
+    messaging_product: 'whatsapp',
+    contacts: [],
+    messages: [{ id: data.messageId ?? '' }],
+  };
+}
+
+// ─────────────────────────────────────────────
+// Send media message via Gupshup (image / video / document / audio).
+// Gupshup sends media BY URL — `message: { type, originalUrl, caption?, filename? }`
+// over the same /wa/api/v1/msg endpoint as text. The url must be publicly
+// fetchable by Gupshup for the duration of the send, so callers pass a signed
+// url to the stored object (the panel composer flow). Returns MetaApiResponse so
+// callers stay shape-compatible with sendTextMessage. Throws on HTTP error (the
+// action layer catches).
+// ─────────────────────────────────────────────
+
+export async function sendGupshupMediaMessage(
+  to:       string,
+  type:     'image' | 'video' | 'document' | 'audio',
+  url:      string,
+  caption?: string,
+  filename?: string,
+): Promise<MetaApiResponse> {
+  assertGupshupConfigured();
+  const source      = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
+  const destination = to.replace(/^\+/, '');
+
+  // Gupshup message body shape per media type. Caption is honoured for
+  // image/video/document; audio carries no caption. document also takes filename.
+  const messageBody: Record<string, string> = { type, originalUrl: url, url };
+  if (caption && type !== 'audio') messageBody.caption = caption;
+  if (filename && type === 'document') messageBody.filename = filename;
+
+  const params = new URLSearchParams({
+    channel:     'whatsapp',
+    source,
+    destination,
+    message:     JSON.stringify(messageBody),
+    'src.name':  GUPSHUP_APP_NAME!,
+  });
+
+  const res = await fetch('https://api.gupshup.io/wa/api/v1/msg', {
+    method:  'POST',
+    headers: {
+      apikey:         GUPSHUP_API_KEY!,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  });
+
+  if (!res.ok) {
+    throw new Error(`[whatsapp-api] Gupshup media API error: ${res.status}`);
   }
 
   const data = (await res.json()) as { messageId?: string };
@@ -301,7 +361,7 @@ function isGupshupDelivered(httpOk: boolean, body: string): boolean {
 // ─────────────────────────────────────────────
 
 interface NotificationLogEntry {
-  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'elaya_reply';
+  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'task_due_soon' | 'task_overdue_agent' | 'task_overdue_manager_generic' | 'elaya_reply';
   leadId?:        string | null;
   recipientId?:   string | null;
   recipientPhone: string;
@@ -746,6 +806,156 @@ export async function sendTaskOverdueManagerNotification(
     }
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendTaskOverdueManagerNotification:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Send task "due soon" reminder to the assigned agent via Gupshup template.
+// Fires 30 min BEFORE the deadline, for EVERY task (lead or not) — so it is
+// lead-agnostic and task-shaped. The caller (the -30m Trigger.dev job) has
+// already resolved the assignee phone + first name via getTaskWithAssignee, so
+// this wrapper takes them directly (no redundant profile fetch).
+// Fire-and-forget safe — never throws to the caller.
+// Params: {{1}} agent first name, {{2}} task title, {{3}} due time IST ("4:00 PM")
+// Gated by the existing 'task_due' control-plane key (one toggle for the agent's
+// due-soon + overdue WhatsApp).
+// ─────────────────────────────────────────────
+
+export async function sendTaskDueSoonAgentNotification(
+  agentId:       string,
+  agentPhone:    string | null,
+  agentFirstName: string,
+  taskTitle:     string,
+  dueTimeIst:    string,
+): Promise<void> {
+  try {
+    if (!agentPhone) {
+      console.warn(`[whatsapp-api] Agent ${agentId} has no phone — skipping task due-soon reminder`);
+      return;
+    }
+
+    // SEAM B — per-user control plane (0133). Skip if this agent muted WhatsApp
+    // for 'task_due'. Fails open.
+    if (!(await isChannelEnabled(agentId, 'task_due', 'whatsapp'))) return;
+
+    await sendGupshupTemplate({
+      templateId:     GUPSHUP_TASK_DUE_SOON_TEMPLATE_ID,
+      destination:    agentPhone,
+      templateParams: [agentFirstName, taskTitle, dueTimeIst],
+      label:          'Task due-soon reminder',
+      logRecipient:   `agent ${agentId}`,
+      log: {
+        type:        'task_due_soon',
+        recipientId: agentId,
+        agentName:   agentFirstName,
+      },
+    });
+  } catch (err) {
+    console.error('[whatsapp-api] Unexpected error in sendTaskDueSoonAgentNotification:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Send task "overdue" notification to the assigned agent via Gupshup template.
+// Fires AT the deadline when the task is still open, for EVERY task (lead or not).
+// The manager escalation (sendTaskOverdueManagerNotification) is unchanged and
+// still fires for lead tasks at due + threshold — this is the agent's own ping.
+// Fire-and-forget safe — never throws to the caller.
+// Params: {{1}} agent first name, {{2}} task title, {{3}} due time IST ("4:00 PM")
+// Gated by the existing 'task_due' control-plane key.
+// ─────────────────────────────────────────────
+
+export async function sendTaskOverdueAgentNotification(
+  agentId:        string,
+  agentPhone:     string | null,
+  agentFirstName: string,
+  taskTitle:      string,
+  dueTimeIst:     string,
+): Promise<void> {
+  try {
+    if (!agentPhone) {
+      console.warn(`[whatsapp-api] Agent ${agentId} has no phone — skipping task overdue (agent) notification`);
+      return;
+    }
+
+    // SEAM B — per-user control plane (0133). Skip if this agent muted WhatsApp
+    // for 'task_due'. Fails open.
+    if (!(await isChannelEnabled(agentId, 'task_due', 'whatsapp'))) return;
+
+    await sendGupshupTemplate({
+      templateId:     GUPSHUP_TASK_OVERDUE_AGENT_TEMPLATE_ID,
+      destination:    agentPhone,
+      templateParams: [agentFirstName, taskTitle, dueTimeIst],
+      label:          'Task overdue (agent) notification',
+      logRecipient:   `agent ${agentId}`,
+      log: {
+        type:        'task_overdue_agent',
+        recipientId: agentId,
+        agentName:   agentFirstName,
+      },
+    });
+  } catch (err) {
+    console.error('[whatsapp-api] Unexpected error in sendTaskOverdueAgentNotification:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Send task overdue escalation to managers of a NON-lead task via Gupshup
+// template. Recipients are the assignee's manager(s) (reports_to → domain
+// fallback), resolved by the caller (getAssigneeManagers) and passed in.
+// Task-shaped (no lead fields) — the lead path keeps sendTaskOverdueManager-
+// Notification. Fire-and-forget safe — never throws to the caller.
+// Params: {{1}} manager first name, {{2}} agent name, {{3}} task title,
+//         {{4}} due time IST ("4:00 PM"). {{1}} is per-recipient, so params
+// assemble inside the loop. Sequential — Trigger.dev context, small lists.
+// Gated by the existing 'task_overdue_manager' control-plane key.
+// ─────────────────────────────────────────────
+
+export async function sendTaskOverdueManagerGenericNotification(
+  recipientIds: string[],
+  agentName:    string,
+  taskTitle:    string,
+  dueTimeIst:   string,
+): Promise<void> {
+  try {
+    if (recipientIds.length === 0) return;
+
+    // SEAM B — per-user control plane (0133). Drop managers who muted WhatsApp
+    // for 'task_overdue_manager' before the fetch. ONE batched read; fails open.
+    const allowedIds = await filterRecipientsByPref(recipientIds, 'task_overdue_manager', 'whatsapp');
+    if (allowedIds.length === 0) return;
+
+    const admin = createAdminClient();
+    const { data: recipients } = await admin
+      .from('profiles')
+      .select('id, phone, full_name')
+      .in('id', allowedIds);
+
+    if (!recipients || recipients.length === 0) return;
+
+    for (const recipient of recipients) {
+      if (!recipient.phone) {
+        console.warn(`[whatsapp-api] Manager ${recipient.id} has no phone — skipping task overdue (generic) notification`);
+        continue;
+      }
+
+      const managerFirstName = recipient.full_name?.trim().split(/\s+/)[0] || 'there';
+
+      await sendGupshupTemplate({
+        templateId:     GUPSHUP_TASK_OVERDUE_MANAGER_GENERIC_TEMPLATE_ID,
+        destination:    recipient.phone,
+        templateParams: [managerFirstName, agentName, taskTitle, dueTimeIst],
+        label:          'Task overdue manager (generic) notification',
+        logRecipient:   `recipient ${recipient.id}`,
+        log: {
+          type:        'task_overdue_manager_generic',
+          recipientId: recipient.id,
+          agentName,
+        },
+      });
+    }
+  } catch (err) {
+    console.error('[whatsapp-api] Unexpected error in sendTaskOverdueManagerGenericNotification:', err);
   }
 }
 

@@ -35,14 +35,25 @@ Summary widgets receive `initialData` from the page (RSC); only `ManagerLeadVolu
 ```text
 dashboard/page.tsx                   ← Server component (thin orchestrator)
   ↓
-DashboardCanvas                      ← 'use client'; reads useDashboardLayout; owns drag-to-reorder
-  ↓ (per widget, drag-reorderable)
-SortableWidget (inside canvas)       ← wraps DashboardWidgetSlot with @dnd-kit useSortable
-  ↓
-DashboardWidgetSlot                  ← Suspense boundary; min 150ms skeleton rule; edit mode chrome
+DashboardCanvas                      ← 'use client'; reads useDashboardLayout; owns the
+                                        spatial grid via react-grid-layout (WidthProvider(Responsive)).
+                                        Drag/resize gated on edit mode; draggableHandle=".serene-widget-drag".
+  ↓ (per widget — RGL positions each .react-grid-item by {x,y,w,h})
+DashboardWidgetSlot                  ← Suspense boundary; min 150ms skeleton rule; edit chrome;
+                                        OWNS density measurement (useWidgetDensity) + WidgetDensityProvider
   ↓ (React.lazy, code-split per widget)
-<WidgetComponent>                    ← 'use client'; fetches own data via server action on mount
+<WidgetComponent>                    ← 'use client'; fills its cell (height:100%); reads its
+                                        density tier via useWidgetDensityTier() to adapt content
 ```
+
+**Spatial grid (v4, 2026-06-24):** the dashboard is a true 2-D grid — every widget
+is an `{x,y,w,h}` rectangle (grid units, 12-col), freely moved/resized/auto-packed
+by **`react-grid-layout@1.5.3`** (classic line — NOT the 2.x rewrite; its CSS is
+NOT imported, replaced by token chrome in `globals.css` "DASHBOARD SPATIAL GRID").
+Grid vocabulary (`GRID_COLS`/`GRID_ROW_HEIGHT`/`GRID_MARGIN`, per-widget
+`defaultGrid`, `DEFAULT_GRID_BY_ROLE`) lives in `dashboard-widgets.ts`. The old
+`@dnd-kit` reorder + bento-flow grid and the `useWidgetResize` hook were removed.
+Installed with **pnpm** (this repo's package manager).
 
 ---
 
@@ -77,7 +88,7 @@ Pure data — no component references. Each entry:
 | `manager-lead-volume` | Lead Volume | manager, admin, founder | lg |
 | `manager-campaigns` | Campaign Performance | manager, admin, founder | xl |
 | `manager-cold-leads` | Going Cold | manager, admin, founder | sm |
-| `manager-budget` | Campaign Budget | manager, admin, founder | sm |
+| `manager-budget` | Campaign Budget (fuel gauge) | manager, admin, founder | md |
 
 Agent default layout: tasks · Elaya (right column) · pending-calls · new-leads · activity. Manager/admin/founder: the founder six + `manager-budget`.
 
@@ -85,7 +96,7 @@ Agent default layout: tasks · Elaya (right column) · pending-calls · new-lead
 
 **`elaya-presence` rules:** the **live `/elaya` chat, shrunk into the widget** — not a teaser, not a modal. The card is just the widget-card frame around `<EmbeddedElayaChat />` (`components/elaya/EmbeddedElayaChat.tsx` — THE shared embedded-Elaya body, also composed by the floating `ElayaWidget`, R-01). `EmbeddedElayaChat` resolves the user's single active conversation on mount via `getElayaChatSeedAction` (A-15; the SAME seed `/elaya` resolves) and renders `ElayaChatShell` in `embedded` mode (flush, chat-only — no card-in-a-card, no identity rail), with the breathing `LiaGlyph` holding the seat until the seed lands (a static glyph = Elaya absent — never that). The chat bundle is lazy (`next/dynamic`, kept out of the dashboard route chunk). The user says hi and gets a reply **inside the widget** — the SSE loop, transcript, cap, and voice all live in the one shell; never re-inline a composer or any seed→shell plumbing on the card (compose `EmbeddedElayaChat`). No three.js (that lazy-loads post-Elaya-ship).
 
-**`manager-budget` rules:** RSC-seeded `initialData.budget_summary` from `getBudgetSummary` (ad-spend-service; NOT in the RPC); managers pre-filtered server-side via `filterBudgetRowsByDomain` and pinned in `getBudgetSummaryWidgetAction` via `effectiveWidgetDomain()`. Date filter applies (cohort data). CPL renders "—" at zero leads, never ₹0.
+**`manager-budget` rules (the fuel gauge, 2026-06-24):** the widget is the org-wide **ad-account fuel gauge** — recharged (full tank) → spent (burned) → remaining (fuel left) + an ROI sub-line. RSC-seeded `initialData.budget_gauge` from `buildBudgetGaugeSummary(getBudgetSummary, getAccountRecharges)` (ad-spend-service; NOT in the RPC; pure builder layered over `buildAccountReport` so it can never disagree with `/budget`). **ALWAYS org-wide** — recharges carry no domain, so there is NO domain filter and NO manager pin on the gauge (a per-domain "remaining" mixes domain-scoped spend with org recharges = a finance error); the refresh action `getBudgetGaugeWidgetAction(from, to)` takes no domain param. Date filter applies (cohort data). Balance is **INR-only** (non-INR recharges set `hasNonInr` for the footnote, never subtracted). CPL/ROAS render "—" at zero denominators, never ₹0 / 0×. **Density-adaptive** (`useWidgetDensityTier`): compact → remaining headline + tank; standard → + Recharged/Spent/Remaining trio; rich → + ROI line. Tank fill animates via `scaleX` (never `width`). Default footprint `{w:6,h:8}` (was `{w:3,h:5}` — the old cramped slot); module `finance`. (The legacy `initialData.budget_summary` campaign-row seed + `getBudgetSummaryWidgetAction` + `filterBudgetRowsByDomain` pin still exist for any per-domain spend consumer, but the dashboard widget no longer reads them.)
 
 **`manager-cold-leads` widget rules:**
 - `initialData.cold_leads_count` is the only data source. No `useEffect` fetch, no server action, no refresh button.
@@ -102,22 +113,26 @@ Agent default layout: tasks · Elaya (right column) · pending-calls · new-lead
 
 Pattern mirrors `useLeadColumnPreferences` exactly.
 
-**localStorage key format:** `serene:dashboard:layout:${userId}:v2` (bumped from `v1` in the 2026-06-12 redesign — bump again whenever the default grid changes shape; stale layouts must be orphaned, never reconciled)
+**localStorage key format:** `serene:dashboard:layout:${userId}:v4` (v4 = the spatial
+grid, 2026-06-24; v2 was the 2026-06-12 redesign, v3 the short-lived continuous-height
+flow. Bump whenever the layout SHAPE changes; stale layouts are orphaned → reset to the
+role default, never reconciled — a flow→grid reconcile would be worse than the default.)
 
 **Returns:**
 
 ```typescript
 {
-  layout:          WidgetPlacement[];  // { widgetId, col, row, size }[]
-  isHydrated:      boolean;           // false on first render (pre-mount)
+  layout:          WidgetPlacement[];  // GridPlacement: { widgetId, x, y, w, h } in grid units
+  isHydrated:      boolean;            // false on first render (pre-mount)
+  applyLayout:     (placements: WidgetPlacement[]) => void;  // RGL hands us the full layout on every change; no-ops when unchanged
   addWidget:       (widgetId: string) => void;
   removeWidget:    (widgetId: string) => void;
-  moveWidget:      (widgetId: string, col: number, row: number) => void;
-  resizeWidget:    (widgetId: string, size: WidgetSize) => void;
-  reorderWidgets:  (newOrder: string[]) => void;
   resetToDefaults: () => void;
 }
 ```
+
+`moveWidget`/`resizeWidget`/`reorderWidgets` are GONE — react-grid-layout owns geometry
+and emits the whole layout to `applyLayout` on any drag/resize/compaction.
 
 **Hydration rule:** The hook initialises `stored` synchronously with `DEFAULT_LAYOUT_BY_ROLE[role]`
 so widgets render immediately on first mount with the correct defaults. After mount, `useEffect`

@@ -36,6 +36,7 @@ import {
 } from "@/lib/constants/ad-accounts";
 import {
   buildAccountReport,
+  buildBudgetGaugeSummary,
   type BudgetCampaignRow,
   type AccountRecharge,
 } from "@/lib/services/ad-spend-service";
@@ -61,6 +62,23 @@ function spendRow(campaignKey: string, totalSpend: number): BudgetCampaignRow {
     dealRevenue: 0,
     costPerLead: null,
     costPerDeal: null,
+  };
+}
+/** Spend row carrying lead/deal outcomes (for the gauge ROI roll-up). */
+function outcomeRow(
+  campaignKey: string,
+  totalSpend: number,
+  leadCount: number,
+  dealCount: number,
+  dealRevenue: number,
+): BudgetCampaignRow {
+  return {
+    ...spendRow(campaignKey, totalSpend),
+    leadCount,
+    dealCount,
+    dealRevenue,
+    costPerLead: leadCount > 0 ? totalSpend / leadCount : null,
+    costPerDeal: dealCount > 0 ? totalSpend / dealCount : null,
   };
 }
 function recharge(adAccount: string, amount: number, currency = "INR"): AccountRecharge {
@@ -163,9 +181,84 @@ console.log("\n── buildAccountReport: empty Unattributed bucket is dropped �
   check("no Unattributed block when nothing is unresolved", r.blocks.some((b) => b.key === UNATTRIBUTED_ACCOUNT_KEY), false);
 }
 
+// ── buildBudgetGaugeSummary — the dashboard fuel-gauge roll-up ──────────────
+// Same finance invariants as buildAccountReport (it is layered over it), plus
+// the gauge-specific derivations: consumed = spent/recharged, remaining can go
+// negative, CPL/ROAS are null at zero denominators, and the lead/deal/revenue
+// roll-up sums ACROSS all campaigns (org-wide — recharges carry no domain).
+
+console.log("\n── buildBudgetGaugeSummary: empty/zero state ──");
+{
+  const g = buildBudgetGaugeSummary([], []);
+  check("zero: recharged 0", g.recharged, 0);
+  check("zero: spent 0", g.spent, 0);
+  check("zero: remaining 0 (not negative)", g.remaining, 0);
+  check("zero: consumed null (no tank to measure)", g.consumed, null);
+  check("zero: CPL null (no leads)", g.costPerLead, null);
+  check("zero: ROAS null (no spend)", g.roas, null);
+  check("zero: campaignCount 0", g.campaignCount, 0);
+  check("zero: hasNonInr false", g.hasNonInr, false);
+}
+
+console.log("\n── buildBudgetGaugeSummary: tank fill + ROI roll-up (org-wide) ──");
+{
+  // Two accounts, two campaigns each — the gauge sums across ALL of them.
+  const g = buildBudgetGaugeSummary(
+    [
+      outcomeRow("tg_global_april_lead gen_1 jun", 30000, 60, 3, 240000),
+      outcomeRow("tg_global_gmr_lead gen_2 jun",   50000, 40, 2, 160000),
+    ],
+    [recharge("april", 100000), recharge("gmr", 60000)],
+  );
+  check("recharged sums both accounts", g.recharged, 160000);
+  check("spent sums both campaigns", g.spent, 80000);
+  check("remaining = 160k - 80k", g.remaining, 80000);
+  check("consumed = 80k/160k", g.consumed, 0.5);
+  check("leadCount roll-up", g.leadCount, 100);
+  check("dealCount roll-up", g.dealCount, 5);
+  check("dealRevenue roll-up", g.dealRevenue, 400000);
+  check("CPL = spent/leads", g.costPerLead, 800);
+  check("ROAS = revenue/spent", g.roas, 5);
+  check("campaignCount", g.campaignCount, 2);
+}
+
+console.log("\n── buildBudgetGaugeSummary: overspend (remaining negative, consumed > 1) ──");
+{
+  const g = buildBudgetGaugeSummary(
+    [outcomeRow("tg_global_april_lead gen_1 jun", 120000, 50, 0, 0)],
+    [recharge("april", 100000)],
+  );
+  check("remaining negative when spend > recharge", g.remaining, -20000);
+  check("consumed > 1 when overspent", g.consumed, 1.2);
+  check("ROAS 0 (revenue 0, spend > 0)", g.roas, 0); // 0/120000 = 0, not null
+}
+
+console.log("\n── buildBudgetGaugeSummary: non-INR recharge excluded from the tank ──");
+{
+  // The USD recharge must NOT inflate the tank — INR-only, same as the report.
+  const g = buildBudgetGaugeSummary(
+    [outcomeRow("tg_global_dubai_lead gen_1 jun", 40000, 20, 1, 80000)],
+    [recharge("dubai", 100000, "INR"), recharge("dubai", 5000, "USD")],
+  );
+  check("recharged is INR only (USD excluded)", g.recharged, 100000);
+  check("remaining ignores the USD recharge", g.remaining, 60000);
+  check("hasNonInr true", g.hasNonInr, true);
+}
+
+console.log("\n── buildBudgetGaugeSummary: spend but no recharge (consumed null) ──");
+{
+  // Spend with zero recharge → consumed null (the widget shows the EmptyGauge
+  // "no recharge logged" branch + the spend figure, never a ÷0).
+  const g = buildBudgetGaugeSummary([outcomeRow("tg_global_april_lp_1 jun", 5000, 10, 0, 0)], []);
+  check("recharged 0", g.recharged, 0);
+  check("spent surfaced", g.spent, 5000);
+  check("consumed null (no recharge denominator)", g.consumed, null);
+  check("remaining = -spent", g.remaining, -5000);
+}
+
 console.log(
   failures === 0
-    ? "\n✅ ALL PASS — account attribution + balance invariants hold"
+    ? "\n✅ ALL PASS — account attribution + balance + fuel-gauge invariants hold"
     : `\n❌ ${failures} FAILURE(S)`,
 );
 process.exit(failures === 0 ? 0 : 1);

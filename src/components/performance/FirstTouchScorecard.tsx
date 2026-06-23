@@ -11,7 +11,7 @@
 // Mirrors PipelineSection's segmented-bar + chip-legend language in the same panel.
 
 import { m as motion } from 'framer-motion';
-import { FIRST_TOUCH_BUCKETS } from '@/lib/constants/performance';
+import { FIRST_TOUCH_BUCKETS, type FirstTouchBucketId } from '@/lib/constants/performance';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import type { FirstTouchScorecard as ScorecardData } from '@/lib/services/performance-service';
 
@@ -48,9 +48,13 @@ function CardShell({ children, delay = 0 }: { children: React.ReactNode; delay?:
 export function FirstTouchScorecard({
   data,
   delay = 0,
+  onBucketClick,
 }: {
   data:   ScorecardData;
   delay?: number;
+  /** When provided, each non-empty bucket row becomes a tap target opening the
+   *  leads behind its count. Absent → the rows stay display-only (unchanged). */
+  onBucketClick?: (bucketId: FirstTouchBucketId) => void;
 }) {
   const { buckets, untouched, leadsWithFirstCall, totalCohort } = data;
 
@@ -88,17 +92,26 @@ export function FirstTouchScorecard({
           const pct = leadsWithFirstCall > 0 ? Math.round((count / leadsWithFirstCall) * 100) : 0;
           const barPct = (count / maxBucket) * 100;
           const empty = count === 0;
-          return (
-            <div
-              key={b.id}
-              style={{
-                display:             'grid',
-                gridTemplateColumns: '54px 1fr auto',
-                alignItems:          'center',
-                gap:                 'var(--space-3)',
-                opacity:             empty ? 0.5 : 1,
-              }}
-            >
+          // Interactive only when a handler is wired AND the bucket has leads to show.
+          const interactive = !!onBucketClick && !empty;
+          const rowStyle: React.CSSProperties = {
+            display:             'grid',
+            gridTemplateColumns: '54px 1fr auto',
+            alignItems:          'center',
+            gap:                 'var(--space-3)',
+            opacity:             empty ? 0.5 : 1,
+            // Button reset so the grid row looks identical whether div or button.
+            width:               '100%',
+            textAlign:           'left',
+            background:          'transparent',
+            border:              'none',
+            padding:             0,
+            font:                'inherit',
+            color:               'inherit',
+            cursor:              interactive ? 'pointer' : 'default',
+          };
+          const rowContent = (
+            <>
               {/* Label */}
               <span
                 style={{
@@ -151,6 +164,23 @@ export function FirstTouchScorecard({
               >
                 {count} · {pct}%
               </span>
+            </>
+          );
+
+          return interactive ? (
+            <button
+              key={b.id}
+              type="button"
+              className="serene-pressable serene-touch"
+              onClick={() => onBucketClick!(b.id)}
+              aria-label={`Show ${count} lead${count === 1 ? '' : 's'} with a ${b.label} first touch`}
+              style={rowStyle}
+            >
+              {rowContent}
+            </button>
+          ) : (
+            <div key={b.id} style={rowStyle}>
+              {rowContent}
             </div>
           );
         })}

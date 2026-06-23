@@ -6,7 +6,6 @@ import { getLeadStatusSummaryAction } from "@/lib/actions/dashboard";
 import { Button } from "@/components/ui/Button";
 import { formatCompact } from "@/lib/utils/numbers";
 import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
-import { WIDGET_HEIGHT_BY_SIZE } from "@/lib/constants/dashboard-widgets";
 import type { LeadStatus } from "@/lib/types/database";
 import type {
   DashboardLeadStatusCount,
@@ -16,7 +15,6 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
 import type { DateRange } from "@/lib/utils/date-range";
 import { useDashboardCohortSync } from "@/hooks/useDashboardCohortSync";
 import { useWidgetData } from "@/hooks/useWidgetData";
-import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 
 // Chip surfaces — semantic token system, theme-aware.
 const STATUS_TEXT: Record<LeadStatus, string> = {
@@ -170,7 +168,7 @@ function StackedBar({ mix, total }: { mix: Partial<Record<LeadStatus, number>>; 
   );
 }
 
-export function ManagerLeadStatusWidget({ userId, role, initialData, size = 'lg', dateRange, scopeDomain }: WidgetProps & { dateRange?: DateRange }) {
+export function ManagerLeadStatusWidget({ userId, role, initialData, dateRange, scopeDomain }: WidgetProps & { dateRange?: DateRange }) {
   const isManagerRole = role === "manager";
 
   const rscLeadStatus = initialData?.lead_status ?? null;
@@ -220,8 +218,6 @@ export function ManagerLeadStatusWidget({ userId, role, initialData, size = 'lg'
   // Chip grid is a behavioural breakpoint, not a width-guess: 6-up on desktop,
   // a clean 3+3 on mobile. auto-fit on a full-width phone widget packed 4 then 2
   // (an uneven split); a fixed count per breakpoint keeps two even rows.
-  const isMobile = useMediaQuery(MQ.mobile);
-  const chipColumns = isMobile ? 3 : CHIP_STATUSES.length;
 
   return (
     <div
@@ -234,7 +230,7 @@ export function ManagerLeadStatusWidget({ userId, role, initialData, size = 'lg'
         display: "flex",
         flexDirection: "column",
         gap: "var(--space-4)",
-        height: WIDGET_HEIGHT_BY_SIZE[size],
+        height: "100%",
         overflow: "hidden",
       }}
     >
@@ -281,11 +277,12 @@ export function ManagerLeadStatusWidget({ userId, role, initialData, size = 'lg'
           <div
             style={{
               display: "grid",
-              // Fixed column count per breakpoint (not width-driven auto-fit):
-              // 6-up on the half-width desktop widget, a clean 3+3 on mobile.
-              // auto-fit on a full-width phone packed an uneven 4+2 — this keeps
-              // two even rows. Each column min-0s so the chip never overflows.
-              gridTemplateColumns: `repeat(${chipColumns}, minmax(0, 1fr))`,
+              // FLUID, cell-width-driven (not viewport-driven): auto-fit packs as
+              // many columns as the widget's CURRENT cell can hold, reflowing
+              // continuously as it's drag-resized. 6 chips land cleanly as 6 / 3×2
+              // / 2×3 at decreasing widths. The ~92px floor is the narrowest a chip
+              // stays legible; minmax(0,1fr) lets columns shrink without overflow.
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(92px, 100%), 1fr))",
               gap: "var(--space-2)",
             }}
           >

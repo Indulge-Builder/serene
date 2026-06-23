@@ -17,7 +17,6 @@ import { ChevronDown } from "lucide-react";
 import { StatTile } from "@/components/ui/StatTile";
 import { CollapseReveal } from "@/components/ui/CollapseReveal";
 import { BudgetTable } from "@/components/budget/BudgetTable";
-import { beautifyCampaignTitle } from "@/lib/utils/campaigns";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/numbers";
 import { UNATTRIBUTED_ACCOUNT_KEY } from "@/lib/constants/ad-accounts";
 import type { AccountReport } from "@/lib/services/ad-spend-service";
@@ -194,7 +193,7 @@ export function AccountReportSection({ report }: { report: AccountReport }) {
                       <BudgetTable
                         rows={block.campaigns.map((r) => ({
                           ...r,
-                          campaignTitle: beautifyCampaignTitle(r.campaignKey),
+                          campaignTitle: r.campaignKey,
                         }))}
                       />
                     </div>

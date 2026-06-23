@@ -9,6 +9,7 @@ import type { PerformancePeriod } from "@/lib/services/performance-service";
 import { ManagerPerformanceSkeleton } from "./ManagerPerformanceSkeleton";
 import { PerformanceSkeleton } from "./PerformanceSkeleton";
 import { ManagerPerformanceAsync } from "./ManagerPerformanceAsync";
+import { ManagerPerformanceShell } from "./ManagerPerformanceShell";
 import { FounderPerformanceShell } from "./FounderPerformanceShell";
 import { PerformanceFilters } from "@/components/performance/PerformanceFilters";
 import { AgentPerformanceShell } from "@/components/performance/AgentPerformanceShell";
@@ -207,17 +208,21 @@ export default async function PerformancePage({
             />
           )}
         </div>
-        <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-          <PerformanceFilters showSearch />
-        </div>
-        <Suspense fallback={<ManagerPerformanceSkeleton />}>
-          <ManagerPerformanceAsync
-            domain={profile.domain}
-            period={period}
-            customFrom={customFrom ?? undefined}
-            customTo={customTo ?? undefined}
-          />
-        </Suspense>
+        {/* Filter strip is owned by ManagerPerformanceShell — it hosts the
+            roster's "Deck view" trigger on the filter bar's trailing edge
+            (the same single-strip layout the founder view uses). */}
+        <ManagerPerformanceShell
+          rosterSlot={
+            <Suspense fallback={<ManagerPerformanceSkeleton />}>
+              <ManagerPerformanceAsync
+                domain={profile.domain}
+                period={period}
+                customFrom={customFrom ?? undefined}
+                customTo={customTo ?? undefined}
+              />
+            </Suspense>
+          }
+        />
       </main>
     );
   }
@@ -261,10 +266,9 @@ export default async function PerformancePage({
         )}
       </div>
 
-      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-        <PerformanceFilters showSearch />
-      </div>
-
+      {/* Filter strip is owned by FounderPerformanceShell — it hosts the
+          Domains/Agents tabs (leading) + the Agents-tab Deck-view trigger
+          (trailing) in the SAME paper strip as the date/search filters. */}
       <FounderPerformanceShell
         domain={DEFAULT_GIA_DOMAIN}
         period={period}

@@ -40,12 +40,15 @@ import { FirstTouchScorecard } from '@/components/performance/FirstTouchScorecar
 import { AgentCallsDrillModal } from '@/components/performance/AgentCallsDrillModal';
 import { AgentLeadsDrillModal } from '@/components/performance/AgentLeadsDrillModal';
 import { AgentDealsDrillModal } from '@/components/performance/AgentDealsDrillModal';
+import { AgentFirstTouchDrillModal } from '@/components/performance/AgentFirstTouchDrillModal';
+import { AgentLeadsPredicateDrillModal, type DrillPredicate } from '@/components/performance/AgentLeadsPredicateDrillModal';
 import { getAgentDetailMetricsAction, getAgentFirstTouchScorecardAction } from '@/lib/actions/performance';
 import { formatCount, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
+import type { FirstTouchBucketId } from '@/lib/constants/performance';
 import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
-import type { AppDomain } from '@/lib/types/database';
+import type { AppDomain, LeadStatus, CallOutcome } from '@/lib/types/database';
 import type { PerformancePeriod, FirstTouchScorecard as FirstTouchScorecardData } from '@/lib/services/performance-service';
 
 // Recharts importer — lazy per perf G-3 so the chart chunk never lands in the
@@ -58,6 +61,11 @@ const CallOutcomeBar = dynamic(
 
 type DrillKind = 'calls' | 'leads' | 'deals';
 type DrillTarget = { kind: DrillKind; agent: AgentRosterRow } | null;
+// First-touch drill carries the clicked bucket alongside the agent (separate
+// from DrillTarget, which is kind-keyed) — the leads behind one speed bar.
+type FirstTouchTarget = { agent: AgentRosterRow; bucketId: FirstTouchBucketId } | null;
+// Pipeline-status / call-outcome drill — carries the clicked slice + its agent.
+type PredicateTarget = { agent: AgentRosterRow; predicate: DrillPredicate } | null;
 type BreakdownMode = 'outcome' | 'status';
 
 interface Props {
@@ -94,6 +102,8 @@ export function FounderDrillDownDeck({
   );
   const [index, setIndex] = useState(startIndex === -1 ? 0 : startIndex);
   const [drill, setDrill] = useState<DrillTarget>(null);
+  const [ftDrill, setFtDrill] = useState<FirstTouchTarget>(null);
+  const [predicateDrill, setPredicateDrill] = useState<PredicateTarget>(null);
   // One toggle for the whole deck — flipping it on one card carries to the next,
   // which reads naturally when swiping through agents.
   const [mode, setMode] = useState<BreakdownMode>('outcome');
@@ -201,6 +211,8 @@ export function FounderDrillDownDeck({
               mode={mode}
               onModeChange={setMode}
               onDrill={(kind) => setDrill({ kind, agent })}
+              onFirstTouch={(bucketId) => setFtDrill({ agent, bucketId })}
+              onPredicate={(predicate) => setPredicateDrill({ agent, predicate })}
             />
           )}
         />
@@ -237,6 +249,32 @@ export function FounderDrillDownDeck({
           onClose={() => setDrill(null)}
         />
       )}
+      {ftDrill && (
+        <AgentFirstTouchDrillModal
+          open
+          agentId={ftDrill.agent.id}
+          agentName={ftDrill.agent.full_name}
+          domain={domain}
+          bucketId={ftDrill.bucketId}
+          period={period}
+          customFrom={customFrom}
+          customTo={customTo}
+          onClose={() => setFtDrill(null)}
+        />
+      )}
+      {predicateDrill && (
+        <AgentLeadsPredicateDrillModal
+          open
+          agentId={predicateDrill.agent.id}
+          agentName={predicateDrill.agent.full_name}
+          domain={domain}
+          predicate={predicateDrill.predicate}
+          period={period}
+          customFrom={customFrom}
+          customTo={customTo}
+          onClose={() => setPredicateDrill(null)}
+        />
+      )}
     </Dialog>
   );
 }
@@ -252,12 +290,16 @@ function DeckAgentCard({
   mode,
   onModeChange,
   onDrill,
+  onFirstTouch,
+  onPredicate,
 }: {
   agent: AgentRosterRow;
   breakdown: BreakdownState | undefined;
   mode: BreakdownMode;
   onModeChange: (mode: BreakdownMode) => void;
   onDrill: (kind: DrillKind) => void;
+  onFirstTouch: (bucketId: FirstTouchBucketId) => void;
+  onPredicate: (predicate: DrillPredicate) => void;
 }) {
   return (
     <div
@@ -329,7 +371,7 @@ function DeckAgentCard({
       </div>
 
       {/* Breakdown — toggleable outcome <-> status, lazily fed on card open */}
-      <DeckBreakdown breakdown={breakdown} mode={mode} onModeChange={onModeChange} />
+      <DeckBreakdown breakdown={breakdown} mode={mode} onModeChange={onModeChange} onFirstTouch={onFirstTouch} onPredicate={onPredicate} />
     </div>
   );
 }
@@ -342,10 +384,14 @@ function DeckBreakdown({
   breakdown,
   mode,
   onModeChange,
+  onFirstTouch,
+  onPredicate,
 }: {
   breakdown: BreakdownState | undefined;
   mode: BreakdownMode;
   onModeChange: (mode: BreakdownMode) => void;
+  onFirstTouch: (bucketId: FirstTouchBucketId) => void;
+  onPredicate: (predicate: DrillPredicate) => void;
 }) {
   return (
     <div style={{ width: '100%' }}>
@@ -406,7 +452,10 @@ function DeckBreakdown({
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
         >
-          <CallOutcomeBar breakdown={breakdown.metrics.callOutcomeBreakdown} />
+          <CallOutcomeBar
+            breakdown={breakdown.metrics.callOutcomeBreakdown}
+            onSliceClick={(outcome) => onPredicate({ kind: 'outcome', value: outcome as CallOutcome })}
+          />
         </motion.div>
       ) : (
         <motion.div
@@ -435,7 +484,10 @@ function DeckBreakdown({
           >
             Lead Pipeline
           </p>
-          <PipelineBar breakdown={breakdown.metrics.pipelineBreakdown} />
+          <PipelineBar
+            breakdown={breakdown.metrics.pipelineBreakdown}
+            onSegmentClick={(status) => onPredicate({ kind: 'status', value: status as LeadStatus })}
+          />
         </motion.div>
       )}
 
@@ -443,7 +495,7 @@ function DeckBreakdown({
           AgentDetailPanel order). Only when the scorecard fetch succeeded. */}
       {breakdown?.status === 'ready' && breakdown.scorecard && (
         <div style={{ marginTop: 'var(--space-4)' }}>
-          <FirstTouchScorecard data={breakdown.scorecard} />
+          <FirstTouchScorecard data={breakdown.scorecard} onBucketClick={onFirstTouch} />
         </div>
       )}
     </div>

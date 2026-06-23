@@ -2,7 +2,7 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isGiaDomain, type GiaDomain } from "@/lib/constants/domains";
-import { COLD_LEAD_THRESHOLD_DAYS } from "@/lib/constants/leads";
+import { goingColdCutoff } from "@/lib/constants/leads";
 import { ROUTING_POOL_ROLES } from "@/lib/constants/roles";
 import { redis } from "@/lib/redis";
 import {
@@ -289,10 +289,9 @@ export async function getLeadsByRole(
     : null;
   // Trim and lowercase in the service — never trust raw client input
   const searchTerm = filters.search ? filters.search.trim().toLowerCase() || null : null;
-  // Going-cold threshold: last_activity_at older than COLD_LEAD_THRESHOLD_DAYS ago.
-  const goingColdThreshold = filters.going_cold
-    ? new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString()
-    : null;
+  // Going-cold threshold: last_activity_at older than the cold window (the ONE
+  // cutoff helper — shared verbatim with the count RPC's p_going_cold below).
+  const goingColdThreshold = filters.going_cold ? goingColdCutoff() : null;
   // Admin/founder Gia domain slice — agent/manager scoping never comes from filters
   const domainSlice =
     role !== "agent" && role !== "manager" && filters.domain && isGiaDomain(filters.domain)
@@ -510,9 +509,33 @@ async function getRevivalCandidateLeads(
   // Page over the resolved id set, then fetch those leads (RLS re-scopes — an agent
   // can never see a candidate's lead outside their assignment even if the id leaked).
   const pageIds = leadIds.slice((page - 1) * pageSize, page * pageSize);
-  if (pageIds.length === 0) {
-    return { leads: [], totalCount, statusCounts: {} };
-  }
+  const leads = await fetchLeadsByIds(role, userId, domain, pageIds, filters.sort_order === "asc");
+
+  // statusCounts left empty — the status pills are meaningless for a candidate view
+  // (these leads are scattered across touched/in_discussion/nurturing by design).
+  return { leads, totalCount, statusCounts: {} };
+}
+
+// ─────────────────────────────────────────────
+// Resolve a bounded set of lead ids → LeadsResult-shaped rows, scoped by role.
+//
+// THE id-set → list-rows reader. Selects the SAME column subset + assignee join +
+// latest-note batch as getLeadsByRole so LeadsTable / the drill modals render
+// identically. Role constraints are defence-in-depth alongside RLS on the session
+// client (agent → own, manager → domain, admin/founder → all). Used by the revival
+// review predicate AND the first-touch bucket drill-down — never re-inline an
+// id-set lead fetch (R-01). No Redis (the caller owns its own freshness posture).
+// ─────────────────────────────────────────────
+async function fetchLeadsByIds(
+  role:   UserRole,
+  userId: string,
+  domain: AppDomain,
+  ids:    string[],
+  ascending = false,
+): Promise<LeadListItemWithAssignee[]> {
+  if (ids.length === 0) return [];
+
+  const supabase = await createClient();
 
   let query = supabase
     .from("leads")
@@ -522,26 +545,35 @@ async function getRevivalCandidateLeads(
        call_count, last_call_outcome, created_at,
        assignee:profiles!leads_assigned_to_fkey(full_name)`,
     )
-    .in("id", pageIds)
+    .in("id", ids)
     .is("archived_at", null)
-    .order("created_at", { ascending: filters.sort_order === "asc" });
+    .order("created_at", { ascending });
 
   // Role constraints — defense in depth alongside RLS (mirrors getLeadsByRole).
   if (role === "agent") query = query.eq("assigned_to", userId);
   else if (role === "manager") query = query.eq("domain", domain);
 
   const { data, error } = await query;
-  if (error || !data) return { leads: [], totalCount, statusCounts: {} };
+  if (error || !data) return [];
 
-  const ids = (data as { id: string }[]).map((l) => l.id);
-  const notesMap = await getLatestNotesForLeads(ids, supabase);
-  const leads = (data as (Omit<LeadListItemWithAssignee, "latest_note"> & {
+  const fetchedIds = (data as { id: string }[]).map((l) => l.id);
+  const notesMap = await getLatestNotesForLeads(fetchedIds, supabase);
+  return (data as (Omit<LeadListItemWithAssignee, "latest_note"> & {
     assignee: { full_name: string } | null;
   })[]).map((l) => ({ ...l, latest_note: notesMap.get(l.id) ?? null }));
+}
 
-  // statusCounts left empty — the status pills are meaningless for a candidate view
-  // (these leads are scattered across touched/in_discussion/nurturing by design).
-  return { leads, totalCount, statusCounts: {} };
+// Public wrapper for the first-touch bucket drill-down — resolves the bucket's
+// lead ids (computed in performance-service via the shared classification) into
+// LeadsResult rows. Session client + role scope = the same access boundary as the
+// revival review predicate; the gated action (assertDrillAccess) is the first layer.
+export async function getLeadsByIds(
+  role:   UserRole,
+  userId: string,
+  domain: AppDomain,
+  ids:    string[],
+): Promise<LeadListItemWithAssignee[]> {
+  return fetchLeadsByIds(role, userId, domain, ids);
 }
 
 /** Deduped per-request — safe to call from page header and LeadsTableAsync. */
@@ -1342,9 +1374,8 @@ export async function getLeadsForExport(
       }
     }
     if (filters.going_cold) {
-      const threshold = new Date(Date.now() - COLD_LEAD_THRESHOLD_DAYS * 86_400_000).toISOString();
       query = query
-        .lt("last_activity_at", threshold)
+        .lt("last_activity_at", goingColdCutoff())
         .not("status", "in", `("won","lost","junk")`);
     }
   }

@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/whatsapp` (shared inbox) and the dossier `LeadWhatsAppCard` — the in-app messaging surfaces.
 > **Audience:** engineers. · **Source-of-truth scope:** the UI surfaces, `whatsapp-service.ts`, `whatsapp.ts` actions, Realtime wiring. The webhook contract, inbound pipeline, templates, and notification log live in `../integrations/whatsapp-gupshup.md`; tables in `../architecture/database.md`.
-> **Last verified:** 2026-06-15 (Elaya staff channel + voice); 2026-06-09 full pass; 2026-06-11 restructure.
+> **Last verified:** 2026-06-24 (inbound + outbound media, durable storage, Resolve/Reopen removal); 2026-06-15 (Elaya staff channel + voice); 2026-06-11 restructure.
 
 ## 1. Purpose
 
@@ -16,23 +16,26 @@ session window).
 ## 2. Who sees it
 
 Agents: conversations on own assigned leads (`can_access_wa_conversation`). Managers: domain.
-Admin/founder: all. Resolve/reopen: manager+. Guest: redirected. Full capability×layer matrix:
-Deep dive §10.
+Admin/founder: all. Guest: redirected. Every accessible thread is replyable — there is no
+resolved/locked state (Resolve/Reopen was **removed 2026-06-20**; see §10 / §11). Full
+capability×layer matrix: Deep dive §10.
 
 ## 3. Data sources
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `whatsapp-service.ts` (session client, RLS) — `getConversations` (cursor = `last_message_at`), `getMessages` (ASC, joins sender), `getUnreadCount` (`get_wa_unread_count` RPC), `markConversationRead` (UPSERT), `searchConversations` |
-| Actions | `whatsapp.ts` — `sendWhatsAppMessage`, `markConversationAsRead`, `resolveConversation`/`reopenConversation` (manager+), `getConversationsAction`, `getMessagesAction`, `searchConversationsAction`, `getConversationByLeadIdAction`, `initiateWhatsAppConversationAction` (idempotent on race) |
+| Service | `whatsapp-service.ts` (session client, RLS) — `getConversations` (cursor = `last_message_at`; list/search rows carry a per-caller `unread_count` 0/1 via `attachUnreadCounts`), `getMessages` (ASC, joins sender; **signs media paths** via `signMediaPath` on read), `getUnreadCount` (`get_wa_unread_count` RPC), `markConversationRead` (UPSERT), `searchConversations`; **`whatsapp-media.ts`** (server-only durability layer — `storeInboundMedia`/`storeOutboundMedia`/`signMediaPath`) |
+| Actions | `whatsapp.ts` — `sendWhatsAppMessage` (text), `sendWhatsAppMediaMessage(formData)` (outbound image/video/PDF/audio attach), `signWhatsAppMediaAction(path)` (signs a realtime-arriving media path), `markConversationAsRead`, `getConversationsAction`, `getMessagesAction`, `searchConversationsAction`, `getConversationByLeadIdAction`, `initiateWhatsAppConversationAction` (idempotent on race). **`resolveConversation`/`reopenConversation` were deleted 2026-06-20 — do not recreate.** |
 | Pipeline | inbound + outbound sends: `../integrations/whatsapp-gupshup.md` |
 
 ## 4. Components
 
 `WhatsAppShell` (split-pane: list + thread) · `ConversationList` + period filter ·
-`ConversationPanel` · `MessageBubble` (shows a "Elaya" label when `is_bot = true` — nothing sets
-it today) · composer (optimistic insert, Realtime echo confirm) · dossier `LeadWhatsAppCard` +
-`LeadWhatsAppCardAsync`.
+`ConversationPanel` · `MessageBubble` (inline `<img>`/`<video>` media previews; "Unsupported message"
+placeholder for blank non-media rows; shows an "Elaya" label when `is_bot = true` — nothing sets
+it today) · composer (`MessageBar` + a **paperclip attach button** + a `<DictationButton variant="composer">`
+in `leadingSlot`; optimistic text **and** media bubbles, Realtime echo confirm) · dossier
+`LeadWhatsAppCard` + `LeadWhatsAppCardAsync`.
 
 ## 5. States
 
@@ -50,8 +53,11 @@ RLS (review together); channel nonces; unread counts via the RPC only (fixed in 
 
 - **AI chatbot not built:** `bot_active`/`bot_paused_*` columns exist (defaults set) but no code
   reads or writes them for bot behaviour; `is_bot` is never set on outbound messages today.
-- Meta Cloud API helpers remain dormant for a future BSP switch; `getMediaDownloadUrl` needs
-  Meta credentials when inbound media arrives.
+- The Meta Cloud API send/upload helpers in `whatsapp-api.ts` (`sendTemplateMessage`,
+  `sendMediaMessage`, `uploadMedia`, `getMediaDownloadUrl`) remain dormant for a future BSP switch.
+  **Inbound and outbound media are fully live on the active Gupshup path** (see §8 step 6, §8f, §8g) —
+  Gupshup delivers/accepts a direct CDN url, so `getMediaDownloadUrl` (Meta media-id resolution) is
+  only reached on the dormant Meta branch.
 
 ---
 
@@ -68,7 +74,7 @@ The WhatsApp module gives Indulge agents and managers a shared inbox inside Sere
 
 | Surface | Route / file | Role |
 | --- | --- | --- |
-| **Inbox UI** | `/whatsapp` — `src/app/(dashboard)/whatsapp/page.tsx` | Authenticated users browse conversations, read threads, send outbound text, resolve/reopen (manager+). |
+| **Inbox UI** | `/whatsapp` — `src/app/(dashboard)/whatsapp/page.tsx` | Authenticated users browse conversations, read threads, send outbound text + media (image/video/PDF/audio). |
 | **Lead dossier card** | `LeadWhatsAppCard` on `/leads/[id]` — `src/components/leads/LeadWhatsAppCard.tsx` | Embedded chat thread on a single lead. Can **initiate** a new conversation (template) when none exists. |
 | **Inbound pipeline** | `POST /api/webhooks/whatsapp` — `src/app/api/webhooks/whatsapp/route.ts` | Gupshup (active) or Meta (dormant) webhooks authenticate, acknowledge fast, and process messages asynchronously. |
 
@@ -79,7 +85,7 @@ The WhatsApp module gives Indulge agents and managers a shared inbox inside Sere
 
 **AI chatbot:** Planned, not built. Columns `bot_active`, `bot_paused_by`, and `bot_paused_at` exist on `whatsapp_conversations` (defaults: `bot_active = true`). No application code reads or writes them for bot behaviour. `MessageBubble` shows a "Elaya" label when `is_bot = true`, but nothing in the pipeline sets `is_bot = true` on outbound messages today.
 
-**BSP:** Gupshup v1 for outbound text, the initiation template, and template notifications. Meta Cloud API helpers remain in `whatsapp-api.ts` for a future switch; they are not called on the active Gupshup path except `getMediaDownloadUrl` during inbound media handling (requires Meta credentials when media arrives).
+**BSP:** Gupshup v1 for outbound text, **outbound media** (`sendGupshupMediaMessage`), the initiation template, and template notifications. Inbound media also arrives over Gupshup as a direct CDN url (no Meta creds needed — see §8 step 6). The Meta Cloud API helpers remain in `whatsapp-api.ts` for a future switch; they are **not** called on the active Gupshup path. `getMediaDownloadUrl` (Meta media-id → temporary url) is reached only on the dormant Meta inbound branch.
 
 ---
 
@@ -95,7 +101,7 @@ One row per lead (one thread per phone). Container for message history and inbox
 | `lead_id` | `uuid` | NO | — | FK → `leads(id)` ON DELETE CASCADE |
 | `wa_id` | `text` | NO | — | Meta/Gupshup sender ID, E.164 **without** `+` |
 | `phone` | `text` | NO | — | Canonical E.164 **with** `+` |
-| `status` | `text` | NO | `'open'` | CHECK: `'open' \| 'resolved'` |
+| `status` | `text` | NO | `'open'` | CHECK: `'open' \| 'resolved'`. **Dead-but-kept** — Resolve/Reopen was removed 2026-06-20; every row stays `'open'`. No UI/action reads or writes a resolved state. Column + CHECK deliberately left (no migration); `getConversations` dropped its `status='open'` filter. |
 | `last_message_at` | `timestamptz` | YES | — | Updated on inbound/outbound; drives sort + period filter |
 | `bot_active` | `boolean` | NO | `true` | **Unused** — reserved for future bot |
 | `bot_paused_by` | `uuid` | YES | — | FK → `profiles(id)`; **unused** |
@@ -110,7 +116,7 @@ One row per lead (one thread per phone). Container for message history and inbox
 | `lead_id` UNIQUE | `lead_id` | At most one conversation per lead |
 | `wa_id` UNIQUE | `wa_id` | At most one conversation per WhatsApp sender ID |
 
-**Indexes:** `idx_wa_conversations_lead_id`; partial `idx_wa_conversations_last_message` on `(last_message_at DESC) WHERE status = 'open'`.
+**Indexes:** `idx_wa_conversations_lead_id`; partial `idx_wa_conversations_last_message` on `(last_message_at DESC) WHERE status = 'open'` (still present; every row is `'open'` post-removal, so it covers the whole table).
 
 **RLS** (migration 0032, recreated in 0041, InitPlan-hoisted in 0088):
 
@@ -142,7 +148,7 @@ Append-only message log (both directions). One narrow UPDATE exception for deliv
 | `wa_message_id` | `text` | YES | — | Provider message ID; NULL allowed for optimistic outbound |
 | `message_type` | `text` | NO | — | CHECK: `text`, `image`, `video`, `document`, `audio`, `template` |
 | `content` | `text` | YES | — | Sanitized text; NULL for media-only |
-| `media_url` | `text` | YES | — | Signed URL when resolved |
+| `media_url` | `text` | YES | — | Durable **storage PATH** in the private `whatsapp-media` bucket (migration 0141), never a url. `getMessages` / `signWhatsAppMediaAction` mint a 1-hour signed url on read via `signMediaPath`. Legacy/fallback rows may hold a raw CDN url (passed through untouched). |
 | `media_mime_type` | `text` | YES | — | |
 | `status` | `text` | YES | `'sent'` | CHECK: `sent`, `delivered`, `read`, `failed` (outbound). Inbound rows insert `null`. |
 | `status_at` | `timestamptz` | YES | — | Set with status updates |
@@ -210,7 +216,7 @@ Audit log for **template** sends only (not agent-composed inbox messages).
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | `uuid` | PK |
-| `type` | `text` | CHECK: `'agent_assignment' \| 'founder_alert' \| 'sla_breach' \| 'lead_initiation'` (widened by migration 0067) |
+| `type` | `text` | CHECK: **10 values** — `agent_assignment`, `founder_alert`, `sla_breach`, `lead_initiation`, `task_due_reminder`, `task_overdue_manager`, `task_due_soon`, `task_overdue_agent`, `task_overdue_manager_generic`, `elaya_reply`. Widened across 0067 (sla/lead_initiation), 0113 (task_due_reminder/task_overdue_manager), 0117 (elaya_reply), and 0142 (the three task-agent/non-lead types). |
 | `lead_id` | `uuid` | Nullable FK |
 | `recipient_id` | `uuid` | Nullable FK → profiles |
 | `recipient_phone` | `text` | **Last 4 digits only** |
@@ -229,6 +235,12 @@ Audit log for **template** sends only (not agent-composed inbox messages).
 - `founder_alert` — `sendFounderLeadNotification`
 - `sla_breach` — `sendSlaAgentNotification` AND `sendSlaManagerNotification` (both use this value as of migration 0067; older SLA rows are still labelled `agent_assignment` and cannot be reclassified)
 - `lead_initiation` — `sendLeadInitiationMessage`
+- `task_due_reminder` — `sendTaskDueReminderNotification` (gia tasks)
+- `task_overdue_manager` — `sendTaskOverdueManagerNotification` (lead-task manager escalation)
+- `task_due_soon` — `sendTaskDueSoonAgentNotification` (-30m agent ping, every task)
+- `task_overdue_agent` — `sendTaskOverdueAgentNotification` (at-due agent ping, every task)
+- `task_overdue_manager_generic` — `sendTaskOverdueManagerGenericNotification` (non-lead task manager escalation)
+- `elaya_reply` — `sendElayaWhatsAppReply` (one row per Elaya WhatsApp staff reply attempt, migration 0117)
 
 **Who writes:** Internal `logNotification()` in `whatsapp-api.ts` only (adminClient). Never throws to caller. Called in a `finally` block on every send attempt (exactly one row per attempt — see §4b).
 
@@ -295,21 +307,22 @@ WHERE wc.status = 'open'
 - `getUnreadCount()` in `whatsapp-service.ts` → `supabase.rpc('get_wa_unread_count')`
 - `page.tsx` `Promise.all` with initial conversations — badge in `WhatsAppShell` header
 
-Per-row unread dots in `ConversationRow` use optional `conversation.unread_count` on the type; list queries do not populate that field today — header badge uses RPC only.
+Per-row unread dots in `ConversationRow` use `conversation.unread_count` on the type; `getConversations` / `searchConversations` **now populate it** (0/1) via the internal `attachUnreadCounts` (one batched RLS-scoped reads query mirroring the `get_wa_unread_count` predicate). The header badge still uses the RPC count.
 
 ---
 
-### 4. The Three Service Files — Responsibilities and Boundaries
+### 4. The Four WhatsApp Service Files — Responsibilities and Boundaries
 
-These three files are **not** interchangeable. Trust model, Supabase client, and error contracts differ.
+These four files are **not** interchangeable. Trust model, Supabase client, and error contracts differ.
 
 | File | Client | RLS | Throws to caller? | Import from `'use client'`? |
 | --- | --- | --- | --- | --- |
 | `whatsapp-service.ts` | Session (`createClient()` server) | **Yes** — access enforced by DB | Returns empty/null on error | **No** — use actions |
-| `whatsapp-api.ts` | None (HTTP) + admin for logs | Bypass for logs only | Templates: **never**. `sendLeadInitiationMessage`/`sendTextMessage`: **can throw** | **Never** |
+| `whatsapp-api.ts` | None (HTTP) + admin for logs | Bypass for logs only | Templates: **never**. `sendLeadInitiationMessage`/`sendTextMessage`/`sendGupshupMediaMessage`: **can throw** | **Never** |
 | `whatsapp-ingestion.ts` | **adminClient** throughout | Bypass | Logs errors; inbound dedup exits silently | **Never** |
+| `whatsapp-media.ts` (durability, migration 0141) | **adminClient** throughout | Bypass (service-role storage) | Never throws — returns `null` on failure (best-effort) | **Never** |
 
-A fourth file — `lead-assignment-notify.ts` — orchestrates assignment side-effects (see §4d). It is not a query layer; it sequences the WhatsApp/notification/SLA calls.
+A further file — `lead-assignment-notify.ts` — orchestrates assignment side-effects (see §4e). It is not a query layer; it sequences the WhatsApp/notification/SLA calls.
 
 ---
 
@@ -324,7 +337,7 @@ Until `database.ts` includes WhatsApp tables, all queries cast supabase to `any`
 | `getConversations` | `{ limit?, cursor?, period?, customFrom?, customTo? }` | `{ conversations, nextCursor }` | Join `leads!inner` for name/phone; `order last_message_at DESC nullsFirst: false`; optional period on `last_message_at`; cursor: `.lt('last_message_at', cursor)` when cursor set |
 | `getConversation` | `conversationId: string` | `WhatsAppConversation \| null` | Single row + lead join |
 | `getConversationByLeadId` | `leadId: string` | `WhatsAppConversation \| null` | Single row by `lead_id` FK + lead join. **Returns null when no conversation exists — not an error.** Used by the lead dossier card. |
-| `getMessages` | `conversationId`, `{ limit?, before? }` | `WhatsAppMessage[]` | ASC `created_at`; profile join for sender; `before` → `.lt('created_at', before)` (older page) |
+| `getMessages` | `conversationId`, `{ limit?, before? }` | `WhatsAppMessage[]` | ASC `created_at`; profile join for sender; `before` → `.lt('created_at', before)` (older page). **Signs media:** each row with a `media_url` is passed through `signMediaPath` (storage path → 1-hour signed url; raw urls pass through) before return. |
 | `getUnreadCount` | none | `number` | `rpc('get_wa_unread_count')`; **0 on error**, never null |
 | `markConversationRead` | `conversationId` | `void` | UPSERT `whatsapp_conversation_reads` on `(conversation_id, agent_id)` |
 | `searchConversations` | `query`, optional period filters | `WhatsAppConversation[]` | `sanitizeText` + trim; ILIKE on `leads.first_name`, `leads.last_name`, `phone`; max **20**; same period helper |
@@ -358,7 +371,7 @@ Optional (Meta dormant): `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `W
 | `sendTemplateMessage` | Meta Graph API — dormant |
 | `sendMediaMessage` | Meta — dormant |
 | `uploadMedia` | Meta — dormant |
-| `getMediaDownloadUrl(mediaId)` | Meta media URL fetch — used by ingestion for inbound media |
+| `getMediaDownloadUrl(mediaId)` | Meta media-id → temporary url. **Dormant** — only the Meta inbound branch reaches it. Gupshup delivers a direct CDN url, so the active path never calls it. |
 | `verifyMetaSignature(rawBody, signatureHeader)` | HMAC-SHA256 vs `WHATSAPP_WEBHOOK_SECRET`; **`timingSafeEqual`** on equal-length buffers; header format `sha256=<hex>` |
 | `sendLeadAssignmentNotification(agentId, leadName, leadPhone, domain?, leadId?)` | Gupshup template to agent's profile phone. Params `{{1}}` = **agent first name**, `{{2}}` = lead name, `{{3}}` = lead phone (or `'not provided'`). |
 | `sendFounderLeadNotification(domain, agentName, leadName, leadPhone, leadId?)` | Template to all founders with phones, sent in **parallel** via `Promise.all` |
@@ -416,7 +429,7 @@ All writes bypass RLS. Idempotent on `wa_message_id` for inbound messages.
 3. **Resolve lead** — `resolveLeadByPhone(normalizedPhone)`.
 4. **Create lead if missing** — `createLeadFromWhatsApp(waId, normalizedPhone, senderName)` from `lead-ingestion.ts`; re-fetch lead row. **Then fire `notifyLeadAssigned(...)` (awaited, not void)** — agent + founder WhatsApp, in-app notification, and SLA timers for the brand-new lead. Awaited because this code already runs inside the route's `after()`; a bare `void` would detach the send and Vercel would freeze the lambda before Gupshup is reached. The agent name is fetched (one query, non-fatal) to populate the founder alert.
 5. **Get or create conversation** — `getOrCreateConversation(leadId, waId, normalizedPhone)`.
-6. **Resolve media URL** — if image/video/document/audio, `getMediaDownloadUrl` (non-fatal on failure).
+6. **Resolve + durably store media** — for image/video/document/audio: the source url is `mediaObj.url` (Gupshup's direct CDN url) or, on the dormant Meta branch, `getMediaDownloadUrl(mediaObj.id)`. The source url is then passed to `storeInboundMedia` (`whatsapp-media.ts`) which downloads the bytes and re-hosts them in the private `whatsapp-media` bucket — `media_url` is set to the durable **storage PATH**. On download/upload failure (non-fatal) it falls back to the raw CDN url so the media at least loads until the link expires.
 7. **Insert inbound message** — `insertInboundMessage` (`sanitizeText` on text/caption; inbound rows insert `status: null`).
 8. **Update conversation** — `last_message_at = now()` on `whatsapp_conversations`.
 9. **Realtime** — implicit via `supabase_realtime` publication (no explicit broadcast call).
@@ -437,7 +450,23 @@ PostgREST insert does not expose `ON CONFLICT DO NOTHING` cleanly; re-SELECT is 
 
 ---
 
-#### 4d. `lead-assignment-notify.ts` — assignment side-effect orchestrator
+#### 4d. `whatsapp-media.ts` — SERVER ONLY, media durability (migration 0141)
+
+Gupshup delivers (and accepts) media as a direct, **time-limited** CDN url. Storing that url means old media 404s once the link expires, so this module downloads the bytes and re-hosts them in the **private `whatsapp-media` Supabase Storage bucket** — `whatsapp_messages.media_url` then holds a durable **storage PATH**, never a url. All operations use the **admin (service-role) client** (the inbound webhook has no session; signed-url minting on read is gated by the page/action role layer, mirroring the `whatsapp_messages` RLS posture). Never throws — every function returns `null` on failure so the caller can fall back.
+
+| Export | Purpose |
+| --- | --- |
+| `storeInboundMedia(cdnUrl, mime, leadId, messageId)` | Download a Gupshup CDN url (32MB cap, 0-byte guard, content-type sniff) → upload to `whatsapp-media/{leadId}/{messageId}.{ext}` → return the storage PATH (`null` on failure → caller keeps the raw url). |
+| `storeOutboundMedia(bytes, mime, leadId, key)` | Upload a staff-attached file to `whatsapp-media/{leadId}/out-{key}.{ext}` → return the PATH (Phase 2 outbound compose). |
+| `signMediaPath(pathOrUrl)` | Mint a 1-hour signed url for a stored path; an `http(s)` value (legacy/fallback row) is returned unchanged; `null` on signing failure. |
+| `mediaExtFromMime(mime)` | Best-effort file extension; `'bin'` for unknown types. |
+| `WHATSAPP_MEDIA_BUCKET` / `WHATSAPP_MEDIA_SIGNED_URL_TTL_SECONDS` | `'whatsapp-media'` / 3600s. |
+
+Consumed by both ingestion (`storeInboundMedia` in step 6) and the read/action path (`getMessages` + `signWhatsAppMediaAction` + `sendWhatsAppMediaMessage`).
+
+---
+
+#### 4e. `lead-assignment-notify.ts` — assignment side-effect orchestrator
 
 **SERVER ONLY.** Single entry point for everything that must happen when a lead is assigned, from any of the four assignment paths (lead webhook, WhatsApp inbound, `assignLead`, `createManualLead`). Callers perform **no** direct WhatsApp / in-app / SLA calls of their own.
 
@@ -460,17 +489,21 @@ Full call-site rules in `src/lib/actions/CLAUDE.md` § "Founder WhatsApp alert".
 
 All mutations run Zod first and return `ActionResult` unless noted.
 
+All session-based actions begin with `requireProfile()` from `lib/actions/_auth.ts` (A-18) — never a hand-rolled session/role block.
+
 | Action | Schema / validation | Auth | Service / writes | Return |
 | --- | --- | --- | --- | --- |
-| `sendWhatsAppMessage` | Inline `SendMessageSchema` (uuid + content 1–4096, `sanitizeText` transform) | `getCurrentProfile()` | `getConversation` → `sendTextMessage` → **session-client** insert outbound row → update `last_message_at` | `ActionResult<WhatsAppMessage>` |
-| `markConversationAsRead` | `ConversationIdSchema` | Profile required | `markConversationRead()` | `ActionResult<null>` |
-| `resolveConversation` | `ConversationIdSchema` | Profile + role ∈ `manager, admin, founder` | Session update `status = resolved` | `ActionResult<null>` |
-| `reopenConversation` | `ConversationIdSchema` | Same manager+ guard | Session update `status = open` | `ActionResult<null>` |
-| `getConversationsAction` | `WhatsAppListFilterSchema` | Profile required | `getConversations()` | `{ conversations, nextCursor }` |
-| `getMessagesAction` | UUID parse on id | Profile required | `getMessages()` | `WhatsAppMessage[]` |
-| `getConversationByLeadIdAction` | UUID parse on `leadId` | Profile required | `getConversationByLeadId()` | `{ data: WhatsAppConversation \| null, error }` — **null data is not an error** (no conversation yet) |
-| `initiateWhatsAppConversationAction` | UUID parse on `leadId` | Profile required | See below | `ActionResult<{ conversation, message }>` |
-| `searchConversationsAction` | `WhatsAppSearchFilterSchema` | Profile required | `searchConversations()` | `WhatsAppConversation[]` |
+| `sendWhatsAppMessage` | Inline `SendMessageSchema` (uuid + content 1–4096, `sanitizeText` transform) | `requireProfile()` | `getConversation` → `sendTextMessage` → **session-client** insert outbound text row → update `last_message_at` | `ActionResult<WhatsAppMessage>` |
+| `sendWhatsAppMediaMessage` | `SendMediaMessageSchema` (uuid + optional caption ≤1024 + `file` Blob: non-empty, ≤16MB, MIME on the outbound allowlist via `resolveOutboundMediaType`) | `requireProfile()` | `getConversation` → `storeOutboundMedia` (durable path) → `signMediaPath` → `sendGupshupMediaMessage` (by signed url) → **session-client** insert outbound media row (`media_url` = PATH) → update `last_message_at`; returns the row with a signed url for optimistic display | `ActionResult<WhatsAppMessage>` |
+| `signWhatsAppMediaAction` | non-empty string path | `requireProfile()` | `signMediaPath(path)` — signs a media path arriving via Realtime while the panel is open | `{ url: string \| null }` |
+| `markConversationAsRead` | `ConversationIdSchema` | `requireProfile()` | `markConversationRead()` | `ActionResult<null>` |
+| `getConversationsAction` | `WhatsAppListFilterSchema` | `requireProfile()` | `getConversations()` | `{ conversations, nextCursor }` |
+| `getMessagesAction` | UUID parse on id | `requireProfile()` | `getMessages()` | `WhatsAppMessage[]` |
+| `getConversationByLeadIdAction` | UUID parse on `leadId` | `requireProfile()` | `getConversationByLeadId()` | `{ data: WhatsAppConversation \| null, error }` — **null data is not an error** (no conversation yet) |
+| `initiateWhatsAppConversationAction` | UUID parse on `leadId` | `requireProfile()` | See below | `ActionResult<{ conversation, message }>` |
+| `searchConversationsAction` | `WhatsAppSearchFilterSchema` | `requireProfile()` | `searchConversations()` | `WhatsAppConversation[]` |
+
+**Removed — do not recreate:** `resolveConversation` / `reopenConversation` were deleted from `whatsapp.ts` on 2026-06-20, along with `ResolveConversationSchema` in `whatsapp-schema.ts`. There is no server path that reads or writes a resolved state.
 
 **`initiateWhatsAppConversationAction(leadId)` — agent-initiated conversation:**
 
@@ -482,7 +515,15 @@ All mutations run Zod first and return `ActionResult` unless noted.
 
 `agentName` resolves to the lead's assignee full name, falling back to the caller's name.
 
-**Role allow-lists:** `resolveConversation` / `reopenConversation` duplicate `['manager', 'admin', 'founder']` inline — UI uses `MANAGER_ROLES`; keep in sync.
+**`sendWhatsAppMediaMessage(formData)` — outbound media (Phase 2, 2026-06-23):**
+
+1. Zod-validate the `FormData` (`SendMediaMessageSchema`); `requireProfile()`; load the conversation via the service (RLS access check).
+2. `resolveOutboundMediaType(file.type)` → reject unsupported MIME.
+3. `storeOutboundMedia(bytes, …)` → durable bucket PATH; `signMediaPath(path)` → a signed url Gupshup can fetch during the send window.
+4. `sendGupshupMediaMessage(wa_id, type, signedUrl, caption?, filename?)` — throws on HTTP error (caught → user-facing error).
+5. **Session-client** insert the outbound row with `media_url = path` (the PATH is canonical; the read side signs it), bump `last_message_at`, and return the row carrying the signed url for the composer's optimistic bubble.
+
+There is no role allow-list to keep in sync any more — the Resolve/Reopen actions that duplicated `['manager','admin','founder']` inline were removed 2026-06-20.
 
 ---
 
@@ -514,7 +555,7 @@ No `Suspense` boundary on page — `loading.tsx` handles the route-level skeleto
 
 **Realtime channel:** `wa-conversations-${callerProfile.id}-${mountId}` where `mountId = useId()`. StrictMode-safe; cleanup via `supabase.removeChannel(channel)`.
 
-**Events:** `INSERT` → prepend; `UPDATE` → merge row and re-sort by `last_message_at` DESC (fallback `created_at`).
+**Events:** `INSERT` → prepend; `UPDATE` → merge row and re-sort by `last_message_at` DESC (fallback `created_at`). The UPDATE unread predicate was simplified when Resolve/Reopen was removed (the dead `updated.status !== "open"` term is gone — status is always `open`).
 
 **Pagination:** `handleLoadMore` → `getConversationsAction({ cursor, limit: 20, ...period })`. **Select conversation:** `getMessagesAction(id)` → sets `activeMessages`.
 
@@ -529,9 +570,9 @@ No `Suspense` boundary on page — `loading.tsx` handles the route-level skeleto
 
 #### 8e. `ConversationRow`
 
-**Renders:** `Avatar` (sm) with optional unread dot (10px accent, top-right), lead name (ellipsis), trailing mono timestamp or "Resolved" in success colour.
+**Renders:** `Avatar` (sm) with optional unread dot (10px accent, top-right, driven by `hasUnread` derived from `unread_count`), lead name (ellipsis), trailing mono last-message relative time. (The "Resolved" trailing label was removed 2026-06-20 — every row shows the timestamp.)
 
-**Active/hover state:** `Avatar` `selected={isActive || hovered}` — **accent ring on avatar**, not a row background fill and **not** a left-border strip. Name → semibold on hover; trailing time → accent (unless resolved). Row background stays transparent.
+**Active/hover state:** `Avatar` `selected={isActive || hovered}` — **accent ring on avatar**, not a row background fill and **not** a left-border strip. Name → semibold on hover; trailing time → accent. Row background stays transparent.
 
 **Motion:** `opacity 0→1`, `x -8→0`, stagger delay prop (max 280ms).
 
@@ -539,15 +580,19 @@ No `Suspense` boundary on page — `loading.tsx` handles the route-level skeleto
 
 **Zones:**
 
-1. **Header** — Avatar, Playfair italic name, mono phone, resolved pill, Resolve/Reopen (`Button`) when `MANAGER_ROLES.includes(role)`.
+1. **Header** — Avatar, Playfair italic name, mono phone, optional `onBack` button in single-pane (<md) mode. **No resolved pill, no Resolve/Reopen buttons** (removed 2026-06-20; the composer always renders).
 2. **Message list** — `var(--theme-paper-subtle)`, date separators (Today / Yesterday / formatted), `MessageBubble` per message, auto-scroll bottom on `messages` change.
-3. **Composer** — floating paper card with textarea + Send; resolved → italic banner "This conversation is resolved. Reopen to send messages."
+3. **Composer** — `MessageBar` (ref-forwarded for focus-after-transcribe) with a `leadingSlot` holding a **paperclip attach button** + a `<DictationButton variant="composer">`. Always renderable (no resolved-locked state). A hidden `<input type="file">` (the `accept` list mirrors the outbound MIME allowlist) drives the attach flow.
 
-**Realtime:** `wa-messages-${conversation.id}-${mountId}` on `whatsapp_messages` filtered by `conversation_id`. `INSERT` — dedupe `seenIds`; outbound echo replaces oldest optimistic row when `sender_id === caller`; else append. `UPDATE` — merge `status` / `status_at` (delivery ticks).
+**Realtime:** `wa-messages-${conversation.id}-${mountId}` on `whatsapp_messages` filtered by `conversation_id`. `INSERT` — dedupe `seenIds`; **media-arrival signing:** a media INSERT carries the raw storage **PATH** in `media_url` (the DB row), so the panel calls `signWhatsAppMediaAction(path)` and swaps in the signed url before render (`getMessages` already signs on open — this covers the live-arrival window); on signing failure the path stays and the bubble degrades gracefully. Outbound echo replaces oldest optimistic row when `sender_id === caller`; else append. `UPDATE` — merge `status` / `status_at` (delivery ticks).
 
-**`markConversationRead`:** `markConversationAsRead` action on `conversation.id` change (panel open).
+**`markConversationRead`:** `markConversationAsRead` action on `conversation.id` change (panel open) and on every inbound INSERT while the panel is on screen.
 
-**Optimistic send:** Local row with `optimistic-*` id, `wa_message_id: null`; on success replace with server row; on error remove + `toast.danger`.
+**Optimistic text send:** Local row with `optimistic-*` id, `wa_message_id: null`; on success replace with server row; on error remove + `toast.danger`.
+
+**Optimistic media send (`handleFileSelected`):** client-side type/size validation (`resolveOutboundMediaType` / `WHATSAPP_OUTBOUND_MEDIA_MAX_BYTES` — the action re-validates), then an optimistic media bubble using a local `URL.createObjectURL` preview → `sendWhatsAppMediaMessage(formData)` → swap in the confirmed row (signed url) or remove on error; the object url is revoked in `finally`.
+
+**Voice dictation:** `<DictationButton>` appends the transcript to the draft as an editable string and focuses the composer — never auto-sends; submission goes through the same `handleSend` text path.
 
 **Char warning:** Shows `draft.length / 4096` when length **> 3000** (`WARN_CHARS`); hard cap 4096 on input.
 
@@ -562,7 +607,14 @@ No `Suspense` boundary on page — `loading.tsx` handles the route-level skeleto
 
 **Delivery icons (outbound only):** `sent` → `Check` tertiary; `delivered` → `CheckCheck` tertiary; `read` → `CheckCheck` accent; `failed` → `X` danger.
 
-**Media:** `message_type` ∈ `image|video|document|audio` → `MediaPlaceholder` with icon + label + optional "View" link.
+**Media** (`message_type` ∈ `image|video|document|audio`, rendered by `MediaPlaceholder`):
+
+- **image** + url → inline `<img>` thumbnail (≤240px, `loading="lazy"`, click → open full in a new tab), caption beneath.
+- **video** + url → inline `<video controls preload="metadata">` (≤240px), caption beneath.
+- **document / audio**, or any media row with **no url** → the labelled chip (icon + "Image/Video/Document/Audio" label + a "View" link when `media_url` is present), caption beneath.
+- The caption is read from `content` (the WhatsApp caption is stored there).
+
+**Unsupported message:** a **non-media** message whose `content` is blank (sticker / location / reaction / unparsed payload stored as text with an empty body) renders a muted serif-italic **"Unsupported message"** placeholder instead of a blank bubble. The webhook mapper (`buildGupshupMessage` + `GUPSHUP_TYPE_LABELS`) also stores human labels (`[Sticker]`, `[Location]`, …) for un-renderable Gupshup types, so most arrive with readable text; the placeholder is the defence-in-depth fallback for a truly empty body.
 
 #### 8h. `EmptyConversationState`
 
@@ -580,7 +632,7 @@ Right-pane default when no conversation is selected. Motion `opacity 0→1`, `y 
 
 - **No phone:** Playfair italic "No phone number on file." — no composer.
 - **No conversation (phone present):** renders a "Start Conversation" `Button` → `initiateWhatsAppConversationAction(leadId)`. On success: `setConversation(data.conversation)` + `setMessages([data.message])`.
-- **Resolved:** composer replaced by italic banner.
+- **Conversation present:** the thread renders with a live composer — there is no resolved/locked state (Resolve/Reopen removed 2026-06-20).
 
 **Realtime:** channel `wa-messages-${conversationId}-${mountId}`, gated on **state** `conversation?.id` (not the prop) — auto-subscribes after initiation with no extra wiring. `seenIds` seeded from `initialMessages`; `optimisticIds` tracks pending sends; cleanup via `supabase.removeChannel(channel)`.
 
@@ -599,7 +651,7 @@ WhatsApp is also Elaya's staff channel. **The webhook calls `tryHandleElayaWhats
 1. **Staff number** — the sender is matched to an active staff profile via `getActiveProfileByPhone`. The message routes to the **Elaya brain** (same tools, same daily cap, same provider/PII layer as `/elaya`) and produces exactly **one reply** sent via `sendElayaWhatsAppReply`. The lead pipeline is **not** touched. An `elaya_reply` audit row is written (see migration 0117 below).
 2. **Unknown number** — no profile match → the gate returns without acting and the message **falls through to the existing lead pipeline** (`processInboundMessage`) unchanged. `tryHandleElayaWhatsAppMessage` **never writes lead-pipeline tables**.
 
-**Migration 0117 (`elaya_reply` log type):** widened the `whatsapp_notification_logs.type` CHECK to add `'elaya_reply'`. The 4-value CHECK in §11 invariant 15 is now **5 values** (`agent_assignment`, `founder_alert`, `sla_breach`, `lead_initiation`, `elaya_reply`).
+**Migration 0117 (`elaya_reply` log type):** widened the `whatsapp_notification_logs.type` CHECK to add `'elaya_reply'`. The CHECK has since grown further (0113 task types, 0142 task-agent/non-lead types) — it is now a **10-value** CHECK. See §2d and §11 invariant 15 for the full list.
 
 **Inbound staff voice notes (Deepgram):** when a staff message is an audio/voice note, `transcribeWhatsAppAudio` (wrapping `transcription-service.ts`, Deepgram) transcribes it **input-transform-only** — the transcript becomes the turn's text **before** the cap/model/persist steps, exactly as if the staffer had typed it. An **empty transcript is a graceful no-op** (no model turn, no reply). Audio is transcribed in memory and never persisted (same contract as the dossier/inbox dictation). The Gupshup voice MIME (`ogg/opus`) travels with the Blob — never hardcoded.
 
@@ -612,29 +664,33 @@ WhatsApp is also Elaya's staff channel. **The webhook calls `tryHandleElayaWhats
 | Channel | Pattern | Table | Events | Owner | Cleanup |
 | --- | --- | --- | --- | --- | --- |
 | Conversations | `wa-conversations-${userId}-${mountId}` | `whatsapp_conversations` | `INSERT` prepend; `UPDATE` merge + re-sort | `WhatsAppShell` | `removeChannel` on unmount |
-| Messages | `wa-messages-${conversationId}-${mountId}` | `whatsapp_messages` (filter `conversation_id=eq.${id}`) | `INSERT` append/replace optimistic; `UPDATE` status | `ConversationPanel` and `LeadWhatsAppCard` | `removeChannel` on unmount / conversation change |
+| Messages | `wa-messages-${conversationId}-${mountId}` | `whatsapp_messages` (filter `conversation_id=eq.${id}`) | `INSERT` append/replace optimistic (a media INSERT carries the raw storage PATH → signed via `signWhatsAppMediaAction` before render); `UPDATE` status | `ConversationPanel` and `LeadWhatsAppCard` | `removeChannel` on unmount / conversation change |
 
 `mountId` from `useId()` is mandatory for React StrictMode double-mount safety (P-06).
+
+**Media-arrival signing window:** a Realtime INSERT delivers the DB row verbatim, so a media message arriving live while the panel is open carries the storage **PATH** in `media_url` (not a signed url). `ConversationPanel` signs it via `signWhatsAppMediaAction` and swaps the result into state before the bubble renders; `getMessages` already signs on initial open, so this only covers the live-arrival gap.
 
 ---
 
 ### 10. Access Control Summary
 
-| Role | Conversation list | Can send | Can initiate (dossier) | Can resolve/reopen |
-| --- | --- | --- | --- | --- |
-| **Agent** | Leads assigned to self (`can_access_wa_conversation`) | Yes, if accessible | Yes, if accessible | No |
-| **Manager** | All leads in domain | Yes | Yes | Yes |
-| **Admin** | All conversations | Yes | Yes | Yes |
-| **Founder** | All conversations | Yes | Yes | Yes |
-| **Guest** | Redirected away from `/whatsapp` | — | — | — |
+There is no resolve/reopen capability — it was removed 2026-06-20. Every accessible thread is replyable by every role that can see it.
+
+| Role | Conversation list | Can send (text + media) | Can initiate (dossier) |
+| --- | --- | --- | --- |
+| **Agent** | Leads assigned to self (`can_access_wa_conversation`) | Yes, if accessible | Yes, if accessible |
+| **Manager** | All leads in domain | Yes | Yes |
+| **Admin** | All conversations | Yes | Yes |
+| **Founder** | All conversations | Yes | Yes |
+| **Guest** | Redirected away from `/whatsapp` | — | — |
 
 | Capability | Enforcement layer |
 | --- | --- |
 | List/message visibility | RLS + `can_access_wa_conversation(lead_id)` on conversations/messages |
-| Outbound INSERT (inbox) | RLS policy `wa_messages_outbound_insert` + action loads conversation via session client |
+| Outbound INSERT (inbox, text + media) | RLS policy `wa_messages_outbound_insert` + action loads conversation via session client |
 | Conversation creation (initiate) | Session-client lead SELECT (RLS access gate) → adminClient INSERT |
-| Resolve/reopen | **Component** `MANAGER_ROLES` hides buttons; **action** checks `manager \| admin \| founder` |
 | Inbound webhook writes | Service-role only (`whatsapp-ingestion`) |
+| Media storage (read/write) | Service-role admin client (`whatsapp-media`, private bucket); the page/action role layer is the trust boundary |
 | Template notifications | `whatsapp-api` adminClient; no user-facing permission |
 
 ---
@@ -663,13 +719,17 @@ WhatsApp is also Elaya's staff channel. **The webhook calls `tryHandleElayaWhats
 
 11. **Inbound message inserts use `adminClient`** in `whatsapp-ingestion.ts`; inbox outbound inserts use the **session client** (`wa_messages_outbound_insert` RLS); initiation inserts use **adminClient** (creates the parent conversation too).
 
-12. **Do not conflate the service files** — session+RLS (`whatsapp-service`), HTTP+templates (`whatsapp-api`), admin+pipeline (`whatsapp-ingestion`), assignment orchestrator (`lead-assignment-notify`).
+12. **Do not conflate the service files** — session+RLS (`whatsapp-service`), HTTP+templates+media-send (`whatsapp-api`), admin+pipeline (`whatsapp-ingestion`), admin+storage durability (`whatsapp-media`), assignment orchestrator (`lead-assignment-notify`).
 
 13. **Bot columns and `is_bot` UI are not an implemented chatbot** — no autonomous replies; planned only.
 
 14. **Gupshup `message-event` is ack-only today** — delivery status persistence runs on the Meta webhook path unless the Gupshup handler is extended to call `processStatusUpdate`.
 
-15. **`whatsapp_notification_logs.type` is a 5-value CHECK** (`agent_assignment`, `founder_alert`, `sla_breach`, `lead_initiation` since migration 0067; `elaya_reply` added in migration 0117) — extend with a new migration before logging any new type.
+15. **`whatsapp_notification_logs.type` is a 10-value CHECK** — `agent_assignment`, `founder_alert`, `sla_breach`, `lead_initiation` (0067), `task_due_reminder`, `task_overdue_manager` (0113), `elaya_reply` (0117), `task_due_soon`, `task_overdue_agent`, `task_overdue_manager_generic` (0142). Extend with a new migration before logging any new type.
+
+16. **`whatsapp_messages.media_url` stores a durable storage PATH, never a url** (migration 0141). Inbound media is downloaded off Gupshup's time-limited CDN and re-hosted in the private `whatsapp-media` bucket (`storeInboundMedia`); outbound attachments are uploaded the same way (`storeOutboundMedia`). Reads (`getMessages`, `signWhatsAppMediaAction`) mint a 1-hour signed url via `signMediaPath`. Never persist a raw CDN url as the canonical `media_url`; never sign on the session client.
+
+17. **Resolve/Reopen is removed (2026-06-20) — do not recreate.** No action, schema, component, or query reads/writes a resolved state. The `whatsapp_conversations.status` column, its CHECK, the `get_wa_unread_count` `WHERE wc.status='open'` predicate, and the `WHATSAPP_CONVERSATION_STATUS` constant are deliberately kept (every row stays `'open'`), but a resolved state must not be reintroduced without an explicit decision.
 
 ---
 
@@ -681,10 +741,10 @@ WhatsApp is also Elaya's staff channel. **The webhook calls `tryHandleElayaWhats
 | Inbox UI | `src/components/whatsapp/*.tsx` |
 | Dossier card | `src/components/leads/LeadWhatsAppCard.tsx` |
 | Actions | `src/lib/actions/whatsapp.ts` |
-| Services | `whatsapp-service.ts`, `whatsapp-api.ts`, `whatsapp-ingestion.ts`, `lead-assignment-notify.ts` |
+| Services | `whatsapp-service.ts`, `whatsapp-api.ts`, `whatsapp-ingestion.ts`, `whatsapp-media.ts` (durability), `lead-assignment-notify.ts` |
 | Lead bridge | `src/lib/services/lead-ingestion.ts` → `createLeadFromWhatsApp` |
-| Validations | `src/lib/validations/whatsapp-schema.ts` |
-| Constants | `src/lib/constants/whatsapp.ts`, `whatsapp-period.ts` |
+| Validations | `src/lib/validations/whatsapp-schema.ts` (`SendMessageSchema`, `SendMediaMessageSchema`; `ResolveConversationSchema` deleted 2026-06-20) |
+| Constants | `src/lib/constants/whatsapp.ts` (incl. `WHATSAPP_OUTBOUND_MEDIA_MIME` / `resolveOutboundMediaType` / `WHATSAPP_OUTBOUND_MEDIA_MAX_BYTES`), `whatsapp-period.ts` |
 | Types | `src/lib/types/whatsapp.ts` |
 | Webhook | `src/app/api/webhooks/whatsapp/route.ts` |
-| Migrations | `0032`–`0038`, `0041`, `0067` (log types), `0085` (unread fix), `0088` (RLS hoist) |
+| Migrations | `0032`–`0038`, `0041`, `0067` (log types), `0085` (unread fix), `0088` (RLS hoist), `0113`/`0117`/`0142` (log-type CHECK widenings), `0141` (`whatsapp-media` private bucket) |

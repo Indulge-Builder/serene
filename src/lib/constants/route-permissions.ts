@@ -19,9 +19,9 @@ export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   ...GIA_DOMAINS.reduce(
     (acc, domain) => ({
       ...acc,
-      // /budget and /escalations are manager-read in practice — the pages
-      // themselves redirect agents/guests (role gate), like /campaigns.
-      [domain]: ['/leads', '/deals', '/tasks', '/performance', '/campaigns', '/budget', '/escalations', '/whatsapp', '/settings'],
+      // /budget, /escalations and /oversight are manager-read in practice — the
+      // pages themselves redirect agents/guests (role gate), like /campaigns.
+      [domain]: ['/leads', '/deals', '/tasks', '/performance', '/oversight', '/campaigns', '/budget', '/escalations', '/whatsapp', '/settings'],
     }),
     {} as Partial<Record<AppDomain, string[]>>,
   ),

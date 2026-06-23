@@ -9,7 +9,7 @@ import {
 } from '@/lib/services/leads-service';
 import { getAdCreativesForCampaign } from '@/lib/services/ad-creatives-service';
 import { getBudgetSummary } from '@/lib/services/ad-spend-service';
-import { beautifyCampaignTitle, normalizeCampaignKey } from '@/lib/utils/campaigns';
+import { normalizeCampaignKey } from '@/lib/utils/campaigns';
 import { resolveDateRangePreset } from '@/lib/constants/date-range-presets';
 import type { LeadFilters, CampaignDetailMetrics, AgentDistributionRow } from '@/lib/types/database';
 import { LeadsTable } from '@/components/leads/LeadsTable';
@@ -134,9 +134,8 @@ export default async function CampaignDetailPage({
     campaignName = id;
   }
 
-  // Display-only beautified title via shared utility.
-  // campaignName is used for all DB lookups — never campaignTitle.
-  const campaignTitle = beautifyCampaignTitle(campaignName);
+  // Display the raw campaign key exactly as stored.
+  const campaignTitle = campaignName;
 
   const resolvedParams = await searchParams;
 

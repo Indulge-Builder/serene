@@ -123,7 +123,7 @@ export type DashboardMultiDomainVolumeSummary = {
 
 // ─── Performance — manager / founder view types ───────────────────────────
 import type { OutcomeBreakdownItem } from "@/lib/services/performance-service";
-import type { BudgetCampaignRow } from "@/lib/services/ad-spend-service";
+import type { BudgetCampaignRow, BudgetGaugeSummary } from "@/lib/services/ad-spend-service";
 
 export type AgentRosterRow = {
   id:                     string;
@@ -208,4 +208,12 @@ export type DashboardSummary = {
    * Agent role: always null.
    */
   budget_summary?: BudgetCampaignRow[] | null;
+  /**
+   * Manager+: the org-wide ad-account fuel gauge (recharged → spent →
+   * remaining + ROI roll-up) for the active date range, assembled by
+   * dashboard/page.tsx from getBudgetSummary() + getAccountRecharges() via
+   * buildBudgetGaugeSummary(). ALWAYS org-wide (recharges carry no domain).
+   * Agent role / RPC failure: null.
+   */
+  budget_gauge?: BudgetGaugeSummary | null;
 };
