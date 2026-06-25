@@ -400,9 +400,19 @@ const createLeadTask: ElayaWriteTool = {
       },
     });
 
+    // Disclose where the task landed when it's NOT the lead's own owner — the core
+    // assigns to lead.assigned_to, falling back to the actor when the lead is
+    // unassigned. Surfacing that avoids a silent "it went to you" surprise.
+    const assignedToCaller = core.task.assigned_to === principal.userId;
+    const leadWasUnassigned = !lead.assigned_to;
+    const summary =
+      leadWasUnassigned && assignedToCaller
+        ? `Created a "${TASK_TYPE_LABELS[taskType]}" follow-up on ${leadDisplayName(lead)} — that lead has no owner, so I assigned it to you.`
+        : `Created a "${TASK_TYPE_LABELS[taskType]}" follow-up on ${leadDisplayName(lead)}.`;
+
     return {
       done: true,
-      summary: `Created a "${TASK_TYPE_LABELS[taskType]}" follow-up on ${leadDisplayName(lead)}.`,
+      summary,
       taskId: core.task.id,
     };
   },

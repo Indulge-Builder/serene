@@ -39,6 +39,9 @@ import type { MetaInboundMessage } from '@/lib/types/whatsapp';
 
 /** Mirrors the in-app ElayaChatRequestSchema 4000-char bound. */
 const MAX_INBOUND_CHARS = 4000;
+/** Voice-note download bounds — a real note is tens-to-hundreds of KB. */
+const VOICE_DOWNLOAD_TIMEOUT_MS = 15_000;
+const VOICE_MAX_BYTES = 16 * 1024 * 1024;
 /** WhatsApp text messages cap at 4096 chars — stay under it. */
 const MAX_REPLY_CHARS = 4000;
 
@@ -92,6 +95,11 @@ async function handleStaffMessage(
   normalizedPhone: string,
   message: MetaInboundMessage,
 ): Promise<void> {
+  // Idempotency FIRST — BSPs redeliver constantly; short-circuit a duplicate before
+  // any other work (saves the collision-lookup round-trip on every redelivery). Same
+  // contract as the lead pipeline's wa_message_id dedup.
+  if (await hasProcessedWaMessage(message.id)) return;
+
   // Collision visibility: the staff number also exists on an active lead row.
   // Precedence is explicit — profile wins — but the overlap is logged so a
   // team member shadowed by a lead record is diagnosable.
@@ -101,10 +109,6 @@ async function handleStaffMessage(
       `[elaya-whatsapp] phone collision: profile ${profile.id} also matches active lead ${collidingLead.id} — profile wins, lead pipeline skipped`,
     );
   }
-
-  // Idempotency — BSPs redeliver; same contract as the lead pipeline's
-  // wa_message_id dedup.
-  if (await hasProcessedWaMessage(message.id)) return;
 
   // Resolve the inbound message to text. Voice notes are transcribed here (E4a) —
   // voice is an INPUT TRANSFORM ONLY: once it's text, everything downstream (cap,
@@ -123,9 +127,21 @@ async function handleStaffMessage(
       return;
     }
   } else {
-    // image / video / document — no transcription path.
-    await sendElayaWhatsAppReply(normalizedPhone, REPLY_TEXT_ONLY, profile.id);
-    return;
+    // image / video / document — Elaya can't see the media itself, but a CAPTION is
+    // real text the user typed alongside it. Route the caption as the message rather
+    // than discarding it behind the "text only" nudge; only nudge when there's no
+    // caption to work with.
+    const caption =
+      message.type === 'image' ? message.image.caption
+      : message.type === 'video' ? message.video.caption
+      : message.type === 'document' ? message.document.caption
+      : undefined;
+    if (caption && caption.trim().length > 0) {
+      rawText = caption;
+    } else {
+      await sendElayaWhatsAppReply(normalizedPhone, REPLY_TEXT_ONLY, profile.id);
+      return;
+    }
   }
 
   const content = sanitizeText(rawText).slice(0, MAX_INBOUND_CHARS);
@@ -215,13 +231,30 @@ async function handleStaffMessage(
  * still returns handled, so a failed voice note never mints a lead.
  */
 async function transcribeWhatsAppAudio(url: string, mimeType: string): Promise<string> {
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) {
-    throw new Error(`[elaya-whatsapp] voice-note download failed: ${res.status}`);
+  // Bound the download: a 15s timeout (the CDN url is time-limited and the lambda
+  // budget is finite) + a 16 MB cap (a voice note is tens-to-hundreds of KB; a huge
+  // body is bad data, not a real note). Both throw → caller maps to REPLY_UNAVAILABLE.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), VOICE_DOWNLOAD_TIMEOUT_MS);
+  let audio: ArrayBuffer;
+  try {
+    const res = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    if (!res.ok) {
+      throw new Error(`[elaya-whatsapp] voice-note download failed: ${res.status}`);
+    }
+    const declared = Number(res.headers.get('content-length') ?? 0);
+    if (declared > VOICE_MAX_BYTES) {
+      throw new Error(`[elaya-whatsapp] voice-note too large: ${declared} bytes`);
+    }
+    audio = await res.arrayBuffer();
+  } finally {
+    clearTimeout(timeout);
   }
-  const audio = await res.arrayBuffer();
   if (audio.byteLength === 0) {
     throw new Error('[elaya-whatsapp] voice-note download was empty');
+  }
+  if (audio.byteLength > VOICE_MAX_BYTES) {
+    throw new Error(`[elaya-whatsapp] voice-note too large: ${audio.byteLength} bytes`);
   }
   return transcribeAudio(audio, mimeType || 'audio/ogg');
 }

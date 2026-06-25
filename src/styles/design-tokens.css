@@ -841,6 +841,16 @@
   animation: serene-elaya-cursor 500ms steps(1) infinite;
 }
 
+/* Accessibility — honour an explicit reduced-motion request (WCAG vestibular).
+   The breathe is an always-on infinite animation, so it must stop; the glyph stays
+   fully visible (presence preserved, just still). Mirrors .serene-oversight-pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .elaya-breathe,
+  .elaya-cursor {
+    animation: none;
+  }
+}
+
 /* Page title dot — accent period that slowly pulses on primary nav pages */
 .page-title-dot {
   color:     var(--theme-accent);

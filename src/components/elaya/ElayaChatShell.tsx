@@ -26,13 +26,34 @@ type SseEvent =
   | { type: 'done'; messageId: string | null }
   | { type: 'error'; message: string };
 
+// One status line per tool the model may call. Covers every read AND write tool —
+// a tool with no entry falls back to the generic line. Keep in step with
+// lib/elaya/tools/registry.ts + write-registry.ts (a missing write entry showed the
+// generic "Checking Serene…" on a mutation — audit nit).
 const TOOL_STATUS_LABELS: Record<string, string> = {
+  // Reads
   search_leads: 'Looking through your leads…',
+  get_cold_leads: 'Finding leads going cold…',
   get_lead_details: 'Opening the lead…',
   get_my_tasks: 'Checking your tasks…',
   search_deals: 'Going through deals…',
   get_performance_snapshot: 'Pulling your numbers…',
   get_helpdesk_content: 'Browsing the case library…',
+  get_escalations: 'Checking what needs attention…',
+  get_domain_health: 'Pulling the domain scorecard…',
+  get_campaigns: 'Looking at campaign performance…',
+  get_budget: 'Pulling the spend numbers…',
+  // Writes
+  add_lead_note: 'Adding your note…',
+  log_call: 'Logging the call…',
+  create_lead_task: 'Creating the follow-up…',
+  update_lead_status: 'Setting that up…',
+  reassign_lead: 'Setting that up…',
+  create_personal_task: 'Creating your task…',
+  create_group_task: 'Creating the workspace…',
+  update_task_status: 'Updating the task…',
+  update_task: 'Updating the task…',
+  delete_task: 'Setting that up…',
 };
 
 type Props = {
@@ -184,13 +205,20 @@ export function ElayaChatShell({
           } else if (event.type === 'tool') {
             setToolStatus(TOOL_STATUS_LABELS[event.name] ?? 'Checking Serene…');
           } else if (event.type === 'done') {
+            // Unflag pending — but DROP the bubble entirely if the final reply is
+            // empty/whitespace-only (a blank bubble would otherwise render once
+            // pending clears; the render guard only hides empty WHILE pending).
             setMessages((prev) =>
-              prev.map((msg) => (msg.id === assistantId ? { ...msg, pending: false } : msg)),
+              prev.flatMap((msg) => {
+                if (msg.id !== assistantId) return [msg];
+                if (msg.content.trim().length === 0) return [];
+                return [{ ...msg, pending: false }];
+              }),
             );
           } else if (event.type === 'error') {
             toast.danger(event.message);
             setMessages((prev) =>
-              prev.filter((msg) => !(msg.id === assistantId && msg.content.length === 0)),
+              prev.filter((msg) => !(msg.id === assistantId && msg.content.trim().length === 0)),
             );
           }
         }
@@ -198,7 +226,7 @@ export function ElayaChatShell({
     } catch {
       toast.danger(formErrors.elayaUnavailable);
       setMessages((prev) =>
-        prev.filter((msg) => !(msg.id === assistantId && msg.content.length === 0)),
+        prev.filter((msg) => !(msg.id === assistantId && msg.content.trim().length === 0)),
       );
     } finally {
       setToolStatus(null);
@@ -316,7 +344,13 @@ export function ElayaChatShell({
         </div>
 
         {/* Transcript — centered reading column so messages never sprawl. */}
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-5 py-5 sm:px-6">
+        <div
+          ref={scrollRef}
+          className="flex-1 min-h-0 overflow-y-auto px-5 py-5 sm:px-6"
+          role="log"
+          aria-live="polite"
+          aria-label="Conversation with Elaya"
+        >
           <div
             className="flex flex-col mx-auto w-full"
             style={{ gap: 'var(--space-4)', maxWidth: '46rem' }}
@@ -328,7 +362,7 @@ export function ElayaChatShell({
               />
             )}
             {messages.map((msg) =>
-              msg.content.length === 0 && msg.pending ? null : (
+              msg.content.trim().length === 0 && msg.pending ? null : (
                 <ElayaMessageBubble key={msg.id} message={msg} showGlyph />
               ),
             )}

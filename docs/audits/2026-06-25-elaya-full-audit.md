@@ -117,34 +117,22 @@ Channels: **IA** = in-app (`/elaya`, floating widget, dashboard presence card), 
 
 **M9–M12 — Capability gaps (see §5).** No deal-record tool, no WhatsApp-to-lead send, no manager oversight reads (escalations / overdue / domain-health), no admin/founder business reads (budget / campaign / usage / targets), customer persona unbuilt. Backing services exist for the read tools — these are "wrap + wire + per-role gate," not new queries.
 
-### 🟢 Low / nit (grouped — all still open)
+### 🟢 Low / nit (still open — a polish batch landed 2026-06-26; these remain)
 
-- **`create_lead_task` on unassigned lead** silently assigns to caller (`lead-mutations.ts`) — disclose the resolved assignee.
 - **Inline WhatsApp writes from voice** have no review step (in-app mic lands as editable draft; WhatsApp auto-routes). Echo transcript before write.
-- **`get_my_tasks` caps (25/20/25)** drop tasks with no "showing N of M" note.
-- **3-char search gate** silently degrades a 1-2 char query to an unfiltered listing (`registry.ts`) — return `searchTooShort:true`.
 - **`get_performance_snapshot`** has no domain arg for admin/founder.
-- **`get_helpdesk_content`** remaps non-Gia domains to onboarding without labelling the source.
 - **`executed`-row audit insert failure is swallowed** (`elaya-actions-service.ts`) — a real write can leave no ledger row. Add a metrics counter.
 - **`supersedePriorProposals` failure swallowed** → two live proposals possible. A partial UNIQUE index on `(conversation_id) WHERE status='proposed'` would enforce one-live at the DB.
 - **`executeProposedAction` can leave a `proposed` row after the write succeeded** — stamp-at-execution-start so a lingering row auto-dismisses.
-- **No "no"/cancel acknowledgement** — add a deterministic decline line.
+- **No "no"/cancel acknowledgement** — a deterministic decline line needs a THIRD verdict in `classifyConfirmation` (the injection-critical gate is deliberately binary affirmative/other today); not a nit-sized change. Deferred.
 - **`delete_task` has no before-snapshot** (only existence re-check).
 - **No per-turn inline-write idempotency** — a model double-emit creates duplicate notes/tasks.
 - **Cross-channel confirmation** — a "yes" on WhatsApp confirms an in-app proposal (session is channel-agnostic). Document or compare channel.
 - **Token accounting ignores cache read/creation tokens** — usage meta undercounts (no consumer today, dormant).
 - **`isError` flag discarded by the brain** — thread it into the Anthropic `is_error` field.
-- **Breathing glyph ignores `prefers-reduced-motion`** (`design-tokens.css`) — add the media-query gate (the codebase already gates `.serene-oversight-pulse`).
-- **Empty/whitespace final reply renders a blank bubble** (`ElayaChatShell.tsx`) — use `content.trim().length === 0` in the done/finally paths.
-- **Streamed transcript has no `aria-live`** (`ElayaChatShell.tsx`) — `role="log" aria-live="polite"`.
-- **Tool-status labels drift** — `TOOL_STATUS_LABELS` covers some read tools, none of the write tools; a mutation shows "Checking Serene…". Derive from the registry.
 - **Mid-stream disconnect** leaves a frozen partial bubble; server persists full text → reload divergence.
-- **Per-IP rate limit** is in-memory per-lambda and keyed on spoofable `x-forwarded-for`; the DB daily cap is the real bound. Key on `profile.id`.
 - **PII gateway is a model-input boundary, not a transcript boundary** — assistant prose persists real names + last-4 phones (staff-readable, no new leak; doc clarity).
 - **Cap check is TOCTOU** — concurrent messages can exceed the soft cap by one.
-- **WhatsApp media caption discarded** — a screenshot + typed question gets the "text only" nudge; route the caption as text.
-- **Voice download has no timeout/size cap** (`elaya-whatsapp.ts`) — add AbortController + byte cap (mirror 32MB `MAX_INBOUND_MEDIA_BYTES`).
-- **Collision lead lookup runs before the idempotency check** (`elaya-whatsapp.ts`) — reorder.
 
 ---
 

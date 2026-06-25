@@ -29,7 +29,7 @@ import { getDailyMessageCap, getSessionExpiryHours } from '@/lib/services/llm-pr
 import { ElayaChatRequestSchema } from '@/lib/validations/elaya-schema';
 import { formErrors } from '@/lib/validations/form-errors';
 import { sanitizeText } from '@/lib/utils/sanitize';
-import { createRateLimiter, getClientIp, readJsonBody } from '@/lib/utils/webhook';
+import { createRateLimiter, readJsonBody } from '@/lib/utils/webhook';
 
 // The lambda must outlive the full stream (model turn + tool round-trips). Set to
 // 180s so a genuinely long, multi-step turn (several tool look-ups over larger data)
@@ -61,7 +61,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: formErrors.unauthorized }, { status: 401 });
   }
 
-  if (isRateLimited(getClientIp(request))) {
+  // Burst limit keyed on the VERIFIED profile id (not the spoofable x-forwarded-for):
+  // it's available post-auth, can't be forged, and is per-user fair. The DB daily cap
+  // is the real ceiling; this only smooths bursts.
+  if (isRateLimited(profile.id)) {
     return NextResponse.json({ error: formErrors.rateLimited }, { status: 429 });
   }
 

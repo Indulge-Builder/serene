@@ -142,6 +142,9 @@ const searchLeads: ElayaTool = {
     // be selective) and matches half the table — treat it as no search rather than
     // run the degraded scan. The model should send a fuller name fragment.
     const term = search && search.trim().length >= 3 ? search.trim() : null;
+    // Signal a too-short term explicitly so the model asks for more instead of
+    // silently presenting an unfiltered listing as "your search results".
+    const searchTooShort = !!search && search.trim().length > 0 && search.trim().length < 3;
     // Identity args are principal-derived — searchLeadsForElaya enforces the role
     // constraint UNCONDITIONALLY in code (agents see only own assigned leads;
     // managers only their domain), so it works in the sessionless WhatsApp context
@@ -184,6 +187,11 @@ const searchLeads: ElayaTool = {
       pageSize: PAGE_SIZE,
       shownThisPage: result.leads.length,
       hasMore,
+      // The term was too short to filter on — these are the user's recent leads, NOT
+      // search matches. Ask for a fuller name/phone rather than presenting them as hits.
+      ...(searchTooShort
+        ? { searchTooShort: true, note: 'The search term was too short to match on — showing recent leads instead. Ask the user for the full name or phone number.' }
+        : {}),
       leads: result.leads.map((l) => ({
         // leadId is the STABLE opaque handle the write tools target (UUID-or-slug
         // accepted). Surfaced like get_my_tasks' taskId; the PII gateway's UUID
@@ -320,8 +328,15 @@ const getMyTasks: ElayaTool = {
     // write tools (update_task_status / update_task / delete_task) target. Without an
     // id the model cannot name a task to act on. The id is an opaque caller-scoped
     // UUID; the row is already one this principal is permitted to see.
+    const GIA_CAP = 25;
+    const GROUP_CAP = 25;
+    // If a list hit its cap, say so (instead of silently presenting the slice as the
+    // whole list) so the model can offer to narrow / point to the Tasks page.
+    const truncatedKinds: string[] = [];
+    if (giaTasks.length > GIA_CAP) truncatedKinds.push('lead follow-ups');
+    if (groups.length > GROUP_CAP) truncatedKinds.push('group workspaces');
     return {
-      followUps: giaTasks.slice(0, 25).map((t) => ({
+      followUps: giaTasks.slice(0, GIA_CAP).map((t) => ({
         taskId: t.id,
         title: t.title,
         status: t.status,
@@ -343,7 +358,7 @@ const getMyTasks: ElayaTool = {
       // Cap group tasks like followUps (25) and personalTasks (20) already are —
       // an unbounded list would be the one collection that could blow the 12k
       // result ceiling and get blunt-truncated mid-JSON as group workspaces grow.
-      groupTasks: groups.slice(0, 25).map((g) => ({
+      groupTasks: groups.slice(0, GROUP_CAP).map((g) => ({
         groupId: g.id,
         title: g.title,
         status: g.status,
@@ -352,6 +367,9 @@ const getMyTasks: ElayaTool = {
         subtaskCount: g.subtask_count,
         completedCount: g.completed_count,
       })),
+      ...(truncatedKinds.length > 0
+        ? { note: `Showing the first ${GIA_CAP} of more ${truncatedKinds.join(' and ')} — tell the user there are more in the Tasks page if they need the full list.` }
+        : {}),
     };
   },
 };
@@ -477,17 +495,24 @@ const getHelpdeskContent: ElayaTool = {
   },
   run: async (principal, input) => {
     const { interests, city } = input as { interests?: string[]; city?: string };
-    const domain = isGiaDomain(principal.domain) ? principal.domain : DEFAULT_GIA_DOMAIN;
+    // Non-Gia callers have no library of their own, so they read the onboarding one —
+    // surface sourceDomain so the model can label cross-domain material (the "always
+    // label the source domain" rule) instead of implying it's the user's own.
+    const remapped = !isGiaDomain(principal.domain);
+    const domain = remapped ? DEFAULT_GIA_DOMAIN : principal.domain;
+    const sourceMeta = remapped
+      ? { sourceDomain: domain, note: `These cases are from the ${domain} library (this user's own domain has none) — label them as ${domain} material when you cite them.` }
+      : { sourceDomain: domain };
     if ((interests && interests.length > 0) || city) {
       const [cases, hooks] = await Promise.all([
         elayaData.getHelpdeskCases(interests ?? [], city ?? null, domain),
         elayaData.getHelpdeskHooks(interests ?? [], domain),
       ]);
-      return { cases, hooks };
+      return { ...sourceMeta, cases, hooks };
     }
     // No filters → a featured slice of the library, never the full 150-case dump.
     const library = await elayaData.getHelpdeskFullLibrary(domain);
-    return { cases: library.cases.slice(0, 10), hooks: library.hooks.slice(0, 5) };
+    return { ...sourceMeta, cases: library.cases.slice(0, 10), hooks: library.hooks.slice(0, 5) };
   },
 };
 

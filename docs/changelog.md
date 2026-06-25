@@ -12,6 +12,71 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-26 — Docs: `docs/the-next-phase.md` — session handoff prompt for the next Elaya work
+
+**Why:** the working session that built the Elaya audit fixes + the "Jarvis" Phases 1–4 + the polish
+batch was running out of context. Captured the full state, vision, architecture, and the exact next
+work into a single paste-ready prompt so a fresh Claude Code session continues with zero context loss.
+
+**What:** `docs/the-next-phase.md` — written as a first-message prompt for a new session. Contains:
+mandatory first steps; everything built this session (slug fix + leadId handle + the full audit +
+Jarvis Phases 1–4 + the Low/nit polish batch, with migration numbers + which are live on prod); the
+Elaya subsystem file map; the Golden Rule; and the next two features in detail — **`log_deal`** (Elaya
+records a won deal; extract `recordDealCore`, propose→confirm tier) and the **customer WhatsApp
+welcome-blast + training page** (the customer persona that `resolveCustomerPrincipal` stubs; the 24h
+WhatsApp-template constraint; the ad-creatives clone for the training/media-upload admin page; the
+routing fork in the whatsapp webhook; the one-blast-per-lead idempotency guard) — then the **Notes
+section** as the phase after. Docs only.
+
+## 2026-06-26 — Elaya: Low/nit polish batch (UX + tool-honesty + WhatsApp robustness)
+
+**Why:** clearing the audit's Low/nit cluster (`docs/audits/2026-06-25-elaya-full-audit.md`) — small,
+low-risk, user-visible fixes. All typecheck clean; no migration.
+
+**Accessibility / UX (in-app):**
+
+- **Reduced-motion** — the always-on breathing glyph (`.elaya-breathe` + `.elaya-cursor`) now stops
+  under `prefers-reduced-motion: reduce` (mirrors `.serene-oversight-pulse`); the glyph stays visible,
+  just still. WCAG vestibular fix on an infinite animation. `design-tokens.css`.
+- **Blank-bubble guard** — a whitespace-only final reply no longer renders an empty bubble: the
+  `done`/`error`/catch paths + the render guard now test `content.trim().length === 0` (and `done`
+  drops the bubble entirely if empty). `ElayaChatShell.tsx`.
+- **Screen-reader transcript** — the message scroll region gained `role="log" aria-live="polite"` so
+  replies are announced. `ElayaChatShell.tsx`.
+- **Tool-status labels** — `TOOL_STATUS_LABELS` now covers every read AND write tool (incl. the
+  Phase-4 reads + all writes); a mutation no longer shows the generic "Checking Serene…".
+
+**Tool-result honesty (the model gets told, instead of silently wrong):**
+
+- `search_leads` returns `searchTooShort: true` + a note for a 1–2-char term (was silently an
+  unfiltered listing presented as "results").
+- `get_my_tasks` adds a truncation note when a list hit its 25-cap (was a silent slice).
+- `get_helpdesk_content` surfaces `sourceDomain` + a label note when a non-Gia caller reads the
+  onboarding library (the "always label the source domain" rule).
+- `create_lead_task` discloses "that lead has no owner, so I assigned it to you" instead of silently
+  landing the task on the caller.
+
+**WhatsApp robustness:**
+
+- A media message with a **caption** now routes the caption as the user's text (was discarded behind
+  the "text only" nudge). `elaya-whatsapp.ts`.
+- Voice-note download bounded: 15s `AbortController` timeout + 16 MB cap (content-length + actual
+  bytes) — a hung/huge download fails fast to `REPLY_UNAVAILABLE`. `elaya-whatsapp.ts`.
+- Idempotency check (`hasProcessedWaMessage`) runs **before** the collision lookup — a redelivery
+  short-circuits without the extra round-trip. `elaya-whatsapp.ts`.
+
+**Other:**
+
+- The in-app SSE burst rate-limit is keyed on the **verified `profile.id`** (post-auth,
+  un-spoofable) instead of the spoofable `x-forwarded-for`; the DB daily cap remains the real ceiling.
+  `api/elaya/chat/route.ts`.
+
+**Deferred (noted in the audit doc, NOT nit-sized):** a deterministic "no/cancel" acknowledgement
+needs a third verdict in the injection-critical `classifyConfirmation` (deliberately binary today) —
+a naive decline line would regress the common "yes but actually do X" flow. Also still open: the
+proposal-row/idempotency/cross-channel-confirm items (need design), `get_performance_snapshot` admin
+domain arg, audit-row metrics counter, `isError`-flag threading. See the audit doc's trimmed Low list.
+
 ## 2026-06-25 — Elaya "Jarvis" Phase 4: capability tools (manager oversight + founder business reads)
 
 **Why:** Phase 4 of the Jarvis foundation (`docs/architecture/elaya-jarvis-architecture.md`) — the new
