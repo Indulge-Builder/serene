@@ -105,16 +105,31 @@ export async function sendTextMessage(
     body: params.toString(),
   });
 
-  if (!res.ok) {
-    throw new Error(`[whatsapp-api] Gupshup API error: ${res.status}`);
+  // Gupshup returns HTTP 200 even for application-level failures (closed 24h
+  // session window, opt-out, policy block) with { "status": "error" } in the body.
+  // Trusting res.ok alone reported delivered=true on a send the recipient never
+  // got (the 2026-06-08 silent-loss class). Read the body and apply the same
+  // delivery interpretation the template pipeline uses; throw on either failure
+  // so every caller (sendElayaWhatsAppReply, sendWhatsAppMessage) records the
+  // truth via its own try/catch — consistent with sendGupshupMediaMessage.
+  const body = await res.text();
+  if (!isGupshupDelivered(res.ok, body)) {
+    throw new Error(
+      `[whatsapp-api] Gupshup send not delivered: HTTP ${res.status} body=${body.slice(0, 200)}`,
+    );
   }
 
-  const data = (await res.json()) as { messageId?: string };
+  let messageId = '';
+  try {
+    messageId = (JSON.parse(body) as { messageId?: string }).messageId ?? '';
+  } catch {
+    // non-JSON success body — messageId stays empty (delivery already confirmed)
+  }
 
   return {
     messaging_product: 'whatsapp',
     contacts: [],
-    messages: [{ id: data.messageId ?? '' }],
+    messages: [{ id: messageId }],
   };
 }
 

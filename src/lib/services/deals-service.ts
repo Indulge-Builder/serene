@@ -50,8 +50,14 @@ export async function getDealsByRole(
     page:          1,
     pageSize:      50,
   },
+  // Scope is enforced ENTIRELY by the explicit role/userId/domain .eq() filters
+  // below — never auth.uid(). The session client is only a secondary RLS net, so a
+  // caller in a sessionless context (Elaya/WhatsApp) may inject the admin client
+  // and still get correctly-scoped results. Default keeps every existing caller
+  // on the session client (getDealsByRoleForElaya passes the admin client).
+  injectedClient?: Awaited<ReturnType<typeof createAdminClient>>,
 ): Promise<DealsResult> {
-  const supabase = await createClient();
+  const supabase = injectedClient ?? (await createClient());
 
   const page     = Math.max(1, filters.page ?? 1);
   const pageSize = Math.max(1, Math.min(200, filters.pageSize ?? 50));
@@ -118,6 +124,24 @@ export async function getDealsByRole(
   const { data, error, count } = await query;
   if (error || !data) return { deals: [], totalCount: 0 };
   return { deals: data as unknown as DealWithRelations[], totalCount: count ?? 0 };
+}
+
+// ─────────────────────────────────────────────
+// getDealsByRoleForElaya — sessionless deal read for Elaya (in-app SSE after the
+// cookie session is gone + WhatsApp webhook). Reuses getDealsByRole's EXACT query
+// + role scoping (R-01 — no duplication) but injects the admin client, because the
+// session client returns nothing without auth.uid() (the H1 silent-blank bug).
+// Identity (role/userId/domain) is principal-derived, never model-supplied; the
+// .eq() role filters inside getDealsByRole are the trust boundary, same as
+// searchLeadsForElaya. The model only supplies filter values.
+// ─────────────────────────────────────────────
+export async function getDealsByRoleForElaya(
+  role:    UserRole,
+  userId:  string,
+  domain:  AppDomain,
+  filters: DealFilters,
+): Promise<DealsResult> {
+  return getDealsByRole(role, userId, domain, filters, createAdminClient());
 }
 
 // ─────────────────────────────────────────────

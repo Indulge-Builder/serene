@@ -818,16 +818,53 @@ export async function searchLeadsForElaya(
   }
   query = query.range(offset, offset + pageSize - 1);
 
-  const { data, error } = await query;
+  // True counts for the FULL filtered set (H2) — NOT the page. The self-scoped
+  // get_leads_status_counts RPC can't be reused here: it derives agent/manager
+  // scope from auth.uid(), which is NULL in the sessionless Elaya/WhatsApp context
+  // (it would return zeros — the H1 class of silent-wrong-answer). Instead run a
+  // status-only scan with the IDENTICAL admin-client, code-enforced scope filters
+  // as the page query above, so the count always matches what the user can see.
+  // Bounded Elaya path (not the hot /leads list), so a one-column full-set scan is
+  // cheap and exact — page.length was reported as the total before this.
+  let countQuery = admin
+    .from("leads")
+    .select("status")
+    .is("archived_at", null);
+  if (role === "agent") {
+    countQuery = countQuery.eq("assigned_to", userId);
+  } else if (role === "manager") {
+    countQuery = countQuery.eq("domain", domain);
+  }
+  if (opts.statuses && opts.statuses.length > 0) {
+    countQuery = countQuery.in("status", opts.statuses);
+  }
+  if (opts.search) {
+    countQuery = countQuery.filter("search_text", "ilike", `%${opts.search.trim().toLowerCase()}%`);
+  }
+
+  const [{ data, error }, countResult] = await Promise.all([query, countQuery]);
   if (error || !data) return { leads: [], totalCount: 0, statusCounts: {} };
 
   const leads = data as unknown as LeadListItemWithAssignee[];
-  // Counts derived from the returned page (sessionless RPC would return zeros).
+
+  // Build true totalCount + statusCounts from the full-set status scan. If the
+  // count scan errored, degrade to the page floor (pagination hides rather than
+  // lies) — same posture as getLeadsByRole's RPC-error branch.
   const statusCounts: Partial<Record<LeadStatus, number>> = {};
-  for (const l of leads) {
-    statusCounts[l.status] = (statusCounts[l.status] ?? 0) + 1;
+  let totalCount = leads.length;
+  if (!countResult.error && Array.isArray(countResult.data)) {
+    totalCount = countResult.data.length;
+    for (const row of countResult.data as { status: LeadStatus }[]) {
+      statusCounts[row.status] = (statusCounts[row.status] ?? 0) + 1;
+    }
+  } else {
+    // Degraded: page-derived counts, but never silently claim the page IS the total.
+    for (const l of leads) {
+      statusCounts[l.status] = (statusCounts[l.status] ?? 0) + 1;
+    }
   }
-  return { leads, totalCount: leads.length, statusCounts };
+
+  return { leads, totalCount, statusCounts };
 }
 
 /**

@@ -19,8 +19,11 @@ const GUPSHUP_WEBHOOK_SECRET = process.env.GUPSHUP_WEBHOOK_SECRET ?? '';
 // Gupshup sends. Give the lambda headroom (default Vercel timeout can be 10–15s)
 // so a new-number lead's agent + founder notifications complete before freeze.
 // The Elaya staff branch also runs its full brain turn (model + tools) inside
-// the same after() — 60s matches the /api/elaya/chat budget.
-export const maxDuration = 60;
+// the same after() — 180s matches the /api/elaya/chat budget so a long multi-step
+// Elaya turn on WhatsApp has the same room to finish as in-app. The 200 ack is sent
+// BEFORE after() runs, so this larger budget never delays Gupshup's acknowledgement;
+// it only extends how long the post-response work may run.
+export const maxDuration = 180;
 
 // Rate limiting (security-audit F-4) — in-memory, per worker (shared factory in
 // utils/webhook.ts). Cap is 3× the leads route's: legitimate Gupshup traffic is

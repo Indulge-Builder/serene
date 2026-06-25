@@ -15,6 +15,13 @@ import type {
 } from '@/lib/elaya/provider';
 import type { ElayaToolCallRecord } from '@/lib/types/elaya';
 
+// Per-request timeout for a single model call (M6). The route's maxDuration is 60s
+// and a turn makes several calls, so each call must finish well under that. 30s is
+// generous for a streamed completion while leaving headroom for tool execution +
+// the final SSE flush; a stalled call fails fast (with one retry) instead of
+// silently riding the SDK's 10-min default into a lambda kill.
+const ELAYA_REQUEST_TIMEOUT_MS = 30_000;
+
 let client: Anthropic | null = null;
 
 function getClient(): Anthropic {
@@ -102,21 +109,29 @@ export const anthropicAdapter: LlmProviderAdapter = {
         ? [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }]
         : req.system;
 
-    const stream = getClient().messages.stream({
-      model: req.model,
-      max_tokens: req.maxTokens,
-      system,
-      messages: toAnthropicMessages(req.messages),
-      ...(req.tools && req.tools.length > 0
-        ? {
-            tools: req.tools.map((t) => ({
-              name: t.name,
-              description: t.description,
-              input_schema: t.inputSchema as Anthropic.Tool['input_schema'],
-            })),
-          }
-        : {}),
-    });
+    const stream = getClient().messages.stream(
+      {
+        model: req.model,
+        max_tokens: req.maxTokens,
+        system,
+        messages: toAnthropicMessages(req.messages),
+        ...(req.tools && req.tools.length > 0
+          ? {
+              tools: req.tools.map((t) => ({
+                name: t.name,
+                description: t.description,
+                input_schema: t.inputSchema as Anthropic.Tool['input_schema'],
+              })),
+            }
+          : {}),
+      },
+      // Per-request overrides (the SDK defaults are a 10-min timeout + 2 retries,
+      // which inside a 60s Vercel lambda can silently exceed maxDuration and get the
+      // function killed mid-stream with no error event — M6). A turn makes up to
+      // MAX_TOOL_ITERATIONS+1 calls, so each call is bounded well under the lambda
+      // budget and retried at most once (a second backoff would blow the window).
+      { timeout: ELAYA_REQUEST_TIMEOUT_MS, maxRetries: 1 },
+    );
 
     if (req.onTextDelta) {
       stream.on('text', (delta) => req.onTextDelta?.(delta));

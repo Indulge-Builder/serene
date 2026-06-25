@@ -321,7 +321,11 @@ export function ManagerLeadVolumeWidget({
           multiSeries.length === 0 ? (
             <ChartEmpty height="100%" />
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              initialDimension={{ width: 320, height: 240 }}
+            >
               <LineChart
                 data={multiSeries}
                 margin={{ top: 4, right: 4, bottom: 0, left: -24 }}
@@ -396,7 +400,11 @@ export function ManagerLeadVolumeWidget({
         ) : singleSeries.length === 0 ? (
           <ChartEmpty height="100%" />
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            initialDimension={{ width: 320, height: 240 }}
+          >
             <LineChart
               data={singleSeries}
               margin={{ top: 4, right: 4, bottom: 0, left: -24 }}

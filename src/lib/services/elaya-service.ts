@@ -153,13 +153,19 @@ export async function getModelContextMessages(
   return ((data ?? []) as ElayaMessageRow[]).reverse();
 }
 
+/**
+ * Insert the inbound user message. Returns `{ duplicate: true }` when the partial
+ * UNIQUE index on the WhatsApp wa_message_id rejects a raced redelivery (23505,
+ * migration 0148 — M7): the SAME inbound message reached us twice and a row already
+ * exists, so the caller must NOT run a second brain turn. Throws on any other error.
+ */
 export async function insertUserMessage(args: {
   conversationId: string;
   senderId: string;
   content: string;
   channel?: ElayaChannel;
   meta?: Record<string, unknown>;
-}): Promise<ElayaMessageRow> {
+}): Promise<{ duplicate: false; row: ElayaMessageRow } | { duplicate: true }> {
   const supabase = createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any)
@@ -175,11 +181,18 @@ export async function insertUserMessage(args: {
     .select('*')
     .single();
 
-  if (error || !data) {
-    console.error('[elaya-service] user message insert failed:', error?.message);
+  if (error) {
+    // 23505 = unique violation on idx_elaya_messages_wa_dedup → the WhatsApp message
+    // was already processed by a concurrent redelivery. Not an error — the structural
+    // backstop firing. The caller short-circuits without a second turn.
+    if ((error as { code?: string }).code === '23505') {
+      return { duplicate: true };
+    }
+    console.error('[elaya-service] user message insert failed:', error.message);
     throw new Error('Could not save the message');
   }
-  return data as ElayaMessageRow;
+  if (!data) throw new Error('Could not save the message');
+  return { duplicate: false, row: data as ElayaMessageRow };
 }
 
 export async function insertAssistantMessage(args: {

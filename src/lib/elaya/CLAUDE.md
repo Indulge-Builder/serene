@@ -37,11 +37,12 @@ Two risk tiers, split in code — never by the prompt:
 "execute a state-change in its proposal turn" structurally impossible — a state tool's `run()` has
 **no branch that reaches a core**.
 
-## The 9 write tools
+## The 10 write tools
 
 | Tool | Tier | Roles | Wraps (core) |
 | --- | --- | --- | --- |
 | `add_lead_note` | inline | all staff | `addLeadNoteCore` |
+| `log_call` | inline | all staff | `addLeadCallNoteCore` (sets outcome, new→touched, arms SLA cadence — NOT a plain note) |
 | `create_lead_task` | inline | all staff | `createLeadTaskCore` |
 | `update_lead_status` | propose | all staff | `updateLeadStatusCore` |
 | `reassign_lead` | propose | manager+ | `assignLeadCore` |

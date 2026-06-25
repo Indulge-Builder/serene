@@ -18,7 +18,8 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
  * Campaign Budget — the ad-account FUEL GAUGE. The org-wide tank: total
  * recharged is the full tank, spend is fuel burned, remaining is fuel left
  * (recharged − spent, INR-only — the same balance rule as the /budget
- * per-account report). A ROI sub-line (ROAS · CPL · leads) rides along.
+ * per-account report). The hero is the remaining-fuel figure; below it the
+ * Recharged · Spent · Remaining trio carries the breakdown.
  *
  * Data is the /budget pipeline (getBudgetSummary + getAccountRecharges) rolled
  * into one gauge by buildBudgetGaugeSummary: RSC-seeded on first paint
@@ -27,7 +28,7 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
  * is no per-domain "remaining" (that would be a finance error).
  *
  * Density-adaptive (the v4 spatial dashboard): a tiny cell shows the remaining
- * headline + a thin gauge; a tall cell shows the full tank trio + the ROI line.
+ * headline + a thin gauge; a taller cell adds the full tank trio.
  */
 export function ManagerBudgetWidget({ initialData, dateRange }: WidgetProps) {
   const rscGauge = initialData?.budget_gauge ?? null;
@@ -135,7 +136,6 @@ function FuelGaugeBody({
     : formatCurrencyCompact(gauge.remaining);
 
   const showTrio  = tier !== "compact";
-  const showRoi   = tier === "rich";
 
   return (
     <div
@@ -159,7 +159,7 @@ function FuelGaugeBody({
           <p
             style={{
               fontFamily:         "var(--font-mono)",
-              fontSize:           "var(--text-3xl)",
+              fontSize:           "clamp(var(--text-3xl), 2rem + 1.6vw, 3rem)",
               fontWeight:         "var(--weight-semibold)",
               fontVariantNumeric: "tabular-nums",
               color:              overspent ? "var(--color-danger)" : "var(--theme-text-primary)",
@@ -175,7 +175,7 @@ function FuelGaugeBody({
           <p
             style={{
               fontFamily:         "var(--font-mono)",
-              fontSize:           "var(--text-xl)",
+              fontSize:           "var(--text-2xl)",
               fontWeight:         "var(--weight-semibold)",
               fontVariantNumeric: "tabular-nums",
               color:              accentText,
@@ -211,25 +211,6 @@ function FuelGaugeBody({
             value={remainingLabel}
             color={overspent ? "var(--color-danger)" : "var(--color-success-text)"}
           />
-        </div>
-      )}
-
-      {/* ROI sub-line (rich only) */}
-      {showRoi && (
-        <div
-          style={{
-            display:        "flex",
-            alignItems:     "center",
-            gap:            "var(--space-3)",
-            flexWrap:       "wrap",
-            paddingTop:     "var(--space-3)",
-            borderTop:      "1px solid var(--theme-paper-border)",
-          }}
-        >
-          <RoiChip label="ROAS"  value={gauge.roas === null ? "—" : `${gauge.roas.toFixed(1)}×`} />
-          <RoiChip label="CPL"   value={gauge.costPerLead === null ? "—" : formatCurrencyCompact(gauge.costPerLead)} />
-          <RoiChip label="Leads" value={formatCount(gauge.leadCount)} />
-          <RoiChip label="Deals" value={formatCount(gauge.dealCount)} />
         </div>
       )}
 
@@ -278,7 +259,7 @@ function FuelTank({
       style={{
         position:     "relative",
         width:        "100%",
-        height:       12,
+        height:       14,
         background:   "var(--theme-paper-subtle)",
         border:       "1px solid var(--theme-paper-border)",
         borderRadius: "var(--radius-full)",
@@ -323,7 +304,7 @@ function TankStat({ label, value, color }: { label: string; value: string; color
       <span
         style={{
           fontFamily:         "var(--font-mono)",
-          fontSize:           "var(--text-sm)",
+          fontSize:           "var(--text-md)",
           fontWeight:         "var(--weight-semibold)",
           fontVariantNumeric: "tabular-nums",
           color,
@@ -336,25 +317,6 @@ function TankStat({ label, value, color }: { label: string; value: string; color
         {value}
       </span>
     </div>
-  );
-}
-
-function RoiChip({ label, value }: { label: string; value: string }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "baseline", gap: "4px" }}>
-      <span style={{ fontSize: "var(--text-2xs)", color: "var(--theme-text-tertiary)" }}>{label}</span>
-      <span
-        style={{
-          fontFamily:         "var(--font-mono)",
-          fontSize:           "var(--text-xs)",
-          fontWeight:         "var(--weight-semibold)",
-          fontVariantNumeric: "tabular-nums",
-          color:              "var(--theme-text-primary)",
-        }}
-      >
-        {value}
-      </span>
-    </span>
   );
 }
 

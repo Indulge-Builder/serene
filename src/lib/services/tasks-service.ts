@@ -134,8 +134,13 @@ export type TaskWithMessages = Task & {
 export async function getPersonalTasks(
   userId: string,
   filters: PersonalTaskFilters = {},
+  // get_personal_tasks scopes purely on p_user_id (assigned_to = p_user_id; NO
+  // auth.uid() inside the RPC — verified migration 0145), so a sessionless caller
+  // (Elaya/WhatsApp) may inject the admin client and still get correctly-scoped
+  // rows. Default keeps every existing caller on the session client.
+  injectedClient?: Awaited<ReturnType<typeof createAdminClient>>,
 ): Promise<PersonalTasksResult> {
-  const supabase = await createClient();
+  const supabase = injectedClient ?? (await createClient());
   const pageSize = Math.min(filters.limit ?? PERSONAL_TASKS_PAGE_SIZE, 500);
 
   const cursor = filters.cursor ?? null;

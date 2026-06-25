@@ -24,6 +24,7 @@ import type { ElayaActionRow, ElayaActionStatus, ElayaChannel } from "@/lib/type
 export type ElayaActionType =
   // Lead writes (E3)
   | "add_lead_note"
+  | "log_call"
   | "create_lead_task"
   | "update_lead_status"
   | "reassign_lead"

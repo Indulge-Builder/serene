@@ -202,7 +202,8 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     domains:     '*',
     defaultSize: 'sm',
     colSpan:     1,
-    defaultGrid: { w: 3, h: 5, minW: 3, minH: 4 },
+    // Snapshot count — same compact 2×2 footprint as Pending Calls / New Leads.
+    defaultGrid: { w: 2, h: 2, minW: 2, minH: 2 },
     module:      'gia',
   },
   {
@@ -252,10 +253,10 @@ const MANAGER_GRID: GridPlacement[] = [
   { widgetId: 'manager-lead-status', x: 0, y: 9,  w: 6, h: 11 },
   { widgetId: 'manager-lead-volume', x: 6, y: 9,  w: 6, h: 11 },
   { widgetId: 'manager-campaigns',   x: 0, y: 20, w: 12, h: 11 },
-  // Fuel gauge — half-width, its own row so the gauge body has room; cold-leads
-  // count sits beside it.
+  // Fuel gauge — half-width, its own row so the gauge body has room; the
+  // Going-Cold snapshot count sits beside it as a compact 2×2 tile.
   { widgetId: 'manager-budget',      x: 0, y: 31, w: 6, h: 8  },
-  { widgetId: 'manager-cold-leads',  x: 6, y: 31, w: 3, h: 5  },
+  { widgetId: 'manager-cold-leads',  x: 6, y: 31, w: 2, h: 2  },
 ];
 
 export const DEFAULT_GRID_BY_ROLE: Record<UserRole, GridPlacement[]> = {

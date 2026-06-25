@@ -105,6 +105,22 @@ export async function canMutateTask(
   return false;
 }
 
+// THE shared cross-user-assignee existence + active check (audit #5). A task may
+// be assigned to any active user (cross-DOMAIN is intentional), so this checks
+// existence + is_active ONLY — never domain. Returns true when the assignee may
+// receive the task. Both the action layer (actions/tasks.ts) and the Elaya task
+// write tools call this — never re-inline an is_active lookup (R-01). The caller
+// gates WHO may assign (manager+); this guards WHOM they assign to.
+export async function isAssigneeActive(assigneeId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data: assignee } = await admin
+    .from("profiles")
+    .select("id, is_active")
+    .eq("id", assigneeId)
+    .single();
+  return !!assignee && assignee.is_active === true;
+}
+
 // ─────────────────────────────────────────────
 // createPersonalTaskCore — personal task insert.
 // Mirrors createPersonalTaskAction. Notifies the assignee if different from the

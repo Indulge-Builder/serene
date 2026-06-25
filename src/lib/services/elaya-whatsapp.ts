@@ -152,13 +152,20 @@ async function handleStaffMessage(
     'whatsapp',
   );
 
-  await insertUserMessage({
+  const inserted = await insertUserMessage({
     conversationId: conversation.id,
     senderId: profile.id,
     content,
     channel: 'whatsapp',
     meta: { wa_message_id: message.id },
   });
+  // Structural dedup backstop (M7): a concurrent redelivery already inserted this
+  // exact wa_message_id (23505 on the partial UNIQUE index). The earlier
+  // hasProcessedWaMessage check raced past it; stop here so we never run a second
+  // brain turn, burn the cap again, or send a duplicate reply.
+  if (inserted.duplicate) {
+    return;
+  }
 
   // No streaming on WhatsApp: the brain runs to completion, one reply.
   const principal = resolveStaffPrincipal(profile);

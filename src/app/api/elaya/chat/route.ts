@@ -30,8 +30,14 @@ import { formErrors } from '@/lib/validations/form-errors';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { createRateLimiter, getClientIp, readJsonBody } from '@/lib/utils/webhook';
 
-// The lambda must outlive the full stream (model turn + tool round-trips).
-export const maxDuration = 60;
+// The lambda must outlive the full stream (model turn + tool round-trips). Set to
+// 180s so a genuinely long, multi-step turn (several tool look-ups over larger data)
+// has room to finish instead of being killed mid-stream at 60s. This is a Vercel
+// wall-clock budget only — it does NOT change Claude billing (Anthropic bills tokens,
+// not time) and does NOT make Elaya do more work; it just lets a turn that was
+// already going to use those tokens actually complete. The per-call 30s timeout +
+// 1 retry in the Anthropic adapter still catches a single stalled call underneath.
+export const maxDuration = 180;
 
 const isRateLimited = createRateLimiter({ windowMs: 60_000, max: 20 });
 
@@ -105,6 +111,8 @@ export async function POST(request: Request) {
   const conversationId = conversation.id;
 
   try {
+    // In-app messages carry no wa_message_id, so the dedup index never applies here
+    // — duplicate is always false on this path; we just satisfy the typed result.
     await insertUserMessage({ conversationId, senderId: profile.id, content });
   } catch {
     return NextResponse.json({ error: formErrors.elayaUnavailable }, { status: 500 });

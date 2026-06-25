@@ -26,6 +26,7 @@ import type { CompletedTasksResult } from "@/lib/services/tasks-service";
 import { emitTaskEvent, resolveTaskDomain } from "@/lib/services/task-events";
 import {
   canMutateTask,
+  isAssigneeActive,
   createPersonalTaskCore,
   createGroupTaskCore,
   createSubtaskCore,
@@ -61,24 +62,15 @@ function actorFromProfile(p: Profile): MutationActor {
 }
 
 // Validate that a cross-user task assignee exists and is ACTIVE before the write
-// (audit #5). Cross-DOMAIN assignment is intentionally allowed (any active user
-// may be assigned to anyone), so this checks existence + is_active only — never
-// domain. Returns null when ok, or the error ActionResult to bail with. The
-// caller already gated WHO may assign (manager+); this guards WHOM they assign to.
+// (audit #5). Cross-DOMAIN assignment is intentionally allowed, so this checks
+// existence + is_active only — never domain. Returns null when ok, or the error
+// ActionResult to bail with. Wraps the shared isAssigneeActive (task-mutations.ts)
+// so the Elaya task tools and this action share ONE is_active check (R-01).
 async function assertAssigneeActive(
   assigneeId: string,
 ): Promise<{ data: null; error: string } | null> {
-  const admin = createAdminClient();
-  const { data: assignee } = await admin
-    .from("profiles")
-    .select("id, is_active")
-    .eq("id", assigneeId)
-    .single();
-
-  if (!assignee || !assignee.is_active) {
-    return { data: null, error: "The selected user is not available." };
-  }
-  return null;
+  if (await isAssigneeActive(assigneeId)) return null;
+  return { data: null, error: "The selected user is not available." };
 }
 
 // ─────────────────────────────────────────────

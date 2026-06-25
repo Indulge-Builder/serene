@@ -8,6 +8,7 @@ import { requireProfile } from "@/lib/actions/_auth";
 import { invalidateLeadCaches } from "@/lib/services/lead-cache";
 import {
   addLeadNoteCore,
+  addLeadCallNoteCore,
   updateLeadStatusCore,
   assignLeadCore,
   createLeadTaskCore,
@@ -44,13 +45,8 @@ import {
   type LeadActivityWithActor,
   type LeadNoteWithAuthor,
 } from "@/lib/services/leads-service";
-import {
-  scheduleSlaTimersForLead,
-  refreshActivitySlaTimers,
-  armCadenceForOutcome,
-} from "@/lib/actions/sla";
 import type { ActionResult, Profile } from "@/lib/types/index";
-import type { Task } from "@/lib/types/database";
+import type { AppDomain, Task } from "@/lib/types/database";
 import type { LeadAssignedNotifyInput } from "@/lib/services/lead-assignment-notify";
 
 // ─────────────────────────────────────────────
@@ -91,96 +87,22 @@ export async function addLeadCallNote(
 
   if (!hasAccess) return { data: null, error: formErrors.unauthorized };
 
-  // 4. All DB writes in one atomic round-trip via RPC
-  const admin = createAdminClient();
-  const now = new Date().toISOString();
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rpcResult, error: rpcError } = await (admin as any).rpc(
-    "add_lead_call_note",
-    {
-      p_lead_id: leadId,
-      p_author_id: caller.id,
-      p_content: content,
-      p_call_outcome: callOutcome,
-      p_now: now,
-    },
-  );
-
-  if (rpcError || !rpcResult) return { data: null, error: formErrors.generic };
-
-  const {
-    note_id: noteId,
-    did_auto_advance: didAutoAdvance,
-    assigned_to: assignedTo,
-    domain,
-    old_status: oldStatus,
-  } = rpcResult as {
-    note_id: string;
-    did_auto_advance: boolean;
-    assigned_to: string | null;
-    domain: string;
-    old_status: string;
-  };
-
-  // Redis invalidation — awaited so the next dossier load never reads stale data
+  // 4. Delegate the RPC + cache invalidation + SLA cadence chain to the shared core
+  // (R-01) so an Elaya log_call records a call IDENTICALLY. The action keeps the
+  // request-context-only revalidatePath below.
   const slug = lead.slug as string | null;
-  await invalidateLeadCaches(
-    "addLeadCallNote",
-    { leadId, slug, domain: lead.domain as string },
-    { row: true, notes: true, activities: true, lists: true },
+  const core = await addLeadCallNoteCore(
+    { userId: caller.id, role: caller.role, domain: caller.domain as AppDomain, fullName: caller.full_name },
+    { leadId, content, callOutcome },
+    { slug, domain: lead.domain as string },
   );
+  if (!core.ok) return { data: null, error: formErrors.generic };
 
-  // Invalidate dossier + list RSC cache
+  // Invalidate dossier + list RSC cache (request-context only — stays in the action)
   revalidatePath(`/leads/${slug ?? leadId}`);
   revalidatePath("/leads");
 
-  // 5. SLA side-effects (fire-and-forget, non-fatal — cannot go in the RPC)
-  // armCadenceForOutcome is chained AFTER the schedule/refresh settles — their
-  // cancel-all sweeps every run tagged to this lead and would otherwise kill
-  // the freshly armed cadence tick. It no-ops unless the outcome is in the
-  // cadence set (rnr / switched_off / wrong_number) and the status is armable.
-  const postStatus = didAutoAdvance ? "touched" : oldStatus;
-
-  if (didAutoAdvance) {
-    const slaAssignee = assignedTo ?? caller.id;
-    scheduleSlaTimersForLead({
-      leadId,
-      status: "touched",
-      assignedAt: now,
-      assignedTo: slaAssignee,
-      domain,
-    })
-      .then(() =>
-        armCadenceForOutcome({
-          leadId,
-          outcome: callOutcome,
-          assignedTo: slaAssignee,
-          domain,
-          status: "touched",
-        }),
-      )
-      .catch(() => {});
-  } else if (assignedTo && ["touched", "in_discussion"].includes(postStatus)) {
-    refreshActivitySlaTimers({
-      leadId,
-      status: postStatus,
-      assignedTo,
-      domain,
-    })
-      .then(() =>
-        armCadenceForOutcome({
-          leadId,
-          outcome: callOutcome,
-          assignedTo,
-          domain,
-          status: postStatus,
-        }),
-      )
-      .catch(() => {});
-  }
-
-  return { data: { noteId: noteId as string }, error: null };
+  return { data: { noteId: core.noteId }, error: null };
 }
 
 // ─────────────────────────────────────────────

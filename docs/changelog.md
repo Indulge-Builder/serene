@@ -12,6 +12,216 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-25 — Docs: Elaya "Jarvis" architecture proposal (`docs/architecture/elaya-jarvis-architecture.md`)
+
+**Why:** before building the remaining audit items (manager/founder capability tools, persona, memory)
+the user set the long-term vision — Elaya as a per-user personal assistant ("Jarvis"): per-user
+persona (language/tone/depth), accumulating memory, a future notes section Elaya can read, role-gated
+power, full WhatsApp↔in-app parity for every feature, and eventual super-powers (web). That's a
+foundation decision, so we wrote the architecture down for review BEFORE any code.
+
+**What:** new design doc proposing the foundation as **four separated concerns** — Identity (verified
+principal, already channel-agnostic), Permissions (role→toolset+scope, **code only**), Persona
+(per-user style file, user-set + Elaya-learned), Memory (notes + durable context + history). The
+**Golden Rule**: permissions are enforced in code and are completely independent of persona/notes/
+prompt — so injected user content (notes, persona, future scraped pages) can never escalate access.
+Four building blocks: (1) an `elaya-data` access layer all tools fetch through — principal-in, admin
+client, code-scoped — making channel parity *structural* (a tool physically can't depend on a login
+session); (2) role→capabilities; (3) persona via the existing-but-dormant `user_context` table
+(read into the prompt today, never written); (4) memory writer (post-turn Haiku summarizer) + a
+retrieval interface designed to swap "load-all" → semantic/embeddings later (the `vector` extension
+is already installed). Proposed phases P1 (data layer + parity rule) → P2 (persona) → P3 (memory) →
+P4 (capability tools) → P5 (notes UI, embeddings, web). **Design only — no code/migration written;
+Phase 1 begins on approval.**
+
+## 2026-06-25 — Elaya: raise lambda budget 60s → 180s (room for long multi-step turns)
+
+**Why:** the M6 fix added a 30s per-CALL timeout, but the real ceiling on a long Elaya turn is the
+Vercel wall-clock `maxDuration` (was 60s) — a genuinely long, multi-step request (several tool
+look-ups over larger data) could be killed mid-stream at 60s. Raised to 180s on both Elaya entry
+points so such a turn has room to finish. **No Claude billing impact** (Anthropic bills tokens, not
+time) and it does NOT make Elaya do more work — it only lets a turn that was already going to use
+those tokens actually complete instead of dying at 60s. The per-call 30s timeout + 1 retry stays as
+the safety net for a single stalled call.
+
+- `src/app/api/elaya/chat/route.ts` — `maxDuration` 60 → 180 (in-app SSE).
+- `src/app/api/webhooks/whatsapp/route.ts` — `maxDuration` 60 → 180 (the Elaya staff turn runs in
+  this route's `after()`). The 200 ack is sent BEFORE `after()`, so the larger budget never delays
+  Gupshup's acknowledgement — it only extends the post-response work window.
+
+## 2026-06-25 — Elaya audit fixes (batch 2): correctness Mediums (M3–M7) from the 2026-06-25 audit
+
+**Why:** continuing `docs/audits/2026-06-25-elaya-full-audit.md` — the brain-loop robustness +
+WhatsApp dedup Mediums. All typecheck clean. (M8 proposal card + M9–M12 new capability tools are
+enhancements, not bugs — deferred as separate feature work.)
+
+**M3 — tool-iteration ceiling left a dangling reply.** When the brain hit `MAX_TOOL_ITERATIONS`
+mid-task it just broke, leaving the user with a "let me check…" preamble and no resolution.
+`runElayaTurn` now emits a deterministic close line ("took more steps than I can finish in one go —
+tell me which part…"). `src/lib/elaya/brain.ts`.
+
+**M4 — token-cap truncation was silent.** A `max_tokens` stop fell through and returned a clipped
+reply with no signal. The loop now appends a short "I had to cut that short — ask me to continue"
+marker on a `max_tokens` stop. Also raised reasoning `max_tokens` 2048 → **4096** (live `llm_providers`
+edit, no deploy — read per request) to halve truncation incidence. `brain.ts` + config row.
+
+**M5 — a mid-turn failure discarded the partial reply (duplicate-on-retry risk).** Inline writes
+commit immediately, but if a later model call threw, the assistant message was never persisted, so
+on retry the model re-created the same note/task (no record in history). The model loop in
+`runElayaTurn` is now wrapped: a throw appends an honest marker and RETURNS the accumulated
+text + toolCalls (with `meta.turnError`), so the caller persists it and the next turn's history
+records what already happened. `brain.ts`.
+
+**M6 — adapter had no timeout/retry inside a 60s lambda.** The SDK default (10-min timeout, 2
+retries) could silently exceed `maxDuration` and get the function killed mid-stream. The Anthropic
+adapter now passes a per-request `timeout: 30s` + `maxRetries: 1` on the stream call.
+`src/lib/elaya/adapters/anthropic.ts`.
+
+**M7 — WhatsApp idempotency raced the long brain turn.** The dedup marker (user-message row) is
+written only after profile lookup + voice transcription, so two BSP redeliveries in that window both
+passed the read-guard and both ran a full turn + reply. Added a partial UNIQUE index on
+`elaya_messages ((meta->>'wa_message_id')) WHERE channel='whatsapp' AND role='user'` (**migration
+0148, applied to prod + verified** — no existing dupes); `insertUserMessage` now maps the `23505` to
+`{ duplicate: true }` and the WhatsApp gate short-circuits without a second turn (the lead pipeline's
+existing posture). `supabase/migrations/20260625000148_*.sql`, `elaya-service.ts`, `elaya-whatsapp.ts`,
+`api/elaya/chat/route.ts`.
+
+**Audit doc:** resolved findings (batch 1 + batch 2) were REMOVED from
+`docs/audits/2026-06-25-elaya-full-audit.md` — it now lists only what's still outstanding.
+
+## 2026-06-25 — Elaya audit fixes (batch 1): 5 High + 2 Medium + 1 Low from the 2026-06-25 audit
+
+**Why:** acting on `docs/audits/2026-06-25-elaya-full-audit.md`, fixed the highest-impact confirmed
+findings — mostly *silent wrong answers / silent failures* + one authz gap + the missing #1 agent
+action. All typecheck clean. No DB migration needed (the slug migration shipped separately; the
+`elaya_actions.action_type` column has no CHECK, so `log_call` writes fine).
+
+**H4 — WhatsApp sends logged `delivered:true` on Gupshup app-level failures.** `sendTextMessage`
+trusted `res.ok`, but Gupshup returns HTTP 200 + `{status:error}` for a closed 24h window / opt-out
+(the 2026-06-08 silent-loss class). `sendTextMessage` now reads the body and applies the existing
+`isGupshupDelivered()` guard, throwing on app-level non-delivery — so both callers record the truth:
+`sendElayaWhatsAppReply` (existing try/catch → `delivered:false`) and `sendWhatsAppMessage`
+(wrapped in a new try/catch → clean `{data:null,error}` with a "window may be closed" message).
+`src/lib/services/whatsapp-api.ts`, `src/lib/actions/whatsapp.ts`.
+
+**H3 + H3b — a stale proposal could fire on a later unrelated "yes".** `resolvePendingAction`
+(`brain.ts`) now (a) auto-dismisses any proposal older than `PROPOSAL_TTL_MS` (15 min) before the
+affirmation check — a cross-context "haan" can no longer execute a status change / reassign / delete
+recorded long ago; and (b) only executes when the ask was actually **relayed** (the most recent
+assistant message is non-empty) — a proposal whose `run()` recorded a row but never surfaced the
+confirmation prompt is no longer confirmable by a stray affirmative.
+
+**H2 — `search_leads` reported page size (≤30) as the total; status counts covered only page 1.**
+`searchLeadsForElaya` now runs a status-only scan over the FULL filtered set with the identical
+admin-client, code-enforced scope filters (the self-scoped `get_leads_status_counts` RPC can't be
+reused — it needs `auth.uid()`, NULL in the sessionless context). True `totalCount` + `statusCounts`;
+the tool also surfaces `page`/`pageSize`/`hasMore` so the model never presents one page as everything.
+`src/lib/services/leads-service.ts`, `src/lib/elaya/tools/registry.ts`.
+
+**H1 — WhatsApp silently lost three tool families (no cookie session → no `auth.uid()`).** Split by
+how each service scopes: **(a) easy** — `getPersonalTasks` (RPC scopes on `p_user_id`) and a new
+`getDealsByRoleForElaya` (explicit `.eq()` role filters) now accept/inject the **admin client**, so
+personal tasks + deals work on WhatsApp. **(b) hard** — `getGroupTasks`, `getAgentTodayPulse`,
+`getAgentRosterPerformance` genuinely self-scope via `auth.uid()`/`get_user_domain()` in SQL; rather
+than report a false blank/zero, the tools now detect the channel and return an honest "open Serene in
+the app to see this" (channel threaded to read tools via `executeTool`). Full sessionless RPC twins
+for the hard tier are deferred to a later, separately-reviewed batch (scope-param migrations).
+`registry.ts`, `deals-service.ts`, `tasks-service.ts`.
+
+**H5 — no call-logging tool (the #1 daily agent action).** `add_lead_note` only wrote a plain note;
+a real call sets `last_call_outcome`, bumps `call_count`, auto-advances new→touched, and arms the SLA
+cadence. Extracted `addLeadCallNoteCore` into `lead-mutations.ts` (the `addLeadCallNote` action now
+delegates to it — R-01, removed the duplicated SLA chain from the action) and added an inline
+`log_call` Elaya write tool (leadId + outcome + optional note). An Elaya-logged call now behaves
+byte-identically to one logged in the app. Persona + Elaya CLAUDE.md updated (10 write tools).
+
+**M1 + M2 — `update_task` let an agent reassign any task to anyone; task tools never checked the
+assignee was active.** `update_task` + `create_personal_task` now gate cross-user assignment behind
+manager+ (mirrors `createPersonalTaskAction`) and verify the assignee exists + is active via a new
+shared `isAssigneeActive` in `task-mutations.ts` (the action's `assertAssigneeActive` now delegates to
+it — R-01). `write-registry.ts`, `task-mutations.ts`, `actions/tasks.ts`.
+
+**Low — `reassign_lead` could land a lead on an inactive/non-existent agent for admin/founder.**
+`assignLeadCore` now rejects a missing/inactive assignee for ALL roles (baseline existence+active
+check), keeping the manager's stricter same-domain rule on top. `lead-mutations.ts`.
+
+## 2026-06-25 — Lead Pipeline widget: stat chips collapse to 5 cards (lost + junk → "Junk")
+
+**What:** the stat-chip row on `ManagerLeadStatusWidget` now shows FIVE cards instead of six — New ·
+Touched · In Discussion · Won · Junk — where the Junk card's count is `lost + junk` combined
+(rendered under the `junk` status, so it keeps the junk colour tokens + the existing "Junk" label).
+`CHIP_STATUSES` dropped `lost`; the junk chip sums both counts.
+
+**Why:** requested — lost and junk are both dead-end resolutions, so a single "Junk" headline card
+reads cleaner than two near-identical cards. The per-agent stacked bars, the legend, and the Total
+keep the true 7-status breakdown (`STATUS_ORDER` untouched) — only the headline chip row is
+consolidated; no data is hidden. Display-only, no service/RPC change.
+
+## 2026-06-25 — Snapshot widgets: larger, less washed-out identity watermark
+
+**What:** the corner identity glyph on the `SnapshotCountWidget` (Going Cold · Pending Calls · New
+Leads) is bigger and a touch more present: size `clamp(22px, 30cqmin, 76px)` → `clamp(48px, 46cqmin,
+132px)`, opacity `0.08`/`0.06` (positive/zero) → `0.12`/`0.08`, and it bleeds further off the corner
+(`right/bottom` −3%/−6% → −8%/−12%) so the larger glyph still reads as a watermark, not a pasted-on
+icon.
+
+**Why:** requested — at the compact 2×2 footprint the watermark sat near its 22px floor and read tiny
++ washed out. Larger size + the deeper-but-still-low opacity keeps it a confident backdrop behind the
+mono hero number while staying within the design philosophy (identity watermark, never a foreground
+icon). cqmin sizing means it scales smoothly as the cell grows. One component, all three snapshot
+tiles inherit it.
+
+## 2026-06-25 — Docs: Elaya full capability + health audit (`docs/audits/2026-06-25-elaya-full-audit.md`)
+
+**Why:** a full sweep of the Elaya AI subsystem was requested — every feature across every role
+(agent / manager / admin / founder / guest), both channels (in-app + WhatsApp), to catalogue what
+works, find bugs, and produce an enhancement roadmap.
+
+**What:** ran a 12-dimension multi-agent audit (identity/authz/scope · the 6 read tools · lead write
+tools · task write tools · confirmation/resolver · brain loop + provider/adapter · PII/security ·
+WhatsApp channel · in-app frontend/UX · memory/context/session · persona/prompt quality · capability
+gaps), each finding adversarially verified against the real code (default-to-refuted), plus a
+completeness critic. **150 capabilities catalogued, 84 findings audited → 74 confirmed real, 10
+refuted.** New report: `docs/audits/2026-06-25-elaya-full-audit.md`.
+
+**Headline:** Elaya is healthy and production-safe — **0 critical bugs**; the security model
+(principal-derived identity, per-resource re-check, propose-then-confirm resolver, fail-closed cap)
+is sound. The confirmed defects are **5 High / 11 Medium / ~22 Low** — mostly *silent wrong answers*
+(WhatsApp loses tasks/deals/performance because those tools need a cookie session the webhook lacks;
+`search_leads` reports page size as the total; stale proposals can fire on a later "yes"; the Elaya
+WhatsApp reply logs `delivered:true` on Gupshup app-level failures) and the **missing `log_call`
+tool** (the #1 daily agent action). Strategic gaps: `user_context` durable memory is wired but never
+written (0 rows), the customer WhatsApp persona is an intentional stub, and manager-oversight /
+founder-business reads are unwrapped though every backing service exists. P0/P1/P2 roadmap + quick
+wins are in the report. **No code changed in this entry** — analysis + doc only.
+
+## 2026-06-25 — Going Cold widget: 2×2 snapshot footprint (was 3×5)
+
+**What:** `manager-cold-leads` ("Going Cold") now defaults to the same compact `{ w: 2, h: 2 }`
+footprint as the Pending Calls / New Leads snapshot tiles, in both `DASHBOARD_WIDGETS.defaultGrid`
+and its `MANAGER_GRID` placement (was `w: 3, h: 5`).
+
+**Why:** the widget renders the identical `SnapshotCountWidget` as the agent snapshot counts (a
+single count + label), so its wider/taller footprint was wasted space — it read as "too wide." Pure
+registry geometry; no component change. Applies to fresh dashboards + reset-to-defaults; users with a
+saved `serene:dashboard:layout` keep their current size until they resize or reset (standard for any
+default-grid change here).
+
+## 2026-06-25 — Campaign Fuel widget: enlarged hero + trio, ROI sub-line removed
+
+**What:** `ManagerBudgetWidget` (the dashboard "Campaign Fuel" gauge) now reads bigger and
+simpler. The remaining-fuel hero scales up via `clamp(--text-3xl … 3rem)`, the `% burned` figure
+goes `--text-xl → --text-2xl`, the Recharged · Spent · Remaining trio values go `--text-sm →
+--text-md`, and the tank bar thickens 12px → 14px. The rich-tier **ROI sub-line** (ROAS · CPL ·
+Leads · Deals) and its `RoiChip` helper are deleted — the widget now shows only fuel
+remaining + the breakdown trio.
+
+**Why:** requested — the ROI line was noise on the gauge; the card should state the fuel position
+loudly and stop there. `BudgetGaugeSummary` keeps the ROI fields (used elsewhere); only the widget's
+render of them is gone. No data/service change; tokens-only sizing (no hardcoded values).
+
+---
+
 ## 2026-06-25 — Fix: lead-slug uppercase strip (90% of slugs corrupted) + Elaya lead-handle hardening + agent owner-hint
 
 **Why (the trigger):** an agent (Savio) asked Elaya over WhatsApp to update a lead's status and add
@@ -72,31 +282,36 @@ directly addresses Savio's confusion (he'd now learn whose lead it is, rather th
 `leadId` + owner-hint, get_lead_details `leadId`), `src/lib/elaya/tools/write-registry.ts` (4 tools +
 resolver onto `leadId`/`getLeadByRefForElaya`), `src/lib/elaya/persona.ts`. Typecheck clean.
 
-## 2026-06-25 — Fix: silence Recharts `width(-1)/height(-1)` console warning on `/performance` charts
+## 2026-06-25 — Fix: silence Recharts `width(-1)/height(-1)` console warning (dashboard + performance charts)
 
 **Why:** the dev console logged the Recharts `The width(-1) and height(-1) of chart should be
-greater than 0` warning repeatedly on dashboard/performance loads. Root cause traced: a Recharts
-`ResponsiveContainer` measures its parent **synchronously on first render**, before the browser has
-laid out the box, so it reads `-1` and logs once — then `ResizeObserver` fires one frame later with
-the real size and the chart renders correctly. The warning is cosmetic (the chart is never wrong),
-but it was noise. The dashboard widgets are already protected (the `useWidgetDensity` `measured`
-gate withholds the chart until the slot has a real box), and `MiniSparkline` / `CallOutcomeBar`
-were already protected via `initialDimension` / explicit pixels. Two `/performance` charts had no
-guard.
+greater than 0` warning repeatedly on `/dashboard` and `/performance` loads. Root cause traced: a
+Recharts `ResponsiveContainer` measures its parent **synchronously on first render**, before the
+browser has laid out the box, so it reads `-1` and logs once — then `ResizeObserver` fires one frame
+later with the real size and the chart renders correctly. The warning is cosmetic (the chart is
+never wrong), but it was noise. `MiniSparkline` (`CoreFourGrid`) and `CallOutcomeBar` were already
+protected via `initialDimension` / explicit pixels. The dashboard widgets relied **only** on the
+`useWidgetDensity` `measured` gate — which withholds the chart until the slot has a real box, but
+does **not** stop a fill chart from measuring `-1` for the one frame the flex/grid chain is still
+settling after react-grid-layout's deferred layout pass. So `/dashboard` (and two `/performance`
+charts) still leaked the warning.
 
-**What:** added `initialDimension` to the two unguarded `ResponsiveContainer`s — the existing
-pattern (`MiniSparkline` in `CoreFourGrid`, the pixel sizing in `CallOutcomeBar`), so Recharts'
-first synchronous measure reads a real box instead of `-1`:
+**What:** seeded `initialDimension` on every remaining unguarded `ResponsiveContainer` — the
+existing pattern (`MiniSparkline`, `CallOutcomeBar`) — so Recharts' first synchronous measure reads
+a real box instead of `-1`. The density gate stays; this is belt-and-suspenders with it:
 
-- `DomainTargetMeter.tsx` — `initialDimension={{ width: METER_SIZE, height: METER_SIZE }}` (the
-  parent is a fixed `METER_SIZE` square; both axes were `100%`).
-- `DomainOverviewPanel.tsx` — `initialDimension={{ width: 320, height: 220 }}` on the comparative
-  bar chart (height was already concrete at `220`; only the `width="100%"` axis raced). The seed
-  width is corrected to the real column width by `ResizeObserver` on the next frame.
+- `CartesianChartFrame.tsx` — the `isFill` branch (the dashboard fill path) seeds
+  `{ width: 320, height: 240 }`. Covers `ManagerCampaignWidget` and every future Cartesian chart
+  rendered in a fill slot through the shared `<BarChart>`/`<LineChart>`/`<AreaChart>` wrappers.
+- `ManagerLeadVolumeWidget.tsx` — both raw `ResponsiveContainer`s (multi-domain + single-series
+  line paths) seed `{ width: 320, height: 240 }`.
+- `DomainTargetMeter.tsx` — `{ width: METER_SIZE, height: METER_SIZE }` (parent is a fixed square).
+- `DomainOverviewPanel.tsx` — `{ width: 320, height: 220 }` (height was already concrete at `220`;
+  only `width="100%"` raced).
 
-**No behaviour/feature change** — both charts render byte-identically; only the first-frame measure
-is seeded. No architecture change: the dashboard spatial-grid (react-grid-layout) + density-gate
-approach is sound and untouched.
+**No behaviour/feature change** — every chart renders byte-identically; only the first-frame measure
+is seeded, then `ResizeObserver` corrects to the true size next frame. No architecture change: the
+dashboard spatial-grid (react-grid-layout) + density-gate approach is sound and untouched.
 
 ---
 

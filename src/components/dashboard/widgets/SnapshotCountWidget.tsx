@@ -58,20 +58,22 @@ export function SnapshotCountWidget({
       transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
       style={{ padding: isCompact ? "var(--space-4)" : "var(--space-5)" }}
     >
-      {/* Identity watermark — the glyph, faint + bleeding off the corner. Sized
+      {/* Identity watermark — the glyph, soft + bleeding off the corner. Sized
           in cqmin off the live cell box (the tile is a query container), so it
-          scales smoothly as the widget grows/shrinks instead of fixed px. */}
+          scales smoothly as the widget grows/shrinks instead of fixed px. Large
+          enough to read as a confident backdrop, low enough opacity to stay a
+          watermark behind the number — never a foreground icon. */}
       <Icon
         aria-hidden
         strokeWidth={1}
         style={{
           position: "absolute",
-          right: "-3%",
-          bottom: "-6%",
-          width: "clamp(22px, 30cqmin, 76px)",
-          height: "clamp(22px, 30cqmin, 76px)",
+          right: "-8%",
+          bottom: "-12%",
+          width: "clamp(48px, 46cqmin, 132px)",
+          height: "clamp(48px, 46cqmin, 132px)",
           color: isZero ? "var(--theme-text-tertiary)" : positiveColor,
-          opacity: isZero ? 0.06 : 0.08,
+          opacity: isZero ? 0.08 : 0.12,
           pointerEvents: "none",
         }}
       />

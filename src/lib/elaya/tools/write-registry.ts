@@ -39,6 +39,7 @@ import type { LeadWithAssignee } from "@/lib/services/leads-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   addLeadNoteCore,
+  addLeadCallNoteCore,
   createLeadTaskCore,
   updateLeadStatusCore,
   assignLeadCore,
@@ -46,6 +47,7 @@ import {
 } from "@/lib/services/lead-mutations";
 import {
   canMutateTask,
+  isAssigneeActive,
   createPersonalTaskCore,
   createGroupTaskCore,
   updateTaskStatusCore,
@@ -63,18 +65,20 @@ import {
 } from "@/lib/services/elaya-actions-service";
 import { notifyLeadAssigned } from "@/lib/services/lead-assignment-notify";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
+import { CALL_OUTCOMES, CALL_OUTCOME_LABELS } from "@/lib/constants/call-outcomes";
 import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
 import { TASK_STATUS } from "@/lib/constants/task-constants";
 import { APP_DOMAINS } from "@/lib/constants/domains";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { normalizeDueAtToIstInstant } from "@/lib/utils/ist";
 import type { UserRole, AppDomain } from "@/lib/types";
-import type { LeadStatus, TaskStatus, TaskPriority } from "@/lib/types/database";
+import type { LeadStatus, TaskStatus, TaskPriority, CallOutcome } from "@/lib/types/database";
 import type { ElayaActionRow, ElayaChannel } from "@/lib/types/elaya";
 
 export type ElayaWriteToolName =
   // Lead writes (E3)
   | "add_lead_note"
+  | "log_call"
   | "create_lead_task"
   | "update_lead_status"
   | "reassign_lead"
@@ -231,6 +235,86 @@ const addLeadNote: ElayaWriteTool = {
     return {
       done: true,
       summary: `Note added to ${leadDisplayName(lead)}.`,
+      noteId: core.noteId,
+    };
+  },
+};
+
+// ── log_call — INLINE. The #1 daily agent action (H5). Unlike add_lead_note (a
+// plain timeline note), this records a CALL with its OUTCOME: it sets
+// last_call_outcome, bumps call_count, auto-advances new→touched, and arms the SLA
+// follow-up cadence — byte-identical to logging a call in the app, because it wraps
+// the SAME addLeadCallNoteCore the addLeadCallNote action uses (R-01). Use this
+// whenever the user says they called/phoned/tried a lead; use add_lead_note only for
+// a non-call observation.
+const logCall: ElayaWriteTool = {
+  name: "log_call",
+  roles: STAFF_ALL,
+  description:
+    "Log a phone call to a lead with its outcome. Use this whenever the user says they called, " +
+    "phoned, rang, or tried to reach a lead (e.g. 'I called Akhil, no answer' or 'spoke to Priya, " +
+    "she's interested'). Takes the lead's leadId, the call outcome, and an optional note of what was " +
+    "said. This records the outcome, advances the lead to Touched if it was New, and arms the " +
+    "follow-up reminder — a plain note does NOT. Happens immediately — no confirmation step.",
+  schema: z.object({
+    leadId: z.string().trim().min(1).max(160),
+    outcome: z.enum(CALL_OUTCOMES as [CallOutcome, ...CallOutcome[]]),
+    note: z.string().trim().max(2000).optional(),
+  }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      leadId: { type: "string", description: "The lead id or slug (from search_leads results)" },
+      outcome: {
+        type: "string",
+        enum: [...CALL_OUTCOMES],
+        description:
+          "rnr = rang no response; switched_off = phone off; wrong_number; conversing = had a conversation; other",
+      },
+      note: { type: "string", description: "Optional note of what happened on the call" },
+    },
+    required: ["leadId", "outcome"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { leadId, outcome, note } = input as {
+      leadId: string;
+      outcome: CallOutcome;
+      note?: string;
+    };
+    const lead = await getLeadByRefForElaya(leadId);
+    if (!lead || !canAccessLead(principal, lead)) return { error: REFUSE_LEAD };
+
+    // The RPC requires note content; default to a sensible line from the outcome
+    // label when the user only stated the outcome (mirrors how the app's CalledModal
+    // always carries a note). Sanitised before the write.
+    const rawContent = note && note.trim().length > 0 ? note : CALL_OUTCOME_LABELS[outcome];
+    const clean = sanitizeText(rawContent);
+    if (clean.length === 0) return { error: "The call note was empty after cleaning — nothing to save." };
+
+    const core = await addLeadCallNoteCore(
+      actorFromPrincipal(principal),
+      { leadId: lead.id, content: clean, callOutcome: outcome },
+      { slug: lead.slug, domain: lead.domain },
+    );
+    if (!core.ok) return { error: "I couldn't log that call just now." };
+
+    await insertExecutedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "log_call",
+      payload: {
+        target: { slug: lead.slug, leadId: lead.id },
+        args: { outcome, content: clean },
+        channel: ctx.channel,
+        before: null,
+        after: { created: { noteId: core.noteId, outcome } },
+      },
+    });
+
+    return {
+      done: true,
+      summary: `Logged a call to ${leadDisplayName(lead)} (${CALL_OUTCOME_LABELS[outcome]}).`,
       noteId: core.noteId,
     };
   },
@@ -494,8 +578,14 @@ const createPersonalTask: ElayaWriteTool = {
 
     // Assigning to ANOTHER user is manager+ only (mirrors createPersonalTaskAction).
     // The gate is the caller's job (Q-13); the core trusts it.
-    if (assigneeId && assigneeId !== principal.userId && !MANAGER_UP_ROLES.has(principal.role)) {
+    const assigningToOther = !!assigneeId && assigneeId !== principal.userId;
+    if (assigningToOther && !MANAGER_UP_ROLES.has(principal.role)) {
       return { error: REFUSE_TASK_ASSIGN };
+    }
+    // The assignee must exist + be active (M2 — mirror assertAssigneeActive in
+    // actions/tasks.ts; never strand a task on a deactivated account).
+    if (assigningToOther && !(await isAssigneeActive(assigneeId!))) {
+      return { error: "That user isn't available to take the task." };
     }
 
     const cleanTitle = sanitizeText(title);
@@ -742,6 +832,24 @@ const updateTask: ElayaWriteTool = {
     const allowed = await canMutateTask(admin, callerFromPrincipal(principal), existing as TaskMutationTarget);
     if (!allowed) return { error: REFUSE_TASK };
 
+    // Reassigning a task to a DIFFERENT user is manager+ only — mirror the
+    // create_personal_task gate (M1: an agent who can edit a task must not be
+    // able to dump it on a teammate). Only enforced when assigneeId actually
+    // changes the owner (a no-op self-reassign is fine).
+    const reassigningToOther =
+      raw.assigneeId !== undefined &&
+      raw.assigneeId !== principal.userId &&
+      raw.assigneeId !== ((existing.assigned_to as string | null) ?? null);
+    if (reassigningToOther && !MANAGER_UP_ROLES.has(principal.role)) {
+      return { error: REFUSE_TASK_ASSIGN };
+    }
+    // The new assignee must exist + be active (M2 — mirror assertAssigneeActive
+    // in actions/tasks.ts so a tool-driven edit can't strand a task on a
+    // deactivated account). Only checked when the owner actually changes.
+    if (reassigningToOther && !(await isAssigneeActive(raw.assigneeId!))) {
+      return { error: "That user isn't available to take the task." };
+    }
+
     const dueAtChanged = "dueAt" in raw && raw.dueAt !== undefined;
     const dueAtInstant = dueAtChanged ? normalizeDueAtToIstInstant(raw.dueAt) : null;
 
@@ -853,6 +961,7 @@ const deleteTask: ElayaWriteTool = {
 // ─────────────────────────────────────────────
 
 const ALL_WRITE_TOOLS = [
+  logCall,
   // Lead writes (E3)
   addLeadNote,
   createLeadTask,

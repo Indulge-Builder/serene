@@ -55,9 +55,16 @@ export async function sendWhatsAppMessage(
   const conversation = await getConversation(conversationId);
   if (!conversation) return { data: null, error: "Conversation not found" };
 
-  // Send via Meta Cloud API
-  const apiResult = await sendTextMessage(conversation.wa_id, content);
-  if (!apiResult) return { data: null, error: "Failed to send message" };
+  // Send via Gupshup. sendTextMessage now throws on an app-level non-delivery
+  // (HTTP 200 + {status:error} — closed window, opt-out), not just an HTTP error,
+  // so a silently-undelivered message no longer gets persisted as "sent".
+  let apiResult: Awaited<ReturnType<typeof sendTextMessage>>;
+  try {
+    apiResult = await sendTextMessage(conversation.wa_id, content);
+  } catch (err) {
+    console.error('[sendWhatsAppMessage] send failed:', err instanceof Error ? err.message : err);
+    return { data: null, error: "Couldn't send the message — the customer's WhatsApp window may be closed. Try a template, or ask them to message first." };
+  }
 
   const waMessageId = apiResult.messages?.[0]?.id ?? null;
 

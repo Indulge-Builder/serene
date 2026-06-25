@@ -38,6 +38,8 @@ import { createNotification } from "@/lib/services/notifications-service";
 import {
   scheduleSlaTimersForLead,
   cancelSlaTimersForLead,
+  refreshActivitySlaTimers,
+  armCadenceForOutcome,
 } from "@/lib/actions/sla";
 import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
 import {
@@ -50,7 +52,7 @@ import {
 import { scheduleTaskReminder } from "@/trigger/task-reminders";
 import type { LeadAssignedNotifyInput } from "@/lib/services/lead-assignment-notify";
 import type { UserRole } from "@/lib/types";
-import type { AppDomain, LeadStatus, Task } from "@/lib/types/database";
+import type { AppDomain, CallOutcome, LeadStatus, Task } from "@/lib/types/database";
 
 // ─────────────────────────────────────────────
 // Caller identity — principal-derived, NEVER from a session inside the core.
@@ -100,6 +102,109 @@ export async function addLeadNoteCore(
   );
 
   return { ok: true, noteId: rpcResult.note_id as string };
+}
+
+// ─────────────────────────────────────────────
+// addLeadCallNoteCore — a CALL note (carries an outcome). THE shared body of the
+// addLeadCallNote action (R-01), so an Elaya log_call tool records a call IDENTICALLY
+// to one logged in the app: the add_lead_call_note RPC (note + last_call_outcome +
+// call_count + new→touched auto-advance, all atomic) + cache invalidation + the SLA
+// cadence chain. This is what plain add_lead_note does NOT do — a note alone never
+// sets the outcome, advances the status, or arms the follow-up cadence.
+//
+// The SLA side-effects are fire-and-forget .then().catch() (no revalidatePath, no
+// after()) so they are context-free and belong in the core. armCadenceForOutcome is
+// chained AFTER schedule/refresh settle — their cancel-all would sweep the freshly
+// armed cadence tick (the exact ordering invariant the action documents).
+// revalidatePath stays in the caller (request-context only).
+// ─────────────────────────────────────────────
+export async function addLeadCallNoteCore(
+  actor: MutationActor,
+  input: { leadId: string; content: string; callOutcome: CallOutcome },
+  // The lead's slug/domain — the caller already fetched the lead for its access
+  // check, so it passes these rather than the core re-querying (mirrors the
+  // updateLeadStatusCore ctx pattern). slug drives the dual-key row invalidation.
+  ctx: { slug: string | null; domain: string },
+): Promise<{ ok: true; noteId: string } | { ok: false }> {
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: rpcResult, error: rpcError } = await (admin as any).rpc(
+    "add_lead_call_note",
+    {
+      p_lead_id: input.leadId,
+      p_author_id: actor.userId,
+      p_content: input.content,
+      p_call_outcome: input.callOutcome,
+      p_now: now,
+    },
+  );
+
+  if (rpcError || !rpcResult) return { ok: false };
+
+  const {
+    note_id: noteId,
+    did_auto_advance: didAutoAdvance,
+    assigned_to: assignedTo,
+    domain,
+    old_status: oldStatus,
+  } = rpcResult as {
+    note_id: string;
+    did_auto_advance: boolean;
+    assigned_to: string | null;
+    domain: string;
+    old_status: string;
+  };
+
+  // Awaited (P-08) — same scope flags as the addLeadCallNote action.
+  await invalidateLeadCaches(
+    "addLeadCallNoteCore",
+    { leadId: input.leadId, slug: ctx.slug, domain: ctx.domain },
+    { row: true, notes: true, activities: true, lists: true },
+  );
+
+  // SLA cadence chain (fire-and-forget, non-fatal) — byte-identical to the action.
+  const postStatus = didAutoAdvance ? "touched" : oldStatus;
+  if (didAutoAdvance) {
+    const slaAssignee = assignedTo ?? actor.userId;
+    scheduleSlaTimersForLead({
+      leadId: input.leadId,
+      status: "touched",
+      assignedAt: now,
+      assignedTo: slaAssignee,
+      domain,
+    })
+      .then(() =>
+        armCadenceForOutcome({
+          leadId: input.leadId,
+          outcome: input.callOutcome,
+          assignedTo: slaAssignee,
+          domain,
+          status: "touched",
+        }),
+      )
+      .catch(() => {});
+  } else if (assignedTo && ["touched", "in_discussion"].includes(postStatus)) {
+    refreshActivitySlaTimers({
+      leadId: input.leadId,
+      status: postStatus,
+      assignedTo,
+      domain,
+    })
+      .then(() =>
+        armCadenceForOutcome({
+          leadId: input.leadId,
+          outcome: input.callOutcome,
+          assignedTo,
+          domain,
+          status: postStatus,
+        }),
+      )
+      .catch(() => {});
+  }
+
+  return { ok: true, noteId: noteId as string };
 }
 
 // ─────────────────────────────────────────────
@@ -386,18 +491,23 @@ export async function assignLeadCore(
 > {
   const { existingLead, assignedAgent } = ctx;
 
+  // Baseline (ALL roles, incl. admin/founder): the target must exist and be active.
+  // Previously only the manager branch validated the assignee, so an admin/founder
+  // reassign (esp. via Elaya's reassign_lead) could land a lead on a deactivated or
+  // non-existent account (Low finding). Cross-DOMAIN assignment stays allowed for
+  // admin/founder by design — only existence + active are universal.
+  if (!assignedAgent || !assignedAgent.is_active) {
+    return { ok: false, error: "agent_unavailable" };
+  }
+
   // Rule S-06 — a manager may only reassign leads inside their own domain, and
-  // only to an active agent of the lead's domain. Admin/founder unrestricted.
-  // (Identical to assignLead. The caller has already confirmed role ∈ manager+.)
+  // only to an active agent of the lead's domain. Admin/founder unrestricted on
+  // domain. (Identical to assignLead. The caller has already confirmed role ∈ manager+.)
   if (actor.role === "manager") {
     if (existingLead.domain !== actor.domain) {
       return { ok: false, error: "unauthorized" };
     }
-    if (
-      !assignedAgent ||
-      assignedAgent.domain !== existingLead.domain ||
-      !assignedAgent.is_active
-    ) {
+    if (assignedAgent.domain !== existingLead.domain) {
       return { ok: false, error: "agent_unavailable" };
     }
   }

@@ -95,7 +95,18 @@ export function ChartFrame({ height, className, style, children }: ChartFramePro
     >
       {isFill ? (
         <div style={{ position: 'absolute', inset: 0 }}>
-          <ResponsiveContainer width="100%" height="100%">
+          {/* initialDimension seeds a positive box on Recharts' synchronous
+              first measure. The absolute-inset box + the slot's `measured` gate
+              already resolve the height in the common case, but a fill chart can
+              still measure -1 for one frame while the flex/grid chain settles
+              (react-grid-layout's deferred layout pass) — the seed makes that
+              first measure a real number instead of -1, killing the console
+              warning. ResizeObserver corrects to the true size next frame. */}
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            initialDimension={{ width: 320, height: 240 }}
+          >
             {children}
           </ResponsiveContainer>
         </div>

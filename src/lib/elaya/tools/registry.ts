@@ -34,8 +34,9 @@ import {
   findDomainLeadOwners,
 } from '@/lib/services/leads-service';
 import { getGoingColdLeads } from '@/lib/services/sla-service';
-import { getDealsByRole } from '@/lib/services/deals-service';
+import { getDealsByRoleForElaya } from '@/lib/services/deals-service';
 import { getGiaTasksForUser, getPersonalTasks, getGroupTasks } from '@/lib/services/tasks-service';
+import { createAdminClient } from '@/lib/supabase/admin';
 import {
   getAgentTodayPulse,
   getAgentRosterPerformance,
@@ -49,6 +50,7 @@ import { DEFAULT_GIA_DOMAIN, isGiaDomain } from '@/lib/constants/domains';
 import type { UserRole } from '@/lib/types';
 import type { LeadStatus } from '@/lib/types/database';
 import type { LeadWithAssignee } from '@/lib/services/leads-service';
+import type { ElayaChannel } from '@/lib/types/elaya';
 
 const TOOL_RESULT_MAX_CHARS = 12_000;
 
@@ -76,7 +78,14 @@ type ElayaTool = {
   schema: z.ZodTypeAny;
   /** JSON Schema mirror of `schema` — handed to the provider adapter. */
   jsonSchema: Record<string, unknown>;
-  run: (principal: ElayaPrincipal, input: Record<string, unknown>) => Promise<unknown>;
+  // `channel` is threaded so a tool can react to the sessionless WhatsApp context
+  // (e.g. tools whose backing query needs auth.uid() must use a principal-scoped
+  // admin path or refer the user to the app — H1). Defaults to in_app at the seam.
+  run: (
+    principal: ElayaPrincipal,
+    input: Record<string, unknown>,
+    channel: ElayaChannel,
+  ) => Promise<unknown>;
 };
 
 // ─────────────────────────────────────────────
@@ -133,12 +142,18 @@ const searchLeads: ElayaTool = {
     // managers only their domain), so it works in the sessionless WhatsApp context
     // where the cookie-based session client would return zero rows. The model
     // supplies filter values only, never identity.
+    const PAGE_SIZE = 30;
+    const currentPage = page ?? 1;
     const result = await searchLeadsForElaya(principal.role, principal.userId, principal.domain, {
       search: term,
       statuses: statuses ?? null,
-      page: page ?? 1,
-      pageSize: 30,
+      page: currentPage,
+      pageSize: PAGE_SIZE,
     });
+    // totalCount/statusCounts are now the TRUE full-set figures (H2). This page
+    // holds at most PAGE_SIZE rows — tell the model so it never presents the page
+    // as the whole answer ("you have 30 leads" when there are 120).
+    const hasMore = currentPage * PAGE_SIZE < result.totalCount;
 
     // Owner hint (agents only): a scoped search returns nothing because an agent
     // only sees their OWN assigned leads — but the lead may well exist in their
@@ -160,6 +175,10 @@ const searchLeads: ElayaTool = {
     return {
       totalCount: result.totalCount,
       statusCounts: result.statusCounts,
+      page: currentPage,
+      pageSize: PAGE_SIZE,
+      shownThisPage: result.leads.length,
+      hasMore,
       leads: result.leads.map((l) => ({
         // leadId is the STABLE opaque handle the write tools target (UUID-or-slug
         // accepted). Surfaced like get_my_tasks' taskId; the PII gateway's UUID
@@ -287,11 +306,20 @@ const getMyTasks: ElayaTool = {
     'Call when the user asks what to do next, what is due, about follow-ups, or about team/group work.',
   schema: z.object({}),
   jsonSchema: { type: 'object', properties: {}, additionalProperties: false },
-  run: async (principal) => {
+  run: async (principal, _input, channel) => {
+    // On WhatsApp there is NO cookie session (no auth.uid()). getGiaTasksForUser
+    // (admin client + explicit params) and getPersonalTasks (injected admin client;
+    // RPC scopes purely on p_user_id) are sessionless-safe. getGroupTasks is NOT —
+    // get_group_task_summaries scopes via auth.uid() inside the SQL, so on WhatsApp
+    // it would return an empty list (the H1 silent-blank bug). Rather than show a
+    // false "no group tasks", we skip it on WhatsApp and tell the user where to look.
+    const onWhatsApp = channel === 'whatsapp';
+
     const [giaTasks, personal, groups] = await Promise.all([
       getGiaTasksForUser(principal.userId, principal.role, principal.domain),
-      getPersonalTasks(principal.userId, { limit: 20 }),
-      getGroupTasks({}, { userId: principal.userId }),
+      // Sessionless-safe: inject the admin client on WhatsApp (p_user_id-scoped RPC).
+      getPersonalTasks(principal.userId, { limit: 20 }, onWhatsApp ? createAdminClient() : undefined),
+      onWhatsApp ? Promise.resolve(null) : getGroupTasks({}, { userId: principal.userId }),
     ]);
     // taskId / groupId are surfaced DELIBERATELY (Brief 3): they are the handle the
     // write tools (update_task_status / update_task / delete_task) target. Without an
@@ -320,15 +348,23 @@ const getMyTasks: ElayaTool = {
       // Cap group tasks like followUps (25) and personalTasks (20) already are —
       // an unbounded list would be the one collection that could blow the 12k
       // result ceiling and get blunt-truncated mid-JSON as group workspaces grow.
-      groupTasks: groups.slice(0, 25).map((g) => ({
-        groupId: g.id,
-        title: g.title,
-        status: g.status,
-        priority: g.priority,
-        dueAt: g.due_at,
-        subtaskCount: g.subtask_count,
-        completedCount: g.completed_count,
-      })),
+      groupTasks: groups
+        ? groups.slice(0, 25).map((g) => ({
+            groupId: g.id,
+            title: g.title,
+            status: g.status,
+            priority: g.priority,
+            dueAt: g.due_at,
+            subtaskCount: g.subtask_count,
+            completedCount: g.completed_count,
+          }))
+        : [],
+      ...(onWhatsApp
+        ? {
+            groupTasksNote:
+              'Group/team task workspaces are not available over WhatsApp — tell the user to open Serene in the app to see those. Lead follow-ups and personal tasks above ARE complete.',
+          }
+        : {}),
     };
   },
 };
@@ -358,7 +394,10 @@ const searchDeals: ElayaTool = {
     const { search, deal_type, deal_category, page } = input as {
       search?: string; deal_type?: string; deal_category?: string; page?: number;
     };
-    const result = await getDealsByRole(principal.role, principal.userId, principal.domain, {
+    // Elaya twin (admin client) — getDealsByRole on the session client returns
+    // nothing without auth.uid() in the sessionless WhatsApp/SSE context (H1).
+    // Role scoping is the same explicit .eq() filters; identity is principal-derived.
+    const result = await getDealsByRoleForElaya(principal.role, principal.userId, principal.domain, {
       search: search ?? null,
       domain: null,
       deal_type: deal_type ?? null,
@@ -400,8 +439,22 @@ const getPerformanceSnapshot: ElayaTool = {
     },
     additionalProperties: false,
   },
-  run: async (principal, input) => {
+  run: async (principal, input, channel) => {
     const period = ((input as { period?: (typeof PERIODS)[number] }).period) ?? 'this_week';
+
+    // Both performance paths are self-scoped via auth.uid()/get_user_domain()
+    // inside their RPCs (get_agent_today_pulse, get_agent_roster_performance), so
+    // in the sessionless WhatsApp context they return zeros (the H1 silent-blank
+    // bug). Rather than report a false "0 calls, 0 deals", refuse honestly and send
+    // the user to the app. (In-app keeps the full behaviour below.)
+    if (channel === 'whatsapp') {
+      return {
+        unavailable: true,
+        message:
+          'Performance numbers are not available over WhatsApp — tell the user to open Serene in the app to see their scorecard. Do NOT state any figures; you have none here.',
+      };
+    }
+
     if (principal.role === 'agent') {
       // Self-scoped RPC (auth.uid()) — runs as the caller's session.
       const pulse = await getAgentTodayPulse(period);
@@ -553,7 +606,7 @@ export async function executeTool(
 
   try {
     const result = readTool
-      ? await readTool.run(principal, parsed.data as Record<string, unknown>)
+      ? await readTool.run(principal, parsed.data as Record<string, unknown>, ctx.channel)
       : await writeTool!.run(principal, parsed.data as Record<string, unknown>, ctx);
     const masked = maskPii(result, maskingDepth);
     let serialized = JSON.stringify(masked);

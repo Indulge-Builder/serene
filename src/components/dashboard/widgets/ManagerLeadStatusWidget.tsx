@@ -70,7 +70,10 @@ const STATUS_ORDER: LeadStatus[] = [
   "junk",
 ];
 
-const CHIP_STATUSES: LeadStatus[] = ["new", "touched", "in_discussion", "won", "lost", "junk"];
+// The stat-chip row collapses to FIVE cards: lost + junk are clubbed into one
+// "Junk" card (rendered under the junk status — its colour + label). The
+// per-agent stacked bar and the legend below keep the true 7-status breakdown.
+const CHIP_STATUSES: LeadStatus[] = ["new", "touched", "in_discussion", "won", "junk"];
 
 type StatusData = {
   totals: DashboardLeadStatusCount[];
@@ -287,7 +290,11 @@ export function ManagerLeadStatusWidget({ userId, role, initialData, dateRange, 
             }}
           >
             {CHIP_STATUSES.map((s) => {
-              const count = mixMap[s] ?? 0;
+              // The junk card clubs lost + junk into one count (5-card row).
+              const count =
+                s === "junk"
+                  ? (mixMap.junk ?? 0) + (mixMap.lost ?? 0)
+                  : (mixMap[s] ?? 0);
               return (
                 <div
                   key={s}
