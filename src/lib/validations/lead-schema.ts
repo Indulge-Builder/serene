@@ -124,6 +124,49 @@ export const CreateManualLeadSchema = z.object({
 export type CreateManualLeadInput = z.infer<typeof CreateManualLeadSchema>;
 
 // ─────────────────────────────────────────────
+// Bulk update leads (LeadsTable selection → BulkEditLeadsModal)
+//
+// One action edits one OR MORE fields across the selected leads. The four
+// editable fields each reuse the SAME write path as the single-edit equivalent
+// (assignLeadCore / updateLeadStatusCore / updateLeadSource / updateLeadDomain).
+//
+// Status is bounded to the non-terminal set here: won/lost/junk are excluded
+// from bulk because each needs per-lead context single-edit owns (won → the deal
+// flow, lost/junk → a resolution reason). Those stay single-edit only.
+// ─────────────────────────────────────────────
+export const BULK_STATUS_ENUM = [
+  "new",
+  "touched",
+  "in_discussion",
+  "nurturing",
+] as const;
+
+export const BulkUpdateLeadsSchema = z
+  .object({
+    leadIds: z
+      .array(z.string().uuid("Invalid lead ID"))
+      .min(1, "Select at least one lead.")
+      .max(500, "Too many leads selected. Narrow the selection to 500 or fewer."),
+    changes: z
+      .object({
+        assignedTo: z.string().uuid("Invalid agent ID").optional(),
+        status: z.enum(BULK_STATUS_ENUM).optional(),
+        source: z.enum(LEAD_SOURCE_ENUM).optional(),
+        domain: z.enum(GIA_DOMAIN_ENUM).optional(),
+      })
+      .refine(
+        (c) =>
+          c.assignedTo !== undefined ||
+          c.status !== undefined ||
+          c.source !== undefined ||
+          c.domain !== undefined,
+        { message: "Choose at least one field to update." },
+      ),
+  });
+
+export type BulkUpdateLeadsInput = z.infer<typeof BulkUpdateLeadsSchema>;
+
+// ─────────────────────────────────────────────
 // Lead dossier — per-field inline edits (LeadInfoCard)
 // ─────────────────────────────────────────────
 export const UpdateLeadEmailSchema = z.object({

@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { getLeadFilterOptions } from '@/lib/services/leads-service';
 import { resolveDomainParam } from '@/lib/utils/domain-scope';
 import { getNotifications } from '@/lib/services/notifications-service';
+import { resolveDateRangePreset } from '@/lib/constants/date-range-presets';
 import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import { PageControls } from '@/components/layout/PageControls';
 import type { DealFilters, AppDomain } from '@/lib/types/database';
@@ -64,6 +65,28 @@ export default async function DealsPage({
   if (!profile) redirect('/login');
 
   const [resolvedParams, cookieStore] = await Promise.all([searchParams, cookies()]);
+
+  // Default the date range to "This Month" on a cold landing (no date params at
+  // all). Redirect so the URL is the single source of truth — the filter bar's
+  // Range trigger then reads "This Month", and the query + summary scope to it.
+  // `?dates=all` is the escape hatch the Clear action lands on (date_from/to
+  // null but dates=all present) so clearing isn't re-defaulted back to a month.
+  const hasDateParam =
+    'date_from' in resolvedParams ||
+    'date_to' in resolvedParams ||
+    'dates' in resolvedParams;
+  if (!hasDateParam) {
+    const { from, to } = resolveDateRangePreset('this_month');
+    const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(resolvedParams)) {
+      if (typeof value === 'string') next.set(key, value);
+      else if (Array.isArray(value) && value[0] != null) next.set(key, value[0]);
+    }
+    next.set('date_from', from);
+    next.set('date_to', to);
+    redirect(`/deals?${next.toString()}`);
+  }
+
   const showDomainFilter = profile.role === 'admin' || profile.role === 'founder';
 
   // Single shared resolver: param-first, serene-domain cookie fallback for

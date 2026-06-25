@@ -1,20 +1,38 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { AnimatePresence, m as motion } from 'framer-motion';
+import { Pencil } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { exportLeadsAction } from '@/lib/actions/leads';
 import { buildLeadsCSV, buildXLSXWorkbook, triggerBrowserDownload } from '@/lib/utils/export';
 import { formatDate } from '@/lib/utils/dates';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import type { AppDomain, UserRole } from '@/lib/types/database';
+
+// Load-on-intent (perf G-1): the bulk-edit modal (FilterDropdown + agent fetch)
+// stays out of the /leads chunk until the user opens it.
+const BulkEditLeadsModal = dynamic(
+  () => import('@/components/leads/BulkEditLeadsModal').then((m) => m.BulkEditLeadsModal),
+  { ssr: false },
+);
 
 type LeadsSelectionToolbarProps = {
-  selectedIds: string[];
-  onClear:     () => void;
+  selectedIds:  string[];
+  onClear:      () => void;
+  callerRole:   UserRole;
+  callerDomain: AppDomain;
 };
 
-export function LeadsSelectionToolbar({ selectedIds, onClear }: LeadsSelectionToolbarProps) {
+export function LeadsSelectionToolbar({
+  selectedIds,
+  onClear,
+  callerRole,
+  callerDomain,
+}: LeadsSelectionToolbarProps) {
   const [loading, setLoading] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   async function handleExport(format: 'csv' | 'xlsx') {
     if (loading) return;
@@ -75,6 +93,7 @@ export function LeadsSelectionToolbar({ selectedIds, onClear }: LeadsSelectionTo
   };
 
   return (
+    <>
     <motion.div
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
@@ -111,6 +130,16 @@ export function LeadsSelectionToolbar({ selectedIds, onClear }: LeadsSelectionTo
       />
 
       <button
+        style={{ ...actionBtn, display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}
+        onClick={() => setBulkOpen(true)}
+        disabled={loading}
+        type="button"
+      >
+        <Pencil style={{ width: '0.8125rem', height: '0.8125rem', strokeWidth: 1.5 }} aria-hidden="true" />
+        Bulk Edit
+      </button>
+
+      <button
         style={actionBtn}
         onClick={() => handleExport('csv')}
         disabled={loading}
@@ -145,5 +174,18 @@ export function LeadsSelectionToolbar({ selectedIds, onClear }: LeadsSelectionTo
         Clear
       </button>
     </motion.div>
+
+    {/* Bulk-edit modal — only mounted once opened (next/dynamic + conditional). */}
+    {bulkOpen && (
+      <BulkEditLeadsModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        selectedIds={selectedIds}
+        callerRole={callerRole}
+        callerDomain={callerDomain}
+        onSuccess={onClear}
+      />
+    )}
+    </>
   );
 }

@@ -75,6 +75,7 @@ export async function LeadsTableAsync({
         leads={leads}
         userId={userId}
         role={role}
+        domain={domain}
         filters={filters}
         hasActiveFilters={hasActiveFilters}
         goingCold={!!filters.going_cold}

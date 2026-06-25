@@ -59,7 +59,7 @@ export async function updateSlaPolicyAction(input: unknown): Promise<ActionResul
   const updated = await updateSlaPolicy(code, patch);
   if (!updated) return { data: null, error: formErrors.generic };
 
-  revalidatePath('/settings');
+  revalidatePath('/settings/follow-up-engine');
   return { data: updated, error: null };
 }
 
@@ -113,6 +113,6 @@ export async function createSlaPolicyAction(input: unknown): Promise<ActionResul
   const created = await createSlaPolicy(policy);
   if (!created) return { data: null, error: formErrors.generic };
 
-  revalidatePath('/settings');
+  revalidatePath('/settings/follow-up-engine');
   return { data: created, error: null };
 }

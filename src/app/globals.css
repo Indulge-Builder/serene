@@ -404,6 +404,14 @@ body {
   .serene-dossier-grid--340 {
     grid-template-columns: minmax(0, 1fr) 340px;
   }
+  /* Identity sidebar sticks only when it IS a sidebar column (lg+).
+     Below lg the grid is single-column and the aside is order-1 (above the
+     form); a sticky there pins it to the top and the form scrolls beneath it
+     — it must scroll with the page instead. */
+  .serene-dossier-aside--sticky {
+    position: sticky;
+    top: var(--space-6);
+  }
 }
 
 /* Notification panel (migration 0120 mobile fix). Desktop (md+): anchored

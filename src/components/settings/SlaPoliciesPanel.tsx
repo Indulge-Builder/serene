@@ -1,22 +1,26 @@
 "use client";
 
 /**
- * SlaPoliciesPanel — the /settings follow-up engine editor (admin/founder only).
+ * SlaPoliciesPanel — the Follow-up Engine editor (admin/founder only).
  *
- * One row per sla_policies rule, grouped by family. Editable knobs:
- * threshold, hours basis, notification channels, active toggle. Identity
- * fields (trigger, recipient, auto-task) are read-only — toggling the
- * manager/founder rows active IS the recipient checklist.
+ * Situation-card layout (2026-06-24 redesign): policies are grouped by their
+ * trigger into one card per situation a human recognises ("New lead, no
+ * response"). Inside each card the escalation steps read as a sentence —
+ * "After 15m → notify Agent" — with the wait time as the only inline-editable
+ * control and an on/off toggle per step. Channels + hours-basis (the operator
+ * jargon) live behind a per-card "Advanced" disclosure so agents aren't faced
+ * with a spreadsheet. Rule codes are never surfaced.
  *
- * Save semantics mirror AgentSettingsTable: threshold saves on blur when
- * changed; toggles/selects save immediately and optimistically, reverting
- * with a toast on error. The engine reads policies per job run, so
- * active/channel edits apply on the very next fire; threshold edits apply
- * to timers armed after the change.
+ * Save semantics are unchanged: the wait time saves on blur when changed;
+ * toggles/selects/checkboxes save immediately and optimistically, reverting
+ * with a toast on error. The engine reads policies per job run, so active/
+ * channel edits apply on the very next fire; wait-time edits apply to timers
+ * armed after the change.
  */
 
 import { useState, useTransition } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Clock, ArrowRight, SlidersHorizontal } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
 import { LEAD_STATUS_LABELS, LEAD_STATUSES } from "@/lib/constants/lead-statuses";
 import { CALL_OUTCOME_LABELS, CALL_OUTCOMES } from "@/lib/constants/call-outcomes";
 import { isCadenceCode } from "@/lib/constants/sla";
@@ -25,6 +29,7 @@ import { formatDuration } from "@/lib/utils/dates";
 import { Toggle } from "@/components/ui/Toggle";
 import { Button } from "@/components/ui/Button";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { CollapseReveal } from "@/components/ui/CollapseReveal";
 import { toast } from "@/lib/toast";
 import type { SlaPolicy, SlaHoursMode, LeadStatus, CallOutcome } from "@/lib/types/database";
 import type { SlaTriggerKind, SlaRecipientRole } from "@/lib/types/database";
@@ -51,9 +56,6 @@ const TASK_DUE_VALUE_OPTIONS: { value: string; label: string }[] = [
   { value: "gia_followup", label: "Gia follow-up task" },
 ];
 
-/** Trigger-value options for the chosen kind — mirrors the server-side
- *  trigger_value-against-kind validation so the dropdown can never offer a
- *  value the action would reject. */
 function triggerValueOptions(kind: SlaTriggerKind): { value: string; label: string }[] {
   if (kind === "status") {
     return LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_LABELS[s] }));
@@ -78,32 +80,111 @@ const RECIPIENT_LABELS: Record<string, string> = {
   founder: "Founder",
 };
 
-function policyDescription(p: SlaPolicy): string {
-  if (p.trigger_kind === "task_due") {
-    return p.threshold_minutes === 0
-      ? "Gia follow-up task reaches its due time"
-      : "Gia follow-up task still untouched past due";
-  }
-  if (isCadenceCode(p.code)) {
-    if (p.trigger_kind === "outcome") {
-      const label = CALL_OUTCOME_LABELS[p.trigger_value as CallOutcome] ?? p.trigger_value;
-      return `Daily follow-up task while the last outcome is “${label}”`;
+/** A friendly verb for the recipient — what actually happens at this step. */
+const RECIPIENT_VERB: Record<string, string> = {
+  agent:   "Notify the agent",
+  manager: "Alert the manager",
+  founder: "Escalate to a founder",
+};
+
+/**
+ * One card per situation. The card TITLE + SUBTITLE is the plain-language
+ * description a human recognises; the policy rows inside are the escalation
+ * steps. We key the grouping on (trigger_kind, trigger_value, cadence) so the
+ * A/B/C policies for the same situation sit together as steps.
+ */
+interface SituationCard {
+  key:      string;
+  title:    string;
+  subtitle: string;
+  /** "wait" = ladder of timed steps; "cadence" = recurring task; "task" = at-due. */
+  kind:     "wait" | "cadence" | "task";
+  rows:     SlaPolicy[];
+}
+
+function statusTitle(status: string): string {
+  const label = LEAD_STATUS_LABELS[status as LeadStatus] ?? status;
+  return `Lead sitting in “${label}”`;
+}
+
+function buildSituations(policies: SlaPolicy[]): SituationCard[] {
+  const cards: SituationCard[] = [];
+  const byKey = new Map<string, SlaPolicy[]>();
+  const order: string[] = [];
+
+  // Group by the situation, not the rule. Steps (agent/manager/founder) collapse
+  // into one card; cadences and task-due rules each get their own card.
+  for (const p of policies) {
+    let key: string;
+    if (isCadenceCode(p.code)) {
+      key = `cadence:${p.code}`;            // each cadence is its own situation
+    } else if (p.trigger_kind === "task_due") {
+      key = `task:${p.threshold_minutes === 0 ? "due" : "overdue"}`;
+    } else {
+      key = `${p.trigger_kind}:${p.trigger_value}`;
     }
-    const label = LEAD_STATUS_LABELS[p.trigger_value as LeadStatus] ?? p.trigger_value;
-    return `Recurring follow-up task while the lead sits in “${label}”`;
+    if (!byKey.has(key)) {
+      byKey.set(key, []);
+      order.push(key);
+    }
+    byKey.get(key)!.push(p);
   }
-  const label = LEAD_STATUS_LABELS[p.trigger_value as LeadStatus] ?? p.trigger_value;
-  return `Lead in “${label}” with no progress past the threshold`;
-}
 
-/** Outcome cadences tick daily at shift open — threshold_minutes is unused. */
-function thresholdIsDaily(p: SlaPolicy): boolean {
-  return p.trigger_kind === "outcome";
-}
+  for (const key of order) {
+    const rows = byKey
+      .get(key)!
+      // Steps ascend by wait time so the ladder reads top-to-bottom.
+      .sort((a, b) => a.threshold_minutes - b.threshold_minutes);
+    const first = rows[0];
 
-/** CAD rows carry channels '{}' — the created task is the nudge. */
-function channelsAreTaskOnly(p: SlaPolicy): boolean {
-  return isCadenceCode(p.code);
+    if (isCadenceCode(first.code)) {
+      if (first.trigger_kind === "outcome") {
+        const label = CALL_OUTCOME_LABELS[first.trigger_value as CallOutcome] ?? first.trigger_value;
+        cards.push({
+          key,
+          kind:     "cadence",
+          title:    `Call ended in “${label}”`,
+          subtitle: "Creates a follow-up task each day until the lead moves on.",
+          rows,
+        });
+      } else {
+        const label = LEAD_STATUS_LABELS[first.trigger_value as LeadStatus] ?? first.trigger_value;
+        cards.push({
+          key,
+          kind:     "cadence",
+          title:    `Lead lingering in “${label}”`,
+          subtitle: "Creates a recurring follow-up task while the lead stays here.",
+          rows,
+        });
+      }
+      continue;
+    }
+
+    if (first.trigger_kind === "task_due") {
+      const isDue = first.threshold_minutes === 0;
+      cards.push({
+        key,
+        kind:     "task",
+        title:    isDue ? "Follow-up task is due" : "Follow-up task is overdue",
+        subtitle: isDue
+          ? "Remind whoever owns the task the moment it’s due."
+          : "If it’s still untouched after the wait, escalate to the manager.",
+        rows,
+      });
+      continue;
+    }
+
+    // Status ladder (the common case: SLA-0xA/B/C for one status).
+    cards.push({
+      key,
+      kind:     "wait",
+      title:    statusTitle(first.trigger_value),
+      subtitle: "No progress on the lead — nudge people after each wait below.",
+      rows,
+    });
+  }
+
+  return cards;
 }
 
 // ── Panel ────────────────────────────────────────────────────────────────────
@@ -112,33 +193,21 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
   const [policies, setPolicies] = useState<SlaPolicy[]>(initialPolicies);
   const [thresholdDrafts, setThresholdDrafts] = useState<Record<string, string>>({});
   const [pendingCodes, setPendingCodes] = useState<Set<string>>(new Set());
+  const [advancedOpen, setAdvancedOpen] = useState<Set<string>>(new Set());
   const [, startTransition] = useTransition();
 
-  // New-rule form state (admin/founder author a rule over the trigger catalog).
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  // Groups are EXHAUSTIVE — a user can author a non-cadence `outcome` rule, so
-  // that group must exist or the new row would land nowhere. Seeded CAD-01x
-  // outcome rules carry the cadence code and stay under "Follow-up cadences".
-  const groups: { label: string; rows: SlaPolicy[] }[] = [
-    {
-      label: "Lead status rules",
-      rows: policies.filter((p) => p.trigger_kind === "status" && !isCadenceCode(p.code)),
-    },
-    {
-      label: "Call outcome rules",
-      rows: policies.filter((p) => p.trigger_kind === "outcome" && !isCadenceCode(p.code)),
-    },
-    {
-      label: "Follow-up cadences",
-      rows: policies.filter((p) => isCadenceCode(p.code)),
-    },
-    {
-      label: "Task due rules",
-      rows: policies.filter((p) => p.trigger_kind === "task_due"),
-    },
-  ];
+  const situations = buildSituations(policies);
+
+  function toggleAdvanced(key: string) {
+    setAdvancedOpen((s) => {
+      const next = new Set(s);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
 
   function createRule(input: CreateRuleDraft) {
     setCreating(true);
@@ -157,7 +226,6 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
         toast.danger(error ?? "Couldn't create the rule.");
         return;
       }
-      // The server-returned row lands in the matching group immediately.
       setPolicies((rows) => [...rows, data]);
       setShowCreate(false);
       toast.success("Rule created.");
@@ -172,7 +240,6 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
   }>) {
     const previous = policies;
 
-    // Optimistic local apply
     setPolicies((rows) =>
       rows.map((p) =>
         p.code === code
@@ -207,7 +274,7 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
     if (draft === undefined) return;
     const minutes = Number(draft);
     if (!Number.isInteger(minutes) || minutes < 0 || minutes > 43_200) {
-      toast.danger("Threshold must be between 0 and 43,200 minutes.");
+      toast.danger("The wait must be between 0 and 43,200 minutes.");
       setThresholdDrafts(({ [p.code]: _drop, ...rest }) => rest);
       return;
     }
@@ -224,21 +291,10 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
     save(p.code, { channels: next });
   }
 
-  const headerCell: React.CSSProperties = {
-    fontFamily:    "var(--font-sans)",
-    fontSize:      "var(--text-2xs)",
-    fontWeight:    "var(--weight-semibold)",
-    letterSpacing: "var(--tracking-widest)",
-    textTransform: "uppercase",
-    color:         "var(--theme-text-tertiary)",
-  };
-
-  const grid = "minmax(260px, 1.6fr) 90px 150px 150px 170px 64px";
-
   return (
     <SectionCard
       title="Follow-up Engine"
-      description="SLA thresholds, escalation recipients, and cadence rules. Active and channel edits apply on the next fire; threshold edits apply to newly armed timers."
+      description="Pick how long to wait before each person is nudged about a stalling lead. Changes apply on the next follow-up."
       bodyPadding={false}
       headerRight={
         <Button
@@ -247,248 +303,384 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
           iconLeft={showCreate ? X : Plus}
           onClick={() => setShowCreate((v) => !v)}
         >
-          {showCreate ? "Close" : "New rule"}
+          {showCreate ? "Close" : "Add a rule"}
         </Button>
       }
     >
-      {showCreate && (
-        <CreateRuleForm onCreate={createRule} creating={creating} />
-      )}
+      <AnimatePresence initial={false}>
+        {showCreate && (
+          <CollapseReveal key="create">
+            <CreateRuleForm onCreate={createRule} creating={creating} />
+          </CollapseReveal>
+        )}
+      </AnimatePresence>
 
-      <div style={{ overflowX: "auto" }}>
-        <div style={{ minWidth: "920px" }}>
-          {/* Column header */}
-          <div
-            style={{
-              display:             "grid",
-              gridTemplateColumns: grid,
-              gap:                 "var(--space-4)",
-              alignItems:          "center",
-              padding:             "var(--space-3) var(--space-6)",
-              borderBottom:        "1px solid var(--theme-paper-border)",
-            }}
-          >
-            <span style={headerCell}>Rule</span>
-            <span style={headerCell}>Notifies</span>
-            <span style={headerCell}>Threshold</span>
-            <span style={headerCell}>Hours basis</span>
-            <span style={headerCell}>Channels</span>
-            <span style={{ ...headerCell, textAlign: "right" }}>Active</span>
-          </div>
+      <div
+        style={{
+          display:       "flex",
+          flexDirection: "column",
+          gap:           "var(--space-4)",
+          padding:       "var(--space-5) var(--space-6)",
+        }}
+      >
+        {situations.map((card) => {
+          const isAdvancedOpen = advancedOpen.has(card.key);
+          const hasAdvanced = card.kind !== "cadence"; // cadences create a task — no channels/threshold knobs
 
-          {groups.map((group) =>
-            group.rows.length === 0 ? null : (
-              <div key={group.label}>
-                <div
+          return (
+            <div
+              key={card.key}
+              style={{
+                border:       "1px solid var(--theme-paper-border)",
+                borderRadius: "var(--radius-lg)",
+                background:   "var(--theme-paper)",
+                overflow:     "hidden",
+              }}
+            >
+              {/* Card header — the plain-language situation */}
+              <div
+                style={{
+                  padding:      "var(--space-4) var(--space-5)",
+                  borderBottom: "1px solid var(--theme-paper-border)",
+                  background:   "var(--theme-paper-subtle)",
+                }}
+              >
+                <h3
                   style={{
-                    padding:    "var(--space-3) var(--space-6) var(--space-1)",
-                    background: "var(--theme-paper-subtle)",
+                    margin:     0,
+                    fontFamily: "var(--font-serif)",
+                    fontSize:   "var(--text-base)",
+                    fontWeight: "var(--weight-medium)",
+                    color:      "var(--theme-text-primary)",
                   }}
                 >
-                  <span className="label-micro" style={{ color: "var(--theme-text-tertiary)" }}>
-                    {group.label}
-                  </span>
-                </div>
-
-                {group.rows.map((p) => {
-                  const pending = pendingCodes.has(p.code);
-                  const dimmed = !p.active;
-                  return (
-                    <div
-                      key={p.code}
-                      style={{
-                        display:             "grid",
-                        gridTemplateColumns: grid,
-                        gap:                 "var(--space-4)",
-                        alignItems:          "center",
-                        padding:             "var(--space-4) var(--space-6)",
-                        borderBottom:        "1px solid var(--theme-paper-border)",
-                        opacity:             dimmed ? 0.55 : 1,
-                        transition:          "opacity var(--duration-fast) var(--ease-in-out)",
-                      }}
-                    >
-                      {/* Rule identity */}
-                      <div style={{ minWidth: 0 }}>
-                        <span
-                          style={{
-                            fontFamily: "var(--font-mono)",
-                            fontSize:   "var(--text-xs)",
-                            fontWeight: "var(--weight-semibold)",
-                            color:      "var(--theme-text-primary)",
-                          }}
-                        >
-                          {p.code}
-                        </span>
-                        <p
-                          style={{
-                            margin:     "2px 0 0",
-                            fontFamily: "var(--font-sans)",
-                            fontSize:   "var(--text-xs)",
-                            color:      "var(--theme-text-secondary)",
-                          }}
-                        >
-                          {policyDescription(p)}
-                        </p>
-                      </div>
-
-                      {/* Recipient (read-only) */}
-                      <span
-                        style={{
-                          display:       "inline-flex",
-                          alignSelf:     "center",
-                          justifySelf:   "start",
-                          padding:       "2px 8px",
-                          borderRadius:  "var(--radius-full)",
-                          background:    "var(--theme-paper-subtle)",
-                          border:        "1px solid var(--theme-paper-border)",
-                          fontFamily:    "var(--font-sans)",
-                          fontSize:      "var(--text-2xs)",
-                          fontWeight:    "var(--weight-medium)",
-                          color:         "var(--theme-text-secondary)",
-                        }}
-                      >
-                        {RECIPIENT_LABELS[p.recipient_role]}
-                      </span>
-
-                      {/* Threshold */}
-                      {thresholdIsDaily(p) ? (
-                        <span
-                          style={{
-                            fontFamily: "var(--font-sans)",
-                            fontSize:   "var(--text-xs)",
-                            color:      "var(--theme-text-tertiary)",
-                          }}
-                        >
-                          Daily at shift open
-                        </span>
-                      ) : (
-                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-                          <input
-                            type="number"
-                            min={0}
-                            max={43200}
-                            value={thresholdDrafts[p.code] ?? String(p.threshold_minutes)}
-                            disabled={pending}
-                            aria-label={`${p.code} threshold in minutes`}
-                            onChange={(e) =>
-                              setThresholdDrafts((d) => ({ ...d, [p.code]: e.target.value }))
-                            }
-                            onBlur={() => commitThreshold(p)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                            }}
-                            className="serene-input"
-                            style={{
-                              width:        "76px",
-                              padding:      "4px 8px",
-                              borderRadius: "var(--radius-sm)",
-                              border:       "1px solid var(--theme-paper-border)",
-                              background:   "var(--theme-paper)",
-                              fontFamily:   "var(--font-mono)",
-                              fontSize:     "var(--text-xs)",
-                              color:        "var(--theme-text-primary)",
-                            }}
-                          />
-                          <span
-                            style={{
-                              fontFamily: "var(--font-sans)",
-                              fontSize:   "var(--text-2xs)",
-                              color:      "var(--theme-text-tertiary)",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            min · {formatDuration(p.threshold_minutes)}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Hours basis */}
-                      <select
-                        value={p.hours_mode}
-                        disabled={pending}
-                        aria-label={`${p.code} hours basis`}
-                        onChange={(e) => save(p.code, { hoursMode: e.target.value as SlaHoursMode })}
-                        style={{
-                          padding:      "4px 8px",
-                          borderRadius: "var(--radius-sm)",
-                          border:       "1px solid var(--theme-paper-border)",
-                          background:   "var(--theme-paper)",
-                          fontFamily:   "var(--font-sans)",
-                          fontSize:     "var(--text-xs)",
-                          color:        "var(--theme-text-primary)",
-                          cursor:       pending ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        {HOURS_MODE_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Channels */}
-                      {channelsAreTaskOnly(p) ? (
-                        <span
-                          style={{
-                            fontFamily: "var(--font-sans)",
-                            fontSize:   "var(--text-xs)",
-                            color:      "var(--theme-text-tertiary)",
-                          }}
-                        >
-                          Creates a task
-                        </span>
-                      ) : (
-                        <div style={{ display: "flex", gap: "var(--space-4)" }}>
-                          {(["in_app", "whatsapp"] as const).map((channel) => {
-                            const checked = (p.channels as string[]).includes(channel);
-                            return (
-                              <label
-                                key={channel}
-                                style={{
-                                  display:    "flex",
-                                  alignItems: "center",
-                                  gap:        "var(--space-2)",
-                                  fontFamily: "var(--font-sans)",
-                                  fontSize:   "var(--text-xs)",
-                                  color:      checked
-                                    ? "var(--theme-text-primary)"
-                                    : "var(--theme-text-tertiary)",
-                                  cursor:     pending ? "not-allowed" : "pointer",
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  disabled={pending}
-                                  onChange={() => toggleChannel(p, channel)}
-                                  style={{ accentColor: "var(--theme-accent)" }}
-                                />
-                                {channel === "in_app" ? "In-app" : "WhatsApp"}
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Active */}
-                      <div style={{ justifySelf: "end" }}>
-                        <Toggle
-                          checked={p.active}
-                          disabled={pending}
-                          onChange={(next) => save(p.code, { active: next })}
-                          size="sm"
-                          id={`sla-active-${p.code}`}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+                  {card.title}
+                </h3>
+                <p
+                  style={{
+                    margin:    "2px 0 0",
+                    fontSize:  "var(--text-xs)",
+                    color:     "var(--theme-text-secondary)",
+                  }}
+                >
+                  {card.subtitle}
+                </p>
               </div>
-            ),
-          )}
-        </div>
+
+              {/* Escalation steps */}
+              <div>
+                {card.rows.map((p, i) => (
+                  <StepRow
+                    key={p.code}
+                    policy={p}
+                    cardKind={card.kind}
+                    isLast={i === card.rows.length - 1}
+                    pending={pendingCodes.has(p.code)}
+                    thresholdDraft={thresholdDrafts[p.code]}
+                    onThresholdChange={(v) =>
+                      setThresholdDrafts((d) => ({ ...d, [p.code]: v }))
+                    }
+                    onThresholdCommit={() => commitThreshold(p)}
+                    onActiveChange={(next) => save(p.code, { active: next })}
+                  />
+                ))}
+              </div>
+
+              {/* Advanced disclosure (channels + hours basis per step) */}
+              {hasAdvanced && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => toggleAdvanced(card.key)}
+                    style={{
+                      display:     "flex",
+                      alignItems:  "center",
+                      gap:         "var(--space-2)",
+                      width:       "100%",
+                      padding:     "var(--space-3) var(--space-5)",
+                      border:      "none",
+                      borderTop:   "1px solid var(--theme-paper-border)",
+                      background:  "transparent",
+                      cursor:      "pointer",
+                      fontFamily:  "var(--font-sans)",
+                      fontSize:    "var(--text-2xs)",
+                      fontWeight:  "var(--weight-semibold)",
+                      letterSpacing: "var(--tracking-wide)",
+                      textTransform: "uppercase",
+                      color:       isAdvancedOpen
+                        ? "var(--theme-accent)"
+                        : "var(--theme-text-tertiary)",
+                      transition:  "color var(--duration-fast) var(--ease-in-out)",
+                    }}
+                  >
+                    <SlidersHorizontal style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
+                    {isAdvancedOpen ? "Hide advanced" : "Advanced — channels & timing"}
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {isAdvancedOpen && (
+                      <CollapseReveal key="adv">
+                        <div
+                          style={{
+                            padding:    "var(--space-2) var(--space-5) var(--space-4)",
+                            background: "var(--theme-paper-subtle)",
+                          }}
+                        >
+                          {card.rows.map((p) => (
+                            <AdvancedRow
+                              key={p.code}
+                              policy={p}
+                              pending={pendingCodes.has(p.code)}
+                              onHoursModeChange={(mode) => save(p.code, { hoursMode: mode })}
+                              onToggleChannel={(channel) => toggleChannel(p, channel)}
+                            />
+                          ))}
+                        </div>
+                      </CollapseReveal>
+                    )}
+                  </AnimatePresence>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </SectionCard>
+  );
+}
+
+// ── Step row ──────────────────────────────────────────────────────────────────
+
+function StepRow({
+  policy: p,
+  cardKind,
+  isLast,
+  pending,
+  thresholdDraft,
+  onThresholdChange,
+  onThresholdCommit,
+  onActiveChange,
+}: {
+  policy:            SlaPolicy;
+  cardKind:          "wait" | "cadence" | "task";
+  isLast:            boolean;
+  pending:           boolean;
+  thresholdDraft:    string | undefined;
+  onThresholdChange: (value: string) => void;
+  onThresholdCommit: () => void;
+  onActiveChange:    (next: boolean) => void;
+}) {
+  // Cadence steps tick daily — no editable wait. Otherwise the wait is the chip.
+  const isDaily = cardKind === "cadence";
+
+  return (
+    <div
+      style={{
+        display:      "flex",
+        alignItems:   "center",
+        gap:          "var(--space-3)",
+        padding:      "var(--space-4) var(--space-5)",
+        borderBottom: isLast ? "none" : "1px solid var(--theme-paper-border)",
+        opacity:      p.active ? 1 : 0.5,
+        transition:   "opacity var(--duration-fast) var(--ease-in-out)",
+      }}
+    >
+      {/* Wait */}
+      <div
+        style={{
+          display:        "inline-flex",
+          alignItems:     "center",
+          gap:            "6px",
+          flexShrink:     0,
+          minWidth:       "120px",
+        }}
+      >
+        <Clock
+          style={{
+            width: 15, height: 15, strokeWidth: 1.5,
+            color: "var(--theme-text-tertiary)",
+          }}
+        />
+        {isDaily ? (
+          <span style={{ fontSize: "var(--text-sm)", color: "var(--theme-text-secondary)" }}>
+            Every day
+          </span>
+        ) : (
+          <span style={{ display: "inline-flex", alignItems: "baseline", gap: "4px" }}>
+            <span style={{ fontSize: "var(--text-sm)", color: "var(--theme-text-secondary)" }}>
+              After
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={43200}
+              value={thresholdDraft ?? String(p.threshold_minutes)}
+              disabled={pending}
+              aria-label="Wait time in minutes"
+              onChange={(e) => onThresholdChange(e.target.value)}
+              onBlur={onThresholdCommit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              className="serene-input"
+              style={{
+                width:        "62px",
+                padding:      "3px 6px",
+                borderRadius: "var(--radius-sm)",
+                border:       "1px solid var(--theme-paper-border)",
+                background:   "var(--theme-paper)",
+                fontFamily:   "var(--font-mono)",
+                fontSize:     "var(--text-sm)",
+                color:        "var(--theme-text-primary)",
+                textAlign:    "right",
+              }}
+            />
+            <span
+              style={{
+                fontSize: "var(--text-2xs)",
+                color:    "var(--theme-text-tertiary)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              min · {formatDuration(p.threshold_minutes)}
+            </span>
+          </span>
+        )}
+      </div>
+
+      <ArrowRight
+        style={{
+          width: 16, height: 16, strokeWidth: 1.5, flexShrink: 0,
+          color: "var(--theme-text-tertiary)",
+        }}
+      />
+
+      {/* What happens */}
+      <span
+        style={{
+          flex:     1,
+          minWidth: 0,
+          fontSize: "var(--text-sm)",
+          color:    "var(--theme-text-primary)",
+        }}
+      >
+        {cardKind === "cadence"
+          ? "Create a follow-up task"
+          : RECIPIENT_VERB[p.recipient_role] ?? RECIPIENT_LABELS[p.recipient_role]}
+      </span>
+
+      {/* On / off */}
+      <Toggle
+        checked={p.active}
+        disabled={pending}
+        onChange={onActiveChange}
+        size="sm"
+        id={`sla-active-${p.code}`}
+      />
+    </div>
+  );
+}
+
+// ── Advanced row (channels + hours basis) ─────────────────────────────────────
+
+function AdvancedRow({
+  policy: p,
+  pending,
+  onHoursModeChange,
+  onToggleChannel,
+}: {
+  policy:            SlaPolicy;
+  pending:           boolean;
+  onHoursModeChange: (mode: SlaHoursMode) => void;
+  onToggleChannel:   (channel: "in_app" | "whatsapp") => void;
+}) {
+  return (
+    <div
+      style={{
+        display:       "flex",
+        alignItems:    "center",
+        flexWrap:      "wrap",
+        gap:           "var(--space-4)",
+        padding:       "var(--space-3) 0",
+        borderBottom:  "1px solid var(--theme-paper-border)",
+      }}
+    >
+      {/* Which step this advanced row controls */}
+      <span
+        style={{
+          minWidth: "120px",
+          fontSize: "var(--text-xs)",
+          fontWeight: "var(--weight-medium)",
+          color:    "var(--theme-text-secondary)",
+        }}
+      >
+        {RECIPIENT_LABELS[p.recipient_role] ?? "Step"}
+      </span>
+
+      {/* Channels */}
+      <div style={{ display: "flex", gap: "var(--space-3)" }}>
+        {(["in_app", "whatsapp"] as const).map((channel) => {
+          const checked = (p.channels as string[]).includes(channel);
+          return (
+            <label
+              key={channel}
+              style={{
+                display:    "flex",
+                alignItems: "center",
+                gap:        "var(--space-2)",
+                fontSize:   "var(--text-xs)",
+                color:      checked
+                  ? "var(--theme-text-primary)"
+                  : "var(--theme-text-tertiary)",
+                cursor:     pending ? "not-allowed" : "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={pending}
+                onChange={() => onToggleChannel(channel)}
+                style={{ accentColor: "var(--theme-accent)" }}
+              />
+              {channel === "in_app" ? "In-app" : "WhatsApp"}
+            </label>
+          );
+        })}
+      </div>
+
+      {/* Hours basis */}
+      <label
+        style={{
+          display:    "flex",
+          alignItems: "center",
+          gap:        "var(--space-2)",
+          fontSize:   "var(--text-xs)",
+          color:      "var(--theme-text-tertiary)",
+        }}
+      >
+        Counts during
+        <select
+          value={p.hours_mode}
+          disabled={pending}
+          aria-label="When the wait is counted"
+          onChange={(e) => onHoursModeChange(e.target.value as SlaHoursMode)}
+          style={{
+            padding:      "3px 6px",
+            borderRadius: "var(--radius-sm)",
+            border:       "1px solid var(--theme-paper-border)",
+            background:   "var(--theme-paper)",
+            fontFamily:   "var(--font-sans)",
+            fontSize:     "var(--text-xs)",
+            color:        "var(--theme-text-primary)",
+            cursor:       pending ? "not-allowed" : "pointer",
+          }}
+        >
+          {HOURS_MODE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </label>
+    </div>
   );
 }
 
@@ -504,12 +696,11 @@ interface CreateRuleDraft {
 }
 
 /**
- * The inline "New rule" authoring form. Five operational fields over the
+ * The inline "Add a rule" authoring form. Five operational fields over the
  * existing trigger catalog; the rule CODE is system-generated server-side and
  * never appears here. trigger_value options re-derive from the chosen kind so a
  * value the action would reject can never be selected; the server re-validates
- * (defense in depth). Threshold is hidden for outcome rules (those tick daily —
- * threshold_minutes is unused by the engine).
+ * (defense in depth). Wait time is hidden for outcome rules (those tick daily).
  */
 function CreateRuleForm({
   onCreate,
@@ -530,8 +721,6 @@ function CreateRuleForm({
 
   function changeKind(next: SlaTriggerKind) {
     setKind(next);
-    // Reset trigger value to the first valid option for the new kind so the
-    // value-against-kind invariant always holds before submit.
     const first = triggerValueOptions(next)[0]?.value ?? "";
     setValue(first);
   }
@@ -545,11 +734,11 @@ function CreateRuleForm({
   function submit() {
     const minutes = showThreshold ? Number(threshold) : 0;
     if (showThreshold && (!Number.isInteger(minutes) || minutes < 0 || minutes > 43_200)) {
-      toast.danger("Threshold must be between 0 and 43,200 minutes.");
+      toast.danger("The wait must be between 0 and 43,200 minutes.");
       return;
     }
     if (!value) {
-      toast.danger("Choose a trigger value.");
+      toast.danger("Choose what this rule watches.");
       return;
     }
     onCreate({
@@ -600,8 +789,8 @@ function CreateRuleForm({
           color:      "var(--theme-text-secondary)",
         }}
       >
-        Create a rule over the trigger catalog. It arms automatically on the next matching lead.
-        Switch it off any time with its row toggle.
+        Build a new follow-up rule. It starts working on the next matching lead and you can switch
+        it off any time with its toggle.
       </p>
 
       <div
@@ -612,9 +801,8 @@ function CreateRuleForm({
           alignItems:          "end",
         }}
       >
-        {/* Watches (trigger kind) */}
         <div>
-          <label style={fieldLabel} htmlFor="new-rule-kind">Watches</label>
+          <label style={fieldLabel} htmlFor="new-rule-kind">Watch for</label>
           <select
             id="new-rule-kind"
             value={kind}
@@ -628,9 +816,8 @@ function CreateRuleForm({
           </select>
         </div>
 
-        {/* Trigger value */}
         <div>
-          <label style={fieldLabel} htmlFor="new-rule-value">Value</label>
+          <label style={fieldLabel} htmlFor="new-rule-value">When it’s</label>
           <select
             id="new-rule-value"
             value={value}
@@ -644,9 +831,8 @@ function CreateRuleForm({
           </select>
         </div>
 
-        {/* Notifies (recipient) */}
         <div>
-          <label style={fieldLabel} htmlFor="new-rule-recipient">Notifies</label>
+          <label style={fieldLabel} htmlFor="new-rule-recipient">Then notify</label>
           <select
             id="new-rule-recipient"
             value={recipient}
@@ -660,10 +846,9 @@ function CreateRuleForm({
           </select>
         </div>
 
-        {/* Threshold — hidden for outcome rules (they tick daily) */}
         {showThreshold && (
           <div>
-            <label style={fieldLabel} htmlFor="new-rule-threshold">Threshold (min)</label>
+            <label style={fieldLabel} htmlFor="new-rule-threshold">Wait (minutes)</label>
             <input
               id="new-rule-threshold"
               type="number"
@@ -678,9 +863,8 @@ function CreateRuleForm({
           </div>
         )}
 
-        {/* Hours basis */}
         <div>
-          <label style={fieldLabel} htmlFor="new-rule-hours">Hours basis</label>
+          <label style={fieldLabel} htmlFor="new-rule-hours">Counts during</label>
           <select
             id="new-rule-hours"
             value={hoursMode}
@@ -694,9 +878,8 @@ function CreateRuleForm({
           </select>
         </div>
 
-        {/* Channels */}
         <div>
-          <span style={fieldLabel}>Channels</span>
+          <span style={fieldLabel}>Send via</span>
           <div style={{ display: "flex", gap: "var(--space-4)", paddingTop: "4px" }}>
             {(["in_app", "whatsapp"] as const).map((channel) => {
               const checked = channels.includes(channel);
@@ -727,7 +910,6 @@ function CreateRuleForm({
           </div>
         </div>
 
-        {/* Create */}
         <div>
           <Button
             variant="primary"
@@ -737,7 +919,7 @@ function CreateRuleForm({
             disabled={creating}
             style={{ width: "100%" }}
           >
-            Create rule
+            Add rule
           </Button>
         </div>
       </div>

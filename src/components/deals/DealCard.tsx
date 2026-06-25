@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { m as motion } from 'framer-motion';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import { DEAL_TYPE_LABELS, DEAL_DURATION_LABELS, DEAL_CATEGORY_LABELS } from '@/lib/constants/deal-types';
+import { getLeadSourceLabel } from '@/lib/constants/lead-sources';
 import { formatDate } from '@/lib/utils/dates';
 import { formatCurrency } from '@/lib/utils/numbers';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
@@ -58,6 +59,29 @@ function WalkInPill() {
       }}
     >
       Walk-in
+    </span>
+  );
+}
+
+function SourcePill({ source }: { source: string }) {
+  return (
+    <span
+      style={{
+        display:       'inline-flex',
+        alignItems:    'center',
+        padding:       '2px 8px',
+        borderRadius:  'var(--radius-full)',
+        background:    'var(--theme-paper-subtle)',
+        border:        '1px solid var(--theme-paper-border)',
+        fontFamily:    'var(--font-sans)',
+        fontSize:      'var(--text-2xs)',
+        fontWeight:    'var(--weight-medium)',
+        color:         'var(--theme-text-secondary)',
+        letterSpacing: 'var(--tracking-wide)',
+        whiteSpace:    'nowrap',
+      }}
+    >
+      {getLeadSourceLabel(source)}
     </span>
   );
 }
@@ -181,6 +205,7 @@ function CardBody({ deal }: { deal: DealWithRelations }) {
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
               <DomainBadge domain={deal.domain} />
+              {deal.source && <SourcePill source={deal.source} />}
               {deal.lead_id === null && <WalkInPill />}
             </div>
           </div>
@@ -274,6 +299,7 @@ function CardBody({ deal }: { deal: DealWithRelations }) {
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
           <DomainBadge domain={deal.domain} />
+          {deal.source && <SourcePill source={deal.source} />}
           {deal.lead_id === null && <WalkInPill />}
         </div>
       </div>

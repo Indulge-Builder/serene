@@ -17,6 +17,7 @@ import { ChevronDown } from "lucide-react";
 import { StatTile } from "@/components/ui/StatTile";
 import { CollapseReveal } from "@/components/ui/CollapseReveal";
 import { BudgetTable } from "@/components/budget/BudgetTable";
+import { BudgetSectionHeader } from "@/components/budget/BudgetSectionHeader";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/numbers";
 import { UNATTRIBUTED_ACCOUNT_KEY } from "@/lib/constants/ad-accounts";
 import type { AccountReport } from "@/lib/services/ad-spend-service";
@@ -26,30 +27,9 @@ export function AccountReportSection({ report }: { report: AccountReport }) {
 
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-      {/* Section header + grand total */}
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "var(--space-4)", flexWrap: "wrap" }}>
-        <h2
-          style={{
-            fontFamily: "var(--font-serif)",
-            fontStyle:  "italic",
-            fontSize:   "var(--text-lg)",
-            color:      "var(--theme-text-primary)",
-            margin:     0,
-          }}
-        >
-          By Ad Account
-        </h2>
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--theme-text-secondary)" }}>
-          Grand total Meta spend:{" "}
-          <strong style={{ fontFamily: "var(--font-mono)", color: "var(--theme-text-primary)", fontWeight: "var(--weight-semibold)" }}>
-            {formatCurrency(Math.round(report.grandTotalSpend))}
-          </strong>
-          {" · "}recharged{" "}
-          <strong style={{ fontFamily: "var(--font-mono)", color: "var(--theme-text-primary)", fontWeight: "var(--weight-semibold)" }}>
-            {formatCurrency(Math.round(report.grandTotalRecharged))}
-          </strong>
-        </span>
-      </div>
+      {/* Section header — totals live in the top strip (spend) and the
+          Recharge History header (recharged), so this stays just the title. */}
+      <BudgetSectionHeader title="By Ad Account" />
 
       {/* Account blocks */}
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
@@ -88,16 +68,24 @@ export function AccountReportSection({ report }: { report: AccountReport }) {
                   textAlign:      "left",
                 }}
               >
-                <div style={{ flex: "0 0 auto", minWidth: 0 }}>
+                {/* Fixed-width identity column so every block's stat cluster
+                    starts at the same x — a long account name (e.g. "Indulge
+                    New Gen") truncates with an ellipsis instead of pushing the
+                    Recharged/Spent/Balance columns out of vertical alignment
+                    across the stacked blocks. */}
+                <div style={{ flex: "0 0 180px", minWidth: 0 }}>
                   <p
                     style={{
-                      fontFamily: "var(--font-sans)",
-                      fontSize:   "var(--text-sm)",
-                      fontWeight: "var(--weight-semibold)",
-                      color:      "var(--theme-text-primary)",
-                      margin:     0,
-                      whiteSpace: "nowrap",
+                      fontFamily:   "var(--font-sans)",
+                      fontSize:     "var(--text-sm)",
+                      fontWeight:   "var(--weight-semibold)",
+                      color:        "var(--theme-text-primary)",
+                      margin:       0,
+                      whiteSpace:   "nowrap",
+                      overflow:     "hidden",
+                      textOverflow: "ellipsis",
                     }}
+                    title={block.label}
                   >
                     {block.label}
                   </p>

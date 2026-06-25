@@ -551,9 +551,11 @@ export interface EscalatedLeadRow {
 }
 
 interface FiredTimerJoinRow {
-  lead_id:   string;
-  rule_code: string;
-  fired_at:  string | null;
+  lead_id:           string;
+  rule_code:         string;
+  status:            string;
+  fired_at:          string | null;
+  scheduled_fire_at: string | null;
   leads: {
     id:         string;
     slug:       string | null;
@@ -572,27 +574,40 @@ function leadDisplayName(first: string | null, last: string | null): string {
 }
 
 /**
- * Leads with a fired status-SLA timer in the last 7 days whose status STILL
- * matches the breached rule's trigger — i.e. the breach is live, the lead has
+ * Leads with a LIVE status-SLA breach in the last 7 days whose status STILL
+ * matches the breached rule's trigger — i.e. the breach is real, the lead has
  * not moved on. Cadence fires (CAD-*) are routine engine ticks, never listed.
- * One row per lead, all breached rule codes collected, newest fire first.
+ * One row per lead, all breached rule codes collected, newest breach first.
+ *
+ * A breach is counted from EITHER source (so the page reflects reality even if
+ * the Trigger.dev fire-job is late, undeployed, or a single run was missed):
+ *   • a `fired` timer (the engine fired it) — breach time = fired_at;
+ *   • a `pending` timer whose scheduled_fire_at is already in the past — the
+ *     deadline has passed but the callback hasn't run yet. This is the same
+ *     definition the fire-job itself uses (deadline passed + status unchanged),
+ *     so the list never depends on the async callback having succeeded.
+ * The policy/status-match guard below is what keeps a pending-overdue timer
+ * honest: if the lead has moved on, it is not a live breach and is dropped.
  */
 export async function getEscalatedLeads(domain: AppDomain | null): Promise<EscalatedLeadRow[]> {
   const admin = createAdminClient();
+  const nowIso = new Date().toISOString();
   const windowStart = new Date(Date.now() - ESCALATION_WINDOW_DAYS * 86_400_000).toISOString();
 
   let query = admin
     .from('lead_sla_timers')
     .select(
-      `lead_id, rule_code, fired_at,
+      `lead_id, rule_code, status, fired_at, scheduled_fire_at,
        leads!inner(id, slug, first_name, last_name, phone, domain, status,
          assignee:profiles!leads_assigned_to_fkey(full_name))`,
     )
-    .eq('status', 'fired')
-    .gte('fired_at', windowStart)
+    // fired (engine ran) OR pending-and-past-deadline (engine hasn't, but the
+    // breach is real). The 7-day window is applied per-source below.
+    .in('status', ['fired', 'pending'])
+    .or(`fired_at.gte.${windowStart},and(status.eq.pending,scheduled_fire_at.lte.${nowIso})`)
     .is('leads.archived_at', null)
     .not('leads.status', 'in', '("won","lost","junk")')
-    .order('fired_at', { ascending: false })
+    .order('scheduled_fire_at', { ascending: false })
     .limit(500);
   if (domain) query = query.eq('leads.domain', domain);
 
@@ -602,7 +617,7 @@ export async function getEscalatedLeads(domain: AppDomain | null): Promise<Escal
     return [];
   }
 
-  // Keep only fires whose policy still matches the lead's current status —
+  // Keep only breaches whose policy still matches the lead's current status —
   // a fired SLA-01 timer on a lead now in_discussion is resolved, not live.
   const policies = await getSlaPolicies();
   const byCode = new Map(policies.map((p) => [p.code, p]));
@@ -610,8 +625,19 @@ export async function getEscalatedLeads(domain: AppDomain | null): Promise<Escal
   const grouped = new Map<string, EscalatedLeadRow>();
   for (const row of mapRows<FiredTimerJoinRow, FiredTimerJoinRow>(data, (r) => r)) {
     const lead = row.leads;
-    if (!lead || !row.fired_at) continue;
+    if (!lead) continue;
     if (isCadenceCode(row.rule_code)) continue;
+
+    // Resolve the breach moment from whichever source applies.
+    const breachedAt =
+      row.status === 'fired'
+        ? row.fired_at
+        : row.scheduled_fire_at && row.scheduled_fire_at <= nowIso
+          ? row.scheduled_fire_at
+          : null;
+    if (!breachedAt) continue;
+    // 7-day window applies to the resolved breach moment (matches the fired path).
+    if (breachedAt < windowStart) continue;
 
     const policy = byCode.get(row.rule_code);
     if (!policy || policy.trigger_kind !== 'status') continue;
@@ -620,7 +646,7 @@ export async function getEscalatedLeads(domain: AppDomain | null): Promise<Escal
     const existing = grouped.get(lead.id);
     if (existing) {
       if (!existing.ruleCodes.includes(row.rule_code)) existing.ruleCodes.push(row.rule_code);
-      if (row.fired_at > existing.lastFiredAt) existing.lastFiredAt = row.fired_at;
+      if (breachedAt > existing.lastFiredAt) existing.lastFiredAt = breachedAt;
     } else {
       grouped.set(lead.id, {
         leadId:       lead.id,
@@ -631,7 +657,7 @@ export async function getEscalatedLeads(domain: AppDomain | null): Promise<Escal
         status:       lead.status,
         assigneeName: lead.assignee?.full_name ?? null,
         ruleCodes:    [row.rule_code],
-        lastFiredAt:  row.fired_at,
+        lastFiredAt:  breachedAt,
       });
     }
   }
@@ -656,7 +682,7 @@ interface OverdueTaskJoinRow {
   id:          string;
   title:       string;
   due_at:      string | null;
-  overdue_at:  string;
+  overdue_at:  string | null;
   priority:    string;
   assigned_to: string | null;
   task_gia_meta: {
@@ -672,12 +698,20 @@ interface OverdueTaskJoinRow {
 }
 
 /**
- * Open gia_followup tasks the overdue engine has stamped (tasks.overdue_at,
- * migration 0113) — the agent missed the due time AND the +30min clearing
- * window. Newest overdue first.
+ * Open Gia follow-up tasks that are past due. Newest overdue first.
+ *
+ * A task counts as overdue from EITHER signal (so the page reflects reality even
+ * when the Trigger.dev overdue-stamp job is late, undeployed, or skipped a run):
+ *   • `overdue_at` is stamped (the engine ran the +30min clearing check) — the
+ *     authoritative breach moment; OR
+ *   • `due_at` is already in the past — the deadline passed but the stamp job
+ *     hasn't run yet. We surface it immediately, using `due_at` as the breach
+ *     moment, rather than waiting on the async callback.
+ * Either way the row is a real, open, past-due follow-up.
  */
 export async function getOverdueGiaTasks(domain: AppDomain | null): Promise<OverdueTaskEscalationRow[]> {
   const admin = createAdminClient();
+  const nowIso = new Date().toISOString();
 
   let query = admin
     .from('tasks')
@@ -686,10 +720,11 @@ export async function getOverdueGiaTasks(domain: AppDomain | null): Promise<Over
        task_gia_meta!inner(lead_id,
          leads!inner(id, slug, first_name, last_name, domain))`,
     )
-    .not('overdue_at', 'is', null)
+    // stamped overdue OR deadline already passed (stamp may simply not have run)
+    .or(`overdue_at.not.is.null,and(due_at.not.is.null,due_at.lte.${nowIso})`)
     .in('status', ['to_do', 'in_progress', 'in_review'])
     .is('task_gia_meta.leads.archived_at', null)
-    .order('overdue_at', { ascending: false })
+    .order('due_at', { ascending: false })
     .limit(100);
   if (domain) query = query.eq('task_gia_meta.leads.domain', domain);
 
@@ -700,7 +735,14 @@ export async function getOverdueGiaTasks(domain: AppDomain | null): Promise<Over
   }
 
   const rows = mapRows<OverdueTaskJoinRow, OverdueTaskJoinRow>(data, (r) => r)
-    .filter((r) => r.task_gia_meta?.leads);
+    .filter((r) => r.task_gia_meta?.leads)
+    // Resolve the breach moment: the stamp if present, else the past due_at.
+    .map((r) => ({
+      ...r,
+      _overdueAt: r.overdue_at ?? (r.due_at && r.due_at <= nowIso ? r.due_at : null),
+    }))
+    .filter((r) => r._overdueAt !== null)
+    .sort((a, b) => (b._overdueAt! > a._overdueAt! ? 1 : -1));
 
   // Batch-resolve assignee names (tasks has no profiles FK embed alias)
   const assigneeIds = [...new Set(rows.map((r) => r.assigned_to).filter(Boolean))] as string[];
@@ -719,7 +761,7 @@ export async function getOverdueGiaTasks(domain: AppDomain | null): Promise<Over
       taskId:       r.id,
       title:        r.title,
       dueAt:        r.due_at,
-      overdueAt:    r.overdue_at,
+      overdueAt:    r._overdueAt!,
       priority:     r.priority,
       assigneeName: r.assigned_to ? (names.get(r.assigned_to) ?? null) : null,
       leadId:       lead.id,

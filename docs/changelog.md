@@ -12,6 +12,302 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-25 — Fix: Trigger.dev worker crash — admin Supabase client had no WebSocket on Node 21
+
+The Trigger.dev worker (`trigger.config.ts` → `runtime: "node"`, which pins Node 21) crashed
+on every task that touches the admin client — the revival sweep failed first
+(`getActiveRevivalPolicies` → `createAdminClient` → `RealtimeClient` constructor):
+
+> Node.js 21 detected without native WebSocket support.
+
+`@supabase/supabase-js` constructs a `RealtimeClient` **eagerly in its constructor**, which needs
+a global `WebSocket`. Node < 22 has none, so `@supabase/realtime-js` throws at construction time —
+even though the admin client never uses realtime.
+
+**Fix:** installed `ws` + `@types/ws` and pass it as the realtime `transport` in
+`createAdminClient` — **only** when `globalThis.WebSocket` is undefined (a no-op on Node 22+ and
+in the Next.js server runtime, where a native `WebSocket` exists, so browser/server bundles never
+`require("ws")`). The transport option type is derived from `SupabaseClientOptions["realtime"]`
+(the transitive `@supabase/realtime-js` isn't resolvable by name under pnpm). Verified by
+constructing the admin client with `globalThis.WebSocket` deleted.
+
+- `src/lib/supabase/admin.ts` — `realtimeTransport()` guard + `realtime` option
+- `package.json` — `ws` (dep), `@types/ws` (dev)
+
+---
+
+## 2026-06-24 — Fix: /profile identity sidebar no longer floats over the page on mobile
+
+The `/profile` right-column `<aside>` (identity card + sign-out) carried inline
+`position: sticky; top: var(--space-6)` at **every** breakpoint. On mobile the grid
+collapses to a single column and the aside is lifted above the editable sections
+(`order-1`), so the sticky pinned it to the top of the viewport while the form scrolled
+beneath it — it read as a floating overlay, not part of the page flow.
+
+Sticky now applies only when the aside is genuinely a sidebar column (`lg+`). Moved the
+`position: sticky` / `top` declarations off the inline style and into a new
+`.serene-dossier-aside--sticky` class scoped inside the existing `@media (min-width: 1024px)`
+block in `globals.css` (alongside `serene-dossier-grid`). Below `lg` the aside is now static
+and scrolls with the page as the first block in the single column.
+
+- `src/app/(dashboard)/profile/page.tsx` — aside drops inline `position`/`top`, adds the class.
+- `src/app/globals.css` — `.serene-dossier-aside--sticky` (lg-only).
+
+## 2026-06-24 — Fix: /escalations surfaces breaches live, not only fired/stamped rows
+
+**Symptom:** the `/escalations` page showed an empty "SLA breaches" and "Overdue tasks"
+list even though agents were visibly breaching SLAs. Root cause was **not** the page —
+it was the engine: the Trigger.dev fire/stamp jobs have never executed in this environment
+(the app uses a `tr_dev_` key, so delayed runs only fire while `trigger dev` is live
+locally; no production worker is deployed). DB audit: **0 timers have ever reached
+`fired`** and **0 tasks have ever been stamped `overdue_at`** all-time, while 481 timers
+were past their `scheduled_fire_at` still `pending` and 6 open Gia tasks were past `due_at`.
+Both escalation lists read only the engine-written terminal state (`status='fired'` /
+`overdue_at IS NOT NULL`), so they were structurally empty until the async callback ran.
+
+**Fix (resilience, `src/lib/services/sla-service.ts`):** both escalation reads now compute
+breaches **live**, independent of the async callback:
+
+- `getEscalatedLeads` — counts a breach from a `fired` timer **OR** a `pending` timer whose
+  `scheduled_fire_at` is already in the past (the deadline passed but the fire-job hasn't
+  run). The existing policy/status-match guard (`trigger_value === lead.status`) is unchanged,
+  so a pending-overdue timer on a lead that has moved on is still correctly dropped — this is
+  the same liveness definition the fire-job itself uses. Breach moment = `fired_at` when fired,
+  else `scheduled_fire_at`.
+- `getOverdueGiaTasks` — counts a task as overdue from a stamped `overdue_at` **OR** a `due_at`
+  already in the past. Breach moment = the stamp when present, else `due_at`.
+
+After the change the page reflects reality immediately (121 leads breaching SLA, 6 overdue
+tasks at time of fix) and is resilient to any future single missed/late job — a breach no
+longer depends on the Trigger.dev callback having succeeded.
+
+**Still required for the notification side (separate, operational):** the WhatsApp / in-app
+SLA pings are sent by the fire-job and remain dormant until the engine is deployed —
+`npx trigger.dev@latest deploy` + switch the app's `TRIGGER_SECRET_KEY` to the `tr_prod_`
+key in the hosting env. The page fix makes the *surface* correct; the deploy makes the
+*alerts* fire. Pre-existing `pending` timers scheduled against the dev environment will not
+fire retroactively, but they now appear on the page via the live-compute path.
+
+---
+
+## 2026-06-24 — Redesign: Follow-up Engine as plain-language situation cards
+
+`SlaPoliciesPanel` (on `/settings/follow-up-engine`) no longer renders a 6-column
+spreadsheet of raw rule codes (`SLA-01A`, "Threshold", "Hours basis", flat
+Agent/Manager/Founder rows). It now groups policies into **situation cards** an
+agent can read at a glance:
+
+- **One card per situation** (not per rule). The A/B/C escalation policies for the
+  same trigger collapse into a single card titled in plain language ("Lead sitting
+  in 'New'"), keyed on `(trigger_kind, trigger_value)` / cadence code / task-due
+  phase. `buildSituations()` does the grouping + sorts steps ascending by wait.
+- **Steps read as a sentence:** `⏱ After [15] min · 15m  →  Notify the agent  [toggle]`.
+  The wait time is the only inline control (same blur-to-save + optimistic semantics
+  as before); the recipient is a friendly verb ("Notify the agent" / "Alert the
+  manager" / "Escalate to a founder"); each step has its own on/off `Toggle`.
+- **Operator jargon tucked away:** channels (In-app / WhatsApp) and the hours-basis
+  ("Counts during…") move into a per-card **"Advanced — channels & timing"**
+  disclosure (`CollapseReveal` + `AnimatePresence`), collapsed by default. Cadence
+  cards (which create a task, not a notification) have no advanced section.
+- **Rule codes are never surfaced** in the UI — they stay the system-generated
+  identity behind the scenes. "New rule" became **"Add a rule"** with friendlier
+  field labels (Watch for / When it's / Then notify / Wait / Counts during / Send via).
+- **No data/model change** — same policies, same actions (`updateSlaPolicyAction` /
+  `createSlaPolicyAction`), same save/optimistic/revert flow; purely a presentation
+  rework of the panel.
+
+---
+
+## 2026-06-24 — Refactor: /settings split into a hub + dedicated config sub-pages
+
+The `/settings` page no longer stacks all three configuration sections in one long
+scroll. It is now a **hub**: the agent roster (Team Shifts & Pool) stays inline as the
+default surface, and the two admin/founder-only editors move to their own routes,
+reached from link cards at the top of the page.
+
+- **New routes (admin/founder only, both redirect others to `/settings`):**
+  - `/settings/follow-up-engine` — the SLA / cadence / escalation editor
+    (`SlaPoliciesPanel`, fetched via `getAllSlaPolicies`).
+  - `/settings/lead-revival` — the nightly-sweep policy editor
+    (`RevivalPoliciesPanel`, fetched via `getAllRevivalPolicies`).
+  - Each gets a detail-page header (`BackButton` → "Back to Settings" + title), an
+    `EmptyState` fallback, and a `loading.tsx` skeleton composed from `PageSkeletons`.
+- **New component:** `SettingsLinkCard` (`components/settings/`) — the hub navigation
+  card (accent-surface icon tile + title + description + chevron), matching the
+  card-list hover/focus treatment from the Standard Page Layout Contract (mirrors
+  `CampaignCard`'s `--shadow-1`→`--shadow-2`+lift on hover, `--shadow-focus` on
+  keyboard focus, staggered entrance). The cards render only for admin/founder.
+- **`/settings` page** (`page.tsx`) drops the SLA + revival fetches and panels; it now
+  fetches only the roster and renders the two link cards above `AgentSettingsTable`.
+  Managers (who only ever saw the roster) are unchanged — one page, no extra clicks.
+- **Revalidation repointed:** `updateSlaPolicyAction` / `createSlaPolicyAction` now
+  `revalidatePath('/settings/follow-up-engine')`; `updateRevivalPolicyAction` now
+  `revalidatePath('/settings/lead-revival')` (panels still update optimistically; this
+  keeps the server seed fresh on the page that now hosts each panel).
+- **Route access:** no change needed — `canAccessRoute` prefix-matches `/settings`, so
+  the sub-routes inherit the same domain gating; the page-level role redirect is the
+  admin/founder boundary.
+
+---
+
+## 2026-06-24 — Feature: bulk-edit leads from the table selection
+
+Selecting leads in the `/leads` table now exposes a **Bulk Edit** action in the
+selection toolbar (beside Export). It opens a modal that edits **one or more**
+fields across every selected lead in one go: **Reassign to agent**, **Set status**
+(non-terminal only), **Set source**, and **Move to domain**. Each field is opt-in
+(a Toggle gates its picker), so a single submit can, e.g., reassign 40 leads to one
+agent *and* set their source at once.
+
+- **DRY write path (R-01):** the new `bulkUpdateLeads` action (`lib/actions/leads.ts`)
+  loops the selected ids through the SAME per-lead cores as the single-edit paths —
+  `assignLeadCore` (SLA reschedule + WhatsApp/in-app notify), `updateLeadStatusCore`
+  (SLA branch), and the admin update + activity writes that mirror `updateLeadSource`
+  / `updateLeadDomain`. So a bulk edit inherits cache invalidation, activity logging,
+  SLA timers and notifications identically to editing one lead. No batched raw `UPDATE`
+  that would skip those side-effects.
+- **Per-lead access, mirrored exactly:** access is re-checked PER LEAD server-side
+  against the existing rules — domain/reassign require manager+ (managers scoped to
+  their own domain), status/source follow the field-edit gate (assigned agent /
+  in-domain manager / admin / founder). A lead the caller can't touch is **skipped**,
+  never failing the batch; the result toast reports `updated · skipped · failed`.
+  Agents never see Domain or Assign-to (the action also rejects those up front).
+- **Status is bounded to the non-terminal set** (`new`/`touched`/`in_discussion`/
+  `nurturing`) — `won`/`lost`/`junk` stay single-edit (they need the deal flow /
+  resolution reason). `BULK_STATUS_ENUM` + `BulkUpdateLeadsSchema` in `lead-schema.ts`.
+- **UI:** `components/leads/BulkEditLeadsModal.tsx` composes `modal.tsx` + `FilterDropdown`
+  (`menuPortal`, same pattern as `AddLeadModal`) + `Toggle`; the assignee pool is fetched
+  on intent via `getAssignableUsersAction` and follows the chosen target domain. Loaded
+  via `next/dynamic` (perf G-1) — out of the `/leads` chunk until first open.
+- Notifications fire once after the writes settle via `after()` (A-16). `LeadsTable`
+  now threads `domain` through to the selection toolbar; the campaign drill-down table
+  passes it too.
+
+---
+
+## 2026-06-24 — UX: `/budget` filter bar gains a campaign search
+
+The `/budget` filter strip now shows the shared search box (it was `showSearch={false}`),
+filtering campaigns **client-side** over the rows already on the page — no server round-trip,
+no new query.
+
+- `BudgetFilterBar` flips `showSearch` on and passes `searchPlaceholder="Search campaigns…"`
+  / `searchAriaLabel="Search campaigns"`.
+- `PerformanceFilters` gains optional `searchPlaceholder` / `searchAriaLabel` overrides
+  (default still the agent-roster wording) so the one shared bar reads correctly on both
+  `/performance` and `/budget`.
+- `BudgetWorkspace` reads `?search=` via `useSearchParams` and filters: the **Campaigns**
+  tab's `BudgetTable` by campaign title or raw key, and within the **Accounts** tab each
+  block's nested campaign rows by key. **Account-level recharged/spent/balance stats are
+  never re-derived from the filtered subset** — recharges aren't campaign-scoped, so search
+  only narrows which campaign rows show inside an expander, never the finance totals. Zero
+  matches falls to `Table`'s serif-italic empty state.
+
+## 2026-06-24 — UX: filter-bar tab selectors move to the far-right edge
+
+On the list pages that mount a page-level `TabSelector` inside the shared filter
+strip (`/performance` Agents/Domains, `/budget` Accounts/Campaigns), the tabs moved
+from the **left** edge to the **far right** — the bar now reads filter icon → search
+→ dropdowns → range/dates → Clear → … → tabs, matching the `/tasks` mental model
+where the tab cluster is the bar's rightmost control.
+
+- `FilterBar` (`components/ui/FilterBar.tsx`) gains a `tabSlot` prop rendered as the
+  **last** element (after `trailing`). On the `wrap` layout it carries
+  `marginLeft: auto` so the filters cluster left and the tabs pin right; on the
+  single-row `scroll` layout it simply trails the row. The existing `leading` prop
+  (front-edge slot) stays on the primitive, now unused by these consumers.
+- `PerformanceFilters` swaps its forwarded `leading` prop for `tabSlot` (the bar uses
+  `layout="scroll"`, so the search's `flex: 1 1 220px` grows and pushes the tabs to
+  the right edge).
+- `FounderPerformanceShell` + `BudgetFilterBar` pass their `TabSelector` via `tabSlot`
+  instead of `leading`. The Agents-tab "Deck view" trigger still rides `trailing`, so
+  it sits just before the tab cluster.
+
+No behaviour change beyond placement; tab state, indicator layout ids, and the
+single-paper-strip layout are untouched.
+
+## 2026-06-24 — UX: `/deals` defaults the date range to This Month
+
+A cold landing on `/deals` (no date params in the URL) now scopes to the current
+month instead of all-time:
+
+- `deals/page.tsx` resolves `resolveDateRangePreset('this_month')` (R-01 — the same
+  IST-anchored preset the Range panel uses, no new date math) and `redirect()`s to
+  `/deals?…&date_from=…&date_to=…` when no `date_from`/`date_to`/`dates` param is
+  present. The URL stays the single source of truth, so the FilterBar Range trigger
+  reads **"This Month"** and the list + summary scope to it.
+- Clearing the date range lands on a `?dates=all` escape-hatch marker (`DealsFilters`
+  `onClear`) so the page doesn't immediately re-default back to the month; picking an
+  explicit date/preset drops the marker (`dates: null`). `parseFilters` ignores
+  `dates` entirely — it only reads `date_from`/`date_to`, so the marker never reaches
+  the query.
+
+---
+
+## 2026-06-24 — UI: deal cards now show the saved Source
+
+`DealCard` rendered only the domain badge + a "Walk-in" pill (driven by `lead_id === null`),
+so a walk-in deal's chosen **Source** — saved to `deals.source` by `createWalkInDeal` but never
+surfaced — looked like it had been ignored ("I selected onboarding but it still says walk-in").
+The Walk-in pill is a structural fact (no lead behind the deal); the Source is independent.
+
+- Added a `SourcePill` to `components/deals/DealCard.tsx` (paper-subtle chrome, mirrors
+  `DomainBadge`), rendered next to the domain badge in **both** the mobile and desktop layouts
+  when `deal.source` is set. Label via the existing `getLeadSourceLabel()` (R-01) — no new
+  label map. No service/query change: `getDealsByRole` already `select('*')`s `source`.
+
+---
+
+## 2026-06-24 — UI: `/budget` section headers elevated + compact-format float fix + account-name alignment
+
+Three polish fixes on the Accounts tab, all reusing existing tokens/idioms (R-01):
+
+- **Section headers** — the bare serif-italic `By Ad Account` / `Recharge History`
+  lines were replaced with a new shared **`components/budget/BudgetSectionHeader.tsx`**
+  (a short accent rule above a Playfair serif title — the `page-title-dot` stays
+  reserved for primary-nav `<h1>`s per CLAUDE.md, so a sub-section gets the rule
+  instead). The grand-total run-on sentence became calm stacked `GrandTotalDatum`
+  cells (micro label over mono value) in the header's right slot; the Recharge
+  History header carries an `N recharges` count. Both tabs compose the one header —
+  never re-inline a serif section heading on `/budget` again.
+- **Account-name alignment** — the per-account block's identity column was
+  `flex: 0 0 auto` (intrinsic width), so a long account name pushed the
+  Recharged/Spent/Balance columns out of vertical alignment across the stacked
+  blocks. Now a fixed `flex: 0 0 180px` column that truncates with an ellipsis
+  (+ `title` tooltip) — every block's stat cluster starts at the same x, columns
+  line up.
+- **Compact-format float noise** — `formatCompact`/`formatCompactWestern`
+  (`lib/utils/numbers.ts`) returned `String(n)` raw for values below 1,000, leaking
+  float noise (a summed spend of `566.400000052` rendered as `₹566.400000052`). The
+  sub-1,000 branch now `Math.round`s, the compact ladder's intent — fixes every
+  compact consumer, not just `/budget`.
+
+## 2026-06-24 — UI: `/budget` Accounts|Campaigns tabs moved into the filter bar
+
+The Accounts|Campaigns tab selector moved out of the content area and **into the
+filter-bar leading slot** — the same single-paper-strip layout `/performance`
+(founder Agents/Domains tabs) and `/tasks` already use (tabs share the filter-bar
+strip, never a separate row). Reuses the existing shared pieces (R-01): the
+`PerformanceFilters` `leading` prop, `TabSelector` (`accent` variant), and
+`useMediaQuery(MQ.mobile)` for the `fullWidth` mobile span.
+
+- **New** `app/(dashboard)/budget/budget-tab-context.tsx` — `BudgetTabProvider` +
+  `useBudgetTab()`, a tiny client context that shares the tab state across the
+  Suspense boundary (selector above it in the filter bar, content switch below it
+  in `BudgetWorkspace`). Same cross-boundary client-state pattern as
+  `FounderPerfActions` on `/performance`. Tab is pure view state → in memory, not
+  the URL.
+- **New** `app/(dashboard)/budget/BudgetFilterBar.tsx` — `'use client'`; mounts the
+  `TabSelector` (`indicatorLayoutId="budget-workspace-tabs"`) in
+  `PerformanceFilters`' `leading` slot, reading the tab from the provider.
+- `BudgetWorkspace.tsx` — dropped its own `TabSelector` + local `useState`; now
+  reads the active tab from `useBudgetTab()`. Content logic unchanged.
+- `budget/page.tsx` — wraps the filter bar + Suspense content in
+  `BudgetTabProvider`; renders `<BudgetFilterBar/>` in place of the bare
+  `<PerformanceFilters/>`.
+
+No service/data/migration change — purely where the tabs render.
+
 ## 2026-06-24 — Feature: `/oversight` — a 3-tier work-in-progress drill (manager+)
 
 A new top-level page `/oversight` (Sidebar slot directly below Performance, manager/admin/founder

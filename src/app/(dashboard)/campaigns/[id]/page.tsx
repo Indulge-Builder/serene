@@ -90,6 +90,7 @@ async function CampaignLeadsAsync({
         leads={leads}
         userId={userId}
         role={role}
+        domain={domain}
         filters={filters}
         hasActiveFilters={!!campaignName}
       />

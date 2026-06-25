@@ -4,21 +4,45 @@
 
 `GET /settings` — manager / admin / founder only. Agent or guest → redirect `/dashboard`.
 
+`/settings` is a **hub** (2026-06-24): the agent roster stays inline; the two admin/founder
+config editors live on their own sub-routes, reached from `SettingsLinkCard`s at the top.
+
+| Route | Access | Content |
+|---|---|---|
+| `/settings` | manager+ | hub — link cards (admin/founder) + `AgentSettingsTable` roster |
+| `/settings/follow-up-engine` | admin/founder (others → `/settings`) | `SlaPoliciesPanel` (SLA / cadences / escalations) |
+| `/settings/lead-revival` | admin/founder (others → `/settings`) | `RevivalPoliciesPanel` (nightly-sweep policies) |
+
+Route access is unchanged: `canAccessRoute` prefix-matches `/settings`, so the sub-routes
+inherit the same domain gating; the page-level role redirect is the admin/founder boundary.
+
 ## File Map
 
 ```
 src/app/(dashboard)/settings/
-  page.tsx              — server component; auth guard; Promise.all of getAgentRosterByDomain + (admin/founder) getAllSlaPolicies; renders AgentSettingsTable + SlaPoliciesPanel
+  page.tsx                       — hub server component; auth guard; getAgentRosterByDomain only; renders the two SettingsLinkCards (admin/founder) + AgentSettingsTable
+  follow-up-engine/page.tsx      — admin/founder; getAllSlaPolicies → SlaPoliciesPanel; BackButton header + EmptyState fallback
+  follow-up-engine/loading.tsx   — PageSkeletons-composed skeleton (detail header + policy rows)
+  lead-revival/page.tsx          — admin/founder; getAllRevivalPolicies → RevivalPoliciesPanel; BackButton header + EmptyState fallback
+  lead-revival/loading.tsx       — PageSkeletons-composed skeleton (detail header + 3 status rows)
 
 src/components/settings/
+  SettingsLinkCard.tsx   — the hub navigation card (accent-surface icon tile + title + description + chevron). Mirrors CampaignCard's card-list hover/focus treatment (--shadow-1→--shadow-2 + translateY(-1px) on hover, --shadow-focus on keyboard focus, staggered opacity/y entrance). Display-only chrome.
   AgentSettingsTable.tsx — unified table: one row per agent with assignment toggle + shift start/end + active hours
-  SlaPoliciesPanel.tsx   — follow-up engine editor (admin/founder only): one row per sla_policies rule; threshold blur-save, hours-basis select, channel checkboxes, active toggle (optimistic) — writes via updateSlaPolicyAction. PLUS a "New rule" form (header toggle) that authors a policy over the trigger catalog — writes via createSlaPolicyAction (both in actions/sla-policies.ts). Recipient choice on seeded rows = toggling the per-recipient rows active; seeded-rule identity fields read-only. Groups are exhaustive (Lead status / Call outcome / Follow-up cadences / Task due) so a user-authored outcome rule has a home. Full spec: docs/pages/settings.md §4
+  SlaPoliciesPanel.tsx   — follow-up engine editor (admin/founder only). **Situation-card layout (2026-06-24 redesign):** policies are grouped by situation, NOT shown as a flat rule table. `buildSituations()` collapses the A/B/C escalation policies for one trigger into a single card (keyed on `(trigger_kind, trigger_value)` / cadence code / task-due phase), sorts steps ascending by wait, and titles each card in plain language. Each step reads as a sentence — "⏱ After [N] min · 15m → Notify the agent [toggle]" — where the wait `<input>` is the only inline control (blur-to-save, optimistic, same as before) and the recipient is a friendly verb. Channels + hours-basis live behind a per-card "Advanced — channels & timing" `CollapseReveal` disclosure (cadence cards have none — they create a task). **Rule codes are never surfaced in the UI.** Writes unchanged: updateSlaPolicyAction (edits) + createSlaPolicyAction (the "Add a rule" form, header toggle). trigger_value options re-derive from the chosen kind (server re-validates). Full spec: docs/pages/settings.md §4
 ```
+
+The SLA + revival panel writes revalidate their NOW-OWNING sub-route:
+`updateSlaPolicyAction`/`createSlaPolicyAction` → `revalidatePath('/settings/follow-up-engine')`;
+`updateRevivalPolicyAction` → `revalidatePath('/settings/lead-revival')` (both panels still
+update optimistically — the revalidate only refreshes the server seed).
 
 ## Architecture
 
-Single page. No tabs. Pool-member roster table for manager+; the SLA panel renders below it for
-admin/founder only. **Pool members = `ROUTING_POOL_ROLES` (agents + managers)** — managers carry
+Hub + 2 sub-pages (2026-06-24). `/settings` shows a pool-member roster table for manager+, with
+two `SettingsLinkCard`s above it (admin/founder only) linking to the dedicated editors. The SLA
+and revival panels — previously stacked inline below the roster — each moved to their own route
+to kill the long scroll. **Pool members = `ROUTING_POOL_ROLES` (agents + managers)** — managers carry
 leads and sit in the same round-robin queue as agents, so a manager appears in their own domain's
 roster and can edit their own shift/pool the same way they edit their agents' (migration 0124).
 Each row in `AgentSettingsTable` exposes:

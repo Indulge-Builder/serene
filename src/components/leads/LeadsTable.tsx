@@ -18,7 +18,7 @@ import { useMountOnFirstOpen } from '@/hooks/useMountOnFirstOpen';
 import { LeadsSelectionToolbar } from '@/components/leads/LeadsSelectionToolbar';
 import { ExportButton } from '@/components/leads/ExportButton';
 import { TabSelector } from '@/components/ui/TabSelector';
-import type { LeadFilters, UserRole } from '@/lib/types/database';
+import type { AppDomain, LeadFilters, UserRole } from '@/lib/types/database';
 
 // Load-on-intent (perf audit G-1): the picker (@dnd-kit chain) stays out of the
 // /leads route chunk until the Columns button is first clicked.
@@ -31,6 +31,7 @@ type LeadsTableProps = {
   leads:            LeadListItemWithAssignee[];
   userId:           string;
   role:             UserRole;
+  domain:           AppDomain;
   filters:          LeadFilters;
   hasActiveFilters?: boolean;
   goingCold?:       boolean;
@@ -40,7 +41,7 @@ type LeadsTableProps = {
   enableViewToggle?: boolean;
 };
 
-export function LeadsTable({ leads, userId, role, filters, hasActiveFilters = false, goingCold = false, enableViewToggle = false }: LeadsTableProps) {
+export function LeadsTable({ leads, userId, role, domain, filters, hasActiveFilters = false, goingCold = false, enableViewToggle = false }: LeadsTableProps) {
   const router       = useRouter();
   const pathname     = usePathname();
   const params       = useSearchParams();
@@ -153,6 +154,8 @@ export function LeadsTable({ leads, userId, role, filters, hasActiveFilters = fa
         <LeadsSelectionToolbar
           selectedIds={Array.from(selectedLeadIds)}
           onClear={() => setSelectedLeadIds(new Set())}
+          callerRole={role}
+          callerDomain={domain}
         />
       )}
     </AnimatePresence>

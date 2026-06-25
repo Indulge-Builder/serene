@@ -74,10 +74,13 @@ export function DealsFilters({
         panelKey:     'deals-range-panel',
         from:         dateFrom,
         to:           dateTo,
-        onFromChange: (v) => push({ date_from: v }),
-        onToChange:   (v) => push({ date_to: v }),
-        onClear:      () => push({ date_from: null, date_to: null }),
-        onPresetSelect: (from, to) => push({ date_from: from, date_to: to }),
+        // Setting an explicit date clears the "default to This Month" marker.
+        onFromChange: (v) => push({ date_from: v, dates: null }),
+        onToChange:   (v) => push({ date_to: v, dates: null }),
+        // Clearing dates lands on the `dates=all` escape hatch so the page
+        // doesn't re-default the range back to This Month (see deals/page.tsx).
+        onClear:      () => push({ date_from: null, date_to: null, dates: 'all' }),
+        onPresetSelect: (from, to) => push({ date_from: from, date_to: to, dates: null }),
       }}
     >
       {/* Deal type — single select */}

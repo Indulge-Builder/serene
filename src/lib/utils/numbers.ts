@@ -46,7 +46,9 @@ export function formatCompact(value: number | string | null | undefined): string
     const k = n / 1_000;
     return Number.isInteger(k) ? `${k}K` : `${k.toFixed(1)}K`;
   }
-  return String(n);
+  // Below 1,000: full number, but never leak float noise (e.g. a summed spend
+  // of 566.400000052) — round to whole units, the compact ladder's intent.
+  return `${Math.round(n)}`;
 }
 
 /** Western K/M ladder — USD compact currency only */
@@ -63,7 +65,8 @@ function formatCompactWestern(n: number): string {
     const k = n / 1_000;
     return Number.isInteger(k) ? `${k}K` : `${k.toFixed(1)}K`;
   }
-  return String(n);
+  // Below 1,000: full number, rounded so float noise never leaks ($566.40… → $566).
+  return `${Math.round(n)}`;
 }
 
 /**

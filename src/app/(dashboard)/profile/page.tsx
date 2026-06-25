@@ -107,13 +107,11 @@ export default async function ProfilePage() {
             order-1 below lg lifts it above the editable sections on mobile;
             lg:order-0 restores source order (right column) on desktop. */}
         <aside
-          className="order-1 lg:order-0"
+          className="order-1 lg:order-0 serene-dossier-aside--sticky"
           style={{
             display:       "flex",
             flexDirection: "column",
             gap:           "var(--space-5)",
-            position:      "sticky",
-            top:           "var(--space-6)",
           }}
         >
           <SectionCard title="Identity" bodyPadding={false}>

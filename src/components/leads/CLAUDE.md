@@ -184,6 +184,26 @@ Loaded via `next/dynamic` in `AddLeadButton` behind `useMountOnFirstOpen` (perf 
 
 ---
 
+### BulkEditLeadsModal
+
+`BulkEditLeadsModal.tsx` — `'use client'`
+
+Props: `open`, `onClose`, `selectedIds: string[]`, `callerRole: UserRole`, `callerDomain: AppDomain`, `onSuccess: () => void`.
+
+THE bulk lead-edit panel — edits **one OR MORE** fields across the selected leads in one submit.
+Each field is opt-in (a `Toggle` gates its picker): Reassign to agent, Set status (non-terminal
+only — `BULK_STATUS_ENUM`), Set source, Move to domain. Domain + Assign-to are manager+ only
+(`callerRole !== 'agent'`). Composes `modal.tsx` + `FilterDropdown` (`menuPortal` — the
+AddLeadModal-in-a-modal pattern, never a clipped panel) + `Toggle`. The assignee pool is fetched
+on intent via `getAssignableUsersAction(targetDomain)` and follows the chosen Move-to domain.
+Calls `bulkUpdateLeads` (`lib/actions/leads.ts`) → toast `updated · skipped · failed` → `onSuccess()`
+(clears selection) + `router.refresh()`. Mounted from `LeadsSelectionToolbar` via `next/dynamic`
+(perf G-1) — out of the `/leads` chunk until first open. **The write path is NOT a batched raw
+`UPDATE`** — `bulkUpdateLeads` loops the existing per-lead cores so SLA/notify/activity/cache fire
+identically to single-edit (R-01); access is re-checked per lead, skipped leads never fail the batch.
+
+---
+
 ### LeadColumnPicker
 
 `LeadColumnPicker.tsx` — `'use client'`
@@ -460,6 +480,7 @@ Embedded WhatsApp chat card on the lead dossier page. Placed between the 2-col g
 | ServiceInterestCard   | `'use client'` — `getHelpdeskLibraryAction(lead.domain)` (lazy, once, on first search keystroke) + `caseMatchesQuery` from `lib/utils/case-search.ts`; composes `components/intelligence/` CaseCard + HookList + `ui/SearchBar` |
 | LeadDossierSkeletons  | none                                                                                                  |
 | AddLeadModal          | `createManualLead` action, `getAssignableUsersAction` (`lib/actions/profiles.ts`)                                              |
+| BulkEditLeadsModal    | `bulkUpdateLeads` action, `getAssignableUsersAction` (`lib/actions/profiles.ts`)                                               |
 | LeadColumnPicker      | none — props only                                                                                    |
 | CampaignVideoModal    | none — props only                                                                                    |
 | LeadTasksCard         | `TaskCompletionCircle` + `useTaskCompletionToggle`; `createLeadTaskAction` via `CreateLeadTaskModal` |

@@ -152,6 +152,6 @@ export async function updateRevivalPolicyAction(
   const updated = await updateRevivalPolicy(triggerStatus, patch);
   if (!updated) return { data: null, error: formErrors.generic };
 
-  revalidatePath("/settings");
+  revalidatePath("/settings/lead-revival");
   return { data: updated, error: null };
 }

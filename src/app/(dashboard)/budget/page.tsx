@@ -5,11 +5,12 @@ import { getNotifications } from "@/lib/services/notifications-service";
 import { resolvePerformanceDateParams } from "@/lib/services/performance-service";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
-import { PerformanceFilters } from "@/components/performance/PerformanceFilters";
 import { AdSpendUploadButton } from "@/components/budget/AdSpendUploadButton";
 import { AddRechargeButton } from "@/components/budget/AddRechargeButton";
 import { BudgetAsync } from "./BudgetAsync";
 import { BudgetContentSkeleton } from "./BudgetContentSkeleton";
+import { BudgetTabProvider } from "./budget-tab-context";
+import { BudgetFilterBar } from "./BudgetFilterBar";
 
 // ─────────────────────────────────────────────
 // /budget — ad spend vs lead/deal outcomes per campaign.
@@ -60,15 +61,20 @@ export default async function BudgetPage({
         </div>
       </div>
 
-      {/* Row 2 — filter bar (shared FilterBar Range presets + custom Dates) */}
-      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-        <PerformanceFilters showSearch={false} />
-      </div>
+      {/* The Accounts|Campaigns tabs (filter-bar leading slot) and the content
+          switch (BudgetWorkspace, inside BudgetAsync) share one client tab
+          state across the Suspense boundary via BudgetTabProvider. */}
+      <BudgetTabProvider>
+        {/* Row 2 — filter bar: tabs (leading) + Range presets + custom Dates */}
+        <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
+          <BudgetFilterBar />
+        </div>
 
-      {/* Row 3 — content */}
-      <Suspense key={`${from}:${to}`} fallback={<BudgetContentSkeleton />}>
-        <BudgetAsync from={from} to={to} canUpload={canUpload} />
-      </Suspense>
+        {/* Row 3 — content */}
+        <Suspense key={`${from}:${to}`} fallback={<BudgetContentSkeleton />}>
+          <BudgetAsync from={from} to={to} canUpload={canUpload} />
+        </Suspense>
+      </BudgetTabProvider>
     </main>
   );
 }

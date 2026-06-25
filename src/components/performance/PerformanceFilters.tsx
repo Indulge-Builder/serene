@@ -7,15 +7,23 @@ type PerformanceFiltersProps = {
   /** Agent roster search — hidden on the agent self-view (no roster to search). */
   showSearch: boolean;
   /**
-   * Left-edge slot rendered before the filter icon — the founder/admin
-   * Agents/Domains TabSelector lives here so the tabs share the filter-bar
-   * paper strip (the /tasks single-strip layout). Omitted = the bar starts
-   * with the sliders icon as before (agent + manager).
+   * Search box copy. Defaults to the agent-roster wording; /budget overrides it
+   * to "Search campaigns…" since the same bar filters a different list there.
    */
-  leading?: React.ReactNode;
+  searchPlaceholder?: string;
+  searchAriaLabel?: string;
+  /**
+   * Far-RIGHT slot (FilterBar `tabSlot`) — the founder/admin Agents/Domains
+   * TabSelector (and /budget Accounts/Campaigns) lives here so the tabs share
+   * the filter-bar paper strip but read as its rightmost control: the bar runs
+   * filter icon → search → dropdowns → range/dates → … → tabs. Omitted = the
+   * bar has no trailing tab cluster (agent + manager).
+   */
+  tabSlot?: React.ReactNode;
   /**
    * Right-edge slot (FilterBar `trailing`) — the Agents-tab "Deck view"
-   * trigger mounts here when active. Null otherwise.
+   * trigger mounts here when active. Sits just before the tab cluster. Null
+   * otherwise.
    */
   trailing?: React.ReactNode;
 };
@@ -28,7 +36,13 @@ type PerformanceFiltersProps = {
 // service layer is untouched. Immediate-commit only; below md the bar
 // auto-collapses to the horizontal-scroll layout (the mobile fix).
 
-export function PerformanceFilters({ showSearch, leading, trailing }: PerformanceFiltersProps) {
+export function PerformanceFilters({
+  showSearch,
+  searchPlaceholder = 'Search agents…',
+  searchAriaLabel = 'Search agents',
+  tabSlot,
+  trailing,
+}: PerformanceFiltersProps) {
   const url = useUrlFilters();
   const { params, push } = url;
 
@@ -43,12 +57,12 @@ export function PerformanceFilters({ showSearch, leading, trailing }: Performanc
   return (
     <FilterBar
       layout="scroll"
-      leading={leading}
+      tabSlot={tabSlot}
       trailing={trailing}
       searchValue={url.searchInput}
       onSearchChange={url.setSearchInput}
-      searchPlaceholder="Search agents…"
-      searchAriaLabel="Search agents"
+      searchPlaceholder={searchPlaceholder}
+      searchAriaLabel={searchAriaLabel}
       searchSize="sm"
       searchStyle={{ flex: '1 1 220px', minWidth: '180px' }}
       hideSearch={!showSearch}

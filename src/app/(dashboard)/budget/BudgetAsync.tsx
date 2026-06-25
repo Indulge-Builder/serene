@@ -61,6 +61,25 @@ export async function BudgetAsync({ from, to, canUpload }: Props) {
         <StatTile variant="cell" label="Revenue"       value={formatCurrencyCompact(totalRevenue)} />
       </div>
 
+      {/* Attribution caption — this page is an ROI-of-ad-spend view: Leads, Deals
+          and Revenue are attributed to Meta campaigns only (joined on the lead's
+          utm_campaign). Referral / Google / walk-in deals are deliberately
+          excluded so the cost-per-deal and revenue here never overstate the
+          return on Meta spend. */}
+      <p
+        style={{
+          margin:     0,
+          paddingLeft: "var(--space-1)",
+          fontFamily: "var(--font-sans)",
+          fontSize:   "var(--text-xs)",
+          fontStyle:  "italic",
+          color:      "var(--theme-text-tertiary)",
+        }}
+      >
+        Leads, deals and revenue are attributed to Meta campaigns only — referral,
+        Google and walk-in deals are excluded.
+      </p>
+
       {/* Accounts / Campaigns / Recharges workspace (client tabs) */}
       <BudgetWorkspace
         report={report}

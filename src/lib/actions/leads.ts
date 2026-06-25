@@ -23,6 +23,7 @@ import {
   UpdateLeadInterestsSchema,
   UpdateLeadStatusSchema,
   AssignLeadSchema,
+  BulkUpdateLeadsSchema,
   UpdatePersonalDetailsSchema,
   CreateManualLeadSchema,
   CreateLeadTaskSchema,
@@ -50,6 +51,7 @@ import {
 } from "@/lib/actions/sla";
 import type { ActionResult, Profile } from "@/lib/types/index";
 import type { Task } from "@/lib/types/database";
+import type { LeadAssignedNotifyInput } from "@/lib/services/lead-assignment-notify";
 
 // ─────────────────────────────────────────────
 // Action: addLeadCallNote
@@ -327,6 +329,253 @@ export async function assignLead(
   revalidatePath("/leads");
 
   return { data: { leadId }, error: null };
+}
+
+// ─────────────────────────────────────────────
+// Action: bulkUpdateLeads (LeadsTable selection → BulkEditLeadsModal)
+//
+// Edits one OR MORE fields across N selected leads in one call. Each field reuses
+// the SAME write path as its single-edit equivalent so SLA/notify/activity/cache
+// all fire identically (R-01):
+//   assignedTo → assignLeadCore     (SLA reschedule + WhatsApp/in-app notify)
+//   status     → updateLeadStatusCore (SLA branch + won-notify; bounded non-terminal)
+//   domain     → admin update + activity (mirrors updateLeadDomain)
+//   source     → admin update + activity (mirrors updateLeadSource)
+//
+// Access is checked PER LEAD, mirroring the single-edit rules exactly. A lead the
+// caller may not touch (for ANY requested field) is SKIPPED, never failing the
+// batch. domain/assignedTo require manager+ (managers scoped to their own domain);
+// source/status follow the field-edit access (assigned agent / in-domain manager /
+// admin / founder). The action returns { updated, skipped, failed } so the UI can
+// report exactly what happened.
+//
+// Ordering within a lead: domain FIRST (so a same-call reassignment validates
+// against the NEW domain), then assignedTo, then status, then source.
+// ─────────────────────────────────────────────
+export type BulkUpdateResult = {
+  updated: number;
+  skipped: number;
+  failed: number;
+};
+
+export async function bulkUpdateLeads(
+  input: unknown,
+): Promise<ActionResult<BulkUpdateResult>> {
+  // 1. Validate (Rule 02 — Zod first, always)
+  const parsed = BulkUpdateLeadsSchema.safeParse(input);
+  if (!parsed.success) {
+    return { data: null, error: parsed.error.issues[0]?.message ?? formErrors.generic };
+  }
+
+  const { leadIds, changes } = parsed.data;
+
+  // 2. Auth — any session role calls; per-lead + per-field gates below decide
+  //    what actually applies. domain/assignedTo additionally require manager+.
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
+
+  const wantsAssign = changes.assignedTo !== undefined;
+  const wantsDomain = changes.domain !== undefined;
+
+  // Reassign and domain-move are privileged (mirrors assignLead / updateLeadDomain).
+  // An agent requesting either gets nothing they're not allowed — reject up front
+  // rather than silently skipping every lead (clearer than 0 updated / N skipped).
+  if ((wantsAssign || wantsDomain) && caller.role === "agent") {
+    return { data: null, error: formErrors.unauthorized };
+  }
+
+  const admin = createAdminClient();
+
+  // 3. Fetch the full selected set ONCE (admin client; per-lead access gated below).
+  const { data: leadRows } = await admin
+    .from("leads")
+    .select("id, status, assigned_to, domain, slug, first_name, last_name, phone")
+    .in("id", leadIds);
+
+  if (!leadRows || leadRows.length === 0) {
+    return { data: null, error: "No matching leads found." };
+  }
+
+  // 4. Resolve the target agent ONCE (one agent for the whole batch). Reused as the
+  //    assignLeadCore ctx.assignedAgent for every lead — the per-lead domain check
+  //    inside the core enforces a manager can't assign across domains.
+  let targetAgent:
+    | { full_name: string | null; domain: string | null; is_active: boolean }
+    | null = null;
+  if (wantsAssign) {
+    const { data: agent } = await admin
+      .from("profiles")
+      .select("full_name, domain, is_active, role")
+      .eq("id", changes.assignedTo!)
+      .single();
+    if (!agent || !agent.is_active || !LEAD_ASSIGNABLE_ROLES.includes(agent.role)) {
+      return { data: null, error: "The selected user is not available for assignment." };
+    }
+    targetAgent = {
+      full_name: agent.full_name as string | null,
+      domain: agent.domain as string | null,
+      is_active: agent.is_active as boolean,
+    };
+  }
+
+  const actor = {
+    userId: caller.id,
+    role: caller.role,
+    domain: caller.domain,
+    fullName: caller.full_name,
+  };
+
+  // Field-edit access (mirrors assertLeadFieldEditAccess) — used for status/source.
+  const canEditFields = (leadDomain: string, assignedTo: string | null): boolean =>
+    (caller.role === "agent" && assignedTo === caller.id) ||
+    (caller.role === "manager" && leadDomain === (caller.domain as string)) ||
+    caller.role === "admin" ||
+    caller.role === "founder";
+
+  // Privileged-field access (mirrors assignLead / updateLeadDomain) — manager
+  // scoped to own domain; admin/founder anywhere. (Agents already rejected above.)
+  const canEditPrivileged = (leadDomain: string): boolean =>
+    caller.role === "admin" ||
+    caller.role === "founder" ||
+    (caller.role === "manager" && leadDomain === (caller.domain as string));
+
+  const notifyInputs: LeadAssignedNotifyInput[] = [];
+  let updated = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  // 5. Per-lead apply. A lead is SKIPPED if it cannot accept ANY requested field;
+  //    otherwise every requested field the caller may edit on it is applied.
+  for (const row of leadRows) {
+    const leadId = row.id as string;
+    const leadDomain = row.domain as string;
+    const slug = row.slug as string | null;
+
+    // Effective domain the rest of this lead's edits see (domain move applies first).
+    let effectiveDomain = leadDomain;
+
+    const fieldAllowed = canEditFields(leadDomain, row.assigned_to as string | null);
+    const privAllowed = canEditPrivileged(leadDomain);
+
+    const willDomain = wantsDomain && privAllowed;
+    const willAssign = wantsAssign && privAllowed;
+    const willStatus = changes.status !== undefined && fieldAllowed;
+    const willSource = changes.source !== undefined && fieldAllowed;
+
+    if (!willDomain && !willAssign && !willStatus && !willSource) {
+      skipped += 1;
+      continue;
+    }
+
+    let leadFailed = false;
+
+    // 5a. Domain move FIRST (mirrors updateLeadDomain: admin update + activity).
+    if (willDomain) {
+      const { error: domErr } = await admin
+        .from("leads")
+        .update({ domain: changes.domain })
+        .eq("id", leadId);
+      if (domErr) {
+        leadFailed = true;
+      } else {
+        effectiveDomain = changes.domain!;
+        await admin.from("lead_activities").insert({
+          lead_id: leadId,
+          actor_id: caller.id,
+          action_type: "note_added",
+          details: { type: "lead_domain_updated", domain: changes.domain },
+        });
+        await invalidateLeadCaches(
+          "bulkUpdateLeads",
+          { leadId, slug, domain: effectiveDomain },
+          { row: true, activities: true, lists: true },
+        );
+      }
+    }
+
+    // 5b. Reassign — via the shared core (SLA reschedule + notify input collected).
+    if (!leadFailed && willAssign) {
+      const core = await assignLeadCore(actor, { leadId, agentId: changes.assignedTo! }, {
+        existingLead: {
+          status: row.status as string | null,
+          domain: effectiveDomain,
+          slug,
+          first_name: row.first_name as string | null,
+          last_name: row.last_name as string | null,
+          phone: row.phone as string | null,
+        },
+        assignedAgent: targetAgent,
+      });
+      if (core.ok) {
+        notifyInputs.push(core.notify);
+      } else {
+        // Manager cross-domain / unavailable agent — skip this field, not the lead.
+        if (!willDomain && !willStatus && !willSource) leadFailed = true;
+      }
+    }
+
+    // 5c. Status — via the shared core (bounded non-terminal; SLA branch handled).
+    if (!leadFailed && willStatus) {
+      const core = await updateLeadStatusCore(
+        actor,
+        { leadId, status: changes.status!, reason: null },
+        { slug, domain: effectiveDomain },
+      );
+      if (!core.ok) leadFailed = true;
+    }
+
+    // 5d. Source (mirrors updateLeadSource: admin update + activity).
+    if (!leadFailed && willSource) {
+      const { error: srcErr } = await admin
+        .from("leads")
+        .update({ source: changes.source })
+        .eq("id", leadId);
+      if (srcErr) {
+        leadFailed = true;
+      } else {
+        await admin.from("lead_activities").insert({
+          lead_id: leadId,
+          actor_id: caller.id,
+          action_type: "note_added",
+          details: { type: "lead_source_updated", source: changes.source },
+        });
+        await invalidateLeadCaches(
+          "bulkUpdateLeads",
+          { leadId, slug, domain: effectiveDomain },
+          { row: true, activities: true, lists: true },
+        );
+      }
+    }
+
+    if (leadFailed) failed += 1;
+    else updated += 1;
+  }
+
+  // 6. Fire the collected assignment notifications once, after the writes settle.
+  //    after(): the action returns immediately while Vercel keeps the lambda alive
+  //    until the awaited Gupshup/in-app sends inside notifyLeadAssigned complete.
+  if (notifyInputs.length > 0) {
+    const { notifyLeadAssigned } = await import(
+      "@/lib/services/lead-assignment-notify"
+    );
+    after(
+      Promise.all(
+        notifyInputs.map((notify) =>
+          notifyLeadAssigned(notify).catch((err) =>
+            console.error(
+              "[leads:bulkUpdateLeads] notifyLeadAssigned failed (non-fatal):",
+              err,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  revalidatePath("/leads");
+
+  return { data: { updated, skipped, failed }, error: null };
 }
 
 // ─────────────────────────────────────────────

@@ -102,9 +102,22 @@ lib/actions/recharge.ts             ← createRechargeAction (admin/founder)
 lib/validations/recharge-schema.ts  ← createRechargeSchema (+ card-PAN reject)
 supabase/migrations/…139_ad_account_recharges.sql
 
-app/(dashboard)/budget/page.tsx     ← header (Add Recharge + Upload Spend, admin/founder), filter bar, Suspense
+app/(dashboard)/budget/page.tsx     ← header (Add Recharge + Upload Spend, admin/founder), filter bar, Suspense;
+                                       wraps the filter bar + content in BudgetTabProvider
+app/(dashboard)/budget/budget-tab-context.tsx ← BudgetTabProvider + useBudgetTab(): the Accounts|Campaigns
+                                       tab state, shared across the Suspense boundary (selector in the filter
+                                       bar above, content switch in BudgetWorkspace below). In-memory, not URL
+app/(dashboard)/budget/BudgetFilterBar.tsx ← 'use client'; the TabSelector (Accounts|Campaigns) in
+                                       PerformanceFilters' leading slot — the /performance + /tasks
+                                       single-paper-strip layout (tabs share the filter-bar strip, never a row)
 app/(dashboard)/budget/BudgetAsync.tsx ← fetches summary + recharges, builds report, totals strip
-components/budget/BudgetWorkspace.tsx  ← client tabs: Accounts | Campaigns
+components/budget/BudgetWorkspace.tsx  ← Accounts | Campaigns content switch; reads the active tab from
+                                       useBudgetTab() (the selector lives in BudgetFilterBar)
+components/budget/BudgetSectionHeader.tsx ← THE in-page section header for the /budget tabs (accent rule
+                                       above a Playfair serif title + optional right meta slot). Both
+                                       "By Ad Account" and "Recharge History" compose it — never re-inline
+                                       a serif section heading here (R-01). page-title-dot stays reserved
+                                       for primary-nav <h1>s, so a sub-section gets the accent rule.
 components/budget/AccountReportSection.tsx ← per-account blocks (StatTile cells + expandable BudgetTable) + grand total
 components/budget/RechargeHistoryTable.tsx ← Table<T> recharge ledger
 components/budget/AddRechargeButton.tsx + AddRechargeModal.tsx ← the recharge form (dynamic, admin/founder)
@@ -119,6 +132,10 @@ components/budget/AdSpendUploadButton/Modal.tsx ← Meta CSV upload (unchanged l
   variant="cell" (balance is a bespoke cell only so overspend can render in
   danger — StatTile's cell value is always accent).
 - Date range stays on the shared `PerformanceFilters` contract — never fork it.
+  The Accounts|Campaigns tabs ride its `leading` slot (the `/performance` +
+  `/tasks` single-paper-strip layout) via `BudgetFilterBar`; the tab state crosses
+  the Suspense boundary through `BudgetTabProvider` — never a second filter strip
+  or a tabs-as-own-row layout.
 - The grain guard in `ad-spend-parse.ts` is correct and untouched. Weekly
   cadence already works (a multi-day daily-breakdown export uploads as one row
   per day, idempotent on re-upload). The upload copy says so.

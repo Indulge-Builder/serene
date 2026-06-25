@@ -108,9 +108,10 @@ export function FounderPerformanceShell({
   const [tabAction, setTabAction] = useState<React.ReactNode>(null);
   const setTabActionCb = useCallback((node: React.ReactNode) => setTabAction(node), []);
 
-  // The Agents/Domains tabs live in the filter bar's leading slot (the /tasks
-  // single-strip pattern). accent variant + a distinct indicatorLayoutId from
-  // the agent shell's content tabs (shared-layout rule).
+  // The Agents/Domains tabs live in the filter bar's trailing tabSlot — the bar
+  // runs filter icon → search → date range → … → these tabs on the far right.
+  // accent variant + a distinct indicatorLayoutId from the agent shell's content
+  // tabs (shared-layout rule).
   const tabs = (
     <div
       style={{
@@ -139,14 +140,14 @@ export function FounderPerformanceShell({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-      {/* Single paper strip — tabs left, search/date filters, then the
-          Agents-tab "Deck view" trigger on the trailing edge (desktop only:
-          on mobile the deck IS the Agents view and owns its own reopen
-          prompt, so the strip stays just tabs + filters). */}
+      {/* Single paper strip — filters left, the Agents-tab "Deck view" trigger,
+          then the Domains/Agents tabs on the far-right edge (desktop only: on
+          mobile the deck IS the Agents view and owns its own reopen prompt, so
+          the strip stays just filters + tabs). */}
       <div className="px-5 py-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
         <PerformanceFilters
           showSearch
-          leading={tabs}
+          tabSlot={tabs}
           trailing={!isMobile && activeTab === 'agents' ? tabAction : null}
         />
       </div>

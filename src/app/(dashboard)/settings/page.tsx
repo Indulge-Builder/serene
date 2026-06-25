@@ -4,11 +4,8 @@ import { getNotifications }           from "@/lib/services/notifications-service
 import { TOP_BAR_ENABLED }            from "@/lib/constants/feature-flags";
 import { PageControls }               from "@/components/layout/PageControls";
 import { getAgentRosterByDomain }     from "@/lib/services/agent-routing-service";
-import { getAllSlaPolicies }          from "@/lib/services/sla-service";
-import { getAllRevivalPolicies }      from "@/lib/services/revival-service";
 import { AgentSettingsTable }         from "@/components/settings/AgentSettingsTable";
-import { SlaPoliciesPanel }           from "@/components/settings/SlaPoliciesPanel";
-import { RevivalPoliciesPanel }       from "@/components/settings/RevivalPoliciesPanel";
+import { SettingsLinkCard }           from "@/components/settings/SettingsLinkCard";
 
 export const metadata = { title: "Settings — Serene" };
 
@@ -20,12 +17,7 @@ export default async function SettingsPage() {
   const isPrivileged = profile.role === "admin" || profile.role === "founder";
   const rosterDomain = isPrivileged ? "*" : profile.domain;
 
-  // Follow-up engine + revival panels are admin/founder only (RLS mirrors this)
-  const [roster, slaPolicies, revivalPolicies] = await Promise.all([
-    getAgentRosterByDomain(rosterDomain),
-    isPrivileged ? getAllSlaPolicies() : Promise.resolve([]),
-    isPrivileged ? getAllRevivalPolicies() : Promise.resolve([]),
-  ]);
+  const roster = await getAgentRosterByDomain(rosterDomain);
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
@@ -42,24 +34,40 @@ export default async function SettingsPage() {
         )}
       </div>
 
+      {/* Configuration pages — admin/founder only. Each opens a dedicated
+          editor; the agent roster stays inline below as the default surface. */}
+      {isPrivileged && (
+        <div
+          style={{
+            display:             "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap:                 "var(--space-4)",
+            marginBottom:        "var(--space-8)",
+          }}
+        >
+          <SettingsLinkCard
+            href="/settings/follow-up-engine"
+            icon="timer"
+            title="Follow-up Engine"
+            description="SLA timers, cadences, and escalation rules that drive Gia's automatic follow-ups."
+            index={0}
+          />
+          <SettingsLinkCard
+            href="/settings/lead-revival"
+            icon="sparkles"
+            title="Lead Revival"
+            description="Silence thresholds and daily caps for the nightly auto-revival sweep."
+            index={1}
+          />
+        </div>
+      )}
+
+      {/* Team shifts & routing pool — the always-present roster (manager+) */}
       <AgentSettingsTable
         initialRoster={roster}
         callerRole={profile.role}
         callerDomain={profile.domain}
       />
-
-      {isPrivileged && slaPolicies.length > 0 && (
-        <div className="mt-6">
-          <SlaPoliciesPanel initialPolicies={slaPolicies} />
-        </div>
-      )}
-
-      {isPrivileged && revivalPolicies.length > 0 && (
-        <div className="mt-6">
-          <RevivalPoliciesPanel initialPolicies={revivalPolicies} />
-        </div>
-      )}
     </main>
   );
-
 }

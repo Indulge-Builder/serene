@@ -82,6 +82,15 @@ type FilterBarProps = {
   leading?: React.ReactNode;
   /** Right-edge slot (e.g. tasks result count). */
   trailing?: React.ReactNode;
+  /**
+   * Far-right slot rendered AFTER everything else (filter icon, search,
+   * dropdowns, range/dates, Clear, trailing) — a page-level TabSelector that
+   * shares the filter-bar strip but reads as the bar's rightmost control (the
+   * /performance Agents/Domains tabs, /budget Accounts/Campaigns tabs). Pushed
+   * hard right via marginLeft:auto on the wrap layout so the filters and the
+   * tabs sit at opposite ends of the strip. Omitted = no trailing tab cluster.
+   */
+  tabSlot?: React.ReactNode;
 };
 
 /** Shared chrome for the Range (presets) and Dates (From → To) triggers. */
@@ -146,6 +155,7 @@ export function FilterBar({
   leading,
   children,
   trailing,
+  tabSlot,
 }: FilterBarProps) {
   const range    = usePortalAnchor();
   const presets  = usePortalAnchor({ estimatedWidth: 200, estimatedHeight: 340 });
@@ -364,6 +374,20 @@ export function FilterBar({
       )}
 
       {trailing}
+
+      {/* Far-right tab cluster — last element. On the wrap layout marginLeft:auto
+          shoves it against the right edge (filters left, tabs right); on the
+          single-row scroll layout it simply trails the rest. */}
+      {tabSlot && (
+        <div
+          style={{
+            flexShrink: 0,
+            ...(isScroll ? null : { marginLeft: 'auto' }),
+          }}
+        >
+          {tabSlot}
+        </div>
+      )}
     </div>
   );
 }
