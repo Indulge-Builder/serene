@@ -1015,3 +1015,43 @@ body {
     transition: none;
   }
 }
+
+/* ── Snapshot stat tile ──────────────────────────────────────────────────────
+   The number tile (Pending Calls / New Leads / Going Cold). Canonical paper card
+   chrome (radius-lg + --theme-paper-border + --shadow-1) — the same surface every
+   widget uses. The whole card is a Link, so it carries the calm interactive-card
+   hover (paper-subtle + --shadow-2; colour/shadow only, gated to real pointers).
+   The density-tier layout + the faint corner watermark live in
+   SnapshotCountWidget.tsx. */
+.serene-stat-tile {
+  position: relative;
+  /* Query container so the corner watermark can size itself off the live cell
+     box (cqmin) — it scales continuously as the widget is resized, never a
+     fixed px that dwarfs a small tile. */
+  container-type: size;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  text-decoration: none;
+  border: 1px solid var(--theme-paper-border);
+  border-radius: var(--radius-lg);
+  background: var(--theme-paper);
+  box-shadow: var(--shadow-1);
+  transition:
+    background-color var(--duration-fast) var(--ease-in-out),
+    box-shadow var(--duration-base) var(--ease-in-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .serene-stat-tile:hover {
+    background: var(--theme-paper-subtle);
+    box-shadow: var(--shadow-2);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .serene-stat-tile {
+    transition: none;
+  }
+}

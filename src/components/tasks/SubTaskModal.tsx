@@ -874,11 +874,16 @@ export function SubTaskModal({
             flexDirection: "column",
           }}
         >
-          {/* ── TWO-ZONE GRID — shared header row, aligned content row.
-                Below md the zones stack in one scrolling column (audit F4);
-                placements live in classes so the mobile column can reflow. ─ */}
+          {/* ── TWO-ZONE LAYOUT — shared header row, aligned content row.
+                From md: a 2×2 CSS grid, each zone owns an independent scroll
+                region (overflow hidden on the container).
+                Below md: a flex COLUMN of two bounded, independently-scrolling
+                regions (Zone A details + Zone B remarks). The container itself
+                never scrolls — this is what stops the remarks panel and its
+                ambient orbs from floating over the content above when the whole
+                sheet was a single scroller (audit F4 follow-up). ─ */}
           <div
-            className="grid grid-cols-1 md:grid-cols-[38%_62%] md:grid-rows-[auto_1fr] overflow-y-auto md:overflow-hidden"
+            className="flex flex-col md:grid md:grid-cols-[38%_62%] md:grid-rows-[auto_1fr] overflow-hidden"
             style={{
               flex:       1,
               minHeight:  0,
@@ -888,7 +893,7 @@ export function SubTaskModal({
             {/* Zone A header — title + description | status + priority */}
             <div
               id={titleId}
-              className="md:col-start-1 md:row-start-1"
+              className="shrink-0 md:col-start-1 md:row-start-1"
               style={{
                 display:        "flex",
                 alignItems:     "flex-start",
@@ -1192,7 +1197,7 @@ export function SubTaskModal({
             {/* Zone B header — action icons (first in the mobile column so
                 close/edit stay at the top of the sheet) */}
             <div
-              className="md:col-start-2 md:row-start-1 max-md:order-first max-md:pb-0"
+              className="shrink-0 md:col-start-2 md:row-start-1 max-md:order-first max-md:pb-0"
               style={{
                 display:        "flex",
                 flexDirection:  "column",
@@ -1294,15 +1299,16 @@ export function SubTaskModal({
             </div>
 
             {/* Zone A body — checklist, details, metadata.
-                Below md the grid is the single scroll container, so this zone
-                flows at its natural height (overflow visible, no inner scroller)
-                — clipping the content here truncated the checklist/details on
-                mobile (audit F4 follow-up). From md it owns an independent
+                Below md this sizes to its CONTENT (flex 0 1 auto) up to a
+                max-height cap, so the action-items/details aren't squeezed into
+                a fixed proportional slice; only a very tall checklist hits the
+                cap and scrolls internally. Zone B (remarks) takes the remaining
+                space with a min-height floor. From md it owns an independent
                 scroll region inside its fixed grid row. */}
             <div
-              className="md:col-start-1 md:row-start-2 overflow-visible md:overflow-hidden"
+              className="min-h-0 overflow-hidden max-md:max-h-[55%] md:col-start-1 md:row-start-2"
               style={{
-                minHeight:     0,
+                flex:          "0 1 auto",
                 display:       "flex",
                 flexDirection: "column",
                 position:      "relative",
@@ -1324,10 +1330,9 @@ export function SubTaskModal({
                 }}
               />
 
-              {/* Body — flows naturally below md (grid scrolls), independent
-                  scroll region from md up */}
+              {/* Body — independent scroll region at every breakpoint */}
               <div
-                className="flex-1 overflow-y-visible md:overflow-y-auto"
+                className="flex-1 min-h-0 overflow-y-auto"
                 style={{
                   padding:       "var(--space-4) var(--space-6) var(--space-6) var(--space-7)",
                   display:       "flex",
@@ -1339,6 +1344,7 @@ export function SubTaskModal({
                 {/* 2. Action Items card — checklist (personal + group subtasks) */}
                   <div
                     style={{
+                      flexShrink:   0,
                       background:   "var(--theme-paper)",
                       borderRadius: "var(--radius-md)",
                       border:       "1px solid var(--theme-paper-border)",
@@ -1480,6 +1486,7 @@ export function SubTaskModal({
                 {/* 3. Details card — deadline + assignee */}
                 <div
                   style={{
+                    flexShrink:   0,
                     background:   "var(--theme-paper)",
                     borderRadius: "var(--radius-md)",
                     border:       "1px solid var(--theme-paper-border)",
@@ -1562,6 +1569,7 @@ export function SubTaskModal({
                 {/* 4. Metadata footer — whispered, monospace */}
                 <div
                   style={{
+                    flexShrink:    0,
                     display:       "flex",
                     flexDirection: "column",
                     gap:           "var(--space-1)",
@@ -1641,18 +1649,24 @@ export function SubTaskModal({
               </AnimatePresence>
             </div>
 
-            {/* Zone B body — remarks timeline + composer. Fixed height in the
-                mobile column so the timeline scrolls internally and the
-                composer stays reachable. */}
+            {/* Zone B body — remarks timeline + composer. Below md it TAKES THE
+                REMAINING space (flex 1 1 auto) after Zone A sized to its content,
+                with a min-height floor so it always has a definite, usable box —
+                NOT a dvh box. That definite height is what gives
+                TaskRemarksPanel's height:100% + absolute ambient orbs a real
+                containing block, so the panel and its orbs can never float over
+                the content above (the old max-md:h-[60dvh] inside a sheet-wide
+                scroller was the cause). On mobile it adds a top rule to separate
+                it from Zone A; on md the left rule. */}
             <div
-              className="md:col-start-2 md:row-start-2 max-md:h-[60dvh]"
+              className="min-h-0 max-md:min-h-[42%] md:col-start-2 md:row-start-2 max-md:border-t md:border-l"
               style={{
-                minHeight:     0,
+                flex:          "1 1 auto",
                 overflow:      "hidden",
                 display:       "flex",
                 flexDirection: "column",
                 position:      "relative",
-                borderLeft:    "1px solid color-mix(in srgb, var(--theme-paper-border) 40%, transparent)",
+                borderColor:   "color-mix(in srgb, var(--theme-paper-border) 40%, transparent)",
               }}
             >
               <TaskRemarksPanel

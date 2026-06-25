@@ -61,6 +61,20 @@ export const TASK_STATUS_FILTER_ITEMS = TASK_STATUSES.map((s) => ({
   label: TASK_STATUS_LABELS[s],
 }));
 
+// My Tasks holds only ACTIONABLE tasks — MyTasksCalendarView renders via
+// isTaskActionable (effective status neither completed nor cancelled) and never
+// even pages in completed rows. Offering Completed/Cancelled in the personal
+// Status filter is a dead option (selecting them yields an empty list). Restrict
+// the personal Status dropdown to the statuses the view can actually show.
+const MY_TASKS_VISIBLE_STATUSES: TaskStatus[] = TASK_STATUSES.filter(
+  (s) => s !== 'completed' && s !== 'cancelled',
+);
+
+export const MY_TASKS_STATUS_FILTER_ITEMS = MY_TASKS_VISIBLE_STATUSES.map((s) => ({
+  id:    s,
+  label: TASK_STATUS_LABELS[s],
+}));
+
 export const TASK_PRIORITY_FILTER_ITEMS = (['urgent', 'high', 'normal'] as const).map((p) => ({
   id:    p,
   label: TASK_PRIORITY[p].label,

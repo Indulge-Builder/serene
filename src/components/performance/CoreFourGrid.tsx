@@ -13,7 +13,7 @@ import type {
   TeamBenchmarks,
 } from "@/lib/services/performance-service";
 import { formatDuration } from "@/lib/utils/dates";
-import { formatPercent } from "@/lib/utils/numbers";
+import { formatPercent, formatCount } from "@/lib/utils/numbers";
 import { EXIT_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { useChartTokens } from "@/components/ui/charts/useChartTokens";
 
@@ -37,30 +37,6 @@ function computeDelta(
   return { sign: diff > 0 ? "+" : "-", value: val, pct };
 }
 
-// Generate synthetic sparkline points from current + previous values
-// (we only have two data points, so we interpolate a gentle 6-point curve)
-function makeSpark(
-  current: number | null,
-  previous: number | null,
-): { v: number }[] {
-  const c = current ?? 0;
-  const p = previous ?? c;
-  if (c === 0 && p === 0) return Array.from({ length: 6 }, () => ({ v: 0 }));
-  // Gentle curve from prev → current with slight variance
-  const mid1 = p + (c - p) * 0.25 + (c - p) * 0.05;
-  const mid2 = p + (c - p) * 0.5 - (c - p) * 0.08;
-  const mid3 = p + (c - p) * 0.65 + (c - p) * 0.04;
-  const mid4 = p + (c - p) * 0.82;
-  return [
-    { v: p },
-    { v: mid1 },
-    { v: mid2 },
-    { v: mid3 },
-    { v: mid4 },
-    { v: c },
-  ];
-}
-
 // ─────────────────────────────────────────────
 // Card config
 // ─────────────────────────────────────────────
@@ -78,7 +54,10 @@ type CardConfig = {
   subLabel: string;
   icon: React.ElementType;
   benchmarkLine: BenchmarkLine | null;
-  sparkData: { v: number }[];
+  // Real daily series (migration 0146) — present only for count metrics where a
+  // daily trend is honest (Leads Won). Rate cards omit it (a daily rate off 0-2
+  // closes is noise, not trend). Absent/empty → no sparkline rendered.
+  sparkData?: { v: number }[];
   // Whether a higher value is better (false = lower is better, e.g. response time)
   higherIsBetter: boolean;
 };
@@ -145,6 +124,7 @@ function MetricCard({
   higherIsBetter,
   sparkColor,
 }: CardConfig & { delay: number; sparkColor: string }) {
+  const hasSpark = !!sparkData && sparkData.some((d) => d.v > 0);
 
   const isPositive = delta
     ? (higherIsBetter ? delta.sign === "+" : delta.sign === "-")
@@ -232,7 +212,7 @@ function MetricCard({
         </div>
       </div>
 
-      {/* Primary value + sparkline side by side */}
+      {/* Primary value (+ real sparkline when this metric has an honest one) */}
       <div style={{ display: "flex", alignItems: "flex-end", gap: "var(--space-3)" }}>
         <p
           style={{
@@ -247,10 +227,12 @@ function MetricCard({
         >
           {value}
         </p>
-        {/* Sparkline — fills remaining space */}
-        <div style={{ flex: 1, minWidth: 0, paddingBottom: "4px" }}>
-          <MiniSparkline data={sparkData} color={sparkColor} height={40} />
-        </div>
+        {/* Sparkline — real daily series; only count metrics render it */}
+        {hasSpark && (
+          <div style={{ flex: 1, minWidth: 0, paddingBottom: "4px" }}>
+            <MiniSparkline data={sparkData!} color={sparkColor} height={40} />
+          </div>
+        )}
       </div>
 
       {/* Delta line */}
@@ -345,6 +327,9 @@ type Props = {
   current: CoreFourMetrics;
   previous: CoreFourMetrics | null;
   benchmarks: TeamBenchmarks | null;
+  /** Real daily Leads-Won series (migration 0146) for the one honest sparkline.
+      Rate cards (touch/response/conversion) intentionally get no series. */
+  wonTrend?: number[];
 };
 
 function makeBenchmarkLine(
@@ -365,19 +350,20 @@ function makeBenchmarkLine(
   };
 }
 
-export function CoreFourGrid({ current, previous, benchmarks }: Props) {
+export function CoreFourGrid({ current, previous, benchmarks, wonTrend }: Props) {
   const tokens = useChartTokens();
   const bCount = benchmarks?.agentCount ?? 0;
 
   const cards: CardConfig[] = [
     {
       eyebrow: "Leads Won",
-      value: String(current.leadsWon),
+      value: formatCount(current.leadsWon),
       delta: previous ? computeDelta(current.leadsWon, previous.leadsWon) : null,
       subLabel: "converted this period",
       icon: Trophy,
       benchmarkLine: null,
-      sparkData: makeSpark(current.leadsWon, previous?.leadsWon ?? null),
+      // The ONE honest sparkline — real daily Leads-Won series (migration 0146).
+      sparkData: wonTrend?.map((v) => ({ v })),
       higherIsBetter: true,
     },
     {
@@ -389,7 +375,6 @@ export function CoreFourGrid({ current, previous, benchmarks }: Props) {
       benchmarkLine: benchmarks
         ? makeBenchmarkLine(current.touchRate, benchmarks.avgTouchRate, bCount, formatPct)
         : null,
-      sparkData: makeSpark(current.touchRate, previous?.touchRate ?? null),
       higherIsBetter: true,
     },
     {
@@ -409,10 +394,6 @@ export function CoreFourGrid({ current, previous, benchmarks }: Props) {
             true,
           )
         : null,
-      sparkData: makeSpark(
-        current.avgResponseTimeMinutes,
-        previous?.avgResponseTimeMinutes ?? null,
-      ),
       higherIsBetter: false,
     },
     {
@@ -426,7 +407,6 @@ export function CoreFourGrid({ current, previous, benchmarks }: Props) {
       benchmarkLine: benchmarks
         ? makeBenchmarkLine(current.conversionRate, benchmarks.avgConversionRate, bCount, formatPct)
         : null,
-      sparkData: makeSpark(current.conversionRate, previous?.conversionRate ?? null),
       higherIsBetter: true,
     },
   ];

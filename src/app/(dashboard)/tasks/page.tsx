@@ -6,6 +6,7 @@ import { getNotifications } from '@/lib/services/notifications-service';
 import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import { PageControls } from '@/components/layout/PageControls';
 import { AddTaskButton } from '@/components/tasks/AddTaskButton';
+import { CompletedTasksButton } from '@/components/tasks/CompletedTasksButton';
 import { TasksCreateProvider } from '@/components/tasks/TasksCreateContext';
 import { TasksAsync } from './TasksAsync';
 import { TasksSkeleton } from './TasksSkeleton';
@@ -42,6 +43,14 @@ export default async function TasksPage({
             Tasks<span className="page-title-dot">.</span>
           </h1>
           <div className="flex items-center gap-3">
+            <CompletedTasksButton
+              currentUser={{
+                id: profile.id,
+                full_name: profile.full_name,
+                role: profile.role,
+                domain: profile.domain,
+              }}
+            />
             <AddTaskButton activeTab={tab} validTabs={validTabs} />
             {TOP_BAR_ENABLED && (
               <PageControls

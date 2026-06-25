@@ -1,22 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import dynamic from 'next/dynamic';
-import { m as motion, AnimatePresence } from 'framer-motion';
-import { TabSelector } from '@/components/ui/TabSelector';
-import { EffortGrid } from './EffortGrid';
+import { m as motion } from 'framer-motion';
 import { AgentRecentActivityList } from './AgentRecentActivityList';
 import {
   getAgentPulseAction,
   type AgentSelfMetrics,
 } from '@/lib/actions/performance';
+import { StatTile } from '@/components/ui/StatTile';
 import { formatCurrencyCompact, formatCount } from '@/lib/utils/numbers';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
-import type { PerformancePeriod, AgentTodayPulse } from '@/lib/services/performance-service';
+import type {
+  PerformancePeriod,
+  AgentTodayPulse,
+  AgentTrendPoint,
+} from '@/lib/services/performance-service';
 
 // Recharts stays out of the /performance initial chunk (perf audit G-3): the
-// shell, period selector, and effort cards hydrate first; the two chart panels
-// stream in behind same-shape placeholders (the MetricsSkeleton row shapes).
+// shell + Today strip hydrate first; the chart panels stream in behind
+// same-shape .skeleton placeholders.
 const CoreFourGrid = dynamic(
   () => import('./CoreFourGrid').then((mod) => mod.CoreFourGrid),
   { loading: () => <KpiRowFallback /> },
@@ -25,8 +28,8 @@ const CallOutcomeBar = dynamic(
   () => import('./CallOutcomeBar').then((mod) => mod.CallOutcomeBar),
   { loading: () => <OutcomeBarFallback /> },
 );
-const AgentCallTrendChart = dynamic(
-  () => import('./AgentCallTrendChart').then((mod) => mod.AgentCallTrendChart),
+const AgentActivityTrendChart = dynamic(
+  () => import('./AgentActivityTrendChart').then((mod) => mod.AgentActivityTrendChart),
   { loading: () => <TrendFallback /> },
 );
 
@@ -49,152 +52,190 @@ function OutcomeBarFallback() {
 }
 
 // ─────────────────────────────────────────────
-// Types
+// Today strip — since-IST-midnight pulse (Calls / Notes / Won). The ONE
+// "today" surface, pinned to the top of the scorecard. Values arrive from the
+// pulse RPC (the genuine since-midnight source); skeleton while it resolves.
 // ─────────────────────────────────────────────
 
-type ContentTab = 'overview' | 'today';
-
-const CONTENT_TABS: { id: ContentTab; label: string }[] = [
-  { id: 'overview', label: 'Overview'   },
-  { id: 'today',    label: 'Today'      },
-];
-
-// ─────────────────────────────────────────────
-// Skeleton rows — matches metric card height
-// ─────────────────────────────────────────────
-
-function MetricsSkeleton() {
+// Thin vertical rule between cells — mirrors DealsSummaryStrip's StatDivider
+// (hidden below sm, where the 2-col grid handles separation).
+function StatDivider() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-      {/* 4 KPI cards */}
-      <KpiRowFallback />
-      {/* 4 effort cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 'var(--space-4)' }}>
-        {[1,2,3,4].map((i) => (
-          <div key={i} className="skeleton" style={{ height: '108px', borderRadius: 'var(--radius-lg)' }} />
+    <div
+      aria-hidden="true"
+      className="max-sm:hidden"
+      style={{ width: '1px', alignSelf: 'stretch', background: 'var(--theme-paper-border)', margin: 'var(--space-2) 0', flexShrink: 0 }}
+    />
+  );
+}
+
+function TodayStrip({ pulse }: { pulse: AgentTodayPulse | null }) {
+  // The SAME shared StatTile-cell bar the /deals summary strip uses — mono
+  // accent value over a micro label, divided cells in one paper card. Values
+  // go through the canonical formatters; null → "—" until the pulse resolves
+  // (the formatter null contract — no bespoke skeleton needed).
+  const cells: { label: string; value: string }[] = [
+    { label: 'Calls',   value: formatCount(pulse?.callsToday.total) },
+    { label: 'Notes',   value: formatCount(pulse?.notesToday) },
+    { label: 'Won',     value: formatCount(pulse?.deals.dealCount) },
+    { label: 'Revenue', value: formatCurrencyCompact(pulse?.deals.revenue) },
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}
+    >
+      <div className="flex items-center justify-between" style={{ gap: 'var(--space-3)' }}>
+        <span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Today</span>
+        <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)' }}>
+          since midnight IST
+        </span>
+      </div>
+
+      {/* Deals-style stat bar: StatTile cells + dividers in one paper card */}
+      <div
+        className="grid grid-cols-2 sm:flex sm:items-stretch"
+        style={{
+          background:   'var(--theme-paper)',
+          border:       '1px solid var(--theme-paper-border)',
+          borderRadius: 'var(--radius-md)',
+          boxShadow:    'var(--shadow-1)',
+          overflow:     'hidden',
+        }}
+      >
+        {cells.map(({ label, value }, i) => (
+          <Fragment key={label}>
+            {i > 0 && <StatDivider />}
+            <StatTile variant="cell" label={label} value={value} />
+          </Fragment>
         ))}
       </div>
-      {/* outcome bar */}
-      <OutcomeBarFallback />
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Pipeline line — live pipeline + period revenue, one calm row (replaces the
+// retired EffortGrid live-pipeline cards + the old Today-tab pills). In
+// Discussion / Nurturing are LIVE counts from the summary RPC; Revenue is the
+// period deal revenue from the pulse.
+// ─────────────────────────────────────────────
+
+function PipelineLine({
+  inDiscussion,
+  nurturing,
+  revenue,
+}: {
+  inDiscussion: number;
+  nurturing:    number;
+  revenue:      number | undefined;
+}) {
+  const items: { label: string; value: string | undefined; dot: string }[] = [
+    { label: 'In Discussion', value: formatCount(inDiscussion), dot: 'var(--color-info)'   },
+    { label: 'Nurturing',     value: formatCount(nurturing),    dot: 'var(--color-warning)' },
+    { label: 'Revenue',       value: revenue === undefined ? undefined : formatCurrencyCompact(revenue), dot: 'var(--theme-accent)' },
+  ];
+
+  return (
+    <div
+      className="flex flex-wrap items-center"
+      style={{
+        gap:          'var(--space-5)',
+        padding:      'var(--space-3) var(--space-5)',
+        background:   'var(--theme-paper-subtle)',
+        borderRadius: 'var(--radius-lg)',
+      }}
+    >
+      {items.map(({ label, value, dot }) => (
+        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 'var(--radius-full)', background: dot, flexShrink: 0 }} />
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>
+            {label}
+          </span>
+          {value === undefined ? (
+            <div className="skeleton" style={{ width: '32px', height: '16px', borderRadius: 'var(--radius-sm)' }} />
+          ) : (
+            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: 'var(--theme-text-primary)' }}>
+              {value}
+            </span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────
-// Today tab — calls today highlight + today scoped metrics
+// AgentPerformanceShell — the lean single-page self-scorecard.
+//
+// Layout (one scrollable column): Today strip → period KPIs → activity trend
+// + pipeline line → call-outcome mix → recent activity. No tabs. The metrics
+// arrive server-fetched per range (initialData + trend, key-remounted per
+// range — D-2 one-RPC-per-view). The ONLY client fetch is the Today pulse,
+// fired exactly once per mount (the since-IST-midnight source for the strip).
 // ─────────────────────────────────────────────
 
-function TodayTab({
-  data,
-  pulse,
-}: {
-  data:  AgentSelfMetrics | null;
-  pulse: AgentTodayPulse | null;
-}) {
-  if (!data) return <MetricsSkeleton />;
+type Props = {
+  agentId:     string;
+  agentDomain: string;
+  period:      PerformancePeriod;
+  customFrom:  string | null;
+  customTo:    string | null;
+  initialData: AgentSelfMetrics;
+  /** Real daily series for the period (migration 0146) — feeds the trend chart
+      and the one honest KPI sparkline (Leads Won). */
+  trend:       AgentTrendPoint[];
+};
 
-  // The pulse RPC is the literal since-IST-midnight count regardless of the
-  // selected period — both calls and notes read from it (undefined until the
-  // pulse resolves → skeleton on the value below).
-  const callsToday = pulse?.callsToday.total;
-  const notesToday = pulse?.notesToday;
+export function AgentPerformanceShell({
+  agentId: _agentId,
+  period,
+  customFrom,
+  customTo,
+  initialData,
+  trend,
+}: Props) {
+  const data = initialData;
+
+  // Today pulse — the genuine since-IST-midnight source for the Today strip and
+  // the period revenue. ONE fetch per mount (the shell key-remounts per range,
+  // so a range change is a fresh mount). Plain promise + cancelled ref (no
+  // startTransition — it would defer setPulse(null)).
+  const [pulse, setPulse] = useState<AgentTodayPulse | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getAgentPulseAction(period, customFrom ?? undefined, customTo ?? undefined)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.data) setPulse(result.data);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [period, customFrom, customTo]);
+
+  // The trend chart shows the period series; when the range can't plot one
+  // (today → ≤1 bucket) it falls back to the pulse's 14-day call trend.
+  const showingFallbackTrend = trend.length < 2;
+  const trendLabel = showingFallbackTrend ? 'Daily Calls · Last 14 Days' : 'Activity · This Period';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
 
-      {/* Hero: Calls Today */}
-      <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
-        className="grid grid-cols-1 sm:grid-cols-2"
-        style={{
-          gap: 'var(--space-4)',
-        }}
-      >
-        {/* Calls Today */}
-        <div
-          style={{
-            background:   'var(--theme-paper)',
-            border:       '1px solid var(--theme-paper-border)',
-            borderRadius: 'var(--radius-lg)',
-            padding:      'var(--space-6)',
-            boxShadow:    'var(--shadow-1)',
-            display:      'flex',
-            flexDirection:'column',
-            gap:          'var(--space-2)',
-          }}
-        >
-          <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-medium)', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--theme-text-tertiary)' }}>
-            Calls Today
-          </span>
-          {callsToday === undefined ? (
-            <div className="skeleton" style={{ width: '72px', height: '48px', borderRadius: 'var(--radius-sm)' }} />
-          ) : (
-            <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-display)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
-              {callsToday}
-            </span>
-          )}
-          <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
-            call notes logged since midnight IST
-          </span>
-          {pulse && pulse.callsToday.total > 0 && (
-            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              {[
-                { label: `${formatCount(pulse.callsToday.newLeads)} new lead${pulse.callsToday.newLeads === 1 ? '' : 's'}`, bg: 'var(--theme-accent-surface)', color: 'var(--theme-accent)' },
-                { label: `${formatCount(pulse.callsToday.oldLeads)} existing`, bg: 'var(--theme-paper-subtle)', color: 'var(--theme-text-secondary)' },
-              ].map(({ label, bg, color }) => (
-                <span
-                  key={label}
-                  style={{
-                    display:      'inline-flex',
-                    alignItems:   'center',
-                    padding:      '2px 10px',
-                    borderRadius: 'var(--radius-full)',
-                    background:   bg,
-                    color,
-                    fontFamily:   'var(--font-sans)',
-                    fontSize:     'var(--text-xs)',
-                    fontWeight:   'var(--weight-medium)',
-                  }}
-                >
-                  {label}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* ① Today strip */}
+      <TodayStrip pulse={pulse} />
 
-        {/* Notes Today */}
-        <div
-          style={{
-            background:   'var(--theme-paper)',
-            border:       '1px solid var(--theme-paper-border)',
-            borderRadius: 'var(--radius-lg)',
-            padding:      'var(--space-6)',
-            boxShadow:    'var(--shadow-1)',
-            display:      'flex',
-            flexDirection:'column',
-            gap:          'var(--space-2)',
-          }}
-        >
-          <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-medium)', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--theme-text-tertiary)' }}>
-            Notes Today
-          </span>
-          {notesToday === undefined ? (
-            <div className="skeleton" style={{ width: '72px', height: '48px', borderRadius: 'var(--radius-sm)' }} />
-          ) : (
-            <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-display)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
-              {notesToday}
-            </span>
-          )}
-          <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
-            all updates & notes added today
-          </span>
-        </div>
-      </motion.div>
+      {/* ② Period KPIs — the honest four (Leads Won carries the real sparkline) */}
+      <CoreFourGrid
+        current={data.core}
+        previous={data.previous}
+        benchmarks={data.benchmarks}
+        wonTrend={trend.map((p) => p.leadsWon)}
+      />
 
-      {/* 14-day call trend */}
+      {/* ③ Activity over time + live-pipeline line */}
       <motion.div
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
@@ -207,273 +248,37 @@ function TodayTab({
           padding:      'var(--space-5)',
           display:      'flex',
           flexDirection:'column',
-          gap:          'var(--space-3)',
+          gap:          'var(--space-4)',
         }}
       >
         <span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>
-          Daily Calls · Last 14 Days
+          {trendLabel}
         </span>
-        {pulse ? <AgentCallTrendChart trend={pulse.callTrend} /> : <TrendFallback />}
+        <AgentActivityTrendChart trend={trend} fallback14d={pulse?.callTrend} />
+        <PipelineLine
+          inDiscussion={data.effort.inDiscussionCount}
+          nurturing={data.effort.nurturingCount}
+          revenue={pulse?.deals.revenue}
+        />
       </motion.div>
 
-      {/* Today's outcome breakdown */}
+      {/* ④ Call outcome mix — once, display-only */}
       <motion.div
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: ENTER_DURATION, delay: 0.08, ease: EASE_OUT_EXPO }}
+        transition={{ duration: ENTER_DURATION, delay: 0.1, ease: EASE_OUT_EXPO }}
       >
         <CallOutcomeBar breakdown={data.outcomes} />
       </motion.div>
 
-      {/* Pipeline live counts + period deals */}
+      {/* ⑤ Recent lead activity */}
       <motion.div
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: ENTER_DURATION, delay: 0.14, ease: EASE_OUT_EXPO }}
-        style={{
-          display:  'flex',
-          flexWrap: 'wrap',
-          gap:      'var(--space-4)',
-        }}
-      >
-        {[
-          { label: 'Leads Won',    value: String(data.core.leadsWon),            sub: null,                                                                       color: 'var(--color-success-text)',  bg: 'var(--color-success-light)'  },
-          { label: 'In Discussion',value: String(data.effort.inDiscussionCount), sub: null,                                                                       color: 'var(--color-info-text)',     bg: 'var(--color-info-light)'    },
-          { label: 'Nurturing',    value: String(data.effort.nurturingCount),    sub: null,                                                                       color: 'var(--color-warning-text)',  bg: 'var(--color-warning-light)' },
-          // Revenue + deal count from public.deals (won_at in the active period)
-          { label: 'Revenue',      value: pulse ? formatCurrencyCompact(pulse.deals.revenue) : '—', sub: pulse ? `${formatCount(pulse.deals.dealCount)} deal${pulse.deals.dealCount === 1 ? '' : 's'}` : null, color: 'var(--theme-accent)', bg: 'var(--theme-accent-surface)' },
-        ].map(({ label, value, sub, color, bg }) => (
-          <div
-            key={label}
-            style={{
-              flex:         '1 1 140px',
-              background:   bg,
-              borderRadius: 'var(--radius-lg)',
-              padding:      'var(--space-4) var(--space-5)',
-              display:      'flex',
-              flexDirection:'column',
-              gap:          'var(--space-1)',
-            }}
-          >
-            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-medium)', letterSpacing: '0.10em', textTransform: 'uppercase', color }}>
-              {label}
-            </span>
-            <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-light)', color, lineHeight: 1 }}>
-              {value}
-            </span>
-            {sub && (
-              <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color }}>
-                {sub}
-              </span>
-            )}
-          </div>
-        ))}
-      </motion.div>
-
-      {/* Recent lead activity — keyset load-more */}
-      <motion.div
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: ENTER_DURATION, delay: 0.2, ease: EASE_OUT_EXPO }}
+        transition={{ duration: ENTER_DURATION, delay: 0.16, ease: EASE_OUT_EXPO }}
       >
         <AgentRecentActivityList />
       </motion.div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Overview tab — full KPI grid for the selected period
-// ─────────────────────────────────────────────
-
-function OverviewTab({ data, pulse, showTodayRow }: { data: AgentSelfMetrics | null; pulse: AgentTodayPulse | null; showTodayRow: boolean }) {
-  if (!data) return <MetricsSkeleton />;
-
-  // The "Today" strip reads since-IST-midnight numbers from the pulse RPC (the
-  // genuine since-midnight source), NOT the period-scoped effort/core fields —
-  // those are wrong under the "since midnight IST" label when period ≠ today.
-  // Calls + Notes come from the pulse since-midnight windows; Won is the today
-  // deal count. value === undefined → pulse not yet loaded → skeleton.
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-
-      {/* Calls Today highlight row — shown when browsing a period wider than today */}
-      {showTodayRow && <motion.div
-        key="calls-today-row"
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
-        style={{
-          display:        'flex',
-          alignItems:     'center',
-          gap:            'var(--space-4)',
-          padding:        'var(--space-3) var(--space-5)',
-          background:     'var(--theme-paper)',
-          border:         '1px solid var(--theme-paper-border)',
-          borderRadius:   'var(--radius-lg)',
-          boxShadow:      'var(--shadow-1)',
-        }}
-      >
-        <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)', letterSpacing: '0.10em', textTransform: 'uppercase', color: 'var(--theme-text-tertiary)', flexShrink: 0 }}>
-          Today
-        </span>
-        <div style={{ display: 'flex', gap: 'var(--space-6)', flex: 1 }}>
-          {[
-            { label: 'Calls',  value: pulse?.callsToday.total },
-            { label: 'Notes',  value: pulse?.notesToday       },
-            { label: 'Won',    value: pulse?.deals.dealCount  },
-          ].map(({ label, value }) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-2)' }}>
-              {value === undefined ? (
-                <div className="skeleton" style={{ width: '24px', height: '24px', borderRadius: 'var(--radius-sm)' }} />
-              ) : (
-                <span style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-light)', color: 'var(--theme-text-primary)', lineHeight: 1 }}>
-                  {value}
-                </span>
-              )}
-              <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
-                {label}
-              </span>
-            </div>
-          ))}
-        </div>
-        <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', flexShrink: 0 }}>
-          since midnight IST
-        </span>
-      </motion.div>}
-
-      {/* Core Four KPIs */}
-      <CoreFourGrid
-        current={data.core}
-        previous={data.previous}
-        benchmarks={data.benchmarks}
-      />
-
-      {/* Effort */}
-      <EffortGrid metrics={data.effort} />
-
-      {/* Outcomes */}
-      <CallOutcomeBar breakdown={data.outcomes} />
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// AgentPerformanceShell — main export
-// ─────────────────────────────────────────────
-
-type Props = {
-  agentId:     string;
-  agentDomain: string;
-  /** Derived by the page from the date_from/date_to URL params (the shared
-      PerformanceFilters bar). The shell key-remounts per range, so these are
-      effectively immutable for a given mount — no in-shell period state. */
-  period:      PerformancePeriod;
-  /** ISO range bounds — non-null only for an arbitrary ('custom') range. */
-  customFrom:  string | null;
-  customTo:    string | null;
-  initialData: AgentSelfMetrics;
-};
-
-export function AgentPerformanceShell({
-  agentId: _agentId,
-  period,
-  customFrom,
-  customTo,
-  initialData,
-}: Props) {
-  const [activeTab, setActiveTab] = useState<ContentTab>('overview');
-
-  // Metrics arrive server-fetched for the resolved range via initialData; the
-  // page key-remounts this component per range, so there is no client metrics
-  // refetch effect (honours the one-RPC-per-view rule, perf audit D-2).
-  const data = initialData;
-
-  // Today-tab pulse (calls split, 14-day trend, period deals) — the genuine
-  // since-IST-midnight source for BOTH the Today tab and the Overview strip.
-  const [pulse, setPulse] = useState<AgentTodayPulse | null>(null);
-
-  // Pulse fetch gate — the pulse is the genuine since-IST-midnight source for
-  // BOTH the Today tab AND the Overview "Today" strip. The strip renders on the
-  // Overview tab whenever period !== 'today' (showOverviewTodayRow), so the gate
-  // must cover that case too — not just the Today tab. There is exactly ONE
-  // pulse fetch path; widening this boolean is the whole fix (no second fetch).
-  // Because one of the two conditions is always true at the current range,
-  // needsPulse does not flip on a tab switch → a tab switch fires no request.
-  // Plain promise chain with a cancelled ref (no startTransition — would defer
-  // setPulse(null)).
-  const showingTodayTab = period === 'today' || activeTab === 'today';
-  const showingOverviewTodayRow = activeTab === 'overview' && period !== 'today';
-  const needsPulse = showingTodayTab || showingOverviewTodayRow;
-  useEffect(() => {
-    if (!needsPulse) return;
-
-    let cancelled = false;
-    setPulse(null);
-
-    getAgentPulseAction(period, customFrom ?? undefined, customTo ?? undefined)
-      .then((result) => {
-        if (cancelled) return;
-        if (result.data) setPulse(result.data);
-      })
-      .catch(() => {});
-
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsPulse, period, customFrom, customTo]);
-
-  // When the selected range IS today, the Today tab/content is always shown.
-  // When overview is active but the range is today, overview shows today metrics.
-  const effectiveTab: ContentTab =
-    period === 'today' ? 'today' : activeTab;
-
-  // Overview tab shows a "Calls Today" snapshot row when the range is not today.
-  const showOverviewTodayRow = period !== 'today';
-
-  return (
-    <div>
-      {/* ── Content area ────────────────────────────────────────────────
-          The page renders the shared <PerformanceFilters> strip above this
-          shell; the range arrives as props and the shell key-remounts per
-          range (no in-shell period selector / loading bar). */}
-      {/* Tab bar — hidden when the range is today (tabs redundant).
-          TabSelector 'connected' variant (distinct indicatorLayoutId from
-          the founder shell's pills, per the shared-layout rule). */}
-      {period !== 'today' && (
-        <div style={{ marginBottom: 'var(--space-5)' }}>
-          <TabSelector
-            tabs={CONTENT_TABS}
-            activeTab={effectiveTab}
-            onChange={(id) => setActiveTab(id as ContentTab)}
-            variant="connected"
-            indicatorLayoutId="agent-content-tabs"
-          />
-        </div>
-      )}
-
-      <AnimatePresence mode="wait">
-        {effectiveTab === 'today' ? (
-          <motion.div
-            key="tab-today"
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
-          >
-            <TodayTab data={data} pulse={pulse} />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="tab-overview"
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
-          >
-            <OverviewTab data={data} pulse={pulse} showTodayRow={showOverviewTodayRow} />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

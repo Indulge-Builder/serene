@@ -364,6 +364,57 @@ export const getAgentPerformanceSummary = cache(async (
 });
 
 // ─────────────────────────────────────────────
+// Agent activity trend — real daily series for the lean self-scorecard
+// (migration 0146). Backs the period "Activity over time" chart AND the one
+// honest KPI sparkline (Leads Won). SELF-SCOPED RPC (auth.uid()), so the
+// session client is mandatory. React cache()-wrapped to dedup within a render.
+// ─────────────────────────────────────────────
+
+export type AgentTrendPoint = {
+  /** IST calendar date, YYYY-MM-DD, oldest first */
+  day:      string;
+  leadsWon: number;
+  calls:    number;
+  notes:    number;
+};
+
+type AgentTrendRpcRow = {
+  day:       string;
+  leads_won: number | string | null;
+  calls:     number | string | null;
+  notes:     number | string | null;
+};
+
+export const getAgentPerformanceTrend = cache(async (
+  period: PerformancePeriod,
+  customFrom?: string,
+  customTo?: string,
+): Promise<AgentTrendPoint[]> => {
+  const supabase = await createClient();
+  const range = getPeriodDateRange(period);
+  const from = (period === 'custom' && customFrom) ? customFrom : range.from;
+  const to   = (period === 'custom' && customTo)   ? customTo   : range.to;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("get_agent_performance_trend", {
+    p_date_from: from,
+    p_date_to:   to,
+  });
+
+  if (error || !data) {
+    console.error("[performance-service] get_agent_performance_trend failed:", error);
+    return [];
+  }
+
+  return mapRows<AgentTrendRpcRow, AgentTrendPoint>(data as AgentTrendRpcRow[], (r) => ({
+    day:      r.day,
+    leadsWon: Number(r.leads_won ?? 0),
+    calls:    Number(r.calls ?? 0),
+    notes:    Number(r.notes ?? 0),
+  }));
+});
+
+// ─────────────────────────────────────────────
 // Team Benchmarks — computed inside get_agent_performance (migration 0101).
 //
 // ── Averaging method: mean of per-agent means (unweighted) ──────────────────

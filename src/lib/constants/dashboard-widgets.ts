@@ -136,7 +136,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     domains:     '*',
     defaultSize: 'sm',
     colSpan:     1,
-    defaultGrid: { w: 3, h: 5, minW: 3, minH: 4 },
+    defaultGrid: { w: 2, h: 2, minW: 2, minH: 2 },
     module:      'gia',
   },
   {
@@ -147,7 +147,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     domains:     '*',
     defaultSize: 'sm',
     colSpan:     1,
-    defaultGrid: { w: 3, h: 5, minW: 3, minH: 4 },
+    defaultGrid: { w: 2, h: 2, minW: 2, minH: 2 },
     module:      'gia',
   },
   {
@@ -209,7 +209,8 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     id:          'manager-budget',
     label:       'Campaign Budget',
     description: 'Ad-account fuel gauge — recharged vs spent, remaining balance, and ROI for the period.',
-    roles:       ['manager', 'admin', 'founder'],
+    // Admin/founder only — mirrors the /budget page access (managers excluded).
+    roles:       ['admin', 'founder'],
     domains:     '*',
     defaultSize: 'md',
     colSpan:     2,
@@ -266,17 +267,17 @@ export const DEFAULT_GRID_BY_ROLE: Record<UserRole, GridPlacement[]> = {
   agent: [
     { widgetId: 'agent-tasks',          x: 0, y: 0, w: 6, h: 9  },
     { widgetId: 'elaya-presence',       x: 6, y: 0, w: 6, h: 11 },
-    { widgetId: 'agent-pending-calls',  x: 0, y: 9, w: 3, h: 5  },
-    { widgetId: 'agent-new-leads',      x: 3, y: 9, w: 3, h: 5  },
+    { widgetId: 'agent-pending-calls',  x: 0, y: 9, w: 2, h: 2  },
+    { widgetId: 'agent-new-leads',      x: 2, y: 9, w: 2, h: 2  },
     { widgetId: 'agent-activity',       x: 0, y: 14, w: 6, h: 11 },
   ],
   guest: [],
 };
 
 // Default layout per role — ordered list of widget ids.
-// Manager mirrors the founder layout (+ the budget widget, domain-pinned
-// server-side). Agent first screen: tasks left / Elaya right, the two live
-// snapshot counts, then the tall activity feed.
+// Manager mirrors the founder layout MINUS the budget widget (admin/founder
+// only). Agent first screen: tasks left / Elaya right, the two live snapshot
+// counts, then the tall activity feed.
 export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
   founder: [
     'agent-tasks',
@@ -296,6 +297,7 @@ export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
     'manager-cold-leads',
     'manager-budget',
   ],
+  // Manager mirrors founder/admin MINUS the budget widget (admin/founder only).
   manager: [
     'agent-tasks',
     'agent-activity',
@@ -303,7 +305,6 @@ export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
     'manager-lead-volume',
     'manager-campaigns',
     'manager-cold-leads',
-    'manager-budget',
   ],
   agent: [
     'agent-tasks',

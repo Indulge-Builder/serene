@@ -23,12 +23,18 @@ performance/page.tsx              ← Server component (thin orchestrator)
   │
   ├── <PerformanceFilters showSearch={false} />   ← the SAME shared bar as manager/founder
   │
-  ├── <AgentPerformanceShell key={period:from:to} agentId agentDomain period customFrom customTo initialData />
+  │  ALSO fetches getAgentPerformanceTrend(period, from?, to?) in the SAME
+  │  Promise.all → get_agent_performance_trend RPC (0146; daily Calls/Notes/Won
+  │  series), passed as the `trend` prop (one-RPC-per-view, D-2 — no client refetch)
+  │
+  ├── <AgentPerformanceShell key={period:from:to} agentId agentDomain period customFrom customTo initialData trend />
   │     'use client' — period/range arrive as PROPS (URL-driven, no in-shell
   │     period state). The shell KEY-REMOUNTS per range with the server-fetched
   │     data — there is NO client metrics refetch (one-RPC-per-view, D-2). Only
   │     the Today pulse stays a client action (the ONE-pulse-fetch invariant).
-  │     Renders: CoreFourGrid + EffortGrid + CallOutcomeBar
+  │     SINGLE scrollable column (NO tabs, redesign 2026-06-25): Today strip
+  │     (pulse) → CoreFourGrid → AgentActivityTrendChart + pipeline line →
+  │     CallOutcomeBar (once) → AgentRecentActivityList
   │
   └── <PerformanceMotivationalFooter leadsWon inDiscussionCount period />
         Server component — Elaya's quiet sentence. Playfair italic. No glyph.
@@ -149,19 +155,24 @@ WHERE, never an RLS change).
 
 All role branches use the canonical list-page shell: `<main className="flex-1 min-w-0 p-8">` inside the dashboard paper scroll container (`layout.tsx` → `overflowY: auto`). **Never** add nested scroll regions with fixed `maxHeight` on the manager roster or a page-level `maxWidth` cap — content scrolls in the paper like `/leads` and `/tasks`.
 
-## Agent self-view layout (2026-06-01)
-- **CoreFourGrid:** single row of 4 KPI cards (Leads Won, Conversion Rate, Avg Response Time, In Discussion) with Lucide header icons, inline period delta, Recharts sparkline (`AreaChart` + `useChartTokens`), team benchmark line when `benchmarks` non-null.
-- **CallOutcomeBar:** donut chart (Recharts `PieChart`) replacing the legacy horizontal bar for agent view.
-- **EffortGrid:** unchanged 4-col compact cards below KPI row.
+## Agent self-view layout (redesigned 2026-06-25 — lean single-page scorecard)
 
-Do not revert agent view to 2×2 KPI grid without an explicit spec change.
+A single scrollable column, **no tabs** (the Overview/Today split was removed). Order:
+
+1. **Today strip** — the shared `StatTile variant="cell"` divided bar (the SAME pattern as `DealsSummaryStrip`, R-01): Calls · Notes · Won · Revenue, from the pulse RPC, values via `formatCount`/`formatCurrencyCompact`. The one "today" surface, pinned top. Never re-fork bespoke stat chips here.
+2. **CoreFourGrid** — 4 KPI cards (Leads Won, Touch Rate, Avg Response Time, Conversion Rate) with inline period delta + domain-benchmark line (real). **Sparklines are opt-in and REAL now:** only the count metric (Leads Won) renders one, fed by `get_agent_performance_trend`'s daily `leads_won` series via the `wonTrend` prop; the rate cards render none. **`makeSpark` (the fabricated 2-point curve) is deleted — never reintroduce a synthetic sparkline.**
+3. **AgentActivityTrendChart** (period Calls/Notes/Won lines; falls back to the pulse's 14-day call trend when the range is a single day) **+ a pipeline line** (In Discussion · Nurturing live counts + period Revenue from the pulse) — both inside one paper card.
+4. **CallOutcomeBar** — donut + legend, **rendered once**, display-only (no agent-side drill; that's the manager/founder direction).
+5. **AgentRecentActivityList** — keyset load-more, links to dossiers.
+
+**`EffortGrid` is deleted** (its only mount was this shell): Calls/Notes moved into the trend chart, In Discussion/Nurturing into the pipeline line. Do not revert to the two-tab shell or re-add a synthetic sparkline without an explicit spec change. Full spec: `docs/audits/2026-06-25-agent-performance-scorecard-redesign.md`.
 
 ## Recharts splitting (perf audit G-3, 2026-06-11)
 
 The three Recharts importers load via `next/dynamic` at their call sites so the
 chart library never sits in the `/performance` initial chunk: `CoreFourGrid` +
-`CallOutcomeBar` in `AgentPerformanceShell` (same-shape `.skeleton` placeholders
-mirroring `MetricsSkeleton` rows), `CallOutcomeBar` in `AgentDetailPanel` (chunk
+`CallOutcomeBar` + `AgentActivityTrendChart` in `AgentPerformanceShell` (same-shape
+`.skeleton` placeholders), `CallOutcomeBar` in `AgentDetailPanel` (chunk
 loads in parallel with the panel's own metrics fetch), `DomainOverviewPanel` in
 `FounderPerformanceShell` (fetched on first Domains-tab click). Never reintroduce
 a static import of a Recharts-consuming component into a shell on this route.
@@ -179,6 +190,7 @@ Exported functions (post D-2 — the per-metric query functions
 | Function | Returns | Backing |
 | --- | --- | --- |
 | `getAgentPerformanceSummary(period, from?, to?)` | `AgentPerformanceSummary` | `get_agent_performance` RPC (0101); React `cache()`-wrapped |
+| `getAgentPerformanceTrend(period, from?, to?)` | `AgentTrendPoint[]` | `get_agent_performance_trend` RPC (0146; self-scoped daily Calls/Notes/Won series); React `cache()`-wrapped. Feeds `AgentActivityTrendChart` + the Leads-Won KPI sparkline |
 | `getAgentRosterPerformance(domain, dateFrom, dateTo)` | `AgentRosterRow[]` | `get_agent_roster_performance` RPC (0101) |
 | `getAgentDetailMetrics(agentId, domain, dateFrom, dateTo)` | `AgentDetailMetrics` | 3 parallel queries (unchanged) |
 | `getAgentFirstTouchScorecard(agentId, dateFrom, dateTo)` | `FirstTouchScorecard` | `get_agent_first_touch_pairs` RPC (0123, admin client); React `cache()`; business-minute bucketing in the mapper |
@@ -421,8 +433,8 @@ Manager role: `caller.domain !== domain` → 403. Domain never trusted from clie
 | Component                    | Location                                                                |
 | ---------------------------- | ----------------------------------------------------------------------- |
 | `PerformanceFilters`         | `src/components/performance/` — the shared filter bar (all roles); composes `<FilterBar dateRange>` (Range presets + custom Dates) + `useUrlFilters` |
-| `CoreFourGrid`               | `src/components/performance/`                                           |
-| `EffortGrid`                 | `src/components/performance/`                                           |
+| `CoreFourGrid`               | `src/components/performance/` — opt-in REAL sparkline (Leads Won only); `makeSpark` deleted |
+| `AgentActivityTrendChart`    | `src/components/performance/` — period Calls/Notes/Won trend + 14-day fallback (was `AgentCallTrendChart`) |
 | `CallOutcomeBar`             | `src/components/performance/` (reused in detail panel)                  |
 | `ManagerPerformancePanel`    | `src/components/performance/` — roster domain `FilterDropdown` + URL `search` |
 | `AgentDetailPanel`           | `src/components/performance/`                                           |

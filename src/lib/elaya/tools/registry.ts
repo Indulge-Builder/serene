@@ -29,8 +29,9 @@ import {
 } from '@/lib/elaya/tools/write-registry';
 import {
   searchLeadsForElaya,
-  getLeadBySlugForElaya,
+  getLeadByRefForElaya,
   getLeadNotesFullForElaya,
+  findDomainLeadOwners,
 } from '@/lib/services/leads-service';
 import { getGoingColdLeads } from '@/lib/services/sla-service';
 import { getDealsByRole } from '@/lib/services/deals-service';
@@ -138,10 +139,32 @@ const searchLeads: ElayaTool = {
       page: page ?? 1,
       pageSize: 30,
     });
+
+    // Owner hint (agents only): a scoped search returns nothing because an agent
+    // only sees their OWN assigned leads — but the lead may well exist in their
+    // domain, owned by a teammate. When that's the case, name the owner so Elaya
+    // can say "that lead is X's — ask a manager to reassign" instead of implying
+    // it doesn't exist. This is a READ-ONLY domain lookup that surfaces a name only
+    // (no slug/id/phone) — it never widens what the agent can ACT on (the write
+    // tools' canAccessLead gate is unchanged).
+    let ownedByTeammate: { name: string; owner: string }[] | undefined;
+    if (
+      principal.role === 'agent' &&
+      result.leads.length === 0 &&
+      term
+    ) {
+      ownedByTeammate = await findDomainLeadOwners(principal.domain, term);
+      if (ownedByTeammate.length === 0) ownedByTeammate = undefined;
+    }
+
     return {
       totalCount: result.totalCount,
       statusCounts: result.statusCounts,
       leads: result.leads.map((l) => ({
+        // leadId is the STABLE opaque handle the write tools target (UUID-or-slug
+        // accepted). Surfaced like get_my_tasks' taskId; the PII gateway's UUID
+        // guard keeps it intact through masking. Prefer it over slug for writes.
+        leadId: l.id,
         name: [l.first_name, l.last_name].filter(Boolean).join(' '),
         slug: l.slug,
         status: l.status,
@@ -154,6 +177,15 @@ const searchLeads: ElayaTool = {
         assignee: l.assignee?.full_name ?? null,
         latestNote: l.latest_note?.content ?? null,
       })),
+      ...(ownedByTeammate
+        ? {
+            note:
+              'No leads matching that are assigned to this agent. The following matching ' +
+              'leads exist in their domain but belong to a teammate — the agent cannot act ' +
+              'on these; tell them who owns it and suggest asking a manager to reassign.',
+            ownedByTeammate,
+          }
+        : {}),
     };
   },
 };
@@ -198,21 +230,22 @@ const getColdLeads: ElayaTool = {
 const getLeadDetails: ElayaTool = {
   name: 'get_lead_details',
   description:
-    'Fetch one lead by its slug (from search_leads results) with its 5 most recent notes. ' +
+    'Fetch one lead by its leadId (from search_leads results) with its 5 most recent notes. ' +
     'Refuses leads the current user is not permitted to see.',
-  schema: z.object({ slug: z.string().trim().min(1).max(160) }),
+  schema: z.object({ leadId: z.string().trim().min(1).max(160) }),
   jsonSchema: {
     type: 'object',
-    properties: { slug: { type: 'string', description: 'The lead slug' } },
-    required: ['slug'],
+    properties: { leadId: { type: 'string', description: 'The lead id or slug (from search_leads results)' } },
+    required: ['leadId'],
     additionalProperties: false,
   },
   run: async (principal, input) => {
-    const { slug } = input as { slug: string };
+    const { leadId } = input as { leadId: string };
     // Admin-client read (works in the sessionless WhatsApp context); the
     // canAccessLead gate below is the per-resource trust boundary — it re-checks
-    // role/domain/assignment on the principal, so the broad read is safe.
-    const lead = await getLeadBySlugForElaya(slug);
+    // role/domain/assignment on the principal, so the broad read is safe. The ref
+    // is a UUID or a slug (getLeadByRefForElaya resolves both).
+    const lead = await getLeadByRefForElaya(leadId);
     if (!lead || !canAccessLead(principal, lead)) {
       // One message for both not-found and not-permitted (S-09 principle).
       return { error: 'Lead not found or you are not permitted to view it.' };

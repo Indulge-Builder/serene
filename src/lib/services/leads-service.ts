@@ -849,6 +849,67 @@ export async function getLeadBySlugForElaya(slug: string): Promise<LeadWithAssig
 }
 
 /**
+ * Elaya lead-handle resolver — resolves an opaque ref that is EITHER a lead UUID
+ * (the id surfaced by searchLeadsForElaya) OR a slug, via the admin client (works
+ * sessionless). Mirrors the dossier route's `getLeadBySlug(id) ?? getLeadById(id)`
+ * resolution (R-01) so a tool handle never depends on the model reproducing the
+ * PII-derived slug string. A UUID-shaped ref tries the id column first; anything
+ * else tries the slug. The CALLER must still run canAccessLead on the result —
+ * scoping is the tool's gate, exactly as with getLeadBySlugForElaya.
+ */
+export async function getLeadByRefForElaya(ref: string): Promise<LeadWithAssignee | null> {
+  const admin = createAdminClient();
+  const trimmed = ref.trim();
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+
+  const { data, error } = await admin
+    .from("leads")
+    .select("*, assignee:profiles!leads_assigned_to_fkey(full_name)")
+    .eq(isUuid ? "id" : "slug", trimmed)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (!error && data) return data as unknown as LeadWithAssignee;
+
+  // A non-UUID ref is a slug → done. A UUID ref that missed could still be a slug
+  // in the rare case a slug is UUID-shaped (it never is, but stay correct + cheap).
+  if (isUuid) return null;
+  return null;
+}
+
+/**
+ * Elaya owner-hint source — leads in a domain matching a search term, returning
+ * the lead NAME and its OWNER's name ONLY (never slug/id/phone). Used when an
+ * agent's own-scoped search came back empty: a matching lead may exist in their
+ * domain but belong to a teammate. Surfacing only two display names lets Elaya
+ * say "that's Pawani's lead — ask a manager to reassign" WITHOUT widening what
+ * the agent can act on (the write tools' canAccessLead gate is untouched). Admin
+ * client (sessionless WhatsApp context); domain scope is the only filter, mirroring
+ * searchLeadsForElaya's manager branch. Bounded to a handful of rows.
+ */
+export async function findDomainLeadOwners(
+  domain: AppDomain,
+  search: string,
+): Promise<{ name: string; owner: string }[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("leads")
+    .select(
+      "first_name, last_name, assignee:profiles!leads_assigned_to_fkey(full_name)",
+    )
+    .eq("domain", domain)
+    .is("archived_at", null)
+    .filter("search_text", "ilike", `%${search.trim().toLowerCase()}%`)
+    .order("created_at", { ascending: false })
+    .limit(5);
+  if (error || !data) return [];
+  return (data as unknown as LeadListItemWithAssignee[]).map((l) => ({
+    name: [l.first_name, l.last_name].filter(Boolean).join(" ") || "Unnamed lead",
+    owner: l.assignee?.full_name ?? "an unassigned queue",
+  }));
+}
+
+/**
  * Elaya note-history source — the 5-most-recent notes for an already-access-
  * checked lead, via the admin client (works sessionless). Caller gates access on
  * the lead FIRST (canAccessLead), so scoping is by the verified leadId.

@@ -16,8 +16,11 @@ export const REDIS_KEYS = {
   task: {
     giaList: (userId: string, role: string, domain: string) =>
       `task:gia:${userId}:${role}:${domain}`,
+    // :v2 — migration 0145 widened the page-1 envelope with lead-identity
+    // fields (PersonalTaskRow). The suffix bump retires pre-0145 narrow
+    // entries so a cached row can never serve the old shape.
     personalPage1: (userId: string) =>
-      `task:personal:page1:${userId}`,
+      `task:personal:page1:${userId}:v2`,
     // Visibility is now user-specific (creator OR subtask assignee).
     // Domain/role are NOT part of the key — two users in the same domain
     // see different sets of groups depending on what they created or are assigned in.

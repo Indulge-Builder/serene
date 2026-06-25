@@ -97,14 +97,15 @@ async function AgentPerformanceAsync({
   // 5-function / ~17-query fan-out. The RPC reads auth.uid() internally.
   // Fetched server-side for the resolved range; the shell key-remounts per
   // range (no client refetch effect — honours the one-RPC-per-view rule).
-  const { getAgentPerformanceSummary } = await import(
+  // The daily trend (migration 0146) is fetched in parallel and passed as a
+  // prop — same one-RPC-per-view rule, no client refetch.
+  const { getAgentPerformanceSummary, getAgentPerformanceTrend } = await import(
     "@/lib/services/performance-service"
   );
-  const initialData = await getAgentPerformanceSummary(
-    period,
-    customFrom ?? undefined,
-    customTo ?? undefined,
-  );
+  const [initialData, trend] = await Promise.all([
+    getAgentPerformanceSummary(period, customFrom ?? undefined, customTo ?? undefined),
+    getAgentPerformanceTrend(period, customFrom ?? undefined, customTo ?? undefined),
+  ]);
 
   return (
     <>
@@ -116,6 +117,7 @@ async function AgentPerformanceAsync({
         customFrom={customFrom}
         customTo={customTo}
         initialData={initialData}
+        trend={trend}
       />
       <PerformanceMotivationalFooter
         leadsWon={initialData.core.leadsWon}

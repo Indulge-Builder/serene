@@ -14,9 +14,11 @@
 //     what makes "execute a state-change in its proposal turn" impossible.
 //
 // Every write tool:
-//   • takes a `slug` (never a name/UUID) → the model must search_leads first; resolution
-//     of name→slug + ambiguity handling lives in the read flow + persona, with this tool
-//     layer as the hard backstop (slug not found / not accessible → refuse).
+//   • takes a `leadId` (the opaque id/slug ref from search_leads, never a name) → the
+//     model must search_leads first; ambiguity handling lives in the read flow + persona,
+//     with this tool layer as the hard backstop (ref not found / not accessible → refuse).
+//     getLeadByRefForElaya resolves a UUID or a slug, so the model never has to reproduce
+//     the PII-derived slug string (the slug-corruption / round-trip hazard).
 //   • re-checks access with the PRINCIPAL via canAccessLead — identity is never
 //     model-supplied (prompt-injection defence: injected text cannot widen scope).
 //   • wraps a shared mutation core (lead-mutations.ts) — never a raw table write, so it
@@ -27,12 +29,12 @@ import type { ElayaPrincipal } from "@/lib/elaya/principal";
 // Elaya runs in BOTH a session context (in-app SSE) AND sessionless contexts
 // (WhatsApp webhook; the SSE stream after the cookie session is no longer on the
 // request). The write tools must resolve the lead the same way the READ tool does
-// — via the ADMIN-client getLeadBySlugForElaya, NEVER the session-client
+// — via the ADMIN-client getLeadByRefForElaya, NEVER the session-client
 // getLeadBySlug (.single() on a cookie client returns 0 rows → 406 → null →
 // REFUSE_LEAD even for a lead the user owns). Identity is re-checked immediately
 // after via canAccessLead(principal, …) (the per-resource trust boundary, Q-13),
 // so the broad admin read is safe — exactly the get_lead_details pattern.
-import { getLeadBySlugForElaya } from "@/lib/services/leads-service";
+import { getLeadByRefForElaya } from "@/lib/services/leads-service";
 import type { LeadWithAssignee } from "@/lib/services/leads-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -184,24 +186,24 @@ const addLeadNote: ElayaWriteTool = {
   roles: STAFF_ALL,
   description:
     "Add a note to a lead's timeline. Use this to record what happened on a call or a " +
-    "detail about the lead. Takes the lead's slug (from search_leads). This happens " +
+    "detail about the lead. Takes the lead's leadId (from search_leads). This happens " +
     "immediately — there is no confirmation step for notes.",
   schema: z.object({
-    slug: z.string().trim().min(1).max(160),
+    leadId: z.string().trim().min(1).max(160),
     content: z.string().trim().min(1).max(2000),
   }),
   jsonSchema: {
     type: "object",
     properties: {
-      slug: { type: "string", description: "The lead slug (from search_leads results)" },
+      leadId: { type: "string", description: "The lead id or slug (from search_leads results)" },
       content: { type: "string", description: "The note text" },
     },
-    required: ["slug", "content"],
+    required: ["leadId", "content"],
     additionalProperties: false,
   },
   run: async (principal, input, ctx) => {
-    const { slug, content } = input as { slug: string; content: string };
-    const lead = await getLeadBySlugForElaya(slug);
+    const { leadId, content } = input as { leadId: string; content: string };
+    const lead = await getLeadByRefForElaya(leadId);
     if (!lead || !canAccessLead(principal, lead)) return { error: REFUSE_LEAD };
 
     const clean = sanitizeText(content);
@@ -239,10 +241,10 @@ const createLeadTask: ElayaWriteTool = {
   roles: STAFF_ALL,
   description:
     "Create a follow-up task on a lead (e.g. send a brochure, call back). Takes the " +
-    "lead's slug. The task is assigned to the lead's current owner. Happens immediately " +
+    "lead's leadId. The task is assigned to the lead's current owner. Happens immediately " +
     "— no confirmation step for tasks.",
   schema: z.object({
-    slug: z.string().trim().min(1).max(160),
+    leadId: z.string().trim().min(1).max(160),
     taskType: z.enum(["call", "whatsapp_message", "other"]).default("other"),
     description: z.string().trim().max(1000).optional(),
     priority: z.enum(["urgent", "high", "normal"]).default("normal"),
@@ -251,26 +253,26 @@ const createLeadTask: ElayaWriteTool = {
   jsonSchema: {
     type: "object",
     properties: {
-      slug: { type: "string", description: "The lead slug" },
+      leadId: { type: "string", description: "The lead id or slug (from search_leads results)" },
       taskType: { type: "string", enum: ["call", "whatsapp_message", "other"], description: "Defaults to other" },
       description: { type: "string", description: "What the task is (e.g. 'Send the spa brochure')" },
       priority: { type: "string", enum: ["urgent", "high", "normal"], description: "Defaults to normal" },
       dueAt: { type: "string", description: "Optional ISO 8601 due date-time" },
     },
-    required: ["slug"],
+    required: ["leadId"],
     additionalProperties: false,
   },
   run: async (principal, input, ctx) => {
     const {
-      slug, taskType, description, priority, dueAt,
+      leadId, taskType, description, priority, dueAt,
     } = input as {
-      slug: string;
+      leadId: string;
       taskType: "call" | "whatsapp_message" | "other";
       description?: string;
       priority: "urgent" | "high" | "normal";
       dueAt?: string;
     };
-    const lead = await getLeadBySlugForElaya(slug);
+    const lead = await getLeadByRefForElaya(leadId);
     if (!lead || !canAccessLead(principal, lead)) return { error: REFUSE_LEAD };
 
     const cleanDescription = description ? sanitizeText(description) : null;
@@ -331,27 +333,27 @@ const updateLeadStatus: ElayaWriteTool = {
   roles: STAFF_ALL,
   description:
     "Propose changing a lead's status (e.g. to in_discussion, won, lost). Takes the " +
-    "lead's slug. This is a bigger step: calling it records a proposal and WAITS — it " +
+    "lead's leadId. This is a bigger step: calling it records a proposal and WAITS — it " +
     "does NOT change the status yet. Tell the user what you're about to do and ask them " +
     "to confirm with a yes. Never say the status changed until the system confirms it executed.",
   schema: z.object({
-    slug: z.string().trim().min(1).max(160),
+    leadId: z.string().trim().min(1).max(160),
     status: z.enum(LEAD_STATUSES as [LeadStatus, ...LeadStatus[]]),
     reason: z.string().trim().max(500).optional(),
   }),
   jsonSchema: {
     type: "object",
     properties: {
-      slug: { type: "string", description: "The lead slug" },
+      leadId: { type: "string", description: "The lead id or slug (from search_leads results)" },
       status: { type: "string", enum: [...LEAD_STATUSES], description: "The target status" },
       reason: { type: "string", description: "Optional reason (used for lost/junk)" },
     },
-    required: ["slug", "status"],
+    required: ["leadId", "status"],
     additionalProperties: false,
   },
   run: async (principal, input, ctx) => {
-    const { slug, status, reason } = input as { slug: string; status: LeadStatus; reason?: string };
-    const lead = await getLeadBySlugForElaya(slug);
+    const { leadId, status, reason } = input as { leadId: string; status: LeadStatus; reason?: string };
+    const lead = await getLeadByRefForElaya(leadId);
     if (!lead || !canAccessLead(principal, lead)) return { error: REFUSE_LEAD };
 
     // No mutation. Supersede any prior live proposal, then record this one.
@@ -385,25 +387,25 @@ const reassignLead: ElayaWriteTool = {
   roles: MANAGER_UP, // agents cannot reassign — toolset membership is the hard gate
   description:
     "Propose reassigning a lead to a different agent (managers and above only). Takes the " +
-    "lead's slug and the target agent's id. Records a proposal and WAITS — it does NOT " +
+    "lead's leadId and the target agent's id. Records a proposal and WAITS — it does NOT " +
     "reassign yet. Ask the user to confirm with a yes. Never say it's reassigned until the " +
     "system confirms it executed.",
   schema: z.object({
-    slug: z.string().trim().min(1).max(160),
+    leadId: z.string().trim().min(1).max(160),
     agentId: z.string().uuid(),
   }),
   jsonSchema: {
     type: "object",
     properties: {
-      slug: { type: "string", description: "The lead slug" },
+      leadId: { type: "string", description: "The lead id or slug (from search_leads results)" },
       agentId: { type: "string", description: "The target agent's user id (UUID)" },
     },
-    required: ["slug", "agentId"],
+    required: ["leadId", "agentId"],
     additionalProperties: false,
   },
   run: async (principal, input, ctx) => {
-    const { slug, agentId } = input as { slug: string; agentId: string };
-    const lead = await getLeadBySlugForElaya(slug);
+    const { leadId, agentId } = input as { leadId: string; agentId: string };
+    const lead = await getLeadByRefForElaya(leadId);
     if (!lead || !canAccessLead(principal, lead)) return { error: REFUSE_LEAD };
 
     await supersedePriorProposals(ctx.conversationId, principal.userId, principal.userId);
@@ -901,10 +903,13 @@ export async function executeProposedAction(
     args?: Record<string, unknown>;
     before?: Record<string, unknown> | null;
   };
-  const slug = payload.target?.slug ?? null;
+  // Prefer the immutable leadId (UUID) over the slug — both are stored at propose
+  // time (code-derived, never model-supplied), but the id never drifts even if the
+  // lead is renamed. Fall back to slug for any legacy proposal row missing leadId.
+  const ref = payload.target?.leadId ?? payload.target?.slug ?? null;
 
-  // Re-resolve by slug (immutable across turns) + re-check access with the principal.
-  const lead = slug ? await getLeadBySlugForElaya(slug) : null;
+  // Re-resolve by the stable ref + re-check access with the principal.
+  const lead = ref ? await getLeadByRefForElaya(ref) : null;
   if (!lead || !canAccessLead(principal, lead)) {
     await markActionResolved(action.id, "failed", principal.userId);
     return { status: "failed", line: "I couldn't complete that — I can no longer act on that lead." };

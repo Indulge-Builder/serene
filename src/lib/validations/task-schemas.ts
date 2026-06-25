@@ -174,3 +174,21 @@ export const UpdateChecklistSchema = z.object({
 });
 
 export type UpdateChecklistInput = z.infer<typeof UpdateChecklistSchema>;
+
+// ─────────────────────────────────────────────
+// Completed tasks query (history modal)
+// targetUserId is required; cursor is the optional keyset continuation.
+// The action is the role/domain trust boundary — this only shape-validates.
+// ─────────────────────────────────────────────
+export const CompletedTasksQuerySchema = z.object({
+  targetUserId: z.string().uuid("Invalid user ID"),
+  cursor: z
+    .object({
+      completed_at: z.string().nullable(),
+      id: z.string().uuid(),
+    })
+    .nullable()
+    .optional(),
+});
+
+export type CompletedTasksQueryInput = z.infer<typeof CompletedTasksQuerySchema>;

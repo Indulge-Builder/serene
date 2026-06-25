@@ -49,7 +49,16 @@ export function DomainTargetMeter({ value, target }: Props) {
 
   return (
     <div style={{ position: 'relative', width: METER_SIZE, height: METER_SIZE }}>
-      <ResponsiveContainer width="100%" height="100%">
+      {/* initialDimension feeds Recharts a real box on its synchronous first
+          measure (the parent is a fixed METER_SIZE square) — without it the
+          first measure reads -1/-1 and logs the chart-size warning before
+          ResizeObserver corrects it one frame later. Same guard as MiniSparkline
+          / the CallOutcomeBar pixel sizing. */}
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        initialDimension={{ width: METER_SIZE, height: METER_SIZE }}
+      >
         <RadialBarChart
           data={[{ value: pct }]}
           innerRadius="76%"

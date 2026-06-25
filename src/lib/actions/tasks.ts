@@ -15,12 +15,14 @@ import {
   SuppressTaskRemarkSchema,
   UpdateChecklistSchema,
   UpdateTaskTagsSchema,
+  CompletedTasksQuerySchema,
 } from "@/lib/validations/task-schemas";
 import { formErrors } from "@/lib/validations/form-errors";
 import { sanitizeText } from "@/lib/utils/sanitize";
-import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { getCurrentProfile, getProfileById } from "@/lib/services/profiles-service";
 import { requireProfile } from "@/lib/actions/_auth";
-import { getTaskRemarks } from "@/lib/services/tasks-service";
+import { getTaskRemarks, getCompletedTasks } from "@/lib/services/tasks-service";
+import type { CompletedTasksResult } from "@/lib/services/tasks-service";
 import { emitTaskEvent, resolveTaskDomain } from "@/lib/services/task-events";
 import {
   canMutateTask,
@@ -790,4 +792,49 @@ export async function deleteGroupTaskAction(
   revalidatePath("/tasks");
 
   return { data: null, error: null };
+}
+
+// ─────────────────────────────────────────────
+// getCompletedTasksAction — completed-tasks history modal
+//
+// Returns a target user's completed tasks (personal + group subtasks),
+// recent-first, keyset-paginated. THE role/domain trust boundary:
+//   - agent           → may only view themselves
+//   - manager         → self, or anyone in their OWN domain
+//   - admin / founder  → anyone
+// The tasks SELECT RLS is permissive for manager+ (not domain-scoped), so this
+// gate — not RLS — is what enforces the domain isolation. Agents are still
+// RLS-restricted to their own rows as a second layer.
+// ─────────────────────────────────────────────
+export async function getCompletedTasksAction(
+  input: unknown,
+): Promise<ActionResult<CompletedTasksResult>> {
+  const parsed = CompletedTasksQuerySchema.safeParse(input);
+  if (!parsed.success) {
+    return { data: null, error: formErrors.generic };
+  }
+
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const caller = auth.profile;
+
+  const { targetUserId, cursor } = parsed.data;
+
+  // Authorization gate.
+  if (targetUserId !== caller.id) {
+    if (caller.role === "agent") {
+      return { data: null, error: formErrors.unauthorized };
+    }
+    if (caller.role === "manager") {
+      // Manager may only reach into their own domain.
+      const target = await getProfileById(targetUserId);
+      if (!target || target.domain !== caller.domain) {
+        return { data: null, error: formErrors.unauthorized };
+      }
+    }
+    // admin / founder → any target, no further check.
+  }
+
+  const result = await getCompletedTasks(targetUserId, cursor ?? null);
+  return { data: result, error: null };
 }

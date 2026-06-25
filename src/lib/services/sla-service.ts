@@ -12,7 +12,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { mapRows }           from '@/lib/utils/rows';
 import { isCadenceCode }     from '@/lib/constants/sla';
 import { goingColdCutoff } from '@/lib/constants/leads';
-import type { LeadSlaTimer, Profile, Task, AppDomain, SlaPolicy, SlaHoursMode } from '@/lib/types/database';
+import type { LeadSlaTimer, Profile, Task, AppDomain, SlaPolicy, SlaHoursMode, SlaRecipientRole } from '@/lib/types/database';
 
 // Engine rule codes are free text since the config-driven engine (0111):
 // SLA-xx, CAD-xx, TASK-xx all ride the same timer/idempotency machinery.
@@ -546,9 +546,18 @@ export interface EscalatedLeadRow {
   domain:       string;
   status:       string;
   assigneeName: string | null;
-  ruleCodes:    string[];
   lastFiredAt:  string;
+  /**
+   * Who this lead's live breach(es) escalate to — the union of `recipient_role`
+   * across every matched (status-equal) breach policy, ordered agent→manager→
+   * founder. Drives the "Alerted" column. A nurturing breach, e.g., yields
+   * ['agent','manager'] (SLA-04A + SLA-04B); a founder rule adds 'founder'.
+   */
+  recipients:   SlaRecipientRole[];
 }
+
+// Escalation-ladder order for the recipient chips (agent first, founder last).
+const RECIPIENT_ORDER: Record<SlaRecipientRole, number> = { agent: 0, manager: 1, founder: 2 };
 
 interface FiredTimerJoinRow {
   lead_id:           string;
@@ -589,7 +598,10 @@ function leadDisplayName(first: string | null, last: string | null): string {
  * The policy/status-match guard below is what keeps a pending-overdue timer
  * honest: if the lead has moved on, it is not a live breach and is dropped.
  */
-export async function getEscalatedLeads(domain: AppDomain | null): Promise<EscalatedLeadRow[]> {
+export async function getEscalatedLeads(
+  domain: AppDomain | null,
+  assignedTo?: string | null,
+): Promise<EscalatedLeadRow[]> {
   const admin = createAdminClient();
   const nowIso = new Date().toISOString();
   const windowStart = new Date(Date.now() - ESCALATION_WINDOW_DAYS * 86_400_000).toISOString();
@@ -610,6 +622,8 @@ export async function getEscalatedLeads(domain: AppDomain | null): Promise<Escal
     .order('scheduled_fire_at', { ascending: false })
     .limit(500);
   if (domain) query = query.eq('leads.domain', domain);
+  // Self-scope (the agent escalations view): only this agent's own leads.
+  if (assignedTo) query = query.eq('leads.assigned_to', assignedTo);
 
   const { data, error } = await query;
   if (error) {
@@ -623,6 +637,9 @@ export async function getEscalatedLeads(domain: AppDomain | null): Promise<Escal
   const byCode = new Map(policies.map((p) => [p.code, p]));
 
   const grouped = new Map<string, EscalatedLeadRow>();
+  // Per-lead recipient accumulator — a Set so the same role across two breached
+  // codes collapses; ordered into the row at the end.
+  const recipientSets = new Map<string, Set<SlaRecipientRole>>();
   for (const row of mapRows<FiredTimerJoinRow, FiredTimerJoinRow>(data, (r) => r)) {
     const lead = row.leads;
     if (!lead) continue;
@@ -643,9 +660,13 @@ export async function getEscalatedLeads(domain: AppDomain | null): Promise<Escal
     if (!policy || policy.trigger_kind !== 'status') continue;
     if (policy.trigger_value !== lead.status) continue;
 
+    // This breach escalates to the policy's recipient role — record it.
+    let roles = recipientSets.get(lead.id);
+    if (!roles) recipientSets.set(lead.id, (roles = new Set<SlaRecipientRole>()));
+    roles.add(policy.recipient_role);
+
     const existing = grouped.get(lead.id);
     if (existing) {
-      if (!existing.ruleCodes.includes(row.rule_code)) existing.ruleCodes.push(row.rule_code);
       if (breachedAt > existing.lastFiredAt) existing.lastFiredAt = breachedAt;
     } else {
       grouped.set(lead.id, {
@@ -656,10 +677,16 @@ export async function getEscalatedLeads(domain: AppDomain | null): Promise<Escal
         domain:       lead.domain,
         status:       lead.status,
         assigneeName: lead.assignee?.full_name ?? null,
-        ruleCodes:    [row.rule_code],
         lastFiredAt:  breachedAt,
+        recipients:   [],
       });
     }
+  }
+
+  // Fold the accumulated recipient sets into each row, escalation-ladder order.
+  for (const [leadId, roles] of recipientSets) {
+    const row = grouped.get(leadId);
+    if (row) row.recipients = [...roles].sort((a, b) => RECIPIENT_ORDER[a] - RECIPIENT_ORDER[b]);
   }
 
   return [...grouped.values()].sort((a, b) => b.lastFiredAt.localeCompare(a.lastFiredAt));
@@ -709,7 +736,10 @@ interface OverdueTaskJoinRow {
  *     moment, rather than waiting on the async callback.
  * Either way the row is a real, open, past-due follow-up.
  */
-export async function getOverdueGiaTasks(domain: AppDomain | null): Promise<OverdueTaskEscalationRow[]> {
+export async function getOverdueGiaTasks(
+  domain: AppDomain | null,
+  assignedTo?: string | null,
+): Promise<OverdueTaskEscalationRow[]> {
   const admin = createAdminClient();
   const nowIso = new Date().toISOString();
 
@@ -727,6 +757,8 @@ export async function getOverdueGiaTasks(domain: AppDomain | null): Promise<Over
     .order('due_at', { ascending: false })
     .limit(100);
   if (domain) query = query.eq('task_gia_meta.leads.domain', domain);
+  // Self-scope (the agent escalations view): only tasks assigned to this agent.
+  if (assignedTo) query = query.eq('assigned_to', assignedTo);
 
   const { data, error } = await query;
   if (error) {

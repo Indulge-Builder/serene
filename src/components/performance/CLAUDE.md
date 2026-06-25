@@ -2,7 +2,7 @@
 
 ## Recharts loading rule (perf audit G-3)
 
-`CoreFourGrid`, `CallOutcomeBar`, `DomainOverviewPanel` (which mounts `DomainTargetMeter`), and `AgentCallTrendChart` import Recharts, so
+`CoreFourGrid`, `CallOutcomeBar`, `DomainOverviewPanel` (which mounts `DomainTargetMeter`), and `AgentActivityTrendChart` import Recharts, so
 their call sites (`AgentPerformanceShell`, `AgentDetailPanel`,
 `FounderPerformanceShell`, `FounderDrillDownDeck`) load them via `next/dynamic` with same-shape
 `.skeleton` placeholders — the chart chunk stays out of the `/performance`
@@ -14,8 +14,7 @@ initial bundle. Import these three statically only from another lazy chunk.
 | File | Role |
 | --- | --- |
 | `PerformanceFilters.tsx` | THE shared filter bar for ALL performance roles (and `/budget`). Composes `<FilterBar dateRange>` (Range presets + custom Dates, `date_from`/`date_to` — the `/leads` contract) + `useUrlFilters`; props are just `{ showSearch }`. No bespoke Period dropdown / DatePicker. The page derives `PerformancePeriod` from the params via `resolvePerformanceDateParams` |
-| `CoreFourGrid.tsx` | Agent KPI row (leads, calls, conversion, response time) |
-| `EffortGrid.tsx` | Agent effort metric cards |
+| `CoreFourGrid.tsx` | Agent KPI row (Leads Won, Touch Rate, Avg Response, Conversion). Sparkline is **opt-in + REAL** (2026-06-25): only the Leads Won card renders one, fed by the `wonTrend` prop (`get_agent_performance_trend` daily `leads_won`); rate cards render none. The fabricated `makeSpark` is **deleted** — never reintroduce a synthetic sparkline |
 | `CallOutcomeBar.tsx` | Donut + legend (agent self-view, detail panel, AND the deck card's "Call outcome" breakdown mode). Optional `onSliceClick(outcome)` (2026-06-24) turns each legend row into a tap target opening `AgentLeadsPredicateDrillModal` (distinct leads whose LATEST call was that outcome); absent → display-only. Loaded via `next/dynamic` from each Recharts call site (perf G-3) |
 | `PipelineBar.tsx` | THE segmented lead-status breakdown bar + compact legend chips. **Extracted from `AgentDetailPanel`'s former private `PipelineSection`** (2026-06-15) so the detail-panel "Lead Pipeline" section AND the deck card's "Lead status" breakdown mode render an identical bar — never copy-paste a second status chart (R-01). Owns its own `STATUS_FILL`/`STATUS_ORDER`; takes `{ status, count }[]`. Optional `onSegmentClick(status)` (2026-06-24) turns each segment + legend chip into a tap target opening `AgentLeadsPredicateDrillModal`; absent → display-only. Display-only otherwise (A-06), no Recharts (pure divs, so it needs no lazy split) |
 | `ManagerPerformancePanel.tsx` | Two-column shell — roster left, detail right |
@@ -25,7 +24,7 @@ initial bundle. Import these three statically only from another lazy chunk.
 | `DomainOverviewPanel.tsx` | Founder Domains tab — 4 stats per domain (incl. Deals Closed) + month-pinned `DomainTargetMeter` + founder/admin inline target edit (`upsertDomainTargetAction`); mobile = CSS scroll-snap carousel (no library). The comparative BarChart's Leads/Calls/Revenue toggle is the shared `TabSelector` (variant `accent`, `indicatorLayoutId="domain-metric-toggle"` — distinct from the founder shell's `founder-perf-tabs` pill, which is co-mounted). **The 4 stat tiles are tap targets (2026-06-24):** each passes `StatAtom onClick` → `DomainLeadsDrillModal` (Leads→all · Calls→called · Deals Closed/Revenue→won leads); ONE modal at the panel level, drill state in the panel, mirrors `AgentDetailPanel` |
 | `DomainLeadsDrillModal.tsx` | The leads behind ONE clicked DOMAIN-card tile (Domains tab, 2026-06-24) — a thin caller of `LeadDrillModal` supplying `getDomainLeadsDrillAction`. `kind: 'all' \| 'calls' \| 'won'` maps the tile to the slice; domain-scoped (no agent). Rows link to the dossier — the domain twin of `AgentLeadsPredicateDrillModal`. No fetch lifecycle/row/chrome of its own. **Per-kind `renderMeta` (the row's calm secondary line):** `all` → assignee chip (`xs` `Avatar` initials + name, "Unassigned" italic-tertiary when null); `calls` → last call outcome (quiet `PhoneCall` glyph + `CALL_OUTCOME_LABELS`); `won` → none (the Won status pill carries it). Token-only, no accent pill — the status pill stays the row's single coloured element |
 | `DomainTargetMeter.tsx` | Radial deals-vs-target meter (Recharts `RadialBarChart`, 2 colours via `useChartTokens`); target null/0 → `EmptyState` inline "No target set." — never a division |
-| `AgentCallTrendChart.tsx` | 14-day daily-calls area chart — composes `ChartFrame` + `cartesianDefaults` (Cartesian frame rule); loaded via `next/dynamic` from the shell |
+| `AgentActivityTrendChart.tsx` | Agent self-scorecard daily trend (was `AgentCallTrendChart`, 2026-06-25) — period-scoped MULTI-series **Calls · Notes · Won** lines (`get_agent_performance_trend`, migration 0146; ≤3 series = ≤3 colours); falls back to the pulse's single-series 14-day call **area** when the range is ≤1 day (`period === 'today'`, no extra fetch). Composes `ChartFrame` + `cartesianDefaults` (Cartesian frame rule); loaded via `next/dynamic` from the shell |
 | `AgentRecentActivityList.tsx` | Agent Today view — keyset "load more" (composite cursor, page 15, button not infinite scroll) via `getAgentRecentLeadActivityAction` |
 | `DrillModalShell.tsx` | THE nested-modal shell for the founder deck drill-downs — `document.body` portal + `--z-modal-overlay`/`--z-modal-nested` (stacks ABOVE the deck's `--z-modal` full `Dialog`). A vanilla `<Dialog>` hardcodes `--z-overlay`/`--z-modal` and would render co-planar with the deck, so the four drill modals share this thin shell instead. Display-only chrome; caller owns body + fetch |
 | `LeadDrillRow.tsx` | THE single lead row (name + phone + status pill) for the performance drill-down modals. Extracted from `AgentLeadsDrillModal` (2026-06-24) so the First-Touch bucket drill renders an identical row — never copy-paste a second drill lead row (R-01). The whole row is a `Link` to `/leads/${slug ?? id}?from=/performance` (the LeadsTable nav convention; the route change unmounts the portaled modal, dossier back-arrow returns to `/performance`) — both drill modals get the click-through for free. `.serene-pressable` hover/press. **Optional `meta?: ReactNode`** (2026-06-24) — a calm secondary line below name/phone the CALLER supplies (the domain Calls drill renders the last call outcome, the Leads drill renders the assignee chip); omitted → byte-identical original row, so every existing caller is unchanged |
@@ -127,34 +126,32 @@ manager domain-pass ambiguity.
 
 ---
 
-## AgentPerformanceShell — the ONE pulse fetch (Today tab + Overview strip)
+## AgentPerformanceShell — the lean single-page scorecard (redesigned 2026-06-25)
 
-**URL-driven since 2026-06-16.** The shell no longer owns period state or a `PeriodSelector` —
-`period`/`customFrom`/`customTo` arrive as **props** derived from the `date_from`/`date_to` URL
-params (the shared `PerformanceFilters` bar, rendered by the page above the shell). The page
-**key-remounts** the shell per range (`key={period:from:to}`) with server-fetched `initialData`, so
-there is **no client metrics refetch effect** — `data = initialData` (one-RPC-per-view, D-2). The
-only client fetch left is the Today pulse below; "today" is detected as `period === 'today'`.
+**No tabs.** The Overview/Today split was removed — the shell is ONE scrollable column:
+Today strip → `CoreFourGrid` → `AgentActivityTrendChart` + pipeline line → `CallOutcomeBar`
+(once) → `AgentRecentActivityList`. The `needsPulse` / `effectiveTab` / `showOverviewTodayRow`
+branching and `TodayTab`/`OverviewTab` are **gone** — never reintroduce a tab system here.
 
-`AgentPerformanceShell` fetches the Today pulse (`getAgentPulseAction` → `get_agent_today_pulse`,
-since-IST-midnight) exactly **once** per range (remount), and that single fetch feeds **both**
-surfaces:
+**URL-driven (since 2026-06-16).** The shell owns no period state — `period`/`customFrom`/
+`customTo` arrive as **props** from the `date_from`/`date_to` URL params (the shared
+`PerformanceFilters` bar). The page **key-remounts** the shell per range (`key={period:from:to}`)
+with server-fetched `initialData` **and `trend`** (`get_agent_performance_trend`, 0146, daily
+Calls/Notes/Won), so there is **no client metrics refetch** — `data = initialData`,
+`trend = props.trend` (one-RPC-per-view, D-2).
 
-- the **Today tab** (calls split, 14-day trend, Notes Today hero, period deals), and
-- the **Overview "Today" strip** (Calls / Notes / Won "since midnight IST").
+**The ONE client fetch — the Today pulse.** `getAgentPulseAction` → `get_agent_today_pulse`
+(since-IST-midnight) fires exactly **once per mount** (a range change is a fresh mount). It is
+now an unconditional one-shot effect (the Today strip is always shown — no gate boolean to
+widen anymore). Plain `.then()/.catch()` with a `cancelled` ref (no `startTransition` — it would
+defer `setPulse(null)`). Never add a second `getAgentPulseAction` call.
 
-The strip MUST read `pulse.callsToday.total` / `pulse.notesToday` / `pulse.deals.dealCount` — the
-genuine since-midnight source — **never** the period-scoped `data.effort.*` / `data.core.*` fields
-(those are wrong under the "since midnight IST" label when period ≠ today; this was the bug fixed
-2026-06-15 / migration 0122 which added `notes_today`).
-
-**Invariant — one pulse fetch path.** The fetch gate is a single boolean (`needsPulse` = Today tab
-visible **or** Overview strip visible). To make the strip's data available on the Overview tab you
-**widen this boolean** — never add a second `getAgentPulseAction` call. Because one of the two
-conditions is always true at the current period, `needsPulse` does not flip on a tab switch, so the
-effect does not re-run and **a tab switch fires no new network request**. The fetch stays a plain
-`.then()/.catch()` chain with a `cancelled` ref (no `startTransition` — it would defer
-`setPulse(null)`). Skeleton-while-`null`/`undefined` on every pulse value.
+The pulse feeds **(a)** the **Today strip** — `pulse.callsToday.total` / `pulse.notesToday` /
+`pulse.deals.dealCount`, the genuine since-midnight source (**never** the period-scoped
+`data.effort.*` / `data.core.*`, wrong under "since midnight IST" when period ≠ today — the
+0122 `notes_today` fix); **(b)** the pipeline line's **Revenue** (`pulse.deals.revenue`); and
+**(c)** the trend chart's **14-day fallback** when the period series is a single day
+(`pulse.callTrend`). Skeleton-while-`null`/`undefined` on every pulse value.
 
 ---
 

@@ -110,8 +110,11 @@ export function Dialog({
                 isFull
                   ? 'rounded-none'
                   // <md: sheet — top corners only, 90dvh ceiling, safe-area pad.
-                  // md+: the classic centered dialog radius.
-                  : 'rounded-t-xl rounded-b-none md:rounded-xl max-md:max-h-[90dvh] max-md:pb-[env(safe-area-inset-bottom)]',
+                  // md+: classic centered dialog radius + an 85dvh ceiling so a
+                  // tall body (long lists) scrolls INSIDE the panel (its body is
+                  // already flex:1 overflow:auto) instead of pushing the panel
+                  // past the viewport and scrolling the page behind the overlay.
+                  : 'rounded-t-xl rounded-b-none md:rounded-xl max-md:max-h-[90dvh] md:max-h-[85dvh] max-md:pb-[env(safe-area-inset-bottom)]',
               ]
                 .filter(Boolean)
                 .join(' ')}

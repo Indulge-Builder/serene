@@ -170,20 +170,26 @@ export function LeadsTable({ leads, userId, role, domain, filters, hasActiveFilt
         boxShadow:    'var(--shadow-1)',
       }}
     >
-      {/* Table toolbar — view switcher (manager) · going cold | sort + columns + export. One line at
-          every viewport: below md the sort/export labels compress to icons
-          (same language as the dashboard header settings button) and Columns
-          hides entirely — it configures table columns and the table only
-          renders md+ (the card stack ignores column prefs). */}
+      {/* Table toolbar — view switcher (manager) · going cold | sort + columns + export. ONE line at
+          every viewport (never wraps): below md the sort/export labels compress to icons
+          (same language as the dashboard header settings button), Columns hides entirely
+          (it configures table columns and the table only renders md+ — the card stack
+          ignores column prefs), and the row scrolls horizontally if the controls still
+          overflow a narrow phone (flex-nowrap + overflowX:auto, hidden scrollbar — the
+          same single-row pattern LeadsFilters uses). The flex spacer keeps the right
+          cluster pushed right on wide viewports and collapses to 0 when scrolling. */}
       <div
         style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-2) var(--space-3)',
-          padding:      'var(--space-4) var(--space-5)',
-          borderBottom: '1px solid var(--theme-paper-border)',
-          background:   'var(--theme-paper-subtle)',
-          flexWrap:     'wrap',
+          display:                 'flex',
+          alignItems:              'center',
+          gap:                     'var(--space-2) var(--space-3)',
+          padding:                 'var(--space-4) var(--space-5)',
+          borderBottom:            '1px solid var(--theme-paper-border)',
+          background:              'var(--theme-paper-subtle)',
+          flexWrap:                'nowrap',
+          overflowX:               'auto',
+          scrollbarWidth:          'none',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
         {/* Lead-scope switcher — managers only, FIRST control (left cluster). A

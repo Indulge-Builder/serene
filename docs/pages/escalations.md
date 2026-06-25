@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/escalations` — the manager+ breach surface for the Gia follow-up engine (live SLA breaches, overdue follow-up tasks, going-cold leads).
 > **Audience:** engineers. · **Source-of-truth scope:** the escalations route + the escalation reads in `sla-service.ts`. Engine business rules: `../modules/gia.md` §4.
-> **Last verified:** 2026-06-24 (shipped 2026-06-12).
+> **Last verified:** 2026-06-25 (shipped 2026-06-12; agent self-view added 2026-06-25).
 
 ## 1. Purpose
 
@@ -13,11 +13,21 @@ follow-up engine already produces — fired `lead_sla_timers`, the exactly-once
 
 ## 2. Who sees it
 
-manager / admin / founder (agents and guests → `redirect('/dashboard')`). Manager is pinned
-to their own domain; admin/founder see org-wide with a Domain column. Route prefix
-`/escalations` is in `DOMAIN_ROUTE_MAP` for the Gia domains (the layout guard is
-domain-based; the page itself enforces the role gate, same split as `/budget`). Sidebar:
-Analytics section, behind the existing `isManager` gate.
+All roles except guest (`guest` → `redirect('/dashboard')`). **Scope by role:**
+
+- **agent** → a **self-scoped** view of their OWN slipped work (`assignedTo = profile.id`):
+  the leads they let stall, the follow-ups they ran past due, their leads going cold. The
+  Agent column is dropped (every row is the viewer), titles/empty-copy go second-person, and a
+  serif-italic reflective intro frames it as a self-coaching mirror, not a scoreboard. Added
+  2026-06-25 by giving `getEscalatedLeads`/`getOverdueGiaTasks` an optional `assignedTo` arg
+  (the one `getGoingColdLeads` already had).
+- **manager** → pinned to their own domain.
+- **admin / founder** → org-wide, with a Domain column.
+
+Route prefix `/escalations` is in `DOMAIN_ROUTE_MAP` for the **Gia domains only** — the layout
+guard is domain-based, so a non-Gia agent (finance/tech/…) can neither see the nav link nor reach
+the URL. The page enforces only the guest gate. Sidebar: Analytics section — `/escalations` is an
+all-roles exception alongside `/performance` (was `isManager`-only before the agent view).
 
 The header row holds the title left and — when `TOP_BAR_ENABLED` (`lib/constants/feature-flags`,
 currently `true`) — a `<PageControls>` cluster right (notifications + theme; seeded with
@@ -28,7 +38,7 @@ page; there is no page-level action CTA.
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `sla-service.ts` — `getEscalatedLeads(domain\|null)`, `getOverdueGiaTasks(domain\|null)`, `getGoingColdLeads(scope?: { domain?; assignedTo? })` (the page passes `{ domain }`; the object form was added 2026-06-20 so the Elaya `get_cold_leads` tool can scope by `assignedTo` to one agent's own leads); admin client with **session-derived** scope args (the gated page is the trust boundary, `getAgentRosterByDomain` pattern); `mapRows` typed boundary |
+| Service | `sla-service.ts` — `getEscalatedLeads(domain\|null, assignedTo?)`, `getOverdueGiaTasks(domain\|null, assignedTo?)`, `getGoingColdLeads(scope?: { domain?; assignedTo? })`. **All three carry an optional agent self-scope** (`assignedTo`): the page passes `profile.id` for agents (own slipped leads/tasks), `null` for manager+; `getGoingColdLeads`'s scope object also serves the Elaya `get_cold_leads` tool (added 2026-06-20). Admin client with **session-derived** scope args (the gated page is the trust boundary, `getAgentRosterByDomain` pattern); `mapRows` typed boundary |
 | Cache | **None, deliberately** — an escalation surface must never show stale breaches |
 | RSC | `page.tsx` role-gates, then `EscalationsAsync` runs the three reads in `Promise.all` inside `Suspense` |
 
@@ -58,6 +68,16 @@ Semantics:
 header (label-micro title + count pill) wrapping `Table<T>` (the sanctioned secondary
 table). Rows navigate to the lead dossier (`/leads/${slug ?? id}`). Summary strip: three
 `StatTile variant="card"`. Going-cold header carries an "Open in Leads" deep link.
+
+**Alerted column (breaches card only):** the SLA-breaches table carries an **Alerted** column
+rendering `EscalatedLeadRow.recipients` (`SlaRecipientRole[]`) as a `RecipientChips` cluster —
+one quiet pill per escalation target (Agent / Manager / Founder, each glyphed, agent→founder
+order). The recipients are the union of `recipient_role` across the lead's matched status breach
+policies (so a nurturing breach shows Agent + Manager from SLA-04A/04B). In the agent `selfView`
+the agent's pill is the accent-tinted **"You"**; all chips are tokenised (paper-subtle vs
+accent-surface), no hardcoded colour. The column is breaches-only by design — going-cold is a
+derived predicate with no fired timer / no alert, and overdue-task escalation runs on the separate
+task-reminder mechanism.
 
 ## 5. States
 

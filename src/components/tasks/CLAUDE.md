@@ -86,9 +86,15 @@ Mounted from `TasksShell` when `tab=personal`.
 
 Task rows render through the module-scope **`CalendarTaskRow`** (`memo`, perf G-4): hover lives in the parent (`hoveredTaskId`), so the row receives a primitive `highlighted` flag plus `isLast`/`showDue`/`effectiveStatus`/`canComplete` primitives and `useCallback`'d handlers (`handleRowClick`, `setHoveredTaskId`, `handleToggle`). Keep new row props primitive/stable — never re-inline the row JSX.
 
-**Calendar dots = actionable-only (single predicate).** A dot means a day has at least one task still to do. `buildTaskDots` and `groupTasksByDate` (the click filter) both gate on the shared module-scope `isTaskActionable(task, optimisticStatus)` — effective status (optimistic toggle honoured) neither `completed` nor `cancelled`. Both receive `optimisticStatus`. Never give the two functions separate completed-checks: that drift is what caused the phantom-dot bug (a day whose tasks were all done showed a dot but clicked to an empty list). A just-completed task drops its dot immediately because the predicate reads optimistic status. Pagination blindness (dots reflect only loaded tasks, not the full DB set) is a separate, known limitation, flagged in a code comment — do not fold a fix for it into the dot predicate. Date-grain keys stay `localKey`/`taskLocalKey` — never `toISOString().slice(0,10)`.
+**Calendar dots = actionable-only (single predicate).** A dot means a day has at least one task still to do. `buildTaskDots` and `groupTasksByDate` (the click filter) both gate on the shared module-scope `isTaskActionable(task, optimisticStatus)` — effective status (optimistic toggle honoured) neither `completed` nor `cancelled`. Both receive `optimisticStatus`. Never give the two functions separate completed-checks: that drift is what caused the phantom-dot bug (a day whose tasks were all done showed a dot but clicked to an empty list). A just-completed task drops its dot immediately because the predicate reads optimistic status. **The old pagination-blindness limitation is GONE (2026-06-25):** the view auto-drains every page of `get_personal_tasks` on mount (the `useEffect` that re-fires while `hasMore && nextCursor`, replacing the manual "Load more" button), so dots/sections reflect the user's FULL active set, not just page 1. The paged RPC stays (LIMIT 51/page, composite cursor) — only the consumption changed. Active tasks are few (completed/cancelled excluded) so the drain is short; a `Loading your tasks…` row shows while it runs. Date-grain keys stay `localKey`/`taskLocalKey` — never `toISOString().slice(0,10)`.
 
 ---
+
+### CompletedTasksModal / CompletedTasksButton
+
+`CompletedTasksModal.tsx` + `CompletedTasksButton.tsx` — `'use client'` (2026-06-25)
+
+THE completed-tasks history view. `CompletedTasksButton` (in the `/tasks` header) owns the open state and loads `CompletedTasksModal` via `next/dynamic` on intent (Heavy-modal rule G-1), gated on `open`. The modal composes `ui/modal.tsx`, lists a person's completed **personal tasks AND group subtasks** in one recent-first list with a `Button`-driven keyset "Load more". A `FilterDropdown` person picker shows for manager+ only (agent sees their own, no picker). Display-only rows: `TaskStatusIcon` + title + a Personal/group-title context label + `formatDate(completed_at)`. Read-only — a row does NOT open `SubTaskModal` in v1. Empty via `<EmptyState variant="inline">`. Scope is enforced in the action, not here.
 
 ### GroupTasksTab
 
@@ -120,3 +126,4 @@ FAB add-subtask panel. No drag-and-drop.
 | SubTaskModal        | `addTaskRemarkAction`, `updateTaskAction`, `updateChecklistAction`, `deleteTaskAction` |
 | CreatePersonalTaskModal | `createPersonalTaskAction`                               |
 | CreateGroupTaskModal    | `createGroupTaskAction`                                  |
+| CompletedTasksModal     | `getCompletedTasksAction`, `getAssignableUsersAction`    |

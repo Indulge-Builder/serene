@@ -1,5 +1,6 @@
 "use client";
 
+import { Snowflake } from "lucide-react";
 import { SnapshotCountWidget } from "./SnapshotCountWidget";
 import type { WidgetProps } from "@/components/dashboard/DashboardWidgetSlot";
 
@@ -10,6 +11,7 @@ export function ManagerColdLeadsWidget({ initialData }: WidgetProps) {
       label="Going Cold"
       hint="leads with no activity in 5+ days"
       href="/leads?going_cold=true"
+      icon={Snowflake}
       positiveColor="var(--color-warning)"
     />
   );

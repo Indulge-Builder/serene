@@ -82,6 +82,9 @@ export default async function DashboardPage({
   let initialData: DashboardSummary;
 
   const isManagerPlus = role === "manager" || role === "admin" || role === "founder";
+  // Budget is admin/founder only (mirrors the /budget page + the budget widget's
+  // roles) — managers no longer seed or render any budget data.
+  const isAdminFounder = role === "admin" || role === "founder";
 
   // Admin/founder seed scope: the chosen Gia domain, or undefined for the
   // org-wide "All domains" aggregate (replaces the old hardcoded 'onboarding').
@@ -120,23 +123,20 @@ export default async function DashboardPage({
       adminFounderMultiVolume
         ? getLeadVolumeByDomains([...GIA_DOMAINS], dateRange)
         : Promise.resolve(null),
-      // Budget widget seed (manager+ only) — date-filtered like campaigns;
-      // managers are pinned to their own domain before the data reaches the client.
-      isManagerPlus
+      // Budget widget seed (admin/founder only) — date-filtered like campaigns.
+      isAdminFounder
         ? getBudgetSummary(dateRange.from, dateRange.to)
         : Promise.resolve(null),
-      // Fuel-gauge recharges (manager+ only) — the gauge is ALWAYS org-wide
+      // Fuel-gauge recharges (admin/founder only) — the gauge is ALWAYS org-wide
       // (recharges carry no domain, so a per-domain "remaining" would be a
       // finance error); fetched unscoped alongside the spend rows.
-      isManagerPlus
+      isAdminFounder
         ? getAccountRecharges(dateRange.from, dateRange.to)
         : Promise.resolve(null),
     ]);
-    // Budget pre-filter: managers → own domain; admin/founder → the scoped
-    // domain (or full rows for the all-domains view). Mirrors the manager pin.
-    const budgetFilterDomain: AppDomain | null = isManager
-      ? domain
-      : (scopeDomain ?? null);
+    // Budget pre-filter (admin/founder only — managers have no budgetRows):
+    // the scoped domain, or null for the all-domains view (full rows).
+    const budgetFilterDomain: AppDomain | null = scopeDomain ?? null;
     initialData = {
       ...rpcData,
       agent_tasks:       rpcData.agent_tasks    ?? [],
@@ -151,7 +151,7 @@ export default async function DashboardPage({
         ? filterBudgetRowsByDomain(budgetRows, budgetFilterDomain)
         : budgetRows,
       // Fuel gauge — org-wide (UNFILTERED spend + recharges); recharges have no
-      // domain, so this is the same tank for every manager+ viewer.
+      // domain, so this is the same tank for every admin/founder viewer.
       budget_gauge:      budgetRows
         ? buildBudgetGaugeSummary(budgetRows, budgetRecharges ?? [])
         : null,

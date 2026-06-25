@@ -1,8 +1,8 @@
 'use client';
 
 // UsageHistoryChart — daily active-minutes over the history window, stacked by
-// domain. Models AgentCallTrendChart (the canonical Cartesian time-series
-// wrapper): ChartFrame + cartesianDefaults(tokens) + CARTESIAN_MARGIN, colours
+// domain. Models the Cartesian time-series wrapper convention
+// (CartesianChartFrame): ChartFrame + cartesianDefaults(tokens) + CARTESIAN_MARGIN, colours
 // via resolveColorMap(DOMAIN_LINE_COLORS). Lazy-loaded via next/dynamic at the
 // call site so Recharts stays out of the /admin/usage initial chunk (G-3).
 

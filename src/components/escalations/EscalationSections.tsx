@@ -10,7 +10,8 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, UserRound, UserCog, Crown } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Table } from "@/components/ui/Table";
 import type { TableColumn } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -22,7 +23,7 @@ import type {
   OverdueTaskEscalationRow,
   GoingColdLeadRow,
 } from "@/lib/services/sla-service";
-import type { LeadStatus, AppDomain } from "@/lib/types/database";
+import type { LeadStatus, AppDomain, SlaRecipientRole } from "@/lib/types/database";
 
 // ── Shared bits ──────────────────────────────────────────────────────────────
 
@@ -135,40 +136,93 @@ function domainLabel(domain: string): string {
   return DOMAIN_LABELS[domain as AppDomain] ?? domain;
 }
 
+// ── Alerted recipients ───────────────────────────────────────────────────────
+// Who a live breach escalates to. The escalation ladder reads agent → manager →
+// founder; each role gets a quiet pill with its own glyph. In the agent self-
+// view, the agent's own pill becomes the accent-tinted "You" — a soft cue that
+// this slip is on their desk, and who else is now watching it.
+
+const RECIPIENT_META: Record<SlaRecipientRole, { label: string; Icon: LucideIcon }> = {
+  agent:   { label: "Agent",   Icon: UserRound },
+  manager: { label: "Manager", Icon: UserCog   },
+  founder: { label: "Founder", Icon: Crown     },
+};
+
+function RecipientChips({
+  roles,
+  selfView,
+}: {
+  roles:    SlaRecipientRole[];
+  selfView: boolean;
+}) {
+  if (roles.length === 0) {
+    // No status-policy recipients matched (rare) — keep the cell honest.
+    return <span style={tertiaryCell}>—</span>;
+  }
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-1)" }}>
+      {roles.map((role) => {
+        const { label, Icon } = RECIPIENT_META[role];
+        const isSelf = selfView && role === "agent";
+        return (
+          <span
+            key={role}
+            title={isSelf ? "You were alerted" : `${label} alerted`}
+            style={{
+              display:      "inline-flex",
+              alignItems:   "center",
+              gap:          "4px",
+              padding:      "2px 8px 2px 6px",
+              borderRadius: "var(--radius-full)",
+              border:       `1px solid ${isSelf ? "var(--theme-accent-muted)" : "var(--theme-paper-border)"}`,
+              background:   isSelf ? "var(--theme-accent-surface)" : "var(--theme-paper-subtle)",
+              color:        isSelf ? "var(--theme-accent)" : "var(--theme-text-secondary)",
+              fontSize:     "var(--text-2xs)",
+              fontWeight:   "var(--weight-medium)",
+              lineHeight:   1,
+              whiteSpace:   "nowrap",
+            }}
+          >
+            <Icon style={{ width: "11px", height: "11px", strokeWidth: 1.5 }} aria-hidden />
+            {isSelf ? "You" : label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── SLA breaches ─────────────────────────────────────────────────────────────
 
 export function EscalatedLeadsSection({
   rows,
   showDomain,
+  selfView = false,
 }: {
   rows:       EscalatedLeadRow[];
   showDomain: boolean;
+  selfView?:  boolean;
 }) {
   const router = useRouter();
 
   const columns: TableColumn<EscalatedLeadRow>[] = [
     { id: "lead", header: "Lead", cell: (r) => <NameCell name={r.name} phone={r.phone} /> },
     { id: "status", header: "Status", cell: (r) => <LeadStatusPill status={r.status} /> },
-    {
-      id: "rules",
-      header: "Breached rules",
-      cell: (r) => (
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", color: "var(--theme-text-secondary)" }}>
-          {r.ruleCodes.join(" · ")}
-        </span>
-      ),
-    },
-    { id: "agent", header: "Agent", cell: (r) => <span style={secondaryCell}>{r.assigneeName ?? "Unassigned"}</span> },
-    { id: "fired", header: "Last breach", cell: (r) => <span style={tertiaryCell}>{formatRelativeTime(r.lastFiredAt)}</span> },
+    // The Agent column is noise in the self-view — every row is the viewer.
+    ...(selfView
+      ? []
+      : [{ id: "agent", header: "Agent", cell: (r: EscalatedLeadRow) => <span style={secondaryCell}>{r.assigneeName ?? "Unassigned"}</span> }]),
+    { id: "fired", header: "Stalled since", cell: (r) => <span style={tertiaryCell}>{formatRelativeTime(r.lastFiredAt)}</span> },
+    { id: "alerted", header: "Alerted", cell: (r) => <RecipientChips roles={r.recipients} selfView={selfView} /> },
     ...(showDomain
       ? [{ id: "domain", header: "Domain", cell: (r: EscalatedLeadRow) => <span style={tertiaryCell}>{domainLabel(r.domain)}</span> }]
       : []),
   ];
 
   return (
-    <SectionCardShell title="SLA breaches — live" count={rows.length}>
+    <SectionCardShell title={selfView ? "Leads that slipped" : "SLA breaches — live"} count={rows.length}>
       {rows.length === 0 ? (
-        <EmptyState variant="inline" title="Nothing is breaching right now." />
+        <EmptyState variant="inline" title={selfView ? "None of your leads are breaching right now." : "Nothing is breaching right now."} />
       ) : (
         <Table<EscalatedLeadRow>
           columns={columns}
@@ -186,9 +240,11 @@ export function EscalatedLeadsSection({
 export function OverdueTasksSection({
   rows,
   showDomain,
+  selfView = false,
 }: {
   rows:       OverdueTaskEscalationRow[];
   showDomain: boolean;
+  selfView?:  boolean;
 }) {
   const router = useRouter();
 
@@ -203,7 +259,9 @@ export function OverdueTasksSection({
       ),
     },
     { id: "lead", header: "Lead", cell: (r) => <span style={secondaryCell}>{r.leadName}</span> },
-    { id: "agent", header: "Agent", cell: (r) => <span style={secondaryCell}>{r.assigneeName ?? "Unassigned"}</span> },
+    ...(selfView
+      ? []
+      : [{ id: "agent", header: "Agent", cell: (r: OverdueTaskEscalationRow) => <span style={secondaryCell}>{r.assigneeName ?? "Unassigned"}</span> }]),
     {
       id: "due",
       header: "Was due",
@@ -216,9 +274,9 @@ export function OverdueTasksSection({
   ];
 
   return (
-    <SectionCardShell title="Overdue follow-up tasks" count={rows.length}>
+    <SectionCardShell title={selfView ? "Your overdue follow-ups" : "Overdue follow-up tasks"} count={rows.length}>
       {rows.length === 0 ? (
-        <EmptyState variant="inline" title="No follow-up has slipped past due." />
+        <EmptyState variant="inline" title={selfView ? "No follow-up of yours has slipped past due." : "No follow-up has slipped past due."} />
       ) : (
         <Table<OverdueTaskEscalationRow>
           columns={columns}
@@ -236,16 +294,20 @@ export function OverdueTasksSection({
 export function GoingColdSection({
   rows,
   showDomain,
+  selfView = false,
 }: {
   rows:       GoingColdLeadRow[];
   showDomain: boolean;
+  selfView?:  boolean;
 }) {
   const router = useRouter();
 
   const columns: TableColumn<GoingColdLeadRow>[] = [
     { id: "lead", header: "Lead", cell: (r) => <NameCell name={r.name} phone={r.phone} /> },
     { id: "status", header: "Status", cell: (r) => <LeadStatusPill status={r.status} /> },
-    { id: "agent", header: "Agent", cell: (r) => <span style={secondaryCell}>{r.assigneeName ?? "Unassigned"}</span> },
+    ...(selfView
+      ? []
+      : [{ id: "agent", header: "Agent", cell: (r: GoingColdLeadRow) => <span style={secondaryCell}>{r.assigneeName ?? "Unassigned"}</span> }]),
     {
       id: "activity",
       header: "Last activity",
@@ -284,7 +346,7 @@ export function GoingColdSection({
       }
     >
       {rows.length === 0 ? (
-        <EmptyState variant="inline" title="Every active lead has recent movement." />
+        <EmptyState variant="inline" title={selfView ? "Every one of your active leads has recent movement." : "Every active lead has recent movement."} />
       ) : (
         <Table<GoingColdLeadRow>
           columns={columns}

@@ -16,7 +16,7 @@ import { BudgetFilterBar } from "./BudgetFilterBar";
 // /budget — ad spend vs lead/deal outcomes per campaign.
 // Reads only from our DB (ad_spend_daily via get_budget_summary) — never a
 // live Meta API call. Always-live reads, no Redis (like /campaigns).
-// Access: manager (read), admin/founder (read + upload).
+// Access: admin/founder only (read + upload). Managers are excluded.
 // ─────────────────────────────────────────────
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -28,7 +28,7 @@ export default async function BudgetPage({
 }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
-  if (!["manager", "admin", "founder"].includes(profile.role)) {
+  if (!["admin", "founder"].includes(profile.role)) {
     redirect("/dashboard");
   }
 

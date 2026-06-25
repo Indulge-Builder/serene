@@ -9,6 +9,7 @@ import {
   useTransition,
 } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import {
@@ -40,7 +41,7 @@ import type { AssignableUser } from '@/lib/types';
 import { CreatePersonalTaskModal } from '@/components/tasks/CreatePersonalTaskModal';
 import { Avatar } from '@/components/ui/Avatar';
 import { Spinner } from '@/components/ui/Spinner';
-import type { PersonalTasksResult, TaskRemarkWithAuthor } from '@/lib/services/tasks-service';
+import type { PersonalTaskRow, PersonalTasksResult, TaskRemarkWithAuthor } from '@/lib/services/tasks-service';
 import type { Task, TaskStatus, UserRole, AppDomain } from '@/lib/types/database';
 import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 import {
@@ -134,17 +135,17 @@ function buildTaskDots(
 interface DateSection {
   key:       string;   // 'today' | 'overdue' | 'no-date' | YYYY-MM-DD
   label:     string;
-  tasks:     Task[];
+  tasks:     PersonalTaskRow[];
   isToday?:   boolean;
   isOverdue?: boolean;
   isNoDate?:  boolean;
 }
 
-function groupTasksByDate(tasks: Task[], optimisticStatus: Record<string, TaskStatus>): DateSection[] {
+function groupTasksByDate(tasks: PersonalTaskRow[], optimisticStatus: Record<string, TaskStatus>): DateSection[] {
   const today    = todayKey();
   const tomorrow = tomorrowKey();
 
-  const buckets: { today: Task[]; overdue: Task[]; noDate: Task[]; future: Record<string, Task[]> } =
+  const buckets: { today: PersonalTaskRow[]; overdue: PersonalTaskRow[]; noDate: PersonalTaskRow[]; future: Record<string, PersonalTaskRow[]> } =
     { today: [], overdue: [], noDate: [], future: {} };
 
   for (const task of tasks) {
@@ -199,7 +200,7 @@ export function MyTasksCalendarView({
   onTagsMayHaveChanged,
 }: MyTasksCalendarViewProps) {
   // ── Task data ─────────────────────────────────────────────────────────────
-  const [activeTasks,   setActiveTasks]   = useState<Task[]>(initialResult.tasks);
+  const [activeTasks,   setActiveTasks]   = useState<PersonalTaskRow[]>(initialResult.tasks);
   const [hasMore,       setHasMore]       = useState(initialResult.hasMore);
   const [nextCursor,    setNextCursor]    = useState(initialResult.nextCursor);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -225,7 +226,7 @@ export function MyTasksCalendarView({
   }
 
   // ── Task modal ─────────────────────────────────────────────────────────────
-  const [selectedTask,        setSelectedTask]        = useState<Task | null>(null);
+  const [selectedTask,        setSelectedTask]        = useState<PersonalTaskRow | null>(null);
   const [selectedTaskRemarks, setSelectedTaskRemarks] = useState<TaskRemarkWithAuthor[] | null>(null);
   const [taskModalOpen,       setTaskModalOpen]       = useState(false);
 
@@ -262,7 +263,9 @@ export function MyTasksCalendarView({
       toast.success('Task created');
       setShowQuickAdd(false); setQuickTitle(''); setQuickDueAt(null); setQuickAssignee(null);
       const now = new Date().toISOString();
-      const syntheticTask: Task = {
+      // Quick-add always creates a standalone personal task (module='core'),
+      // never a lead follow-up — the lead-identity fields are always null here.
+      const syntheticTask: PersonalTaskRow = {
         id: result.data!.taskId, title: quickTitle.trim(), description: null,
         priority: 'normal', status: 'to_do',
         due_at: quickDueAt ? quickDueAt.toISOString() : null,
@@ -271,28 +274,44 @@ export function MyTasksCalendarView({
         group_id:    null,
         task_category: 'personal', task_type: 'other', module: 'core',
         completed_at: null, overdue_at: null, attachments: [], tags: [], created_at: now, updated_at: now,
+        lead_id: null, lead_first_name: null, lead_last_name: null, lead_slug: null,
       };
       setActiveTasks((prev) => [syntheticTask, ...prev]);
     });
   }, [isPending, quickTitle, quickDueAt, quickAssignee, startTransition]);
 
-  // ── Load more ───────────────────────────────────────────────────────────────
-  const loadMore = useCallback(() => {
-    if (!hasMore || isLoadingMore || !nextCursor) return;
+  // ── Auto-load every page ──────────────────────────────────────────────────
+  // My Tasks is a CALENDAR, not a paged list — a dot/section must reflect the
+  // user's whole active schedule, so a far-future task beyond page 1 cannot be
+  // hidden behind a "Load more" click. The paged RPC stays (LIMIT 51/page,
+  // composite cursor); we drain every page: each fetch advances nextCursor,
+  // which re-fires this effect until hasMore is false.
+  //
+  // The effect depends ONLY on the cursor — NEVER on isLoadingMore. A flag the
+  // effect both sets and depends on cancels its own in-flight fetch on the
+  // re-run (cleanup), so the page result never commits and the drain spins
+  // forever (the "stuck on loading" bug). A ref guards against the same cursor
+  // being fetched twice; the cursor advancing is the only thing that drives it.
+  const drainingCursorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hasMore || !nextCursor) return;
+    if (drainingCursorRef.current === nextCursor.id) return; // already fetching this page
+    drainingCursorRef.current = nextCursor.id;
     setIsLoadingMore(true);
     getPersonalTasksAction({ cursor: nextCursor, status: ['to_do', 'in_progress', 'in_review', 'error', 'cancelled'] })
       .then((r) => {
-        if (r.data) {
-          setActiveTasks((prev) => [...prev, ...r.data!.tasks]);
-          setHasMore(r.data.hasMore);
-          setNextCursor(r.data.nextCursor);
-        }
-      }).catch(() => {}).finally(() => setIsLoadingMore(false));
-  }, [hasMore, isLoadingMore, nextCursor]);
+        if (!r.data) return;
+        setActiveTasks((prev) => [...prev, ...r.data!.tasks]);
+        setHasMore(r.data.hasMore);
+        setNextCursor(r.data.nextCursor);
+      })
+      .catch(() => {})
+      .finally(() => setIsLoadingMore(false));
+  }, [hasMore, nextCursor]);
 
   // ── Row click → pre-fetch remarks then open modal ──────────────────────────
   // Stable identity so memo(CalendarTaskRow) skips untouched rows (G-4)
-  const handleRowClick = useCallback((task: Task) => {
+  const handleRowClick = useCallback((task: PersonalTaskRow) => {
     setSelectedTask(task);
     setSelectedTaskRemarks(null);
     getTaskRemarksAction(task.id)
@@ -317,9 +336,12 @@ export function MyTasksCalendarView({
   }
 
   // ── Filter tasks ────────────────────────────────────────────────────────────
-  function taskPassesFilters(task: Task): boolean {
+  function taskPassesFilters(task: PersonalTaskRow): boolean {
     if (filters.search.trim()) {
-      const hay = `${task.title} ${task.description ?? ''}`.toLowerCase();
+      // Include the linked lead's name so searching a lead finds its follow-up
+      // task (lead tasks carry a type-derived title like "Call", not the name).
+      const leadName = `${task.lead_first_name ?? ''} ${task.lead_last_name ?? ''}`;
+      const hay = `${task.title} ${task.description ?? ''} ${leadName}`.toLowerCase();
       if (!hay.includes(filters.search.trim().toLowerCase())) return false;
     }
     if (filters.tags.length > 0 && !filters.tags.every((t) => task.tags.includes(t))) return false;
@@ -356,10 +378,13 @@ export function MyTasksCalendarView({
     }];
   })();
 
-  const visibleCount = filteredTasks.filter((t) => {
-    const eff = optimisticStatus[t.id] ?? t.status;
-    return eff !== 'completed';
-  }).length;
+  // Match the count to the rows the sections actually render — isTaskActionable
+  // (the shared predicate buildTaskDots / groupTasksByDate gate on) excludes
+  // completed AND cancelled. Counting only !== 'completed' here over-reported by
+  // any cancelled task that passed the filters but was hidden from the list.
+  const visibleCount = filteredTasks.filter((t) =>
+    isTaskActionable(t, optimisticStatus),
+  ).length;
 
   useEffect(() => { onFilteredCountChange?.(visibleCount); }, [visibleCount, onFilteredCountChange]);
 
@@ -742,24 +767,19 @@ export function MyTasksCalendarView({
           )}
         </div>
 
-        {/* Load more */}
-        {hasMore && (
-          <button
-            type="button" onClick={loadMore} disabled={isLoadingMore}
+        {/* Auto-loading the rest of the schedule — no manual "Load more" (the
+            calendar must reflect every active task; pages drain on mount). */}
+        {(hasMore || isLoadingMore) && (
+          <div
             style={{
-              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-              margin: 'var(--space-4) auto 0',
-              padding: 'var(--space-2) var(--space-4)',
-              background: 'transparent', border: '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-sm)', color: 'var(--theme-text-secondary)',
-              fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)',
-              cursor: isLoadingMore ? 'not-allowed' : 'pointer',
-              opacity: isLoadingMore ? 0.5 : 1, transition: 'opacity 150ms, border-color 150ms',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 'var(--space-2)', margin: 'var(--space-4) auto 0',
+              color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-sm)',
             }}
           >
-            {isLoadingMore ? <Spinner size="sm" /> : null}
-            {isLoadingMore ? 'Loading…' : 'Load more'}
-          </button>
+            <Spinner size="sm" />
+            Loading your tasks…
+          </div>
         )}
       </div>
 
@@ -769,7 +789,12 @@ export function MyTasksCalendarView({
         open={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onCreated={(task) => {
-          setActiveTasks((prev) => [task, ...prev]);
+          // A standalone personal task — never a lead follow-up, so the
+          // lead-identity fields are null (PersonalTaskRow shape, 0145).
+          setActiveTasks((prev) => [
+            { ...task, lead_id: null, lead_first_name: null, lead_last_name: null, lead_slug: null },
+            ...prev,
+          ]);
           setCreateModalOpen(false);
           if (task.tags.length > 0) onTagsMayHaveChanged?.();
         }}
@@ -814,7 +839,7 @@ export function MyTasksCalendarView({
 // rows whose `highlighted` flag changes re-render on hover.
 
 interface CalendarTaskRowProps {
-  task:            Task;
+  task:            PersonalTaskRow;
   idx:             number;
   isLast:          boolean;
   effectiveStatus: TaskStatus;
@@ -824,7 +849,7 @@ interface CalendarTaskRowProps {
   currentUserId:   string;
   onHoverChange:   (taskId: string | null) => void;
   onToggle:        (e: React.MouseEvent, task: { id: string; status: TaskStatus }) => void;
-  onOpen:          (task: Task) => void;
+  onOpen:          (task: PersonalTaskRow) => void;
 }
 
 const CalendarTaskRow = memo(function CalendarTaskRow({
@@ -843,6 +868,14 @@ const CalendarTaskRow = memo(function CalendarTaskRow({
   const isComplete   = effectiveStatus === 'completed';
   const dueDateColor = getDueDateColor(task.due_at, effectiveStatus);
   const overdue      = isOverdueDate(task.due_at) && !isComplete;
+
+  // A lead follow-up (module='gia') carries the linked lead's identity (0145);
+  // its title is a type label ("Call"), so surface WHICH lead beside it as a
+  // dossier link. The slug is the canonical dossier route, id is the fallback.
+  const leadName = task.lead_id
+    ? `${task.lead_first_name ?? ''} ${task.lead_last_name ?? ''}`.trim()
+    : '';
+  const leadHref = task.lead_id ? `/leads/${task.lead_slug ?? task.lead_id}` : null;
 
   return (
     <motion.div
@@ -879,10 +912,32 @@ const CalendarTaskRow = memo(function CalendarTaskRow({
           color:      isComplete ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)',
           textDecoration: isComplete ? 'line-through' : 'none',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          flex: 1, minWidth: 0,
+          // When a lead chip follows, keep the type label intact and let the
+          // lead name take the remaining width; otherwise the title flexes.
+          flex: leadHref ? '0 0 auto' : '1', minWidth: 0,
         }}>
           {task.title}
         </span>
+        {leadHref && (
+          <>
+            <span aria-hidden style={{
+              color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-sm)', flexShrink: 0,
+            }}>·</span>
+            <Link
+              href={leadHref}
+              onClick={(e) => e.stopPropagation()}
+              title={`Open ${leadName}'s lead`}
+              style={{
+                fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)',
+                color: 'var(--theme-accent)', textDecoration: 'none',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                flex: '1 1 auto', minWidth: 0,
+              }}
+            >
+              {leadName || 'Lead'}
+            </Link>
+          </>
+        )}
         {task.assigned_to && task.assigned_to !== currentUserId && (
           <div title="Assigned to someone else" style={{
             width: 'var(--space-5)', height: 'var(--space-5)',

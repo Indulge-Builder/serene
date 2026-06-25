@@ -4,6 +4,7 @@ import { FilterBar } from '@/components/ui/FilterBar';
 import { FilterDropdown } from '@/components/ui/FilterDropdown';
 import {
   TASK_STATUS_FILTER_ITEMS,
+  MY_TASKS_STATUS_FILTER_ITEMS,
   TASK_PRIORITY_FILTER_ITEMS,
   GROUP_PROGRESS_FILTER_ITEMS,
   EMPTY_PERSONAL_TASK_FILTERS,
@@ -25,8 +26,6 @@ type TasksFiltersProps = {
   onGroupFiltersChange:   (next: GroupTaskFiltersState) => void;
   groupDomainItems:       { id: string; label: string }[];
   showGroupDomainFilter:  boolean;
-  resultCount:            number;
-  resultNoun:             string;
 };
 
 // Client-state driven (props in, callbacks out — no URL params, no debounce:
@@ -41,8 +40,6 @@ export function TasksFilters({
   onGroupFiltersChange,
   groupDomainItems,
   showGroupDomainFilter,
-  resultCount,
-  resultNoun,
 }: TasksFiltersProps) {
   const isPersonal = activeTab === 'personal';
 
@@ -78,19 +75,6 @@ export function TasksFilters({
       searchStyle={{ flex: '1 1 200px', minWidth: '160px' }}
       activeCount={activeCount}
       onClearAll={clearAll}
-      trailing={
-        <span
-          style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize:   'var(--text-xs)',
-            color:      'var(--theme-text-tertiary)',
-            whiteSpace: 'nowrap',
-            marginLeft: 'auto',
-          }}
-        >
-          {resultCount} {resultNoun}
-        </span>
-      }
     >
       {isPersonal ? (
         <>
@@ -106,7 +90,7 @@ export function TasksFilters({
           )}
           <FilterDropdown
             label="Status"
-            items={TASK_STATUS_FILTER_ITEMS}
+            items={MY_TASKS_STATUS_FILTER_ITEMS}
             selected={personalFilters.statuses}
             multi
             onChange={(statuses) => patchPersonal({ statuses: statuses as PersonalTaskFiltersState['statuses'] })}

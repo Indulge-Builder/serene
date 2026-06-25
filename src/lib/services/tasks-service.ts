@@ -24,6 +24,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { redis } from '@/lib/redis';
 import { REDIS_KEYS, TASK_GIA_TTL, TASK_PERSONAL_PAGE1_TTL, TASK_GROUP_LIST_TTL } from '@/lib/constants/redis-keys';
+import { mapRows } from '@/lib/utils/rows';
 import type { AssignableUser, WithAuthor, WithAssignee } from '@/lib/types';
 import type {
   Task,
@@ -61,8 +62,22 @@ export type PersonalTaskFilters = {
   limit?:      number; // override page size (default PERSONAL_TASKS_PAGE_SIZE); capped at 500
 };
 
+/**
+ * A personal-task row plus the linked-lead identity (migration 0145). For a
+ * lead follow-up (a `personal` task carrying a `task_gia_meta` row — module='gia'
+ * since the 0138 category collapse) these are non-null; for every other personal
+ * task they are null. Lets My Tasks show "Call · Sonu Singh" + a dossier link
+ * instead of a bare type label. Mirrors the GiaTask row shape (lead_* fields).
+ */
+export type PersonalTaskRow = Task & {
+  lead_id:         string | null;
+  lead_first_name: string | null;
+  lead_last_name:  string | null;
+  lead_slug:       string | null;
+};
+
 export type PersonalTasksResult = {
-  tasks:      Task[];
+  tasks:      PersonalTaskRow[];
   hasMore:    boolean;
   nextCursor: PersonalTaskCursor | null; // composite cursor encoding last row's (due_at, id)
 };
@@ -164,7 +179,7 @@ export async function getPersonalTasks(
     return { tasks: [], hasMore: false, nextCursor: null };
   }
 
-  const rows = (data ?? []) as Task[];
+  const rows = (data ?? []) as PersonalTaskRow[];
   const hasMore = rows.length > pageSize;
   const page    = hasMore ? rows.slice(0, pageSize) : rows;
 
@@ -186,6 +201,115 @@ export async function getPersonalTasks(
   }
 
   return result;
+}
+
+// ─────────────────────────────────────────────
+// Query: completed tasks for a user (history modal)
+//
+// Covers BOTH personal tasks and group subtasks (task_category IN both) whose
+// status = 'completed', for a single target user (assigned_to). Recent-first,
+// keyset-paginated over (completed_at DESC NULLS LAST, id DESC) — the nullable
+// completed_at demands the same COMPOSITE-cursor pattern as getPersonalTasks
+// (a single-column cursor would silently drop NULL-completed_at rows). See the
+// "Composite cursor pattern" rule in src/lib/CLAUDE.md.
+//
+// Scope is NOT enforced here — the SELECT RLS lets any manager/admin/founder
+// read every task (it is not domain-scoped); agents are RLS-restricted to their
+// own assigned/created rows. The role+domain authorization (agent→self,
+// manager→own domain, admin/founder→anyone) is the ACTION's job
+// (getCompletedTasksAction). This function trusts its targetUserId argument.
+//
+// No Redis: completion history is low-traffic and unbounded; like getPersonalTasks
+// cursor pages, it goes straight to the DB.
+// ─────────────────────────────────────────────
+
+export const COMPLETED_TASKS_PAGE_SIZE = 30;
+
+/** Composite cursor over (completed_at DESC NULLS LAST, id DESC). */
+export type CompletedTaskCursor = {
+  completed_at: string | null;
+  id:           string;
+};
+
+/** A completed task row + the parent group's title (null for personal tasks). */
+export type CompletedTaskRow = Task & {
+  group_title: string | null;
+};
+
+export type CompletedTasksResult = {
+  tasks:      CompletedTaskRow[];
+  hasMore:    boolean;
+  nextCursor: CompletedTaskCursor | null;
+};
+
+/** Raw row shape from the select — task fields + the joined group title. */
+type CompletedTaskRaw = Record<string, unknown> & {
+  id:           string;
+  completed_at: string | null;
+  task_groups:  { title: string } | { title: string }[] | null;
+};
+
+export async function getCompletedTasks(
+  targetUserId: string,
+  cursor: CompletedTaskCursor | null = null,
+): Promise<CompletedTasksResult> {
+  const supabase = await createClient();
+
+  let query = supabase
+    .from('tasks')
+    .select('*, task_groups ( title )')
+    .eq('assigned_to', targetUserId)
+    .eq('status', 'completed')
+    .in('task_category', ['personal', 'group_subtask']);
+
+  // Keyset continuation — DESC ordering with completed_at NULLS LAST.
+  // Descending the NULLS-LAST list means non-null completed_at rows come FIRST,
+  // then the NULL group. Two cursor cases mirror getPersonalTasks (inverted):
+  //   cursor.completed_at NOT NULL → older completed_at, OR same ts & smaller id,
+  //                                  OR any NULL-completed_at row (they sort after).
+  //   cursor.completed_at NULL     → only NULL-completed_at rows with a smaller id.
+  if (cursor) {
+    if (cursor.completed_at !== null) {
+      query = query.or(
+        `completed_at.lt.${cursor.completed_at},` +
+          `and(completed_at.eq.${cursor.completed_at},id.lt.${cursor.id}),` +
+          `completed_at.is.null`,
+      );
+    } else {
+      query = query.is('completed_at', null).lt('id', cursor.id);
+    }
+  }
+
+  const { data, error } = await query
+    .order('completed_at', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: false })
+    .limit(COMPLETED_TASKS_PAGE_SIZE + 1);
+
+  if (error) {
+    console.error('[tasks-service] getCompletedTasks error:', error);
+    return { tasks: [], hasMore: false, nextCursor: null };
+  }
+
+  const mapped = mapRows<CompletedTaskRaw, CompletedTaskRow>(data ?? [], (r) => {
+    // Embedded to-one relation arrives as an object (or array under some PostgREST
+    // shapes); normalise to the single title or null.
+    const group = Array.isArray(r.task_groups) ? r.task_groups[0] : r.task_groups;
+    return {
+      ...(r as unknown as Task),
+      group_title: group?.title ?? null,
+    };
+  });
+
+  const hasMore = mapped.length > COMPLETED_TASKS_PAGE_SIZE;
+  const page    = hasMore ? mapped.slice(0, COMPLETED_TASKS_PAGE_SIZE) : mapped;
+
+  const lastRow = page[page.length - 1] ?? null;
+  const nextCursor: CompletedTaskCursor | null =
+    hasMore && lastRow
+      ? { completed_at: lastRow.completed_at ?? null, id: lastRow.id }
+      : null;
+
+  return { tasks: page, hasMore, nextCursor };
 }
 
 // ─────────────────────────────────────────────

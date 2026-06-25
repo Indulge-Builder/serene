@@ -222,7 +222,7 @@ export async function getLeadVolumeForDomainAction(
 }
 
 // ─────────────────────────────────────────────
-// Campaign Budget (manager budget widget refresh / cohort change)
+// Campaign Budget (budget widget refresh / cohort change — admin/founder)
 // Spend joined to lead + deal outcomes via getBudgetSummary (ad-spend-service).
 // Managers are pinned to their own domain via effectiveWidgetDomain — the
 // domain is derived from the campaign-key prefix, same map lead ingestion uses.
@@ -244,19 +244,16 @@ export async function getBudgetSummaryWidgetAction(
   const parsed = BudgetScopeSchema.safeParse({ from, to, domain: targetDomain });
   if (!parsed.success) return { data: null, error: 'Invalid domain or date range.' };
 
-  const auth = await requireProfile(['manager', 'admin', 'founder']);
+  // Admin/founder only (mirrors the /budget page + the budget widget roles).
+  const auth = await requireProfile(['admin', 'founder']);
   if (!auth.ok) return auth.result;
   const profile = auth.profile;
 
-  // Managers always get their own domain regardless of the request; admin and
-  // founder get the target they asked for (or the all-domain view).
-  const requested = profile.role === 'manager'
-    ? (profile.domain as AppDomain)
-    : parsed.data.domain;
+  // Admin/founder get the target they asked for (or the all-domain view).
   const scopeDomain = effectiveWidgetDomain(
     profile.role,
     profile.domain as AppDomain,
-    requested,
+    parsed.data.domain,
   );
 
   const rows = await getBudgetSummary(parsed.data.from, parsed.data.to);
@@ -267,12 +264,12 @@ export async function getBudgetSummaryWidgetAction(
 }
 
 // ─────────────────────────────────────────────
-// Campaign Budget fuel gauge (manager budget widget refresh / cohort change)
+// Campaign Budget fuel gauge (budget widget refresh / cohort change — admin/founder)
 // The org-wide ad-account "tank": recharged → spent → remaining + an ROI
 // roll-up, for the active date range. ALWAYS org-wide regardless of role —
 // recharges carry no domain, so there is no domain param and no manager pin
 // (a per-domain "remaining" would mix domain-filtered spend with org recharges
-// = a finance error). manager+ gate only; the gauge is finance-visible.
+// = a finance error). Admin/founder gate only — the gauge is finance-visible.
 // ─────────────────────────────────────────────
 const GaugeScopeSchema = z.object({
   from: z.string().datetime({ message: 'Invalid from date.' }),
@@ -289,7 +286,8 @@ export async function getBudgetGaugeWidgetAction(
   const parsed = GaugeScopeSchema.safeParse({ from, to });
   if (!parsed.success) return { data: null, error: 'Invalid date range.' };
 
-  const auth = await requireProfile(['manager', 'admin', 'founder']);
+  // Admin/founder only (mirrors the /budget page + the budget widget roles).
+  const auth = await requireProfile(['admin', 'founder']);
   if (!auth.ok) return auth.result;
 
   const [rows, recharges] = await Promise.all([

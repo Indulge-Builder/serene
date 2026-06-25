@@ -1,5 +1,6 @@
 "use client";
 
+import { Phone } from "lucide-react";
 import { SnapshotCountWidget } from "./SnapshotCountWidget";
 import type { WidgetProps } from "@/components/dashboard/DashboardWidgetSlot";
 
@@ -15,6 +16,7 @@ export function AgentPendingCallsWidget({ initialData }: WidgetProps) {
       label="Pending Calls"
       hint="open follow-up calls on your plate"
       href="/tasks?tab=gia"
+      icon={Phone}
       positiveColor="var(--color-info-text)"
     />
   );

@@ -57,10 +57,14 @@ const MAIN_NAV: NavItem[] = [
   { href: "/helpdesk",  label: "Helpdesk",  icon: BookOpen        },
 ];
 
-// Analytics section — Performance for all roles; Oversight + Campaigns + Budget
-// + Escalations for manager+ (the shared isManager gate below). Oversight sits
-// directly below Performance and is manager+ only (it rides the isManager gate,
-// unlike Performance which is the all-roles special-case in the filter below).
+// Analytics section — Performance + Escalations for all roles (agents get a
+// self-scoped Escalations view); Oversight + Campaigns for manager+ (the shared
+// isManager gate below; Escalations stays Gia-domain-only via canAccessRoute). Budget is
+// admin/founder ONLY — it rides the same isManager gate but is gated down to
+// admin/founder by canAccessRoute (it's absent from DOMAIN_ROUTE_MAP, and only
+// admin/founder bypass that map). Oversight sits directly below Performance and
+// is manager+ only (it rides the isManager gate, unlike Performance which is the
+// all-roles special-case in the filter below).
 const ANALYTICS_NAV: NavItem[] = [
   { href: "/performance", label: "Performance", icon: BarChart2 },
   { href: "/oversight", label: "Oversight", icon: Telescope },
@@ -437,7 +441,11 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
           <>
             <NavSection label="Analytics" />
             {ANALYTICS_NAV.filter(
-              (item) => (isManager || item.href === "/performance") && canAccessRoute(profile, item.href),
+              // Performance + Escalations are all-roles (agents get a self-scoped
+              // view); canAccessRoute still keeps Escalations Gia-domain-only.
+              (item) =>
+                (isManager || item.href === "/performance" || item.href === "/escalations") &&
+                canAccessRoute(profile, item.href),
             ).map(({ href, label, icon }) => (
               <NavLink
                 key={href}

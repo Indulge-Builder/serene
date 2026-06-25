@@ -13,6 +13,7 @@ import {
 } from '@/lib/constants/dashboard-widgets';
 import { DashboardWidgetSlot, type WidgetProps } from './DashboardWidgetSlot';
 import { DashboardDateFilter } from './DashboardDateFilter';
+import { AddWidgetMenu } from './AddWidgetMenu';
 import { PageControls } from '@/components/layout/PageControls';
 import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import type { DatePreset, DateRange } from '@/lib/utils/date-range';
@@ -55,10 +56,14 @@ export function DashboardCanvas({
   notificationsPromise,
 }: DashboardCanvasProps) {
   const isPrivileged = role === 'admin' || role === 'founder';
-  const { layout, isHydrated, applyLayout, removeWidget, resetToDefaults } =
+  const { layout, isHydrated, applyLayout, addWidget, removeWidget, resetToDefaults } =
     useDashboardLayout(userId, role);
   const [editMode, setEditMode] = useState(false);
   const isMobile = useMediaQuery(MQ.mobile);
+
+  // Widget ids currently on the canvas — drives the Add-widget picker's
+  // "what's been removed" set (anything role-available but not here).
+  const placedIds = useMemo(() => new Set(layout.map((p) => p.widgetId)), [layout]);
 
   // Our placements → RGL's Layout[] (the `i` key carries the widgetId, and we
   // pin per-widget min sizes so a chart can't be dragged below a usable cell).
@@ -139,6 +144,10 @@ export function DashboardCanvas({
               isPrivileged={isPrivileged}
               notificationsPromise={notificationsPromise}
             />
+          )}
+
+          {editMode && (
+            <AddWidgetMenu role={role} placedIds={placedIds} onAdd={addWidget} />
           )}
 
           {editMode && (

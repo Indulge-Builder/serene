@@ -548,7 +548,12 @@ export function DomainOverviewPanel({
             style={{ marginBottom: 'var(--space-5)' }}
           />
 
-          <ResponsiveContainer width="100%" height={220}>
+          {/* initialDimension seeds a positive width on Recharts' synchronous
+              first measure — width="100%" reads -1 for the one frame before
+              layout resolves and would log the chart-size warning. The height is
+              already concrete (220); the seed width is corrected to the real
+              column width by ResizeObserver on the next frame. */}
+          <ResponsiveContainer width="100%" height={220} initialDimension={{ width: 320, height: 220 }}>
             <BarChart
               data={chartData}
               margin={{ top: 4, right: 8, left: 0, bottom: 0 }}

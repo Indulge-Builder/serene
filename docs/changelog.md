@@ -12,6 +12,454 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-25 — Fix: lead-slug uppercase strip (90% of slugs corrupted) + Elaya lead-handle hardening + agent owner-hint
+
+**Why (the trigger):** an agent (Savio) asked Elaya over WhatsApp to update a lead's status and add
+a note for "Akhil Dikshit"; Elaya replied she couldn't find the lead. Investigation of the live
+`elaya_messages` transcript + `leads` table showed Elaya behaved **correctly** — the lead (real name
+`Akhil Deekshith`, phone `+919901100905`, `shop` domain) is assigned to a **different agent (Pawani
+Tiwari)**, and an agent can only see/act on their OWN assigned leads. But the dig surfaced two real
+issues worth fixing.
+
+**1 — Slug generator stripped every uppercase letter (severe latent bug).**
+`generate_lead_slug` (migration 0046) ran the character-class strip `[^a-z0-9\-]` on the ORIGINAL
+mixed-case name BEFORE `lower()` (the strip was the inner call, `lower()` the outer wrapper). The
+class is lowercase-only, so every capital was deleted: `Akhil Deekshith → khil-eekshith`. **4,705 of
+5,219 active slugs (90%) were missing their first letter.** Masked until now only because the dossier
+route falls back to UUID (`getLeadBySlug(id) ?? getLeadById(id)`) and lead SEARCH uses the separate,
+correct `search_text` column — so it never threw a hard 404, just produced wrong/ugly slugs and was a
+hazard for any flow that treats the slug as a real handle.
+
+- **Migration `20260625000147_fix_lead_slug_uppercase_strip.sql`** — moves `lower()` INSIDE, before
+  the strip (`regexp_replace(lower(concat_ws(...)), '[^a-z0-9\-]', '', 'g')`), then regenerates ALL
+  slugs (NULL-all-first so the collision loop never trips on a stale value; oldest-first so the
+  earliest holder of a name+phone-suffix keeps the clean slug and dupes get `-2`/`-3`, the 0046
+  contract). `set_lead_slug` trigger body unchanged (re-stated for history). Slug is NOT a generated
+  column and has no post-INSERT trigger, so the rewrite touches no dependency. **Applied to prod via
+  MCP + verified:** `akhil-deekshith-0905` correct; corrupted count 4,705 → 0 real (91 residual are
+  legitimately unsupported source data — Devanagari names + junk names like `.`/`??`/digit-only — that
+  fall back to a phone-suffix slug by design; lead search is unaffected, it reads `search_text`).
+
+**2 — Elaya lead handle: accept an opaque `leadId` (UUID-or-slug), not a slug the model must reproduce.**
+Industry-standard agent design targets a record by a stable opaque id and uses the human name for
+display only — never makes the LLM responsible for reproducing a PII-derived string as a foreign key.
+The write tools previously required a `slug`; combined with the corruption above this was fragile.
+
+- New `getLeadByRefForElaya(ref)` in `leads-service.ts` — admin-client resolver that accepts a lead
+  UUID OR a slug (UUID-shaped → `id` column, else `slug`), mirroring the dossier route's
+  slug-then-id resolution (R-01). The caller still runs `canAccessLead` — **security posture identical**.
+- `search_leads` now surfaces `leadId` (the UUID) per result — the stable handle, like
+  `get_my_tasks`' `taskId`; the PII gateway's UUID guard keeps it intact through masking.
+- All four lead write tools (`add_lead_note`, `create_lead_task`, `update_lead_status`,
+  `reassign_lead`) + `get_lead_details` now take `leadId` (UUID-or-slug) and resolve via
+  `getLeadByRefForElaya`. Proposal payloads already stored both `slug` + `leadId`; the confirmation
+  resolver now prefers the immutable `leadId` (falls back to slug for legacy rows).
+- Persona prompt updated: "use its leadId (the opaque handle … never type a name or guess an id)".
+- **Slugs are KEPT for human-facing pretty URLs** (legitimate, industry-standard) — this only removes
+  the model's dependency on reproducing the slug string.
+
+**3 — Agent owner-hint (helpful, no access widening).**
+When an agent's own-scoped `search_leads` returns nothing but a matching lead exists in their DOMAIN
+owned by a teammate, the tool now attaches an `ownedByTeammate` list carrying the lead NAME + OWNER
+NAME ONLY (never slug/id/phone) via the new `findDomainLeadOwners(domain, search)` (admin client,
+domain-scoped, read-only). Persona instructs Elaya to say "that looks like Pawani's lead — ask a
+manager to reassign" instead of implying it doesn't exist. **No write access is widened** — the write
+tools' `canAccessLead` gate is untouched; the agent still cannot act on a teammate's lead. This
+directly addresses Savio's confusion (he'd now learn whose lead it is, rather than a dead end).
+
+**Files:** `supabase/migrations/20260625000147_*.sql`, `src/lib/services/leads-service.ts`
+(`getLeadByRefForElaya`, `findDomainLeadOwners`), `src/lib/elaya/tools/registry.ts` (search_leads
+`leadId` + owner-hint, get_lead_details `leadId`), `src/lib/elaya/tools/write-registry.ts` (4 tools +
+resolver onto `leadId`/`getLeadByRefForElaya`), `src/lib/elaya/persona.ts`. Typecheck clean.
+
+## 2026-06-25 — Fix: silence Recharts `width(-1)/height(-1)` console warning on `/performance` charts
+
+**Why:** the dev console logged the Recharts `The width(-1) and height(-1) of chart should be
+greater than 0` warning repeatedly on dashboard/performance loads. Root cause traced: a Recharts
+`ResponsiveContainer` measures its parent **synchronously on first render**, before the browser has
+laid out the box, so it reads `-1` and logs once — then `ResizeObserver` fires one frame later with
+the real size and the chart renders correctly. The warning is cosmetic (the chart is never wrong),
+but it was noise. The dashboard widgets are already protected (the `useWidgetDensity` `measured`
+gate withholds the chart until the slot has a real box), and `MiniSparkline` / `CallOutcomeBar`
+were already protected via `initialDimension` / explicit pixels. Two `/performance` charts had no
+guard.
+
+**What:** added `initialDimension` to the two unguarded `ResponsiveContainer`s — the existing
+pattern (`MiniSparkline` in `CoreFourGrid`, the pixel sizing in `CallOutcomeBar`), so Recharts'
+first synchronous measure reads a real box instead of `-1`:
+
+- `DomainTargetMeter.tsx` — `initialDimension={{ width: METER_SIZE, height: METER_SIZE }}` (the
+  parent is a fixed `METER_SIZE` square; both axes were `100%`).
+- `DomainOverviewPanel.tsx` — `initialDimension={{ width: 320, height: 220 }}` on the comparative
+  bar chart (height was already concrete at `220`; only the `width="100%"` axis raced). The seed
+  width is corrected to the real column width by `ResizeObserver` on the next frame.
+
+**No behaviour/feature change** — both charts render byte-identically; only the first-frame measure
+is seeded. No architecture change: the dashboard spatial-grid (react-grid-layout) + density-gate
+approach is sound and untouched.
+
+---
+
+## 2026-06-25 — Feature: Completed Tasks history modal on `/tasks`
+
+**Why:** the active task surfaces deliberately hide completed work — `MyTasksCalendarView`
+excludes `completed`/`cancelled`, and the group workspace only shows a "Completed" board column
+per group. There was no consolidated "what has this person finished" view, which managers and
+founders wanted for accountability and agents wanted for their own record.
+
+**What:** a **Completed** button in the `/tasks` page header opens a modal listing a person's
+completed tasks — **both personal tasks AND group subtasks** in one list, recent-first with a
+keyset "Load more". Scope is **role + domain**: an agent sees only their own; a manager can pick
+anyone in their **own domain**; admin/founder can pick **anyone**.
+
+- **`getCompletedTasks(targetUserId, cursor?)`** (`tasks-service.ts`) — session client; `status =
+  'completed'`, `task_category IN ('personal','group_subtask')`, `assigned_to = targetUserId`,
+  with a `task_groups(title)` embed for the group-name label. Recent-first over
+  `(completed_at DESC NULLS LAST, id DESC)` using the project's **composite-cursor** pattern (the
+  nullable `completed_at` would otherwise drop NULL rows on page 2+). Page size 30. No Redis
+  (history is low-traffic + unbounded).
+- **`getCompletedTasksAction(input)`** (`actions/tasks.ts`) — Zod (`CompletedTasksQuerySchema`) →
+  `requireProfile()` → **the role/domain trust boundary**: agent → self only; manager → self or a
+  same-domain target (one `getProfileById` to read the target's domain); admin/founder → anyone.
+  This is what enforces domain isolation — the `tasks` SELECT RLS for manager+ is **not**
+  domain-scoped (agents are still RLS-bound to their own rows as a second layer).
+- **`CompletedTasksModal.tsx`** — composes `modal.tsx`; person picker (`FilterDropdown`,
+  single-select, manager+ only; list from `getAssignableUsersAction(domain?)`, caller always
+  selectable); rows reuse `TaskStatusIcon` + tokens; `EmptyState` inline empty; `Button`-driven
+  load-more. Read-only in v1 (clicking a row to open `SubTaskModal` is deliberately out of scope —
+  it would need the remarks pre-fetch gate).
+- **`CompletedTasksButton.tsx`** — `'use client'` header trigger; loads the modal via `next/dynamic`
+  on intent (Heavy-modal rule G-1), gated on `open`. Mounted in `tasks/page.tsx`.
+
+**Modal structure (fixed 2026-06-25):** the modal follows the `AssigneePickerModal` list-modal
+anatomy rather than dumping a list into the scrolling body — `bodyPadding={false}`, then a pinned
+person-picker strip (`flexShrink:0` + bottom border) · a single `flex:1 min-h-0 overflow-y-auto`
+list region (full-bleed rows, padding on the row not the container, `overscroll-behavior:contain`) ·
+a pinned "Load more" footer strip. So the picker and load-more stay put while only the list scrolls.
+**`Dialog` got a `md:max-h-[85dvh]` ceiling** in the same pass (it previously capped height only
+`<md` via `max-h-[90dvh]`): a tall body now scrolls inside the panel on desktop too, instead of
+growing past the viewport and scrolling the page behind the overlay. Benefits every
+`Dialog`/`modal.tsx` consumer; none relied on the panel growing unbounded.
+
+Layers over the existing task model — does not change the active My Tasks / Group surfaces, the
+`TaskTab` type, or any write path.
+
+---
+
+## 2026-06-25 — Redesign: agent `/performance` as a lean single-page self-scorecard
+
+**Why:** the agent self-view had barely changed since Phase 8 while the rest of the app
+modernised. It carried real clutter — a two-tab (Overview / Today) shell with heavy
+cross-tab metric duplication (the call-outcome donut rendered twice; Leads Won appeared
+3×; In Discussion / Nurturing in both the effort cards and the Today pills), a mislabeled
+"Today" strip mixing today- and period-scoped data, and **fabricated sparklines**
+(`makeSpark` interpolated a 6-point curve from just two numbers, so the KPI cards *looked*
+like trend data but weren't).
+
+**What:** collapsed to one honest scrollable column — Today strip (since-IST-midnight
+pulse) → period KPIs → activity-over-time trend + a live-pipeline line → call-outcome mix
+(once) → recent activity → Elaya footer. Tabs removed; the `needsPulse` / `effectiveTab` /
+`showOverviewTodayRow` branching is gone (the pulse is fetched once per mount).
+
+- **Real trend data.** New self-scoped RPC `get_agent_performance_trend(from, to)`
+  (migration `0146`, `auth.uid()`, `GRANT authenticated` — the `get_agent_today_pulse`
+  0108 posture, additive) returns a daily IST series `[{ day, leads_won, calls, notes }]`.
+  Fetched server-side in parallel with the summary (one-RPC-per-view, D-2; key-remounted
+  per range). It feeds the new `AgentActivityTrendChart` (period-scoped Calls/Notes/Won
+  lines; falls back to the pulse's 14-day call trend when the range is a single day) **and**
+  the one honest KPI sparkline.
+- **`makeSpark` deleted.** `CoreFourGrid` sparklines are now opt-in and real: only the
+  count metric (**Leads Won**) carries a daily series; the rate cards (Conversion / Touch /
+  Avg Response) carry none — a daily rate off 0–2 closes is noise, not trend. Deltas +
+  domain-benchmark lines (real) kept.
+- **Live pipeline line.** In Discussion · Nurturing (live counts from the summary RPC) +
+  Revenue (period deal revenue from the pulse) collapse into one calm row under the trend.
+- **Reuse / deletions (R-01/R-04).** `AgentCallTrendChart` → generalised to
+  `AgentActivityTrendChart` (still composes `ChartFrame` + `cartesianDefaults`); the only
+  reference was a comment in `UsageHistoryChart` (updated). `EffortGrid.tsx` **deleted**
+  (the shell was its only importer). Donut stays display-only (lean self-scorecard, not the
+  manager/founder drill direction — no new agent-side gated action). Recharts G-3 lazy split
+  preserved across all three chart importers.
+
+Full spec: `docs/audits/2026-06-25-agent-performance-scorecard-redesign.md`.
+Files: migration `0146`; `performance-service.ts` (+`getAgentPerformanceTrend`,
+`AgentTrendPoint`); `performance/page.tsx`; `AgentPerformanceShell.tsx` (rewrite);
+`CoreFourGrid.tsx`; `AgentActivityTrendChart.tsx` (was `AgentCallTrendChart.tsx`);
+`EffortGrid.tsx` (deleted). **⚠️ Migration `0146` not yet applied to prod** — additive +
+self-scoped (low risk); the interim `(supabase as any).rpc` cast stands until `database.ts`
+regen, per the house convention.
+
+## 2026-06-25 — Polish: snapshot-count tiles get an identity watermark + bring a removed widget back
+
+Two dashboard improvements.
+
+**1. Refined the snapshot-count tiles (`SnapshotCountWidget`).** The number-and-label widgets
+(Pending Calls, New Leads, Going Cold) looked flat/cramped at the new 2×2 size. Reworked to sit
+squarely in the existing stat-tile vocabulary (`StatTile` / the `ManagerBudgetWidget` hero) — the
+**one** new touch is a faint identity watermark:
+
+- Each consumer now passes a required `icon` (LucideIcon): Pending Calls→`Phone`, New
+  Leads→`UserPlus`, Going Cold→`Snowflake`.
+- The card uses standard paper chrome (new `.serene-stat-tile` Link class in globals.css —
+  `radius-lg`, `--theme-paper-border`, `--shadow-1`; calm interactive-card hover swaps to
+  `--theme-paper-subtle` with `--shadow-2`, colour/shadow only, gated to real pointers and
+  `prefers-reduced-motion`), a `label-micro` label, and a mono tabular hero number (`--text-3xl`,
+  dropping to `--text-2xl` when `compact`). Number colour is `positiveColor` when count > 0, else
+  `--theme-text-secondary` (the documented cold-leads rule, now shared by all three).
+- The `icon` renders as an **oversized, faint corner watermark** (opacity ≤ 0.08, bleeding
+  off-corner) — the single embellishment, the one thing carried over from the first pass.
+- `compact` (the 2×2 cell) drops the hint; standard/rich show it.
+
+> **Note:** a first pass added an ambient radial wash, `color-mix` semantic tints, a tinted icon
+> tile, a hover-lift, and a "go" arrow — reverted same day as off-philosophy (too far from the
+> established card vocabulary). Only the watermark survived. Token-pure throughout (check-tokens
+> passes); no `color-mix`, no rgba/hex.
+
+**2. Add a removed widget back.** The dashboard let you remove a widget (edit mode → ×) but had **no
+way to bring it back** — `useDashboardLayout` already exposed `addWidget`, but `DashboardCanvas` never
+wired a UI. Added `AddWidgetMenu` (`components/dashboard/AddWidgetMenu.tsx`): an edit-mode picker
+(beside Reset layout) built on the canonical `usePortalAnchor` + `<FloatingPanel>`, listing every
+role-available widget not currently placed (count badge), each row label + description + a `+`.
+Picking one calls `addWidget` (lands bottom-left, RGL compacts it in). Empty → Playfair-italic
+"Every widget is already on your dashboard." No new hook logic — pure UI wiring.
+
+Files: `widgets/SnapshotCountWidget.tsx` (rewrite), the three consumers
+(`Agent{PendingCalls,NewLeads}Widget.tsx`, `ManagerColdLeadsWidget.tsx` — icon prop),
+`app/globals.css` (`.serene-stat-tile`), `dashboard/AddWidgetMenu.tsx` (new),
+`dashboard/DashboardCanvas.tsx` (wire `addWidget` + menu).
+
+## 2026-06-25 — Tweak: shrink the agent snapshot-count widgets to 2×2
+
+The two agent-only live-count widgets — **Pending Calls** (`agent-pending-calls`) and **New Leads**
+(`agent-new-leads`) — were 3×5 grid cells, larger than a single number needs. Reduced both to a 2×2
+footprint in `constants/dashboard-widgets.ts`:
+
+- `defaultGrid` for each: `{ w: 3, h: 5, minW: 3, minH: 4 }` → `{ w: 2, h: 2, minW: 2, minH: 2 }`
+  (per-widget `minW`/`minH` are the real floors — the global `GRID_MIN_W`/`GRID_MIN_H` consts are
+  documentation only, not enforced).
+- Agent `DEFAULT_GRID_BY_ROLE` placements updated to match: both now `w:2 h:2`, sitting side-by-side
+  at `x:0` and `x:2` on row `y:9`.
+
+`SnapshotCountWidget` already adapts via `useWidgetDensityTier` — at this size the cell reads
+`compact`, so it drops the hint line and scales the number down. **Existing agents keep their saved
+localStorage layout** (RGL restores stored w/h); the new size applies to fresh layouts and
+reset-to-defaults.
+
+---
+
+## 2026-06-25 — Feature: agents get a self-scoped Escalations view
+
+`/escalations` was manager+ only (agents/guests redirected). Agents now see the **same page scoped
+to themselves** — the leads they let stall, the follow-ups they ran past due, and their leads going
+cold — a self-coaching mirror so they can see what slipped and improve their follow-through. Built
+entirely by **extending** the existing surface (no new route, no new components, no new queries):
+
+- **Service (`sla-service.ts`)** — added an optional `assignedTo` arg to `getEscalatedLeads` and
+  `getOverdueGiaTasks` (one `.eq` each), mirroring the `assignedTo` scope `getGoingColdLeads` already
+  carries for the Elaya agent tool. Absent → unchanged manager/org behaviour.
+- **Page (`escalations/page.tsx`)** — dropped the agent redirect (guests still redirected). Agents
+  resolve to `{ domain: own, assignedTo: self }`, `showDomain=false`, `selfView=true`, plus a
+  serif-italic reflective intro line. Manager/admin/founder paths are byte-unchanged.
+- **Sections (`EscalationSections.tsx`)** — added `selfView?` to all three sections: drops the
+  redundant Agent column (every self-view row is the viewer) and swaps to warmer second-person
+  titles + empty states ("Leads that slipped", "Your overdue follow-ups", "None of your leads are
+  breaching right now."). Same `Table`/`EmptyState`, no fork.
+- **"Alerted" column** (on the breaches card) — each row shows **who the breach escalates to** as a
+  quiet recipient-chip cluster (Agent / Manager / Founder, each with its own glyph, in
+  escalation-ladder order). `getEscalatedLeads` derives `recipients: SlaRecipientRole[]` = the union
+  of `recipient_role` across the lead's matched status policies (a nurturing breach →
+  `['agent','manager']` from SLA-04A + SLA-04B; a founder rule adds `'founder'`). In the self-view
+  the agent's own chip becomes the accent-tinted **"You"** — a soft cue of who else is now watching
+  the slip. Tokenised pills (paper-subtle / accent-surface), no hardcoded colour.
+- **Sidebar** — `/escalations` joins `/performance` as an all-roles `ANALYTICS_NAV` exception;
+  `canAccessRoute` still keeps it **Gia-domain-only**, so non-Gia agents (finance/tech/…) never see
+  it and can't reach the URL (layout guard).
+
+Still deliberately un-cached (an escalation surface must never show stale breaches); reads stay
+session-derived (the gated page is the trust boundary). Spec: `docs/pages/escalations.md`.
+
+---
+
+## 2026-06-25 — Change: My Tasks auto-loads the whole schedule (no "Load more")
+
+`MyTasksCalendarView` is a **calendar**, so it must reflect the user's *entire* active task set —
+but it only loaded the first page (`get_personal_tasks`, LIMIT 51) and hid the rest behind a manual
+**Load more** button. That was the long-standing "pagination blindness" caveat: a far-future task
+beyond page 1 had no calendar dot and didn't appear when you clicked its day until you clicked Load
+more.
+
+Replaced the button with an **auto-drain `useEffect`** that re-fires while `hasMore && nextCursor`,
+fetching every page on mount. The paged RPC is unchanged (LIMIT 51/page, composite cursor) — only
+the consumption changed. Active tasks exclude completed/cancelled, so the loop is short; a quiet
+`Loading your tasks…` row shows while pages drain, then disappears. Calendar dots and date-sections
+now reflect the full active set, not just page 1.
+
+---
+
+## 2026-06-25 — Change: /budget + Campaign Budget widget restricted to admin/founder (managers excluded)
+
+Budget (ad spend, recharges, the fuel gauge) is now **admin/founder only** everywhere — managers
+lose all budget access. Previously the `/budget` page and the dashboard Campaign Budget widget were
+manager+. Closed at every layer (defence in depth):
+
+- **Page role gate** — `budget/page.tsx` redirects anyone who is not admin/founder (was
+  `manager`/`admin`/`founder`).
+- **Route map** — removed `/budget` from `DOMAIN_ROUTE_MAP` (the Gia domains + `marketing`) in
+  `route-permissions.ts`, so `canAccessRoute` now returns `false` for a manager hitting `/budget` by
+  URL (the layout guard redirects), while admin/founder keep access by bypassing the map. This also
+  drops the **Budget** item from the manager sidebar automatically (the existing
+  `&& canAccessRoute(...)` filter).
+- **Dashboard widget** — `manager-budget` widget `roles` narrowed to `['admin','founder']`; removed
+  from the manager `DEFAULT_LAYOUT_BY_ROLE`. `sanitizeStored` already drops it from any persisted
+  manager layout via the roles check.
+- **Widget data** — `dashboard/page.tsx` now seeds the budget summary + recharges only for
+  admin/founder (new `isAdminFounder` flag), so a manager's page payload no longer carries org-wide
+  budget data; the dead manager `budgetFilterDomain` branch was removed. The two refresh actions
+  (`getBudgetSummaryWidgetAction`, `getBudgetGaugeWidgetAction`) now `requireProfile(['admin','founder'])`.
+
+## 2026-06-25 — Fix: Leads table toolbar wrapped onto two lines on mobile
+
+The `/leads` table toolbar (My Leads / Team Leads switcher · Going Cold · sort · Columns · Export)
+used `flexWrap: 'wrap'`, so on mobile the two-segment view switcher took enough width to push Going
+Cold and the sort/export cluster onto a second line — contradicting its own "one line at every
+viewport" contract. Switched the toolbar to a single non-wrapping scrollable row
+(`flexWrap: 'nowrap'` + `overflowX: 'auto'` + `scrollbarWidth: 'none'` + momentum touch scroll) —
+the same single-row pattern `LeadsFilters`/`FilterBar` already use. Nothing wraps; the row scrolls
+sideways if the controls overflow a narrow phone. The flex spacer keeps the right cluster pushed
+right on wide viewports and collapses to 0 when scrolling. (`LeadsTable.tsx`)
+
+## 2026-06-25 — Fix: Tasks filter bar (dead status options + count/visible mismatch + mobile count scroll)
+
+Three correctness fixes to the `/tasks` filter bar (`TasksShell` → `TasksFilters` → `FilterBar`,
+client-side filtering via `task-client-filters.ts`):
+
+- **My Tasks Status filter offered dead options.** `MyTasksCalendarView` renders only *actionable*
+  tasks (`isTaskActionable` = effective status neither `completed` nor `cancelled`) and never even
+  pages in `completed` rows — but the personal Status dropdown reused `TASK_STATUS_FILTER_ITEMS`
+  (all 6 statuses). Selecting **Completed** always yielded an empty list; **Cancelled** matched
+  in-memory but the rows stayed hidden. Added `MY_TASKS_STATUS_FILTER_ITEMS` (the actionable subset:
+  To Do / In Progress / In Review / Error) in `task-client-filters.ts` and pointed the personal tab
+  at it. Group Tasks keep the full 6-status list — group rows of every status are reachable there
+  (the `get_group_task_summaries` RPC does not filter terminal groups).
+- **Result count over-reported on My Tasks.** `visibleCount` excluded only `completed`, so a
+  `cancelled` task that passed the filters but was hidden by `isTaskActionable` inflated the count
+  above the visible rows. The count now uses the same `isTaskActionable` predicate the sections and
+  calendar dots gate on — count and rendered rows can no longer disagree.
+- **Result count scrolled out of view on mobile.** The count lived in the `FilterBar` `trailing`
+  slot, inside the bar's `overflow-x: auto` scroll container (the `< md` single-row layout), so it
+  scrolled away with the filters and its `marginLeft: auto` was a no-op in the `nowrap` row. Moved
+  it out of `TasksFilters` into `TasksShell` as a stable sibling of the FilterBar — always visible,
+  right-pinned on the wrapping desktop layout. `TasksFilters` lost its `resultCount`/`resultNoun`
+  props.
+
+No data-layer or query changes — the filtering stays fully client-side per the tasks CLAUDE.md
+contract.
+
+---
+
+## 2026-06-25 — /escalations no longer surfaces raw SLA rule codes
+
+The SLA breaches table dumped raw engine codes (`SLA-02B · CAD-01A · …`) in a **"Breached rules"**
+column via `ruleCodes.join(" · ")`. These are operator jargon — meaningless to the manager reading
+the page, and exactly the cryptic codes the 2026-06-24 Follow-up Engine redesign deliberately
+stopped surfacing in `/settings` (which describes each situation in plain language instead).
+
+**Fix — drop the column, keep it simple:**
+
+- Removed the "Breached rules" column from `EscalatedLeadsSection`. The Status pill + Agent +
+  "Stalled since" already say what a manager needs: *this lead in this status has gone quiet*.
+- Renamed the breach-time column header "Last breach" → **"Stalled since"** to match the engine
+  redesign's plain-language tone.
+- Trimmed the now-dead `ruleCodes: string[]` field from `EscalatedLeadRow` and stopped accumulating
+  it in `getEscalatedLeads`. The per-lead grouping still tracks the latest breach moment
+  (`lastFiredAt`) and the policy/status-match guard is untouched — only the surfaced code list is
+  gone. No behavioural change to which leads appear.
+
+Files: `src/components/escalations/EscalationSections.tsx`, `src/lib/services/sla-service.ts`.
+
+## 2026-06-25 — Fix: global domain filter now works on /escalations
+
+The admin/founder **global domain selector** (the `DomainSelector` in `PageControls`, driving the
+`?domain=` param + `serene-domain` cookie) never functioned on `/escalations`. Two gaps:
+
+- `EscalationsPage` rendered `<PageControls isPrivileged={false} … />`, so admin/founder never saw
+  the domain selector on this page at all (every other domain-aware page passes the real
+  `showDomainFilter`).
+- The page hardcoded `domain = isPrivileged ? null : profile.domain`, ignoring the `?domain=` param
+  and the `serene-domain` cookie — so even with the selector visible a pick would not scope the
+  three lists.
+
+**Fix — adopt the same global-scope wiring leads/deals/campaigns already use (R-01, zero new code):**
+the page now awaits `searchParams` + `cookies()` and resolves scope via the single shared
+`resolveDomainParam(searchParams, cookieStore, role)` (`lib/utils/domain-scope.ts`) — param-first,
+cookie-fallback for admin/founder, `null` for manager (the service then pins them to their own
+domain). `PageControls` receives the real `isPrivileged`, so admin/founder get the selector. The
+resolved `domain` already threads into all three `sla-service` reads (`getEscalatedLeads`,
+`getOverdueGiaTasks`, `getGoingColdLeads`), which have always accepted a domain arg — so a domain
+pick now scopes SLA breaches, overdue tasks, and going-cold leads together.
+
+**Scope:** domain only. No date-range filter was added — `/escalations` is a live-breach surface
+with intrinsic windows (SLA breaches ≤7d, currently-cold leads, currently-overdue tasks), so a
+date range is not meaningful here. Files: `src/app/(dashboard)/escalations/page.tsx` only.
+
+## 2026-06-25 — Feature: My Tasks shows the linked lead's name on lead follow-up tasks
+
+A lead follow-up is a `personal` task carrying a `task_gia_meta` row (the meta table is the
+task→lead link since the 0138 category collapse). Its title is a **type label** — "Call" /
+"WhatsApp message" — so in **My Tasks** these rows read just "Call" with no indication of *which*
+lead they belong to. (The "Call" follow-up itself is created server-side by the SLA cadence engine,
+e.g. after a "Rang, no response" outcome — `CAD-01A`; that behaviour is unchanged and intended.)
+
+**Fix — surface the lead identity end-to-end, reusing the existing `get_gia_tasks` lead-join shape:**
+
+- **Migration 0145** (`get_personal_tasks`): widened from `RETURNS SETOF tasks` to `RETURNS TABLE`
+  = the full `tasks` row **plus** `lead_id` / `lead_first_name` / `lead_last_name` / `lead_slug`,
+  sourced via `LEFT JOIN task_gia_meta → leads`. Non-lead personal tasks LEFT-JOIN to NULL
+  (unchanged behaviour); the 0138 single-writer invariant guarantees ≤1 meta row per task, so the
+  join never fans a task. WHERE / cursor logic / ORDER BY / params are byte-identical to the live
+  0026 body — only the SELECT list and return type change. Self-scoped, keeps `GRANT … authenticated`.
+  **Applied to prod via MCP + verified** (a real `module='gia'` "Call" task returns its lead name;
+  EXECUTE grant intact).
+- **Service** (`tasks-service.ts`): new `PersonalTaskRow = Task & { lead_* }` type; `PersonalTasksResult.tasks`
+  widened from `Task[]` to `PersonalTaskRow[]`. Cursor logic unchanged (still reads only `due_at`/`id`).
+- **Redis** (`redis-keys.ts`): `personalPage1` key bumped `…` → `…:v2` so pre-0145 narrow cache
+  envelopes retire (centralised key — reads + the 4 invalidation-del sites all follow automatically).
+- **UI** (`MyTasksCalendarView`): lead tasks now render `Call · Sonu Singh`, where the lead name is
+  an accent-coloured `next/link` to the dossier (`/leads/{slug ?? id}`, `stopPropagation` so it doesn't
+  open the task modal). Search now also matches the linked lead's name. Non-lead tasks are visually
+  unchanged. `CalendarTaskRow` stays `memo()`-ised (new props are primitive strings, G-4).
+
+## 2026-06-25 — Fix: SubTaskModal mobile layout — remarks panel + ambient orbs floated over the content
+
+On the mobile breakpoint (`<md`) the `SubTaskModal` reflowed its desktop 2×2 grid into a single
+column where the **grid container itself** was the scroller (`overflow-y-auto`) while the remarks
+zone (Zone B body) was pinned to a fixed `max-md:h-[60dvh]` box with `overflow: hidden`. This
+created a scroll-within-scroll: the `TaskRemarksPanel`'s `height: 100%` flex column and its two
+`position: absolute` ambient orbs (`top: -60px` / `bottom: -40px`) resolved against a `60dvh` box
+that was itself mid-scroll inside the larger sheet scroller, so the panel and its orbs visually
+detached and **floated over the content above** (and jumped when the soft keyboard collapsed `dvh`).
+
+**Fix (mobile only — desktop is byte-identical):** the layout container is now `flex flex-col`
+below `md` and the original `md:grid` from `md` up. On mobile the four zones become a flex column:
+the two headers stay natural height (`shrink-0`); **Zone A body (action items / details / metadata)
+sizes to its content** (`flex: 0 1 auto`) up to a `max-h-[55%]` cap, so it is never squeezed into a
+fixed proportional slice — only a very tall checklist hits the cap and scrolls internally; **Zone B
+body (remarks) takes the remaining space** (`flex: 1 1 auto`) with a `min-h-[42%]` floor so it
+always has a definite, usable box. The sheet container never scrolls as a whole, so each region's
+definite height gives `TaskRemarksPanel`'s `height: 100%` + absolute orbs a real containing block —
+the orbs clip to the panel and the composer pins to the bottom. The brittle `max-md:h-[60dvh]` is
+gone. All `md:` placement/sizing overrides (`md:grid`, `md:col-start`/`md:row-start`,
+`md:border-l`) restore the desktop grid exactly.
+
+Follow-up (same day): with Zone A bounded, the Action Items + Details **cards** were being
+**vertically squished** — the body is a `flex-direction: column` scroll region and the cards had no
+`flex-shrink: 0`, so a height-constrained column compressed each card instead of keeping its natural
+height and scrolling (the metadata footer survived because it had little internal height to lose).
+Added `flexShrink: 0` to the Action Items card, the Details card, and the metadata footer so every
+card keeps its intrinsic height and the body scrolls. Files: `SubTaskModal.tsx`.
+
+---
+
 ## 2026-06-25 — Fix: Trigger.dev worker crash — admin Supabase client had no WebSocket on Node 21
 
 The Trigger.dev worker (`trigger.config.ts` → `runtime: "node"`, which pins Node 21) crashed

@@ -78,6 +78,11 @@ export function TasksShell({
   const activeTab = initialTab;
   const isPrivileged = callerRole === "admin" || callerRole === "founder";
 
+  const countLabel =
+    activeTab === "personal"
+      ? `${personalVisibleCount} ${personalVisibleCount === 1 ? "task" : "tasks"}`
+      : `${groupVisibleCount} ${groupVisibleCount === 1 ? "group" : "groups"}`;
+
   const groupDomainItems = useMemo(
     () =>
       domainsInGroupRows(groupRows)
@@ -153,15 +158,24 @@ export function TasksShell({
           onGroupFiltersChange={setGroupFilters}
           groupDomainItems={groupDomainItems}
           showGroupDomainFilter={isPrivileged}
-          resultCount={
-            activeTab === "personal" ? personalVisibleCount :
-                                       groupVisibleCount
-          }
-          resultNoun={
-            activeTab === "personal" ? (personalVisibleCount === 1 ? "task" : "tasks") :
-                                       (groupVisibleCount === 1 ? "group" : "groups")
-          }
         />
+
+        {/* Result count — a stable sibling of the FilterBar, NOT inside it, so
+            it never scrolls out of view on the mobile single-row scroll layout
+            (the FilterBar's overflow-x). marginLeft:auto pins it to the strip's
+            right edge on the wrapping desktop layout. */}
+        <span
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize:   "var(--text-xs)",
+            color:      "var(--theme-text-tertiary)",
+            whiteSpace: "nowrap",
+            marginLeft: "auto",
+            flexShrink: 0,
+          }}
+        >
+          {countLabel}
+        </span>
       </div>
 
       {/* Tab panels */}

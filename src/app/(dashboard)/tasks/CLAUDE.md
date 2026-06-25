@@ -24,15 +24,17 @@ tasks/page.tsx          ← thin orchestrator (session read + URL parse only —
 - Single paper strip: **My Tasks / Group Tasks** `TabSelector` **left** (`variant="accent"`, `indicatorLayoutId="tasks-page-tabs"`), **filters** to the right in the same row. **Create button** is in the page header (`AddTaskButton`, same row as `<h1>`) — mirrors Leads. `TasksCreateProvider` wires header clicks to tab modals via `createTrigger`.
 - Filter state lives in `TasksShell` (separate `personalFilters` / `groupFilters` objects — switching tabs preserves each tab’s filters).
 - **All filtering is client-side** via `src/lib/utils/task-client-filters.ts`. Never add server refetches for filter changes.
-- **My Tasks:** search (title + description), tags (multi), status (multi), priority (multi). Tags seeded from `initialTags` prop (SSR); refreshed via `getPersonalTaskTagsAction` only after a task create/update that may have changed the tag set.
+- **My Tasks:** search (title + description), tags (multi), status (multi), priority (multi). **Status options are the ACTIONABLE subset only** (`MY_TASKS_STATUS_FILTER_ITEMS` = To Do / In Progress / In Review / Error) — `MyTasksCalendarView` renders only `isTaskActionable` rows (effective status neither `completed` nor `cancelled`) and never pages in `completed`, so offering Completed/Cancelled would be a dead option (selecting them lists nothing). Never widen this back to all 6 `TASK_STATUS_FILTER_ITEMS` for the personal tab. Tags seeded from `initialTags` prop (SSR); refreshed via `getPersonalTaskTagsAction` only after a task create/update that may have changed the tag set.
 - **Group Tasks:** search (group title), status, priority, domain (`FilterDropdown`, admin/founder only, domains present in roster), progress (in progress / complete / no subtasks).
-- Result count in the filter bar is reported from each tab (`onFilteredCountChange`) so optimistic row updates stay accurate.
+- Result count is reported from each tab (`onFilteredCountChange`) so optimistic row updates stay accurate. It renders in **`TasksShell` as a stable sibling of the FilterBar, NOT inside the bar's `trailing` slot** — the `< md` layout makes the FilterBar an `overflow-x: auto` scroller, and a count inside it scrolls out of view. My Tasks' count uses the **same `isTaskActionable` predicate** the sections/dots gate on (excludes completed AND cancelled) — counting only `!== 'completed'` over-reported by any filtered-but-hidden cancelled task.
 
 ## My Tasks — completed tasks
 
 `MyTasksCalendarView` (active UI) does **not** show completed tasks in the main list or calendar dots. Completing a task removes it from the active set via `useTaskCompletionToggle` + local state.
 
 The legacy `PersonalTasksTab` (deleted 2026-06-11, design-audit Phase 3) used a lazy-loaded COMPLETED accordion — do not recreate that pattern in `MyTasksCalendarView`.
+
+**THE way to view completed tasks is the Completed-tasks modal** (2026-06-25), not the active surfaces. The `/tasks` header carries a **Completed** button (`CompletedTasksButton` → `next/dynamic` `CompletedTasksModal`) that lists a person's completed **personal tasks AND group subtasks** in one recent-first, keyset-paginated list. Scope is **role+domain, enforced in the action** (`getCompletedTasksAction`): agent → self only; manager → self or a same-domain target; admin/founder → anyone. The `tasks` SELECT RLS for manager+ is NOT domain-scoped, so the action — not RLS — is the domain trust boundary (agents stay RLS-bound to their own rows). Service: `getCompletedTasks(targetUserId, cursor?)` (composite cursor over `completed_at DESC NULLS LAST, id DESC`; no Redis). The modal is read-only in v1 — a row does not open `SubTaskModal` (that would need the remarks pre-fetch gate). Do not widen the `TaskTab` type for this — it is a modal, not a tab.
 
 ## Redis cache-aside — active on 3 task-load functions (2026-06-02)
 
@@ -42,7 +44,7 @@ All keys use the `task:` namespace defined in `src/lib/constants/redis-keys.ts`.
 | --- | --- | --- | --- |
 | `getGiaTasksForUser` | `task:gia:{userId}:{role}:{domain}` | 60s | Per-user + per-role + per-domain |
 | `getGroupTasks` (unfiltered only) | `task:group-list:{userId}` | 120s | Per-user (migration 0058: visibility is user-specific) |
-| `getPersonalTasks` (page 1 only) | `task:personal:page1:{userId}` | 30s | Per-user |
+| `getPersonalTasks` (page 1 only) | `task:personal:page1:{userId}:v2` | 30s | Per-user (`:v2` since migration 0145 widened the row with lead-identity fields) |
 
 **Rules:**
 

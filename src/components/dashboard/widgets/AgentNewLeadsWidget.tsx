@@ -1,5 +1,6 @@
 "use client";
 
+import { UserPlus } from "lucide-react";
 import { SnapshotCountWidget } from "./SnapshotCountWidget";
 import type { WidgetProps } from "@/components/dashboard/DashboardWidgetSlot";
 
@@ -15,6 +16,7 @@ export function AgentNewLeadsWidget({ initialData }: WidgetProps) {
       label="New Leads"
       hint="untouched leads waiting for a first call"
       href="/leads?status=new"
+      icon={UserPlus}
       positiveColor="var(--color-success-text)"
     />
   );
