@@ -1,8 +1,16 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { requireProfile } from '@/lib/actions/_auth';
-import { resolveElayaChatSeed, type ElayaChatSeed } from '@/lib/services/elaya-service';
+import {
+  resolveElayaChatSeed,
+  updateElayaPersona,
+  type ElayaChatSeed,
+} from '@/lib/services/elaya-service';
 import { formErrors } from '@/lib/validations/form-errors';
+import { sanitizeText } from '@/lib/utils/sanitize';
+import { UpdateElayaPersonaSchema } from '@/lib/validations/elaya-persona-schema';
+import type { ElayaPersonaPrefs } from '@/lib/constants/elaya-persona';
 import type { ActionResult } from '@/lib/types';
 
 // ─────────────────────────────────────────────────────────
@@ -28,4 +36,40 @@ export async function getElayaChatSeedAction(): Promise<ActionResult<ElayaChatSe
     console.error('[elaya-action] seed resolve failed:', err);
     return { data: null, error: formErrors.elayaUnavailable };
   }
+}
+
+// ─────────────────────────────────────────────────────────
+// updateElayaPersonaAction (Jarvis Phase 2)
+// THE /profile write for the per-user Elaya persona ("how Elaya talks to me").
+// Zod → requireProfile() (any role; identity from the verified profile, never the
+// client) → sanitize the free-text note → merge into user_context.context.persona
+// (the service preserves context.learned). STYLE ONLY — this can never widen what
+// the user may see or do; persona is read into the prompt as guidance, the toolset
+// + scope are the code-side gate (the Golden Rule).
+// ─────────────────────────────────────────────────────────
+export async function updateElayaPersonaAction(
+  input: unknown,
+): Promise<ActionResult<{ saved: true }>> {
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+
+  const parsed = UpdateElayaPersonaSchema.safeParse(input);
+  if (!parsed.success) return { data: null, error: formErrors.generic };
+
+  // Build the prefs object — omit empty fields (an unset field = Elaya's default).
+  // The note is sanitised; an empty/blank note clears it (omitted from the object).
+  const cleanNote = parsed.data.note ? sanitizeText(parsed.data.note).trim() : '';
+  const prefs: ElayaPersonaPrefs = {
+    ...(parsed.data.language ? { language: parsed.data.language } : {}),
+    ...(parsed.data.tone     ? { tone:     parsed.data.tone }     : {}),
+    ...(parsed.data.depth    ? { depth:    parsed.data.depth }    : {}),
+    ...(parsed.data.length   ? { length:   parsed.data.length }   : {}),
+    ...(cleanNote.length > 0 ? { note: cleanNote } : {}),
+  };
+
+  const ok = await updateElayaPersona(auth.profile.id, prefs);
+  if (!ok) return { data: null, error: formErrors.generic };
+
+  revalidatePath('/profile');
+  return { data: { saved: true }, error: null };
 }

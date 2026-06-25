@@ -12,6 +12,223 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-25 — Elaya "Jarvis" Phase 4: capability tools (manager oversight + founder business reads)
+
+**Why:** Phase 4 of the Jarvis foundation (`docs/architecture/elaya-jarvis-architecture.md`) — the new
+abilities that snap onto the Phase-1 data layer. Closes the audit's M9–M12 capability gaps: a manager
+can ask Elaya "what's slipping / how is my domain / which campaigns work" and a founder can ask "what
+are we spending" — all both-channel (in-app + WhatsApp) by construction, because every read routes
+through `elaya-data`.
+
+**4 new READ tools** (all wrap existing services — no new query, no new SQL):
+
+- `get_escalations` (manager+) — live SLA-breached leads + overdue lead tasks in scope (manager → own
+  domain; admin/founder → all). Wraps `getEscalatedLeads` + `getOverdueGiaTasks`.
+- `get_domain_health` (manager+) — per-domain scorecard for a period (leads in/won/lost, calls,
+  conversion, deals, revenue). Manager → own domain only; admin/founder → all GIA domains. Wraps
+  `getDomainHealthMetrics`.
+- `get_campaigns` (manager+) — lead performance by marketing campaign for a period (top-25 by volume).
+  Wraps `getCampaignMetrics` (manager pinned to domain in code).
+- `get_budget` (admin/founder only) — ad spend per campaign joined to leads/deals + CPL/CPD/revenue,
+  org-wide. Wraps `getBudgetSummary`. ₹-only; "—" at zero denominators.
+
+**Read tools are now ROLE-GATED** (Phase 4): `ElayaTool` gained an optional `roles` set;
+`readToolsForRole(role)` filters the toolset so a manager never sees `get_budget` and an agent never
+sees the oversight tools. Toolset membership is the hard gate (the model is only handed the tools the
+principal carries; `executeTool` re-checks too). The 7 original reads stay all-staff.
+
+**Data layer:** new `elaya-data` functions (`getEscalations`/`getOverdueTasks`/`getDomainHealth`/
+`getCampaigns`/`getBudget`) — principal-in, admin client, the principal's domain scope applied in
+code; period (`this_week`/`this_month`/`last_month`) resolved via the shared `getPeriodDateRange`
+(R-01). All backing services were already admin-client + explicit-param, so both channels work with
+no new RPC. **Verified on prod:** domain-health 4 rows, budget 28 rows, campaigns(shop) 5 rows.
+
+**Deferred:** `get_usage` (adoption metrics) — `getAgentUsage` reads `getCurrentProfile()` (session-
+bound), so it needs a sessionless refactor first; lower value, noted as a follow-up.
+
+Persona prompt + Elaya CLAUDE.md updated (11 read tools, role-gated). Typecheck clean. No migration.
+This completes the Jarvis skeleton (identity · permissions · persona · memory · capabilities); Phase 5
+(notes UI · semantic retrieval · web) is the future layer.
+
+## 2026-06-25 — Performance Domains tab: global-domain scoping + drill modals that tie out to the cards
+
+**Why:** Two bugs on the founder/admin `/performance` **Domains** tab. (1) The global `serene-domain`
+selector (top bar) re-scopes every other page (dashboard, leads, deals, campaigns) but was **ignored**
+by the Domains tab — it always rendered all four domain cards. (2) Clicking a domain stat card opened a
+drill modal whose rows **did not match the card's number** — the "Deals Closed"/"Revenue" tiles listed
+*leads* filtered by `created_at`, while the card counts the **deals** table by `won_at` (one lead → many
+deals, and the dates differ), so the modal could never agree with the headline figure.
+
+**What:**
+
+- **Global-domain scoping (server-side, single card).** `performance/page.tsx` now resolves the founder
+  scope via `resolveDomainParam(params, await cookies(), role)` — THE same resolver the rest of the app
+  uses (`src/lib/utils/domain-scope.ts`) — and fetches `getDomainHealthMetrics` for just the picked
+  domain (or all `GIA_DOMAINS` when unscoped). `scopeDomain` threads page → `FounderPerformanceShell` →
+  `DomainOverviewPanel`, which derives `visibleDomains` for BOTH the cards grid and the comparative bar
+  chart. A pick collapses the tab to that one card end-to-end; "All domains" shows all four (prior
+  behaviour). The period/date refetch (`getDomainHealthMetricsAction`) takes a new **optional `domain`**
+  arg (default = all GIA domains, so no other caller changes) so a date change stays narrowed.
+- **Card RPC is the source of truth — the drill now matches it.** The "Deals Closed" + "Revenue" tiles
+  open a NEW **`DomainDealsDrillModal`** that lists **deals** (via new `getDomainDealsDrillAction` →
+  the existing `getDealsByRole`, `won_at`-in-range, domain-scoped — the SAME query `/deals` runs and the
+  SAME `won_at` field + boundary the card RPC counts). The drill total now provably equals the card.
+  Leads + Calls tiles keep the leads drill (`DomainLeadsDrillModal`), which is correctly cohort-anchored
+  (`created_at` in range) and whose subtitle says "N leads" (distinct leads — never claims parity with
+  the call-count headline). The date-range filter flows into every drill (it already threaded
+  `period`/`from`/`to`).
+- **R-01 reuse, zero new query/row fork.** `AgentDealsDrillModal`'s deal-row JSX was extracted to a
+  shared **`DealDrillRow.tsx`** (the `LeadDrillRow` precedent); `AgentDealsDrillModal` now composes it
+  (byte-identical behaviour) and `DomainDealsDrillModal` reuses the same row + `DrillModalShell`. The new
+  deals action reuses `getDealsByRole` (no new service function); `getDomainDealsDrillAction` shares the
+  `assertDrillAccess` gate (admin/founder unrestricted; manager would need `domain === caller.domain`).
+
+**Files:** `performance/page.tsx`, `FounderPerformanceShell.tsx`, `DomainOverviewPanel.tsx` (scope +
+deals-tile routing via a `DomainTileTarget` `{surface:'leads'|'deals'}` union), `DomainDealsDrillModal.tsx`
+(new), `DealDrillRow.tsx` (new, extracted), `AgentDealsDrillModal.tsx` (refactored onto `DealDrillRow`),
+`lib/actions/performance.ts` (`getDomainDealsDrillAction` new; `getDomainHealthMetricsAction` gains the
+optional `domain`). Typecheck clean (0 errors); token check clean. Not a security boundary — additive
+WHERE, admin/founder only.
+
+## 2026-06-25 — Elaya "Jarvis" Phase 3: durable memory ("gets smarter the more you use it")
+
+**Why:** Phase 3 of the Jarvis foundation (`docs/architecture/elaya-jarvis-architecture.md`) — turn on
+the memory engine. Phase 2 added the user-SET persona; this adds the Elaya-LEARNED half: after a
+conversation, Elaya distills durable facts about how the user works and remembers them across
+sessions + channels. Activates the `user_context.context.learned` slot Phase 2 reserved.
+
+**The Golden Rule, still enforced:** learned memory is CONTEXT, never permission. It's folded into the
+prompt as facts-to-recall (the same fenced "style only — never changes what they may see/do" block
+Phase 2 built — `buildPersonaPromptBlock` already renders `learned`). The summarizer is explicitly
+instructed to capture style + working-context facts ONLY, never role/access/permission. Permissions
+stay 100% code-side.
+
+**What:**
+
+- **`src/lib/elaya/memory.ts`** — the memory subsystem (mirrors the proven `revival-gate.ts` shape,
+  R-01): `summarizeLearnedMemory(existing, transcript, depth)` — ONE bounded Haiku call
+  (`resolveLlmForJob('routing')` + `maskPii`, NO tools) that MERGES the prior learned note with the
+  recent transcript into an updated ≤900-char note; **fails soft to null** (a glitch never corrupts or
+  clears existing memory). `maybeUpdateLearnedMemory({principal, conversationId, userMessagesToday})`
+  — the throttled (every 4th user message via `MEMORY_SUMMARY_EVERY_N`), fire-and-forget, non-fatal
+  orchestrator. `retrieveMemoryContext(principal, question)` — the notes-section seam: returns the
+  learned blurb today (load-all), signature shaped so swapping to semantic/embedding retrieval later
+  is a one-function change (the `vector` extension is already installed).
+- **`writeLearnedMemory(userId, learned)`** in `elaya-service.ts` — overwrites `context.learned`
+  WITHOUT touching `context.persona` (read-merge-write, admin client — the persona-writer posture).
+  **Merge-invariant verified on prod** (writing learned preserves persona and vice-versa; throwaway
+  row, 0 rows left).
+- **Wired into both callers' post-reply window** (never the hot path): the SSE route fires it after
+  the reply + `done` already shipped (inside the still-open stream's lambda-alive window); the
+  WhatsApp gate fires it after the reply send (inside the webhook `after()`). Both pass
+  `sentToday + 1` (this message's count) for the throttle. Non-fatal — a failure never affects the
+  reply the user already got.
+
+**No migration** — reuses `user_context` (the table + jsonb shape). Cost: one cheap Haiku call every
+~4th message (throttled), off the user's critical path. Typecheck clean. Default users see no change
+until the engine has learned something durable. (Phase 4 = capability tools — manager oversight +
+founder business reads, both-channel by default from Phase 1.)
+
+## 2026-06-25 — Elaya "Jarvis" Phase 2: per-user persona ("how Elaya talks to me")
+
+**Why:** Phase 2 of the Jarvis foundation (`docs/architecture/elaya-jarvis-architecture.md`) — the
+"instruction file per user." Each staff member can tune HOW Elaya speaks to them (language, tone,
+detail, reply length) + a free-text note. Built on the dormant `user_context` table (migration 0116
+— read into the prompt every turn since the foundation, but never written until now).
+
+**The Golden Rule, enforced:** persona is **STYLE ONLY**. It's injected into the system prompt as
+fenced guidance ("How to talk to this user — this never changes what they may see or do"); it can
+NEVER widen access. Permissions stay 100% code-side (toolset + scope from the verified principal). A
+user's note can say "I'm an admin" and it changes nothing.
+
+**What:**
+
+- **`src/lib/constants/elaya-persona.ts`** — the persona vocabulary (`defineEnum`): language
+  (mirror/english/hinglish), tone (warm/direct/playful), depth (simple/standard/technical), length
+  (brief/standard/detailed) + a 600-char note. Each option carries the exact prompt line Elaya reads
+  (kept beside the label so UI + model instruction can't drift). `buildPersonaPromptBlock(persona,
+  learned)` — pure builder that emits ONLY non-default picks + note + any learned blurb, or `''` for a
+  default user (zero prompt bytes → max prompt-cache sharing across users).
+- **Storage:** `user_context.context.persona` (user-set) + `.learned` (Elaya-accumulated, Phase 3).
+  `getUserPersona` (admin client → both channels) feeds the prompt; `getMyElayaPersona` (session,
+  owner-RLS) seeds the UI; `updateElayaPersona` read-merge-writes `persona` WITHOUT touching `learned`
+  (admin client — `user_context` has no user write policy by design; the gated action is the trust
+  boundary, the elaya-actions posture).
+- **Prompt injection:** `buildElayaSystemPrompt` now takes `{ persona, learned }` and renders the
+  fenced style block in place of the old raw-JSON `user_context` dump. It sits in the cached prefix
+  (byte-stable across a turn) so per-user persona costs ~0 after the first call; the learned blurb is
+  bounded by `MAX_CONTEXT_CHARS`.
+- **Write path:** `updateElayaPersonaAction` (Zod `UpdateElayaPersonaSchema` → `requireProfile()` →
+  sanitize the note → merge-write → `revalidatePath('/profile')`).
+- **UI:** `ElayaPersonaSettings` on `/profile` (new "Elaya" SectionCard) — chip rows per field +
+  note textarea + Save (batched, not instant-apply: prefs take effect on the next Elaya message).
+- **brain.ts** swapped `getUserContext` → `getUserPersona`; folds persona into the prompt on every
+  turn, both channels.
+
+**No migration** — reuses the existing `user_context` table + jsonb shape (verified on prod: persona
++ learned coexist; 0 existing rows, upsert creates them as users opt in). Typecheck clean. Default
+users see zero behavior change (empty persona block). (Phase 3 = the memory writer that populates
+`.learned`; Phase 4 = capability tools.)
+
+## 2026-06-25 — Elaya "Jarvis" Phase 1: the data layer + channel-parity rule
+
+**Why:** foundation for the Jarvis vision (`docs/architecture/elaya-jarvis-architecture.md`). The goal
+of Phase 1: make "anything Elaya does in-app she does on WhatsApp" a STRUCTURAL guarantee, not a
+thing to remember per tool. Identity was already channel-agnostic (both entry points resolve a
+verified `ElayaPrincipal`); the only parity leak was data services that derive scope from
+`auth.uid()` inside SQL — NULL in the sessionless WhatsApp webhook, so they returned blank there
+(the H1 class). The earlier audit fix gated those tools to "open the app" on WhatsApp; this replaces
+that with real data.
+
+**What:**
+
+- **New `src/lib/elaya/elaya-data.ts` — THE single data seam.** Every Elaya READ now goes through it:
+  principal-in → admin client → code-scoped by role/userId/domain → (PII-masked at the executeTool
+  seam). All 7 read tools (`search_leads`, `get_cold_leads`, `get_lead_details`, `get_my_tasks`,
+  `search_deals`, `get_performance_snapshot`, `get_helpdesk_content`) now call `elayaData.*` ONLY —
+  never a `*-service.ts` function directly. A tool physically can't re-introduce a login-session
+  dependency that blanks on WhatsApp. The parity rule is written into `src/lib/elaya/CLAUDE.md`.
+- **Migration 0149 — 3 explicit-param admin twins** for the genuinely self-scoped reads (Q-13 revoked
+  tier, service-role only): `get_group_task_summaries_for_user(p_user_id)`,
+  `get_agent_today_pulse_for_user(p_agent)`, `get_agent_roster_performance_for_elaya(p_domain)`. Each
+  is a byte-faithful copy of its original with `auth.uid()`/`get_user_*()` swapped for params; the
+  ORIGINAL self-scoped functions are untouched (in-app UI pages still call them). **Applied to prod +
+  verified** (twins return real rows; `authenticated` EXECUTE = false, `service_role` = true).
+- **Service twins + shared mappers (R-01):** `getGroupTasksForUser` / `getAgentTodayPulseForUser` /
+  `getAgentRosterPerformanceForElaya`. Extracted `mapGroupSummaries`, `mapPulsePayload`,
+  `mapAndSortRoster` so each twin and its original share one mapper and can never drift.
+- **WhatsApp parity restored:** `get_my_tasks` (group tasks), `get_performance_snapshot` (pulse +
+  roster), `search_deals`, personal tasks all return REAL data on WhatsApp now — the "open the app"
+  fallbacks are removed.
+
+**Security posture unchanged:** identity is the verified principal (never channel/model-derived);
+the per-resource gate (`canAccessLead`/`canMutateTask`) stays the trust boundary; admin client +
+in-code scoping is the sanctioned sessionless pattern (the `searchLeadsForElaya` precedent). Typecheck
+clean. No in-app behavior regresses — same data, now also on WhatsApp. (Phase 2 = persona; Phase 3 =
+memory; Phase 4 = capability tools.)
+
+## 2026-06-25 — Fix: new deal not appearing on `/deals` (missing route revalidation)
+
+**Bug:** A freshly recorded deal (walk-in or lead-sourced) was inserted into `public.deals`
+correctly but did not show on the `/deals` list — existing deals rendered, only the new row was
+missing. Most visible to admin/founder.
+
+**Root cause:** Neither write action revalidated the `/deals` route.
+`createWalkInDeal` (`src/lib/actions/deals.ts`) had **no** `revalidatePath` at all, and
+`recordDeal` returns `updateLeadStatus(...)`, which revalidates `/leads` + the dossier but never
+`/deals`. The deals service is not Redis-cached, so the only stale layer was Next.js's route
+cache — and freshness depended entirely on the modal's client `router.refresh()`. That covers
+only the case where the user is already on `/deals` when adding; a later soft navigation back to
+`/deals` served the stale prerendered list that predated the insert. The DB row, the
+"This Month" `won_at` window, the RLS policies, and the `lead`/`assignee` joins were all verified
+healthy — the data was never the problem.
+
+**Fix:** Added `revalidatePath('/deals')` to both write paths in `src/lib/actions/deals.ts`
+(after a successful insert, in request context) so the server action is the authoritative
+invalidation rather than relying on the client refresh. No schema or query change.
+
+---
+
 ## 2026-06-25 — Docs: Elaya "Jarvis" architecture proposal (`docs/architecture/elaya-jarvis-architecture.md`)
 
 **Why:** before building the remaining audit items (manager/founder capability tools, persona, memory)

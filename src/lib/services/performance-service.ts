@@ -476,6 +476,13 @@ export async function getAgentRosterPerformance(
     return [];
   }
 
+  return mapAndSortRoster(data);
+}
+
+// THE shared roster RPC-rows → sorted AgentRosterRow[] mapper (R-01). Identical for
+// the session RPC (get_agent_roster_performance) AND the Elaya admin twin
+// (get_agent_roster_performance_for_elaya). Number() casts (Q-09) + top-performer sort.
+function mapAndSortRoster(data: unknown): AgentRosterRow[] {
   const rows = mapRows<AgentRosterRpcRow, AgentRosterRow>(data, (row) => {
     const won    = Number(row.won_count  ?? 0);
     const lost   = Number(row.lost_count ?? 0);
@@ -507,6 +514,31 @@ export async function getAgentRosterPerformance(
   });
 
   return rows;
+}
+
+// getAgentRosterPerformanceForElaya — THE Elaya parity twin of getAgentRosterPerformance.
+// Calls the explicit-param admin-only RPC get_agent_roster_performance_for_elaya
+// (migration 0149) via the ADMIN client, so the per-agent roster works in the
+// sessionless WhatsApp/SSE context where auth.uid()/get_user_domain() are NULL. The
+// caller (Elaya data layer) passes the CLAMPED domain (manager→own domain,
+// admin/founder→null) — the tool layer is the trust boundary (Q-13). Reuses
+// mapAndSortRoster (R-01).
+export async function getAgentRosterPerformanceForElaya(
+  domain: AppDomain | null,
+  dateFrom: string,
+  dateTo: string,
+): Promise<AgentRosterRow[]> {
+  const admin = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (admin as any).rpc(
+    "get_agent_roster_performance_for_elaya",
+    { p_date_from: dateFrom, p_date_to: dateTo, p_domain: domain },
+  );
+  if (error || !data) {
+    if (error) console.error("[performance-service] roster_for_elaya failed:", error);
+    return [];
+  }
+  return mapAndSortRoster(data);
 }
 
 // ─────────────────────────────────────────────
@@ -763,21 +795,27 @@ export async function getAgentTodayPulse(
 
   if (error || !data) {
     console.error("[performance-service] get_agent_today_pulse failed:", error);
-    return {
-      callsToday: { total: 0, newLeads: 0, oldLeads: 0 },
-      notesToday: 0,
-      callTrend:  [],
-      deals:      { dealCount: 0, revenue: 0 },
-    };
+    return EMPTY_PULSE;
   }
+  return mapPulsePayload(data);
+}
 
+const EMPTY_PULSE: AgentTodayPulse = {
+  callsToday: { total: 0, newLeads: 0, oldLeads: 0 },
+  notesToday: 0,
+  callTrend:  [],
+  deals:      { dealCount: 0, revenue: 0 },
+};
+
+// THE shared pulse-payload → AgentTodayPulse mapper (R-01). Identical for the session
+// RPC (get_agent_today_pulse) AND the Elaya admin twin (get_agent_today_pulse_for_user).
+function mapPulsePayload(data: unknown): AgentTodayPulse {
   const payload = data as {
     calls_today?: { total?: number | string; new_leads?: number | string; old_leads?: number | string } | null;
     notes_today?: number | string | null;
     call_trend?:  { day: string; count: number | string }[] | null;
     deals?:       { deal_count?: number | string; revenue?: number | string } | null;
   };
-
   return {
     callsToday: {
       total:    Number(payload.calls_today?.total     ?? 0),
@@ -794,6 +832,37 @@ export async function getAgentTodayPulse(
       revenue:   Number(payload.deals?.revenue    ?? 0),
     },
   };
+}
+
+// getAgentTodayPulseForUser — THE Elaya parity twin of getAgentTodayPulse. Calls the
+// explicit-param admin-only RPC get_agent_today_pulse_for_user(p_agent) (migration 0149)
+// via the ADMIN client, so the agent's pulse works in the sessionless WhatsApp/SSE
+// context where auth.uid() is NULL. p_agent is the verified principal id (the Elaya tool
+// layer is the trust boundary, Q-13). Reuses mapPulsePayload (R-01).
+export async function getAgentTodayPulseForUser(
+  agentId: string,
+  period: PerformancePeriod,
+  customFrom?: string,
+  customTo?: string,
+): Promise<AgentTodayPulse> {
+  const admin = createAdminClient();
+  const range = getPeriodDateRange(period);
+  const from = (period === "custom" && customFrom) ? customFrom : range.from;
+  const to   = (period === "custom" && customTo)   ? customTo   : range.to;
+  const todayStart = toISTMidnight(new Date()).toISOString();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (admin as any).rpc("get_agent_today_pulse_for_user", {
+    p_agent:       agentId,
+    p_today_start: todayStart,
+    p_date_from:   from,
+    p_date_to:     to,
+  });
+  if (error || !data) {
+    console.error("[performance-service] pulse_for_user failed:", error);
+    return EMPTY_PULSE;
+  }
+  return mapPulsePayload(data);
 }
 
 // ─────────────────────────────────────────────

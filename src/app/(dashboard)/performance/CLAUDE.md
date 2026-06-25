@@ -115,12 +115,19 @@ performance/page.tsx              ← role = founder | admin
         │     Domain narrowing: the GLOBAL serene-domain selector (top bar) — NO per-roster dropdown
         │     Detail metrics: per-agent (no domain restriction on fetch)
         │
-        └── Domains tab (default): <DomainOverviewPanel initialData period customFrom customTo />
-              Four domain cards (2×2 grid): Total Leads, Total Calls, Total Revenue per GIA domain
+        └── Domains tab (default): <DomainOverviewPanel initialData period customFrom customTo scopeDomain />
+              Four domain cards (2×2 grid): Leads, Calls, Deals Closed, Revenue per GIA domain
               Comparative BarChart with a metric toggle (Leads | Calls | Revenue) — the shared
               TabSelector (variant "accent", indicatorLayoutId "domain-metric-toggle" so its pill
               never collides with the founder shell's "founder-perf-tabs" pill)
-              Refetches via getManagerRosterAction on period/date change
+              Refetches via getDomainHealthMetricsAction on period/date change (NOT
+              getManagerRosterAction — that's the Agents tab)
+              **Globally scoped (2026-06-25):** the SAME serene-domain selector that narrows the
+              Agents roster narrows this tab too — page.tsx resolves scopeDomain via
+              resolveDomainParam (?domain= ?? cookie) and fetches getDomainHealthMetrics for just
+              that domain; DomainOverviewPanel derives visibleDomains for BOTH the cards grid AND
+              the bar chart (one card when scoped, all four when "All domains"). The refetch action
+              takes the optional domain so a date change stays narrowed.
 ```
 
 ## Domain narrowing — the GLOBAL selector only (2026-06-24)
@@ -329,10 +336,21 @@ Every "click a metric/bar → see the leads → open the dossier" surface on
   `AgentLeadsPredicateDrillModal` (fetcher = `getAgentLeadsByPredicateAction`; one
   `{ kind:'status'|'outcome' }` union serves BOTH the Lead-Pipeline segment drill and
   the Call-Outcome slice drill), `DomainLeadsDrillModal` (fetcher =
-  `getDomainLeadsDrillAction`; the founder **Domains-tab** card tiles — `kind:
-  'all'|'calls'|'won'`, domain-scoped via `getLeadsByRole` `filters.domain`, no agent).
+  `getDomainLeadsDrillAction`; the founder **Domains-tab** Leads + Calls card tiles —
+  `kind: 'all'|'calls'`, domain-scoped via `getLeadsByRole` `filters.domain`, no agent).
   The four AGENT stat tiles keep their own paginated modals (`AgentCalls/Leads/Deals
   DrillModal`) — those predate this and are load-more, not flat.
+- **Deals tiles drill to DEALS, not leads (2026-06-25 — card-truth fix):** the Domains-card
+  **Deals Closed + Revenue** tiles count the `deals` table by `won_at`, so listing leads
+  (by `created_at`) could never tie out. They open **`DomainDealsDrillModal`** (fetcher =
+  `getDomainDealsDrillAction` → the existing `getDealsByRole`, `won_at`-in-range,
+  domain-scoped) which renders the shared **`DealDrillRow`** (extracted from
+  `AgentDealsDrillModal`, R-01) inside `DrillModalShell`. `DomainOverviewPanel` routes via a
+  `DomainTileTarget` `{ surface:'leads'|'deals' }` union: leads tiles → `DomainLeadsDrillModal`,
+  deals tiles → `DomainDealsDrillModal`. The drill total now equals the card number. (The
+  deals drill is a SEPARATE flat stack — deals are a different row shape than
+  `LeadListItemWithAssignee`, so they cannot share `LeadDrillModal`; both stacks share
+  `DrillModalShell`.)
 - **Charts emit clicks, never fetch:** `PipelineBar.onSegmentClick(status)` /
   `CallOutcomeBar.onSliceClick(outcome)` are optional (absent → display-only). The
   drill state lives in the consumer (`AgentDetailPanel` `predicateDrill`; the deck's
@@ -424,7 +442,9 @@ const todayStart = new Date(nowIst.getTime() - IST_OFFSET_MS).toISOString();
 | ----------------------------------- | ----------------------------------------- |
 | `getAgentDetailMetricsAction`       | manager (own domain only), admin, founder |
 | `getAgentFirstTouchScorecardAction` | manager (own domain only), admin, founder (shared `assertDrillAccess`) |
-| `getDomainLeadsDrillAction`         | manager (own domain only), admin, founder (shared `assertDrillAccess`) — domain-card tile drill; the Domains tab is founder/admin-only in practice |
+| `getDomainHealthMetricsAction`      | manager, admin, founder — Domains-tab card refetch; optional `domain` arg (2026-06-25) scopes to one card (default = all GIA domains) |
+| `getDomainLeadsDrillAction`         | manager (own domain only), admin, founder (shared `assertDrillAccess`) — Domains-card **Leads + Calls** tile drill (`kind 'all'\|'calls'`); the Domains tab is founder/admin-only in practice |
+| `getDomainDealsDrillAction`         | manager (own domain only), admin, founder (shared `assertDrillAccess`) — Domains-card **Deals Closed + Revenue** tile drill (2026-06-25); reuses `getDealsByRole` (`deals` by `won_at`, domain-scoped) so the drill total equals the card's deals count. Lists DEALS, not leads |
 
 Manager role: `caller.domain !== domain` → 403. Domain never trusted from client payload.
 
@@ -440,7 +460,9 @@ Manager role: `caller.domain !== domain` → 403. Domain never trusted from clie
 | `AgentDetailPanel`           | `src/components/performance/`                                           |
 | `PerformanceRosterEmptyState`| `src/components/performance/` — null-selection prompt on Agents tab       |
 | `DomainHealthGrid`           | `src/components/performance/` — legacy card grid (not on Agents tab)      |
-| `DomainOverviewPanel`        | `src/components/performance/` — founder Domains tab (cards + bar chart) |
+| `DomainOverviewPanel`        | `src/components/performance/` — founder Domains tab (cards + bar chart); `scopeDomain` narrows to one card; deals tiles → `DomainDealsDrillModal` |
+| `DomainDealsDrillModal`      | `src/components/performance/` — Domains-card Deals/Revenue tile drill (lists deals via `getDomainDealsDrillAction`); composes `DrillModalShell` + `DealDrillRow` |
+| `DealDrillRow`               | `src/components/performance/` — THE shared deal row (extracted from `AgentDealsDrillModal`, R-01); used by both deal drills |
 | `AgentPerformanceShell`      | `src/components/performance/` — `'use client'`; agent self-view shell   |
 | `ManagerPerformanceAsync`    | `src/app/(dashboard)/performance/`                                      |
 | `FounderPerformanceShell`    | `src/app/(dashboard)/performance/` — `'use client'`; tab state          |

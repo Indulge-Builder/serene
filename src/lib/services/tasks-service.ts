@@ -393,60 +393,7 @@ export const getGroupTasks = cache(async (
     return [];
   }
 
-  const summaries = rows as GroupTaskSummaryRaw[];
-
-  // Collect all unique assignee ids across all groups for one batch profile fetch
-  const allAssigneeIds = [
-    ...new Set(
-      summaries.flatMap((r) => r.assignee_ids ?? []),
-    ),
-  ];
-
-  const profileMap = new Map<string, AssigneeSlim>();
-
-  if (allAssigneeIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, full_name, avatar_url')
-      .in('id', allAssigneeIds);
-
-    for (const p of profiles ?? []) {
-      profileMap.set(p.id as string, {
-        id:         p.id as string,
-        full_name:  p.full_name as string,
-        avatar_url: (p.avatar_url as string | null) ?? null,
-      });
-    }
-  }
-
-  const result = summaries.map((r): TaskGroupRow => {
-    // Slice to max 4 assignee previews in the service layer (not in SQL)
-    const assignee_previews: AssigneeSlim[] = (r.assignee_ids ?? [])
-      .slice(0, 4)
-      .reduce<AssigneeSlim[]>((acc, id) => {
-        const profile = profileMap.get(id);
-        if (profile) acc.push(profile);
-        return acc;
-      }, []);
-
-    return {
-      // TaskGroup fields
-      id:          r.id,
-      title:       r.title,
-      description: r.description ?? null,
-      priority:    r.priority as TaskGroup['priority'],
-      status:      r.status   as TaskGroup['status'],
-      due_at:      r.due_at   ?? null,
-      created_by:  r.created_by,
-      domain:      r.domain as TaskGroup['domain'],
-      created_at:  r.created_at,
-      updated_at:  r.updated_at,
-      // Aggregates — bigint arrives as number from JSON; cast with Number() per Q-09
-      subtask_count:   Number(r.subtask_total),
-      completed_count: Number(r.subtask_completed),
-      assignee_previews,
-    };
-  });
+  const result = await mapGroupSummaries(supabase, rows as GroupTaskSummaryRaw[]);
 
   // Redis write — unfiltered calls only, non-fatal
   if (isUnfiltered && cacheHint?.userId) {
@@ -460,6 +407,83 @@ export const getGroupTasks = cache(async (
 
   return result;
 });
+
+// THE shared group-summary → TaskGroupRow mapper (R-01). One batch profile fetch +
+// the 4-preview slice + Number() casts — identical regardless of which RPC produced
+// the rows. Reused by getGroupTasks (session, auth.uid()) AND getGroupTasksForUser
+// (admin, explicit p_user_id — the Elaya parity twin). Takes the client so each caller
+// supplies its own (session or admin).
+async function mapGroupSummaries(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  summaries: GroupTaskSummaryRaw[],
+): Promise<TaskGroupRow[]> {
+  const allAssigneeIds = [
+    ...new Set(summaries.flatMap((r) => r.assignee_ids ?? [])),
+  ];
+
+  const profileMap = new Map<string, AssigneeSlim>();
+  if (allAssigneeIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', allAssigneeIds);
+    for (const p of profiles ?? []) {
+      profileMap.set(p.id as string, {
+        id:         p.id as string,
+        full_name:  p.full_name as string,
+        avatar_url: (p.avatar_url as string | null) ?? null,
+      });
+    }
+  }
+
+  return summaries.map((r): TaskGroupRow => {
+    const assignee_previews: AssigneeSlim[] = (r.assignee_ids ?? [])
+      .slice(0, 4)
+      .reduce<AssigneeSlim[]>((acc, id) => {
+        const profile = profileMap.get(id);
+        if (profile) acc.push(profile);
+        return acc;
+      }, []);
+
+    return {
+      id:          r.id,
+      title:       r.title,
+      description: r.description ?? null,
+      priority:    r.priority as TaskGroup['priority'],
+      status:      r.status   as TaskGroup['status'],
+      due_at:      r.due_at   ?? null,
+      created_by:  r.created_by,
+      domain:      r.domain as TaskGroup['domain'],
+      created_at:  r.created_at,
+      updated_at:  r.updated_at,
+      subtask_count:   Number(r.subtask_total),
+      completed_count: Number(r.subtask_completed),
+      assignee_previews,
+    };
+  });
+}
+
+// getGroupTasksForUser — THE Elaya parity twin of getGroupTasks. Calls the explicit-
+// param admin-only RPC get_group_task_summaries_for_user(p_user_id) (migration 0149)
+// via the ADMIN client, so it returns the same flat-visibility group list in the
+// sessionless WhatsApp/SSE context where auth.uid() is NULL. p_user_id is the verified
+// principal id (the Elaya tool layer is the trust boundary, Q-13). No Redis (Elaya
+// reads are always live); reuses mapGroupSummaries (R-01).
+export async function getGroupTasksForUser(userId: string): Promise<TaskGroupRow[]> {
+  const admin = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: rows, error } = await (admin as any).rpc('get_group_task_summaries_for_user', {
+    p_user_id:  userId,
+    p_status:   null,
+    p_priority: null,
+  });
+  if (error || !rows || (rows as unknown[]).length === 0) {
+    if (error) console.error('[tasks-service] getGroupTasksForUser RPC error:', error);
+    return [];
+  }
+  return mapGroupSummaries(admin, rows as GroupTaskSummaryRaw[]);
+}
 
 // ─────────────────────────────────────────────
 // Query: subtasks for a single group

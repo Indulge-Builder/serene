@@ -1055,8 +1055,8 @@
     "semantic_hash": ""
   },
   "src/components/performance/AgentPerformanceShell.tsx": {
-    "mtime": 1782375657.3749526,
-    "ast_hash": "ef3ca6ae431d10d317b26d0950ab97fc",
+    "mtime": 1782375948.0383456,
+    "ast_hash": "7ab60e50ee66e26590a0bab2fce056a8",
     "semantic_hash": ""
   },
   "src/components/performance/AgentRecentActivityList.tsx": {
@@ -1070,8 +1070,8 @@
     "semantic_hash": ""
   },
   "src/components/performance/CoreFourGrid.tsx": {
-    "mtime": 1782374128.6894362,
-    "ast_hash": "82cb7780e55f1c2289aa25e857722cd0",
+    "mtime": 1782375962.471207,
+    "ast_hash": "907b26ca0cf261d00665e8032a3111cb",
     "semantic_hash": ""
   },
   "src/components/performance/DomainHealthGrid.tsx": {
@@ -1335,8 +1335,8 @@
     "semantic_hash": ""
   },
   "src/components/ui/Dialog.tsx": {
-    "mtime": 1781519361.85261,
-    "ast_hash": "eb9b69c3d80d3c7fa21c808a573b8dfc",
+    "mtime": 1782376059.8257296,
+    "ast_hash": "1ffa4ac6732057192c67ea3b2bda2502",
     "semantic_hash": ""
   },
   "src/components/ui/DictationButton.tsx": {
@@ -3315,8 +3315,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1782375686.8122528,
-    "ast_hash": "e5859ca1d2d47f88801c608127243c46",
+    "mtime": 1782376099.756925,
+    "ast_hash": "06c390049c645b3e599a54fc3279f2ac",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3605,8 +3605,8 @@
     "semantic_hash": ""
   },
   "src/components/CLAUDE.md": {
-    "mtime": 1782248799.2056353,
-    "ast_hash": "c2d2762c33b7b4b569947fe442361ccc",
+    "mtime": 1782376115.687352,
+    "ast_hash": "b23b9c73b669b7f0369d971a7a560bbb",
     "semantic_hash": ""
   },
   "src/components/intelligence/CLAUDE.md": {
@@ -4140,8 +4140,8 @@
     "semantic_hash": ""
   },
   "src/components/tasks/CompletedTasksModal.tsx": {
-    "mtime": 1782375274.0907142,
-    "ast_hash": "d21cb9b6bf0fba49ce07d951733eaa3f",
+    "mtime": 1782376034.1059859,
+    "ast_hash": "e0b2229e08d6921b68d73fb0b80682b9",
     "semantic_hash": ""
   }
 }

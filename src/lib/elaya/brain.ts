@@ -16,7 +16,7 @@ import {
   getLatestProposedAction,
   markActionResolved,
 } from '@/lib/services/elaya-actions-service';
-import { getModelContextMessages, getUserContext } from '@/lib/services/elaya-service';
+import { getModelContextMessages, getUserPersona } from '@/lib/services/elaya-service';
 import { getPiiMaskingDepth } from '@/lib/services/llm-providers-service';
 import type { ElayaChannel, ElayaMessageRow, ElayaToolCallRecord } from '@/lib/types/elaya';
 
@@ -71,14 +71,17 @@ export async function runElayaTurn(args: {
 }): Promise<ElayaTurnResult> {
   const { principal, conversationId, emit, channel = 'in_app' } = args;
 
-  const [llm, maskingDepth, userContext, history] = await Promise.all([
+  const [llm, maskingDepth, persona, history] = await Promise.all([
     resolveLlmForJob('reasoning'),
     getPiiMaskingDepth(),
-    getUserContext(principal.userId),
+    // Per-user persona (style prefs + Elaya-learned facts) — folded into the prompt
+    // as a fenced STYLE-ONLY block (Jarvis Phase 2). Admin-client read → works on
+    // both channels. Empty for a user who hasn't tuned anything (zero prompt bytes).
+    getUserPersona(principal.userId),
     getModelContextMessages(conversationId),
   ]);
 
-  const system = buildElayaSystemPrompt(principal, userContext, channel);
+  const system = buildElayaSystemPrompt(principal, persona, channel);
   const tools = getToolDefinitionsForPrincipal(principal);
 
   let fullText = '';

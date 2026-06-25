@@ -1,7 +1,9 @@
 import { Suspense } from "react";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { getNotifications } from "@/lib/services/notifications-service";
+import { resolveDomainParam } from "@/lib/utils/domain-scope";
 import { DEFAULT_GIA_DOMAIN, GIA_DOMAINS } from "@/lib/constants/domains";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
@@ -233,17 +235,25 @@ export default async function PerformancePage({
   // All domains in one roster; domain filtering is client-side in ManagerPerformancePanel.
   // Fetch domain health server-side so the Domains tab has initial data on first paint.
   // from/to are already resolved (boundary-ISO) by resolvePerformanceDateParams.
+  //
+  // Domain narrowing (Domains tab): the SAME global serene-domain selector the rest
+  // of the app reads (resolveDomainParam — ?domain= param ?? cookie). A picked domain
+  // renders just that one card (and roster); no pick → all GIA domains. Not a security
+  // boundary — admin/founder only here, additive WHERE (never an RLS change).
+  const scopeDomain = resolveDomainParam(params, await cookies(), profile.role);
+  const healthDomains = (scopeDomain ? [scopeDomain] : [...GIA_DOMAINS]) as AppDomain[];
+
   const { getDomainHealthMetrics, getPeriodDateRange } = await import("@/lib/services/performance-service");
   const { getDomainTargets } = await import("@/lib/services/domain-targets-service");
   const monthRange = getPeriodDateRange('this_month');
 
   const [initialDomainHealth, monthHealth, domainTargets] = await Promise.all([
-    getDomainHealthMetrics([...GIA_DOMAINS] as AppDomain[], from, to),
+    getDomainHealthMetrics(healthDomains, from, to),
     // The target meter is month-pinned; when the active period IS this month,
     // reuse the same fetch instead of a second RPC round trip.
     period === 'this_month'
       ? Promise.resolve(null)
-      : getDomainHealthMetrics([...GIA_DOMAINS] as AppDomain[], monthRange.from, monthRange.to),
+      : getDomainHealthMetrics(healthDomains, monthRange.from, monthRange.to),
     getDomainTargets(),
   ]);
 
@@ -279,6 +289,7 @@ export default async function PerformancePage({
         initialDomainHealth={initialDomainHealth}
         initialTargets={domainTargets}
         monthDeals={monthDeals}
+        scopeDomain={scopeDomain}
         canEditTargets={true}
         agentsSlot={
           <Suspense fallback={<ManagerPerformanceSkeleton />}>

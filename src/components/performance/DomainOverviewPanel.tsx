@@ -23,6 +23,7 @@ import { useChartTokens, resolveColorMap } from '@/components/ui/charts/useChart
 import { TabSelector } from '@/components/ui/TabSelector';
 import { StatAtom } from '@/components/performance/StatAtom';
 import { DomainLeadsDrillModal, type DomainDrillKind } from '@/components/performance/DomainLeadsDrillModal';
+import { DomainDealsDrillModal } from '@/components/performance/DomainDealsDrillModal';
 import { DomainTargetMeter } from '@/components/performance/DomainTargetMeter';
 import { useToast } from '@/hooks/useToast';
 import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
@@ -36,6 +37,13 @@ import type { AppDomain } from '@/lib/types/database';
 
 type MetricKey = 'leads' | 'calls' | 'revenue';
 
+// Which drill a domain card tile opens. Leads tiles (Leads / Calls) → the leads
+// drill (a DomainDrillKind). Deals Closed + Revenue → the deals drill (those tiles
+// count the deals table by won_at, so a deal list — not a lead list — ties out).
+type DomainTileTarget =
+  | { surface: 'leads'; domain: AppDomain; kind: DomainDrillKind }
+  | { surface: 'deals'; domain: AppDomain };
+
 type Props = {
   initialData:  DomainHealthCard[];
   period:       PerformancePeriod;
@@ -46,6 +54,11 @@ type Props = {
   /** Deals closed THIS MONTH per domain — the meter is month-pinned and does
    *  not move with the period filter (the target is a monthly number). */
   monthDeals:     Partial<Record<AppDomain, number>>;
+  /** Global serene-domain narrowing (resolveDomainParam): a picked domain renders
+   *  ONLY that card (+ a single-bar chart); null = all GIA domains. The page
+   *  already fetches `initialData` for exactly this set, and the refetch action
+   *  is passed the same scope so a period/date change stays narrowed. */
+  scopeDomain:    AppDomain | null;
   /** Founder/admin only — shows the target edit affordance */
   canEditTargets: boolean;
 };
@@ -71,8 +84,10 @@ function DomainStatCard({
   target:            number | null;
   canEditTargets:    boolean;
   onSaveTarget:      (domain: AppDomain, value: number) => Promise<boolean>;
-  /** Opens the shared leads drill for this domain's metric (dossier rows). */
-  onTileClick:       (domain: AppDomain, kind: DomainDrillKind) => void;
+  /** Opens the drill for this domain's metric. Leads tiles (Leads / Calls) open
+   *  the leads drill; the Deals Closed + Revenue tiles open the DEALS drill (they
+   *  count the deals table by won_at — only a deal list ties out to the card). */
+  onTileClick:       (target: DomainTileTarget) => void;
 }) {
   const domainColor = resolvedDotColors[card.domain] ?? 'var(--theme-accent)';
   const domainLabel = DOMAIN_LABELS[card.domain] ?? card.domain;
@@ -158,28 +173,28 @@ function DomainStatCard({
           value={formatCompact(card.totalLeads)}
           paletteIndex={0}
           delay={baseDelay + 40}
-          onClick={() => onTileClick(card.domain, 'all')}
+          onClick={() => onTileClick({ surface: 'leads', domain: card.domain, kind: 'all' })}
         />
         <StatAtom
           label="Calls"
           value={formatCompact(card.totalCallsMade)}
           paletteIndex={1}
           delay={baseDelay + 80}
-          onClick={() => onTileClick(card.domain, 'calls')}
+          onClick={() => onTileClick({ surface: 'leads', domain: card.domain, kind: 'calls' })}
         />
         <StatAtom
           label="Deals Closed"
           value={formatCompact(card.totalDeals)}
           paletteIndex={2}
           delay={baseDelay + 120}
-          onClick={() => onTileClick(card.domain, 'won')}
+          onClick={() => onTileClick({ surface: 'deals', domain: card.domain })}
         />
         <StatAtom
           label="Revenue"
           value={formatCurrencyCompact(card.totalRevenue)}
           paletteIndex={3}
           delay={baseDelay + 160}
-          onClick={() => onTileClick(card.domain, 'won')}
+          onClick={() => onTileClick({ surface: 'deals', domain: card.domain })}
         />
       </div>
 
@@ -349,8 +364,13 @@ export function DomainOverviewPanel({
   customTo,
   initialTargets,
   monthDeals,
+  scopeDomain,
   canEditTargets,
 }: Props) {
+  // The domains rendered: one when the global selector is scoped, else all GIA
+  // domains. The cards loop AND the comparative chart both read this — so a
+  // global pick collapses the tab to that single domain end-to-end.
+  const visibleDomains = (scopeDomain ? [scopeDomain] : GIA_DOMAINS) as readonly AppDomain[];
   const toast = useToast;
   const [data, setData]               = useState<DomainHealthCard[]>(initialData);
   const [activeMetric, setMetric]     = useState<MetricKey>('leads');
@@ -358,9 +378,11 @@ export function DomainOverviewPanel({
   const [, startTransition]           = useTransition();
   const isMountedRef                  = useRef(false);
 
-  // Domain-card tile drill — one modal at the panel level (the AgentDetailPanel
-  // pattern), fetch-on-open. null = closed.
-  const [drill, setDrill] = useState<{ domain: AppDomain; kind: DomainDrillKind } | null>(null);
+  // Domain-card tile drill — one drill target at the panel level (the
+  // AgentDetailPanel pattern), fetch-on-open. null = closed. The surface field
+  // routes to the leads drill (Leads/Calls tiles) or the deals drill (Deals
+  // Closed/Revenue tiles — those count the deals table, so a deal list ties out).
+  const [drill, setDrill] = useState<DomainTileTarget | null>(null);
 
   // domain → monthly deals-closed target (null = not set)
   const [targets, setTargets] = useState<Partial<Record<AppDomain, number>>>(() =>
@@ -411,7 +433,9 @@ export function DomainOverviewPanel({
     setRefetching(true);
 
     startTransition(() => {});
-    getDomainHealthMetricsAction(period, customFrom, customTo)
+    // Pass the global scope so a period/date change stays narrowed to the picked
+    // domain (a scope change itself round-trips the page, reseeding initialData).
+    getDomainHealthMetricsAction(period, customFrom, customTo, scopeDomain ?? undefined)
       .then((result) => {
         if (cancelled) return;
         setRefetching(false);
@@ -424,10 +448,11 @@ export function DomainOverviewPanel({
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period, customFrom, customTo]);
+  }, [period, customFrom, customTo, scopeDomain]);
 
-  // Chart data — one entry per domain in GIA_DOMAINS order
-  const chartData = (GIA_DOMAINS as readonly AppDomain[]).map((domain) => {
+  // Chart data — one entry per visible domain (all GIA domains, or just the
+  // globally-scoped one)
+  const chartData = visibleDomains.map((domain) => {
     const card = data.find((c) => c.domain === domain);
     return {
       name:    DOMAIN_LABELS[domain] ?? domain,
@@ -493,7 +518,7 @@ export function DomainOverviewPanel({
             scrollbarWidth:          'none',
           }}
         >
-          {(GIA_DOMAINS as readonly AppDomain[]).map((domain, index) => {
+          {visibleDomains.map((domain, index) => {
             const card = data.find((c) => c.domain === domain) ?? {
               domain,
               totalLeads:     0,
@@ -517,7 +542,7 @@ export function DomainOverviewPanel({
                 target={targets[domain] ?? null}
                 canEditTargets={canEditTargets}
                 onSaveTarget={handleSaveTarget}
-                onTileClick={(d, kind) => setDrill({ domain: d, kind })}
+                onTileClick={setDrill}
               />
             );
           })}
@@ -600,13 +625,23 @@ export function DomainOverviewPanel({
         </div>
       </div>
 
-      {/* Domain-card tile drill — the leads behind the clicked metric, each row a
-          dossier Link. Portals to document.body (DrillModalShell), so it stays
-          interactive through the refetch dim above. */}
+      {/* Domain-card tile drills — both portal to document.body (DrillModalShell),
+          so they stay interactive through the refetch dim above. Leads tiles
+          (Leads / Calls) open the leads drill; Deals Closed + Revenue open the
+          deals drill (those tiles count the deals table by won_at — a deal list,
+          not a lead-by-created_at list, is what ties out to the card number). */}
       <DomainLeadsDrillModal
-        open={drill !== null}
-        domain={drill?.domain ?? null}
-        kind={drill?.kind ?? null}
+        open={drill?.surface === 'leads'}
+        domain={drill?.surface === 'leads' ? drill.domain : null}
+        kind={drill?.surface === 'leads' ? drill.kind : null}
+        period={period}
+        customFrom={customFrom}
+        customTo={customTo}
+        onClose={() => setDrill(null)}
+      />
+      <DomainDealsDrillModal
+        open={drill?.surface === 'deals'}
+        domain={drill?.surface === 'deals' ? drill.domain : null}
         period={period}
         customFrom={customFrom}
         customTo={customTo}

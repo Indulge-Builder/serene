@@ -57,6 +57,9 @@ type Props = {
   initialTargets:      DomainTarget[];
   /** Deals closed THIS MONTH per domain — month-pinned target meter input */
   monthDeals:          Partial<Record<AppDomain, number>>;
+  /** Global serene-domain narrowing (resolveDomainParam): a picked domain renders
+   *  just that one card on the Domains tab; null = all GIA domains. */
+  scopeDomain:         AppDomain | null;
   canEditTargets:      boolean;
   agentsSlot:          React.ReactNode;
 };
@@ -68,6 +71,7 @@ export function FounderPerformanceShell({
   initialDomainHealth,
   initialTargets,
   monthDeals,
+  scopeDomain,
   canEditTargets,
   agentsSlot,
 }: Props) {
@@ -168,6 +172,7 @@ export function FounderPerformanceShell({
           customTo={customTo}
           initialTargets={initialTargets}
           monthDeals={monthDeals}
+          scopeDomain={scopeDomain}
           canEditTargets={canEditTargets}
         />
       )}

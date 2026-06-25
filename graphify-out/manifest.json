@@ -325,8 +325,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/performance/FounderPerformanceShell.tsx": {
-    "mtime": 1782287937.0665207,
-    "ast_hash": "ec2db7af04d09ec577a3291ad97d0700",
+    "mtime": 1782404460.1005864,
+    "ast_hash": "17efc3062264a033dded901df8457e90",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/performance/ManagerPerformanceAsync.tsx": {
@@ -355,13 +355,13 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/performance/page.tsx": {
-    "mtime": 1782374010.4775841,
-    "ast_hash": "abf6f1819c29f99793b12fbbc8a1c2fa",
+    "mtime": 1782404442.785216,
+    "ast_hash": "fb5ad3790b6f9e7ae4b509031c611a0e",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/profile/page.tsx": {
-    "mtime": 1782308812.0993676,
-    "ast_hash": "0ebb285c3762283004479f9b60e73418",
+    "mtime": 1782399127.3673787,
+    "ast_hash": "de26e60c4d735840b5ff063927a4f0e9",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/settings/loading.tsx": {
@@ -430,8 +430,8 @@
     "semantic_hash": ""
   },
   "src/app/api/elaya/chat/route.ts": {
-    "mtime": 1781342835.040478,
-    "ast_hash": "97b08ad5744ac26a7cc778f87fdf1ebf",
+    "mtime": 1782399599.82393,
+    "ast_hash": "da55c01c078492fbbeaa04292ae03669",
     "semantic_hash": ""
   },
   "src/app/api/manifest/route.ts": {
@@ -445,8 +445,8 @@
     "semantic_hash": ""
   },
   "src/app/api/webhooks/whatsapp/route.ts": {
-    "mtime": 1782248799.2042165,
-    "ast_hash": "5ea60624b518a1ee39cdaa1f64f644c5",
+    "mtime": 1782393894.6298776,
+    "ast_hash": "f6671e6eea5e4d1bb1c1f6344e4ed74d",
     "semantic_hash": ""
   },
   "src/app/layout.tsx": {
@@ -630,8 +630,8 @@
     "semantic_hash": ""
   },
   "src/components/dashboard/widgets/ManagerBudgetWidget.tsx": {
-    "mtime": 1782253864.9545586,
-    "ast_hash": "87925dc8626a61ee3e84da2d57357f70",
+    "mtime": 1782386878.4543116,
+    "ast_hash": "6b8a36394b490f2cc5295db0826e4743",
     "semantic_hash": ""
   },
   "src/components/dashboard/widgets/ManagerCampaignWidget.tsx": {
@@ -645,18 +645,18 @@
     "semantic_hash": ""
   },
   "src/components/dashboard/widgets/ManagerLeadStatusWidget.tsx": {
-    "mtime": 1782253627.5130792,
-    "ast_hash": "07ae63429d26a7553c18e6400f4a21ff",
+    "mtime": 1782388531.3034346,
+    "ast_hash": "8b809bd208a6c9075cf1681a15af8387",
     "semantic_hash": ""
   },
   "src/components/dashboard/widgets/ManagerLeadVolumeWidget.tsx": {
-    "mtime": 1782249203.8034856,
-    "ast_hash": "ccdb4cea1e669f978c4442f3756840dc",
+    "mtime": 1782384952.6013932,
+    "ast_hash": "491355f7d6901edde94fed463db744f2",
     "semantic_hash": ""
   },
   "src/components/dashboard/widgets/SnapshotCountWidget.tsx": {
-    "mtime": 1782375357.4122427,
-    "ast_hash": "ff9764e4c8a2f97a697346ef4289ffbb",
+    "mtime": 1782388232.9160948,
+    "ast_hash": "2a5912a010745fe5b1507568adc863df",
     "semantic_hash": ""
   },
   "src/components/deals/AddDealButton.tsx": {
@@ -1040,8 +1040,8 @@
     "semantic_hash": ""
   },
   "src/components/performance/AgentDealsDrillModal.tsx": {
-    "mtime": 1782249776.2341511,
-    "ast_hash": "f0ee0c32394eb6cc5e7d5490edf23c2c",
+    "mtime": 1782404577.9096956,
+    "ast_hash": "24ebbc80e2114e5b5a12c6d00e6b97bb",
     "semantic_hash": ""
   },
   "src/components/performance/AgentDetailPanel.tsx": {
@@ -1055,8 +1055,8 @@
     "semantic_hash": ""
   },
   "src/components/performance/AgentPerformanceShell.tsx": {
-    "mtime": 1782375948.0383456,
-    "ast_hash": "7ab60e50ee66e26590a0bab2fce056a8",
+    "mtime": 1782376553.430621,
+    "ast_hash": "6bd50dd5872340cba41949f4dd1b1f43",
     "semantic_hash": ""
   },
   "src/components/performance/AgentRecentActivityList.tsx": {
@@ -1080,13 +1080,13 @@
     "semantic_hash": ""
   },
   "src/components/performance/DomainOverviewPanel.tsx": {
-    "mtime": 1782254855.580945,
-    "ast_hash": "7742d60cdb1051c0e984722a3b045d86",
+    "mtime": 1782404693.2447937,
+    "ast_hash": "860a565d2561a9915646a5c23e672245",
     "semantic_hash": ""
   },
   "src/components/performance/DomainTargetMeter.tsx": {
-    "mtime": 1781342835.7291589,
-    "ast_hash": "70c55ce61585e275504416fc998a6ce2",
+    "mtime": 1782383602.0069098,
+    "ast_hash": "a00c32f6e994d4cd828f97a0b62dd8c2",
     "semantic_hash": ""
   },
   "src/components/performance/DrillModalShell.tsx": {
@@ -1460,8 +1460,8 @@
     "semantic_hash": ""
   },
   "src/components/ui/charts/CartesianChartFrame.tsx": {
-    "mtime": 1782249161.8967135,
-    "ast_hash": "2eedfc5e257f9886b9017f11fe36b057",
+    "mtime": 1782384928.9480283,
+    "ast_hash": "7ddc6f53ae1f0ad0893c02ca450f43d8",
     "semantic_hash": ""
   },
   "src/components/ui/charts/ChartSkeleton.tsx": {
@@ -1655,13 +1655,13 @@
     "semantic_hash": ""
   },
   "src/lib/actions/deals.ts": {
-    "mtime": 1781647419.8118696,
-    "ast_hash": "8142359723e4d59ecef84b97cd579451",
+    "mtime": 1782398204.7594197,
+    "ast_hash": "a4b01e8f59b38b55cfe5baa858c2572b",
     "semantic_hash": ""
   },
   "src/lib/actions/elaya.ts": {
-    "mtime": 1781511364.8063006,
-    "ast_hash": "4db70e536fc5cb8f3998960b83d74934",
+    "mtime": 1782399032.7590365,
+    "ast_hash": "34e5dc55a6e4885397b16441662a9498",
     "semantic_hash": ""
   },
   "src/lib/actions/intelligence.ts": {
@@ -1670,8 +1670,8 @@
     "semantic_hash": ""
   },
   "src/lib/actions/leads.ts": {
-    "mtime": 1782287761.3743203,
-    "ast_hash": "3a8571a7a84e761eab64b0eed84b8c09",
+    "mtime": 1782388508.980143,
+    "ast_hash": "4b57e67edcb34c9fa55088587d1a323d",
     "semantic_hash": ""
   },
   "src/lib/actions/notification-prefs.ts": {
@@ -1685,8 +1685,8 @@
     "semantic_hash": ""
   },
   "src/lib/actions/performance.ts": {
-    "mtime": 1782254770.396078,
-    "ast_hash": "37d712e3eee4478905fc3c906177bb06",
+    "mtime": 1782404598.7010217,
+    "ast_hash": "fe1912dcf4463f1002e14737b006b274",
     "semantic_hash": ""
   },
   "src/lib/actions/profiles.ts": {
@@ -1720,8 +1720,8 @@
     "semantic_hash": ""
   },
   "src/lib/actions/tasks.ts": {
-    "mtime": 1782375200.759175,
-    "ast_hash": "79fcea499bbe653967f259a475b06ad5",
+    "mtime": 1782387524.1906807,
+    "ast_hash": "5bbd95349ad0220cdce3b204583845f9",
     "semantic_hash": ""
   },
   "src/lib/actions/transcription.ts": {
@@ -1735,8 +1735,8 @@
     "semantic_hash": ""
   },
   "src/lib/actions/whatsapp.ts": {
-    "mtime": 1782248799.2195103,
-    "ast_hash": "9b73dd38f720bfab4ff00dabca83c76d",
+    "mtime": 1782387421.3470144,
+    "ast_hash": "bad17502e725799090d3a9a7554992cd",
     "semantic_hash": ""
   },
   "src/lib/constants/app-icons.ts": {
@@ -1760,8 +1760,8 @@
     "semantic_hash": ""
   },
   "src/lib/constants/dashboard-widgets.ts": {
-    "mtime": 1782374014.4583962,
-    "ast_hash": "b866a945a1ee4139772bf1af69f3a72c",
+    "mtime": 1782387700.8770916,
+    "ast_hash": "39d87ec667847f70acd32f8627c97028",
     "semantic_hash": ""
   },
   "src/lib/constants/date-range-presets.ts": {
@@ -1910,13 +1910,13 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/adapters/anthropic.ts": {
-    "mtime": 1781644393.593641,
-    "ast_hash": "f9952bab48e03bfef3f5c42a8e03a3a4",
+    "mtime": 1782388905.0276258,
+    "ast_hash": "a509abfe93a9b4fadd3533c14ec2713a",
     "semantic_hash": ""
   },
   "src/lib/elaya/brain.ts": {
-    "mtime": 1781644420.8861058,
-    "ast_hash": "dc0b818dabe8b965e10211931104d9ec",
+    "mtime": 1782398918.6523297,
+    "ast_hash": "4b422e22af2bbdc0e83a02404f7607db",
     "semantic_hash": ""
   },
   "src/lib/elaya/confirmation.ts": {
@@ -1925,8 +1925,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/persona.ts": {
-    "mtime": 1781678604.707275,
-    "ast_hash": "242b7550f93c9885d989f20cef6fdc95",
+    "mtime": 1782398950.114631,
+    "ast_hash": "fb5a2483f56f849f6d077c109e956669",
     "semantic_hash": ""
   },
   "src/lib/elaya/pii.ts": {
@@ -1950,13 +1950,13 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/registry.ts": {
-    "mtime": 1781954872.1810408,
-    "ast_hash": "259524b4e351e7ae2d1a6156254f497c",
+    "mtime": 1782398220.5710676,
+    "ast_hash": "89e8d6189c8d4be481cee61e92749bb1",
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/write-registry.ts": {
-    "mtime": 1781955434.8852894,
-    "ast_hash": "f8b5dc06c473bdb0fb4f458e3bfb4d31",
+    "mtime": 1782388606.238148,
+    "ast_hash": "e88b5b902dedd0051b040b333514fc0d",
     "semantic_hash": ""
   },
   "src/lib/leads/adapters.ts": {
@@ -1990,8 +1990,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/deals-service.ts": {
-    "mtime": 1781623088.9300065,
-    "ast_hash": "b5b3be10161dcc00702f4c3fb521bd1e",
+    "mtime": 1782388120.8037302,
+    "ast_hash": "9eb9b561b81643ba19c0a2992143ed1f",
     "semantic_hash": ""
   },
   "src/lib/services/domain-targets-service.ts": {
@@ -2000,18 +2000,18 @@
     "semantic_hash": ""
   },
   "src/lib/services/elaya-actions-service.ts": {
-    "mtime": 1781517295.8493528,
-    "ast_hash": "ce59b2fa0ca4b449da24c98667b06220",
+    "mtime": 1782388613.2921872,
+    "ast_hash": "4f002dfba85710c2e45928097070e7e0",
     "semantic_hash": ""
   },
   "src/lib/services/elaya-service.ts": {
-    "mtime": 1781512037.9596958,
-    "ast_hash": "a3c0f523a283470a42dfa444a87a65d6",
+    "mtime": 1782399503.3480108,
+    "ast_hash": "919ad9dcfe51493d7417c9fffd9d6299",
     "semantic_hash": ""
   },
   "src/lib/services/elaya-whatsapp.ts": {
-    "mtime": 1781391358.7729456,
-    "ast_hash": "9c2ed4b4848d8b2f2c18194cf120aef2",
+    "mtime": 1782399657.1660368,
+    "ast_hash": "9f01373aae5bb01e575b4cfeaa7981ae",
     "semantic_hash": ""
   },
   "src/lib/services/intelligence-service.ts": {
@@ -2035,13 +2035,13 @@
     "semantic_hash": ""
   },
   "src/lib/services/lead-mutations.ts": {
-    "mtime": 1781957748.5433261,
-    "ast_hash": "9d2d8cdd2c002e094c8e2753d088cbd7",
+    "mtime": 1782388443.8437638,
+    "ast_hash": "27172b9c22f4eca358cca39750321554",
     "semantic_hash": ""
   },
   "src/lib/services/leads-service.ts": {
-    "mtime": 1782248799.221613,
-    "ast_hash": "40605b319b5450d411d3c4d4adcf1560",
+    "mtime": 1782387737.392623,
+    "ast_hash": "9ec6dfee3dd0baaacdb14430ac0b587c",
     "semantic_hash": ""
   },
   "src/lib/services/llm-providers-service.ts": {
@@ -2060,8 +2060,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/performance-service.ts": {
-    "mtime": 1782373989.7490122,
-    "ast_hash": "b11a5a72f24f0d4cdfd247f55061c9b0",
+    "mtime": 1782398001.3421574,
+    "ast_hash": "670db2db62b77f7baeb403d383056b31",
     "semantic_hash": ""
   },
   "src/lib/services/profiles-service.ts": {
@@ -2095,13 +2095,13 @@
     "semantic_hash": ""
   },
   "src/lib/services/task-mutations.ts": {
-    "mtime": 1782257597.905511,
-    "ast_hash": "4c2647b1a2e559ed4f74f2fb60edf245",
+    "mtime": 1782387495.3765469,
+    "ast_hash": "4e41a6b496eb2954d9ee3e5471f87247",
     "semantic_hash": ""
   },
   "src/lib/services/tasks-service.ts": {
-    "mtime": 1782375150.5691414,
-    "ast_hash": "8f6910b44f66693672dac28372b6cf2a",
+    "mtime": 1782397916.5667765,
+    "ast_hash": "6d6b9469970665d0713046e7753f7e50",
     "semantic_hash": ""
   },
   "src/lib/services/transcription-service.ts": {
@@ -2115,8 +2115,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/whatsapp-api.ts": {
-    "mtime": 1782250449.637884,
-    "ast_hash": "787808496d48876e405328c96ac46d67",
+    "mtime": 1782387409.6897345,
+    "ast_hash": "9074e79f6f749bd5f08844f2e792bf9e",
     "semantic_hash": ""
   },
   "src/lib/services/whatsapp-ingestion.ts": {
@@ -3315,8 +3315,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1782376099.756925,
-    "ast_hash": "06c390049c645b3e599a54fc3279f2ac",
+    "mtime": 1782404848.223091,
+    "ast_hash": "1cf4714d6ef358f4cb8e5656742bbc38",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3555,8 +3555,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/CLAUDE.md": {
-    "mtime": 1782375577.501106,
-    "ast_hash": "89c668d1dd399960ade289968d1461ae",
+    "mtime": 1782376371.4805946,
+    "ast_hash": "c5079b07fb391aae48859caf62ab8e74",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/admin/ad-creatives/CLAUDE.md": {
@@ -3580,8 +3580,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/performance/CLAUDE.md": {
-    "mtime": 1782374409.880399,
-    "ast_hash": "75d474aaa73f270c261361dd79753903",
+    "mtime": 1782404909.064902,
+    "ast_hash": "6898e131933a1fe57d9f0dca1233cae9",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/settings/CLAUDE.md": {
@@ -3630,8 +3630,8 @@
     "semantic_hash": ""
   },
   "src/components/performance/CLAUDE.md": {
-    "mtime": 1782374469.162017,
-    "ast_hash": "2bc8594288d13596aae83f1f3ba4d97a",
+    "mtime": 1782404954.9164941,
+    "ast_hash": "b0a36b56092c746c8d677f3b67d563a8",
     "semantic_hash": ""
   },
   "src/components/tasks/CLAUDE.md": {
@@ -3640,8 +3640,8 @@
     "semantic_hash": ""
   },
   "src/lib/CLAUDE.md": {
-    "mtime": 1782375692.7065485,
-    "ast_hash": "458eb007fd8d9e1eee8411a6cde23654",
+    "mtime": 1782404971.9583101,
+    "ast_hash": "d7ef5dffbe86f6236ca2d30d5b0fe67a",
     "semantic_hash": ""
   },
   "src/lib/actions/CLAUDE.md": {
@@ -3650,8 +3650,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/CLAUDE.md": {
-    "mtime": 1781517511.3545072,
-    "ast_hash": "8ec611da4d0b551d24c07516fb621754",
+    "mtime": 1782404472.3939316,
+    "ast_hash": "db65ed65355a43b2c93705dfc29ff316",
     "semantic_hash": ""
   },
   "src/lib/services/CLAUDE.md": {
@@ -4142,6 +4142,66 @@
   "src/components/tasks/CompletedTasksModal.tsx": {
     "mtime": 1782376034.1059859,
     "ast_hash": "e0b2229e08d6921b68d73fb0b80682b9",
+    "semantic_hash": ""
+  },
+  "src/components/performance/DealDrillRow.tsx": {
+    "mtime": 1782404550.0767255,
+    "ast_hash": "bc3eae5e0ffcb580d9346391687d37f1",
+    "semantic_hash": ""
+  },
+  "src/components/performance/DomainDealsDrillModal.tsx": {
+    "mtime": 1782404617.426384,
+    "ast_hash": "87852a30c38c5afb16b53ec6987b2ade",
+    "semantic_hash": ""
+  },
+  "src/components/profile/ElayaPersonaSettings.tsx": {
+    "mtime": 1782399096.097048,
+    "ast_hash": "001276b79c7bd0e27eeb90e8315ab72a",
+    "semantic_hash": ""
+  },
+  "src/lib/constants/elaya-persona.ts": {
+    "mtime": 1782398835.206008,
+    "ast_hash": "6cf4d0ac1a1c7ec4007cf9826fa298b6",
+    "semantic_hash": ""
+  },
+  "src/lib/elaya/elaya-data.ts": {
+    "mtime": 1782398030.3105607,
+    "ast_hash": "f75e0cccaf5280595d233e40cf510645",
+    "semantic_hash": ""
+  },
+  "src/lib/elaya/memory.ts": {
+    "mtime": 1782399557.5386071,
+    "ast_hash": "40b5765daca66e71bf972206982b81ec",
+    "semantic_hash": ""
+  },
+  "src/lib/validations/elaya-persona-schema.ts": {
+    "mtime": 1782398846.6839478,
+    "ast_hash": "936a33aa444e93c448a76aa54207fd7c",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260625000147_fix_lead_slug_uppercase_strip.sql": {
+    "mtime": 1782384323.522948,
+    "ast_hash": "e101b8af3bd466edaf10fb5c8393ed95",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260625000148_elaya_wa_message_dedup_unique.sql": {
+    "mtime": 1782389086.3478796,
+    "ast_hash": "d9f187b475ec76817d7a1372c7ac6fbc",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260625000149_elaya_sessionless_rpc_twins.sql": {
+    "mtime": 1782397813.6527953,
+    "ast_hash": "82260f713cb2a7c4a12fc143de7f5322",
+    "semantic_hash": ""
+  },
+  "docs/architecture/elaya-jarvis-architecture.md": {
+    "mtime": 1782397236.4459054,
+    "ast_hash": "f9735ba79fd807819b6bcc806572e73e",
+    "semantic_hash": ""
+  },
+  "docs/audits/2026-06-25-elaya-full-audit.md": {
+    "mtime": 1782390233.8164344,
+    "ast_hash": "b96cc22a735c4933f9dd97481d39f96f",
     "semantic_hash": ""
   }
 }

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { getMyNotificationPrefs } from "@/lib/services/notification-prefs-service";
+import { getMyElayaPersona } from "@/lib/services/elaya-service";
 import { signOutUser } from "@/lib/actions/profiles";
 import { ProfileAvatarSection } from "@/components/profile/ProfileAvatarSection";
 import { ProfileDetailsForm }   from "@/components/profile/ProfileDetailsForm";
@@ -10,6 +11,7 @@ import { InstallPrompt }          from "@/components/profile/InstallPrompt";
 import { PasswordChangeForm }    from "@/components/profile/PasswordChangeForm";
 import { PushNotificationSettings } from "@/components/profile/PushNotificationSettings";
 import { NotificationPreferences } from "@/components/profile/NotificationPreferences";
+import { ElayaPersonaSettings } from "@/components/profile/ElayaPersonaSettings";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { Button } from "@/components/ui/Button";
 import { ROLE_LABELS } from "@/lib/constants/roles";
@@ -23,7 +25,11 @@ export default async function ProfilePage() {
   if (!profile) redirect("/login");
 
   // Seed the per-user notification matrix (migration 0133) — owner-scoped read.
-  const notificationPrefs = await getMyNotificationPrefs();
+  // + the per-user Elaya persona prefs (Jarvis Phase 2) — owner-scoped read.
+  const [notificationPrefs, elayaPersona] = await Promise.all([
+    getMyNotificationPrefs(),
+    getMyElayaPersona(profile.id),
+  ]);
 
   const memberSince = formatDate(profile.created_at, "MMM yyyy");
 
@@ -98,6 +104,13 @@ export default async function ProfilePage() {
             >
               <PushNotificationSettings />
             </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Elaya"
+            description="Personalise how Elaya talks to you."
+          >
+            <ElayaPersonaSettings initialPersona={elayaPersona} />
           </SectionCard>
 
           <PasswordChangeForm />

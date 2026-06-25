@@ -1,25 +1,23 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import { DrillModalShell } from './DrillModalShell';
+import { DealDrillRow, type DealDrillRowItem } from './DealDrillRow';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { getAgentDealsScopedAction } from '@/lib/actions/performance';
-import { formatCurrency } from '@/lib/utils/numbers';
-import { formatDate } from '@/lib/utils/dates';
-import { DEAL_TYPE_LABELS, type DealType } from '@/lib/constants/deal-types';
-import type { DealsResult } from '@/lib/services/deals-service';
 import type { AppDomain } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
 // AgentDealsDrillModal — the target agent's won deals (founder/manager deck).
 // Reuses the existing getDealsByRole path via getAgentDealsScopedAction
 // (filters.agent_id = agentId). Page-based load-more. Fetch on open only.
+// Rows render through the shared DealDrillRow (R-01 — the same row the domain
+// deals drill uses).
 // ─────────────────────────────────────────────
 
-type DealRow = DealsResult['deals'][number];
+type DealRow = DealDrillRowItem;
 
 interface Props {
   open: boolean;
@@ -27,11 +25,6 @@ interface Props {
   agentName: string;
   domain: AppDomain | null;
   onClose: () => void;
-}
-
-function dealTypeLabel(t: string | null): string | null {
-  if (!t) return null;
-  return DEAL_TYPE_LABELS[t as DealType] ?? t;
 }
 
 export function AgentDealsDrillModal({ open, agentId, agentName, domain, onClose }: Props) {
@@ -88,78 +81,9 @@ export function AgentDealsDrillModal({ open, agentId, agentName, domain, onClose
         <EmptyState variant="inline" title="No deals won yet." size="sm" />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-          {rows.map((deal) => {
-            const type = dealTypeLabel(deal.deal_type);
-            // A deal links to its LEAD dossier only when it has one — walk-in deals
-            // (lead_id null) have nowhere to navigate, so they stay a plain row.
-            const leadHref = deal.lead_id
-              ? `/leads/${deal.lead?.slug ?? deal.lead_id}?from=${encodeURIComponent('/performance')}`
-              : null;
-            const rowStyle = {
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 'var(--space-3)',
-              padding: 'var(--space-3) var(--space-4)',
-              background: 'var(--theme-paper-subtle)',
-              border: '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-md)',
-            } as const;
-            const rowInner = (
-              <>
-                <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-sans)',
-                      fontSize: 'var(--text-sm)',
-                      fontWeight: 'var(--weight-medium)',
-                      color: 'var(--theme-text-primary)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {deal.contact_name || 'Unnamed deal'}
-                  </span>
-                  <span style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-                    {type && (
-                      <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        {type}
-                      </span>
-                    )}
-                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
-                      {formatDate(deal.won_at)}
-                    </span>
-                  </span>
-                </div>
-                <span
-                  style={{
-                    flexShrink: 0,
-                    fontFamily: 'var(--font-serif)',
-                    fontSize: 'var(--text-base)',
-                    fontWeight: 'var(--weight-light)',
-                    color: 'var(--theme-accent)',
-                  }}
-                >
-                  {formatCurrency(deal.deal_amount)}
-                </span>
-              </>
-            );
-            return leadHref ? (
-              <Link
-                key={deal.id}
-                href={leadHref}
-                className="serene-pressable serene-touch"
-                style={{ ...rowStyle, textDecoration: 'none', cursor: 'pointer' }}
-              >
-                {rowInner}
-              </Link>
-            ) : (
-              <div key={deal.id} style={rowStyle}>
-                {rowInner}
-              </div>
-            );
-          })}
+          {rows.map((deal) => (
+            <DealDrillRow key={deal.id} deal={deal} />
+          ))}
 
           {hasMore && (
             <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 'var(--space-2)' }}>

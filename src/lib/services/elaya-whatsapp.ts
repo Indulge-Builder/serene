@@ -24,6 +24,7 @@ import { sendElayaWhatsAppReply } from '@/lib/services/whatsapp-api';
 import { transcribeAudio } from '@/lib/services/transcription-service';
 import { resolveStaffPrincipal } from '@/lib/elaya/principal';
 import { runElayaTurn } from '@/lib/elaya/brain';
+import { maybeUpdateLearnedMemory } from '@/lib/elaya/memory';
 import {
   countUserMessagesToday,
   getOrCreateActiveConversation,
@@ -194,6 +195,15 @@ async function handleStaffMessage(
       ? truncateWhatsAppText(markdownToWhatsApp(result.text), MAX_REPLY_CHARS)
       : REPLY_EMPTY;
   await sendElayaWhatsAppReply(normalizedPhone, reply, profile.id);
+
+  // Post-turn learned-memory update (Jarvis Phase 3) — AFTER the reply is sent, still
+  // inside the webhook route's after() lambda-alive window. Throttled + non-fatal
+  // (never throws). sentToday+1 = this message's count (shared cross-channel cap).
+  await maybeUpdateLearnedMemory({
+    principal,
+    conversationId: conversation.id,
+    userMessagesToday: sentToday + 1,
+  });
 }
 
 /**

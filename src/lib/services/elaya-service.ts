@@ -15,6 +15,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { toISTMidnight } from '@/lib/utils/ist';
 import { getDailyMessageCap, getSessionExpiryHours } from '@/lib/services/llm-providers-service';
 import { getElayaTimeGreeting, pickElayaDailyLine } from '@/lib/constants/elaya';
+import type { ElayaPersonaPrefs } from '@/lib/constants/elaya-persona';
 import type {
   ElayaChannel,
   ElayaConversation,
@@ -292,6 +293,90 @@ export async function getUserContext(userId: string): Promise<Record<string, unk
     return {};
   }
   return ((data as { context: Record<string, unknown> } | null)?.context) ?? {};
+}
+
+// ─────────────────────────────────────────────
+// Persona (Jarvis Phase 2) — the per-user "instruction file", stored inside
+// user_context.context under `persona` (user-set style prefs) + `learned`
+// (Elaya-accumulated facts, Phase 3). STYLE ONLY — never a permission.
+// ─────────────────────────────────────────────
+
+/** What the brain folds into the prompt: the user's style prefs + any learned blurb.
+ *  Admin client (works sessionless — the WhatsApp turn has no session). */
+export async function getUserPersona(
+  userId: string,
+): Promise<{ persona: ElayaPersonaPrefs | null; learned: string | null }> {
+  const ctx = await getUserContext(userId);
+  const persona = (ctx['persona'] as ElayaPersonaPrefs | undefined) ?? null;
+  const learnedRaw = ctx['learned'];
+  const learned = typeof learnedRaw === 'string' ? learnedRaw : null;
+  return { persona, learned };
+}
+
+/** The owner's own persona prefs, for the /profile settings UI seed. Session client
+ *  (RLS scopes user_context SELECT to own row); returns {} when no row yet. */
+export async function getMyElayaPersona(userId: string): Promise<ElayaPersonaPrefs> {
+  const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
+    .from('user_context')
+    .select('context')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) {
+    console.warn('[elaya-service] persona read failed:', error.message);
+    return {};
+  }
+  const ctx = (data as { context: Record<string, unknown> } | null)?.context ?? {};
+  return (ctx['persona'] as ElayaPersonaPrefs | undefined) ?? {};
+}
+
+/** Merge the user-set persona prefs into user_context.context.persona WITHOUT
+ *  touching context.learned (Elaya's accumulated facts) or any other key.
+ *  Admin client — user_context has NO user write policy by design (writes are
+ *  service-role; the gated action is the trust boundary, the elaya-actions posture).
+ *  Upserts the row when absent. Returns ok. */
+export async function updateElayaPersona(
+  userId: string,
+  prefs: ElayaPersonaPrefs,
+): Promise<boolean> {
+  const supabase = createAdminClient();
+  // Read-merge-write: preserve learned + any future keys. One row per user (PK).
+  const existing = await getUserContext(userId);
+  const nextContext = { ...existing, persona: prefs };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
+    .from('user_context')
+    .upsert({ user_id: userId, context: nextContext }, { onConflict: 'user_id' });
+  if (error) {
+    console.error('[elaya-service] persona write failed:', error.message);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Overwrite user_context.context.learned (Elaya's accumulated facts, Phase 3) WITHOUT
+ * touching context.persona (the user-set prefs) or any other key. The summarizer
+ * produces the WHOLE bounded blurb each time (it folds prior learned + the recent
+ * turn into one), so this is an overwrite, not an append — idempotent re-runs converge.
+ * Admin client (the brain turn is sessionless on WhatsApp; user_context has no user
+ * write policy — the post-turn writer is the trust boundary, the persona posture).
+ * `learned` is already bounded by the summarizer before it reaches here.
+ */
+export async function writeLearnedMemory(userId: string, learned: string): Promise<boolean> {
+  const supabase = createAdminClient();
+  const existing = await getUserContext(userId);
+  const nextContext = { ...existing, learned };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
+    .from('user_context')
+    .upsert({ user_id: userId, context: nextContext }, { onConflict: 'user_id' });
+  if (error) {
+    console.error('[elaya-service] learned-memory write failed:', error.message);
+    return false;
+  }
+  return true;
 }
 
 // ─────────────────────────────────────────────

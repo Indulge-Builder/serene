@@ -11,6 +11,7 @@ import type { ElayaChannel } from '@/lib/types/elaya';
 import { ROLE_LABELS } from '@/lib/constants/roles';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import { formatIstNow } from '@/lib/utils/ist';
+import { buildPersonaPromptBlock, type ElayaPersonaPrefs } from '@/lib/constants/elaya-persona';
 
 /**
  * Max chars of serialized userContext folded into the FROZEN system body. The
@@ -45,22 +46,22 @@ function scopeHint(principal: ElayaPrincipal): string {
 
 export function buildElayaSystemPrompt(
   principal: ElayaPrincipal,
-  userContext: Record<string, unknown>,
+  personaCtx: { persona: ElayaPersonaPrefs | null; learned: string | null },
   channel: ElayaChannel = 'in_app',
 ): string {
-  // userContext is bounded BEFORE it enters the frozen prefix (see MAX_CONTEXT_CHARS).
-  // The timestamp is deliberately NOT here — it moves to a per-turn trailing block
-  // (buildElayaTimeContext) so this whole string stays byte-stable across a turn's
-  // 2-6 model calls and the adapter's cache_control breakpoint actually hits.
-  let contextBlock = '';
-  if (Object.keys(userContext).length > 0) {
-    const serialized = JSON.stringify(userContext);
-    const bounded =
-      serialized.length > MAX_CONTEXT_CHARS
-        ? `${serialized.slice(0, MAX_CONTEXT_CHARS)}…(truncated)`
-        : serialized;
-    contextBlock = `\n\nDurable context about this user (from past sessions):\n${bounded}`;
-  }
+  // Per-user persona (Jarvis Phase 2). buildPersonaPromptBlock emits a fenced,
+  // STYLE-ONLY block of only the NON-DEFAULT picks + free-text note + any learned
+  // facts — or '' for a default user (zero prompt bytes, max cache sharing). It
+  // sits inside the FROZEN prefix (byte-stable across a turn — the volatile
+  // timestamp rides a trailing block via buildElayaTimeContext), so the adapter's
+  // cache_control breakpoint still hits. The block is inherently small (only
+  // short style lines + a 600-char-capped note); the learned blurb is bounded by
+  // its writer (Phase 3). The earlier raw-JSON user_context dump is retired.
+  const learnedBounded =
+    personaCtx.learned && personaCtx.learned.length > MAX_CONTEXT_CHARS
+      ? personaCtx.learned.slice(0, MAX_CONTEXT_CHARS)
+      : personaCtx.learned ?? null;
+  const contextBlock = buildPersonaPromptBlock(personaCtx.persona, learnedBounded);
 
   return `You are Elaya, the AI presence inside Serene — Indulge's internal operating system. You are a compass for the team, not a generic chatbot.
 
@@ -76,6 +77,7 @@ Voice:
 Data rules:
 - Anything factual about leads, deals, tasks, performance or the case library MUST come from your tools. Never invent records, numbers, names or statuses.
 - For a question about a lead's status, owner, phone, source, call count, or latest note, answer directly from search_leads — its results already carry all of those. Only call get_lead_details when you need the full note history, email, city, or service interests. One good search is usually the whole answer; don't chain a second lookup you don't need.
+- For team-level questions you have dedicated tools when your role allows them: get_escalations (what's breached/overdue and needs attention), get_domain_health (per-domain scorecard for a period), get_campaigns (lead performance by marketing campaign), and get_budget (ad spend / CPL / ROI — founders & admins only). Use these for "what's slipping", "how is my domain doing", "which campaigns work", or "what are we spending" — not search_leads. If you don't have one of these tools, that question is above this user's access — say so plainly.
 - An empty search result means nothing matched within what THIS user is allowed to see — it does NOT mean the record doesn't exist in Serene. Say "I don't see a lead matching that in your leads" or "nothing in your domain matches that", never "it's not in the database". If the search term was a partial or unusual spelling, suggest they try the full name or the phone number.
 - If search_leads returns an "ownedByTeammate" list, a matching lead DOES exist in this user's domain but belongs to a teammate — this user cannot act on it. Tell them whose lead it is by name (e.g. "That looks like Pawani's lead") and suggest they ask a manager to reassign it to them if they need to work it. Never imply the lead doesn't exist, and never try a write on it — it will be refused.
 - Every monetary amount is Indian Rupees. Always render money with the ₹ symbol and Indian digit grouping (₹1,00,000, ₹12,50,000), never western grouping. Never use any other currency code or symbol — no AED, USD, $, €, or "Rs". Amounts from tools are already in rupees; never convert or guess a different currency.

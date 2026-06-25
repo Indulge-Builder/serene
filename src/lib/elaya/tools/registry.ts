@@ -27,22 +27,12 @@ import {
   type ElayaWriteToolName,
   type WriteToolContext,
 } from '@/lib/elaya/tools/write-registry';
-import {
-  searchLeadsForElaya,
-  getLeadByRefForElaya,
-  getLeadNotesFullForElaya,
-  findDomainLeadOwners,
-} from '@/lib/services/leads-service';
-import { getGoingColdLeads } from '@/lib/services/sla-service';
-import { getDealsByRoleForElaya } from '@/lib/services/deals-service';
-import { getGiaTasksForUser, getPersonalTasks, getGroupTasks } from '@/lib/services/tasks-service';
-import { createAdminClient } from '@/lib/supabase/admin';
-import {
-  getAgentTodayPulse,
-  getAgentRosterPerformance,
-  getPeriodDateRange,
-} from '@/lib/services/performance-service';
-import { getCasesForLead, getHooksForCategories, getHelpdeskLibrary } from '@/lib/services/intelligence-service';
+// THE single data seam for every Elaya read (Phase 1 parity rule, see
+// src/lib/elaya/CLAUDE.md). Tools call elayaData.* ONLY — never a *-service.ts function
+// directly — so every read is principal-scoped + admin-client + channel-agnostic by
+// construction. A tool that reaches past this module can re-introduce a login-session
+// dependency that blanks on WhatsApp; do not do it.
+import * as elayaData from '@/lib/elaya/elaya-data';
 import { LEAD_STATUSES } from '@/lib/constants/lead-statuses';
 import { COLD_LEAD_THRESHOLD_DAYS } from '@/lib/constants/leads';
 import { DEAL_TYPE_ENUM, DEAL_CATEGORY_ENUM } from '@/lib/constants/deal-types';
@@ -67,13 +57,21 @@ export type ElayaReadToolName =
   | 'get_my_tasks'
   | 'search_deals'
   | 'get_performance_snapshot'
-  | 'get_helpdesk_content';
+  | 'get_helpdesk_content'
+  // Phase 4 — manager oversight (manager+) + founder business (admin/founder)
+  | 'get_escalations'
+  | 'get_domain_health'
+  | 'get_campaigns'
+  | 'get_budget';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
 
 type ElayaTool = {
   name: ElayaReadToolName;
+  /** Roles permitted to SEE the tool (toolset membership is the hard gate — the model
+   *  never receives a tool outside the principal's role set). Defaults to all staff. */
+  roles?: readonly UserRole[];
   description: string;
   schema: z.ZodTypeAny;
   /** JSON Schema mirror of `schema` — handed to the provider adapter. */
@@ -100,6 +98,13 @@ function canAccessLead(principal: ElayaPrincipal, lead: LeadWithAssignee): boole
   if (principal.role === 'agent') return lead.assigned_to === principal.userId;
   return false;
 }
+
+// Role sets for the Phase-4 read tools (the toolset assembly is the hard gate).
+const MANAGER_UP: readonly UserRole[] = ['manager', 'admin', 'founder'];
+const FOUNDER_UP: readonly UserRole[] = ['admin', 'founder'];
+
+// Date-range periods these tools accept (reuse the performance vocabulary).
+const OVERSIGHT_PERIODS = ['this_week', 'this_month', 'last_month'] as const;
 
 // ─────────────────────────────────────────────
 // Tools
@@ -144,7 +149,7 @@ const searchLeads: ElayaTool = {
     // supplies filter values only, never identity.
     const PAGE_SIZE = 30;
     const currentPage = page ?? 1;
-    const result = await searchLeadsForElaya(principal.role, principal.userId, principal.domain, {
+    const result = await elayaData.searchLeads(principal, {
       search: term,
       statuses: statuses ?? null,
       page: currentPage,
@@ -168,7 +173,7 @@ const searchLeads: ElayaTool = {
       result.leads.length === 0 &&
       term
     ) {
-      ownedByTeammate = await findDomainLeadOwners(principal.domain, term);
+      ownedByTeammate = await elayaData.findOwnersInDomain(principal, term);
       if (ownedByTeammate.length === 0) ownedByTeammate = undefined;
     }
 
@@ -222,14 +227,9 @@ const getColdLeads: ElayaTool = {
   run: async (principal) => {
     // Identity-derived scope (the per-caller contract — mirrors searchLeadsForElaya
     // and canAccessLead): agent → own assigned leads only; manager → own domain;
-    // admin/founder → all domains. The model supplies NO scope (empty schema).
-    const scope =
-      principal.role === 'agent'
-        ? { assignedTo: principal.userId }
-        : principal.role === 'manager'
-          ? { domain: principal.domain }
-          : {}; // admin / founder — all domains
-    const cold = await getGoingColdLeads(scope);
+    // admin/founder → all domains. The model supplies NO scope (empty schema) — the
+    // principal drives it inside elayaData.getColdLeads.
+    const cold = await elayaData.getColdLeads(principal);
     return {
       thresholdDays: COLD_LEAD_THRESHOLD_DAYS,
       totalCount: cold.length,
@@ -264,12 +264,12 @@ const getLeadDetails: ElayaTool = {
     // canAccessLead gate below is the per-resource trust boundary — it re-checks
     // role/domain/assignment on the principal, so the broad read is safe. The ref
     // is a UUID or a slug (getLeadByRefForElaya resolves both).
-    const lead = await getLeadByRefForElaya(leadId);
+    const lead = await elayaData.getLeadByRef(leadId);
     if (!lead || !canAccessLead(principal, lead)) {
       // One message for both not-found and not-permitted (S-09 principle).
       return { error: 'Lead not found or you are not permitted to view it.' };
     }
-    const notes = await getLeadNotesFullForElaya(lead.id);
+    const notes = await elayaData.getLeadNotes(lead.id);
     return {
       lead: {
         name: [lead.first_name, lead.last_name].filter(Boolean).join(' '),
@@ -306,20 +306,15 @@ const getMyTasks: ElayaTool = {
     'Call when the user asks what to do next, what is due, about follow-ups, or about team/group work.',
   schema: z.object({}),
   jsonSchema: { type: 'object', properties: {}, additionalProperties: false },
-  run: async (principal, _input, channel) => {
-    // On WhatsApp there is NO cookie session (no auth.uid()). getGiaTasksForUser
-    // (admin client + explicit params) and getPersonalTasks (injected admin client;
-    // RPC scopes purely on p_user_id) are sessionless-safe. getGroupTasks is NOT —
-    // get_group_task_summaries scopes via auth.uid() inside the SQL, so on WhatsApp
-    // it would return an empty list (the H1 silent-blank bug). Rather than show a
-    // false "no group tasks", we skip it on WhatsApp and tell the user where to look.
-    const onWhatsApp = channel === 'whatsapp';
-
+  run: async (principal) => {
+    // All three reads go through the Elaya data layer → admin-client + principal-scoped,
+    // so they return real data on BOTH in-app and WhatsApp (parity rule). The old
+    // WhatsApp "group tasks not available, open the app" fallback is gone — group tasks
+    // now work everywhere via the explicit-param twin (migration 0149).
     const [giaTasks, personal, groups] = await Promise.all([
-      getGiaTasksForUser(principal.userId, principal.role, principal.domain),
-      // Sessionless-safe: inject the admin client on WhatsApp (p_user_id-scoped RPC).
-      getPersonalTasks(principal.userId, { limit: 20 }, onWhatsApp ? createAdminClient() : undefined),
-      onWhatsApp ? Promise.resolve(null) : getGroupTasks({}, { userId: principal.userId }),
+      elayaData.getGiaTasks(principal),
+      elayaData.getPersonalTasksFor(principal, 20),
+      elayaData.getGroupTasksFor(principal),
     ]);
     // taskId / groupId are surfaced DELIBERATELY (Brief 3): they are the handle the
     // write tools (update_task_status / update_task / delete_task) target. Without an
@@ -348,23 +343,15 @@ const getMyTasks: ElayaTool = {
       // Cap group tasks like followUps (25) and personalTasks (20) already are —
       // an unbounded list would be the one collection that could blow the 12k
       // result ceiling and get blunt-truncated mid-JSON as group workspaces grow.
-      groupTasks: groups
-        ? groups.slice(0, 25).map((g) => ({
-            groupId: g.id,
-            title: g.title,
-            status: g.status,
-            priority: g.priority,
-            dueAt: g.due_at,
-            subtaskCount: g.subtask_count,
-            completedCount: g.completed_count,
-          }))
-        : [],
-      ...(onWhatsApp
-        ? {
-            groupTasksNote:
-              'Group/team task workspaces are not available over WhatsApp — tell the user to open Serene in the app to see those. Lead follow-ups and personal tasks above ARE complete.',
-          }
-        : {}),
+      groupTasks: groups.slice(0, 25).map((g) => ({
+        groupId: g.id,
+        title: g.title,
+        status: g.status,
+        priority: g.priority,
+        dueAt: g.due_at,
+        subtaskCount: g.subtask_count,
+        completedCount: g.completed_count,
+      })),
     };
   },
 };
@@ -394,10 +381,9 @@ const searchDeals: ElayaTool = {
     const { search, deal_type, deal_category, page } = input as {
       search?: string; deal_type?: string; deal_category?: string; page?: number;
     };
-    // Elaya twin (admin client) — getDealsByRole on the session client returns
-    // nothing without auth.uid() in the sessionless WhatsApp/SSE context (H1).
-    // Role scoping is the same explicit .eq() filters; identity is principal-derived.
-    const result = await getDealsByRoleForElaya(principal.role, principal.userId, principal.domain, {
+    // Through the Elaya data layer (admin client + principal scope) → works on both
+    // channels. Role scoping is the same explicit .eq() filters; identity is principal-derived.
+    const result = await elayaData.searchDeals(principal, {
       search: search ?? null,
       domain: null,
       deal_type: deal_type ?? null,
@@ -439,32 +425,18 @@ const getPerformanceSnapshot: ElayaTool = {
     },
     additionalProperties: false,
   },
-  run: async (principal, input, channel) => {
+  run: async (principal, input) => {
     const period = ((input as { period?: (typeof PERIODS)[number] }).period) ?? 'this_week';
 
-    // Both performance paths are self-scoped via auth.uid()/get_user_domain()
-    // inside their RPCs (get_agent_today_pulse, get_agent_roster_performance), so
-    // in the sessionless WhatsApp context they return zeros (the H1 silent-blank
-    // bug). Rather than report a false "0 calls, 0 deals", refuse honestly and send
-    // the user to the app. (In-app keeps the full behaviour below.)
-    if (channel === 'whatsapp') {
-      return {
-        unavailable: true,
-        message:
-          'Performance numbers are not available over WhatsApp — tell the user to open Serene in the app to see their scorecard. Do NOT state any figures; you have none here.',
-      };
-    }
-
+    // Through the Elaya data layer (admin-client explicit-param twins, migration 0149)
+    // → real numbers on BOTH in-app and WhatsApp. The old WhatsApp "open the app"
+    // fallback is gone — the pulse + roster work everywhere now (parity rule).
     if (principal.role === 'agent') {
-      // Self-scoped RPC (auth.uid()) — runs as the caller's session.
-      const pulse = await getAgentTodayPulse(period);
+      const pulse = await elayaData.getAgentPulse(principal, period);
       return { view: 'agent_pulse', period, ...pulse };
     }
-    const range = getPeriodDateRange(period);
-    // Manager is pinned to their own domain inside the RPC; the domain arg is
-    // honoured for admin/founder only (null = all domains).
-    const domainArg = principal.role === 'manager' ? principal.domain : null;
-    const roster = await getAgentRosterPerformance(domainArg, range.from, range.to);
+    // Manager → own domain; admin/founder → all (the data layer clamps it).
+    const roster = await elayaData.getRoster(principal, period);
     // Graceful top-N cap, NOT blunt 12k-char string truncation. The roster is
     // sorted top-performer-first, so a raw truncation would drop the LAGGARDS —
     // exactly the rows a "who is behind" question needs. Cap with intent and
@@ -508,14 +480,173 @@ const getHelpdeskContent: ElayaTool = {
     const domain = isGiaDomain(principal.domain) ? principal.domain : DEFAULT_GIA_DOMAIN;
     if ((interests && interests.length > 0) || city) {
       const [cases, hooks] = await Promise.all([
-        getCasesForLead(interests ?? [], city ?? null, domain),
-        getHooksForCategories(interests ?? [], domain),
+        elayaData.getHelpdeskCases(interests ?? [], city ?? null, domain),
+        elayaData.getHelpdeskHooks(interests ?? [], domain),
       ]);
       return { cases, hooks };
     }
     // No filters → a featured slice of the library, never the full 150-case dump.
-    const library = await getHelpdeskLibrary(domain);
+    const library = await elayaData.getHelpdeskFullLibrary(domain);
     return { cases: library.cases.slice(0, 10), hooks: library.hooks.slice(0, 5) };
+  },
+};
+
+// ═════════════════════════════════════════════
+// Phase 4 — manager oversight + founder business reads.
+// Role-gated via the tool's `roles` (toolset membership = the hard gate). All route
+// through elayaData (admin client + principal scope) → both channels by construction.
+// ═════════════════════════════════════════════
+
+const getEscalations: ElayaTool = {
+  name: 'get_escalations',
+  roles: MANAGER_UP,
+  description:
+    'Managers and above: the live escalations in your scope — leads whose SLA has breached ' +
+    '(going unworked past the deadline) AND lead follow-up tasks that are overdue. ' +
+    'Call when the user asks what needs attention, what’s slipping, what’s breached or overdue, ' +
+    'or how the team is keeping up. Manager → own domain; admin/founder → all domains.',
+  schema: z.object({}),
+  jsonSchema: { type: 'object', properties: {}, additionalProperties: false },
+  run: async (principal) => {
+    const [breachedLeads, overdueTasks] = await Promise.all([
+      elayaData.getEscalations(principal),
+      elayaData.getOverdueTasks(principal),
+    ]);
+    return {
+      breachedLeads: breachedLeads.slice(0, 25).map((l) => ({
+        name: l.name,
+        slug: l.slug,
+        status: l.status,
+        phone: l.phone,
+        domain: l.domain,
+        assignee: l.assigneeName,
+        breachedAt: l.lastFiredAt,
+        escalatesTo: l.recipients,
+      })),
+      overdueTasks: overdueTasks.slice(0, 25).map((t) => ({
+        title: t.title,
+        priority: t.priority,
+        dueAt: t.dueAt,
+        overdueSince: t.overdueAt,
+        assignee: t.assigneeName,
+        leadName: t.leadName,
+        leadSlug: t.leadSlug,
+        domain: t.leadDomain,
+      })),
+      totalBreachedLeads: breachedLeads.length,
+      totalOverdueTasks: overdueTasks.length,
+    };
+  },
+};
+
+const getDomainHealth: ElayaTool = {
+  name: 'get_domain_health',
+  roles: MANAGER_UP,
+  description:
+    'Managers and above: a health scorecard per domain for a period — leads in, won, lost, ' +
+    'calls made, conversion rate, deals closed and revenue. Call for "how is my domain doing", ' +
+    '"compare the domains", team-level health questions. Manager → own domain only; ' +
+    'admin/founder → all domains. Money is in Indian Rupees.',
+  schema: z.object({ period: z.enum(OVERSIGHT_PERIODS).optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      period: { type: 'string', enum: [...OVERSIGHT_PERIODS], description: 'Defaults to this_month' },
+    },
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const period = ((input as { period?: (typeof OVERSIGHT_PERIODS)[number] }).period) ?? 'this_month';
+    const cards = await elayaData.getDomainHealth(principal, period);
+    return { period, domains: cards };
+  },
+};
+
+const getCampaigns: ElayaTool = {
+  name: 'get_campaigns',
+  roles: MANAGER_UP,
+  description:
+    'Managers and above: lead performance broken down by marketing campaign for a period — ' +
+    'leads per campaign and their pipeline mix (new/touched/in discussion/won/lost). Call for ' +
+    'questions about which campaigns are working, campaign lead volume, or campaign conversion. ' +
+    'Manager → own domain; admin/founder → all domains.',
+  schema: z.object({ period: z.enum(OVERSIGHT_PERIODS).optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      period: { type: 'string', enum: [...OVERSIGHT_PERIODS], description: 'Defaults to this_month' },
+    },
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const period = ((input as { period?: (typeof OVERSIGHT_PERIODS)[number] }).period) ?? 'this_month';
+    const rows = await elayaData.getCampaigns(principal, period);
+    // Top-25 cap (sorted by volume) so a long-tail of tiny campaigns can't blow the
+    // 12k result ceiling; tell the model how many were omitted.
+    const sorted = [...rows].sort((a, b) => b.total_leads - a.total_leads);
+    const CAP = 25;
+    const shown = sorted.slice(0, CAP).map((c) => ({
+      campaign: c.campaign_name,
+      domain: c.domain,
+      totalLeads: c.total_leads,
+      won: c.won,
+      lost: c.lost,
+      inDiscussion: c.in_discussion,
+      nurturing: c.nurturing,
+      converted: c.converted,
+    }));
+    return {
+      period,
+      campaigns: shown,
+      ...(sorted.length > CAP
+        ? { note: `Showing the top ${CAP} of ${sorted.length} campaigns by lead volume.` }
+        : {}),
+    };
+  },
+};
+
+const getBudget: ElayaTool = {
+  name: 'get_budget',
+  roles: FOUNDER_UP,
+  description:
+    'Founders and admins only: ad spend per campaign for a period, joined to the leads and ' +
+    'deals it produced — spend, leads, deals, revenue, cost-per-lead and cost-per-deal. Call for ' +
+    'budget, ad spend, CPL/CPD, marketing ROI or "what are we spending" questions. Org-wide ' +
+    '(spend is not domain-scoped). All money is Indian Rupees; a "—" cost means zero in that ' +
+    'denominator (never report it as ₹0).',
+  schema: z.object({ period: z.enum(OVERSIGHT_PERIODS).optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      period: { type: 'string', enum: [...OVERSIGHT_PERIODS], description: 'Defaults to this_month' },
+    },
+    additionalProperties: false,
+  },
+  run: async (_principal, input) => {
+    const period = ((input as { period?: (typeof OVERSIGHT_PERIODS)[number] }).period) ?? 'this_month';
+    const rows = await elayaData.getBudget(period);
+    const sorted = [...rows].sort((a, b) => b.totalSpend - a.totalSpend);
+    const CAP = 25;
+    const totalSpend = rows.reduce((s, r) => s + r.totalSpend, 0);
+    const totalLeads = rows.reduce((s, r) => s + r.leadCount, 0);
+    const totalDeals = rows.reduce((s, r) => s + r.dealCount, 0);
+    const totalRevenue = rows.reduce((s, r) => s + r.dealRevenue, 0);
+    return {
+      period,
+      totals: { spend: totalSpend, leads: totalLeads, deals: totalDeals, revenue: totalRevenue },
+      campaigns: sorted.slice(0, CAP).map((r) => ({
+        campaign: r.campaignKey,
+        spend: r.totalSpend,
+        leads: r.leadCount,
+        deals: r.dealCount,
+        revenue: r.dealRevenue,
+        costPerLead: r.costPerLead,
+        costPerDeal: r.costPerDeal,
+      })),
+      ...(sorted.length > CAP
+        ? { note: `Showing the top ${CAP} of ${sorted.length} campaigns by spend.` }
+        : {}),
+    };
   },
 };
 
@@ -531,17 +662,26 @@ const ALL_TOOLS = [
   searchDeals,
   getPerformanceSnapshot,
   getHelpdeskContent,
+  getEscalations,
+  getDomainHealth,
+  getCampaigns,
+  getBudget,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));
 
-const READ_TOOLSET: readonly ElayaReadToolName[] = ALL_TOOLS.map((t) => t.name);
+// READ tools permitted for a role. Most are all-staff (no `roles` field); the Phase-4
+// oversight/business tools carry a `roles` set, so a manager never sees get_budget and
+// an agent never sees the oversight tools — toolset membership is the hard gate (the
+// model is only handed tools the principal carries). Mirrors writeToolsForRole.
+function readToolsForRole(role: UserRole): ElayaReadToolName[] {
+  return ALL_TOOLS.filter((t) => !t.roles || t.roles.includes(role)).map((t) => t.name);
+}
 
-// Per-role toolset = all read tools + the write tools that role is permitted (Phase 2).
-// Read access is uniform across staff today; write access is role-gated in the write
-// registry (agents do NOT get reassign_lead). Guests get nothing.
+// Per-role toolset = the role's read tools + the write tools that role is permitted.
+// Both halves are role-gated (Phase 4 made reads role-aware too). Guests get nothing.
 function staffToolset(role: UserRole): readonly ElayaToolName[] {
-  return [...READ_TOOLSET, ...writeToolsForRole(role)];
+  return [...readToolsForRole(role), ...writeToolsForRole(role)];
 }
 
 export const TOOLSET_BY_ROLE: Record<UserRole, readonly ElayaToolName[]> = {

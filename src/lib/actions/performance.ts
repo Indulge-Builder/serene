@@ -229,14 +229,18 @@ const GetDomainHealthSchema = z.object({
   period:     z.enum(['today', 'this_week', 'this_month', 'last_month', 'all_time', 'custom']),
   customFrom: z.string().datetime().optional(),
   customTo:   z.string().datetime().optional(),
+  // Optional global-selector scope (the Domains tab narrows to one card). Validated
+  // against the Gia domain enum; omitted/invalid → all GIA domains (prior behaviour).
+  domain:     z.enum(GIA_DOMAIN_ENUM).optional(),
 });
 
 export async function getDomainHealthMetricsAction(
   period:      PerformancePeriod,
   customFrom?: string,
   customTo?:   string,
+  domain?:     AppDomain,
 ): Promise<ActionResult<DomainHealthCard[]>> {
-  const parsed = GetDomainHealthSchema.safeParse({ period, customFrom, customTo });
+  const parsed = GetDomainHealthSchema.safeParse({ period, customFrom, customTo, domain });
   if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
 
   const auth = await requireProfile(['manager', 'admin', 'founder']);
@@ -247,7 +251,10 @@ export async function getDomainHealthMetricsAction(
     const from  = (period === 'custom' && customFrom) ? customFrom : range.from;
     const to    = (period === 'custom' && customTo)   ? customTo   : range.to;
 
-    const cards = await getDomainHealthMetrics([...GIA_DOMAINS] as AppDomain[], from, to);
+    // Scoped to the picked domain when the global selector narrows the tab, else
+    // every Gia domain. The RPC returns exactly the requested set (no internal gate).
+    const domains = (parsed.data.domain ? [parsed.data.domain] : [...GIA_DOMAINS]) as AppDomain[];
+    const cards = await getDomainHealthMetrics(domains, from, to);
     return { data: cards, error: null };
   } catch {
     return { data: null, error: 'Failed to load domain metrics.' };
@@ -657,6 +664,69 @@ export async function getDomainLeadsDrillAction(
     return { data: result.leads, error: null };
   } catch {
     return { data: null, error: 'Failed to load leads.' };
+  }
+}
+
+// ─────────────────────────────────────────────
+// Action: getDomainDealsDrillAction
+// THE drill behind a clicked DOMAIN-card "Deals Closed" or "Revenue" tile on the
+// founder Domains tab. Both tiles count the SAME cohort the card RPC counts:
+// rows from public.deals filtered by won_at in the active range, domain-scoped
+// (get_domain_health_metrics' `revenue` CTE — COUNT(*) for Deals Closed, SUM for
+// Revenue). So this lists DEALS, not leads-by-status — the drill total provably
+// equals the card number (a status='won' lead list keyed on created_at could not:
+// one lead → many deals, and the lead's created_at ≠ the deal's won_at).
+//
+// DRY: reuses the EXISTING getDealsByRole path (filters.domain + won_at date range
+// — the SAME query /deals runs), NO agent_id, NO new service query (R-01). The
+// Domains tab is founder/admin-only, so assertDrillAccess (admin/founder
+// unrestricted; manager would need domain === caller.domain) is the correct gate.
+// ─────────────────────────────────────────────
+
+const GetDomainDealsDrillSchema = z.object({
+  domain:     z.enum(GIA_DOMAIN_ENUM),
+  period:     z.enum(PERIOD_VALUES),
+  customFrom: z.string().datetime().optional(),
+  customTo:   z.string().datetime().optional(),
+});
+
+export async function getDomainDealsDrillAction(
+  domain:      AppDomain,
+  period:      PerformancePeriod,
+  customFrom?: string,
+  customTo?:   string,
+): Promise<ActionResult<DealsResult>> {
+  const parsed = GetDomainDealsDrillSchema.safeParse({ domain, period, customFrom, customTo });
+  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+
+  const access = await assertDrillAccess(parsed.data.domain);
+  if (!access.ok) return access.result;
+  const caller = access.caller;
+
+  try {
+    const range = getPeriodDateRange(period);
+    const dateFrom = (period === 'custom' && parsed.data.customFrom) ? parsed.data.customFrom : range.from;
+    const dateTo   = (period === 'custom' && parsed.data.customTo)   ? parsed.data.customTo   : range.to;
+
+    const filters: DealFilters = {
+      search:        null,
+      domain:        parsed.data.domain,
+      deal_type:     null,
+      deal_category: null,
+      agent_id:      null,
+      // getDealsByRole filters won_at by date_from/date_to (and widens date_to to
+      // end-of-day) — the SAME field + boundary the card RPC counts on.
+      date_from:     dateFrom,
+      date_to:       dateTo,
+      // One bounded slice for one domain × one period — a single large page covers
+      // it; the modal renders the flat list with no load-more.
+      page:          1,
+      pageSize:      200,
+    };
+    const result = await getDealsByRole(caller.role, caller.id, caller.domain, filters);
+    return { data: result, error: null };
+  } catch {
+    return { data: null, error: 'Failed to load deals.' };
   }
 }
 

@@ -1,6 +1,7 @@
 "use server";
 
 import { after } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/actions/_auth";
 import { getAssignableUsers } from "@/lib/services/profiles-service";
@@ -202,6 +203,11 @@ export async function recordDeal(
 
   if (insertError) return { data: null, error: formErrors.generic };
 
+  // Bust the /deals route cache — updateLeadStatus below revalidates /leads and
+  // the dossier, but never /deals, so the just-inserted deal would otherwise be
+  // missing from the deals list on the next load.
+  revalidatePath("/deals");
+
   // Step 2: Flip lead to won — delegates all side-effects (notifications, SLA, Redis, revalidation)
   return updateLeadStatus({ leadId, status: "won" });
 }
@@ -307,6 +313,14 @@ export async function createWalkInDeal(
   if (insertError || !inserted) return { data: null, error: formErrors.generic };
 
   const dealId = (inserted as { id: string }).id;
+
+  // Bust the /deals route cache so the new row appears on the next load — the
+  // server action is the authoritative invalidation, not the modal's
+  // router.refresh() (which only covers the case where the user is already on
+  // /deals when they add the deal; a later soft nav back would serve the stale
+  // prerendered list). The deals service is not Redis-cached, so this is the
+  // only cache layer to clear.
+  revalidatePath("/deals");
 
   // Notify domain managers/admins/founders — non-fatal. after() keeps the lambda
   // alive past the response so the in-app insert + push fan-out inside

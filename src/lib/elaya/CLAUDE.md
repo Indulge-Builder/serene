@@ -10,16 +10,58 @@
 ```text
 provider.ts            ← the ONE provider-neutral complete() contract
 adapters/anthropic.ts  ← the ONLY file allowed to import @anthropic-ai/sdk
-registry.ts (tools/)   ← the 6 READ-only tools + THE single executeTool dispatch (read ∪ write)
-                          + TOOLSET_BY_ROLE + getToolDefinitionsForPrincipal
+elaya-data.ts          ← THE single data seam every READ tool fetches through (parity rule, below)
+registry.ts (tools/)   ← the 11 READ-only tools + THE single executeTool dispatch (read ∪ write)
+                          + TOOLSET_BY_ROLE + getToolDefinitionsForPrincipal. READ tools are now
+                          role-gated too (Phase 4): a tool's optional `roles` set = the hard gate
+                          (readToolsForRole), so a manager never sees get_budget, an agent never sees
+                          the oversight tools. 7 all-staff reads + get_escalations/get_domain_health/
+                          get_campaigns (manager+) + get_budget (admin/founder)
 tools/write-registry.ts← ALL write tools + executeProposedAction (resolver-only executor)
 principal.ts           ← verified profile → role + persona + permitted toolset
-persona.ts             ← system prompt (sets expectations; NEVER the enforcement mechanism)
+persona.ts             ← system prompt (sets expectations; NEVER the enforcement mechanism). Folds the
+                          per-user persona prefs + learned memory in via buildPersonaPromptBlock (STYLE
+                          ONLY — never a permission). Persona vocab: constants/elaya-persona.ts
+memory.ts              ← (Jarvis Phase 3) the learned-memory summarizer (bounded Haiku, reuses
+                          provider+PII) + maybeUpdateLearnedMemory (throttled post-turn writer, called
+                          by the SSE route + WhatsApp gate, non-fatal) + retrieveMemoryContext (the
+                          notes-section seam, embedding-ready). learned lives in user_context.context.learned
 pii.ts                 ← maskPii() — THE PII gateway every tool result passes before a model sees it
 confirmation.ts        ← classifyConfirmation() — pure English+Hinglish affirmation gate
 brain.ts               ← the tool loop + the confirmation RESOLVER pre-step (the ONLY place a
                           state-change executes)
 ```
+
+## The channel-parity rule (Phase 1 — structural, non-negotiable)
+
+> Anything Elaya can do in-app she can do on WhatsApp, by construction. Full design:
+> `docs/architecture/elaya-jarvis-architecture.md`.
+
+Identity is already channel-agnostic: both entry points resolve a verified `ElayaPrincipal`
+(in-app: session→`getCurrentProfile`; WhatsApp: phone→`getActiveProfileByPhone`). The brain never
+knows the channel. The ONLY thing that ever broke parity was data services that derive scope from
+`auth.uid()` inside SQL — NULL in the sessionless WhatsApp webhook, so they returned blank there.
+
+**The rule:** every Elaya READ goes through **`elaya-data.ts`**. Each function there (a) takes the
+`ElayaPrincipal`, (b) uses the **admin client**, (c) scopes by the principal's role/userId/domain
+**in code** — never `auth.uid()`. So a read works identically on both channels. **A tool calls
+`elayaData.*` ONLY — never a `*-service.ts` function directly.** Reaching past the seam can
+re-introduce a session dependency that blanks on WhatsApp; do not do it.
+
+- **Why admin client is correct (not "less secure"):** identity is the verified principal and
+  scoping is enforced in code. RLS/`auth.uid()` can't run sessionlessly, so the access decision MUST
+  live in code — the `searchLeadsForElaya` / `getGiaTasksForUser` precedent.
+- **The per-resource GATE stays in the tool** (`canAccessLead` / `canMutateTask`, Q-13) — the data
+  layer fetches scoped data; the tool re-checks the specific resource before a write. PII masking
+  stays at the `executeTool` seam.
+- **Self-scoped services get a `*ForElaya` / `*ForUser` admin twin** that takes explicit identity
+  (migration 0149: `get_group_task_summaries_for_user`, `get_agent_today_pulse_for_user`,
+  `get_agent_roster_performance_for_elaya` — Q-13 revoked tier, service-role only). The ORIGINAL
+  self-scoped functions are untouched (the in-app UI pages still call them). Shared mappers are
+  extracted so the twin and the original never drift (R-01).
+- **Adding a new Elaya read:** add a function to `elaya-data.ts` (principal + filters → shaped
+  result), reuse a principal-first service or add a `*ForElaya` twin; the tool calls it. Never let a
+  tool reach a service directly.
 
 ## The write-tool tiers (structural, not prompt-driven)
 

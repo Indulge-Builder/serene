@@ -16,6 +16,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { resolveStaffPrincipal } from '@/lib/elaya/principal';
 import { runElayaTurn } from '@/lib/elaya/brain';
+import { maybeUpdateLearnedMemory } from '@/lib/elaya/memory';
 import {
   countUserMessagesToday,
   getOrCreateActiveConversation,
@@ -142,6 +143,17 @@ export async function POST(request: Request) {
         await touchConversation(conversationId);
 
         controller.enqueue(sse({ type: 'done', messageId: saved?.id ?? null }));
+
+        // Post-turn learned-memory update (Jarvis Phase 3) — AFTER the reply + `done`
+        // already shipped, inside the still-open stream's lambda-alive window. Throttled
+        // + fire-and-forget + non-fatal (never throws). sentToday+1 = this message's
+        // count. Awaited so the lambda isn't frozen mid-summary; it adds no perceived
+        // latency (the user has the full reply and the done frame already).
+        await maybeUpdateLearnedMemory({
+          principal,
+          conversationId,
+          userMessagesToday: sentToday + 1,
+        });
       } catch (e) {
         // D-05: log the failure, never the prompt/message contents.
         console.error('[elaya-chat] turn failed:', e instanceof Error ? e.message : e);
