@@ -44,7 +44,7 @@ import {
   type OverdueTaskEscalationRow,
 } from '@/lib/services/sla-service';
 import { getDealsByRoleForElaya, type DealsResult } from '@/lib/services/deals-service';
-import { getAssignableUsers } from '@/lib/services/profiles-service';
+import { searchTeammatesForElaya } from '@/lib/services/profiles-service';
 import type { AssignableUser } from '@/lib/types';
 import { getCampaignMetrics } from '@/lib/services/leads-service';
 import { getBudgetSummary, type BudgetCampaignRow } from '@/lib/services/ad-spend-service';
@@ -123,25 +123,23 @@ export function getColdLeads(principal: StaffPrincipal) {
 // Teammates (staff identity — the assignee lookup)
 // ─────────────────────────────────────────────
 
-/** Resolve TEAMMATES (staff) by name fragment — the name→profile-id lookup the task
- *  write tools need for "create a task for <person>". Wraps getAssignableUsers (R-01 —
- *  the SAME pipeline /admin + task pickers use), scoped in code: admin/founder → all
- *  active staff; manager/agent → their own domain (a domain colleague). This is staff
- *  identity, NOT a lead — it is why "create a task for Arfam" must never reach
- *  search_leads. getAssignableUsers uses the admin client, so both channels work.
- *  Filtering is in code (a tiny table); returns the slim AssignableUser shape. */
+/** Resolve TEAMMATES (staff) by name fragment — the name→userId lookup the task write
+ *  tools need for "create a task for <person>". Wraps searchTeammatesForElaya (the
+ *  ADMIN-client, code-scoped read — NOT getAssignableUsers, which uses the session
+ *  client and returns ZERO rows on the sessionless WhatsApp webhook: the parity-rule
+ *  trap that made find_teammate fail for every name on WhatsApp). This is staff
+ *  identity, NOT a lead — why "create a task for Arfam" must never reach search_leads.
+ *
+ *  Scope: ALL domains for everyone (scopeDomain = null). Staff names aren't sensitive,
+ *  and assignment crosses domains (a founder/manager assigns to anyone — the task rule),
+ *  so narrowing the LOOKUP by domain only hid real teammates (the Arfam-in-finance miss).
+ *  The per-action assignment GATE (manager+ to assign to another) stays in the write
+ *  tool — this read just turns a name into a userId. */
 export async function findTeammates(
-  principal: StaffPrincipal,
+  _principal: StaffPrincipal,
   search: string,
 ): Promise<AssignableUser[]> {
-  const domain =
-    principal.role === 'admin' || principal.role === 'founder'
-      ? undefined // all domains
-      : principal.domain; // manager / agent — own domain only
-  const all = await getAssignableUsers({ domain });
-  const term = search.trim().toLowerCase();
-  if (!term) return all;
-  return all.filter((u) => (u.full_name ?? '').toLowerCase().includes(term));
+  return searchTeammatesForElaya(search, null);
 }
 
 // ─────────────────────────────────────────────

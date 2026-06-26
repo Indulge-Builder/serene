@@ -2065,8 +2065,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/profiles-service.ts": {
-    "mtime": 1782469184.5651472,
-    "ast_hash": "210da596cfe5de28794773417159da63",
+    "mtime": 1782478992.5699084,
+    "ast_hash": "8525867b85fa8881de9b2706dbe2ed93",
     "semantic_hash": ""
   },
   "src/lib/services/push-service.ts": {
@@ -3315,8 +3315,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1782473563.4094522,
-    "ast_hash": "049393f138c40cdb551be796f5d4ca5a",
+    "mtime": 1782479110.8978915,
+    "ast_hash": "f005e97b789ecdf7d99d93d60f9845a6",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3650,8 +3650,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/CLAUDE.md": {
-    "mtime": 1782473617.972709,
-    "ast_hash": "1240a4d0cec73679750a7f4daa4d5ca9",
+    "mtime": 1782479141.8445609,
+    "ast_hash": "86c2f33d3c772373249b3abf5aa8a17c",
     "semantic_hash": ""
   },
   "src/lib/services/CLAUDE.md": {
@@ -4165,8 +4165,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/elaya-data.ts": {
-    "mtime": 1782470376.058358,
-    "ast_hash": "c36ba6d722a8b357fe7079df9f1763d6",
+    "mtime": 1782479023.2128346,
+    "ast_hash": "c4c95d5153acb24686abb2f39427ff97",
     "semantic_hash": ""
   },
   "src/lib/elaya/memory.ts": {

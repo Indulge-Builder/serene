@@ -36,6 +36,29 @@ layers). Files: `src/lib/actions/deals.ts`, `src/components/deals/NewDealModal.t
 
 ---
 
+## 2026-06-26 — Fix: `find_teammate` returned nothing on WhatsApp (channel-parity bug)
+
+**Symptom:** founder on WhatsApp asked Elaya to "create a task for Arfam" — Elaya said she couldn't
+find him, even after the name was typed correctly. Not a spelling or data problem (Arfam exists,
+active, finance domain).
+
+**Root cause:** `find_teammate` → `elayaData.findTeammates` → `getAssignableUsers`, which uses the
+**session (cookie) Supabase client**. The `profiles` SELECT RLS is `auth.uid() IS NOT NULL` — and the
+WhatsApp webhook is **sessionless** (`auth.uid()` is NULL), so the query returned **zero rows for
+every name**. The classic channel-parity trap (a read that derives scope from `auth.uid()` blanks on
+WhatsApp); the tool was wired to the wrong reader.
+
+**Fix:** new **`searchTeammatesForElaya(search, scopeDomain?)`** in `profiles-service.ts` — **admin
+client + code-side scope** (the `getActiveProfileByPhone` precedent), so it works identically in-app
+and on WhatsApp. `elayaData.findTeammates` now wraps it. **Scope widened to ALL domains for everyone**
+(was manager/agent → own domain): staff names aren't sensitive, and assignment crosses domains (the
+task rule), so domain-narrowing the LOOKUP was also hiding real teammates (Arfam is in `finance`). The
+per-action assignment GATE (manager+ to assign to another) stays in the write tool — this is just a
+name→userId read. `npx tsc --noEmit` clean; verified the query now returns Arfam (+ disambiguates the
+second active "arfam" match, as designed).
+
+---
+
 ## 2026-06-26 — Elaya task creation: decisive, infers personal vs group, multi-person in one turn
 
 **Why:** Elaya was interrogating ("what title? what priority? how should they split it?") and could

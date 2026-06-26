@@ -17,7 +17,9 @@ registry.ts (tools/)   ← the 12 READ-only tools + THE single executeTool dispa
                           (readToolsForRole), so a manager never sees get_budget, an agent never sees
                           the oversight tools. 8 all-staff reads (incl. find_teammate — the name→userId
                           STAFF lookup for task assignment, so "create a task for <person>" resolves a
-                          TEAMMATE via elayaData.findTeammates, never search_leads) +
+                          TEAMMATE via elayaData.findTeammates → searchTeammatesForElaya (ADMIN client +
+                          code scope, ALL domains — NOT getAssignableUsers, whose session client blanks
+                          on the WhatsApp webhook; the parity rule), never search_leads) +
                           get_escalations/get_domain_health/get_campaigns (manager+) + get_budget (admin/founder)
 tools/write-registry.ts← ALL write tools + executeProposedAction (resolver-only executor)
 principal.ts           ← identity → principal. ElayaPrincipal is a DISCRIMINATED UNION: StaffPrincipal

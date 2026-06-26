@@ -680,8 +680,8 @@
     "semantic_hash": ""
   },
   "src/components/deals/NewDealModal.tsx": {
-    "mtime": 1781646838.9143636,
-    "ast_hash": "79e010c8efc9287d2c587ac82ece0a9c",
+    "mtime": 1782473637.0168583,
+    "ast_hash": "7da48a9ca46590ba3704cde91d215f20",
     "semantic_hash": ""
   },
   "src/components/elaya/ElayaChatShell.tsx": {
@@ -1655,8 +1655,8 @@
     "semantic_hash": ""
   },
   "src/lib/actions/deals.ts": {
-    "mtime": 1782418479.9654512,
-    "ast_hash": "eeeca699429dd251d80be921eb19839f",
+    "mtime": 1782473657.2610435,
+    "ast_hash": "c6fed127f51d9f764c1478f170bcee53",
     "semantic_hash": ""
   },
   "src/lib/actions/elaya.ts": {
@@ -1905,8 +1905,8 @@
     "semantic_hash": ""
   },
   "src/lib/constants/whatsapp.ts": {
-    "mtime": 1782470051.2420685,
-    "ast_hash": "258148798ada855e936e5f80f31ab2d8",
+    "mtime": 1782472848.3321016,
+    "ast_hash": "552e9030b9b3bd591956fcfad5eabc30",
     "semantic_hash": ""
   },
   "src/lib/elaya/adapters/anthropic.ts": {
@@ -3195,8 +3195,8 @@
     "semantic_hash": ""
   },
   "docs/TODO.md": {
-    "mtime": 1782470795.340659,
-    "ast_hash": "87b3c439ad8b68019ba7fb9b079c46ef",
+    "mtime": 1782473099.7138133,
+    "ast_hash": "e3b40f14e66e8723acf86c7532b4a7c6",
     "semantic_hash": ""
   },
   "docs/_archive/README.md": {
@@ -3315,8 +3315,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1782471942.867213,
-    "ast_hash": "665715ba6f9d4034b8fa173a04b1a598",
+    "mtime": 1782473563.4094522,
+    "ast_hash": "049393f138c40cdb551be796f5d4ca5a",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3650,13 +3650,13 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/CLAUDE.md": {
-    "mtime": 1782470661.5040534,
-    "ast_hash": "af88dee95fd5e30747f929adbfbb9498",
+    "mtime": 1782473617.972709,
+    "ast_hash": "1240a4d0cec73679750a7f4daa4d5ca9",
     "semantic_hash": ""
   },
   "src/lib/services/CLAUDE.md": {
-    "mtime": 1782470681.6990125,
-    "ast_hash": "de4f828fbb1c63e91868544e7ac4eaf9",
+    "mtime": 1782473655.0391693,
+    "ast_hash": "77ff362642c81c44d8992dc5b251b4f9",
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {

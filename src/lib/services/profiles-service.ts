@@ -65,6 +65,42 @@ export async function getActiveProfileByPhone(normalizedPhone: string): Promise<
   return match ?? null;
 }
 
+/**
+ * Search ACTIVE staff by name for Elaya's find_teammate tool — THE channel-safe
+ * teammate lookup (name → assignable user). ADMIN client + code-side scope: the
+ * getActiveProfileByPhone precedent. `getAssignableUsers` uses the SESSION client
+ * (profiles RLS = `auth.uid() IS NOT NULL`), so it returns ZERO rows on the
+ * sessionless WhatsApp webhook — which made find_teammate say "can't find them" for
+ * EVERY name on WhatsApp (the parity-rule trap). This twin works on both channels.
+ *
+ * Scope is by code, never RLS: `scopeDomain` null = all domains (founder/admin —
+ * and managers, who assign across domains per the task rule); a domain = that domain
+ * only (reserved for a future agent-narrowing). The per-action assignment gate
+ * (manager+ to assign to another) stays in the write tool — this is a READ.
+ */
+export async function searchTeammatesForElaya(
+  search: string,
+  scopeDomain?: AppDomain | null,
+): Promise<AssignableUser[]> {
+  const supabase = createAdminClient();
+  let query = supabase
+    .from("profiles")
+    .select("id, full_name, avatar_url, role, domain")
+    .eq("is_active", true)
+    .neq("role", "guest");
+  if (scopeDomain) query = query.eq("domain", scopeDomain);
+
+  const term = search.trim();
+  if (term) query = query.ilike("full_name", `%${term}%`);
+
+  const { data, error } = await query.order("full_name", { ascending: true }).limit(20);
+  if (error || !data) {
+    if (error) console.error("[profiles-service] searchTeammatesForElaya failed:", error.message);
+    return [];
+  }
+  return data as AssignableUser[];
+}
+
 /** Fetch a single profile by id. Returns null if not found. */
 export async function getProfileById(id: string): Promise<Profile | null> {
   const supabase = await createClient();
