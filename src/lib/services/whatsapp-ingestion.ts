@@ -239,7 +239,35 @@ export async function processInboundMessage(
     console.warn('[whatsapp-ingestion] conversation last_message_at update failed (non-fatal):', convUpdateError.message);
   }
 
-  // 9. Realtime broadcast is automatic via supabase_realtime publication — no explicit call needed
+  // 9. Customer-Elaya layer (FEATURE 2) — ADDITIVE, never replaces anything above. The lead
+  //    was created/resolved + assigned + (if new) the founder/agent alerts fired; the inbound
+  //    message is recorded. Now Elaya engages the PROSPECT:
+  //      • never welcomed (welcomed_at IS NULL) → the welcome TEMPLATE, exactly once (the
+  //        stamp guard inside maybeSendCustomerWelcome). The conversational blast follows on
+  //        their reply (the 24h-window rule — a cold number gets a template first).
+  //      • already welcomed → a conversational reply turn (KB-grounded), gated on bot_active
+  //        (an agent take-over flips bot_active off and Elaya stays quiet).
+  //    Dynamic-imported (server-only LLM deps kept out of this module's static graph + the
+  //    Trigger.dev scan; no import cycle). Non-fatal: a throw here never affects the lead
+  //    pipeline that already completed above. Awaited so it stays in the route's after() chain
+  //    (A-16) — a bare void would be orphaned on lambda freeze.
+  try {
+    const { maybeSendCustomerWelcome, handleCustomerReply } = await import('@/lib/services/elaya-customer');
+    if (!lead.welcomed_at) {
+      await maybeSendCustomerWelcome(lead);
+    } else {
+      await handleCustomerReply({
+        lead,
+        conversationId,
+        botActive: conversation.bot_active !== false,
+        message,
+      });
+    }
+  } catch (err) {
+    console.error('[whatsapp-ingestion] customer-Elaya layer failed (non-fatal):', err);
+  }
+
+  // 10. Realtime broadcast is automatic via supabase_realtime publication — no explicit call needed
 }
 
 // ─────────────────────────────────────────────

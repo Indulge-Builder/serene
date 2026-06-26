@@ -2,7 +2,7 @@
 
 > **Purpose:** the schema narrative — every table, its purpose, key columns, and relationships. Companion to the raw dump in `database_architecture.sql`.
 > **Audience:** engineers. · **Source-of-truth scope:** what each table is *for* and its contracts. Exact DDL = the dump + `supabase/migrations/`; per-page query usage = `../pages/*.md`; RLS/authorization = `auth-and-rbac.md`.
-> **Last verified:** 2026-06-20 against the migration files (through 0137; sequence skips 0131, superseded by 0132). The `database_architecture.sql` dump is pre-0098 — refresh via `supabase db dump` after applying 0098–0137; the dump lacks `leads.search_text`, `leads.service_interests`, `profiles.app_icon`, and the Call Intelligence / SLA / Elaya / Lead Revival / push / usage-tracking / notification-preferences / suggestions tables. Newly verified: `20260616000124_managers_in_routing_pool.sql`, `20260616000126_usage_tracking.sql`, `20260617000133_notification_preferences.sql`, `20260617000134_suggestions_table.sql`, `20260617000135_suggestions_storage_bucket.sql`, `20260617000136_notification_type_suggestion_resolved.sql`.
+> **Last verified:** 2026-06-26 against the migration files (through 0149; sequence skips 0131, superseded by 0132; serial 0141 is reused — 0141a/0141b). The `database_architecture.sql` dump is pre-0098 — refresh via `supabase db dump` after applying 0098–0149; the dump lacks `leads.search_text`, `leads.service_interests`, `profiles.app_icon`, and the Call Intelligence / SLA / Elaya / Lead Revival / push / usage-tracking / notification-preferences / suggestions / `ad_account_recharges` / `task_events` tables. Newly verified since 0137: `20260617000138_collapse_gia_category_module_enum.sql` (category→2 values + `task_module` enum), `20260620000139_ad_account_recharges.sql`, `20260623000141_whatsapp_media_bucket.sql`, `20260624000144_oversight_task_events.sql`, `20260625000145_personal_tasks_lead_identity.sql`, `20260625000146_agent_performance_trend.sql`, `20260625000148_elaya_wa_message_dedup_unique.sql`, `20260625000149_elaya_sessionless_rpc_twins.sql`. **Migrations 0144 (oversight `task_events`) and 0146 (`get_agent_performance_trend`) are NOT yet applied to prod** — verify against the live DB before assuming.
 
 ---
 
@@ -86,7 +86,7 @@ SLA engine infrastructure state (status `pending | fired | cancelled`, `rule_cod
 `scheduled_fire_at`, `trigger_run_id`). Service-role only — no user RLS write policies.
 See `../modules/gia.md` § SLA Engine.
 
-## Tasks (5 tables)
+## Tasks (6 tables)
 
 One `tasks` table, with `task_category` describing **structure only**
 (`personal` | `group_subtask` — `gia_followup` was removed in 20260617000138). A lead
@@ -122,6 +122,14 @@ row** — that meta row *is* the task→lead link.
   presence (kept in lockstep with `tasks.module = 'gia'` by the single-writer rule above) is
   *the* signal that a `personal` task is a lead follow-up — `task_category` no longer carries
   this distinction (20260617000138).
+- **`task_events`** (0144 — the `/oversight` stream) — **append-only (A-11)**. One row per task
+  mutation: `task_event_type` enum (`created` | `status_changed` | `reassigned` | `remark_added` |
+  `overdue`), `domain app_domain NOT NULL` (the point-in-time team), `actor_id`/`subject_id` →
+  profiles, `task_title` snapshot, `meta jsonb`; FK → `tasks` CASCADE; indexes `(domain, created_at
+  DESC)` + `(subject_id, created_at DESC)`; Realtime enabled. **manager+ SELECT, NO INSERT/UPDATE/
+  DELETE policy ever** — written ONLY by the task-mutation cores + the overdue job via the admin
+  client (so Elaya's write tools emit it for free). Feeds the three oversight RPCs + the live rails.
+  **⚠️ Migration 0144 is not yet applied to prod.**
 
 ## WhatsApp (4 tables)
 
@@ -130,28 +138,56 @@ row** — that meta row *is* the task→lead link.
   built. Realtime enabled.
 - **`whatsapp_messages`** — append-only with one documented exception: the delivery-receipt
   status UPDATE (`processStatusUpdate`, admin client). `wa_message_id` has a **partial** unique
-  index (WHERE NOT NULL) so optimistic pre-confirm inserts can hold NULL. Realtime enabled.
+  index (WHERE NOT NULL) so optimistic pre-confirm inserts can hold NULL. Inbound/outbound media
+  (image/video/document/audio) store a **storage path** in `media_url` (never a CDN URL — Gupshup's
+  is time-limited), pointing at the private `whatsapp-media` bucket (0141a); reads mint signed URLs.
+  Realtime enabled.
 - **`whatsapp_conversation_reads`** — per-user read position; UNIQUE(conversation_id, agent_id);
   UPSERT on read.
 - **`whatsapp_notification_logs`** — one row per template-send attempt (delivered or failed).
   Stores last-4 phone digits only — full numbers never stored.
 
-## Commerce & content (2 tables)
+## Commerce & content (5 tables)
 
 ### `deals`
 
 First-class closed-deal record (0072–0074; reversed the earlier "deals = won leads" model).
 `lead_id` **nullable** — walk-in sales have no lead. `contact_name`/`contact_phone` denormalised
-at close. `deal_type`: `membership | retail` (membership requires `deal_duration`:
-`3_months | 6_months | 1_year`). `deal_amount numeric(12,2)` CHECK 0–100M. `won_at` immutable
-after insert. `source` carries attribution onto the deal (0075). `client_id` is reserved for the
-future clients module. **No INSERT/UPDATE/DELETE RLS policies by design** — all writes go through
-the admin client in `recordDeal`/`createWalkInDeal` (0094 comment).
+at close. **`deal_type` is domain-derived, never client-picked** (0122b + decision-log 2026-06-15):
+`onboarding → membership` (requires `deal_duration`: `3_months | 6_months | 1_year`),
+`shop → retail` (requires `deal_category`), `house`/`legacy` → `sale`. One source
+`DOMAIN_DEAL_CONFIG`; set server-side; the 0122b CHECKs (`deals_deal_type_check` admits `sale`,
+`deals_deal_category_check`, `deals_retail_category_check` coupling retail⇔category) are the
+backstop. `deal_amount numeric(12,2)` CHECK 0–100M. `won_at` immutable after insert. `source`
+carries attribution onto the deal (0075). `client_id` is reserved for the future clients module.
+**No INSERT/UPDATE/DELETE RLS policies by design** — all writes go through the admin client in
+`recordDeal`/`createWalkInDeal` (0094 comment), and now also via Elaya's `log_deal` tool through the
+shared `recordDealCore` (R-01).
 
 ### `ad_creatives`
 
 Campaign video assets keyed by `campaign_key` (UNIQUE dropped in 0058a — multiple videos per
 campaign). Files live in the `ad-creatives` Storage bucket.
+
+### `ad_spend_daily` (0104)
+
+Day-grain Meta ad spend, `UNIQUE(campaign_key, spend_date, source)`. Fed only from client-side
+CSV/XLSX uploads (never a Meta API). Joined to lead counts (`created_at` cohort) + deals (`won_at`)
+on the shared `campaign_key` by `get_budget_summary` (0106). RLS manager+ read / admin/founder write.
+
+### `ad_account_recharges` (0139)
+
+Finance ledger of money sent to each Meta ad account — kept SEPARATE from spend (account is derived
+from the campaign key via `resolveAccountFromCampaign`, never stored on spend). The `/budget`
+Accounts tab reads recharged − spent = balance (INR-only). `ad_account` CHECK mirrors
+`AD_ACCOUNT_KEY_VALUES`; `method` is a free-text payment label, card-PAN-rejected by a CHECK
+backstop. Mirrors `ad_spend_daily` RLS (manager+ read, admin/founder write) but — unlike the
+append-only logs — **admin/founder UPDATE + DELETE are permitted** (a mis-keyed money figure must be
+correctable).
+
+### `domain_targets` (0105)
+
+Founder monthly deals-closed targets per Gia domain, read by the performance Domains tab.
 
 ## Notifications (1 table)
 
@@ -266,20 +302,29 @@ INSERT only `role='user'` rows on them; assistant/tool rows are service-role wri
 ### `user_context`
 
 One durable context row per user (`user_id` PK, `context jsonb`). Self SELECT only; **writes
-service-role** (the context writer lands in a later phase — empty until then).
+service-role**. As of the "Jarvis" build (2026-06-25) the `context` jsonb carries two sub-objects:
+`persona` (user-set "how Elaya talks to me" — language/tone/depth/length + a 600-char note, edited
+from `/profile` via `updateElayaPersonaAction`) and `learned` (Elaya-accumulated durable memory,
+written by a throttled routing-tier summarizer in `memory.ts` — merge-write that never touches
+`persona`). No longer empty. Both ride the cached system-prompt prefix as a STYLE-ONLY block — never
+a permission (the Golden Rule).
 
 ### `elaya_actions`
 
 The agentic-write ledger — **reserved empty in 0116, filled in 0118** (Elaya Phase 2 / E3).
 `conversation_id`, `message_id`, `user_id`, `action_type`, `payload jsonb` (target/args/channel/
 before/after snapshots), `status` proposed→approved/dismissed/executed/failed, `resolved_at`/
-`resolved_by`. **State-machine table, NOT append-only** (an A-11 carve-out — it has
-`status`/`resolved_at`/`resolved_by` and doubles as the trust + rollback audit trail): the
-`proposed → executed/failed/dismissed` flip is a resolve-once service-role admin-client UPDATE
-(same posture as `whatsapp_messages` delivery receipts). 0118 adds the partial
-`idx_elaya_actions_pending (conversation_id, created_at DESC) WHERE status='proposed'` (the
-per-turn confirmation-resolver read) and a lifecycle `COMMENT ON TABLE` — no columns, no CHECK, no
-RLS change. **Never add a user UPDATE policy.** Self SELECT only; all writes service-role.
+`resolved_by`. Now backs the **11 Elaya write tools** — inline writes (`add_lead_note`, `log_call`,
+`create_lead_task`, `create_personal_task`, `create_group_task`, `update_task_status`,
+`update_task`) append one terminal `executed` row; the propose→confirm tier (`update_lead_status`,
+`reassign_lead`, `log_deal`, `delete_task`) writes a `proposed` row that flips on the next
+affirmative human turn. `action_type` has **no DB CHECK**, so a new tool type (e.g. `log_deal`) needs
+no migration. **State-machine table, NOT append-only** (an A-11 carve-out — it doubles as the
+trust-and-rollback audit trail): the `proposed → executed/failed/dismissed` flip is a resolve-once
+service-role admin-client UPDATE (same posture as `whatsapp_messages` delivery receipts). 0118 adds
+the partial `idx_elaya_actions_pending (conversation_id, created_at DESC) WHERE status='proposed'`
+(the per-turn confirmation-resolver read) and a lifecycle `COMMENT ON TABLE`. **Never add a user
+UPDATE policy.** Self SELECT only; all writes service-role.
 
 ### `llm_providers`
 
@@ -362,18 +407,27 @@ private `suggestions` storage bucket (0135 — see Storage buckets).
 | `avatars` (0071) | public read | `avatars_public_read` / `_insert_own` / `_update_own` / `_delete_own` (the quoted-name duplicates were dropped in 0093) |
 | `ad-creatives` (0012) | public read | INSERT/DELETE restricted to admin/founder (0092), matching the table RLS |
 | `suggestions` (0135) | **PRIVATE** (no public read — reports can show sensitive screens) | `suggestions_storage_insert_own` (write only under the caller's own `${auth.uid()}/` prefix) / `_read_own` (same prefix) / `_read_admin` (admin/founder read all — backs `createSignedUrl` for the triage inbox). No UPDATE/DELETE — screenshots are write-once. Admin viewing mints short-lived signed URLs; the `suggestions` row stores PATHS, never URLs |
+| `whatsapp-media` (0141a) | **PRIVATE** (no public read — lead conversations can be sensitive) | Writes + reads run on the admin client (the inbound webhook is sessionless), so no authenticated INSERT/SELECT policy is needed; one defence-in-depth admin/founder SELECT policy. Object path `${leadId}/${messageId}.${ext}`; `whatsapp_messages.media_url` stores the PATH (never Gupshup's time-limited CDN URL); reads mint signed URLs |
 
 ## RPC inventory
 
-~30 SECURITY DEFINER functions (classified one-by-one in
-`../audits/security-audit-2026-06.md` §2; client EXECUTE revoked on the scope-param class in
-0102). The load-bearing ones: `get_user_role`/`get_user_domain` (RLS helpers) ·
-`get_next_round_robin_agent` (0007) · `get_active_lead_by_phone` (0008/0090) ·
+~40 SECURITY DEFINER functions (the scope-param class has client EXECUTE revoked — 0102/0123/0144/
+0149; the self-scoped class keeps the `authenticated` GRANT). The load-bearing ones:
+`get_user_role`/`get_user_domain` (RLS helpers) · `get_next_round_robin_agent` (0007) ·
+`get_active_lead_by_phone` (0008/0090) · `generate_lead_slug` (0046, fixed 0147) ·
+`lead_phone_key` + the active-phone partial UNIQUE index (0137) · `cold_lead_cutoff` (0140) ·
 `add_lead_call_note` (0030) · `update_lead_status` (0031) · `add_lead_plain_note` (0040) ·
-`get_dashboard_summary` (0029/0062) · `get_leads_status_counts` (0080/0099) ·
+`get_dashboard_summary` (0029/0062, cold predicate domain-scoped 0143) ·
+`get_leads_status_counts` (0080/0099) · `get_recent_lead_activity` (0132) ·
 `get_campaign_metrics`/`_detail_metrics`/`_agent_distribution` (0014–0015) ·
-`get_personal_tasks` (0026) · `get_group_task_summaries` (0020) ·
+`get_personal_tasks` (0026, lead-identity 0145) · `get_group_task_summaries` (0020) ·
 `add_task_remark_with_status` (0035/0051) · `create_lead_gia_task` (0054) · `get_gia_tasks`
-(0055) · `get_deals_summary` (0052/0074) · `get_wa_unread_count` (0036/0085) ·
-`can_access_wa_conversation` (coupled to leads RLS — review together) ·
-`get_agent_performance` / `get_agent_roster_performance` (0101).
+(0055) · `get_deals_summary` (0052/0074) · `get_budget_summary` (0106) ·
+`get_wa_unread_count` (0036/0085) · `can_access_wa_conversation` (coupled to leads RLS — review
+together) · `get_agent_performance` / `get_agent_roster_performance` (0101) ·
+`get_agent_today_pulse` (0108/0122a) · `get_agent_performance_trend` (0146) ·
+`get_agent_first_touch_pairs` (0123) · `get_silent_leads_for_revival` (0128) ·
+`get_agent_usage` (0126) · the oversight trio `get_team_task_overview` /
+`get_team_agent_breakdown` / `get_agent_tasks_oversight` (0144) · and the Elaya sessionless twins
+`get_group_task_summaries_for_user` / `get_agent_today_pulse_for_user` /
+`get_agent_roster_performance_for_elaya` (0149).

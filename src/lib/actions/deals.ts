@@ -8,80 +8,13 @@ import { getAssignableUsers } from "@/lib/services/profiles-service";
 import { createNotification } from "@/lib/services/notifications-service";
 import { RecordDealSchema, CreateWalkInDealSchema } from "@/lib/validations/deal-schema";
 import { formErrors } from "@/lib/validations/form-errors";
-import { sanitizeText } from "@/lib/utils/sanitize";
 import { normalizeToE164 } from "@/lib/utils/phone";
-import { updateLeadStatus } from "@/lib/actions/leads";
+import { recordDealCore, type MutationActor } from "@/lib/services/lead-mutations";
 import type { ActionResult } from "@/lib/types/index";
 import type { AppDomain } from "@/lib/types/database";
 import { isGiaDomain, type GiaDomain } from "@/lib/constants/domains";
 import { LEAD_ASSIGNABLE_ROLES } from "@/lib/constants/roles";
-import {
-  DOMAIN_DEAL_CONFIG,
-  type DealType,
-  type DealCategory,
-  type DealDuration,
-} from "@/lib/constants/deal-types";
-
-// ─────────────────────────────────────────────
-// resolveDealShapeForDomain — THE domain → {type, category, duration} resolver.
-//
-// deal_type is DERIVED from the domain (DOMAIN_DEAL_CONFIG), never trusted from
-// the client. Given the resolved domain plus the form's type-dependent extras
-// (membership duration, retail category), this returns the exact triplet to
-// write — or an error string when the extras don't match the domain's type:
-//   - membership  → duration required, category must be null
-//   - retail      → category required (and valid for the domain), duration null
-//   - sale        → both null
-// Shared by recordDeal (domain from the lead) and createWalkInDeal (domain from
-// the form). The DB CHECKs (migration 0122) are the backstop; this is the
-// user-facing gate that returns clean copy instead of a raw constraint error.
-// ─────────────────────────────────────────────
-type DealShapeInput = {
-  deal_duration?: DealDuration | null;
-  deal_category?: DealCategory | null;
-};
-type DealShape = {
-  deal_type:     DealType;
-  deal_duration: DealDuration | null;
-  deal_category: DealCategory | null;
-};
-
-function resolveDealShapeForDomain(
-  domain: GiaDomain,
-  input:  DealShapeInput,
-): { ok: true; shape: DealShape } | { ok: false; error: string } {
-  const config   = DOMAIN_DEAL_CONFIG[domain];
-  const dealType = config.type;
-
-  if (dealType === "membership") {
-    if (!input.deal_duration) {
-      return { ok: false, error: "Please select a membership duration." };
-    }
-    return {
-      ok: true,
-      shape: { deal_type: dealType, deal_duration: input.deal_duration, deal_category: null },
-    };
-  }
-
-  if (dealType === "retail") {
-    if (!input.deal_category) {
-      return { ok: false, error: "Please select a product category." };
-    }
-    if (!config.categories?.includes(input.deal_category)) {
-      return { ok: false, error: "That product category is not valid for this domain." };
-    }
-    return {
-      ok: true,
-      shape: { deal_type: dealType, deal_duration: null, deal_category: input.deal_category },
-    };
-  }
-
-  // sale (house / legacy) — no duration, no category
-  return {
-    ok: true,
-    shape: { deal_type: dealType, deal_duration: null, deal_category: null },
-  };
-}
+import { resolveDealShapeForDomain } from "@/lib/constants/deal-types";
 
 // ─────────────────────────────────────────────
 // notifyDealCreated — fan out a 'deal_created' in-app notification to the active
@@ -129,11 +62,11 @@ async function notifyDealCreated(opts: {
 // Action: recordDeal (lead → deal path)
 //
 // Called by StatusActionPanel after Won confirmation (WonDealModal).
-// Flow: validate → fetch lead + access check → INSERT deals row (admin client) →
-//       updateLeadStatus('won') which handles all side-effects.
-// Order guarantee: deal insert must succeed before status flip. If insert fails,
-// status is NOT flipped. If status flip fails, the orphaned deal row is harmless
-// (no lead is marked won, so it won't appear on /deals via the role-scoped query).
+// Flow: validate → fetch lead + access check → recordDealCore (INSERT deals row +
+//       updateLeadStatusCore('won') side-effects) → revalidatePath.
+// recordDealCore is the SHARED body Elaya's log_deal tool also runs (R-01). The
+// order guarantee (insert before status flip; orphan-safe on flip failure) lives
+// in the core.
 // ─────────────────────────────────────────────
 export async function recordDeal(
   input: unknown,
@@ -171,45 +104,44 @@ export async function recordDeal(
 
   if (!hasAccess) return { data: null, error: formErrors.unauthorized };
 
-  // deal_type is DERIVED from the lead's domain — never client-supplied.
-  if (!isGiaDomain(lead.domain as string)) {
-    return { data: null, error: "Deals can only be recorded for Gia-domain leads." };
-  }
-  const resolved = resolveDealShapeForDomain(lead.domain as GiaDomain, {
-    deal_duration,
-    deal_category,
-  });
-  if (!resolved.ok) return { data: null, error: resolved.error };
-
-  // S-02: sanitise free text; S-03: phone is already E.164 on the lead row
-  const contactName = sanitizeText(
-    [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || "Unknown",
+  // Insert the deal + flip the lead to Won via the shared core (R-01) — the SAME
+  // body Elaya's log_deal tool runs. The core derives deal_type from the lead's
+  // domain, inserts the deal, then calls updateLeadStatusCore('won') (all the Won
+  // side-effects: lead_won fan-out, terminal-SLA cancel, cache invalidation). The
+  // action keeps Zod → requireProfile → hasAccess → core → revalidatePath.
+  const actor: MutationActor = {
+    userId:   caller.id,
+    role:     caller.role,
+    domain:   caller.domain,
+    fullName: caller.full_name,
+  };
+  const core = await recordDealCore(
+    actor,
+    { leadId, deal_amount, deal_duration, deal_category },
+    {
+      lead: {
+        id:          lead.id,
+        status:      lead.status as string | null,
+        domain:      lead.domain as string,
+        slug:        lead.slug as string | null,
+        first_name:  lead.first_name as string | null,
+        last_name:   lead.last_name as string | null,
+        phone:       lead.phone as string | null,
+        email:       lead.email as string | null,
+        assigned_to: lead.assigned_to as string | null,
+      },
+    },
   );
+  if (!core.ok) return { data: null, error: core.error };
 
-  // Step 1: Insert deals row (must succeed before status flip)
-  const { error: insertError } = await admin.from("deals").insert({
-    lead_id:       leadId,
-    contact_name:  contactName,
-    contact_phone: lead.phone ?? "",
-    contact_email: lead.email ?? null,
-    domain:        lead.domain as AppDomain,
-    deal_amount,
-    deal_type:     resolved.shape.deal_type,
-    deal_duration: resolved.shape.deal_duration,
-    deal_category: resolved.shape.deal_category,
-    assigned_to:   lead.assigned_to ?? null,
-    won_at:        new Date().toISOString(),
-  });
-
-  if (insertError) return { data: null, error: formErrors.generic };
-
-  // Bust the /deals route cache — updateLeadStatus below revalidates /leads and
-  // the dossier, but never /deals, so the just-inserted deal would otherwise be
-  // missing from the deals list on the next load.
+  // Bust the /deals route cache — the core's updateLeadStatusCore revalidates
+  // nothing (revalidatePath is request-context-only and lives in callers), so the
+  // just-inserted deal AND the lead's Won flip both need explicit revalidation here.
   revalidatePath("/deals");
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${(lead.slug as string | null) ?? leadId}`);
 
-  // Step 2: Flip lead to won — delegates all side-effects (notifications, SLA, Redis, revalidation)
-  return updateLeadStatus({ leadId, status: "won" });
+  return { data: { leadId }, error: null };
 }
 
 // ─────────────────────────────────────────────

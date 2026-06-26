@@ -116,6 +116,15 @@ export const GUPSHUP_FOUNDER_LEAD_NOTIFICATION_TEMPLATE_ID  = 'd5828042-fbfc-4e6
 export const GUPSHUP_SLA_AGENT_TEMPLATE_ID                  = '54d5dd55-a1fa-482b-8823-49e9b9e22745';
 export const GUPSHUP_SLA_MANAGER_TEMPLATE_ID                = '682fd320-3b04-45da-8b1a-9a390770fac8';
 export const GUPSHUP_LEAD_INITIATION_TEMPLATE_ID            = '7aee2a33-3442-4b3a-a1b6-d20a2e39895a';
+// Customer welcome-blast (FEATURE 2) — the FIRST template message to a brand-new prospect
+// number (the 24h free-form window only opens after they reply). Params: {{1}} customer
+// first name (or "there"). Read from env so the real approved Gupshup template id drops in
+// with NO code change; the placeholder default means the orchestrator NO-OPS safely until
+// a real id is set (sendCustomerWelcomeTemplate guards on CUSTOMER_WELCOME_TEMPLATE_CONFIGURED).
+export const GUPSHUP_CUSTOMER_WELCOME_TEMPLATE_ID =
+  process.env.GUPSHUP_CUSTOMER_WELCOME_TEMPLATE_ID ?? 'CUSTOMER_WELCOME_TEMPLATE_ID_UNSET';
+export const CUSTOMER_WELCOME_TEMPLATE_CONFIGURED =
+  GUPSHUP_CUSTOMER_WELCOME_TEMPLATE_ID !== 'CUSTOMER_WELCOME_TEMPLATE_ID_UNSET';
 // Params: {{1}} agent first name, {{2}} lead name, {{3}} lead phone, {{4}} task title
 export const GUPSHUP_TASK_DUE_REMINDER_TEMPLATE_ID          = '05411e50-30c6-432b-8b45-cc079fa43c81';
 // Params: {{1}} manager first name, {{2}} agent name, {{3}} lead name, {{4}} task title,

@@ -90,3 +90,67 @@ export function dealCategoriesForDomain(
 ): readonly DealCategory[] | null {
   return DOMAIN_DEAL_CONFIG[domain as GiaDomain]?.categories ?? null;
 }
+
+// ─────────────────────────────────────────────
+// resolveDealShapeForDomain — THE domain → {type, duration, category} resolver.
+//
+// deal_type is DERIVED from the domain (DOMAIN_DEAL_CONFIG above), never trusted
+// from the client/model. Given the resolved domain plus the type-dependent extras
+// (membership duration, retail category), this returns the exact triplet to write —
+// or an error string when the extras don't match the domain's type:
+//   - membership → duration required, category must be null
+//   - retail     → category required (and valid for the domain), duration null
+//   - sale       → both null
+// The DB CHECKs (migration 0122) are the backstop; this is the user-facing gate
+// that returns clean copy instead of a raw constraint error.
+//
+// Lives in this constant file (not the action) so BOTH the deals action (session
+// caller) AND the Elaya deal core (sessionless, services/lead-mutations.ts) import
+// the ONE resolver — services can't import an action (R-01 / no circular dep).
+// ─────────────────────────────────────────────
+export type DealShapeInput = {
+  deal_duration?: DealDuration | null;
+  deal_category?: DealCategory | null;
+};
+export type DealShape = {
+  deal_type:     DealType;
+  deal_duration: DealDuration | null;
+  deal_category: DealCategory | null;
+};
+
+export function resolveDealShapeForDomain(
+  domain: GiaDomain,
+  input:  DealShapeInput,
+): { ok: true; shape: DealShape } | { ok: false; error: string } {
+  const config   = DOMAIN_DEAL_CONFIG[domain];
+  const dealType = config.type;
+
+  if (dealType === "membership") {
+    if (!input.deal_duration) {
+      return { ok: false, error: "Please select a membership duration." };
+    }
+    return {
+      ok: true,
+      shape: { deal_type: dealType, deal_duration: input.deal_duration, deal_category: null },
+    };
+  }
+
+  if (dealType === "retail") {
+    if (!input.deal_category) {
+      return { ok: false, error: "Please select a product category." };
+    }
+    if (!config.categories?.includes(input.deal_category)) {
+      return { ok: false, error: "That product category is not valid for this domain." };
+    }
+    return {
+      ok: true,
+      shape: { deal_type: dealType, deal_duration: null, deal_category: input.deal_category },
+    };
+  }
+
+  // sale (house / legacy) — no duration, no category
+  return {
+    ok: true,
+    shape: { deal_type: dealType, deal_duration: null, deal_category: null },
+  };
+}

@@ -27,7 +27,8 @@ import {
   getModelContextMessages,
   writeLearnedMemory,
 } from '@/lib/services/elaya-service';
-import type { ElayaPrincipal } from '@/lib/elaya/principal';
+import { getNotesForElaya } from '@/lib/services/elaya-notes-service';
+import type { StaffPrincipal } from '@/lib/elaya/principal';
 
 // ── Bounds ──
 // learned rides the CACHED prompt prefix every turn, so it must stay small (a big
@@ -112,7 +113,7 @@ export async function summarizeLearnedMemory(
  * included (so the very first message of a fresh user, count 1, doesn't fire).
  */
 export async function maybeUpdateLearnedMemory(args: {
-  principal: ElayaPrincipal;
+  principal: StaffPrincipal;
   conversationId: string;
   userMessagesToday: number;
 }): Promise<void> {
@@ -145,32 +146,40 @@ export async function maybeUpdateLearnedMemory(args: {
 }
 
 // ─────────────────────────────────────────────
-// Retrieval interface — THE seam the future notes section plugs into.
+// Retrieval interface — THE notes-section seam (Feature 3 / Block 4 — now LIVE).
 //
-// Today: returns the learned blurb (the brain already folds persona+learned into the
-// prompt directly via getUserPersona, so this isn't on the hot path yet — it exists so
-// the NOTES section, when built, has ONE place to call). When notes land + volume
-// grows, swap the body to: embed the question, vector-search the user's notes +
-// learned facts, return only the relevant slices. The SIGNATURE stays the same — the
-// brain/notes caller never changes. (The `vector` extension is already installed.)
+// Returns the durable learned blurb + the user's free-form notes (migration 0152),
+// scoped to the principal in code (works sessionless on WhatsApp — the parity rule).
+// Today's impl is LOAD-ALL, budget-trimmed (getNotesForElaya caps the total chars so
+// the fold stays inside the cached prompt prefix). When note volume grows, swap the
+// body to: embed `question`, vector-search the user's notes + learned facts, return
+// only the relevant slices. The SIGNATURE stays the same — the brain caller never
+// changes. (The `vector` extension is already installed.)
+//
+// GOLDEN RULE: notes + learned are CONTEXT, never permission. The brain folds them as
+// facts-to-recall (persona.ts); the toolset + scope are fixed in code, untouched by it.
 // ─────────────────────────────────────────────
 
 export type RetrievedMemory = {
   /** The durable learned blurb (style + working context). */
   learned: string | null;
-  /** Future: the relevant notes for this question (empty until the notes section ships). */
+  /** The user's own free-form notes, budget-trimmed (newest-edited first). */
   notes: string[];
 };
 
 /**
  * Retrieve the memory context relevant to a turn. `question` is accepted now (unused
  * in the load-all impl) so the call site is embedding-ready — when retrieval becomes
- * semantic, only this function body changes.
+ * semantic, only this function body changes. Notes failing soft to [] (the service
+ * swallows its own errors) means a notes glitch never breaks a turn.
  */
 export async function retrieveMemoryContext(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   _question: string,
 ): Promise<RetrievedMemory> {
-  const { learned } = await getUserPersona(principal.userId);
-  return { learned, notes: [] };
+  const [{ learned }, notes] = await Promise.all([
+    getUserPersona(principal.userId),
+    getNotesForElaya(principal.userId),
+  ]);
+  return { learned, notes };
 }

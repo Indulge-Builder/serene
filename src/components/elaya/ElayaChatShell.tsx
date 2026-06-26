@@ -49,6 +49,7 @@ const TOOL_STATUS_LABELS: Record<string, string> = {
   create_lead_task: 'Creating the follow-up…',
   update_lead_status: 'Setting that up…',
   reassign_lead: 'Setting that up…',
+  log_deal: 'Setting that up…',
   create_personal_task: 'Creating your task…',
   create_group_task: 'Creating the workspace…',
   update_task_status: 'Updating the task…',

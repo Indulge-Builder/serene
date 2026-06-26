@@ -663,6 +663,7 @@ export type Database = {
           status_changed_at: string | null
           updated_at: string
           utm_campaign: string | null
+          welcomed_at: string | null
         }
         Insert: {
           archived_at?: string | null
@@ -695,6 +696,7 @@ export type Database = {
           status_changed_at?: string | null
           updated_at?: string
           utm_campaign?: string | null
+          welcomed_at?: string | null
         }
         Update: {
           archived_at?: string | null
@@ -727,6 +729,7 @@ export type Database = {
           status_changed_at?: string | null
           updated_at?: string
           utm_campaign?: string | null
+          welcomed_at?: string | null
         }
         Relationships: [
           {

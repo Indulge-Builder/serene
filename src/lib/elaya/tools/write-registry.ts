@@ -25,7 +25,7 @@
 //     inherits cache invalidation + activity logging + SLA + notifications identically.
 
 import { z } from "zod";
-import type { ElayaPrincipal } from "@/lib/elaya/principal";
+import type { StaffPrincipal } from "@/lib/elaya/principal";
 // Elaya runs in BOTH a session context (in-app SSE) AND sessionless contexts
 // (WhatsApp webhook; the SSE stream after the cookie session is no longer on the
 // request). The write tools must resolve the lead the same way the READ tool does
@@ -43,6 +43,7 @@ import {
   createLeadTaskCore,
   updateLeadStatusCore,
   assignLeadCore,
+  recordDealCore,
   type MutationActor,
 } from "@/lib/services/lead-mutations";
 import {
@@ -66,6 +67,18 @@ import {
 import { notifyLeadAssigned } from "@/lib/services/lead-assignment-notify";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
 import { CALL_OUTCOMES, CALL_OUTCOME_LABELS } from "@/lib/constants/call-outcomes";
+import {
+  DEAL_CATEGORY_ENUM,
+  DEAL_TYPE_LABELS,
+  DEAL_DURATION_LABELS,
+  DEAL_CATEGORY_LABELS,
+  dealTypeForDomain,
+  resolveDealShapeForDomain,
+  type DealDuration,
+  type DealCategory,
+} from "@/lib/constants/deal-types";
+import { isGiaDomain, type GiaDomain } from "@/lib/constants/domains";
+import { formatCurrency } from "@/lib/utils/numbers";
 import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
 import { TASK_STATUS } from "@/lib/constants/task-constants";
 import { APP_DOMAINS } from "@/lib/constants/domains";
@@ -82,6 +95,7 @@ export type ElayaWriteToolName =
   | "create_lead_task"
   | "update_lead_status"
   | "reassign_lead"
+  | "log_deal"
   // Task writes (Brief 3)
   | "create_personal_task"
   | "create_group_task"
@@ -92,6 +106,9 @@ export type ElayaWriteToolName =
 const STATE_CHANGING: ReadonlySet<ElayaWriteToolName> = new Set([
   "update_lead_status",
   "reassign_lead",
+  // log_deal records money AND flips the lead to Won — a real, reportable record.
+  // It proposes and waits for an affirmative, exactly like the lead state tools.
+  "log_deal",
   // delete_task is the ONLY state-changing task tier — it proposes and waits for an
   // affirmative, exactly like the lead state tools. The four other task tools execute
   // inline (low-risk: a created/edited task is trivially reversible by the user).
@@ -113,7 +130,7 @@ export type ElayaWriteTool = {
   schema: z.ZodTypeAny;
   jsonSchema: Record<string, unknown>;
   run: (
-    principal: ElayaPrincipal,
+    principal: StaffPrincipal,
     input: Record<string, unknown>,
     ctx: WriteToolContext,
   ) => Promise<unknown>;
@@ -126,7 +143,7 @@ const MANAGER_UP: readonly UserRole[] = ["manager", "admin", "founder"];
 // Shared helpers
 // ─────────────────────────────────────────────
 
-function actorFromPrincipal(principal: ElayaPrincipal): MutationActor {
+function actorFromPrincipal(principal: StaffPrincipal): MutationActor {
   return {
     userId: principal.userId,
     role: principal.role,
@@ -141,7 +158,7 @@ function actorFromPrincipal(principal: ElayaPrincipal): MutationActor {
  * SELECT; it never reads auth.uid() and never relies on RLS, so the admin client the
  * tool layer passes does not widen access (the caller object IS the identity).
  */
-function callerFromPrincipal(principal: ElayaPrincipal): CallerProfile {
+function callerFromPrincipal(principal: StaffPrincipal): CallerProfile {
   return {
     id: principal.userId,
     role: principal.role,
@@ -164,7 +181,7 @@ function taskStatusLabel(status: string): string {
   return TASK_STATUS[status as TaskStatus]?.label ?? status;
 }
 
-function canAccessLead(principal: ElayaPrincipal, lead: LeadWithAssignee): boolean {
+function canAccessLead(principal: StaffPrincipal, lead: LeadWithAssignee): boolean {
   if (principal.role === "admin" || principal.role === "founder") return true;
   if (principal.role === "manager") return lead.domain === principal.domain;
   if (principal.role === "agent") return lead.assigned_to === principal.userId;
@@ -522,6 +539,131 @@ const reassignLead: ElayaWriteTool = {
       message:
         `Proposal recorded (NOT yet done): reassign ${leadDisplayName(lead)}. ` +
         `Ask the user to confirm with a yes before it executes. Do not state it as done.`,
+    };
+  },
+};
+
+// ── log_deal — STATE-CHANGING (propose only). NO mutation in run(). ──
+// Recording a deal is money + a real reportable record AND it flips the lead to
+// Won — so it proposes and waits for an affirmative, exactly like update_lead_status.
+// deal_type is DERIVED from the lead's domain (never model-supplied): onboarding →
+// membership (needs a duration), shop → retail (needs a category), house/legacy →
+// sale (neither). The shape is validated HERE at propose time so the model gets a
+// clean "pick a duration" prompt before asking the user to confirm, and the
+// confirmation line names the correct type/amount. The deal insert + Won flip land
+// only in executeProposedAction's log_deal branch (via recordDealCore).
+const logDeal: ElayaWriteTool = {
+  name: "log_deal",
+  roles: STAFF_ALL,
+  description:
+    "Propose recording a WON deal for a lead (the agent closed the sale). Takes the lead's leadId " +
+    "and the amount in Indian Rupees. The deal TYPE is decided automatically by the lead's domain — " +
+    "for a membership lead also pass durationMonths (3, 6 or 12); for a retail/shop lead also pass " +
+    "category. This is a bigger step: it records money AND marks the lead Won, so calling it records " +
+    "a proposal and WAITS — it does NOT save yet. Tell the user the amount and what you're about to " +
+    "log, and ask them to confirm with a yes. Never say the deal is recorded until the system confirms " +
+    "it executed. Amounts are always ₹ (INR) — never convert currency.",
+  schema: z.object({
+    leadId: z.string().trim().min(1).max(160),
+    amount: z.number().positive().max(100_000_000),
+    durationMonths: z.enum(["3", "6", "12"]).optional(),
+    category: z.enum(DEAL_CATEGORY_ENUM).optional(),
+  }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      leadId: { type: "string", description: "The lead id or slug (from search_leads results)" },
+      amount: { type: "number", description: "The deal amount in Indian Rupees (₹), a positive number" },
+      durationMonths: {
+        type: "string",
+        enum: ["3", "6", "12"],
+        description: "Membership length in months — REQUIRED only for membership (onboarding) leads",
+      },
+      category: {
+        type: "string",
+        enum: [...DEAL_CATEGORY_ENUM],
+        description: "Product category — REQUIRED only for retail (shop) leads",
+      },
+    },
+    required: ["leadId", "amount"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { leadId, amount, durationMonths, category } = input as {
+      leadId: string;
+      amount: number;
+      durationMonths?: "3" | "6" | "12";
+      category?: (typeof DEAL_CATEGORY_ENUM)[number];
+    };
+    const lead = await getLeadByRefForElaya(leadId);
+    if (!lead || !canAccessLead(principal, lead)) return { error: REFUSE_LEAD };
+
+    // deal_type is DERIVED from the lead's domain — never model-supplied. A non-Gia
+    // lead has no deal config.
+    if (!isGiaDomain(lead.domain)) {
+      return { error: "Deals can only be recorded for Gia-domain leads." };
+    }
+    const dealType = dealTypeForDomain(lead.domain as GiaDomain);
+    // Map the model's friendly durationMonths → the stored DealDuration enum.
+    const dealDuration =
+      durationMonths === "3" ? "3_months"
+      : durationMonths === "6" ? "6_months"
+      : durationMonths === "12" ? "1_year"
+      : null;
+
+    // Validate the shape NOW (before the proposal) so the model can ask the user for
+    // the missing piece in plain language instead of recording a doomed proposal.
+    const resolved = resolveDealShapeForDomain(lead.domain as GiaDomain, {
+      deal_duration: dealDuration,
+      deal_category: category ?? null,
+    });
+    if (!resolved.ok) {
+      // Translate the form-copy into a model-actionable instruction.
+      if (dealType === "membership") {
+        return { error: "This is a membership lead — ask the user for the membership length (3, 6 or 12 months) and pass it as durationMonths." };
+      }
+      if (dealType === "retail") {
+        return { error: `This is a retail lead — ask the user which product category it is (${DEAL_CATEGORY_ENUM.join(", ")}) and pass it as category.` };
+      }
+      return { error: resolved.error };
+    }
+
+    // No mutation. Supersede any prior live proposal, then record this one. The args
+    // stored are the CODE-RESOLVED shape (not raw model input) so the resolver
+    // re-runs the exact deal the user is confirming.
+    await supersedePriorProposals(ctx.conversationId, principal.userId, principal.userId);
+    const proposal = await insertProposedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "log_deal",
+      payload: {
+        target: { slug: lead.slug, leadId: lead.id },
+        args: {
+          amount,
+          dealType,
+          dealDuration: resolved.shape.deal_duration,
+          dealCategory: resolved.shape.deal_category,
+        },
+        channel: ctx.channel,
+        before: { status: lead.status },
+        after: null,
+      },
+    });
+    if (!proposal) return { error: "I couldn't set that up just now." };
+
+    // Code-derived confirmation line (amount + type), so the model states it accurately.
+    const extra =
+      resolved.shape.deal_duration
+        ? ` (${DEAL_DURATION_LABELS[resolved.shape.deal_duration]})`
+        : resolved.shape.deal_category
+          ? ` (${DEAL_CATEGORY_LABELS[resolved.shape.deal_category]})`
+          : "";
+    return {
+      proposalRecorded: true,
+      message:
+        `Proposal recorded (NOT yet done): record a ${DEAL_TYPE_LABELS[dealType]}${extra} deal for ` +
+        `${leadDisplayName(lead)} at ${formatCurrency(amount)} and mark the lead Won. Ask the user to ` +
+        `confirm with a yes before it executes. Do not state it as done.`,
     };
   },
 };
@@ -977,6 +1119,7 @@ const ALL_WRITE_TOOLS = [
   createLeadTask,
   updateLeadStatus,
   reassignLead,
+  logDeal,
   // Task writes (Brief 3)
   createPersonalTask,
   createGroupTask,
@@ -1008,7 +1151,7 @@ export type ProposalExecution = {
 };
 
 export async function executeProposedAction(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   action: ElayaActionRow,
 ): Promise<ProposalExecution> {
   // delete_task is the only state-changing TASK proposal — it has a task-shaped target
@@ -1148,8 +1291,56 @@ export async function executeProposedAction(
       return { status: "executed", line: `Done — ${leadDisplayName(lead)} has been reassigned.` };
     }
 
+    if (action.action_type === "log_deal") {
+      const amount = payload.args?.amount as number | undefined;
+      const dealDuration = (payload.args?.dealDuration as string | null | undefined) ?? null;
+      const dealCategory = (payload.args?.dealCategory as string | null | undefined) ?? null;
+      if (typeof amount !== "number" || !(amount > 0)) {
+        await markActionResolved(action.id, "failed", principal.userId);
+        return { status: "failed", line: "I couldn't complete that — the proposal was incomplete." };
+      }
+
+      // recordDealCore derives the type from the lead's domain + inserts the deal,
+      // then flips the lead to Won (its full Won side-effects via updateLeadStatusCore).
+      const core = await recordDealCore(
+        actor,
+        {
+          leadId: lead.id,
+          deal_amount: amount,
+          deal_duration: dealDuration as DealDuration | null,
+          deal_category: dealCategory as DealCategory | null,
+        },
+        {
+          lead: {
+            id: lead.id,
+            status: lead.status,
+            domain: lead.domain,
+            slug: lead.slug,
+            first_name: lead.first_name,
+            last_name: lead.last_name,
+            phone: lead.phone,
+            email: lead.email,
+            assigned_to: lead.assigned_to,
+          },
+        },
+      );
+      if (!core.ok) {
+        await markActionResolved(action.id, "failed", principal.userId);
+        return { status: "failed", line: core.error };
+      }
+
+      await markActionResolved(action.id, "executed", principal.userId, {
+        ...action.payload,
+        after: { dealId: core.dealId, wonChanged: core.wonChanged },
+      });
+      return {
+        status: "executed",
+        line: `Done — recorded a ${formatCurrency(amount)} deal for ${leadDisplayName(lead)} and marked the lead Won.`,
+      };
+    }
+
     // Unknown LEAD action_type on a proposed row — should never happen (delete_task is
-    // routed away at the top; only the two lead state tools reach here). Fail closed.
+    // routed away at the top; only the lead state tools reach here). Fail closed.
     await markActionResolved(action.id, "failed", principal.userId);
     return { status: "failed", line: "I couldn't complete that action." };
   } catch (e) {
@@ -1172,7 +1363,7 @@ export async function executeProposedAction(
 // payload (never model/lead text).
 // ─────────────────────────────────────────────
 async function executeProposedTaskDelete(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   action: ElayaActionRow,
 ): Promise<ProposalExecution> {
   const payload = action.payload as {

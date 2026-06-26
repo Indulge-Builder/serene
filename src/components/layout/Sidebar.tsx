@@ -26,6 +26,8 @@ import {
   Activity,
   MessageSquarePlus,
   Telescope,
+  GraduationCap,
+  NotebookPen,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { useSuggestionFeedback } from "@/components/suggestions/SuggestionFeedbackProvider";
@@ -55,6 +57,7 @@ const MAIN_NAV: NavItem[] = [
   { href: "/tasks",     label: "Tasks",     icon: CheckSquare     },
   { href: "/whatsapp",  label: "WhatsApp",  icon: MessageCircle   },
   { href: "/helpdesk",  label: "Helpdesk",  icon: BookOpen        },
+  { href: "/notes",     label: "Notes",     icon: NotebookPen     },
 ];
 
 // Analytics section — Performance + Escalations for all roles (agents get a
@@ -73,7 +76,10 @@ const ANALYTICS_NAV: NavItem[] = [
   { href: "/escalations", label: "Escalations", icon: AlertTriangle },
 ];
 
-// Visible to manager, admin, founder — lead assignment config (+ ad creatives for admin/founder)
+// Visible to manager, admin, founder — lead assignment config (+ ad creatives for
+// admin/founder). Elaya Training is manager+ (managers curate their domain's library);
+// it's added unconditionally here and self-gates through the canAccessRoute filter at
+// the render site — Gia-domain managers + admin/founder pass, others are filtered out.
 function getConfigurationNav(isPrivileged: boolean): NavItem[] {
   const items: NavItem[] = [];
   if (isPrivileged) {
@@ -83,6 +89,7 @@ function getConfigurationNav(isPrivileged: boolean): NavItem[] {
       icon: Film,
     });
   }
+  items.push({ href: "/admin/elaya-training", label: "Elaya Training", icon: GraduationCap });
   items.push({ href: "/settings", label: "Settings", icon: Settings });
   return items;
 }
@@ -100,6 +107,7 @@ const MOBILE_TRIGGER_PATHS = new Set<string>([
   ...MAIN_NAV.map((i) => i.href),
   ...ANALYTICS_NAV.map((i) => i.href),
   "/admin/ad-creatives",
+  "/admin/elaya-training",
   "/settings",
   "/admin/users",
   "/admin/usage",

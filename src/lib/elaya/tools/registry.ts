@@ -17,7 +17,7 @@
 // registry, so the brain has one entry point and one masking/truncation/try-catch path.
 
 import { z } from 'zod';
-import type { ElayaPrincipal } from '@/lib/elaya/principal';
+import type { StaffPrincipal } from '@/lib/elaya/principal';
 import { maskPii } from '@/lib/elaya/pii';
 import type { PiiMaskingDepth } from '@/lib/services/llm-providers-service';
 import type { LlmToolDefinition } from '@/lib/elaya/provider';
@@ -80,7 +80,7 @@ type ElayaTool = {
   // (e.g. tools whose backing query needs auth.uid() must use a principal-scoped
   // admin path or refer the user to the app — H1). Defaults to in_app at the seam.
   run: (
-    principal: ElayaPrincipal,
+    principal: StaffPrincipal,
     input: Record<string, unknown>,
     channel: ElayaChannel,
   ) => Promise<unknown>;
@@ -92,7 +92,7 @@ type ElayaTool = {
 // layer re-verifies access explicitly — RLS alone is not the only gate here.
 // ─────────────────────────────────────────────
 
-function canAccessLead(principal: ElayaPrincipal, lead: LeadWithAssignee): boolean {
+function canAccessLead(principal: StaffPrincipal, lead: LeadWithAssignee): boolean {
   if (principal.role === 'admin' || principal.role === 'founder') return true;
   if (principal.role === 'manager') return lead.domain === principal.domain;
   if (principal.role === 'agent') return lead.assigned_to === principal.userId;
@@ -718,7 +718,7 @@ export const TOOLSET_BY_ROLE: Record<UserRole, readonly ElayaToolName[]> = {
 };
 
 /** Provider-neutral definitions for the principal's permitted tools (read + write). */
-export function getToolDefinitionsForPrincipal(principal: ElayaPrincipal): LlmToolDefinition[] {
+export function getToolDefinitionsForPrincipal(principal: StaffPrincipal): LlmToolDefinition[] {
   return principal.toolset
     .map((name): LlmToolDefinition | null => {
       const read = TOOL_REGISTRY.get(name);
@@ -742,7 +742,7 @@ export type ElayaToolExecution = {
  * tools so they can record audit/proposal rows; read tools ignore it.
  */
 export async function executeTool(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   name: string,
   rawInput: Record<string, unknown>,
   maskingDepth: PiiMaskingDepth,

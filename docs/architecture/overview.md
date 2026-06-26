@@ -3,7 +3,7 @@
 > **Purpose:** the whole system in one read — what Serene is, the stack, how the services connect, what happens on a request, and where every code-layer concept is documented.
 > **Audience:** engineers (new-engineer entry point; non-technical readers start at `../00-for-the-board.md`).
 > **Source-of-truth scope:** topology, request flow, cross-page shell features, Realtime registry, client-pattern/hook index, service-file → home-doc map.
-> **Last verified:** 2026-06-20 (Trigger.dev cron set + usage/suggestions/notification-prefs service rows added against `src/trigger/usage-snapshot.ts`, `src/trigger/usage-rollup.ts`, `src/trigger/lead-revival.ts`).
+> **Last verified:** 2026-06-26 (Elaya "Jarvis" build — `elaya-data.ts` data layer, 11 read + 11 write tools with role-gated reads, per-user persona + durable learned-memory, 0149 sessionless RPC twins; the `/oversight` 3-tier surface + `task_events` Realtime; verified against `src/lib/elaya/*`, `src/lib/services/oversight-service.ts`, `src/app/(dashboard)/oversight/`).
 
 ---
 
@@ -18,7 +18,7 @@ base layer.
 | Name | What it is |
 | ---- | ---------- |
 | **Serene** | The OS — the shell, auth, theming, navigation, dashboard |
-| **Elaya** | The agentic AI presence inside Serene — read tools + Phase 2 propose/execute writes, SSE chat + WhatsApp staff channel (`../modules/elaya.md` — live) |
+| **Elaya** | The agentic AI presence inside Serene — a per-user assistant: 11 read tools (role-gated) + 11 write tools (inline + propose/confirm), SSE chat + WhatsApp staff channel, voice input, per-user persona + durable memory ("Jarvis" Phases 1–4 — `../modules/elaya.md`, live) |
 | **Gia** | The CRM module for the four sales domains (`../modules/gia.md` — live) |
 | **Sia** | The Concierge module (`../modules/sia.md` — not started) |
 
@@ -120,6 +120,8 @@ All DB access lives in `src/lib/services/` (A-03). Each file's owning doc:
 | `tasks-service.ts` | `../pages/tasks.md` |
 | `dashboard-service.ts` | `../pages/dashboard.md` |
 | `performance-service.ts` | `../pages/performance.md` |
+| `oversight-service.ts`, `task-events.ts` | `../oversight.md` (the `/oversight` 3-tier drill + the `task_events` emit point) |
+| `ad-spend-service.ts` | `../modules/budget.md` / `../pages/budget.md` (spend + recharge ledger) |
 | `profiles-service.ts` | `../pages/user-management.md` |
 | `agent-routing-service.ts` | `../pages/settings.md` |
 | `notifications-service.ts` | §7 below |
@@ -135,8 +137,9 @@ All DB access lives in `src/lib/services/` (A-03). Each file's owning doc:
 | `suggestions-service.ts` | staff suggestion / bug-report channel (migrations 0134–0135) |
 | `notification-prefs-service.ts` | per-user notification channel control gate (migration 0133) |
 | `revival-service.ts`, `revival-gate.ts` | `../modules/revival.md` |
-| `lead-mutations.ts` | `../modules/elaya.md` (shared write cores — Elaya + UI) |
+| `lead-mutations.ts`, `task-mutations.ts` | `../modules/elaya.md` (shared write cores — Elaya tools + UI actions both call them) |
 | `elaya-service.ts`, `elaya-actions-service.ts`, `elaya-whatsapp.ts`, `llm-providers-service.ts` | `../modules/elaya.md` |
+| `lib/elaya/elaya-data.ts`, `lib/elaya/memory.ts` | `../modules/elaya.md` (the single read data-layer seam + the durable-memory writer — not under `lib/services/`) |
 
 (The directory's `CLAUDE.md` is the code-adjacent registry with per-function exports and Redis
 TTLs — the authoritative file-by-file index.)
@@ -153,6 +156,7 @@ Every subscription includes a filter and a mount-scoped `useId()` nonce in the c
 | Task remarks panel | `task_remarks` | `task-remarks-${taskId}-${mountId}` |
 | Group workspace | `tasks` (group subtasks) | `workspace-subtasks-${groupId}-${mountId}` |
 | WhatsApp conversation list + open thread | `whatsapp_conversations`, `whatsapp_messages` | conversation-filtered |
+| Oversight live rails (Tier 2 / Tier 3) | `task_events` (0144) | `domain`- / `subject_id`-filtered (`useId()` nonce) |
 
 ## 7. Shell features (cross-page, owned here)
 
@@ -202,13 +206,20 @@ Every subscription includes a filter and a mount-scoped `useId()` nonce in the c
   resolver; `src/app/manifest.ts` + `/api/manifest` build the manifest from the
   `serene-app-icon` cookie (zero-flash, re-synced by `IconInitializer`). `/profile` shows the
   icon grid (`IconSelector`) + an `InstallPrompt` Add-to-Home-Screen card. Migration 0121.
-- **Elaya presence** — SSE chat at `/api/elaya/chat` + a WhatsApp staff channel (routing gate
-  on the whatsapp webhook: staff number → same brain/tools/daily-cap, one reply; unknown number
-  → lead pipeline untouched). Phase 2 agentic writes go through the `elaya_actions` state
-  machine: `add_lead_note`/`create_lead_task` execute inline, `update_lead_status`/`reassign_lead`
-  are propose-only (a `proposed` row) and resolve on the *next* human message via the
-  confirmation gate (English + Hinglish, reads only the human reply — injection-safe). Every
-  write reuses the shared `lead-mutations.ts` cores (R-01). Full contract: `../modules/elaya.md`.
+- **Elaya presence** — SSE chat at `/api/elaya/chat` + a floating widget + a WhatsApp staff channel
+  (routing gate on the whatsapp webhook: staff number → same brain/tools/daily-cap, one reply;
+  unknown number → lead pipeline untouched). **All reads flow through the single `elaya-data.ts`
+  seam** (principal-in → admin client → code-scoped → `maskPii`), which makes WhatsApp/in-app parity
+  structural; the three genuinely self-scoped reads got sessionless admin twins (0149). **11 read
+  tools** are role-gated (`get_escalations`/`get_domain_health`/`get_campaigns` manager+; `get_budget`
+  admin/founder). **11 write tools** go through the `elaya_actions` state machine and reuse the shared
+  `lead-mutations.ts` / `task-mutations.ts` cores (R-01): inline writes execute + log an `executed`
+  row; `update_lead_status`/`reassign_lead`/`log_deal`/`delete_task` are propose-only and resolve on
+  the *next* human message via the pure-code confirmation gate (English + Hinglish, reads only the
+  human reply — injection-safe). **Per-user persona + durable learned-memory** ride the cached prompt
+  prefix as a STYLE-ONLY block (`user_context.context`), never a permission (the Golden Rule —
+  permissions are code-only). Voice input transcribes to text then runs the identical turn. Full
+  contract: `../modules/elaya.md`.
 - **Toasts** — `ToastProvider`/`ToastItem` (`src/components/ui/`), singleton `toast` API via
   `useToast`; max 3 in DOM, danger never auto-dismisses. Design spec: DNA §13.
 - **Theme system** — 5 themes on `data-theme` (html), stored on `profiles.theme`, zero-flash

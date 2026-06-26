@@ -2,7 +2,7 @@
 
 > **Purpose:** how identity, sessions, roles, domains, and row-level security work — the authorization architecture every other doc assumes.
 > **Audience:** engineers. · **Source-of-truth scope:** authorization model, session layer, route gating, RLS + SECURITY DEFINER policy. The `profiles` table schema lives in `database.md`; per-page role gates live in each `../pages/*.md`.
-> **Last verified:** 2026-06-20 against `src/proxy.ts`, `src/lib/constants/domains.ts`, `src/lib/constants/route-permissions.ts`, `src/lib/actions/_auth.ts`, `src/lib/actions/auth.ts`, migrations 0001/0088/0091/0095/0102/0103.
+> **Last verified:** 2026-06-26 against `src/proxy.ts`, `src/lib/constants/domains.ts`, `src/lib/constants/route-permissions.ts`, `src/lib/actions/_auth.ts`, `src/lib/actions/auth.ts`, `src/lib/elaya/principal.ts`, `src/lib/elaya/elaya-data.ts`, migrations 0001/0088/0091/0095/0102/0103/0144/0149. (Added §13 — the Elaya principal + sessionless-twin authorization pattern.)
 
 ---
 
@@ -176,7 +176,9 @@ SECURITY DEFINER functions bypass RLS — they run as the function owner. The st
    from `authenticated`/`anon` on the Class B/C read RPCs; they are reachable only through the
    service-role path inside Server Actions, which pass session-derived values. This mirrors how
    `get_next_round_robin_agent` (0007) and `get_active_lead_by_phone` (0008) were always
-   handled.
+   handled. The pattern recurs in 0123 (first-touch pairs), 0128 (`get_silent_leads_for_revival`),
+   0144 (the oversight trio — which additionally **force-clamp `p_caller_domain` in SQL** because
+   the manager `tasks` RLS is role-only), and 0149 (the Elaya sessionless twins — see §13).
 4. New aggregation RPCs follow the `get_group_task_summaries` pattern (self-enforcing WHERE) or
    ship with a REVOKE — never a third way.
 
@@ -215,3 +217,40 @@ to pre-fetch, so the token survives until the user enters it.
 → `is_active` deactivation gate).
 
 Full UI spec (two-step form, `PasswordStrengthBar`, error copy): `../pages/auth.md`.
+
+## 13. The Elaya principal — sessionless authorization (the admin-client + code-scoping pattern)
+
+Elaya must work on **two channels** — in-app (a logged-in session) and WhatsApp (no session, just
+an inbound phone number) — under the **same** authorization model. The bridge is the
+**`ElayaPrincipal`** (`src/lib/elaya/principal.ts`): a verified identity resolved from the channel
+(in-app = session → `getCurrentProfile()`; WhatsApp = phone → `getActiveProfileByPhone()`), carrying
+`{ userId, role, domain, displayName, toolset }`. The brain never sees the channel.
+
+**THE GOLDEN RULE (the one rule that governs the whole subsystem):** *permissions are enforced in
+code and are completely independent of persona, memory, notes, and any model/prompt content.* The
+toolset and data scope are fixed from the verified principal's **role, in code, before the model
+runs** — so injected user content (a persona note, learned memory, a future scraped page, or
+lead-sourced text) can never widen access. This is what makes it safe to inject user content into the
+prompt and to eventually let Elaya talk to external customers.
+
+**Why the admin client, not a session client (the parity root cause).** RLS needs `auth.uid()`,
+which is NULL in the sessionless WhatsApp webhook — so an RLS-scoped read returns blank there. Every
+Elaya read instead flows through the single **`elaya-data.ts`** seam: it takes the principal, uses
+the **admin client** (which bypasses RLS), and **scopes by the principal's role/userId/domain in
+code**, then runs every result through `maskPii()`. This is not "less secure" — it moves the access
+decision from the DB's RLS into our code, which is exactly what a sessionless assistant needs, with a
+*verified* principal (never a browser cookie or a model-supplied arg). The per-resource gate
+(`canAccessLead` / `canMutateTask`) stays the trust boundary, identical to the UI path.
+
+**The sessionless RPC twins (0149).** Three reads genuinely derived scope from
+`auth.uid()`/`get_user_*()` inside SQL (`get_group_task_summaries`, `get_agent_today_pulse`,
+`get_agent_roster_performance`), so they returned empty on WhatsApp. Migration 0149 adds
+explicit-param admin twins (`*_for_user` / `*_for_elaya`) — byte-faithful copies with the auth reads
+replaced by params, on the **Q-13 revoked tier** (EXECUTE revoked from `authenticated`, GRANTed
+`service_role` only; the Elaya data layer's admin client + principal-derived args are the trust
+boundary). The originals are untouched and keep their `authenticated` GRANT for the in-app UI pages.
+
+**Customer principal (not built).** `resolveCustomerPrincipal()` is a **throwing stub** — the
+customer-facing WhatsApp persona is planned, not built. When it lands it must keep the Golden Rule:
+a `persona: 'customer'` principal with NO staff toolset and no access to any internal data, gated in
+code. Full subsystem contract: `../modules/elaya.md`.

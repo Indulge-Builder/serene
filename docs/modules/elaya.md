@@ -2,7 +2,7 @@
 
 > **Purpose:** the AI presence inside Serene — chat surface today, the substrate for every future AI feature (lead revival, reports, agentic writes, customer bot).
 > **Audience:** engineers. · **Source-of-truth scope:** Elaya architecture + phase contracts.
-> **Last verified:** 2026-06-15 (includes migrations 0116–0121; persona INR currency contract) · **Status:** Foundation (read-only chat) + WhatsApp staff channel + **Phase 2 lead agentic writes (E3)** + **Phase 3 task agentic writes** + **voice input (E4a)**.
+> **Last verified:** 2026-06-26 (migrations 0116–0121 + the "Jarvis" build: 0148 WhatsApp dedup index, 0149 sessionless RPC twins) · **Status:** Foundation chat + WhatsApp staff channel + **Phase 2 lead agentic writes (E3)** + **Phase 3 task agentic writes** + **voice input (E4a)** + **"Jarvis" Phases 1–4** (channel-parity data layer · per-user persona · durable learned-memory · role-gated capability tools) + **`log_deal`**. Now **11 read tools** (role-gated) + **11 write tools**. The customer-facing persona is **designed, not built** (`customer-welcome-blast.md`; `resolveCustomerPrincipal()` still throws). See the **"Jarvis" build** section below — it is the current authority where it differs from the phase-history sections.
 
 Historical note: this presence was tracked as both "Elaya" (the original design vision) and
 "Elaya" (the roadmap name) before shipping; the canonical name is **Elaya** (matching the
@@ -28,11 +28,20 @@ Full implementation record: `docs/changelog.md` (2026-06-12 Elaya foundation ent
                   lib/elaya/registry.ts ──► llm_providers row (per turn, no cache)
                                               │              └─► adapters/anthropic.ts (ONLY SDK import)
                                               ▼
-                  lib/elaya/tools/registry.ts — 6 read-only tools, executed AS the principal
+                  lib/elaya/tools/registry.ts — read tools, executed AS the principal
                                               │  every result → pii.ts maskPii() before the model
                                               ▼
-                              existing lib/services functions (RLS + service scoping)
+                              lib/elaya/elaya-data.ts (the single read seam; see the "Jarvis" build)
+                                              │  admin client + code-side scoping → parity both channels
+                                              ▼
+                              existing lib/services functions (explicit identity, no auth.uid())
 ```
+
+> The diagram shows the foundation shape. Since the **"Jarvis" build** (2026-06-25, below) every read
+> flows through `elaya-data.ts`, the read set grew from 6 → **11** (the last 4 role-gated), and
+> `user_context` is now actively written (persona + learned memory). Read the "Jarvis" section for
+> the current architecture; the phase-history sections below remain accurate for what each phase
+> shipped.
 
 ### Persona currency contract (2026-06-15)
 
@@ -69,7 +78,7 @@ Prompt-only; no tool/schema/formatter change.
 | --- | --- |
 | `elaya_conversations` | One row per chat session; `channel` (`in_app` today, `whatsapp` later) |
 | `elaya_messages` | Append-only transcript (A-11); `sender_id` denormalised for the cap count |
-| `user_context` | Durable per-user context injected into the persona prompt (writes: later phase) |
+| `user_context` | Per-user `context jsonb` injected into the system prompt. Since "Jarvis" P2/P3 it carries `persona` (user-set style) + `learned` (Elaya-accumulated memory) — **now actively written** (no longer "later phase"). See the "Jarvis" build |
 | `elaya_actions` | Agentic-write ledger — filled by Phase 2/E3 (proposed → executed/failed/dismissed + before/after audit). Migration 0118 added the pending partial index + lifecycle COMMENT |
 | `llm_providers` | `routing` → claude-haiku-4-5 · `reasoning` → claude-sonnet-4-6 (seeds) |
 | `elaya_settings` | `daily_message_cap` 200 · `pii_masking_depth` 'light' · `session_expiry_hours` 24 |
@@ -82,12 +91,15 @@ import). The "reserved for later phases" framing is stale: the routing tier ship
 
 ### Tools (read-only, wrap services only — never query tables)
 
-`search_leads` · `get_lead_details` · `get_my_tasks` (all three task kinds — Gia lead
-follow-ups, personal tasks, **and** group/team workspaces) · `search_deals` ·
-`get_performance_snapshot` (agent pulse / manager+ roster) · `get_helpdesk_content`.
-Per-role toolsets live in `TOOLSET_BY_ROLE` (guests: zero tools). Phase 2/E3 write-tools are a
-separate module (`tools/write-registry.ts`) merged into the one `executeTool` dispatch — never
-added to this read registry. See "Phase 2 — agentic writes (E3)" below.
+The 7 all-staff reads: `search_leads` · `get_cold_leads` · `get_lead_details` · `get_my_tasks`
+(all three task kinds — Gia lead follow-ups, personal tasks, **and** group/team workspaces) ·
+`search_deals` · `get_performance_snapshot` (agent pulse / manager+ roster) · `get_helpdesk_content`.
+The "Jarvis" Phase 4 added **4 role-gated capability reads** (below): `get_escalations` /
+`get_domain_health` / `get_campaigns` (manager+) and `get_budget` (admin/founder) — **11 read tools
+total**. Per-role toolsets live in `TOOLSET_BY_ROLE` / `readToolsForRole(role)` (guests: zero tools);
+the model is only handed the tools the principal carries, and `executeTool` re-checks. Write tools are
+a separate module (`tools/write-registry.ts`) merged into the one `executeTool` dispatch — never added
+to this read registry. See "Phase 2 — agentic writes (E3)" and the "Jarvis" build below.
 
 ## Floating chat widget — second in-app entry point (shipped 2026-06-15)
 
@@ -379,15 +391,93 @@ row insert it calls `dispatchPush(recipient_id, {title, body, url})`, so every e
 call-site edits. `dispatchPush` is non-fatal (never throws; the in-app row stays source of truth)
 and prunes dead 404/410 endpoints. Full contract: `docs/changelog.md` (2026-06-14 Web Push entry).
 
+## The "Jarvis" build — Phases 1–4 (shipped 2026-06-25)
+
+Elaya became a true **per-user personal assistant**. The design doc is
+`docs/architecture/elaya-jarvis-architecture.md` (the four-concern model + the Golden Rule); this is
+the build record. Four concerns are kept strictly apart: **Identity** (the verified principal),
+**Permissions** (role → toolset + data scope, **code only**), **Persona** (how Elaya talks to you),
+**Memory** (what she knows about your work).
+
+### THE GOLDEN RULE (governs everything below — never weaken)
+
+> **Permissions are enforced in code and are completely independent of persona, memory, notes, and
+> any model/prompt content.**
+
+Toolset + data scope are fixed from the verified principal's **role, in code, before the model runs**
+— so an injected persona note, learned memory, a future scraped page, or lead-sourced text can never
+widen access. This is the single property that makes it safe to inject user content into the prompt
+and (later) to let Elaya talk to external customers.
+
+### Phase 1 — the data layer + channel parity (`src/lib/elaya/elaya-data.ts`)
+
+The single seam **every** Elaya read flows through: principal-in → **admin client** → scoped by the
+principal's role/userId/domain **in code** → `maskPii()`. Tools call `elayaData.*` only, never a
+`*-service.ts` directly — so a session dependency (`auth.uid()`, which is NULL on WhatsApp) is
+*physically impossible* to re-introduce, and channel parity is structural rather than remembered.
+Three reads genuinely self-scoped in SQL got sessionless admin twins (**migration 0149**,
+`*_for_user` / `*_for_elaya`, Q-13 revoked tier — see `../architecture/auth-and-rbac.md` §13):
+`get_group_task_summaries`, `get_agent_today_pulse`, `get_agent_roster_performance`. The per-resource
+gate (`canAccessLead`/`canMutateTask`) stays the trust boundary. The parity rule is written into
+`src/lib/elaya/CLAUDE.md`.
+
+### Phase 2 — per-user persona ("how Elaya talks to me")
+
+A per-user style file: `language` (mirror/english/hinglish), `tone` (warm/direct/playful), `depth`
+(simple/standard/technical), `length` (brief/standard/detailed) + a 600-char free-text note. Stored
+in `user_context.context.persona`; edited from `/profile` (`ElayaPersonaSettings` →
+`updateElayaPersonaAction`, `requireProfile` + sanitize). Injected via `buildPersonaPromptBlock` as a
+**fenced STYLE-ONLY block** that emits only non-default picks, so it rides the cached prompt prefix
+(~0 marginal tokens after turn 1). The block literally says "never a permission" — defence in depth
+on top of the code gate. No migration (reuses `user_context`).
+
+### Phase 3 — durable memory ("gets smarter the more you use it")
+
+`src/lib/elaya/memory.ts`. `summarizeLearnedMemory` makes ONE bounded **Haiku** call
+(`resolveLlmForJob('routing')` + `maskPii`, no tools) merging the prior learned note + recent
+transcript into a ≤900-char note, and **fails soft to null** (a glitch never corrupts existing
+memory). `maybeUpdateLearnedMemory` is throttled (every 4th user message), fire-and-forget, off the
+hot path (runs in the post-reply window on both channels). `writeLearnedMemory` merge-writes
+`user_context.context.learned` **without touching `persona`**. `retrieveMemoryContext(principal,
+question)` is the **notes-section seam** — returns the learned blurb today (load-all), shaped so a
+later swap to semantic/embedding retrieval is one function (the `vector` extension is already
+installed). No migration.
+
+### Phase 4 — capability tools (role-gated reads)
+
+`ElayaTool` gained a `roles` field; `readToolsForRole(role)` gates the read set. Added (all wrap
+existing services through `elaya-data`, no new SQL): **`get_escalations`** / **`get_domain_health`** /
+**`get_campaigns`** (manager+) and **`get_budget`** (admin/founder only). A manager never sees
+`get_budget`; an agent never sees the oversight reads. **`get_usage` is deferred** (its `getAgentUsage`
+is session-bound — needs a sessionless refactor first). No migration.
+
+### `log_deal` — the 11th write tool (propose→confirm)
+
+Elaya can record a won deal from chat ("I closed Akhil on the gold annual membership for ₹1,20,000").
+It wraps the shared **`recordDealCore`** (extracted into `lead-mutations.ts` so the `recordDeal` action
+and the tool share one insert — R-01), derives `deal_type` from the lead's domain
+(`DOMAIN_DEAL_CONFIG`), and is **state-changing** (money + flips the lead to Won) → it proposes and
+waits for an affirmative, exactly like `update_lead_status`. `action_type` has no DB CHECK, so it
+needed no migration. This brings the write set to **11 tools** (7 inline + 4 propose→confirm:
+`update_lead_status`, `reassign_lead`, `log_deal`, `delete_task`).
+
+### Net effect
+
+11 read tools (role-gated) + 11 write tools, identical on both channels by construction, with a
+per-user persona + accumulating memory — all under the Golden Rule. The Phase 1–4 skeleton is
+complete; "Phase 5" (the notes-section UI, semantic retrieval, web super-powers) is the future layer.
+
 ## Later phases (not built)
 
-- **WhatsApp customer persona:** `resolveCustomerPrincipal()` stub becomes real; narrow
-  lead-scoped toolset. (The staff WhatsApp channel above is live; the customer persona stub
-  still throws.)
+- **WhatsApp customer persona:** `resolveCustomerPrincipal()` stub becomes real; a narrow
+  customer-only toolset (send-material + answer-from-KB, no CRM access — the Golden Rule). The staff
+  WhatsApp channel above is live; the customer persona stub still throws. **Designed in detail** in
+  `customer-welcome-blast.md` (awaiting founder sign-off).
+- **Notes section:** the `retrieveMemoryContext` seam (Phase 3) is in place; the staff notes UI +
+  `notes` table + per-turn read are the remaining work, then a swap to embedding retrieval.
 - **In-app proposal cards:** the confirmation today is a plain yes/no reply on both channels.
   The Elaya two-action Approve/Dismiss card (over the same `elaya_actions` proposal rows) is a
   later UI affordance — the gate and ledger are already in place for it.
-- **Context writer:** Elaya populates `user_context` from conversations.
 - **Routing job in the chat brain:** Haiku-tier intent triage in front of the reasoning brain is
   still unbuilt — but the `routing` provider itself is already in production via Lead Revival's
   note-AI gate (see "Routing provider in production" above), so this is no longer the tier's first use.

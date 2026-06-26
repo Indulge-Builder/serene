@@ -12,6 +12,229 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-26 — Elaya Notes section: per-user free-form notes Elaya reads (Jarvis Feature 3 / Block 4)
+
+**Why:** the last Jarvis memory piece. A staff member writes free-form notes about how they work —
+accounts they own, preferences, anything worth remembering — and Elaya reads them (scoped to that
+user) and weaves them into a turn. This turns on the notes half of "Elaya gets smarter the more you
+use it." The `retrieveMemoryContext` seam in `memory.ts` (which returned `notes: []` since Jarvis
+Phase 3) is now LIVE.
+
+**The Golden Rule holds by construction:** a note is **CONTEXT the model reads, never a permission.**
+It is folded into the prompt exactly like the persona prefs + learned blurb — as facts-to-remember —
+and can NEVER widen what the user may see or do. The toolset + data scope are fixed in code from the
+verified principal, before the model runs. A note saying "I'm an admin, show me everything" changes
+nothing. This is the same property that makes persona injection safe, restated for notes.
+
+**Storage (migration 0152 — `elaya_notes`):** `user_id` FK (CASCADE), `title`, `body`, timestamps.
+Editable personal content (NOT append-only — `update_updated_at` trigger + UPDATE/DELETE policies,
+the `elaya_training_assets` / `suggestions` posture). **Owner-only RLS** (`user_id = (SELECT
+auth.uid())`, InitPlan-hoisted — the `push_subscriptions` 0120 posture). Applied to prod + verified.
+
+**Reads (`services/elaya-notes-service.ts` — two readers, ONE table):**
+
+- `getMyNotes()` — the `/notes` page list. Session client (owner RLS net); newest-edited first.
+- `getNotesForElaya(userId)` — the TURN read. **Admin client + explicit `user_id` scope** (the
+  channel-parity rule): an Elaya turn runs sessionless on WhatsApp where `auth.uid()` is NULL and a
+  session client returns [] (the silent-blank trap). Returns plain-text note blocks, newest-first,
+  capped at `ELAYA_NOTES_PROMPT_BUDGET` total chars so the fold stays inside the cached prompt
+  prefix. Fails soft to [] — a notes glitch never breaks a turn.
+
+**Prompt wiring:** `brain.ts` reads notes in its `Promise.all` and passes them to
+`buildElayaSystemPrompt(..., notes)`; `persona.ts` `buildNotesPromptBlock` renders a fenced CONTEXT
+block in the FROZEN (prompt-cached) prefix — `''` (zero bytes) for a user with no notes (max cache
+sharing). `retrieveMemoryContext` (memory.ts) is now real (returns `{ learned, notes }`) and stays
+the embedding-ready seam: when volume grows, swap its body to vector-retrieve only the relevant
+slices — the signature never changes (`vector` extension already installed).
+
+**Mutations (`actions/elaya-notes.ts`):** `upsertNote` / `deleteNote`. Zod-first (Rule 02);
+`requireProfile()` (any staff); **session client + owner RLS** is the enforcement (an INSERT writes
+`user_id = the authenticated caller`, never from the form — A-01); `sanitizeText` on title + body
+(Rule 06); `revalidatePath('/notes')`. Create enforces the soft `ELAYA_NOTES_MAX_PER_USER` cap.
+Bounds live in `lib/constants/elaya-notes.ts` (the single source the UI, schema, and retrieval cap
+all read). Zod in `validations/elaya-notes-schema.ts` (at least a title OR a body).
+
+**UI (`/notes` — a primary-nav page, all staff):** `page.tsx` (RSC seed) + `loading.tsx` +
+`components/notes/NotesManager.tsx` (card list — the `ElayaTrainingManager`/`AdCreativesManager`
+pattern: header + intro line + paper filter bar + note cards with relative-time + Edit/Delete +
+`ConfirmDialog` delete + `EmptyState`) + `NoteFormModal.tsx` (title + body, with the shared
+`DictationButton` inline voice cluster + a char counter). Sidebar `MAIN_NAV` entry (NotebookPen,
+beside Elaya); `/notes` added to `ALWAYS_ALLOWED_PREFIXES` (a personal surface every role reaches,
+like `/profile` + `/elaya` — reaching it grants nothing, RLS scopes the data). `npx tsc --noEmit`
+clean. Interim `ElayaNoteRow` in `types/elaya-notes.ts` (drops on `database.ts` regen).
+
+---
+
+## 2026-06-26 — Elaya customer channel: welcome-blast + conversational prospect Elaya (Blocks 3–4)
+
+**Why:** the outward-facing half of FEATURE 2 — when a brand-new number messages Indulge, Elaya
+welcomes the prospect like a world-class, psychology-trained concierge salesperson, then converses
+with them (KB-grounded) and shares material. A separate, hard-capped CUSTOMER persona, distinct from
+the staff Elaya. Built behind the real Gupshup template id env var (no-ops safely until set).
+
+**Architecture — the Golden Rule in code (a separate, narrower identity):**
+
+- **`ElayaPrincipal` is now a discriminated union** (`principal.ts`): `StaffPrincipal` (unchanged —
+  verified profile + role-gated read∪write toolset) | `CustomerPrincipal` (the LEAD identity, NOT a
+  profile, + a HARD-CAPPED customer toolset). `resolveCustomerPrincipal(lead)` is real (was a throwing
+  stub). The 6 staff-only consumers (brain/persona/memory/elaya-data/both tool registries) were
+  retyped to `StaffPrincipal` so the customer path literally cannot reach staff machinery.
+- **Customer toolset (`tools/customer-registry.ts`)** — exactly two tools, both lead-scoped:
+  `get_company_material` (read-only; pulls training assets for the lead's domain — the ONLY source of
+  company facts) + `note_customer_interest` (the ONE write; updates ONLY `principal.leadId`'s
+  `service_interests`, never a model-supplied id, never status, never anyone else). `executeCustomerTool`
+  refuses any name outside `CUSTOMER_TOOLSET`. No staff tool, no `executeTool`/`executeProposedAction`,
+  no CRM read is reachable — enforced in code, before the model runs.
+- **Customer persona (`customer-persona.ts`)** — the salesperson voice + hard guardrails (KB-only
+  facts, never invent a service/price, ₹ only, no other-customer/internal talk, never reveal it's an
+  AI/Serene). Sets voice + expectations only — never permission (that's the toolset).
+- **Customer brain (`customer-brain.ts`)** — `runCustomerTurn`: a SEPARATE, simpler tool loop (no
+  confirmation resolver, no staff persona/memory, no elaya_actions) sharing only the provider +
+  customer toolset. Surfaces the media `get_company_material` fetched so the orchestrator sends the
+  actual files.
+
+**Channel (`services/elaya-customer.ts` + the routing fork):**
+
+- **`maybeSendCustomerWelcome(lead)`** — the FIRST touch (the approved Gupshup welcome TEMPLATE, the
+  cold 24h-window rule), fired EXACTLY ONCE per lead via the `welcomed_at` stamp-then-send guard
+  (`UPDATE … WHERE welcomed_at IS NULL RETURNING`); rolls the stamp back on a non-delivered send so a
+  retry is possible.
+- **`handleCustomerReply(...)`** — on a lead's reply: dedup (caller's `wa_message_id`), resolve text
+  (voice→transcript via the shared Deepgram service / caption / text), read the recent
+  `whatsapp_messages` thread for history, run the customer brain, send the reply + any fetched media
+  (spaced, capped at 4/turn), and record each as a `sender_type:'bot'` outbound row in the
+  agent-visible `/whatsapp` thread. Gated on `bot_active`.
+- **Routing fork** at the END of `processInboundMessage` (`whatsapp-ingestion.ts`) — ADDITIVE: the lead
+  is still created, round-robin assigned, founder/agent notified, message recorded; THEN
+  `welcomed_at IS NULL` → welcome, else → reply. Dynamic-imported (server-only LLM deps out of the
+  module graph + Trigger scan; no cycle). Non-fatal. Staff gate stays FIRST (a staff number never hits
+  the customer layer). The customer transcript reuses the existing lead WhatsApp tables — no new
+  conversation infra (`elaya_conversations` is profile-keyed, staff-only by schema).
+- **Agent take-over fix** — `sendWhatsAppMessage` / `sendWhatsAppMediaMessage` (`actions/whatsapp.ts`)
+  now flip `bot_active=false` (+ `bot_paused_by/at`) when an agent replies, so Elaya stands down and
+  never talks over a human. (Previously they bumped only `last_message_at` — Elaya would have kept
+  auto-replying; caught in adversarial review.)
+
+**Senders (`whatsapp-api.ts`):** `sendCustomerWelcomeTemplate` (wraps `sendGupshupTemplate`, log type
+`customer_welcome`; NO-OPS until `GUPSHUP_CUSTOMER_WELCOME_TEMPLATE_ID` env var is set) +
+`sendCustomerWhatsAppReply` (free-form session reply, log type `customer_reply`). Welcome template id
+is env-driven (`constants/whatsapp.ts`) so the real approved id drops in with no code change.
+
+**Migration 0151** (`20260626000151_customer_welcome_blast.sql`, **LIVE on prod + verified**):
+`leads.welcomed_at` (the idempotency stamp) + widened `whatsapp_notification_logs.type` CHECK with
+`customer_welcome` + `customer_reply`. `leads.welcomed_at` hand-added to `database.ts` (Row/Insert/
+Update) in the interim. Typecheck clean.
+
+**Full design + safety checklist:** `docs/modules/customer-welcome-blast.md`.
+
+## 2026-06-26 — Elaya customer-training admin page (welcome-blast Block 2)
+
+**Why:** the first buildable block of the customer welcome-blast (FEATURE 2) — the admin surface
+where staff upload/curate the material Elaya draws on and sends to customers (brochures, work
+examples, testimonials, reviews, podcasts, images, videos, docs, links) + the company-facts brief.
+No outward sends yet; useful on its own. Decisions locked with the founder: write =
+manager/admin/founder; storage = a PUBLIC `elaya-training` bucket; all 10 asset kinds.
+
+**Built (cloned from the ad-creatives admin feature, R-01):**
+
+- **Migration 0150** (`20260626000150_elaya_training_assets.sql`, **LIVE on prod + verified**):
+  new `elaya_training_assets` table (kind/title/description/url/storage_path/tags[]/domain/send_order/
+  active + created_at/updated_at), RLS (all-authenticated read; **manager/admin/founder** write via
+  `(SELECT get_user_role())`), `kind` CHECK mirroring the 10 `TRAINING_ASSET_KINDS`, domain/active/
+  send_order indexes, shared `update_updated_at()` trigger. New **PUBLIC** `elaya-training` storage
+  bucket + 4 storage.objects policies (public read; manager+ write). Editable config table (NOT
+  append-only) — the ad_creatives posture.
+- **Constants** `lib/constants/elaya-training.ts`: 10 kinds via `defineEnum` + the media/link/text
+  input-mode partition (`trainingInputMode`) + `TRAINING_UPLOAD_HINTS` (per-kind accept/maxMb) +
+  `TRAINING_BUCKET`.
+- **Schema** `lib/validations/elaya-training-schema.ts`: upsert + delete with three cross-field
+  refines (link→url, fact→body, media→file|url), human messages.
+- **Service** `lib/services/elaya-training-service.ts`: `getAllTrainingAssets` (admin, created_at
+  DESC, session client) + `getTrainingAssetsForBlast(domain, interests?)` (the send-path read for
+  the NEXT block — **admin client** + explicit domain scope per the parity rule, since the customer
+  send runs sessionless; active + domain/global, send_order ASC, tags overlap). Parity documented
+  inline.
+- **Actions** `lib/actions/elaya-training.ts`: `upsertTrainingAsset` / `deleteTrainingAsset`
+  (manager/admin/founder gate, Zod-first, sanitizeText on text fields only, admin-client writes,
+  revalidate `/admin/elaya-training`). Singleton company-facts fold: a fresh `fact` for a domain that
+  already has one updates the existing row (one brief per domain, app-layer enforced).
+- **UI** `components/admin/ElayaTrainingManager.tsx` + `TrainingAssetFormModal.tsx`: card list + modal
+  cloned from AdCreatives; the company-facts brief pinned as a dedicated top card (or a "Set up
+  company facts" CTA); kind pills + kind-icon/thumbnail tiles; client-side upload to the public
+  `elaya-training` bucket → `getPublicUrl` (the load-bearing upload pattern, lifted from
+  AdCreativeFormModal); conditional fields by input mode (file-upload vs link vs text); tags chip
+  input; domain + send-order + active toggle; `EmptyState` (never "No data available").
+- **Route** `/admin/elaya-training` (page + loading) + Sidebar **Configuration** nav entry
+  (manager-inclusive via `getConfigurationNav`, self-gated by `canAccessRoute`) +
+  `MOBILE_TRIGGER_PATHS`. Reachability: added `/admin/elaya-training` to the **GIA `DOMAIN_ROUTE_MAP`**
+  (NOT `ALWAYS_ALLOWED_PREFIXES` — that would expose it to agents/guests); the page's role redirect is
+  the authorization boundary, the `/oversight` precedent.
+- **Company-facts brief** stored as the per-domain `kind='fact'` row (single read path through the
+  blast query + domain scope + the shared editor/RLS — chosen over an `elaya_settings` key).
+- Interim `lib/types/elaya-training.ts` row type pending `database.ts` regen (the revival/suggestions
+  precedent). Typecheck clean.
+
+## 2026-06-26 — Docs: `docs/modules/customer-welcome-blast.md` — FEATURE 2 design (awaiting sign-off)
+
+**Why:** the customer WhatsApp welcome-blast + training page is outward-facing and higher-risk
+(Elaya talking to customers, not staff), so it gets a design doc + founder sign-off BEFORE code.
+
+**What:** the implementation-ready design — grounded in the real code (verified the webhook routing
+fork, the `processInboundMessage` new-lead path, `resolveCustomerPrincipal`'s throwing stub, the
+ad-creatives feature to clone, the Gupshup media-send-by-URL contract). Covers: the two locked
+founder decisions (approved welcome template → conversational blast on reply; fully autonomous
+customer Elaya within hard guardrails); the Golden Rule for the customer persona (a hard-capped
+toolset with ZERO staff/CRM access, enforced in code); the routing fork + one-blast-per-lead
+idempotency (stamp-then-send guard); the `elaya_training_assets` table + admin page (ad-creatives
+clone) + company-facts brief + public-vs-private bucket call; the customer principal + persona; the
+welcome-blast orchestrator; a code-enforced safety checklist; the 5-step build order; and the open
+decisions for the founder (template approval, bucket, manager access, the one KB-write tool, v1 asset
+scope). **Docs only — no code.**
+
+## 2026-06-26 — Elaya: `log_deal` write tool — record a won deal from chat (FEATURE 1)
+
+**Why:** Elaya could log calls, notes, tasks and status changes on a lead, but not the moment that
+matters most — the agent closing the sale. `log_deal` lets staff record a won deal conversationally
+("I closed Akhil on the annual membership for 1,20,000"). Recording money + flipping the lead to Won
+is a real, reportable record, so it's a **propose → confirm** tool (like `update_lead_status`).
+
+**The shared core (R-01 — no duplicated insert):**
+
+- **`recordDealCore`** added to `services/lead-mutations.ts` — THE context-free body of recording a
+  won deal: derives `deal_type` from the lead's domain (`resolveDealShapeForDomain`), inserts the
+  `deals` row (admin client), then flips the lead to Won via `updateLeadStatusCore` (so the lead
+  inherits the full Won side-effect set — `lead_won` fan-out, terminal-SLA cancel, cache
+  invalidation). Takes a principal-derived `MutationActor`; the caller has already fetched + access-
+  checked the lead. Order guarantee (insert before flip; orphan-safe on flip failure) lives in the
+  core. It does NOT fire `deal_created` — the `lead_won` fan-out already reaches the same recipients
+  (exactly why the walk-in `notifyDealCreated` stays walk-in-only).
+- **`recordDeal` action** (`actions/deals.ts`) refactored to call `recordDealCore` — the action keeps
+  Zod → `requireProfile` → `hasAccess` → core → `revalidatePath`. Both the action (session) and the
+  Elaya tool (sessionless) now run the IDENTICAL deal write.
+- **`resolveDealShapeForDomain`** (+ `DealShape`/`DealShapeInput` types) **moved** from `actions/deals.ts`
+  to `constants/deal-types.ts` so both the action AND the service-layer core import the ONE resolver
+  (a service can't import an action — no circular dep). Behaviour byte-identical; the DB CHECKs
+  (migration 0122) remain the backstop. Verified against prod: `deals` CHECK constraints match the
+  resolver exactly.
+
+**The tool (`tools/write-registry.ts`):**
+
+- `log_deal` — STATE-CHANGING (propose only), all staff. Input: `leadId`, `amount` (₹), optional
+  `durationMonths` (3/6/12 — membership) / `category` (retail). `deal_type` is DERIVED from the lead's
+  domain, never model-supplied. The shape is validated at **propose time** so the model can ask the
+  user for the missing piece ("which membership length?") in plain language BEFORE recording the
+  proposal; the code-resolved shape (not raw model input) is stored and re-run by the resolver. The
+  confirmation line is code-derived (amount via `formatCurrency` + type), so the model can't fabricate
+  it. The deal insert + Won flip land ONLY in `executeProposedAction`'s new `log_deal` branch.
+- `'log_deal'` added to `ElayaActionType` (`elaya-actions-service.ts`) — verified there is NO DB CHECK
+  on `elaya_actions.action_type`, so **no migration**.
+- Persona (`persona.ts`): added "record a deal" to the capability list + the "waits for a yes" list,
+  with the domain-derived-type guidance and the ₹-only rule. Tool-status label in `ElayaChatShell.tsx`.
+
+**Parity:** principal-scoped + admin-client throughout → works identically in-app and on WhatsApp.
+The 10 write tools → **11**. Typecheck clean. No migration. `src/lib/elaya/CLAUDE.md` + root `CLAUDE.md`
+write-tool tables updated.
+
 ## 2026-06-26 — Docs: `docs/the-next-phase.md` — session handoff prompt for the next Elaya work
 
 **Why:** the working session that built the Elaya audit fixes + the "Jarvis" Phases 1–4 + the polish

@@ -2,7 +2,7 @@
 
 > **Purpose:** the three caching layers — Upstash Redis cache-aside, React `cache()`, and `unstable_cache` — with the key registry, TTLs, and invalidation contracts.
 > **Audience:** engineers. · **Source-of-truth scope:** cache architecture and invariants. Connection/provider setup lives in `../integrations/upstash-redis.md`; exact per-function TTL values are maintained code-adjacent in `src/lib/CLAUDE.md` (services registry).
-> **Last verified:** 2026-06-15 against `src/lib/redis.ts`, `src/lib/constants/redis-keys.ts`, `src/lib/services/lead-cache.ts`, `src/lib/services/intelligence-service.ts`, `src/lib/CLAUDE.md`.
+> **Last verified:** 2026-06-26 against `src/lib/redis.ts`, `src/lib/constants/redis-keys.ts`, `src/lib/services/lead-cache.ts`, `src/lib/services/intelligence-service.ts`, `src/lib/CLAUDE.md`. No cache-layer changes since 2026-06-15 — the recent Elaya "Jarvis" reads run on the admin client with NO Redis cache-aside (live every turn, the always-live posture §2 already describes); `/oversight` reads are uncached (live `task_events` rails); `ad-spend-service` (recharges) stays always-live (no Redis, §2). `task:personal page-1` bumped to a `…:v2` key (0145 widened the row shape) — same namespace, retire-on-read.
 
 ---
 

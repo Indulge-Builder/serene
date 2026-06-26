@@ -17,6 +17,7 @@ Thin orchestrators in `src/app/`. Data fetching lives in async children (`*Async
 | `(dashboard)/helpdesk` | `docs/modules/call-intelligence.md` — RSC library fetch, client-side filter only |
 | `(dashboard)/escalations` | `docs/pages/escalations.md` — manager+ breach surface; live sla-service reads, no cache |
 | `(dashboard)/elaya` | `docs/modules/elaya.md` — Elaya chat (all roles); RSC seeds conversation + transcript; client streams from `/api/elaya/chat` |
+| `(dashboard)/notes` | `(dashboard)/notes/CLAUDE.md` — the per-user Notes section (Jarvis Feature 3, all staff); RSC seeds `getMyNotes`; owner-only RLS; Elaya reads them as CONTEXT (never permission) via `retrieveMemoryContext` |
 | `api/elaya/chat` | `docs/modules/elaya.md` — THE Elaya SSE endpoint (sanctioned P-02 exception); auth → burst limit → Zod → daily cap, all before any model call |
 | `api/manifest` | dynamic per-icon Web App Manifest (sanctioned PWA P-02 carve-out — static JSON, the dynamic twin of `app/manifest.ts`). `GET ?icon=<key>` → validate via `isIconKey` (fallback `DEFAULT_ICON`) → `buildManifest(icon)`. No DB/session/business logic; fetched outside any auth context (proxy bypass). The root layout's `generateMetadata` points `<link rel="manifest">` here so an install bakes the user's saved icon. |
 | `(dashboard)/profile` | — |

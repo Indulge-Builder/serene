@@ -7,7 +7,7 @@
 
 import { resolveLlmForJob } from '@/lib/elaya/registry';
 import type { LlmChatMessage } from '@/lib/elaya/provider';
-import type { ElayaPrincipal } from '@/lib/elaya/principal';
+import type { StaffPrincipal } from '@/lib/elaya/principal';
 import { buildElayaSystemPrompt, buildElayaTimeContext } from '@/lib/elaya/persona';
 import { executeTool, getToolDefinitionsForPrincipal } from '@/lib/elaya/tools/registry';
 import { executeProposedAction } from '@/lib/elaya/tools/write-registry';
@@ -17,6 +17,7 @@ import {
   markActionResolved,
 } from '@/lib/services/elaya-actions-service';
 import { getModelContextMessages, getUserPersona } from '@/lib/services/elaya-service';
+import { getNotesForElaya } from '@/lib/services/elaya-notes-service';
 import { getPiiMaskingDepth } from '@/lib/services/llm-providers-service';
 import type { ElayaChannel, ElayaMessageRow, ElayaToolCallRecord } from '@/lib/types/elaya';
 
@@ -64,24 +65,28 @@ export type ElayaTurnResult = {
  * history ends with the new user message.
  */
 export async function runElayaTurn(args: {
-  principal: ElayaPrincipal;
+  principal: StaffPrincipal;
   conversationId: string;
   emit: (event: ElayaTurnEvent) => void;
   channel?: ElayaChannel;
 }): Promise<ElayaTurnResult> {
   const { principal, conversationId, emit, channel = 'in_app' } = args;
 
-  const [llm, maskingDepth, persona, history] = await Promise.all([
+  const [llm, maskingDepth, persona, notes, history] = await Promise.all([
     resolveLlmForJob('reasoning'),
     getPiiMaskingDepth(),
     // Per-user persona (style prefs + Elaya-learned facts) — folded into the prompt
     // as a fenced STYLE-ONLY block (Jarvis Phase 2). Admin-client read → works on
     // both channels. Empty for a user who hasn't tuned anything (zero prompt bytes).
     getUserPersona(principal.userId),
+    // The user's own free-form notes (Feature 3 / Block 4) — folded as CONTEXT, never
+    // permission. Admin-client + code-scoped to principal.userId → works on both
+    // channels; budget-trimmed; [] for a user with no notes (zero prompt bytes).
+    getNotesForElaya(principal.userId),
     getModelContextMessages(conversationId),
   ]);
 
-  const system = buildElayaSystemPrompt(principal, persona, channel);
+  const system = buildElayaSystemPrompt(principal, persona, channel, notes);
   const tools = getToolDefinitionsForPrincipal(principal);
 
   let fullText = '';
@@ -244,7 +249,7 @@ export async function runElayaTurn(args: {
  *     or hit the iteration ceiling) is never confirmable by a stray affirmative.
  */
 async function resolvePendingAction(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   conversationId: string,
   history: ElayaMessageRow[],
 ): Promise<string | null> {

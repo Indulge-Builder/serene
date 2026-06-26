@@ -163,7 +163,7 @@ Three tiers, retrieved per turn, merged into context:
 | **P2** | **Persona scaffolding.** Extend `user_context` (persona/learned split); persona settings UI (/profile); fenced style-only injection (bounded, cached). | Sets the per-user contract; immediately makes Elaya feel personal. | M |
 | **P3** | **Memory writer + notes seam.** Post-turn summarizer (Haiku) → `user_context.learned`; define `elayaMemory.retrieve()` interface (load-all impl now, embedding-ready). | Turns on "gets smarter"; readies the notes section. | M |
 | **P4** | **Capability tools.** Manager oversight (escalations / overdue / cold / domain-health) + founder business reads (budget / campaigns / usage / targets) + write tools (record-deal, send-WhatsApp-to-lead as propose-tier). All drop into the P1 data layer → both-channel by default. | Features, once the foundation holds them safely. | M each |
-| **P5 (later)** | Notes section UI; semantic retrieval (embeddings); super-powers (web). | After the skeleton is proven. | L |
+| **P5** | **Notes section ✅ SHIPPED (2026-06-26, Feature 3).** `elaya_notes` table (owner-only RLS, migration 0152) + the `/notes` page (all staff) + `retrieveMemoryContext` now LIVE (`{ learned, notes }`, principal-scoped, channel-parity) → folded into the prompt as a CONTEXT block (persona.ts `buildNotesPromptBlock`, budget-capped, in the cached prefix). Still load-all; semantic retrieval (embeddings) + super-powers (web) remain the next step behind the unchanged seam signature. | After the skeleton is proven. | L |
 
 Each phase is independently shippable and reviewable. Recommended: **P1 first, pause for review**, then proceed.
 

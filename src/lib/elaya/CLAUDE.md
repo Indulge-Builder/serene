@@ -18,14 +18,35 @@ registry.ts (tools/)   ← the 11 READ-only tools + THE single executeTool dispa
                           the oversight tools. 7 all-staff reads + get_escalations/get_domain_health/
                           get_campaigns (manager+) + get_budget (admin/founder)
 tools/write-registry.ts← ALL write tools + executeProposedAction (resolver-only executor)
-principal.ts           ← verified profile → role + persona + permitted toolset
-persona.ts             ← system prompt (sets expectations; NEVER the enforcement mechanism). Folds the
+principal.ts           ← identity → principal. ElayaPrincipal is a DISCRIMINATED UNION: StaffPrincipal
+                          (verified profile → role + the role-gated read∪write toolset) | CustomerPrincipal
+                          (FEATURE 2 — the LEAD identity, NOT a profile, + the HARD-CAPPED CUSTOMER_TOOLSET).
+                          resolveStaffPrincipal / resolveCustomerPrincipal(lead). The staff brain/persona/
+                          tools take StaffPrincipal specifically (so the customer path can't reach staff code).
+persona.ts             ← STAFF system prompt (sets expectations; NEVER the enforcement mechanism). Folds the
                           per-user persona prefs + learned memory in via buildPersonaPromptBlock (STYLE
-                          ONLY — never a permission). Persona vocab: constants/elaya-persona.ts
+                          ONLY — never a permission) + the user's free-form NOTES via buildNotesPromptBlock
+                          (Feature 3 — CONTEXT to remember, never permission; '' = zero bytes when none, so
+                          a no-notes user keeps the shared cache prefix). Persona vocab: constants/elaya-persona.ts
+customer-persona.ts    ← (FEATURE 2) the CUSTOMER system prompt — the psychology-trained concierge
+                          salesperson voice + hard guardrails (KB-only facts, ₹ only, no AI/Serene reveal,
+                          no other-customer/internal talk). Voice + expectations only — never permission.
+customer-brain.ts      ← (FEATURE 2) runCustomerTurn — a SEPARATE, simpler tool loop for the outward
+                          customer channel (NO confirmation resolver, NO staff persona/memory, NO
+                          elaya_actions). Shares only the provider contract + the customer toolset. Surfaces
+                          the media get_company_material fetched so the orchestrator sends the actual files.
+tools/customer-registry.ts ← (FEATURE 2) THE customer toolset + dispatch. CUSTOMER_TOOLSET = exactly two
+                          lead-scoped tools (get_company_material read-only KB; note_customer_interest writes
+                          ONLY principal.leadId's service_interests). executeCustomerTool refuses anything
+                          outside it — the Golden Rule's hard edge. NO staff tool / executeTool / CRM read is
+                          reachable from a customer turn, by construction.
 memory.ts              ← (Jarvis Phase 3) the learned-memory summarizer (bounded Haiku, reuses
                           provider+PII) + maybeUpdateLearnedMemory (throttled post-turn writer, called
-                          by the SSE route + WhatsApp gate, non-fatal) + retrieveMemoryContext (the
-                          notes-section seam, embedding-ready). learned lives in user_context.context.learned
+                          by the SSE route + WhatsApp gate, non-fatal) + retrieveMemoryContext — the
+                          notes-section seam, now LIVE (Feature 3): returns { learned, notes } scoped to
+                          the principal (getNotesForElaya, admin-client, channel-parity), still
+                          embedding-ready (swap the body to vector-retrieve, signature unchanged).
+                          learned lives in user_context.context.learned; notes live in elaya_notes (0152)
 pii.ts                 ← maskPii() — THE PII gateway every tool result passes before a model sees it
 confirmation.ts        ← classifyConfirmation() — pure English+Hinglish affirmation gate
 brain.ts               ← the tool loop + the confirmation RESOLVER pre-step (the ONLY place a
@@ -73,13 +94,16 @@ Two risk tiers, split in code — never by the prompt:
 - **STATE-CHANGING — propose only.** `run()` does NOT mutate: it `supersedePriorProposals` +
   `insertProposedAction` (with a before-snapshot) and returns "awaiting confirmation". The mutation
   lands ONLY in the brain resolver (`executeProposedAction`) on an affirmative human reply. Lead:
-  `update_lead_status`, `reassign_lead`. Task: `delete_task`.
+  `update_lead_status`, `reassign_lead`, `log_deal` (money + a Won flip). Task: `delete_task`.
+  `log_deal` validates the deal SHAPE (domain → membership-needs-duration / retail-needs-category)
+  at propose time so the model can ask for the missing piece BEFORE the proposal; the resolved
+  shape (not raw model input) is what the resolver re-runs.
 
 `STATE_CHANGING` (the set in `write-registry.ts`) and the per-tool `run()` shape are what make
 "execute a state-change in its proposal turn" structurally impossible — a state tool's `run()` has
 **no branch that reaches a core**.
 
-## The 10 write tools
+## The 11 write tools
 
 | Tool | Tier | Roles | Wraps (core) |
 | --- | --- | --- | --- |
@@ -88,6 +112,7 @@ Two risk tiers, split in code — never by the prompt:
 | `create_lead_task` | inline | all staff | `createLeadTaskCore` |
 | `update_lead_status` | propose | all staff | `updateLeadStatusCore` |
 | `reassign_lead` | propose | manager+ | `assignLeadCore` |
+| `log_deal` | **propose** | all staff | `recordDealCore` (resolver only) — inserts the deal (type DERIVED from the lead's domain) + flips the lead to Won via `updateLeadStatusCore`. The SAME core the `recordDeal` action runs. |
 | `create_personal_task` | inline | all staff (assign-another: manager+) | `createPersonalTaskCore` |
 | `create_group_task` | inline | all staff | `createGroupTaskCore` |
 | `update_task_status` | inline | all staff | `updateTaskStatusCore` |

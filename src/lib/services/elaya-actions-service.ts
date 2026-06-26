@@ -28,6 +28,9 @@ export type ElayaActionType =
   | "create_lead_task"
   | "update_lead_status"
   | "reassign_lead"
+  // log_deal — lead-shaped target. State-changing (propose → confirm): records a
+  // won deal AND flips the lead to Won. No DB CHECK on action_type → no migration.
+  | "log_deal"
   // Task writes (Brief 3) — task-shaped target. create_*/update_* execute inline;
   // delete_task is the only state-changing tier (propose → confirm → execute).
   | "create_personal_task"

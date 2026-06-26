@@ -11,6 +11,8 @@ import {
   GUPSHUP_SLA_AGENT_TEMPLATE_ID,
   GUPSHUP_SLA_MANAGER_TEMPLATE_ID,
   GUPSHUP_LEAD_INITIATION_TEMPLATE_ID,
+  GUPSHUP_CUSTOMER_WELCOME_TEMPLATE_ID,
+  CUSTOMER_WELCOME_TEMPLATE_CONFIGURED,
   GUPSHUP_TASK_DUE_REMINDER_TEMPLATE_ID,
   GUPSHUP_TASK_OVERDUE_MANAGER_TEMPLATE_ID,
   GUPSHUP_TASK_DUE_SOON_TEMPLATE_ID,
@@ -376,7 +378,7 @@ function isGupshupDelivered(httpOk: boolean, body: string): boolean {
 // ─────────────────────────────────────────────
 
 interface NotificationLogEntry {
-  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'task_due_soon' | 'task_overdue_agent' | 'task_overdue_manager_generic' | 'elaya_reply';
+  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'task_due_soon' | 'task_overdue_agent' | 'task_overdue_manager_generic' | 'elaya_reply' | 'customer_welcome' | 'customer_reply';
   leadId?:        string | null;
   recipientId?:   string | null;
   recipientPhone: string;
@@ -1015,6 +1017,92 @@ export async function sendLeadInitiationMessage(
     contacts: [],
     messages: [{ id: messageId }],
   };
+}
+
+// ─────────────────────────────────────────────
+// Customer welcome-blast senders (FEATURE 2 — the outward-facing customer channel)
+// ─────────────────────────────────────────────
+
+/**
+ * The FIRST message to a brand-new prospect number — an approved Gupshup TEMPLATE
+ * (the 24h free-form window only opens once they reply). Wraps sendGupshupTemplate
+ * with the one-log-row-per-attempt contract (type 'customer_welcome', migration 0151).
+ *
+ * NO-OP GUARD: until a real approved template id is set via GUPSHUP_CUSTOMER_WELCOME_
+ * TEMPLATE_ID, this returns false WITHOUT sending — so the orchestrator wires end-to-end
+ * but never fires a half-configured template at a real customer. Returns whether a send
+ * was actually attempted+delivered. Never throws (the welcome must never break the lead
+ * pipeline it rides on).
+ *
+ * Param {{1}} = the customer's first name (or "there"). Adjust templateParams here to match
+ * the approved template's variable list when it lands.
+ */
+export async function sendCustomerWelcomeTemplate(
+  to:           string,
+  customerName: string,
+  leadId:       string,
+): Promise<boolean> {
+  if (!CUSTOMER_WELCOME_TEMPLATE_CONFIGURED) {
+    console.warn(
+      '[whatsapp-api] sendCustomerWelcomeTemplate skipped — GUPSHUP_CUSTOMER_WELCOME_TEMPLATE_ID not set',
+    );
+    return false;
+  }
+  const destination = to.replace(/^\+/, '');
+  try {
+    const { delivered } = await sendGupshupTemplate({
+      templateId:     GUPSHUP_CUSTOMER_WELCOME_TEMPLATE_ID,
+      destination:    to,
+      templateParams: [customerName],
+      label:          'Customer welcome',
+      logRecipient:   `lead ...${destination.slice(-4)}`,
+      log: {
+        type:      'customer_welcome',
+        leadId,
+        leadPhone: destination,
+      },
+    });
+    return delivered;
+  } catch (err) {
+    // sendGupshupTemplate (no throwOnError) doesn't throw, but be defensive — a welcome
+    // failure must never bubble into the lead pipeline.
+    console.error('[whatsapp-api] sendCustomerWelcomeTemplate failed (non-fatal):', err);
+    return false;
+  }
+}
+
+/**
+ * A free-form session reply to a CUSTOMER inside the open 24h window — the blast material
+ * + conversational replies. The twin of sendElayaWhatsAppReply but for the customer
+ * channel (log type 'customer_reply', migration 0151). Wraps sendTextMessage with the
+ * one-log-row-per-attempt finally contract. Never throws.
+ */
+export async function sendCustomerWhatsAppReply(
+  to:     string,
+  text:   string,
+  leadId: string,
+): Promise<boolean> {
+  let delivered   = false;
+  let gupshupBody = '';
+  try {
+    const res   = await sendTextMessage(to, text);
+    delivered   = true;
+    gupshupBody = `messageId: ${res.messages[0]?.id ?? ''}`;
+    console.log(`[whatsapp-api] Customer reply sent to lead ${leadId}`);
+  } catch (err) {
+    gupshupBody = String(err);
+    console.error(`[whatsapp-api] Customer reply failed for lead ${leadId}:`, err);
+  } finally {
+    await logNotification({
+      type:           'customer_reply',
+      leadId,
+      recipientPhone: to.replace(/^\+/, ''),
+      gupshupStatus:  delivered ? 200 : 0,
+      gupshupBody,
+      delivered,
+    });
+  }
+  return delivered;
 }
 
 export { WEBHOOK_VERIFY_TOKEN, BUSINESS_ACCOUNT_ID };

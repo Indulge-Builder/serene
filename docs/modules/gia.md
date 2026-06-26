@@ -2,7 +2,7 @@
 
 > **Purpose:** what Gia is — the lead lifecycle, the end-to-end flow from ad to deal, the SLA engine, and the map of Gia surfaces.
 > **Audience:** engineers (+ a readable narrative for anyone technical). · **Source-of-truth scope:** module narrative, lifecycle semantics, SLA business rules. Page mechanics live in `../pages/*.md`; ingestion in `../integrations/lead-ingestion.md`; WhatsApp in `../integrations/whatsapp-gupshup.md`.
-> **Last verified:** 2026-06-11 (rewritten from the retired `The_Gia.md`; pre-0072 deal-column claims and pre-0061 scratchpad claims corrected).
+> **Last verified:** 2026-06-26 (added `/escalations` + `/oversight` to the surface map; status updated — call intelligence and lead revival are now live; managers joined the round-robin pool, 0124). The lifecycle + SLA business rules below are unchanged since the 2026-06-11 rewrite.
 
 ---
 
@@ -160,13 +160,18 @@ only — SLA-01 is never refreshed by activity, only by leaving `new`.
 | `/performance` | `../pages/performance.md` |
 | `/whatsapp` inbox | `../pages/whatsapp.md` |
 | `/tasks` Gia tab | `../pages/tasks.md` |
+| `/escalations` (SLA breaches · overdue tasks · going cold) | `../pages/escalations.md` |
+| `/oversight` (manager+ 3-tier work-in-progress drill) | `../oversight.md` |
 | Dashboard Gia widgets | `../pages/dashboard.md` |
 | `/error-log` | `../pages/error-log.md` |
 
 ## 6. Status
 
-**Live in production use.** Shipped: ingestion (both pipelines), round-robin, full lifecycle,
-dossier, deals, campaigns, performance, WhatsApp inbox, SLA engine, notifications, Redis
-caching, export. In design/planned: the WhatsApp AI chatbot (auto-engagement until the agent
-takes over — schema columns exist, no code), client records (post-won flow), call
-intelligence (`call-intelligence.md`).
+**Live in production use.** Shipped: ingestion (both pipelines), round-robin (managers now in the
+pool, 0124), full lifecycle, dossier, deals, campaigns, performance, WhatsApp inbox (incl. inbound/
+outbound media), SLA engine, notifications (+ Web Push), Redis caching, export, `/escalations`,
+`/oversight`, **call intelligence / helpdesk (Phase 1)** (`call-intelligence.md`), and **lead
+revival (R1)** (`revival.md`). In design/planned: the **customer-facing** WhatsApp AI chatbot
+(auto-engagement until the agent takes over — schema columns exist, no code; designed in
+`customer-welcome-blast.md`) and client records (post-won flow). (The Elaya **staff** WhatsApp
+channel is already live — `elaya.md`.)

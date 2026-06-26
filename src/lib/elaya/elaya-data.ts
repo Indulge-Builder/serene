@@ -3,7 +3,7 @@
 //
 // THE PARITY RULE (Phase 1 — docs/architecture/elaya-jarvis-architecture.md):
 //   Every read an Elaya tool performs goes through a function HERE. Each one:
-//     1. takes the verified ElayaPrincipal (identity is NEVER channel- or model-derived),
+//     1. takes the verified StaffPrincipal (identity is NEVER channel- or model-derived),
 //     2. uses the ADMIN client (works in the sessionless WhatsApp webhook AND in-app),
 //     3. scopes by the principal's role/userId/domain IN CODE (never auth.uid()),
 //   so a tool works IDENTICALLY on both channels by construction. A tool must call ONLY
@@ -19,11 +19,11 @@
 // code. RLS/auth.uid() cannot be used in the sessionless context, so the access decision
 // MUST live in code — exactly the searchLeadsForElaya / getGiaTasksForUser precedent.
 //
-// Adding a new Elaya read: add a function here that takes ElayaPrincipal + filter values,
+// Adding a new Elaya read: add a function here that takes StaffPrincipal + filter values,
 // reuses an existing principal-first service (or a *ForElaya admin twin), and returns a
 // shaped result. The tool calls it. Never let a tool reach past this module.
 
-import type { ElayaPrincipal } from '@/lib/elaya/principal';
+import type { StaffPrincipal } from '@/lib/elaya/principal';
 import type { ElayaChannel } from '@/lib/types/elaya';
 import type { LeadStatus, AppDomain, CampaignMetrics } from '@/lib/types/database';
 
@@ -80,7 +80,7 @@ import type { DealFilters } from '@/lib/types/database';
 /** Scoped lead search — agent: own; manager: domain; admin/founder: all. Already
  *  admin-client + principal-scoped (searchLeadsForElaya), so both channels work. */
 export function searchLeads(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   opts: { search: string | null; statuses: LeadStatus[] | null; page: number; pageSize: number },
 ): Promise<LeadsResult> {
   return searchLeadsForElaya(principal.role, principal.userId, principal.domain, opts);
@@ -89,7 +89,7 @@ export function searchLeads(
 /** Domain-scoped owner hint for an agent whose own-scoped search came back empty —
  *  name + owner only (no slug/id/phone). Read-only; never widens access. */
 export function findOwnersInDomain(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   search: string,
 ): Promise<{ name: string; owner: string }[]> {
   return findDomainLeadOwners(principal.domain, search);
@@ -107,7 +107,7 @@ export function getLeadNotes(leadId: string): Promise<LeadNoteWithAuthor[]> {
 
 /** Going-cold leads — agent: own; manager: domain; admin/founder: all domains.
  *  getGoingColdLeads is admin-client + explicit scope, so both channels work. */
-export function getColdLeads(principal: ElayaPrincipal) {
+export function getColdLeads(principal: StaffPrincipal) {
   const scope =
     principal.role === 'agent'
       ? { assignedTo: principal.userId }
@@ -124,7 +124,7 @@ export function getColdLeads(principal: ElayaPrincipal) {
 /** Closed deals — agent: own; manager: domain; admin/founder: all. Admin-client
  *  twin (getDealsByRoleForElaya), so both channels work. */
 export function searchDeals(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   filters: DealFilters,
 ): Promise<DealsResult> {
   return getDealsByRoleForElaya(principal.role, principal.userId, principal.domain, filters);
@@ -135,14 +135,14 @@ export function searchDeals(
 // ─────────────────────────────────────────────
 
 /** Gia lead-follow-up tasks — admin client + explicit params, both channels. */
-export function getGiaTasks(principal: ElayaPrincipal): Promise<GiaTask[]> {
+export function getGiaTasks(principal: StaffPrincipal): Promise<GiaTask[]> {
   return getGiaTasksForUser(principal.userId, principal.role, principal.domain);
 }
 
 /** Personal to-dos — get_personal_tasks scopes purely on p_user_id; inject the admin
  *  client so it works in the sessionless context too. Both channels. */
 export function getPersonalTasksFor(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   limit = 20,
 ): Promise<PersonalTasksResult> {
   return getPersonalTasks(principal.userId, { limit }, createAdminClient());
@@ -151,7 +151,7 @@ export function getPersonalTasksFor(
 /** Group/team workspaces — get_group_task_summaries_for_user(p_user_id) is the explicit-
  *  param admin twin of the auth.uid()-scoped get_group_task_summaries, so this works on
  *  WhatsApp now (previously WhatsApp got an empty list / "open the app"). Both channels. */
-export function getGroupTasksFor(principal: ElayaPrincipal): Promise<TaskGroupRow[]> {
+export function getGroupTasksFor(principal: StaffPrincipal): Promise<TaskGroupRow[]> {
   return getGroupTasksForUser(principal.userId);
 }
 
@@ -162,7 +162,7 @@ export function getGroupTasksFor(principal: ElayaPrincipal): Promise<TaskGroupRo
 /** Agent's own pulse — explicit-param admin twin (get_agent_today_pulse_for_user).
  *  Both channels. */
 export function getAgentPulse(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   period: 'today' | 'this_week' | 'this_month' | 'last_month',
 ): Promise<AgentTodayPulse> {
   return getAgentTodayPulseForUser(principal.userId, period);
@@ -172,7 +172,7 @@ export function getAgentPulse(
  *  (get_agent_roster_performance honours p_domain; manager pinned to own domain in code
  *  here, admin/founder → null = all). Both channels. */
 export function getRoster(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   period: 'today' | 'this_week' | 'this_month' | 'last_month',
 ): Promise<AgentRosterRow[]> {
   const range = getPeriodDateRange(period);
@@ -212,18 +212,18 @@ export function getHelpdeskFullLibrary(domain: Parameters<typeof getHelpdeskLibr
 
 /** The domain scope an oversight read uses: manager pinned to own domain, admin/founder
  *  see all (null). Agents never reach these (the tool is manager+). */
-function oversightDomain(principal: ElayaPrincipal): AppDomain | null {
+function oversightDomain(principal: StaffPrincipal): AppDomain | null {
   return principal.role === 'manager' ? principal.domain : null;
 }
 
 export function getEscalations(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
 ): Promise<EscalatedLeadRow[]> {
   return getEscalatedLeads(oversightDomain(principal));
 }
 
 export function getOverdueTasks(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
 ): Promise<OverdueTaskEscalationRow[]> {
   return getOverdueGiaTasks(oversightDomain(principal));
 }
@@ -240,7 +240,7 @@ function oversightRange(period: OversightPeriod): { from: string; to: string } {
 /** Domain-health cards. Manager → only their own domain; admin/founder → all GIA
  *  domains. */
 export function getDomainHealth(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   period: OversightPeriod,
 ): Promise<DomainHealthCard[]> {
   const domains: AppDomain[] =
@@ -252,7 +252,7 @@ export function getDomainHealth(
 /** Campaign performance mix. getCampaignMetrics pins a manager to their own domain
  *  in code (the role+callerDomain it takes); admin/founder see all. */
 export function getCampaigns(
-  principal: ElayaPrincipal,
+  principal: StaffPrincipal,
   period: OversightPeriod,
 ): Promise<CampaignMetrics[]> {
   const { from, to } = oversightRange(period);

@@ -36,7 +36,11 @@ keeps its terminal/dormant status; revival adds a task + a candidate ledger row 
 
 **Judge-once:** the silence finder anti-joins leads that already hold a candidate of **any** status
 (open/actioned/dismissed) — a judged lead is never re-judged, so a `dismissed` lead doesn't re-enter
-the pool nightly, get re-dismissed, and pile up duplicate rows + burn a gate call.
+the pool nightly, get re-dismissed, and pile up duplicate rows + burn a gate call. Since **migration
+0128** this anti-join runs **in SQL** (`get_silent_leads_for_revival` — a bounded `NOT EXISTS`,
+scope-param/EXECUTE-revoked, admin-client only); the prior Node version SELECTed every candidate
+`lead_id` into a JS Set and inflated the leads LIMIT by its size — both growing unbounded with the
+ledger. Semantics are byte-identical.
 
 ## The hard reuse contracts (sign-off invariants — never weaken)
 

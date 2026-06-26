@@ -2,7 +2,13 @@
 
 Finance view of Meta advertising: **what we spent per campaign** and **what we
 recharged per ad account**, with cost-per-lead / cost-per-deal outcomes and a
-per-account balance. Manager+ read; admin/founder upload spend and add recharges.
+per-account balance. **Admin/founder only** — the `/budget` page redirects
+managers to `/dashboard`, the dashboard Campaign-Budget widget is admin/founder-
+only, and `/budget` is out of `DOMAIN_ROUTE_MAP` for managers (restricted
+2026-06-25; managers previously had read access). The underlying table RLS is
+unchanged — `ad_spend_daily`/`ad_account_recharges` still grant manager+ SELECT
+at the DB layer — but no manager-facing surface reads them. Admin/founder upload
+spend and add recharges.
 
 ## Two data planes
 

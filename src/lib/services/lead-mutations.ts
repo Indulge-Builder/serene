@@ -43,6 +43,12 @@ import {
 } from "@/lib/actions/sla";
 import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
 import {
+  resolveDealShapeForDomain,
+  type DealCategory,
+  type DealDuration,
+} from "@/lib/constants/deal-types";
+import { isGiaDomain, type GiaDomain } from "@/lib/constants/domains";
+import {
   REVIVAL_TASK_TYPE,
   REVIVAL_TASK_PRIORITY,
   REVIVAL_TASK_MARKER,
@@ -456,6 +462,116 @@ export async function updateLeadStatusCore(
       oldStatus: result.old_status ?? null,
       newStatus: result.new_status ?? null,
     },
+  };
+}
+
+// ─────────────────────────────────────────────
+// recordDealCore — THE shared body of recording a won deal (FEATURE 1 / log_deal).
+//
+// Why a core (R-01 / Q-13): the recordDeal ACTION (deals.ts) begins with a SESSION
+// (requireProfile) + the admin-client insert + a lead→won flip. Elaya's log_deal
+// write tool must record the IDENTICAL deal from a sessionless context (WhatsApp
+// webhook / the SSE stream after the cookie session is gone), with the Elaya
+// principal as the actor. So the context-free body lives here, taking an explicit
+// MutationActor; both the action and the Elaya proposal-resolver are thin callers.
+//
+// Order guarantee (mirrors the action): the deals INSERT must succeed BEFORE the
+// status flip. If the insert fails, the lead is NOT flipped. If the flip fails, the
+// orphaned deal row is harmless (no lead is won, so it won't appear on /deals via
+// the role-scoped query).
+//
+// The Won flip reuses updateLeadStatusCore — so the lead inherits its full
+// side-effect set (lead_won notification fan-out, terminal-SLA cancel, cache
+// invalidation) identically to any other Won. recordDealCore therefore does NOT
+// fire its own deal_created notification (the lead_won fan-out already reaches the
+// same recipients — exactly the reason the action's notifyDealCreated is walk-in-only).
+//
+// deal_type is DERIVED from the lead's domain via resolveDealShapeForDomain — never
+// model/client-supplied. The caller has already fetched the lead + checked access.
+// revalidatePath('/deals') is request-context-only → stays in the caller.
+// ─────────────────────────────────────────────
+export type RecordDealCoreContext = {
+  lead: {
+    id: string;
+    status: string | null;
+    domain: string;
+    slug: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    phone: string | null;
+    email: string | null;
+    assigned_to: string | null;
+  };
+};
+
+export async function recordDealCore(
+  actor: MutationActor,
+  input: {
+    leadId: string;
+    deal_amount: number;
+    deal_duration?: DealDuration | null;
+    deal_category?: DealCategory | null;
+  },
+  ctx: RecordDealCoreContext,
+): Promise<
+  | { ok: true; dealId: string; contactName: string; wonChanged: boolean }
+  | { ok: false; error: string }
+> {
+  const { lead } = ctx;
+
+  // deal_type is DERIVED from the lead's domain — never client/model-supplied.
+  if (!isGiaDomain(lead.domain)) {
+    return { ok: false, error: "Deals can only be recorded for Gia-domain leads." };
+  }
+  const resolved = resolveDealShapeForDomain(lead.domain as GiaDomain, {
+    deal_duration: input.deal_duration,
+    deal_category: input.deal_category,
+  });
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+
+  const admin = createAdminClient();
+
+  const contactName =
+    [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || "Unknown";
+
+  // Step 1: insert the deal (must succeed before the status flip).
+  const { data: inserted, error: insertError } = await admin
+    .from("deals")
+    .insert({
+      lead_id:       lead.id,
+      contact_name:  contactName,
+      contact_phone: lead.phone ?? "",
+      contact_email: lead.email ?? null,
+      domain:        lead.domain as AppDomain,
+      deal_amount:   input.deal_amount,
+      deal_type:     resolved.shape.deal_type,
+      deal_duration: resolved.shape.deal_duration,
+      deal_category: resolved.shape.deal_category,
+      assigned_to:   lead.assigned_to ?? null,
+      won_at:        new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !inserted) {
+    return { ok: false, error: "I couldn't record that deal just now." };
+  }
+  const dealId = (inserted as { id: string }).id;
+
+  // Step 2: flip the lead to Won via the shared status core (inherits the lead_won
+  // fan-out + terminal-SLA cancel + cache invalidation). A no-op flip (already Won)
+  // still leaves a valid deal row — wonChanged just reflects whether the row moved.
+  const flip = await updateLeadStatusCore(
+    actor,
+    { leadId: lead.id, status: "won", reason: null },
+    { slug: lead.slug, domain: lead.domain },
+  );
+
+  return {
+    ok: true,
+    dealId,
+    contactName,
+    wonChanged: flip.ok ? flip.result.changed : false,
   };
 }
 

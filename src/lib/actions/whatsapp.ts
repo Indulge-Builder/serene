@@ -114,10 +114,20 @@ export async function sendWhatsAppMessage(
     sender_avatar_url: profile.avatar_url ?? undefined,
   };
 
-  // Update conversation last_message_at
+  // Update conversation last_message_at + STAND ELAYA DOWN. An agent replying is a
+  // take-over: flip bot_active off so the customer-Elaya layer (handleCustomerReply,
+  // gated on bot_active) stops auto-replying over the human. bot_paused_by/at record who
+  // took over and when. Harmless for staff/non-customer conversations (Elaya never
+  // auto-replies on those anyway — the customer layer only engages Gia-domain prospects).
   await supabase
     .from("whatsapp_conversations")
-    .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .update({
+      last_message_at: new Date().toISOString(),
+      updated_at:      new Date().toISOString(),
+      bot_active:      false,
+      bot_paused_by:   profile.id,
+      bot_paused_at:   new Date().toISOString(),
+    })
     .eq("id", conversationId);
 
   return { data: message, error: null };
@@ -211,10 +221,18 @@ export async function sendWhatsAppMediaMessage(
     return { data: null, error: "Media sent but not recorded" };
   }
 
-  // 5. Bump conversation timestamp (non-fatal).
+  // 5. Bump conversation timestamp + STAND ELAYA DOWN (agent take-over — same as the
+  //    text path: an agent sending media is taking over, so the customer-Elaya layer
+  //    stops auto-replying). Non-fatal.
   await supabase
     .from("whatsapp_conversations")
-    .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .update({
+      last_message_at: new Date().toISOString(),
+      updated_at:      new Date().toISOString(),
+      bot_active:      false,
+      bot_paused_by:   profile.id,
+      bot_paused_at:   new Date().toISOString(),
+    })
     .eq("id", conversationId);
 
   // Return with the signed url so the composer can render the bubble immediately.
