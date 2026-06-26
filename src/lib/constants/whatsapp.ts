@@ -144,3 +144,15 @@ export const GUPSHUP_TASK_OVERDUE_AGENT_TEMPLATE_ID        = '7b926598-714d-4396
 //         {{4}} due time IST ("4:00 PM"). NO lead fields (the lead path keeps
 //         GUPSHUP_TASK_OVERDUE_MANAGER_TEMPLATE_ID, which carries a lead name).
 export const GUPSHUP_TASK_OVERDUE_MANAGER_GENERIC_TEMPLATE_ID = '80aa1747-e948-4e3c-9409-c13d0b41194b'; // eia_task_overdue_manager_generic
+
+// Task ASSIGNED — fires the moment a task is assigned TO the assignee (personal
+// task assigned to another, OR a group subtask). Tells them a new task landed +
+// who assigned it + the due date. Hardcoded with the rest (approved Gupshup id —
+// not a secret, never changes). The CONFIGURED flag stays so the send still degrades
+// gracefully if the id is ever blanked. Params: {{1}} assignee first name, {{2}}
+// assigner name (manager/founder who created it), {{3}} task title, {{4}} due date
+// IST ("26 Jun, 4:00 PM" or "no due date"). Gated by the 'task_assigned' control key.
+export const GUPSHUP_TASK_ASSIGNED_TEMPLATE_ID = '1cb3c51f-de37-4ee3-9be1-60bb1659034e';
+// Hardcoded id is always present — kept as a named flag so the call site reads the same
+// as the customer-welcome path (and so blanking the id above flips it without edits there).
+export const TASK_ASSIGNED_TEMPLATE_CONFIGURED = GUPSHUP_TASK_ASSIGNED_TEMPLATE_ID.length > 0;

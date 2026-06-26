@@ -11,12 +11,14 @@
 provider.ts            ← the ONE provider-neutral complete() contract
 adapters/anthropic.ts  ← the ONLY file allowed to import @anthropic-ai/sdk
 elaya-data.ts          ← THE single data seam every READ tool fetches through (parity rule, below)
-registry.ts (tools/)   ← the 11 READ-only tools + THE single executeTool dispatch (read ∪ write)
+registry.ts (tools/)   ← the 12 READ-only tools + THE single executeTool dispatch (read ∪ write)
                           + TOOLSET_BY_ROLE + getToolDefinitionsForPrincipal. READ tools are now
                           role-gated too (Phase 4): a tool's optional `roles` set = the hard gate
                           (readToolsForRole), so a manager never sees get_budget, an agent never sees
-                          the oversight tools. 7 all-staff reads + get_escalations/get_domain_health/
-                          get_campaigns (manager+) + get_budget (admin/founder)
+                          the oversight tools. 8 all-staff reads (incl. find_teammate — the name→userId
+                          STAFF lookup for task assignment, so "create a task for <person>" resolves a
+                          TEAMMATE via elayaData.findTeammates, never search_leads) +
+                          get_escalations/get_domain_health/get_campaigns (manager+) + get_budget (admin/founder)
 tools/write-registry.ts← ALL write tools + executeProposedAction (resolver-only executor)
 principal.ts           ← identity → principal. ElayaPrincipal is a DISCRIMINATED UNION: StaffPrincipal
                           (verified profile → role + the role-gated read∪write toolset) | CustomerPrincipal
@@ -103,7 +105,7 @@ Two risk tiers, split in code — never by the prompt:
 "execute a state-change in its proposal turn" structurally impossible — a state tool's `run()` has
 **no branch that reaches a core**.
 
-## The 11 write tools
+## The 12 write tools
 
 | Tool | Tier | Roles | Wraps (core) |
 | --- | --- | --- | --- |
@@ -115,9 +117,17 @@ Two risk tiers, split in code — never by the prompt:
 | `log_deal` | **propose** | all staff | `recordDealCore` (resolver only) — inserts the deal (type DERIVED from the lead's domain) + flips the lead to Won via `updateLeadStatusCore`. The SAME core the `recordDeal` action runs. |
 | `create_personal_task` | inline | all staff (assign-another: manager+) | `createPersonalTaskCore` |
 | `create_group_task` | inline | all staff | `createGroupTaskCore` |
+| `create_subtask` | inline | all staff | `createSubtaskCore` — adds ONE assigned subtask to a group. The other half of the team-task workflow: `create_group_task` (container) → `create_subtask` once PER person (each resolved via `find_teammate`). Access gate = `getVisibleGroupById` (the principal must be in the group; admin/founder see all). A single task row has ONE assignee — multiple people = multiple subtasks. |
 | `update_task_status` | inline | all staff | `updateTaskStatusCore` |
 | `update_task` | inline | all staff | `updateTaskCore` |
 | `delete_task` | **propose** | all staff | `deleteTaskCore` (resolver only) |
+
+**Task assignment fires a WhatsApp ping to the ASSIGNEE.** `createPersonalTaskCore` (assigned to
+another) + `createSubtaskCore` both AWAIT `sendTaskAssignedNotification` (whatsapp-api.ts) beside
+their existing `createNotification` (in-app + push). Awaited inside the core, never a detached
+`.catch()` (A-16 — every caller keeps the lambda alive). Template id hardcoded in `whatsapp.ts`
+(`GUPSHUP_TASK_ASSIGNED_TEMPLATE_ID`, the 12-id convention); gated by the existing `task_assigned`
+control-plane key (0133); logged `task_assigned` (0153).
 
 ## Non-negotiables (extend the foundation invariants — never weaken)
 

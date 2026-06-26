@@ -33,6 +33,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
 import { REDIS_KEYS } from "@/lib/constants/redis-keys";
 import { createNotification } from "@/lib/services/notifications-service";
+import { sendTaskAssignedNotification } from "@/lib/services/whatsapp-api";
 import {
   scheduleTaskReminder,
   cancelTaskReminder,
@@ -174,6 +175,7 @@ export async function createPersonalTaskCore(
 
   // Notify assignee — fire-and-forget, non-fatal (if different from the actor).
   if (resolvedAssignedTo !== actor.userId) {
+    // In-app + push (Seam A control plane).
     createNotification({
       recipient_id: resolvedAssignedTo,
       type: "task_assigned",
@@ -182,6 +184,23 @@ export async function createPersonalTaskCore(
       body: `Assigned to you by ${actor.fullName}`,
       action_url: `/tasks`,
     }).catch(() => {});
+
+    // WhatsApp ping to the assignee — AWAITED inside the core, never bare
+    // `.catch()`: a detached send is orphaned when the Vercel lambda freezes on
+    // response flush (A-16). Every caller keeps the lambda alive across this
+    // awaited core (action returns after it; Elaya executor runs inside an outer
+    // after()/stream). No-ops until the template id is set; logged, never thrown
+    // (the task write already succeeded).
+    try {
+      await sendTaskAssignedNotification(
+        resolvedAssignedTo,
+        actor.fullName,
+        input.title,
+        input.dueAt ?? null,
+      );
+    } catch (e) {
+      console.error("[task-mutations] task-assigned WhatsApp failed (non-fatal):", e);
+    }
   }
 
   // Schedule reminder if due_at is set — fire-and-forget, never blocks.
@@ -362,6 +381,7 @@ export async function createSubtaskCore(
 
   // Notify assignee — fire-and-forget, non-fatal (always notify for subtasks).
   if (input.assignedTo !== actor.userId) {
+    // In-app + push (Seam A control plane).
     createNotification({
       recipient_id: input.assignedTo,
       type: "task_assigned",
@@ -370,6 +390,20 @@ export async function createSubtaskCore(
       body: `Assigned to you by ${actor.fullName}`,
       action_url: `/tasks`,
     }).catch(() => {});
+
+    // WhatsApp ping — AWAITED (A-16: never a detached send from a core that runs
+    // in the lambda-freeze-prone action / Trigger / Elaya-after() contexts). No-ops
+    // until the template id is set; logged, never thrown (subtask already created).
+    try {
+      await sendTaskAssignedNotification(
+        input.assignedTo,
+        actor.fullName,
+        input.title,
+        input.dueAt,
+      );
+    } catch (e) {
+      console.error("[task-mutations] task-assigned WhatsApp failed (non-fatal):", e);
+    }
   }
 
   // Schedule reminder if due_at is set.

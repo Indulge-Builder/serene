@@ -3,30 +3,66 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { canonicalizePhone } from "@/lib/utils/phone";
 import type { Profile, UserRole, AppDomain } from "@/lib/types/database";
 import type { AssignableUser } from "@/lib/types";
 
 /**
- * Resolve an ACTIVE staff profile by E.164 phone — THE WhatsApp staff-identity
- * lookup (Elaya routing gate). Admin client: called from the webhook context,
- * which has no session. Caller must pass an already-normalized number
- * (normalizeWaPhone); profiles.phone is stored E.164 via normalizeToE164.
+ * Resolve an ACTIVE staff profile by phone — THE WhatsApp staff-identity lookup
+ * (Elaya routing gate). Admin client: called from the webhook context, which has
+ * no session. THIS IS A LOAD-BEARING MATCH: if it misses, the sender is treated as
+ * an unknown number and the lead pipeline creates a LEAD for a staff member (the
+ * "every agent who messages Elaya becomes a lead" bug). So it must tolerate phone
+ * FORMAT DRIFT, not just an exact string.
+ *
+ * Gupshup sends a bare digits number (e.g. `919821032575`); profiles.phone is
+ * stored E.164 with a `+` (e.g. `+919821032575`) — an exact `.eq` would miss on
+ * any format difference. We match on the CANONICAL digits key on BOTH sides: the
+ * same digits-only collapse `lead_phone_key()` / `canonicalizePhone()` use, so a
+ * `+`, spaces, or a missing country code never silently demote a teammate to a
+ * lead. (A staff member with a BLANK profiles.phone still can't match — there is
+ * no number to compare; that is a data gap, fill the number on /admin/users.)
  */
 export async function getActiveProfileByPhone(normalizedPhone: string): Promise<Profile | null> {
   const supabase = createAdminClient();
-  const { data, error } = await supabase
+
+  // Fast path — exact match on the already-normalized number (the common case:
+  // both sides E.164). Avoids scanning when the stored format already agrees.
+  const exact = await supabase
     .from("profiles")
     .select("*")
     .eq("phone", normalizedPhone)
     .eq("is_active", true)
     .limit(1)
     .maybeSingle();
-
-  if (error) {
-    console.error("[profiles-service] getActiveProfileByPhone failed:", error.message);
+  if (exact.error) {
+    console.error("[profiles-service] getActiveProfileByPhone (exact) failed:", exact.error.message);
     return null;
   }
-  return (data as Profile | null) ?? null;
+  if (exact.data) return exact.data as Profile;
+
+  // Canonical fallback — compare digits-only keys so format drift can't miss.
+  // Fetch the small set of active staff that have ANY phone, then match in code
+  // on canonicalizePhone() (identical key to the DB lead_phone_key()). The staff
+  // table is tiny (tens of rows), so this is a cheap, exact-meaning comparison —
+  // far safer than a brittle SQL LIKE on a formatted column.
+  const wantKey = canonicalizePhone(normalizedPhone);
+  if (!wantKey) return null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("is_active", true)
+    .not("phone", "is", null);
+  if (error) {
+    console.error("[profiles-service] getActiveProfileByPhone (fallback) failed:", error.message);
+    return null;
+  }
+
+  const match = ((data as Profile[] | null) ?? []).find(
+    (p) => p.phone && canonicalizePhone(p.phone) === wantKey,
+  );
+  return match ?? null;
 }
 
 /** Fetch a single profile by id. Returns null if not found. */

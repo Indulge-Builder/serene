@@ -680,13 +680,13 @@
     "semantic_hash": ""
   },
   "src/components/deals/NewDealModal.tsx": {
-    "mtime": 1781646838.9143636,
-    "ast_hash": "79e010c8efc9287d2c587ac82ece0a9c",
+    "mtime": 1782473637.0168583,
+    "ast_hash": "7da48a9ca46590ba3704cde91d215f20",
     "semantic_hash": ""
   },
   "src/components/elaya/ElayaChatShell.tsx": {
-    "mtime": 1782418678.2975647,
-    "ast_hash": "5658cea759c8fea4872501d644f48a9a",
+    "mtime": 1782470631.6743746,
+    "ast_hash": "9dee3c67a8860e493c98bd192ff9a21f",
     "semantic_hash": ""
   },
   "src/components/elaya/ElayaIdentityCard.tsx": {
@@ -1655,8 +1655,8 @@
     "semantic_hash": ""
   },
   "src/lib/actions/deals.ts": {
-    "mtime": 1782418479.9654512,
-    "ast_hash": "eeeca699429dd251d80be921eb19839f",
+    "mtime": 1782473657.2610435,
+    "ast_hash": "c6fed127f51d9f764c1478f170bcee53",
     "semantic_hash": ""
   },
   "src/lib/actions/elaya.ts": {
@@ -1905,8 +1905,8 @@
     "semantic_hash": ""
   },
   "src/lib/constants/whatsapp.ts": {
-    "mtime": 1782422362.9270859,
-    "ast_hash": "9787d5a33c21f624a0c6aa861c880040",
+    "mtime": 1782472848.3321016,
+    "ast_hash": "552e9030b9b3bd591956fcfad5eabc30",
     "semantic_hash": ""
   },
   "src/lib/elaya/adapters/anthropic.ts": {
@@ -1915,8 +1915,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/brain.ts": {
-    "mtime": 1782423875.464944,
-    "ast_hash": "89dde992a9abb4e57d52fe5b05777ec9",
+    "mtime": 1782471574.602461,
+    "ast_hash": "1f03ed6daed6eb50f33a72b693d43cb0",
     "semantic_hash": ""
   },
   "src/lib/elaya/confirmation.ts": {
@@ -1925,8 +1925,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/persona.ts": {
-    "mtime": 1782423906.1963894,
-    "ast_hash": "efcdbfdf59454fc38ea1c3edbe3bc654",
+    "mtime": 1782471606.7355614,
+    "ast_hash": "6afdb3de739184b27a77230f626c7074",
     "semantic_hash": ""
   },
   "src/lib/elaya/pii.ts": {
@@ -1950,13 +1950,13 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/registry.ts": {
-    "mtime": 1782422181.932191,
-    "ast_hash": "38f5b255a2aff085a389fd391d8a080a",
+    "mtime": 1782469306.0331178,
+    "ast_hash": "94932bae42db2a2a81b84d914fb36ea2",
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/write-registry.ts": {
-    "mtime": 1782422198.508062,
-    "ast_hash": "3d1ea742cf072f036bddb878c0b00441",
+    "mtime": 1782471778.1510513,
+    "ast_hash": "4291ad5d58c12713783f54cc09e0a00e",
     "semantic_hash": ""
   },
   "src/lib/leads/adapters.ts": {
@@ -2000,8 +2000,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/elaya-actions-service.ts": {
-    "mtime": 1782418617.2285373,
-    "ast_hash": "0a1fb6b83189a8a3b05af8cbfc8342f3",
+    "mtime": 1782470483.1482737,
+    "ast_hash": "a1caf5b2058971c9ed43770501c65082",
     "semantic_hash": ""
   },
   "src/lib/services/elaya-service.ts": {
@@ -2065,8 +2065,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/profiles-service.ts": {
-    "mtime": 1781590188.0289352,
-    "ast_hash": "b8de37b6c4ed7c6bf2b85dd9a8698519",
+    "mtime": 1782469184.5651472,
+    "ast_hash": "210da596cfe5de28794773417159da63",
     "semantic_hash": ""
   },
   "src/lib/services/push-service.ts": {
@@ -2095,8 +2095,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/task-mutations.ts": {
-    "mtime": 1782387495.3765469,
-    "ast_hash": "4e41a6b496eb2954d9ee3e5471f87247",
+    "mtime": 1782470277.1421642,
+    "ast_hash": "707ec3ab2104c8f11b508388b427417d",
     "semantic_hash": ""
   },
   "src/lib/services/tasks-service.ts": {
@@ -2115,8 +2115,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/whatsapp-api.ts": {
-    "mtime": 1782422430.621372,
-    "ast_hash": "a10953af0b6ffdd7a81b1c6ec5f5c4f6",
+    "mtime": 1782470164.3246531,
+    "ast_hash": "45f3eedc172a11d5cd878c146fb5e452",
     "semantic_hash": ""
   },
   "src/lib/services/whatsapp-ingestion.ts": {
@@ -3195,8 +3195,8 @@
     "semantic_hash": ""
   },
   "docs/TODO.md": {
-    "mtime": 1782423398.4397416,
-    "ast_hash": "bf9d7b85acaec85b48b4bf0c4f4b9d62",
+    "mtime": 1782473099.7138133,
+    "ast_hash": "e3b40f14e66e8723acf86c7532b4a7c6",
     "semantic_hash": ""
   },
   "docs/_archive/README.md": {
@@ -3315,8 +3315,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1782424181.0728827,
-    "ast_hash": "3dfa6a7a420a3be2ddccb8b1c2e766f8",
+    "mtime": 1782473563.4094522,
+    "ast_hash": "049393f138c40cdb551be796f5d4ca5a",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3650,18 +3650,18 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/CLAUDE.md": {
-    "mtime": 1782424222.815197,
-    "ast_hash": "3bb370316016c9d5ac09a6bdac847521",
+    "mtime": 1782473617.972709,
+    "ast_hash": "1240a4d0cec73679750a7f4daa4d5ca9",
     "semantic_hash": ""
   },
   "src/lib/services/CLAUDE.md": {
-    "mtime": 1782250645.0121138,
-    "ast_hash": "8bd72809485cc1c61c8dec27badee1a6",
+    "mtime": 1782473655.0391693,
+    "ast_hash": "77ff362642c81c44d8992dc5b251b4f9",
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {
-    "mtime": 1782424204.6162333,
-    "ast_hash": "1a12e69a9c8814469e0271d8e19c9645",
+    "mtime": 1782470709.5416172,
+    "ast_hash": "b91e4294268d7f1326e96c50e3eade98",
     "semantic_hash": ""
   },
   "imgs/DB-Schema-img-2.png": {
@@ -4165,8 +4165,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/elaya-data.ts": {
-    "mtime": 1782422181.9249833,
-    "ast_hash": "192b359ce7d5e7b1df5ed4675b18b053",
+    "mtime": 1782470376.058358,
+    "ast_hash": "c36ba6d722a8b357fe7079df9f1763d6",
     "semantic_hash": ""
   },
   "src/lib/elaya/memory.ts": {
@@ -4382,6 +4382,11 @@
   "src/app/(dashboard)/notes/CLAUDE.md": {
     "mtime": 1782424139.6912122,
     "ast_hash": "f95fc869679d472888c3a16154991384",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260626000153_task_assigned_log_type.sql": {
+    "mtime": 1782470075.8859038,
+    "ast_hash": "6c7911c4ae7e50a7a79449ad4f00acad",
     "semantic_hash": ""
   }
 }

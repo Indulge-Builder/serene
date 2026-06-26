@@ -44,6 +44,8 @@ import {
   type OverdueTaskEscalationRow,
 } from '@/lib/services/sla-service';
 import { getDealsByRoleForElaya, type DealsResult } from '@/lib/services/deals-service';
+import { getAssignableUsers } from '@/lib/services/profiles-service';
+import type { AssignableUser } from '@/lib/types';
 import { getCampaignMetrics } from '@/lib/services/leads-service';
 import { getBudgetSummary, type BudgetCampaignRow } from '@/lib/services/ad-spend-service';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
@@ -118,6 +120,31 @@ export function getColdLeads(principal: StaffPrincipal) {
 }
 
 // ─────────────────────────────────────────────
+// Teammates (staff identity — the assignee lookup)
+// ─────────────────────────────────────────────
+
+/** Resolve TEAMMATES (staff) by name fragment — the name→profile-id lookup the task
+ *  write tools need for "create a task for <person>". Wraps getAssignableUsers (R-01 —
+ *  the SAME pipeline /admin + task pickers use), scoped in code: admin/founder → all
+ *  active staff; manager/agent → their own domain (a domain colleague). This is staff
+ *  identity, NOT a lead — it is why "create a task for Arfam" must never reach
+ *  search_leads. getAssignableUsers uses the admin client, so both channels work.
+ *  Filtering is in code (a tiny table); returns the slim AssignableUser shape. */
+export async function findTeammates(
+  principal: StaffPrincipal,
+  search: string,
+): Promise<AssignableUser[]> {
+  const domain =
+    principal.role === 'admin' || principal.role === 'founder'
+      ? undefined // all domains
+      : principal.domain; // manager / agent — own domain only
+  const all = await getAssignableUsers({ domain });
+  const term = search.trim().toLowerCase();
+  if (!term) return all;
+  return all.filter((u) => (u.full_name ?? '').toLowerCase().includes(term));
+}
+
+// ─────────────────────────────────────────────
 // Deals
 // ─────────────────────────────────────────────
 
@@ -153,6 +180,20 @@ export function getPersonalTasksFor(
  *  WhatsApp now (previously WhatsApp got an empty list / "open the app"). Both channels. */
 export function getGroupTasksFor(principal: StaffPrincipal): Promise<TaskGroupRow[]> {
   return getGroupTasksForUser(principal.userId);
+}
+
+/** Resolve a group the principal can SEE, by id — the access gate for adding a subtask
+ *  via Elaya. Reuses getGroupTasksFor (the admin twin, channel-safe), whose set already
+ *  encodes "groups you created or are a subtask-assignee in" (migration 0058). Returning
+ *  the row IFF it's in that set IS the per-resource check — admin/founder see all groups,
+ *  so they pass; a manager/agent only passes for a group they're part of. Never a session
+ *  client (would blank on WhatsApp). null = not visible to this principal. */
+export async function getVisibleGroupById(
+  principal: StaffPrincipal,
+  groupId: string,
+): Promise<TaskGroupRow | null> {
+  const groups = await getGroupTasksFor(principal);
+  return groups.find((g) => g.id === groupId) ?? null;
 }
 
 // ─────────────────────────────────────────────

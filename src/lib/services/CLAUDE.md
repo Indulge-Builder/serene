@@ -6,8 +6,15 @@ All ten template senders (`sendLeadAssignmentNotification`, `sendFounderLeadNoti
 `sendSlaAgentNotification`, `sendSlaManagerNotification`, `sendLeadInitiationMessage`,
 `sendTaskDueReminderNotification`, `sendTaskOverdueManagerNotification`,
 `sendTaskDueSoonAgentNotification`, `sendTaskOverdueAgentNotification`,
-`sendTaskOverdueManagerGenericNotification`) are thin
-wrappers over one internal core, **`sendGupshupTemplate(opts)`** (dry-audit H-8). The core owns,
+`sendTaskOverdueManagerGenericNotification`,
+`sendTaskAssignedNotification`) are thin
+wrappers over one internal core, **`sendGupshupTemplate(opts)`** (dry-audit H-8).
+**`sendTaskAssignedNotification(assigneeId, assignerName, taskTitle, dueAt)`** fires when a task is
+ASSIGNED to someone (a personal task assigned to another, or a group subtask) — self-contained
+(resolves the assignee's phone + first name + IST due date internally), gated by the `task_assigned`
+control-plane key. Template id `GUPSHUP_TASK_ASSIGNED_TEMPLATE_ID` is **hardcoded in `whatsapp.ts`**
+(the 12-id convention; the `TASK_ASSIGNED_TEMPLATE_CONFIGURED` flag is retained as a graceful guard).
+Called (awaited, A-16) from `createPersonalTaskCore` + `createSubtaskCore` beside their `createNotification`. The core owns,
 in exactly one place:
 
 - `'+'`-stripping of source + destination, `URLSearchParams` assembly, the

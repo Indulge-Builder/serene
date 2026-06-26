@@ -51,12 +51,16 @@ import {
   isAssigneeActive,
   createPersonalTaskCore,
   createGroupTaskCore,
+  createSubtaskCore,
   updateTaskStatusCore,
   updateTaskCore,
   deleteTaskCore,
   type CallerProfile,
   type TaskMutationTarget,
 } from "@/lib/services/task-mutations";
+// The group access gate for create_subtask — admin-twin read (channel-safe), reusing
+// the principal's visible-group set (the access check IS membership in that set).
+import { getVisibleGroupById } from "@/lib/elaya/elaya-data";
 import {
   insertExecutedAction,
   insertProposedAction,
@@ -99,6 +103,7 @@ export type ElayaWriteToolName =
   // Task writes (Brief 3)
   | "create_personal_task"
   | "create_group_task"
+  | "create_subtask"
   | "update_task_status"
   | "update_task"
   | "delete_task";
@@ -694,9 +699,12 @@ const createPersonalTask: ElayaWriteTool = {
   name: "create_personal_task",
   roles: STAFF_ALL,
   description:
-    "Create a personal to-do for the user (or, managers and above, assign one to a teammate). " +
-    "Use this for general reminders not tied to a lead — e.g. 'remind me to file expenses tomorrow 3pm'. " +
-    "Happens immediately — no confirmation step. If no due time is given, leave it open.",
+    "Create a personal to-do for the user, OR assign a task to ONE teammate (managers and above). " +
+    "Use this for a task with at most one assignee — 'remind me to file expenses tomorrow 3pm', or " +
+    "'tell Pawani to call the client'. For a task shared by TWO OR MORE people, use create_group_task " +
+    "+ create_subtask instead. Take the title straight from what the user said — never ask what to " +
+    "call it. If no due time is given, leave it open (don't ask for one). For another person, pass " +
+    "their userId from find_teammate. Happens immediately — no confirmation step.",
   schema: z.object({
     title: z.string().trim().min(1).max(255),
     description: z.string().trim().max(1000).optional(),
@@ -787,9 +795,12 @@ const createGroupTask: ElayaWriteTool = {
   name: "create_group_task",
   roles: STAFF_ALL,
   description:
-    "Create a shared group/team task workspace (a container others can add subtasks to). " +
-    "Anyone can create one; it lives in the user's own domain (admins and founders may target another). " +
-    "Happens immediately — no confirmation step. This creates the group only, not its subtasks.",
+    "Create a shared group/team task — the container for a goal TWO OR MORE people work on together. " +
+    "Use the goal as the title, taken from what the user said (e.g. 'Build the dashboard on the mobile " +
+    "app', 'Send the sales report'). Anyone can create one; it lives in the user's own domain (admins/" +
+    "founders may target another). Happens immediately — no confirmation. This makes the container ONLY: " +
+    "right after it, add one create_subtask PER person (each resolved via find_teammate) so they're all " +
+    "on the shared goal. NEVER stop at the empty group, and never ask how to split the work.",
   schema: z.object({
     title: z.string().trim().min(1).max(255),
     description: z.string().trim().max(1000).optional(),
@@ -852,6 +863,106 @@ const createGroupTask: ElayaWriteTool = {
       done: true,
       summary: `Created the group workspace "${cleanTitle}". You can add subtasks to it in Tasks.`,
       groupId: core.groupId,
+    };
+  },
+};
+
+// ── create_subtask — INLINE. Add ONE assigned subtask to an existing group. The
+// completion of the group workflow: create_group_task makes the container, then this
+// adds a member's piece of work. To put several people on a group ("include Arfam and
+// Ethan"), call this once per person — resolve each via find_teammate first. Access
+// gate: the group must be VISIBLE to the principal (getVisibleGroupById, the admin twin
+// — channel-safe; admin/founder see all, manager/agent only groups they're part of).
+// Subtask assignment notifies + WhatsApps the assignee via createSubtaskCore (R-01). ──
+const createSubtask: ElayaWriteTool = {
+  name: "create_subtask",
+  roles: STAFF_ALL,
+  description:
+    "Add a single assigned subtask to an existing group/team workspace — this is how you put a " +
+    "person on a group task. ALWAYS resolve the assignee with find_teammate FIRST to get their " +
+    "userId, then call this with the group's groupId (from create_group_task or get_my_tasks) and " +
+    "that assigneeId. To put several people on ONE shared goal (e.g. 'tell Murtuza and Vishal to send " +
+    "the report'), create_group_task once, then call create_subtask once PER person — and give each " +
+    "subtask the SAME shared-goal title (e.g. both get 'Send the sales report'). Don't split or invent " +
+    "who-does-what — they're on one common goal and can divide it later. Take the title from what the " +
+    "user said; don't ask. Happens immediately — no confirmation. The assignee is notified (in-app + WhatsApp).",
+  schema: z.object({
+    groupId: z.string().uuid(),
+    assigneeId: z.string().uuid(),
+    title: z.string().trim().min(1).max(255),
+    description: z.string().trim().max(1000).optional(),
+    priority: z.enum(TASK_PRIORITIES).default("normal"),
+    dueAt: z.string().trim().max(40).optional(),
+  }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      groupId: { type: "string", description: "The group workspace id (UUID, from create_group_task or get_my_tasks)" },
+      assigneeId: { type: "string", description: "The teammate's userId (UUID, from find_teammate) — who the subtask is for" },
+      title: { type: "string", description: "What this person needs to do" },
+      description: { type: "string", description: "Optional detail" },
+      priority: { type: "string", enum: [...TASK_PRIORITIES], description: "Defaults to normal" },
+      dueAt: { type: "string", description: "Optional due date-time (interpreted as IST)" },
+    },
+    required: ["groupId", "assigneeId", "title"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { groupId, assigneeId, title, description, priority, dueAt } = input as {
+      groupId: string;
+      assigneeId: string;
+      title: string;
+      description?: string;
+      priority: (typeof TASK_PRIORITIES)[number];
+      dueAt?: string;
+    };
+
+    // Access gate (Q-13) — the group must be one this principal can see. The core
+    // trusts this. admin/founder pass on all; manager/agent only on groups they're in.
+    const group = await getVisibleGroupById(principal, groupId);
+    if (!group) {
+      return { error: "I couldn't find that group among the ones you can add to. Create the group first, or check the name." };
+    }
+
+    // The assignee must exist + be active (M2 — never strand a subtask on a dead account).
+    if (!(await isAssigneeActive(assigneeId))) {
+      return { error: "That teammate isn't available to take the task." };
+    }
+
+    const cleanTitle = sanitizeText(title);
+    if (cleanTitle.length === 0) return { error: "The subtask title was empty after cleaning." };
+    const cleanDescription = description ? sanitizeText(description) : null;
+    const dueAtInstant = normalizeDueAtToIstInstant(dueAt);
+
+    const core = await createSubtaskCore(actorFromPrincipal(principal), {
+      groupId,
+      title: cleanTitle,
+      description: cleanDescription,
+      priority,
+      dueAt: dueAtInstant,
+      assignedTo: assigneeId,
+    });
+    if (!core.ok) return { error: "I couldn't add that subtask just now." };
+
+    const subtaskId = core.subtask.id;
+    await insertExecutedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "create_subtask",
+      payload: {
+        target: { taskId: subtaskId, groupId },
+        args: { title: cleanTitle, description: cleanDescription, priority, dueAt: dueAtInstant, assignedTo: assigneeId },
+        channel: ctx.channel,
+        before: null,
+        after: { created: { taskId: subtaskId, groupId, assignedTo: assigneeId } },
+      },
+    });
+
+    const assigneeName = core.subtask.assignee?.full_name ?? "your teammate";
+    return {
+      done: true,
+      summary: `Added "${cleanTitle}" to "${group.title}" for ${assigneeName}.`,
+      taskId: subtaskId,
     };
   },
 };
@@ -1123,6 +1234,7 @@ const ALL_WRITE_TOOLS = [
   // Task writes (Brief 3)
   createPersonalTask,
   createGroupTask,
+  createSubtask,
   updateTaskStatus,
   updateTask,
   deleteTask,

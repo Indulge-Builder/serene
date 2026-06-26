@@ -52,6 +52,8 @@ const TOOL_STATUS_LABELS: Record<string, string> = {
   log_deal: 'Setting that up…',
   create_personal_task: 'Creating your task…',
   create_group_task: 'Creating the workspace…',
+  create_subtask: 'Adding the task…',
+  find_teammate: 'Finding your teammate…',
   update_task_status: 'Updating the task…',
   update_task: 'Updating the task…',
   delete_task: 'Setting that up…',

@@ -183,8 +183,17 @@ export function NewDealModal({
         return;
       }
 
-      router.refresh();
+      // Close first, THEN refresh. router.refresh() refetches the current
+      // route's RSC payload; if it is fired right before handleClose()
+      // unmounts the modal inside the SAME transition, the refetch is
+      // deprioritised against the teardown and frequently discarded — so the
+      // new deal doesn't appear until the Client Router Cache expires. Closing
+      // first lets the refresh run against the live /deals route owned by the
+      // still-mounted page (the AddLeadModal order). revalidatePath('/deals',
+      // 'page') in createWalkInDeal is the authoritative server-side bust; this
+      // refresh just pulls the freshly-revalidated payload immediately.
       handleClose();
+      router.refresh();
     });
   }
 

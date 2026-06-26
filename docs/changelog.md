@@ -12,6 +12,132 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-06-26 — Fix: new deal doesn't appear on /deals for a long time after creation
+
+**Why:** Recording a deal via the New Deal modal (and the lead→Won path) inserted the row, but
+`/deals` kept showing the stale list until the Client Router Cache expired or the user changed a
+filter. Two compounding causes, both in the walk-in (`createWalkInDeal`) and lead→deal (`recordDeal`)
+flows:
+
+- **`revalidatePath` scope mismatch.** `/deals` force-redirects every cold landing to
+  `/deals?date_from=…&date_to=…` (the "This Month" default — `deals/page.tsx`), so the entry the user
+  is actually viewing is keyed on the param-bearing URL. The actions called `revalidatePath("/deals")`
+  (bare path), which only invalidates the exact `/deals` segment and leaves the param variant stale.
+  The leads list has no such redirect, which is why the identical bare-path call works there. **Fix:**
+  `revalidatePath("/deals", "page")` in both actions (`lib/actions/deals.ts`) — the page variant
+  invalidates the route across all its search-param permutations.
+- **Refresh abandoned on modal teardown.** `NewDealModal` fired `router.refresh()` immediately before
+  `handleClose()` inside the same `startTransition`; the refetch was deprioritised against the unmount
+  and frequently discarded. **Fix:** close first, then `router.refresh()` (the proven `AddLeadModal`
+  order) so the refresh runs against the live, still-mounted `/deals` route.
+
+No schema change, no service change (the deals service is not Redis-cached — these were the only cache
+layers). Files: `src/lib/actions/deals.ts`, `src/components/deals/NewDealModal.tsx`.
+
+---
+
+## 2026-06-26 — Elaya task creation: decisive, infers personal vs group, multi-person in one turn
+
+**Why:** Elaya was interrogating ("what title? what priority? how should they split it?") and could
+truncate a multi-person group task mid-creation. The founder's bar: message naturally ("tell Murtuza
+and Vishal to send me the sales report by tomorrow 4pm") and it just happens — one shared goal, both
+assigned, no quizzing. Three changes, no schema change:
+
+- **`MAX_TOOL_ITERATIONS` 5 → 10** (`brain.ts`). A 2-person group task is `create_group_task` +
+  `find_teammate`×2 + `create_subtask`×2 = up to 5 tool calls — exactly the old ceiling, with zero room
+  for the reply, and a 3rd person made it impossible (the loop truncated → a half-built task). The
+  model batches same-kind calls in one round (parallel `tool_use`, the adapter collects all blocks), so
+  a 2-person task is ~3 rounds; 10 keeps the runaway backstop while never clipping a real team task.
+- **Persona rewritten into a decisive task decision tree** (`persona.ts`). BE DECISIVE, DON'T
+  INTERROGATE: take the title from what the user said, use a due date only if given (else none), never
+  ask for title/priority/"how to divide." A crisp personal-vs-group branch by how many OTHER people:
+  **0** → `create_personal_task` for the user; **1** → personal task assigned to that teammate; **2+ on
+  one shared goal** → `create_group_task` (goal as title) + one `create_subtask` PER person, **each
+  subtask titled with the SAME shared goal** (both get "Send the sales report" — Elaya does NOT split or
+  invent who-does-what; details come later). Resolve all names together, create everything in the one
+  turn, never stop at the empty group, never tell the user to use the app. Ask ONLY when a name matches
+  nobody / is ambiguous — and only for that one person, still finishing the rest.
+- **Tool descriptions sharpened** (`create_personal_task` / `create_group_task` / `create_subtask`):
+  personal = ≤1 assignee, group+subtasks = 2+; take the title from the user's words, don't ask; group
+  subtasks share the goal as their title. Reinforces the persona at the tool layer.
+
+Net: "remind me to follow up tomorrow" → a personal task; "tell Murtuza and Vishal to send the report
+by 4pm tomorrow" → a group with both on the shared goal, each WhatsApp-pinged — all in one turn, no
+questions. `npx tsc --noEmit` clean.
+
+**Also:** the approved "task assigned to you" template id (`1cb3c51f-…`) is now HARDCODED in
+`whatsapp.ts` alongside the other 12 (template ids aren't secrets and never change — one source of
+truth, no env/Vercel step). The WhatsApp ping is LIVE in prod on deploy. (The customer-welcome id
+stays env-driven until it's approved — it's the only remaining template-id env var.)
+
+---
+
+## 2026-06-26 — Task assignment: WhatsApp "assigned to you" ping + Elaya `create_subtask` (team tasks)
+
+**Why:** two things the founder asked for. (1) When a task is assigned to someone, they should get a
+**WhatsApp** ping (not just in-app/push). (2) Elaya should handle the full **team-task** workflow —
+"create a launch task and include Arfam and Ethan" — end to end, instead of creating an empty group
+and stopping.
+
+**WhatsApp "task assigned" template (`sendTaskAssignedNotification`):** a new thin wrapper over
+`sendGupshupTemplate` (the one template pipeline). Fires to the ASSIGNEE the moment a task lands —
+**both** a personal task assigned to another user AND a group subtask. Self-contained: resolves the
+assignee's phone + first name + IST due date from the id. Params `{{1}}` assignee first name, `{{2}}`
+assigner name, `{{3}}` task title, `{{4}}` due date IST (or "no due date"). **Env-driven** template id
+(`GUPSHUP_TASK_ASSIGNED_TEMPLATE_ID`) — no-ops safely until set (the customer-welcome pattern), so no
+blank template ever fires at a teammate. Gated by the EXISTING `task_assigned` control-plane key
+(0133); logged `task_assigned` (migration 0153, applied + verified). **Wiring:** both
+`createPersonalTaskCore` + `createSubtaskCore` now AWAIT the send beside their existing
+`createNotification` — awaited inside the core, never a detached `.catch()` (A-16, the lead-mutations
+SLA precedent: every caller — action / Trigger.dev / Elaya `after()` — keeps the lambda alive). One
+sender, both paths (R-01).
+
+**Elaya `create_subtask` write tool (the team-task workflow):** Elaya could create a group *container*
+but had no way to put people in it (subtasks were UI-only). New inline, all-staff tool wrapping the
+existing `createSubtaskCore` (R-01) — adds one assigned subtask to a group. Access gate
+`getVisibleGroupById` (admin twin, channel-safe: the principal must be in the group; admin/founder see
+all). **Persona updated:** a team task = a group + one subtask PER person → `create_group_task`, then
+`create_subtask` once per person (each resolved via `find_teammate`), all in one turn — don't stop at
+the empty group, don't tell the user to use the app. A single task row has ONE assignee; multiple
+people = multiple subtasks. Write-tool count 11 → 12. Each subtask assignment fires the WhatsApp ping
+above. `npx tsc --noEmit` clean.
+
+**To go live:** set `GUPSHUP_TASK_ASSIGNED_TEMPLATE_ID` to the approved Gupshup template id (the
+template body is in `docs/TODO.md`). Until then in-app + push still fire; only the WhatsApp leg waits.
+**(Done — template approved + id hardcoded in `whatsapp.ts`; see the later 2026-06-26 entry.)**
+
+---
+
+## 2026-06-26 — Elaya fixes: staff-not-a-lead (phone match) + `find_teammate` (task assignment by name)
+
+Two related bugs in how Elaya tells a STAFF member apart from a CUSTOMER/lead.
+
+**Bug 1 — a staff member who WhatsApps Elaya could become a lead.** The webhook routes an inbound
+number through the staff gate (`tryHandleElayaWhatsAppMessage` → `getActiveProfileByPhone`) FIRST,
+and only creates a lead if that misses. The gate did an **exact** `.eq("phone", normalizedPhone)`,
+but Gupshup sends a bare-digits number (`919821032575`) while `profiles.phone` is stored E.164 with
+a `+` (`+919821032575`). The normalizer reconciles those today, so the 14 phoned staff matched — but
+the match was brittle (any future number stored without a `+`, with spaces, etc. would silently fall
+through and create a LEAD for a teammate). **Fix:** `getActiveProfileByPhone` now tries the exact
+match (fast path), then falls back to a **canonical digits-only** comparison (`canonicalizePhone` on
+both sides — the same key `lead_phone_key()` / lead dedup use), so phone FORMAT DRIFT can never demote
+a staff member to a lead. **Data note (not code):** 6 active staff currently have a BLANK
+`profiles.phone` — they have no number to match and will still become a lead if they message Elaya
+until their number is filled in on `/admin/users`. (Investigated on prod: 20 active staff, 6 blank,
+14 all `+`-prefixed and matching.)
+
+**Bug 2 — "create a task for Arfam" made Elaya search LEADS.** The task write tools take an
+`assigneeId` (a staff UUID), but Elaya had **no read tool to turn a teammate's name into that id** —
+the only name→id tool it owned was `search_leads`, so it searched customers when asked to assign work
+to a colleague. **Fix:** new all-staff read tool **`find_teammate`** (registry.ts) — name → matches
+with `userId` (the handle the task tools need), via `elayaData.findTeammates` → `getAssignableUsers`
+(R-01, the same pipeline the admin/task pickers use), scoped in code (admin/founder → all; manager/
+agent → own domain) so it works on both channels and never leaks cross-domain staff. **Persona
+updated:** "a person you assign work to is a TEAMMATE, not a lead — resolve with find_teammate, never
+search_leads." Read-tool count 11 → 12 (8 all-staff). `npx tsc --noEmit` clean.
+
+---
+
 ## 2026-06-26 — Elaya Notes section: per-user free-form notes Elaya reads (Jarvis Feature 3 / Block 4)
 
 **Why:** the last Jarvis memory piece. A staff member writes free-form notes about how they work —

@@ -35,6 +35,7 @@ export type ElayaActionType =
   // delete_task is the only state-changing tier (propose → confirm → execute).
   | "create_personal_task"
   | "create_group_task"
+  | "create_subtask"
   | "update_task_status"
   | "update_task"
   | "delete_task";

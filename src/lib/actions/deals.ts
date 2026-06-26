@@ -137,7 +137,10 @@ export async function recordDeal(
   // Bust the /deals route cache — the core's updateLeadStatusCore revalidates
   // nothing (revalidatePath is request-context-only and lives in callers), so the
   // just-inserted deal AND the lead's Won flip both need explicit revalidation here.
-  revalidatePath("/deals");
+  // `type: 'page'` on /deals so the param-bearing URL the deals page redirects
+  // cold landings to (?date_from=…&date_to=…) is invalidated too — a pathless
+  // call leaves that variant stale (see createWalkInDeal for the full rationale).
+  revalidatePath("/deals", "page");
   revalidatePath("/leads");
   revalidatePath(`/leads/${(lead.slug as string | null) ?? leadId}`);
 
@@ -252,7 +255,17 @@ export async function createWalkInDeal(
   // /deals when they add the deal; a later soft nav back would serve the stale
   // prerendered list). The deals service is not Redis-cached, so this is the
   // only cache layer to clear.
-  revalidatePath("/deals");
+  //
+  // `type: 'page'` is REQUIRED here: the deals page force-redirects every cold
+  // landing to /deals?date_from=…&date_to=… (the "This Month" default), so the
+  // entry the user is actually viewing is keyed on the param-bearing URL, not
+  // the bare /deals path. A pathless revalidatePath('/deals') only invalidates
+  // the exact '/deals' segment and leaves the param variant stale — the new
+  // deal then doesn't surface until the Client Router Cache expires (the "long
+  // time" bug). The page variant invalidates the route for all its search-param
+  // permutations. (The leads list has no such redirect, which is why the same
+  // bare-path call works there.)
+  revalidatePath("/deals", "page");
 
   // Notify domain managers/admins/founders — non-fatal. after() keeps the lambda
   // alive past the response so the in-app insert + push fan-out inside

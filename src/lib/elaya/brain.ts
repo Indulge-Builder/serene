@@ -21,8 +21,13 @@ import { getNotesForElaya } from '@/lib/services/elaya-notes-service';
 import { getPiiMaskingDepth } from '@/lib/services/llm-providers-service';
 import type { ElayaChannel, ElayaMessageRow, ElayaToolCallRecord } from '@/lib/types/elaya';
 
-/** Hard ceiling on tool round-trips per turn — a runaway-loop backstop. */
-const MAX_TOOL_ITERATIONS = 5;
+/** Hard ceiling on tool round-trips per turn — a runaway-loop backstop. Raised 5 → 10
+ *  (2026-06-26) so a multi-person GROUP task completes in ONE turn: create_group_task +
+ *  a find_teammate + a create_subtask PER person. The model batches same-kind calls in a
+ *  single round (parallel tool_use — the adapter collects all blocks), so a 2-person task
+ *  is ~3 rounds and even a 4–5-person one fits comfortably; 10 keeps the runaway backstop
+ *  while never truncating a real team task mid-creation (the half-built-task failure). */
+const MAX_TOOL_ITERATIONS = 10;
 
 /**
  * How long a state-change proposal stays confirmable. The session is 24h, but a

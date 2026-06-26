@@ -55,6 +55,7 @@ export type ElayaReadToolName =
   | 'get_cold_leads'
   | 'get_lead_details'
   | 'get_my_tasks'
+  | 'find_teammate'
   | 'search_deals'
   | 'get_performance_snapshot'
   | 'get_helpdesk_content'
@@ -374,6 +375,53 @@ const getMyTasks: ElayaTool = {
   },
 };
 
+const findTeammate: ElayaTool = {
+  name: 'find_teammate',
+  description:
+    'Find a COLLEAGUE (a staff member / teammate) by name — NOT a customer or lead. Use this ' +
+    'whenever you need a person to ASSIGN work to: "create a task for Arfam", "remind Pawani to call ' +
+    'the client", "assign this to the onboarding manager". It returns each match with their userId — ' +
+    'the handle the task tools (create_personal_task, update_task) need for `assigneeId`. Resolve the ' +
+    'teammate with THIS tool first, then create/assign the task with their userId. NEVER use ' +
+    'search_leads to find a person to assign work to — that searches customers/prospects, not staff. ' +
+    'If the name matches no teammate, or more than one, ask the user which person — never guess.',
+  schema: z.object({
+    search: z.string().trim().min(1).max(80),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      search: { type: 'string', description: "The teammate's name or a fragment of it" },
+    },
+    required: ['search'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { search } = input as { search: string };
+    // Staff identity via the data seam — admin-client + principal-scoped (admin/founder:
+    // all; manager/agent: own domain), so it works on BOTH channels and never leaks
+    // cross-domain staff to a manager/agent. This is the name→userId lookup that keeps
+    // "create a task for <person>" off search_leads.
+    const matches = await elayaData.findTeammates(principal, search);
+    const CAP = 15;
+    return {
+      teammates: matches.slice(0, CAP).map((u) => ({
+        // userId is the handle the task tools target as assigneeId — surfaced deliberately
+        // (the get_my_tasks taskId precedent). An opaque, caller-scoped staff id.
+        userId: u.id,
+        name: u.full_name,
+        role: u.role,
+        domain: u.domain,
+      })),
+      ...(matches.length === 0
+        ? { note: 'No teammate matched that name. Ask the user for the full name or who they mean — never guess a person to assign work to.' }
+        : matches.length > CAP
+          ? { note: `Showing the first ${CAP} matches — ask the user to narrow the name if the one they mean isn't here.` }
+          : {}),
+    };
+  },
+};
+
 const searchDeals: ElayaTool = {
   name: 'search_deals',
   description:
@@ -684,6 +732,7 @@ const ALL_TOOLS = [
   getColdLeads,
   getLeadDetails,
   getMyTasks,
+  findTeammate,
   searchDeals,
   getPerformanceSnapshot,
   getHelpdeskContent,

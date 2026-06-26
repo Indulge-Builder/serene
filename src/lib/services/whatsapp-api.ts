@@ -18,6 +18,8 @@ import {
   GUPSHUP_TASK_DUE_SOON_TEMPLATE_ID,
   GUPSHUP_TASK_OVERDUE_AGENT_TEMPLATE_ID,
   GUPSHUP_TASK_OVERDUE_MANAGER_GENERIC_TEMPLATE_ID,
+  GUPSHUP_TASK_ASSIGNED_TEMPLATE_ID,
+  TASK_ASSIGNED_TEMPLATE_CONFIGURED,
 } from '@/lib/constants/whatsapp';
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
@@ -378,7 +380,7 @@ function isGupshupDelivered(httpOk: boolean, body: string): boolean {
 // ─────────────────────────────────────────────
 
 interface NotificationLogEntry {
-  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'task_due_soon' | 'task_overdue_agent' | 'task_overdue_manager_generic' | 'elaya_reply' | 'customer_welcome' | 'customer_reply';
+  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'task_due_soon' | 'task_overdue_agent' | 'task_overdue_manager_generic' | 'elaya_reply' | 'customer_welcome' | 'customer_reply' | 'task_assigned';
   leadId?:        string | null;
   recipientId?:   string | null;
   recipientPhone: string;
@@ -973,6 +975,78 @@ export async function sendTaskOverdueManagerGenericNotification(
     }
   } catch (err) {
     console.error('[whatsapp-api] Unexpected error in sendTaskOverdueManagerGenericNotification:', err);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Send "a task was assigned to you" notification to the ASSIGNEE via Gupshup
+// template. Fires the moment a task lands on someone (a personal task assigned to
+// another user, or a group subtask) — distinct from the due/overdue reminders.
+// Self-contained: resolves the assignee's phone + first name internally from the id
+// (the cores only carry the assignee id), formats the due date in IST, and no-ops
+// when the template id is unset (TASK_ASSIGNED_TEMPLATE_CONFIGURED — the customer-
+// welcome pattern, so an unconfigured template never sends a blank at a teammate).
+// Fire-and-forget safe — never throws to the caller.
+// Params: {{1}} assignee first name, {{2}} assigner name (who created/assigned it),
+//         {{3}} task title, {{4}} due date IST ("26 Jun, 4:00 PM" or "no due date").
+// Gated by the existing 'task_assigned' control-plane key (0133).
+// ─────────────────────────────────────────────
+
+export async function sendTaskAssignedNotification(
+  assigneeId:   string,
+  assignerName: string,
+  taskTitle:    string,
+  dueAt:        Date | string | null,
+): Promise<void> {
+  try {
+    // No-op until the approved template id is set — never send a blank/wrong
+    // template at a real teammate (the customer-welcome posture).
+    if (!TASK_ASSIGNED_TEMPLATE_CONFIGURED) return;
+
+    // SEAM B — per-user control plane (0133). Skip if this user muted WhatsApp
+    // for 'task_assigned'. Fails open.
+    if (!(await isChannelEnabled(assigneeId, 'task_assigned', 'whatsapp'))) return;
+
+    const admin = createAdminClient();
+    const { data: assignee } = await admin
+      .from('profiles')
+      .select('id, phone, full_name')
+      .eq('id', assigneeId)
+      .single();
+
+    if (!assignee?.phone) {
+      console.warn(`[whatsapp-api] Assignee ${assigneeId} has no phone — skipping task assigned notification`);
+      return;
+    }
+
+    const assigneeFirstName = assignee.full_name?.trim().split(/\s+/)[0] || 'there';
+    // Due date in IST human form ("26 Jun, 4:00 PM"); explicit "no due date" so the
+    // template's {{4}} slot is never blank (Gupshup rejects empty params).
+    const dueText = dueAt
+      ? new Date(dueAt).toLocaleString('en-US', {
+          timeZone: 'Asia/Kolkata',
+          day: 'numeric',
+          month: 'short',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        })
+      : 'no due date';
+
+    await sendGupshupTemplate({
+      templateId:     GUPSHUP_TASK_ASSIGNED_TEMPLATE_ID,
+      destination:    assignee.phone,
+      templateParams: [assigneeFirstName, assignerName, taskTitle, dueText],
+      label:          'Task assigned notification',
+      logRecipient:   `assignee ${assigneeId}`,
+      log: {
+        type:        'task_assigned',
+        recipientId: assigneeId,
+        agentName:   assigneeFirstName,
+      },
+    });
+  } catch (err) {
+    console.error('[whatsapp-api] Unexpected error in sendTaskAssignedNotification:', err);
   }
 }
 
