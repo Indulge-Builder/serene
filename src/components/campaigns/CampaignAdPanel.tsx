@@ -4,8 +4,9 @@ import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { m as motion } from 'framer-motion';
 import { Plus } from 'lucide-react';
-import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { EASE_OUT_EXPO, SLOW_DURATION } from '@/lib/constants/motion';
 import { SectionCard } from '@/components/ui/SectionCard';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { AdCreativeCarousel } from './AdCreativeCarousel';
 import type { AdCreative } from '@/lib/types/database';
 
@@ -51,7 +52,7 @@ export function CampaignAdPanel({ adCreatives, campaignKey, canUpload }: Campaig
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
+      transition={{ duration: SLOW_DURATION, ease: EASE_OUT_EXPO }}
     >
       <SectionCard
         title="AD CREATIVE"
@@ -119,18 +120,7 @@ function EmptyAdTile({ canUpload, onAdd }: { canUpload: boolean; onAdd: () => vo
   if (!canUpload) {
     return (
       <div style={sharedTileStyle}>
-        <p
-          style={{
-            fontFamily: 'var(--font-serif)',
-            fontStyle:  'italic',
-            fontSize:   'var(--text-base)',
-            fontWeight: 'var(--weight-light)',
-            color:      'var(--theme-text-tertiary)',
-            margin:     0,
-          }}
-        >
-          No video yet.
-        </p>
+        <EmptyState title="No video yet." size="lg" style={{ padding: 0 }} />
       </div>
     );
   }

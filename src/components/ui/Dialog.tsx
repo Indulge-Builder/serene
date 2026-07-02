@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useId } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, m as motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import {
@@ -68,7 +69,15 @@ export function Dialog({
     return () => document.removeEventListener('keydown', handleKey);
   }, [open, onClose]);
 
-  return (
+  // SSR guard — after the hooks so hook order stays stable (ConfirmDialog pattern).
+  if (typeof document === 'undefined') return null;
+
+  // Portaled to document.body (2026-07-02): a CSS transform on any ancestor —
+  // every Framer entrance animation — would re-anchor these fixed elements and
+  // trap their z-index in that ancestor's stacking context. The portal makes
+  // every Dialog consumer transform-safe by construction, matching
+  // ConfirmDialog / FloatingPanel / NotificationPanel. z tokens unchanged.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -238,6 +247,7 @@ export function Dialog({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

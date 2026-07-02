@@ -12,7 +12,7 @@ import { NoteFormModal } from "./NoteFormModal";
 import { deleteNote } from "@/lib/actions/elaya-notes";
 import { useToast } from "@/hooks/useToast";
 import { formatRelativeTime } from "@/lib/utils/dates";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
 import { ELAYA_NOTES_MAX_PER_USER } from "@/lib/constants/elaya-notes";
 import type { ElayaNoteRow } from "@/lib/types/elaya-notes";
 
@@ -228,7 +228,7 @@ function NoteCard({
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: staggerDelay / 1000, ease: EASE_OUT_EXPO }}
+      transition={{ duration: EXIT_DURATION, delay: staggerDelay / 1000, ease: EASE_OUT_EXPO }}
       style={{
         display: "flex", alignItems: "flex-start", gap: "var(--space-4)",
         padding: "var(--space-4) var(--space-5)", background: "var(--theme-paper)",

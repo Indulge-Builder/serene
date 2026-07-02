@@ -6,6 +6,7 @@ import {
   TRAINING_MEDIA_KINDS,
 } from "@/lib/constants/elaya-training";
 import { GIA_DOMAIN_ENUM } from "@/lib/constants/domains";
+import { uuidField } from "@/lib/validations/fields";
 
 // http(s)-only link, validated ONLY when present (the field is nullable+optional).
 const httpUrl = z
@@ -20,7 +21,7 @@ const httpUrl = z
 export const upsertTrainingAssetSchema = z
   .object({
     // Present on edit, absent/null on create — the action decides insert vs update.
-    id: z.string().uuid("That training asset could not be found.").nullable().optional(),
+    id: uuidField("That training asset could not be found.").nullable().optional(),
 
     kind: z.enum(TRAINING_ASSET_KIND_ENUM, { message: "Please choose a valid asset type." }),
 
@@ -95,7 +96,7 @@ export const upsertTrainingAssetSchema = z
   );
 
 export const deleteTrainingAssetSchema = z.object({
-  id: z.string().uuid("That training asset could not be found."),
+  id: uuidField("That training asset could not be found."),
 });
 
 export type UpsertTrainingAssetInput = z.infer<typeof upsertTrainingAssetSchema>;

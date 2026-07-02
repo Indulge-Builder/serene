@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { RefreshCcw } from "lucide-react";
 import { getLeadStatusSummaryAction } from "@/lib/actions/dashboard";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCompact } from "@/lib/utils/numbers";
 import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
 import type { LeadStatus } from "@/lib/types/database";
@@ -443,20 +444,10 @@ export function ManagerLeadStatusWidget({ userId, role, initialData, dateRange, 
 
         {/* ── Empty state ── */}
         {loaded && grandTotal === 0 && (
-          <p
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontStyle:  "italic",
-              fontSize:   "var(--text-sm)",
-              color:      "var(--theme-text-tertiary)",
-              textAlign:  "center",
-              padding:    "var(--space-6) 0",
-              margin:     0,
-              flex:       1,
-            }}
-          >
-            No leads for this period.
-          </p>
+          <EmptyState
+            title="No leads for this period."
+            style={{ padding: "var(--space-6) 0", flex: 1 }}
+          />
         )}
       </div>
     </div>

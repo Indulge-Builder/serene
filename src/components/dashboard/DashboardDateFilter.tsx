@@ -8,7 +8,7 @@ import { DatePicker } from '@/components/ui/DatePicker';
 import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { buildFilterParams, dateToUrlParam, dateFromUrlParam } from '@/lib/utils/filter-params';
 import { DATE_PRESET_LABELS, type DatePreset } from '@/lib/utils/date-range';
-import { DROPDOWN_VARIANTS } from '@/lib/constants/motion';
+import { DROPDOWN_VARIANTS, FAST_DURATION } from '@/lib/constants/motion';
 
 const PRESETS: { value: Exclude<DatePreset, 'custom'>; label: string }[] = [
   { value: 'today',      label: DATE_PRESET_LABELS.today      },
@@ -135,7 +135,7 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
             {activeLabel}
             <motion.span
               animate={{ rotate: open ? 180 : 0 }}
-              transition={{ duration: 0.15, ease: 'easeInOut' }}
+              transition={{ duration: FAST_DURATION, ease: 'easeInOut' }}
               style={{ display: 'flex', alignItems: 'center' }}
             >
               <ChevronDown size={14} strokeWidth={1.5} />

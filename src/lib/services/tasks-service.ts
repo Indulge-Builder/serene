@@ -27,6 +27,7 @@ import { REDIS_KEYS, TASK_GIA_TTL, TASK_PERSONAL_PAGE1_TTL, TASK_GROUP_LIST_TTL 
 import { mapRows } from '@/lib/utils/rows';
 import type { AssignableUser, WithAuthor, WithAssignee } from '@/lib/types';
 import type {
+  AppDomain,
   Task,
   TaskGroup,
   TaskRemark,
@@ -104,11 +105,6 @@ export type SubtaskWithAssignee = WithAssignee<Task, AssigneeSlim | null>;
 /** TaskRemark with resolved author profile — canonical type for the chat panel */
 export type TaskRemarkWithAuthor = WithAuthor<TaskRemark, AssigneeSlim | null>;
 
-/** Full task detail — task + remarks */
-export type TaskWithMessages = Task & {
-  messages: TaskRemarkWithAuthor[];
-};
-
 // ─────────────────────────────────────────────
 // Query: personal tasks for a user
 // ─────────────────────────────────────────────
@@ -164,18 +160,19 @@ export async function getPersonalTasks(
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc('get_personal_tasks', {
+  // Explicit nulls (not undefined) are intentional — PostgREST sends SQL NULL;
+  // the generated optional-arg types only admit undefined, hence the assertions.
+  const { data, error } = await supabase.rpc('get_personal_tasks', {
     p_user_id:          userId,
-    p_status:           filters.status   && filters.status.length   > 0 ? filters.status   : null,
-    p_priority:         filters.priority && filters.priority.length > 0 ? filters.priority : null,
-    p_tags:             filters.tags     && filters.tags.length     > 0 ? filters.tags     : null,
-    p_due_before:       filters.due_before ?? null,
+    p_status:           (filters.status   && filters.status.length   > 0 ? filters.status   : null) as string[] | undefined,
+    p_priority:         (filters.priority && filters.priority.length > 0 ? filters.priority : null) as string[] | undefined,
+    p_tags:             (filters.tags     && filters.tags.length     > 0 ? filters.tags     : null) as string[] | undefined,
+    p_due_before:       (filters.due_before ?? null) as string | undefined,
     p_limit:            pageSize + 1,
     // Cursor params — all null when no cursor (page 1 behaviour preserved).
-    p_cursor_id:        cursor?.id        ?? null,
-    p_cursor_due_at:    cursor?.due_at    ?? null,
-    p_cursor_has_due_at: cursor !== null ? cursor.due_at !== null : null,
+    p_cursor_id:        (cursor?.id        ?? null) as string | undefined,
+    p_cursor_due_at:    (cursor?.due_at    ?? null) as string | undefined,
+    p_cursor_has_due_at: (cursor !== null ? cursor.due_at !== null : null) as boolean | undefined,
   });
 
   if (error) {
@@ -381,10 +378,11 @@ export const getGroupTasks = cache(async (
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rows, error } = await (supabase as any).rpc('get_group_task_summaries', {
-    p_status:   filters.status   && filters.status.length   > 0 ? filters.status   : null,
-    p_priority: filters.priority && filters.priority.length > 0 ? filters.priority : null,
+  // Explicit nulls (not undefined) are intentional — PostgREST sends SQL NULL;
+  // the generated optional-arg types only admit undefined, hence the assertions.
+  const { data: rows, error } = await supabase.rpc('get_group_task_summaries', {
+    p_status:   (filters.status   && filters.status.length   > 0 ? filters.status   : null) as string[] | undefined,
+    p_priority: (filters.priority && filters.priority.length > 0 ? filters.priority : null) as string[] | undefined,
   });
 
   if (error || !rows || (rows as unknown[]).length === 0) {
@@ -472,11 +470,12 @@ async function mapGroupSummaries(
 // reads are always live); reuses mapGroupSummaries (R-01).
 export async function getGroupTasksForUser(userId: string): Promise<TaskGroupRow[]> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rows, error } = await (admin as any).rpc('get_group_task_summaries_for_user', {
+  // Explicit nulls (not undefined) are intentional — PostgREST sends SQL NULL;
+  // the generated optional-arg types only admit undefined, hence the assertions.
+  const { data: rows, error } = await admin.rpc('get_group_task_summaries_for_user', {
     p_user_id:  userId,
-    p_status:   null,
-    p_priority: null,
+    p_status:   null as unknown as string[] | undefined,
+    p_priority: null as unknown as string[] | undefined,
   });
   if (error || !rows || (rows as unknown[]).length === 0) {
     if (error) console.error('[tasks-service] getGroupTasksForUser RPC error:', error);
@@ -504,7 +503,10 @@ export async function getGroupTasksForUser(userId: string): Promise<TaskGroupRow
  * Security: Redis cache stores the RESULT of an RLS-filtered query.
  * Key design (groupId + userId) prevents cross-user cache bleed. See redis-keys.ts.
  */
-export const getGroupSubtasks = cache(async (groupId: string, userId: string): Promise<SubtaskWithAssignee[]> => {
+// _userId is deliberately "unused" in the body: React cache() keys its memo on
+// ALL args, so the param scopes the per-request memo per caller (and mirrors the
+// Redis key design) — removing it would share one user's entry across users.
+export const getGroupSubtasks = cache(async (groupId: string, _userId: string): Promise<SubtaskWithAssignee[]> => {
   const supabase = await createClient();
 
   const { data: subtasks, error } = await supabase
@@ -527,7 +529,7 @@ export const getGroupSubtasks = cache(async (groupId: string, userId: string): P
     ),
   ];
 
-  let profileMap: Map<string, AssigneeSlim> = new Map();
+  const profileMap: Map<string, AssigneeSlim> = new Map();
 
   if (assigneeIds.length > 0) {
     const { data: profiles } = await supabase
@@ -549,28 +551,6 @@ export const getGroupSubtasks = cache(async (groupId: string, userId: string): P
     assignee: task.assigned_to ? (profileMap.get(task.assigned_to) ?? null) : null,
   }));
 });
-
-// ─────────────────────────────────────────────
-// Query: single task with messages (modal view)
-// ─────────────────────────────────────────────
-
-/**
- * Returns a single task with its full message thread.
- * Used by the task detail modal.
- * Task fetch and remarks fetch are independent — run in parallel.
- */
-export async function getTaskById(taskId: string): Promise<TaskWithMessages | null> {
-  const supabase = await createClient();
-
-  const [{ data: task, error: taskError }, messages] = await Promise.all([
-    supabase.from('tasks').select('*').eq('id', taskId).single(),
-    getTaskRemarks(taskId),
-  ]);
-
-  if (taskError || !task) return null;
-
-  return { ...(task as Task), messages };
-}
 
 // ─────────────────────────────────────────────
 // Query: task remarks ordered oldest first (timeline)
@@ -700,7 +680,7 @@ export async function getPersonalTaskTags(userId: string): Promise<string[]> {
 // task_gia_meta to filter by lead_id. Starting from task_gia_meta instead would
 // silently drop the status filter — PostgREST/Supabase JS client does not apply
 // dot-notation filters on joined tables when the root table is task_gia_meta.
-// See leads/CLAUDE.md §getNextLeadTask join direction for the full explanation.
+// The join must therefore always start from `tasks` and !inner-join task_gia_meta.
 //
 // Order: active tasks first (NOT IN completed/cancelled/error), then due_at ASC
 // NULLS LAST. This uses a two-level ORDER BY: a CASE priority column first (0 for
@@ -747,11 +727,10 @@ export async function getGiaTasksForUser(
   // session-derived by TasksAsync (Q-13: the caller is the trust boundary).
   const supabase = createAdminClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc('get_gia_tasks', {
+  const { data, error } = await supabase.rpc('get_gia_tasks', {
     p_user_id: userId,
     p_role:    role,
-    p_domain:  domain,
+    p_domain:  domain as AppDomain,
   });
 
   if (error) {

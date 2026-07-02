@@ -12,9 +12,7 @@ import {
   AddTaskRemarkSchema,
   DeleteTaskSchema,
   DeleteGroupTaskSchema,
-  SuppressTaskRemarkSchema,
   UpdateChecklistSchema,
-  UpdateTaskTagsSchema,
   CompletedTasksQuerySchema,
 } from "@/lib/validations/task-schemas";
 import { formErrors } from "@/lib/validations/form-errors";
@@ -478,56 +476,6 @@ export async function updateChecklistAction(
 }
 
 // ─────────────────────────────────────────────
-// Action: updateTaskTagsAction
-// Replaces tasks.tags with a new tags array.
-// Supports up to 10 tags, each up to 50 chars.
-// Used by: personal task detail view, CreatePersonalTaskModal (on edit).
-// ─────────────────────────────────────────────
-export async function updateTaskTagsAction(
-  input: unknown,
-): Promise<ActionResult<{ taskId: string }>> {
-  // 1. Zod validation first (Rule S-01)
-  const parsed = UpdateTaskTagsSchema.safeParse(input);
-  if (!parsed.success) return { data: null, error: formErrors.generic };
-
-  const { taskId, tags } = parsed.data;
-
-  // 2. Auth + task fetch — independent, run in parallel
-  const supabase = await createClient();
-
-  const [caller, { data: task }] = await Promise.all([
-    getCurrentProfile(),
-    supabase
-      .from("tasks")
-      .select("id, assigned_to, created_by, group_id")
-      .eq("id", taskId)
-      .single(),
-  ]);
-
-  if (!caller) return { data: null, error: formErrors.unauthorized };
-  if (!task) return { data: null, error: "Task not found." };
-
-  // 3. Application-layer authorization check (A-09 — layer 2)
-  const allowed = await canMutateTask(
-    supabase,
-    caller,
-    task as TaskMutationTarget,
-  );
-  if (!allowed) return { data: null, error: formErrors.unauthorized };
-
-  // 4. Write new tags array
-  const admin = createAdminClient();
-  const { error: updateError } = await admin
-    .from("tasks")
-    .update({ tags })
-    .eq("id", taskId);
-
-  if (updateError) return { data: null, error: formErrors.generic };
-
-  return { data: { taskId }, error: null };
-}
-
-// ─────────────────────────────────────────────
 // Read actions — service calls wrapped as server actions so that
 // client components never import from server-only service modules
 // (Rule A-03: all DB queries through lib/services; no server module
@@ -537,13 +485,11 @@ import {
   getGroupSubtasks,
   getPersonalTasks,
   getPersonalTaskTags,
-  getTaskGroupById,
 } from "@/lib/services/tasks-service";
 import type {
   PersonalTaskFilters,
   PersonalTasksResult,
 } from "@/lib/services/tasks-service";
-import type { TaskGroup } from "@/lib/types/database";
 
 export async function getGroupSubtasksAction(
   groupId: string,
@@ -576,17 +522,6 @@ export async function getPersonalTaskTagsAction(): Promise<
 
   const tags = await getPersonalTaskTags(caller.id);
   return { data: tags, error: null };
-}
-
-export async function getTaskGroupByIdAction(
-  groupId: string,
-): Promise<ActionResult<TaskGroup>> {
-  const auth = await requireProfile();
-  if (!auth.ok) return auth.result;
-
-  const group = await getTaskGroupById(groupId);
-  if (!group) return { data: null, error: "Group not found." };
-  return { data: group, error: null };
 }
 
 // ─────────────────────────────────────────────
@@ -631,14 +566,15 @@ export async function addTaskRemarkAction(
   // 3. RPC — atomic optional status UPDATE + task_remarks INSERT
   const admin = createAdminClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: remark, error: rpcError } = await (admin as any).rpc(
+  const { data: remark, error: rpcError } = await admin.rpc(
     "add_task_remark_with_status",
     {
       p_task_id: taskId,
       p_author_id: caller.id,
       p_content: sanitizedContent,
-      p_status_change: statusChange ?? null,
+      // Explicit SQL NULL (the arg has a SQL DEFAULT; the generated Args type only
+      // admits string | undefined — keep the wire value identical, type-level cast).
+      p_status_change: (statusChange ?? null) as unknown as undefined,
     },
   );
 
@@ -672,60 +608,6 @@ export async function addTaskRemarkAction(
   }
 
   return { data: remark as TaskRemark, error: null };
-}
-
-// ─────────────────────────────────────────────
-// Action: suppressTaskRemarkAction
-// Soft-suppresses a task_remarks row. The row is never deleted.
-// Only admin and founder may call this action.
-//
-// Column restriction note: the RLS UPDATE policy ("task_remarks_suppression_update")
-// permits admin/founder to update ANY column on task_remarks. PostgreSQL RLS does
-// not restrict which columns change — only which rows are eligible. This action
-// enforces the restriction by writing ONLY the three suppression columns.
-// Do not remove this comment; it documents why we use adminClient here.
-// ─────────────────────────────────────────────
-export async function suppressTaskRemarkAction(
-  input: unknown,
-): Promise<ActionResult<{ remarkId: string }>> {
-  // 1. Zod validation first (Rule S-01)
-  const parsed = SuppressTaskRemarkSchema.safeParse(input);
-  if (!parsed.success) return { data: null, error: formErrors.generic };
-
-  const { messageId: remarkId } = parsed.data;
-
-  // 2. Auth — admin and founder only
-  const auth = await requireProfile(["admin", "founder"]);
-  if (!auth.ok) return auth.result;
-  const caller = auth.profile;
-
-  const admin = createAdminClient();
-
-  // 3. Verify remark exists (Rule S-06 — never trust client IDs)
-  const { data: existing } = await admin
-    .from("task_remarks")
-    .select("id, task_id, is_suppressed")
-    .eq("id", remarkId)
-    .single();
-
-  if (!existing) return { data: null, error: "Remark not found." };
-
-  // Idempotent — no-op if already suppressed
-  if (existing.is_suppressed) return { data: { remarkId }, error: null };
-
-  // 4. Write only the three suppression columns (column restriction at action layer)
-  const { error: updateError } = await admin
-    .from("task_remarks")
-    .update({
-      is_suppressed: true,
-      suppressed_by: caller.id,
-      suppressed_at: new Date().toISOString(),
-    })
-    .eq("id", remarkId);
-
-  if (updateError) return { data: null, error: formErrors.generic };
-
-  return { data: { remarkId }, error: null };
 }
 
 // ─────────────────────────────────────────────

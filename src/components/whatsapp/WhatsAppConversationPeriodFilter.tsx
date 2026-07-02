@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { m as motion, AnimatePresence } from "framer-motion";
 import { Check, SlidersHorizontal } from "lucide-react";
 import { DatePicker } from "@/components/ui/DatePicker";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EASE_OUT_EXPO, FAST_DURATION } from "@/lib/constants/motion";
 import {
   WHATSAPP_PERIOD_LABELS,
   WHATSAPP_PERIODS,
@@ -182,7 +182,7 @@ export function WhatsAppConversationPeriodFilter() {
             initial={{ opacity: 0, y: -4, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={{ duration: 0.15, ease: EASE_OUT_EXPO }}
+            transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
             style={{
               position: "absolute",
               top: "calc(100% + 6px)",

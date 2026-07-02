@@ -28,24 +28,6 @@ export interface CreateNotificationPayload {
 
 // ─── Reads ────────────────────────────────────────────────────────────────────
 
-/** Last 20 unread notifications for `userId`, newest first. */
-export async function getUnreadNotifications(userId: string): Promise<Notification[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("notifications")
-    .select("*")
-    .eq("recipient_id", userId)
-    .is("read_at", null)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  if (error) {
-    console.error("[notifications-service] getUnreadNotifications error:", error);
-    return [];
-  }
-  return data ?? [];
-}
-
 /** Last 50 notifications (read + unread) for `userId`, newest first. */
 export async function getNotifications(userId: string): Promise<Notification[]> {
   const supabase = await createClient();

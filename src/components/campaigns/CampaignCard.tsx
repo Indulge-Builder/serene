@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { m as motion } from 'framer-motion';
-import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { EASE_OUT_EXPO, EXIT_DURATION } from '@/lib/constants/motion';
 import { formatCompact, formatCurrency, formatPercent } from '@/lib/utils/numbers';
 import type { CampaignMetrics } from '@/lib/types/database';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
@@ -206,7 +206,7 @@ export function CampaignCard({
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
-        duration: 0.25,
+        duration: EXIT_DURATION,
         delay:    staggerDelay / 1000,
         ease:     EASE_OUT_EXPO,
       }}

@@ -3,29 +3,28 @@
 // Call Intelligence actions.
 // getHelpdeskLibraryAction — client-callable read of the full helpdesk
 // library (the /helpdesk page itself seeds via RSC; this exists for future
-// client refresh paths). upsertServiceCaseAction / upsertConversationHookAction
-// — admin/founder writes that own the Redis invalidation contract: every
-// service_cases/conversation_hooks write awaits the helpdesk key del
-// (try/catch-warn, P-08 convention) before revalidatePath('/helpdesk').
+// client refresh paths). upsertServiceCaseAction — admin/founder write that
+// owns the Redis invalidation contract: every service_cases write awaits the
+// helpdesk key del (try/catch-warn, P-08 convention) before
+// revalidatePath('/helpdesk'). (upsertConversationHookAction was removed
+// 2026-07-02 — zero callers; hooks are seeded via SQL today. Recreate as a
+// sibling of upsertServiceCaseAction if a hooks UI ships.)
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { requireProfile } from '@/lib/actions/_auth';
+import { parseActionInput } from '@/lib/actions/_validation';
 import { createClient } from '@/lib/supabase/server';
 import { redis } from '@/lib/redis';
 import { REDIS_KEYS } from '@/lib/constants/redis-keys';
 import { DEFAULT_GIA_DOMAIN, GIA_DOMAIN_ENUM, isGiaDomain } from '@/lib/constants/domains';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { formErrors } from '@/lib/validations/form-errors';
-import {
-  ServiceCaseSchema,
-  ConversationHookSchema,
-} from '@/lib/validations/intelligence-schemas';
+import { ServiceCaseSchema } from '@/lib/validations/intelligence-schemas';
 import {
   getHelpdeskLibrary,
   type HelpdeskLibrary,
   type ServiceCase,
-  type ConversationHook,
 } from '@/lib/services/intelligence-service';
 import type { ActionResult } from '@/lib/types';
 import type { AppDomain } from '@/lib/types/database';
@@ -67,10 +66,8 @@ async function invalidateHelpdeskCache(domain: string): Promise<void> {
 export async function upsertServiceCaseAction(
   input: unknown,
 ): Promise<ActionResult<ServiceCase>> {
-  const parsed = ServiceCaseSchema.safeParse(input);
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? formErrors.generic };
-  }
+  const parsed = parseActionInput(ServiceCaseSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   const auth = await requireProfile(['admin', 'founder']);
   if (!auth.ok) return auth.result;
@@ -127,58 +124,3 @@ export async function upsertServiceCaseAction(
   return { data: data as ServiceCase, error: null };
 }
 
-export async function upsertConversationHookAction(
-  input: unknown,
-): Promise<ActionResult<ConversationHook>> {
-  const parsed = ConversationHookSchema.safeParse(input);
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? formErrors.generic };
-  }
-
-  const auth = await requireProfile(['admin', 'founder']);
-  if (!auth.ok) return auth.result;
-
-  const v = parsed.data;
-  const row = {
-    domain:     v.domain,
-    category:   v.category,
-    hook:       sanitizeText(v.hook),
-    context:    v.context ? sanitizeText(v.context) : null,
-    sort_order: v.sort_order,
-  };
-
-  const supabase = await createClient();
-
-  // Same old-domain invalidation as the case path (audit #7): the helpdesk cache
-  // is a per-domain {cases, hooks} envelope, so a hook moved across domains must
-  // evict the old shelf too.
-  let priorDomain: string | null = null;
-  if (v.id) {
-    const { data: existing } = await supabase
-      .from('conversation_hooks')
-      .select('domain')
-      .eq('id', v.id)
-      .single();
-    priorDomain = existing?.domain ?? null;
-  }
-
-  const query = v.id
-    ? supabase.from('conversation_hooks').update(row).eq('id', v.id)
-    : supabase.from('conversation_hooks').insert(row);
-
-  const { data, error } = await query
-    .select('id, domain, category, hook, context, sort_order')
-    .single();
-
-  if (error || !data) {
-    console.error('[intelligence-action] hook upsert failed:', error?.message);
-    return { data: null, error: formErrors.generic };
-  }
-
-  await invalidateHelpdeskCache(v.domain);
-  if (priorDomain && priorDomain !== v.domain) {
-    await invalidateHelpdeskCache(priorDomain);
-  }
-  revalidatePath('/helpdesk');
-  return { data: data as ConversationHook, error: null };
-}

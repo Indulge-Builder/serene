@@ -19,6 +19,7 @@
 import { z } from 'zod';
 import type { StaffPrincipal } from '@/lib/elaya/principal';
 import { maskPii } from '@/lib/elaya/pii';
+import { canAccessLead } from '@/lib/elaya/access';
 import type { PiiMaskingDepth } from '@/lib/services/llm-providers-service';
 import type { LlmToolDefinition } from '@/lib/elaya/provider';
 import {
@@ -39,7 +40,6 @@ import { DEAL_TYPE_ENUM, DEAL_CATEGORY_ENUM } from '@/lib/constants/deal-types';
 import { DEFAULT_GIA_DOMAIN, isGiaDomain } from '@/lib/constants/domains';
 import type { UserRole } from '@/lib/types';
 import type { LeadStatus } from '@/lib/types/database';
-import type { LeadWithAssignee } from '@/lib/services/leads-service';
 import type { ElayaChannel } from '@/lib/types/elaya';
 
 const TOOL_RESULT_MAX_CHARS = 12_000;
@@ -87,18 +87,8 @@ type ElayaTool = {
   ) => Promise<unknown>;
 };
 
-// ─────────────────────────────────────────────
-// Per-resource access check (mirrors the leads.ts action-layer hasAccess
-// pattern). getLeadBySlug serves from a shared Redis row cache, so the tool
-// layer re-verifies access explicitly — RLS alone is not the only gate here.
-// ─────────────────────────────────────────────
-
-function canAccessLead(principal: StaffPrincipal, lead: LeadWithAssignee): boolean {
-  if (principal.role === 'admin' || principal.role === 'founder') return true;
-  if (principal.role === 'manager') return lead.domain === principal.domain;
-  if (principal.role === 'agent') return lead.assigned_to === principal.userId;
-  return false;
-}
+// Per-resource access check: THE shared canAccessLead from lib/elaya/access.ts
+// (dry-audit D6 — one security predicate for both the read and write registries).
 
 // Role sets for the Phase-4 read tools (the toolset assembly is the hard gate).
 const MANAGER_UP: readonly UserRole[] = ['manager', 'admin', 'founder'];

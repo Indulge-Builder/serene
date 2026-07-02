@@ -3,23 +3,20 @@ import { sanitizeText } from "@/lib/utils/sanitize";
 import { normalizeToE164 } from "@/lib/utils/phone";
 import { GIA_DOMAIN_ENUM } from "@/lib/constants/domains";
 import { LEAD_SOURCE_ENUM } from "@/lib/constants/lead-sources";
+import { CALL_OUTCOME_ENUM } from "@/lib/constants/call-outcomes";
+import { LEAD_STATUS_ENUM } from "@/lib/constants/lead-statuses";
+import { uuidField, emailField } from "@/lib/validations/fields";
 
 // ─────────────────────────────────────────────
 // Add call note (CalledModal submit)
 // ─────────────────────────────────────────────
 export const AddCallNoteSchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
+  leadId: uuidField("Invalid lead ID"),
   content: z
     .string()
     .min(1, "Note content is required")
     .transform(sanitizeText),
-  callOutcome: z.enum([
-    "rnr",
-    "switched_off",
-    "wrong_number",
-    "conversing",
-    "other",
-  ]),
+  callOutcome: z.enum(CALL_OUTCOME_ENUM),
 });
 
 export type AddCallNoteInput = z.infer<typeof AddCallNoteSchema>;
@@ -28,16 +25,8 @@ export type AddCallNoteInput = z.infer<typeof AddCallNoteSchema>;
 // Update lead status
 // ─────────────────────────────────────────────
 export const UpdateLeadStatusSchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
-  status: z.enum([
-    "new",
-    "touched",
-    "in_discussion",
-    "won",
-    "nurturing",
-    "lost",
-    "junk",
-  ]),
+  leadId: uuidField("Invalid lead ID"),
+  status: z.enum(LEAD_STATUS_ENUM),
   reason: z
     .string()
     .optional()
@@ -50,8 +39,8 @@ export type UpdateLeadStatusInput = z.infer<typeof UpdateLeadStatusSchema>;
 // Assign lead (manual reassign)
 // ─────────────────────────────────────────────
 export const AssignLeadSchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
-  agentId: z.string().uuid("Invalid agent ID"),
+  leadId: uuidField("Invalid lead ID"),
+  agentId: uuidField("Invalid agent ID"),
 });
 
 export type AssignLeadInput = z.infer<typeof AssignLeadSchema>;
@@ -60,7 +49,7 @@ export type AssignLeadInput = z.infer<typeof AssignLeadSchema>;
 // Update personal details (agent-collected enrichment)
 // ─────────────────────────────────────────────
 export const UpdatePersonalDetailsSchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
+  leadId: uuidField("Invalid lead ID"),
   details: z.record(z.string(), z.string()),
 });
 
@@ -100,9 +89,9 @@ export const CreateManualLeadSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v && v.trim() ? v.trim().toLowerCase() : null))
-    .pipe(z.string().email("Please enter a valid email address.").nullable()),
+    .pipe(emailField("Please enter a valid email address.").nullable()),
   domain: z.enum(GIA_DOMAIN_ENUM),
-  assigned_to: z.string().uuid("Invalid agent ID").optional().nullable(),
+  assigned_to: uuidField("Invalid agent ID").optional().nullable(),
   source: z.preprocess(
     (v) => {
       if (typeof v !== "string" || !v.trim()) return null;
@@ -144,12 +133,12 @@ export const BULK_STATUS_ENUM = [
 export const BulkUpdateLeadsSchema = z
   .object({
     leadIds: z
-      .array(z.string().uuid("Invalid lead ID"))
+      .array(uuidField("Invalid lead ID"))
       .min(1, "Select at least one lead.")
       .max(500, "Too many leads selected. Narrow the selection to 500 or fewer."),
     changes: z
       .object({
-        assignedTo: z.string().uuid("Invalid agent ID").optional(),
+        assignedTo: uuidField("Invalid agent ID").optional(),
         status: z.enum(BULK_STATUS_ENUM).optional(),
         source: z.enum(LEAD_SOURCE_ENUM).optional(),
         domain: z.enum(GIA_DOMAIN_ENUM).optional(),
@@ -170,14 +159,14 @@ export type BulkUpdateLeadsInput = z.infer<typeof BulkUpdateLeadsSchema>;
 // Lead dossier — per-field inline edits (LeadInfoCard)
 // ─────────────────────────────────────────────
 export const UpdateLeadEmailSchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
+  leadId: uuidField("Invalid lead ID"),
   email: z
     .string()
     .optional()
     .transform((v) => (v && v.trim() ? v.trim().toLowerCase() : null))
     .pipe(
       z.union([
-        z.string().email("Please enter a valid email address."),
+        emailField("Please enter a valid email address."),
         z.null(),
       ]),
     ),
@@ -186,21 +175,21 @@ export const UpdateLeadEmailSchema = z.object({
 export type UpdateLeadEmailInput = z.infer<typeof UpdateLeadEmailSchema>;
 
 export const UpdateLeadDomainSchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
+  leadId: uuidField("Invalid lead ID"),
   domain: z.enum(GIA_DOMAIN_ENUM),
 });
 
 export type UpdateLeadDomainInput = z.infer<typeof UpdateLeadDomainSchema>;
 
 export const UpdateLeadSourceSchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
+  leadId: uuidField("Invalid lead ID"),
   source: z.enum(LEAD_SOURCE_ENUM).nullable(),
 });
 
 export type UpdateLeadSourceInput = z.infer<typeof UpdateLeadSourceSchema>;
 
 export const UpdateLeadCitySchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
+  leadId: uuidField("Invalid lead ID"),
   city: z
     .string()
     .optional()
@@ -210,7 +199,7 @@ export const UpdateLeadCitySchema = z.object({
 export type UpdateLeadCityInput = z.infer<typeof UpdateLeadCitySchema>;
 
 export const UpdateLeadInterestsSchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
+  leadId: uuidField("Invalid lead ID"),
   // Bounded/normalised here; out-of-vocabulary values are DROPPED in the
   // action against the lead's domain via extractServiceInterests — same
   // contract as CreateManualLeadSchema.service_interests.
@@ -233,7 +222,7 @@ export { RecordDealSchema, type RecordDealInput } from '@/lib/validations/deal-s
 // ─────────────────────────────────────────────
 
 export const AddLeadNoteSchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
+  leadId: uuidField("Invalid lead ID"),
   content: z
     .string()
     .min(1, "Note content is required")
@@ -247,7 +236,7 @@ export type AddLeadNoteInput = z.infer<typeof AddLeadNoteSchema>;
 // Create Gia follow-up task from the lead dossier (CreateLeadTaskModal)
 // ─────────────────────────────────────────────
 export const CreateLeadTaskSchema = z.object({
-  leadId: z.string().uuid("Invalid lead ID"),
+  leadId: uuidField("Invalid lead ID"),
   taskType: z.enum(["call", "whatsapp_message", "other"]),
   description: z
     .string()
@@ -263,19 +252,6 @@ export const CreateLeadTaskSchema = z.object({
 });
 
 export type CreateLeadTaskInput = z.infer<typeof CreateLeadTaskSchema>;
-
-// ─────────────────────────────────────────────
-// Lead search for CreateGiaTaskModal
-// ─────────────────────────────────────────────
-export const SearchLeadsSchema = z.object({
-  query: z
-    .string()
-    .min(1, "Search query is required")
-    .max(100)
-    .transform((v) => v.trim()),
-});
-
-export type SearchLeadsInput = z.infer<typeof SearchLeadsSchema>;
 
 // ─────────────────────────────────────────────
 // Export leads (ExportButton / LeadsSelectionToolbar)

@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { m as motion, AnimatePresence } from "framer-motion";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { BASE_DURATION, EASE_OUT_EXPO, FAST_DURATION, SLOW_DURATION } from "@/lib/constants/motion";
 import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, X } from "lucide-react";
 import { ElayaGlyph } from "@/components/ui/elaya-glyph";
 import type { ToastItem as ToastItemType, ToastType } from "@/lib/toast";
@@ -167,7 +167,7 @@ export function ToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
       animate="animate"
       exit="exit"
       transition={{
-        duration: 0.35,
+        duration: SLOW_DURATION,
         ease:     EASE_OUT_EXPO,
       }}
       onMouseEnter={handleMouseEnter}
@@ -199,7 +199,7 @@ export function ToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.15, delay: iconKey === 0 ? 0.08 : 0 }}
+          transition={{ duration: FAST_DURATION, delay: iconKey === 0 ? 0.08 : 0 }}
           style={{
             width:          "36px",
             height:         "36px",
@@ -230,7 +230,7 @@ export function ToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
           initial={{ opacity: 0, x: 4 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.2, delay: contentKey === 0 ? 0.12 : 0 }}
+          transition={{ duration: BASE_DURATION, delay: contentKey === 0 ? 0.12 : 0 }}
           style={{
             flex:           1,
             display:        "flex",

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { REVIVAL_TRIGGER_STATUSES } from "@/lib/constants/revival";
+import { uuidField } from "@/lib/validations/fields";
 
 /**
  * Manual revive (the Revive button — review tab row + dossier). Takes the lead id
@@ -8,15 +9,15 @@ import { REVIVAL_TRIGGER_STATUSES } from "@/lib/constants/revival";
  * are internal — the action maps to formErrors, never shown raw (Q-04).
  */
 export const ReviveLeadSchema = z.object({
-  leadId: z.string().uuid({ message: "bad_lead_id" }),
-  candidateId: z.string().uuid({ message: "bad_candidate_id" }).optional(),
+  leadId: uuidField("bad_lead_id"),
+  candidateId: uuidField("bad_candidate_id").optional(),
 });
 export type ReviveLeadInput = z.infer<typeof ReviveLeadSchema>;
 
 /** Dismiss an open revival candidate from the review tab (no task created). */
 export const DismissRevivalCandidateSchema = z.object({
-  candidateId: z.string().uuid({ message: "bad_candidate_id" }),
-  leadId: z.string().uuid({ message: "bad_lead_id" }),
+  candidateId: uuidField("bad_candidate_id"),
+  leadId: uuidField("bad_lead_id"),
 });
 export type DismissRevivalCandidateInput = z.infer<typeof DismissRevivalCandidateSchema>;
 

@@ -32,7 +32,7 @@ import {
   useTransition,
 } from "react";
 import { m as motion, AnimatePresence } from "framer-motion";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
 import { Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "@/components/ui/Avatar";
@@ -353,7 +353,7 @@ export function TaskRemarksPanel({
                   key={remark.id}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: optimisticIds.current.has(remark.id) ? 0.5 : 1, y: 0 }}
-                  transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
+                  transition={{ duration: EXIT_DURATION, ease: EASE_OUT_EXPO }}
                 >
                   {/* Status chip — shown when remark recorded a transition */}
                   {remark.status_change && (() => {

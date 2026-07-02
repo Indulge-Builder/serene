@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { uuidField } from '@/lib/validations/fields';
 
 /**
  * Chat request body for POST /api/elaya/chat.
@@ -11,7 +12,7 @@ export const ElayaChatRequestSchema = z.object({
     .trim()
     .min(1, 'empty_message')
     .max(4000, 'message_too_long'),
-  conversationId: z.string().uuid('invalid_conversation').optional(),
+  conversationId: uuidField('invalid_conversation').optional(),
 });
 
 export type ElayaChatRequest = z.infer<typeof ElayaChatRequestSchema>;

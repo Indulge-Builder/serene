@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { LeadRawPayload } from '@/lib/types/database';
 import { formatDate } from '@/lib/utils/dates';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 // ─────────────────────────────────────────────
 // Error category labels — derived from ingestion_error values
@@ -340,27 +341,12 @@ export function ErrorLogTable({ rows }: ErrorLogTableProps) {
                           display: 'block',
                         }}
                       />
-                      <p
-                        style={{
-                          fontFamily: 'var(--font-serif)',
-                          fontSize:   'var(--text-lg)',
-                          fontStyle:  'italic',
-                          color:      'var(--theme-text-tertiary)',
-                          fontWeight: 'var(--weight-normal)',
-                          margin:     0,
-                        }}
-                      >
-                        All clear — no ingestion errors.
-                      </p>
-                      <p
-                        style={{
-                          marginTop: 'var(--space-2)',
-                          fontSize:  'var(--text-sm)',
-                          color:     'var(--theme-text-tertiary)',
-                        }}
-                      >
-                        Every payload received so far has been ingested successfully.
-                      </p>
+                      <EmptyState
+                        size="lg"
+                        title="All clear — no ingestion errors."
+                        description="Every payload received so far has been ingested successfully."
+                        style={{ padding: 0 }}
+                      />
                     </>
                   ) : (
                     <>
@@ -373,27 +359,12 @@ export function ErrorLogTable({ rows }: ErrorLogTableProps) {
                           display: 'block',
                         }}
                       />
-                      <p
-                        style={{
-                          fontFamily: 'var(--font-serif)',
-                          fontSize:   'var(--text-lg)',
-                          fontStyle:  'italic',
-                          color:      'var(--theme-text-tertiary)',
-                          fontWeight: 'var(--weight-normal)',
-                          margin:     0,
-                        }}
-                      >
-                        No errors match your filters.
-                      </p>
-                      <p
-                        style={{
-                          marginTop: 'var(--space-2)',
-                          fontSize:  'var(--text-sm)',
-                          color:     'var(--theme-text-tertiary)',
-                        }}
-                      >
-                        Try clearing the search or changing the source filter.
-                      </p>
+                      <EmptyState
+                        size="lg"
+                        title="No errors match your filters."
+                        description="Try clearing the search or changing the source filter."
+                        style={{ padding: 0 }}
+                      />
                     </>
                   )}
                 </td>

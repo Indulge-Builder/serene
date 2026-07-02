@@ -5,6 +5,7 @@ import Link from "next/link";
 import { RefreshCcw } from "lucide-react";
 import { getAgentTasksSummaryAction } from "@/lib/actions/dashboard";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDate } from "@/lib/utils/dates";
 import {
   TASK_CATEGORY,
@@ -368,19 +369,10 @@ export function AgentTasksWidget({ userId, initialData }: WidgetProps) {
 
           {/* Empty state */}
           {loaded && tasks.length === 0 && (
-            <p
-              style={{
-                fontFamily: "var(--font-serif)",
-                fontStyle: "italic",
-                fontSize: "var(--text-sm)",
-                color: "var(--theme-text-tertiary)",
-                textAlign: "center",
-                padding: "var(--space-6) 0",
-                margin: 0,
-              }}
-            >
-              Nothing on your plate. Enjoy the quiet.
-            </p>
+            <EmptyState
+              title="Nothing on your plate. Enjoy the quiet."
+              style={{ padding: "var(--space-6) 0" }}
+            />
           )}
         </div>
         )}

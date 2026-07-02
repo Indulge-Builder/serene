@@ -14,11 +14,11 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 
-export const WHATSAPP_MEDIA_BUCKET = 'whatsapp-media';
+const WHATSAPP_MEDIA_BUCKET = 'whatsapp-media';
 
 // Signed-url lifetime for reads. Short enough that a leaked url ages out quickly,
 // long enough to outlast a normal page session + scrollback.
-export const WHATSAPP_MEDIA_SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour
+const WHATSAPP_MEDIA_SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour
 
 // Hard cap on a single inbound media download. Gupshup/Meta media is bounded
 // (images ≤5MB, video/document ≤16MB on WhatsApp), but guard against a hostile
@@ -45,7 +45,7 @@ const MIME_EXT: Record<string, string> = {
   'application/pdf': 'pdf',
 };
 
-export function mediaExtFromMime(mimeType: string | null | undefined): string {
+function mediaExtFromMime(mimeType: string | null | undefined): string {
   if (!mimeType) return 'bin';
   const base = mimeType.split(';')[0]!.trim().toLowerCase();
   if (MIME_EXT[base]) return MIME_EXT[base];

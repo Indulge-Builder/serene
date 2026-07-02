@@ -3,7 +3,7 @@ import type { AgentRosterRow } from '@/lib/types/index';
 import type { AppDomain } from '@/lib/types/database';
 
 /** Matches ManagerPerformancePanel — Gia domains first, then platform domains. */
-export const PERFORMANCE_ROSTER_DOMAIN_ORDER: AppDomain[] = [
+const PERFORMANCE_ROSTER_DOMAIN_ORDER: AppDomain[] = [
   ...GIA_DOMAINS,
   ...APP_DOMAINS.filter((d) => !isGiaDomain(d)),
 ];
@@ -36,11 +36,3 @@ export function buildPerformanceRosterGroups(
   ];
 }
 
-/** First agent id as shown in the sidebar (not top-performer roster[0]). */
-export function getFirstAgentInPerformanceRosterList(
-  roster: AgentRosterRow[],
-  options: { allDomains: boolean; domain: AppDomain },
-): string | null {
-  const groups = buildPerformanceRosterGroups(roster, options);
-  return groups[0]?.agents[0]?.id ?? null;
-}

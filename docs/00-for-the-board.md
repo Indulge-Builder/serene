@@ -2,7 +2,7 @@
 
 > **Purpose:** explain what Serene is to someone who doesn't write software — a board member, an investor, a new hire on the business side.
 > **Audience:** non-technical. Ten-minute read. No jargon; every term is explained where it first appears.
-> **Last verified:** 15 June 2026.
+> **Last verified:** 2 July 2026.
 
 ---
 
@@ -76,6 +76,12 @@ advertisement to deal:
 - **Campaigns** — which advertisements actually produce leads and wins, per campaign.
 - **Performance** — scoreboards: each agent's calls, response times, and conversions; team
   comparisons for managers; per-business-line health for the founders.
+- **Oversight** - a live control room for managers and the founders: what every team, and every
+  person on it, is working on right now.
+- **Budget** - what is being spent on advertising, account by account, next to what it is
+  bringing back.
+- **Notes** - each person's own notepad inside Serene; Elaya reads these notes so her answers
+  reflect what that person has written down.
 - **Settings & Team** — who is on the rota for new leads, working hours, and (for
   administrators) creating accounts and setting what each person may see.
 
@@ -103,9 +109,10 @@ campaign and performance reporting, and the shared WhatsApp inbox. Plus, now liv
 
 - **Elaya, the AI assistant** — the team can ask her questions in plain language (in the app
   or over WhatsApp, including in Hinglish), and she can now act on their behalf: log a call
-  note or create a follow-up task directly, and *propose* a status change or reassignment that
-  a person approves in one reply before anything happens. Every action she takes is recorded,
-  and she is never sent a client's raw personal details.
+  note, create or update tasks, and *propose* bigger steps such as a status change, a
+  reassignment, or recording a won deal, which a person approves in one reply before anything
+  happens. She also remembers each person over time and speaks in the style they prefer. Every
+  action she takes is recorded, and she is never sent a client's raw personal details.
 - **Voice dictation** — agents can speak instead of type a call note, a WhatsApp reply, or a
   message to Elaya; their speech (including Hinglish) becomes editable text. The audio is
   transcribed in the moment and never stored.
@@ -119,12 +126,14 @@ campaign and performance reporting, and the shared WhatsApp inbox. Plus, now liv
   can be installed like an app on the home screen (each person can even choose their own icon).
 - **Sign-in safety** — password resets now use a short code typed into Serene rather than a
   link in an email, which keeps corporate email scanners from accidentally burning the reset.
+- **A WhatsApp auto-assistant for prospects** - when a new enquiry comes in, Elaya can greet
+  the person on WhatsApp and handle the first questions herself until an agent takes over.
+  Built and ready; it switches on the moment the approved WhatsApp welcome message is
+  connected.
 
 **Being built now:**
 
 - **Client records** — the bridge from "deal won" to "ongoing client relationship".
-- **A WhatsApp auto-assistant for prospects** — letting Elaya engage a new enquiry directly
-  until an agent takes over.
 
 **Planned next:**
 

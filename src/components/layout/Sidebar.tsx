@@ -34,7 +34,7 @@ import { useSuggestionFeedback } from "@/components/suggestions/SuggestionFeedba
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { canAccessRoute } from "@/lib/utils/route-access";
-import { getInitials } from "@/lib/utils/strings";
+import { Avatar } from "@/components/ui/Avatar";
 import { lockBodyScroll } from "@/lib/utils/scroll";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import type { Profile, Notification } from "@/lib/types/database";
@@ -313,7 +313,6 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
     };
   }, [drawerOpen]);
 
-  const initials = getInitials(profile.full_name);
   const roleLabel = ROLE_LABELS[profile.role];
 
   return (
@@ -593,45 +592,17 @@ export function Sidebar({ profile, notificationsPromise }: SidebarProps) {
             }}
           >
             {/* Avatar */}
-            {profile.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt={profile.full_name}
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "var(--radius-sm)",
-                  objectFit: "cover",
-                  flexShrink: 0,
-                  border:
-                    "1px solid color-mix(in srgb, var(--theme-canvas-text) 10%, transparent)",
-                }}
-              />
-            ) : (
-              <div
-                aria-hidden="true"
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "var(--radius-sm)",
-                  background: "var(--theme-accent-surface)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  fontFamily: "var(--font-sans)",
-                  fontSize: "var(--text-xs)",
-                  fontWeight: "var(--weight-semibold)",
-                  color: isOnProfile
-                    ? "var(--theme-sidebar-active)"
-                    : "var(--theme-sidebar-active)",
-                  border:
-                    "1px solid color-mix(in srgb, var(--theme-accent) 20%, transparent)",
-                }}
-              >
-                {initials}
-              </div>
-            )}
+            <Avatar
+              src={profile.avatar_url}
+              name={profile.full_name}
+              alt={profile.full_name}
+              size="sm"
+              style={{
+                borderRadius: "var(--radius-sm)",
+                border:
+                  "1px solid color-mix(in srgb, var(--theme-canvas-text) 10%, transparent)",
+              }}
+            />
 
             {/* Name + role — hidden on the md icon rail */}
             <div className="serene-sidebar-rail-hide" style={{ flex: 1, minWidth: 0 }}>

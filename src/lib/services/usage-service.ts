@@ -214,7 +214,7 @@ export async function rollupUsageForDays(days: string[]): Promise<number> {
 export async function pruneOldHeartbeats(days = 30): Promise<void> {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const { error } = await admin
     .from("usage_heartbeats")
     .delete()
@@ -267,23 +267,32 @@ export async function getAgentUsage(historyDays = 30): Promise<AgentUsageReport 
 
   // The RPC already returns active_minutes as ::int, but coerce defensively at
   // the JSON boundary (Q-09 — never let an uncast bigint reach the client).
-  const raw = data as { today?: unknown[]; history?: unknown[] };
-  const today: AgentUsageToday[] = mapRows<Record<string, unknown>, AgentUsageToday>(
-    (raw.today ?? []) as Record<string, unknown>[],
+  // Q-18: one declared row shape per RPC array; the mapper bodies are fully typed.
+  type RawUsageTodayRow = {
+    user_id: string;
+    full_name: string | null;
+    domain: AppDomain;
+    active_minutes: number | string | null;
+  };
+  type RawUsageHistoryRow = RawUsageTodayRow & { day: string };
+
+  const raw = data as { today?: RawUsageTodayRow[]; history?: RawUsageHistoryRow[] };
+  const today: AgentUsageToday[] = mapRows<RawUsageTodayRow, AgentUsageToday>(
+    raw.today ?? [],
     (r) => ({
-      user_id: r.user_id as string,
-      full_name: (r.full_name as string | null) ?? null,
-      domain: r.domain as AppDomain,
+      user_id: r.user_id,
+      full_name: r.full_name ?? null,
+      domain: r.domain,
       active_minutes: Number(r.active_minutes ?? 0),
     }),
   );
-  const history: AgentUsageHistoryPoint[] = mapRows<Record<string, unknown>, AgentUsageHistoryPoint>(
-    (raw.history ?? []) as Record<string, unknown>[],
+  const history: AgentUsageHistoryPoint[] = mapRows<RawUsageHistoryRow, AgentUsageHistoryPoint>(
+    raw.history ?? [],
     (r) => ({
-      day: r.day as string,
-      user_id: r.user_id as string,
-      full_name: (r.full_name as string | null) ?? null,
-      domain: r.domain as AppDomain,
+      day: r.day,
+      user_id: r.user_id,
+      full_name: r.full_name ?? null,
+      domain: r.domain,
       active_minutes: Number(r.active_minutes ?? 0),
     }),
   );

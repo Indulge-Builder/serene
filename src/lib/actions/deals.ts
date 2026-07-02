@@ -4,7 +4,8 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/actions/_auth";
-import { getAssignableUsers } from "@/lib/services/profiles-service";
+import { parseActionInput } from "@/lib/actions/_validation";
+import { getAssignableUsers, getDomainDecisionMakers } from "@/lib/services/profiles-service";
 import { createNotification } from "@/lib/services/notifications-service";
 import { RecordDealSchema, CreateWalkInDealSchema } from "@/lib/validations/deal-schema";
 import { formErrors } from "@/lib/validations/form-errors";
@@ -34,13 +35,7 @@ async function notifyDealCreated(opts: {
   amount:      number;
   byName:      string;
 }): Promise<void> {
-  const admin = createAdminClient();
-  const { data: recipients } = await admin
-    .from("profiles")
-    .select("id")
-    .eq("domain", opts.domain)
-    .in("role", ["manager", "admin", "founder"])
-    .eq("is_active", true);
+  const recipients = await getDomainDecisionMakers<{ id: string }>(opts.domain);
 
   if (!recipients || recipients.length === 0) return;
 
@@ -72,11 +67,8 @@ export async function recordDeal(
   input: unknown,
 ): Promise<ActionResult<{ leadId: string }>> {
   // S-01: Zod validation first line
-  const parsed = RecordDealSchema.safeParse(input);
-  if (!parsed.success) {
-    const first = parsed.error.issues[0];
-    return { data: null, error: first?.message ?? formErrors.generic };
-  }
+  const parsed = parseActionInput(RecordDealSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   const { leadId, deal_duration, deal_category, deal_amount } = parsed.data;
 
@@ -158,11 +150,8 @@ export async function createWalkInDeal(
   input: unknown,
 ): Promise<ActionResult<{ dealId: string }>> {
   // S-01: Zod validation first line
-  const parsed = CreateWalkInDealSchema.safeParse(input);
-  if (!parsed.success) {
-    const first = parsed.error.issues[0];
-    return { data: null, error: first?.message ?? formErrors.generic };
-  }
+  const parsed = parseActionInput(CreateWalkInDealSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   const data = parsed.data;
 

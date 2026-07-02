@@ -4,7 +4,7 @@ import { z } from "zod";
 // low-bitrate audio client-side (useAudioRecorder); Safari AAC at default
 // bitrates can still approach ~2 MB, so the ceiling sits above that but well
 // under the 4 MB server-action body limit (next.config.ts).
-export const MAX_VOICE_NOTE_BYTES = 3 * 1024 * 1024;
+const MAX_VOICE_NOTE_BYTES = 3 * 1024 * 1024;
 
 // Browsers tag audio-only recordings differently: Chrome `audio/webm;codecs=opus`,
 // Safari `audio/mp4`, Firefox `audio/ogg;codecs=opus`. Some engines use the

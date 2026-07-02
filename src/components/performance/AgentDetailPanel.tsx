@@ -16,7 +16,7 @@ import { AgentFirstTouchDrillModal }           from '@/components/performance/Ag
 import { AgentLeadsPredicateDrillModal, type DrillPredicate } from '@/components/performance/AgentLeadsPredicateDrillModal';
 import { DOMAIN_LABELS }                       from '@/lib/constants/domains';
 import type { FirstTouchBucketId }             from '@/lib/constants/performance';
-import { ENTER_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
+import { ENTER_DURATION, FAST_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
 import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
 import type { AppDomain, LeadStatus, CallOutcome } from '@/lib/types/database';
 import type { PerformancePeriod, FirstTouchScorecard as FirstTouchScorecardData } from '@/lib/services/performance-service';
@@ -348,7 +348,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: FAST_DURATION }}
             style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}
           >
             <StatAtom label="Total Calls" value={formatCompact(metrics.totalCallsMade)}     paletteIndex={0} delay={0}   onClick={() => setDrill('calls')} />
@@ -362,7 +362,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: FAST_DURATION }}
             style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}
           >
             {STAT_PALETTES.map((p, i) => (
@@ -452,7 +452,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: FAST_DURATION }}
             style={{
               background:   'var(--theme-paper)',
               border:       '1px solid var(--theme-paper-border)',
@@ -492,7 +492,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: FAST_DURATION }}
             style={{
               background:   'var(--theme-paper)',
               border:       '1px solid var(--theme-paper-border)',

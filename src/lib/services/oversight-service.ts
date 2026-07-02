@@ -17,10 +17,6 @@ import "server-only";
 //
 // COUNT(*) returns bigint — every count is Number()-coerced here (Q-09); a raw
 // BigInt would break JSON serialisation to the client.
-//
-// Interim `as any` on `.rpc` — the generated Database type does not know the
-// three oversight RPCs until `supabase gen types` is re-run after the migration
-// (same pattern as the dashboard/performance scope-param RPC wrappers).
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { listLivePresence } from "@/lib/services/usage-service";
@@ -89,8 +85,7 @@ export async function getTeamTaskOverview(caller: {
   domain: AppDomain;
 }): Promise<TeamTaskOverviewRow[]> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any).rpc("get_team_task_overview", {
+  const { data, error } = await admin.rpc("get_team_task_overview", {
     p_role: caller.role,
     p_domain: caller.domain,
   });
@@ -130,8 +125,7 @@ export async function getTeamAgentBreakdown(
   targetDomain: AppDomain,
 ): Promise<TeamAgentBreakdownRow[]> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any).rpc("get_team_agent_breakdown", {
+  const { data, error } = await admin.rpc("get_team_agent_breakdown", {
     p_role: caller.role,
     p_caller_domain: caller.domain,
     p_domain: targetDomain,
@@ -168,8 +162,7 @@ export async function getAgentTasksOversight(
   agentId: string,
 ): Promise<AgentOversightResult> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any).rpc(
+  const { data, error } = await admin.rpc(
     "get_agent_tasks_oversight",
     {
       p_agent: agentId,
@@ -243,7 +236,6 @@ function deriveMetrics(tasks: AgentOversightTask[]): AgentOversightMetrics {
 // Live rail seeds — bounded task_events reads (newest-first). Display rows for
 // the rail; the client subscribes to Realtime INSERTs from there. manager+ SELECT
 // RLS double-enforces; the action already clamped which domain/agent is rendered.
-// Interim `as any` on `.from` (task_events not in generated types yet).
 // ─────────────────────────────────────────────
 import type { TaskEventRow } from "@/lib/types/oversight";
 
@@ -254,8 +246,7 @@ export async function getTeamEvents(
   limit = RAIL_SEED_LIMIT,
 ): Promise<TaskEventRow[]> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from("task_events")
     .select("*")
     .eq("domain", domain)
@@ -270,8 +261,7 @@ export async function getAgentEvents(
   limit = RAIL_SEED_LIMIT,
 ): Promise<TaskEventRow[]> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from("task_events")
     .select("*")
     .eq("subject_id", agentId)

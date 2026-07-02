@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect, useTransition, useCallback, memo 
 import dynamic from 'next/dynamic';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { m as motion, AnimatePresence } from 'framer-motion';
-import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { EASE_OUT_EXPO, EXIT_DURATION } from '@/lib/constants/motion';
 import { ArrowDownUp, Clock, Columns } from 'lucide-react';
 import { buildFilterParams } from '@/lib/utils/filter-params';
 import type { LeadListItemWithAssignee } from '@/lib/services/leads-service';
@@ -162,7 +162,7 @@ export function LeadsTable({ leads, userId, role, domain, filters, hasActiveFilt
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: 0.1, ease: EASE_OUT_EXPO }}
+      transition={{ duration: EXIT_DURATION, delay: 0.1, ease: EASE_OUT_EXPO }}
       style={{
         border:       '1px solid var(--theme-paper-border)',
         borderRadius: 'var(--radius-md)',

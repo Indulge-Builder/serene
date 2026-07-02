@@ -27,7 +27,7 @@ const caller = auth.profile;                 // only when the action uses it
 |---|---|
 | `sla.ts` (all actions) | Trigger.dev context — no session exists; correctly uses `createAdminClient()` (dry-audit Corrections #1) |
 | `auth.ts` `loginAction` | reads the profile for the post-login `is_active` check, not authorization |
-| `tasks.ts` `updateTaskStatusAction` / `updateTaskAction` / `updateChecklistAction` / `updateTaskTagsAction` | fetch profile + task in one parallel `Promise.all` — the guard would serialize two independent round-trips |
+| `tasks.ts` `updateTaskStatusAction` / `updateTaskAction` / `updateChecklistAction` | fetch profile + task in one parallel `Promise.all` — the guard would serialize two independent round-trips (`updateTaskTagsAction` was deleted in the 2026-07-02 dead-code purge) |
 
 ## Lead cache invalidation — invalidateLeadCaches (P-08)
 

@@ -33,7 +33,7 @@ import { task, tasks, runs } from '@trigger.dev/sdk/v3';
 
 // ─── Payload types ────────────────────────────────────────────────────────────
 
-interface ScheduleLeadSlasPayload {
+interface _ScheduleLeadSlasPayloadDoc {
   leadId:           string;
   ruleCode:         string;
   fireAt:           string;  // ISO string (Date serialised for Trigger.dev payload)
@@ -137,13 +137,8 @@ export async function scheduleLeadSlasTask(
 // ─── Cancel all pending SLA runs for a lead ──────────────────────────────────
 
 export async function cancelLeadSlasByLeadTask(leadId: string): Promise<void> {
-  const tag    = `lead-sla-${leadId}`;
-  const page   = await runs.list({ tag, status: ['DELAYED', 'QUEUED'] });
-  const runIds = page.data.map((r) => r.id);
-
-  if (runIds.length > 0) {
-    await Promise.allSettled(runIds.map((id) => runs.cancel(id)));
-  }
+  const { cancelRunsByTag } = await import('@/lib/trigger/cancel-runs');
+  await cancelRunsByTag(`lead-sla-${leadId}`);
 
   // Update all pending timer rows for this lead in DB
   try {

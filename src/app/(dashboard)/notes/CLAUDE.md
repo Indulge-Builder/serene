@@ -2,7 +2,7 @@
 
 **Route:** `/notes` — **all signed-in staff** (a personal surface; only a session gate, no
 role gate). The per-user Notes section (Elaya Jarvis, Feature 3 / Block 4 — `docs/modules/elaya.md`,
-`docs/architecture/elaya-jarvis-architecture.md` Block 4). A user writes free-form notes about
+"The Notes section" + the "Jarvis" build sections). A user writes free-form notes about
 their work; Elaya READS them (scoped to that user) and weaves them in.
 
 ## THE GOLDEN RULE (why a notes page is safe to ship)

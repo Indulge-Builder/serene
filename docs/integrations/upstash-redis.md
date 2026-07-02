@@ -2,15 +2,18 @@
 
 > **Purpose:** the Redis provider connection and failure-tolerance policy.
 > **Audience:** engineers. · **Source-of-truth scope:** connection + operational policy only. Key registry, TTLs, and invalidation contracts live in `../architecture/caching.md` — do not duplicate them here.
-> **Last verified:** 2026-06-11 against `src/lib/redis.ts`, `src/lib/constants/redis-keys.ts`.
+> **Last verified:** 2026-07-02 against `src/lib/redis.ts`, `src/lib/constants/redis-keys.ts`.
 
 ---
 
 ## Connection
 
-- **Client:** `src/lib/redis.ts` exports a single `redis = Redis.fromEnv()`
-  (`@upstash/redis`, REST transport) — the only Upstash client instance in the app. Never
-  instantiate another.
+- **Client:** `src/lib/redis.ts` exports `redis`, a lazy Proxy over a memoised
+  `Redis.fromEnv()` singleton (`@upstash/redis`, REST transport). Still the only Upstash
+  client instance in the app; never instantiate another. Construction, and the
+  missing-env-var throw, is deferred to first method access rather than import, so the
+  Trigger.dev build scan can import redis-dependent modules without runtime secrets present.
+  Operationally: a misconfigured deploy surfaces at the first Redis use, not at boot.
 - **Env (server-only, required):** `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
   (`Redis.fromEnv()` reads exactly these — see `../operations/environments.md`).
 - REST transport means no connection pooling concerns on Vercel lambdas — each command is an

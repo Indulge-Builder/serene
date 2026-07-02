@@ -1,8 +1,8 @@
 # Caching
 
-> **Purpose:** the three caching layers — Upstash Redis cache-aside, React `cache()`, and `unstable_cache` — with the key registry, TTLs, and invalidation contracts.
+> **Purpose:** the two live caching layers, Upstash Redis cache-aside and React `cache()`, with the key registry, TTLs, and invalidation contracts. (`unstable_cache` currently has zero live call sites; §4 keeps its rules as guidance.)
 > **Audience:** engineers. · **Source-of-truth scope:** cache architecture and invariants. Connection/provider setup lives in `../integrations/upstash-redis.md`; exact per-function TTL values are maintained code-adjacent in `src/lib/CLAUDE.md` (services registry).
-> **Last verified:** 2026-06-26 against `src/lib/redis.ts`, `src/lib/constants/redis-keys.ts`, `src/lib/services/lead-cache.ts`, `src/lib/services/intelligence-service.ts`, `src/lib/CLAUDE.md`. No cache-layer changes since 2026-06-15 — the recent Elaya "Jarvis" reads run on the admin client with NO Redis cache-aside (live every turn, the always-live posture §2 already describes); `/oversight` reads are uncached (live `task_events` rails); `ad-spend-service` (recharges) stays always-live (no Redis, §2). `task:personal page-1` bumped to a `…:v2` key (0145 widened the row shape) — same namespace, retire-on-read.
+> **Last verified:** 2026-07-02 against `src/lib/redis.ts`, `src/lib/constants/redis-keys.ts`, `src/lib/services/lead-cache.ts`, `src/lib/services/cache-helpers.ts`, `src/lib/services/tasks-service.ts`, `src/lib/services/intelligence-service.ts`, `src/lib/CLAUDE.md`. Recent changes: the `dashboard:lead-status` / `dashboard:campaigns` keys gained a role segment (`DASHBOARD_PIPELINE_ROLES`, Q-16) and `invalidateLeadCaches` now dels every role variant of the all-time slots (2026-07-02); the Elaya "Jarvis" reads run on the admin client with NO Redis cache-aside (live every turn, the always-live posture §2 already describes); `/oversight` reads are uncached (live `task_events` rails); `ad-spend-service` (recharges) stays always-live (no Redis, §2). `task:personal page-1` bumped to a `…:v2` key (0145 widened the row shape) — same namespace, retire-on-read.
 
 ---
 
@@ -18,6 +18,11 @@ user-facing error.
 - **Keys + TTLs:** `src/lib/constants/redis-keys.ts` (`REDIS_KEYS`, `buildLeadListKey()`,
   `REDIS_TTL`, `TASK_*_TTL`, `PERF_*_TTL`) is the **only** source of key strings and TTL
   values. No inline key strings or magic TTL numbers anywhere else.
+- **Envelope helper:** `withRedisCache(key, ttl, fetchFn, normalize?)` in
+  `src/lib/services/cache-helpers.ts` is THE structural cache-aside envelope (dry-audit D1).
+  It owns the get → catch → fetch → setex → catch boilerplate; Redis failure is non-fatal on
+  both sides. Adopted across `dashboard-service.ts`. Never hand-roll the boilerplate in a
+  new service.
 
 ## 2. Key registry (by namespace)
 
@@ -27,8 +32,8 @@ user-facing error.
 | `lead:row:slug` / `lead:row:id` | `getLeadBySlug` / `getLeadById` | 120s | **Explicit `del` of BOTH keys** on every lead-row mutation when slug is non-null (dual-key invariant, §4) |
 | `lead:notes` / `lead:activities` | `getLeadNotesFull` / `getLeadActivitiesFull` | 120s | Explicit `del` on note/activity write |
 | `lead:filter-options` | `getLeadFilterOptions` | 300s | TTL-only |
-| `dashboard:*` | `dashboard-service` (status, volume, multi-domain, campaigns, agent-tasks) | 30–120s | TTL-only; keys are date-range-namespaced (`from:to`) — a del cannot enumerate them |
-| `task:*` | `tasks-service` (gia, group-list, personal page-1, subtasks, remarks) | 30–120s | Explicit `del` on task writes; `task:group-list` is **user-scoped** (flat-visibility migration 0058b) — on subtask assignment both the caller's and the assignee's keys are deleted |
+| `dashboard:*` | `dashboard-service` (status, volume, multi-domain, campaigns, agent-tasks) | 30–120s | Keys are date-range-namespaced (`from:to`). `dashboard:lead-status` and `dashboard:campaigns` are ALSO role-scoped (`{role}:{domain}:{from}:{to}`, role ∈ `DASHBOARD_PIPELINE_ROLES` = manager/admin/founder, Q-16), and their **all-time slots are explicitly deleted** by `invalidateLeadCaches`' dashboard scope (loops every role variant). The *volume* keys stay TTL-only: a del cannot enumerate their date ranges |
+| `task:*` | `tasks-service` (gia 60s, personal page-1 30s, group-list 120s) | 30–120s | Explicit `del` on task writes; `task:group-list` is **user-scoped** (flat-visibility migration 0058b) — on subtask assignment both the caller's and the assignee's keys are deleted. Subtasks and remarks are NOT Redis-cached: `getGroupSubtasks`/`getTaskRemarks` use React `cache()` per-request memoisation only |
 | `helpdesk:cases:{domain}` | `intelligence-service.getHelpdeskLibrary` | 3600s (`REDIS_TTL.HELPDESK_CASES`) | Explicit `del` of `helpdeskCases(domain)` on every case/hook write — `actions/intelligence.ts` awaits the del before `revalidatePath('/helpdesk')`. One `{ cases, hooks }` envelope per domain; partial reads never cached. The dossier reads (`getCasesForLead`/`getHooksForCategories`) are deliberately un-cached |
 | `presence:{userId}` | `usage-service.recordPresence` (write) / `listLivePresence` (read) | 150s (`REDIS_TTL.PRESENCE`) | **TTL-only — never `del`.** The active-time heartbeat (adoption tracking) SETs one key per active user every 60s (`UsagePresence` client gate: tab visible + interacted < 120s); value `{domain,role,ts}`. The 1-min snapshot job (`snapshotUsagePresenceTask`) SCANs `presence:*` (`PRESENCE_KEY_PATTERN`) and appends to `usage_heartbeats`. **No DB write on the heartbeat path** — Redis only, fails open. TTL > the 60s beat so a key survives one missed beat but expires within ~1 snapshot of the user going idle/hidden |
 
@@ -70,10 +75,13 @@ Lead actions never hand-assemble `redis.del` blocks. They call
 `src/lib/services/lead-cache.ts`, which awaits everything inside the try/catch-warn convention.
 Scope flags: `row` (always deletes both row keys), `notes`, `activities`, `lists`
 (version-counter INCRs for agent + manager scopes), `dashboard` (all-time lead-status +
-campaigns slots). Dashboard *volume* keys are deliberately out of every scope — their read-side
+campaigns slots, deleted for **every** role in `DASHBOARD_PIPELINE_ROLES` since those keys
+are role-scoped). Dashboard *volume* keys are deliberately out of every scope — their read-side
 keys embed an ISO `from:to` range a del cannot enumerate; freshness is TTL-only (120s).
-Reference call sites: `updateLeadStatus`, `addLeadCallNote`, `addLeadNote` in
-`src/lib/actions/leads.ts`.
+Reference call sites: the shared lead-mutation cores in `src/lib/services/lead-mutations.ts`
+(`addLeadNoteCore`, `addLeadCallNoteCore`, `updateLeadStatusCore`, `assignLeadCore`; the
+actions in `src/lib/actions/leads.ts` delegate to these), plus the direct callers in
+`actions/leads.ts`: `bulkUpdateLeads` (two call sites) and `createManualLead`.
 
 ### Domain in every scoped key (the Q-16 sibling)
 
@@ -92,12 +100,17 @@ the **session-verified `callerDomain`**, never `filters.domain`. User-scoped que
 
 - **Reference for `cache()`:** `getDashboardSummary` in `dashboard-service.ts` — single RPC,
   memoised per request; do not split it back into individual calls.
-- **Reference for `unstable_cache`:** `getGroupTasks` in `tasks-service.ts` — tag
-  `'group-tasks'`, 60s, revalidated by `createGroupTaskAction`/`createSubtaskAction` via
-  `revalidateTag('group-tasks', { expire: 0 })` (Next.js 16 requires the second argument).
-- **Key rule (Q-16):** an `unstable_cache` key includes every dimension that scopes the result —
-  domain for domain-scoped queries, userId for user-scoped ones. Omitting one allows
-  cross-domain/cross-user cache hits.
+- **`unstable_cache` has zero live call sites.** `getGroupTasks` (the former reference) migrated
+  to React `cache()` + Redis cache-aside (`task:group-list:{userId}`, 120s). Its header comment
+  says why: `createClient()` calls `cookies()`, which P-09 forbids inside an `unstable_cache`
+  closure. There are also no `revalidateTag` call sites. The P-09 and Q-16 rules stay as
+  guidance for any future `unstable_cache` adoption.
+- **Key rule (Q-16):** a shared cache key includes every dimension that scopes the result —
+  domain for domain-scoped queries, userId for user-scoped ones, and **role** where the query
+  result is role-scoped (the 2026-07-02 precedent: `dashboard:lead-status`/`dashboard:campaigns`
+  gained a role segment because a manager and an admin on the same domain+range were sharing a
+  slot). Omitting a dimension allows cross-scope cache hits. Q-16's live enforcement surface
+  today is Redis key scoping (§2 and §3).
 
 ## 5. Web Push channel — freshness posture (not a cache layer)
 

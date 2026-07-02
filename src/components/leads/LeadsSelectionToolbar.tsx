@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
-import { AnimatePresence, m as motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import { Pencil } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { exportLeadsAction } from '@/lib/actions/leads';
 import { buildLeadsCSV, buildXLSXWorkbook, triggerBrowserDownload } from '@/lib/utils/export';
 import { formatDate } from '@/lib/utils/dates';
-import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { BASE_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import type { AppDomain, UserRole } from '@/lib/types/database';
 
 // Load-on-intent (perf G-1): the bulk-edit modal (FilterDropdown + agent fetch)
@@ -98,7 +98,7 @@ export function LeadsSelectionToolbar({
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -4 }}
-      transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+      transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
       style={{
         display:      'flex',
         alignItems:   'center',

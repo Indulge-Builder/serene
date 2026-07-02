@@ -204,7 +204,8 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
   function toggleAdvanced(key: string) {
     setAdvancedOpen((s) => {
       const next = new Set(s);
-      next.has(key) ? next.delete(key) : next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }

@@ -10,9 +10,6 @@
 // NOT append-only: resolveSuggestion flips status. Column restriction (only
 // status/resolved_by/resolved_at move) is enforced HERE in code, not in SQL — the
 // revival markCandidateResolved precedent.
-//
-// Interim `as any` cast on `.from('suggestions')` until database.ts is regenerated
-// after the suggestions migration is applied (the revival-service convention).
 
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -44,7 +41,7 @@ export async function createSuggestion(
   payload: CreateSuggestionPayload,
 ): Promise<{ id: string | null; error: string | null }> {
   const admin = createAdminClient();
-  const { data, error } = await (admin as any) // eslint-disable-line @typescript-eslint/no-explicit-any
+  const { data, error } = await admin
     .from("suggestions")
     .insert({
       sender_id: payload.senderId,
@@ -62,7 +59,7 @@ export async function createSuggestion(
   return { id: data.id as string, error: null };
 }
 
-// The untyped joined row shape (profiles join not in the generated types yet).
+// The joined row shape (suggestions row + the embedded profiles sender join).
 type SuggestionInboxRow = SuggestionRow & {
   sender: { full_name: string } | null;
 };
@@ -77,7 +74,7 @@ export async function getSuggestionsForInbox(
   status?: SuggestionStatus,
 ): Promise<SuggestionWithSender[]> {
   const admin = createAdminClient();
-  let query = (admin as any) // eslint-disable-line @typescript-eslint/no-explicit-any
+  let query = admin
     .from("suggestions")
     .select("*, sender:profiles!suggestions_sender_id_fkey(full_name)")
     .order("created_at", { ascending: false })
@@ -134,7 +131,7 @@ export async function resolveSuggestion(
   resolvedBy: string,
 ): Promise<{ senderId: string | null; error: string | null }> {
   const admin = createAdminClient();
-  const { data, error } = await (admin as any) // eslint-disable-line @typescript-eslint/no-explicit-any
+  const { data, error } = await admin
     .from("suggestions")
     .update({
       status: "resolved" satisfies SuggestionStatus,

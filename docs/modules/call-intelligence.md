@@ -2,11 +2,11 @@
 
 > **Purpose:** complete spec for the call-intelligence/helpdesk module (service taxonomy, schema, retrieval, UI surfaces, build sequence).
 > **Audience:** engineers. · **Source-of-truth scope:** the module's design contract. **Phase 1 code is built (2026-06-12)** — see `docs/changelog.md` for the implementation record; file paths below are now live (migrations renumbered 0109/0110, the spec's 0085/0086 slots were taken).
-> **Last verified:** 2026-06-12 · **Status:** Phase 1 code complete; **migrations 0109/0110 applied to production (ledger-recorded)**; §15 live checks passed (RLS write matrix agent/manager blocked + admin allowed, ingestion `interest='travel,events'` → `['travel','events']`, Redis key del verified). **Content gate: CLOSED (seeded 2026-06-12).** The curated library — 150 cases + 30 hooks for `onboarding` (25 cases + 5 hooks per category, exceeding the ≥20/category ship bar), distilled from the Freshdesk export — was seeded via `scripts/seed-call-intelligence.ts` from `scripts/data/call-intelligence-seed.json`: every row validated against the 0110 contract (incl. the city-slug-tag invariant) pre-insert, post-insert counts verified (150/30), `helpdesk:cases:onboarding` Redis envelope deleted. The worksheet (`call-intelligence-content-worksheet.md`) remains the drafting reference; all post-seed edits go via the admin path (the script refuses to re-run without `--force`).
+> **Last verified:** 2026-07-02 · **Status:** Phase 1 code complete; **migrations 0109/0110 applied to production (ledger-recorded)**; §15 live checks passed (RLS write matrix agent/manager blocked + admin allowed, ingestion `interest='travel,events'` → `['travel','events']`, Redis key del verified). **Content gate: CLOSED (seeded 2026-06-12).** The curated library — 150 cases + 30 hooks for `onboarding` (25 cases + 5 hooks per category, exceeding the ≥20/category ship bar), distilled from the Freshdesk export — was seeded via `scripts/seed-call-intelligence.ts` from `scripts/data/call-intelligence-seed.json`: every row validated against the 0110 contract (incl. the city-slug-tag invariant) pre-insert, post-insert counts verified (150/30), `helpdesk:cases:onboarding` Redis envelope deleted. The seed content was entered via the seed script; all post-seed edits go through the admin surface (`AddSuggestionModal` edit mode). The one-time content worksheet (`call-intelligence-content-worksheet.md`) served its purpose and has been deleted. The script refuses to re-run without `--force`.
 >
 > **Serene · Indulge Global · Internal OS**
 > Written: 2026-06-09
-> Status: Planning complete. Awaiting content seeding before build begins.
+> Status: Built, migrations applied, content seeded. (This block records the original planning session; the Status line above is current.)
 > Author: Architecture session between Wizard & Claude
 
 ---
@@ -424,6 +424,8 @@ Component: `src/components/leads/ServiceInterestCard.tsx` — `'use client'` sin
 
 **The card always carries an inline library search** (2026-06-12). `ServiceInterestCard.tsx` is `'use client'` and is never null-rendered — it is always in the DOM. At rest it shows the curated cases (≤6, auto-populated); typing in the `SearchBar` searches the full helpdesk library for the lead's domain (one lazy `getHelpdeskLibraryAction(lead.domain)` fetch on the first keystroke, then synchronous `caseMatchesQuery` filtering). The card is the curated preview *and* an inline search surface; the Helpdesk page is the full standalone library.
 
+**Scroll cap + helpdesk link (2026-07-02):** the card body is capped at `maxHeight: 300px` with internal scroll; the header, search bar, and footer stay pinned. The pinned footer is a quiet "Browse the full library" `Link` (with an `ArrowUpRight` glyph) to `helpdeskHref`: `/helpdesk?category=<first matched interest>` when one exists, plain `/helpdesk` otherwise.
+
 ### Animation
 
 - Card entrance: `framer-motion` stagger — each case card animates in with `opacity: 0 → 1`, `y: 8 → 0`, duration `0.28s`, `EASE_OUT_EXPO` (from `src/lib/constants/motion.ts`)
@@ -581,7 +583,7 @@ src/
 │   │   └── intelligence-service.ts   ← getHelpdeskLibrary(), getCasesForLead(), getHooksForCategories()
 │   │
 │   ├── actions/
-│   │   └── intelligence.ts           ← getHelpdeskLibraryAction(), upsertServiceCaseAction(), upsertConversationHookAction() (admin)
+│   │   └── intelligence.ts           ← getHelpdeskLibraryAction(), upsertServiceCaseAction() (admin). upsertConversationHookAction was removed 2026-07-02 (zero callers; hook writes are SQL-only today)
 │   │
 │   ├── validations/
 │   │   └── intelligence-schemas.ts   ← ServiceCaseSchema, ConversationHookSchema (Zod)
@@ -755,8 +757,8 @@ Step 4 — SERVICES
 
 Step 5 — ACTIONS
   src/lib/actions/intelligence.ts
-  (getHelpdeskLibraryAction for helpdesk, upsertServiceCaseAction +
-   upsertConversationHookAction for admin)
+  (getHelpdeskLibraryAction for helpdesk, upsertServiceCaseAction for admin;
+   upsertConversationHookAction was removed 2026-07-02, hook writes are SQL-only)
 
 Step 6 — INGESTION UPDATE
   src/lib/services/lead-ingestion.ts — extractServiceInterests() + write on INSERT

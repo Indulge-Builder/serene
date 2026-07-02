@@ -68,7 +68,7 @@ export function ConversationList({
   const [searchResults, setSearchResults] = useState<
     WhatsAppConversation[] | null
   >(null);
-  const [isSearching, startSearchTransition] = useTransition();
+  const [, startSearchTransition] = useTransition();
   const debouncedQuery = useDebounce(query, 300);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 

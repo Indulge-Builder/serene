@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/admin/users`, `/admin/users/new`, `/admin/users/[id]` — the team-management pages over the `profiles` foundation.
 > **Audience:** engineers. · **Source-of-truth scope:** the three admin routes, `profiles-service.ts`, `profiles.ts` actions, and the deep operational detail of the `profiles` data model (the architecture docs summarise it and point here). Authorization *architecture*: `../architecture/auth-and-rbac.md`.
-> **Last verified:** 2026-06-24 (patch pass: invite-onboarding job_title trigger fix (0125), managers in the routing pool (0124), `app_icon` field (0121), `requireProfile()` action guard).
+> **Last verified:** 2026-07-02 (six-value theme CHECK after 0156; profiles-service purge; responsive layout classes); 2026-06-24 (patch pass: invite-onboarding job_title trigger fix (0125), managers in the routing pool (0124), `app_icon` field (0121), `requireProfile()` action guard).
 
 ## 1. Purpose
 
@@ -98,7 +98,7 @@ The user management module is the **authorization foundation of the entire Seren
 - **Href:** `/admin/users`
 - **Source:** `src/components/layout/Sidebar.tsx` — `ADMIN_NAV`
 
-There is no `src/app/(dashboard)/admin/CLAUDE.md` for this module; only `admin/ad-creatives/CLAUDE.md` exists under `admin/`.
+There is no `src/app/(dashboard)/admin/CLAUDE.md` for this module. `admin/` now holds five route trees (`users`, `ad-creatives`, `elaya-training`, `suggestions`, `usage`); only `ad-creatives` and `elaya-training` carry their own `CLAUDE.md`.
 
 ---
 
@@ -128,7 +128,8 @@ Defined in `supabase/migrations/20260526000001_profiles.sql`.
 | `reports_to` | `uuid` | YES | — | FK → `profiles(id)` ON DELETE SET NULL; no UI yet |
 | `is_active` | `boolean` | NO | `true` | Soft deactivate; never hard-delete profile |
 | `is_on_leave` | `boolean` | NO | `false` | Availability display |
-| `theme` | `text` | NO | `'earth'` | CHECK ∈ earth, air, water, fire, cosmos |
+| `theme` | `text` | NO | `'earth'` | CHECK ∈ earth, air, water, fire, martini, candy (migrations 0154 added coffee → 0155 added the pastel trio → 0156 retired cosmos/coffee/macha and moved affected rows to earth) |
+| `app_icon` | `text` | NO | `'icon-1'` | PWA home-screen icon key (migration 0121); CHECK mirrors `ICON_KEYS` in `lib/constants/app-icons.ts` |
 | `timezone` | `text` | NO | `'Asia/Kolkata'` | |
 | `last_seen_at` | `timestamptz` | YES | — | Spec: middleware, max once/min (see §13) |
 | `created_at` | `timestamptz` | NO | `now()` | |
@@ -426,9 +427,9 @@ All use **`createClient()`** from `src/lib/supabase/server.ts` (session/cookie c
 | -------- | ----------- | ------ | ------ | --------- |
 | `getProfileById` | `id: string` | `Profile \| null` | session | Detail page, `getCurrentProfile`, others |
 | `getAllProfiles` | — | `Profile[]` | session | `/admin/users` page |
-| `getProfilesByDomain` | `domain: AppDomain` | `Profile[]` | session | Domain-scoped pickers (elsewhere) |
-| `getProfilesByRole` | `role: UserRole` | `Profile[]` | session | Role filters (elsewhere) |
-| `getActiveAgentsByDomain` | `domain: AppDomain` | `Profile[]` | session | Round-robin, agent lists |
+| `getActiveProfileByPhone` | `normalizedPhone: string` | `Profile \| null` | **admin** | Elaya WhatsApp staff-identity lookup (exact E.164 match, then a digits-only canonical fallback) |
+| `searchTeammatesForElaya` | `search`, `scopeDomain?` | `AssignableUser[]` | **admin** | The Jarvis `find_teammate` tool read; channel-safe (works on the sessionless WhatsApp webhook where RLS returns zero rows) |
+| `getDomainDecisionMakers` | `domain`, `roles?`, `select?` | `T[]` | **admin** | The domain decision-maker fan-out read (deal/won notifications, SLA) |
 | `isUsernameTaken` | `username`, `excludeId?` | `boolean` | session | `updateProfile` action |
 | `getCurrentProfile` | — | `Profile \| null` | session | All profile actions, most pages |
 | `updateProfileFields` | `id`, partial of `full_name \| username \| phone \| job_title \| theme \| app_icon \| timezone \| is_on_leave \| avatar_url` | `{ data, error }` | session | `updateProfile`, `updateProfileAvatar`, `createUser` (phone/job_title) |
@@ -438,7 +439,9 @@ All use **`createClient()`** from `src/lib/supabase/server.ts` (session/cookie c
 
 **Note on `updateProfileFields` allow-list:** the `Pick` includes `is_on_leave`, but no user-management UI writes it today (the `is_on_leave` flag is set elsewhere / reserved). The `updateProfile` action maps `full_name`, `username`, `job_title`, `phone`, `theme`, `app_icon`, `timezone` into the field set — never `is_on_leave`, `avatar_url` (avatar has its own action), or auth fields. (`app_icon` rides this existing action — the PWA icon picker on `/profile` persists `profiles.app_icon` exactly like `theme`; no new persist action.)
 
-**No admin client in profiles-service.** User **creation** uses `createAdminClient()` only inside `src/lib/actions/profiles.ts` for Auth Admin API.
+**Admin client in profiles-service is limited to the three cross-user reads above** (`getActiveProfileByPhone`, `searchTeammatesForElaya`, `getDomainDecisionMakers`: all fan-out or sessionless-channel reads that RLS would scope to the caller). Every other function uses the session client. User **creation** uses `createAdminClient()` only inside `src/lib/actions/profiles.ts` for the Auth Admin API.
+
+**Deleted 2026-07-02 (dead-code purge):** `getProfilesByDomain`, `getProfilesByRole`, `getActiveAgentsByDomain` no longer exist. Do not grep for them; scoped pickers go through `getAssignableUsers`.
 
 ---
 
@@ -520,7 +523,7 @@ Every action: Zod first (Rule 02) → `requireProfile(roles?)` from `lib/actions
 
 - **Gate:** `getCurrentProfile()`; redirect `/dashboard` if role ∉ `{ admin, founder }`
 - **Fetch:** `getAllProfiles()` — ordered by `full_name` asc; session client; RLS allows read for any authenticated user but page gate limits UI
-- **Tree:** `<main className="flex-1 p-8">` → header (`Team.` + page-title-dot) + `Add Member` link (inline accent `<Link>`, not a `Button`/`MotionButton`) → `<UsersTable users={users} />`
+- **Tree:** `<main className="flex-1 p-4 sm:p-6 lg:p-8">` (the responsive padding all three admin/users pages share) → header (`Team.` + page-title-dot) + `Add Member` link (inline accent `<Link>`, not a `Button`/`MotionButton`) → `<UsersTable users={users} />`
 - **Loading:** route-level `src/app/(dashboard)/admin/users/loading.tsx` provides the skeleton (filter strip + card rows). The page itself awaits `getAllProfiles()` directly — there is **no** in-page `<Suspense>` boundary (the whole page is one fetch unit; the list page is small).
 - **Note:** Filter bar lives **inside** `UsersTable`, not a separate page-level strip (differs from canonical leads template but same tokens)
 
@@ -545,7 +548,7 @@ Every action: Zod first (Rule 02) → `requireProfile(roles?)` from `lib/actions
 #### Two-column layout
 
 - **Max width:** `1280px` (Wide zone)
-- **Grid:** `minmax(0, 1fr) 340px`; right column `position: sticky; top: var(--space-6)`
+- **Grid:** the shared `serene-dossier-grid serene-dossier-grid--340` utility in `NewUserClient` (the 340px identity-sidebar variant; single column below `lg`, right column sticky). No inline `gridTemplateColumns`
 - **Left:** `SectionCard` "Member Details" → `CreateUserForm mode={mode}`
 - **Right:** `SectionCard` "Onboarding Method" → `TabSelector` variant `connected` ("Set password" / "Send invite link") + mode-aware tips
 
@@ -590,7 +593,8 @@ Every action: Zod first (Rule 02) → `requireProfile(roles?)` from `lib/actions
 
 #### Wide two-column layout
 
-- **maxWidth:** 1280px
+- **maxWidth:** 1280px; `<main>` is `flex-1 p-4 sm:p-6 lg:p-8`
+- **Grid:** the shared `serene-dossier-grid serene-dossier-grid--340` utility (single column below `lg`)
 - **Header:** `BackButton href="/admin/users" label="Back to Team"` inline with Playfair title (`user.full_name` + page-title-dot)
 - **Left:** `EditProfileForm` in SectionCard; `EditAuthorizationForm` in SectionCard (privileged only)
 - **Right (340px sticky):** `SectionCard` "Identity" `bodyPadding={false}` — avatar, name, email, job_title, role/domain pills; bottom zone `UserStatusControls` separated by top border

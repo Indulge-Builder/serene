@@ -1,7 +1,7 @@
 // Elaya data-access layer — THE single chokepoint every Elaya tool fetches through.
 // SERVER ONLY.
 //
-// THE PARITY RULE (Phase 1 — docs/architecture/elaya-jarvis-architecture.md):
+// THE PARITY RULE (Phase 1 — docs/modules/elaya.md):
 //   Every read an Elaya tool performs goes through a function HERE. Each one:
 //     1. takes the verified StaffPrincipal (identity is NEVER channel- or model-derived),
 //     2. uses the ADMIN client (works in the sessionless WhatsApp webhook AND in-app),

@@ -4,7 +4,7 @@
 > existing follow-up engine + Elaya provider + lead-mutation cores — **not** a new stack.
 > **Audience:** engineers. · **Source-of-truth scope:** revival architecture + contracts.
 > **Status:** Phase R1 (silence detection → AI suppression gate → confident auto-revive vs.
-> human review). Shipped 2026-06-14.
+> human review). Shipped 2026-06-14. · **Last verified:** 2026-07-02 (full-tree audit; held up end to end).
 
 ## What it is
 

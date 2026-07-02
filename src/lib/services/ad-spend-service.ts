@@ -45,8 +45,7 @@ export async function getBudgetSummary(
 ): Promise<BudgetCampaignRow[]> {
   const supabase = createAdminClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc("get_budget_summary", {
+  const { data, error } = await supabase.rpc("get_budget_summary", {
     p_date_from: dateFrom,
     p_date_to:   dateTo,
   });
@@ -115,8 +114,7 @@ export async function getExistingSpendKeys(
   if (campaignKeys.length === 0) return new Set();
   const supabase = createAdminClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("ad_spend_daily")
     .select("campaign_key, spend_date")
     .eq("source", "meta_csv")
@@ -174,8 +172,7 @@ export async function getAccountRecharges(
   const fromDate = dateFrom.slice(0, 10);
   const toDate   = dateTo.slice(0, 10);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("ad_account_recharges")
     // Explicit FK-constraint embed (the leads/deals service convention) — the
     // bare `profiles:done_by(...)` shorthand can be ambiguous to PostgREST.

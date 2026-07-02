@@ -2,7 +2,7 @@
 
 > **Purpose:** dated record of every design decision — what was decided, why, and what it covers. The log the design audit asked for: decide once, log it, stop accreting one-off violations.
 > **Audience:** designers + engineers. · **Source-of-truth scope:** design decisions only. Rule changes and architecture decisions live in `../rules/The_Rules.md` Decision Log. Entries before 2026-06-11 are back-filled from `The_Rules.md`, `src/components/CLAUDE.md`, and `docs/changelog.md` — original records remain where they were written.
-> **Last verified:** 2026-06-11.
+> **Last verified:** 2026-07-02.
 
 Format: one entry per decision — **Date · Decision · Rationale · Scope**. Newest first.
 A design rule changed without an entry here is not a change — it is a violation (DNA §10.4).
@@ -10,6 +10,18 @@ A design rule changed without an entry here is not a change — it is a violatio
 ---
 
 ## Decided
+
+### 2026-07-02 - Theme retirement: Cosmos, Coffee, and Macha are gone; the live set is six
+
+- **Decision:** the theme vocabulary is now **earth, air, water, fire, martini, candy**. Cosmos, Coffee, and Macha are retired. Migration 0156 moved every saved profile on a retired theme back to `earth`, then narrowed the `profiles_theme_check` CHECK to the six live values. `THEME_KEYS` in `src/lib/constants/themes.ts` is the SQL mirror; the two must stay in sync. A stale cookie or cached value on a retired theme fails `isThemeKey()` and falls back to the default. Never re-add a theme key without a CHECK-extending migration.
+- **Rationale:** Coffee and Macha (added the same day, 0154/0155) did not earn their keep next to the two new pastels; Cosmos had the weakest identity of the original five. Six themes is the set the team actually uses. Retiring in a follow-on migration (rather than editing 0154/0155) keeps the migration sequence append-only.
+- **Scope:** the whole theme system. The two pastel themes this batch settled (Martini, periwinkle on evening indigo; Candy, pink on dark plum, both added in 0155) carry a new theme-design law: a pastel accent can never hold white text, so `--theme-accent-fg` is dark ink (`#191a38` on Martini, `#2b1420` on Candy; the Earth precedent). Their palettes live in the semantic chips, never the surfaces; paper stays a near-white whisper (the Air pattern).
+
+### 2026-07-02 - Resolved: `.layout-canvas` is mounted on the auth shell only
+
+- **Decision:** the open question from design-audit H-02 / DOC-01 is settled in code and recorded here as of 2026-07-02: `.layout-canvas` (the full atmosphere class) is mounted on the auth shell (`src/app/(auth)/layout.tsx`) and nowhere else. The dashboard keeps the flat `.layout-shell`; never mount the atmosphere class on it.
+- **Rationale:** the auth surface is the one canvas-dark-by-design surface, so it can carry the atmosphere without the Earth-bleed risk the dashboard mount had (non-Earth themes define flat canvases).
+- **Scope:** shell classes in `globals.css`. Codified in the root `CLAUDE.md` registry row.
 
 ### 2026-06-15 — First-touch speed is bucketed in business minutes, in TS, with untouched leads counted separately
 
@@ -138,7 +150,8 @@ The responsive *law* already existed (DNA §2.7 / §9 / §12); the code was desk
 
 | Item | Question | Source |
 | ---- | -------- | ------ |
-| `.layout-canvas` mounting | Mount the atmosphere class on the dashboard shell (requires the four non-Earth themes to define canvas-atmosphere tokens first — Earth-bleed risk) or retire it. | design-audit H-02 / DOC-01 / §3 |
-| `/dev/components` build trigger | Per the 2026-05-29 decision: build it at 40+ components or first production token regression. Component count is at/near the threshold. | `src/components/CLAUDE.md` |
+| `/dev/components` build trigger | Per the 2026-05-29 decision: build it at 40+ components or first production token regression. The threshold is passed: `src/components/ui/` alone holds 37 files, and counting feature primitives the library is past 40. The decision is overdue. | `src/components/CLAUDE.md` |
+
+*(The `.layout-canvas` mounting question was resolved; see the 2026-07-02 entry above: mounted on the auth shell only.)*
 
 *(The `height: auto`, width-fill, and M-05 re-timing questions were decided 2026-06-11 — see the entries above.)*

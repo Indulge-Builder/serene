@@ -12,7 +12,7 @@ import { Bell } from "lucide-react";
 import { m as motion } from "framer-motion";
 import { useNotifications } from "@/hooks/useNotifications";
 import { NotificationPanel } from "@/components/notifications/NotificationPanel";
-import { EASE_OUT_EXPO, EASE_SPRING, SPRING_BOUNCE } from "@/lib/constants/motion";
+import { BASE_DURATION, EASE_OUT_EXPO, EASE_SPRING, SPRING_BOUNCE } from "@/lib/constants/motion";
 import type { Notification } from "@/lib/types/database";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ export function NotificationBell({
         onClick={() => setOpen((o) => !o)}
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.88, transition: { type: "spring", bounce: 0, duration: 0.2, ease: EASE_SPRING } }}
-        transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+        transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
         style={{
           willChange:      "transform",
           position:        "relative",

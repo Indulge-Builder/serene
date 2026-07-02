@@ -1,11 +1,8 @@
 // UI-facing WhatsApp queries. Uses session Supabase client — RLS handles access.
 // Do not add manual domain checks here. Do not use adminClient.
 //
-// NOTE: whatsapp_conversations, whatsapp_messages, and whatsapp_conversation_reads
-// are not yet in the generated Database type (database.ts is regenerated via
-// `supabase gen types typescript --local`). Until then, Supabase client calls on
-// these tables use `(supabase as any)` — the same pattern used for new RPCs.
-// eslint-disable-next-line comments are co-located with each cast.
+// whatsapp_conversations, whatsapp_messages, and whatsapp_conversation_reads are
+// in the generated Database type — client calls here are fully typed.
 
 import { createClient } from '@/lib/supabase/server';
 import { sanitizeText } from '@/lib/utils/sanitize';
@@ -59,8 +56,7 @@ function mapMessageRow(row: WaMessageRow): WhatsAppMessage {
 // scopes it to the caller's own rows, so no explicit agent filter is needed.
 // Read failure is non-fatal: rows fall back to unread_count 0 (dot hidden).
 async function attachUnreadCounts(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   conversations: WhatsAppConversation[],
 ): Promise<WhatsAppConversation[]> {
   if (conversations.length === 0) return conversations;
@@ -88,8 +84,13 @@ async function attachUnreadCounts(
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function applyLastMessagePeriodFilter(query: any, filters?: WhatsAppConversationListFilters) {
+function applyLastMessagePeriodFilter<
+  Q extends {
+    not(column: string, operator: string, value: unknown): Q;
+    gte(column: string, value: string): Q;
+    lte(column: string, value: string): Q;
+  },
+>(query: Q, filters?: WhatsAppConversationListFilters): Q {
   if (!filters?.period) return query;
 
   const range = getWhatsAppPeriodRange(
@@ -119,8 +120,7 @@ export async function getConversations(options: {
   customFrom?: string | null;
   customTo?:   string | null;
 }): Promise<{ conversations: WhatsAppConversation[]; nextCursor: string | null }> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
   const limit    = options.limit ?? WHATSAPP_CONVERSATIONS_PAGE_SIZE;
   const listFilters: WhatsAppConversationListFilters | undefined = options.period
     ? { period: options.period, customFrom: options.customFrom, customTo: options.customTo }
@@ -169,8 +169,7 @@ export async function getConversations(options: {
 export async function getConversation(
   conversationId: string,
 ): Promise<WhatsAppConversation | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('whatsapp_conversations')
@@ -199,8 +198,7 @@ export async function getConversation(
 export async function getConversationByLeadId(
   leadId: string,
 ): Promise<WhatsAppConversation | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('whatsapp_conversations')
@@ -234,8 +232,7 @@ export async function getMessages(
     before?: string;
   } = {},
 ): Promise<WhatsAppMessage[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
   const limit    = options.limit ?? WHATSAPP_MESSAGES_PAGE_SIZE;
 
   let query = supabase
@@ -279,8 +276,7 @@ export async function getMessages(
 // ─────────────────────────────────────────────
 
 export async function getUnreadCount(): Promise<number> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
 
   const { data, error } = await supabase.rpc('get_wa_unread_count');
 
@@ -300,8 +296,7 @@ export async function markConversationRead(
   conversationId: string,
   agentId: string,
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('whatsapp_conversation_reads')
@@ -329,8 +324,7 @@ export async function searchConversations(
   query: string,
   filters?: WhatsAppConversationListFilters,
 ): Promise<WhatsAppConversation[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
   const safe     = sanitizeText(query).trim();
   if (!safe) return [];
 

@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { TrainingAssetFormModal } from "./TrainingAssetFormModal";
 import { deleteTrainingAsset } from "@/lib/actions/elaya-training";
 import { useToast } from "@/hooks/useToast";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
 import {
   TRAINING_ASSET_KIND_LABELS,
   trainingInputMode,
@@ -278,7 +278,7 @@ function FactCard({ row, onEdit }: { row: TrainingAssetRow; onEdit: () => void }
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
+      transition={{ duration: EXIT_DURATION, ease: EASE_OUT_EXPO }}
       style={{
         display: "flex", alignItems: "flex-start", gap: "var(--space-4)",
         padding: "var(--space-4) var(--space-5)", background: "var(--theme-paper)",
@@ -354,7 +354,7 @@ function AssetCard({
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: staggerDelay / 1000, ease: EASE_OUT_EXPO }}
+      transition={{ duration: EXIT_DURATION, delay: staggerDelay / 1000, ease: EASE_OUT_EXPO }}
       style={{
         display: "flex", alignItems: "center", gap: "var(--space-4)",
         padding: "var(--space-4) var(--space-5)", background: "var(--theme-paper)",
@@ -373,7 +373,7 @@ function AssetCard({
         }}
       >
         {previewUrl && (row.kind === "image" || row.kind === "review" || row.kind === "testimonial" || row.kind === "work_example") ? (
-          // eslint-disable-next-line @next/next/no-img-element
+           
           <img src={previewUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         ) : previewUrl && (row.kind === "video") ? (
           <video src={previewUrl} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />

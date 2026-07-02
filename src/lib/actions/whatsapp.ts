@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { requireProfile } from "@/lib/actions/_auth";
+import { parseActionInput } from "@/lib/actions/_validation";
 import { sendTextMessage, sendLeadInitiationMessage, sendGupshupMediaMessage } from "@/lib/services/whatsapp-api";
 import { resolveOutboundMediaType } from "@/lib/constants/whatsapp";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -40,10 +41,8 @@ const ConversationIdSchema = z.object({
 export async function sendWhatsAppMessage(
   input: { conversationId: string; content: string },
 ): Promise<ActionResult<WhatsAppMessage>> {
-  const parsed = SendMessageSchema.safeParse(input);
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
+  const parsed = parseActionInput(SendMessageSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   const auth = await requireProfile();
   if (!auth.ok) return auth.result;
@@ -69,8 +68,7 @@ export async function sendWhatsAppMessage(
   const waMessageId = apiResult.messages?.[0]?.id ?? null;
 
   // Persist to DB
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
   const { data: row, error: insertError } = await supabase
     .from("whatsapp_messages")
     .insert({
@@ -143,14 +141,12 @@ export async function sendWhatsAppMessage(
 export async function sendWhatsAppMediaMessage(
   formData: FormData,
 ): Promise<ActionResult<WhatsAppMessage>> {
-  const parsed = SendMediaMessageSchema.safeParse({
+  const parsed = parseActionInput(SendMediaMessageSchema, {
     conversationId: formData.get("conversationId"),
     caption:        formData.get("caption") ?? undefined,
     file:           formData.get("file"),
   });
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   const auth = await requireProfile();
   if (!auth.ok) return auth.result;
@@ -194,8 +190,7 @@ export async function sendWhatsAppMediaMessage(
   }
 
   // 4. Persist the outbound row — media_url holds the PATH (read signs it).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
   const { data: row, error: insertError } = await supabase
     .from("whatsapp_messages")
     .insert({
@@ -264,10 +259,8 @@ export async function sendWhatsAppMediaMessage(
 export async function markConversationAsRead(
   input: { conversationId: string },
 ): Promise<ActionResult<null>> {
-  const parsed = ConversationIdSchema.safeParse(input);
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
+  const parsed = parseActionInput(ConversationIdSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   const auth = await requireProfile();
   if (!auth.ok) return auth.result;
@@ -339,8 +332,7 @@ export async function initiateWhatsAppConversationAction(
   const profile = auth.profile;
 
   // Access check via RLS — session client SELECT will return null if caller lacks access
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
   const { data: lead } = await supabase
     .from("leads")
     .select(`
@@ -390,8 +382,7 @@ export async function initiateWhatsAppConversationAction(
   // adminClient INSERT — no app-user INSERT policy on whatsapp_conversations
   const admin = createAdminClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: convRow, error: convError } = await (admin as any)
+  const { data: convRow, error: convError } = await admin
     .from("whatsapp_conversations")
     .insert({ lead_id: leadId, wa_id: waId, phone: lead.phone, status: "open" })
     .select("*")
@@ -434,8 +425,7 @@ export async function initiateWhatsAppConversationAction(
   const now = new Date().toISOString();
   const messageContent = `Hello ${leadName}, this is ${agentName} from Indulge Global.`;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: msgRow, error: msgError } = await (admin as any)
+  const { data: msgRow, error: msgError } = await admin
     .from("whatsapp_messages")
     .insert({
       conversation_id: conversation.id,
@@ -458,8 +448,7 @@ export async function initiateWhatsAppConversationAction(
   }
 
   // Update last_message_at on the conversation
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (admin as any)
+  await admin
     .from("whatsapp_conversations")
     .update({ last_message_at: now, updated_at: now })
     .eq("id", conversation.id);
@@ -486,19 +475,6 @@ export async function initiateWhatsAppConversationAction(
   };
 
   return { data: { conversation, message }, error: null };
-}
-
-export async function getConversationByLeadIdAction(
-  leadId: string,
-): Promise<{ data: WhatsAppConversation | null; error: string | null }> {
-  const uuidResult = z.string().uuid().safeParse(leadId);
-  if (!uuidResult.success) return { data: null, error: "Invalid lead ID" };
-
-  const auth = await requireProfile();
-  if (!auth.ok) return auth.result;
-
-  const conversation = await serviceGetConversationByLeadId(leadId);
-  return { data: conversation, error: null };
 }
 
 export async function searchConversationsAction(

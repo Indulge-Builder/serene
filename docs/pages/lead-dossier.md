@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/leads/[id]` — the per-lead workspace: lifecycle actions, call/team notes, inline field edits, Gia tasks, WhatsApp card, journey timeline, activity log, linked deal.
 > **Audience:** engineers. · **Source-of-truth scope:** the dossier route and its async children. List page + actions tables + invariants: `leads.md`; lifecycle/status semantics: `../modules/gia.md`.
-> **Last verified:** 2026-06-24 (streaming rewrite of perf-audit item B reflected; stale scratchpad rows corrected — the scratchpad was removed in migration 0061; the two post-2026-06-11 dossier surfaces folded in — `ServiceInterestCardAsync` (Call Intelligence, 2026-06-12) and `RevivalDossierAction` (Lead Revival R1, migration 0119); `city` corrected to a dedicated `leads.city` column).
+> **Last verified:** 2026-07-02 (dossier width cap dropped + the "Why we're perfect." card internal scroll folded in; earlier: streaming rewrite of perf-audit item B reflected; stale scratchpad rows corrected — the scratchpad was removed in migration 0061; the two post-2026-06-11 dossier surfaces folded in — `ServiceInterestCardAsync` (Call Intelligence, 2026-06-12) and `RevivalDossierAction` (Lead Revival R1, migration 0119); `city` corrected to a dedicated `leads.city` column).
 
 ## 1. Purpose
 
@@ -102,6 +102,10 @@ Agent = own leads; manager = domain; admin/founder = all. *(Corrected 2026-06-11
 the private scratchpad was dropped in migration 0061.)*
 
 **Layout:** `StatusActionPanel` → `RevivalDossierAction` (`Suspense fallback={null}`; renders only when an open `revival_candidate` exists) → `LeadDealCardAsync` (renders only when the lead has a deal; full-width, Framer fade-in, links to `/deals`) → 2-col grid (**left:** LeadInfoCardAsync, Form data, PersonalDetails | **right:** ServiceInterestCardAsync, LeadTasksAsync, LeadNotesInput, LeadWhatsAppCardAsync) → Notes → Journey → Activity log.
+
+The dossier `<main>` is full-width: plain `flex-1 p-4 sm:p-6 lg:p-8`, like sibling detail pages.
+The old `maxWidth: 1280px` inline cap was dropped 2026-07-02 from both `page.tsx` and
+`loading.tsx`.
 
 **Tasks:** `<Suspense fallback={<LeadTasksCardSkeleton />}><LeadTasksAsync leadId={lead.id} /></Suspense>`.
 
@@ -226,6 +230,11 @@ at this boundary.
 (lazy `getHelpdeskLibraryAction(lead.domain)` on the first keystroke; filtered client-side via
 `caseMatchesQuery`) + matched `CaseCard`s + `HookList` + a quiet `/helpdesk?category=` footer link.
 Composes the shared `components/intelligence/` primitives — never re-inlines a case/hook renderer.
+
+**Card cap (2026-07-02):** the content region (cases/hooks/search results) is wrapped in a
+`maxHeight: 300px` + `overflowY: auto` scroll body, capped like the sibling dossier cards
+(WhatsApp message list 300px, tasks list 220px). The header, search bar, and footer link stay
+pinned; only the cases/hooks scroll internally.
 
 #### 7m. RevivalDossierAction (Lead Revival R1, migration 0119)
 

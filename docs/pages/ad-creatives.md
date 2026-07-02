@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/admin/ad-creatives` — campaign-video upload/management, plus the two read surfaces that consume creatives.
 > **Audience:** engineers. · **Source-of-truth scope:** the admin route, `ad-creatives-service.ts`, `ad-creatives.ts` actions, the `ad-creatives` Storage bucket usage.
-> **Last verified:** 2026-06-24 full pass (2026-06-09 original; 2026-06-11 restructure).
+> **Last verified:** 2026-07-02 (2026-06-24 full pass; 2026-06-09 original; 2026-06-11 restructure).
 
 ## 1. Purpose
 
@@ -21,7 +21,7 @@ videos). Sidebar item appears only for admin/founder, above Settings in Configur
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `ad-creatives-service.ts` — `getAdCreativesForCampaign` (one campaign → `AdCreative[]`), `getAdCreativesForCampaigns` (batch `Map`, **no live caller** — retained as a documented service API), `getAllAdCreatives`. **No Redis** — freshness via `revalidatePath` (the former cache was removed as a P-08 bug; do not re-add) |
+| Service | `ad-creatives-service.ts` — exactly two exports: `getAdCreativesForCampaign` (one campaign → `AdCreative[]`) and `getAllAdCreatives`. The old batch API `getAdCreativesForCampaigns` was deleted in the 2026-07-02 dead-code purge (it had no live caller since 2026-06-16); if a batch read is ever needed again, rebuild it as ONE `.in()` query, never a per-campaign loop. **No Redis** — freshness via `revalidatePath` (the former cache was removed as a P-08 bug; do not re-add) |
 | Actions | `ad-creatives.ts` — `upsertAdCreative` (normalises `campaign_key` via `normalizeCampaignKey()`; 23505 → friendly error), `deleteAdCreative`. Both admin/founder via `requireProfile(ADMIN_ROLES)`; adminClient writes |
 | Storage | `ad-creatives` bucket — public read; INSERT/DELETE admin/founder (0092) |
 | Validation | `ad-creative-schema.ts` (`upsertAdCreativeSchema` — id optional = create/update) |
@@ -153,7 +153,7 @@ the intermediate `CampaignPreviewModal` (and its carousel) was deleted 2026-06-1
 **Enforced in:**
 
 - `upsertAdCreative` action — `normalizeCampaignKey(campaign_key)` before DB write (shared util)
-- `getAdCreativesForCampaign` / `getAdCreativesForCampaigns` — normalise input keys before query
+- `getAdCreativesForCampaign` — normalises the input key before query
 - Admin `page.tsx` — `campaignKeys` from metrics: `c.campaign_name.toLowerCase().trim()`
 - `campaigns/[id]/page.tsx` — `CampaignAdPanel campaignKey={normalizeCampaignKey(campaignName)}` (the inline-upload lock key)
 
@@ -194,14 +194,13 @@ All functions use `createClient()` from `src/lib/supabase/server.ts`. On any err
 | Empty | `[]` if key blank, DB error, or no rows |
 | Called by | `leads/[id]/page.tsx` (`Promise.all` when `utm_campaign` set); `campaigns/[id]/page.tsx` |
 
-#### `getAdCreativesForCampaigns(campaignNames: string[]): Promise<Map<string, AdCreative[]>>`
+#### `getAdCreativesForCampaigns` — DELETED (2026-07-02)
 
-| Aspect | Detail |
-| --- | --- |
-| Query | Single round trip: `.in('campaign_key', normalisedKeys).order('created_at', { ascending: false })` — equivalent to `WHERE campaign_key IN (...)`; **never** loop per campaign |
-| Return | `Map<campaignKey, AdCreative[]>` — each array newest-first |
-| Empty | `new Map()` on error or empty input |
-| Called by | **No live caller.** Retained as a documented service API (was `CampaignListAsync`'s batch fetch; dropped 2026-06-16 when `CampaignPreviewModal` was deleted). The batch-map shape is preserved for any future list-card use — never loop `getAdCreativesForCampaign` per campaign instead |
+The batch read (`campaignNames[]` → `Map<campaignKey, AdCreative[]>` via one `.in()` query) lost
+its only caller on 2026-06-16 when `CampaignPreviewModal` was deleted, and the function itself was
+removed in the 2026-07-02 dead-code purge. Do not grep for it; it no longer exists. If a list
+surface ever needs creatives again, rebuild the batch read as a single `.in('campaign_key', keys)`
+round trip. Never loop `getAdCreativesForCampaign` over campaign cards.
 
 #### `getAllAdCreatives(): Promise<AdCreative[]>`
 
@@ -385,8 +384,8 @@ Framer Motion wrapper: `opacity 0→1`, `y 8→0`, 350ms `EASE_OUT_EXPO`.
 > **Campaign list — no creative surface.** `/campaigns` cards (`CampaignCard`) are a `MotionLink`
 > (`motion.create(Link)`) that navigate straight to `/campaigns/{encodeURIComponent(name)}` on
 > click. The old intermediate `CampaignPreviewModal` (the `max-w-3xl` 40/60 preview with a carousel)
-> and the `getAdCreativesForCampaigns` batch fetch behind it were **deleted 2026-06-16**. There is
-> no creative read on the list page.
+> was **deleted 2026-06-16**; the `getAdCreativesForCampaigns` batch service behind it was removed
+> from the service on 2026-07-02. There is no creative read on the list page.
 
 ---
 
@@ -419,7 +418,7 @@ Campaign pages: agent/guest redirected from `/campaigns`; manager+ can see read 
 ### 12. Known Invariants (must never be violated)
 
 1. **`campaign_key` always normalised** — via `normalizeCampaignKey()` (`lib/utils/campaigns.ts`) on write; `toLowerCase` + `trim` on every read key. Never an inline `.toLowerCase().trim()` in an action.
-2. **`getAdCreativesForCampaigns` is one query** — `.in('campaign_key', keys)`; if it is ever re-wired to a list surface, never call `getAdCreativesForCampaign` in a loop over campaign cards. (Currently no live caller — kept as a documented batch API.)
+2. **Batch creative reads are one query.** The old `getAdCreativesForCampaigns` batch API was deleted 2026-07-02 (no caller since 2026-06-16). The rule survives as guidance: if a list surface ever needs creatives per campaign, build ONE `.in('campaign_key', keys)` query; never call `getAdCreativesForCampaign` in a loop over campaign cards.
 3. **`AdCreativePlayer` unmount** must call `video.pause()` to prevent audio bleed; do not clear `video.src` (Strict Mode regression).
 4. **`key={current.id}`** on carousel player is mandatory for correct autoplay and cleanup per slide.
 5. **`campaign_key` locked on edit** in `AdCreativeFormModal` — changing it orphans consumer links.

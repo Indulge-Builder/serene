@@ -1,6 +1,6 @@
 import type { Task, TaskStatus, TaskPriority, AppDomain } from '@/lib/types/database';
 import type { TaskGroupRow } from '@/lib/services/tasks-service';
-import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_TYPES, TASK_TYPE_LABELS } from '@/lib/constants/task-types';
+import { TASK_STATUSES, TASK_STATUS_LABELS } from '@/lib/constants/task-types';
 import { TASK_PRIORITY } from '@/lib/constants/task-constants';
 
 /** Client-side filters for My Tasks — no server round trip */
@@ -35,11 +35,6 @@ export function resolvePersonalTaskAssignee(
     ? { id: match.id, full_name: match.full_name, avatar_url: match.avatar_url }
     : undefined;
 }
-
-export const TASK_TYPE_FILTER_ITEMS = TASK_TYPES.map((t) => ({
-  id:    t,
-  label: TASK_TYPE_LABELS[t],
-}));
 
 export const EMPTY_PERSONAL_TASK_FILTERS: PersonalTaskFiltersState = {
   search:     '',
@@ -90,46 +85,6 @@ function matchesSearch(haystack: string, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   return haystack.toLowerCase().includes(q);
-}
-
-function personalTaskPasses(
-  task: Task,
-  effectiveStatus: TaskStatus,
-  filters: PersonalTaskFiltersState,
-): boolean {
-  if (filters.search.trim()) {
-    const haystack = `${task.title} ${task.description ?? ''}`;
-    if (!matchesSearch(haystack, filters.search)) return false;
-  }
-  if (filters.tags.length > 0 && !filters.tags.every((t) => task.tags.includes(t))) {
-    return false;
-  }
-  if (filters.statuses.length > 0 && !filters.statuses.includes(effectiveStatus)) {
-    return false;
-  }
-  if (filters.priorities.length > 0 && !filters.priorities.includes(task.priority)) {
-    return false;
-  }
-  return true;
-}
-
-export function countVisiblePersonalTasks(
-  activeTasks: Task[],
-  completedTasks: Task[],
-  optimisticStatus: Record<string, TaskStatus>,
-  filters: PersonalTaskFiltersState,
-): number {
-  let n = 0;
-  for (const task of activeTasks) {
-    const effectiveStatus = optimisticStatus[task.id] ?? task.status;
-    if (effectiveStatus === 'completed') continue;
-    if (personalTaskPasses(task, effectiveStatus, filters)) n++;
-  }
-  for (const task of completedTasks) {
-    const effectiveStatus = optimisticStatus[task.id] ?? task.status;
-    if (personalTaskPasses(task, effectiveStatus, filters)) n++;
-  }
-  return n;
 }
 
 export function filterGroupRows(

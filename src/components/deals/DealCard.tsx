@@ -7,7 +7,7 @@ import { DEAL_TYPE_LABELS, DEAL_DURATION_LABELS, DEAL_CATEGORY_LABELS } from '@/
 import { getLeadSourceLabel } from '@/lib/constants/lead-sources';
 import { formatDate } from '@/lib/utils/dates';
 import { formatCurrency } from '@/lib/utils/numbers';
-import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { EASE_OUT_EXPO, EXIT_DURATION } from '@/lib/constants/motion';
 import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import type { DealWithRelations } from '@/lib/services/deals-service';
 
@@ -363,7 +363,7 @@ export function DealCard({ deal, index }: DealCardProps) {
       <motion.div
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, delay: staggerDelay / 1000, ease: EASE_OUT_EXPO }}
+        transition={{ duration: EXIT_DURATION, delay: staggerDelay / 1000, ease: EASE_OUT_EXPO }}
         style={cardStyle}
         onMouseEnter={(e) => {
           (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-2)';
@@ -386,7 +386,7 @@ export function DealCard({ deal, index }: DealCardProps) {
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: staggerDelay / 1000, ease: EASE_OUT_EXPO }}
+      transition={{ duration: EXIT_DURATION, delay: staggerDelay / 1000, ease: EASE_OUT_EXPO }}
     >
       <Link
         href={href}

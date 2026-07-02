@@ -2,7 +2,7 @@
 
 > **Purpose:** the schema narrative — every table, its purpose, key columns, and relationships. Companion to the raw dump in `database_architecture.sql`.
 > **Audience:** engineers. · **Source-of-truth scope:** what each table is *for* and its contracts. Exact DDL = the dump + `supabase/migrations/`; per-page query usage = `../pages/*.md`; RLS/authorization = `auth-and-rbac.md`.
-> **Last verified:** 2026-06-26 against the migration files (through 0149; sequence skips 0131, superseded by 0132; serial 0141 is reused — 0141a/0141b). The `database_architecture.sql` dump is pre-0098 — refresh via `supabase db dump` after applying 0098–0149; the dump lacks `leads.search_text`, `leads.service_interests`, `profiles.app_icon`, and the Call Intelligence / SLA / Elaya / Lead Revival / push / usage-tracking / notification-preferences / suggestions / `ad_account_recharges` / `task_events` tables. Newly verified since 0137: `20260617000138_collapse_gia_category_module_enum.sql` (category→2 values + `task_module` enum), `20260620000139_ad_account_recharges.sql`, `20260623000141_whatsapp_media_bucket.sql`, `20260624000144_oversight_task_events.sql`, `20260625000145_personal_tasks_lead_identity.sql`, `20260625000146_agent_performance_trend.sql`, `20260625000148_elaya_wa_message_dedup_unique.sql`, `20260625000149_elaya_sessionless_rpc_twins.sql`. **Migrations 0144 (oversight `task_events`) and 0146 (`get_agent_performance_trend`) are NOT yet applied to prod** — verify against the live DB before assuming.
+> **Last verified:** 2026-07-02 against the migration files (through 0156; sequence skips 0131, superseded by 0132; serial 0141 is reused — 0141a/0141b). The `database_architecture.sql` dump is pre-0098 — refresh via `supabase db dump` after applying 0098–0156; the dump lacks `leads.search_text`, `leads.service_interests`, `leads.welcomed_at`, `profiles.app_icon`, and the Call Intelligence / SLA / Elaya / Lead Revival / push / usage-tracking / notification-preferences / suggestions / `ad_account_recharges` / `task_events` / `elaya_training_assets` / `elaya_notes` tables. Newly verified since 0149: `20260626000150_elaya_training_assets.sql`, `20260626000151_customer_welcome_blast.sql` (`leads.welcomed_at` + customer log types), `20260626000152_elaya_notes.sql`, `20260626000153_task_assigned_log_type.sql`, and the 0154–0156 `profiles.theme` CHECK churn (final 6-value vocabulary). **Migration 0146 (`get_agent_performance_trend`) and the 0154–0156 theme batch are flagged NOT yet applied to prod** — verify against the live DB before assuming. (0144 was applied and verified 2026-06-24 per `supabase/migrations/CLAUDE.md`.)
 
 ---
 
@@ -22,7 +22,10 @@ CHECK constraints, mirrored as typed constants in `src/lib/constants/`.
 
 One row per team member, `id` = `auth.users.id`. The root of all authorization (A-01).
 Key columns: `role user_role` (default `agent`), `domain app_domain` (default `concierge`),
-`is_active` (soft-deactivate — never delete), `is_on_leave`, `theme` (5-value CHECK; DB-stored so
+`is_active` (soft-deactivate — never delete), `is_on_leave`, `theme` (6-value CHECK:
+`earth`/`air`/`water`/`fire`/`martini`/`candy` after the 0154–0156 churn: 0154 added `coffee`,
+0155 added `macha`/`martini`/`candy`, 0156 retired `cosmos`/`coffee`/`macha` and moved affected
+rows to `earth`; the SQL mirror of `THEME_KEYS` in `lib/constants/themes.ts`; DB-stored so
 it follows the user across devices), `app_icon` (0121 — `text NOT NULL DEFAULT 'icon-1'`, CHECK in
 `icon-1..icon-4`; the PWA home-screen icon pick, mirrors `theme` exactly and rides the same
 `updateProfile` action; no new RLS — the 0001 `profiles_update` self-update policy covers it),
@@ -63,9 +66,12 @@ in_discussion → nurturing → won | lost | junk`, `status_changed_at`, `last_a
 `last_call_outcome`), dedup (`previous_lead_id` self-FK — a terminal lead re-enquiring spawns a
 new lead linked back), URL identity (`slug` — unique, human-readable `priya-sharma-9182`,
 trigger-generated, immutable), `search_text` (0098 — STORED generated column over
-name/email/city/phone backing the trigram search index), and `service_interests text[]` (0109 —
+name/email/city/phone backing the trigram search index), `service_interests text[]` (0109 —
 the per-domain Call Intelligence interest vocabulary, **never an enum**; partial GIN; unknown
-values dropped at ingestion, never rejected).
+values dropped at ingestion, never rejected), and `welcomed_at timestamptz` (0151, the
+customer welcome-blast idempotency stamp: NULL = never welcomed; set once by the customer-Elaya
+send path under an `UPDATE … WHERE welcomed_at IS NULL RETURNING` guard so the welcome fires
+exactly once per lead; a layer over leads, not a lifecycle column).
 
 ### `lead_activities` · `lead_notes`
 
@@ -129,7 +135,7 @@ row** — that meta row *is* the task→lead link.
   DESC)` + `(subject_id, created_at DESC)`; Realtime enabled. **manager+ SELECT, NO INSERT/UPDATE/
   DELETE policy ever** — written ONLY by the task-mutation cores + the overdue job via the admin
   client (so Elaya's write tools emit it for free). Feeds the three oversight RPCs + the live rails.
-  **⚠️ Migration 0144 is not yet applied to prod.**
+  (Migration 0144 was applied to prod and verified 2026-06-24.)
 
 ## WhatsApp (4 tables)
 
@@ -144,8 +150,11 @@ row** — that meta row *is* the task→lead link.
   Realtime enabled.
 - **`whatsapp_conversation_reads`** — per-user read position; UNIQUE(conversation_id, agent_id);
   UPSERT on read.
-- **`whatsapp_notification_logs`** — one row per template-send attempt (delivered or failed).
-  Stores last-4 phone digits only — full numbers never stored.
+- **`whatsapp_notification_logs`** — one row per outbound send attempt (delivered or failed).
+  Stores last-4 phone digits only — full numbers never stored. The `type` CHECK has grown over
+  time: `elaya_reply` (0117), the three task-reminder types (0142), `customer_welcome` +
+  `customer_reply` (0151; the table now also logs free-form customer session sends, not
+  only template attempts), and `task_assigned` (0153).
 
 ## Commerce & content (5 tables)
 
@@ -275,11 +284,14 @@ Category-scoped talking points agents say on calls. `domain app_domain`, `catego
 **RLS (both tables):** all-authenticated SELECT; **admin/founder-only writes** via InitPlan-hoisted
 `(SELECT get_user_role())`.
 
-## Elaya AI foundation (6 tables, 0116)
+## Elaya AI (8 tables: the 0116 six + 0150/0152)
 
-The substrate every AI feature plugs into. RLS posture across all six: users read their own rows;
-config tables (`llm_providers`, `elaya_settings`) are admin/founder SELECT; all assistant/tool/
-context/action/config **writes are service-role only** (the authed route is the trust boundary).
+The substrate every AI feature plugs into. RLS posture across the 0116 six: users read their own
+rows; config tables (`llm_providers`, `elaya_settings`) are admin/founder SELECT; all assistant/
+tool/context/action/config **writes are service-role only** (the authed route is the trust
+boundary). The two later tables deliberately differ: `elaya_training_assets` (0150) is editable
+content with manager+ write policies (the `ad_creatives` posture), and `elaya_notes` (0152) is
+owner-only personal content (the `push_subscriptions` posture). See their sections below.
 
 ### `elaya_conversations`
 
@@ -296,7 +308,10 @@ denormalised `sender_id` (the human author on `role='user'` rows; NULL for assis
 enforces `role <> 'user' OR sender_id IS NOT NULL`), `role` CHECK (`user` | `assistant` | `tool`),
 `channel`, `content`, `tool_calls jsonb` (the assistant turn's normalised tool calls), `meta jsonb`
 (provider/model/usage snapshot). A partial `(sender_id, created_at DESC) WHERE role='user'` index
-serves the server-enforced daily message cap. Users SELECT messages on their own conversations and
+serves the server-enforced daily message cap. 0148 added `idx_elaya_messages_wa_dedup`, a partial
+UNIQUE index on `(meta->>'wa_message_id') WHERE channel='whatsapp' AND role='user'`, so a BSP
+redelivery of the same WhatsApp message can never run two brain turns (a raced second insert fails
+`23505`, mapped to "already processed"). Users SELECT messages on their own conversations and
 INSERT only `role='user'` rows on them; assistant/tool rows are service-role writes.
 
 ### `user_context`
@@ -314,9 +329,9 @@ a permission (the Golden Rule).
 The agentic-write ledger — **reserved empty in 0116, filled in 0118** (Elaya Phase 2 / E3).
 `conversation_id`, `message_id`, `user_id`, `action_type`, `payload jsonb` (target/args/channel/
 before/after snapshots), `status` proposed→approved/dismissed/executed/failed, `resolved_at`/
-`resolved_by`. Now backs the **11 Elaya write tools** — inline writes (`add_lead_note`, `log_call`,
-`create_lead_task`, `create_personal_task`, `create_group_task`, `update_task_status`,
-`update_task`) append one terminal `executed` row; the propose→confirm tier (`update_lead_status`,
+`resolved_by`. Now backs the **12 Elaya write tools** — inline writes (`add_lead_note`, `log_call`,
+`create_lead_task`, `create_personal_task`, `create_group_task`, `create_subtask`,
+`update_task_status`, `update_task`) append one terminal `executed` row; the propose→confirm tier (`update_lead_status`,
 `reassign_lead`, `log_deal`, `delete_task`) writes a `proposed` row that flips on the next
 affirmative human turn. `action_type` has **no DB CHECK**, so a new tool type (e.g. `log_deal`) needs
 no migration. **State-machine table, NOT append-only** (an A-11 carve-out — it doubles as the
@@ -339,6 +354,33 @@ client, never module-cached — a model switch applies on the next message with 
 Small key/value config (same read-per-request contract). `key` PK, `value jsonb`. Seeded
 `daily_message_cap=200`, `pii_masking_depth='light'`, `session_expiry_hours=24`. RLS admin/founder
 SELECT; writes service-role.
+
+### `elaya_training_assets` (0150)
+
+Elaya's curated customer-training library: the brand/media/reference material she may surface or
+send to a prospect (brochures, work examples, testimonials, reviews, podcasts, images, videos,
+docs, links) plus a free-text company-facts brief (a `kind='fact'` row). Columns: `kind` (CHECK =
+the 10 `TRAINING_ASSET_KINDS` in `lib/constants/elaya-training.ts`), `title`, `description` (the
+`fact` body), `url` / `storage_path` (at most one source; both nullable so an asset can be
+link-only, upload-only, or text-only), `tags text[]`, `domain app_domain` (NULL = every domain),
+`send_order`, `active`; `update_updated_at` trigger; indexes on domain/active/send_order.
+**EDITABLE config/content, NOT append-only, NOT service-role-only** (an exception to the 0116
+blanket posture): RLS is all-authenticated SELECT (every staff Elaya turn resolves assets) with
+**manager/admin/founder INSERT/UPDATE/DELETE** via `(SELECT get_user_role())`, the `ad_creatives`
+posture. Managed from `/admin/elaya-training`. Files live in the PUBLIC `elaya-training` bucket
+(see Storage buckets).
+
+### `elaya_notes` (0152)
+
+Per-user free-form notes Elaya reads as CONTEXT, never permission (Jarvis Feature 3; backs the
+`/notes` page). `user_id` FK (`ON DELETE CASCADE`), `title`, `body`, timestamps;
+`idx_elaya_notes_user (user_id, updated_at DESC)` serves both the page list and the turn read.
+EDITABLE personal content (NOT A-11: `update_updated_at` trigger + UPDATE/DELETE policies).
+**Owner-only RLS** (the `push_subscriptions` posture): SELECT/INSERT/UPDATE/DELETE all gated
+`user_id = (SELECT auth.uid())`, InitPlan-hoisted. The Elaya turn read (`getNotesForElaya` in
+`elaya-notes-service.ts`, called from the brain) runs **service-role scoped by `principal.userId`
+in code**, for channel parity: `auth.uid()` is NULL on the sessionless WhatsApp webhook. A note
+can never widen access (the Golden Rule).
 
 ## Usage / adoption tracking (2 tables, 0126)
 
@@ -408,6 +450,7 @@ private `suggestions` storage bucket (0135 — see Storage buckets).
 | `ad-creatives` (0012) | public read | INSERT/DELETE restricted to admin/founder (0092), matching the table RLS |
 | `suggestions` (0135) | **PRIVATE** (no public read — reports can show sensitive screens) | `suggestions_storage_insert_own` (write only under the caller's own `${auth.uid()}/` prefix) / `_read_own` (same prefix) / `_read_admin` (admin/founder read all — backs `createSignedUrl` for the triage inbox). No UPDATE/DELETE — screenshots are write-once. Admin viewing mints short-lived signed URLs; the `suggestions` row stores PATHS, never URLs |
 | `whatsapp-media` (0141a) | **PRIVATE** (no public read — lead conversations can be sensitive) | Writes + reads run on the admin client (the inbound webhook is sessionless), so no authenticated INSERT/SELECT policy is needed; one defence-in-depth admin/founder SELECT policy. Object path `${leadId}/${messageId}.${ext}`; `whatsapp_messages.media_url` stores the PATH (never Gupshup's time-limited CDN URL); reads mint signed URLs |
+| `elaya-training` (0150) | **PUBLIC** read (Gupshup fetches a sent media URL with no signing step; the `avatars`/`ad-creatives` posture) | `elaya_training_public_read` (anon + authenticated) + manager/admin/founder INSERT/UPDATE/DELETE. `elaya_training_assets.storage_path` stores the object PATH; the app mints the public URL on read via `getPublicUrl` |
 
 ## RPC inventory
 

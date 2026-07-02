@@ -3,6 +3,7 @@ import { USER_ROLES } from "@/lib/constants/roles";
 import { APP_DOMAINS } from "@/lib/constants/domains";
 import { THEME_ENUM } from "@/lib/constants/themes";
 import { ICON_ENUM } from "@/lib/constants/app-icons";
+import { uuidField } from "@/lib/validations/fields";
 
 const userRoleEnum = USER_ROLES as [string, ...string[]];
 const appDomainEnum = APP_DOMAINS as [string, ...string[]];
@@ -45,7 +46,7 @@ export const createUserSchema = z.object({
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 
 export const updateProfileSchema = z.object({
-  id: z.string().uuid("id_invalid"),
+  id: uuidField("id_invalid"),
   full_name: z
     .string()
     .min(1, "full_name_required")
@@ -88,7 +89,7 @@ export const updateProfileSchema = z.object({
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
 export const updateAuthorizationSchema = z.object({
-  id: z.string().uuid("id_invalid"),
+  id: uuidField("id_invalid"),
   role: z.enum(userRoleEnum as [string, ...string[]]),
   domain: z.enum(appDomainEnum as [string, ...string[]]),
 });
@@ -96,7 +97,7 @@ export const updateAuthorizationSchema = z.object({
 export type UpdateAuthorizationInput = z.infer<typeof updateAuthorizationSchema>;
 
 export const toggleUserActiveSchema = z.object({
-  id: z.string().uuid("id_invalid"),
+  id: uuidField("id_invalid"),
   is_active: z.boolean(),
 });
 
@@ -130,6 +131,6 @@ export const inviteUserSchema = z.object({
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 
 export const updateProfileAvatarSchema = z.object({
-  id:         z.string().uuid("id_invalid"),
+  id:         uuidField("id_invalid"),
   avatar_url: z.string().url("avatar_url_invalid"),
 });

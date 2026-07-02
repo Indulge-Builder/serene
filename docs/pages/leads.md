@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/leads` — the Gia pipeline list: URL-driven server-side filters, Suspense streaming, column preferences, Add Lead, export.
 > **Audience:** engineers. · **Source-of-truth scope:** the list route + `leads-service.ts` reads + `leads.ts` actions + the export system. The dossier is `lead-dossier.md`; ingestion is `../integrations/lead-ingestion.md`; schema narrative is `../architecture/database.md`.
-> **Last verified:** 2026-06-24 (manager All Leads ↔ My Leads `?view=` toggle; `getAssignableUsers({ roles })` refactor; FilterBar immediate-commit model; going-cold cutoff DRY (migration 0140); phone-dedup uniqueness (migration 0137); shared `fetchLeadsByIds` id-set reader); 2026-06-15 (Lead Revival review surface + voice dictation in dossier note inputs); 2026-06-09 full pass; 2026-06-11 restructure (perf C-1/C-2 totalCount fold + `search_text` reflected).
+> **Last verified:** 2026-07-02 (bulk-edit flow documented: `LeadsSelectionToolbar` + `BulkEditLeadsModal` + `bulkUpdateLeads`; `updateLeadCity` row; `update_lead_status` nurturing wording updated to the 0138 category collapse; slug fix 0147 cited); 2026-06-24 (manager All Leads ↔ My Leads `?view=` toggle; `getAssignableUsers({ roles })` refactor; FilterBar immediate-commit model; going-cold cutoff DRY (migration 0140); phone-dedup uniqueness (migration 0137); shared `fetchLeadsByIds` id-set reader); 2026-06-15 (Lead Revival review surface + voice dictation in dossier note inputs); 2026-06-09 full pass; 2026-06-11 restructure (perf C-1/C-2 totalCount fold + `search_text` reflected).
 
 ## 1. Purpose
 
@@ -39,7 +39,9 @@ reintroduce it) · `LeadsTable` (bespoke — never `Table<T>`; toolbar holds the
 My Leads `TabSelector`, Going Cold chip, sort toggle, Columns, Export; memoised `LeadRow`) ·
 `LeadColumnPicker` + `useLeadColumnPreferences` (`serene:leads:columns:${userId}:v1`) ·
 `LeadsPagination` (hidden ≤30 rows) · `AddLeadButton` + `AddLeadModal` (on-intent `next/dynamic`)
-· `ExportButton`.
+· `ExportButton` + `ExportModal` · `LeadsSelectionToolbar` + `BulkEditLeadsModal` (bulk-edit flow,
+2026-06-24: row selection in `LeadsTable` → the selection toolbar appears above the table
+(`AnimatePresence`, when any row is checked) → the modal → `bulkUpdateLeads`).
 
 ## 5. States
 
@@ -145,7 +147,7 @@ dossier. Full module contract: `../modules/revival.md`.
 | `archived_at` | `timestamptz` | YES | Soft delete |
 | `previous_lead_id` | `uuid` | YES | FK → `leads(id)` ON DELETE RESTRICT (`20260527000008_lead_dedup.sql`) |
 | `personal_details` | `jsonb` | YES | Agent enrichment (`20260527000009_lead_personal_details.sql`) |
-| `slug` | `text` | YES | UNIQUE partial index; immutable (`20260530000045_lead_slug.sql`, collision fix `00046`) |
+| `slug` | `text` | YES | UNIQUE partial index; immutable (`20260530000045_lead_slug.sql`, collision fix `00046`, uppercase-strip fix `20260625000147`; `generate_lead_slug` previously stripped uppercase letters, corrupting most slugs) |
 | `status_changed_at` | `timestamptz` | YES | SLA (`20260529000027_lead_sla_columns.sql`) |
 | `last_activity_at` | `timestamptz` | YES | SLA |
 
@@ -365,7 +367,7 @@ Performance indexes on related tables: `idx_lead_activities_actor_status`, `idx_
 | `get_active_lead_by_phone` | `p_phone text` | Returns newest active lead row (`new`/`touched`/`in_discussion`/`nurturing`, not archived) or empty set. Format variants of the same number collapse via `lead_phone_key()` normalisation (migration 0137), backed by the `idx_leads_phone_key_active` UNIQUE index on `lead_phone_key(phone)` for active leads — so `+919876543210` / `919876543210` / `9876543210` resolve to one dedup key. | `20260527000008_lead_dedup.sql`; normalisation + uniqueness backstop in `20260617000137_lead_phone_dedup_uniqueness.sql` |
 | `get_next_round_robin_agent` | `p_domain text` | Atomic pick of next eligible agent (`FOR UPDATE SKIP LOCKED` on routing config); returns `uuid` or NULL. | `20260527000007_round_robin_fn.sql` |
 | `add_lead_call_note` | `p_lead_id uuid`, `p_author_id uuid`, `p_content text`, `p_call_outcome text`, `p_now timestamptz` | Note + increment `call_count` + optional `new→touched` + activities; returns `jsonb`. | `20260529000030_rpc_add_lead_call_note.sql` |
-| `update_lead_status` | `p_lead_id uuid`, `p_actor_id uuid`, `p_status text`, `p_reason text`, `p_now timestamptz` | Status update + activity; nurturing creates 3-month `gia_followup` task + `task_gia_meta`; returns `jsonb`. | `20260529000031_rpc_update_lead_status.sql` (+ nurturing fix `00039`) |
+| `update_lead_status` | `p_lead_id uuid`, `p_actor_id uuid`, `p_status text`, `p_reason text`, `p_now timestamptz` | Status update + activity; nurturing creates the 3-month follow-up as a `'personal'` task + `module='gia'` + `task_gia_meta` row (the `gia_followup` category was collapsed in migration 0138; that value no longer exists); returns `jsonb`. | `20260529000031_rpc_update_lead_status.sql` (+ nurturing fix `00039`; RPC recreated in `20260617000138_collapse_gia_category_module_enum.sql`) |
 | `add_lead_plain_note` | `p_lead_id uuid`, `p_author_id uuid`, `p_content text`, `p_now timestamptz` | Plain note + `last_activity_at` + `note_added` activity; returns `{ note_id }`. | `20260530000040_rpc_add_lead_plain_note.sql` |
 | `create_lead_gia_task` | `p_lead_id`, `p_assigned_to`, `p_created_by`, `p_task_type`, `p_title`, `p_description`, `p_priority`, `p_due_at` | Atomic `tasks` + `task_gia_meta` insert; returns `tasks` row. | `20260531000054_create_lead_gia_task.sql` |
 | `get_leads_status_counts` | `p_agent_id uuid`, `p_date_from timestamptz`, `p_date_to timestamptz`, `p_campaign text`, `p_search text`, `p_source text`, `p_outcomes text[]`, `p_statuses text[]`, `p_domain app_domain`, `p_going_cold timestamptz` (all DEFAULT NULL) | Returns `TABLE(status text, cnt bigint)` for the full filtered dataset — and, summed, the list's `totalCount` (the paginated query carries no `{ count: 'exact' }` since perf C-1). Role/domain self-enforced via `get_user_role()`/`get_user_domain()`; `p_domain` is honoured only on the admin/founder branch (Gia slice). `p_agent_id` mirrors the table query's `assigned_to` constraint exactly (param-sync rule): agent → own id; **manager in "My Leads" view → own id**; otherwise the explicit `agent_id` filter (null when absent) — so the pills match the table in every view. `p_going_cold` is the rolling cold cutoff supplied by `getLeadsByRole` from `goingColdCutoff()` (`COLD_LEAD_THRESHOLD_DAYS = 5`, `src/lib/constants/leads.ts`) so the RPC and the table can never drift; search is `search_text ILIKE` (same generated column as the table query); `p_date_to` inclusive. Empty arrays treated as "no filter". (The revival `?revival=true` predicate **bypasses** this RPC entirely — it is a cross-table subquery the RPC can't express; §8a.) | `20260611000099_status_counts_total_fold.sql` (v3 — supersedes `...083`/`...080`; note: a pre-0099 version of this row documented `p_going_cold` that the DB never had — that doc/DB drift was the empty-pills bug) |
@@ -477,6 +479,8 @@ export type LeadsResult = {
 | `getAssignableUsersAction` (in `actions/profiles.ts`) | — (`domain?`) | Logged in | `getAssignableUsers(...)` — no domain → all active non-guest users; with domain → admin/founder get every active user in it, others agents only | None | `{ data: AssignableUser[], error }` |
 | `createLeadTaskAction` | `CreateLeadTaskSchema` | Standard lead access | RPC `create_lead_gia_task` | `scheduleTaskReminder` if `dueAt`; `revalidatePath(/leads/${slug\|id})` | `{ data: Task, error }` |
 | `searchLeadsAction` | `SearchLeadsSchema` | Profile | `searchLeadsForTask` | None | `{ data: LeadSearchResult[], error }` |
+| `bulkUpdateLeads` (2026-06-24) | `BulkUpdateLeadsSchema` | Any session role; access checked **per lead**, mirroring the single-edit rules (domain/assignedTo require manager+, managers scoped to own domain; source/status follow field-edit access). Ineligible leads are skipped, never failing the batch | Each field reuses the SAME write path as its single-edit twin (R-01): assignedTo → `assignLeadCore`, status → `updateLeadStatusCore`, domain/source → admin update + activity. Order within a lead: domain → assignedTo → status → source | Same SLA/notify/activity/cache side-effects as the single edits, per lead | `{ data: { updated, skipped, failed }, error }` |
+| `updateLeadCity` | `UpdateLeadCitySchema` | `assertLeadFieldEditAccess` | Admin UPDATE `city` | `revalidateLeadDossier` | `{ data: { leadId }, error }` |
 
 **Voice dictation in the dossier note inputs.** `LeadNotesInput` (plain note → `addLeadNote`) and
 `CalledModal` (call note → `addLeadCallNote`) each mount the **inline** `<DictationButton>`
@@ -636,6 +640,12 @@ shown) then the Going Cold chip; right cluster — sort-order toggle ("Newest fi
 first"), Columns picker, Export. Below md the sort and Export labels compress to icons and the
 Columns picker is hidden (the mobile card stack ignores column prefs); Going Cold keeps its label.
 
+**Bulk edit (2026-06-24):** rows are selectable; when any row is checked, a
+`LeadsSelectionToolbar` mounts above the table (inside `AnimatePresence`) with the selected ids,
+a Clear action, and the entry to `BulkEditLeadsModal`. The modal commits one or more field
+changes across the selection via the `bulkUpdateLeads` action (§5), which reuses the single-edit
+write cores per lead and reports `{ updated, skipped, failed }`.
+
 #### 6d. LeadsPagination
 
 - **`pageSize`:** `30` (fixed in `parseFilters`, not user-configurable).  
@@ -766,7 +776,7 @@ Leads) — the same daily worklist an agent gets — not the whole domain. Full 
 
 11. **Agent filter security:** `getLeadsByRole` applies `assigned_to = auth.uid()` for agents **before** `LeadFilters.agent_id`. Crafted `agent_id` URL cannot leak other agents' leads.
 
-12. **Lead slug immutable after insert.** Generated by `generate_lead_slug()` / `trg_lead_slug`. `getLeadBySlug` — exact match only, never `LIKE`. Table href: `lead.slug ?? lead.id`.
+12. **Lead slug immutable after insert.** Generated by `generate_lead_slug()` / `trg_lead_slug` (fixed in migration `20260625000147`; the original lowercase-only character class stripped uppercase letters and corrupted most slugs). `getLeadBySlug` — exact match only, never `LIKE`. Table href: `lead.slug ?? lead.id`.
 
 13. **Dossier lookup:** `getLeadBySlug(id)` first, then `getLeadById(id)` for UUID links.
 

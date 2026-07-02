@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { requireProfile } from "@/lib/actions/_auth";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import {
@@ -59,7 +60,9 @@ export async function submitSuggestionAction(
  * Resolve a suggestion (admin/founder only). Flips status → resolved and notifies
  * the original sender (in-app). The resolve-notify is transactional — no
  * notificationKey, so it is never silenceable (the lead_initiation / elaya_reply
- * posture). Notification is fire-and-forget non-fatal (the leads-action convention).
+ * posture). Notification is non-fatal and runs via after() — createNotification
+ * carries a Web Push send (dispatchPush), so a bare void would orphan it when the
+ * lambda freezes on return (A-16).
  */
 export async function resolveSuggestionAction(
   input: unknown,
@@ -77,13 +80,17 @@ export async function resolveSuggestionAction(
   // Close the loop for the sender. Non-fatal: a notification failure must not
   // fail the resolve. Skip self-notify when the resolver is the sender.
   if (senderId !== caller.id) {
-    void createNotification({
-      recipient_id: senderId,
-      type: "suggestion_resolved",
-      title: "Your feedback was resolved",
-      body: "Thanks for the report — we've marked it resolved.",
-      action_url: "/dashboard",
-    }).catch(() => {});
+    after(
+      createNotification({
+        recipient_id: senderId,
+        type: "suggestion_resolved",
+        title: "Your feedback was resolved",
+        body: "Thanks for the report — we've marked it resolved.",
+        action_url: "/dashboard",
+      }).catch((err) =>
+        console.error("[suggestions-action] resolve notify failed (non-fatal):", err),
+      ),
+    );
   }
 
   revalidatePath("/admin/suggestions");

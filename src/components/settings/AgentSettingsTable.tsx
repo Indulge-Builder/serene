@@ -13,7 +13,7 @@ import { FilterDropdown } from "@/components/ui/FilterDropdown";
 import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import { toggleAgentRouting, setAgentShiftAction } from "@/lib/actions/agent-routing";
 import { toast } from "@/lib/toast";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
 import { normalizeTimeHHMM } from "@/lib/utils/dates";
 import type { AgentRosterRow, UserRole, AppDomain } from "@/lib/types/database";
 
@@ -126,7 +126,6 @@ const POOL_FILTER_ITEMS = [
 export function AgentSettingsTable({
   initialRoster,
   callerRole,
-  callerDomain,
 }: AgentSettingsTableProps) {
   const isPrivileged     = callerRole === "admin" || callerRole === "founder";
   const showDomainFilter = isPrivileged;
@@ -601,7 +600,7 @@ export function AgentSettingsTable({
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: (isSaving || isPending) ? 0.6 : 1, y: 0 }}
                 transition={{
-                  duration: 0.25,
+                  duration: EXIT_DURATION,
                   delay:    Math.min(i * 80, 320) / 1000,
                   ease:     EASE_OUT_EXPO,
                 }}

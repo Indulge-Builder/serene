@@ -17,6 +17,7 @@
 import { randomUUID } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { requireProfile } from '@/lib/actions/_auth';
+import { parseActionInput } from '@/lib/actions/_validation';
 import { CreateSlaPolicySchema, UpdateSlaPolicySchema } from '@/lib/validations/sla-policy-schema';
 import { createSlaPolicy, updateSlaPolicy } from '@/lib/services/sla-service';
 import type { NewSlaPolicy, SlaPolicyPatch } from '@/lib/services/sla-service';
@@ -75,10 +76,8 @@ export async function updateSlaPolicyAction(input: unknown): Promise<ActionResul
  */
 export async function createSlaPolicyAction(input: unknown): Promise<ActionResult<SlaPolicy>> {
   // 1. Zod validate (Rule S-01) — trigger_value-vs-kind is enforced here
-  const parsed = CreateSlaPolicySchema.safeParse(input);
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? formErrors.generic };
-  }
+  const parsed = parseActionInput(CreateSlaPolicySchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   // 2. Admin/founder only (Rule 09 / A-18)
   const auth = await requireProfile(['admin', 'founder']);

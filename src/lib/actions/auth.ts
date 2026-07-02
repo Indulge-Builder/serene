@@ -49,12 +49,6 @@ export async function loginAction(
   redirect("/dashboard");
 }
 
-export async function signOut() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
-  redirect("/login");
-}
-
 export async function requestPasswordResetAction(
   _prevState: { success: boolean; error: string | null } | null,
   formData: FormData,

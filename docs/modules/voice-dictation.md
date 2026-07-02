@@ -3,8 +3,8 @@
 > **Purpose:** speech-to-text for staff, shared by every text surface in Serene. One mic→transcribe→draft
 > cluster, one Deepgram call site — reusable substrate for the AI work layer, not a per-page gadget.
 > **Audience:** engineers. · **Source-of-truth scope:** voice-dictation architecture + contracts.
-> **Status:** shipped 2026-06-13/14. Live on four in-app surfaces + inbound WhatsApp voice notes.
-> **Last verified:** 2026-06-15.
+> **Status:** shipped 2026-06-13/14. Live on five in-app surfaces + inbound WhatsApp voice notes.
+> **Last verified:** 2026-07-02.
 
 ## What it is
 
@@ -27,14 +27,18 @@ any future voice surface (Elaya voice turns, voice-first task entry) plugs into 
 | Component | `src/components/ui/DictationButton.tsx` | **THE** mic→transcribe→`onTranscript(text)` cluster (record/stop/cancel buttons + `m:ss` counter + Transcribing… spinner). `variant="composer"` (32px pill, mounts as a `<MessageBar leadingSlot>`) or `variant="inline"` (28px bordered, form footer). Renders `null` when MediaRecorder is unsupported. |
 | WhatsApp inbound | `src/lib/services/elaya-whatsapp.ts` | `transcribeWhatsAppAudio` — Gupshup CDN voice note → transcribe → text, before cap/model/persist. |
 
-## The five surfaces
+## The six surfaces
 
 `DictationButton` is composed once per surface — never a re-inlined mic cluster (R-01):
 
-1. **`ElayaChatShell`** (`variant="composer"`) — dictate an Elaya message.
+1. **`ElayaChatShell`** (`variant="composer"`) — dictate an Elaya message. (`EmbeddedElayaChat`
+   re-mounts the same shell as an embedded surface; it is the same composer instance, not a
+   separate mount.)
 2. **`ConversationPanel`** (WhatsApp, `variant="composer"`) — dictate a staff reply.
 3. **`LeadNotesInput`** (`variant="inline"`) — dictate a lead note.
 4. **`CalledModal`** (`variant="inline"`) — dictate the call-outcome note.
+5. **`NoteFormModal`** (`/notes`, `variant="inline"`): dictate a personal note. Added 2026-06-26
+   with the Notes module (migration 0152).
 
 Plus the **inbound** path: a staff member sends a **WhatsApp voice note** → `elaya-whatsapp.ts`
 transcribes it (input-transform only) before the Elaya turn runs. An empty transcript is a graceful

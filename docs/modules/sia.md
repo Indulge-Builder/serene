@@ -2,7 +2,7 @@
 
 > **Purpose:** placeholder for the concierge module.
 > **Audience:** everyone. · **Source-of-truth scope:** status only.
-> **Last verified:** 2026-06-11 · **Status:** not started.
+> **Last verified:** 2026-07-02 (still no /sia route or module code in the repo) · **Status:** not started.
 
 Sia is the planned Concierge module — the place a client lives after Gia converts them: the
 ongoing concierge relationship for the `concierge` domain. Reserved in the naming system from

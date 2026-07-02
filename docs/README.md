@@ -1,8 +1,8 @@
 # Serene Documentation
 
-> **Purpose:** the index — what every file in `docs/` is, the reading orders, and where to find anything.
-> **Audience:** everyone. · **Source-of-truth scope:** the docs tree itself. Code is always the ultimate source of truth — docs describe reality, never aspiration; where a doc and the code disagree, the code wins and the doc gets fixed.
-> **Last verified:** 2026-06-20 (against `supabase/migrations/` through 0137, `docs/operations/`, `src/trigger/`).
+> **Purpose:** the index. What every file in `docs/` is, the reading orders, and where to find anything.
+> **Audience:** everyone. · **Source-of-truth scope:** the docs tree itself. Code is always the ultimate source of truth. Docs describe reality, never aspiration. Where a doc and the code disagree, the code wins and the doc gets fixed.
+> **Last verified:** 2026-07-02 (full-tree audit against `supabase/migrations/` through 0156, `src/`, and `src/trigger/`; every doc re-verified or rewritten, obsolete files deleted).
 
 ---
 
@@ -13,15 +13,16 @@ docs/
 ├── README.md                ← this index
 ├── 00-for-the-board.md      ← the whole product in plain English (non-technical)
 ├── 01-vision.md             ← vision, module roadmap, per-module "done"
+├── TODO.md                  ← the short live list of open loose ends
+├── Indulge-Global.md        ← the company dossier (external facts: press, founders, funding)
 ├── changelog.md             ← THE single source of truth for what shipped, in order
-├── _restructure-proposal.md ← the 2026-06-11 restructure plan (meta; cites old paths by design)
 ├── architecture/
 │   ├── overview.md          ← system map, request flow, service→doc registry, hooks, Realtime
 │   ├── database.md          ← every table's purpose + relationships (narrative)
-│   ├── database_architecture.sql ← raw pg_dump schema snapshot
+│   ├── database_architecture.sql ← raw pg_dump snapshot (2026-06-12; migrations are truth for anything newer)
 │   ├── auth-and-rbac.md     ← roles×domains, profiles foundation, sessions, RLS policy
 │   ├── caching.md           ← Redis key registry, TTLs, invalidation contracts
-│   └── migrations.md        ← conventions + full migration index (0001–0137)
+│   └── migrations.md        ← conventions + full migration index (0001–0156)
 ├── design/
 │   ├── DESIGN-DNA.md        ← the design constitution (law)
 │   ├── design-system.md     ← component implementation reference
@@ -31,34 +32,36 @@ docs/
 ├── pages/                   ← one spec per route (template below)
 │   dashboard · leads · lead-dossier · tasks · deals · campaigns · performance
 │   whatsapp · settings · auth · profile · user-management · ad-creatives · error-log
-│   budget · escalations · elaya · helpdesk · usage · suggestions
+│   budget · escalations · elaya · elaya-training · helpdesk · notes · oversight
+│   usage · suggestions
 ├── modules/
 │   ├── gia.md               ← the CRM module: lifecycle, end-to-end flow, SLA engine
 │   ├── revival.md           ← Lead Revival: silence detection → note-AI suppression gate → revive/review
-│   ├── elaya.md             ← AI presence (live — read tools + Phase 2 agentic writes + voice input)
-│   ├── voice-dictation.md   ← Deepgram speech-to-text (one mic cluster, 4 surfaces + WhatsApp voice notes)
-│   ├── web-push.md          ← Web Push (VAPID) — second notification channel behind createNotification
+│   ├── elaya.md             ← THE single as-built home for the Elaya AI subsystem (read+write tools, Jarvis, channels)
+│   ├── customer-welcome-blast.md ← customer-facing WhatsApp Elaya: welcome blast + prospect replies (as-built)
+│   ├── voice-dictation.md   ← Deepgram speech-to-text (one mic cluster, all voice surfaces)
+│   ├── web-push.md          ← Web Push (VAPID), the second notification channel behind createNotification
 │   ├── sia.md               ← concierge module (not started)
 │   └── call-intelligence.md ← helpdesk/call-intel spec (Phase 1 shipped — migrations 0109/0110)
 ├── integrations/
 │   ├── lead-ingestion.md    ← Pabbly/Meta webhook pipeline + raw-payload policy
 │   ├── whatsapp-gupshup.md  ← Gupshup config, webhook, templates, orchestrator, logs
-│   ├── trigger-dev.md       ← async jobs: SLA timers, task reminders, the daily lead-revival sweep, and usage rollup/snapshot
+│   ├── trigger-dev.md       ← async jobs: SLA timers, task reminders, the daily revival sweep, usage rollup/snapshot
 │   └── upstash-redis.md     ← Redis connection + failure policy
 ├── operations/
 │   ├── environments.md      ← every env var: purpose, where used, exposure (no values)
 │   ├── deployment.md        ← providers, build commands, runtime constraints, checklist
 │   ├── engine-health-check.md ← daily SLA/revival engine runbook
 │   └── pwa-install-guide.md ← PWA install guide
-├── audits/                  ← dated point-in-time audit reports (design, security; the
-│                               performance audit was deleted once fully fixed — 2026-06-11)
-├── claude-project/          ← generated digests for the Claude.ai Project knowledge
-│                               (upload set + guide in its README; never cite as truth)
-└── _archive/                ← pre-restructure originals (do not cite; delete later)
+├── audits/                  ← dated point-in-time audit reports; a fully remediated
+│                               audit gets deleted (the June performance audit precedent)
+└── claude-project/          ← generated digests for the Claude.ai Project knowledge.
+                                STALE as of 2026-07-02 (see its 0-README banner);
+                                regenerate before uploading; never cite as truth
 ```
 
 Code-adjacent references (not in `docs/`): root `CLAUDE.md` and the per-folder `CLAUDE.md`
-files hold the working conventions AI sessions and engineers apply while writing code —
+files hold the working conventions AI sessions and engineers apply while writing code:
 component prop contracts, per-function registries, migration inventory. The docs tree links to
 them rather than duplicating them.
 
@@ -89,6 +92,7 @@ for product context
 | What is this product? (no jargon) | `00-for-the-board.md` |
 | What's live vs planned; what's "done" per module | `01-vision.md` |
 | What shipped on date D | `changelog.md` |
+| Who Indulge Global is (company facts) | `Indulge-Global.md` |
 | How the whole system fits together / request flow | `architecture/overview.md` |
 | What a table is for / schema | `architecture/database.md` (+ the `.sql` dump) |
 | Who can see/do what; sessions; RLS philosophy | `architecture/auth-and-rbac.md` |
@@ -97,15 +101,19 @@ for product context
 | Any visual rule (colour, motion, type, spacing) | `design/DESIGN-DNA.md` |
 | How a UI component behaves | `design/design-system.md` (+ `src/components/CLAUDE.md`) |
 | Why a design choice was made / open design questions | `design/decision-log.md` |
-| An engineering rule (A/S/D/P/V/Q) | `rules/The_Rules.md` |
+| An engineering rule (R/A/S/D/P/V/Q) | `rules/The_Rules.md` |
 | How page `/x` works | `pages/x.md` |
+| Everything Elaya: tools, brain, channels, memory, persona | `modules/elaya.md` |
+| The customer WhatsApp Elaya (welcome blast + replies) | `modules/customer-welcome-blast.md` |
 | Lead lifecycle, SLA rules, ad→deal flow | `modules/gia.md` |
+| Lead Revival (silence → revive or review) | `modules/revival.md` |
 | How leads enter the system | `integrations/lead-ingestion.md` |
 | Anything WhatsApp/Gupshup | `integrations/whatsapp-gupshup.md` |
 | Delayed jobs / reminders / SLA mechanics | `integrations/trigger-dev.md` |
 | An env var | `operations/environments.md` |
 | How to deploy / build commands | `operations/deployment.md` |
-| Known issues from the June 2026 audits | `audits/` + open tables therein |
+| Is the SLA/revival engine healthy today | `operations/engine-health-check.md` |
+| Known issues from past audits | `audits/` + open tables therein |
 
 ## The page-spec template
 
@@ -129,8 +137,10 @@ Header block  — purpose (1 line) · audience · source-of-truth scope · last-
   code.
 - **One home per topic.** A fact lives in exactly one file; everywhere else is a one-line
   pointer. If you find the same rule in two files, that's a bug — fix it by pointing.
+  (This is why `modules/budget.md` was merged into `pages/budget.md` and deleted, 2026-07-02.)
 - **Update `Last verified` when you re-verify a doc against code** — and only then.
-- **Never cite `_archive/`** — those files carry known drift and exist only as a safety net
-  until a later cleanup deletes the folder.
+- **A plan or proposal doc dies when it ships.** Its as-built facts move into the module or
+  page doc that owns the topic, then the plan file is deleted (the `elaya-jarvis-architecture`
+  and `completed-tasks-view` precedent, 2026-07-02).
 - **A wrong doc is worse than a gap.** If you can't verify a claim in code, write
   `TODO: verify` instead of guessing.

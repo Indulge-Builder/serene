@@ -21,8 +21,7 @@ type DomainTargetRow = {
 export async function getDomainTargets(): Promise<DomainTarget[]> {
   const supabase = await createClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("domain_targets")
     .select("domain, metric, target_value, period")
     .eq("metric", "deals_closed")
@@ -51,8 +50,7 @@ export async function upsertDomainTarget(
 ): Promise<{ ok: boolean }> {
   const adminClient = createAdminClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (adminClient as any)
+  const { error } = await adminClient
     .from("domain_targets")
     .upsert(
       {

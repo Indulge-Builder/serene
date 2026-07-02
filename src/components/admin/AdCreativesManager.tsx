@@ -7,10 +7,11 @@ import { MotionButton, MOTION_BUTTON_DEFAULTS } from "@/components/ui/MotionButt
 import { SearchBar } from "@/components/ui/SearchBar";
 import { Spinner } from "@/components/ui/Spinner";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { AdCreativeFormModal } from "./AdCreativeFormModal";
 import { deleteAdCreative } from "@/lib/actions/ad-creatives";
 import { useToast } from "@/hooks/useToast";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
 import type { AdCreative } from "@/lib/types/database";
 
 interface AdCreativesManagerProps {
@@ -150,34 +151,20 @@ export function AdCreativesManager({ initialCreatives, campaignKeys }: AdCreativ
 
       {/* Row 3 — card list */}
       {filtered.length === 0 ? (
-        <div className="py-20 px-8 text-center">
-          <p
-            className="m-0 mb-2"
-            style={{
-              fontFamily:  "var(--font-serif)",
-              fontStyle:   "italic",
-              fontSize:    "var(--text-xl)",
-              fontWeight:  "var(--weight-light)",
-              color:       "var(--theme-text-secondary)",
-            }}
-          >
-            {creatives.length === 0
+        <EmptyState
+          variant="hero"
+          title={
+            creatives.length === 0
               ? "No ad creatives yet."
-              : "Nothing matches your search."}
-          </p>
-          <p
-            className="m-0"
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize:   "var(--text-sm)",
-              color:      "var(--theme-text-tertiary)",
-            }}
-          >
-            {creatives.length === 0
+              : "Nothing matches your search."
+          }
+          description={
+            creatives.length === 0
               ? "Add one to bring campaigns to life on lead dossiers."
-              : "Try a different campaign or ad name."}
-          </p>
-        </div>
+              : "Try a different campaign or ad name."
+          }
+          style={{ padding: "var(--space-20) var(--space-8)" }}
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {filtered.map((row, i) => (
@@ -248,7 +235,7 @@ function CreativeCard({
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: staggerDelay / 1000, ease: EASE_OUT_EXPO }}
+      transition={{ duration: EXIT_DURATION, delay: staggerDelay / 1000, ease: EASE_OUT_EXPO }}
       style={{
         display:      "flex",
         alignItems:   "center",

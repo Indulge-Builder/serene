@@ -2,7 +2,7 @@
 
 > **Purpose:** the design constitution — the law for every visual and interaction decision in Serene.
 > **Audience:** designers + engineers. · **Source-of-truth scope:** design rules, theme system, motion law, component visual spec, Elaya design language. Token *values* live in `src/styles/design-tokens.css`; component *implementation* notes live in `design-system.md`; dated design decisions in `decision-log.md`.
-> **Last verified:** 2026-06-11 (DOC-01/05/06 corrections applied — see `docs/audits/design-audit-2026-06.md` §4).
+> **Last verified:** 2026-07-02 (six-theme swap; TopBar/PageControls, toast-bar, motion-number, and unbuilt-spec corrections applied).
 
 ## Version 1.0
 
@@ -53,9 +53,9 @@ Every text colour decision in Serene flows from one rule:
 - `--theme-text-inverse` — this is the paper colour used as text on the darkest fills. Use it only for text sitting directly on `--theme-canvas` or `--theme-accent` fills that need maximum contrast. For most canvas text, prefer `--theme-canvas-text` which has the correct opacity.
 - `--theme-accent-fg` — always use this for text ON accent-coloured fills (button labels, active pill text). Never use `--theme-text-inverse` on accent fills — they are different surfaces.
 
-## 1. The Five Themes
+## 1. The Six Themes
 
-Serene ships with five themes. Each theme is a complete colour palette applied to every token in the system. Switching themes changes everything — backgrounds, accents, borders, badges, buttons — globally.
+Serene ships with six themes — Earth (default), Air, Water, Fire, Martini, Candy. Each theme is a complete colour palette applied to every token in the system. Switching themes changes everything — backgrounds, accents, borders, badges, buttons — globally. (Cosmos, Coffee, and Macha were retired 2026-07-02 — migration 0156; never re-add a theme without a CHECK migration.)
 
 The default theme is **Earth**. Users choose their theme in profile settings.
 
@@ -460,112 +460,79 @@ When implementing Earth theme:
 
 ---
 
-### # Theme 05 — Cosmos
+### # Theme 05 — Martini
 
-> Vast. Intelligent. Before everything.
-> The Atacama salt flat at 3am. The Milky Way as structure, not smear.
-> Cosmos is Serene at its most sovereign — the darkness that was here before the first light,
-> and the light that makes the darkness legible.
+> Periwinkle. Mint. A garden wedding at dusk.
+>
+> Palette anchor (added 2026-07-02): `#9fa1ff` periwinkle — the accent, exact. `#b5baff` is
+> the sidebar active label (exact); `#aee2ff` and `#d9f9df` tint the info and success chips.
+> Revised same day: the first cut used the mint as the paper — too loud; paper follows the
+> Air pattern (near-white + periwinkle whisper).
 
----
+## Token Map: Martini
 
-## Token Map: Cosmos
+| Martini Token                 | Inspiration                                          | Value                       |
+| ----------------------------- | ----------------------------------------------------- | --------------------------- |
+| `--theme-canvas`              | Evening indigo — the reception after sunset           | `#0a0a16`                   |
+| `--theme-canvas-glow`         | String lights — periwinkle haze                       | `rgba(159, 161, 255, 0.09)` |
+| `--theme-paper`               | White with a breath of periwinkle — the invitation    | `#f8f8fe`                   |
+| `--theme-paper-subtle`        | Lilac-tinted inset                                    | `#eff0fa`                   |
+| `--theme-paper-border`        | A silver-lilac line                                   | `#dee0f2`                   |
+| `--theme-accent`              | The periwinkle, exact                                 | `#9fa1ff`                   |
+| `--theme-accent-hover`        | Deeper into dusk                                      | `#8183ef`                   |
+| `--theme-accent-muted`        | Indigo steeped — legible accent text on paper         | `#4b4e9c`                   |
+| `--theme-accent-fg`           | Dark indigo ink — periwinkle cannot hold white        | `#191a38`                   |
+| `--theme-text-primary`        | Indigo ink                                            | `#1b1d33`                   |
+| `--theme-text-secondary`      | Slate lavender                                        | `#5c5f80`                   |
+| `--theme-text-tertiary`       | Dusk haze                                             | `#a3a6c4`                   |
+| `--theme-sidebar-active`      | The light periwinkle, exact                           | `#b5baff`                   |
+| `--theme-sidebar-active-pill` | The periwinkle, exact                                 | `#9fa1ff`                   |
+| `--color-success-light`       | The mint, whispered — success chips wear the palette  | `#e3f5e8`                   |
+| `--color-info-light`          | The sky, whispered — info chips wear the palette      | `#e2f1fb`                   |
 
-| Cosmos Token                  | Inspiration                                                | Value                       |
-| ----------------------------- | ---------------------------------------------------------- | --------------------------- |
-| `--theme-canvas`              | Atacama sky — deep blue-violet dark, not black             | `#07060f`                   |
-| `--theme-canvas-glow`         | Galactic core light — warm violet dust through 26,000 ly   | `rgba(134, 106, 224, 0.09)` |
-| `--theme-canvas-text`         | Starlight on dark — text above the void                    | `rgba(255, 255, 255, 0.88)` |
-| `--theme-paper`               | Salt flat surface at night — white touched by violet sky   | `#f8f7fe`                   |
-| `--theme-paper-subtle`        | Moonlit salt — inset, the faintest violet cast             | `#f0eefb`                   |
-| `--theme-paper-border`        | The horizon line — where salt flat meets star field        | `#dddaf4`                   |
-| `--theme-accent`              | Veil Nebula — deep amethyst, ionised and settled           | `#7a5fc0`                   |
-| `--theme-accent-hover`        | Deeper into the nebula — pressure of ionisation            | `#624aa4`                   |
-| `--theme-accent-muted`        | Dust lane — the same hue, seen through more dust           | `#615484`                   |
-| `--theme-accent-surface`      | Aurora trace — accent at the edge of visible               | `rgba(122, 95, 192, 0.10)`  |
-| `--theme-accent-fg`           | Text on nebula fills                                       | `#ffffff`                   |
-| `--theme-text-primary`        | The oldest ink — deep violet-black, absolute               | `#0f0d1a`                   |
-| `--theme-text-secondary`      | Dust lane — secondary, warm violet-grey                    | `#6b6485`                   |
-| `--theme-text-tertiary`       | Interstellar medium — placeholders, barely there           | `#a89ec0`                   |
-| `--theme-text-inverse`        | Starlight — text on dark fills                             | `#f8f7fe`                   |
-| `--theme-sidebar-bg`          | The void — pre-light darkness with violet intelligence     | `#07060f`                   |
-| `--theme-sidebar-border`      | Event horizon — the boundary you sense but cannot see      | `#14102a`                   |
-| `--theme-sidebar-text`        | Distant stars — inactive nav, cool violet-white            | `rgba(220, 215, 255, 0.42)` |
-| `--theme-sidebar-active`      | A star resolving — the accent at full luminosity           | `#ab95e4`                   |
-| `--theme-sidebar-hover-bg`    | Dark matter — present, felt, invisible                     | `rgba(122, 95, 192, 0.07)`  |
-| `--theme-sidebar-active-bg`   | Nebula pooling — violet depth beneath the active item      | `rgba(122, 95, 192, 0.14)`  |
-| `--theme-sidebar-active-pill` | The 3px quasar — violet light compressed to a line         | `#7a5fc0`                   |
-
----
-
-## CSS — Cosmos Theme
-
-```css
-/* ============================================================
-   THEME 05 — COSMOS
-   Paranal, Atacama. Salt flat at 3am. 13.4 billion light years.
-   The darkness that was here before the first star.
-   The intelligence that arranged everything.
-   ============================================================ */
-
-[data-theme="cosmos"] {
-  /* --- Canvas ------------------------------------------------ */
-  /* Atacama sky — deep blue-violet, the oldest dark             */
-  --theme-canvas: #07060f;
-  --theme-canvas-glow: rgba(134, 106, 224, 0.09);
-  --theme-canvas-text: rgba(255, 255, 255, 0.88);
-
-  /* --- Paper ------------------------------------------------- */
-  /* Salt flat touched by violet starlight — never pure white    */
-  --theme-paper: #f8f7fe;
-  --theme-paper-subtle: #f0eefb;
-  --theme-paper-border: #dddaf4;
-
-  /* --- Accent ------------------------------------------------ */
-  /* Veil Nebula — deep amethyst, ionised, settled into depth    */
-  --theme-accent: #7a5fc0;
-  --theme-accent-hover: #624aa4;
-  --theme-accent-muted: #615484;
-  --theme-accent-surface: rgba(122, 95, 192, 0.1);
-  --theme-accent-fg: #ffffff;
-
-  /* --- Text -------------------------------------------------- */
-  /* Ink from before language — deep violet-black, absolute      */
-  --theme-text-primary: #0f0d1a;
-  --theme-text-secondary: #6b6485;
-  --theme-text-tertiary: #a89ec0;
-  --theme-text-inverse: #f8f7fe;
-
-  /* --- Sidebar ---------------------------------------------- */
-  /* The void — pre-light, patient, arranged                     */
-  --theme-sidebar-bg: #07060f;
-  --theme-sidebar-border: #14102a;
-  --theme-sidebar-text: rgba(220, 215, 255, 0.42);
-  --theme-sidebar-active: #ab95e4;
-  --theme-sidebar-hover-bg: rgba(122, 95, 192, 0.07);
-  --theme-sidebar-active-bg: rgba(122, 95, 192, 0.14);
-  --theme-sidebar-active-pill: #7a5fc0;
-}
-```
+Usage notes: (1) `--theme-accent-fg` is **dark** (`#191a38`) — pastel-accent rule, never white.
+(2) Paper is near-white with a periwinkle whisper — the Air pattern; the palette's mint and
+sky live in the success/info chips, never the surfaces. (3) Danger-light is rose (`#f9e9ef`)
+— dusk, not alarm.
 
 ---
 
-## Usage Note for Cursor / Claude Code
+### # Theme 06 — Candy
 
-1. `[data-theme="cosmos"]` on the `<html>` element activates this theme
-2. `--theme-accent-fg` is `#ffffff` — the nebula violet is deep enough to hold white text cleanly
-3. Paper `#f8f7fe` has a violet undertone — do not override with pure white in Cosmos.
-   The violet in the paper is what connects the light surfaces to the dark canvas.
-   Remove it and the theme becomes a generic dark-purple UI
-4. `--theme-sidebar-text` is `rgba(220, 215, 255, 0.42)` — a cool violet-white, not neutral white.
-   Inactive nav items carry the colour of distant stars. Do not replace with `rgba(255,255,255,0.42)`
-5. `--theme-text-secondary` is `#6b6485` — violet-grey, chromatic like Water and Fire secondaries.
-   Cosmos secondary text lives in the dust lane. Never substitute with a neutral grey
-6. Canvas glow `rgba(134, 106, 224, 0.09)` sits between Air and Fire in intensity — the galactic
-   core emits light, but from 26,000 light years it arrives as atmosphere, not illumination
-7. `--theme-sidebar-active-bg` at `0.14` is the strongest active background of all five themes —
-   Cosmos rewards the active state with the most visible nebula pool. This is intentional.
-   The selected item should feel like a star that has resolved out of the field
+> Pink accent over calm paper. The pastel rainbow in the chips. Spring sweetshop.
+>
+> Palette anchor (added 2026-07-02): `#f9b2d7` pink — the accent, exact. The rainbow layers
+> (`#daf9de` mint · `#cfecf3` powder blue · `#f6ffdc` lemon) tint the success/info/warning
+> chips. Revised same day: the first cut layered the rainbow across paper/subtle/border —
+> too loud; paper follows the Air pattern (near-white + blush whisper).
+
+## Token Map: Candy
+
+| Candy Token                   | Inspiration                                          | Value                       |
+| ----------------------------- | ----------------------------------------------------- | --------------------------- |
+| `--theme-canvas`              | Dark plum — the sweetshop after closing               | `#130a12`                   |
+| `--theme-canvas-glow`         | Neon pink through the window                          | `rgba(249, 178, 215, 0.08)` |
+| `--theme-paper`               | White with a breath of blush — the paper bag          | `#fdf9fb`                   |
+| `--theme-paper-subtle`        | Blush-tinted inset                                    | `#f8eef4`                   |
+| `--theme-paper-border`        | A spun-sugar line                                     | `#f0dbe7`                   |
+| `--theme-accent`              | The candy pink, exact                                 | `#f9b2d7`                   |
+| `--theme-accent-hover`        | Sucked longer — deeper pink                           | `#ef92c5`                   |
+| `--theme-accent-muted`        | Raspberry — legible accent text on paper              | `#a34878`                   |
+| `--theme-accent-fg`           | Dark plum ink — candy pink cannot hold white          | `#2b1420`                   |
+| `--theme-text-primary`        | Plum ink                                              | `#251a21`                   |
+| `--theme-text-secondary`      | Faded plum                                            | `#74606b`                   |
+| `--theme-text-tertiary`       | Sugar dust                                            | `#baa5b1`                   |
+| `--theme-sidebar-active`      | The pink, exact — glows on plum                       | `#f9b2d7`                   |
+| `--theme-sidebar-active-pill` | The pink, exact                                       | `#f9b2d7`                   |
+| `--color-success-light`       | The mint, whispered                                   | `#e3f5e6`                   |
+| `--color-info-light`          | The powder blue, whispered                            | `#e5f2f6`                   |
+| `--color-warning-light`       | The lemon, barely deepened                            | `#f8f5da`                   |
+
+Usage notes: (1) `--theme-accent-fg` is **dark** (`#2b1420`) — pastel-accent rule, never white.
+(2) The pastel rainbow lives in the SEMANTIC CHIPS (mint success, powder-blue info, lemon
+warning), never the surfaces — paper stays a blush-whisper white per the Air pattern.
+(3) The accent is the lightest in the system — `--theme-accent-muted` (`#a34878`) carries any
+accent-coloured TEXT; the pale pink is for fills, borders and glows only.
 
 ## 2. Global Design Tokens
 
@@ -650,18 +617,29 @@ and only touch what the paper/canvas shift demands.
 --color-neutral-text: #5a3a28;
 }
 
-/* --- Cosmos overrides -------------------------------------- */
-/* Paper is violet-tinted. Green/red semantics need grounding. */
-[data-theme="cosmos"] {
---color-success-light: #e8f0f4; /* desaturated — cosmos is not green */
---color-success: #3a7a6a; /* teal-shifted green, less jarring */
---color-danger-light: #f4eaf2; /* violet-shifted — danger in cosmos */
---color-info-light: #ece8fb; /* pulls toward Cosmos paper tone */
---color-info: #6858b8; /* violet-blue — feels native here */
---color-info-text: #4a3a9a;
---color-neutral-light: #eeecf8; /* matches Cosmos paper-subtle */
---color-neutral: #6b6485; /* Cosmos text-secondary — dust lane */
---color-neutral-text: #4a4268;
+/* --- Martini overrides ------------------------------------- */
+/* Paper is a periwinkle-whisper white; the palette's mint and  */
+/* sky live in the chips. Danger softens to rose.               */
+[data-theme="martini"] {
+--color-success-light: #e3f5e8; /* the mint (#d9f9df), whispered */
+--color-info-light: #e2f1fb; /* the sky (#aee2ff), whispered */
+--color-danger-light: #f9e9ef; /* rose — dusk, not alarm */
+--color-neutral-light: #ececf7; /* matches paper-subtle tone */
+--color-neutral: #5c5f80;
+--color-neutral-text: #434665;
+}
+
+/* --- Candy overrides ---------------------------------------- */
+/* Paper is a blush-whisper white; the pastel rainbow lives in  */
+/* the chips: mint success, powder-blue info, lemon warning.    */
+[data-theme="candy"] {
+--color-success-light: #e3f5e6; /* the mint (#daf9de), whispered */
+--color-warning-light: #f8f5da; /* the lemon (#f6ffdc), barely deepened */
+--color-info-light: #e5f2f6; /* the powder blue (#cfecf3), whispered */
+--color-danger-light: #fbe6ee; /* pink-shifted */
+--color-neutral-light: #f8eef4; /* matches paper-subtle tone */
+--color-neutral: #74606b;
+--color-neutral-text: #52424b;
 }
 
 /* ============================================================
@@ -861,7 +839,7 @@ An object floating above a surface casts a shadow
 coloured by the ambient light of that surface.
 
 On Earth's warm-black canvas, shadows are warm-black.
-On Cosmos's violet canvas, shadows carry violet.
+On Martini's indigo canvas, shadows carry indigo.
 On Water's teal canvas, shadows carry teal-dark.
 
 Two layers always:
@@ -900,8 +878,12 @@ Together they tell the eye exactly how high something floats.
 --shadow-color: 18 8 2; /* amber-black — basalt holding heat */
 }
 
-[data-theme="cosmos"] {
---shadow-color: 8 6 18; /* violet-black — the oldest dark */
+[data-theme="martini"] {
+--shadow-color: 8 8 20; /* indigo-black — evening dusk */
+}
+
+[data-theme="candy"] {
+--shadow-color: 16 8 14; /* plum-black — the shop after closing */
 }
 
 /* ============================================================
@@ -1231,37 +1213,31 @@ address bar hides. `dvh` is dynamic — it follows the actual visible height.
 - **Desktop `lg+`** — 240px fixed. Full labels. Section labels visible.
 - **Tablet `md`** — 64px icon-only rail. Labels hidden. Section labels hidden.
   Tooltips on hover reveal the label. Active pill becomes a dot.
-- **Mobile `< md`** — Sidebar off-canvas. Triggered by hamburger in TopBar.
+- **Mobile `< md`** — Sidebar off-canvas. Triggered by the hamburger in the
+  mobile top strip (`.serene-mobile-topbar`).
   Slides in over canvas with `var(--transition-enter)`. Backdrop dims canvas.
-  Bottom navigation bar optional for primary 4–5 nav items.
+  The bottom navigation bar was deferred in favour of the drawer (decision-log D-3).
 
 ---
 
-### 3.3 TopBar
+### 3.3 Page controls on the title row (the TopBar is retired)
+
+*(Corrected 2026-07-02: `TopBar.tsx` was deleted and `.serene-topbar` no longer
+exists in `globals.css`. A separate chrome bar read as detached from the page.
+The shipped pattern is below.)*
 
 ```text
-.serene-topbar
-├── height: 56px (h-14)
-├── position: sticky, top: 0, z-30
-├── background: var(--theme-paper) ← same as paper — no separate bg
-├── border-bottom: 1px solid var(--theme-paper-border)
-├── backdrop-filter: blur(8px) ← paper bleeds through on scroll
-├── padding: 0 var(--space-6) md:var(--space-8)
-│
-├── LEFT — page title (--type-page-title at --text-lg, --weight-semibold)
-│ breadcrumb on deeper pages
-│
-├── CENTRE — reserved (global search, Elaya prompt bar)
-│
-└── RIGHT — action cluster
-notification bell → avatar → quick actions
-gap: var(--space-3)
+Page controls — src/components/layout/PageControls.tsx
+├── mounts INLINE on each page's title row, right of the h1
+├── no bar, no strip, no divider; the controls sit on the paper itself
+├── contents: domain selector (admin/founder) → notification bell
+└── gap: var(--space-3), vertically centred against the page title
 ```
 
-**One rule:** The TopBar has no background of its own — it is the paper, sticky.
-As content scrolls beneath it, `backdrop-filter: blur(8px)` creates the sense
-that the paper is a physical surface and content is sliding under it.
-Do not give TopBar a separate background colour. Ever.
+**One rule:** page-level controls belong to the page, on the paper.
+Never reintroduce a separate sticky chrome bar above the content.
+The only bar-shaped chrome in the shell is `.serene-mobile-topbar`,
+the below-`md` strip that hosts the sidebar drawer trigger.
 
 ---
 
@@ -2301,7 +2277,7 @@ The page title in the TopBar ends with a period in accent colour.
 
 This is a typographic full stop. It is the Atlas signature.
 It signals: this is a complete thought. This page knows what it is.
-The period is in accent — gold on Earth, teal on Water, violet on Cosmos.
+The period is in accent — gold on Earth, teal on Water, periwinkle on Martini.
 It is the smallest possible branding moment. It is the right one.
 
 The same `.page-title-dot` appears in exactly **one** non-nav place: the **"Serene."** brand
@@ -2562,13 +2538,13 @@ easing:    var(--ease-in-expo)
 /* --- Modal enter ------------------------------------------- */
 initial:   { opacity: 0, y: 10, scale: 0.98 }
 animate:   { opacity: 1, y: 0, scale: 1 }
-duration:  350ms
+duration:  400ms (ENTER_DURATION in motion.ts; Dialog.tsx)
 easing:    var(--ease-out-expo)
 
 /* --- Modal exit -------------------------------------------- */
 exit:      { opacity: 0, scale: 0.97 }
-duration:  150ms
-easing:    var(--ease-in-out)
+duration:  250ms (EXIT_DURATION in motion.ts; Dialog.tsx)
+easing:    var(--ease-in-expo)
 
 /* --- Dropdown / popover enter ------------------------------ */
 initial:   { opacity: 0, y: -4 }
@@ -2587,8 +2563,8 @@ whileHover: { x: 2 }
 transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] }  ← ease-spring
 
 /* --- Sidebar active pill ----------------------------------- */
-Framer Motion layoutId="active-pill"
-transition: { type: "spring", stiffness: 380, damping: 30 }
+Framer Motion layoutId="sidebar-active-pill"
+transition: SPRING_CONFIG from motion.ts: { type: "spring", stiffness: 400, damping: 30 }
 The pill slides between nav items. It does not toggle. It travels.
 Spring physics — arrives with a tiny overshoot that settles.
 This is the detail that makes the nav feel alive.
@@ -2628,6 +2604,9 @@ liaBreathe — the ambient glow around Elaya's avatar/glyph
   repeat: infinite, alternating
   This is the heartbeat. It is always running when Elaya is present.
   It is the reason Elaya feels alive even when she is not responding.
+  (Implementation name: the keyframe ships as `serene-elaya-breathe`,
+   applied via the `.elaya-breathe` class. "liaBreathe" is this
+   document's name for the same animation; the values match.)
 
 liaDotPulse — the thinking indicator (three dots)
   Three dots. Staggered start: 0ms / 160ms / 320ms
@@ -2703,7 +2682,7 @@ Semantic icons:
 Never hardcode icon colours.
 An icon that uses `text-gray-400` will be `text-gray-400` in every theme.
 An icon that uses `var(--theme-text-tertiary)` will be gold-dimmed in Earth,
-blue-dimmed in Air, violet-dimmed in Cosmos.
+blue-dimmed in Air, indigo-dimmed in Martini.
 The same icon, five personalities.
 
 ### Icon Semantic Assignments
@@ -2802,7 +2781,7 @@ Implementation: `.layout-canvas` in `src/app/globals.css` (see Section 3.5).
 **Grain frequency: `0.68`. Noise opacity: `0.055`.**
 **Gradient tokens:** Earth defines `--theme-canvas-gradient-1/2/3`. Other themes
 omit them — layers resolve to `initial` and the canvas stays flat.
-When enhancing Air/Water/Fire/Cosmos, define theme-specific gradient tokens;
+When enhancing Air/Water/Fire/Martini/Candy, define theme-specific gradient tokens;
 `.layout-canvas` picks them up automatically.
 
 ### Paper Texture
@@ -2900,7 +2879,7 @@ Sidebar         — solid. The sidebar is the darkest thing. It should not blur.
 ### What We Use Instead of Glass
 
 The temptation with dark themes is to reach for glass everywhere.
-Earth canvas is dark. Cosmos canvas is dark. Air canvas is dark.
+Earth canvas is dark. Martini canvas is dark. Air canvas is dark.
 Floating glass cards on dark backgrounds look modern for six months
 and generic for six years.
 
@@ -2934,7 +2913,7 @@ It lives at `src/components/ui/elaya-glyph.tsx`.
 
 - Minimal. A geometric mark, not an illustration.
 - Carries the `liaBreathe` animation at all times when Elaya is present.
-- Rendered in `var(--theme-accent)` — gold in Earth, teal in Water, violet in Cosmos.
+- Rendered in `var(--theme-accent)` — gold in Earth, teal in Water, periwinkle in Martini.
 - The glow behind it: `filter: drop-shadow(0 0 8px color-mix(in srgb, var(--theme-accent) 40%, transparent))`
 - Never static. The breathing is always running.
 - Sizes: `sm` (24px) inline in TopBar or chat, `md` (40px) in the Elaya panel header,
@@ -3259,7 +3238,7 @@ before it arrives. Fast, premium, never jarring.
 ```
 
 The animation is theme-aware by default — `--theme-paper-subtle` is a warm cream
-pulse on Earth, pale aqua on Water, violet-grey on Cosmos.
+pulse on Earth, pale aqua on Water, lilac-grey on Martini.
 One animation. Five personalities. No extra code per theme.
 
 ---
@@ -3372,7 +3351,12 @@ This crossfade is what makes arrival feel like materialisation.
 
 ## Section 12 — Mobile Components & Touch Standards
 
-## 12.1 — Bottom Navigation Bar
+## 12.1 — Bottom Navigation Bar (deferred design target)
+
+*(Status 2026-07-02: not built. The 2026-06-12 responsive contract, decision-log
+D-3, chose the off-canvas sidebar drawer plus the `.serene-mobile-topbar` trigger
+strip as the shipped mobile navigation. The spec below stays as the design
+target if a bottom bar is ever revisited.)*
 
 On mobile (`< md`), the sidebar disappears entirely.
 Navigation moves to a fixed bottom bar — the native mobile pattern.
@@ -3483,7 +3467,7 @@ but present in a way that earns attention.
 **2 — They carry the theme.**
 The background is `--theme-paper`. The shadow is `--shadow-paper` tinted.
 On Earth, a success toast is warm cream with gold-adjacant depth.
-On Cosmos, it is barely-violet white. On Water, pale aqua.
+On Martini, it is barely-lilac white. On Water, pale aqua.
 The toast belongs to the world it lives in.
 
 **3 — They have a pulse, not a timer bar.**
@@ -3497,15 +3481,17 @@ because the user genuinely needs to know time is passing.
 
 ## 13.2 — Toast Anatomy
 
+*(As-built note, 2026-06-15: the left "living bar" was removed. Toast type
+reads from the icon zone alone, padding is symmetric, and the only bar is the
+warning depletion bar on the bottom edge. The anatomy below is the shipped toast.)*
+
 ```text
 ┌─────────────────────────────────────────────────┐
-│▌  ┌───┐  Title text — semibold               ✕  │
-│▌  │ ✓ │  Supporting message — secondary          │
-│▌  └───┘  Optional action link                    │
+│  ┌───┐  Title text — semibold                ✕  │
+│  │ ✓ │  Supporting message — secondary           │
+│  └───┘  Optional action link                     │
 │                                          ▓▓▓░░░  │  ← warning only
 └─────────────────────────────────────────────────┘
- ↑
- 3px living bar
 ```
 
 ```text
@@ -3518,15 +3504,7 @@ Container:
   min-width:      320px
   max-width:      400px
   position:       relative
-  padding:        var(--space-3) var(--space-3) var(--space-3) var(--space-4)
-                  ← pl-4 because the living bar lives in that space
-
-Living bar (left edge):
-  position:       absolute, left: 0, top: 0, bottom: 0
-  width:          3px
-  background:     type accent colour (see 13.3)
-  border-radius:  var(--radius-xs) on left corners
-  animation:      see 13.5 — the single entrance breath
+  padding:        var(--space-3)   ← symmetric; there is no left bar
 
 Icon zone:
   width: 36px, height: 36px, flex-shrink: 0
@@ -3569,14 +3547,14 @@ Each type has a complete identity system.
 The semantic colours are fixed — they do not shift per theme.
 A success toast is always green. The user must never wonder what colour means.
 
-| Type      | Living Bar        | Icon             | Icon Colour            | Icon BG                  | Personality                              |
-| --------- | ----------------- | ---------------- | ---------------------- | ------------------------ | ---------------------------------------- |
-| `success` | `--color-success` | `CheckCircle2`   | `--color-success-text` | `--color-success-light`  | Calm. Confirmed. Done.                   |
-| `warning` | `--color-warning` | `AlertTriangle`  | `--color-warning-text` | `--color-warning-light`  | Present. Measured. Urgent without alarm. |
-| `danger`  | `--color-danger`  | `XCircle`        | `--color-danger-text`  | `--color-danger-light`   | Clear. Still. Never hysterical.          |
-| `info`    | `--color-info`    | `Info`           | `--color-info-text`    | `--color-info-light`     | Neutral. A fact, not a feeling.          |
-| `loading` | `--theme-accent`  | `Loader2` (spin) | `--theme-accent`       | `--theme-accent-surface` | Patient. Alive. In progress.             |
-| `elaya`     | `--theme-accent`  | Elaya glyph (sm)   | `--theme-accent`       | `--theme-accent-surface` | Different. Reserved for Elaya only.        |
+| Type      | Icon             | Icon Colour            | Icon BG                  | Personality                              |
+| --------- | ---------------- | ---------------------- | ------------------------ | ---------------------------------------- |
+| `success` | `CheckCircle2`   | `--color-success-text` | `--color-success-light`  | Calm. Confirmed. Done.                   |
+| `warning` | `AlertTriangle`  | `--color-warning-text` | `--color-warning-light`  | Present. Measured. Urgent without alarm. |
+| `danger`  | `XCircle`        | `--color-danger-text`  | `--color-danger-light`   | Clear. Still. Never hysterical.          |
+| `info`    | `Info`           | `--color-info-text`    | `--color-info-light`     | Neutral. A fact, not a feeling.          |
+| `loading` | `Loader2` (spin) | `--theme-accent`       | `--theme-accent-surface` | Patient. Alive. In progress.             |
+| `elaya`   | Elaya glyph (sm) | `--theme-accent`       | `--theme-accent-surface` | Different. Reserved for Elaya only.      |
 
 **The `elaya` type** is a special class — used exclusively when Elaya has completed
 an agentic action, generated a report, or has something to show the user.
@@ -3591,44 +3569,16 @@ The continuity is the message: _the same thing that was waiting is now done._
 
 ---
 
-## 13.4 — The Living Bar Animation
+## 13.4 — The Living Bar Animation (removed 2026-06-15)
 
-This is what separates Serene's toasts from a rectangle with a stripe.
+The one-breath left accent bar and its `serene-toast-bar-breathe` keyframe were
+removed on 2026-06-15. Toast type identity now reads from the icon zone alone;
+the warning depletion bar (13.2) is the only bar on a toast. Never reintroduce
+a left accent strip (it is also a coloured single-edge status border, which the
+Never-Do list forbids).
 
-On arrival, the left accent bar performs a single breath:
-
-```css
-@keyframes serene-toast-bar-breathe {
-  0% {
-    opacity: 0.3;
-    box-shadow: none;
-  }
-  40% {
-    opacity: 1;
-    box-shadow: 2px 0 12px
-      color-mix(in srgb, var(--bar-colour) 60%, transparent);
-  }
-  100% {
-    opacity: 0.85;
-    box-shadow: none;
-  }
-}
-
-.toast-bar {
-  --bar-colour: /* set per type */;
-  animation: serene-toast-bar-breathe 600ms var(--ease-out-expo) forwards;
-}
-```
-
-The bar starts dim, brightens with a warm glow at 40% of the animation,
-then settles to a resting 85% opacity. One breath. Then it is still.
-
-It is not looping. It does not pulse continuously.
-A continuously pulsing bar would demand attention it has not earned.
-One breath announces arrival. Stillness says: _I am here when you are ready._
-
-**The `elaya` type is the only exception** — its bar carries the `liaBreathe` animation
-continuously (the same 3s gentle pulse from Section 6.4).
+The `elaya` toast keeps its life another way: the Elaya glyph in the icon zone
+carries the breathing animation from Section 6.4 while the toast is visible.
 Elaya is always breathing. Even in a toast. Especially in a toast.
 
 ---
@@ -3643,7 +3593,6 @@ animate:  { x: 0, opacity: 1, scale: 1 }
 duration: 350ms
 easing:   var(--ease-out-expo)
 
-then immediately: living bar breath animation fires (600ms)
 then:             icon fades in with 80ms delay after container
                   { opacity: 0 } → { opacity: 1 }, 200ms
 then:             content (title + message) fades in with 120ms delay
@@ -3651,7 +3600,7 @@ then:             content (title + message) fades in with 120ms delay
 
 Total choreography duration: ~450ms
 Everything is staggered. Nothing arrives at the same time.
-The toast assembles itself — container, then bar breath, then icon, then words.
+The toast assembles itself — container, then icon, then words.
 ```
 
 **Entrance — mobile (rises from bottom):**
@@ -3683,9 +3632,7 @@ After opacity reaches 0:
 The loading toast does not exit and re-enter.
 It transforms:
   Icon:     Loader2 fades out (100ms), type icon fades in (150ms) with scale 0.8→1
-  Bar:      colour crossfades via CSS transition, 300ms
   Content:  text fades out (100ms), new text fades in (150ms)
-  Bar breathe: fires once on the new type after transition completes
 Total: ~400ms. One continuous toast. One continuous story.
 ```
 
@@ -3801,23 +3748,22 @@ toast.dismissAll();
 
 ## 13.10 — Performance Contract
 
-The living bar breath animation and icon stagger add ~6 keyframe operations
-on toast entrance. This is negligible. The performance rules that matter:
+The icon stagger adds a handful of keyframe operations on toast entrance.
+This is negligible. The performance rules that matter:
 
 ```text
 ✓  Only opacity and transform animated — no layout properties
-✓  CSS animations used for the bar breath — not JS/Framer
+✓  CSS animation used for the warning depletion bar, not JS/Framer
 ✓  Framer Motion used only for container entrance/exit and stack reflow
 ✓  Maximum 3 toasts in the DOM simultaneously — excess are queued, not rendered
 ✓  Loading toast Loader2 spin: CSS animation, not JS interval
 ✓  liaBreathe on Elaya glyph: CSS animation, not JS
 ✗  No blur filters on toasts — blur on frequently-appearing elements is expensive
-✗  No box-shadow animation on the main container — only on the 3px bar (tiny element)
+✗  No box-shadow animation on the main container
 ```
 
-The living bar glow (`box-shadow` on a 3px × height element) fires once on entrance
-and does not loop. The GPU cost is one composited paint on a sub-4px element.
-It is imperceptible in profiling. The payoff in feeling is not.
+The warning depletion bar animates a 2px element on the bottom edge.
+The GPU cost is imperceptible in profiling.
 
 ## Section 7 — Form System
 
@@ -4905,7 +4851,11 @@ The content transition tells the user they have arrived.
 
 ---
 
-## 14.3 — Route Progress Bar
+## 14.3 — Route Progress Bar (unbuilt design target)
+
+*(Status 2026-07-02: not built. No route progress bar ships today; there is no
+nprogress dependency and no progress hook in `src/`. The spec below is the
+design target if one is ever added.)*
 
 ```text
 The line that tells the user the software heard them.
@@ -4916,7 +4866,7 @@ Position:   absolute top of .serene-paper, z-var(--z-sticky)
 
 Height:     2px
 Color:      var(--theme-accent)
-            Gold on Earth. Teal on Water. Violet on Cosmos.
+            Gold on Earth. Teal on Water. Periwinkle on Martini.
             The progress bar is always in the theme's voice.
 
 Behaviour:
@@ -5175,7 +5125,7 @@ Custom scrollbar (paper surface):
   ::-webkit-scrollbar-thumb: var(--theme-paper-border), --radius-full
   ::-webkit-scrollbar-thumb:hover: var(--theme-accent-muted)
   The scrollbar is themed. On Earth it is warm-bordered.
-  On Cosmos it carries the violet border. It belongs.
+  On Martini it carries the periwinkle border. It belongs.
 
 Scroll restoration:
   Next.js App Router restores scroll position on back navigation by default.
@@ -5823,7 +5773,7 @@ RULE L-07 — Cross-domain insights are always labelled
             This is trust. Trust is Elaya's entire value.
 
 RULE L-08 — Elaya's colour is always the theme accent
-            On Earth she is gold. On Water she is teal. On Cosmos she is violet.
+            On Earth she is gold. On Water she is teal. On Martini she is periwinkle.
             She does not have her own fixed colour.
             She belongs to the world she lives in.
             She is of Serene, not placed inside it.
@@ -5897,7 +5847,7 @@ the colour is doing nothing. It is decoration pretending to be information.
 Every chart in Serene uses CSS variables, not hex values.
 A chart built with hardcoded colours breaks when the theme switches.
 A chart built with tokens becomes gold on Earth, teal on Water,
-violet on Cosmos — without a single conditional.
+periwinkle on Martini — without a single conditional.
 
 **Less colour is more information.**
 A chart with six different colours has six things to decode
@@ -5922,7 +5872,8 @@ On Earth:   #c9a553  — champagne gold
 On Air:     #54769e  — slate blue
 On Water:   #1e7d72  — lagoon teal
 On Fire:    #c25022  — ember sienna
-On Cosmos:  #7a5fc0  — nebula amethyst
+On Martini: #9fa1ff  — periwinkle
+On Candy:   #f9b2d7  — candy pink
 
 The primary series is the theme's voice in the chart.
 The user sees the same accent colour they see on active nav items,
@@ -5940,7 +5891,8 @@ On Earth:   #665739  — smoked bronze
 On Air:     #46596f  — slate shadow
 On Water:   #35635c  — kelp shadow
 On Fire:    #7f4527  — cooling iron
-On Cosmos:  #615484  — dust lane
+On Martini: #4b4e9c  — indigo steeped
+On Candy:   #a34878  — raspberry
 
 The secondary series is quieter. It supports the primary.
 It never competes. If two series feel equal in colour weight,
@@ -6323,7 +6275,7 @@ RULE V-03 — Semantic data uses semantic colours
 
 RULE V-04 — No hardcoded hex values in chart components
             All chart colours come from CSS variables.
-            A chart with hardcoded #c9a553 will be gold in Cosmos.
+            A chart with hardcoded #c9a553 will be gold in Martini.
             A chart with var(--theme-accent) will be correct everywhere.
 
 RULE V-05 — Gridlines are horizontal only
@@ -6399,7 +6351,7 @@ resolveColorMap(map: Record<string, string>)
 **Theme change reactivity:**
 Handled inside the hook — `ThemeSelector` writes `data-theme` on `<html>`, the
 hook's `MutationObserver` re-resolves every token, and the component re-renders.
-Without this, switching from Earth to Cosmos leaves gold charts on violet canvas.
+Without this, switching from Earth to Martini leaves gold charts on indigo canvas.
 
 ---
 
@@ -6425,7 +6377,7 @@ Nine tokens, defined in `src/styles/design-tokens.css` under `:root`:
 ```
 
 These are mid-tone values chosen across the hue wheel.
-They are readable against all five `--theme-paper` backgrounds.
+They are readable against all six `--theme-paper` backgrounds.
 They are distinguishable from each other and from any `--theme-accent` value.
 
 ### Canonical constant
@@ -6542,8 +6494,8 @@ They activate on any dark surface — canvas, sidebar, tooltips, code blocks.
 ```text
 Toast container (bg: --theme-canvas):
   The toast background is canvas-dark.
-  The living bar and icon use the standard semantic colours (full opacity).
-  These are still correct — a bright green bar on dark canvas is right.
+  The icon zone uses the standard semantic colours (full opacity).
+  These are still correct — bright green on dark canvas is right.
   But if a badge or pill appears inside a toast body,
   it uses --color-*-dark-fill and --color-*-dark-text.
 
@@ -6874,7 +6826,7 @@ The scrollbar is part of the design system. It is not the browser default.
 ```
 
 The scrollbar is themed. On Earth the thumb is warm-bordered.
-On Cosmos it carries the violet border on hover.
+On Martini it carries the periwinkle border on hover.
 On the dark sidebar it is a whisper of white.
 It belongs to the surface it lives on.
 
@@ -7024,7 +6976,7 @@ RULE SC-04 — Infinite scroll always has a bottom state
 
 Lead status colours are **fixed psychological anchors**. They do not change with the chosen
 theme. A user who associates red with disqualified leads must see red regardless of whether
-they are on Earth, Air, Water, Fire, or Cosmos.
+they are on Earth, Air, Water, Fire, Martini, or Candy.
 
 ### The Status Colour Map
 

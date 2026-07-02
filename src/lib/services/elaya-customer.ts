@@ -78,8 +78,7 @@ export async function maybeSendCustomerWelcome(lead: Lead): Promise<void> {
     // welcomed without ever receiving anything, and can never be welcomed once configured.
     if (!CUSTOMER_WELCOME_TEMPLATE_CONFIGURED) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const admin = createAdminClient() as any;
+    const admin = createAdminClient();
     // Exactly-once stamp: only the winner of this atomic UPDATE proceeds to send. A row
     // already stamped (welcomed_at NOT NULL) — or a concurrent first message that won the
     // stamp — returns zero rows → we stop. The stamp is NEVER cleared, so even a failed
@@ -128,8 +127,7 @@ export async function handleCustomerReply(args: {
     const content = sanitizeText(rawText).slice(0, MAX_INBOUND_CHARS);
     if (content.trim().length === 0) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const admin = createAdminClient() as any;
+    const admin = createAdminClient();
 
     // Recent thread history (both directions) for context — oldest→newest.
     const { data: rows } = await admin

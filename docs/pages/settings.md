@@ -1,8 +1,8 @@
 # Settings — Page Spec
 
-> **Purpose:** spec for `/settings` — the pool-member-roster configuration page (routing pool, shift windows, work days) + the follow-up engine panel + the lead-revival panel (admin/founder).
-> **Audience:** engineers. · **Source-of-truth scope:** the settings route, `agent-routing-service.ts`, `agent-routing.ts` actions, the roster table, `sla-service.ts` / `sla-policies.ts`, `revival-service.ts` / `revival.ts` actions. SLA business rules: `../modules/gia.md` § SLA Engine.
-> **Last verified:** 2026-06-24 full pass (migration 0124 managers-in-pool + the revival panel reflected; per-user notification preferences live on `/profile`, NOT here).
+> **Purpose:** spec for the settings route family: `/settings` (the pool-member roster: routing pool, shift windows, work days, plus admin/founder link cards) and its two dedicated sub-routes `/settings/follow-up-engine` (`sla_policies`) and `/settings/lead-revival` (`revival_policies`).
+> **Audience:** engineers. · **Source-of-truth scope:** the three settings routes, `agent-routing-service.ts`, `agent-routing.ts` actions, the roster table, `SettingsLinkCard`, `sla-service.ts` / `sla-policies.ts`, `revival-service.ts` / `revival.ts` actions. SLA business rules: `../modules/gia.md` § SLA Engine.
+> **Last verified:** 2026-07-02 full pass (the 2026-06-25 split into sub-routes reflected; per-user notification preferences live on `/profile`, NOT here).
 >
 > **Note:** per-user notification preferences (In-app / WhatsApp per category) are a `/profile` feature (`components/profile/NotificationPreferences.tsx`), **not** a `/settings` panel — do not document them here.
 
@@ -11,15 +11,21 @@
 Configures three things on one `agent_routing_config` row per **pool member** (agents +
 managers — `ROUTING_POOL_ROLES`, migration 0124): round-robin pool membership (`is_active`),
 shift windows (`shift_start`/`shift_end`), and work days (`shift_days`, migration 0059 —
-`null` inherits the global `BUSINESS_HOURS`). Admin/founder additionally get two config
-panels below the roster: the **Follow-up Engine** (`sla_policies`) and **Lead Revival**
-(`revival_policies`). One route, one client roster table + server-seeded panels (no URL
-params, no Suspense split).
+`null` inherits the global `BUSINESS_HOURS`).
+
+Since 2026-06-25 the policy panels no longer render inline on `/settings`. Admin/founder
+instead see a grid of two `SettingsLinkCard`s above the roster, linking to dedicated
+sub-routes: **`/settings/follow-up-engine`** (`sla_policies`, the `SlaPoliciesPanel`) and
+**`/settings/lead-revival`** (`revival_policies`, the `RevivalPoliciesPanel`). Each sub-route
+has its own role gate, `loading.tsx`, `BackButton` header, and empty state. `/settings` itself
+fetches only the roster (no URL params, no Suspense split).
 
 ## 2. Who sees it
 
-manager / admin / founder (agents and guests → `redirect('/dashboard')`). The SLA + revival
-panels render for admin/founder only.
+manager / admin / founder (agents and guests → `redirect('/dashboard')`). The two
+`SettingsLinkCard`s render for admin/founder only. The sub-routes gate themselves: a
+non-admin/founder caller hitting `/settings/follow-up-engine` or `/settings/lead-revival`
+is redirected to `/settings` (not `/dashboard`).
 
 Since migration 0124 the routing pool is **agents + managers** (`ROUTING_POOL_ROLES`) —
 managers carry and call leads in the same round-robin queue as agents, so a manager **appears
@@ -41,14 +47,22 @@ their **own** row passes this same-domain check with no special case.
 
 ## 4. Components
 
-`AgentSettingsTable` (client; optimistic toggles; one row per **pool member** — agents +
-managers) with inline `WorkDayPicker` · `TimePicker` (`src/components/ui/` primitive — wheel
-columns, measured item height) · `Toggle` for pool membership · `SlaPoliciesPanel`
-(admin/founder only, below the roster — gated on `isPrivileged && slaPolicies.length > 0`) ·
-`RevivalPoliciesPanel` (admin/founder only, below the SLA panel — Lead Revival R1 config; gated
-on `isPrivileged && revivalPolicies.length > 0`).
+On `/settings`: `AgentSettingsTable` (client; optimistic toggles; one row per **pool member**,
+agents + managers) with inline `WorkDayPicker` · `TimePicker` (`src/components/ui/` primitive,
+wheel columns, measured item height) · `Toggle` for pool membership · `SettingsLinkCard`
+(`src/components/settings/SettingsLinkCard.tsx`, admin/founder only: a paper nav card in the
+CampaignCard card-list treatment, string-keyed icon registry `timer`/`sparkles`, staggered
+entrance).
 
-### Follow-up Engine panel (`SlaPoliciesPanel`, 2026-06-12; "New rule" authoring 2026-06-15)
+On the sub-routes: `SlaPoliciesPanel` renders on `/settings/follow-up-engine` and
+`RevivalPoliciesPanel` on `/settings/lead-revival`. Each page shows the panel when its policy
+list is non-empty, else an `<EmptyState>`. Panel internals are unchanged from the inline era.
+
+### Follow-up Engine page (`/settings/follow-up-engine` → `SlaPoliciesPanel`, 2026-06-12; "New rule" authoring 2026-06-15; own route since 2026-06-25)
+
+`page.tsx` gates with `if (role !== 'admin' && role !== 'founder') redirect('/settings')`,
+awaits `getAllSlaPolicies()`, and renders a `BackButton` ("Back to Settings") next to the
+page-title-dot `<h1>`. Empty list → `<EmptyState title="No follow-up rules yet">`.
 
 One row per `sla_policies` rule, grouped **Lead status / Call outcome / Follow-up cadences /
 Task due** (the group list is exhaustive — the "Call outcome" group exists so a user-authored
@@ -61,7 +75,7 @@ manager/founder rows active IS the recipient checklist** (recipients are separat
 by design). Reads: `getAllSlaPolicies` (session client; 0111 RLS admin/founder SELECT).
 Writes: `updateSlaPolicyAction` (`actions/sla-policies.ts`) — Zod →
 `requireProfile(['admin','founder'])` → admin-client update (no write RLS by design) →
-`revalidatePath('/settings')`. The engine reads policies per job run: active/channel
+`revalidatePath('/settings/follow-up-engine')`. The engine reads policies per job run: active/channel
 edits apply on the next fire; threshold edits apply to newly armed timers only.
 
 #### "New rule" authoring (2026-06-15)
@@ -76,7 +90,7 @@ engine reads `getSlaPolicies()` per run, so the next matching lead picks it up w
 
 Writes: **`createSlaPolicyAction`** (`actions/sla-policies.ts`) — mirrors `updateSlaPolicyAction`
 (Zod → `requireProfile(['admin','founder'])` → admin-client `createSlaPolicy` insert →
-`revalidatePath('/settings')`). Two structural safeguards:
+`revalidatePath('/settings/follow-up-engine')`). Two structural safeguards:
 
 - **The code is system-generated, never user-set.** The action mints an inert `USR-<id>` (the
   schema has no `code` field) and asserts it carries no reserved `SLA-`/`CAD-`/`TASK-` prefix
@@ -93,10 +107,12 @@ Writes: **`createSlaPolicyAction`** (`actions/sla-policies.ts`) — mirrors `upd
 
 No delete path — switch a rule off via its active toggle.
 
-### Revival Policies panel (`RevivalPoliciesPanel`, Lead Revival R1)
+### Lead Revival page (`/settings/lead-revival` → `RevivalPoliciesPanel`, Lead Revival R1; own route since 2026-06-25)
 
-Below the Follow-up Engine, admin/founder also see the **Lead revival** panel — the Lead
-Revival R1 config surface (`SectionCard` titled "Lead revival"). There are **exactly three
+`page.tsx` mirrors the follow-up-engine gate (`redirect('/settings')` for non-admin/founder),
+awaits `getAllRevivalPolicies()`, and renders the same `BackButton` header. Empty list →
+`<EmptyState title="No revival policies yet">`. The panel is the Lead Revival R1 config
+surface (`SectionCard` titled "Lead revival"). There are **exactly three
 rows**, one per `REVIVAL_TRIGGER_STATUSES` value: **touched / in_discussion / nurturing**
 (`cold` is deliberately NOT a trigger — terminal/won statuses are never revived). The migration
 0119 `CHECK (trigger_status IN ('touched','in_discussion','nurturing'))` constrains the table to
@@ -114,14 +130,14 @@ All three commit through `save()` optimistically and **revert with a toast** on 
 save semantics mirror `SlaPoliciesPanel` exactly (the threshold/cap save on blur-when-changed; the
 toggle saves on flip). Writes go through `updateRevivalPolicyAction` (`actions/revival.ts` — Zod
 `UpdateRevivalPolicySchema` → `requireProfile(['admin','founder'])` → `updateRevivalPolicy` admin
-client → `revalidatePath('/settings')`). The daily sweep (`sweepRevivalCandidatesTask`) reads the
-policies per run, so an edit applies on the next sweep with no deploy. Seeded server-side via
-`getAllRevivalPolicies` (`revival-service`) in the same `page.tsx` `Promise.all`; rendered only
-for `isPrivileged` and only when policies exist. Full module contract: `../modules/revival.md`.
+client → `revalidatePath('/settings/lead-revival')`). The daily sweep (`sweepRevivalCandidatesTask`)
+reads the policies per run, so an edit applies on the next sweep with no deploy. Seeded
+server-side by the sub-route's `page.tsx` via `getAllRevivalPolicies` (`revival-service`).
+Full module contract: `../modules/revival.md`.
 
 ## 5. States
 
-- **Loading:** `settings/loading.tsx` (PageSkeletons composition).
+- **Loading:** `settings/loading.tsx` (PageSkeletons composition); each sub-route ships its own `loading.tsx` (`settings/follow-up-engine/loading.tsx`, `settings/lead-revival/loading.tsx`).
 - **Empty:** `<EmptyState>` (Playfair italic) when the domain has no pool members, or when filters match none.
 - **Error:** optimistic toggle / policy edit rolls back + toast on `{ error }`.
 
@@ -151,23 +167,25 @@ member** (agents + managers — `ROUTING_POOL_ROLES`, migration 0124):
 2. **Per-member shift windows** — `shift_start` / `shift_end`.
 3. **Per-member work days** — `shift_days` (added migration 0059; `null` = inherit global `BUSINESS_HOURS`).
 
-Admin/founder additionally get the **Follow-up Engine** (`SlaPoliciesPanel`) and **Lead Revival**
-(`RevivalPoliciesPanel`) panels below the roster. One route, one client roster table + server-seeded panels.
+Admin/founder additionally get two `SettingsLinkCard`s above the roster, linking to the
+dedicated config sub-routes (`/settings/follow-up-engine`, `/settings/lead-revival`).
+Three routes; `/settings` itself is one client roster table.
 
 | Item | Value |
 | ------ | ------ |
-| Route | `GET /settings` → `src/app/(dashboard)/settings/page.tsx` |
-| UI | `src/components/settings/AgentSettingsTable.tsx` (contains the inline `WorkDayPicker` sub-component) + `SlaPoliciesPanel.tsx` + `RevivalPoliciesPanel.tsx` (admin/founder) |
-| Access | `agent` / `guest` → `redirect("/dashboard")`. `manager` / `admin` / `founder` only; SLA + revival panels admin/founder only. |
-| Data load | `Promise.all` of `getAgentRosterByDomain(rosterDomain)` + (admin/founder) `getAllSlaPolicies()` + (admin/founder) `getAllRevivalPolicies()` → `initialRoster` / `initialPolicies` props. No URL params, no Suspense split. |
+| Routes | `GET /settings` → `src/app/(dashboard)/settings/page.tsx`; `GET /settings/follow-up-engine` and `GET /settings/lead-revival` → their own `page.tsx` + `loading.tsx` |
+| UI | `/settings`: `src/components/settings/AgentSettingsTable.tsx` (contains the inline `WorkDayPicker` sub-component) + `SettingsLinkCard.tsx` (admin/founder). Sub-routes: `SlaPoliciesPanel.tsx` / `RevivalPoliciesPanel.tsx` with `BackButton` headers |
+| Access | `/settings`: `agent` / `guest` → `redirect("/dashboard")`; `manager` / `admin` / `founder` only. Sub-routes: non-admin/founder → `redirect("/settings")` |
+| Data load | `/settings` awaits only `getAgentRosterByDomain(rosterDomain)` → `initialRoster` prop. Each sub-route awaits its own policy list (`getAllSlaPolicies()` / `getAllRevivalPolicies()`) → `initialPolicies` prop. No URL params, no Suspense split. |
 
 #### Sidebar — Configuration section
 
 - Section label: **Configuration** (`NavSection`).
 - Visible when `isManager` (`manager` \| `admin` \| `founder`).
-- Items from `getConfigurationNav(isPrivileged)`:
+- Items from `getConfigurationNav(isPrivileged)`, each filtered through `canAccessRoute`:
   - **Ad Creatives** — `/admin/ad-creatives`, `Film` icon — **admin/founder only** (`isPrivileged`), listed first when present.
-  - **Settings** — `/settings`, `Settings` icon — **manager, admin, founder**.
+  - **Elaya Training**: `/admin/elaya-training`, `GraduationCap` icon; filtered by `canAccessRoute`.
+  - **Settings**: `/settings`, `Settings` icon; **manager, admin, founder**. Active state matches `/settings` and its sub-routes (`pathname.startsWith(href + "/")`).
 - Position: after Analytics nav block, before Admin section (admin/founder).
 
 ---
@@ -474,38 +492,43 @@ Playfair italic heading (`--font-serif`, italic). Two messages keyed on `roster.
 ### 11. Page component — `page.tsx`
 
 ```text
+/settings (page.tsx)
 getCurrentProfile()
   → no profile: redirect /login
   → agent | guest: redirect /dashboard
   → isPrivileged = admin|founder
   → rosterDomain = isPrivileged ? '*' : profile.domain
-  → [roster, slaPolicies, revivalPolicies] = await Promise.all([
-        getAgentRosterByDomain(rosterDomain),
-        isPrivileged ? getAllSlaPolicies()     : Promise.resolve([]),
-        isPrivileged ? getAllRevivalPolicies() : Promise.resolve([]),
-     ])
+  → roster = await getAgentRosterByDomain(rosterDomain)
   → <h1>…</h1> + {TOP_BAR_ENABLED && <PageControls isPrivileged={false} … />}
+  → {isPrivileged && <grid of two SettingsLinkCard: follow-up-engine / lead-revival>}
   → <AgentSettingsTable initialRoster callerRole={profile.role} callerDomain={profile.domain} />
-  → {isPrivileged && slaPolicies.length     > 0 && <SlaPoliciesPanel initialPolicies={slaPolicies} />}
-  → {isPrivileged && revivalPolicies.length > 0 && <RevivalPoliciesPanel initialPolicies={revivalPolicies} />}
+
+/settings/follow-up-engine (page.tsx)          /settings/lead-revival (page.tsx)
+getCurrentProfile()                            getCurrentProfile()
+  → no profile: redirect /login                  → no profile: redirect /login
+  → not admin|founder: redirect /settings        → not admin|founder: redirect /settings
+  → slaPolicies = await getAllSlaPolicies()      → revivalPolicies = await getAllRevivalPolicies()
+  → <BackButton href="/settings"> + <h1>         → same header shape
+  → length > 0 ? <SlaPoliciesPanel/>             → length > 0 ? <RevivalPoliciesPanel/>
+      : <EmptyState "No follow-up rules yet">        : <EmptyState "No revival policies yet">
 ```
 
-- Exports `metadata = { title: "Settings — Serene" }`.
-- **`<h1 className="type-page-title m-0">`** + `<span className="page-title-dot">.</span>` — primary nav contract. The header row is **not** unconditionally title-only: a `<PageControls userId isPrivileged={false} notificationsPromise>` renders top-right **when the `TOP_BAR_ENABLED` feature flag is on** (no bespoke per-page CTA, though).
-- **No Suspense:** one blocking `Promise.all`; no streaming/async child; the page ships atomically.
-- **Three fetches, two panels gated:** non-privileged callers get `[]` for both policy lists (so the panels never render); privileged callers render each panel only when its list is non-empty.
+- Each page exports its own `metadata` title (`Settings — Serene`, `Follow-up Engine — Serene`, `Lead Revival — Serene`).
+- **`<h1 className="type-page-title m-0">`** + `<span className="page-title-dot">.</span>` on all three (the sub-routes keep the dot and add a `BackButton` on the left). On `/settings`, a `<PageControls userId isPrivileged={false} notificationsPromise>` renders top-right **when the `TOP_BAR_ENABLED` feature flag is on** (no bespoke per-page CTA, though).
+- **No Suspense:** each page has one blocking fetch; no streaming/async child; each page ships atomically.
+- **One fetch per route:** `/settings` fetches only the roster; each sub-route fetches only its own policy list and renders the panel or an `<EmptyState>`.
 
 ---
 
 ### 12. Access Control Summary
 
-| Role | `/settings` access | SLA + revival panels | `getAgentRosterByDomain` domain arg |
+| Role | `/settings` access | `/settings/follow-up-engine` + `/settings/lead-revival` | `getAgentRosterByDomain` domain arg |
 | ------ | ------------------- | -------------------- | ------------------------------------- |
 | `founder` | Yes | Yes | `'*'` (all pool members — agents + managers) |
 | `admin` | Yes | Yes | `'*'` |
-| `manager` | Yes | No | `caller.domain` only (incl. own row + peer managers) |
-| `agent` | Redirect `/dashboard` | — | — |
-| `guest` | Redirect `/dashboard` | — | — |
+| `manager` | Yes | Redirect `/settings` | `caller.domain` only (incl. own row + peer managers) |
+| `agent` | Redirect `/dashboard` | Redirect `/settings` (then `/dashboard`) | — |
+| `guest` | Redirect `/dashboard` | Redirect `/settings` (then `/dashboard`) | — |
 
 | Action | Extra gate |
 | ------ | ---------- |

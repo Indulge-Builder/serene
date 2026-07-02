@@ -2,7 +2,7 @@
 
 > **Purpose:** how identity, sessions, roles, domains, and row-level security work — the authorization architecture every other doc assumes.
 > **Audience:** engineers. · **Source-of-truth scope:** authorization model, session layer, route gating, RLS + SECURITY DEFINER policy. The `profiles` table schema lives in `database.md`; per-page role gates live in each `../pages/*.md`.
-> **Last verified:** 2026-06-26 against `src/proxy.ts`, `src/lib/constants/domains.ts`, `src/lib/constants/route-permissions.ts`, `src/lib/actions/_auth.ts`, `src/lib/actions/auth.ts`, `src/lib/elaya/principal.ts`, `src/lib/elaya/elaya-data.ts`, migrations 0001/0088/0091/0095/0102/0103/0144/0149. (Added §13 — the Elaya principal + sessionless-twin authorization pattern.)
+> **Last verified:** 2026-07-02 against `src/proxy.ts`, `src/lib/constants/domains.ts`, `src/lib/constants/route-permissions.ts`, `src/lib/actions/_auth.ts`, `src/lib/actions/auth.ts`, `src/lib/elaya/principal.ts`, `src/lib/elaya/elaya-data.ts`, `src/lib/elaya/tools/customer-registry.ts`, migrations 0001/0088/0091/0095/0102/0103/0144/0149/0152. (§8 route prefixes refreshed; §13 customer principal updated to shipped.)
 
 ---
 
@@ -139,11 +139,14 @@ What `proxy.ts` actually does (verified):
 
 Domain gating is `canAccessRoute(profile, pathname)` (`src/lib/utils/route-access.ts` — pure,
 client-safe) over `DOMAIN_ROUTE_MAP` + `ALWAYS_ALLOWED_PREFIXES`
-(`['/dashboard', '/profile', '/helpdesk', '/elaya']`) in
-`src/lib/constants/route-permissions.ts`. `/helpdesk` (the Call Intelligence library) and `/elaya`
-(Elaya's AI chat surface) are universally accessible to every role and domain — what Elaya can
-*access* is enforced per-principal in the tool layer, not by route gating; `/helpdesk` is read-only
-with RLS-gated writes. Admin/founder bypass all domain checks. The layout
+(`['/dashboard', '/profile', '/helpdesk', '/elaya', '/notes']`) in
+`src/lib/constants/route-permissions.ts`. `/helpdesk` (the Call Intelligence library), `/elaya`
+(Elaya's AI chat surface), and `/notes` (the per-user Notes section, `elaya_notes` migration 0152;
+owner-scoped by RLS like `/profile`) are universally accessible to every role and domain — what
+Elaya can *access* is enforced per-principal in the tool layer, not by route gating; `/helpdesk` is
+read-only with RLS-gated writes. The Gia-domain `DOMAIN_ROUTE_MAP` rows also carry `/oversight`,
+`/escalations`, and `/admin/elaya-training` (reachability only; the page role gates stay the
+authorization boundary). Admin/founder bypass all domain checks. The layout
 guard and the Sidebar filter are independent — neither trusts the other (defense-in-depth,
 Decision Log 2026-06-03). Page-level privilege checks remain in each page; `canAccessRoute` is
 additive, not a replacement.
@@ -153,10 +156,14 @@ additive, not a replacement.
 - Every table has RLS enabled in its creation migration (A-08) — confirmed table-by-table in
   `../audits/security-audit-2026-06.md` §1.
 - Append-only tables (`profile_audit_log`, `lead_activities`, `lead_notes`, `task_remarks`,
-  `task_audit_log`, `lead_raw_payloads`) have no UPDATE/DELETE policies, ever (A-11). The two
-  narrow, documented exceptions: `task_remarks` suppression columns (admin/founder via
-  `suppressTaskRemarkAction` only) and the WhatsApp delivery-receipt update
-  (`processInboundMessage`'s `processStatusUpdate`, admin client only).
+  `task_audit_log`, `lead_raw_payloads`, `elaya_messages`, `usage_heartbeats`, and `task_events`,
+  which is manager+ SELECT with no write policy ever, migration 0144) have no UPDATE/DELETE
+  policies, ever (A-11). The two narrow, documented exceptions: `task_remarks` suppression
+  columns (admin/founder via `suppressTaskRemarkAction` only) and the WhatsApp delivery-receipt
+  update (`processInboundMessage`'s `processStatusUpdate`, admin client only). Two further
+  resolve-once status flips on state-machine ledgers (`elaya_actions` 0118, `revival_candidates`
+  0119) run as admin-client writes with no user UPDATE policy, documented A-11 carve-outs in
+  their migrations.
 - Archived leads are immutable via direct UPDATE (`leads_update` requires
   `archived_at IS NULL`, migration 0091; explicit `WITH CHECK` added in 0103).
 - Some tables deliberately have **no** write policies: `deals` (all writes via the admin client
@@ -250,7 +257,15 @@ replaced by params, on the **Q-13 revoked tier** (EXECUTE revoked from `authenti
 `service_role` only; the Elaya data layer's admin client + principal-derived args are the trust
 boundary). The originals are untouched and keep their `authenticated` GRANT for the in-app UI pages.
 
-**Customer principal (not built).** `resolveCustomerPrincipal()` is a **throwing stub** — the
-customer-facing WhatsApp persona is planned, not built. When it lands it must keep the Golden Rule:
-a `persona: 'customer'` principal with NO staff toolset and no access to any internal data, gated in
-code. Full subsystem contract: `../modules/elaya.md`.
+**Customer principal (shipped 2026-06-26, customer welcome-blast feature).**
+`resolveCustomerPrincipal()` in `src/lib/elaya/principal.ts` returns a real
+`{ kind: 'customer', persona: 'customer' }` principal carrying the lead's id and domain. It wraps
+a LEAD, never a profile. It is resolved at ingress inside `processInboundMessage`, behind the
+staff-number check (staff match → staff Elaya; otherwise the lead row → customer path via
+`elaya-customer.ts`), and consumed by `customer-brain.ts`. It keeps the Golden Rule exactly as
+prescribed: the toolset is the hard-capped `CUSTOMER_TOOLSET`
+(`src/lib/elaya/tools/customer-registry.ts`, only `get_company_material` +
+`note_customer_interest`; NO staff or CRM tools), fixed in code before the model runs. The first
+customer send is gated by the `leads.welcomed_at` exactly-once stamp (migration 0151,
+`UPDATE … WHERE welcomed_at IS NULL RETURNING`). Full subsystem contract:
+`../modules/elaya.md` and `../modules/customer-welcome-blast.md`.

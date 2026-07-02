@@ -19,6 +19,7 @@
 //     per conversation.
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json, TablesUpdate } from "@/lib/types/database";
 import type { ElayaActionRow, ElayaActionStatus, ElayaChannel } from "@/lib/types/elaya";
 
 export type ElayaActionType =
@@ -73,12 +74,11 @@ export async function insertExecutedAction(args: {
 }): Promise<void> {
   const supabase = createAdminClient();
   const now = new Date().toISOString();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any).from("elaya_actions").insert({
+  const { error } = await supabase.from("elaya_actions").insert({
     conversation_id: args.conversationId,
     user_id: args.userId,
     action_type: args.actionType,
-    payload: args.payload,
+    payload: args.payload as unknown as Json,
     status: "executed",
     resolved_at: now,
     resolved_by: args.userId,
@@ -98,14 +98,13 @@ export async function insertProposedAction(args: {
   payload: ElayaActionPayload;
 }): Promise<ElayaActionRow | null> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("elaya_actions")
     .insert({
       conversation_id: args.conversationId,
       user_id: args.userId,
       action_type: args.actionType,
-      payload: args.payload,
+      payload: args.payload as unknown as Json,
       status: "proposed",
     })
     .select("*")
@@ -132,8 +131,7 @@ export async function getLatestProposedAction(
   userId: string,
 ): Promise<ElayaActionRow | null> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("elaya_actions")
     .select("*")
     .eq("conversation_id", conversationId)
@@ -161,15 +159,14 @@ export async function markActionResolved(
   patchPayload?: Record<string, unknown>,
 ): Promise<void> {
   const supabase = createAdminClient();
-  const update: Record<string, unknown> = {
+  const update: TablesUpdate<"elaya_actions"> = {
     status,
     resolved_at: new Date().toISOString(),
     resolved_by: resolvedBy,
   };
-  if (patchPayload) update.payload = patchPayload;
+  if (patchPayload) update.payload = patchPayload as Json;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const { error } = await supabase
     .from("elaya_actions")
     .update(update)
     .eq("id", actionId)
@@ -190,8 +187,7 @@ export async function supersedePriorProposals(
   resolvedBy: string,
 ): Promise<void> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const { error } = await supabase
     .from("elaya_actions")
     .update({
       status: "dismissed",

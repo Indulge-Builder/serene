@@ -3,6 +3,7 @@
 import { Plus } from 'lucide-react';
 import { usePortalAnchor } from '@/hooks/usePortalAnchor';
 import { FloatingPanel } from '@/components/ui/FloatingPanel';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { DASHBOARD_WIDGETS } from '@/lib/constants/dashboard-widgets';
 import type { UserRole } from '@/lib/types/database';
@@ -86,19 +87,10 @@ export function AddWidgetMenu({
 
       <FloatingPanel {...anchor.panelProps} panelKey="add-widget" style={{ width: '300px', padding: 'var(--space-2)' }}>
         {available.length === 0 ? (
-          <p
-            style={{
-              fontFamily: 'var(--font-serif)',
-              fontStyle: 'italic',
-              fontSize: 'var(--text-sm)',
-              color: 'var(--theme-text-tertiary)',
-              textAlign: 'center',
-              padding: 'var(--space-3) var(--space-2)',
-              margin: 0,
-            }}
-          >
-            Every widget is already on your dashboard.
-          </p>
+          <EmptyState
+            title="Every widget is already on your dashboard."
+            style={{ padding: 'var(--space-3) var(--space-2)' }}
+          />
         ) : (
           <div role="menu" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', maxHeight: '320px', overflowY: 'auto' }}>
             {available.map((w) => (

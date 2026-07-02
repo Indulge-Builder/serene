@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserCircle, Check } from 'lucide-react';
+import { CardHeader } from '@/components/leads/CardHeader';
 import { Spinner } from '@/components/ui/Spinner';
 import { Button } from '@/components/ui/Button';
 import { updatePersonalDetails, updateLeadCity } from '@/lib/actions/leads';
@@ -164,46 +165,22 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-2)',
-          padding:      'var(--space-4) var(--space-5)',
-          borderBottom: '1px solid var(--theme-paper-border)',
-          background:   'var(--theme-paper-subtle)',
+      <CardHeader
+        icon={UserCircle}
+        label="Personal Details"
+        iconStyle={{
+          color:      active ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
+          transition: 'color 0.15s ease',
         }}
-      >
-        <UserCircle
-          style={{
-            width:       '0.875rem',
-            height:      '0.875rem',
-            color:       active ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
-            strokeWidth: 1.5,
-            flexShrink:  0,
-            transition:  'color 0.15s ease',
-          }}
-        />
-        <span
-          style={{
-            fontFamily:    'var(--font-sans)',
-            fontSize:      'var(--text-2xs)',
-            fontWeight:    'var(--weight-semibold)',
-            letterSpacing: 'var(--tracking-widest)',
-            textTransform: 'uppercase',
-            color:         'var(--theme-text-tertiary)',
-          }}
-        >
-          Personal Details
-        </span>
-
-        <span style={{ marginLeft: 'auto' }}>
-          {saveState === 'saving' && <Spinner size="sm" />}
-          {saveState === 'saved' && (
-            <Check style={{ width: '0.75rem', height: '0.75rem', color: 'var(--color-success)', strokeWidth: 2 }} />
-          )}
-        </span>
-      </div>
+        right={
+          <span style={{ marginLeft: 'auto' }}>
+            {saveState === 'saving' && <Spinner size="sm" />}
+            {saveState === 'saved' && (
+              <Check style={{ width: '0.75rem', height: '0.75rem', color: 'var(--color-success)', strokeWidth: 2 }} />
+            )}
+          </span>
+        }
+      />
 
       {/* Body */}
       <form onSubmit={handleSave}>

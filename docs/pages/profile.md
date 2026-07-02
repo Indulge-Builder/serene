@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/profile` — every user's self-management page (identity fields, avatar, theme, password).
 > **Audience:** engineers. · **Source-of-truth scope:** the `/profile` route. Admin edits of *other* users: `user-management.md`; theme system law: `../design/DESIGN-DNA.md` §1–2.
-> **Last verified:** 2026-06-24 (page-structure patch — header is a single "Profile" `<h1>`, no eyebrow; responsive `serene-dossier-grid--340` + `p-4 sm:p-6 lg:p-8` layout); 2026-06-20 (per-category notification controls — `NotificationPreferences`, migration 0133); 2026-06-15 (PWA install + app-icon picker + web-push reconcile); 2026-06-09 full pass; 2026-06-11 restructure.
+> **Last verified:** 2026-07-02 (six-theme vocabulary after migration 0156; Elaya persona card; SSR theme cookie); 2026-06-24 (page-structure patch — header is a single "Profile" `<h1>`, no eyebrow; responsive `serene-dossier-grid--340` + `p-4 sm:p-6 lg:p-8` layout); 2026-06-20 (per-category notification controls — `NotificationPreferences`, migration 0133); 2026-06-15 (PWA install + app-icon picker + web-push reconcile); 2026-06-09 full pass; 2026-06-11 restructure.
 > **Source files verified:** `src/app/(dashboard)/profile/page.tsx`, `src/components/profile/NotificationPreferences.tsx`, `src/lib/constants/notification-categories.ts`, `src/lib/services/notification-prefs-service.ts`.
 
 ## 1. Purpose
@@ -22,16 +22,18 @@ themselves; there is no user switcher here.
 | ----- | --------- |
 | Actions | `profiles.ts` — `updateProfile` (self fields), `updateProfileAvatar` (2 MB client-validated upload → `avatars` bucket) |
 | Client-side | `PasswordChangeForm` uses the **browser** Supabase client directly (documented exception — Supabase auth API, not a DB write) |
-| Theme | saved to `profiles.theme`; applied by `ThemeSelector` writing `data-theme` + the zero-flash dashboard-layout script |
+| Theme | saved to `profiles.theme`; `ThemeSelector` writes `data-theme` instantly and mirrors the pick into the `serene-theme` cookie (`persistThemeCookie`). Zero-flash is server-side: the ROOT layout reads the cookie and stamps `data-theme` on `<html>` from the first byte; `ThemeInitializer` only re-syncs a missing/stale cookie against the DB truth |
+| Elaya persona | `getMyElayaPersona(profile.id)` (`elaya-service.ts`) seeds `ElayaPersonaSettings`; saved via `updateElayaPersonaAction` (`lib/actions/elaya.ts`) |
 | Validation | self-edit schemas (Deep dive appendix) |
 
 ## 4. Components
 
 Composed on `SectionCard` (the canonical detail-surface shell): `ProfileDetailsForm`
 (email read-only — truth is `auth.users`), `ProfileAvatarSection` (uses `--overlay-scrim`),
-`ThemeSelector` (five theme cards), `NotificationPreferences` (per-category notification controls,
-migration 0133) + `PushNotificationSettings` (web-push opt-in), `PasswordChangeForm` +
-`PasswordStrengthBar`.
+`ThemeSelector` (six theme cards: Earth, Air, Water, Fire, Martini, Candy),
+`NotificationPreferences` (per-category notification controls, migration 0133) +
+`PushNotificationSettings` (web-push opt-in), `ElayaPersonaSettings` (per-user Elaya voice,
+Jarvis Phase 2), `PasswordChangeForm` + `PasswordStrengthBar`.
 
 > **Appearance also holds `IconSelector`** (2026-06-15) — the PWA home-screen icon picker,
 > saved to `profiles.app_icon` via the SAME `updateProfile` action (no new action). It is honest
@@ -80,14 +82,16 @@ Notification-sound preference lives in localStorage (`serene:notifications:sound
 | **Layout** | Two-column grid via the `serene-dossier-grid serene-dossier-grid--340` responsive utility (the 340px identity-sidebar variant — single column below `lg`). `<main>` is `className="flex-1 p-4 sm:p-6 lg:p-8"` with inline `paddingBottom: var(--space-16)` + `maxWidth: 1280px`. No inline `gridTemplateColumns`/flat padding anymore |
 | **Header** | A single `<h1 className="type-page-title m-0">Profile<span className="page-title-dot">.</span></h1>` inside a `div` with `marginBottom: var(--space-6)`. **No eyebrow** — there is no `type-eyebrow` element on the page, and the title is just **"Profile"** (not "Profile Settings") |
 
-**Left column** (`SectionCard` stack — four sections):
+**Left column** (`SectionCard` stack — six sections):
 
 1. Personal Details → `ProfileDetailsForm`
-2. Appearance → `ThemeSelector` + `IconSelector` + `InstallPrompt` (the **"Add to Home Screen"** card)
-3. Notifications → `NotificationPreferences` (per-category controls, migration 0133; §7l) **above** `PushNotificationSettings` (web-push opt-in, 2026-06-14)
-4. Security → `PasswordChangeForm`
+2. Appearance → `ThemeSelector` + `IconSelector` (separated by a full-width rule)
+3. Add to Home Screen → `InstallPrompt` (its own `SectionCard`, per §7j)
+4. Notifications → `NotificationPreferences` (per-category controls, migration 0133; §7l) **above** `PushNotificationSettings` (web-push opt-in, 2026-06-14)
+5. Elaya → `ElayaPersonaSettings` (per-user persona prefs, Jarvis Phase 2; §7m)
+6. Security → `PasswordChangeForm`
 
-> Notification **sound** is a separate device-local preference (localStorage) toggled via the `useNotificationSound` hook surfaced from the notifications UI in the Sidebar — not from this page. The push opt-in above and the sound flag are independent. See §7f.
+> Notification **sound** is a separate device-local preference (localStorage) toggled via the `useNotificationSound` hook, surfaced from the notification bell UI (in `PageControls` on the page title row while `TOP_BAR_ENABLED` is true; the Sidebar footer bell is the flag-off path) — not from this page. The push opt-in above and the sound flag are independent. See §7f.
 
 **Right column** (sticky `aside`, `top: var(--space-6)`):
 
@@ -111,12 +115,13 @@ Notification-sound preference lives in localStorage (`serene:notifications:sound
 
 #### 7c. `ThemeSelector`
 
-- **Swatches:** Earth, Air, Water, Fire, Cosmos
+- **Swatches:** Earth, Air, Water, Fire, Martini, Candy (`THEME_OPTIONS` from `lib/constants/themes.ts`). Cosmos, Coffee, and Macha were retired 2026-07-02; migration 0156 moved profiles on them back to earth.
 - **Preview trick:** Each swatch wraps a `div` with `data-theme={theme.key}` so `var(--theme-*)` resolve to that theme without hardcoded hex
 - **On select:**
   1. `document.documentElement.setAttribute("data-theme", theme)` — instant
-  2. `startTransition` → `updateProfile` with `FormData { id, theme }` only
-- **Active ring:** Uses **current page** theme accent for selection outline; checkmark inside preview uses preview theme’s `--theme-accent-fg`
+  2. `persistThemeCookie(theme)`, the SSR mirror, so the next server paint is already correct
+  3. `startTransition` → `updateProfile` with `FormData { id, theme }` only (background DB persist)
+- **Active ring:** Uses **current page** theme accent for selection outline; checkmark inside preview uses preview theme's `--theme-accent-fg`. Note the pastel accents (Martini `#191a38`, Candy `#2b1420`) hold dark ink, never white.
 
 #### 7d. `PasswordChangeForm`
 
@@ -143,13 +148,13 @@ Notification-sound preference lives in localStorage (`serene:notifications:sound
 
 #### 7f. Notification sound preference (device-local, alongside the Push `SectionCard`)
 
-The **"Notifications" `SectionCard`** on `/profile` holds `PushNotificationSettings` (§7k — web-push opt-in, DB-backed via `push_subscriptions`). The notification **sound** preference is a *separate, independent* piece: a device-local flag managed entirely through the `useNotificationSound` hook, surfaced from the notifications UI in the Sidebar — never from the profile page. Push reach and sound state are unrelated.
+The **"Notifications" `SectionCard`** on `/profile` holds `PushNotificationSettings` (§7k — web-push opt-in, DB-backed via `push_subscriptions`). The notification **sound** preference is a *separate, independent* piece: a device-local flag managed entirely through the `useNotificationSound` hook, surfaced from the notification bell UI — never from the profile page. Push reach and sound state are unrelated.
 
 | Item | Detail |
 | ---- | ------ |
 | **Hook** | `src/hooks/useNotificationSound.ts` |
 | **Storage** | `localStorage` key `serene:notifications:sound:v1` (default `true` when absent) |
-| **Where sound plays** | `src/hooks/useNotifications.ts` (mounted from `NotificationBell` in the **Sidebar**). On a Realtime `INSERT` to `notifications`, calls `sound.play()` — debounced ~1500 ms, Web Audio chime, respects the persisted `enabled` flag |
+| **Where sound plays** | `src/hooks/useNotifications.ts`, mounted from `NotificationBell`. With `TOP_BAR_ENABLED` (currently `true`) the bell lives in `PageControls` on each page's title row (`variant="topbar"`); the Sidebar footer bell is the flag-off path. On a Realtime `INSERT` to `notifications`, calls `sound.play()` — debounced ~1500 ms, Web Audio chime, respects the persisted `enabled` flag |
 
 **Rule:** Only `useNotifications` should call `play()` — not feature pages directly.
 
@@ -209,6 +214,19 @@ the same "Notifications" `SectionCard`, separated by a full-width rule.
 | **Owner edits** | `src/lib/actions/notification-prefs.ts` (session client, owner-only) |
 | **Never muteable** | `lead_initiation` (opens the legal 24h WhatsApp window) and `elaya_reply` (a direct reply to a staff message) are **transactional**, deliberately ABSENT from the catalog — the gate has no key for them, so they can never be silenced. Never gate either |
 
+#### 7m. `ElayaPersonaSettings` ("Elaya" card, Jarvis Phase 2, 2026-06-25)
+
+Per-user control over how Elaya speaks to you. Its own `SectionCard` ("Personalise how Elaya
+talks to you.") between Notifications and Security.
+
+| Item | Detail |
+| ---- | ------ |
+| **Component** | `src/components/profile/ElayaPersonaSettings.tsx` |
+| **Seed** | `page.tsx` fetches `getMyElayaPersona(profile.id)` (`elaya-service.ts`) in the same `Promise.all` as `getMyNotificationPrefs()`; passed as `initialPersona` |
+| **Persist** | `updateElayaPersonaAction` (`src/lib/actions/elaya.ts`) → `updateElayaPersona` in `elaya-service.ts`; validated by `UpdateElayaPersonaSchema` |
+| **Vocabulary** | `src/lib/constants/elaya-persona.ts`, the persona option catalog |
+| **Storage** | persona prefs live in `user_context.context.persona`, read by the Elaya brain on every turn (both app and WhatsApp channels) |
+
 #### 7g. Identity `SectionCard` (right column)
 
 - `ProfileAvatarSection` (upload only — identity text owned by page)
@@ -228,7 +246,7 @@ the same "Notifications" `SectionCard`, separated by a full-width rule.
 
 - **Action:** `signOutUser` in `src/lib/actions/profiles.ts` — `signOut()` then `redirect("/login")`
 - **No LogOut icon:** Page is a **server component**; Lucide icons cannot be passed into the server-action form boundary without a client wrapper. Text-only button is intentional.
-- **Alternate:** `signOut()` exists in `src/lib/actions/auth.ts` with the same behaviour — profile page uses `signOutUser` only.
+- **The only sign-out:** the duplicate `signOut()` in `src/lib/actions/auth.ts` was deleted in the 2026-07-02 dead-code purge; `signOutUser` is now the single sign-out action.
 
 ---
 

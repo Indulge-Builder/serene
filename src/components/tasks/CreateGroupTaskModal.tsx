@@ -27,7 +27,7 @@ import { CreateGroupTaskSchema } from '@/lib/validations/task-schemas';
 import * as LucideIcons from 'lucide-react';
 import { GROUP_TASK_ACCENT_COLORS, GROUP_TASK_ICONS } from '@/lib/constants/task-constants';
 import { DOMAIN_LABELS, GIA_DOMAINS } from '@/lib/constants/domains';
-import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { EASE_OUT_EXPO, FAST_DURATION } from '@/lib/constants/motion';
 import type { TaskGroup, TaskPriority, AppDomain, UserRole } from '@/lib/types/database';
 import type { AssignableUser } from '@/lib/types';
 
@@ -179,7 +179,7 @@ function AssigneeInlinePicker({
             initial={{ opacity: 0, y: -4, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={{ duration: 0.15, ease: EASE_OUT_EXPO }}
+            transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
             style={{
               position:     'absolute',
               top:          'calc(100% + 4px)',

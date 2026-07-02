@@ -16,7 +16,7 @@ The full token values are in `src/styles/design-tokens.css`.
 
 A luxury internal operating system for Indulge team members.
 Two-layer shell: dark canvas + floating paper content area.
-Five themes: Earth (default), Air, Water, Fire, Cosmos.
+Six themes: Earth (default), Air, Water, Fire, Martini, Candy.
 One AI presence: Elaya — she is not a chatbot, she is a compass.
 
 ---
@@ -62,7 +62,7 @@ src/lib/utils/sanitize.ts           ← sanitizeText() — the only sanitizer
 src/lib/utils/phone.ts              ← normalizeToE164() — the only normalizer
 src/lib/utils/dates.ts              ← formatDate() — the only date formatter
 src/lib/utils/numbers.ts            ← formatCount(), formatCurrency() etc.
-src/lib/utils/export.ts             ← buildCSV(), buildLeadsCSV(), buildXLSXWorkbook(), triggerBrowserDownload() — CLIENT-SIDE ONLY; never import from server actions or services
+src/lib/utils/export.ts             ← buildLeadsCSV(), buildXLSXWorkbook(), triggerBrowserDownload() — CLIENT-SIDE ONLY; never import from server actions or services
 src/components/ui/charts/useChartTokens.ts ← useChartTokens() + resolveColorMap() — the Recharts colour bridge (resolves var(--…)→hex, re-resolves on theme change). NOTE: the old src/lib/utils/chart-tokens.ts stub is DELETED — never recreate it.
 src/lib/utils/strings.ts            ← getInitials() + hashString() — the ONLY initials derivation and deterministic colour-pick hash; never re-implement inline
 src/lib/services/profiles-service.ts ← getAssignableUsers({ domain?, agentsOnly? }) — THE assignable-users query; client wrapper getAssignableUsersAction(domain?) in lib/actions/profiles.ts; canonical AssignableUser type in lib/types — never re-declare a Pick<Profile,…> assignee shape or fork another agents/users list
@@ -73,6 +73,14 @@ src/lib/services/ad-spend-service.ts ← getBudgetSummary() (get_budget_summary 
 src/lib/services/domain-targets-service.ts ← getDomainTargets() / upsertDomainTarget() — THE domain_targets access (founder monthly deals-closed targets)
 src/lib/utils/webhook.ts            ← readJsonBody()/parseJsonBody() — THE webhook JSON parse guard; createRateLimiter()+getClientIp() — THE rate limiter (S-17); safeSecretCompare() — THE timing-safe secret compare; never hand-roll any of the three in a route
 src/lib/utils/rows.ts               ← mapRows<TRow, TOut>(data, fn) — THE typed boundary for untyped query results (joined selects, untyped RPCs); never add a new `as Record<string, unknown>` row cast in a service (Q-18)
+src/lib/services/cache-helpers.ts   ← withRedisCache(key, ttl, fetchFn, normalize?) — THE Redis cache-aside envelope (get→fetch→setex, non-fatal both sides); never hand-roll the boilerplate in a service (dry-audit D1)
+src/lib/services/rpc-helpers.ts     ← callAdminRpc(rpc, params, mapRow, logCtx) — THE revoked-tier admin-client RPC boundary (Q-13 + Q-18 + uniform error log); session-client self-scoped RPCs (auth.uid() in SQL) must NOT use it (dry-audit D2)
+src/lib/actions/_validation.ts      ← parseActionInput(schema, input) — THE Zod-parse + first-issue→formErrors.generic mapper for actions (dry-audit S2); quieter generic-only and custom code→copy mappers stay bespoke
+src/lib/validations/fields.ts       ← uuidField(msg)/emailField(msg) — THE shared Zod field fragments (message-parameterised; dry-audit C1); phone fields stay per-schema (normalizeToE164 transforms differ)
+src/lib/trigger/cancel-runs.ts      ← cancelRunsByTag(tag) — THE Trigger.dev cancel-by-tag helper (DELAYED/QUEUED list → settle-cancel; dry-audit D8); lives OUTSIDE src/trigger so the task scan skips it
+src/lib/elaya/access.ts             ← canAccessLead — THE shared Elaya per-lead access gate (ONE security predicate for both tool registries) + leadDisplayName/statusLabel (dry-audit D6+D15)
+eslint.config.mjs                   ← THE lint config (flat, correctness-only; `pnpm lint` / `pnpm lint:fix`, NOT in the build). Machine-enforces A-17 m-as-motion, no window.confirm/alert, Rule-05 supabase import scoping, the Anthropic-adapter-only SDK rule. React-Compiler-prep rules OFF until compiler adoption (rationale in the file). Keep it lean — a new rule must prevent a bug.
+src/components/leads/CardHeader.tsx ← <CardHeader icon label right?> — THE dossier card-header strip (icon + micro-label + right slot on paper-subtle); all 7 dossier cards compose it (dry-audit D3)
 src/lib/constants/define-enum.ts    ← defineEnum([{ id, label }]) — THE factory for simple string-enum constants (derives values/labels/options/zodEnum from one array); richer config tables (TASK_PRIORITY, lead-status badges) stay hand-written
 src/lib/constants/themes.ts         ← THE theme vocabulary (THEME_KEYS/ThemeKey/isThemeKey) + THEME_COOKIE 'serene-theme' + persistThemeCookie() — the SSR theme mirror; the root layout reads the cookie to stamp data-theme on <html> server-side (zero-flash), ThemeInitializer/ThemeSelector keep it in sync with profiles.theme
 src/lib/constants/app-icons.ts      ← THE PWA home-screen icon vocabulary (ICON_KEYS/IconKey/isIconKey/ICON_OPTIONS/ICON_ENUM/DEFAULT_ICON via defineEnum — built like themes.ts) + iconSrc(value) (THE only key→/icon-N.webp path resolver; validates against ICON_KEYS, falls back to DEFAULT_ICON — NEVER interpolate a raw param into an icon path) + APP_ICON_COOKIE 'serene-app-icon' + persistAppIconCookie() (the SSR manifest mirror — the root layout reads it to point <link rel=manifest> at /api/manifest?icon=<saved> + apple-touch-icon; IconInitializer/IconSelector keep it in sync with profiles.app_icon). One square /public/icon-N.webp per key (covers manifest 192/512 + maskable + apple); adding an option = one { id,label } line + a CHECK migration. Mirrors profiles.theme end-to-end; rides the existing updateProfile action (NO new persist action)
@@ -80,7 +88,7 @@ src/components/ui/StatTile.tsx      ← <StatTile label value sub? variant="card
 src/lib/utils/scroll.ts             ← scrollToBottom(el), lockBodyScroll() → unlock fn (re-entrant; mobile drawer/sheets)
 src/lib/utils/whatsapp-format.ts    ← markdownToWhatsApp() — THE markdown → WhatsApp-native text converter (**x**→*x*, *x*→_x_, headings→bold line, md bullets→"- ", links→text (url)); every model-authored WhatsApp reply passes through it before sending (elaya-whatsapp.ts)
 src/components/ui/ChatMarkdown.tsx  ← <ChatMarkdown content> — THE markdown-lite renderer for model-authored chat text in-app (bold/italic/lists/links/code as React elements; no dangerouslySetInnerHTML, no dependency, SSE-safe). The in-app mirror of whatsapp-format.ts; used by ElayaMessageBubble — never re-parse model markdown inline
-src/lib/services/transcription-service.ts ← transcribeAudio() — THE Deepgram call site (server-only; Nova-3 multilingual for Hinglish). Audio transcribed in-memory and discarded — never stored. Client entry: transcribeAudioAction (lib/actions/transcription.ts); mic capture: src/hooks/useAudioRecorder.ts — THE recording hook (codec negotiation, 2-min auto-stop, mic-track release); never re-implement MediaRecorder plumbing inline
+src/lib/services/transcription-service.ts ← transcribeAudio() — THE Deepgram call site (server-only; nova-2 + hi-Latn for Hinglish). Audio transcribed in-memory and discarded — never stored. Client entry: transcribeAudioAction (lib/actions/transcription.ts); mic capture: src/hooks/useAudioRecorder.ts — THE recording hook (codec negotiation, 2-min auto-stop, mic-track release); never re-implement MediaRecorder plumbing inline
 src/components/ui/DictationButton.tsx ← <DictationButton> — THE voice-dictation cluster (record → transcribe → onTranscript(text) as an editable draft; never auto-sends). Wraps useAudioRecorder + transcribeAudioAction + the mic/stop/cancel buttons + m:ss counter + Transcribing… spinner ONCE. variant="composer" (32px pill, mounts as a <MessageBar leadingSlot> — Elaya + WhatsApp composers) or "inline" (28px bordered, form footer/label row — LeadNotesInput + CalledModal). onError(message) so each consumer keeps its surface (toast vs inline); onBusyChange(busy) for footer submit gating. Renders null when MediaRecorder unsupported. ALL four voice surfaces compose this — never re-inline a mic/transcribe cluster
 src/lib/constants/interests.ts      ← SERVICE_CATEGORY_* (defineEnum) + DOMAIN_INTERESTS + getDomainInterests() — THE per-domain leads.service_interests vocabulary (text[], NEVER an enum; unknown values dropped at ingestion via extractServiceInterests, never rejected)
 src/lib/services/intelligence-service.ts ← Call Intelligence reads — getHelpdeskLibrary(domain) (Redis 1hr {cases,hooks} envelope; key REDIS_KEYS.helpdeskCases + REDIS_TTL.HELPDESK_CASES live in redis-keys.ts ONLY), getCasesForLead()/getHooksForCategories() (dossier card, ≤6 rows, deliberately un-cached). Tables service_cases + conversation_hooks (migration 0110: all-authenticated read, admin/founder write RLS). Writes ONLY via lib/actions/intelligence.ts — every write awaits the helpdesk-key del (P-08 convention) before revalidatePath('/helpdesk'). Helpdesk filtering is CLIENT-SIDE on the full library — never add a per-keystroke server search
@@ -321,12 +329,15 @@ data-theme="earth"   → champagne gold accent (#c9a553), warm canvas (#0d0c0a) 
 data-theme="air"     → slate blue accent (#54769e), blue-black canvas
 data-theme="water"   → deep teal accent (#1e7d72), teal-black canvas
 data-theme="fire"    → ember sienna accent (#c25022), brown-black canvas
-data-theme="cosmos"  → nebula amethyst accent (#7a5fc0), violet-black canvas
+data-theme="martini" → periwinkle accent (#9fa1ff), evening-indigo canvas (#0a0a16); near-white paper w/ periwinkle whisper (#f8f8fe); mint→success chips, sky→info chips
+data-theme="candy"   → candy-pink accent (#f9b2d7), dark-plum canvas (#130a12); near-white paper w/ blush whisper (#fdf9fb); pastel rainbow lives in the chips (mint success / powder-blue info / lemon warning)
 
 Default (no attribute) = Earth.
 Theme attribute goes on the <html> element.
 --theme-accent-fg on Earth is #201808 (warm ink on gold).
---theme-accent-fg on all other themes is #ffffff.
+--theme-accent-fg on Martini is #191a38 and on Candy is #2b1420 (dark ink — pastel accents can never hold white text; never "fix" them to #ffffff).
+--theme-accent-fg on Air/Water/Fire is #ffffff.
+(cosmos / coffee / macha were retired 2026-07-02 — migration 0156.)
 ```
 
 ---
@@ -405,7 +416,7 @@ serene/
 │   │                                   — registry rows in File Locations above
 │   │
 │   ├── styles/
-│   │   └── design-tokens.css        ← ALL CSS variables, all five themes
+│   │   └── design-tokens.css        ← ALL CSS variables, all six themes
 │   │
 │   └── proxy.ts                     ← Next.js 16 proxy (session refresh; replaces middleware.ts — there is NO src/middleware.ts)
 │

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/actions/_auth";
+import { parseActionInput } from "@/lib/actions/_validation";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { formErrors } from "@/lib/validations/form-errors";
 import {
@@ -44,7 +45,7 @@ export async function upsertTrainingAsset(
     return { data: null, error: "Those tags couldn't be read. Please re-enter them." };
   }
 
-  const parsed = upsertTrainingAssetSchema.safeParse({
+  const parsed = parseActionInput(upsertTrainingAssetSchema, {
     id:          rawId ? String(rawId) : null,
     kind:        formData.get("kind"),
     title:       formData.get("title"),
@@ -56,9 +57,7 @@ export async function upsertTrainingAsset(
     sendOrder:   formData.get("sendOrder") ?? 0,
     active:      formData.get("active") ?? true,
   });
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? formErrors.generic };
-  }
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   // 2. Auth gate (A-18 / Rule 09).
   const auth = await requireProfile(TRAINING_ROLES);
@@ -80,9 +79,7 @@ export async function upsertTrainingAsset(
     active,
   };
 
-  // The table is not yet in the generated Database type (interim — regen drops this).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const adminClient = createAdminClient() as any;
+  const adminClient = createAdminClient();
 
   // Resolve create-vs-update, with the singleton-fact fold: a fresh fact for a domain
   // that already has one updates the existing row rather than inserting a duplicate.
@@ -129,16 +126,13 @@ export async function upsertTrainingAsset(
 export async function deleteTrainingAsset(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
-  const parsed = deleteTrainingAssetSchema.safeParse({ id: formData.get("id") });
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? formErrors.generic };
-  }
+  const parsed = parseActionInput(deleteTrainingAssetSchema, { id: formData.get("id") });
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   const auth = await requireProfile(TRAINING_ROLES);
   if (!auth.ok) return auth.result;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const adminClient = createAdminClient() as any;
+  const adminClient = createAdminClient();
   const { data, error } = await adminClient
     .from(TRAINING_TABLE)
     .delete()

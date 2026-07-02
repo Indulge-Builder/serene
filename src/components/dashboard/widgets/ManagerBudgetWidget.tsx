@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { m as motion } from "framer-motion";
 import { RefreshCcw, Fuel } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { getBudgetGaugeWidgetAction } from "@/lib/actions/dashboard";
 import { resolvePresetToRange } from "@/lib/utils/date-range";
 import { formatCount, formatCurrencyCompact } from "@/lib/utils/numbers";
@@ -339,17 +340,10 @@ function EmptyGauge({ spent }: { spent: number }) {
       }}
     >
       <Fuel style={{ width: 22, height: 22, strokeWidth: 1.5, color: "var(--theme-text-tertiary)" }} />
-      <p
-        style={{
-          fontFamily: "var(--font-serif)",
-          fontStyle:  "italic",
-          fontSize:   "var(--text-sm)",
-          color:      "var(--theme-text-tertiary)",
-          margin:     0,
-        }}
-      >
-        {spent > 0 ? "No recharge logged for this period." : "No spend or recharge yet."}
-      </p>
+      <EmptyState
+        title={spent > 0 ? "No recharge logged for this period." : "No spend or recharge yet."}
+        style={{ padding: 0 }}
+      />
       {spent > 0 && (
         <p
           style={{

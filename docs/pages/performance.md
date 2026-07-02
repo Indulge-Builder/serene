@@ -2,19 +2,24 @@
 
 > **Purpose:** spec for `/performance` — one URL, three role-specific layouts (agent self-view, manager team view, founder/admin Agents+Domains tabs).
 > **Audience:** engineers. · **Source-of-truth scope:** the performance route, `performance-service.ts`, `performance.ts` actions, the date model, and the date-field rule.
-> **Last verified:** 2026-06-24 (full regenerate — the 2026-06-16 pure-`date_from`/`date_to`
-> date-model rewrite + key-remounted agent shell, and the 2026-06-24 reusable lead-drill stack:
-> chart-click + first-touch-bar drills, the `?agent=` selection mirror, the `AgentDetailPanel`
-> per-slice memory cache, and two new gated drill actions, are now all in code).
+> **Last verified:** 2026-07-02 (full pass - covers the 2026-06-25 agent self-scorecard
+> redesign: the lean single-page shell, the `agent_performance_trend` RPC (migration 0146),
+> `ManagerPerformanceShell`, the Domains-tab global-domain scoping + domain-card drill modals,
+> and the 2026-07-02 dead-code purge that deleted `DomainHealthGrid`, `EffortGrid`, and
+> `AgentCallTrendChart`; the 2026-06-16 date model and the 2026-06-24 lead-drill stack still
+> verify as documented).
 
 ## 1. Purpose
 
-Role-adaptive KPI surface. Agents see their own core-four metrics, effort, outcome breakdown
-and benchmarks (ONE `get_agent_performance` RPC round trip — self-scoped, no identity params).
+Role-adaptive KPI surface. Agents see a lean single-page self-scorecard (redesigned 2026-06-25):
+Today strip, core-four KPIs, a period activity trend, a live pipeline line, call outcomes, and
+recent activity - all server-fetched (one `get_agent_performance` RPC + one
+`get_agent_performance_trend` RPC, both self-scoped, no identity params).
 Managers see a domain roster + per-agent detail. Founders/admins get an Agents tab (all-domain
 roster) and a Domains tab (per-domain health cards + comparative chart, revenue from
 `public.deals`, plus a month-pinned deals-vs-target radial meter founders/admins can edit inline
-via `upsertDomainTargetAction`).
+via `upsertDomainTargetAction`). The Domains tab follows the global `serene-domain` selector
+(2026-06-25), and every domain-card tile drills into the leads or deals behind it.
 
 Every metric/chart on the agent-detail and founder-deck surfaces is now drillable: tapping a stat
 tile, a pipeline segment, a call-outcome slice, or a first-touch-speed bar opens a fetch-on-open
@@ -31,29 +36,33 @@ widen scope.
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `performance-service.ts` only (never extend leads/dashboard services) — `getAgentPerformanceSummary` (React `cache()`, D-2), `getAgentRosterPerformance` (RPC-backed), `getAgentDetailMetrics`, `getDomainHealthMetrics`, `getAgentTodayPulse` (0108), `getAgentLeadActivityPage` (keyset), `getAgentCallsPageForManager` (keyset), `getAgentFirstTouchScorecard` / `getAgentFirstTouchBucketLeadIds` (0123, shared `classifyFirstTouchPairs`), `resolvePerformanceDateParams` (the date-model boundary), period helpers; targets in `domain-targets-service.ts`. No Redis (see §"caching") |
-| RPCs | `get_agent_performance` + `get_agent_roster_performance` (0101, self-/role-scoped in SQL), domain-health RPCs (0066/0068/0076/0107 — `total_deals` added), `get_agent_today_pulse` (0108, self-scoped) + `notes_today` (0122), `get_agent_first_touch_pairs` (0123, scope-param, EXECUTE revoked → admin client) |
+| Service | `performance-service.ts` only (never extend leads/dashboard services) - `getAgentPerformanceSummary` (React `cache()`, D-2), `getAgentPerformanceTrend` (React `cache()`, migration 0146 - the `AgentTrendPoint[]` daily series), `getAgentRosterPerformance` (RPC-backed), `getAgentDetailMetrics`, `getDomainHealthMetrics`, `getAgentTodayPulse` (0108), `getAgentLeadActivityPage` (keyset), `getAgentCallsPageForManager` (keyset), `getAgentFirstTouchScorecard` / `getAgentFirstTouchBucketLeadIds` (0123, shared `classifyFirstTouchPairs`), `resolvePerformanceDateParams` (the date-model boundary), period helpers; targets in `domain-targets-service.ts`. No Redis (see §"caching") |
+| RPCs | `get_agent_performance` + `get_agent_roster_performance` (0101, self-/role-scoped in SQL), `get_agent_performance_trend` (0146, self-scoped - per-IST-day leads_won/calls/notes, zero-filled, oldest first), domain-health RPCs (0066/0068/0076/0107 - `total_deals` added), `get_agent_today_pulse` (0108, self-scoped) + `notes_today` (0122), `get_agent_first_touch_pairs` (0123, scope-param, EXECUTE revoked → admin client) |
 | Tables | `domain_targets` (0105) — founder-set monthly deals-closed target per domain; UNIQUE(domain, metric, period); RLS all-read / admin+founder write. `public.deals` is the revenue source for both roster and detail (never a `leads` column) |
-| Actions | `performance.ts` — `getAgentDetailMetricsAction`, `getAgentFirstTouchScorecardAction`, `getManagerRosterAction`, `getDomainHealthMetricsAction`, `getAgentPulseAction` (agent-only), `getAgentRecentLeadActivityAction` (agent-only), `upsertDomainTargetAction` (admin/founder), + the six drill-downs (`getAgentCallsForManagerAction`, `getAgentActivityForManagerAction`, `getAgentLeadsScopedAction`, `getAgentDealsScopedAction`, `getFirstTouchBucketLeadsAction`, `getAgentLeadsByPredicateAction`). There is **no** agent self-metrics action — the agent payload is server-fetched (§6). Full table: §6 + Component inventory |
+| Actions | `performance.ts` - 14 actions: `getAgentDetailMetricsAction`, `getAgentFirstTouchScorecardAction`, `getManagerRosterAction`, `getDomainHealthMetricsAction` (optional 4th `domain` arg since 2026-06-25), `getAgentPulseAction` (agent-only), `getAgentRecentLeadActivityAction` (agent-only), `upsertDomainTargetAction` (admin/founder), + the seven drill-downs (`getAgentCallsForManagerAction`, `getAgentLeadsScopedAction`, `getAgentDealsScopedAction`, `getFirstTouchBucketLeadsAction`, `getAgentLeadsByPredicateAction`, `getDomainLeadsDrillAction`, `getDomainDealsDrillAction`). `getAgentActivityForManagerAction` was deleted (zero call sites). There is **no** agent self-metrics action - the agent payload is server-fetched (§6). Full table: §6 + Component inventory |
 | Date model | Pure `date_from`/`date_to` URL params for ALL THREE roles (the `/leads` FilterBar contract). `resolvePerformanceDateParams(dateFrom, dateTo)` derives the internal `PerformancePeriod` + IST range — Deep dive §3 |
 
 ## 4. Components
 
-`AgentPerformanceShell` (Overview/Today content tabs, `CoreFourGrid` sparklines, `EffortGrid`,
-`CallOutcomeBar` donut; Today tab adds the pulse: calls new/old split, `AgentCallTrendChart`
-14-day trend, Revenue card, `AgentRecentActivityList` keyset load-more — period arrives as a prop,
-the shell key-remounts per range, no in-shell period selector) ·
-`PerformanceFilters` (the shared `<FilterBar>` Range/Dates bar, all roles) ·
+`AgentPerformanceShell` (the lean single-page self-scorecard, 2026-06-25 - no tabs: `TodayStrip`
+4-cell StatTile bar → `CoreFourGrid` → one paper card with `AgentActivityTrendChart` +
+`PipelineLine` → `CallOutcomeBar` → `AgentRecentActivityList`; period arrives as a prop, the shell
+key-remounts per range, the pulse fires once per mount) ·
+`PerformanceFilters` (the shared `<FilterBar>` Range/Dates bar, all roles; `tabSlot` + `trailing` slots) ·
+`ManagerPerformanceShell` (manager-only client shell - owns the filter strip + hosts the "Deck view" trigger) ·
 `ManagerPerformanceAsync` → `ManagerPerformancePanel` (roster + `AgentDetailPanel`; `?agent=` selection mirror) ·
-`FounderPerformanceShell` (Agents/Domains tabs; `agentsSlot` injection) · `DomainOverviewPanel`
-(4 stats incl. Deals Closed + `DomainTargetMeter` radial deals-vs-target meter, founder/admin
-inline target edit, mobile CSS scroll-snap carousel) + `DomainHealthGrid` (legacy, unmounted) ·
-`CoreFourGrid`, `EffortGrid`, `StatAtom`, `PipelineBar`, `FirstTouchScorecard` ·
+`FounderPerformanceShell` (Agents/Domains tabs inside the filter strip; `agentsSlot` injection) ·
+`DomainOverviewPanel` (4 stats incl. Deals Closed + `DomainTargetMeter` radial deals-vs-target meter,
+founder/admin inline target edit, mobile CSS scroll-snap carousel, tile drills via
+`DomainLeadsDrillModal` / `DomainDealsDrillModal` + `DealDrillRow`) ·
+`CoreFourGrid`, `StatAtom`, `PipelineBar`, `FirstTouchScorecard` ·
 `FounderDrillDownDeck` (swipeable per-agent deck) ·
 the reusable lead-drill stack (`LeadDrillModal` + `LeadDrillRow` + `DrillModalShell`, with thin callers
 `AgentFirstTouchDrillModal` / `AgentLeadsPredicateDrillModal`) + the three stat-tile modals
 (`AgentCallsDrillModal` / `AgentLeadsDrillModal` / `AgentDealsDrillModal`) ·
 roster display helpers in `lib/utils/performance-roster-display.ts`.
+`EffortGrid`, `AgentCallTrendChart`, and `DomainHealthGrid` are DELETED (2026-06-25 redesign +
+2026-07-02 dead-code purge) - never recreate them.
 
 ## 5. States
 
@@ -78,13 +87,14 @@ Added 2026-06-12:
   `count(*)` + two complementary FILTERs over the same row set — new + old always equals
   total calls today. "Calls" = `lead_notes` with `call_outcome IS NOT NULL` (same
   definition as `calls_logged` in 0101).
-- **The "Today" strip + Today tab read since-midnight numbers from the pulse only** (the
+- **The "Today" strip reads since-midnight numbers from the pulse only** (the
   pulse `notes_today` is ALL `lead_notes` the agent authored since `p_today_start`, a
   deliberate superset of `calls_today.total`, which filters `call_outcome IS NOT NULL`). The
-  Overview strip's Calls / Notes / Won come from `pulse.callsToday.total` / `pulse.notesToday`
-  / `pulse.deals.dealCount` — never the period-scoped `effort`/`core` fields (the bug fixed
-  by migration 0122). The single pulse fetch serves BOTH the Today tab and the Overview strip;
-  the fetch gate (`needsPulse`) covers either being visible, so a tab switch fires no new request.
+  strip's Calls / Notes / Won / Revenue come from `pulse.callsToday.total` / `pulse.notesToday`
+  / `pulse.deals.dealCount` / `pulse.deals.revenue` - never the period-scoped `effort`/`core`
+  fields (the bug fixed by migration 0122). Since the 2026-06-25 redesign there are no tabs and
+  no `needsPulse` gate: the ONE pulse fetch fires unconditionally once per mount (the shell
+  key-remounts per range) and also feeds the `PipelineLine` revenue and the 14-day fallback trend.
 - **Activity load-more uses a composite cursor** `(created_at, id)` — never a single-column
   cursor; page 15 via a button, never infinite scroll. Agent id from the verified profile.
 
@@ -119,7 +129,8 @@ Added 2026-06-16 (pure date-model rewrite):
   `customTo`) are untouched.
 - **The agent shell key-remounts per range — no client metrics refetch.** `page.tsx` keys
   `AgentPerformanceAsync` by `period:customFrom:customTo`; the agent payload is server-fetched via
-  `getAgentPerformanceSummary` and passed as `initialData` (`data = initialData` in the shell).
+  a `Promise.all` of `getAgentPerformanceSummary` + `getAgentPerformanceTrend` (migration 0146)
+  and passed as `initialData` + `trend` props (`data = initialData` in the shell).
   The ONLY client fetch left on the agent view is the Today pulse. There is **no**
   `getAgentSelfMetricsAction` — it does not exist.
 
@@ -163,8 +174,8 @@ None recorded.
 
 | Role | View | Primary shell | Redirect if unauthorized |
 | ------ | ------ | --------------------- | ------------------------- |
-| `agent` | Self-view: Overview + Today content tabs, motivational footer | `AgentPerformanceShell` (client) | — |
-| `manager` | Team view: agent roster (left) + agent detail (right) | `ManagerPerformanceAsync` | — |
+| `agent` | Self-view: lean single-page scorecard (no tabs), motivational footer | `AgentPerformanceShell` (client) | - |
+| `manager` | Team view: agent roster (left) + agent detail (right) | `ManagerPerformanceShell` (client, owns the filter strip) wrapping `ManagerPerformanceAsync` as `rosterSlot` | - |
 | `founder` / `admin` | Two-tab shell: **Agents** (same team UI as manager, all domains; domain narrowing client-side on roster) + **Domains** (per-domain health cards + comparative bar chart) | `FounderPerformanceShell` (owns tab state) → Agents tab is `ManagerPerformanceAsync allDomains` injected as `agentsSlot`; Domains tab is `DomainOverviewPanel` | — |
 | `guest` | — | — | `redirect('/dashboard')` |
 
@@ -173,9 +184,9 @@ None recorded.
 1. `getCurrentProfile()` — no profile → `redirect('/login')`
 2. `profile.role === 'guest'` → `redirect('/dashboard')`
 3. Read `params.date_from` / `params.date_to` (strings or null) → `resolvePerformanceDateParams(dateFrom, dateTo)` → `{ period, from, to, customFrom, customTo }`. This runs for ALL roles before the branch.
-4. `profile.role === 'agent'` → agent layout — renders `<PerformanceFilters showSearch={false} />` then `AgentPerformanceAsync` (server-fetches `getAgentPerformanceSummary(period, customFrom?, customTo?)`) inside `<Suspense fallback={<PerformanceSkeleton />}>`.
-5. `profile.role === 'manager'` → manager layout (`domain={profile.domain}`, the resolved period/range) inside `<Suspense fallback={<ManagerPerformanceSkeleton />}>`.
-6. Else (founder / admin) → one server-side `Promise.all`: `getDomainHealthMetrics(GIA_DOMAINS, from, to)` (active-period, custom-range aware) → `initialDomainHealth`; a **second month-pinned** `getDomainHealthMetrics(GIA_DOMAINS, thisMonth)` call — **skipped (resolves `null`) when the active period already IS `this_month`** — folded into `monthDeals` (`{ [domain]: totalDeals }` for the month-pinned target meter); and `getDomainTargets()` → `domainTargets`. Then renders `FounderPerformanceShell` with `domain={DEFAULT_GIA_DOMAIN}` placeholder, `period`/`customFrom`/`customTo`, `initialDomainHealth`, `initialTargets`, `monthDeals`, `canEditTargets={true}`, and `agentsSlot={<Suspense><ManagerPerformanceAsync allDomains /></Suspense>}`.
+4. `profile.role === 'agent'` → agent layout - renders `<PerformanceFilters showSearch={false} />` then `AgentPerformanceAsync` (server-side `Promise.all` of `getAgentPerformanceSummary(period, customFrom?, customTo?)` + `getAgentPerformanceTrend(period, customFrom?, customTo?)` - the 0146 daily series, passed as `trend`) inside `<Suspense fallback={<PerformanceSkeleton />}>`.
+5. `profile.role === 'manager'` → manager layout: `ManagerPerformanceShell` (a client component the page renders directly; it owns the `PerformanceFilters` strip and hosts the roster's "Deck view" trigger on the bar's trailing edge via the `FounderPerfActionsProvider` bridge) with `rosterSlot={<Suspense fallback={<ManagerPerformanceSkeleton />}><ManagerPerformanceAsync domain={profile.domain} … /></Suspense>}`.
+6. Else (founder / admin) → resolve `scopeDomain = resolveDomainParam(params, await cookies(), role)` (the SAME global `serene-domain` selector the list pages read) and narrow `healthDomains = scopeDomain ? [scopeDomain] : GIA_DOMAINS` (2026-06-25). Then one server-side `Promise.all`: `getDomainHealthMetrics(healthDomains, from, to)` (active-period, custom-range aware) → `initialDomainHealth`; a **second month-pinned** `getDomainHealthMetrics(healthDomains, thisMonth)` call - **skipped (resolves `null`) when the active period already IS `this_month`** - folded into `monthDeals` (`{ [domain]: totalDeals }` for the month-pinned target meter); and `getDomainTargets()` → `domainTargets`. Then renders `FounderPerformanceShell` with `domain={DEFAULT_GIA_DOMAIN}` placeholder, `period`/`customFrom`/`customTo`, `initialDomainHealth`, `initialTargets`, `monthDeals`, `scopeDomain`, `canEditTargets={true}`, and `agentsSlot={<Suspense><ManagerPerformanceAsync allDomains /></Suspense>}`.
 
 All three role `<main>` elements use `flex-1 min-w-0 p-4 sm:p-6 lg:p-8`. `PageControls` renders in the header when `TOP_BAR_ENABLED` (founder/admin pass `isPrivileged`).
 
@@ -312,6 +323,17 @@ this is the canonical P-09 reference).
   domain-wide averages — the old session-client version was silently reduced by
   agent RLS to the caller's own rows.
 
+#### `getAgentPerformanceTrend(period, customFrom?, customTo?)` - migration 0146, 2026-06-25
+
+ONE self-scoped `get_agent_performance_trend(p_date_from, p_date_to)` call (session client inside
+React `cache()` - the RPC reads `auth.uid()`, the `get_agent_today_pulse` pattern, client-callable
+GRANT). Returns `AgentTrendPoint[]` - one zero-filled bucket per IST calendar day in the range,
+oldest first: `{ day, leadsWon, calls, notes }`. Definitions match 0101/0108: `leadsWon` by
+`status_changed_at`, `calls` = notes with `call_outcome IS NOT NULL`, `notes` = all authored notes.
+Rate metrics are deliberately absent (a daily rate off 0-2 closes is noise). Feeds
+`AgentActivityTrendChart` and the one honest `CoreFourGrid` sparkline (Leads Won). Fetched
+server-side in `AgentPerformanceAsync` alongside the summary - no client refetch.
+
 #### `getAgentRosterPerformance(domain, dateFrom, dateTo)` — RPC-backed (D-2)
 
 ONE `get_agent_roster_performance` call (migration 0101) — one pre-aggregated row
@@ -364,7 +386,8 @@ HERE via `toISTMidnight` (never re-forked in SQL). Returns
 `{ callsToday: { total, newLeads, oldLeads }, notesToday, callTrend: { day, count }[], deals: { dealCount, revenue } }`.
 `callsToday` = since-IST-midnight calls (new/old split — a partition); `notesToday` = ALL notes
 since midnight (superset, migration 0122); `callTrend` = oldest-first 14 entries; `deals` = period
-deals from `public.deals`. Backs the agent Today tab AND the Overview "Today" strip.
+deals from `public.deals`. Backs the agent scorecard's `TodayStrip`, the `PipelineLine` revenue,
+and the fallback 14-day trend (the shell has no tabs since 2026-06-25).
 
 #### `getAgentLeadActivityPage(agentId, cursor?, actionType?)`
 
@@ -448,11 +471,13 @@ Manager/founder/admin only. Resolves the range, then `rosterDomain = (allDomains
 `getAgentRosterPerformance`. Returns `ActionResult<AgentRosterRow[]>`. Called by
 `ManagerPerformancePanel` on client-side period/date change (roster refetch without remount).
 
-#### `getDomainHealthMetricsAction(period, customFrom?, customTo?)`
+#### `getDomainHealthMetricsAction(period, customFrom?, customTo?, domain?)`
 
-Manager/founder/admin only. Resolves range, calls `getDomainHealthMetrics([...GIA_DOMAINS], from, to)`.
-Returns `ActionResult<DomainHealthCard[]>`. Called by `DomainOverviewPanel` on the founder **Domains**
-tab on period/date change.
+Manager/founder/admin only. The optional 4th `domain` arg (2026-06-25) is the Domains-tab
+global-selector scope: when set, the action fetches just that domain's card
+(`getDomainHealthMetrics([domain], from, to)`); omitted → all `GIA_DOMAINS`.
+Returns `ActionResult<DomainHealthCard[]>`. Called by `DomainOverviewPanel` on the founder
+**Domains** tab on period/date change (it passes `scopeDomain ?? undefined`).
 
 #### `getAgentPulseAction(period, customFrom?, customTo?)`
 
@@ -463,7 +488,7 @@ Agent-only (`GetAgentSelfSchema`; `requireProfile(['agent'])`). Calls `getAgentT
 
 Agent-only. Cursor validated (`ActivityCursorSchema`); the agent id always comes from the verified
 profile, never the client. Calls `getAgentLeadActivityPage`. Returns
-`ActionResult<AgentLeadActivityPage>`. Called by `AgentRecentActivityList` (Today tab load-more).
+`ActionResult<AgentLeadActivityPage>`. Called by `AgentRecentActivityList` (the scorecard's recent-activity load-more).
 
 #### `upsertDomainTargetAction(domain, targetValue)`
 
@@ -473,12 +498,15 @@ then `upsertDomainTarget(domain, value, callerId)` in `domain-targets-service.ts
 upsert on `(domain, metric='deals_closed', period='month')`). Returns `ActionResult<DomainTarget>`
 (the optimistic row). Called by `DomainOverviewPanel` / `DomainTargetMeter`.
 
-#### Drill-downs (founder deck + detail-panel stat tiles)
+#### Drill-downs (founder deck + detail-panel stat tiles + Domains tab)
 
 - `getAgentCallsForManagerAction(agentId, domain, cursor?)` → `AgentCallsPage` ("Recent calls", `getAgentCallsPageForManager`).
-- `getAgentActivityForManagerAction(agentId, domain, cursor?)` → `AgentLeadActivityPage` (full feed reuse of `getAgentLeadActivityPage('all')`).
 - `getAgentLeadsScopedAction(agentId, domain, page?, period?, customFrom?, customTo?)` → `LeadsResult`. When `period` is supplied (2026-06-20) it resolves the range and passes `date_from`/`date_to` into `getLeadsByRole` so the drill list's total equals the period-scoped Leads tile; omitted → all-time (legacy).
 - `getAgentDealsScopedAction(agentId, domain, page?)` → `DealsResult` (existing `getDealsByRole`, `filters.agent_id`; `getDealsByRole` needs a non-null AppDomain so the caller's own `caller.domain` is passed, never the nullable checked `domain`).
+- `getDomainLeadsDrillAction(domain, kind, period, customFrom?, customTo?)` - the DOMAIN-scoped drill behind the Domains-card **Leads** and **Calls** tiles (2026-06-24/25). Reuses `getLeadsByRole` with `filters.domain`, NO `agent_id`, period range; `kind: 'all' | 'calls' | 'won'`. Called by `DomainLeadsDrillModal`.
+- `getDomainDealsDrillAction(domain, period, customFrom?, customTo?)` - the Domains-card **Deals Closed** and **Revenue** tile drill (2026-06-25). Those tiles count `public.deals` by `won_at`, so this lists DEALS via `getDealsByRole` (`filters.domain` + `won_at` range, NO `agent_id`) - the drill total provably equals the card number. Called by `DomainDealsDrillModal`.
+
+> **Deleted:** `getAgentActivityForManagerAction` (the full-feed drill reuse) no longer exists - zero references repo-wide.
 
 All go through `assertDrillAccess`. Leads/deals reuse the EXISTING `getLeadsByRole` / `getDealsByRole`
 paths with `filters.agent_id` (no new service query — those paths already honour `agent_id` on the
@@ -497,13 +525,14 @@ manager/founder branch; the agent-caller branch ignores it, but these actions ar
 
 | Role | Title | Filter | Content |
 | ------ | ------- | -------- | --------- |
-| Agent | "Your Performance." | `PerformanceFilters showSearch={false}` | `AgentPerformanceAsync` (key-remounted) + `PerformanceMotivationalFooter` |
-| Manager | "Team Performance." | `PerformanceFilters showSearch` | `Suspense` → `ManagerPerformanceAsync domain={profile.domain}` |
-| Founder/admin | "Performance." | `PerformanceFilters showSearch` | `FounderPerformanceShell` |
+| Agent | "Your Performance." | `PerformanceFilters showSearch={false}` (rendered by the page) | `AgentPerformanceAsync` (key-remounted) + `PerformanceMotivationalFooter` |
+| Manager | "Team Performance." | owned by `ManagerPerformanceShell` (`showSearch`, deck trigger in `trailing`) | `ManagerPerformanceShell rosterSlot={Suspense → ManagerPerformanceAsync domain={profile.domain}}` |
+| Founder/admin | "Performance." | owned by `FounderPerformanceShell` (`showSearch`, Agents/Domains tabs in `tabSlot`, deck trigger in `trailing`) | `FounderPerformanceShell` |
 
-**Agent branch:** `AgentPerformanceAsync` does ONE `getAgentPerformanceSummary(period, customFrom?, customTo?)`
-round trip (the self-scoped RPC; replaces the old 5-call / ~17-query fan-out) and passes it as
-`initialData` to `AgentPerformanceShell`, key-remounted by `${period}:${customFrom ?? ''}:${customTo ?? ''}`.
+**Agent branch:** `AgentPerformanceAsync` runs a server-side `Promise.all` of
+`getAgentPerformanceSummary(period, customFrom?, customTo?)` (the self-scoped RPC; replaces the old
+5-call / ~17-query fan-out) and `getAgentPerformanceTrend(…)` (the 0146 daily series), passing them
+as `initialData` + `trend` to `AgentPerformanceShell`, key-remounted by `${period}:${customFrom ?? ''}:${customTo ?? ''}`.
 `PerformanceMotivationalFooter` is server-rendered from the same fetch
 (`initialData.core.leadsWon`, `initialData.effort.inDiscussionCount`, `period`). The Suspense
 fallback is `PerformanceSkeleton` (the agent shape), so the agent's exposure to the manager/founder
@@ -515,8 +544,11 @@ fallback is `PerformanceSkeleton` (the agent shape), so the agent's exposure to 
 
 #### 7b. `PerformanceFilters`
 
-Used by all three roles. Props are just `{ showSearch }`. Composes `<FilterBar>` (`layout="scroll"`)
-with `useUrlFilters` — the SAME date contract as `/leads` and `/budget`:
+Used by all three roles. Props: `{ showSearch, searchPlaceholder?, searchAriaLabel?, tabSlot?, trailing? }` -
+`tabSlot` is the far-right tab cluster (the founder Agents/Domains `TabSelector`, and the `/budget`
+Accounts/Campaigns tabs) and `trailing` is the right-edge action slot (the Agents-tab "Deck view"
+trigger), so the tabs and the trigger share the one paper filter strip. Composes `<FilterBar>`
+(`layout="scroll"`) with `useUrlFilters` - the SAME date contract as `/leads` and `/budget`:
 
 | Control | Behaviour |
 | --------- | ---------- |
@@ -531,7 +563,7 @@ panels. Below md the bar auto-collapses to the single-row scroll layout.
 
 ---
 
-### 8. Agent Self-View
+### 8. Agent Self-View - the lean single-page scorecard (redesigned 2026-06-25)
 
 #### 8a. `AgentPerformanceShell`
 
@@ -547,67 +579,60 @@ panels. Below md the bar auto-collapses to the single-row scroll layout.
   customFrom:  string | null;       // ISO bound, non-null only for a 'custom' range
   customTo:    string | null;
   initialData: AgentSelfMetrics;    // server-fetched for the resolved range
+  trend:       AgentTrendPoint[];   // real daily series (migration 0146)
 }
 ```
 
 `period`/`customFrom`/`customTo` arrive as PROPS (URL-driven, immutable for a mount) — the page
 key-remounts the shell per range. There is **no in-shell period state, no period selector, no
-isLoading/customFrom state, no metrics-refetch effect, no skip rule**. `data = initialData` directly.
+tab state, no metrics-refetch effect**. `data = initialData` directly.
 
-**State owned:**
+**Layout - one scrollable column, no tabs (the 2026-06-25 redesign removed Overview/Today):**
 
-- `activeTab: 'overview' | 'today'`
-- `pulse: AgentTodayPulse | null` — the ONE Today-pulse fetch
+1. **`TodayStrip`** - the deals-strip-style stat bar: four `StatTile variant="cell"` cells
+   (Calls / Notes / Won / Revenue), "since midnight IST", fed from the pulse
+   (`pulse.callsToday.total` / `pulse.notesToday` / `pulse.deals.dealCount` /
+   `pulse.deals.revenue`); the formatters' null contract renders their em-dash placeholder
+   until the pulse resolves.
+2. **`CoreFourGrid`** - the period KPIs, with `wonTrend={trend.map(p => p.leadsWon)}`.
+3. One paper card holding **`AgentActivityTrendChart`** (the period series; label
+   "Activity · This Period", or "Daily Calls · Last 14 Days" when `trend.length < 2` and the
+   pulse 14-day fallback renders) and **`PipelineLine`** - one calm row of
+   In Discussion (live, `data.effort.inDiscussionCount`) · Nurturing (live) · Revenue (period,
+   from the pulse). `PipelineLine` replaces the retired `EffortGrid` live-pipeline cards.
+4. **`CallOutcomeBar`** - display-only outcome mix for the range.
+5. **`AgentRecentActivityList`** - keyset load-more.
 
-**No period selector.** The shared `PerformanceFilters` strip (rendered by the page above the shell)
-is the only date control.
+`CoreFourGrid`, `CallOutcomeBar`, and `AgentActivityTrendChart` all load via `next/dynamic`
+behind same-shape `.skeleton` fallbacks (Recharts stays out of the initial chunk, perf G-3).
 
-**Content tabs:** two tabs — "Overview" and "Today" — rendered via `TabSelector variant="connected"`,
-`indicatorLayoutId="agent-content-tabs"` (distinct from the founder shell's pills). When
-`period === 'today'`, the tab bar hides and the view goes directly to the Today layout
-(`effectiveTab` forced to `'today'`).
+**State owned:** `pulse: AgentTodayPulse | null` only.
 
 **The ONE pulse fetch.** A single `getAgentPulseAction(period, customFrom?, customTo?)` plain
 `.then()/.catch()` chain (cancelled ref; no `startTransition` — it would defer `setPulse(null)`)
-feeds BOTH the Today tab and the Overview "Today" strip. The fetch gate is one boolean —
-`needsPulse = (Today tab visible) || (Overview "Today" strip visible)`. Because one of the two is
-always true at the current range, `needsPulse` does not flip on a tab switch, so a tab switch fires
-no new request. **To make the strip's data available on the Overview tab you widen this boolean —
-never add a second `getAgentPulseAction` call** (invariant).
+fires **unconditionally once per mount** (the shell key-remounts per range, so a range change is
+a fresh mount). There is no `needsPulse` gate anymore - no tabs means nothing to gate. The pulse
+feeds the `TodayStrip`, the `PipelineLine` revenue, and the fallback 14-day trend.
+**Never add a second `getAgentPulseAction` call** (invariant).
 
-#### 8b. Overview tab
-
-Shows a **today snapshot strip** at the top when `period !== 'today'`: Calls / Notes / Won "since
-midnight IST." The three values come from the **pulse** (`pulse.callsToday.total` /
-`pulse.notesToday` / `pulse.deals.dealCount`), the genuine since-IST-midnight source — **never** the
-period-scoped `data.effort.*` / `data.core.*` fields. Each value renders a skeleton while
-`undefined` (pulse not yet resolved).
-
-Below the strip: `CoreFourGrid` → `EffortGrid` → `CallOutcomeBar` — all scoped to the active range.
-
-When `period === 'today'`, the strip is hidden (the Today tab already shows this data).
-
-#### 8c. Today tab
-
-- Hero 2-column grid: **Calls Today** + **Notes Today** (large Playfair serif values, fed from `pulse.callsToday.total` / `pulse.notesToday`).
-- `AgentCallTrendChart` 14-day daily-calls area chart + the calls new/old split.
-- Period deals (Revenue + deal count) from `public.deals` via the pulse.
-- `AgentRecentActivityList` keyset load-more.
-
-#### 8d. `CoreFourGrid`
+#### 8b. `CoreFourGrid`
 
 - **Layout:** single row of 4 KPI cards (`grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`).
-- **Per card:** Eyebrow; accent-surface icon chip; Playfair value; synthetic `AreaChart` sparkline; period delta with ↑/↓/−; optional benchmark strip; tertiary sub-label.
-- **Sparkline colours** (`useChartTokens().series`): index 0 → accent (Won/Leads); others → info/warning/success.
+- **Per card:** Eyebrow; accent-surface icon chip; Playfair value; period delta with ↑/↓/−; optional benchmark strip; tertiary sub-label.
+- **Sparkline - honest only (2026-06-25):** the synthetic per-card sparklines are GONE. Only **Leads Won** renders one, from the real daily `wonTrend` series (migration 0146); rate cards omit it (a daily rate off 0-2 closes is noise, not trend). Absent/empty series → no sparkline rendered.
 - **Benchmarks:** `agentCount < 2` → all averages `null` → strip omitted entirely (not "—").
 - **Response time benchmark:** Lower is better — accent pip when agent value **<** domain average.
 - **Null contract:** `avgResponseTimeMinutes` and `conversionRate` render **"—"** — never `0m` / `0%`.
 
-#### 8e. `EffortGrid`
+#### 8c. Retired agent-view components
 
-4 compact cards. Calls Logged (success), Notes Written (accent), In Discussion (info), Nurturing (warning). Fill bars on Calls + Notes only. In Discussion / Nurturing: no bar (live pipeline counts, not period activity).
+`EffortGrid.tsx` (the 4 effort cards) and `AgentCallTrendChart.tsx` (the single-series 14-day
+area chart) are DELETED. The live In Discussion / Nurturing counts now render in the in-shell
+`PipelineLine` row; the trend surface is `AgentActivityTrendChart` (multi-series Calls · Notes ·
+Won over the period, falling back to the pulse 14-day call series when the range plots fewer
+than 2 buckets - no extra fetch). Never recreate the deleted files.
 
-#### 8f. `CallOutcomeBar`
+#### 8d. `CallOutcomeBar`
 
 Left legend (pill rows: dot, label, count, %) + right `PieChart` donut (`DONUT_SIZE` 180px explicit,
 not "100%"). Outcome config (`OUTCOME_CONFIG`) maps the five `CallOutcome` values to token colours;
@@ -615,14 +640,14 @@ fills resolved via `resolveColorMap`. Optional `onSliceClick(outcome)` turns eac
 into a tap target (opens `AgentLeadsPredicateDrillModal`); absent → display-only. Empty: Playfair
 italic "No calls logged this period." Loaded via `next/dynamic` from each Recharts call site (perf G-3).
 
-#### 8g. `PerformanceMotivationalFooter`
+#### 8e. `PerformanceMotivationalFooter`
 
 Server component in `page.tsx`. Playfair italic, no glyph. Renders below agent content. Copy: if
 `leadsWon > 0` → closed count (`PERIOD_PHRASE` maps `this_week`/`this_month`/`last_month` to a phrase,
 else "in this period"); else if `inDiscussionCount > 0` → "almost there"; else → "Every expert was
 once a beginner."
 
-#### 8h. `PerformanceSkeleton`
+#### 8f. `PerformanceSkeleton`
 
 Agent-shaped skeleton: Tier 1 — 4 KPI card skeletons; Tier 2 — 4 effort skeletons; Tier 3 — outcome
 card skeleton (legend rows + donut). Used by the agent branch's Suspense fallback.
@@ -630,6 +655,17 @@ card skeleton (legend rows + donut). Used by the agent branch's Suspense fallbac
 ---
 
 ### 9. Manager View
+
+#### 9a-0. `ManagerPerformanceShell` (new, 2026-06-25)
+
+`src/app/(dashboard)/performance/ManagerPerformanceShell.tsx` - `'use client'`, manager role only.
+Mirrors `FounderPerformanceShell`'s single-paper-strip layout minus the Agents/Domains tabs (one
+domain, one roster - no tabs). It owns the shared `PerformanceFilters` strip (`showSearch`) and
+hosts the roster panel's **"Deck view" trigger** on the filter bar's `trailing` edge, reusing the
+SAME `FounderPerfActionsProvider` registration bridge the founder shell uses (R-01 - no second
+trigger-hoist mechanism). On mobile the trailing slot stays null (the deck IS the view there).
+`rosterSlot` is the server-rendered `ManagerPerformanceAsync` subtree passed as a prop (RSC
+composition). The page renders this shell directly in the manager branch.
 
 #### 9a. `ManagerPerformanceAsync`
 
@@ -675,8 +711,10 @@ restoring the selected agent + open detail panel. A stale `?agent=` self-heals v
 the panel takes an **early-return branch that renders the deck ONLY** — the two-column list is never
 in the tree. The deck auto-opens once per mount via an `autoOpenedDeck` ref latch (a manual close is
 respected); a closed deck shows a calm inline "Open agent deck" prompt, never the list. On desktop/
-tablet the deck stays a trigger-driven overlay (the "Deck view" button, hoisted onto the founder
-shell's tab row via `useFounderPerfActions`). Managers and desktop/tablet never auto-open.
+tablet the deck stays a trigger-driven overlay: the "Deck view" button is hoisted onto the hosting
+shell's filter strip (`trailing` slot) via `useFounderPerfActions` - the founder shell AND
+`ManagerPerformanceShell` both host it, so **managers get the deck too** (2026-06-25;
+`showDeckTrigger = visibleAgents.length > 0`, no role gate). Managers and desktop/tablet never auto-open.
 
 #### 9d. `AgentDetailPanel`
 
@@ -740,25 +778,27 @@ with `{ kind: 'outcome' }`.
 #### 10a. `FounderPerformanceShell` (`'use client'`)
 
 Owns `activeTab: 'agents' | 'domains'` in `useState` (initial `'agents'`) — **never** a URL param.
-The tab switcher is a `TabSelector variant="pill"`, `indicatorLayoutId="founder-perf-tabs"`,
-`fullWidth={isMobile}`. Props: `domain` (placeholder `DEFAULT_GIA_DOMAIN`), `period`, `customFrom?`,
+Props: `domain` (placeholder `DEFAULT_GIA_DOMAIN`), `period`, `customFrom?`,
 `customTo?`, `initialDomainHealth`, `initialTargets` (`DomainTarget[]`), `monthDeals`
 (`Partial<Record<AppDomain, number>>` — deals closed THIS MONTH per domain, the month-pinned meter
-input), `canEditTargets`, `agentsSlot`.
+input), `scopeDomain` (`AppDomain | null` - the global-selector pick, 2026-06-25),
+`canEditTargets`, `agentsSlot`.
 
-- The tab row carries the hoisted "Deck view" trigger on the right (desktop only, Agents tab only) — the Agents-tab roster panel registers it via `FounderPerfActionsProvider` / `useFounderPerfActions`.
+- **Single-strip layout (2026-06-25):** the Agents/Domains `TabSelector` renders INSIDE the shared `PerformanceFilters` strip via its `tabSlot`, and the hoisted "Deck view" trigger sits in the strip's `trailing` slot (desktop only, Agents tab only - the Agents-tab roster panel registers it via `FounderPerfActionsProvider` / `useFounderPerfActions`). There is no separate tab row. `ManagerPerformanceShell` mirrors this layout for the manager view.
 - **Agents tab:** renders the `agentsSlot` (a server `<Suspense fallback={<ManagerPerformanceSkeleton />}><ManagerPerformanceAsync allDomains /></Suspense>` passed from `page.tsx`). The slot stays mounted (`display:none` when inactive) so the roster + selection survive a tab round-trip.
-- **Domains tab:** renders `<DomainOverviewPanel initialData={initialDomainHealth} period customFrom customTo initialTargets monthDeals canEditTargets />`. `DomainOverviewPanel` is `next/dynamic` (perf audit G-3) — its Recharts chunk loads on first Domains-tab click, behind a same-shape `.skeleton` fallback.
+- **Domains tab:** renders `<DomainOverviewPanel initialData={initialDomainHealth} period customFrom customTo initialTargets monthDeals scopeDomain canEditTargets />`. `DomainOverviewPanel` is `next/dynamic` (perf audit G-3) - its Recharts chunk loads on first Domains-tab click, behind a same-shape `.skeleton` fallback.
 
 #### 10b. `DomainOverviewPanel` (founder Domains tab)
 
 `src/components/performance/DomainOverviewPanel.tsx` — `'use client'`.
 
 - Seeded with `initialDomainHealth` (fetched server-side in `page.tsx` for the active range) so first paint needs no client fetch.
-- Refetches via `getDomainHealthMetricsAction(period, customFrom, customTo)` on period/date change.
-- Renders four GIA-domain cards (2×2): Total Leads · Total Calls · Total Revenue (+ conversion) + Deals Closed per domain, plus the month-pinned `DomainTargetMeter` and a comparative Recharts `BarChart` with a metric toggle (`TabSelector variant="accent"`, `indicatorLayoutId="domain-metric-toggle"` — distinct from the founder shell's `founder-perf-tabs` pill, which is co-mounted). Mobile = CSS scroll-snap carousel (no library).
+- **Global-domain scoping (2026-06-25):** takes a `scopeDomain` prop; `visibleDomains = scopeDomain ? [scopeDomain] : GIA_DOMAINS` - picking a domain in the global `serene-domain` selector renders just that one card. Not a security boundary (admin/founder only here).
+- Refetches via `getDomainHealthMetricsAction(period, customFrom, customTo, scopeDomain ?? undefined)` on period/date/scope change.
+- Renders the GIA-domain cards (2×2 when unscoped): Total Leads · Total Calls · Total Revenue (+ conversion) + Deals Closed per domain, plus the month-pinned `DomainTargetMeter` and a comparative Recharts `BarChart` with a metric toggle (`TabSelector variant="accent"`, `indicatorLayoutId="domain-metric-toggle"`). Mobile = CSS scroll-snap carousel (no library).
+- **Domain-card tile drills (2026-06-24/25):** every card tile is a tap target. The **Leads** and **Calls** tiles open `DomainLeadsDrillModal` (a thin `LeadDrillModal` caller supplying `getDomainLeadsDrillAction`; `kind: 'all' | 'calls' | 'won'` maps the tile to the lead slice and the per-row meta line). The **Deals Closed** and **Revenue** tiles open `DomainDealsDrillModal` (`DrillModalShell` + `DealDrillRow`, fed by `getDomainDealsDrillAction`) - those tiles count `public.deals` by `won_at`, so the drill lists DEALS, not leads, and its total ties out to the card number. One `DomainTileTarget` drill state at the panel level; both modals portal via `DrillModalShell`.
 - `DomainTargetMeter`: radial deals-vs-target meter (Recharts `RadialBarChart`, 2 colours via `useChartTokens`); month-pinned (`monthDeals` vs `domain_targets`, never the period filter); target null/0 → `<EmptyState>` inline "No target set." — never a division; founder/admin inline edit via `upsertDomainTargetAction`.
-- `DomainHealthGrid.tsx` is a **separate, retained-but-unmounted** legacy grid — not used on either tab.
+- `DomainHealthGrid.tsx` was DELETED in the 2026-07-02 dead-code purge - it no longer exists.
 
 #### 10b-2. Founder drill-down deck (`FounderDrillDownDeck`)
 
@@ -793,7 +833,7 @@ re-validates it.
 | `getAgentDetailMetricsAction` | Domain must match caller | No domain guard; `domain: null` allowed |
 | Page title | "Team Performance." | "Performance." |
 | URL `?domain=` | **Never used for scope** | The global selector seeds the roster filter only (not an RLS boundary) |
-| Founder deck | — | Trigger-opened (desktop) / auto-opened (mobile) |
+| Deck view | Trigger-opened via `ManagerPerformanceShell` (2026-06-25) | Trigger-opened (desktop) / auto-opened (mobile) |
 
 ---
 
@@ -812,7 +852,7 @@ re-validates it.
 1. **Page:** Role branch; manager `domain={profile.domain}`; guest redirect.
 2. **Self-view RPC:** `get_agent_performance` / `get_agent_today_pulse` are self-scoped (`auth.uid()`) — an agent can only ever read their own metrics; there is no agent self-metrics action to spoof.
 3. **`getAgentDetailMetricsAction` / `getAgentFirstTouchScorecardAction`:** `requireProfile(['manager','admin','founder'])`; manager must pass matching domain.
-4. **All drill-downs:** the shared `assertDrillAccess` (same posture as 3). The founder deck trigger is founder-only to avoid the manager domain-pass ambiguity.
+4. **All drill-downs:** the shared `assertDrillAccess` (same posture as 3). The deck trigger shows for any manager+ view with a non-empty roster (`showDeckTrigger = visibleAgents.length > 0` - managers included since 2026-06-25); the action-layer manager-domain guard is the real boundary.
 5. Never trust a client-supplied domain for manager authorization.
 
 ---
@@ -834,7 +874,7 @@ re-validates it.
 13. **Sidebar order** uses `performance-roster-display.ts` (A–Z / domain groups), not API sort order.
 14. **Founder domain filter** is the roster `FilterDropdown` (synced to the global selector) — never a page filter-bar control, never an RLS boundary.
 15. **The date model is pure `date_from`/`date_to` URL params for all three roles** — `period` is internal/derived via `resolvePerformanceDateParams`. Never re-add `?period=`/`?from=`/`?to=` parsing or an `all_time` selector.
-16. **The agent shell key-remounts per range** (`key={period:customFrom:customTo}`) with server-fetched `initialData`. There is no client metrics refetch and no `getAgentSelfMetricsAction`. The only agent-view client fetch is the ONE Today pulse (one fetch path, widen `needsPulse` — never add a second).
+16. **The agent shell key-remounts per range** (`key={period:customFrom:customTo}`) with server-fetched `initialData` + `trend` (the 0146 daily series, fetched in the same server `Promise.all`). There is no client metrics refetch and no `getAgentSelfMetricsAction`. The only agent-view client fetch is the ONE Today pulse, fired unconditionally once per mount (no tabs, no `needsPulse` gate) - never add a second pulse call.
 17. **`getAgentDetailMetrics` runs exactly 4 queries** (cohort leads, won deals, cohort call-count, call notes for outcomes). Do not reintroduce a separate IST-today `callsToday` query — `callsToday` mirrors `totalCallsMade`. There is **no** health `useEffect` in `AgentDetailPanel`; its only fetch is the `Promise.all` of `getAgentDetailMetricsAction` + `getAgentFirstTouchScorecardAction`, on a cache miss (§9d).
 18. **One first-touch classification pass.** A bar's count (`getAgentFirstTouchScorecard`) and its drill list (`getAgentFirstTouchBucketLeadIds`) both read `classifyFirstTouchPairs` — never re-fork the bucketing, never move the business-minute ruler into SQL (R-01).
 19. **Charts emit clicks, never fetch.** `PipelineBar`/`CallOutcomeBar`/`FirstTouchScorecard` `on*Click` props are optional and display-only when absent; the drill state lives in the consumer (A-06).
@@ -848,10 +888,9 @@ re-validates it.
 
 | File | Role |
 | ------ | ------ |
-| `PerformanceFilters.tsx` | THE shared filter bar (ALL roles + `/budget`). Composes `<FilterBar dateRange>` (Range presets + custom Dates, `date_from`/`date_to`) + `useUrlFilters`; props are `{ showSearch }`. No bespoke Period dropdown |
-| `AgentPerformanceShell.tsx` | Agent self-view: Overview/Today content tabs; period arrives as a prop (key-remounted); the ONE Today-pulse fetch feeds both surfaces |
-| `CoreFourGrid.tsx` | Agent KPI row + sparklines |
-| `EffortGrid.tsx` | Agent effort cards |
+| `PerformanceFilters.tsx` | THE shared filter bar (ALL roles + `/budget`). Composes `<FilterBar dateRange>` (Range presets + custom Dates, `date_from`/`date_to`) + `useUrlFilters`; props `{ showSearch, searchPlaceholder?, searchAriaLabel?, tabSlot?, trailing? }`. No bespoke Period dropdown |
+| `AgentPerformanceShell.tsx` | Agent self-view: the lean single-page scorecard (no tabs) - TodayStrip → CoreFourGrid → trend card (`AgentActivityTrendChart` + `PipelineLine`) → `CallOutcomeBar` → `AgentRecentActivityList`; period + `trend` arrive as props (key-remounted); the ONE unconditional pulse fetch |
+| `CoreFourGrid.tsx` | Agent KPI row; only Leads Won carries a sparkline (the real `wonTrend` daily series, 0146) |
 | `CallOutcomeBar.tsx` | Donut + legend (agent self-view + detail panel + the deck card's "Call outcome" mode). Optional `onSliceClick(outcome)` → `AgentLeadsPredicateDrillModal`. Loaded via `next/dynamic` from each Recharts call site |
 | `PipelineBar.tsx` | Segmented lead-status bar + legend chips — extracted from `AgentDetailPanel`'s former `PipelineSection` (R-01); reused by the detail panel "Lead Pipeline" AND the deck "Lead status" mode. Optional `onSegmentClick(status)` → `AgentLeadsPredicateDrillModal`. Pure divs (no Recharts) |
 | `ManagerPerformancePanel.tsx` | Two-column team shell; roster (left) + detail/empty-state (right); domain `FilterDropdown` (synced to global selector); URL `search`; `?agent=` selection mirror; client roster refetch via `getManagerRosterAction`. Mobile `allDomains`: renders the deck only (auto-opens) |
@@ -859,11 +898,13 @@ re-validates it.
 | `StatAtom.tsx` | Single pastel stat tile. Optional `onClick` → pressable `motion.button`; absent → static `motion.div` (`DomainOverviewPanel` passes none) |
 | `FirstTouchScorecard.tsx` | First-touch SPEED card (5 labeled horizontal-bar rows scaled to peak bucket + untouched footnote). Data from `getAgentFirstTouchScorecard`. Optional `onBucketClick(bucketId)` → `AgentFirstTouchDrillModal`; absent → display-only. TWO mount sites (detail panel + deck) |
 | `PerformanceRosterEmptyState.tsx` | Right-panel prompt when `selectedId === null` (wraps `<EmptyState>`) |
-| `DomainOverviewPanel.tsx` | Founder Domains tab — 4 health cards (2×2; incl. Deals Closed) + month-pinned `DomainTargetMeter` + inline target edit + comparative bar chart; refetch via `getDomainHealthMetricsAction`; mobile = CSS scroll-snap carousel |
+| `DomainOverviewPanel.tsx` | Founder Domains tab - health cards (scoped by `scopeDomain`; incl. Deals Closed) + month-pinned `DomainTargetMeter` + inline target edit + comparative bar chart + the domain-card tile drills; refetch via `getDomainHealthMetricsAction(…, scopeDomain?)`; mobile = CSS scroll-snap carousel |
 | `DomainTargetMeter.tsx` | Radial deals-vs-target meter (Recharts `RadialBarChart`, 2 colours); month-pinned; target null/0 → inline `<EmptyState>` |
-| `DomainHealthGrid.tsx` | Legacy domain card grid — retained but **not mounted** on any tab |
-| `AgentCallTrendChart.tsx` | 14-day daily-calls area chart (Today tab); composes `ChartFrame` + `cartesianDefaults`; `next/dynamic` from the shell |
-| `AgentRecentActivityList.tsx` | Agent Today view — keyset "load more" (composite cursor `(created_at, id)`, page 15, button) via `getAgentRecentLeadActivityAction` |
+| `DomainLeadsDrillModal.tsx` | The leads behind a clicked Domains-card **Leads / Calls** tile - thin `LeadDrillModal` caller supplying `getDomainLeadsDrillAction` (`kind: 'all' \| 'calls' \| 'won'` drives the slice + per-row meta) |
+| `DomainDealsDrillModal.tsx` | The DEALS behind a clicked Domains-card **Deals Closed / Revenue** tile - `DrillModalShell` + `DealDrillRow`, fed by `getDomainDealsDrillAction` (`won_at` range, so the list ties out to the card) |
+| `DealDrillRow.tsx` | Single deal row for the deals drills (shared with `AgentDealsDrillModal`); links to the lead dossier when the deal has a lead |
+| `AgentActivityTrendChart.tsx` | Agent scorecard trend - multi-series Calls · Notes · Won over the period (0146), falling back to the pulse 14-day call series when < 2 buckets; composes `ChartFrame` + `cartesianDefaults`; `next/dynamic` from the shell |
+| `AgentRecentActivityList.tsx` | Agent scorecard's recent-activity section - keyset "load more" (composite cursor `(created_at, id)`, page 15, button) via `getAgentRecentLeadActivityAction` |
 | `DrillModalShell.tsx` | THE nested-modal shell for the deck/detail drill-downs — `document.body` portal + `--z-modal-overlay`/`--z-modal-nested` (stacks ABOVE the deck's full `Dialog`). Display-only chrome; caller owns body + fetch |
 | `LeadDrillRow.tsx` | THE single lead row (name + phone + status pill) for the drill modals — a `Link` to `/leads/${slug ?? id}?from=/performance`. Extracted from `AgentLeadsDrillModal` (R-01) |
 | `LeadDrillModal.tsx` | THE generic fetch-on-open lead-list drill (flat, bounded, no load-more). Caller supplies `title` + `fetcher` + `fetchKey`; renders `Spinner → LeadDrillRow → EmptyState` inside `DrillModalShell`. Every chart/metric flat-list drill is a different fetcher (R-01) |
@@ -880,14 +921,15 @@ identical `{ open, agentId, agentName, domain, onClose }` props — keep the con
 
 | File | Role |
 | ------ | ------ |
-| `page.tsx` | Role branch orchestrator; runs `resolvePerformanceDateParams` for all roles; agent server-fetch + key-remount; founder `Promise.all` (`initialDomainHealth` + month-pinned `monthHealth` + `getDomainTargets`) + `agentsSlot` |
+| `page.tsx` | Role branch orchestrator; runs `resolvePerformanceDateParams` for all roles; agent server `Promise.all` (summary + 0146 trend) + key-remount; founder branch resolves `scopeDomain` (`resolveDomainParam`) → narrowed `healthDomains` + `Promise.all` (`initialDomainHealth` + month-pinned `monthHealth` + `getDomainTargets`) + `agentsSlot` |
 | `loading.tsx` | Route-level Suspense fallback — manager-shaped chrome (`PageHeaderSkeleton` + `FilterBarSkeleton` + `ManagerPerformanceSkeleton`) |
 | `PerformanceSkeleton.tsx` | Agent-shaped skeleton — used by the agent branch's Suspense (`PerformanceAsync.tsx`, the legacy unmounted shell, is DELETED) |
+| `ManagerPerformanceShell.tsx` | Manager `'use client'` shell (2026-06-25) - owns the `PerformanceFilters` strip; hosts the roster's "Deck view" trigger on the strip's trailing edge via `FounderPerfActionsProvider`; takes the server `rosterSlot` |
 | `ManagerPerformanceAsync.tsx` | Team data shell — fetches the roster only (domain health lives on the Domains tab) |
 | `ManagerPerformanceSkeleton.tsx` | Team loading |
-| `FounderPerformanceShell.tsx` | Founder/admin `'use client'` two-tab shell (Agents / Domains); owns tab state; hoists the deck trigger via `FounderPerfActionsProvider` |
+| `FounderPerformanceShell.tsx` | Founder/admin `'use client'` two-tab shell (Agents / Domains); owns tab state; the tabs live in the filter strip's `tabSlot` and the deck trigger in its `trailing` slot (via `FounderPerfActionsProvider`); threads `scopeDomain` into `DomainOverviewPanel` |
 | `FounderDrillDownDeck.tsx` | Founder/admin swipeable per-agent deck (`Dialog size="full"` + `<Carousel>`); trigger-opened on desktop/tablet, the genuine view on mobile; 4 tap tiles (Recent calls / Leads / Won / Revenue) + a lazy, per-agent-cached breakdown toggle (outcome ↔ status) + First-Touch graph, all fed by one `getAgentDetailMetricsAction` + `getAgentFirstTouchScorecardAction` per agent |
-| `founder-perf-actions.tsx` | `FounderPerfActionsContext` / `Provider` / `useFounderPerfActions` — the bridge that lets the Agents-tab roster panel register its "Deck view" trigger on the shell's tab row without lifting roster state |
+| `founder-perf-actions.tsx` | `FounderPerfActionsContext` / `Provider` / `useFounderPerfActions` - the bridge that lets the roster panel register its "Deck view" trigger on the hosting shell's filter strip (founder AND manager shells) without lifting roster state |
 
 #### `src/lib/actions/performance.ts`
 
@@ -898,18 +940,20 @@ identical `{ open, agentId, agentName, domain, onClose }` props — keep the con
 | `getAgentDetailMetricsAction` | `AgentDetailPanel`, deck breakdown | manager (own domain), admin, founder |
 | `getAgentFirstTouchScorecardAction` | `AgentDetailPanel`, deck | `assertDrillAccess` |
 | `getManagerRosterAction` | `ManagerPerformancePanel` | manager (own domain pinned), admin, founder |
-| `getDomainHealthMetricsAction` | `DomainOverviewPanel` | manager, admin, founder |
+| `getDomainHealthMetricsAction` (optional `domain` 4th arg) | `DomainOverviewPanel` | manager, admin, founder |
 | `upsertDomainTargetAction` | `DomainOverviewPanel` / `DomainTargetMeter` | admin, founder |
 | `getAgentCallsForManagerAction` | `AgentCallsDrillModal` | `assertDrillAccess` |
-| `getAgentActivityForManagerAction` | (drill-down reuse — full feed) | `assertDrillAccess` |
 | `getAgentLeadsScopedAction` | `AgentLeadsDrillModal` | `assertDrillAccess` |
 | `getAgentDealsScopedAction` | `AgentDealsDrillModal` | `assertDrillAccess` |
 | `getFirstTouchBucketLeadsAction` | `AgentFirstTouchDrillModal` | `assertDrillAccess` |
 | `getAgentLeadsByPredicateAction` | `AgentLeadsPredicateDrillModal` | `assertDrillAccess` |
+| `getDomainLeadsDrillAction` | `DomainLeadsDrillModal` | `assertDrillAccess` |
+| `getDomainDealsDrillAction` | `DomainDealsDrillModal` | `assertDrillAccess` |
 
 `assertDrillAccess` mirrors `getAgentDetailMetricsAction` authz: `requireProfile(['manager','admin','founder'])`
-→ manager `domain === caller.domain` guard (fails CLOSED). **`getAgentSelfMetricsAction` does not
-exist** — the agent payload is server-fetched in `page.tsx`.
+→ manager `domain === caller.domain` guard (fails CLOSED). **`getAgentSelfMetricsAction` and
+`getAgentActivityForManagerAction` do not exist** - the agent payload (summary + trend) is
+server-fetched in `page.tsx`, and the manager activity-feed drill was deleted (zero call sites).
 
 ---
 

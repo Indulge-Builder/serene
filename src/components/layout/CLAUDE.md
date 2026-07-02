@@ -135,10 +135,12 @@ the layout creates `notificationsPromise` only when off. Both states compile and
 
 ### Single bell mount (the failure-mode guard)
 
-`useNotifications` names its Realtime channel `notifications:${userId}` with **no `useId()` mount
-suffix**. Two mounted `NotificationBell`s for one user ⇒ two identical channels + two independent
-unread states + double chime. With `TOP_BAR_ENABLED` on, the Sidebar footer bell is gated OFF, so
-the one `PageControls` bell per rendered page is the only mount. Never add a second bell mount.
+`useNotifications` names its Realtime channel `notifications:${userId}:${mountId}` (a `useId()`
+mount suffix was added 2026-07-02 per P-06 — Strict Mode double-mount safety). The nonce removes
+the channel-name *collision*, but two mounted `NotificationBell`s for one user would still mean
+two independent unread states + double chime. With `TOP_BAR_ENABLED` on, the Sidebar footer bell
+is gated OFF, so the one `PageControls` bell per rendered page is the only mount. Never add a
+second bell mount.
 
 ### Where PageControls is wired
 

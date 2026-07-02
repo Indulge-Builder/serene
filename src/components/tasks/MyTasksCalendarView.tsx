@@ -95,7 +95,10 @@ function sectionLabel(dateKey: string): string {
   const diffDays = Math.round(
     (d.getTime() - new Date(todayKey() + 'T00:00:00').getTime()) / 86_400_000,
   );
-  const dayName  = d.toLocaleDateString('en-US', { weekday: 'long' });
+  // Both halves render the SAME instant through IST-pinned formatDate so the
+  // weekday can never disagree with the date beside it (pre-2026-07-02 the
+  // weekday came from the browser's local TZ while the date was IST).
+  const dayName  = formatDate(d, 'EEEE');
   const dayMonth = formatDate(d, 'd MMM');
   if (diffDays < 7) return `${dayName}, ${dayMonth}`;
   return formatDate(d, 'EEE, d MMM yyyy');
@@ -399,7 +402,6 @@ export function MyTasksCalendarView({
   function renderSection(section: DateSection) {
     const sIsToday   = !!section.isToday;
     const sIsOverdue = !!section.isOverdue;
-    const sIsNoDate  = !!section.isNoDate;
     const isCollapsed = collapsedKeys.has(section.key);
 
     const headerBg = sIsOverdue

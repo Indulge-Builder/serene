@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/escalations` — the manager+ breach surface for the Gia follow-up engine (live SLA breaches, overdue follow-up tasks, going-cold leads).
 > **Audience:** engineers. · **Source-of-truth scope:** the escalations route + the escalation reads in `sla-service.ts`. Engine business rules: `../modules/gia.md` §4.
-> **Last verified:** 2026-06-25 (shipped 2026-06-12; agent self-view added 2026-06-25).
+> **Last verified:** 2026-07-02 (shipped 2026-06-12; agent self-view + global domain narrowing added 2026-06-25).
 
 ## 1. Purpose
 
@@ -22,7 +22,11 @@ All roles except guest (`guest` → `redirect('/dashboard')`). **Scope by role:*
   2026-06-25 by giving `getEscalatedLeads`/`getOverdueGiaTasks` an optional `assignedTo` arg
   (the one `getGoingColdLeads` already had).
 - **manager** → pinned to their own domain.
-- **admin / founder** → org-wide, with a Domain column.
+- **admin / founder** → org-wide by default, with a Domain column. Since 2026-06-25 the page
+  also honours the global domain selector: it resolves `scopeDomain` via `resolveDomainParam`
+  (`?domain=` param, then the `serene-domain` cookie) and passes it to all three reads. Picking
+  a domain narrows the view; no pick means all domains. This is an additive WHERE, not a
+  security boundary (the same convention as leads/deals/campaigns).
 
 Route prefix `/escalations` is in `DOMAIN_ROUTE_MAP` for the **Gia domains only** — the layout
 guard is domain-based, so a non-Gia agent (finance/tech/…) can neither see the nav link nor reach
@@ -31,8 +35,9 @@ all-roles exception alongside `/performance` (was `isManager`-only before the ag
 
 The header row holds the title left and — when `TOP_BAR_ENABLED` (`lib/constants/feature-flags`,
 currently `true`) — a `<PageControls>` cluster right (notifications + theme; seeded with
-`getNotifications(profile.id)`, `isPrivileged={false}`). This is the only control surface on the
-page; there is no page-level action CTA.
+`getNotifications(profile.id)`, `isPrivileged={isPrivileged}` so admin/founder also get the
+global domain selector here). This is the only control surface on the page; there is no
+page-level action CTA.
 
 ## 3. Data sources
 
@@ -91,7 +96,9 @@ task-reminder mechanism.
 ## 6. Invariants
 
 1. Reads are **never cached** (no Redis, no `unstable_cache`).
-2. Scope args are session-derived only — never from URL params.
+2. The agent `assignedTo` self-scope is session-derived only, never from URL params. The
+   privileged domain narrow deliberately rides the `?domain=` param / cookie via
+   `resolveDomainParam`; it is additive filtering, never a trust boundary.
 3. Breach rows must re-check `trigger_value === lead.status` at read time; never list a
    fired timer for a lead that has moved on.
 4. CAD-prefixed fires never appear as breaches.
@@ -104,4 +111,12 @@ task-reminder mechanism.
 
 - No per-section pagination (limits: 500 timers scanned / 100 tasks / 100 cold leads) —
   revisit if a domain's breach volume ever approaches the caps.
-- Admin/founder domain filter dropdown (currently org-wide only) — add if founders ask.
+- ~~Admin/founder domain filter dropdown~~: shipped 2026-06-25 via the global `DomainSelector`
+  (see §2), not a page-level dropdown.
+
+## 8. See also
+
+`/oversight` (spec: `./oversight.md`) sits beside `/escalations` in the Analytics sidebar
+section and overlaps its "who is slipping" territory: three-tier task oversight for
+manager/admin/founder on the `task_events` stream (migration 0144). Escalations is the
+breach surface; Oversight is the live-activity surface.

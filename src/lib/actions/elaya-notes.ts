@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/actions/_auth";
+import { parseActionInput } from "@/lib/actions/_validation";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { formErrors } from "@/lib/validations/form-errors";
 import {
@@ -29,14 +30,12 @@ export async function upsertNote(
 ): Promise<ActionResult<ElayaNoteRow>> {
   // 1. Zod-first (Rule 02) — before auth, before any DB work.
   const rawId = formData.get("id");
-  const parsed = upsertNoteSchema.safeParse({
+  const parsed = parseActionInput(upsertNoteSchema, {
     id: rawId ? String(rawId) : null,
     title: formData.get("title") ?? "",
     body: formData.get("body") ?? "",
   });
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? formErrors.generic };
-  }
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   // 2. Auth gate (A-18 / Rule 09) — any signed-in staff member.
   const auth = await requireProfile();
@@ -51,9 +50,7 @@ export async function upsertNote(
     body: sanitizeText(body),
   };
 
-  // Not yet in the generated Database type (interim — regen drops the cast).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
 
   if (id) {
     // UPDATE — RLS scopes to the caller's own rows; a foreign id matches zero rows.
@@ -98,16 +95,13 @@ export async function upsertNote(
 export async function deleteNote(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
-  const parsed = deleteNoteSchema.safeParse({ id: formData.get("id") });
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? formErrors.generic };
-  }
+  const parsed = parseActionInput(deleteNoteSchema, { id: formData.get("id") });
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   const auth = await requireProfile();
   if (!auth.ok) return auth.result;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as any;
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from(NOTES_TABLE)
     .delete()

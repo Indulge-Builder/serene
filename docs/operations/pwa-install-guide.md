@@ -2,7 +2,7 @@
 
 > **Purpose:** step-by-step guide to put Serene on your phone's home screen like a real app.
 > **Audience:** everyone on the team — no technical knowledge needed (Part 2 and 3).
-> Part 1 is for whoever deploys the app.
+> Part 1 is for whoever deploys the app. · **Last verified:** 2026-07-02 (full-tree audit).
 > **Last updated:** 2026-06-15
 
 Serene is now a PWA (Progressive Web App). That means the website itself can be

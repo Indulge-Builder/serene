@@ -22,7 +22,6 @@
  */
 
 import {
-  useCallback,
   useEffect,
   useId,
   useRef,
@@ -69,9 +68,10 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { toast } from "@/lib/toast";
 import { TASK_STATUS, TASK_PRIORITY } from "@/lib/constants/task-constants";
 import { TaskRemarksPanel, type TaskRemarkWithAuthor } from "@/components/tasks/TaskRemarksPanel";
+import type { AssigneeSlim } from "@/lib/services/tasks-service";
 import { TaskStatusIcon } from "@/components/tasks/TaskStatusIcon";
 import { Avatar } from "@/components/ui/Avatar";
-import { EASE_OUT_EXPO, FAST_DURATION, PAGE_DURATION } from '@/lib/constants/motion';
+import { BASE_DURATION, EASE_OUT_EXPO, FAST_DURATION, PAGE_DURATION } from '@/lib/constants/motion';
 import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
 import type {
   Task,
@@ -98,7 +98,7 @@ export interface SubTaskModalProps {
   onClose:          () => void;
   task:             Task;
   group?:           TaskGroup;
-  assignee?:        Pick<Profile, "id" | "full_name" | "avatar_url">;
+  assignee?:        AssigneeSlim;
   initialRemarks:   TaskRemarkWithAuthor[];
   callerProfile:    Pick<Profile, "id" | "role" | "domain">;
   currentUserName?: string;
@@ -824,7 +824,7 @@ export function SubTaskModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
+        transition={{ duration: BASE_DURATION }}
         onClick={onClose}
         style={{
           position:   "fixed",
@@ -1042,7 +1042,7 @@ export function SubTaskModal({
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 6 }}
-                      transition={{ duration: 0.15 }}
+                      transition={{ duration: FAST_DURATION }}
                       style={{
                         position:     "absolute",
                         top:          "calc(100% + var(--space-1))",
@@ -1133,7 +1133,7 @@ export function SubTaskModal({
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 6 }}
-                      transition={{ duration: 0.15 }}
+                      transition={{ duration: FAST_DURATION }}
                       style={{
                         position:     "absolute",
                         top:          "calc(100% + var(--space-1))",
@@ -1598,7 +1598,7 @@ export function SubTaskModal({
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 8 }}
-                    transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+                    transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
                     style={{
                       display:        "flex",
                       justifyContent: "flex-end",

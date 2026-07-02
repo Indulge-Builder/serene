@@ -8,7 +8,7 @@ import { DossierCardSkeleton } from '@/components/leads/LeadDossierSkeletons';
 
 export default function LeadDossierLoading() {
   return (
-    <main className="flex-1 p-4 sm:p-6 lg:p-8" style={{ maxWidth: '1280px' }}>
+    <main className="flex-1 p-4 sm:p-6 lg:p-8">
       {/* Header — back button circle + title + phone line */}
       <div
         style={{

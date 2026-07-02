@@ -4,7 +4,7 @@
 > behind the one notification fan-out seam, so every existing event gets push for free.
 > **Audience:** engineers. · **Source-of-truth scope:** Web Push architecture + contracts.
 > **Status:** shipped 2026-06-14 (migration 0120). VAPID, the `web-push` library — no SaaS.
-> **Last verified:** 2026-06-15.
+> **Last verified:** 2026-07-02.
 
 ## What it is
 
@@ -21,8 +21,18 @@ After the in-app row insert it calls **`dispatchPush(recipient_id, { title, body
 existing trigger gets push with **zero edits to any call site**. New event types inherit push automatically
 by routing through `createNotification`.
 
+**Per-user gate (migration 0133, Seam A):** `createNotification` takes an optional
+`notificationKey` (a category from `src/lib/constants/notification-categories.ts`). When a key is
+supplied and the recipient has muted the `in_app` channel for that category, BOTH the in-app row
+insert AND the push are skipped. Push rides the `in_app` channel of the per-user control plane;
+there is no separate "push" channel (`NotificationChannel = 'in_app' | 'whatsapp'`). No key, or
+any gate error, means send (the gate fails open, so a notification is never lost to a pref-read
+failure). Transactional keys (`lead_initiation`, `elaya_reply`) are never gated. Users edit their
+prefs in `src/components/profile/NotificationPreferences.tsx` on `/profile`.
+
 ```text
-event site → createNotification → INSERT notifications row (source of truth)
+event site → createNotification → [notificationKey? recipient muted in_app → skip row AND push]
+                                → INSERT notifications row (source of truth)
                                 → dispatchPush(recipient, payload)   ← non-fatal, best-effort
 ```
 
@@ -50,7 +60,9 @@ event site → createNotification → INSERT notifications row (source of truth)
 ## Invariants (never weaken)
 
 1. **In-app row is source of truth; push is non-fatal.** `dispatchPush` NEVER throws — it logs and
-   returns. The in-app `notifications` row exists regardless of any send outcome.
+   returns. The in-app `notifications` row exists regardless of any send outcome. One deliberate
+   exception: the 0133 pref gate above skips the row and the push together when the recipient has
+   muted the category, before any send is attempted.
 2. **Server + Node only.** `web-push` throws under the Edge runtime. Both `createNotification` callers
    (server actions + Trigger.dev) are Node; there is no edge route in the app.
 3. **Dead-endpoint prune is mandatory.** Endpoints expire constantly (reinstall, token rotation,
@@ -78,6 +90,8 @@ event site → createNotification → INSERT notifications row (source of truth)
 
 ## Related
 
+- Per-user notification prefs (migration 0133): `src/lib/constants/notification-categories.ts`,
+  `src/lib/services/notification-prefs-service.ts`
 - In-app notification spine + bell: `../pages/profile.md`, `../architecture/overview.md`
 - PWA install + home-screen icon: `../operations/pwa-install-guide.md`
 - The Trigger.dev jobs that fan out through `createNotification`: `../integrations/trigger-dev.md`

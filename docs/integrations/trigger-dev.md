@@ -2,7 +2,7 @@
 
 > **Purpose:** the async-job layer — what runs on Trigger.dev, the idempotency/tag conventions, and the hook points in the action layer.
 > **Audience:** engineers. · **Source-of-truth scope:** job mechanics and conventions. The SLA *business rules* (thresholds, recipients) live in `../modules/gia.md` § SLA Engine.
-> **Last verified:** 2026-06-20 against `trigger.config.ts`, `src/trigger/lead-sla.ts`, `src/trigger/task-reminders.ts`, `src/trigger/lead-revival.ts`, `src/trigger/usage-snapshot.ts`, `src/trigger/usage-rollup.ts`, `src/lib/services/revival-service.ts`, `src/lib/actions/sla.ts`.
+> **Last verified:** 2026-07-02 against `trigger.config.ts`, `src/trigger/lead-sla.ts`, `src/trigger/task-reminders.ts`, `src/trigger/lead-revival.ts`, `src/trigger/usage-snapshot.ts`, `src/trigger/usage-rollup.ts`, `src/lib/trigger/cancel-runs.ts`, `src/lib/services/revival-service.ts`, `src/lib/actions/sla.ts`.
 
 ---
 
@@ -36,7 +36,7 @@ Job files must be exported from `src/trigger/` for the scanner to register them 
 | Export | What it does |
 | ------ | ------------ |
 | `scheduleLeadSlasTask(leadId, ruleCode, fireAt, assignedAgentId, domainManagerIds, opts?)` | schedules one DELAYED run per (lead, rule); writes `trigger_run_id` back to `lead_sla_timers`. `opts.idempotencySuffix` appends to the key — daily cadence ticks pass the IST date of `fireAt` |
-| `cancelLeadSlasByLeadTask(leadId)` | lists all DELAYED/QUEUED runs for tag `lead-sla-${leadId}`, cancels each, then `cancelSlaTimersForLeadInDb` |
+| `cancelLeadSlasByLeadTask(leadId)` | cancels all DELAYED/QUEUED runs for tag `lead-sla-${leadId}` via the shared `cancelRunsByTag()` helper (`src/lib/trigger/cancel-runs.ts`, also used by `cancelTaskReminder`; never re-inline the list-and-cancel loop), then `cancelSlaTimersForLeadInDb` |
 | `fireLeadSlaTask` | the delayed task itself — calls `fireSlaBreachAction` (`lib/actions/sla.ts`), which loads the `sla_policies` row per fire and branches on `trigger_kind` (status breach vs CAD cadence tick) |
 
 - **Idempotency key:** `lead-sla-${leadId}-${ruleCode}` (status rules) /
@@ -60,15 +60,17 @@ Job files must be exported from `src/trigger/` for the scanner to register them 
 
 | Export | What it does |
 | ------ | ------------ |
-| `scheduleTaskReminder(taskId, dueAt, assignedTo)` | schedules the reminder; **no-op when `dueAt <= now()`** (never errors on past dates) |
-| `cancelTaskReminder(taskId)` | cancels by tag `task-reminder-${taskId}` — sweeps the due reminder AND any pending overdue check (same tag) |
-| `sendTaskReminderTask` | at due: `task_due` in-app for every category (unchanged); for `gia_followup` tasks additionally the `task_due_reminder` WhatsApp template to the agent (policy TASK-01A, channel-gated) and arming of the overdue check at due + TASK-01B threshold |
-| `checkTaskOverdueTask` | at due+30 clock-min (TASK-01B): exits on any clearing event (task completed/cancelled, due_at moved, lead activity after due); otherwise stamps `tasks.overdue_at` **exactly once** (`UPDATE … WHERE overdue_at IS NULL`) and notifies the lead's domain managers in-app (`task_overdue_manager`) + WhatsApp |
+| `scheduleTaskReminder(taskId, dueAt, assignedTo)` | schedules the at-due reminder; **no-op when `dueAt <= now()`** (never errors on past dates). Also arms `sendTaskDueSoonTask` at due minus 30 min (fires immediately when under 30 min remain; non-fatal on failure) |
+| `cancelTaskReminder(taskId)` | cancels by tag `task-reminder-${taskId}` via the shared `cancelRunsByTag()` helper (`src/lib/trigger/cancel-runs.ts`); sweeps all three jobs on the tag: due reminder, due-soon ping, and any pending overdue check |
+| `sendTaskDueSoonTask` | at due minus 30 min (0142): the agent's "due soon" WhatsApp (`sendTaskDueSoonAgentNotification`), gated by TASK-01A.active + the `whatsapp` channel; exits silently if the task is closed or `due_at` moved |
+| `sendTaskReminderTask` | at due, four things: (1) `task_due` in-app for every task (`notificationKey: 'task_due'`, per-user gated via the 0133 control plane); (2) the agent's own "task just went overdue" WhatsApp for EVERY task, lead or not (`sendTaskOverdueAgentNotification`, 0142; TASK-01A + `whatsapp` channel gated); (3) arms the overdue check at due + TASK-01B threshold; (4) for lead-linked tasks (a `task_gia_meta` row exists; the `gia_followup` category was collapsed in 0138, so the branch keys on meta presence, not a category) additionally the lead-shaped `task_due_reminder` WhatsApp template |
+| `checkTaskOverdueTask` | at due + threshold clock-min (TASK-01B): exits on any clearing event (task completed/cancelled, due_at moved, lead activity after due for lead tasks); otherwise stamps `tasks.overdue_at` **exactly once** (`UPDATE … WHERE overdue_at IS NULL`), emits the oversight event, then escalates. Lead task: the lead's domain managers, in-app `task_overdue_manager` + the lead-shaped WhatsApp. Non-lead task: the assignee's manager(s) via `getAssigneeManagers` (`reports_to` when active, else domain managers) + the generic manager template (`task_overdue_manager_generic`, 0142) |
 
-- Idempotency keys: `task-reminder-${taskId}` (due reminder) and
-  `task-overdue-${taskId}-${dueAtISO}` (overdue check — due-stamped so a due_at edit gets its
-  own chain). No run IDs stored in the DB.
-- Both jobs read their TASK-01A/B policy rows per run — never module-cached.
+- Idempotency keys: `task-reminder-${taskId}` (due reminder),
+  `task-due-soon-${taskId}-${dueAtISO}` (due-soon ping), and
+  `task-overdue-${taskId}-${dueAtISO}` (overdue check). The due-stamped keys give a due_at
+  edit its own chain while retries dedupe. No run IDs stored in the DB.
+- All three jobs read their TASK-01A/B policy rows per run — never module-cached.
 - `deleteTaskAction` cancels the reminder **before** the DB delete — if cancel throws, the
   delete is aborted (no orphaned reminders for deleted tasks).
 

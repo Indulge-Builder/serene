@@ -12,8 +12,83 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
+      ad_account_recharges: {
+        Row: {
+          ad_account: string
+          amount: number
+          created_at: string
+          currency: string
+          done_by: string
+          id: string
+          method: string | null
+          note: string | null
+          platform: string
+          recharged_at: string
+          updated_at: string
+        }
+        Insert: {
+          ad_account: string
+          amount: number
+          created_at?: string
+          currency?: string
+          done_by: string
+          id?: string
+          method?: string | null
+          note?: string | null
+          platform?: string
+          recharged_at: string
+          updated_at?: string
+        }
+        Update: {
+          ad_account?: string
+          amount?: number
+          created_at?: string
+          currency?: string
+          done_by?: string
+          id?: string
+          method?: string | null
+          note?: string | null
+          platform?: string
+          recharged_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_account_recharges_done_by_fkey"
+            columns: ["done_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ad_creatives: {
         Row: {
           ad_name: string | null
@@ -447,6 +522,41 @@ export type Database = {
           },
         ]
       }
+      elaya_notes: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          body?: string
+          created_at?: string
+          id?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_notes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       elaya_settings: {
         Row: {
           created_at: string
@@ -465,6 +575,51 @@ export type Database = {
           key?: string
           updated_at?: string
           value?: Json
+        }
+        Relationships: []
+      }
+      elaya_training_assets: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          domain: Database["public"]["Enums"]["app_domain"] | null
+          id: string
+          kind: string
+          send_order: number
+          storage_path: string | null
+          tags: string[]
+          title: string
+          updated_at: string
+          url: string | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          id?: string
+          kind: string
+          send_order?: number
+          storage_path?: string | null
+          tags?: string[]
+          title: string
+          updated_at?: string
+          url?: string | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          id?: string
+          kind?: string
+          send_order?: number
+          storage_path?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          url?: string | null
         }
         Relationships: []
       }
@@ -778,6 +933,38 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_preferences: {
+        Row: {
+          in_app: boolean
+          notification_key: string
+          updated_at: string
+          user_id: string
+          whatsapp: boolean
+        }
+        Insert: {
+          in_app?: boolean
+          notification_key: string
+          updated_at?: string
+          user_id: string
+          whatsapp?: boolean
+        }
+        Update: {
+          in_app?: boolean
+          notification_key?: string
+          updated_at?: string
+          user_id?: string
+          whatsapp?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           action_url: string | null
@@ -960,40 +1147,6 @@ export type Database = {
           {
             foreignKeyName: "push_subscriptions_profile_id_fkey"
             columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      // Interim hand-added block (migration 0133) — drop on the next
-      // `supabase gen types` regen. Mirrors the migration exactly.
-      notification_preferences: {
-        Row: {
-          in_app: boolean
-          notification_key: string
-          updated_at: string
-          user_id: string
-          whatsapp: boolean
-        }
-        Insert: {
-          in_app?: boolean
-          notification_key: string
-          updated_at?: string
-          user_id: string
-          whatsapp?: boolean
-        }
-        Update: {
-          in_app?: boolean
-          notification_key?: string
-          updated_at?: string
-          user_id?: string
-          whatsapp?: boolean
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notification_preferences_user_id_fkey"
-            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1198,6 +1351,60 @@ export type Database = {
         }
         Relationships: []
       }
+      suggestions: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          image_paths: string[]
+          message: string
+          resolved_at: string | null
+          resolved_by: string | null
+          sender_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          image_paths?: string[]
+          message: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sender_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          image_paths?: string[]
+          message?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sender_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suggestions_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "suggestions_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_audit_log: {
         Row: {
           changed_at: string
@@ -1236,6 +1443,64 @@ export type Database = {
           },
           {
             foreignKeyName: "task_audit_log_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_events: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          event_type: Database["public"]["Enums"]["task_event_type"]
+          id: string
+          meta: Json
+          subject_id: string | null
+          task_id: string
+          task_title: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          event_type: Database["public"]["Enums"]["task_event_type"]
+          id?: string
+          meta?: Json
+          subject_id?: string | null
+          task_id: string
+          task_title?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          domain?: Database["public"]["Enums"]["app_domain"]
+          event_type?: Database["public"]["Enums"]["task_event_type"]
+          id?: string
+          meta?: Json
+          subject_id?: string | null
+          task_id?: string
+          task_title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_events_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_events_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
             referencedRelation: "tasks"
@@ -1842,6 +2107,7 @@ export type Database = {
         Args: { p_lead_id: string }
         Returns: boolean
       }
+      cold_lead_cutoff: { Args: never; Returns: string }
       create_lead_gia_task: {
         Args: {
           p_assigned_to: string
@@ -1915,6 +2181,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_agent_performance_trend: {
+        Args: { p_date_from: string; p_date_to: string }
+        Returns: Json
+      }
       get_agent_recent_activity: {
         Args: {
           p_domain: Database["public"]["Enums"]["app_domain"]
@@ -1941,8 +2211,60 @@ export type Database = {
           won_count: number
         }[]
       }
+      get_agent_roster_performance_for_elaya: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_domain?: Database["public"]["Enums"]["app_domain"]
+        }
+        Returns: {
+          agent_avatar_url: string
+          agent_domain: Database["public"]["Enums"]["app_domain"]
+          agent_id: string
+          agent_name: string
+          avg_response_minutes: number
+          lost_count: number
+          total_deal_amount: number
+          total_leads: number
+          won_count: number
+        }[]
+      }
+      get_agent_tasks_oversight: {
+        Args: {
+          p_agent: string
+          p_caller_domain: Database["public"]["Enums"]["app_domain"]
+          p_role: string
+        }
+        Returns: {
+          completed_at: string
+          created_at: string
+          due_at: string
+          group_id: string
+          group_title: string
+          id: string
+          lead_first_name: string
+          lead_id: string
+          lead_last_name: string
+          lead_slug: string
+          module: string
+          overdue_at: string
+          priority: string
+          status: string
+          task_category: string
+          title: string
+        }[]
+      }
       get_agent_today_pulse: {
         Args: { p_date_from: string; p_date_to: string; p_today_start: string }
+        Returns: Json
+      }
+      get_agent_today_pulse_for_user: {
+        Args: {
+          p_agent: string
+          p_date_from: string
+          p_date_to: string
+          p_today_start: string
+        }
         Returns: Json
       }
       get_agent_usage: {
@@ -2117,6 +2439,24 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_group_task_summaries_for_user: {
+        Args: { p_priority?: string[]; p_status?: string[]; p_user_id: string }
+        Returns: {
+          assignee_ids: string[]
+          created_at: string
+          created_by: string
+          description: string
+          domain: string
+          due_at: string
+          id: string
+          priority: string
+          status: string
+          subtask_completed: number
+          subtask_total: number
+          title: string
+          updated_at: string
+        }[]
+      }
       get_lead_pipeline_refresh:
         | {
             Args: {
@@ -2171,15 +2511,19 @@ export type Database = {
         Returns: {
           assigned_to: string
           attachments: Json
-          completed_at: string | null
+          completed_at: string
           created_at: string
           created_by: string
-          description: string | null
-          due_at: string | null
-          group_id: string | null
+          description: string
+          due_at: string
+          group_id: string
           id: string
+          lead_first_name: string
+          lead_id: string
+          lead_last_name: string
+          lead_slug: string
           module: Database["public"]["Enums"]["task_module"]
-          overdue_at: string | null
+          overdue_at: string
           priority: string
           status: string
           tags: string[]
@@ -2188,12 +2532,58 @@ export type Database = {
           title: string
           updated_at: string
         }[]
-        SetofOptions: {
-          from: "*"
-          to: "tasks"
-          isOneToOne: false
-          isSetofReturn: true
+      }
+      get_recent_lead_activity: {
+        Args: {
+          p_domain: Database["public"]["Enums"]["app_domain"]
+          p_role: string
+          p_scope?: string
+          p_user_id: string
         }
+        Returns: Json
+      }
+      get_silent_leads_for_revival: {
+        Args: { p_limit: number; p_status: string; p_threshold: string }
+        Returns: {
+          assigned_to: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          first_name: string
+          id: string
+          last_name: string
+          slug: string
+          status: string
+        }[]
+      }
+      get_team_agent_breakdown: {
+        Args: {
+          p_caller_domain: Database["public"]["Enums"]["app_domain"]
+          p_domain: Database["public"]["Enums"]["app_domain"]
+          p_role: string
+        }
+        Returns: {
+          agent_id: string
+          avatar_url: string
+          completed_count: number
+          full_name: string
+          in_review_count: number
+          open_count: number
+          overdue_count: number
+          role: string
+        }[]
+      }
+      get_team_task_overview: {
+        Args: {
+          p_domain: Database["public"]["Enums"]["app_domain"]
+          p_role: string
+        }
+        Returns: {
+          agent_count: number
+          completed_count: number
+          domain: Database["public"]["Enums"]["app_domain"]
+          in_review_count: number
+          open_count: number
+          overdue_count: number
+        }[]
       }
       get_user_domain: {
         Args: never
@@ -2204,6 +2594,7 @@ export type Database = {
         Returns: Database["public"]["Enums"]["user_role"]
       }
       get_wa_unread_count: { Args: never; Returns: number }
+      lead_phone_key: { Args: { p_phone: string }; Returns: string }
       update_lead_status: {
         Args: {
           p_actor_id: string
@@ -2226,6 +2617,12 @@ export type Database = {
         | "b2b"
         | "house"
         | "legacy"
+      task_event_type:
+        | "created"
+        | "status_changed"
+        | "reassigned"
+        | "remark_added"
+        | "overdue"
       task_module: "gia" | "sia" | "core"
       user_role: "founder" | "admin" | "manager" | "agent" | "guest"
     }
@@ -2353,6 +2750,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_domain: [
@@ -2365,6 +2765,13 @@ export const Constants = {
         "b2b",
         "house",
         "legacy",
+      ],
+      task_event_type: [
+        "created",
+        "status_changed",
+        "reassigned",
+        "remark_added",
+        "overdue",
       ],
       task_module: ["gia", "sia", "core"],
       user_role: ["founder", "admin", "manager", "agent", "guest"],
@@ -2443,7 +2850,7 @@ export type SlaHoursMode     = 'agent_shift' | 'business' | 'clock'
 // ─────────────────────────────────────────────
 
 export type Profile = Omit<Database['public']['Tables']['profiles']['Row'], 'theme' | 'app_icon'> & {
-  theme: 'earth' | 'air' | 'water' | 'fire' | 'cosmos'
+  theme: 'earth' | 'air' | 'water' | 'fire' | 'martini' | 'candy'
   // Narrowed to the ICON_KEYS union (src/lib/constants/app-icons.ts) — the
   // app_icon column lands in the base Row as `string` until database.ts is
   // regenerated after migration 0121, the same posture as `theme`.

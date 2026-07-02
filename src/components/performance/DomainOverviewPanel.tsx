@@ -447,7 +447,7 @@ export function DomainOverviewPanel({
       });
 
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [period, customFrom, customTo, scopeDomain]);
 
   // Chart data — one entry per visible domain (all GIA domains, or just the

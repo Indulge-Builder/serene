@@ -105,7 +105,7 @@ export function IconSelector({ currentIcon, profileId }: Props) {
                   transition:    "outline-color var(--duration-fast) var(--ease-in-out)",
                 }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+                { }
                 <img
                   src={iconSrc(option.id)}
                   alt=""

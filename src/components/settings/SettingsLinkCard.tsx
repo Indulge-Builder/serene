@@ -4,7 +4,7 @@ import Link from "next/link";
 import { m as motion } from "framer-motion";
 import { ChevronRight, Timer, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
 
 /**
  * Icon registry — keyed by a plain string so the server page passes a string,
@@ -55,7 +55,7 @@ export function SettingsLinkCard({
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
-        duration: 0.25,
+        duration: EXIT_DURATION,
         delay:    Math.min(index * 0.08, 0.32),
         ease:     EASE_OUT_EXPO,
       }}

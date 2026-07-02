@@ -109,7 +109,7 @@ export function useChartTokens(themeKey?: string): ChartTokens {
     return () => observer.disconnect();
   // themeKey kept as dep for SSR/test overrides; MutationObserver handles the
   // runtime case so production callers don't need to pass it.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [themeKey]);
 
   return tokens;

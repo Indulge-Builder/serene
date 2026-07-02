@@ -35,6 +35,7 @@ import { REDIS_KEYS } from "@/lib/constants/redis-keys";
 import { invalidateLeadCaches } from "@/lib/services/lead-cache";
 import { getOpenRevivedTask } from "@/lib/services/revival-service";
 import { createNotification } from "@/lib/services/notifications-service";
+import { getDomainDecisionMakers } from "@/lib/services/profiles-service";
 import {
   scheduleSlaTimersForLead,
   cancelSlaTimersForLead,
@@ -86,8 +87,7 @@ export async function addLeadNoteCore(
   const admin = createAdminClient();
   const now = new Date().toISOString();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rpcResult, error: rpcError } = await (admin as any).rpc(
+  const { data: rpcResult, error: rpcError } = await admin.rpc(
     "add_lead_plain_note",
     {
       p_lead_id: input.leadId,
@@ -107,7 +107,7 @@ export async function addLeadNoteCore(
     { notes: true, activities: true },
   );
 
-  return { ok: true, noteId: rpcResult.note_id as string };
+  return { ok: true, noteId: (rpcResult as { note_id: string }).note_id };
 }
 
 // ─────────────────────────────────────────────
@@ -135,8 +135,7 @@ export async function addLeadCallNoteCore(
   const admin = createAdminClient();
   const now = new Date().toISOString();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rpcResult, error: rpcError } = await (admin as any).rpc(
+  const { data: rpcResult, error: rpcError } = await admin.rpc(
     "add_lead_call_note",
     {
       p_lead_id: input.leadId,
@@ -233,8 +232,7 @@ export async function createLeadTaskCore(
 
   const admin = createAdminClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rows, error: rpcError } = await (admin as any).rpc(
+  const { data: rows, error: rpcError } = await admin.rpc(
     "create_lead_gia_task",
     {
       p_lead_id: input.leadId,
@@ -242,9 +240,11 @@ export async function createLeadTaskCore(
       p_created_by: actor.userId,
       p_task_type: input.taskType,
       p_title: title,
-      p_description: input.description,
+      // Explicit nulls (not undefined) are intentional — PostgREST sends SQL NULL;
+      // the generated optional-arg types only admit undefined, hence the assertions.
+      p_description: input.description as string | undefined,
       p_priority: input.priority,
-      p_due_at: input.dueAt ? new Date(input.dueAt).toISOString() : null,
+      p_due_at: (input.dueAt ? new Date(input.dueAt).toISOString() : null) as string | undefined,
     },
   );
 
@@ -361,14 +361,14 @@ export async function updateLeadStatusCore(
   const admin = createAdminClient();
   const now = new Date().toISOString();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rpcResult, error: rpcError } = await (admin as any).rpc(
+  const { data: rpcResult, error: rpcError } = await admin.rpc(
     "update_lead_status",
     {
       p_lead_id: input.leadId,
       p_actor_id: actor.userId,
       p_status: input.status,
-      p_reason: input.reason,
+      // Explicit null (not undefined) is intentional — PostgREST sends SQL NULL.
+      p_reason: input.reason as string | undefined,
       p_now: now,
     },
   );
@@ -406,14 +406,11 @@ export async function updateLeadStatusCore(
       ? `${first_name ?? "A lead"} ${last_name}`
       : (first_name ?? "A lead");
 
-    const { data: managers } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("domain", (domain as AppDomain) ?? actor.domain)
-      .in("role", ["manager", "admin", "founder"])
-      .eq("is_active", true);
+    const managers = await getDomainDecisionMakers(
+      ((domain as AppDomain) ?? actor.domain) as string,
+    );
 
-    if (managers && managers.length > 0) {
+    if (managers.length > 0) {
       await Promise.all(
         managers.map((m: { id: string }) =>
           createNotification({

@@ -41,7 +41,6 @@ function dateSeparatorLabel(iso: string): string {
 export function LeadWhatsAppCard({
   leadId,
   leadPhone,
-  leadName,
   callerProfile,
   initialConversation,
   initialMessages,

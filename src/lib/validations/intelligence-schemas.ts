@@ -4,11 +4,12 @@
 
 import { z } from 'zod';
 import { APP_DOMAIN_ENUM } from '@/lib/constants/domains';
+import { uuidField } from '@/lib/validations/fields';
 
 const TAG_PATTERN = /^[a-z0-9_-]+$/;
 
 export const ServiceCaseSchema = z.object({
-  id:           z.string().uuid({ message: 'Invalid case reference.' }).optional(),
+  id:           uuidField('Invalid case reference.').optional(),
   domain:       z.enum(APP_DOMAIN_ENUM, { message: 'Please select a valid domain.' }),
   category:     z
     .string()
@@ -47,7 +48,7 @@ export const ServiceCaseSchema = z.object({
 export type ServiceCaseInput = z.input<typeof ServiceCaseSchema>;
 
 export const ConversationHookSchema = z.object({
-  id:         z.string().uuid({ message: 'Invalid hook reference.' }).optional(),
+  id:         uuidField('Invalid hook reference.').optional(),
   domain:     z.enum(APP_DOMAIN_ENUM, { message: 'Please select a valid domain.' }),
   category:   z
     .string()

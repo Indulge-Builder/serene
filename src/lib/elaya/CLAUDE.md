@@ -46,11 +46,14 @@ tools/customer-registry.ts ← (FEATURE 2) THE customer toolset + dispatch. CUST
                           reachable from a customer turn, by construction.
 memory.ts              ← (Jarvis Phase 3) the learned-memory summarizer (bounded Haiku, reuses
                           provider+PII) + maybeUpdateLearnedMemory (throttled post-turn writer, called
-                          by the SSE route + WhatsApp gate, non-fatal) + retrieveMemoryContext — the
-                          notes-section seam, now LIVE (Feature 3): returns { learned, notes } scoped to
-                          the principal (getNotesForElaya, admin-client, channel-parity), still
-                          embedding-ready (swap the body to vector-retrieve, signature unchanged).
-                          learned lives in user_context.context.learned; notes live in elaya_notes (0152)
+                          by the SSE route + WhatsApp gate, non-fatal). (retrieveMemoryContext was
+                          removed 2026-07-02 — zero callers; the brain reads getUserPersona +
+                          getNotesForElaya directly, and a future embeddings retrieval layer starts
+                          from those call sites.) learned lives in user_context.context.learned;
+                          notes live in elaya_notes (0152)
+access.ts              ← canAccessLead — THE shared per-lead access gate (a SECURITY predicate;
+                          one implementation for BOTH tool registries, dry-audit D6) + the
+                          leadDisplayName/statusLabel model-facing label helpers (D15)
 pii.ts                 ← maskPii() — THE PII gateway every tool result passes before a model sees it
 confirmation.ts        ← classifyConfirmation() — pure English+Hinglish affirmation gate
 brain.ts               ← the tool loop + the confirmation RESOLVER pre-step (the ONLY place a
@@ -59,8 +62,8 @@ brain.ts               ← the tool loop + the confirmation RESOLVER pre-step (t
 
 ## The channel-parity rule (Phase 1 — structural, non-negotiable)
 
-> Anything Elaya can do in-app she can do on WhatsApp, by construction. Full design:
-> `docs/architecture/elaya-jarvis-architecture.md`.
+> Anything Elaya can do in-app she can do on WhatsApp, by construction. Full as-built record:
+> `docs/modules/elaya.md` (the "Jarvis" build section).
 
 Identity is already channel-agnostic: both entry points resolve a verified `ElayaPrincipal`
 (in-app: session→`getCurrentProfile`; WhatsApp: phone→`getActiveProfileByPhone`). The brain never

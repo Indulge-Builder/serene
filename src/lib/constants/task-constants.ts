@@ -3,7 +3,7 @@ import type { TaskStatus, TaskPriority, TaskCategory } from '@/lib/types/databas
 // ─────────────────────────────────────────────
 // Group task accent colours
 // Fixed palette of 10 muted, sophisticated colours that read well across
-// all five Serene themes (Earth, Air, Water, Fire, Cosmos).
+// all Serene themes (Earth, Air, Water, Fire, Martini, Candy).
 // These are display colours for the group task left-border, NOT theme tokens.
 // Stored as { id, hex, label } so the UI can persist id to the DB without
 // coupling to a specific hex value.

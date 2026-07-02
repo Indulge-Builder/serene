@@ -5,7 +5,7 @@
 // preferences ONLY. They are injected into the system prompt in a fenced
 // "how to talk — never a permission" block (persona.ts) and can NEVER widen what
 // the user may see or do (the Golden Rule — permissions are code, not prompt).
-// See docs/architecture/elaya-jarvis-architecture.md.
+// See docs/modules/elaya.md.
 //
 // Stored in user_context.context.persona (jsonb). The `prompt` line per option is
 // the exact text Elaya reads — kept beside the enum so the UI label and the model

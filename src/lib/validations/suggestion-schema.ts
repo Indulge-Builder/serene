@@ -3,6 +3,7 @@ import {
   SUGGESTION_CATEGORY_ENUM,
   MAX_SUGGESTION_IMAGES,
 } from "@/lib/constants/suggestions";
+import { uuidField } from "@/lib/validations/fields";
 
 /**
  * Submit a suggestion / bug report. `message` is the user's prose (sanitized in
@@ -28,6 +29,6 @@ export type CreateSuggestionInput = z.infer<typeof CreateSuggestionSchema>;
 
 /** Resolve a suggestion (admin/founder only — status flip + notify sender). */
 export const ResolveSuggestionSchema = z.object({
-  id: z.string().uuid({ message: "bad_suggestion_id" }),
+  id: uuidField("bad_suggestion_id"),
 });
 export type ResolveSuggestionInput = z.infer<typeof ResolveSuggestionSchema>;

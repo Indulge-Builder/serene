@@ -76,7 +76,7 @@ function escapeCell(value: string | number | null): string {
   return str;
 }
 
-export function buildCSV(rows: ExportRow[], headers: ExportHeader[]): string {
+function buildCSV(rows: ExportRow[], headers: ExportHeader[]): string {
   const headerLine = headers.map((h) => escapeCell(h.label)).join(",");
   const dataLines  = rows.map((row) =>
     headers.map((h) => escapeCell(row[h.key] ?? null)).join(","),

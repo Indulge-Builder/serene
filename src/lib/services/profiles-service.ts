@@ -126,47 +126,6 @@ export async function getAllProfiles(): Promise<Profile[]> {
   return data as Profile[];
 }
 
-/** Fetch profiles filtered by domain. */
-export async function getProfilesByDomain(domain: AppDomain): Promise<Profile[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("domain", domain)
-    .order("full_name", { ascending: true });
-
-  if (error || !data) return [];
-  return data as Profile[];
-}
-
-/** Fetch profiles filtered by role. */
-export async function getProfilesByRole(role: UserRole): Promise<Profile[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("role", role)
-    .order("full_name", { ascending: true });
-
-  if (error || !data) return [];
-  return data as Profile[];
-}
-
-/** Fetch active agents in a given domain (used for round-robin). */
-export async function getActiveAgentsByDomain(domain: AppDomain): Promise<Profile[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("domain", domain)
-    .eq("role", "agent")
-    .eq("is_active", true)
-    .order("full_name", { ascending: true });
-
-  if (error || !data) return [];
-  return data as Profile[];
-}
-
 /** Check if a username is already taken. */
 export async function isUsernameTaken(
   username: string,
@@ -268,6 +227,29 @@ export async function setProfileActive(
 
   if (error) return { data: null, error: error.message };
   return { data: data as Profile, error: null };
+}
+
+/** THE domain decision-maker fan-out read (dry-audit S3): active profiles of the
+ *  given roles in a domain, admin client (cross-user read — RLS would scope to
+ *  the caller). Callers pick the column subset via `select`. */
+export async function getDomainDecisionMakers<T = { id: string }>(
+  domain: string,
+  roles: string[] = ["manager", "admin", "founder"],
+  select = "id",
+): Promise<T[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("profiles")
+    .select(select)
+    .eq("domain", domain as AppDomain)
+    .in("role", roles as UserRole[])
+    .eq("is_active", true);
+
+  if (error) {
+    console.warn("[profiles-service] getDomainDecisionMakers failed:", error.message);
+    return [];
+  }
+  return (data ?? []) as T[];
 }
 
 /**

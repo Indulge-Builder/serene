@@ -1,4 +1,5 @@
 import { Activity, Phone, UserCheck, ArrowRight, PlusCircle, Pencil, Copy } from 'lucide-react';
+import { CardHeader } from '@/components/leads/CardHeader';
 import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
 import { CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
@@ -98,48 +99,22 @@ export function LeadActivityLog({ activities }: Props) {
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-2)',
-          padding:      'var(--space-4) var(--space-5)',
-          borderBottom: '1px solid var(--theme-paper-border)',
-          background:   'var(--theme-paper-subtle)',
-        }}
-      >
-        <Activity
-          style={{
-            width:       '0.875rem',
-            height:      '0.875rem',
-            color:       'var(--theme-text-tertiary)',
-            strokeWidth: 1.5,
-            flexShrink:  0,
-          }}
-        />
-        <span
-          style={{
-            fontFamily:    'var(--font-sans)',
-            fontSize:      'var(--text-2xs)',
-            fontWeight:    'var(--weight-semibold)',
-            letterSpacing: 'var(--tracking-widest)',
-            textTransform: 'uppercase',
-            color:         'var(--theme-text-tertiary)',
-          }}
-        >
-          Activity History
-        </span>
-        <span
-          style={{
-            marginLeft:   'auto',
-            fontFamily:   'var(--font-mono)',
-            fontSize:     'var(--text-2xs)',
-            color:        'var(--theme-text-tertiary)',
-          }}
-        >
-          {visible.length} {visible.length === 1 ? 'event' : 'events'}
-        </span>
-      </div>
+      <CardHeader
+        icon={Activity}
+        label="Activity History"
+        right={
+          <span
+            style={{
+              marginLeft:   'auto',
+              fontFamily:   'var(--font-mono)',
+              fontSize:     'var(--text-2xs)',
+              color:        'var(--theme-text-tertiary)',
+            }}
+          >
+            {visible.length} {visible.length === 1 ? 'event' : 'events'}
+          </span>
+        }
+      />
 
       {/* Timeline */}
       {visible.length === 0 ? (

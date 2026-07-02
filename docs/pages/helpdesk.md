@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/helpdesk` — Call Intelligence "Surface B", the searchable delivery-history library agents consult mid-call.
 > **Audience:** engineers. · **Source-of-truth scope:** this route only. The full feature (taxonomy, schema, retrieval, the dossier "Surface A") lives in `../modules/call-intelligence.md` — this is a thin route spec that points there for depth.
-> **Last verified:** 2026-06-20 against `src/app/(dashboard)/helpdesk/page.tsx`.
+> **Last verified:** 2026-07-02 (full-tree audit) against `src/app/(dashboard)/helpdesk/page.tsx`.
 
 ## 1. Purpose
 

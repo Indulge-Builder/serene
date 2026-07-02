@@ -2,7 +2,7 @@
 
 > **Purpose:** how Serene is built and deployed — providers, build commands, runtime constraints.
 > **Audience:** engineers/ops. · **Source-of-truth scope:** deployment topology and commands. Env vars: `environments.md`.
-> **Last verified:** 2026-06-20 against `package.json`, `trigger.config.ts`, `src/trigger/` (five files), route `maxDuration` exports.
+> **Last verified:** 2026-07-02 against `package.json`, `trigger.config.ts`, `src/trigger/` (five files), route `maxDuration` exports.
 
 ---
 
@@ -35,10 +35,11 @@ repo. Record them here once confirmed.
 
 ## Runtime constraints
 
-- **`maxDuration = 60`** is exported by both webhook routes (`api/webhooks/leads`,
-  `api/webhooks/whatsapp`) so `after()`-deferred notification sends aren't killed by the
-  default lambda timeout. Any new route that carries outward sends in `after()` must export it
-  too (A-16).
+- **`maxDuration`** is exported by three routes: `api/webhooks/leads` at **60**
+  (headroom for the `after()`-deferred notification sends), `api/webhooks/whatsapp` at
+  **180** (covers the full in-request Elaya staff turn and customer-channel work plus the
+  `after()` sends), and `api/elaya/chat` at **180** (the long-running SSE streaming lambda).
+  Any new route that carries outward sends in `after()` must export it too (A-16).
 - **Trigger.dev `maxDuration: 300`** (trigger.config.ts) bounds job runtime.
 - **Migrations before code** when a deploy includes both (the 0098–0101 pattern: new SQL
   signatures are defaults-supersets so old code keeps working against the new DB; the reverse

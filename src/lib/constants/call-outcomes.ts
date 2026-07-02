@@ -12,3 +12,6 @@ const CALL_OUTCOME_DEF = defineEnum([
 
 export const CALL_OUTCOMES: CallOutcome[] = CALL_OUTCOME_DEF.values;
 export const CALL_OUTCOME_LABELS: Record<CallOutcome, string> = CALL_OUTCOME_DEF.labels;
+
+/** Tuple for Zod `z.enum()` — must be non-empty (mirrors LEAD_SOURCE_ENUM). */
+export const CALL_OUTCOME_ENUM = CALL_OUTCOME_DEF.zodEnum;

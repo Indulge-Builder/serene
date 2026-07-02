@@ -7,6 +7,7 @@
 import { getCampaignMetrics } from '@/lib/services/leads-service';
 import { getBudgetSummary } from '@/lib/services/ad-spend-service';
 import { CampaignCard } from '@/components/campaigns/CampaignCard';
+import { EmptyState } from '@/components/ui/EmptyState';
 import type { UserRole, AppDomain, CampaignFilters } from '@/lib/types/database';
 
 type CampaignListAsyncProps = {
@@ -36,26 +37,11 @@ export async function CampaignListAsync({
 
   if (campaigns.length === 0) {
     return (
-      <div
-        style={{
-          padding:    'var(--space-16) var(--space-8)',
-          textAlign:  'center',
-        }}
-      >
-        <p
-          style={{
-            fontFamily:  'var(--font-serif)',
-            fontStyle:   'italic',
-            fontSize:    'var(--text-lg)',
-            fontWeight:  'var(--weight-light)',
-            color:       'var(--theme-text-tertiary)',
-            margin:      0,
-            lineHeight:  'var(--leading-snug)',
-          }}
-        >
-          No campaigns match these filters.
-        </p>
-      </div>
+      <EmptyState
+        title="No campaigns match these filters."
+        size="lg"
+        style={{ padding: 'var(--space-16) var(--space-8)' }}
+      />
     );
   }
 

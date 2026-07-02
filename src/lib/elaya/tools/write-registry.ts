@@ -35,7 +35,6 @@ import type { StaffPrincipal } from "@/lib/elaya/principal";
 // after via canAccessLead(principal, …) (the per-resource trust boundary, Q-13),
 // so the broad admin read is safe — exactly the get_lead_details pattern.
 import { getLeadByRefForElaya } from "@/lib/services/leads-service";
-import type { LeadWithAssignee } from "@/lib/services/leads-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   addLeadNoteCore,
@@ -69,7 +68,8 @@ import {
   type ElayaActionType,
 } from "@/lib/services/elaya-actions-service";
 import { notifyLeadAssigned } from "@/lib/services/lead-assignment-notify";
-import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
+import { LEAD_STATUSES } from "@/lib/constants/lead-statuses";
+import { canAccessLead, leadDisplayName, statusLabel } from "@/lib/elaya/access";
 import { CALL_OUTCOMES, CALL_OUTCOME_LABELS } from "@/lib/constants/call-outcomes";
 import {
   DEAL_CATEGORY_ENUM,
@@ -108,21 +108,17 @@ export type ElayaWriteToolName =
   | "update_task"
   | "delete_task";
 
-const STATE_CHANGING: ReadonlySet<ElayaWriteToolName> = new Set([
-  "update_lead_status",
-  "reassign_lead",
-  // log_deal records money AND flips the lead to Won — a real, reportable record.
-  // It proposes and waits for an affirmative, exactly like the lead state tools.
-  "log_deal",
-  // delete_task is the ONLY state-changing task tier — it proposes and waits for an
-  // affirmative, exactly like the lead state tools. The four other task tools execute
-  // inline (low-risk: a created/edited task is trivially reversible by the user).
-  "delete_task",
-]);
-
-export function isStateChangingWriteTool(name: string): boolean {
-  return STATE_CHANGING.has(name as ElayaWriteToolName);
-}
+// THE STATE-CHANGING (propose-only) TIER — update_lead_status, reassign_lead,
+// log_deal, delete_task. The tier is enforced STRUCTURALLY, not by a lookup:
+// each of these tools' run() calls supersedePriorProposals + insertProposedAction
+// and has NO branch that reaches a mutation core — only the brain resolver
+// (executeProposedAction) mutates, on an affirmative human reply.
+//   • log_deal records money AND flips the lead to Won — a real, reportable record.
+//   • delete_task is the ONLY state-changing task tier; the four other task tools
+//     execute inline (low-risk: a created/edited task is trivially reversible).
+// (The former STATE_CHANGING Set + isStateChangingWriteTool helper were removed
+// 2026-07-02 — zero runtime consumers; this comment is the surviving record.
+// When adding a state-changing tool, follow the run()-shape contract above.)
 
 /** Context the brain threads in (which conversation/channel this turn belongs to). */
 export type WriteToolContext = { conversationId: string; channel: ElayaChannel };
@@ -184,21 +180,6 @@ const TASK_STATUSES = [
 
 function taskStatusLabel(status: string): string {
   return TASK_STATUS[status as TaskStatus]?.label ?? status;
-}
-
-function canAccessLead(principal: StaffPrincipal, lead: LeadWithAssignee): boolean {
-  if (principal.role === "admin" || principal.role === "founder") return true;
-  if (principal.role === "manager") return lead.domain === principal.domain;
-  if (principal.role === "agent") return lead.assigned_to === principal.userId;
-  return false;
-}
-
-function leadDisplayName(lead: { first_name: string | null; last_name: string | null }): string {
-  return [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "this lead";
-}
-
-function statusLabel(status: string): string {
-  return LEAD_STATUS_LABELS[status as LeadStatus] ?? status;
 }
 
 const REFUSE_LEAD = "I couldn't find that lead among the ones you can act on. Double-check the lead with me first.";

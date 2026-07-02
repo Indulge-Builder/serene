@@ -8,6 +8,12 @@
 > **Last regenerated:** 2026-06-26 (against `docs/changelog.md` through 2026-06-26 and the
 > migration files through `0149`). The repo docs are the source of truth — regenerate these when
 > they drift. The single most authoritative live record of change is `docs/changelog.md`.
+>
+> ⚠️ **STALE as of 2026-07-02. Regenerate before the next upload.** Known drift: migrations
+> 0150-0156 are missing (Elaya training assets, customer welcome blast, Elaya notes, theme
+> changes). Themes are now six: Earth, Air, Water, Fire, Martini, Candy (Cosmos, Coffee and
+> Macha were retired). The customer WhatsApp Elaya and the /notes page listed as "next" in
+> file 9 have shipped. Do not upload this pack as-is.
 
 ---
 

@@ -8,7 +8,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { AnimatePresence, m as motion } from "framer-motion";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
 import { toast as toastStore } from "@/lib/toast";
 import { ToastItem } from "@/components/ui/toast-item";
 import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
@@ -83,7 +83,7 @@ export function ToastProvider() {
                 translateY: stackY,
               }}
               transition={{
-                duration: 0.25,
+                duration: EXIT_DURATION,
                 ease:     EASE_OUT_EXPO,
               }}
               style={{

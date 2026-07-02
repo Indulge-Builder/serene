@@ -106,11 +106,13 @@ export function TasksShell({
     personal: "My Tasks",
     group:    "Group Tasks",
   };
+  // validTabs is serialised from the server — key on its joined value so the
+  // memo survives a fresh array reference per render.
+  const validTabsKey = validTabs.join(",");
   const TABS: TabItem[] = useMemo(
     () => validTabs.map((t) => ({ id: t, label: TAB_LABELS[t] })),
-    // validTabs is serialised from the server — stable reference per render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [validTabs.join(",")],
+    [validTabsKey],
   );
 
   return (

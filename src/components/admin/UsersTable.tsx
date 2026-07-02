@@ -9,7 +9,8 @@ import { ROLE_LABELS, USER_ROLES } from "@/lib/constants/roles";
 import { DOMAIN_LABELS, APP_DOMAINS } from "@/lib/constants/domains";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { Avatar } from "@/components/ui/Avatar";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
 
 type UsersTableProps = {
   users: Profile[];
@@ -39,14 +40,12 @@ export function UsersTable({ users }: UsersTableProps) {
     (domainFilter !== "all" ? 1 : 0);
 
   const emptyState = (
-    <div style={{ padding: "var(--space-20) var(--space-8)", textAlign: "center" }}>
-      <p style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "var(--text-xl)", color: "var(--theme-text-secondary)", margin: "0 0 var(--space-2)" }}>
-        {users.length === 0 ? "No team members yet." : "No members match your filters."}
-      </p>
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--theme-text-tertiary)", margin: 0 }}>
-        {users.length === 0 ? "Add the first member to get started." : "Try adjusting your search or filters."}
-      </p>
-    </div>
+    <EmptyState
+      variant="hero"
+      title={users.length === 0 ? "No team members yet." : "No members match your filters."}
+      description={users.length === 0 ? "Add the first member to get started." : "Try adjusting your search or filters."}
+      style={{ padding: "var(--space-20) var(--space-8)" }}
+    />
   );
 
   return (
@@ -141,7 +140,7 @@ function UserCard({ user, index }: { user: Profile; index: number }) {
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
-        duration: 0.25,
+        duration: EXIT_DURATION,
         delay:    staggerDelay / 1000,
         ease:     EASE_OUT_EXPO,
       }}

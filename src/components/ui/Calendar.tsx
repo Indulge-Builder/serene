@@ -3,7 +3,7 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { m as motion, AnimatePresence } from 'framer-motion';
-import { SLOW_DURATION, EASE_SPRING, EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { SLOW_DURATION, FAST_DURATION, EASE_SPRING, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
 export interface TaskDotMeta {
   count: number;
@@ -488,7 +488,7 @@ export function Calendar({
                       scale: 1,
                       opacity: isAccented ? 0.7 : taskMeta!.count >= 3 ? 1 : 0.65,
                     }}
-                    transition={{ duration: 0.15, ease: EASE_SPRING }}
+                    transition={{ duration: FAST_DURATION, ease: EASE_SPRING }}
                     aria-hidden="true"
                     style={{
                       position:     'absolute',

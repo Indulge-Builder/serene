@@ -69,7 +69,7 @@ function parseFieldDataString(raw: unknown): Array<{ name: string; values: strin
   return [];
 }
 
-export function adaptMeta(raw: unknown): NormalizedLeadPayload {
+function adaptMeta(raw: unknown): NormalizedLeadPayload {
   const top = (raw ?? {}) as Record<string, unknown>;
 
   // Unwrap raw_data if Pabbly wrapped the envelope (which it does)
@@ -147,7 +147,7 @@ export function adaptMeta(raw: unknown): NormalizedLeadPayload {
 // Google adapter — source=google
 // Expects flat key-value payload from Pabbly.
 // ─────────────────────────────────────────────
-export function adaptGoogle(raw: unknown): NormalizedLeadPayload {
+function adaptGoogle(raw: unknown): NormalizedLeadPayload {
   const r = (raw ?? {}) as Record<string, unknown>;
 
   const get = (k: string) => str(r[k]);
@@ -191,7 +191,7 @@ const WEBSITE_STANDARD_KEYS = new Set([
   'utm_medium', 'utm_campaign',
 ]);
 
-export function adaptWebsite(raw: unknown): NormalizedLeadPayload {
+function adaptWebsite(raw: unknown): NormalizedLeadPayload {
   const r = (raw ?? {}) as Record<string, unknown>;
 
   const pick = (...keys: string[]) => {

@@ -31,15 +31,14 @@ import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { useMountOnFirstOpen } from '@/hooks/useMountOnFirstOpen';
 import { useTaskCompletionToggle } from '@/hooks/useTaskCompletionToggle';
 import { canToggleTaskComplete } from '@/lib/utils/task-complete-auth';
-import { formatRelativeTime, formatDate } from '@/lib/utils/dates';
+import { formatDate } from '@/lib/utils/dates';
 import { getInitials, hashString } from '@/lib/utils/strings';
 import { toast } from '@/lib/toast';
 import type { SubTaskModalTaskUpdate } from '@/components/tasks/SubTaskModal';
-import { TaskStatusIcon } from '@/components/tasks/TaskStatusIcon';
 import { AssigneePickerModal } from '@/components/tasks/AssigneePickerModal';
 import type { AssignableUser } from '@/lib/types';
 import type { GroupTaskWithMeta } from '@/components/tasks/CreateGroupTaskModal';
-import { TASK_STATUS, TASK_PRIORITY, GROUP_TASK_ACCENT_COLORS, GROUP_TASK_ICONS } from '@/lib/constants/task-constants';
+import { TASK_PRIORITY, GROUP_TASK_ACCENT_COLORS, GROUP_TASK_ICONS } from '@/lib/constants/task-constants';
 import type { TaskGroupRow, SubtaskWithAssignee, TaskRemarkWithAuthor } from '@/lib/services/tasks-service';
 import { Avatar } from '@/components/ui/Avatar';
 import { AvatarStack } from '@/components/ui/AvatarStack';
@@ -47,7 +46,7 @@ import { CollapseReveal } from '@/components/ui/CollapseReveal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { Task, TaskGroup, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
 import { TASK_STATUS_LABELS } from '@/lib/constants/task-types';
-import { EASE_OUT_EXPO, ENTER_DURATION, EXIT_DURATION, FAST_DURATION } from '@/lib/constants/motion';
+import { BASE_DURATION, EASE_OUT_EXPO, ENTER_DURATION, EXIT_DURATION, FAST_DURATION } from '@/lib/constants/motion';
 import {
   filterGroupRows,
   groupFiltersActiveCount,
@@ -262,34 +261,6 @@ function PriorityPill({ priority }: { priority: TaskPriority }) {
         }}
       />
       {cfg.label}
-    </span>
-  );
-}
-
-// ─── Status chip ───────────────────────────────────────────────────────────────
-
-function StatusChip({ status }: { status: TaskStatus }) {
-  const cfg = TASK_STATUS[status];
-  return (
-    <span
-      style={{
-        display:       'inline-flex',
-        alignItems:    'center',
-        gap:           4,
-        padding:       '2px 8px',
-        borderRadius:  'var(--radius-full)',
-        background:    cfg.pillBg,
-        color:         cfg.pillText,
-        fontFamily:    'var(--font-sans)',
-        fontSize:      10,
-        fontWeight:    'var(--weight-semibold)',
-        letterSpacing: '0.04em',
-        whiteSpace:    'nowrap',
-        flexShrink:    0,
-      }}
-    >
-      <TaskStatusIcon status={status} size={9} />
-      {TASK_STATUS_LABELS[status]}
     </span>
   );
 }
@@ -603,7 +574,7 @@ const GroupRow = memo(function GroupRow({
         {/* Chevron */}
         <motion.div
           animate={{ rotate: isExpanded ? 90 : 0 }}
-          transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+          transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
           style={{ display: 'flex', alignItems: 'center', color: 'var(--theme-text-tertiary)', flexShrink: 0 }}
         >
           <ChevronRight style={{ width: 16, height: 16, strokeWidth: 1.5 }} />
@@ -770,7 +741,7 @@ const GroupRow = memo(function GroupRow({
                         initial={{ opacity: 0, y: -4, scale: 0.97 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.97 }}
-                        transition={{ duration: 0.15, ease: EASE_OUT_EXPO }}
+                        transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
                         onClick={(e) => e.stopPropagation()}
                         style={{
                           position:     'fixed',
@@ -1136,7 +1107,7 @@ const GroupRow = memo(function GroupRow({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
+                    transition={{ duration: FAST_DURATION }}
                     onClick={(e) => { e.stopPropagation(); setShowAddSubtask(true); }}
                     style={{
                       display:    'flex',

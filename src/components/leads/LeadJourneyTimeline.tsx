@@ -1,4 +1,5 @@
 import { CheckCircle2, Circle, Clock, XCircle, AlertCircle } from 'lucide-react';
+import { CardHeader } from '@/components/leads/CardHeader';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants/lead-statuses';
 import { formatDate } from '@/lib/utils/dates';
 import type { Lead, LeadStatus } from '@/lib/types/database';
@@ -87,40 +88,11 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-2)',
-          padding:      'var(--space-4) var(--space-5)',
-          borderBottom: '1px solid var(--theme-paper-border)',
-          background:   'var(--theme-paper-subtle)',
-        }}
-      >
-        <Clock
-          style={{
-            width:       '0.875rem',
-            height:      '0.875rem',
-            color:       'var(--theme-text-tertiary)',
-            strokeWidth: 1.5,
-            flexShrink:  0,
-          }}
-        />
-        <span
-          style={{
-            fontFamily:    'var(--font-sans)',
-            fontSize:      'var(--text-2xs)',
-            fontWeight:    'var(--weight-semibold)',
-            letterSpacing: 'var(--tracking-widest)',
-            textTransform: 'uppercase',
-            color:         'var(--theme-text-tertiary)',
-          }}
-        >
-          Lead Journey
-        </span>
-
-        {/* Terminal outcome badge */}
-        {isTerminal && terminalConf && (
+      <CardHeader
+        icon={Clock}
+        label="Lead Journey"
+        right={isTerminal && terminalConf && (
+          /* Terminal outcome badge */
           <span
             style={{
               marginLeft:   'auto',
@@ -137,7 +109,7 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
             {LEAD_STATUS_LABELS[lead.status as LeadStatus]}
           </span>
         )}
-      </div>
+      />
 
       {/* Stages */}
       <div style={{ padding: 'var(--space-6) var(--space-5)' }}>

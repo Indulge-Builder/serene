@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/campaigns` (analytics command center) and `/campaigns/[id]` (single-campaign drill-down).
 > **Audience:** engineers. · **Source-of-truth scope:** both campaign routes, the three campaign RPCs, campaign components. Ad-creative assets: `ad-creatives.md`; lead schema: `../architecture/database.md`.
-> **Last verified:** 2026-06-24 — UI/interaction-layer patch (preview-modal removal, `encodeURIComponent` key contract, 8-tile metrics strip, redesigned card, `this_month` default window, 3-way detail `Promise.all`). Data-layer spine (the three RPCs, the `leads-service.ts` functions, the no-Redis posture, the leads-table reuse) verified accurate against code.
+> **Last verified:** 2026-07-02: small UI-layer refresh (`CampaignFilters` composes `<FilterBar>` + `useUrlFilters`, shared `<EmptyState>` on the list, `role`/`domain` props on the reused `LeadsTable`). Earlier 2026-06-24 pass: preview-modal removal, `encodeURIComponent` key contract, 8-tile metrics strip, redesigned card, `this_month` default window, 3-way detail `Promise.all`. Data-layer spine (the three RPCs, the `leads-service.ts` functions, the no-Redis posture, the leads-table reuse) verified accurate against code.
 
 ## 1. Purpose
 
@@ -279,9 +279,8 @@ All three functions use `createClient()` from `src/lib/supabase/server.ts` and c
 
 #### 5b. `CampaignFilters`
 
-- **Controls:** Sliders icon + active-count badge; `SearchBar` (debounced **500ms** → URL `search`); `FilterDropdown` **Domain** (single-select, `GIA_DOMAIN_FILTER_ITEMS`) only when `showDomainFilter`; **Date range** (`DatePicker` From / To via `dateFromUrlParam` / `dateToUrlParam`); **Clear filters** when `activeCount > 0`.
-- **Clear:** resets pathname with no query string; also clears local search input state.
-- **Navigation:** every URL update uses `useTransition` + `router.push` via `buildFilterParams` from `lib/utils/filter-params.ts`.
+- **Shell:** composes the shared `<FilterBar>` + `useUrlFilters` (immediate-commit model: every change pushes the URL; no Apply/draft step).
+- **Controls:** the FilterBar search slot (`url.searchInput`/`setSearchInput`, debounced 350ms → URL `search`); `FilterDropdown` **Domain** (single-select, `GIA_DOMAIN_FILTER_ITEMS`, `menuPortal`) only when `showDomainFilter`; the FilterBar **Range** (preset list) + **Dates** (From/To) panels driving `date_from`/`date_to` via `url.push` (`panelKey: 'campaign-range-panel'`); **Clear filters** via `url.clearAll` when `activeCount > 0`.
 - **Active count:** search + domain + date_from + date_to (each present counts as 1).
 
 #### 5c. `CampaignListAsync`
@@ -290,7 +289,7 @@ All three functions use `createClient()` from `src/lib/supabase/server.ts` and c
 - **Spend join:** the budget rows become a `Map<campaignKey, BudgetCampaignRow>`; the card lookup uses `campaign_name.toLowerCase().trim()` — the same normalisation as the creatives map and the DB `ad_spend_daily.campaign_key`. **One `getBudgetSummary` fetch regardless of campaign count** — never a per-card spend call.
 - **Range discipline:** `getBudgetSummary` and `get_campaign_metrics` get the **identical** `date_from`/`date_to`, so a row's cost (spend ÷ leads) and its lead counts always cover the same window. No range → `getBudgetSummary` skipped, both fields passed as `null`.
 - **Passes to cards:** `campaign`, `index`, `adCreatives` from map key `campaign_name.toLowerCase().trim()`, plus `totalSpend`/`costPerLead` (`number | null` — `null` when no range or no spend row; `costPerLead` already `null` at zero leads upstream).
-- **Empty state:** Playfair italic — *"No campaigns match these filters."* (inline `<p>`, tertiary colour, no separate empty-state component).
+- **Empty state:** the shared `<EmptyState title="No campaigns match these filters." size="lg">` component (Playfair italic heading comes from the primitive, never hand-rolled).
 
 #### 5d. `CampaignCard`
 
@@ -479,7 +478,7 @@ documented here.)
 
 | Component | Props passed from `CampaignLeadsAsync` |
 | --------- | -------------------------------------- |
-| `LeadsTable` | `leads`, `userId={profile.id}`, `filters={filters}`, `hasActiveFilters={!!campaignName}` |
+| `LeadsTable` | `leads`, `userId={userId}`, `role={role}`, `domain={domain}`, `filters={filters}`, `hasActiveFilters={!!campaignName}` |
 | `LeadsPagination` | `page`, `pageSize={50}`, `totalCount` — rendered only when `totalCount > pageSize` |
 
 `LeadsTable` **does** receive the full `filters` object — it is a **required** prop on `LeadsTable` (`filters: LeadFilters`), so the campaign detail page passes the same `LeadFilters` it built on the page (with `campaign = campaignName` and all other filter fields `null`). Filtering is still entirely server-side via `getLeadsByRoleCached` — `LeadsTable` does not re-filter. It forwards `filters` to its `<ExportButton filters={filters} />` so a CSV/XLSX export from the campaign table carries the exact same scope as the rendered rows. `pageSize`/`page` are read off `filters` inside `CampaignLeadsAsync` (`filters.pageSize ?? 50`, `filters.page ?? 1`). Column picker, status pills, and row rendering behave exactly as on `/leads`.

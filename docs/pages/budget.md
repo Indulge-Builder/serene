@@ -5,8 +5,8 @@
 > **Audience:** engineers. · **Source-of-truth scope:** the budget route, `ad_spend_daily`,
 > the spend parser/upload pipeline, `get_budget_summary`, `ad_account_recharges`, and the
 > account-attribution + report builder.
-> **Last verified:** 2026-06-24 (recharge ledger 0139 + campaign-account backfill 0141).
-> **Module reference:** `docs/modules/budget.md` · **route invariants:** `src/app/(dashboard)/budget/CLAUDE.md`.
+> **Last verified:** 2026-07-02 (admin/founder-only gate 2026-06-25 + `BudgetFilterBar`; recharge ledger 0139 + campaign-account backfill 0141).
+> **Route invariants:** `src/app/(dashboard)/budget/CLAUDE.md` (the authoritative file map). This page spec is the single doc home for `/budget`.
 
 ## 1. Purpose
 
@@ -24,17 +24,21 @@ recharges are hand-entered, and account attribution is the only thing that ties 
 
 ## 2. Who sees it
 
-manager (read) · admin/founder (read + upload spend + add recharge) · agent/guest →
-`redirect('/dashboard')`.
+**Admin/founder only** (read + upload spend + add recharge). Everyone else, including managers,
+gets `redirect('/dashboard')`. Restricted 2026-06-25; managers previously had read access. The
+dashboard Campaign Budget widget was gated to admin/founder the same day.
 
 The page gates with a **direct role check** in `page.tsx`
-(`['manager','admin','founder'].includes(profile.role)` → else `redirect('/dashboard')`). It does
+(`['admin','founder'].includes(profile.role)` → else `redirect('/dashboard')`). It does
 **not** reference `DOMAIN_ROUTE_MAP` — that map governs the layout/sidebar guard, not this page's own
-redirect. Privileged users (`role === 'admin' || 'founder'` → `canUpload`) see **two** header CTAs:
-`AddRechargeButton` and `AdSpendUploadButton`. Sidebar: Analytics section, manager+.
+redirect (`route-permissions.ts` notes "/budget is admin/founder ONLY"). Both header CTAs
+(`AddRechargeButton`, `AdSpendUploadButton`) render behind `canUpload`
+(`role === 'admin' || 'founder'`), which now covers every user who can reach the page.
+Sidebar: Analytics section, admin/founder.
 
-Both tables (`ad_spend_daily`, `ad_account_recharges`) enforce the same split at the RLS layer
-(manager+ SELECT, admin/founder write) — two layers (A-09): the page role redirect AND RLS.
+The RLS layer is unchanged: both tables (`ad_spend_daily`, `ad_account_recharges`) still grant
+manager+ SELECT and admin/founder write at the DB layer. The page redirect is now the stricter of
+the two layers (A-09), and no manager-facing surface reads these tables.
 
 ## 3. Data sources
 
@@ -48,7 +52,7 @@ Both tables (`ad_spend_daily`, `ad_account_recharges`) enforce the same split at
 | Parser | `src/lib/utils/ad-spend-parse.ts` — `parseMetaSpendFile`, CLIENT-SIDE ONLY (dynamic `xlsx`, same rule as `export.ts`). See §5. |
 | Spend action | `src/lib/actions/ad-spend.ts` — `uploadAdSpendAction` (Zod → `requireProfile(['admin','founder'])` → re-sanitize + `normalizeCampaignKey()` → upsert). |
 | Recharge action | `src/lib/actions/recharge.ts` — `createRechargeAction` (Zod `createRechargeSchema` → `requireProfile(['admin','founder'])` → re-`sanitizeText` labels → insert → `revalidatePath('/budget')`). |
-| Period system | Shared with `/performance` via the reused `PerformanceFilters` (rendered `showSearch={false}`), which composes the `FilterBar` Range presets + Dates panels. **URL params are `date_from` / `date_to`** (read in `page.tsx`, fed to `resolvePerformanceDateParams`; default = This Month). There is **no** `?period` param on this page. |
+| Period system | Shared with `/performance` via `BudgetFilterBar` (`src/app/(dashboard)/budget/BudgetFilterBar.tsx`), which renders the reused `PerformanceFilters` with **search enabled** (`showSearch`, "Search campaigns…") plus the Accounts\|Campaigns `TabSelector` in its `tabSlot`. Tab state lives in `BudgetTabProvider` (`budget-tab-context.tsx`, default `'accounts'`); `BudgetWorkspace` reads it via `useBudgetTab()`. **URL params are `date_from` / `date_to`** (read in `page.tsx`, fed to `resolvePerformanceDateParams`; default = This Month). There is **no** `?period` param on this page. |
 
 ## 4a. The campaign-key invariant (do not regress)
 
@@ -81,8 +85,19 @@ tg_global_april_lead gen_17 june
   (warning-tinted block + "rename to attribute" hint). NEVER merged into another account, NEVER
   silently dropped. Unattributed showing up is what makes the post-rename pass self-auditing.
 - `AD_ACCOUNTS` is the single source for the 3 live accounts + Meta account ids; the DB CHECK on
-  `ad_account_recharges.ad_account` mirrors `AD_ACCOUNT_KEY_VALUES`. Adding an account (e.g. the
-  documented "Indulge New Gen" placeholder) = one `AD_ACCOUNTS` line + a CHECK-extending migration.
+  `ad_account_recharges.ad_account` mirrors `AD_ACCOUNT_KEY_VALUES`. The live entries
+  (`lib/constants/ad-accounts.ts`; the `metaAccountId` is documentation-only, attribution is by
+  `key`):
+
+  | key | display name | Meta account id |
+  | --- | --- | --- |
+  | `april` | Indulge Global April 2023 | 1364122324409409 |
+  | `gmr` | Indulge GMR | 1300197968477104 |
+  | `dubai` | Indulge Global Dubai | 944666504816724 |
+
+  **Pending:** "Indulge New Gen": the Meta account does not exist yet, so it stays a commented
+  placeholder in `ad-accounts.ts` (key + id TBD). Adding it = one `AD_ACCOUNTS` line + a
+  CHECK-extending migration. No other change.
 - Existing campaign names were renamed **in place** to carry the account segment by the
   **2026-06-24 backfill (migration 0141)**, so index-2 parsing is now correct for live + archived
   leads. Non-Meta traffic (Organic, Google ads, remarketing) intentionally keeps no account segment
@@ -112,7 +127,9 @@ keeping their bundles out of the initial `/budget` chunk).
 
 - **Idempotency:** the action upserts on `(campaign_key, spend_date, source)` — re-uploading the
   same export changes zero values; the summary reports those rows as `updated`. An overlapping
-  weekly range is safe: matching days are updated in place, never double-counted.
+  weekly range is safe: matching days are updated in place, never double-counted. So a weekly
+  upload cadence is fully supported (a multi-day daily-breakdown export over any range lands as
+  one row per day), and the upload modal copy says this plainly.
 
 **Add Recharge** — `AddRechargeButton` → `AddRechargeModal` (composes the shared `Modal`) → account
 dropdown (`AD_ACCOUNTS`) + amount + currency (INR/USD) + recharge date + `method`/`note` labels →
@@ -125,8 +142,11 @@ dropdown (`AD_ACCOUNTS`) + amount + currency (INR/USD) + recharge date + `method
 
 ## 7. Page anatomy
 
-Canonical list-page layout: title row (+ Add Recharge + Upload Spend CTAs) → `PerformanceFilters`
-strip (`showSearch={false}`) → `Suspense`-wrapped `BudgetAsync`. `BudgetAsync` fetches
+Canonical list-page layout: title row (+ Add Recharge + Upload Spend CTAs) → `BudgetFilterBar`
+strip (search + Range/Dates + the Accounts|Campaigns `TabSelector` in its `tabSlot`) →
+`Suspense`-wrapped `BudgetAsync`. The whole strip + content sits inside `BudgetTabProvider`
+(`budget-tab-context.tsx`) so the tab switcher in the bar and the content switch in
+`BudgetWorkspace` share one client state across the Suspense boundary. `BudgetAsync` fetches
 `getBudgetSummary` and `getAccountRecharges` in parallel, then:
 
 - **Empty state** — `BudgetEmptyState` (wraps `EmptyState` with the Wallet icon) renders **only**
@@ -136,7 +156,14 @@ strip (`showSearch={false}`) → `Suspense`-wrapped `BudgetAsync`. `BudgetAsync`
 - **Totals strip** — one shared card of `StatTile variant="cell"`: Total Spend, Leads, Cost/Lead,
   Deals Closed, Cost/Deal, Revenue. Currency cells use `formatCurrencyCompact`; counts use
   `formatCompact`/`formatCount`. CPL/CPD render "—" when the denominator is 0 (never ₹0).
-- **`BudgetWorkspace`** (client, two tabs via `TabSelector`; default **Accounts**):
+- **Attribution caption**: under the totals strip, `BudgetAsync` renders an italic caption stating
+  that leads, deals and revenue are attributed to Meta campaigns only; referral, Google and walk-in
+  deals are excluded.
+- **`BudgetWorkspace`** (client; reads the active tab from `useBudgetTab()`, the `TabSelector`
+  itself lives in `BudgetFilterBar`; default **Accounts**). Campaign search (`?search=`) filters
+  client-side: the Campaigns-tab rows and each account block's expandable campaign list only.
+  Account totals and the recharge history are deliberately never search-filtered (recharges are
+  not campaign-scoped). The two tabs:
   - **Accounts** — `AccountReportSection`: one block per account (Recharged · Spent · Balance via
     `StatTile` cells; balance renders in `--color-danger` when negative/overspent) expandable to its
     campaign rows (reuses `BudgetTable`), an "Unattributed" block (warning border, "rename to

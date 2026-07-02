@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { BarChart } from "@/components/ui/charts/BarChart";
 import type { BarChartSeries } from "@/components/ui/charts/BarChart";
 import { getLeadsByCampaignAction } from "@/lib/actions/dashboard";
@@ -155,22 +156,16 @@ export function ManagerCampaignWidget({
 
       {/* Chart — fills remaining space */}
       {loaded && campaigns.length === 0 ? (
-        <p
+        <EmptyState
+          title="Leads with UTM campaign data will appear here."
           style={{
-            fontFamily: "var(--font-serif)",
-            fontStyle: "italic",
-            fontSize: "var(--text-sm)",
-            color: "var(--theme-text-tertiary)",
-            textAlign: "center",
-            margin: 0,
             flex: 1,
             display: "flex",
+            flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
           }}
-        >
-          Leads with UTM campaign data will appear here.
-        </p>
+        />
       ) : loaded ? (
         <div
           style={{

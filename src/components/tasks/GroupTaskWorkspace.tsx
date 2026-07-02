@@ -92,7 +92,7 @@ import type {
   UserRole,
   AppDomain,
 } from "@/lib/types/database";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { BASE_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 
 // Load-on-intent (perf audit G-1): SubTaskModal (1,672 lines) stays out of the
 // /tasks/[id] route chunk until a subtask is first opened (the call site
@@ -289,7 +289,9 @@ export function GroupTaskWorkspace({
 
   // ── View toggle — default 'list', hydrated from localStorage after mount ──
   const [view, setView] = useState<WorkspaceView>("list");
-  const [hydrated, setHydrated] = useState(false);
+  // Value deliberately unread — the state exists so the post-hydration set
+  // triggers the re-render that applies the localStorage view choice.
+  const [, setHydrated] = useState(false);
   const LS_KEY = `serene:tasks:workspace-view:${group.id}`;
 
   useEffect(() => {
@@ -800,7 +802,7 @@ export function GroupTaskWorkspace({
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{
-                      duration: 0.2,
+                      duration: BASE_DURATION,
                       delay: Math.min(idx * 0.03, 0.24),
                       ease: EASE_OUT_EXPO,
                     }}
@@ -1240,7 +1242,7 @@ export function GroupTaskWorkspace({
               initial={{ opacity: 0, y: 8, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.97 }}
-              transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+              transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
               className="w-full md:w-80"
               style={{
                 background: "var(--theme-paper)",

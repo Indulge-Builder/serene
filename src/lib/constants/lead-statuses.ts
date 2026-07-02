@@ -10,6 +10,17 @@ export const LEAD_STATUSES: LeadStatus[] = [
   'junk',
 ];
 
+/** Readonly tuple for Zod `z.enum()` — the status ids in canonical order (mirrors LEAD_SOURCE_ENUM). */
+export const LEAD_STATUS_ENUM = [
+  'new',
+  'touched',
+  'in_discussion',
+  'won',
+  'nurturing',
+  'lost',
+  'junk',
+] as const satisfies readonly LeadStatus[];
+
 export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new:           'New',
   touched:       'Touched',

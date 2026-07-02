@@ -13,7 +13,6 @@
  *   fireSlaBreachHandler       — fires on timer expiry; reads the policy row per
  *                                fire; branches on trigger_kind (status breach
  *                                vs outcome cadence tick); stale-fire guard
- *   fireSlaBreachAction        — thin Zod-validated wrapper over fireSlaBreachHandler
  *
  * CONFIG SOURCE: the sla_policies table, read PER RUN via the admin client
  * (getSlaPolicies / getSlaPolicy in sla-service). Never cache policies at
@@ -27,6 +26,7 @@
  */
 
 import 'server-only';
+import { formatDate }          from '@/lib/utils/dates';
 import { z }                  from 'zod';
 import { createAdminClient }  from '@/lib/supabase/admin';
 import {
@@ -60,7 +60,7 @@ import {
   sendSlaAgentNotification,
   sendSlaManagerNotification,
 }                                                   from '@/lib/services/whatsapp-api';
-import type { LeadStatus, SlaPolicy, Task } from '@/lib/types/database';
+import type { Json, LeadStatus, SlaPolicy, Task } from '@/lib/types/database';
 import type { ActionResult } from '@/lib/types/index';
 
 // ─── Zod schemas ──────────────────────────────────────────────────────────────
@@ -77,11 +77,6 @@ const ScheduleSlaSchema = z.object({
 
 const CancelSlaSchema = z.object({
   leadId: z.string().uuid(),
-});
-
-const FireSlaBreachSchema = z.object({
-  leadId:   z.string().uuid(),
-  ruleCode: z.string().min(1),
 });
 
 const RefreshActivitySlaSchema = z.object({
@@ -103,14 +98,9 @@ const ArmCadenceSchema = z.object({
 
 function formatSlaTimestamp(ts: string | null | undefined): string {
   if (!ts) return 'unknown';
-  return new Date(ts).toLocaleString('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    day:      '2-digit',
-    month:    'short',
-    hour:     '2-digit',
-    minute:   '2-digit',
-    hour12:   true,
-  });
+  // IST via the canonical formatDate ("2 Sep, 4:30 PM") — was an en-IN
+  // toLocaleString whose "02 Sept, 04:30 pm" dialect matched nothing else.
+  return formatDate(ts, 'd MMM, h:mm a');
 }
 
 // ─── Terminal statuses — no new SLA timers after these ───────────────────────
@@ -119,26 +109,19 @@ const TERMINAL_STATUSES = new Set<string>(['won', 'lost', 'junk']);
 
 // ─── Fire-and-forget activity logger ─────────────────────────────────────────
 // lead_activities.action_type has no restrictive CHECK — 'sla_breach' is valid
-// by convention (documented in migration 0027). We cast to bypass the TS union.
+// by convention (documented in migration 0027); the generated type is plain string.
 
 async function logSlaActivity(
   admin:   ReturnType<typeof createAdminClient>,
   leadId:  string,
   details: Record<string, unknown>,
 ): Promise<void> {
-  type ActivityInsert = {
-    lead_id:     string;
-    actor_id:    null;
-    action_type: string;  // broader type to accept 'sla_breach' outside the union
-    details:     Record<string, unknown>;
-  };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (admin as any).from('lead_activities').insert({
+  await admin.from('lead_activities').insert({
     lead_id:     leadId,
     actor_id:    null,
     action_type: 'sla_breach',
-    details,
-  } as ActivityInsert);
+    details:     details as Json,
+  });
 }
 
 // ─── Shift-override resolution (shared) ──────────────────────────────────────
@@ -441,28 +424,13 @@ async function scheduleCadenceTick(
   });
 }
 
-// ─── fireSlaBreachAction ──────────────────────────────────────────────────────
-
-/**
- * Entry point called by Trigger.dev's fireLeadSlaTask.
- * Thin Zod-validated wrapper over fireSlaBreachHandler.
- * Not called from UI.
- */
-export async function fireSlaBreachAction(
-  leadId:   string,
-  ruleCode: string,
-): Promise<ActionResult<null>> {
-  // 1. Zod validate (Rule S-01 — even Trigger.dev callbacks validate inputs)
-  const parsed = FireSlaBreachSchema.safeParse({ leadId, ruleCode });
-  if (!parsed.success) return { data: null, error: 'Invalid SLA breach input.' };
-
-  return fireSlaBreachHandler(parsed.data.leadId, parsed.data.ruleCode);
-}
-
 // ─── fireSlaBreachHandler ─────────────────────────────────────────────────────
 
 /**
- * Core timer-fire logic. Called via fireSlaBreachAction.
+ * Core timer-fire logic. THE Trigger.dev entry point — fireLeadSlaTask
+ * dynamic-imports this directly (its payload was Zod-validated at schedule
+ * time by scheduleSlaTimersForLead; the fireSlaBreachAction Zod re-wrapper
+ * was removed 2026-07-02 — zero callers). Not called from UI.
  *
  * Steps:
  *  1. Load the policy row for this code (per fire — stale config impossible)
@@ -585,8 +553,7 @@ export async function fireSlaBreachHandler(
         // Atomic two-INSERT via the canonical RPC (tasks + task_gia_meta) —
         // tasks only ever via create_lead_gia_task (Phase 2 reuse directive).
         // Mirrors runCadenceTick; closes the orphan hole the prior split-insert left.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: rpcError } = await (admin as any).rpc('create_lead_gia_task', {
+        const { error: rpcError } = await admin.rpc('create_lead_gia_task', {
           p_lead_id:     leadId,
           p_assigned_to: assignedTo,
           p_created_by:  assignedTo, // system-generated; use agent as owner
@@ -594,7 +561,9 @@ export async function fireSlaBreachHandler(
           p_title:       taskTitle,
           p_description: `SLA rule ${ruleCode} — ${ruleDesc}`,
           p_priority:    ruleCode === 'SLA-01A' ? 'urgent' : 'high',
-          p_due_at:      null,
+          // Explicit SQL NULL (the arg has DEFAULT NULL; generated Args type only admits
+          // string | undefined — keep the wire value identical with a type-level cast).
+          p_due_at:      null as unknown as undefined,
         });
 
         if (rpcError) {
@@ -770,8 +739,7 @@ async function runCadenceTick(
 
     // Atomic two-INSERT via the canonical RPC (tasks + task_gia_meta) —
     // tasks only ever via create_lead_gia_task (Phase 2 reuse directive).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: rows, error: rpcError } = await (admin as any).rpc('create_lead_gia_task', {
+    const { data: rows, error: rpcError } = await admin.rpc('create_lead_gia_task', {
       p_lead_id:     leadId,
       p_assigned_to: assignedTo,
       p_created_by:  assignedTo, // system-generated; agent owns it (SLA auto-task convention)

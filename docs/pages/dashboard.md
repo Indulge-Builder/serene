@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/dashboard` — the personalised spatial-grid home surface.
 > **Audience:** engineers. · **Source-of-truth scope:** this route's behaviour, data flow, components, invariants. Widget queries live in `dashboard-service.ts` (home: this doc); shell/theming live in `../architecture/overview.md`.
-> **Last verified:** 2026-06-24 — full regeneration against code. Covers the v4 spatial grid + react-grid-layout + drag-to-resize + density tiers (2026-06-24), the Recent Leads rollup + Mine/Team toggle (migration 0132), the Elaya widget going live (2026-06-16), the gia_followup category collapse (migration 0138), the cold-lead cutoff DRY (migration 0140), the manager full-roster pipeline (migration 0129), and the global founder domain selector replacing per-widget tabs (2026-06-17).
+> **Last verified:** 2026-07-02 - full pass against code. Covers the v4 spatial grid + react-grid-layout + drag-to-resize + density tiers (2026-06-24), the Recent Leads rollup + Mine/Team toggle (migration 0132), the Elaya widget going live (2026-06-16), the gia_followup category collapse (migration 0138), the cold-lead cutoff DRY (migration 0140), the cold-leads domain scoping fix (migration 0143), the 2026-06-24/25 widget wave (Campaign Budget rebuilt as the admin/founder-only fuel gauge, snapshot widgets shrunk to 2x2 with identity watermarks, Lead Pipeline collapsed to 5 cards, AddWidgetMenu), the manager full-roster pipeline (migration 0129), and the global founder domain selector replacing per-widget tabs (2026-06-17).
 
 ## 1. Purpose
 
@@ -20,8 +20,8 @@ full card when large — `useWidgetDensity`).
 | Role | Widgets in default layout | Data scope |
 | ---- | ------------------------- | ---------- |
 | `agent` | `agent-tasks`, `elaya-presence`, `agent-pending-calls`, `agent-new-leads`, `agent-activity` | own tasks/counts/leads; date filter does not apply to any of them; no date filter rendered |
-| `manager` | the manager seven (see §3 `DEFAULT_GRID_BY_ROLE`) | domain-pinned leads/status/campaigns/volume/cold-leads/budget (pinned server-side); tasks/activity own |
-| `admin` / `founder` | identical manager seven | cross-domain, narrowed by the **global `serene-domain` selector** in the canvas header (additive WHERE, not RLS); budget all-domain or scoped |
+| `manager` | six widgets (the shared `MANAGER_GRID` minus `manager-budget` - see §3) | domain-pinned leads/status/campaigns/volume/cold-leads (pinned server-side); tasks/activity own. No budget data is seeded or rendered for managers (2026-06-25) |
+| `admin` / `founder` | the full `MANAGER_GRID` seven, including the Campaign Budget fuel gauge | cross-domain, narrowed by the **global `serene-domain` selector** in the canvas header (additive WHERE, not RLS); the fuel gauge is ALWAYS org-wide (recharges carry no domain) |
 | `guest` | none (`DEFAULT_GRID_BY_ROLE.guest = []`) | — |
 
 The `DashboardDateFilter` is rendered **only** for `manager`/`admin`/`founder` (role gate in
@@ -36,10 +36,10 @@ Per-widget enforcement table: Deep dive §12.
 
 | Layer | File | Notes |
 | ----- | ---- | ----- |
-| RPC (summary) | `get_dashboard_summary` (0029→…→**0140**, canonical) | single jsonb, summary widgets + `cold_leads_count` + agent snapshot counts |
+| RPC (summary) | `get_dashboard_summary` (0029→…→**0143**, canonical) | single jsonb, summary widgets + `cold_leads_count` + agent snapshot counts |
 | RPC (recent leads) | `get_recent_lead_activity` (migration 0132) | lead rollup over `leads ORDER BY last_activity_at DESC LIMIT 25` — the `agent-activity` widget seed |
 | Service | `src/lib/services/dashboard-service.ts` | `getDashboardSummary` (React `cache()`), `getAgentRecentActivity`, `getLeadVolumeByRange`/`getLeadVolumeByDomains`/`getLeadVolumeForDomain`; Redis cache-aside per `../architecture/caching.md` |
-| Service (budget) | `src/lib/services/ad-spend-service.ts` | `getBudgetSummary` (the /budget RPC, reused as the widget seed) + `filterBudgetRowsByDomain` (campaign-prefix → domain) |
+| Service (budget) | `src/lib/services/ad-spend-service.ts` | `getBudgetSummary` + `getAccountRecharges` (the /budget pipeline) → `buildBudgetGaugeSummary` (the org-wide fuel-gauge roll-up, `budget_gauge` seed); `filterBudgetRowsByDomain` still filters the `budget_summary` rows. Admin/founder only |
 | Actions | `src/lib/actions/dashboard.ts` | 7 widget-refresh actions, all via `requireProfile()`; manager pinned via `effectiveWidgetDomain()` |
 | Hooks | `useDashboardLayout`, `useWidgetData`, `useWidgetDensity`, `useDashboardCohortSync`, `useMediaQuery` | layout persistence (v4 grid), fetch lifecycle, cell-density measurement, cohort URL sync |
 
@@ -47,12 +47,16 @@ Per-widget enforcement table: Deep dive §12.
 
 `page.tsx` (RSC orchestrator) · `DashboardCanvas` (react-grid-layout) · `DashboardWidgetSlot`
 (static `React.lazy` map + density measurement) · `WidgetSkeleton` · `DashboardDateFilter` ·
+`AddWidgetMenu` (edit-mode picker, 2026-06-25: lists role-available widgets not currently placed
+and calls `addWidget`; anchored via `usePortalAnchor` + `FloatingPanel`) ·
 `PageControls` (notification bell + global domain selector) · widgets: `AgentTasksWidget`,
 `AgentActivityWidget` (Recent Leads), `AgentPendingCallsWidget`, `AgentNewLeadsWidget`,
 `ElayaPresenceCard` (the live embedded `/elaya` chat), `ManagerLeadStatusWidget`,
 `ManagerLeadVolumeWidget`, `ManagerCampaignWidget`, `ManagerColdLeadsWidget`, `ManagerBudgetWidget`
-(+ the shared `SnapshotCountWidget` base — THE big-count/label/hint/Link card; cold-leads,
-pending-calls, and new-leads all compose it). Registry: `src/lib/constants/dashboard-widgets.ts` (pure data).
+(+ the shared `SnapshotCountWidget` base, rewritten 2026-06-25: `.serene-stat-tile` Link chrome,
+micro label + mono hero number, a required `icon` prop rendered as an oversized faint corner
+watermark, and the compact tier drops the hint; cold-leads, pending-calls, and new-leads all
+compose it). Registry: `src/lib/constants/dashboard-widgets.ts` (pure data).
 
 ## 5. States
 
@@ -78,7 +82,7 @@ None recorded.
 
 #### 2a. `get_dashboard_summary` RPC
 
-**Canonical definition (latest):** `supabase/migrations/20260623000140_cold_lead_cutoff_dry.sql`
+**Canonical definition (latest):** `supabase/migrations/20260624000143_dashboard_cold_leads_honor_domain.sql`
 **Signature lineage (each migration drops the prior overload and replaces it):**
 
 | Migration | Change |
@@ -95,7 +99,8 @@ None recorded.
 | `20260612000115_dashboard_agent_snapshot_counts.sql` | Adds `pending_calls_count` + `new_leads_count` (agent branch only, zero date inputs); restores 0070 `SUM(cnt)` totals |
 | `20260617000129_manager_pipeline_full_roster.sql` | `lead_status.byAgent` for **managers** = FULL active domain roster LEFT JOINed to the per-(agent,status) cohort (agents with zero cohort leads now appear as zero rows); admin/founder `byAgent` stays cohort-only GROUP BY |
 | `20260617000138_collapse_gia_category_module_enum.sql` | `task_category` collapsed to `personal` \| `group_subtask`; `pending_calls_count` recomputed via `task_gia_meta` presence (not a `gia_followup` category) |
-| `20260623000140_cold_lead_cutoff_dry.sql` | The cold predicate now calls `cold_lead_cutoff()` (the single SQL cutoff anchor) instead of the bare `interval '5 days'` literal; recreated from the live body (reconciles file ⇆ DB). **Canonical current definition.** |
+| `20260623000140_cold_lead_cutoff_dry.sql` | The cold predicate now calls `cold_lead_cutoff()` (the single SQL cutoff anchor) instead of the bare `interval '5 days'` literal; recreated from the live body (reconciles file ⇆ DB). |
+| `20260624000143_dashboard_cold_leads_honor_domain.sql` | `cold_leads_count` now honours the global domain selector for admin/founder: the cold predicate uses the SAME scoping CASE as the `lead_status`/`campaigns` CTEs (manager → `p_domain`, `p_initial_domain` set → that domain, else all-org). Everything else byte-identical to 0140. **Canonical current definition.** |
 
 **Signature (exact, current):**
 
@@ -145,7 +150,7 @@ GRANT EXECUTE ON FUNCTION public.get_dashboard_summary(text, app_domain, uuid, a
 | `pending_calls_count` | `jsonb` **scalar int** | `AgentPendingCallsWidget` → `initialData.pending_calls_count` |
 | `new_leads_count` | `jsonb` **scalar int** | `AgentNewLeadsWidget` → `initialData.new_leads_count` |
 
-(Volume — `lead_volume` / `lead_volume_multi` — and `budget_summary` are intentionally **excluded** from the RPC; see §2c and §9j.)
+(Volume - `lead_volume` / `lead_volume_multi` - and the budget keys `budget_summary` / `budget_gauge` are intentionally **excluded** from the RPC; see §2c and §9j.)
 
 **Agent role branch:** when `p_role = 'agent'`, the RPC computes `agent_tasks` + `agent_activity` plus the two snapshot counts — `pending_calls_count` (open lead follow-up tasks: `assigned_to = p_user_id`, `EXISTS (SELECT 1 FROM task_gia_meta m WHERE m.task_id = t.id)`, status `to_do`/`in_progress`/`in_review`) and `new_leads_count` (`assigned_to = p_user_id`, `status = 'new'`, `archived_at IS NULL`) — then returns immediately with empty stubs for `lead_status` (`{ totals: [], byAgent: [] }`), `campaigns` (`[]`), and `cold_leads_count` (`0`). No pipeline/campaign/cold-leads DB work runs for agents. Manager+ get `0` stubs for both snapshot counts (the widgets are agent-only). **Both counts take zero date inputs — wiring them to the date filter is conceptually invalid (live snapshot, not cohort).**
 
@@ -198,9 +203,9 @@ GRANT EXECUTE ON FUNCTION public.get_dashboard_summary(text, app_domain, uuid, a
 
 **CTE behaviour:** `utm_campaign IS NOT NULL`, not archived, date-filtered on `created_at`. Domain scoping per the rules above. Top **12** campaigns by `total DESC` (where `total = SUM(cnt)`, migration 0070).
 
-##### `cold_leads_count` (migration 0081, DRY'd in 0140)
+##### `cold_leads_count` (migration 0081, DRY'd in 0140, domain-scoped in 0143)
 
-Scalar int. `COUNT(*)` of leads where `archived_at IS NULL` AND `status NOT IN ('won','lost','junk')` AND `last_activity_at < cold_lead_cutoff()`. Scoping: admin/founder all, manager `domain = p_domain`. **NULL `last_activity_at` rows are excluded** (`NULL < x` is falsy — those leads are SLA-01A's job, not the going-cold bucket). **The date filter intentionally does NOT apply** — "going cold" is a live state, not a cohort metric.
+Scalar int. `COUNT(*)` of leads where `archived_at IS NULL` AND `status NOT IN ('won','lost','junk')` AND `last_activity_at < cold_lead_cutoff()`. Scoping (since 0143, the same CASE as `lead_status`/`campaigns`): manager → `domain = p_domain`; admin/founder → `p_initial_domain` when the global selector is set, else all-org. **NULL `last_activity_at` rows are excluded** (`NULL < x` is falsy - those leads are SLA-01A's job, not the going-cold bucket). **The date filter intentionally does NOT apply** - "going cold" is a live state, not a cohort metric.
 
 > **`cold_lead_cutoff()` (migration 0140):** THE single SQL source of the cutoff — `now() - interval '5 days'`. The `5` here and `COLD_LEAD_THRESHOLD_DAYS` in `src/lib/constants/leads.ts` are the only two places the number lives; change them together. Replaced the bare `interval '5 days'` literal that 0081→0115→0129 each re-stamped.
 
@@ -214,7 +219,7 @@ Scalar int. `COUNT(*)` of leads where `archived_at IS NULL` AND `status NOT IN (
 
 **File:** `src/lib/types/index.ts`
 
-**Assembled on the page:** RPC result spread + `agent_activity` (the rollup RPC) + `lead_volume` / `lead_volume_multi` (volume service) + `budget_summary` (ad-spend service).
+**Assembled on the page:** RPC result spread + `agent_activity` (the rollup RPC) + `lead_volume` / `lead_volume_multi` (volume service) + `budget_summary` / `budget_gauge` (ad-spend service, admin/founder only).
 
 ```typescript
 export type DashboardSummary = {
@@ -231,10 +236,15 @@ export type DashboardSummary = {
   /** Agent snapshot counts (0115) — live, never date-scoped. Non-agent roles: always 0. */
   pending_calls_count?: number;
   new_leads_count?: number;
-  /** Manager+: budget rows for the active range (page-assembled from getBudgetSummary; manager/scoped rows pre-filtered). Agent: null. */
+  /** Budget rows for the active range (page-assembled from getBudgetSummary; scoped rows pre-filtered). Seeded for admin/founder only. */
   budget_summary?: BudgetCampaignRow[] | null;
+  /** The org-wide ad-account fuel gauge (recharged / spent / remaining roll-up) via buildBudgetGaugeSummary(). ALWAYS org-wide. Seeded for admin/founder only. */
+  budget_gauge?: BudgetGaugeSummary | null;
 };
 ```
+
+Both budget keys are seeded only when the caller is admin or founder (the page's
+`isAdminFounder` gate, 2026-06-25); managers get `budget_summary: null` and `budget_gauge: null`.
 
 `DashboardAgentTask.task_category` is `'personal' | 'group_subtask'` (two values, 0138). The
 `agent_activity` key is now `DashboardRecentLead[]` — `DashboardAgentActivity` is a `@deprecated`
@@ -319,16 +329,19 @@ export type DashboardRecentLead = {
 | ---- | ------- | ------- | ----------------------------- | -------- |
 | `agent-tasks` | My Tasks | `agent`, `manager`, `admin`, `founder` | `{6, 9, 4, 6}` | `gia` |
 | `agent-activity` | Recent Activity (renders "Recent Leads") | `agent`, `manager`, `admin`, `founder` | `{6, 11, 4, 6}` | `gia` |
-| `agent-pending-calls` | Pending Calls | `agent` | `{3, 5, 3, 4}` | `gia` |
-| `agent-new-leads` | New Leads | `agent` | `{3, 5, 3, 4}` | `gia` |
+| `agent-pending-calls` | Pending Calls | `agent` | `{2, 2, 2, 2}` | `gia` |
+| `agent-new-leads` | New Leads | `agent` | `{2, 2, 2, 2}` | `gia` |
 | `elaya-presence` | Elaya | `agent` | `{6, 11, 4, 8}` | `gia` |
 | `manager-lead-status` | Lead Pipeline | `manager`, `admin`, `founder` | `{6, 11, 4, 7}` | `gia` |
 | `manager-lead-volume` | Lead Volume | `manager`, `admin`, `founder` | `{6, 11, 4, 7}` | `gia` |
 | `manager-campaigns` | Campaign Performance | `manager`, `admin`, `founder` | `{12, 11, 6, 7}` | `gia` |
-| `manager-cold-leads` | Going Cold | `manager`, `admin`, `founder` | `{3, 5, 3, 4}` | `gia` |
-| `manager-budget` | Campaign Budget | `manager`, `admin`, `founder` | `{3, 5, 3, 4}` | `gia` |
+| `manager-cold-leads` | Going Cold | `manager`, `admin`, `founder` | `{2, 2, 2, 2}` | `gia` |
+| `manager-budget` | Campaign Budget ("Ad-account fuel gauge") | `admin`, `founder` | `{6, 8, 4, 5}` | `finance` |
 
-`domains` is `'*'` for every entry.
+`domains` is `'*'` for every entry. The three snapshot counts were shrunk to a
+2x2 footprint on 2026-06-25. `manager-budget` lost its manager role the same day
+(mirrors the /budget page access) and grew to a half-width gauge (`minW: 4` so
+the stat trio never cramps).
 
 #### Grid + density constants
 
@@ -354,7 +367,7 @@ sm → 200 · md → 300 · lg → 420 · xl → 540   (Record<WidgetSize, numbe
 
 #### `DEFAULT_GRID_BY_ROLE` (the designed first-paint placements + reset targets)
 
-Coordinates are grid units; `react-grid-layout` compacts vertically. **One shared `MANAGER_GRID`** is reused by `founder`, `admin`, and `manager` (managers are NOT a separate count — there is no separate "founder seven"):
+Coordinates are grid units; `react-grid-layout` compacts vertically. **One shared `MANAGER_GRID`** is reused by `founder`, `admin`, and `manager`. The grid includes `manager-budget`, but the registry `roles` for that widget no longer include `manager`, so both role-gates (`sanitizeStored()` on stored layouts and `applyLayout()` on every commit) drop it for managers:
 
 ```text
 MANAGER_GRID:
@@ -363,21 +376,22 @@ MANAGER_GRID:
   manager-lead-status x0 y9  w6 h11
   manager-lead-volume x6 y9  w6 h11
   manager-campaigns   x0 y20 w12 h11   (full width)
-  manager-cold-leads  x0 y31 w3 h5
-  manager-budget      x3 y31 w3 h5
+  manager-budget      x0 y31 w6 h8    (half-width fuel gauge, its own row)
+  manager-cold-leads  x6 y31 w2 h2    (compact snapshot tile beside it)
 
 agent:
   agent-tasks         x0 y0  w6 h9
   elaya-presence      x6 y0  w6 h11
-  agent-pending-calls x0 y9  w3 h5
-  agent-new-leads     x3 y9  w3 h5
+  agent-pending-calls x0 y9  w2 h2
+  agent-new-leads     x2 y9  w2 h2
   agent-activity      x0 y14 w6 h11
 
 guest: []
 ```
 
 `DEFAULT_LAYOUT_BY_ROLE` (the ordered id list) still exists for back-compat, but the spatial first
-paint reads `DEFAULT_GRID_BY_ROLE`.
+paint reads `DEFAULT_GRID_BY_ROLE`. The manager entry in `DEFAULT_LAYOUT_BY_ROLE` explicitly
+drops `manager-budget` (admin/founder only).
 
 > **Removed — do not recreate:** the `col = index % 2`, `row = floor(index / 2)` auto-flow formula. Placements are now explicit designed `{x,y,w,h}` rectangles.
 
@@ -453,14 +467,15 @@ type StoredLayout = { placements: WidgetPlacement[] };
 2. **Resolve date range from `searchParams`:** `dash_preset` (`today` | `week` | `month` | `last_month` | `quarter` | `custom`, default `week`); `dash_from` / `dash_to` (YYYY-MM-DD, only when `preset=custom`). `custom` with malformed params falls back to `week`.
 3. **Resolve global domain scope:** `scopeDomain = resolveDomainParam(sp, await cookies(), role)` — the SAME `serene-domain` param/cookie the list pages read. Admin/founder → the chosen Gia domain or `null` (all-org); manager/agent → always `null`.
 4. Agents skip the range for the RPC (`rpcDateRange = undefined`).
-5. **`try/catch`-wrapped six-element `Promise.all`:**
+5. **`try/catch`-wrapped seven-element `Promise.all`:**
    - `getDashboardSummary(role, domain, profile.id, isManager ? undefined : adminFounderScope, rpcDateRange)` where `adminFounderScope = scopeDomain ?? undefined`
    - `getAgentRecentActivity(profile.id, role, domain, scopeDomain ?? undefined, 'team')` — the Recent-Leads rollup seed (always)
    - manager → `getLeadVolumeByRange(role, domain, dateRange)`, else `null`
    - admin/founder **with** a picked domain → `getLeadVolumeForDomain(scopeDomain, dateRange)`, else `null`
    - admin/founder with **no** pick → `getLeadVolumeByDomains([...GIA_DOMAINS], dateRange)`, else `null`
-   - manager+ → `getBudgetSummary(dateRange.from, dateRange.to)`, else `null`
-6. `initialData = { ...rpcData, agent_tasks ?? [], agent_activity: recentLeads ?? [], campaigns ?? [], lead_volume: isManager ? managerVolume : adminSingleVolume, lead_volume_multi: adminMultiVolume, budget_summary }`. Budget is pre-filtered server-side: managers → own `domain`, admin/founder → `scopeDomain ?? null` (or full rows for the all-domains view) via `filterBudgetRowsByDomain` **before it reaches the client**.
+   - admin/founder → `getBudgetSummary(dateRange.from, dateRange.to)` (budgetRows), else `null`
+   - admin/founder → `getAccountRecharges(dateRange.from, dateRange.to)` (budgetRecharges, fuel gauge), else `null`
+6. `initialData = { ...rpcData, agent_tasks ?? [], agent_activity: recentLeads ?? [], campaigns ?? [], lead_volume: isManager ? managerVolume : adminSingleVolume, lead_volume_multi: adminMultiVolume, budget_summary, budget_gauge }`. `budget_summary` is pre-filtered server-side to `scopeDomain ?? null` (full rows for the all-domains view) via `filterBudgetRowsByDomain` **before it reaches the client**. `budget_gauge = buildBudgetGaugeSummary(budgetRows, budgetRecharges ?? [])` and is ALWAYS org-wide, never domain-filtered (recharges carry no domain). Managers seed neither key (2026-06-25 - the `isAdminFounder` gate).
 7. `greeting = pickDashboardGreeting()`; `firstName` = first token of `profile.full_name`.
 8. Render `<DashboardCanvas greeting firstName userId role domain scopeDomain initialData activePreset fromParam toParam dateRange notificationsPromise />` inside `<main className="flex-1 p-4 sm:p-6 lg:p-8">`. `notificationsPromise = TOP_BAR_ENABLED ? getNotifications(profile.id) : undefined` (streamed seed for the header bell).
 
@@ -470,7 +485,7 @@ type StoredLayout = { placements: WidgetPlacement[] };
 
 #### Failure behaviour
 
-`getDashboardSummary` **throws** on Supabase RPC error. The page's `try/catch` logs with `[dashboard/page]` prefix and renders **zeroed `initialData`** (`agent_tasks: []`, `agent_activity: []`, `lead_status: { totals: [], byAgent: [] }`, `campaigns: []`, `lead_volume: null`, `lead_volume_multi: null`, `budget_summary: null`). **No redirect, no re-throw** — widgets handle empty states gracefully.
+`getDashboardSummary` **throws** on Supabase RPC error. The page's `try/catch` logs with `[dashboard/page]` prefix and renders **zeroed `initialData`** (`agent_tasks: []`, `agent_activity: []`, `lead_status: { totals: [], byAgent: [] }`, `campaigns: []`, `lead_volume: null`, `lead_volume_multi: null`, `budget_summary: null`, `budget_gauge: null`). **No redirect, no re-throw** - widgets handle empty states gracefully.
 
 #### `initialData` + prop threading
 
@@ -499,6 +514,7 @@ A single `flex flex-nowrap md:flex-wrap items-center justify-between` row (mobil
 - Control cluster (right, `shrink-0`):
   - **`DashboardDateFilter`** — rendered **only** for `manager`/`admin`/`founder`.
   - **`PageControls`** (notification bell + global `serene-domain` selector) — rendered when `TOP_BAR_ENABLED && notificationsPromise`. The dashboard has no standard server title row, so these ride the canvas header. A domain pick writes `?domain=` (+ cookie); the page RSC re-seeds every cohort widget for that scope (no per-widget tabs). `isPrivileged = admin || founder` gates the domain selector inside `PageControls`.
+  - **`AddWidgetMenu`** (`Plus`, "Add widget") - visible only in edit mode, beside Reset layout. Lists every registry widget the role can see that is not currently placed (`placedIds` set from the live layout) and calls `addWidget(id)`; the new widget lands bottom-left and RGL compacts it in. Anchored via `usePortalAnchor` + `FloatingPanel`; shows an `<EmptyState>` when nothing is removable.
   - **Reset layout** (`RotateCcw`) — visible only in edit mode → `resetToDefaults()`.
   - **Edit toggle** — `LayoutDashboard` + "Edit layout" / "Done" on desktop; a square `Settings` gear (≈32px) below md. `aria-pressed` when active; accent fill when on.
 
@@ -673,7 +689,7 @@ The whole card is a `Link` to `/leads/{lead.lead_slug}` (a slug-less lead render
 | **Roles** | `manager`, `admin`, `founder` |
 | **`initialData` key** | `lead_status` |
 
-**Renders:** status stat chips (the "Lost" chip was added 2026-06-20 → six cards, one row); up to 6 agents with per-status counts + a mini stacked bar. **No per-widget domain tabs** — the global `serene-domain` selector scopes it.
+**Renders:** status stat chips in ONE row of **five cards** (2026-06-25: `CHIP_STATUSES = new, touched, in_discussion, won, junk`; the Junk card clubs `junk + lost` into one count, rendered with the junk colour and label); up to 6 agents with per-status counts + a mini stacked bar. **No per-widget domain tabs** - the global `serene-domain` selector scopes it.
 
 **Semantic colours (`LEAD_STATUS_COLORS`):** per-status `var(--status-*-text)` + `var(--status-*-light)` for new / touched / in_discussion / nurturing / won / lost / junk.
 
@@ -727,13 +743,13 @@ The whole card is a `Link` to `/leads/{lead.lead_slug}` (a slug-less lead render
 | **File** | `src/components/dashboard/widgets/ManagerColdLeadsWidget.tsx` |
 | **Roles** | `manager`, `admin`, `founder` |
 | **`initialData` key** | `cold_leads_count` |
-| **`defaultGrid`** | `{3, 5, …}` |
+| **`defaultGrid`** | `{2, 2, 2, 2}` - 2x2 snapshot footprint (2026-06-25, was 3x5) |
 
 **Single data source:** `initialData.cold_leads_count ?? 0`. **No `useEffect` fetch, no server action, no refresh button** — the scalar comes from `get_dashboard_summary`.
 
-**Renders:** composes **`SnapshotCountWidget`** — a `Link` to `/leads?going_cold=true`, big count + "Going Cold" label + **"leads with no activity in 5+ days"** hint. Count colour: `var(--color-warning)` when `> 0`, else `var(--theme-text-secondary)`.
+**Renders:** composes **`SnapshotCountWidget`** (`icon={Snowflake}`, the faint identity watermark) - a `Link` to `/leads?going_cold=true`, big count + "Going Cold" label + **"leads with no activity in 5+ days"** hint. Count colour: `var(--color-warning)` when `> 0`, else `var(--theme-text-secondary)`.
 
-**Agent role:** RPC returns `cold_leads_count: 0` via the early-return branch; the widget is not in the agent default layout. **Scoping:** the `/leads` link carries no `&domain=` param — the leads service enforces role/domain scoping server-side. **Date filter:** does not apply (going-cold is a live state).
+**Agent role:** RPC returns `cold_leads_count: 0` via the early-return branch; the widget is not in the agent default layout. **Scoping:** since migration 0143 the count follows the global domain selector for admin/founder (manager stays pinned to own domain). The `/leads` link carries no `&domain=` param - the leads service enforces role/domain scoping server-side. **Date filter:** does not apply (going-cold is a live state).
 
 ---
 
@@ -746,7 +762,7 @@ The whole card is a `Link` to `/leads/{lead.lead_slug}` (a slug-less lead render
 | **Link** | `/tasks?tab=gia` | `/leads?status=new` |
 | **Positive colour** | `--color-info-text` | `--color-success-text` |
 
-Both compose `SnapshotCountWidget`. Roles: `agent` only. **No fetch, no refresh, no date wiring — by construction a date param cannot reach them** (the RPC counts take zero date inputs).
+Both compose `SnapshotCountWidget` (`icon={Phone}` / `icon={UserPlus}` - the faint corner watermark) at the 2x2 default footprint. Roles: `agent` only. **No fetch, no refresh, no date wiring - by construction a date param cannot reach them** (the RPC counts take zero date inputs).
 
 ---
 
@@ -766,16 +782,20 @@ Both compose `SnapshotCountWidget`. Roles: `agent` only. **No fetch, no refresh,
 
 ---
 
-#### 9j. `ManagerBudgetWidget`
+#### 9j. `ManagerBudgetWidget` - the ad-account fuel gauge (rebuilt 2026-06-24)
 
 | | |
 | - | - |
 | **File** | `src/components/dashboard/widgets/ManagerBudgetWidget.tsx` |
-| **Roles** | `manager`, `admin`, `founder` |
-| **`initialData` key** | `budget_summary` (page-assembled — NOT in the RPC; spend lives in `ad_spend_daily`) |
-| **Refresh** | `getBudgetSummaryWidgetAction(from, to, targetDomain?)` — manager pinned via `effectiveWidgetDomain()` |
+| **Roles** | `admin`, `founder` only (managers excluded 2026-06-25, mirrors `/budget`) |
+| **`initialData` key** | `budget_gauge` (`BudgetGaugeSummary`, page-assembled - NOT in the RPC) |
+| **Refresh** | `getBudgetGaugeWidgetAction(from, to)` - admin/founder only, no domain arg |
 
-Reuses the `/budget` pipeline: `getBudgetSummary` (ad-spend-service) seeds via the page `Promise.all`; rows are filtered to the scope server-side via `filterBudgetRowsByDomain` (campaign-prefix → domain — `ad_spend_daily` has no domain column). Renders four `StatTile variant="cell"` aggregates — Spend, Leads, Cost/Lead, Deal Revenue (CPL renders "—" at zero leads, never ₹0) — plus a campaign-count footer. Lifecycle: `useWidgetData` + `useDashboardCohortSync`. **Date filter applies** (cohort data, like campaigns). Empty state: italic *"No ad spend recorded in this period."*
+The org-wide ad-account **fuel gauge**: total recharged is the full tank, spend is fuel burned, remaining (recharged minus spent, INR-only - the same balance rule as the `/budget` per-account report) is the hero number. Below the enlarged hero sit the tank bar and the Recharged / Spent / Remaining stat trio (the ROI sub-line was removed 2026-06-25). Density-adaptive: a tiny cell shows just the remaining headline plus a thin gauge; a taller cell adds the full trio.
+
+Data is the `/budget` pipeline rolled into one gauge by `buildBudgetGaugeSummary(rows, recharges)` (layered over `buildAccountReport` so it can never disagree with `/budget`): seeded on first paint from `initialData.budget_gauge`, refetched through `getBudgetGaugeWidgetAction` on range change / refresh. **ALWAYS org-wide** - recharges carry no domain, so a per-domain "remaining" would be a finance error; the global domain selector does not narrow it. Lifecycle: `useWidgetData` (`autoFetch: false`) + `useDashboardCohortSync`. **Date filter applies** (cohort data, like campaigns). Empty state via `<EmptyState>`.
+
+> **Removed - do not recreate:** the old four-StatTile aggregate card (Spend / Leads / Cost-Lead / Deal Revenue + campaign-count footer) and its `getBudgetSummaryWidgetAction(from, to, targetDomain?)` action. That action no longer exists in `actions/dashboard.ts`.
 
 ---
 
@@ -791,11 +811,11 @@ All return `{ data, error }`. All guard via `requireProfile()` first — **clien
 | `getLeadsByCampaignAction(from?, to?, targetDomain?)` | `getLeadsByCampaign(role, domain, effectiveDomain?, range?)` | manager+ | `{ data: CampaignStatusMix[] \| null, error }` |
 | `getLeadVolumeByDomainsAction(from, to, domains)` | `getLeadVolumeByDomains(domains, range)` | manager+ | `{ data: MultiDomainVolumeSummary \| null, error }` |
 | `getLeadVolumeForDomainAction(from, to, targetDomain)` | `getLeadVolumeForDomain(effectiveDomain, range)` | manager+ | `{ data: LeadVolumeSummary \| null, error }` |
-| `getBudgetSummaryWidgetAction(from, to, targetDomain?)` | `getBudgetSummary(from, to)` + `filterBudgetRowsByDomain` | manager+ (manager always pinned to own domain) | `{ data: BudgetCampaignRow[] \| null, error }` |
+| `getBudgetGaugeWidgetAction(from, to)` | `getBudgetSummary(from, to)` + `getAccountRecharges(from, to)` → `buildBudgetGaugeSummary` | admin/founder only; always org-wide (no domain filtering - recharges carry no domain) | `{ data: BudgetGaugeSummary \| null, error }` |
 
 `targetDomain` omitted → role-scoped summary ("All" view). `targetDomain` set → single-domain drill-down (the global selector for admin/founder). The volume pair stays two actions deliberately — `MultiDomainVolumeSummary` vs `LeadVolumeSummary` are different shapes. The file also re-exports `resolvePresetToRange` for client components.
 
-> **Removed — do not recreate:** the status/campaign `*ForDomainAction` twins and the dead `getLeadVolumeByRangeAction` (dry-audit H-5).
+> **Removed - do not recreate:** the status/campaign `*ForDomainAction` twins, the dead `getLeadVolumeByRangeAction` (dry-audit H-5), and `getBudgetSummaryWidgetAction` (replaced by `getBudgetGaugeWidgetAction`, 2026-06-24/25).
 
 ---
 
@@ -829,10 +849,10 @@ Sound is owned by the **notifications** pipeline, not the dashboard:
 | `manager-lead-status` | `manager`, `admin`, `founder` | Layout + registry; omitted for `agent`; actions require manager+ |
 | `manager-lead-volume` | `manager`, `admin`, `founder` | Layout + registry; volume service filters manager domain |
 | `manager-campaigns` | `manager`, `admin`, `founder` | Layout + registry; RPC domain gate |
-| `manager-cold-leads` | `manager`, `admin`, `founder` | Layout + registry; RPC `cold_leads_count` scoped (manager domain / admin all); agent branch returns 0 |
+| `manager-cold-leads` | `manager`, `admin`, `founder` | Layout + registry; RPC `cold_leads_count` scoped (manager domain / admin-founder `p_initial_domain` or all-org, migration 0143); agent branch returns 0 |
 | `agent-pending-calls` / `agent-new-leads` | `agent` | Layout + registry; RPC counts filter `assigned_to = p_user_id`; manager+ branch returns 0 |
 | `elaya-presence` | `agent` | Layout + registry; conversation/cap enforced server-side by the Elaya layer |
-| `manager-budget` | `manager`, `admin`, `founder` | Layout + registry; page/action filter rows to scope (`effectiveWidgetDomain` + `filterBudgetRowsByDomain`) |
+| `manager-budget` | `admin`, `founder` | Layout + registry (managers dropped 2026-06-25); page seed and `getBudgetGaugeWidgetAction` both gate on admin/founder; gauge is always org-wide |
 
 **Guest:** empty default layout. **Login gate:** page redirects unauthenticated users to `/login`.
 
@@ -896,7 +916,8 @@ Dashboard widgets mostly use inline durations or Framer defaults; the spatial-gr
 | `20260617000129_manager_pipeline_full_roster.sql` | `lead_status.byAgent` for managers = full domain roster LEFT JOINed to the cohort |
 | `20260617000132_recent_lead_activity_rollup.sql` | `get_recent_lead_activity` lead-rollup RPC (Recent Leads); `p_scope` mine/team |
 | `20260617000138_collapse_gia_category_module_enum.sql` | `task_category` → 2 values; `pending_calls_count` via `task_gia_meta` presence |
-| `20260623000140_cold_lead_cutoff_dry.sql` | `cold_lead_cutoff()` anchor; cold predicate repointed — **canonical current `get_dashboard_summary`** |
+| `20260623000140_cold_lead_cutoff_dry.sql` | `cold_lead_cutoff()` anchor; cold predicate repointed |
+| `20260624000143_dashboard_cold_leads_honor_domain.sql` | `cold_leads_count` honours the global domain selector for admin/founder - **canonical current `get_dashboard_summary`** |
 
 ---
 

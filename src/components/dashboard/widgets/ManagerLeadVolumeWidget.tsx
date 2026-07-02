@@ -17,6 +17,7 @@ import {
 } from "@/lib/actions/dashboard";
 import { formatCompact, formatCount } from "@/lib/utils/numbers";
 import { useChartTokens, resolveColorMap } from "@/components/ui/charts/useChartTokens";
+import { EmptyState } from "@/components/ui/EmptyState";
 import type {
   LeadVolumeSummary,
   MultiDomainVolumeSummary,
@@ -472,17 +473,7 @@ function ChartEmpty({ height }: { height: number | string }) {
         justifyContent: "center",
       }}
     >
-      <p
-        style={{
-          fontFamily: "var(--font-serif)",
-          fontStyle: "italic",
-          fontSize: "var(--text-sm)",
-          color: "var(--theme-text-tertiary)",
-          margin: 0,
-        }}
-      >
-        No leads in this period.
-      </p>
+      <EmptyState title="No leads in this period." style={{ padding: 0 }} />
     </div>
   );
 }

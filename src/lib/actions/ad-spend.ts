@@ -60,8 +60,7 @@ export async function uploadAdSpendAction(
   );
 
   const adminClient = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (adminClient as any)
+  const { error } = await adminClient
     .from("ad_spend_daily")
     .upsert(rows, { onConflict: "campaign_key,spend_date,source" });
 

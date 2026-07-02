@@ -13,7 +13,9 @@
    3.  [data-theme="air"]
    4.  [data-theme="water"]
    5.  [data-theme="fire"]
-   6.  [data-theme="cosmos"]
+   6.  [data-theme="martini"]  (added 2026-07-02)
+   6b. [data-theme="candy"]    (added 2026-07-02)
+       (cosmos / coffee / macha retired 2026-07-02 — migration 0156)
    7.  Semantic colour overrides per theme
    8.  Global tokens (typography, spacing, radius, shadow, motion)
    9.  Z-index scale
@@ -287,43 +289,98 @@
 
 
 /* ================================================================
-   6. COSMOS THEME
+   6. MARTINI THEME
+   A garden wedding at dusk. Periwinkle, mint, a sliver of sky.
+   Palette anchor (2026-07-02): #9fa1ff periwinkle — the accent,
+   exact. #b5baff is the sidebar active label (exact), #aee2ff the
+   info chips, #d9f9df the success chips — the Air pattern: paper
+   stays near-white (periwinkle whisper), the palette does the work
+   in the enhancement layer. Canvas is evening indigo; accent-fg is
+   dark indigo ink (pastel accent, Earth precedent).
    ================================================================ */
 
-[data-theme="cosmos"] {
-  --theme-canvas:            #07060f;
-  --theme-canvas-glow:       rgba(134, 106, 224, 0.09);
-  --theme-canvas-text:       rgba(255, 255, 255, 0.88);
-  /* Canvas atmosphere — flat per DNA §3.5 until Cosmos's own washes are designed (H-02). */
+[data-theme="martini"] {
+  --theme-canvas:            #0a0a16;
+  --theme-canvas-glow:       rgba(159, 161, 255, 0.09);
+  --theme-canvas-text:       rgba(246, 246, 255, 0.87);
+  /* Canvas atmosphere — flat per DNA §3.5 (the H-02 `none` rule). */
   --theme-canvas-grain-opacity: 0.055;
   --theme-canvas-gradient-1: none;
   --theme-canvas-gradient-2: none;
   --theme-canvas-gradient-3: none;
 
-  --theme-paper:             #f8f7fe;
-  --theme-paper-subtle:      #f0eefb;
-  --theme-paper-border:      #dddaf4;
+  --theme-paper:             #f8f8fe;
+  --theme-paper-subtle:      #eff0fa;
+  --theme-paper-border:      #dee0f2;
 
-  --theme-accent:            #7a5fc0;
-  --theme-accent-hover:      #624aa4;
-  --theme-accent-muted:      #615484;
-  --theme-accent-surface:    rgba(122, 95, 192, 0.10);
-  --theme-accent-fg:         #ffffff;
+  --theme-accent:            #9fa1ff;
+  --theme-accent-hover:      #8183ef;
+  --theme-accent-muted:      #4b4e9c;
+  --theme-accent-surface:    rgba(159, 161, 255, 0.14);
+  --theme-accent-fg:         #191a38; /* dark indigo ink — periwinkle cannot hold white */
 
-  --theme-text-primary:      #0f0d1a;
-  --theme-text-secondary:    #6b6485;
-  --theme-text-tertiary:     #a89ec0;
-  --theme-text-inverse:      #f8f7fe;
+  --theme-text-primary:      #1b1d33;
+  --theme-text-secondary:    #5c5f80;
+  --theme-text-tertiary:     #a3a6c4;
+  --theme-text-inverse:      #f8f8fe;
 
-  --theme-sidebar-bg:              #07060f;
-  --theme-sidebar-border:          #14102a;
-  --theme-sidebar-text:            rgba(220, 215, 255, 0.42);
-  --theme-sidebar-active:          #ab95e4;
-  --theme-sidebar-hover-bg:        rgba(122, 95, 192, 0.07);
-  --theme-sidebar-active-bg:       rgba(122, 95, 192, 0.14);
-  --theme-sidebar-active-pill:     #7a5fc0;
+  --theme-sidebar-bg:              #0a0a16;
+  --theme-sidebar-border:          #191932;
+  --theme-sidebar-text:            rgba(230, 232, 255, 0.48);
+  --theme-sidebar-active:          #b5baff; /* the light periwinkle, exact */
+  --theme-sidebar-hover-bg:        rgba(181, 186, 255, 0.06);
+  --theme-sidebar-active-bg:       rgba(159, 161, 255, 0.14);
+  --theme-sidebar-active-pill:     #9fa1ff;
 
-  --shadow-color: 8 6 18;
+  --shadow-color: 8 8 20;
+}
+
+
+/* ================================================================
+   6B. CANDY THEME
+   Spring sweetshop. Pink accent over calm paper, with the pastel
+   rainbow in the chips. Palette anchor (2026-07-02): #f9b2d7 pink
+   — the accent, exact. The rainbow layers live in the semantic
+   chips (#daf9de success · #cfecf3 info · #f6ffdc warning) — the
+   Air pattern: paper stays near-white (blush whisper), the palette
+   does the work in the enhancement layer. Canvas is dark plum;
+   accent-fg is dark plum ink (pastel accent, Earth precedent).
+   ================================================================ */
+
+[data-theme="candy"] {
+  --theme-canvas:            #130a12;
+  --theme-canvas-glow:       rgba(249, 178, 215, 0.08);
+  --theme-canvas-text:       rgba(255, 248, 250, 0.87);
+  /* Canvas atmosphere — flat per DNA §3.5 (the H-02 `none` rule). */
+  --theme-canvas-grain-opacity: 0.055;
+  --theme-canvas-gradient-1: none;
+  --theme-canvas-gradient-2: none;
+  --theme-canvas-gradient-3: none;
+
+  --theme-paper:             #fdf9fb;
+  --theme-paper-subtle:      #f8eef4;
+  --theme-paper-border:      #f0dbe7;
+
+  --theme-accent:            #f9b2d7;
+  --theme-accent-hover:      #ef92c5;
+  --theme-accent-muted:      #a34878;
+  --theme-accent-surface:    rgba(249, 178, 215, 0.16);
+  --theme-accent-fg:         #2b1420; /* dark plum ink — candy pink cannot hold white */
+
+  --theme-text-primary:      #251a21;
+  --theme-text-secondary:    #74606b;
+  --theme-text-tertiary:     #baa5b1;
+  --theme-text-inverse:      #fdf9fb;
+
+  --theme-sidebar-bg:              #130a12;
+  --theme-sidebar-border:          #291a28;
+  --theme-sidebar-text:            rgba(255, 235, 245, 0.48);
+  --theme-sidebar-active:          #f9b2d7; /* the pink, exact — glows on plum */
+  --theme-sidebar-hover-bg:        rgba(249, 178, 215, 0.06);
+  --theme-sidebar-active-bg:       rgba(249, 178, 215, 0.13);
+  --theme-sidebar-active-pill:     #f9b2d7;
+
+  --shadow-color: 16 8 14;
 }
 
 
@@ -475,17 +532,29 @@
   --color-neutral-text:   #5a3a28;
 }
 
-/* Cosmos semantic overrides */
-[data-theme="cosmos"] {
-  --color-success-light:  #e8f0f4;
-  --color-success:        #3a7a6a;
-  --color-danger-light:   #f4eaf2;
-  --color-info-light:     #ece8fb;
-  --color-info:           #6858b8;
-  --color-info-text:      #4a3a9a;
-  --color-neutral-light:  #eeecf8;
-  --color-neutral:        #6b6485;
-  --color-neutral-text:   #4a4268;
+/* Martini semantic overrides — paper is a periwinkle-whisper white (Air
+   pattern); the palette's mint and sky live in the chips. Danger softens
+   to rose — dusk, not alarm. */
+[data-theme="martini"] {
+  --color-success-light:  #e3f5e8; /* the mint (#d9f9df), whispered */
+  --color-info-light:     #e2f1fb; /* the sky (#aee2ff), whispered */
+  --color-danger-light:   #f9e9ef;
+  --color-neutral-light:  #ececf7; /* matches paper-subtle tone */
+  --color-neutral:        #5c5f80;
+  --color-neutral-text:   #434665;
+}
+
+/* Candy semantic overrides — paper is a blush-whisper white (Air pattern);
+   the pastel rainbow lives HERE: mint success, powder-blue info, lemon
+   warning. Danger-light shifts pink. */
+[data-theme="candy"] {
+  --color-success-light:  #e3f5e6; /* the mint (#daf9de), whispered */
+  --color-warning-light:  #f8f5da; /* the lemon (#f6ffdc), barely deepened */
+  --color-info-light:     #e5f2f6; /* the powder blue (#cfecf3), whispered */
+  --color-danger-light:   #fbe6ee;
+  --color-neutral-light:  #f8eef4; /* matches paper-subtle tone */
+  --color-neutral:        #74606b;
+  --color-neutral-text:   #52424b;
 }
 
 

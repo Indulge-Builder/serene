@@ -33,7 +33,7 @@ function maskEmail(raw: string, depth: PiiMaskingDepth): string {
   return `${local.charAt(0)}•••@${domain}`;
 }
 
-export function maskString(value: string, depth: PiiMaskingDepth): string {
+function maskString(value: string, depth: PiiMaskingDepth): string {
   if (depth === 'off') return value;
   return value
     .replace(EMAIL_RE, (m) => maskEmail(m, depth))

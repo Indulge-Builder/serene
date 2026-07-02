@@ -1,13 +1,12 @@
 import { z } from "zod";
+import { uuidField } from "@/lib/validations/fields";
 
 // campaign_key is normalised (lowercase + trim) before the DB write — the DB
 // CHECK constraint enforces the same invariant. Validation accepts any non-empty
 // string; the action normalises it.
 export const upsertAdCreativeSchema = z.object({
   // Present on edit, absent on create.
-  id: z
-    .string()
-    .uuid("ad_creative_id_invalid")
+  id: uuidField("ad_creative_id_invalid")
     .nullable()
     .optional(),
   campaign_key: z
@@ -39,7 +38,7 @@ export const upsertAdCreativeSchema = z.object({
 });
 
 export const deleteAdCreativeSchema = z.object({
-  id: z.string().uuid("ad_creative_id_invalid"),
+  id: uuidField("ad_creative_id_invalid"),
 });
 
 export type UpsertAdCreativeInput = z.infer<typeof upsertAdCreativeSchema>;

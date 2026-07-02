@@ -2,7 +2,7 @@
 
 > **Purpose:** how the design law is implemented — shell classes, component library behaviour, layout patterns, form system.
 > **Audience:** engineers (designers read `DESIGN-DNA.md` first). · **Source-of-truth scope:** implementation reference only — where this file and `DESIGN-DNA.md` disagree, DNA is law and this file is a bug.
-> **Last verified:** 2026-06-11 (DOC-01/DOC-04 corrections applied).
+> **Last verified:** 2026-07-02 (six-theme swap + 2026-07-02 component purge applied).
 
 ---
 
@@ -47,7 +47,7 @@ Before shipping any surface, ask: *Does this belong in a product serving the wor
 
 **Where:** `src/app/(dashboard)/layout.tsx` — outer wrapper `className="layout-shell flex"` (`globals.css:28` — flat `var(--theme-canvas)` background, no grain/gradient layers).
 
-**`.layout-canvas`** (`globals.css:33`) carries the full atmosphere stack below but is currently **mounted nowhere** — the dashboard uses the flat `.layout-shell`, and the auth layout composes its atmosphere inline. Treat `.layout-canvas` as the spec-complete atmosphere class awaiting adoption, not as the live shell. *(Corrected 2026-06-11 — design-audit DOC-01: earlier versions of this doc, DNA §3.5, and root CLAUDE.md described `.layout-canvas` as the mounted dashboard shell.)*
+**`.layout-canvas`** (`globals.css:33`) carries the full atmosphere stack below. It is mounted on the **auth shell only** (`src/app/(auth)/layout.tsx`), never the dashboard shell; the dashboard uses the flat `.layout-shell`. *(Corrected 2026-06-11 — design-audit DOC-01: earlier versions of this doc, DNA §3.5, and root CLAUDE.md described `.layout-canvas` as the mounted dashboard shell.)*
 
 **CSS for `.layout-canvas`** (`src/app/globals.css`):
 
@@ -106,7 +106,7 @@ The dashboard paper div does not always use the `.serene-paper` class name; it a
 | Background | `var(--theme-sidebar-bg)` |
 | Shadow | `var(--shadow-sidebar)` |
 
-**Design target (tablet/mobile — not all breakpoints wired in current Sidebar):** 64px icon rail at `md`; off-canvas + bottom bar below `md`.
+**Responsive modes (shipped 2026-06-12, decision-log D-3):** 240px full sidebar at `lg+`; icon rail at `md`; off-canvas drawer below `md`, triggered by the `.serene-mobile-topbar` strip. A bottom nav bar was considered and deferred in favour of the drawer.
 
 #### Tokens used
 
@@ -128,9 +128,7 @@ The dashboard paper div does not always use the `.serene-paper` class name; it a
 | Hover | background transition `--duration-fast` `--ease-in-out` | `background: var(--theme-sidebar-hover-bg)`, `color: var(--theme-canvas-text)` |
 | Active | `font-weight: var(--weight-medium)` | `color: var(--theme-sidebar-active)`, `background: var(--theme-sidebar-active-bg)`, `border: 1px solid color-mix(in srgb, var(--theme-accent) 18%, transparent)` |
 
-**Active pill (current implementation):** static `3px × 16px` bar, `position: absolute; left: 0`, `border-radius: 0 var(--radius-full) var(--radius-full) 0`, `background: var(--theme-sidebar-active-pill)`.
-
-**Canonical motion spec (design target for shared-layout pill):** Framer `layoutId="active-pill"`, `transition: { type: "spring", stiffness: 380, damping: 30 }` — pill *travels* between items; TabSelector chips use `SPRING_CONFIG` (`stiffness: 400`, `damping: 30`) from `motion.ts`.
+**Active pill (shipped):** a travelling `motion.span` with `layoutId="sidebar-active-pill"` and `SPRING_CONFIG` (`stiffness: 400`, `damping: 30`) from `motion.ts`, reduced-motion gated. The pill *travels* between items; it does not toggle. Same `SPRING_CONFIG` as TabSelector chips.
 
 **Nav hover (design target):** `whileHover: { x: 2 }`, `transition: { duration: 0.25, ease: var(--ease-spring) }`.
 
@@ -146,22 +144,11 @@ The dashboard paper div does not always use the `.serene-paper` class name; it a
 
 ---
 
-### 2d. TopBar
+### 2d. Page controls (the TopBar replacement)
 
-**Implementation:** `src/components/layout/TopBar.tsx` (used where embedded; primary nav pages often use in-page `h1` instead).
+**There is no TopBar.** `src/components/layout/TopBar.tsx` was deleted; a separate chrome bar read as detached from the page. The shipped pattern is **`PageControls`** (`src/components/layout/PageControls.tsx`): the domain selector and the notification bell rendered inline on each page's title row, right of the `h1`. No separate bar, strip, or divider.
 
-| Attribute | Value |
-| --------- | ----- |
-| Height | `56px` (`h-14`) |
-| Position | `sticky`, `top: 0` |
-| z-index | `var(--z-sticky)` (30) |
-| Background | `var(--theme-paper)` |
-| Border | `1px solid var(--theme-paper-border)` |
-| Backdrop | `backdrop-filter: blur(12px)` + WebKit prefix — **sanctioned surface** |
-
-**Design note:** TopBar should read as paper, not a separate chrome colour; on scroll, blur sells depth. Border at **50% perceived whisper** is achieved in spec via `color-mix` on border — full-opacity border is a wall, not a hairline.
-
-**Zones:** left = page title (`--font-serif`, `--text-xl`, `--weight-semibold` in current TopBar); centre reserved; right = avatar + actions.
+The only bar-shaped chrome left is **`.serene-mobile-topbar`** (`globals.css`), the below-`md` strip that hosts the sidebar drawer trigger.
 
 **Page title period:** primary nav `<h1 class="type-page-title">` ends with `<span class="page-title-dot">.</span>` — accent blink via `serene-page-dot-blink` 2.4s. Detail pages with `BackButton` use the dot on the title but skip eyebrow above.
 
@@ -176,7 +163,7 @@ Never use raw numbers in components — named tokens only.
 | `--z-base` | 0 | Document flow |
 | `--z-raised` | 10 | Card hover, sticky table headers |
 | `--z-dropdown` | 20 | Dropdowns, popovers, tooltips |
-| `--z-sticky` | 30 | TopBar, sticky section headers |
+| `--z-sticky` | 30 | Sticky section headers, mobile topbar strip |
 | `--z-sidebar` | 40 | Sidebar |
 | `--z-overlay` | 50 | Modal backdrops, drawer backdrops |
 | `--z-modal` | 60 | Modal panels, command palette |
@@ -187,14 +174,16 @@ Never use raw numbers in components — named tokens only.
 
 ---
 
-## 3. Five Themes
+## 3. Six Themes
 
 Theme attribute: `data-theme` on `<html>`. Default with no attribute = Earth (`:root` mirrors Earth).
 
+Live themes: **Earth, Air, Water, Fire, Martini, Candy** (the canonical vocabulary is `THEME_KEYS` in `src/lib/constants/themes.ts`). Cosmos, Coffee, and Macha were retired 2026-07-02; migration 0156 moved any saved profiles back to Earth. Adding a theme = one entry in `themes.ts` + a `[data-theme]` block in `design-tokens.css` + a CHECK-extending migration.
+
 ### Switching
 
-1. `ThemeInitializer` (`useLayoutEffect`) sets `data-theme` from profile before paint — zero flash.
-2. `ThemeSelector` previews by setting `data-theme` on `<html>` without hardcoded colour literals in components.
+1. Zero flash is server-side: the root layout reads the `serene-theme` cookie (`THEME_COOKIE` in `themes.ts`) and stamps `data-theme` on `<html>` in the SSR HTML. There is no inline script and no client-effect race.
+2. `ThemeInitializer` and `ThemeSelector` keep the cookie in sync with `profiles.theme`; `ThemeSelector` previews by setting `data-theme` on `<html>` without hardcoded colour literals in components.
 3. `--transition-theme` animates `background-color`, `color`, `border-color`, `box-shadow` over `--duration-slow` with `--ease-in-out`.
 
 ---
@@ -264,19 +253,41 @@ Theme attribute: `data-theme` on `<html>`. Default with no attribute = Earth (`:
 
 ---
 
-### Cosmos
+### Martini
 
 | Role | Token |
 | ---- | ----- |
-| Canvas | `--theme-canvas` (violet-black) |
-| Paper | `--theme-paper` (**violet undertone must be preserved**) |
-| Accent | `--theme-accent` (nebula violet) |
-| Accent foreground | `--theme-accent-fg` |
-| Sidebar active | `--theme-sidebar-active` |
+| Canvas | `--theme-canvas` (`#0a0a16`, evening indigo) |
+| Paper | `--theme-paper` (`#f8f8fe`, near-white with a periwinkle whisper) |
+| Accent | `--theme-accent` (`#9fa1ff`, periwinkle) |
+| Accent foreground | `--theme-accent-fg` (`#191a38`, **dark indigo ink**; a pastel accent can never hold white text) |
+| Sidebar active | `--theme-sidebar-active` (`#b5baff`, light periwinkle) |
 
-**Design intent:** Atacama night — vast, intelligent, pre-light darkness; active nav is the strongest nebula pool of all five themes (`--theme-sidebar-active-bg` ~0.14).
+**Design intent:** Dusk aperitif. Paper stays near-white; the palette does its work in the enhancement layer (the Air pattern): mint success chips, sky info chips. Canvas atmosphere is flat (no gradient washes), grain only.
 
-**Critical rules:** Never strip violet from paper or the theme disconnects from canvas; sidebar text is cool violet-white; secondary text is violet-grey, not neutral grey.
+**Critical rules:** Never "fix" `--theme-accent-fg` to `#ffffff`; keep the periwinkle whisper in paper; danger softens to rose in the chip overrides (dusk, not alarm).
+
+---
+
+### Candy
+
+| Role | Token |
+| ---- | ----- |
+| Canvas | `--theme-canvas` (`#130a12`, dark plum) |
+| Paper | `--theme-paper` (`#fdf9fb`, near-white with a blush whisper) |
+| Accent | `--theme-accent` (`#f9b2d7`, candy pink) |
+| Accent foreground | `--theme-accent-fg` (`#2b1420`, **dark plum ink**; a pastel accent can never hold white text) |
+| Sidebar active | `--theme-sidebar-active` (`#f9b2d7`, the pink, exact) |
+
+**Design intent:** Spring sweetshop. The pastel rainbow lives in the semantic chips, never the surfaces: mint success, powder-blue info, lemon warning. Paper stays near-white (the Air pattern). Canvas atmosphere is flat, grain only.
+
+**Critical rules:** Never "fix" `--theme-accent-fg` to `#ffffff`; the rainbow stays in the chips; keep the blush whisper in paper.
+
+---
+
+### Retired themes
+
+Cosmos, Coffee, and Macha were retired 2026-07-02 (migration 0156). Their `[data-theme]` blocks no longer exist in `design-tokens.css`; a stale cookie or DB value fails `isThemeKey` and falls back to Earth. Never re-add a theme key without a CHECK migration.
 
 ---
 
@@ -296,7 +307,7 @@ Theme attribute: `data-theme` on `<html>`. Default with no attribute = Earth (`:
 
 **Never use `--theme-text-inverse` on accent fills. Use `--theme-accent-fg`.**
 
-- `--theme-accent-fg` is theme-aware (Earth: dark on gold; Air/Water/Fire/Cosmos: light on saturated accent).
+- `--theme-accent-fg` is theme-aware. Earth: dark warm ink on gold. Martini and Candy: dark ink on the pastel accent (never white). Air/Water/Fire: white on the saturated accent.
 - `--theme-text-inverse` is the paper-colour inverse for dark fills — not the accent button label token.
 
 ---
@@ -348,7 +359,8 @@ Each semantic intent has **base**, **-light** (fills), **-text** (labels on fill
 | **Air** | Cooler success/warning/info/neutral **light** fills; neutral base/text slate-aligned |
 | **Water** | Teal-shifted success; cooler info/neutral lights; neutral base/text chromatic |
 | **Fire** | Amber warning; warm neutral lights; info desaturated for ash paper |
-| **Cosmos** | Violet-grounded info/neutral; danger light rosier; success slightly muted |
+| **Martini** | Mint success-light + sky info-light chips; danger-light softens to rose; neutral matches the periwinkle paper tone |
+| **Candy** | The pastel rainbow lives here: mint success-light, powder-blue info-light, lemon warning-light; danger-light shifts pink; neutral matches the blush paper tone |
 
 #### Focus & selection
 
@@ -513,11 +525,11 @@ Implemented in `src/styles/design-tokens.css`. **Exactly three named type classe
 | Pattern | Initial | Animate | Exit | Duration | Easing |
 | ------- | ------- | ------- | ---- | -------- | ------ |
 | Standard entrance | `opacity: 0, y: 6` | `opacity: 1, y: 0` | `opacity: 0, y: -4` | enter 400ms / exit 250ms | out-expo / in-expo |
-| Modal enter | `opacity: 0, y: 10, scale: 0.98` | `opacity: 1, y: 0, scale: 1` | `opacity: 0, scale: 0.97` | 350ms / 150ms | out-expo / in-expo |
+| Modal enter | `opacity: 0, y: 10, scale: 0.98` | `opacity: 1, y: 0, scale: 1` | `opacity: 0, scale: 0.97` | 400ms / 250ms (`ENTER_DURATION` / `EXIT_DURATION`) | out-expo / in-expo |
 | Dropdown | `opacity: 0, y: -4` | `opacity: 1, y: 0` | `opacity: 0, y: -4` | 200ms / 150ms | out-expo / in-expo |
 | Card hover lift | — | `translateY(-1px)` | — | `--transition-hover` | CSS only |
 | Sidebar nav hover (target) | — | `x: 2` | — | 250ms | `--ease-spring` |
-| Sidebar active pill (target) | layoutId spring | stiffness **380**, damping **30** | — | spring | — |
+| Sidebar active pill (shipped) | `layoutId="sidebar-active-pill"` | `SPRING_CONFIG`: stiffness **400**, damping **30** | — | spring | — |
 | Button press (`MotionButton`) | — | `scale: 0.97` | — | 100ms + spring | `MOTION_BUTTON_DEFAULTS` |
 | Skeleton | — | `serene-skeleton-pulse` 1.6s | — | loop | ease-in-out |
 | Page title dot | opacity 1 ↔ 0.2 | — | — | 2.4s | ease-in-out |
@@ -553,11 +565,12 @@ Import from `@/lib/constants/motion` — **never redeclare inline.**
 
 ### 6d. Sanctioned `backdrop-filter` surfaces
 
-**Only three:**
+**Only these:**
 
-1. TopBar (`blur(12px)`)
-2. Mobile sidebar overlay (when implemented)
-3. Command palette
+1. Mobile sidebar drawer backdrop (`.serene-sidebar-backdrop`, `blur(8px)`), the only one live today
+2. Command palette (sanctioned, when built)
+
+(The TopBar was the third sanctioned surface; it was deleted along with the component.)
 
 **Never** on cards, dropdown panels, or modal surfaces — use solid `--theme-paper` + `--shadow-3` instead.
 
@@ -630,14 +643,6 @@ Props: `password: string`. Renders a 4-segment bar (height 2px, gap 2px) that fi
 
 sm/md. Spring thumb. Label + description slots.
 
-#### `RadioGroup` — `RadioGroup.tsx` — `RadioGroupProps`
-
-Variants `default` | `card`. Card selected: `--theme-accent-surface`.
-
-#### `ChecklistItem` / `Checklist` — `ChecklistItem.tsx`, `Checklist.tsx`
-
-Checked: strikethrough + `--color-success` icon. `AnimatePresence` icon crossfade. Checklist composes `ProgressBar`.
-
 #### `Calendar` — `Calendar.tsx` — `CalendarProps`
 
 Month slide (Framer). `taskDots`: local YYYY-MM-DD keys; dots `--theme-accent` or `--color-danger`; cell height 44px when dots enabled.
@@ -696,14 +701,14 @@ Overlay `color-mix(var(--theme-canvas) 72%, transparent)`. Surface `--theme-pape
 
 Micro-label + value; optional copy; `divider` border `--theme-paper-border`. Copy/check icons: 150ms crossfade, tap scale.
 
-#### `ProgressBar` — `ProgressBar.tsx` — `ProgressBarProps`
-
-Auto intent from value unless `intent` override. Fill is a full-width element animated via `scaleX` + `transformOrigin: left center` (Framer) — width animation retired 2026-06-11 (design-audit M-03; layout properties are never animated).
-
 > **Deleted primitives (2026-06-10 DRY audit, PR 1):** `ListRow`, `Accordion`, and
 > `EditButton` were built but never imported anywhere in `src/` and have been removed.
 > Do not rebuild them speculatively — extract a primitive only when a second call site
 > exists.
+>
+> **Deleted primitives (2026-07-02 dead-code purge):** `RadioGroup`, `Checklist`,
+> `ChecklistItem`, and `ProgressBar` were removed (zero consumers). The same rule
+> applies: rebuild only when a real call site needs one.
 
 ---
 
@@ -728,13 +733,13 @@ No `Badge.tsx` — use `.status-pill` utilities (`--status-*` lead pills, `.stat
 | File | Props | Notes |
 | ---- | ----- | ----- |
 | `useChartTokens.ts` | `ChartTokens`, optional `themeKey` | MutationObserver on `data-theme`; `resolveColorMap()` for SVG |
-| `LineChart.tsx` | `LineChartProps` | `loading` → skeleton |
 | `BarChart.tsx` | `BarChartProps` | Top-radius bars only; optional `colorMap` |
-| `PieChart.tsx` | `PieChartProps` | |
-| `DonutChart.tsx` | `DonutChartProps` | `centerLabel` slot |
-| `AreaChart.tsx` | `AreaChartProps` | Gradient fill from token |
-| `ButterflyChart.tsx` | `ButterflyChartProps` | Negative left series |
+| `CartesianChartFrame.tsx` | `ChartFrame` + `cartesianDefaults(tokens)` + `CARTESIAN_MARGIN` | The shared paper container and grid/axis/tooltip/legend prop defaults for Area/Line/Bar charts built from raw Recharts |
 | `ChartSkeleton.tsx` | `ChartSkeletonProps` | `.skeleton` |
+
+> **Deleted chart wrappers (2026-07-02 dead-code purge):** `LineChart.tsx`, `PieChart.tsx`,
+> `DonutChart.tsx`, `AreaChart.tsx`, `ButterflyChart.tsx`. Live Cartesian charts import raw
+> Recharts and compose `ChartFrame` + `cartesianDefaults` instead of a wrapper component.
 
 ---
 
@@ -746,7 +751,7 @@ Custom SVG; `elaya-breathe` 3s when `breathing` true. Static glyph = Elaya absen
 
 #### `toast-provider.tsx` / `toast-item.tsx`
 
-Stack max 3; stagger scale/translateY. Types: success/warning/danger/loading/elaya. Danger never auto-dismiss. `serene-toast-bar-breathe` on left bar.
+Stack max 3; stagger scale/translateY. Types: success/warning/danger/info/loading/elaya. Danger never auto-dismiss. There is no left accent bar (removed 2026-06-15; type reads from the icon zone, padding is symmetric); the only bar is the warning `toast-deplete` depletion bar on the bottom edge.
 
 ---
 
@@ -819,6 +824,7 @@ Full token-level spec: **`DESIGN-DNA.md` §3.7 "Auth Surface (canvas-dark)"**. S
 - Right: `SearchBar` + `FilterDropdown`(s) + filter icon + active-count badge + Clear
 - URL sync via `buildFilterParams()` in `src/lib/utils/filter-params.ts` — pass `resetKeys: ['page']` when filters change
 - Date helpers: `dateFromUrlParam` / `dateToUrlParam` (local calendar, IST-safe)
+- The canonical shell is **`<FilterBar>`** (`src/components/ui/FilterBar.tsx`) with `useUrlFilters` for URL-driven bars: search + dropdowns + the Range/Dates panels + Clear, immediate-commit only, auto-collapsing to a single scroll row below `md`. All list-page filter bars compose it; never fork a new filter-bar chrome
 
 ---
 
@@ -904,7 +910,7 @@ Lead status, won/lost, SLA — use **`--status-*`** and `--color-success/warning
 
 | Element | Mobile `< md` | Tablet `md` | Desktop `lg+` |
 | ------- | ------------- | ----------- | ------------- |
-| Sidebar | Off-canvas + bottom nav (target) | 64px rail | 240px full |
+| Sidebar | Off-canvas drawer (bottom nav deferred, decision-log D-3) | 64px rail | 240px full |
 | Page padding | 16–20px | 24px | 32px (`p-8`) |
 | Tables | Card stack (R-05) | Horizontal scroll | Full grid |
 | Modals | Bottom sheet, top radius `--radius-xl`, max-height 90dvh | Centred | Centred |
@@ -921,14 +927,14 @@ Lead status, won/lost, SLA — use **`--status-*`** and `--color-success/warning
 ### What transitions
 
 - Paper **content** opacity + `y` (e.g. 8px → 0, up to `--duration-page` 500ms)
-- Route progress bar on paper (2px, `--theme-accent`, themed glow)
+- Route progress bar on paper (2px, `--theme-accent`, themed glow): **spec only, not built** (no nprogress dependency, no progress hook in `src/`)
 - Drill-down: list recedes `x: 0 → -16px`; detail arrives `x: 24px → 0`
 - Return: reverse
 
 ### What never transitions
 
 - Sidebar (fixed)
-- TopBar shell (title may crossfade 150ms)
+- Shell chrome (the mobile topbar strip; page titles may crossfade 150ms)
 - Notification badges (update in place)
 - User avatar in sidebar footer
 - **The canvas itself**
@@ -961,7 +967,7 @@ Sidebar uses `.sidebar-scrollable` variant (light thumb on dark).
 | 2 | Never `text-gray-*`, `bg-gray-*`, `bg-white` | Use `--theme-*` and semantic tokens |
 | 3 | Never z-index outside `--z-*` | Stacking chaos and hidden modals |
 | 4 | Never animate width/height/padding/margin | Jank and M-06 violations |
-| 5 | Never `backdrop-filter` except TopBar, mobile sidebar overlay, command palette | Glass on cards reads as cheap |
+| 5 | Never `backdrop-filter` except the mobile sidebar drawer backdrop and the command palette | Glass on cards reads as cheap |
 | 6 | Never `font-bold` (700) | Max `--weight-semibold`; bold reads as shouting |
 | 7 | Never combine data fetching and UI in one component | Testability and RSC boundaries |
 | 8 | Never duplicate an existing `ui/` primitive | Drift guaranteed |
@@ -982,7 +988,7 @@ Sidebar uses `.sidebar-scrollable` variant (light thumb on dark).
 
 - Every colour in `.tsx` files is a CSS variable — no literal colour strings
 - **`--weight-semibold` (600)** is the maximum font weight
-- **`backdrop-filter`** only on: TopBar, mobile sidebar overlay, command palette
+- **`backdrop-filter`** only on: the mobile sidebar drawer backdrop, the command palette
 - No **coloured single-edge borders** (`borderLeft` accent strips) for category/status
 - **Skeleton minimum 150ms** before showing content (V-08)
 - All motion constants from **`src/lib/constants/motion.ts`** — no inline cubic-bezier
@@ -992,7 +998,7 @@ Sidebar uses `.sidebar-scrollable` variant (light thumb on dark).
 - **`.page-title-dot`** on primary nav pages only; detail pages use `BackButton`
 - **Lead status colours** are theme-invariant
 - **Earth canvas gradients** at corners/edges, not centre
-- **Paper undertones** per theme (Air/Water/Fire/Cosmos) must not be washed to generic white
+- **Paper undertones** per theme (Air/Water/Fire, plus the Martini periwinkle and Candy blush whispers) must not be washed to generic white
 - **Charts** use `useChartTokens()` / `resolveColorMap` — not hardcoded SVG fills
 - **Modals** compose `Modal` / `modal.tsx` — no custom chrome
 - **Server Actions** return `{ data, error }` — never throw to UI

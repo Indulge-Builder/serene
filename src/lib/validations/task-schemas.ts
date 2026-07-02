@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { sanitizeText } from "@/lib/utils/sanitize";
+import { uuidField } from "@/lib/validations/fields";
 
 // ─────────────────────────────────────────────
 // Shared enums (inline — no magic strings in actions)
@@ -29,7 +30,7 @@ export const CreatePersonalTaskSchema = z.object({
     .transform((v) => (v ? sanitizeText(v) : null)),
   priority: PriorityEnum.default("normal"),
   due_at: z.string().datetime({ offset: true }).optional().nullable(),
-  assigned_to: z.string().uuid("Invalid assignee ID").optional(),
+  assigned_to: uuidField("Invalid assignee ID").optional(),
   tags: z
     .array(z.string().min(1).max(50).transform(sanitizeText))
     .max(10)
@@ -42,7 +43,7 @@ export type CreatePersonalTaskInput = z.infer<typeof CreatePersonalTaskSchema>;
 // Update task tags (standalone action — called from task detail/edit)
 // ─────────────────────────────────────────────
 export const UpdateTaskTagsSchema = z.object({
-  taskId: z.string().uuid("Invalid task ID"),
+  taskId: uuidField("Invalid task ID"),
   tags: z.array(z.string().min(1).max(50).transform(sanitizeText)).max(10),
 });
 
@@ -72,7 +73,7 @@ export type CreateGroupTaskInput = z.infer<typeof CreateGroupTaskSchema>;
 // Create group subtask
 // ─────────────────────────────────────────────
 export const CreateSubtaskSchema = z.object({
-  group_id: z.string().uuid("Invalid group ID"),
+  group_id: uuidField("Invalid group ID"),
   title: z
     .string()
     .min(1, "Title is required")
@@ -84,7 +85,7 @@ export const CreateSubtaskSchema = z.object({
     .transform((v) => (v ? sanitizeText(v) : null)),
   priority: PriorityEnum.default("normal"),
   due_at: z.string().datetime({ offset: true }).optional().nullable(),
-  assigned_to: z.string().uuid("Invalid assignee ID"),
+  assigned_to: uuidField("Invalid assignee ID"),
 });
 
 export type CreateSubtaskInput = z.infer<typeof CreateSubtaskSchema>;
@@ -93,7 +94,7 @@ export type CreateSubtaskInput = z.infer<typeof CreateSubtaskSchema>;
 // Update task (full update — partial fields allowed)
 // ─────────────────────────────────────────────
 export const UpdateTaskSchema = z.object({
-  taskId: z.string().uuid("Invalid task ID"),
+  taskId: uuidField("Invalid task ID"),
   title: z.string().min(1).max(255).transform(sanitizeText).optional(),
   description: z
     .string()
@@ -102,7 +103,7 @@ export const UpdateTaskSchema = z.object({
   priority: PriorityEnum.optional(),
   status: StatusEnum.optional(),
   due_at: z.string().datetime({ offset: true }).optional().nullable(),
-  assigned_to: z.string().uuid("Invalid assignee ID").optional(),
+  assigned_to: uuidField("Invalid assignee ID").optional(),
 });
 
 export type UpdateTaskInput = z.infer<typeof UpdateTaskSchema>;
@@ -111,7 +112,7 @@ export type UpdateTaskInput = z.infer<typeof UpdateTaskSchema>;
 // Update task status only (targeted action)
 // ─────────────────────────────────────────────
 export const UpdateTaskStatusSchema = z.object({
-  taskId: z.string().uuid("Invalid task ID"),
+  taskId: uuidField("Invalid task ID"),
   status: StatusEnum,
 });
 
@@ -121,7 +122,7 @@ export type UpdateTaskStatusInput = z.infer<typeof UpdateTaskStatusSchema>;
 // Add task remark
 // ─────────────────────────────────────────────
 export const AddTaskRemarkSchema = z.object({
-  taskId: z.string().uuid("Invalid task ID"),
+  taskId: uuidField("Invalid task ID"),
   content: z
     .string()
     .min(1, "Remark cannot be empty")
@@ -136,7 +137,7 @@ export type AddTaskRemarkInput = z.infer<typeof AddTaskRemarkSchema>;
 // Delete task (taskId only — authorization in action)
 // ─────────────────────────────────────────────
 export const DeleteTaskSchema = z.object({
-  taskId: z.string().uuid("Invalid task ID"),
+  taskId: uuidField("Invalid task ID"),
 });
 
 export type DeleteTaskInput = z.infer<typeof DeleteTaskSchema>;
@@ -145,7 +146,7 @@ export type DeleteTaskInput = z.infer<typeof DeleteTaskSchema>;
 // Delete group task (admin/founder only — RLS enforced)
 // ─────────────────────────────────────────────
 export const DeleteGroupTaskSchema = z.object({
-  groupId: z.string().uuid("Invalid group ID"),
+  groupId: uuidField("Invalid group ID"),
 });
 
 export type DeleteGroupTaskInput = z.infer<typeof DeleteGroupTaskSchema>;
@@ -154,7 +155,7 @@ export type DeleteGroupTaskInput = z.infer<typeof DeleteGroupTaskSchema>;
 // Suppress task remark (admin/founder only)
 // ─────────────────────────────────────────────
 export const SuppressTaskRemarkSchema = z.object({
-  messageId: z.string().uuid("Invalid remark ID"),
+  messageId: uuidField("Invalid remark ID"),
 });
 
 export type SuppressTaskRemarkInput = z.infer<typeof SuppressTaskRemarkSchema>;
@@ -169,7 +170,7 @@ const ChecklistItemSchema = z.object({
 });
 
 export const UpdateChecklistSchema = z.object({
-  taskId: z.string().uuid("Invalid task ID"),
+  taskId: uuidField("Invalid task ID"),
   items: z.array(ChecklistItemSchema),
 });
 
@@ -181,7 +182,7 @@ export type UpdateChecklistInput = z.infer<typeof UpdateChecklistSchema>;
 // The action is the role/domain trust boundary — this only shape-validates.
 // ─────────────────────────────────────────────
 export const CompletedTasksQuerySchema = z.object({
-  targetUserId: z.string().uuid("Invalid user ID"),
+  targetUserId: uuidField("Invalid user ID"),
   cursor: z
     .object({
       completed_at: z.string().nullable(),

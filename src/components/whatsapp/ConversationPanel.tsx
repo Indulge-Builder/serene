@@ -4,13 +4,13 @@ import {
   useCallback,
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
   useTransition,
 } from "react";
 import { ArrowLeft, Paperclip } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
+import { formatDate } from "@/lib/utils/dates";
 import { MessageBar } from "@/components/ui/MessageBar";
 import { DictationButton } from "@/components/ui/DictationButton";
 import { MessageBubble } from "@/components/whatsapp/MessageBubble";
@@ -64,9 +64,6 @@ export function ConversationPanel({
   useEffect(() => {
     arrivedAfterMount.current = true;
   }, []);
-  // Tracks scrollTop before "load earlier" prepend so we can restore it
-  const savedScrollTop = useRef<number>(0);
-
   const [messages,       setMessages]       = useState<WhatsAppMessage[]>(initialMessages);
   const [draft,          setDraft]          = useState("");
   const [isSending,      startSendTransition]     = useTransition();
@@ -615,7 +612,7 @@ function groupByDate(messages: WhatsAppMessage[]): { dateLabel: string; messages
     } else if (isSameDay(d, yesterday)) {
       label = "Yesterday";
     } else {
-      label = d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+      label = formatDate(d, "d MMM yyyy");
     }
 
     if (!groups.has(label)) groups.set(label, []);

@@ -1,4 +1,5 @@
 import { FileText } from 'lucide-react';
+import { CardHeader } from '@/components/leads/CardHeader';
 
 type Props = {
   formData: Record<string, unknown>;
@@ -20,47 +21,21 @@ export function DynamicFormResponses({ formData }: Props) {
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-2)',
-          padding:      'var(--space-4) var(--space-5)',
-          borderBottom: '1px solid var(--theme-paper-border)',
-          background:   'var(--theme-paper-subtle)',
-        }}
-      >
-        <FileText
-          style={{
-            width:       '0.875rem',
-            height:      '0.875rem',
-            color:       'var(--theme-text-tertiary)',
-            strokeWidth: 1.5,
-            flexShrink:  0,
-          }}
-        />
-        <span
-          style={{
-            fontFamily:    'var(--font-sans)',
-            fontSize:      'var(--text-2xs)',
-            fontWeight:    'var(--weight-semibold)',
-            letterSpacing: 'var(--tracking-widest)',
-            textTransform: 'uppercase',
-            color:         'var(--theme-text-tertiary)',
-          }}
-        >
-          Form Responses
-        </span>
-        <span
-          style={{
-            marginLeft:   'auto',
-            fontSize:     'var(--text-xs)',
-            color:        'var(--theme-text-tertiary)',
-          }}
-        >
-          {entries.length} field{entries.length !== 1 ? 's' : ''}
-        </span>
-      </div>
+      <CardHeader
+        icon={FileText}
+        label="Form Responses"
+        right={
+          <span
+            style={{
+              marginLeft:   'auto',
+              fontSize:     'var(--text-xs)',
+              color:        'var(--theme-text-tertiary)',
+            }}
+          >
+            {entries.length} field{entries.length !== 1 ? 's' : ''}
+          </span>
+        }
+      />
 
       {/* Entries */}
       <div style={{ padding: 'var(--space-5)' }}>

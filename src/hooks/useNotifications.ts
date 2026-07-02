@@ -15,7 +15,7 @@
  * internally so a failed mark-read rolls the item back into view.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   markNotificationReadAction,
@@ -45,9 +45,18 @@ export function useNotifications({
   // can roll an item back. The bell only ever renders the unread slice below.
   const [allNotifications, setNotifications] = useState<Notification[]>(initialData);
   const [isLoading, setIsLoading]            = useState(false);
-  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
+
+  // Strict Mode runs setup→teardown→setup; the mount nonce makes the second
+  // setup create a fresh channel instead of re-`.on()`ing a subscribed one (P-06).
+  const mountId = useId();
 
   const sound = useNotificationSound();
+
+  // Latest-ref for the chime: `play` is recreated when the sound pref hydrates/
+  // changes, but the channel subscription must NOT re-run on that — the ref keeps
+  // the handler on the current `play` without adding it to the effect deps.
+  const playRef = useRef(sound.play);
+  playRef.current = sound.play;
 
   // Displayed list = unread only. Marking read drops the item from view.
   const notifications = allNotifications.filter((n) => n.read_at === null);
@@ -61,7 +70,7 @@ export function useNotifications({
     // Filter strictly at channel level — not in JS after event arrives.
     // Wrong filter = all users' notifications broadcast to all clients (pre-mortem item 1).
     const channel = supabase
-      .channel(`notifications:${userId}`)
+      .channel(`notifications:${userId}:${mountId}`)
       .on(
         "postgres_changes",
         {
@@ -73,7 +82,7 @@ export function useNotifications({
         (payload) => {
           const incoming = payload.new as Notification;
           setNotifications((prev) => [incoming, ...prev].slice(0, 50));
-          sound.play();
+          playRef.current();
         },
       )
       .on(
@@ -93,12 +102,10 @@ export function useNotifications({
       )
       .subscribe();
 
-    channelRef.current = channel;
-
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [userId, mountId]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
 

@@ -38,33 +38,6 @@ export async function getAgentRoutingConfigAdmin(
   return data as AgentRoutingConfig;
 }
 
-/** Get routing configs for all agents in a given domain. */
-export async function getRoutingConfigsByDomain(
-  domain: string,
-): Promise<AgentRoutingConfig[]> {
-  const supabase = await createClient();
-  // Join via profiles to filter by domain
-  const { data, error } = await supabase
-    .from("agent_routing_config")
-    .select("*, profiles!inner(domain)")
-    .eq("profiles.domain", domain as import('@/lib/types/database').AppDomain);
-
-  if (error || !data) return [];
-  return data as unknown as AgentRoutingConfig[];
-}
-
-/** Get all active routing configs (for round-robin pool). */
-export async function getActiveRoutingConfigs(): Promise<AgentRoutingConfig[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("agent_routing_config")
-    .select("*")
-    .eq("is_active", true);
-
-  if (error || !data) return [];
-  return data as AgentRoutingConfig[];
-}
-
 /**
  * Get a joined roster of pool members (agents + managers) + their routing config.
  *
@@ -148,8 +121,7 @@ export async function setAgentShift(
   shiftDays: number[] | null,
 ): Promise<{ data: AgentRoutingConfig | null; error: string | null }> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from('agent_routing_config')
     .update({ shift_start: shiftStart, shift_end: shiftEnd, shift_days: shiftDays })
     .eq('agent_id', agentId)

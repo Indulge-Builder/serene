@@ -2,6 +2,7 @@
 
 import { z }                         from 'zod';
 import { requireProfile }            from '@/lib/actions/_auth';
+import { formErrors }                from '@/lib/validations/form-errors';
 import {
   getAgentDetailMetrics,
   getAgentRosterPerformance,
@@ -64,7 +65,7 @@ export async function getAgentDetailMetricsAction(
 ): Promise<ActionResult<AgentDetailMetrics>> {
   const parsed = GetAgentDetailSchema.safeParse({ agentId, domain, period, customFrom, customTo });
   if (!parsed.success) {
-    return { data: null, error: 'Invalid parameters.' };
+    return { data: null, error: formErrors.generic };
   }
 
   // Authorization: manager can only view agents in their own domain.
@@ -106,7 +107,7 @@ export async function getAgentFirstTouchScorecardAction(
   customTo?:   string,
 ): Promise<ActionResult<FirstTouchScorecard>> {
   const parsed = GetAgentDetailSchema.safeParse({ agentId, domain, period, customFrom, customTo });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   const access = await assertDrillAccess(domain);
   if (!access.ok) return access.result;
@@ -155,7 +156,7 @@ export async function getFirstTouchBucketLeadsAction(
   customTo?:   string,
 ): Promise<ActionResult<LeadListItemWithAssignee[]>> {
   const parsed = GetFirstTouchBucketSchema.safeParse({ agentId, domain, bucketId, period, customFrom, customTo });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   const access = await assertDrillAccess(domain);
   if (!access.ok) return access.result;
@@ -200,7 +201,7 @@ export async function getManagerRosterAction(
   customTo?:   string,
 ): Promise<ActionResult<AgentRosterRow[]>> {
   const parsed = GetManagerRosterSchema.safeParse({ period, allDomains, customFrom, customTo });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   const auth = await requireProfile(['manager', 'admin', 'founder']);
   if (!auth.ok) return auth.result;
@@ -241,7 +242,7 @@ export async function getDomainHealthMetricsAction(
   domain?:     AppDomain,
 ): Promise<ActionResult<DomainHealthCard[]>> {
   const parsed = GetDomainHealthSchema.safeParse({ period, customFrom, customTo, domain });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   const auth = await requireProfile(['manager', 'admin', 'founder']);
   if (!auth.ok) return auth.result;
@@ -273,7 +274,7 @@ export async function getAgentPulseAction(
   customTo?:   string,
 ): Promise<ActionResult<AgentTodayPulse>> {
   const parsed = GetAgentSelfSchema.safeParse({ period, customFrom, customTo });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   const auth = await requireProfile(['agent']);
   if (!auth.ok) return auth.result;
@@ -303,7 +304,7 @@ export async function getAgentRecentLeadActivityAction(
   cursor?: { created_at: string; id: string },
 ): Promise<ActionResult<AgentLeadActivityPage>> {
   const parsed = ActivityCursorSchema.safeParse(cursor);
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   const auth = await requireProfile(['agent']);
   if (!auth.ok) return auth.result;
@@ -422,7 +423,7 @@ export async function getAgentCallsForManagerAction(
   cursor?: { created_at: string; id: string },
 ): Promise<ActionResult<AgentCallsPage>> {
   const parsed = GetAgentDrillSchema.safeParse({ agentId, domain, cursor });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   const access = await assertDrillAccess(domain);
   if (!access.ok) return access.result;
@@ -432,27 +433,6 @@ export async function getAgentCallsForManagerAction(
     return { data: page, error: null };
   } catch {
     return { data: null, error: 'Failed to load calls.' };
-  }
-}
-
-/** Full activity feed for an agent (all action types) — drill-down reuse of
- *  getAgentLeadActivityPage with the founder/manager authz gate. */
-export async function getAgentActivityForManagerAction(
-  agentId: string,
-  domain:  AppDomain | null,
-  cursor?: { created_at: string; id: string },
-): Promise<ActionResult<AgentLeadActivityPage>> {
-  const parsed = GetAgentDrillSchema.safeParse({ agentId, domain, cursor });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
-
-  const access = await assertDrillAccess(domain);
-  if (!access.ok) return access.result;
-
-  try {
-    const page = await getAgentLeadActivityPage(agentId, parsed.data.cursor, 'all');
-    return { data: page, error: null };
-  } catch {
-    return { data: null, error: 'Failed to load activity.' };
   }
 }
 
@@ -467,7 +447,7 @@ export async function getAgentLeadsScopedAction(
   customTo?:   string,
 ): Promise<ActionResult<LeadsResult>> {
   const parsed = GetAgentDrillSchema.safeParse({ agentId, domain, page, period, customFrom, customTo });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   const access = await assertDrillAccess(domain);
   if (!access.ok) return access.result;
@@ -550,14 +530,14 @@ export async function getAgentLeadsByPredicateAction(
     status:  predicate.status,
     outcome: predicate.outcome,
   });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   // Validate the predicate against the canonical vocabularies (never trust the
   // client string into the query). Exactly one of status/outcome must be present.
   const status  = parsed.data.status  && (LEAD_STATUSES as string[]).includes(parsed.data.status)  ? (parsed.data.status  as LeadStatus)  : null;
   const outcome = parsed.data.outcome && (CALL_OUTCOMES as string[]).includes(parsed.data.outcome) ? (parsed.data.outcome as CallOutcome) : null;
   if ((status ? 1 : 0) + (outcome ? 1 : 0) !== 1) {
-    return { data: null, error: 'Invalid parameters.' };
+    return { data: null, error: formErrors.generic };
   }
 
   const access = await assertDrillAccess(domain);
@@ -629,7 +609,7 @@ export async function getDomainLeadsDrillAction(
   customTo?:   string,
 ): Promise<ActionResult<LeadListItemWithAssignee[]>> {
   const parsed = GetDomainLeadsDrillSchema.safeParse({ domain, kind, period, customFrom, customTo });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   // Same gate as every other performance drill (manager own-domain, admin/founder
   // unrestricted). A non-null domain is mandatory here — the card IS a domain.
@@ -697,7 +677,7 @@ export async function getDomainDealsDrillAction(
   customTo?:   string,
 ): Promise<ActionResult<DealsResult>> {
   const parsed = GetDomainDealsDrillSchema.safeParse({ domain, period, customFrom, customTo });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   const access = await assertDrillAccess(parsed.data.domain);
   if (!access.ok) return access.result;
@@ -738,7 +718,7 @@ export async function getAgentDealsScopedAction(
   page?:   number,
 ): Promise<ActionResult<DealsResult>> {
   const parsed = GetAgentDrillSchema.safeParse({ agentId, domain, page });
-  if (!parsed.success) return { data: null, error: 'Invalid parameters.' };
+  if (!parsed.success) return { data: null, error: formErrors.generic };
 
   const access = await assertDrillAccess(domain);
   if (!access.ok) return access.result;

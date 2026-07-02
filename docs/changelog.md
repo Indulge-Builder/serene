@@ -12,6 +12,585 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-07-02 — Docs: full-tree audit, restructure, and rewrite (docs-only)
+
+**Why:** the docs tree had drifted 19 migrations behind the code (last verified 2026-06-20
+against 0137; the code is at 0156). Theme lists, Elaya tool counts, page specs, and the
+migration index were all stale, and several plan/proposal docs had shipped and outlived
+their purpose.
+
+**What:** every file in `docs/` was audited against the live code and either verified,
+patched, rewritten, or deleted.
+
+- **Deleted (shipped or duplicate):** `_archive/` (15 pre-restructure originals),
+  `_restructure-proposal.md`, `the-next-phase.md`, `plans/completed-tasks-view.md`,
+  `architecture/elaya-jarvis-architecture.md` (every phase shipped; its Golden Rule, parity
+  rule, and four-concern model now live in `modules/elaya.md`, and the code comments that
+  cited it were repointed), `modules/call-intelligence-content-worksheet.md` (one-time
+  worksheet, work done), `modules/budget.md` (merged into `pages/budget.md`; one home per
+  topic). `docs/oversight.md` moved to `docs/pages/oversight.md`.
+- **New specs:** `pages/notes.md` and `pages/elaya-training.md` (both routes were live with
+  no spec).
+- **Major rewrites:** `01-vision.md` (six themes, 12+12 Elaya tools, Oversight row, corrupted
+  duplicate Elaya row removed), `design/design-system.md` (Six Themes chapter, 2026-07-02
+  component purge applied), `design/DESIGN-DNA.md` (PageControls, deferred-design markers),
+  `pages/dashboard.md`, `pages/performance.md`, `pages/whatsapp.md` (customer Elaya channel
+  replaces the "chatbot not built" thesis), `pages/settings.md` (three-route layout),
+  `pages/elaya.md`, `modules/elaya.md` (the single as-built Elaya home),
+  `modules/customer-welcome-blast.md` (design doc converted to as-built record),
+  `integrations/whatsapp-gupshup.md`.
+- **Patched (stale claims fixed, `Last verified` bumped to 2026-07-02):** `README.md` (tree +
+  lookup table match disk again), `00-for-the-board.md`, `TODO.md`, all six
+  `architecture/` files (tables 0150-0156 added; the `.sql` dump got a provenance header),
+  `design/decision-log.md` (theme-retirement entry added), `rules/The_Rules.md` (nine factual
+  fixes + repeat-offender rows), 15 more `pages/` specs, `modules/gia.md`,
+  `call-intelligence.md`, `voice-dictation.md`, `web-push.md`, all four `integrations/`,
+  and three `operations/` files. `claude-project/0-README.md` got a STALE banner (regenerate
+  before the next upload).
+- **Untouched by design:** `changelog.md` (append-only), `audits/` (dated records),
+  `Indulge-Global.md`, and the specs that verified clean (`helpdesk.md`, `usage.md`,
+  `error-log.md`, `modules/revival.md`, `modules/sia.md`, `operations/pwa-install-guide.md`).
+
+Every claim written in this pass was verified against the code first; anything unverifiable
+is marked `TODO: verify` in place. Root `CLAUDE.md`'s Deepgram note was corrected to what the
+code runs (`nova-2` + `hi-Latn`; it claimed "Nova-3 multilingual").
+
+---
+
+## 2026-07-02 — Retire the Cosmos, Coffee, and Macha themes
+
+**Why:** Theme roster trimmed on request the same day Coffee + the pastel trio shipped. Final
+vocabulary: **Earth (default), Air, Water, Fire, Martini, Candy.**
+
+**What:** `cosmos`/`coffee`/`macha` removed from the `themes.ts` vocabulary (ThemeSelector,
+SSR cookie, chart re-resolution all follow automatically); their `[data-theme]` blocks +
+semantic overrides deleted from `design-tokens.css` (Martini/Candy renumbered to sections
+6/6B); `Profile.theme` union narrowed in `types/database.ts`; DESIGN-DNA Cosmos/Coffee/Macha
+sections removed and Martini/Candy renumbered to Themes 05/06 (every "violet on Cosmos" prose
+example re-pointed at Martini); Theme Quick Reference + "What Serene Is" updated in
+`CLAUDE.md` / `.cursorrules`.
+
+**Migration `0156_profiles_theme_retire_cosmos_coffee_macha.sql`** (**not yet applied — apply
+0154 → 0155 → 0156 in sequence**): moves any profile on a retired theme to `earth` FIRST, then
+re-adds the narrowed `profiles.theme` CHECK (order is load-bearing — live `cosmos` rows exist;
+0154/0155 are kept on disk unedited per A-14 since the sequence net-applies cleanly). App side
+is safe either way: a retired value in a stale cookie or DB row fails `isThemeKey()` and falls
+back to `DEFAULT_THEME`.
+
+---
+
+## 2026-07-02 — Dossier "Why we're perfect." card: cap + internal scroll
+
+**Why:** The Call Intelligence interest card (`ServiceInterestCard`) grew unbounded with its
+curated cases + talking points — with a full set of matches it dominated the dossier's right
+column, unlike its sibling cards which cap their body height.
+
+**What:** Wrapped the card's content region (search results / curated cases + hooks) in a
+`maxHeight: 300px` + `overflowY: auto` scroll container — the same anatomy as the sibling
+dossier cards (`LeadWhatsAppCard` message list 300px, `LeadTasksCard` list 220px). The header,
+search bar, and "Browse the full library" footer link stay pinned; only the case list scrolls.
+Short content is unaffected (max-height, not fixed height).
+
+---
+
+## 2026-07-02 — Pastel trio: Macha, Martini, Candy themes (themes 07–09)
+
+**Why:** Three more workspace themes were requested around user-supplied pastel palettes —
+Macha (green pastel nature summer: `#84b179 #a2cb8b #c7eabb #e8f5bd`), Martini (periwinkle /
+mint / sky: `#9fa1ff #b5baff #aee2ff #d9f9df`), Candy (pink / blue / green / lemon pastel
+rainbow: `#f9b2d7 #cfecf3 #daf9de #f6ffdc`).
+
+**What:** Three new `[data-theme]` blocks + per-theme semantic overrides in
+`src/styles/design-tokens.css`; `macha`/`martini`/`candy` added to the `themes.ts` vocabulary
+(ThemeSelector previews, SSR cookie stamp, and chart token re-resolution pick them up with zero
+component changes — the 0154 Coffee path exactly); `Profile.theme` union widened in
+`types/database.ts`; migration `0155_profiles_theme_pastel_trio.sql` extends the
+`profiles.theme` CHECK (**not yet applied — apply together with 0154**); Themes 07–09 sections
+added to `DESIGN-DNA.md`; Theme Quick Reference updated in `CLAUDE.md` / `.cursorrules`.
+
+**Design decisions (documented in the DESIGN-DNA Theme 07–09 usage notes):**
+
+- **Revised same day (user feedback):** the first cut mapped the pastel palettes onto the
+  paper surfaces themselves (lime/mint/lemon papers) — too loud. Final design follows the
+  **Earth → Air delta**: paper stays near-white with only a hue whisper (`#f8fbf0` /
+  `#f8f8fe` / `#fdf9fb`), canvas + sidebar stay dark, and the palette does its work in the
+  ENHANCEMENT layer — the accent family (buttons, card headers via paper-subtle, active
+  pills, focus rings) and the semantic `-light` chips.
+- Each anchor pastel ships exactly as `--theme-accent` (Macha `#84b179`, Martini `#9fa1ff`,
+  Candy `#f9b2d7`); the lighter palette hexes tint the chips: Martini's mint → success,
+  sky → info; Candy's rainbow → mint success / powder-blue info / lemon warning; Macha's
+  pale leaf → success. Martini's `#b5baff` is the sidebar active label, exact.
+- **All three accents are pastels and carry dark-ink `--theme-accent-fg`** (Macha `#182410`,
+  Martini `#191a38`, Candy `#2b1420`) — the Earth-gold precedent; white text fails contrast on
+  every one of them. Accent-coloured TEXT on paper uses the deepened `--theme-accent-muted`.
+- Canvases are hue-matched darks (green-black / evening indigo / dark plum) with flat washes
+  (the H-02 `none` rule — washes can be designed later like Earth/Coffee).
+
+---
+
+## 2026-07-02 — Lead dossier: drop the 1280px width cap (full-width like sibling detail pages)
+
+**Why:** The dossier `<main>` carried a `maxWidth: 1280px` with no `margin: auto` — on wide
+viewports (or browser zoom-out) the content stayed pinned to the left with a dead strip on the
+right, so the page looked lopsided next to every other page. It also matched neither layout
+family: the back-button detail pages (`campaigns/[id]`, `tasks/[id]`) are uncapped full-width,
+while the capped identity pages (`/profile`, `/admin/users/[id]`, `/admin/users/new`) pair
+their cap with `paddingBottom: var(--space-16)` — the dossier had the cap without the rest.
+
+**What:** Removed the `maxWidth` inline style from `leads/[id]/page.tsx` and its mirror
+`leads/[id]/loading.tsx` — the dossier `<main>` is now the plain
+`flex-1 p-4 sm:p-6 lg:p-8`, identical to the other detail pages and every list page. (An
+interim same-day fix centred the cap with `marginInline: auto`; superseded by removing it.)
+The capped `/profile` + admin-user pages are deliberately untouched.
+
+---
+
+## 2026-07-02 — Coffee theme (theme 06)
+
+**Why:** A sixth workspace theme was requested around a vintage fall palette — coffee bronze
+`#8a7650`, sage `#8e977d`, cream `#ece7d1`, vintage tan `#dbcea5`.
+
+**What:** New `[data-theme="coffee"]` block + Coffee semantic overrides in
+`src/styles/design-tokens.css`; `coffee` added to the `themes.ts` vocabulary (ThemeSelector,
+SSR cookie stamp, chart re-resolution all pick it up with zero component changes); `Profile.theme`
+union widened in `types/database.ts`; migration `0154_profiles_theme_coffee.sql` extends the
+`profiles.theme` CHECK (**not yet applied**); Theme 06 section added to `DESIGN-DNA.md`; Theme
+Quick Reference updated in `CLAUDE.md` / `.cursorrules`.
+
+**Design decisions (documented in DESIGN-DNA Theme 06 usage notes):**
+
+- All four requested hexes ship exactly: `#ece7d1` → `--theme-paper`, `#dbcea5` →
+  `--theme-paper-border`, `#8a7650` → `--theme-accent`, `#8e977d` → the sidebar active pill.
+- Canvas is dark-roast espresso `#0e0a06` with Coffee's own radial washes (bronze top-left,
+  sage bottom-right) — the Earth precedent; the other four themes stay flat.
+- The cream paper is the deepest paper of all six themes, so every semantic `-light` chip gets a
+  cream-tinted override (the near-white defaults would glow brighter than the paper). Success
+  family is sage-shifted, danger is rust, info is vintage denim.
+- `--theme-accent-fg` is `#faf6ea` (warm milk-foam), a deliberate deviation from the
+  white-on-accent pattern — stark white reads clinical against the vintage bronze.
+- Coffee is the one theme whose sidebar active state is not the accent family: the brown × sage
+  pairing is the theme's identity and the nav is its highest-visibility home.
+
+---
+
+## 2026-07-02 — database.ts regenerated from the live schema; ~105 interim `as any` casts retired
+
+**Why:** `src/lib/types/database.ts` predated most recent migrations, so every service touching
+a newer table or RPC carried a documented interim `(client as any)` cast "until database.ts
+regen". The regen finally happened; the casts came out.
+
+**What:**
+
+- `supabase gen types typescript --linked` against the linked Serene project, generated to a
+  temp file, sanity-checked (all new tables present: whatsapp_*, elaya_*, revival_*, usage_*,
+  suggestions, elaya_notes, notification_preferences, plus every RPC), then spliced ABOVE the
+  hand-written "Derived type aliases" appendix (the file documents this seam; the appendix,
+  which the whole app imports as `Profile`/`Lead`/`Task` etc., is preserved byte-identical).
+  2,681 lines became 3,088. The whole codebase typechecked against the new schema unchanged.
+- Interim-cast retirement across ~35 files, types-only (zero runtime edits, verified with
+  per-file `tsc` runs): all `(supabase/admin as any).from(...)` and `.rpc(...)` casts removed
+  along with their paired eslint-disable lines and stale "pending regen" comments. Typed
+  clients now check every insert/update payload on the previously-untyped tables.
+- Deliberate keeps, all documented in place: `rpc-helpers.ts callAdminRpc` (generic by design,
+  the rpc name is a runtime string), the sanctioned null-vs-undefined RPC-arg bridges in
+  `leads-service.ts` (`get_leads_status_counts`) and `deals-service.ts` (`get_deals_summary`)
+  (generated Args type SQL-DEFAULT params as `string | undefined`; the code passes an explicit
+  `null` for "no filter"), and four component-level UI shape casts (a different class).
+  Final census: 8 `as any` in all of src, each one explained, down from ~113.
+- The hand-declared type files (types/elaya.ts, revival.ts, usage.ts, oversight.ts) stay as
+  the app-level shapes; folding them onto the generated Rows is an open refactor, noted in
+  their registry rows. lib/CLAUDE.md's RPC-pattern bullet now prescribes regen-first (the
+  interim cast is only for the migration-to-regen window).
+
+**Verified:** `npx tsc --noEmit` zero output, `pnpm lint` exit 0, `pnpm build` green.
+(Process note: the first retirement agent was lost to a process exit mid-run; its completed
+files all typechecked, and a second scoped agent finished the tail.)
+
+---
+
+## 2026-07-02 — ESLint added (flat config, correctness-only) and the codebase linted to zero
+
+**Why:** The project had no linter. TypeScript strict mode and check-tokens guard types and
+design tokens, but nothing watched React hooks correctness (the class of bug behind the silent
+notification chime) or enforced the CLAUDE.md Never-Do rules by machine. The code already
+carried 154 eslint-disable comments written for a linter that was never installed.
+
+**What:**
+
+- New `eslint.config.mjs` (ESLint 9 flat config + `eslint-config-next@16`, imported as
+  flat-native presets). Philosophy stated in the file: correctness as errors, style stays off.
+  Lint runs in the editor and via `pnpm lint` / `pnpm lint:fix` only. It is deliberately NOT
+  wired into `pnpm build`, so build time is unchanged.
+- House rules from the Never-Do list are now machine-enforced errors: bare
+  `import { motion } from 'framer-motion'` (A-17), `window.confirm`/`alert`, importing
+  `@supabase/*` outside `src/lib/supabase/` (Rule 05, type-only imports allowed), and
+  importing `@anthropic-ai/sdk` outside the Anthropic adapter.
+- The react-hooks v7 React-Compiler-preparation rules (`set-state-in-effect`, `refs`,
+  `preserve-manual-memoization`, `static-components`, `purity`, `immutability`,
+  `incompatible-library`) are OFF with a documented rationale: they flag deliberate Serene
+  patterns (usePortalAnchor render reads, the localStorage post-mount hydration convention)
+  and this codebase does not use the React Compiler. Revisit the block on compiler adoption.
+  `@typescript-eslint/no-explicit-any` starts as warn (the sanctioned interim casts carry
+  their disables); tighten after the next `supabase gen types` regen.
+- First run: 138 findings. After calibration, 33 real ones fixed across 17 files, notably:
+  10 unused imports/vars/params removed (two were fallout the dead-code purge left:
+  the `runs` import in task-reminders, `ScheduleLeadSlasPayload` in lead-sla); the dead local
+  `StatusChip` component in GroupTasksTab deleted; `TasksShell`'s complex dependency
+  expression hoisted; `AgentActivityWidget`'s `leads` memoised so the marquee-measure effect
+  stops re-running every render; stale eslint-disable directives auto-removed (one of them
+  confirmed the usage-service cast fix); two file-header comments reworded because their
+  prose literally began with "eslint-disable-next-line" and parsed as a broken directive.
+- Two knowing keeps: `getGroupSubtasks`' unused `userId` became `_userId` with a comment
+  (React `cache()` keys its memo on ALL args, so the param prevents cross-user memo bleed);
+  the orphaned `STATE_CHANGING` set in the Elaya write registry was converted to a
+  documentation comment (the propose-only tier is enforced structurally by each tool's
+  `run()` shape, and the set's only consumer was deleted as dead code).
+
+**Verified:** `pnpm lint` exit 0 (zero errors, zero warnings), `pnpm tsc --noEmit` clean,
+full `pnpm build` green.
+
+Also this session: the machine's disk hit 100% full mid-run; the 12GB `.next` build cache
+was deleted (regenerates) and `pnpm store prune` freed another 1.5GB. The disk remains
+nearly full at the OS level and deserves a personal cleanup pass.
+
+---
+
+## 2026-07-02 — All five date/timezone stragglers now go through formatDate (IST)
+
+**Why:** Five places formatted dates on their own with `toLocaleString`-style calls, which
+render in whatever timezone the machine runs in. Three were real bugs and two were style
+drift. The app's rule is one date language, pinned to IST, through `formatDate`.
+
+**The three bugs fixed:**
+
+- Dashboard chart labels (`dashboard-service.ts formatBucketLabel`) rendered on the server,
+  which is UTC on Vercel. A lead arriving at 2 AM IST was labelled under the previous day.
+  Labels are now true IST days/hours ("4:30 PM", "2 Sep", "Sep 26").
+- My Tasks section headings (`MyTasksCalendarView sectionLabel`) mixed a browser-local
+  weekday with an IST date, so the two halves could disagree for anyone outside IST. Both
+  halves now render the same instant through `formatDate`.
+- WhatsApp chat date separators (`ConversationPanel`) used browser-local, US-ordered labels.
+  Now `formatDate(d, "d MMM yyyy")`. The Today/Yesterday shortcuts are unchanged.
+
+**The two style fixes:**
+
+- SLA timestamps (`actions/sla.ts formatSlaTimestamp`): "02 Sept, 04:30 pm" becomes
+  "2 Sep, 4:30 PM", matching the rest of the app.
+- The task-due time inside the outbound WhatsApp template (`whatsapp-api.ts`): the code
+  comment always promised "26 Jun, 4:00 PM" but the en-US call actually sent "Jun 26,
+  4:00 PM". It now sends exactly what the comment promised. Note this changes text staff
+  receive on their phones.
+
+Verified: `pnpm tsc --noEmit` clean, full `pnpm build` green.
+
+---
+
+## 2026-07-02 — Dialog is now portaled to document.body
+
+**Why:** `ui/Dialog.tsx` was the last overlay primitive that did not portal itself. Its fixed
+overlay and panel only worked because no current call site sits under a CSS transform. Any
+Framer entrance animation on an ancestor would re-anchor the popup and trap its z-index
+(the known transform + position:fixed quirk). ConfirmDialog, FloatingPanel and
+NotificationPanel already protect themselves with a body portal; Dialog now does too.
+
+**What:** `Dialog.tsx` returns `createPortal(<AnimatePresence>...</AnimatePresence>,
+document.body)` with the same `typeof document` SSR guard ConfirmDialog uses. The guard sits
+after the hooks so hook order stays stable. No z-index token changed; the exit animation still
+lives inside the component, so `useMountOnFirstOpen` call sites are unaffected. Every modal in
+the app (all `modal.tsx` and direct Dialog consumers) inherits transform safety with zero
+call-site edits. Verified: `pnpm tsc --noEmit` clean, full `pnpm build` green, and no CSS
+selector depends on Dialog's old DOM position. Registry row updated in
+`src/components/CLAUDE.md`.
+
+Worth a quick manual eyeball on the next dev session: Add Lead, the deals modal, the Elaya
+widget dialog, and one nested flow (SubTaskModal then AssigneePickerModal) to confirm stacking
+looks unchanged.
+
+---
+
+## 2026-07-02 — Q-04 error-copy sweep + audit report retired (remediation fully executed)
+
+**Why:** The last open code item from the 2026-06-20 audit (Tier 2, A4–A6): hardcoded
+non-registry error strings still reached the UI from four action files. With that closed, every
+actionable item across both audits is executed — the 2026-07-02 audit report is retired.
+
+**Q-04 sweep (23 sites, 4 files):**
+
+- `actions/performance.ts` — 14 × `'Invalid parameters.'` → `formErrors.generic`.
+- `actions/dashboard.ts` — 5 × (`'Invalid parameters.'` / `'Invalid domain or date range.'` /
+  `'Invalid date range.'`) → `formErrors.generic`.
+- `actions/whatsapp.ts` — 3 × raw-Zod-`?? "Invalid input"` → `parseActionInput` (the schemas'
+  human messages still surface; only the non-registry fallback changes to `formErrors.generic`).
+- `actions/notifications.ts` — `markNotificationReadAction` → `parseActionInput` (+
+  `markReadSchema` onto `uuidField`, C1); `markAllReadAction`'s `"Invalid input."` →
+  `formErrors.generic`.
+
+Verified: `pnpm tsc --noEmit` clean + full `pnpm build` green.
+
+**Audit report retired:** `docs/audits/2026-07-02-dry-dead-code-performance-audit.md` DELETED —
+every tier executed (see the four remediation entries below); the report's surviving follow-ups
+are recorded in those entries (the `ui/Dialog.tsx` no-portal architecture decision; the three
+latent TZ-label display bugs + two formatter-normalization choices; the deliberately-deferred
+WhatsApp conversation cache; the `as any` casts pending `supabase gen types` regen). Git history
+keeps the full report.
+
+---
+
+## 2026-07-02 — Audit remediation Tier 4 (final): motion constants, portal audit, oversight actions removed
+
+**Why:** Closes out the remediation plan of
+`docs/audits/2026-07-02-dry-dead-code-performance-audit.md` (Tier 4 polish) and resolves the
+audit's two open human decisions. Verified: `pnpm tsc --noEmit` clean + full `pnpm build` green.
+
+**V-13 motion sweep:** 39 inline Framer durations across 27 files replaced with the exact-value
+`motion.ts` constants (0.15→`FAST_DURATION`, 0.2→`BASE_DURATION`, 0.25→`EXIT_DURATION`,
+0.35→`SLOW_DURATION`) — value-identical swaps only. The ONE visual delta:
+`AgentActivityWidget`'s inline spring (420/34) normalized to `SPRING_CONFIG` (400/30), the
+documented V-13 fix. Residue deliberately left (no matching constant): 0.08/0.18/0.22/0.28/0.3
+sites + the two duration-based `whileTap` springs in notifications — candidates for future named
+constants, not silent re-timings.
+
+**U2 portal audit — ALL SIX sites false positives, zero changes:** every flagged
+`position: fixed` surface (LeadInfoCard InlineSelectField menu, LeadColumnPicker,
+NotificationPanel, DrillModalShell, GroupTasksTab ⋯ menu, AssigneePickerModal at all three call
+sites) was verified ALREADY portaled to `document.body`. The original UI sweep pattern-matched on
+`position: fixed` without checking for `createPortal`. One genuine follow-up flagged, not
+changed: `ui/Dialog.tsx` itself renders its fixed overlay WITHOUT a portal and relies on call
+sites being transform-free — portaling it is an app-wide stacking-semantics decision.
+
+**C2 types:** `SubTaskModal.assignee` now uses the canonical `AssigneeSlim`
+(tasks-service) instead of an inline `Pick<Profile,…>`. CreateGroupTaskModal /
+GroupTaskWorkspace / AssigneePickerModal were already canonical (stale audit entries);
+`AddLeadModal`'s 2-field local `Agent` type is deliberately narrower — kept.
+
+**C3/C4 formatter sites — all six LEFT, with node-verified proof:** none of the stray
+`toLocaleDateString/ toLocaleString` sites produce output identical to the IST-pinned
+`formatDate`/`formatCount`. Three are latent TZ-label bugs (browser-local or Vercel-UTC labels
+for an IST business: MyTasksCalendarView weekday, ConversationPanel date groups,
+dashboard-service bucket labels); two are IST-correct but ordering/abbreviation-different
+("Sept" vs "Sep", month-first vs day-first — one is an outbound WhatsApp template param);
+one is locale-grouping-sensitive (lakh vs thousands). Fixing any of these CHANGES display —
+recorded as a product decision, not a refactor.
+
+**Open decisions resolved:**
+
+- **`lib/actions/oversight.ts` DELETED** (146 lines, the Tier-1 needs-human-check item).
+  Evidence: single "week 1" commit, zero callers ever; the oversight RSC pages carry their own
+  complete role gates (`getCurrentProfile` → agent/guest redirect → manager clamp) and call
+  `oversight-service` directly — the actions were scaffolding for a client-refresh path that
+  never shipped. `oversight/CLAUDE.md` re-written: the security spine is now correctly described
+  as two layers (page trust boundary + RPC clamp), with a history note for recreating the
+  actions if client-side refresh ever lands.
+- **The ~35 zero-ref vocabulary constants KEPT deliberately** — most are `defineEnum`
+  companions or documented registry vocabulary (`THEME_KEYS`-class exports) whose value is
+  completeness, not call sites; several (e.g. `WIDGET_HEIGHT_BY_SIZE`) are used in-file and
+  were mis-flagged. Inert data lines; revisit only if a vocabulary itself retires.
+
+**Doc syncs:** `oversight/CLAUDE.md` (security spine + file map), `app/CLAUDE.md` (notes-route
+row: Elaya reads notes via `getNotesForElaya`, not the removed `retrieveMemoryContext`).
+
+---
+
+## 2026-07-02 — Audit remediation Tier 2 + 3: DRY extractions + performance fixes
+
+**Why:** Executes the DRY-consolidation and performance tiers of
+`docs/audits/2026-07-02-dry-dead-code-performance-audit.md` plus the still-open 2026-06-20
+Tier-3 extractions (D1–D8). Byte-identical behaviour intended throughout (the two sanctioned
+deltas are noted). Verified: `pnpm tsc --noEmit` clean + full `pnpm build` green.
+
+**New canonical helpers (all in the root CLAUDE.md registry):**
+
+- `services/cache-helpers.ts` — `withRedisCache(key, ttl, fetchFn, normalize?)` (D1): the Redis
+  cache-aside envelope. All 5 dashboard-service cache-aside blocks route through it (the
+  role-scoped key shapes from Tier 0 preserved; `normalizeLeadStatusSummary` rides `normalize`).
+- `services/rpc-helpers.ts` — `callAdminRpc(rpc, params, mapRow, logCtx)` (D2): the revoked-tier
+  admin-client RPC boundary. `getDomainHealthMetrics` switched (gains its previously-missing
+  error log — the documented intent). **Two candidates deliberately NOT switched:**
+  `getAgentRosterPerformance` uses the SESSION client (its RPC scopes via `auth.uid()` in SQL —
+  the admin helper would change security scoping) and `classifyFirstTouchPairs` returns `null`
+  on error (distinct from empty — short-circuits a follow-up DB call).
+- `actions/_validation.ts` — `parseActionInput(schema, input)` (S2): the Zod-parse +
+  first-issue→`formErrors.generic` mapper. 11 sites in 7 action files switched; quieter
+  generic-only contracts and custom code→copy mappers (profiles/recharge/transcription/auth)
+  deliberately left — no user-visible string changed.
+- `validations/fields.ts` — `uuidField(msg)`/`emailField(msg)` (C1): message-parameterised Zod
+  fragments; ~45 inline `z.string().uuid/email(...)` sites across 12 schema files switched with
+  their exact message strings. Phone fields untouched (per-schema normalizeToE164 transforms).
+- `constants` ↔ schema enums (D7): `CALL_OUTCOME_ENUM` + `LEAD_STATUS_ENUM` exported and
+  `lead-schema.ts`'s hand-copied arrays replaced (member-list equality verified before the swap).
+- `services/profiles-service.ts getDomainDecisionMakers(domain, roles?, select?)` (S3): the
+  domain+roles+is_active fan-out read. Switched: `notifyDealCreated` (actions/deals.ts), the
+  lead-won fan-out in `updateLeadStatusCore`, and `sla-service.getManagersByDomain` (body now
+  delegates; export/signature kept). whatsapp-api's founder query skipped — deliberately
+  org-wide, no domain filter.
+- `lib/elaya/access.ts` (D6+D15): `canAccessLead` — the per-lead SECURITY predicate previously
+  duplicated verbatim in both tool registries (read vs write authority could silently diverge) —
+  plus `leadDisplayName`/`statusLabel`. Both registries now import the one implementation.
+- `lib/trigger/cancel-runs.ts` — `cancelRunsByTag(tag)` (D8): the DELAYED/QUEUED list →
+  settle-cancel loop; `cancelTaskReminder` + `cancelLeadSlasByLeadTask` both delegate.
+- `components/leads/CardHeader.tsx` (D3): the dossier card-header strip (icon + micro-label +
+  right slot on paper-subtle). All 7 dossier cards compose it — per-card before/after JSX
+  audited property-identical (accent variant + active-icon tint via style escape hatches).
+
+**UI consolidation (V-09 + D4 + D5):**
+
+- 17 hand-rolled italic empty states across 12 files replaced with `<EmptyState>` (copy, container
+  frames, and placement byte-identical; canonical styling normalises a few token-level deltas —
+  hero titles to `--theme-text-primary`, error-log description size). `AccountReportSection`'s
+  italic block turned out to be a finance footnote, not an empty state — skipped.
+- `EscalationSections`' local `SectionCardShell` fork deleted → composes `ui/SectionCard`
+  (count pill moves to the canonical `headerRight` slot).
+- Sidebar footer avatar now composes `ui/Avatar` — the initials fallback gains the 6-colour
+  semantic hash (the documented D5 intent; the sanctioned visual delta).
+
+**Performance (Tier 3):**
+
+- WhatsApp inbound ingestion (P2′): conversation resolve and the media download+re-upload
+  pipeline now run in one `Promise.all` — on media messages the conversation round trips ride
+  under the download; failure surface unchanged (the media path is non-throwing).
+- **Three perf-audit findings closed as false positives on verification:** the `/performance`
+  page "waterfall" (already one `Promise.all`; `getPeriodDateRange` is sync IST math), the
+  `UsagePresence` "unconditional heartbeat" (already visibility- AND idle-gated — the gate is
+  documented as the feature), and the `AgentTasksWidget` interval deps (already correct).
+  The WhatsApp conversation-list Redis cache was deliberately DEFERRED: Realtime keeps the
+  panel live and the staleness risk on unread state outweighs one indexed read.
+- Q-18 residue: `usage-service.ts getAgentUsage` now declares `RawUsageTodayRow`/
+  `RawUsageHistoryRow` — per-field `as` casts gone.
+
+**Doc syncs:** root CLAUDE.md File Locations (+8 registry rows), `src/lib/CLAUDE.md`
+(profiles-service row), `src/components/CLAUDE.md` (CardHeader row),
+`src/components/layout/CLAUDE.md` (bell channel now carries the P-06 `useId()` nonce),
+`src/lib/elaya/CLAUDE.md` (memory.ts row post-removal + access.ts row).
+
+---
+
+## 2026-07-02 — Audit remediation Tier 0 + Tier 1: correctness fixes + dead-code purge
+
+**Why:** Executes Tiers 0–1 of `docs/audits/2026-07-02-dry-dead-code-performance-audit.md`
+(and the three still-open Tier-1 items from FULL-AUDIT-2026-06-20). Zero functional changes —
+every edit is a correctness fix, a deletion of verified-dead code, or a doc/registry sync.
+Verified: `pnpm tsc --noEmit` clean + full `pnpm build` green after every batch.
+
+**Tier 0 — security + correctness:**
+
+- `dotfiles.zip` (992 KB personal archive containing `secrets/` + a `.env`) moved OUT of the
+  repo root to `~/dotfiles.zip` — was untracked; must never be committed.
+- `actions/suggestions.ts` (A2/A-16): `resolveSuggestionAction`'s `void createNotification()`
+  → `after(createNotification(...).catch(log))`. The notify carries a Web Push send; the bare
+  void orphaned it when the Vercel lambda froze on return.
+- `hooks/useNotifications.ts` (A3/P-06): channel name now carries a `useId()` mount nonce
+  (Strict Mode double-mount safety); dead `channelRef` deleted. **Bonus latent bug fixed:** the
+  effect captured the pre-hydration `play` closure (where `enabled` was still `null`), so the
+  Realtime notification chime NEVER played — now routed through a latest-ref (`playRef`), so the
+  chime works without re-subscribing the channel on sound-pref changes.
+- Q-16 cache keys (2026-06-20 P1): `dashboardLeadStatus` + `dashboardCampaigns` keys now include
+  the RPC role (`dashboard:lead-status:{role}:{domain}:{from}:{to}`), matching the RPC's `p_role`
+  scope — a manager and an admin/founder on the same domain+range no longer share a slot. New
+  `DASHBOARD_PIPELINE_ROLES` export in `redis-keys.ts`; `invalidateLeadCaches`' dashboard scope
+  dels all role variants (6 keys). Old-format keys expire by TTL (60/120s) — no migration needed.
+- AgentTasksWidget polling-deps finding from the audit: **verified false positive** — `refetch`
+  is already in the deps and `useWidgetData` reads the fetcher through a ref. No change.
+
+**Tier 1 — dead-code purge (~1,600 lines):** all removals grep-verified zero-reference
+(word-boundary, incl. dynamic imports + trigger.config) before deletion; git history preserves everything.
+
+- **11 dead files deleted:** `leads/LeadDossierTasksAsync.tsx`, `performance/DomainHealthGrid.tsx`,
+  the 5-file dead chart-wrapper layer (`ui/charts/AreaChart|LineChart|PieChart|DonutChart|ButterflyChart.tsx`
+  — live consumers import raw Recharts + `CartesianChartFrame` directly; `BarChart` survives),
+  and the dead `ui/Checklist.tsx` + `ui/ChecklistItem.tsx` + `ui/ProgressBar.tsx` + `ui/RadioGroup.tsx`
+  cluster (SubTaskModal's checklist is inline + the `ChecklistItem` DB type — never these components).
+- **10 dead server actions removed** (each a callable POST endpoint — attack-surface shrink):
+  `signOut`, `getBudgetSummaryWidgetAction` (+ its orphaned `BudgetScopeSchema`),
+  `upsertConversationHookAction`, `searchLeadsAction` (+ its whole orphaned chain:
+  `searchLeadsForTask`/`LeadSearchResult` in leads-service, `SearchLeadsSchema` in lead-schema —
+  the CreateGiaTaskModal it served was deleted with the Gia tab), `getAgentActivityForManagerAction`,
+  `fireSlaBreachAction` (the trigger dynamic-imports `fireSlaBreachHandler` directly; payload is
+  Zod-validated at schedule time), `updateTaskTagsAction`, `getTaskGroupByIdAction`,
+  `suppressTaskRemarkAction` (contract note preserved in `src/lib/CLAUDE.md`),
+  `getConversationByLeadIdAction`.
+- **~30 dead service/util exports removed:** leads-service `getLeadsForAgent`/`getLeadsForDomain`/
+  `getAllLeads`/`getLeadActivities`/`getLeadNotes`/`getLeadBySlugForElaya`/`getNextLeadTask`;
+  whatsapp-api's dormant Meta-shaped trio `sendTemplateMessage`/`sendMediaMessage`/`uploadMedia`
+  plus `BUSINESS_ACCOUNT_ID`/`PHONE_NUMBER_ID`; profiles-service `getProfilesByDomain`/
+  `getProfilesByRole`/`getActiveAgentsByDomain`; agent-routing `getRoutingConfigsByDomain`/
+  `getActiveRoutingConfigs`; elaya `memory.ts retrieveMemoryContext`+`RetrievedMemory` (superseded —
+  the brain reads `getUserPersona`/`getNotesForElaya` directly); performance-service
+  `getDomainsWithLeads`; sla-service `getSlaTimersForLead`; tasks-service `getTaskById`+`TaskWithMessages`;
+  notifications-service `getUnreadNotifications`; ad-creatives `getAdCreativesForCampaigns`;
+  write-registry `isStateChangingWriteTool`; roster-display `getFirstAgentInPerformanceRosterList`;
+  task-client-filters `countVisiblePersonalTasks`/`TASK_TYPE_FILTER_ITEMS`; whatsapp-schema
+  `MetaWebhookPayloadSchema`/`MetaStatusUpdateSchema`/`SendMessageSchema` (+ inferred types).
+- **~20 internally-used symbols un-exported** (API-surface shrink, bodies untouched):
+  `buildCSV`, `maskString`, `isWithinBusinessHours`, `getOrCreateConversation`/`insertInboundMessage`,
+  `mediaExtFromMime`/`WHATSAPP_MEDIA_BUCKET`/`WHATSAPP_MEDIA_SIGNED_URL_TTL_SECONDS`,
+  `MAX_VOICE_NOTE_BYTES`, `normalizeLeadStatusSummary`, `adaptMeta`/`adaptGoogle`/`adaptWebsite`,
+  `PERFORMANCE_ROSTER_DOMAIN_ORDER`, `summarizeLearnedMemory`/`MEMORY_SUMMARY_EVERY_N`,
+  `ELAYA_MODEL_CONTEXT_MESSAGES`/`ELAYA_UI_MESSAGES`, elaya-service `getConversationMessages`/
+  `getUserContext` (kept un-exported — live internal callers).
+- **Deps + misc:** `dotenv` devDep dropped (zero imports; scripts use `--env-file`); `server-only`
+  now properly declared in dependencies (was resolving via Next's internal alias only); orphaned
+  `.serene-paper-surface` CSS removed from globals.css (never wired; spec stays in DESIGN-DNA §6.6);
+  stale comments fixed (`types/index.ts` DomainHealthGrid ref, tasks-service join-direction note,
+  memory.ts header).
+- **Registry docs synced:** root `CLAUDE.md` (export.ts row), `src/components/CLAUDE.md` (deleted
+  component/chart rows + Cartesian-frame rule note), `src/lib/CLAUDE.md` (leads/tasks/sla/agent-routing/
+  elaya/whatsapp-api service rows + whatsapp/leads/performance/tasks action rows + the suppression
+  contract note).
+
+**Deliberately NOT removed (human decision needed):** `actions/oversight.ts` (146 lines, zero
+callers — but `oversight/CLAUDE.md` documents it as the live trust boundary; docs and code
+disagree), the ~35 zero-ref constants "vocabulary companions" (keep-or-kill per cluster),
+`@trigger.dev/build` devDep, `csv-parse` (one-off import scripts). Tier 2+ (empty-state
+consolidation, Zod fragments, waterfalls, heartbeat gating) remains open in the audit's plan.
+
+---
+
+## 2026-07-02 — DRY / dead-code / performance audit (docs-only)
+
+**Why:** Pre-hardening pass — verify the codebase actually follows the Reuse First constitution
+(no duplication, no dead code, no over-engineering) before the production-safety/perf enhancement
+phase. No functionality changes; analysis + report only.
+
+**What:** New report `docs/audits/2026-07-02-dry-dead-code-performance-audit.md` — 5 parallel
+deep-read sweeps (UI components, data layer, shared code, dead code via knip + manual grep
+re-verification, performance), consolidated with cross-agent contradictions resolved by hand.
+Headlines: the canonical-helper system audited **clean across the board** (zero A-16/P-08 drift,
+A-18 everywhere, mutation cores intact, no over-engineering). Debt concentrated in: **~1,350 lines
+of verified dead code** (11 dead files incl. the 5-file chart-wrapper layer and all of
+`actions/oversight.ts`; ~70 dead exports, 10 of them server actions), **19 hand-rolled empty
+states** (V-09, ~221 lines) + 7 unportaled `position:fixed` panels, 2 fetch waterfalls + the
+unconditional `UsagePresence` 60s heartbeat, and a secrets-bearing untracked `dotfiles.zip` at the
+repo root (flagged for immediate removal). Also verified the **2026-06-20 FULL-AUDIT backlog**: A1
+fixed; A2/A3/P1 still open; DRY tiers D1–D19 never executed (still-valid backlog). Report ends with
+a 5-tier remediation plan (Tier 0 security/correctness → Tier 4 polish).
+
+---
+
+## 2026-07-02 — DPDP Act 2023 / DPDP Rules 2025 compliance audit (docs-only)
+
+**Why:** The DPDP Rules, 2025 were gazetted 14 Nov 2025; the substantive obligations for private
+Data Fiduciaries (Rules 3, 5–16, 22, 23 — notice, security safeguards, breach intimation, retention,
+rights, cross-border) come into force **~14 May 2027**. Audited the whole codebase against the Act +
+Rules to know where Serene stands before that deadline.
+
+**What:** New report `docs/audits/2026-07-02-dpdp-compliance-audit.md` — 4 parallel deep-reader
+sweeps (data inventory/ingestion, external processors, Rule-6 security, retention/erasure/rights),
+consolidated into a rule-by-rule scorecard, an 11-item gap register (G-01…G-11) and a 4-phase
+roadmap. Headlines: security architecture largely satisfies Rule 6 (RLS everywhere, `requireProfile`,
+timing-safe webhook secrets, append-only write audits, `maskPii` before the LLM, in-memory-only
+audio); the statutory machinery is missing — **no consent/lawful-basis records at any ingestion
+point, no WhatsApp STOP/opt-out, no breach-notification workflow (72h Board clock), erasure
+structurally impossible** (no lead delete path; 10 append-only tables hold PII immutably incl.
+`lead_raw_payloads` forever), no DSR/grievance/nomination flow, no read-access logging (Rule 6(c)),
+no processor/DPA registry, hosting regions still `TODO: verify`. Third-Schedule erasure clocks,
+Consent-Manager registration and SDF duties confirmed **not applicable** at current scale.
+
+No code changes — analysis + report only. Next planned step (Phase 2 of the roadmap): consent/
+lawful-basis + `do_not_contact` migration on `leads`, STOP-keyword handling in the WhatsApp webhook,
+and the anonymisation/erasure core.
+
+---
+
 ## 2026-06-26 — Fix: new deal doesn't appear on /deals for a long time after creation
 
 **Why:** Recording a deal via the New Deal modal (and the lead→Won path) inserted the row, but

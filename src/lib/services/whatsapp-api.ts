@@ -4,6 +4,7 @@
 // Validation is deferred: assertGupshupConfigured() throws on first SEND if a var is missing.
 
 import { createHmac, timingSafeEqual } from 'crypto';
+import { formatDate } from '@/lib/utils/dates';
 import {
   WHATSAPP_API_BASE,
   GUPSHUP_LEAD_ASSIGNMENT_TEMPLATE_ID,
@@ -26,7 +27,7 @@ import {
   isChannelEnabled,
   filterRecipientsByPref,
 } from '@/lib/services/notification-prefs-service';
-import type { MetaApiResponse, TemplateComponent } from '@/lib/types/whatsapp';
+import type { MetaApiResponse } from '@/lib/types/whatsapp';
 import type { AppDomain } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
@@ -35,9 +36,7 @@ import type { AppDomain } from '@/lib/types/database';
 
 const WEBHOOK_SECRET        = process.env.WHATSAPP_WEBHOOK_SECRET;
 const WEBHOOK_VERIFY_TOKEN  = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
-const BUSINESS_ACCOUNT_ID   = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
 // Meta vars — dormant until Meta credentials arrive; optional so server starts without them
-const PHONE_NUMBER_ID       = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const ACCESS_TOKEN          = process.env.WHATSAPP_ACCESS_TOKEN;
 const GUPSHUP_API_KEY        = process.env.GUPSHUP_API_KEY;
 const GUPSHUP_APP_NAME       = process.env.GUPSHUP_APP_NAME;
@@ -230,87 +229,6 @@ export async function sendElayaWhatsAppReply(
     });
   }
   return delivered;
-}
-
-// ─────────────────────────────────────────────
-// Send template message
-// ─────────────────────────────────────────────
-
-export async function sendTemplateMessage(
-  to:           string,
-  templateName: string,
-  languageCode: string,
-  components:   TemplateComponent[],
-): Promise<MetaApiResponse> {
-  return metaFetch<MetaApiResponse>(`/${PHONE_NUMBER_ID}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      recipient_type:    'individual',
-      to,
-      type: 'template',
-      template: {
-        name:       templateName,
-        language:   { code: languageCode },
-        components,
-      },
-    }),
-  });
-}
-
-// ─────────────────────────────────────────────
-// Send media message (image / video / document / audio)
-// ─────────────────────────────────────────────
-
-export async function sendMediaMessage(
-  to:      string,
-  type:    'image' | 'video' | 'document' | 'audio',
-  mediaId: string,
-  caption?: string,
-): Promise<MetaApiResponse> {
-  const mediaObject: Record<string, string> = { id: mediaId };
-  if (caption && (type === 'image' || type === 'video' || type === 'document')) {
-    mediaObject.caption = caption;
-  }
-
-  return metaFetch<MetaApiResponse>(`/${PHONE_NUMBER_ID}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      recipient_type:    'individual',
-      to,
-      type,
-      [type]: mediaObject,
-    }),
-  });
-}
-
-// ─────────────────────────────────────────────
-// Upload media — returns Meta media_id
-// ─────────────────────────────────────────────
-
-export async function uploadMedia(
-  buffer:   Buffer,
-  mimeType: string,
-  filename: string,
-): Promise<string> {
-  const form = new FormData();
-  form.append('messaging_product', 'whatsapp');
-  form.append('file', new Blob([new Uint8Array(buffer)], { type: mimeType }), filename);
-
-  const url = `${WHATSAPP_API_BASE}/${PHONE_NUMBER_ID}/media`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${ACCESS_TOKEN}` },
-    body: form,
-  });
-
-  if (!res.ok) {
-    throw new Error(`[whatsapp-api] Media upload failed: ${res.status}`);
-  }
-
-  const json = (await res.json()) as { id: string };
-  return json.id;
 }
 
 // ─────────────────────────────────────────────
@@ -1023,14 +941,9 @@ export async function sendTaskAssignedNotification(
     // Due date in IST human form ("26 Jun, 4:00 PM"); explicit "no due date" so the
     // template's {{4}} slot is never blank (Gupshup rejects empty params).
     const dueText = dueAt
-      ? new Date(dueAt).toLocaleString('en-US', {
-          timeZone: 'Asia/Kolkata',
-          day: 'numeric',
-          month: 'short',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-        })
+      // formatDate IST — "26 Jun, 4:00 PM", the order this comment always
+      // promised (the old en-US toLocaleString actually sent "Jun 26, …").
+      ? formatDate(dueAt, 'd MMM, h:mm a')
       : 'no due date';
 
     await sendGupshupTemplate({
@@ -1179,4 +1092,4 @@ export async function sendCustomerWhatsAppReply(
   return delivered;
 }
 
-export { WEBHOOK_VERIFY_TOKEN, BUSINESS_ACCOUNT_ID };
+export { WEBHOOK_VERIFY_TOKEN };

@@ -149,7 +149,7 @@ export type AgentDetailMetrics = {
 };
 
 // ─── Performance — domain health overview ────────────────────────────────────
-// Used by DomainHealthGrid and getDomainHealthMetrics.
+// Used by getDomainHealthMetrics.
 // conversionRate is computed in the service layer (null when won + lost = 0).
 
 export type DomainHealthCard = {

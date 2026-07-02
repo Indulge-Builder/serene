@@ -63,7 +63,7 @@
  * can find and cancel without needing to store the run ID.
  */
 
-import { task, tasks, runs } from "@trigger.dev/sdk/v3";
+import { task, tasks } from "@trigger.dev/sdk/v3";
 
 // ─────────────────────────────────────────────
 // Oversight overdue event — emit ONE task_events 'overdue' row after the
@@ -539,12 +539,6 @@ export async function scheduleTaskReminder(
 // ─────────────────────────────────────────────
 
 export async function cancelTaskReminder(taskId: string): Promise<void> {
-  const tag = `task-reminder-${taskId}`;
-  const page = await runs.list({ tag, status: ["DELAYED", "QUEUED"] });
-  const runIds = page.data.map((r) => r.id);
-
-  if (runIds.length === 0) return;
-
-  // Cancel all matching runs (idempotent if already not running)
-  await Promise.allSettled(runIds.map((id) => runs.cancel(id)));
+  const { cancelRunsByTag } = await import("@/lib/trigger/cancel-runs");
+  await cancelRunsByTag(`task-reminder-${taskId}`);
 }

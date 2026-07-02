@@ -23,9 +23,7 @@ import type { GiaDomain } from "@/lib/constants/domains";
 
 export async function getAllTrainingAssets(): Promise<TrainingAssetRow[]> {
   try {
-    // Not yet in the generated Database type (interim — regen drops the cast).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await createClient()) as any;
+    const supabase = await createClient();
     const { data, error } = await supabase
       .from("elaya_training_assets")
       .select("*")
@@ -47,9 +45,7 @@ export async function getTrainingAssetsForBlast(
     if (!domain) return [];
     // Admin client — the send path is sessionless; identity here is the domain
     // (principal-derived by the caller), enforced in this query, never auth.uid().
-    // Not yet in the generated Database type (interim — regen drops the cast).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = createAdminClient() as any;
+    const supabase = createAdminClient();
 
     let query = supabase
       .from("elaya_training_assets")

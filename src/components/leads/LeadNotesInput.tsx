@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { BookOpen, Send } from 'lucide-react';
 import { Spinner } from '@/components/ui/Spinner';
 import { DictationButton } from '@/components/ui/DictationButton';
+import { CardHeader } from '@/components/leads/CardHeader';
 import { addLeadNote } from '@/lib/actions/leads';
 
 type Props = {
@@ -69,38 +70,17 @@ export function LeadNotesInput({ leadId, canAdd, onNoteAdded }: Props) {
         flex:          1,
       }}
     >
-      <div
+      {/* Accent-surface variant of the shared strip — deltas via the style merges */}
+      <CardHeader
+        icon={BookOpen}
+        label="Notes"
         style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-2)',
-          padding:      'var(--space-4) var(--space-5)',
           borderBottom: '1px solid color-mix(in srgb, var(--theme-accent) 18%, transparent)',
           background:   'var(--theme-accent-surface)',
         }}
-      >
-        <BookOpen
-          style={{
-            width:       '0.875rem',
-            height:      '0.875rem',
-            color:       'var(--theme-accent)',
-            strokeWidth: 1.5,
-            flexShrink:  0,
-          }}
-        />
-        <span
-          style={{
-            fontFamily:    'var(--font-sans)',
-            fontSize:      'var(--text-2xs)',
-            fontWeight:    'var(--weight-semibold)',
-            letterSpacing: 'var(--tracking-widest)',
-            textTransform: 'uppercase',
-            color:         'var(--theme-accent)',
-          }}
-        >
-          Notes
-        </span>
-      </div>
+        iconStyle={{ color: 'var(--theme-accent)' }}
+        labelStyle={{ color: 'var(--theme-accent)' }}
+      />
 
       {/* Input area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>

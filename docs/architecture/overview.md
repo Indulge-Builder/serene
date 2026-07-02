@@ -3,7 +3,7 @@
 > **Purpose:** the whole system in one read — what Serene is, the stack, how the services connect, what happens on a request, and where every code-layer concept is documented.
 > **Audience:** engineers (new-engineer entry point; non-technical readers start at `../00-for-the-board.md`).
 > **Source-of-truth scope:** topology, request flow, cross-page shell features, Realtime registry, client-pattern/hook index, service-file → home-doc map.
-> **Last verified:** 2026-06-26 (Elaya "Jarvis" build — `elaya-data.ts` data layer, 11 read + 11 write tools with role-gated reads, per-user persona + durable learned-memory, 0149 sessionless RPC twins; the `/oversight` 3-tier surface + `task_events` Realtime; verified against `src/lib/elaya/*`, `src/lib/services/oversight-service.ts`, `src/app/(dashboard)/oversight/`).
+> **Last verified:** 2026-07-02 (tool counts, theme system, customer channel, service map, hook index refreshed; verified against `src/lib/elaya/*`, `src/lib/elaya/tools/*`, `src/lib/constants/themes.ts`, `src/app/layout.tsx`, `src/lib/services/`, `src/hooks/`).
 
 ---
 
@@ -18,7 +18,7 @@ base layer.
 | Name | What it is |
 | ---- | ---------- |
 | **Serene** | The OS — the shell, auth, theming, navigation, dashboard |
-| **Elaya** | The agentic AI presence inside Serene — a per-user assistant: 11 read tools (role-gated) + 11 write tools (inline + propose/confirm), SSE chat + WhatsApp staff channel, voice input, per-user persona + durable memory ("Jarvis" Phases 1–4 — `../modules/elaya.md`, live) |
+| **Elaya** | The agentic AI presence inside Serene — a per-user assistant: 12 read tools (role-gated) + 12 write tools (inline + propose/confirm), plus a separate 2-tool customer registry for the WhatsApp prospect channel; SSE chat + WhatsApp staff channel, voice input, per-user persona + durable memory ("Jarvis" Phases 1–4 — `../modules/elaya.md`, live) |
 | **Gia** | The CRM module for the four sales domains (`../modules/gia.md` — live) |
 | **Sia** | The Concierge module (`../modules/sia.md` — not started) |
 
@@ -97,8 +97,10 @@ server-side (P-03).
 1. **Proxy** (`src/proxy.ts`): webhook paths bypass; everything else gets a Supabase session
    refresh + `x-pathname` header.
 2. **Dashboard layout** (`(dashboard)/layout.tsx`): server guard — no session →
-   `redirect('/login')`; `canAccessRoute` domain gate → `redirect('/dashboard')`; zero-flash
-   theme `<script>` sets `data-theme` before paint.
+   `redirect('/login')`; `canAccessRoute` domain gate → `redirect('/dashboard')`. Zero-flash
+   theming happens one level up: the ROOT layout (`src/app/layout.tsx`) reads the
+   `serene-theme` cookie server-side and stamps `data-theme` on `<html>`. There is no inline
+   theme script.
 3. **Page (RSC):** thin orchestrator — list pages render the filter bar (client) + a
    `<Suspense>`-wrapped async server child that calls `lib/services/` (Redis-first where
    cached). The dossier/dashboard use page-level `Promise.all` + streamed sections.
@@ -120,8 +122,9 @@ All DB access lives in `src/lib/services/` (A-03). Each file's owning doc:
 | `tasks-service.ts` | `../pages/tasks.md` |
 | `dashboard-service.ts` | `../pages/dashboard.md` |
 | `performance-service.ts` | `../pages/performance.md` |
-| `oversight-service.ts`, `task-events.ts` | `../oversight.md` (the `/oversight` 3-tier drill + the `task_events` emit point) |
-| `ad-spend-service.ts` | `../modules/budget.md` / `../pages/budget.md` (spend + recharge ledger) |
+| `oversight-service.ts`, `task-events.ts` | `../pages/oversight.md` (the `/oversight` 3-tier drill + the `task_events` emit point) |
+| `ad-spend-service.ts` | `../pages/budget.md` (spend + recharge ledger) |
+| `domain-targets-service.ts` | `../pages/budget.md` (founder monthly deals-closed targets, migration 0105) |
 | `profiles-service.ts` | `../pages/user-management.md` |
 | `agent-routing-service.ts` | `../pages/settings.md` |
 | `notifications-service.ts` | §7 below |
@@ -129,6 +132,7 @@ All DB access lives in `src/lib/services/` (A-03). Each file's owning doc:
 | `whatsapp-service.ts` | `../pages/whatsapp.md` |
 | `whatsapp-api.ts` | `../integrations/whatsapp-gupshup.md` |
 | `whatsapp-ingestion.ts` | `../integrations/whatsapp-gupshup.md` |
+| `whatsapp-media.ts` | `../integrations/whatsapp-gupshup.md` (private `whatsapp-media` bucket: download, store, signed-url reads; migration 0141a) |
 | `ad-creatives-service.ts` | `../pages/ad-creatives.md` |
 | `intelligence-service.ts` | `../modules/call-intelligence.md` |
 | `transcription-service.ts` | §7 below (voice dictation — Deepgram) |
@@ -139,7 +143,12 @@ All DB access lives in `src/lib/services/` (A-03). Each file's owning doc:
 | `revival-service.ts`, `revival-gate.ts` | `../modules/revival.md` |
 | `lead-mutations.ts`, `task-mutations.ts` | `../modules/elaya.md` (shared write cores — Elaya tools + UI actions both call them) |
 | `elaya-service.ts`, `elaya-actions-service.ts`, `elaya-whatsapp.ts`, `llm-providers-service.ts` | `../modules/elaya.md` |
+| `elaya-customer.ts` | `../modules/customer-welcome-blast.md` (customer welcome blast + prospect replies, 2026-06-26) |
+| `elaya-notes-service.ts` | `../modules/elaya.md` (per-user `/notes` section, `elaya_notes` migration 0152) |
+| `elaya-training-service.ts` | `../modules/customer-welcome-blast.md` (`elaya_training_assets` library, migration 0150) |
+| `cache-helpers.ts`, `rpc-helpers.ts` | `caching.md` (the `withRedisCache` envelope) / infra helper (`callAdminRpc`, root `CLAUDE.md` registry) |
 | `lib/elaya/elaya-data.ts`, `lib/elaya/memory.ts` | `../modules/elaya.md` (the single read data-layer seam + the durable-memory writer — not under `lib/services/`) |
+| `lib/elaya/access.ts`, `lib/elaya/customer-brain.ts`, `lib/elaya/customer-persona.ts` | `../modules/elaya.md` + `../modules/customer-welcome-blast.md` (the shared per-lead access gate; the hard-capped customer turn loop + persona) |
 
 (The directory's `CLAUDE.md` is the code-adjacent registry with per-function exports and Redis
 TTLs — the authoritative file-by-file index.)
@@ -156,6 +165,7 @@ Every subscription includes a filter and a mount-scoped `useId()` nonce in the c
 | Task remarks panel | `task_remarks` | `task-remarks-${taskId}-${mountId}` |
 | Group workspace | `tasks` (group subtasks) | `workspace-subtasks-${groupId}-${mountId}` |
 | WhatsApp conversation list + open thread | `whatsapp_conversations`, `whatsapp_messages` | conversation-filtered |
+| Lead dossier WhatsApp card (`LeadWhatsAppCard`) | `whatsapp_messages` | `wa-messages-${conversationId}-${mountId}` |
 | Oversight live rails (Tier 2 / Tier 3) | `task_events` (0144) | `domain`- / `subject_id`-filtered (`useId()` nonce) |
 
 ## 7. Shell features (cross-page, owned here)
@@ -208,11 +218,16 @@ Every subscription includes a filter and a mount-scoped `useId()` nonce in the c
   icon grid (`IconSelector`) + an `InstallPrompt` Add-to-Home-Screen card. Migration 0121.
 - **Elaya presence** — SSE chat at `/api/elaya/chat` + a floating widget + a WhatsApp staff channel
   (routing gate on the whatsapp webhook: staff number → same brain/tools/daily-cap, one reply;
-  unknown number → lead pipeline untouched). **All reads flow through the single `elaya-data.ts`
-  seam** (principal-in → admin client → code-scoped → `maskPii`), which makes WhatsApp/in-app parity
-  structural; the three genuinely self-scoped reads got sessionless admin twins (0149). **11 read
-  tools** are role-gated (`get_escalations`/`get_domain_health`/`get_campaigns` manager+; `get_budget`
-  admin/founder). **11 write tools** go through the `elaya_actions` state machine and reuse the shared
+  unknown number → the lead pipeline, which since 2026-06-26 includes **customer-Elaya**: the
+  ingestion path dynamically imports `maybeSendCustomerWelcome`/`handleCustomerReply` from
+  `elaya-customer.ts`, running `runCustomerTurn` (`customer-brain.ts`) under a hard-capped customer
+  principal with its own 2-tool registry, `get_company_material` + `note_customer_interest` and
+  nothing else; first touch gated exactly-once by `leads.welcomed_at`, migration 0151). **All staff
+  reads flow through the single `elaya-data.ts` seam** (principal-in → admin client → code-scoped →
+  `maskPii`), which makes WhatsApp/in-app parity structural; the three genuinely self-scoped reads
+  got sessionless admin twins (0149). **12 read tools** are role-gated
+  (`get_escalations`/`get_domain_health`/`get_campaigns` manager+; `get_budget` admin/founder).
+  **12 write tools** go through the `elaya_actions` state machine and reuse the shared
   `lead-mutations.ts` / `task-mutations.ts` cores (R-01): inline writes execute + log an `executed`
   row; `update_lead_status`/`reassign_lead`/`log_deal`/`delete_task` are propose-only and resolve on
   the *next* human message via the pure-code confirmation gate (English + Hinglish, reads only the
@@ -222,8 +237,10 @@ Every subscription includes a filter and a mount-scoped `useId()` nonce in the c
   contract: `../modules/elaya.md`.
 - **Toasts** — `ToastProvider`/`ToastItem` (`src/components/ui/`), singleton `toast` API via
   `useToast`; max 3 in DOM, danger never auto-dismisses. Design spec: DNA §13.
-- **Theme system** — 5 themes on `data-theme` (html), stored on `profiles.theme`, zero-flash
-  inline script in the dashboard layout. Law: `../design/DESIGN-DNA.md` §1–2.
+- **Theme system** — 6 themes on `data-theme` (html): earth, air, water, fire, martini, candy
+  (cosmos/coffee/macha retired 2026-07-02, migration 0156). Stored on `profiles.theme`;
+  zero-flash via SSR: the root layout stamps `data-theme` from the `serene-theme` cookie
+  (`THEME_COOKIE`, `lib/constants/themes.ts`); no inline script. Law: `../design/DESIGN-DNA.md` §1–2.
 
 ## 8. Client-side patterns — hook index (`src/hooks/`)
 
@@ -235,6 +252,8 @@ Every subscription includes a filter and a mount-scoped `useId()` nonce in the c
 | `useWidgetData` | THE dashboard-widget data lifecycle (RSC seed → deps auto-fetch → refetch) |
 | `useUrlFilters` | THE URL-param filter plumbing for list filter bars |
 | `useDebounce` | the only debounce utility |
+| `useMediaQuery` | THE viewport/media-condition hook (`MQ.mobile`/`tabletDown`/`touch`); never raw `matchMedia` in a component |
+| `useWidgetDensity` | dashboard widget density preference (added 2026-06-24) |
 | `usePortalAnchor` | THE floating-panel anchoring mechanism (pairs with `<FloatingPanel>`) |
 | `useMountOnFirstOpen` | mount latch for `next/dynamic` modals that stay mounted |
 | `useNotifications` | notification state + Realtime |

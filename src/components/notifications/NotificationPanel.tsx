@@ -17,6 +17,7 @@ import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import {
   ENTER_DURATION,
   EXIT_DURATION,
+  FAST_DURATION,
   EASE_OUT_EXPO,
   EASE_IN_EXPO,
 } from "@/lib/constants/motion";
@@ -47,7 +48,7 @@ const ITEM_VARIANTS = {
     y: 0,
     transition: {
       delay:    Math.min(i * 50, 200) / 1000,
-      duration: 0.25,
+      duration: EXIT_DURATION,
       ease:     EASE_OUT_EXPO,
     },
   }),
@@ -169,7 +170,7 @@ export function NotificationPanel({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: FAST_DURATION }}
             onClick={onClose}
             style={{
               position:   "fixed",

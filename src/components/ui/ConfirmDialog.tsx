@@ -2,7 +2,7 @@
 
 import { createPortal } from 'react-dom';
 import { m as motion, AnimatePresence } from 'framer-motion';
-import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { BASE_DURATION, EASE_OUT_EXPO, FAST_DURATION } from '@/lib/constants/motion';
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -58,7 +58,7 @@ export function ConfirmDialog({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: FAST_DURATION }}
             onClick={(e) => {
               e.stopPropagation();
               if (!pending) onCancel();
@@ -77,7 +77,7 @@ export function ConfirmDialog({
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.97 }}
-            transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+            transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
             onClick={(e) => e.stopPropagation()}
             style={{
               position:     'fixed',

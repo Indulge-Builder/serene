@@ -90,7 +90,7 @@ function MediaPlaceholder({ message }: { message: WhatsAppMessage }) {
   const inlinePreview =
     url && message.message_type === "image" ? (
       <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: "block" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
+        { }
         <img
           src={url}
           alt={caption || "Image"}

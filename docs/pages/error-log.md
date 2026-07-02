@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/error-log` — the admin/founder view of failed lead-ingestion payloads.
 > **Audience:** engineers. · **Source-of-truth scope:** this route. The raw-payload pipeline and retention policy live in `../integrations/lead-ingestion.md`.
-> **Last verified:** 2026-06-24 against `src/app/(dashboard)/error-log/page.tsx` + `src/components/error-log/ErrorLogTable.tsx`.
+> **Last verified:** 2026-07-02 (full-tree audit) against `src/app/(dashboard)/error-log/page.tsx` + `src/components/error-log/ErrorLogTable.tsx`.
 
 ## 1. Purpose
 

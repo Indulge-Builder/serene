@@ -16,8 +16,7 @@ export type PiiMaskingDepth = 'off' | 'light' | 'strict';
 /** Active provider config for a job type. Throws when no active row exists. */
 export async function getLlmJobConfig(jobType: LlmJobType): Promise<LlmProviderRow> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('llm_providers')
     .select('*')
     .eq('job_type', jobType)
@@ -34,8 +33,7 @@ export async function getLlmJobConfig(jobType: LlmJobType): Promise<LlmProviderR
 
 async function getSettingValue(key: string): Promise<unknown> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('elaya_settings')
     .select('value')
     .eq('key', key)

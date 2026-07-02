@@ -12,6 +12,7 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { callAdminRpc } from "@/lib/services/rpc-helpers";
 import { mapRows } from "@/lib/utils/rows";
 import {
   toISTMidnight,
@@ -299,12 +300,13 @@ export const getAgentPerformanceSummary = cache(async (
   const to   = (period === 'custom' && customTo)   ? customTo   : range.to;
   const prev = getPreviousPeriodDateRange(period);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc("get_agent_performance", {
+  // Explicit null (not undefined) is intentional — PostgREST sends SQL NULL;
+  // the generated optional-arg type only admits undefined, hence the assertions.
+  const { data, error } = await supabase.rpc("get_agent_performance", {
     p_date_from: from,
     p_date_to:   to,
-    p_prev_from: prev?.from ?? null,
-    p_prev_to:   prev?.to ?? null,
+    p_prev_from: (prev?.from ?? null) as string | undefined,
+    p_prev_to:   (prev?.to ?? null) as string | undefined,
   });
 
   if (error || !data) {
@@ -395,8 +397,7 @@ export const getAgentPerformanceTrend = cache(async (
   const from = (period === 'custom' && customFrom) ? customFrom : range.from;
   const to   = (period === 'custom' && customTo)   ? customTo   : range.to;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc("get_agent_performance_trend", {
+  const { data, error } = await supabase.rpc("get_agent_performance_trend", {
     p_date_from: from,
     p_date_to:   to,
   });
@@ -459,13 +460,14 @@ export async function getAgentRosterPerformance(
 ): Promise<AgentRosterRow[]> {
   const supabase = await createClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc(
+  // Explicit null (not undefined) is intentional — PostgREST sends SQL NULL;
+  // the generated optional-arg type only admits undefined, hence the assertion.
+  const { data, error } = await supabase.rpc(
     "get_agent_roster_performance",
     {
       p_date_from: dateFrom,
       p_date_to:   dateTo,
-      p_domain:    domain,
+      p_domain:    domain as AppDomain | undefined,
     },
   );
 
@@ -529,10 +531,11 @@ export async function getAgentRosterPerformanceForElaya(
   dateTo: string,
 ): Promise<AgentRosterRow[]> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any).rpc(
+  // Explicit null (not undefined) is intentional — PostgREST sends SQL NULL;
+  // the generated optional-arg type only admits undefined, hence the assertion.
+  const { data, error } = await admin.rpc(
     "get_agent_roster_performance_for_elaya",
-    { p_date_from: dateFrom, p_date_to: dateTo, p_domain: domain },
+    { p_date_from: dateFrom, p_date_to: dateTo, p_domain: domain as AppDomain | undefined },
   );
   if (error || !data) {
     if (error) console.error("[performance-service] roster_for_elaya failed:", error);
@@ -573,8 +576,7 @@ export async function getAgentDetailMetrics(
 
     // Won deals closed in the period — from public.deals filtered by won_at.
     // deal_type lives on the deal row directly (no form_data needed).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any)
+    supabase
       .from("deals")
       .select("deal_amount, deal_type")
       .eq("assigned_to", agentId)
@@ -707,23 +709,6 @@ export async function getDomainHealthMetrics(
 ): Promise<DomainHealthCard[]> {
   if (domains.length === 0) return [];
 
-  // get_domain_health_metrics returns exactly the requested domains with no
-  // internal gate — EXECUTE revoked from `authenticated` (migration 0102, audit
-  // F-1). Admin client only; callers pass the fixed GIA_DOMAINS list (Q-13).
-  const supabase = createAdminClient();
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc(
-    "get_domain_health_metrics",
-    {
-      p_domains:   domains,
-      p_date_from: dateFrom,
-      p_date_to:   dateTo,
-    },
-  );
-
-  if (error || !data) return [];
-
   // RPC row shape (bigint aggregates arrive as number | string — Number() per Q-09)
   type DomainHealthRpcRow = {
     domain:           AppDomain;
@@ -738,24 +723,37 @@ export async function getDomainHealthMetrics(
     total_deals:      number | string | null;
   };
 
-  return mapRows<DomainHealthRpcRow, DomainHealthCard>(data, (row) => {
-    const won    = Number(row.leads_won  ?? 0);
-    const lost   = Number(row.leads_lost ?? 0);
-    const closed = won + lost;
-    return {
-      domain:         row.domain,
-      totalLeads:     Number(row.total_leads        ?? 0),
-      leadsWon:       won,
-      leadsLost:      lost,
-      callsLogged:    Number(row.calls_logged       ?? 0),
-      inDiscussion:   Number(row.in_discussion      ?? 0),
-      nurturing:      Number(row.nurturing          ?? 0),
-      conversionRate: closed > 0 ? (won / closed) * 100 : null,
-      totalCallsMade: Number(row.total_calls_made   ?? 0),
-      totalRevenue:   Number(row.total_revenue      ?? 0),
-      totalDeals:     Number(row.total_deals        ?? 0),
-    };
-  });
+  // get_domain_health_metrics returns exactly the requested domains with no
+  // internal gate — EXECUTE revoked from `authenticated` (migration 0102, audit
+  // F-1). Admin client only (via callAdminRpc, D2); callers pass the fixed
+  // GIA_DOMAINS list (Q-13).
+  return callAdminRpc<DomainHealthRpcRow, DomainHealthCard>(
+    "get_domain_health_metrics",
+    {
+      p_domains:   domains,
+      p_date_from: dateFrom,
+      p_date_to:   dateTo,
+    },
+    (row) => {
+      const won    = Number(row.leads_won  ?? 0);
+      const lost   = Number(row.leads_lost ?? 0);
+      const closed = won + lost;
+      return {
+        domain:         row.domain,
+        totalLeads:     Number(row.total_leads        ?? 0),
+        leadsWon:       won,
+        leadsLost:      lost,
+        callsLogged:    Number(row.calls_logged       ?? 0),
+        inDiscussion:   Number(row.in_discussion      ?? 0),
+        nurturing:      Number(row.nurturing          ?? 0),
+        conversionRate: closed > 0 ? (won / closed) * 100 : null,
+        totalCallsMade: Number(row.total_calls_made   ?? 0),
+        totalRevenue:   Number(row.total_revenue      ?? 0),
+        totalDeals:     Number(row.total_deals        ?? 0),
+      };
+    },
+    "[performance-service]",
+  );
 }
 
 // ─────────────────────────────────────────────
@@ -786,8 +784,7 @@ export async function getAgentTodayPulse(
   const to   = (period === "custom" && customTo)   ? customTo   : range.to;
   const todayStart = toISTMidnight(new Date()).toISOString();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc("get_agent_today_pulse", {
+  const { data, error } = await supabase.rpc("get_agent_today_pulse", {
     p_today_start: todayStart,
     p_date_from:   from,
     p_date_to:     to,
@@ -851,8 +848,7 @@ export async function getAgentTodayPulseForUser(
   const to   = (period === "custom" && customTo)   ? customTo   : range.to;
   const todayStart = toISTMidnight(new Date()).toISOString();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any).rpc("get_agent_today_pulse_for_user", {
+  const { data, error } = await admin.rpc("get_agent_today_pulse_for_user", {
     p_agent:       agentId,
     p_today_start: todayStart,
     p_date_from:   from,
@@ -1173,8 +1169,7 @@ async function classifyFirstTouchPairs(
   const admin = createAdminClient();
 
   // Raw pairs — RPC EXECUTE is revoked from authenticated (0123); admin only.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any).rpc("get_agent_first_touch_pairs", {
+  const { data, error } = await admin.rpc("get_agent_first_touch_pairs", {
     p_agent: agentId,
     p_from:  dateFrom,
     p_to:    dateTo,
@@ -1267,25 +1262,3 @@ export const getAgentFirstTouchBucketLeadIds = cache(async (
   return classified ? classified.buckets[bucketId] : [];
 });
 
-export async function getDomainsWithLeads(
-  dateFrom: string,
-  dateTo: string,
-): Promise<AppDomain[]> {
-  const supabase = await createClient();
-
-  const { data } = await supabase
-    .from("leads")
-    .select("domain")
-    .gte("created_at", dateFrom)
-    .lte("created_at", dateTo)
-    .is("archived_at", null)
-    .not("domain", "is", null);
-
-  if (!data || data.length === 0) return [];
-
-  const domainSet = new Set<AppDomain>();
-  for (const row of data) {
-    if (row.domain) domainSet.add(row.domain as AppDomain);
-  }
-  return [...domainSet].sort();
-}

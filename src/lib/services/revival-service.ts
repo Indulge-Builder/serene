@@ -181,9 +181,7 @@ export async function findSilentLeadsForStatus(
   // both grew unbounded with the ledger (audit #8/#14). The NOT EXISTS is served
   // by idx_revival_candidates_lead. Admin client + scope-param RPC (EXECUTE
   // revoked from authenticated) — the sweep is the trust boundary (Q-13).
-  // Interim cast on .rpc until database.ts is regenerated post-0128.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as unknown as any).rpc("get_silent_leads_for_revival", {
+  const { data, error } = await admin.rpc("get_silent_leads_for_revival", {
     p_status:    triggerStatus,
     p_threshold: threshold,
     p_limit:     REVIVAL_SWEEP_BATCH_PER_STATUS,

@@ -42,21 +42,25 @@ Suspense boundary owns the fallback.
 ## Server-side scope clamp (the security spine)
 
 The manager `tasks` SELECT **RLS is role-only — no domain predicate** (a manager can read every
-team's tasks at the DB level). Oversight isolation is therefore enforced in **three** layers, NOT
+team's tasks at the DB level). Oversight isolation is therefore enforced in **two** layers, NOT
 RLS alone:
 
-1. **The action** (`lib/actions/oversight.ts`) — `requireProfile(['manager','admin','founder'])`,
-   then a manager requesting another `domain`/`agentId` is **denied** (`formErrors.unauthorized`),
-   not merely served their own. For `[agentId]`, the action reads the agent's domain and rejects a
-   cross-domain request.
-2. **The page** — a manager hitting another domain's URL is `redirect()`ed to their own team (never
-   another team's data); the Tier-3 page `notFound()`s when the agent's domain ≠ the URL domain.
-3. **The RPC** — every function force-clamps a manager to `p_caller_domain` in SQL (Tier 1: only
+1. **The page** (the trust boundary — the RSC pages call `oversight-service` directly) —
+   `getCurrentProfile()` → agent/guest `redirect('/dashboard')`; a manager hitting another
+   domain's URL is `redirect()`ed to their own team (never another team's data); the Tier-3 page
+   `notFound()`s when the agent's domain ≠ the URL domain. All service args are session-derived.
+2. **The RPC** — every function force-clamps a manager to `p_caller_domain` in SQL (Tier 1: only
    their domain row; Tier 2: their team's agents; Tier 3: an out-of-domain `p_agent` → zero rows).
 
 The three RPCs are **scope-param SECURITY DEFINER → EXECUTE REVOKEd from authenticated** (Q-13
 Tier-2, migration 0102 pattern). They are called **only via the admin client** from
-`oversight-service.ts` with **session-derived args** — the action/page is the trust boundary.
+`oversight-service.ts` with **session-derived args** — the page is the trust boundary.
+
+> **History (2026-07-02):** `lib/actions/oversight.ts` (5 client-callable wrapper actions carrying
+> the same manager clamp) was DELETED — zero callers from day one; the pages always fetched via
+> the service directly, so the actions were scaffolding for a client-refresh path that never
+> shipped. If client-side refresh ever lands, recreate them with the clamp described above (git
+> history has the full implementation).
 
 ## Derived domain (the load-bearing join)
 
@@ -130,7 +134,6 @@ src/components/oversight/
 
 src/lib/services/oversight-service.ts ← the 3 readers + 2 rail seeds (admin client, mapper counts)
 src/lib/services/task-events.ts       ← emitTaskEvent + resolveTaskDomain (THE emit + domain home)
-src/lib/actions/oversight.ts          ← the 6 actions (the manager-clamp trust boundary)
 src/lib/types/oversight.ts            ← hand-declared row/result types (interim until type regen)
 ```
 

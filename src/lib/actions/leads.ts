@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/actions/_auth";
+import { parseActionInput } from "@/lib/actions/_validation";
 import { invalidateLeadCaches } from "@/lib/services/lead-cache";
 import {
   addLeadNoteCore,
@@ -28,7 +29,6 @@ import {
   UpdatePersonalDetailsSchema,
   CreateManualLeadSchema,
   CreateLeadTaskSchema,
-  SearchLeadsSchema,
   ExportLeadsSchema,
 } from "@/lib/validations/lead-schema";
 import { formErrors } from "@/lib/validations/form-errors";
@@ -37,16 +37,14 @@ import { canonicalizePhone } from "@/lib/utils/phone";
 import { LEAD_ASSIGNABLE_ROLES } from "@/lib/constants/roles";
 import { isGiaDomain } from "@/lib/constants/domains";
 import {
-  searchLeadsForTask,
   getLeadsForExport,
   getActivitiesAndNotesForExport,
-  type LeadSearchResult,
   type LeadExportItem,
   type LeadActivityWithActor,
   type LeadNoteWithAuthor,
 } from "@/lib/services/leads-service";
 import type { ActionResult, Profile } from "@/lib/types/index";
-import type { AppDomain, Task } from "@/lib/types/database";
+import type { AppDomain, LeadFilters, Task } from "@/lib/types/database";
 import type { LeadAssignedNotifyInput } from "@/lib/services/lead-assignment-notify";
 
 // ─────────────────────────────────────────────
@@ -284,10 +282,8 @@ export async function bulkUpdateLeads(
   input: unknown,
 ): Promise<ActionResult<BulkUpdateResult>> {
   // 1. Validate (Rule 02 — Zod first, always)
-  const parsed = BulkUpdateLeadsSchema.safeParse(input);
-  if (!parsed.success) {
-    return { data: null, error: parsed.error.issues[0]?.message ?? formErrors.generic };
-  }
+  const parsed = parseActionInput(BulkUpdateLeadsSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   const { leadIds, changes } = parsed.data;
 
@@ -1180,35 +1176,6 @@ export async function createLeadTaskAction(
 }
 
 // ─────────────────────────────────────────────
-// Action: searchLeadsAction
-// Used by CreateGiaTaskModal lead picker.
-// Returns leads matching query, scoped by the caller's role + domain (A-09).
-// ─────────────────────────────────────────────
-export async function searchLeadsAction(
-  query: string,
-): Promise<ActionResult<LeadSearchResult[]>> {
-  "use server";
-
-  const parsed = SearchLeadsSchema.safeParse({ query });
-  if (!parsed.success) {
-    return { data: null, error: "Search query is required." };
-  }
-
-  const auth = await requireProfile();
-  if (!auth.ok) return auth.result;
-  const caller = auth.profile;
-
-  const results = await searchLeadsForTask(
-    parsed.data.query,
-    caller.role,
-    caller.domain,
-    caller.id,
-  );
-
-  return { data: results, error: null };
-}
-
-// ─────────────────────────────────────────────
 // Action: exportLeadsAction
 // Returns plain JSON data — XLSX/CSV building happens entirely client-side.
 // Never imports xlsx here; never builds a file buffer server-side.
@@ -1257,8 +1224,7 @@ export async function exportLeadsAction(
     sort_order:        filters.sort_order ?? "desc",
     page:              1,
     pageSize:          5000,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any;
+  } as LeadFilters;
 
   const { leads, totalCount } = await getLeadsForExport(
     caller.role,

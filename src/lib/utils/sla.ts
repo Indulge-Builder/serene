@@ -125,7 +125,7 @@ function isOffDay(dayOfWeek: number, shift?: AgentShiftOverride): boolean {
 
 function advanceToNextBusinessStart(utcDate: Date, shift?: AgentShiftOverride): Date {
   const start = resolveStart(shift);
-  let ist = toIst(utcDate);
+  const ist = toIst(utcDate);
 
   // If before business hours today but today is a business day → use start today
   if (!isOffDay(ist.dayOfWeek, shift) &&
@@ -165,7 +165,7 @@ function advanceToNextBusinessStart(utcDate: Date, shift?: AgentShiftOverride): 
  * Returns true if the given UTC timestamp falls within business hours.
  * Pass an AgentShiftOverride to use agent-specific hours; omit for global BUSINESS_HOURS.
  */
-export function isWithinBusinessHours(ts: Date, shift?: AgentShiftOverride): boolean {
+function isWithinBusinessHours(ts: Date, shift?: AgentShiftOverride): boolean {
   const ist   = toIst(ts);
   const start = resolveStart(shift);
   const end   = resolveEnd(shift);

@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/tasks` (My Tasks / Group Tasks tabbed hub) and `/tasks/[id]` (group workspace) — the whole OS Tasks module.
 > **Audience:** engineers. · **Source-of-truth scope:** the task system (tables-usage, RPCs, actions, tabs, modals, flows, invariants). Schema rows: `../architecture/database.md`; reminder-job mechanics: `../integrations/trigger-dev.md`.
-> **Last verified:** 2026-06-24 (gia-category collapse — migration `20260617000138`; task-mutation cores + the config-driven reminder/overdue pipeline absorbed).
+> **Last verified:** 2026-07-02 (removed actions struck: `suppressTaskRemarkAction` + `updateTaskTagsAction` deleted in the 2026-07-02 dead-code purge; My Tasks auto-drain, migration 0145 lead identity, Completed Tasks modal, and the 0153 WhatsApp assigned ping folded in); 2026-06-24 (gia-category collapse — migration `20260617000138`; task-mutation cores + the config-driven reminder/overdue pipeline absorbed).
 
 ## 1. Purpose
 
@@ -43,9 +43,9 @@ operation×role matrix + RLS notes: Deep dive §20.
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `tasks-service.ts` (read-only) — `getPersonalTasks` (cursor RPC), `getGroupTasks`, `getGroupSubtasks`, `getTaskRemarks`, `getGiaTasksForUser` (lead-task reader — dossier + Elaya tool, no longer a tab; its RPC's EXECUTE was revoked from `authenticated` in 0102, so it calls via the **admin client**), `getAllLeadTasks`; Redis per `../architecture/caching.md` (`task:*`) |
-| RPCs | `get_personal_tasks` (0026), `get_group_task_summaries` (0020), `add_task_remark_with_status` (0035/0051), `get_gia_tasks` (0055 — survives the tab removal; consumed by the lead dossier + Elaya read tool; EXECUTE revoked from `authenticated` in 0102, called via admin client), `create_lead_gia_task` (0054 — the sole atomic writer of a lead follow-up: `personal` task + `task_gia_meta` + `module='gia'`) |
-| Actions | `tasks.ts` — create personal/group/subtask (delegating to `task-mutations.ts` cores), update status/brief/checklist/tags, delete, delete group, remarks (+ suppression); all `{ data, error }` |
+| Service | `tasks-service.ts` (read-only) — `getPersonalTasks` (cursor RPC), `getGroupTasks`, `getGroupSubtasks`, `getTaskRemarks`, `getCompletedTasks` (history keyset read: `completed_at DESC NULLS LAST, id DESC`), `getGiaTasksForUser` (lead-task reader — dossier + Elaya tool, no longer a tab; its RPC's EXECUTE was revoked from `authenticated` in 0102, so it calls via the **admin client**), `getAllLeadTasks`; Redis per `../architecture/caching.md` (`task:*`) |
+| RPCs | `get_personal_tasks` (0026; return widened in 0145, see §3a), `get_group_task_summaries` (0020), `add_task_remark_with_status` (0035/0051), `get_gia_tasks` (0055 — survives the tab removal; consumed by the lead dossier + Elaya read tool; EXECUTE revoked from `authenticated` in 0102, called via admin client), `create_lead_gia_task` (0054 — the sole atomic writer of a lead follow-up: `personal` task + `task_gia_meta` + `module='gia'`) |
+| Actions | `tasks.ts` — create personal/group/subtask (delegating to `task-mutations.ts` cores), update status/brief/checklist, delete, delete group, remarks, `getCompletedTasksAction` (history read with a role/domain trust boundary); all `{ data, error }`. (`suppressTaskRemarkAction` + `updateTaskTagsAction` were removed 2026-07-02: zero callers, no UI ever shipped; git history has both.) |
 | Jobs | task due reminders — `../integrations/trigger-dev.md` |
 
 ## 4. Components
@@ -54,7 +54,9 @@ operation×role matrix + RLS notes: Deep dive §20.
 `MyTasksCalendarView` (the personal view) + `GroupTasksTab` ·
 `GroupTaskWorkspace` (`/tasks/[id]`, list/board, Realtime) · `SubTaskModal` (two-zone) +
 `TaskRemarksPanel` + `AssigneePickerModal` + `TaskStatusIcon` · create modals
-(`CreatePersonalTaskModal`, `CreateGroupTaskModal`) — all composing `TaskFormFields`.
+(`CreatePersonalTaskModal`, `CreateGroupTaskModal`) — all composing `TaskFormFields` ·
+`CompletedTasksButton` + `CompletedTasksModal` (2026-06-25, the Completed Tasks history modal;
+reads via `getCompletedTasksAction`).
 Component contracts live code-adjacent in `src/components/tasks/CLAUDE.md`.
 
 > **Gia tab removed (2026-06-17).** `GiaTasksTab`, `GiaTaskRow`, `GiaDaySection`, and
@@ -209,7 +211,10 @@ Realtime: **not enabled** on `task_groups`.
 
 > **0088 InitPlan note:** these three policies were rewritten to wrap `get_user_role()` in `(SELECT …)` for once-per-statement evaluation. The creator path (`created_by = auth.uid()`) is explicit in both SELECT and INSERT — logic unchanged from pre-0088.
 
-Suppression column scope is enforced in `suppressTaskRemarkAction` only (PostgreSQL RLS cannot restrict columns).
+The suppression RLS policy stands, but the action that used it (`suppressTaskRemarkAction`) was
+removed 2026-07-02 (zero callers, no UI ever shipped). The DB contract binds any future
+reimplementation: only `{ is_suppressed, suppressed_by, suppressed_at }` may be written, and the
+column restriction must live in the action layer (PostgreSQL RLS cannot restrict columns).
 
 Realtime: **enabled**.
 
@@ -263,7 +268,7 @@ summarises the three jobs). The in-app rows are:
 
 | Type | Created by | Recipient | `action_url` |
 | --- | --- | --- | --- |
-| `task_assigned` | `createPersonalTaskCore`, `createSubtaskCore` when assignee ≠ actor | assignee | `/tasks` (relative only) |
+| `task_assigned` | `createPersonalTaskCore`, `createSubtaskCore` when assignee ≠ actor. Since 2026-06-26 (migration 0153) the cores also fire a WhatsApp "assigned to you" template ping to the assignee (`sendTaskAssignedNotification`, logged under the `task_assigned` log type) | assignee | `/tasks` (relative only) |
 | `task_due` | `sendTaskReminderTask` (Trigger.dev, at `due_at`) | assignee | `/tasks` |
 | `task_overdue_manager` (lead task) | `checkTaskOverdueTask` (Trigger.dev — at `due_at` + TASK-01B `threshold_minutes`, no clearing event) | the lead's **domain managers** | `/leads/[id]` |
 | `task_overdue_manager` (non-lead task) | `checkTaskOverdueTask` — same job, non-lead branch | the assignee's **manager** (`reports_to` → domain) | `/tasks` |
@@ -281,9 +286,15 @@ summarises the three jobs). The in-app rows are:
 
 ### 3. Database RPCs
 
-#### 3a. `get_personal_tasks` (migrations 0025, 0026)
+#### 3a. `get_personal_tasks` (migrations 0025, 0026; return widened in 0145)
 
 **Purpose:** DB-level sort PostgREST cannot express: `due_at ASC NULLS LAST` → priority CASE → `id ASC`, plus composite keyset cursor.
+
+**Return shape (migration `20260625000145`):** the full `tasks` row PLUS four nullable
+lead-identity columns (`lead_id`, `lead_first_name`, `lead_last_name`, `lead_slug`), sourced via
+a LEFT JOIN through `task_gia_meta` → `leads`, so My Tasks can show which lead a follow-up
+belongs to. Non-lead tasks join to NULL. The WHERE clause, cursor logic, ORDER BY, and every
+parameter are byte-identical to the 0026 body; only the SELECT list and return type changed.
 
 | Parameter | Purpose |
 | --- | --- |
@@ -401,8 +412,9 @@ single-writer invariant.
 #### 5a. `tasks.ts` — all actions
 
 **The six write actions delegate their write body + side-effects to shared cores in
-`src/lib/services/task-mutations.ts`** (the Elaya-Phase-2 substrate — same cores a future Elaya
-write tool will call, so a tool-driven task write inherits reminder/notify/cache identically).
+`src/lib/services/task-mutations.ts`** (the same cores Elaya's write tools call today; her task
+writes have been live since 2026-06-26 (`create_task` inference + `create_subtask` for team
+tasks), so a tool-driven task write inherits reminder/notify/cache identically).
 Each action keeps the request-context shell: Zod → auth → per-resource gate (`canMutateTask`,
 **imported from `task-mutations.ts`** and passed the session client) → `actorFromProfile(caller)`
 → `*Core(...)` → `revalidatePath`. `canMutateTask` itself moved out of the action layer into
@@ -418,10 +430,9 @@ describe what the **core** performs.
 | `updateTaskAction` | `UpdateTaskSchema` | `getCurrentProfile()` + task fetch → `canMutateTask` | `updateTaskCore` → partial UPDATE | reminder reschedule on `due_at` change (cancel old + schedule new); no Redis del (intentional) | Yes (core) |
 | `deleteTaskAction` | `DeleteTaskSchema` | Agent: both created_by AND assigned_to; else open. Fetches `task_gia_meta(task_id)` → `hasGiaMeta` for `taskCtx` | `deleteTaskCore` → DELETE (cascades remarks) | **Awaited** `cancelTaskReminder` **before** delete; same `taskCtx`-driven cache dels as status (`personalPage1` + `giaList` on `hasGiaMeta`) | Yes (core) |
 | `updateChecklistAction` | `UpdateChecklistSchema` | `canMutateTask` | UPDATE attachments (**not cored**) | excluded from audit trigger | Yes |
-| `updateTaskTagsAction` | `UpdateTaskTagsSchema` | `canMutateTask` | UPDATE tags (**not cored**) | — | Yes |
 | `addTaskRemarkAction` | `AddTaskRemarkSchema` | View = post (tasks SELECT) | RPC `add_task_remark_with_status` (**not cored**) | del `task:remarks:{taskId}` | Yes (RPC) |
-| `suppressTaskRemarkAction` | `SuppressTaskRemarkSchema` | admin/founder | UPDATE 3 suppression cols only (**not cored**) | del `task:remarks:{taskId}` | Yes |
 | `deleteGroupTaskAction` | `DeleteGroupTaskSchema` | `requireProfile(['admin','founder'])` | DELETE task_groups (cascades to subtasks → task_remarks; **not cored**) | `revalidatePath('/tasks')` | Yes |
+| `getCompletedTasksAction` | `CompletedTasksQuerySchema` | `requireProfile()` + the completed-tasks role/domain trust boundary: agent → self only; manager → self or a same-domain target (one `getProfileById`); admin/founder → anyone. The manager+ `tasks` SELECT RLS is not domain-scoped, so this gate enforces domain isolation | `getCompletedTasks` keyset read (`completed_at DESC NULLS LAST, id DESC`) | — | No |
 | `getGroupSubtasksAction` | — | Session | read service | — | No |
 | `getPersonalTasksAction` | filters | Session | read service | — | No |
 | `getPersonalTaskTagsAction` | — | Session | read service | — | No |
@@ -600,7 +611,7 @@ Uses `var(--theme-paper-subtle)` shimmer only.
 #### Layout
 
 - **Left (280px sticky):** `Calendar` + `taskDots` (local `YYYY-MM-DD` keys; urgent → danger dot); summary strip; quick-add trigger
-- **Right:** date-grouped sections; optional inline quick-add; Load more when `hasMore`
+- **Right:** date-grouped sections; optional inline quick-add; a quiet "Loading your tasks…" row while the remaining pages auto-drain (no manual Load more since 2026-06-25)
 
 #### Section order (all-mode)
 
@@ -616,12 +627,16 @@ Today → future dates ascending → Overdue → No Due Date. **Completed tasks 
   honoured) neither `completed` nor `cancelled`. A dot means a day has ≥1 task still to do and can
   never disagree with what clicking it lists — a day whose tasks are all done/cancelled shows no dot.
   (Pre-2026-06-15 the dot builder counted every dated task incl. completed → phantom dots clicking to
-  an empty list.) Known limitation: dots reflect only loaded tasks, not the full DB set (pagination).
+  an empty list.) Since the 2026-06-25 auto-drain, dots and date sections reflect the **full**
+  active task set, not just page 1; the old loaded-tasks-only limitation no longer exists.
 
 #### Data
 
 - Seed from SSR `initialResult` — no mount refetch for page 1
-- Load more: `getPersonalTasksAction({ cursor, status: active statuses })`
+- **Auto-drain (2026-06-25, replaced the Load more button):** a `useEffect` re-fires
+  `getPersonalTasksAction({ cursor, status: active statuses })` while `hasMore && nextCursor`,
+  fetching every page on mount. The effect depends only on the cursor (never a loading flag, which would self-cancel the
+  in-flight fetch), with a ref guarding against fetching the same cursor twice. The paged RPC is unchanged (LIMIT 51/page, composite cursor); only consumption changed
 - Manager+: `getAssignableUsersAction(domain)` for assignee picker
 
 #### Completion
@@ -935,9 +950,11 @@ Compose → `addTaskRemarkAction` → **`add_task_remark_with_status` RPC** (opt
 
 Optimistic → `updateChecklistAction` (full array replace) → rollback on error.
 
-#### J. Suppress remark
+#### J. Suppress remark (flow removed 2026-07-02)
 
-Admin/founder → `suppressTaskRemarkAction` → Realtime UPDATE → suppressed copy.
+No live flow. `suppressTaskRemarkAction` was deleted in the 2026-07-02 dead-code purge (zero
+callers, no UI ever shipped). The RLS suppression policy and the 3-column write contract remain
+in the DB (§2c) and bind any reimplementation; the full action body is in git history.
 
 #### K/L. Delete task
 
@@ -979,7 +996,7 @@ dashboard widget, lead dossier task cards (`getAllLeadTasks`); also readable via
 | Create subtask | ✓ (domain) | ✓ (domain) | ✓ |
 | Toggle complete (own assignment) | ✓ if assigned | ✓ | ✓ |
 | Edit brief / checklist / remark | own assignee or creator | + domain group subtasks | ✓ |
-| Suppress remark | ✗ | ✗ | ✓ |
+| Suppress remark (RLS capability only; the action/UI was removed 2026-07-02) | ✗ | ✗ | ✓ |
 | Delete personal task | both ownership fields | ✓ | ✓ |
 | Delete group | own groups only (RLS: `created_by = auth.uid()`) | own groups only | service-role op |
 | Delete subtask | ✗ | ✓ | ✓ |
@@ -1028,6 +1045,10 @@ dashboard widget, lead dossier task cards (`getAllLeadTasks`); also readable via
 | 0088 | `20260608000088_rls_initplan_hoist.sql` | InitPlan optimisation — rewrites every task-table SELECT/UPDATE policy (`tasks_agent_select`, `tasks_manager_admin_founder_select`, `tasks_update`, `task_gia_meta_select`, `task_remarks_select`, `task_remarks_insert`, `task_remarks_suppression_update`, `task_audit_log_select`) to wrap `get_user_role()`/`get_user_domain()` in uncorrelated `(SELECT …)` subqueries so the STABLE function is evaluated once per statement, not once per row. **Logic unchanged — only the InitPlan wrapping.** Also confirms `task_remarks_select`/`_insert` use `assigned_to = auth.uid() OR created_by = auth.uid() OR role IN (manager,admin,founder)` directly (creator path explicit). |
 | 0094 | `20260608000094_explicit_insert_delete_policies.sql` | **Adds explicit task INSERT/DELETE RLS** (defence-in-depth — app writes still use `adminClient`): `tasks_insert` (`created_by = auth.uid() AND assigned_to = auth.uid() AND task_category = 'personal'`); `tasks_delete` (agent: personal, self-owned, status IN `to_do`/`in_progress`); `tasks_delete_privileged` (manager/admin/founder: any). Lead-follow-up and group-subtask inserts have **no** direct policy — blocked by default, created only via SECURITY DEFINER RPCs or `adminClient`. |
 | `20260617000138` | `20260617000138_collapse_gia_category_module_enum.sql` | **Gia-category collapse (applied to prod).** Drops `gia_followup` from `task_category` (now `personal` \| `group_subtask` — structure only); converts `tasks.module` from free `text` to the native `task_module` enum (`gia` \| `sia` \| `core`); establishes the single-writer invariant — a lead follow-up is a `personal` task with a `task_gia_meta` row + `module='gia'`, written only by `create_lead_gia_task` / `update_lead_status`. Deletes the Gia tab + `GiaTasksTab`/`GiaTaskRow`/`GiaDaySection`/`CreateGiaTaskModal`. **Not** related to `sla_policies.trigger_value='gia_followup'` (a different column — the SLA "task due" rule catalog, retained). |
+| `20260624000142` | `20260624000142_task_agent_reminder_log_types.sql` | Three new `whatsapp_notification_logs.type` values for the lead-agnostic task reminders: `task_due_soon` (TASK-01A agent ping, 30 min before), `task_overdue_agent` (at the deadline), `task_overdue_manager_generic` (TASK-01B non-lead manager escalation). Log types only, no new gate categories. |
+| `20260624000144` | `20260624000144_oversight_task_events.sql` | `task_events` append-only stream + the 3 oversight read RPCs (see §1 prose and `docs/oversight.md`). Event rows are inserted by the task-mutation cores (service-role only), never from a client. |
+| `20260625000145` | `20260625000145_personal_tasks_lead_identity.sql` | Widens `get_personal_tasks` to return the full `tasks` row + four nullable lead-identity columns (LEFT JOIN `task_gia_meta` → `leads`) so My Tasks shows the linked lead's name on follow-ups. WHERE/cursor/ORDER byte-identical to 0026. |
+| `20260626000153` | `20260626000153_task_assigned_log_type.sql` | Adds `task_assigned` to the `whatsapp_notification_logs.type` CHECK: the log type for the WhatsApp "assigned to you" template ping (`sendTaskAssignedNotification`). Rides the existing `task_assigned` control-plane key (0133), not a new gate category. |
 
 ---
 
@@ -1065,7 +1086,7 @@ dashboard widget, lead dossier task cards (`getAllLeadTasks`); also readable via
 
 16. **`addTaskRemarkAction`:** Does not call `updateTaskStatusAction` when `statusChange` is set — the RPC handles both writes atomically.
 
-17. **`suppressTaskRemarkAction`:** Writes only `{ is_suppressed, suppressed_by, suppressed_at }` — column restriction at action layer; RLS does not restrict columns.
+17. **Remark suppression (contract preserved, action removed 2026-07-02):** any future suppression write may touch only `{ is_suppressed, suppressed_by, suppressed_at }`, with the column restriction at the action layer; RLS does not restrict columns. The removed `suppressTaskRemarkAction` enforced exactly this; its body is in git history.
 
 18. **`GroupTasksTab` agents:** assignable users provided once at tab level (`initialAgents` prop) — `GroupRow` must never fetch them per group.
 

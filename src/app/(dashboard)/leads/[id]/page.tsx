@@ -76,7 +76,7 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
   return (
     <>
       {/* DNA §9.2 page-padding ladder: p-4 mobile → p-6 tablet → p-8 desktop */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-8" style={{ maxWidth: '1280px' }}>
+      <main className="flex-1 p-4 sm:p-6 lg:p-8">
         {/* Page header — back button + Playfair title */}
         <div
           style={{

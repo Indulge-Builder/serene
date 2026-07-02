@@ -26,7 +26,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { AppDomain } from "@/lib/types/database";
+import type { AppDomain, Database, Json } from "@/lib/types/database";
 import type { TaskEventType } from "@/lib/types/oversight";
 
 // Re-export so a caller has one import for the event vocabulary alongside the
@@ -62,8 +62,7 @@ type EmitTaskEventInput = {
  * this BEFORE emitTaskEvent so the derivation stays in one place (R-01).
  */
 export async function resolveTaskDomain(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  client: SupabaseClient<any, any, any>,
+  client: SupabaseClient<Database>,
   input: { groupId: string | null; assignedTo: string | null },
 ): Promise<AppDomain | null> {
   if (input.groupId) {
@@ -99,18 +98,14 @@ export async function emitTaskEvent(input: EmitTaskEventInput): Promise<void> {
 
   try {
     const admin = createAdminClient();
-    // Interim `as any` on `.from` — the generated Database type does not know
-    // task_events until `supabase gen types` is re-run after migration
-    // 20260624000144 (same pattern as revival-service / elaya-actions-service).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (admin as any).from("task_events").insert({
+    const { error } = await admin.from("task_events").insert({
       task_id: input.taskId,
       domain: input.domain,
       actor_id: input.actorId,
       subject_id: input.subjectId,
       event_type: input.eventType,
       task_title: input.taskTitle,
-      meta: input.meta ?? {},
+      meta: (input.meta ?? {}) as Json,
     });
     if (error) {
       console.warn("[task-events] emit insert failed (non-fatal)", error);

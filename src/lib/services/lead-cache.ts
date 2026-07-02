@@ -18,7 +18,7 @@
 // them — freshness is TTL-only (120s), per lib/CLAUDE.md.
 
 import { redis } from "@/lib/redis";
-import { REDIS_KEYS } from "@/lib/constants/redis-keys";
+import { DASHBOARD_PIPELINE_ROLES, REDIS_KEYS } from "@/lib/constants/redis-keys";
 
 export type LeadCacheScope = {
   /** Lead row dual-key: leadRowId + leadRowSlug (requires leadId; slug when set). */
@@ -60,8 +60,11 @@ export async function invalidateLeadCaches(
     ops.push(redis.incr(REDIS_KEYS.leadListVersion("manager", domain)));
   }
   if (scope.dashboard && domain) {
-    ops.push(redis.del(REDIS_KEYS.dashboardLeadStatus(domain)));
-    ops.push(redis.del(REDIS_KEYS.dashboardCampaigns(domain)));
+    // Keys are role-scoped (Q-16) — del every role variant of the all-time slot.
+    for (const role of DASHBOARD_PIPELINE_ROLES) {
+      ops.push(redis.del(REDIS_KEYS.dashboardLeadStatus(role, domain)));
+      ops.push(redis.del(REDIS_KEYS.dashboardCampaigns(role, domain)));
+    }
   }
 
   try {

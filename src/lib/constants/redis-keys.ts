@@ -12,6 +12,11 @@
 //   lead:notes:{leadId}      — notes timeline (120s, explicit del on mutation)
 //   lead:activities:{leadId} — activities timeline (120s, explicit del on mutation)
 
+// Every rpcRole value that can appear in the dashboardLeadStatus/dashboardCampaigns
+// key (the widgets are manager+ only; targetDomain narrowing collapses to 'manager').
+// invalidateLeadCaches' dashboard scope enumerates these to del all role variants.
+export const DASHBOARD_PIPELINE_ROLES = ['manager', 'admin', 'founder'] as const;
+
 export const REDIS_KEYS = {
   task: {
     giaList: (userId: string, role: string, domain: string) =>
@@ -30,8 +35,12 @@ export const REDIS_KEYS = {
 
   // Range-namespaced keys — include from:to so different date windows don't share a slot.
   // When p_date_from/p_date_to are null (all-time), the segment is 'all'.
-  dashboardLeadStatus: (domain: string, from?: string | null, to?: string | null) =>
-    `dashboard:lead-status:${domain}:${from ?? 'all'}:${to ?? 'all'}`,
+  // Status + campaigns include the RPC role (Q-16): the RPC result is scoped by
+  // p_role, so a manager and an admin/founder on the same domain+range must not
+  // share a slot. Role values here are the rpcRole ('manager'|'admin'|'founder'),
+  // enumerated by DASHBOARD_PIPELINE_ROLES for the invalidation side.
+  dashboardLeadStatus: (role: string, domain: string, from?: string | null, to?: string | null) =>
+    `dashboard:lead-status:${role}:${domain}:${from ?? 'all'}:${to ?? 'all'}`,
 
   dashboardLeadVolume: (role: string, domain: string, from?: string | null, to?: string | null) =>
     `dashboard:lead-volume:${role}:${domain}:${from ?? 'all'}:${to ?? 'all'}`,
@@ -39,8 +48,8 @@ export const REDIS_KEYS = {
   dashboardLeadVolumeMulti: (domains: string[], from?: string | null, to?: string | null) =>
     `dashboard:lead-volume:multi:${[...domains].sort().join(',')}:${from ?? 'all'}:${to ?? 'all'}`,
 
-  dashboardCampaigns: (domain: string, from?: string | null, to?: string | null) =>
-    `dashboard:campaigns:${domain}:${from ?? 'all'}:${to ?? 'all'}`,
+  dashboardCampaigns: (role: string, domain: string, from?: string | null, to?: string | null) =>
+    `dashboard:campaigns:${role}:${domain}:${from ?? 'all'}:${to ?? 'all'}`,
 
   dashboardAgentTasks: (userId: string) =>
     `dashboard:agent-tasks:${userId}`,

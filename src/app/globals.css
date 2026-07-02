@@ -890,24 +890,6 @@ body {
   }
 }
 
-/* Paper surface texture — design-dna.md Section 6.6
-   Top-edge light catch (80px gradient) + fine grain (0.75 / 0.025).
-   Quieter than canvas — the desk is more refined than the world. */
-.serene-paper-surface {
-  background-color: var(--theme-paper);
-  background-image:
-    linear-gradient(
-      to bottom,
-      rgba(255, 255, 255, 0.4) 0px,
-      rgba(255, 255, 255, 0) 80px
-    ),
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)' opacity='0.025'/%3E%3C/svg%3E");
-  background-size:
-    auto,
-    200px 200px;
-  background-repeat: no-repeat, repeat;
-}
-
 /* ================================================================
    DASHBOARD SPATIAL GRID — react-grid-layout chrome (v4, 2026-06-24)
    We do NOT import react-grid-layout/css/styles.css; these token-styled

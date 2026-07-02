@@ -9,6 +9,7 @@
 
 import { createClient }      from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getDomainDecisionMakers } from '@/lib/services/profiles-service';
 import { mapRows }           from '@/lib/utils/rows';
 import { isCadenceCode }     from '@/lib/constants/sla';
 import { goingColdCutoff } from '@/lib/constants/leads';
@@ -144,22 +145,6 @@ export async function getSlaPolicy(code: string): Promise<SlaPolicy | null> {
 
 // ─── Reads ────────────────────────────────────────────────────────────────────
 
-/** Returns all SLA timers for a lead, newest first. */
-export async function getSlaTimersForLead(leadId: string): Promise<LeadSlaTimer[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('lead_sla_timers')
-    .select('*')
-    .eq('lead_id', leadId)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('[sla-service] getSlaTimersForLead error:', error);
-    return [];
-  }
-  return (data ?? []) as LeadSlaTimer[];
-}
-
 /**
  * Returns the most recent pending timer for a lead + rule_code combination.
  * Used by scheduleLeadSlasTask to write back the trigger_run_id.
@@ -193,19 +178,11 @@ export async function getSlaTimerForLeadAndRule(
 export async function getManagersByDomain(
   domain: string,
 ): Promise<Pick<Profile, 'id' | 'full_name'>[]> {
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from('profiles')
-    .select('id, full_name')
-    .eq('domain', domain as AppDomain)
-    .in('role', ['manager', 'admin', 'founder'])
-    .eq('is_active', true);
-
-  if (error) {
-    console.error('[sla-service] getManagersByDomain error:', error);
-    return [];
-  }
-  return (data ?? []) as Pick<Profile, 'id' | 'full_name'>[];
+  return getDomainDecisionMakers<Pick<Profile, 'id' | 'full_name'>>(
+    domain,
+    ['manager', 'admin', 'founder'],
+    'id, full_name',
+  );
 }
 
 /**

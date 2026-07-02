@@ -1,3 +1,9 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- POINT-IN-TIME SNAPSHOT - dumped 2026-06-12 (PostgreSQL 17.6, pg_dump 17.10).
+-- Reflects the schema state BEFORE migration 0108 onward. For anything newer,
+-- supabase/migrations/ is the source of truth. Regenerate with `supabase db dump`.
+-- ─────────────────────────────────────────────────────────────────────────────
+
 --
 -- PostgreSQL database dump
 --

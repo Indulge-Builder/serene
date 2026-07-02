@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { uuidField } from "@/lib/validations/fields";
 
 const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export const SetAgentShiftSchema = z.object({
-  agentId:    z.string().uuid({ message: "Invalid agent ID." }),
+  agentId:    uuidField("Invalid agent ID."),
   shiftStart: z.string().regex(TIME_REGEX, { message: "Shift start must be HH:MM (24-hour)." }).nullable(),
   shiftEnd:   z.string().regex(TIME_REGEX, { message: "Shift end must be HH:MM (24-hour)." }).nullable(),
   shiftDays:  z

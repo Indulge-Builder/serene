@@ -40,6 +40,7 @@ import { InfoRow } from '@/components/ui/InfoRow';
 import { Spinner } from '@/components/ui/Spinner';
 import { FormChip } from '@/components/ui/TaskFormFields';
 import { CampaignVideoModal } from '@/components/leads/CampaignVideoModal';
+import { CardHeader } from '@/components/leads/CardHeader';
 import {
   assignLead,
   updateLeadEmail,
@@ -107,39 +108,10 @@ export function LeadInfoCard({
         overflow:     'hidden',
       }}
     >
-      <div
-        style={{
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-2)',
-          padding:      'var(--space-4) var(--space-5)',
-          borderBottom: '1px solid var(--theme-paper-border)',
-          background:   'var(--theme-paper-subtle)',
-        }}
-      >
-        <User
-          style={{
-            width:       '0.875rem',
-            height:      '0.875rem',
-            color:       'var(--theme-text-tertiary)',
-            strokeWidth: 1.5,
-            flexShrink:  0,
-          }}
-        />
-        <span
-          style={{
-            fontFamily:    'var(--font-sans)',
-            fontSize:      'var(--text-2xs)',
-            fontWeight:    'var(--weight-semibold)',
-            letterSpacing: 'var(--tracking-widest)',
-            textTransform: 'uppercase',
-            color:         'var(--theme-text-tertiary)',
-          }}
-        >
-          Lead Information
-        </span>
-
-        {lead.lead_intent && (
+      <CardHeader
+        icon={User}
+        label="Lead Information"
+        right={lead.lead_intent && (
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
             <span
               style={{
@@ -162,7 +134,7 @@ export function LeadInfoCard({
             </span>
           </span>
         )}
-      </div>
+      />
 
       <div style={{ padding: 'var(--space-5)' }}>
         {/* Single column below sm — two ~140px columns clip values on phones */}

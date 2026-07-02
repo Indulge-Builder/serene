@@ -5,6 +5,7 @@ import { z } from "zod";
 import { formErrors } from "@/lib/validations/form-errors";
 import { getProfileById } from "@/lib/services/profiles-service";
 import { requireProfile } from "@/lib/actions/_auth";
+import { parseActionInput } from "@/lib/actions/_validation";
 import { setRoutingActive, setAgentShift } from "@/lib/services/agent-routing-service";
 import { SetAgentShiftSchema } from "@/lib/validations/agent-routing-schema";
 import type { ActionResult, AgentRoutingConfig } from "@/lib/types";
@@ -63,11 +64,8 @@ export async function setAgentShiftAction(
   input: unknown,
 ): Promise<ActionResult<AgentRoutingConfig>> {
   // Rule 02 — Zod validation first.
-  const parsed = SetAgentShiftSchema.safeParse(input);
-  if (!parsed.success) {
-    const first = parsed.error.issues[0]?.message;
-    return { data: null, error: first ?? formErrors.generic };
-  }
+  const parsed = parseActionInput(SetAgentShiftSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
 
   // Rule 09 — authorization reads from public.profiles only.
   const auth = await requireProfile(["manager", "admin", "founder"]);

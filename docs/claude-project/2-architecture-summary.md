@@ -166,6 +166,6 @@ DEFINER RPCs; load-bearing ones include `get_next_round_robin_agent`, `get_activ
 ## Deeper detail lives in (repo)
 
 `docs/architecture/{overview,database,auth-and-rbac,caching,migrations}.md` ·
-`docs/architecture/elaya-jarvis-architecture.md` · `docs/integrations/*` · code-adjacent `CLAUDE.md`
+`docs/modules/elaya.md` · `docs/integrations/*` · code-adjacent `CLAUDE.md`
 files (`src/lib/`, `src/lib/elaya/`, `src/components/`, `src/app/`, `supabase/migrations/`) ·
 `docs/architecture/database_architecture.sql` (raw dump).

@@ -25,7 +25,7 @@ import { ROLE_LABELS } from "@/lib/constants/roles";
 import { getInitials } from "@/lib/utils/strings";
 import type { AppDomain } from "@/lib/types/database";
 import type { AssignableUser } from "@/lib/types";
-import { EASE_OUT_EXPO } from '@/lib/constants/motion';
+import { BASE_DURATION, EASE_OUT_EXPO, FAST_DURATION } from '@/lib/constants/motion';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,7 +123,7 @@ export function AssigneePickerModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: FAST_DURATION }}
             onClick={onClose}
             style={{
               position:   "fixed",
@@ -154,7 +154,7 @@ export function AssigneePickerModal({
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.97 }}
-            transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+            transition={{ duration: BASE_DURATION, ease: EASE_OUT_EXPO }}
             onClick={(e) => e.stopPropagation()}
             style={{
               pointerEvents: "auto",
@@ -406,7 +406,7 @@ export function AssigneePickerModal({
                         }}
                       >
                         {user.avatar_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
+                           
                           <img
                             src={user.avatar_url}
                             alt={user.full_name}

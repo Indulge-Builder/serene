@@ -55,8 +55,7 @@ export async function createRechargeAction(
   const cleanNote   = note ? sanitizeText(note) || null : null;
 
   const adminClient = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (adminClient as any)
+  const { data, error } = await adminClient
     .from("ad_account_recharges")
     .insert({
       ad_account:   adAccount,

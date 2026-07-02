@@ -3,6 +3,7 @@ import { sanitizeText } from "@/lib/utils/sanitize";
 import { GIA_DOMAIN_ENUM } from "@/lib/constants/domains";
 import { LEAD_SOURCE_ENUM } from "@/lib/constants/lead-sources";
 import { DEAL_DURATION_ENUM, DEAL_CATEGORY_ENUM } from "@/lib/constants/deal-types";
+import { uuidField, emailField } from "@/lib/validations/fields";
 
 // ─────────────────────────────────────────────
 // Shared deal field rules (reused by both schemas)
@@ -41,7 +42,7 @@ const dealAmountField = z
 // Moved from lead-schema.ts; RecordDealSchema is re-exported there for back-compat.
 // ─────────────────────────────────────────────
 export const RecordDealSchema = z.object({
-  leadId:        z.string().uuid("Invalid lead ID"),
+  leadId:        uuidField("Invalid lead ID"),
   deal_duration: dealDurationField,
   deal_category: dealCategoryField,
   deal_amount:   dealAmountField,
@@ -64,14 +65,12 @@ export const CreateWalkInDealSchema = z.object({
     .string()
     .min(7, "Please enter a valid phone number.")
     .max(20),
-  contact_email: z
-    .string()
-    .email("Please enter a valid email address.")
+  contact_email: emailField("Please enter a valid email address.")
     .nullable()
     .optional()
     .transform((v) => (v && v.trim() ? v.trim().toLowerCase() : null)),
   domain:      z.enum(GIA_DOMAIN_ENUM, { message: "Please select a valid domain." }),
-  assigned_to: z.string().uuid("Invalid agent ID.").nullable().optional(),
+  assigned_to: uuidField("Invalid agent ID.").nullable().optional(),
   source:      z.enum(LEAD_SOURCE_ENUM).nullable().optional(),
   won_at:      z.string().datetime({ message: "Please select a valid date." }).optional(),
   deal_duration: dealDurationField,

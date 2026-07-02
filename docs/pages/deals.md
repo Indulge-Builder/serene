@@ -2,19 +2,22 @@
 
 > **Purpose:** spec for `/deals` — every closed commercial transaction (lead-won and walk-in), list + summary strip + New Deal write path.
 > **Audience:** engineers. · **Source-of-truth scope:** the deals page, `deals-service.ts`, `deals.ts` actions, `get_deals_summary`. Table schema: `../architecture/database.md` § deals; the dossier's Won flow UI: `lead-dossier.md`.
-> **Last verified:** 2026-06-24 (post 0122 domain-derived `deal_type`, `deal_created` notification, summary-strip domain scoping).
+> **Last verified:** 2026-07-02 (This Month default landing + `?dates=all` escape hatch, `revalidatePath('/deals','page')` on both write actions, `recordDealCore` refactor + `resolveDealShapeForDomain` move to `constants/deal-types.ts`, `SourcePill` on `DealCard`, Elaya `log_deal` as the third creation path; earlier: post 0122 domain-derived `deal_type`, `deal_created` notification, summary-strip domain scoping).
 
 ## 1. Purpose
 
 A deal is a closed commercial transaction — every `public.deals` row is one by definition (no
 `status='won'` gate). First-class table since migration 0072 (reverses the 2026-05-31
-"deals = won leads" model; Decision Log in `../rules/The_Rules.md`). Two creation paths:
-**lead → deal** (`recordDeal` from the dossier's Won flow — inserts the deal, then delegates
-`updateLeadStatus('won')` for all side-effects) and **walk-in** (`createWalkInDeal`,
-`lead_id = null`, no lead-row lifecycle, via `AddDealButton` on the page). The walk-in path
-fans out a `deal_created` notification to the domain's managers/admins/founders (the lead → deal
-path does not — its `lead_won` flip already notifies the same recipients). Neither path touches
-the `leads` row, SLA timers, or activity logs.
+"deals = won leads" model; Decision Log in `../rules/The_Rules.md`). Three creation paths:
+**lead → deal** (`recordDeal` from the dossier's Won flow; it runs the shared `recordDealCore`,
+which inserts the deal then flips Won via `updateLeadStatusCore` for all side-effects),
+**walk-in** (`createWalkInDeal`, `lead_id = null`, no lead-row lifecycle, via `AddDealButton`
+on the page), and **Elaya `log_deal`** (a propose→confirm write tool that runs the SAME
+`recordDealCore`; the shape is validated at propose time and it executes only in
+`executeProposedAction`). The walk-in path fans out a `deal_created` notification to the
+domain's managers/admins/founders (the lead → deal path does not; its `lead_won` flip already
+notifies the same recipients). The walk-in path never touches the `leads` row, SLA timers, or
+activity logs.
 
 ## 2. Who sees it
 
@@ -30,7 +33,8 @@ admin/founder any Gia domain. Full matrix + the intentional no-write-RLS-policy 
 | Service | `deals-service.ts` — `getDealsByRole` (joins `lead(slug)` + assignee), `getDealsSummary` (RPC wrapper), `getLeadDeal(leadId)` (dossier card) |
 | RPC | `get_deals_summary` (0052/0053/0074) — totals/revenue/membership/retail; `p_caller_domain` vs `p_filter_domain` split |
 | Actions | `deals.ts` — `recordDeal`, `createWalkInDeal` (domain-locked server-side for agents), `listAgentsForDealDomain` |
-| Validation | `deal-schema.ts`; constants `deal-types.ts` (`defineEnum`) |
+| Shared write body | `recordDealCore` in `services/lead-mutations.ts`: the ONE deal-insert + Won-flip body; `recordDeal` and Elaya's `log_deal` both call it (R-01) |
+| Validation | `deal-schema.ts`; constants `deal-types.ts` (`defineEnum` + `resolveDealShapeForDomain`) |
 
 ## 4. Components
 
@@ -71,15 +75,20 @@ deal. There is no `status = 'won'` gate — the table contains only deals by def
 `won` and cannot hold repeat/renewal deals; walk-in sales (direct purchases without a CRM lead
 lifecycle) cannot be represented at all in the old model. Decision Log: `../rules/The_Rules.md` (2026-06-05 entry).
 
-**Two creation paths:**
+**Three creation paths:**
 
 1. **Lead → deal** (`recordDeal`): Agent marks a lead won via `StatusActionPanel` → `WonDealModal`.
-   Inserts a `deals` row with `lead_id` set, then delegates `updateLeadStatus('won')` for all
-   side-effects (notifications, SLA cancel, Redis, revalidation).
+   The action delegates to the shared `recordDealCore` (`services/lead-mutations.ts`), which
+   inserts a `deals` row with `lead_id` set, then flips Won via `updateLeadStatusCore` for all
+   side-effects (notifications, SLA cancel, Redis). Revalidation stays in the action.
 2. **Walk-in deal** (`createWalkInDeal`): Standalone deal with `lead_id = null`. No lead-row
-   lifecycle (no `updateLeadStatus`, no SLA, no activity log). It **does** fan out a `deal_created`
+   lifecycle (no status flip, no SLA, no activity log). It **does** fan out a `deal_created`
    notification to the domain's managers/admins/founders (see §4c). Created via the New Deal button
    on `/deals`.
+3. **Elaya `log_deal`** (2026-06-26): a STATE-CHANGING, propose-only write tool
+   (`src/lib/elaya/tools/write-registry.ts`). `run()` never mutates; the deal shape (`deal_type`
+   derived from the lead's domain) is validated at propose time, and the write executes only in
+   `executeProposedAction`'s `log_deal` branch, via the same `recordDealCore` (R-01).
 
 **Route:** Single primary nav page at `/deals` — `src/app/(dashboard)/deals/page.tsx`.
 
@@ -189,22 +198,32 @@ deal_amount }` (no `deal_type`) to `recordDeal` from `src/lib/actions/leads.ts` 
 | `deal_category` | retail product category, nullable, optional (shop) |
 | `deal_amount` | number, positive, max `100_000_000` |
 
-> **No `deal_type` field (2026-06-15).** The type is derived from the lead's domain in `recordDeal`
-> (`resolveDealShapeForDomain`), never sent by the client. The schema carries only the
-> type-dependent extras (`deal_duration` for membership, `deal_category` for retail); the action
-> picks the right one for the resolved domain.
+> **No `deal_type` field (2026-06-15).** The type is derived from the lead's domain via
+> `resolveDealShapeForDomain` (moved 2026-06-26 from `actions/deals.ts` to
+> `src/lib/constants/deal-types.ts`, alongside the `DealShape` types), never sent by the client.
+> The schema carries only the type-dependent extras (`deal_duration` for membership,
+> `deal_category` for retail); the core picks the right one for the resolved domain.
 
-**New DB order (2026-06-05; type-derivation added 2026-06-15):**
+**Order (refactored 2026-06-26 around `recordDealCore`):**
 
-1. Auth + access check (agent assigned / manager domain / admin / founder).
-2. Fetch lead contact data (`first_name`, `last_name`, `phone`, `email`, `domain`, `assigned_to`).
-3. **Derive `deal_type` from `lead.domain`** (`resolveDealShapeForDomain`); reject non-Gia domains.
-4. `(adminClient as any).from('deals').insert({ lead_id, contact_*, domain, deal_type, deal_duration, deal_category, deal_amount, assigned_to, won_at: now() })` — **must succeed before status flip**.
-5. `return updateLeadStatus({ leadId, status: 'won' })` — all side-effects delegated here.
+The write body lives in **`recordDealCore`** (`src/lib/services/lead-mutations.ts`), the SAME
+context-free core Elaya's `log_deal` tool runs (R-01). The action keeps the request-context
+shell: Zod → `requireProfile` → `hasAccess` (agent assigned / manager domain / admin / founder)
+→ fetch lead contact data → core → `revalidatePath`.
 
-**Side effects from `updateLeadStatus('won')` (unchanged):** `update_lead_status` RPC, `lead_won`
-notifications to managers/admins/founders, `cancelSlaTimersForLead`, Redis invalidation,
-`revalidatePath`.
+Inside the core:
+
+1. **Derive `deal_type` from `lead.domain`** (`resolveDealShapeForDomain`); reject non-Gia domains.
+2. Insert the `deals` row (`lead_id`, `contact_*`, `domain`, `deal_type`, `deal_duration`,
+   `deal_category`, `deal_amount`, `assigned_to`, `won_at: now()`) via the admin client. This
+   **must succeed before the status flip**; the insert-before-flip guarantee lives in the core.
+3. Flip Won via `updateLeadStatusCore`: `update_lead_status` RPC, `lead_won` notifications to
+   managers/admins/founders, `cancelSlaTimersForLead`, Redis invalidation.
+
+Back in the action: `revalidatePath('/deals', 'page')` + `revalidatePath('/leads')` +
+`revalidatePath('/leads/${slug ?? leadId}')`. The `'page'` type matters: the deals page
+redirects cold landings to a param-bearing URL (`?date_from=…&date_to=…`), and a pathless
+`revalidatePath('/deals')` leaves that variant stale.
 
 **Atomicity note:** Two-step is intentional. A future SECURITY DEFINER RPC could make this a
 single transaction — noted, not built.
@@ -249,7 +268,10 @@ purely the picker chrome, same values committed).
   (`deal_duration`, `deal_category`), which are cross-validated against the domain's type.
 
 **Calls:** `createWalkInDeal` from `src/lib/actions/deals.ts` via `useTransition`.
-On success: `router.refresh()` — no manual cache invalidation needed.
+On success the modal **closes first, then** calls `router.refresh()` (fixed 2026-06-26; the
+refresh was previously abandoned on modal teardown). Server-side, the action calls
+`revalidatePath('/deals', 'page')` (fixed 2026-06-25; a bare-path revalidation missed the
+param-bearing This-Month URL the page redirects to), so the new deal shows on the next render.
 
 #### 4c. `createWalkInDeal` action
 
@@ -462,6 +484,14 @@ strip disagrees with the card list.
 
 **`parseFilters`:** Same as before — no status field; manager `domain: null`; agent `agent_id: null`.
 Now `date_from`/`date_to` are conceptually applied to `won_at` (was `status_changed_at`).
+`parseFilters` ignores the `dates` param; it is a page-level marker only.
+
+**This Month default (2026-06-24):** a cold landing on `/deals` (no `date_from`, no `date_to`,
+no `dates` param) `redirect()`s to `/deals?date_from=…&date_to=…` resolving
+`resolveDateRangePreset('this_month')`, so the URL stays the single source of truth and the
+filter bar's Range trigger reads "This Month". `?dates=all` is the escape hatch the Clear action
+lands on (both date params null, `dates=all` present) so clearing is not re-defaulted back to a
+month.
 
 #### 8b. `DealsFilters`
 
@@ -469,12 +499,12 @@ Now `date_from`/`date_to` are conceptually applied to `won_at` (was `status_chan
 
 | Control | URL param | Notes |
 | --- | --- | --- |
-| Search | `search` | 500ms debounce; resets page |
+| Search | `search` | 350ms debounce (`useUrlFilters` default); resets page |
 | Deal type | `deal_type` | Single-select `FilterDropdown` (`membership`/`retail`/`sale`) |
 | Category | `deal_category` | Single-select `FilterDropdown`; **shown only when `domain=shop`** (the retail slice); cleared atomically on any domain change |
 | Domain | `domain` | Admin/founder only; change clears `agent_id` + `deal_category` |
 | Agent | `agent_id` | Manager+ only |
-| Date range | `date_from`, `date_to` | Applied to `won_at` (previously `status_changed_at`) |
+| Date range | `date_from`, `date_to` | Applied to `won_at` (previously `status_changed_at`). Setting a date or preset also clears the `dates` marker; the panel's Clear pushes `{ date_from: null, date_to: null, dates: 'all' }` so the page does not re-default to This Month |
 
 #### 8c. `DealsAsync`
 
@@ -495,7 +525,7 @@ Parallel fetch of `getDealsByRole` + `getDealsSummary`. Renders `DealsSummaryStr
   Never a coloured edge border (Never-Do list).
 
 **Both modes:**
-- Left zone: `contact_name` (Playfair italic), `contact_phone` (mono), domain badge + Walk-in pill (if applicable).
+- Left zone: `contact_name` (Playfair italic), `contact_phone` (mono), domain badge + Source pill + Walk-in pill (each if applicable). The **`SourcePill`** (2026-06-24, local to `DealCard.tsx`) renders when `deal.source` is set (paper-subtle chrome, label via `getLeadSourceLabel()`) in both mobile and desktop layouts.
 - Centre zone: deal type chip + duration chip.
 - Right zone: `formatCurrency(deal_amount)` (mono, accent), `"Won {formatDate(won_at, 'dd MMM yyyy')}"`, `assignee.full_name`.
 
@@ -614,11 +644,13 @@ user-scoped INSERT/DELETE policy for deals.
 | New Deal modal | `src/components/deals/NewDealModal.tsx` |
 | Won capture | `src/components/leads/StatusActionPanel.tsx`, `WonDealModal.tsx` |
 | Service | `src/lib/services/deals-service.ts` |
+| Shared write body | `src/lib/services/lead-mutations.ts` (`recordDealCore`, called by `recordDeal` AND Elaya `log_deal`) |
+| Elaya write tool | `src/lib/elaya/tools/write-registry.ts` (`log_deal`, propose-only; executes via `executeProposedAction`) |
 | Actions | `src/lib/actions/deals.ts` (`recordDeal`, `createWalkInDeal`, `listAgentsForDealDomain`) |
 | Back-compat re-export | `src/lib/actions/leads.ts` (`recordDeal` re-export) |
 | Schemas | `src/lib/validations/deal-schema.ts` (`RecordDealSchema`, `CreateWalkInDealSchema`) |
 | Back-compat re-export | `src/lib/validations/lead-schema.ts` (`RecordDealSchema` re-export) |
 | Types | `src/lib/types/database.ts` (`Deal`, `DealWithRelations`, `DealFilters`) |
-| Constants | `src/lib/constants/deal-types.ts` |
+| Constants | `src/lib/constants/deal-types.ts` (incl. `resolveDealShapeForDomain` + `DealShape` types, moved here from `actions/deals.ts` 2026-06-26) |
 | Migrations | `0072` (table), `0073` (backfill), `0074` (`get_deals_summary` rewrite over deals), `0075` (add `source` column), `0076` (`get_domain_health_metrics` revenue → deals), `0094` (intentional INSERT/DELETE policy gap), `0097` (drop dead `leads.deal_*` columns), `0122` (`deal_category` + domain-derived `deal_type` CHECKs: `'sale'`, `deals_deal_category_check`, `deals_retail_category_check`), `0133` (notification preferences — defines the `deal_created` category the walk-in fan-out gates on; see §4c) |
 | Pagination reuse | `src/components/leads/LeadsPagination.tsx` |

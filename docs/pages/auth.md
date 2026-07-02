@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for the pre-auth surfaces (`/login`, `/forgot-password`, `/update-password`), the root redirect, the auth callback, and the end-to-end session flow.
 > **Audience:** engineers. · **Source-of-truth scope:** the `(auth)` route group + session flow as experienced by the user. The session *architecture* (proxy, clients, route gates, RBAC) lives in `../architecture/auth-and-rbac.md`; `/profile` lives in `profile.md`; visual law for the canvas-dark auth surface: `../design/DESIGN-DNA.md` §3.7.
-> **Last verified:** 2026-06-24 (invite-by-email onboarding + callback-client pass); 2026-06-15 (OTP-code password reset pass); 2026-06-11 restructure.
+> **Last verified:** 2026-07-02 (SSR theme cookie, three-stage layout gate, signOut removal); 2026-06-24 (invite-by-email onboarding + callback-client pass); 2026-06-15 (OTP-code password reset pass); 2026-06-11 restructure.
 
 ## 1. Purpose
 
@@ -22,7 +22,7 @@ hitting `/` are redirected to `/dashboard`; deactivated users are gated twice (a
 
 | Layer | Key items |
 | ----- | --------- |
-| Actions | `auth.ts` — `loginAction` (+ `is_active` check; the documented non-authorization profile read), `requestPasswordResetAction` (sends a 6-digit OTP code; never reveals email existence — S-09), `verifyResetOtpAction` (verifies the code → establishes the recovery session), `updatePasswordAction` (the shared step-2 for **both** reset and invite), `signOut`. (No invite-specific action exists — invite session establishment is client-side in `callback-client.tsx`, not a server action.) |
+| Actions | `auth.ts` — exactly four exports: `loginAction` (+ `is_active` check; the documented non-authorization profile read), `requestPasswordResetAction` (sends a 6-digit OTP code; never reveals email existence — S-09), `verifyResetOtpAction` (verifies the code → establishes the recovery session), `updatePasswordAction` (the shared step-2 for **both** reset and invite). The duplicate `signOut` was deleted in the 2026-07-02 dead-code purge; sign-out lives only as `signOutUser` in `lib/actions/profiles.ts`. (No invite-specific action exists — invite session establishment is client-side in `callback-client.tsx`, not a server action.) |
 | Invite callback (live) | `/auth/callback` → `src/app/(auth)/auth/callback/page.tsx` + `callback-client.tsx` — **a CLIENT page** (built 2026-06-16). THE invite landing: the invite `redirectTo` (`inviteUser` in `lib/actions/profiles.ts`) points here as `/auth/callback?next=/update-password`. Handles three flows — implicit-grant **hash** (`#access_token=…`, the actual invite path the browser client consumes on mount; the server can't read a hash fragment), PKCE (`?code=` → `exchangeCodeForSession`), and OTP (`?token_hash=&type=` → `verifyOtp`) — then `router.replace(next)` (default `/update-password`, sanitised to a same-origin relative path). |
 | Legacy callback (compat) | `GET /api/auth/callback` (`route.ts`) — exchanges `?code` (PKCE) or `?token_hash` (`verifyOtp`) for a session. **Kept for backward compatibility only; it never receives the invite token** (a hash fragment a server route can't read) and is **dead code for the OTP-code password reset**. |
 | Validation | `validations/auth.ts` — `loginSchema`, `forgotPasswordSchema`, `verifyResetOtpSchema`, `updatePasswordSchema`; errors via `form-errors.ts` |
@@ -78,9 +78,9 @@ Three distinct layers make up how users enter, stay in, and manage their identit
 | Group | Path prefix | Layout | Session behaviour |
 | ----- | ----------- | ------ | ----------------- |
 | `(auth)` | `/login`, `/forgot-password`, `/update-password`, `/auth/callback` | `src/app/(auth)/layout.tsx` — centered card on canvas, no app chrome | No session gate in layout; pages are public. `/auth/callback` may *establish* a session client-side, then forward |
-| `(dashboard)` | `/dashboard`, `/profile`, `/leads`, … | `src/app/(dashboard)/layout.tsx` — sidebar + floating paper surface | **Hard gate (4 stages):** `getUser()` null → `/login`; `getCurrentProfile()` null → `/login`; `!is_active` → `/login`; `!canAccessRoute(profile, pathname)` → `/dashboard` |
+| `(dashboard)` | `/dashboard`, `/profile`, `/leads`, … | `src/app/(dashboard)/layout.tsx` — sidebar + floating paper surface | **Hard gate (3 stages):** `getCurrentProfile()` null → `/login` (it returns null when there is no session, so no separate `getUser()` call); `!is_active` → `/login`; `!canAccessRoute(profile, pathname)` → `/dashboard` |
 
-Root layout (`src/app/layout.tsx`) sets default `data-theme="earth"`, font variables on `<html>`, and global CSS. Dashboard layout applies the user’s saved theme before paint via `ThemeInitializer`.
+Root layout (`src/app/layout.tsx`) reads the `serene-theme` cookie and stamps the saved theme on `<html>` server-side (`data-theme`, fallback `earth` via `isThemeKey`/`DEFAULT_THEME`), plus font variables and global CSS. The dashboard layout's `ThemeInitializer` only corrects a missing or stale cookie against `profiles.theme` (the DB truth).
 
 ---
 
@@ -297,12 +297,10 @@ the light `--color-danger-light/-text` error variants. Those are paper-surface t
 
 #### Session gate
 
-The layout runs a **four-stage gate** in order:
+The layout runs a **three-stage gate** in order. There is no separate `getUser()` call:
+`getCurrentProfile()` is `cache()`-memoised and returns null when there is no session.
 
 ```ts
-const { data: { user } } = await supabase.auth.getUser();
-if (!user) redirect("/login");
-
 const profile = await getCurrentProfile();
 if (!profile) redirect("/login");
 if (!profile.is_active) redirect("/login");
@@ -310,49 +308,44 @@ if (!profile.is_active) redirect("/login");
 const pathname = (await headers()).get("x-pathname") ?? "/";
 if (!canAccessRoute(profile, pathname)) redirect("/dashboard");
 
-const initialNotifications = await getNotifications(profile.id);
+const notificationsPromise = TOP_BAR_ENABLED
+  ? undefined
+  : getNotifications(profile.id);
 ```
 
 | Failure mode | Behaviour |
 | ------------ | --------- |
-| No auth user | `redirect("/login")` |
-| Auth user but no `profiles` row (or RLS blocks read) | `redirect("/login")` |
+| No session, or a session with no `profiles` row (or RLS blocks read) | `redirect("/login")`; both collapse into `getCurrentProfile()` returning null |
 | Deactivated user (`is_active = false`) | `redirect("/login")` — the layout **does** enforce `is_active`, as a second line of defence behind the login-action deactivation gate |
 | Authenticated + active, but route not permitted for the user's domain | `redirect("/dashboard")` (not `/login`) — `canAccessRoute(profile, pathname)` evaluated against the `x-pathname` header the proxy set |
 
-`getCurrentProfile()` → `getUser()` then `getProfileById(user.id)`. RLS `profiles_select` allows any authenticated user to read all profiles.
+`getCurrentProfile()` is `cache()`-memoised: one auth round trip + one profile SELECT shared across the layout, page, and Async children. RLS `profiles_select` allows any authenticated user to read all profiles.
 
 `canAccessRoute` is a pure function (`src/lib/utils/route-access.ts`) reading `ALWAYS_ALLOWED_PREFIXES` + `DOMAIN_ROUTE_MAP` from `src/lib/constants/route-permissions.ts`. The pathname comes from the `x-pathname` response header set in `src/proxy.ts` — without that header the guard would default to `"/"`.
 
-Also prefetches `getNotifications(profile.id)` for the sidebar bell.
+**Notifications are no longer awaited in the layout.** With `TOP_BAR_ENABLED` (`lib/constants/feature-flags.ts`, currently `true`) the bell lives in each page's title row via `PageControls`, and each page starts its own un-awaited `getNotifications` seed there. Only the flag-off Sidebar footer bell needs a layout-level promise, so the layout creates `notificationsPromise` ONLY when the flag is off, un-awaited (it streams into the bell's Suspense boundary).
 
-#### Zero-flash theme — `ThemeInitializer`
+#### Zero-flash theme — SSR cookie stamp + `ThemeInitializer` re-sync
 
-**Current implementation:** `src/components/layout/ThemeInitializer.tsx` — a **client** component rendered at the top of the dashboard layout:
+**Current implementation (2026-07-02):** zero-flash is server-side. The ROOT layout
+(`src/app/layout.tsx`) reads the `serene-theme` cookie (`THEME_COOKIE` from
+`lib/constants/themes.ts`) and stamps `data-theme` on `<html>` from the first byte. The
+dashboard layout computes the guard and mounts the corrective client component:
 
 ```tsx
-const safeTheme = ["earth", "air", "water", "fire", "cosmos"].includes(profile.theme)
-  ? profile.theme
-  : "earth";
+const safeTheme = isThemeKey(profile.theme) ? profile.theme : DEFAULT_THEME;
 
 <ThemeInitializer theme={safeTheme} />
 ```
 
-```ts
-useLayoutEffect(() => {
-  document.documentElement.setAttribute("data-theme", theme);
-}, [theme]);
-```
-
 | Topic | Detail |
 | ----- | ------ |
-| **Reads** | `profile.theme` from server-rendered `getCurrentProfile()` |
-| **Writes** | `data-theme` on `<html>` |
-| **Fallback** | Invalid or missing theme → `"earth"` |
-| **Why not a deferred client-only effect** | `useLayoutEffect` runs synchronously after DOM commit, **before** the browser paints — avoids one frame of wrong tokens |
-| **Historical note** | Older builds used an inline `<script>` in this layout; the behaviour goal is unchanged (paint-free theme), the mechanism is now `ThemeInitializer` |
+| **Primary mechanism** | Root layout: `cookies().get(THEME_COOKIE)` → `isThemeKey` guard → `data-theme` on `<html>` server-side. The first paint is already correct; no script runs |
+| **`ThemeInitializer` role** | Corrective re-sync only: it fixes a missing/stale cookie against the DB truth (`profiles.theme`) and re-writes the cookie for the next request |
+| **Vocabulary** | The six live keys: earth, air, water, fire, martini, candy (`THEME_KEYS`). Cosmos/coffee/macha were retired 2026-07-02 (migration 0156); a stale value fails `isThemeKey` and falls back to `DEFAULT_THEME` (`earth`). There is no hardcoded key array anywhere |
+| **On switch** | `ThemeSelector` sets `data-theme` instantly, calls `persistThemeCookie(theme)`, then persists to DB in the background via `updateProfile` |
 
-**Source of truth for theme:** `profiles.theme` in Postgres — **not** localStorage. `ThemeSelector` updates DB via `updateProfile`; layout + initializer apply on every navigation.
+**Source of truth for theme:** `profiles.theme` in Postgres — **not** localStorage and not the cookie (the cookie is only the SSR mirror).
 
 #### Font variables — root layout
 
@@ -360,16 +353,16 @@ useLayoutEffect(() => {
 
 - `Inter` → CSS variable `--font-geist-sans`
 - `Playfair_Display` → `--font-playfair`
-- Applied as `className` on `<html>` alongside default `data-theme="earth"`
+- Applied as `className` on `<html>` alongside the cookie-derived `data-theme` (fallback `earth`)
 - Consumed in `src/styles/design-tokens.css` as `--font-sans` / `--font-serif`
 
 #### Dashboard chrome
 
-- `ThemeInitializer` rendered first (sets `data-theme` before paint), then the shell.
-- Outer shell: `<div className="layout-shell flex">` with inline `gap: var(--space-3)`, `height: 100dvh`, `overflow: hidden`.
-- `Sidebar` with `profile` + `initialNotifications`, followed by `ToastProvider` at shell root.
-- Canvas gutter column (`flex: 1`, `var(--theme-canvas)` background, `padding: 12px 12px 12px 0`) wraps the inner paper column.
-- Inner paper column: `var(--theme-paper)`, `var(--radius-xl)`, `var(--shadow-paper)`, `overflowY: auto` / `overflowX: hidden` scrollable content holding `{children}`.
+- `ThemeInitializer` + `IconInitializer` rendered first (the corrective cookie re-syncs for theme and app-icon), then the shell.
+- The whole shell is wrapped in `SuggestionFeedbackProvider` (one shared feedback composer for the Sidebar button and the mobile Elaya-card trigger).
+- Outer shell: `<div className="layout-shell serene-shell">`, the responsive frame (responsive audit D-3): row with gutter + paper on `md+`, column with a mobile top strip and full-bleed paper below `md`. Classes live in `globals.css` "RESPONSIVE SHELL".
+- `Sidebar` takes `profile` + `notificationsPromise` (undefined while `TOP_BAR_ENABLED` is true), followed by `ToastProvider`, `ElayaWidget` (the floating Elaya presence), and `UsagePresence` (the active-time heartbeat) at shell root.
+- `.serene-shell-gutter` (flat canvas gutter matching the sidebar) wraps `.serene-shell-paper`, which holds `{children}`. The global controls (domain selector + notification bell) live in each page's title row via `PageControls`; there is no separate bar.
 
 ---
 
@@ -408,7 +401,6 @@ useLayoutEffect(() => {
 | Export | Role |
 | ------ | ---- |
 | `loginAction` | Pre-auth sign-in |
-| `signOut` | Sign out + `/login` (duplicate of profile sign-out) |
 | `requestPasswordResetAction` | Forgot-password email — sends a 6-digit OTP code |
 | `verifyResetOtpAction` | Verifies the OTP code → establishes the recovery session |
 | `updatePasswordAction` | Post-verification password set |
@@ -435,8 +427,8 @@ sequenceDiagram
     P->>P: updateSession via getClaims (unless /api/webhooks or /api/manifest)
     P-->>D: refreshed cookies + x-pathname
   end
-  D->>D: getUser + getCurrentProfile
-  D->>D: ThemeInitializer sets data-theme
+  D->>D: getCurrentProfile (3-stage gate)
+  D->>D: ThemeInitializer re-syncs the theme cookie
   U->>Pr: Open profile
   Pr->>Pr: getCurrentProfile
   U->>Pr: Change theme
@@ -449,10 +441,10 @@ sequenceDiagram
 **Ordered lifecycle (login path, six steps):**
 
 1. User visits `/login` → `loginAction` → `signInWithPassword` → deactivation check (`is_active`) → session cookie set → `redirect("/dashboard")`. (A deactivated account is signed back out here with `accountDeactivated`.)
-2. Dashboard layout runs the 4-stage gate (`getUser` → `getCurrentProfile` → `is_active` → `canAccessRoute`); renders shell with `ThemeInitializer(theme)`.
+2. Dashboard layout runs the 3-stage gate (`getCurrentProfile` → `is_active` → `canAccessRoute`); renders the shell with `ThemeInitializer(safeTheme)` + `IconInitializer(safeIcon)`.
 3. Every subsequent matched request → `proxy.ts` → `updateSession()` (`auth.getClaims()` — local ES256 verify, not `getUser()`) refreshes session cookies **and sets `x-pathname`** (`last_seen_at` **not** updated in code today). `/api/webhooks/*` and `/api/manifest` are bypassed entirely.
-4. User visits `/profile` → server renders with `profile.theme` → `ThemeInitializer` applies `data-theme` before paint.
-5. User changes theme → instant `setAttribute` on `<html>` + async `updateProfile({ theme })` → persisted in `profiles.theme`.
+4. User visits `/profile` → the root layout already stamped `data-theme` from the `serene-theme` cookie server-side → `ThemeInitializer` re-syncs the cookie against `profiles.theme` if it drifted.
+5. User changes theme → instant `setAttribute` on `<html>` + `persistThemeCookie(theme)` + async `updateProfile({ theme })` → persisted in `profiles.theme`.
 6. User clicks Sign out → `signOutUser` → cookie cleared → `/login`.
 
 **Invite onboarding path (alternative entry, no `loginAction`):** admin invite → email link → `/auth/callback` (client) establishes the session from the implicit-grant hash → forwards to `/update-password` (invite mode) → `updatePasswordAction` sets the first password → "Continue to Dashboard" (`/dashboard`). No server action mints the invite session — `callback-client.tsx` does it browser-side. See §5d-i.
@@ -470,11 +462,11 @@ sequenceDiagram
 | Dashboard layout must run `canAccessRoute(profile, pathname)`; a disallowed route → `redirect("/dashboard")` (never `/login`) | `(dashboard)/layout.tsx` + `route-access.ts` |
 | Root `/` redirects authenticated users to `/dashboard`, unauthenticated to `/login` | `src/app/page.tsx` |
 | `last_seen_at` must be rate-limited to once per minute **when implemented** — not on every request | original spec intent — **not yet in proxy** |
-| Theme source of truth is `profiles.theme`, not localStorage | Dashboard layout + `ThemeSelector` |
-| Theme null / invalid → always `"earth"` | Dashboard layout `safeTheme` guard |
+| Theme source of truth is `profiles.theme`, not localStorage (the `serene-theme` cookie is only the SSR mirror) | Dashboard layout + `ThemeSelector` |
+| Theme null / invalid → always `"earth"` | `isThemeKey`/`DEFAULT_THEME` guard (root + dashboard layouts) |
 | `email` is read-only on `/profile` — source of truth is `auth.users` | `ProfileDetailsForm` |
 | `PasswordChangeForm` uses browser client only — not a server action | `PasswordChangeForm.tsx` |
-| Zero-flash theme must run before paint (`ThemeInitializer` / `useLayoutEffect`, not `useEffect`) | `ThemeInitializer.tsx` |
+| Zero-flash theme is server-side: the root layout stamps `data-theme` from the theme cookie; `ThemeInitializer` only re-syncs a missing/stale cookie against the DB truth | `src/app/layout.tsx`, `ThemeInitializer.tsx` |
 | Avatar upload: 2 MB max validated client-side before upload | `ProfileAvatarSection.tsx` |
 | Forgot-password must not reveal whether email exists | `requestPasswordResetAction` |
 | Password reset uses a 6-digit OTP **code** (no link, no `redirectTo`) — recovery session is established by `verifyResetOtpAction`'s `verifyOtp({ type: 'recovery' })`, never at a callback | `requestPasswordResetAction`, `verifyResetOtpAction`, recovery email template |

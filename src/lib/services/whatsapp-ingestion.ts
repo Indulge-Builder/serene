@@ -2,11 +2,8 @@
 // Inbound WhatsApp processing pipeline. Uses admin client throughout (RLS bypassed).
 // All functions are idempotent: calling twice with the same message.id is safe.
 //
-// NOTE: whatsapp_conversations, whatsapp_messages, and whatsapp_conversation_reads
-// are not yet in the generated Database type (database.ts is regenerated via
-// `supabase gen types typescript --local`). Until then, Supabase client calls on
-// these tables use `(supabase as any)` — the same pattern used for new RPCs.
-// eslint-disable-next-line comments are co-located with each cast.
+// whatsapp_conversations, whatsapp_messages, and whatsapp_conversation_reads are
+// in the generated Database type — client calls here are fully typed.
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { normalizeWaPhone } from '@/lib/utils/phone';
@@ -83,8 +80,7 @@ export async function processInboundMessage(
   // 1. Normalize phone to E.164 — shared with the Elaya staff routing gate
   const normalizedPhone = normalizeWaPhone(phone);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createAdminClient() as any;
+  const supabase = createAdminClient();
 
   // 2. Dedup guard — if this wa_message_id already exists, exit silently
   const { data: existing } = await supabase
@@ -187,22 +183,27 @@ export async function processInboundMessage(
 
   const leadId = lead.id;
 
-  // 5. Get or create conversation
-  const conversation = await getOrCreateConversation(leadId, waId, normalizedPhone);
-  const conversationId = conversation.id;
-
-  // 6. Resolve media for media messages, and persist it durably.
-  //    Gupshup (active BSP) delivers media with a direct CDN url already on the
-  //    media object — but that url is TIME-LIMITED, so we download the bytes and
-  //    re-upload them to the private `whatsapp-media` bucket (migration 0141),
-  //    storing the durable storage PATH in media_url (reads mint signed urls).
-  //    If durable storage fails (non-fatal), fall back to the raw CDN url so the
-  //    media at least loads until the link expires.
+  // 5+6 run CONCURRENTLY (perf audit 2026-07-02 P2′) — they are independent:
+  // the conversation resolve needs leadId/waId/phone; the media pipeline needs
+  // leadId + the message. On media messages the download+re-upload dominates,
+  // so the conversation round trips ride under it for free. Step 7 (the message
+  // insert) needs both results and stays sequential after the join.
+  //
+  // 6. Media: Gupshup (active BSP) delivers media with a direct CDN url already
+  //    on the media object — but that url is TIME-LIMITED, so we download the
+  //    bytes and re-upload them to the private `whatsapp-media` bucket
+  //    (migration 0141), storing the durable storage PATH in media_url (reads
+  //    mint signed urls). If durable storage fails (non-fatal), fall back to
+  //    the raw CDN url so the media at least loads until the link expires.
   //    Meta (dormant) delivers a media-id only → getMediaDownloadUrl resolves a
-  //    temporary url; the same store-then-fallback path applies.
-  let mediaUrl: string | undefined;
-  const mediaObj = resolveMediaObject(message);
-  if (mediaObj) {
+  //    temporary url; the same store-then-fallback path applies. The whole
+  //    pipeline is non-throwing (errors are caught → undefined), so the
+  //    Promise.all can only reject via getOrCreateConversation — same failure
+  //    surface as the previous sequential shape.
+  const resolveInboundMediaUrl = async (): Promise<string | undefined> => {
+    const mediaObj = resolveMediaObject(message);
+    if (!mediaObj) return undefined;
+
     let sourceUrl: string | null = mediaObj.url ?? null;
     if (!sourceUrl) {
       try {
@@ -210,14 +211,21 @@ export async function processInboundMessage(
       } catch (err) {
         console.error('[whatsapp-ingestion] Failed to fetch media URL:', err);
         // Non-fatal — store message without media URL
+        return undefined;
       }
     }
-    if (sourceUrl) {
-      const storedPath = await storeInboundMedia(sourceUrl, mediaObj.mime_type, leadId, message.id);
-      // storedPath = durable bucket path; null = download/upload failed → raw url
-      mediaUrl = storedPath ?? sourceUrl;
-    }
-  }
+    if (!sourceUrl) return undefined;
+
+    const storedPath = await storeInboundMedia(sourceUrl, mediaObj.mime_type, leadId, message.id);
+    // storedPath = durable bucket path; null = download/upload failed → raw url
+    return storedPath ?? sourceUrl;
+  };
+
+  const [conversation, mediaUrl] = await Promise.all([
+    getOrCreateConversation(leadId, waId, normalizedPhone),
+    resolveInboundMediaUrl(),
+  ]);
+  const conversationId = conversation.id;
 
   // 7. Insert inbound message row — error-checked: a failed insert means the
   //    user's message is lost, so surface it loudly rather than returning a
@@ -280,8 +288,7 @@ export async function processStatusUpdate(
   waMessageId: string,
   status:      string,
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createAdminClient() as any;
+  const supabase = createAdminClient();
 
   const { error, count } = await supabase
     .from('whatsapp_messages')
@@ -328,13 +335,12 @@ export async function resolveLeadByPhone(
 // ON CONFLICT DO NOTHING via ignoreDuplicates() — safe under concurrent webhook delivery.
 // ─────────────────────────────────────────────
 
-export async function getOrCreateConversation(
+async function getOrCreateConversation(
   leadId: string,
   waId:   string,
   phone:  string,
 ): Promise<WhatsAppConversation> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createAdminClient() as any;
+  const supabase = createAdminClient();
 
   // Attempt SELECT first (hot path — most messages are from existing conversations)
   const { data: existing } = await supabase
@@ -382,14 +388,13 @@ export async function getOrCreateConversation(
 // Phone normalization is done upstream — not repeated here.
 // ─────────────────────────────────────────────
 
-export async function insertInboundMessage(
+async function insertInboundMessage(
   conversationId: string,
   leadId:         string,
   message:        MetaInboundMessage,
   mediaUrl?:      string,
 ): Promise<{ error: { message: string } | null }> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createAdminClient() as any;
+  const supabase = createAdminClient();
 
   let content:       string | null = null;
   let mediaMimeType: string | null = null;

@@ -2,7 +2,7 @@
 
 > **Purpose:** what Gia is — the lead lifecycle, the end-to-end flow from ad to deal, the SLA engine, and the map of Gia surfaces.
 > **Audience:** engineers (+ a readable narrative for anyone technical). · **Source-of-truth scope:** module narrative, lifecycle semantics, SLA business rules. Page mechanics live in `../pages/*.md`; ingestion in `../integrations/lead-ingestion.md`; WhatsApp in `../integrations/whatsapp-gupshup.md`.
-> **Last verified:** 2026-06-26 (added `/escalations` + `/oversight` to the surface map; status updated — call intelligence and lead revival are now live; managers joined the round-robin pool, 0124). The lifecycle + SLA business rules below are unchanged since the 2026-06-11 rewrite.
+> **Last verified:** 2026-07-02 (Gia tab removal, task-due WhatsApp scope now every task, customer chatbot shipped, 0138 category-collapse note). The lifecycle + SLA business rules below are unchanged since the 2026-06-11 rewrite.
 
 ---
 
@@ -52,7 +52,9 @@ clearing `resolution_reason`. Terminal statuses cancel all SLA timers.
    logs outcome + note via `CalledModal` → `add_lead_call_note` RPC (0030) — note insert,
    `call_count++`, auto-advance `new → touched`, activities, all in one transaction.
 4. **Progression** — status updates as the lead warms; team notes; Gia follow-up tasks
-   (`create_lead_gia_task`, 0054) appear on the dossier and the `/tasks` Gia tab.
+   (`create_lead_gia_task`, 0054) appear on the lead dossier. (The `/tasks` Gia tab was
+   removed; a legacy `?tab=gia` falls back to My Tasks. The `getGiaTasksForUser` read is
+   kept for Elaya's `get_my_tasks` tool and the dossier path.)
 5. **Resolution** — Won: `WonDealModal` → `recordDeal` (deals row, then status flip; managers
    notified). Nurturing: auto follow-up task + SLA-04. Lost/Junk: reason required.
 6. **After won** — the deal lives on `/deals`; the future clients module takes over from
@@ -87,6 +89,12 @@ A deactivated policy (`active=false`) makes pending fires exit as stale.
 | CAD-02A | status | `in_discussion` | every 48 biz-h | agent | yes (the cadence task) |
 | TASK-01A | task_due | `gia_followup` due | at due | agent | no (in-app + WhatsApp reminder) |
 | TASK-01B | task_due | `gia_followup` due | +30 clock-min | manager | no (overdue escalation) |
+
+**Note on `gia_followup` (migration 0138, 2026-06-17):** the `gia_followup` task category
+no longer exists. A Gia follow-up is now a `personal` task plus a `task_gia_meta` row with
+`module='gia'` (single writer: the `create_lead_gia_task` RPC). The
+`sla_policies.trigger_value='gia_followup'` strings above were deliberately left in place
+as inert policy labels, so the TASK-01 rows are still correct as seeded.
 
 **Authoring rules from `/settings` (2026-06-15):** an admin/founder can add a rule over this
 catalog through the Follow-up Engine panel's "New rule" form — no developer, no migration. The
@@ -133,14 +141,27 @@ repeating until the lead leaves the status. A call note resets the 48h clock
 (`refreshActivitySlaTimers` cancel-all + re-schedule); no outcome/freshness
 guards apply — the status itself is the liveness condition.
 
-**Task-due rules (TASK-01A/B):** at a `gia_followup` task's due time the
-existing `task_due` in-app notification is joined by the `task_due_reminder`
-WhatsApp template to the agent (gia tasks only — the template is lead-shaped;
-personal/group tasks stay in-app only). 30 clock-minutes later, if there is no
-clearing event (task completed/cancelled OR any lead activity after due),
-`tasks.overdue_at` is stamped **exactly once** (UPDATE … WHERE overdue_at IS
-NULL — never a status value; the status CHECK did not grow) and the lead's
-domain managers get `task_overdue_manager` in-app + WhatsApp.
+**Task-due rules (TASK-01A/B):** at a Gia follow-up task's due time the
+existing `task_due` in-app notification is joined by the lead-shaped
+`task_due_reminder` WhatsApp template to the agent. 30 clock-minutes later, if
+there is no clearing event (task completed/cancelled OR any lead activity
+after due), `tasks.overdue_at` is stamped **exactly once** (UPDATE … WHERE
+overdue_at IS NULL, never a status value; the status CHECK did not grow) and
+the lead's domain managers get `task_overdue_manager` in-app + WhatsApp.
+
+**Task WhatsApp pings are no longer gia-only (migration 0142, 2026-06-24):**
+every task (personal, group subtask, or gia) now sends the assigned agent a
+lead-agnostic "due soon" WhatsApp ping at due minus 30 min and an at-due
+overdue ping (`sendTaskDueSoonAgentNotification` /
+`sendTaskOverdueAgentNotification`; recipient resolved via
+`getTaskWithAssignee`, no `task_gia_meta` dependency). A non-lead task that
+goes overdue also escalates to the assignee's manager(s) via the generic
+template (`sendTaskOverdueManagerGenericNotification`, recipients from
+`getAssigneeManagers`: direct `reports_to` manager when active, else domain
+managers). Task assignment itself pings the assignee on WhatsApp too
+(migration 0153; `sendTaskAssignedNotification`, awaited inside
+`createPersonalTaskCore` / `createSubtaskCore`, gated by the `task_assigned`
+control-plane key).
 
 Mechanics (idempotency keys, tags, stale-fire guard, hook points):
 `../integrations/trigger-dev.md`. Timer state: `lead_sla_timers`
@@ -159,7 +180,7 @@ only — SLA-01 is never refreshed by activity, only by leaving `new`.
 | `/campaigns` analytics | `../pages/campaigns.md` |
 | `/performance` | `../pages/performance.md` |
 | `/whatsapp` inbox | `../pages/whatsapp.md` |
-| `/tasks` Gia tab | `../pages/tasks.md` |
+| `/tasks` (the Gia tab was removed; lead follow-ups surface on the dossier) | `../pages/tasks.md` |
 | `/escalations` (SLA breaches · overdue tasks · going cold) | `../pages/escalations.md` |
 | `/oversight` (manager+ 3-tier work-in-progress drill) | `../oversight.md` |
 | Dashboard Gia widgets | `../pages/dashboard.md` |
@@ -171,7 +192,8 @@ only — SLA-01 is never refreshed by activity, only by leaving `new`.
 pool, 0124), full lifecycle, dossier, deals, campaigns, performance, WhatsApp inbox (incl. inbound/
 outbound media), SLA engine, notifications (+ Web Push), Redis caching, export, `/escalations`,
 `/oversight`, **call intelligence / helpdesk (Phase 1)** (`call-intelligence.md`), and **lead
-revival (R1)** (`revival.md`). In design/planned: the **customer-facing** WhatsApp AI chatbot
-(auto-engagement until the agent takes over — schema columns exist, no code; designed in
-`customer-welcome-blast.md`) and client records (post-won flow). (The Elaya **staff** WhatsApp
-channel is already live — `elaya.md`.)
+revival (R1)** (`revival.md`). The **customer-facing** WhatsApp AI chatbot shipped 2026-06-26
+(migrations 0150/0151): the welcome blast plus a hard-capped prospect Elaya, wired into the
+lead pipeline via `elaya-customer.ts`, live-capable behind the approved Gupshup
+welcome-template id. Spec: `customer-welcome-blast.md`. In design/planned: client records
+(post-won flow). (The Elaya **staff** WhatsApp channel is also live: `elaya.md`.)

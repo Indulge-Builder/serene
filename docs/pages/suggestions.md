@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/admin/suggestions` — the admin/founder triage inbox for staff-submitted suggestions and bug reports.
 > **Audience:** engineers. · **Source-of-truth scope:** this route (the triage inbox). The submit side (the "Send feedback" composer) and the storage/RLS contract live in migrations 0134/0135 and `lib/constants/suggestions.ts`.
-> **Last verified:** 2026-06-20 against `src/app/(dashboard)/admin/suggestions/page.tsx`.
+> **Last verified:** 2026-07-02 against `src/app/(dashboard)/admin/suggestions/page.tsx`.
 
 ## 1. Purpose
 
@@ -11,7 +11,7 @@ The triage inbox for the staff suggestion / bug-report channel. Any staff member
 (desktop), the mobile dashboard `ElayaPresenceCard` overlay + `MOBILE_TRIGGER_PATHS` trigger, and the
 `ElayaFeedbackCard` in the `/elaya` right rail (added 2026-06-20); all route through the one
 `SuggestionFeedbackProvider` → `SuggestionComposerModal` → `submitSuggestionAction`. The reports
-reports land here for admin/founder to read and triage — flipping each from **open → resolved**,
+land here for admin/founder to read and triage — flipping each from **open → resolved**,
 which notifies the original sender. A clean substrate for a future AI triage pass.
 
 ## 2. Who sees it
@@ -25,7 +25,7 @@ RLS lets a sender read only their own rows, which this page does not surface.)
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `getSuggestionsForInbox(status?)` in `suggestions-service.ts` (SERVER ONLY, admin client) — the page is the trust boundary; open-first within the `(status, created_at DESC)` index, ≤200 rows, joins the sender's `full_name`, and mints a signed URL per image path |
+| Service | `getSuggestionsForInbox(status?)` in `suggestions-service.ts` (SERVER ONLY, admin client) — the page is the trust boundary; newest-first (`created_at DESC`, ≤200 rows; the open/resolved split is the client-side tab filter, not query order), joins the sender's `full_name`, and mints a signed URL per image path |
 | Resolve | `resolveSuggestion(id, resolvedBy)` (admin client) — writes ONLY `status`/`resolved_by`/`resolved_at` (column restriction enforced in code, RLS can't); returns the `sender_id` so the action notifies them. Called by `resolveSuggestionAction` |
 | Storage | private `suggestions` bucket (migration 0135, `public = false`) — `image_paths` stores storage **PATHS, never URLs**; `getSuggestionsForInbox` mints short-lived (300s) signed URLs server-side for viewing |
 | Tables | `suggestions` (migration 0134) — `category` (`bug`/`idea`/`other`), `message`, `image_paths text[]` (≤4), `status` (`open`/`resolved`), `resolved_by`/`resolved_at` |
@@ -68,5 +68,4 @@ to `<SuggestionInboxClient>` as `initialSuggestions`.
 ## 7. Open items
 
 A future AI triage pass over the inbox is the stated direction (migration 0134 names the table a
-"clean substrate" for it). The migration is flagged "NOT yet applied to prod" in the ledger —
-confirm application before relying on production data here.
+"clean substrate" for it).

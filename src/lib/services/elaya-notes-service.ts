@@ -25,9 +25,7 @@ import type { ElayaNoteRow } from "@/lib/types/elaya-notes";
 
 export async function getMyNotes(): Promise<ElayaNoteRow[]> {
   try {
-    // Not yet in the generated Database type (interim — regen drops the cast).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await createClient()) as any;
+    const supabase = await createClient();
     const { data, error } = await supabase
       .from("elaya_notes")
       .select("*")
@@ -54,9 +52,7 @@ export async function getNotesForElaya(userId: string): Promise<string[]> {
     if (!userId) return [];
     // Admin client — the turn is sessionless; identity is the verified principal.userId,
     // enforced in this query, never auth.uid() (the elaya-data.ts parity rule).
-    // Not yet in the generated Database type (interim — regen drops the cast).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = createAdminClient() as any;
+    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("elaya_notes")
       .select("title, body, updated_at")

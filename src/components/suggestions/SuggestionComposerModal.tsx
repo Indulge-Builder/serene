@@ -257,7 +257,7 @@ export function SuggestionComposerModal({
                   border: "1px solid var(--theme-paper-border)",
                 }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+                { }
                 <img
                   src={a.previewUrl}
                   alt={`Attachment ${i + 1}`}

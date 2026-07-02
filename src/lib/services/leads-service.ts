@@ -110,53 +110,6 @@ export async function getLeadBySlug(
 }
 
 // ─────────────────────────────────────────────
-// Query: leads for agent (only their own)
-// ─────────────────────────────────────────────
-export async function getLeadsForAgent(agentId: string): Promise<Lead[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("leads")
-    .select("*")
-    .eq("assigned_to", agentId)
-    .is("archived_at", null)
-    .order("created_at", { ascending: false });
-
-  if (error || !data) return [];
-  return data as Lead[];
-}
-
-// ─────────────────────────────────────────────
-// Query: leads for a domain (manager view)
-// ─────────────────────────────────────────────
-export async function getLeadsForDomain(domain: AppDomain): Promise<Lead[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("leads")
-    .select("*")
-    .eq("domain", domain)
-    .is("archived_at", null)
-    .order("created_at", { ascending: false });
-
-  if (error || !data) return [];
-  return data as Lead[];
-}
-
-// ─────────────────────────────────────────────
-// Query: all leads (admin / founder)
-// ─────────────────────────────────────────────
-export async function getAllLeads(): Promise<Lead[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("leads")
-    .select("*")
-    .is("archived_at", null)
-    .order("created_at", { ascending: false });
-
-  if (error || !data) return [];
-  return data as Lead[];
-}
-
-// ─────────────────────────────────────────────
 // Private helper: latest note per lead — single batch query, never per-row.
 // Uses idx_lead_notes_lead_id (lead_id, created_at DESC) — first row per lead_id
 // is the most recent because the query is ordered DESC and we skip duplicates.
@@ -658,38 +611,6 @@ export async function getLeadFilterOptions(
 }
 
 // ─────────────────────────────────────────────
-// Query: lead activities timeline
-// ─────────────────────────────────────────────
-export async function getLeadActivities(
-  leadId: string,
-): Promise<LeadActivity[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("lead_activities")
-    .select("*")
-    .eq("lead_id", leadId)
-    .order("created_at", { ascending: false });
-
-  if (error || !data) return [];
-  return data as LeadActivity[];
-}
-
-// ─────────────────────────────────────────────
-// Query: lead notes
-// ─────────────────────────────────────────────
-export async function getLeadNotes(leadId: string): Promise<LeadNote[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("lead_notes")
-    .select("*")
-    .eq("lead_id", leadId)
-    .order("created_at", { ascending: false });
-
-  if (error || !data) return [];
-  return data as LeadNote[];
-}
-
-// ─────────────────────────────────────────────
 // Query: lead notes with author names — single joined query
 //
 // SESSION-CLIENT ONLY (createClient() + RLS). A sessionless caller (Trigger.dev
@@ -868,24 +789,6 @@ export async function searchLeadsForElaya(
 }
 
 /**
- * Elaya get_lead_details source — one lead by slug, via the admin client (works
- * sessionless). The CALLER must still run canAccessLead on the result before
- * surfacing it (this returns the row for ANY slug — scoping is the tool's gate,
- * exactly as with the session getLeadBySlug + the existing canAccessLead check).
- */
-export async function getLeadBySlugForElaya(slug: string): Promise<LeadWithAssignee | null> {
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("leads")
-    .select("*, assignee:profiles!leads_assigned_to_fkey(full_name)")
-    .eq("slug", slug)
-    .is("archived_at", null)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data as unknown as LeadWithAssignee;
-}
-
-/**
  * Elaya lead-handle resolver — resolves an opaque ref that is EITHER a lead UUID
  * (the id surfaced by searchLeadsForElaya) OR a slug, via the admin client (works
  * sessionless). Mirrors the dossier route's `getLeadBySlug(id) ?? getLeadById(id)`
@@ -963,32 +866,6 @@ export async function getLeadNotesFullForElaya(leadId: string): Promise<LeadNote
 }
 
 // ─────────────────────────────────────────────
-// Query: next pending task for a lead (Gia module) — single joined query
-//
-// Starts from `tasks` (native column filters: status, due_at), joins inward
-// to `task_gia_meta` with !inner to filter by lead_id. This is required
-// because PostgREST / Supabase JS client silently drops dot-notation filters
-// on joined tables (e.g. `.eq('tasks.status', ...)` when starting from
-// task_gia_meta) — they never reach the WHERE clause.
-// ─────────────────────────────────────────────
-export async function getNextLeadTask(leadId: string): Promise<Task | null> {
-  const supabase = await createClient();
-
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("*, task_gia_meta!inner(lead_id)")
-    .eq("task_gia_meta.lead_id", leadId)
-    .eq("status", "to_do")
-    .order("due_at", { ascending: true })
-    .limit(1);
-
-  if (error || !data || data.length === 0) return null;
-  // The generated row types attachments as Json; Task narrows it to ChecklistItem[]
-  // (the tasks_attachments_is_array CHECK guarantees the array shape) — cross once.
-  return data[0] as unknown as Task;
-}
-
-// ─────────────────────────────────────────────
 // Query: errored raw payloads (admin / founder)
 // ─────────────────────────────────────────────
 export async function getErroredPayloads(): Promise<LeadRawPayload[]> {
@@ -1061,13 +938,14 @@ async function fetchCampaignMetricsFromRpc(
     outcome_converted: number;
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as unknown as any).rpc(
+  // Explicit nulls (not undefined) are intentional — PostgREST sends SQL NULL;
+  // the generated optional-arg types only admit undefined, hence the assertions.
+  const { data, error } = await supabase.rpc(
     "get_campaign_metrics",
     {
-      p_domain: effectiveDomain,
-      p_date_from: filters.date_from ?? null,
-      p_date_to: dateTo,
+      p_domain: effectiveDomain as AppDomain | undefined,
+      p_date_from: (filters.date_from ?? null) as string | undefined,
+      p_date_to: dateTo as string | undefined,
     },
   );
 
@@ -1125,13 +1003,14 @@ export async function getCampaignDetailMetrics(
     avg_hours_to_first_touch: number | null;
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as unknown as any).rpc(
+  // Explicit nulls (not undefined) are intentional — PostgREST sends SQL NULL;
+  // the generated optional-arg types only admit undefined, hence the assertions.
+  const { data, error } = await supabase.rpc(
     "get_campaign_detail_metrics",
     {
       p_campaign: campaignName,
-      p_date_from: filters.date_from ?? null,
-      p_date_to: dateTo,
+      p_date_from: (filters.date_from ?? null) as string | undefined,
+      p_date_to: dateTo as string | undefined,
     },
   );
 
@@ -1183,13 +1062,14 @@ export async function getCampaignAgentDistribution(
     ? filters.date_to.replace(/T.*$/, "T23:59:59.999Z")
     : null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as unknown as any).rpc(
+  // Explicit nulls (not undefined) are intentional — PostgREST sends SQL NULL;
+  // the generated optional-arg types only admit undefined, hence the assertions.
+  const { data, error } = await supabase.rpc(
     "get_campaign_agent_distribution",
     {
       p_campaign: campaignName,
-      p_date_from: filters.date_from ?? null,
-      p_date_to: dateTo,
+      p_date_from: (filters.date_from ?? null) as string | undefined,
+      p_date_to: dateTo as string | undefined,
     },
   );
 
@@ -1313,60 +1193,6 @@ async function getNextRoundRobinAgentFallback(
   });
 
   return eligibleAgents[0];
-}
-
-// ─────────────────────────────────────────────
-// Lead search for task creation
-// ─────────────────────────────────────────────
-
-export type LeadSearchResult = {
-  id: string;
-  slug: string | null;
-  first_name: string;
-  last_name: string | null;
-  phone: string | null;
-  domain: AppDomain;
-};
-
-/**
- * Search leads by name or phone for the lead picker in CreateGiaTaskModal.
- * Scoped by caller role: agent sees only their assigned leads,
- * manager sees their domain, admin/founder see all.
- * Returns at most 8 results.
- */
-export async function searchLeadsForTask(
-  query: string,
-  role: UserRole,
-  domain: AppDomain,
-  userId: string,
-): Promise<LeadSearchResult[]> {
-  const supabase = await createClient();
-  const term = `%${query.trim().toLowerCase()}%`;
-
-  let q = supabase
-    .from("leads")
-    .select("id, slug, first_name, last_name, phone, domain")
-    // search_text (migration 0098) — indexed, and immune to .or() syntax
-    // injection from commas/parens in the typed query
-    .filter("search_text", "ilike", term)
-    .is("archived_at", null)
-    .limit(8);
-
-  if (role === "agent") {
-    q = q.eq("assigned_to", userId);
-  } else if (role === "manager") {
-    q = q.eq("domain", domain);
-  }
-  // admin/founder: no domain constraint
-
-  const { data, error } = await q.order("first_name", { ascending: true });
-
-  if (error) {
-    console.error("[leads-service] searchLeadsForTask error:", error);
-    return [];
-  }
-
-  return (data ?? []) as LeadSearchResult[];
 }
 
 // ─────────────────────────────────────────────

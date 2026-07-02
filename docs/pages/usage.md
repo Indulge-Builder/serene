@@ -2,7 +2,7 @@
 
 > **Purpose:** spec for `/admin/usage` — the admin/founder adoption-monitoring view of active time per agent and per domain.
 > **Audience:** engineers. · **Source-of-truth scope:** this route. The heartbeat → snapshot → rollup pipeline lives in `../architecture/caching.md` (`presence:*`) and the Trigger.dev jobs; the schema is migration 0126.
-> **Last verified:** 2026-06-24 against `src/app/(dashboard)/admin/usage/page.tsx`.
+> **Last verified:** 2026-07-02 (full-tree audit) against `src/app/(dashboard)/admin/usage/page.tsx`.
 
 ## 1. Purpose
 

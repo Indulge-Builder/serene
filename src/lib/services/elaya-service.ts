@@ -22,12 +22,12 @@ import type {
   ElayaMessageRow,
   ElayaToolCallRecord,
 } from '@/lib/types/elaya';
-import type { Profile } from '@/lib/types/database';
+import type { Json, Profile } from '@/lib/types/database';
 
 /** Verbatim history window handed to the model — the last 10 messages. */
-export const ELAYA_MODEL_CONTEXT_MESSAGES = 10;
+const ELAYA_MODEL_CONTEXT_MESSAGES = 10;
 /** Transcript window rendered in the UI. */
-export const ELAYA_UI_MESSAGES = 50;
+const ELAYA_UI_MESSAGES = 50;
 
 // ─────────────────────────────────────────────
 // Conversations
@@ -51,8 +51,7 @@ export async function getOrCreateActiveConversation(
   const supabase = createAdminClient();
   const cutoff = new Date(Date.now() - expiryHours * 60 * 60 * 1000).toISOString();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: existing, error: readError } = await (supabase as any)
+  const { data: existing, error: readError } = await supabase
     .from('elaya_conversations')
     .select('*')
     .eq('user_id', userId)
@@ -67,8 +66,7 @@ export async function getOrCreateActiveConversation(
   }
   if (existing) return existing as ElayaConversation;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: created, error: insertError } = await (supabase as any)
+  const { data: created, error: insertError } = await supabase
     .from('elaya_conversations')
     .insert({ user_id: userId, channel: originChannel })
     .select('*')
@@ -87,8 +85,7 @@ export async function getOwnedConversation(
   userId: string,
 ): Promise<ElayaConversation | null> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data } = await (supabase as any)
+  const { data } = await supabase
     .from('elaya_conversations')
     .select('*')
     .eq('id', conversationId)
@@ -100,8 +97,7 @@ export async function getOwnedConversation(
 
 export async function touchConversation(conversationId: string): Promise<void> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const { error } = await supabase
     .from('elaya_conversations')
     .update({ last_message_at: new Date().toISOString() })
     .eq('id', conversationId);
@@ -113,13 +109,12 @@ export async function touchConversation(conversationId: string): Promise<void> {
 // ─────────────────────────────────────────────
 
 /** Oldest-first transcript for the UI — session client so RLS enforces ownership. */
-export async function getConversationMessages(
+async function getConversationMessages(
   conversationId: string,
   limit: number = ELAYA_UI_MESSAGES,
 ): Promise<ElayaMessageRow[]> {
   const supabase = await createClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('elaya_messages')
     .select('*')
     .eq('conversation_id', conversationId)
@@ -139,8 +134,7 @@ export async function getModelContextMessages(
   limit: number = ELAYA_MODEL_CONTEXT_MESSAGES,
 ): Promise<ElayaMessageRow[]> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('elaya_messages')
     .select('*')
     .eq('conversation_id', conversationId)
@@ -168,8 +162,7 @@ export async function insertUserMessage(args: {
   meta?: Record<string, unknown>;
 }): Promise<{ duplicate: false; row: ElayaMessageRow } | { duplicate: true }> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('elaya_messages')
     .insert({
       conversation_id: args.conversationId,
@@ -177,7 +170,7 @@ export async function insertUserMessage(args: {
       role: 'user',
       channel: args.channel ?? 'in_app',
       content: args.content,
-      meta: args.meta ?? null,
+      meta: (args.meta ?? null) as Json,
     })
     .select('*')
     .single();
@@ -204,8 +197,7 @@ export async function insertAssistantMessage(args: {
   channel?: ElayaChannel;
 }): Promise<ElayaMessageRow | null> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('elaya_messages')
     .insert({
       conversation_id: args.conversationId,
@@ -213,8 +205,8 @@ export async function insertAssistantMessage(args: {
       role: 'assistant',
       channel: args.channel ?? 'in_app',
       content: args.content,
-      tool_calls: args.toolCalls.length > 0 ? args.toolCalls : null,
-      meta: args.meta,
+      tool_calls: (args.toolCalls.length > 0 ? args.toolCalls : null) as Json,
+      meta: args.meta as Json,
     })
     .select('*')
     .single();
@@ -233,8 +225,7 @@ export async function insertAssistantMessage(args: {
  */
 export async function hasProcessedWaMessage(waMessageId: string): Promise<boolean> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('elaya_messages')
     .select('id')
     .eq('channel', 'whatsapp')
@@ -259,8 +250,7 @@ export async function countUserMessagesToday(userId: string): Promise<number> {
   const supabase = createAdminClient();
   const todayStartIst = toISTMidnight(new Date()).toISOString();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { count, error } = await (supabase as any)
+  const { count, error } = await supabase
     .from('elaya_messages')
     .select('id', { count: 'exact', head: true })
     .eq('sender_id', userId)
@@ -279,10 +269,9 @@ export async function countUserMessagesToday(userId: string): Promise<number> {
 // user_context
 // ─────────────────────────────────────────────
 
-export async function getUserContext(userId: string): Promise<Record<string, unknown>> {
+async function getUserContext(userId: string): Promise<Record<string, unknown>> {
   const supabase = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('user_context')
     .select('context')
     .eq('user_id', userId)
@@ -317,8 +306,7 @@ export async function getUserPersona(
  *  (RLS scopes user_context SELECT to own row); returns {} when no row yet. */
 export async function getMyElayaPersona(userId: string): Promise<ElayaPersonaPrefs> {
   const supabase = await createClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('user_context')
     .select('context')
     .eq('user_id', userId)
@@ -344,8 +332,7 @@ export async function updateElayaPersona(
   // Read-merge-write: preserve learned + any future keys. One row per user (PK).
   const existing = await getUserContext(userId);
   const nextContext = { ...existing, persona: prefs };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const { error } = await supabase
     .from('user_context')
     .upsert({ user_id: userId, context: nextContext }, { onConflict: 'user_id' });
   if (error) {
@@ -368,8 +355,7 @@ export async function writeLearnedMemory(userId: string, learned: string): Promi
   const supabase = createAdminClient();
   const existing = await getUserContext(userId);
   const nextContext = { ...existing, learned };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const { error } = await supabase
     .from('user_context')
     .upsert({ user_id: userId, context: nextContext }, { onConflict: 'user_id' });
   if (error) {

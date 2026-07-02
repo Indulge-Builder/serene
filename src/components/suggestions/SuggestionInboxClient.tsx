@@ -171,7 +171,7 @@ export function SuggestionInboxClient({
                         display: "block",
                       }}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      { }
                       <img
                         src={url}
                         alt={`Screenshot ${idx + 1}`}
