@@ -12,6 +12,32 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-05 — Vendors: PR #3 fixes (renumbered 0182/0183, uuid PK, Sia FKs)
+
+**Why:** two blocking review findings on `vendor-master-table`.
+
+**1. Migration numbers were already taken.** The branch used `20260831000179` / `20260831000180`,
+but main carries the Elaya brain switch and the shop product enquiries at exactly those versions,
+both applied on prod (0181 is the clients spine). The Supabase CLI matches on the version number, so
+`db push` would have treated these as already applied and **skipped them silently** — no table, no
+bucket, and no error to notice. Renumbered to **0182** (spine) and **0183** (bucket), and rebased
+onto main; the branch also conflicted on this changelog and the migration inventory.
+
+**2. Primary key was the wrong type.** Sia 0169 already reserved `vendor_id uuid` on `sia.wag_groups`
+and `sia.wag_contacts` for this table ("future vendor-profile table, soft until it exists"). A
+`bigint` key meant those hooks could never be wired. The PK is now **`id uuid default
+gen_random_uuid()`** — matching 43 of the 46 tables here — and 0182 wires both foreign keys
+`ON DELETE SET NULL`, exactly as 0181 did for clients: losing a vendor row must never delete the
+WhatsApp group or contact pointing at it.
+
+**Verified** on a clean Postgres 17.6 container with the Sia tables scaffolded: both migrations apply
+under `ON_ERROR_STOP=1`; the uuid PK self-generates; both FKs exist and reject an orphan `vendor_id`;
+deleting a vendor nulls the hook and keeps the group; RLS still gives `anon` 0 rows and
+`authenticated` all; 6 indexes build; the bucket is `public=false`.
+
+**Still not applied.** Both run through the normal deployment process. Note that the wider redesign
+in `docs/modules/vendors.md` (engagement ledger, computed scores, 0182/0183/0184) supersedes this
+table’s shape — these are the two blocking fixes, not that rebuild.
 ## 2026-09-10 — New lead source: Self
 
 Why: the team needed a way to mark leads a member brought in themselves (own network,
