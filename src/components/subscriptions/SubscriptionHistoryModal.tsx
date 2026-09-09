@@ -29,9 +29,13 @@ type Props = {
   subscriptionName?: string;
 };
 
+type PasswordReveal = { revealed_at: string; revealed_by_name: string | null };
+
 type Detail = {
   subscription: SubscriptionRow;
   hasPassword: boolean;
+  /** Who has revealed this password (0167). Empty for anyone but admin/founder. */
+  reveals?: PasswordReveal[];
   payments: SubscriptionPaymentRow[];
   topups: SubscriptionTopupRow[];
 };
@@ -143,6 +147,35 @@ export function SubscriptionHistoryModal({
                   </button>
                 </span>
               </Field>
+            )}
+            {/* The reveal ledger (0167) has been written since the feature
+                shipped but had nowhere to be seen — an audit nobody can read is
+                only half an audit. RLS returns [] to anyone but admin/founder,
+                so this simply does not render for them. */}
+            {detail?.hasPassword && (detail.reveals?.length ?? 0) > 0 && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <Field label="Password viewed by">
+                  <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+                    {detail!.reveals!.slice(0, 5).map((r, i) => (
+                      <span
+                        key={`${r.revealed_at}-${i}`}
+                        style={{ fontSize: "var(--text-xs)", color: "var(--theme-text-secondary)" }}
+                      >
+                        {r.revealed_by_name ?? "Unknown user"}
+                        <span style={{ color: "var(--theme-text-tertiary)" }}>
+                          {" · "}
+                          {formatDate(r.revealed_at, "d MMM yyyy, h:mm a")}
+                        </span>
+                      </span>
+                    ))}
+                    {(detail!.reveals!.length ?? 0) > 5 && (
+                      <span style={{ fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)" }}>
+                        + {detail!.reveals!.length - 5} earlier
+                      </span>
+                    )}
+                  </div>
+                </Field>
+              </div>
             )}
             {sub.notes && (
               <div style={{ gridColumn: "1 / -1" }}>

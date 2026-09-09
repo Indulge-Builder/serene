@@ -1,129 +1,208 @@
--- Vendor master list, built from the Freshdesk archive (Jan 2024 - Aug 2026).
--- ~21,800 rows, ~10 MB. Invoice files live in the `vendor-invoices` storage
--- bucket; this table stores their paths.
+-- Migration 0182: public.vendors — the vendor identity SPINE + vendor_capabilities.
 --
--- Numbered 0182: 0179 (Elaya brain switch) and 0180 (shop product enquiries)
--- are taken and applied on prod, 0181 is the clients spine. Supabase matches on
--- the version number, so a file reusing a taken number is SILENTLY SKIPPED.
+-- The one row per vendor (a supplier the concierge / shop floor books work with)
+-- that every other vendor table and the Sia WhatsApp hooks finally point at:
+-- sia.wag_groups.vendor_id / sia.wag_contacts.vendor_id (the 0169 soft hooks,
+-- wired here), and the ledger layer (0184: engagements / reviews / preferences)
+-- which hangs OFF this table — never lives in it.
 --
--- NOT APPLIED. Run through the normal deployment process, never directly
+-- Built the 0181 clients way: a thin identity spine + `import_raw` provenance.
+-- PR #3's computed Freshdesk row (ticket_categories / service_cities / agents /
+-- invoices / times_used / first_used / last_used / invoice_count) lands in
+-- `import_raw` UNTOUCHED as the audit trail of the import; nothing ranks on it
+-- once vendor_engagements (0184) are loaded. Anything that does not parse
+-- cleanly stays NULL in a typed column and survives inside import_raw.
+--
+-- Speed / quality / pricing / reliability are NOT columns here: they are
+-- manually entered per review (vendor_reviews, 0184) and the score is COMPUTED
+-- per read (the subscriptions status pattern) — never stored on the spine.
+--
+-- Numbered 0182: 0179 (Elaya brain switch) / 0180 (shop product enquiries) /
+-- 0181 (clients spine) are taken and applied on prod. The Supabase CLI matches
+-- on the version number, so a file reusing a taken number is SILENTLY SKIPPED.
+--
+-- NOT APPLIED. Runs through the normal deployment process, never directly
 -- against production.
 
 -- Repo convention (0098/0110/0166): extensions live in `extensions`, not public.
 -- 0098 already installed pg_trgm there, so this is a no-op on prod; the schema
 -- pin keeps a fresh database identical to prod.
-create extension if not exists pg_trgm with schema extensions;
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
 
-create table public.vendors (
-  -- uuid, not bigint: Sia 0169 already reserved `vendor_id uuid` on
-  -- sia.wag_groups and sia.wag_contacts for this table, and 43 of 46 tables
-  -- here use `id uuid`. A bigint key could never satisfy those hooks.
-  id                 uuid        primary key default gen_random_uuid(),
+-- ─────────────────────────────────────────────────────────────────────────────
+-- vendors — the spine
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE public.vendors (
+  -- uuid, not bigint: Sia 0169 reserved `vendor_id uuid` on sia.wag_groups /
+  -- sia.wag_contacts for this table; 43 of 46 tables here use `id uuid`.
+  id                uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
 
-  vendor_name        text        not null,
-
-  -- What the vendor SELLS. Distinct from the ticket types it has served.
-  vendor_category    text,
-  vendor_subcategory text,
-
-  -- Which request types it has been used for, WITH the count for each.
-  -- The counts are the point: ranking on the global times_used floats every
-  -- high-volume vendor to the top of every category. Travibes has 664 uses but
-  -- only 4 are "Retail > General" - without per-category counts it outranks
-  -- Amazon's 367 in a retail lookup.
-  --   [{"category":"Dining","count":60}, ...]
-  ticket_categories  jsonb       not null default '[]'::jsonb,
-
-  -- Cities served, with per-city counts, so a city lookup can rank too.
-  --   [{"city":"Delhi","count":34}, ...]
-  service_cities     jsonb       not null default '[]'::jsonb,
-
-  -- One entry per person, each holding their own numbers. A null name is
-  -- deliberate: those are the vendor's general lines, never tied to a person.
-  -- Inventing a name for them would be a lie; dropping them loses the number.
-  --   [{"name":"Abdul","phones":["+91 70458 29809"],"emails":[]},
-  --    {"name":null,"phones":["9654106784"],"emails":["support@..."]}]
-  contacts           jsonb       not null default '[]'::jsonb,
-
-  times_used         integer     not null default 0 check (times_used >= 0),
-  first_used         timestamptz,
-  last_used          timestamptz,
-
-  -- Ranked agents with their own counts.  [{"agent":"Ria Pujhari","count":52}]
-  agents             jsonb       not null default '[]'::jsonb,
-
-  -- Last 5 invoices, newest first. storage_path points into the
-  -- vendor-invoices bucket. The path is keyed on attachment_id alone, which is
-  -- globally unique: keying it on the vendor id would tie every upload to a
-  -- row that must exist first, and the attachment is the natural identity anyway.
-  -- (Left flat deliberately - see the bucket migration 0183.) It would mean
-  -- uploaded until after the rows were inserted and their ids assigned.
-  -- attachment_id exceeds int4 (values reach 1.07e12), hence jsonb not integer.
-  --   [{"ticket_id":51860,"attachment_id":1070049291938,
-  --     "doc_date":"2026-08-24","storage_path":"1070049291938.pdf"}]
-  invoices           jsonb       not null default '[]'::jsonb,
-  -- TOTAL invoices ever seen; `invoices` above holds only the newest 5.
-  invoice_count      integer     not null default 0 check (invoice_count >= 0),
-
+  name              text        NOT NULL,
+  -- The dedup identity (the subscription_tools 0168 pattern): one row per
+  -- vendor regardless of casing / stray whitespace. Rerunning the loader upserts
+  -- on this key instead of minting a duplicate.
+  name_key          text        GENERATED ALWAYS AS (lower(btrim(name))) STORED,
   -- Spelling variants seen in tickets, so a search for "Shamsher" still finds
   -- LuxDrovia after the two were merged.
-  aliases            text[]      not null default '{}',
+  aliases           text[]      NOT NULL DEFAULT '{}',
 
-  category_source    text        check (category_source in ('hand','rule','ticket-category')),
+  -- What the vendor SELLS. A SERVICE_CATEGORY slug (lib/constants/interests.ts)
+  -- where the import could map one, else the raw Freshdesk label — free text by
+  -- design, so an unmapped label is kept rather than rejected. Where it has been
+  -- used lives in vendor_engagements; what it offers in vendor_capabilities.
+  category          text,
+  subcategory       text,
+  -- How the vendor's category was decided. `rule` / `ticket-category` are the
+  -- import's own derivations, `hand` a human label, `unresolved` an honest
+  -- "we could not tell from what was written", and `client-excluded` a row
+  -- kept for provenance that is not a supplier at all. All five come out of
+  -- the Freshdesk extraction; the vocabulary mirrors VENDOR_CATEGORY_SOURCES.
+  category_source   text        CHECK (category_source IN ('hand', 'rule', 'ticket-category', 'unresolved', 'client-excluded')),
 
-  created_at         timestamptz not null default now(),
-  updated_at         timestamptz not null default now(),
+  -- paused = do not suggest for now; blacklisted = never suggest (the ranker
+  -- hard-excludes both and the details read says why). Vendors are never
+  -- hard-deleted once they carry history — 0184's ledger FKs RESTRICT it.
+  status            text        NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'paused', 'blacklisted')),
 
-  -- Every jsonb payload above is an ARRAY of objects. Rows arrive over the REST
-  -- API from an external loader, so assert the shape here (0023 precedent,
-  -- tasks.attachments): a scalar or bare object would not raise, it would just
-  -- make every ranking query silently match nothing.
-  constraint vendors_ticket_categories_is_array check (jsonb_typeof(ticket_categories) = 'array'),
-  constraint vendors_service_cities_is_array    check (jsonb_typeof(service_cities)    = 'array'),
-  constraint vendors_contacts_is_array          check (jsonb_typeof(contacts)          = 'array'),
-  constraint vendors_agents_is_array            check (jsonb_typeof(agents)            = 'array'),
-  constraint vendors_invoices_is_array          check (jsonb_typeof(invoices)          = 'array')
+  -- One entry per PERSON, each holding their own numbers:
+  --   [{"name":"Abdul","phones":["+917045829809"],"emails":[]},
+  --    {"name":null,"phones":["+919654106784"],"emails":["support@…"]}]
+  -- A null name is deliberate: the vendor's general lines, never tied to a
+  -- person. Phones are E.164 (Rule 06 — normalizeToE164() in the loader and the
+  -- Zod schema). Kept as jsonb because the shape is per-person and dynamic;
+  -- the array CHECK (0023 precedent) is what a scalar or bare object would
+  -- otherwise silently pass.
+  contacts          jsonb       NOT NULL DEFAULT '[]'::jsonb,
+  -- E.164, nullable. THE join key Sia uses to match a WhatsApp contact to a
+  -- vendor (the clients.primary_phone posture, but NOT unique — two vendor
+  -- desks can share a switchboard).
+  primary_phone     text,
+  -- Where the vendor is based. Cities SERVED come from capabilities and
+  -- engagements, not from here.
+  home_city         text,
+
+  -- 'verified' only after a human confirms the merged identity; imports are
+  -- born 'unverified' (the 0181 clients semantics).
+  identity_status   text        NOT NULL DEFAULT 'unverified'
+    CHECK (identity_status IN ('unverified', 'verified')),
+  -- External join key into the Freshdesk archive (the clients.freshdesk_contact_id
+  -- posture) — NULL for vendors born in-app or via Sia.
+  freshdesk_ref     text,
+  -- Which systems have contributed to this row. The SAME vocabulary as
+  -- vendor_engagements.source (VENDOR_SOURCES in lib/constants/vendors.ts).
+  sources           text[]      NOT NULL DEFAULT '{}'
+    CHECK (sources <@ ARRAY['freshdesk', 'sia', 'manual', 'ticket']::text[]),
+  -- The raw source rows keyed by source — PR #3's computed row goes here whole.
+  import_raw        jsonb       NOT NULL DEFAULT '{}'::jsonb,
+
+  notes             text,
+
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT vendors_name_key_unique      UNIQUE (name_key),
+  CONSTRAINT vendors_contacts_is_array    CHECK (jsonb_typeof(contacts) = 'array'),
+  CONSTRAINT vendors_import_raw_is_object CHECK (jsonb_typeof(import_raw) = 'object')
 );
 
-comment on table public.vendors is
-  'Vendor master list from the Freshdesk archive. One row per vendor.';
-comment on column public.vendors.ticket_categories is
-  'Request types served, with per-category counts - rank lookups on these, not times_used.';
-comment on column public.vendors.contacts is
-  'Per-person contacts; a null name holds the vendor general lines not tied to anyone.';
-
--- Lookups: "who do we use for Dining, in Delhi", ranked.
-create index vendors_ticket_categories_idx on public.vendors using gin (ticket_categories jsonb_path_ops);
-create index vendors_service_cities_idx    on public.vendors using gin (service_cities    jsonb_path_ops);
-create index vendors_category_idx          on public.vendors (vendor_category, times_used desc);
-create index vendors_times_used_idx        on public.vendors (times_used desc);
 -- Opclass schema-qualified: pg_trgm lives in `extensions`, which is not on the
 -- search_path in every context (0098 does exactly this for idx_leads_search_trgm).
-create index vendors_name_trgm_idx         on public.vendors using gin (vendor_name extensions.gin_trgm_ops);
-create index vendors_aliases_idx           on public.vendors using gin (aliases);
+CREATE INDEX idx_vendors_name_trgm ON public.vendors USING gin (name extensions.gin_trgm_ops);
+CREATE INDEX idx_vendors_aliases   ON public.vendors USING gin (aliases);
+CREATE INDEX idx_vendors_category  ON public.vendors (category);
+CREATE INDEX idx_vendors_status    ON public.vendors (status);
+CREATE INDEX idx_vendors_primary_phone ON public.vendors (primary_phone)
+  WHERE primary_phone IS NOT NULL;
+CREATE INDEX idx_vendors_freshdesk ON public.vendors (freshdesk_ref)
+  WHERE freshdesk_ref IS NOT NULL;
 
 -- Reuse the shared helper from migration 0001 (rule: never recreate it).
-create trigger vendors_updated_at
-  before update on public.vendors
-  for each row execute function update_updated_at();
+CREATE TRIGGER vendors_updated_at
+  BEFORE UPDATE ON public.vendors
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- RLS on. Reads are open to every signed-in user: this is a lookup library the
--- concierge floor queries constantly - the same posture as service_cases (0110)
--- and elaya_training_assets (0150). Writes have NO policy at all, so they are
--- service-role only (the deals / subscriptions posture): the bulk load and any
--- later edit go through the admin client.
-alter table public.vendors enable row level security;
+COMMENT ON TABLE public.vendors IS
+  'The vendor identity spine (one row per supplier). Identity + contacts + status only — '
+  'what it offers lives in vendor_capabilities, every job in vendor_engagements, ratings in '
+  'vendor_reviews (0184); raw import rows in import_raw. Scores are computed per read, never '
+  'stored here. Reads admin/founder; writes service-role only (actions/vendors.ts is the gate).';
+COMMENT ON COLUMN public.vendors.contacts IS
+  'Per-person contacts [{name|null, phones[] (E.164), emails[]}]; a null name holds the vendor general lines.';
+COMMENT ON COLUMN public.vendors.import_raw IS
+  'Raw source rows keyed by source (PR #3 Freshdesk computed row lives here whole). Audit trail only — nothing ranks on it.';
 
-create policy vendors_read_authenticated on public.vendors
-  for select to authenticated using (true);
+-- ─────────────────────────────────────────────────────────────────────────────
+-- vendor_capabilities — what a vendor offers / refuses, per category (+ service)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- `declines` is how "this vendor does not want these tickets" is recorded; the
+-- ranker hard-excludes it. Editable config (NOT a ledger): agents refine this
+-- constantly as they work with vendors, so it carries updated_at + set_by.
+CREATE TABLE public.vendor_capabilities (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  vendor_id   uuid        NOT NULL REFERENCES public.vendors(id) ON DELETE CASCADE,
+  -- SERVICE_CATEGORY slug or the domain vocabulary (getDomainInterests).
+  category    text        NOT NULL,
+  -- The finer service inside the category (visa / hotel / chauffeur …); NULL =
+  -- the whole category. Vocabulary = VENDOR_SERVICES (lib/constants/vendors.ts),
+  -- grown as we learn — deliberately no SQL CHECK so growing it is not a migration.
+  service     text,
+  stance      text        NOT NULL CHECK (stance IN ('offers', 'declines')),
+  -- Where this capability applies. Empty = anywhere. Lower-cased by the writer.
+  cities      text[]      NOT NULL DEFAULT '{}',
+  note        text,
+  -- NULL when seeded by the import.
+  set_by      uuid        REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
 
--- Wire the soft hooks Sia 0169 reserved for this table, the same way 0181 did
--- for clients. ON DELETE SET NULL: losing a vendor row must never delete the
--- WhatsApp group or contact that pointed at it.
-alter table sia.wag_groups
-  add constraint wag_groups_vendor_fk
-  foreign key (vendor_id) references public.vendors(id) on delete set null;
+-- One row per (vendor, category, service) — a vendor cannot both offer and
+-- decline the same thing; COALESCE so NULL service ("whole category") is one
+-- key, not infinitely many (UNIQUE treats NULLs as distinct).
+CREATE UNIQUE INDEX idx_vendor_capabilities_key
+  ON public.vendor_capabilities (vendor_id, category, COALESCE(service, ''));
+-- The ranker's candidate lookup: category (+ service) + stance → vendor ids.
+CREATE INDEX idx_vendor_capabilities_lookup
+  ON public.vendor_capabilities (category, stance, service);
+CREATE INDEX idx_vendor_capabilities_cities
+  ON public.vendor_capabilities USING gin (cities);
 
-alter table sia.wag_contacts
-  add constraint wag_contacts_vendor_fk
-  foreign key (vendor_id) references public.vendors(id) on delete set null;
+CREATE TRIGGER vendor_capabilities_updated_at
+  BEFORE UPDATE ON public.vendor_capabilities
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+COMMENT ON TABLE public.vendor_capabilities IS
+  'What a vendor offers / declines per category (+ optional service, + cities). Editable config, '
+  'one row per (vendor, category, service). declines rows only ever come from a human.';
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- RLS — admin/founder SELECT only (the 0181 clients posture; the concierge /
+-- shop floor gets access with the Sia UI, as its own migration). No user
+-- write policies anywhere: writes are service-role only via actions/vendors.ts
+-- (requireProfile is the trust boundary) and the import scripts.
+-- InitPlan-hoisted `(SELECT get_user_role())` per 0088.
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE public.vendors              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vendor_capabilities  ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY vendors_select_admin ON public.vendors
+  FOR SELECT TO authenticated
+  USING ((SELECT get_user_role()) IN ('admin', 'founder'));
+
+CREATE POLICY vendor_capabilities_select_admin ON public.vendor_capabilities
+  FOR SELECT TO authenticated
+  USING ((SELECT get_user_role()) IN ('admin', 'founder'));
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The 0169 soft hooks become real now that the target exists (the 0181 way).
+-- ON DELETE SET NULL: losing a vendor row must never delete the WhatsApp group
+-- or contact that pointed at it.
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE sia.wag_groups
+  ADD CONSTRAINT wag_groups_vendor_fk
+  FOREIGN KEY (vendor_id) REFERENCES public.vendors(id) ON DELETE SET NULL;
+
+ALTER TABLE sia.wag_contacts
+  ADD CONSTRAINT wag_contacts_vendor_fk
+  FOREIGN KEY (vendor_id) REFERENCES public.vendors(id) ON DELETE SET NULL;

@@ -18,7 +18,7 @@ import {
 import { formErrors } from "@/lib/validations/form-errors";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { getCurrentProfile, getProfileById } from "@/lib/services/profiles-service";
-import { requireProfile } from "@/lib/actions/_auth";
+import { requireProfile, actorFromProfile } from "@/lib/actions/_auth";
 import { getTaskRemarks, getCompletedTasks } from "@/lib/services/tasks-service";
 import type { CompletedTasksResult } from "@/lib/services/tasks-service";
 import { emitTaskEvent, resolveTaskDomain } from "@/lib/services/task-events";
@@ -31,7 +31,6 @@ import {
   updateTaskStatusCore,
   updateTaskCore,
   deleteTaskCore,
-  type MutationActor,
   type TaskMutationTarget,
 } from "@/lib/services/task-mutations";
 import type { ActionResult } from "@/lib/types/index";
@@ -40,24 +39,11 @@ import type {
   TaskPriority,
   TaskRemark,
   ChecklistItem,
-  Profile,
 } from "@/lib/types/database";
 import type {
   TaskRemarkWithAuthor,
   SubtaskWithAssignee,
 } from "@/lib/services/tasks-service";
-
-// Map a verified session profile to the principal-derived MutationActor the
-// task cores take. The session caller IS the principal here — the future Elaya
-// write tool (Brief 3) builds the same actor shape from the Elaya principal.
-function actorFromProfile(p: Profile): MutationActor {
-  return {
-    userId: p.id,
-    role: p.role,
-    domain: p.domain,
-    fullName: p.full_name ?? "A teammate",
-  };
-}
 
 // Validate that a cross-user task assignee exists and is ACTIVE before the write
 // (audit #5). Cross-DOMAIN assignment is intentionally allowed, so this checks

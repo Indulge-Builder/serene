@@ -17,6 +17,7 @@
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { formErrors } from "@/lib/validations/form-errors";
 import type { Profile, UserRole } from "@/lib/types";
+import type { MutationActor } from "@/lib/services/lead-mutations";
 
 export type RequireProfileResult =
   | { ok: true; profile: Profile }
@@ -35,4 +36,20 @@ export async function requireProfile(
     return { ok: false, result: { data: null, error: formErrors.unauthorized } };
   }
   return { ok: true, profile };
+}
+
+/**
+ * THE session-profile → MutationActor mapper (R-01 — one definition; tasks.ts,
+ * vendors.ts and every future action import it). The session caller IS the
+ * principal here — an Elaya write tool builds the same shape from its principal.
+ * Lives beside requireProfile because it is the actions-layer seam into the
+ * *-mutations cores: `core(actorFromProfile(auth.profile), input)`.
+ */
+export function actorFromProfile(p: Profile): MutationActor {
+  return {
+    userId: p.id,
+    role: p.role,
+    domain: p.domain,
+    fullName: p.full_name ?? "A teammate",
+  };
 }

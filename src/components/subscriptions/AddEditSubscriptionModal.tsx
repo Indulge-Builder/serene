@@ -4,7 +4,7 @@
 // AddRechargeModal pattern). Departments = multi-select dropdown over app_domains.
 // Password has a reveal toggle and round-trips exactly (never sanitized).
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -56,6 +56,35 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
   const [showPassword, setShowPassword] = useState(false);
   const [notes, setNotes] = useState(subscription?.notes ?? "");
   const [isPending, startTransition] = useTransition();
+
+  // Re-seed every field each time the modal OPENS.
+  //
+  // A `useState(initial)` initialiser runs once, on first mount — and the
+  // button keeps this component mounted after that (useMountOnFirstOpen, so the
+  // exit animation can play). The result was that adding a second subscription
+  // showed the first one's values still sitting in the fields: type "Claude",
+  // save, reopen, and Claude was still there. The same effect re-seeds from
+  // `subscription` when the modal is opened to EDIT a different row.
+  //
+  // The AddLeadModal precedent (R-01), which does the same on `open`.
+  useEffect(() => {
+    if (!open) return;
+    setName(subscription?.name ?? "");
+    setToolName(subscription?.toolName ?? "");
+    setDepartments(subscription?.departments ?? []);
+    setType(subscription?.type ?? "monthly");
+    setCurrency(subscription?.currency ?? "INR");
+    setAmount(subscription?.amount != null ? String(subscription.amount) : "");
+    setDueDay(subscription?.due_day != null ? String(subscription.due_day) : "");
+    setDueDate(subscription?.due_date ?? "");
+    setLogin(subscription?.login ?? "");
+    // Never pre-filled: the stored password is encrypted (0166) and blank on
+    // save means "keep the existing one".
+    setPassword("");
+    setShowPassword(false);
+    setNotes(subscription?.notes ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, subscription?.id]);
 
   const isTopUp = type === "top_up";
   const needsDay = type === "monthly" || type === "other";

@@ -63,7 +63,10 @@ export type ElayaReadToolName =
   | 'get_escalations'
   | 'get_domain_health'
   | 'get_campaigns'
-  | 'get_budget';
+  | 'get_budget'
+  // Vendors (0182–0189) — admin/founder, mirroring the tables' RLS
+  | 'find_vendors'
+  | 'get_vendor_details';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
@@ -729,6 +732,129 @@ const getBudget: ElayaTool = {
 // Registry + per-role toolsets
 // ─────────────────────────────────────────────
 
+// ─────────────────────────────────────────────
+// Vendors
+//
+// FOUNDER_UP, not the spec's "concierge + shop staff": the 0182/0184 tables are
+// admin/founder SELECT only, so a manager holding the tool would call it and be
+// refused by the database. The toolset widens the day the RLS does, in one line.
+//
+// Both wrap the SAME functions /vendors calls (elayaData.rankVendors /
+// .getVendor). The spec is explicit that Elaya's tool, the Sia ticket screen and
+// the Chrome extension all call one ranking and none of them re-rank.
+// ─────────────────────────────────────────────
+
+const findVendors: ElayaTool = {
+  name: 'find_vendors',
+  roles: FOUNDER_UP,
+  description:
+    'Find the best suppliers for a request, ranked. Call this whenever the user asks who to use ' +
+    'for something — "who do we use for cakes", "need a florist in Goa", "someone to arrange an ' +
+    'airport pickup". Pass the request in the user\'s OWN words as `request`: it is matched ' +
+    'against the titles of 46,000 past jobs, so it finds suppliers even when the exact words were ' +
+    'never used before. Each result carries the matching past jobs as evidence — quote one when ' +
+    'you answer, so the user can judge the suggestion rather than trust it. A score of null means ' +
+    'nobody has rated that vendor yet; say so rather than implying a low score.',
+  schema: z.object({
+    request: z.string().trim().min(2).max(300),
+    city: z.string().trim().max(80).optional(),
+    limit: z.number().int().min(1).max(10).optional(),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      request: { type: 'string', description: "The request in the user's own words, e.g. 'black forest cake for a birthday'" },
+      city: { type: 'string', description: 'Optional city to narrow to, e.g. goa' },
+      limit: { type: 'number', description: 'How many vendors to return (default 5)' },
+    },
+    required: ['request'],
+    additionalProperties: false,
+  },
+  run: async (_principal, input) => {
+    const { request, city, limit } = input as { request: string; city?: string; limit?: number };
+    const ranked = await elayaData.rankVendors({
+      phrase: request,
+      city: city?.trim().toLowerCase() || null,
+      limit: limit ?? 5,
+    });
+    if (ranked.length === 0) {
+      return {
+        request,
+        vendors: [],
+        note:
+          'No vendor has a matching job on record. This does not mean none exists — only that we ' +
+          'have never used one for this. Suggest adding the vendor rather than guessing a name.',
+      };
+    }
+    return {
+      request,
+      vendors: ranked.map((r) => ({
+        id: r.vendor.id,
+        name: r.vendor.name,
+        category: r.vendor.category,
+        city: r.vendor.home_city,
+        phone: r.vendor.primary_phone,
+        // null = nobody has rated them; the model is told above not to read it as low.
+        score: r.score,
+        why: r.reasons,
+        cautions: r.flags,
+      })),
+    };
+  },
+};
+
+const getVendorDetails: ElayaTool = {
+  name: 'get_vendor_details',
+  roles: FOUNDER_UP,
+  description:
+    'Everything known about one vendor: how to reach them, what they have been used for, their ' +
+    'recent jobs, and their score with the reasons behind it. Call after find_vendors when the ' +
+    'user asks about a specific supplier by name. Needs the vendor id from find_vendors.',
+  schema: z.object({ vendor_id: z.string().uuid() }),
+  jsonSchema: {
+    type: 'object',
+    properties: { vendor_id: { type: 'string', description: 'The id returned by find_vendors' } },
+    required: ['vendor_id'],
+    additionalProperties: false,
+  },
+  run: async (_principal, input) => {
+    const { vendor_id } = input as { vendor_id: string };
+    const d = await elayaData.getVendor(vendor_id);
+    if (!d) return { error: 'No vendor with that id.' };
+    const RECENT = 10;
+    return {
+      vendor: {
+        id: d.vendor.id,
+        name: d.vendor.name,
+        aliases: d.vendor.aliases,
+        category: d.vendor.category,
+        subcategory: d.vendor.subcategory,
+        status: d.vendor.status,
+        city: d.vendor.home_city,
+        phone: d.vendor.primary_phone,
+        contacts: d.vendor.contacts,
+      },
+      timesUsed: d.timesUsed,
+      score: d.score.score,
+      why: d.score.reasons,
+      offers: d.capabilities
+        .filter((c) => c.stance === 'offers')
+        .map((c) => (c.service ? `${c.category} > ${c.service}` : c.category)),
+      declines: d.capabilities
+        .filter((c) => c.stance === 'declines')
+        .map((c) => (c.service ? `${c.category} > ${c.service}` : c.category)),
+      recentJobs: d.engagements.slice(0, RECENT).map((e) => ({
+        title: e.title,
+        category: e.category,
+        when: e.started_at,
+        outcome: e.outcome,
+      })),
+      ratings: d.ratings,
+      reviewerCount: d.reviewerCount,
+    };
+  },
+};
+
 const ALL_TOOLS = [
   searchLeads,
   getColdLeads,
@@ -742,6 +868,8 @@ const ALL_TOOLS = [
   getDomainHealth,
   getCampaigns,
   getBudget,
+  findVendors,
+  getVendorDetails,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));

@@ -82,6 +82,29 @@ export const formErrors = {
   subscriptionInvoiceUploadFailed: "Invoice upload failed. Please check your connection and try again.",
   subscriptionNotFound:            "Subscription not found.",
   subscriptionSaveFailed:          "Couldn't save the subscription. Please try again.",
+
+  // Vendors
+  vendorNameRequired:         "Please enter the vendor's name.",
+  vendorNameTaken:            "A vendor with this name already exists.",
+  vendorPhoneInvalid:         "Please enter a valid phone number.",
+  vendorCategoryRequired:     "Please choose a category.",
+  vendorStatusInvalid:        "Please choose a valid vendor status.",
+  vendorStanceInvalid:        "Please choose Offers or Declines.",
+  vendorPreferenceInvalid:    "Please choose Preferred or Avoid.",
+  vendorOutcomeInvalid:       "Please choose an outcome.",
+  vendorDateInvalid:          "Please enter a valid date and time.",
+  vendorAmountInvalid:        "Please enter a valid INR amount.",
+  vendorRatingInvalid:        "Ratings are 1 to 5.",
+  vendorReviewEmpty:          "Add at least one rating or a comment.",
+  vendorNotFound:             "Vendor not found.",
+  vendorEngagementNotFound:   "Job not found.",
+  vendorEngagementClosed:     "This job is already closed.",
+  vendorEngagementMismatch:   "That job belongs to a different vendor.",
+  vendorCapabilityNotFound:   "Capability not found.",
+  vendorNothingToUpdate:      "Nothing to update.",
+  vendorNoteRequired:         "Write something before adding the note.",
+  vendorNoteTooLong:          "Note must be 4000 characters or fewer.",
+  vendorSaveFailed:           "Couldn't save. Please try again.",
 } as const;
 
 export type FormError = (typeof formErrors)[keyof typeof formErrors];
