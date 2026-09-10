@@ -116,7 +116,7 @@ CREATE TABLE public.deals (
   deal_duration text NULL CHECK (deal_duration IS NULL OR deal_duration IN ('3_months','6_months','1_year')),
   deal_category text NULL CHECK (deal_category IS NULL OR deal_category IN ('watch','bag','event','jewellery','small_luxury','accessories','other')),  -- migration 0122
   assigned_to   uuid NULL REFERENCES public.profiles(id),
-  source        text NULL CHECK (source IS NULL OR source IN ('meta','google','website','whatsapp','referral','ypo','events')),  -- migration 0075
+  source        text NULL CHECK (source IS NULL OR source IN ('meta','google','website','whatsapp','referral','ypo','events','shop_app','self')),  -- migration 0075; extended 0180 (shop_app), 0182 (self)
   won_at        timestamptz NOT NULL DEFAULT now(),  -- defaults to now(); walk-ins may supply a past Deal Date. Immutable after insert.
   archived_at   timestamptz NULL,
   created_at    timestamptz NOT NULL DEFAULT now(),

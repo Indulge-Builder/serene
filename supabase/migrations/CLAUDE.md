@@ -260,3 +260,4 @@ UI labels live in `src/lib/constants/task-types.ts`. Nurturing auto-task in `upd
 
 Never reintroduce `general_follow_up` or `email` in application writes.
 | `20260904000181_clients_identity_spine.sql` | `public.clients` — the client identity spine (one row per human; strict membership summary + `import_raw` provenance; `identity_status` unverified/verified; admin/founder SELECT, service-role writes). Turns the 0169 soft hooks into real FKs: `sia.wag_groups.client_id` + `sia.wag_contacts.client_id` → `clients(id)` ON DELETE SET NULL. Populated by `scripts/import-clients-and-map-groups.py` |
+| `20260910000182_lead_source_self.sql` | `deals_source_check` extended with `self` (new `LEAD_SOURCES` entry — a lead the team member sourced themselves). No new table. |

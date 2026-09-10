@@ -12,6 +12,44 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-10 — New lead source: Self
+
+Why: the team needed a way to mark leads a member brought in themselves (own network,
+outreach) that belong to no channel.
+
+What changed: one `{ id: "self", label: "Self" }` line in `lib/constants/lead-sources.ts`.
+The filter dropdown, Add Lead form, dossier source picker, Zod enum and labels all derive
+from that constant. Migration 0182 extends `deals_source_check` with `self` (the CHECK is
+coupled to `LEAD_SOURCES`, as 0180 established). **Applied to prod 2026-09-10 via
+`supabase db push`** (the founder ran it; only 0182 was pending).
+
+---
+
+## 2026-09-10 — Leads search box: typed letters vanished mid-word
+
+Why: on `/leads` the search field ate characters while typing. Type "john d", and the box
+snapped back to "jo" or "johnd" with the cursor jumping.
+
+Cause: `useUrlFilters` re-synced the search input from the URL on **every** `params` change,
+including the echo of its own debounced push. The leads navigation is slow (server-side table
+fetch), so by the time `?search=jo` landed the user had typed more, and the effect overwrote
+the box with the older, trimmed value. An unrelated filter commit (a Status toggle) wiped a
+pending search the same way. Every filter bar on the hook (leads, deals, campaigns,
+performance, subscriptions) had the bug; leads showed it most because its page is slowest.
+
+What changed (`src/hooks/useUrlFilters.ts` only, no consumer edits):
+
+- An in-flight ledger of search values the hook has pushed but not yet seen echoed in the
+  URL. The re-sync effect now runs only when the `search` param actually changed AND the new
+  value is not one of ours. Back/forward and `?search=` links still re-sync; our own echo and
+  unrelated filter commits never touch the input. Trailing spaces survive while typing.
+- The debounce compares against the newest in-flight push, not the committed URL, so
+  "type then delete back to empty" while a navigation is pending still pushes the correction.
+- `push()` carries the newest in-flight search along, so a filter commit that lands after a
+  pending search navigation cannot drop the search param from the URL.
+
+---
+
 ## 2026-09-04 — Sia intelligence plan (the W5 / Phase 3c spec)
 
 Why: both plans promised a detailed spec before building the intelligence layer; the Python

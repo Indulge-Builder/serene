@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "src/hooks/useUrlFilters.ts": {
-    "mtime": 1789032813.3001645,
-    "ast_hash": "e24f306e9f8691466c128e4d10c82bf1",
+    "mtime": 1781342834.9545445,
+    "ast_hash": "3f79ea2893d6439be66751d3f9a743e6",
     "semantic_hash": ""
   },
   "src/hooks/useWidgetData.ts": {
@@ -1765,8 +1765,8 @@
     "semantic_hash": ""
   },
   "src/lib/constants/lead-sources.ts": {
-    "mtime": 1789033048.8102367,
-    "ast_hash": "c105733aac4a0a95fa07e3ecca8cc822",
+    "mtime": 1788180028.9578195,
+    "ast_hash": "d5d1b9b24ab0c3df9c36cd16463863cf",
     "semantic_hash": ""
   },
   "src/lib/constants/lead-statuses.ts": {
@@ -3120,8 +3120,8 @@
     "semantic_hash": ""
   },
   "docs/01-vision.md": {
-    "mtime": 1788512088.2982755,
-    "ast_hash": "81307f066bd6668bcc1c515151de5a65",
+    "mtime": 1782975640.9649537,
+    "ast_hash": "8bcc8b0ef5169ec5291b59bba08e9ff7",
     "semantic_hash": ""
   },
   "docs/Indulge-Global.md": {
@@ -3130,8 +3130,8 @@
     "semantic_hash": ""
   },
   "docs/README.md": {
-    "mtime": 1788512088.2968361,
-    "ast_hash": "35cb978e2422d6fbc497ec93361a15a5",
+    "mtime": 1787996432.084267,
+    "ast_hash": "81c9b0eeb4db4e58e852c02875745402",
     "semantic_hash": ""
   },
   "docs/TODO.md": {
@@ -3155,8 +3155,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1789033090.1996768,
-    "ast_hash": "090db803246c9cf5364f4c782d38dd3e",
+    "mtime": 1788193138.2651317,
+    "ast_hash": "e15d7438fd5ae19dcd47a2f84a05ec06",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789033048.8323736,
-    "ast_hash": "03b4730a69a6bea6dc28d7792892ff67",
+    "mtime": 1788461607.557014,
+    "ast_hash": "1b1ddce6ad751d48bf19c74b1281d721",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3250,8 +3250,8 @@
     "semantic_hash": ""
   },
   "docs/modules/sia.md": {
-    "mtime": 1788519751.9135122,
-    "ast_hash": "3a196499e7bb6dde343a39abfd456e4e",
+    "mtime": 1782976893.202194,
+    "ast_hash": "10d58cb57d9fcb7117a4fdc39c3e3efc",
     "semantic_hash": ""
   },
   "docs/modules/voice-dictation.md": {
@@ -3310,8 +3310,8 @@
     "semantic_hash": ""
   },
   "docs/pages/deals.md": {
-    "mtime": 1789033048.8164866,
-    "ast_hash": "2f815b0fc70da265a4274d788de4994d",
+    "mtime": 1782976449.7311242,
+    "ast_hash": "ecb176da5fb81eb43ef4902432ba85e2",
     "semantic_hash": ""
   },
   "docs/pages/elaya.md": {
@@ -3505,8 +3505,8 @@
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {
-    "mtime": 1789033048.8146415,
-    "ast_hash": "aec6738eaac4b066ae7fd1f1d18d579e",
+    "mtime": 1787377810.4277284,
+    "ast_hash": "722636f9d4ea2a64b127462bdea1d65b",
     "semantic_hash": ""
   },
   "imgs/DB-Schema-img-2.png": {
@@ -6862,36 +6862,6 @@
   "evals/results/20260903-185251.json": {
     "mtime": 1788461571.3517716,
     "ast_hash": "5c65a5c1888ba3b919afbbd45ac50a92",
-    "semantic_hash": ""
-  },
-  "scripts/import-clients-and-map-groups.py": {
-    "mtime": 1788522086.9718955,
-    "ast_hash": "42548468e125899125e3e8aa9c4d4f58",
-    "semantic_hash": ""
-  },
-  "supabase/migrations/20260904000181_clients_identity_spine.sql": {
-    "mtime": 1788461942.4135723,
-    "ast_hash": "04f206fac887a009e0f94ba13a36bd86",
-    "semantic_hash": ""
-  },
-  "docs/modules/vendors.md": {
-    "mtime": 1788512096.6606045,
-    "ast_hash": "212589ca055d6256f24aef30075c3929",
-    "semantic_hash": ""
-  },
-  "scripts/sia-lid-backfill.py": {
-    "mtime": 1788521882.671297,
-    "ast_hash": "6b6ed8d916debac409f7162ae0f8374e",
-    "semantic_hash": ""
-  },
-  "plan-sia-intelligence.md": {
-    "mtime": 1788522097.6252062,
-    "ast_hash": "304e8170522b9be1f34f2ada93188ee4",
-    "semantic_hash": ""
-  },
-  "supabase/migrations/20260910000182_lead_source_self.sql": {
-    "mtime": 1789033048.8117085,
-    "ast_hash": "87b41b0c074acdff94e731902807468a",
     "semantic_hash": ""
   }
 }

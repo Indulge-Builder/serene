@@ -1765,8 +1765,8 @@
     "semantic_hash": ""
   },
   "src/lib/constants/lead-sources.ts": {
-    "mtime": 1789033048.8102367,
-    "ast_hash": "c105733aac4a0a95fa07e3ecca8cc822",
+    "mtime": 1788180028.9578195,
+    "ast_hash": "d5d1b9b24ab0c3df9c36cd16463863cf",
     "semantic_hash": ""
   },
   "src/lib/constants/lead-statuses.ts": {
@@ -3155,8 +3155,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1789033090.1996768,
-    "ast_hash": "090db803246c9cf5364f4c782d38dd3e",
+    "mtime": 1788193138.2651317,
+    "ast_hash": "e15d7438fd5ae19dcd47a2f84a05ec06",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789033048.8323736,
-    "ast_hash": "03b4730a69a6bea6dc28d7792892ff67",
+    "mtime": 1789032843.874769,
+    "ast_hash": "fd3fb5e39e75c47ca666d209a4f2f8c0",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3310,8 +3310,8 @@
     "semantic_hash": ""
   },
   "docs/pages/deals.md": {
-    "mtime": 1789033048.8164866,
-    "ast_hash": "2f815b0fc70da265a4274d788de4994d",
+    "mtime": 1782976449.7311242,
+    "ast_hash": "ecb176da5fb81eb43ef4902432ba85e2",
     "semantic_hash": ""
   },
   "docs/pages/elaya.md": {
@@ -3505,8 +3505,8 @@
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {
-    "mtime": 1789033048.8146415,
-    "ast_hash": "aec6738eaac4b066ae7fd1f1d18d579e",
+    "mtime": 1788462698.0068755,
+    "ast_hash": "2b628b5b3bf32cd05fcab547352a24d5",
     "semantic_hash": ""
   },
   "imgs/DB-Schema-img-2.png": {
@@ -6887,11 +6887,6 @@
   "plan-sia-intelligence.md": {
     "mtime": 1788522097.6252062,
     "ast_hash": "304e8170522b9be1f34f2ada93188ee4",
-    "semantic_hash": ""
-  },
-  "supabase/migrations/20260910000182_lead_source_self.sql": {
-    "mtime": 1789033048.8117085,
-    "ast_hash": "87b41b0c074acdff94e731902807468a",
     "semantic_hash": ""
   }
 }

@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/leads/[id]/page.tsx": {
-    "mtime": 1788180147.5497067,
-    "ast_hash": "a156f8713015cc1f81681d374e1286ec",
+    "mtime": 1782944421.2261808,
+    "ast_hash": "19f7ba2f5840a75bd85189e0d2f48b50",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/leads/loading.tsx": {
@@ -430,8 +430,8 @@
     "semantic_hash": ""
   },
   "src/app/api/elaya/chat/route.ts": {
-    "mtime": 1788459168.3013322,
-    "ast_hash": "147a391742c4f1f0f5e8421e3f051a43",
+    "mtime": 1782415774.4247444,
+    "ast_hash": "2bcec660cb94062ae38c84b872f29760",
     "semantic_hash": ""
   },
   "src/app/api/manifest/route.ts": {
@@ -440,8 +440,8 @@
     "semantic_hash": ""
   },
   "src/app/api/webhooks/leads/route.ts": {
-    "mtime": 1788179914.2312374,
-    "ast_hash": "b390ec8654f78d02feb3d9c20e4d8220",
+    "mtime": 1781614231.0984387,
+    "ast_hash": "b3ea38f5c88a9b4c65a80be9a6fcb049",
     "semantic_hash": ""
   },
   "src/app/api/webhooks/whatsapp/route.ts": {
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "src/hooks/useUrlFilters.ts": {
-    "mtime": 1789032813.3001645,
-    "ast_hash": "e24f306e9f8691466c128e4d10c82bf1",
+    "mtime": 1781342834.9545445,
+    "ast_hash": "3f79ea2893d6439be66751d3f9a743e6",
     "semantic_hash": ""
   },
   "src/hooks/useWidgetData.ts": {
@@ -1765,8 +1765,8 @@
     "semantic_hash": ""
   },
   "src/lib/constants/lead-sources.ts": {
-    "mtime": 1789033048.8102367,
-    "ast_hash": "c105733aac4a0a95fa07e3ecca8cc822",
+    "mtime": 1781342835.0936413,
+    "ast_hash": "33165428d0898bb51d21e9f5f962a7e7",
     "semantic_hash": ""
   },
   "src/lib/constants/lead-statuses.ts": {
@@ -1900,8 +1900,8 @@
     "semantic_hash": ""
   },
   "src/lib/leads/adapters.ts": {
-    "mtime": 1788180028.9582903,
-    "ast_hash": "c6bbeec950e2b21a518674df03a00d84",
+    "mtime": 1782944226.8634226,
+    "ast_hash": "afb7c7b1f25f08cb00131fb514c7d7fd",
     "semantic_hash": ""
   },
   "src/lib/redis.ts": {
@@ -1950,8 +1950,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/elaya-whatsapp.ts": {
-    "mtime": 1788177213.4059446,
-    "ast_hash": "7600f2caff26988526d4f80c73b43d00",
+    "mtime": 1787816367.7847497,
+    "ast_hash": "67e81fb523258362c91ce3ffa536b462",
     "semantic_hash": ""
   },
   "src/lib/services/intelligence-service.ts": {
@@ -1960,8 +1960,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/lead-assignment-notify.ts": {
-    "mtime": 1788179882.6261108,
-    "ast_hash": "1042c9990f422dd03d03ca899b82a270",
+    "mtime": 1781647290.8238325,
+    "ast_hash": "09ecdc605e3bebc283e88d738805b435",
     "semantic_hash": ""
   },
   "src/lib/services/lead-cache.ts": {
@@ -1970,8 +1970,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/lead-ingestion.ts": {
-    "mtime": 1788180028.9585805,
-    "ast_hash": "bd845241bf9bf5bdff95eafad85a9146",
+    "mtime": 1781680922.0217655,
+    "ast_hash": "4d896702159f29e14112ee6e68d3705f",
     "semantic_hash": ""
   },
   "src/lib/services/lead-mutations.ts": {
@@ -1980,13 +1980,13 @@
     "semantic_hash": ""
   },
   "src/lib/services/leads-service.ts": {
-    "mtime": 1788418345.060978,
-    "ast_hash": "5164a9d23340ae05fb1c017ed5d0c4ad",
+    "mtime": 1786097299.7385128,
+    "ast_hash": "dde2e1f5011795104f544cf9f709fe14",
     "semantic_hash": ""
   },
   "src/lib/services/llm-providers-service.ts": {
-    "mtime": 1788459092.9533079,
-    "ast_hash": "ebdfc64ea02e0f002b1ccb612bb3ce83",
+    "mtime": 1782995007.8656778,
+    "ast_hash": "e77c35ea40782c6a4897403cad19fa41",
     "semantic_hash": ""
   },
   "src/lib/services/notification-prefs-service.ts": {
@@ -2095,8 +2095,8 @@
     "semantic_hash": ""
   },
   "src/lib/types/database.ts": {
-    "mtime": 1788179748.696514,
-    "ast_hash": "62e2ba3068a13d3d1b46e19f9bc77e77",
+    "mtime": 1787843771.0253863,
+    "ast_hash": "f994eb2eeafe06284de5ba4c34eaed6b",
     "semantic_hash": ""
   },
   "src/lib/types/elaya.ts": {
@@ -3085,8 +3085,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1788459458.2480803,
-    "ast_hash": "cb4dbdef8c36566f24c55e0a80b385a8",
+    "mtime": 1786358342.256016,
+    "ast_hash": "e6ba9b65a58ee1d8483e98d0506feda7",
     "semantic_hash": ""
   },
   "README.md": {
@@ -3120,8 +3120,8 @@
     "semantic_hash": ""
   },
   "docs/01-vision.md": {
-    "mtime": 1788512088.2982755,
-    "ast_hash": "81307f066bd6668bcc1c515151de5a65",
+    "mtime": 1782975640.9649537,
+    "ast_hash": "8bcc8b0ef5169ec5291b59bba08e9ff7",
     "semantic_hash": ""
   },
   "docs/Indulge-Global.md": {
@@ -3130,8 +3130,8 @@
     "semantic_hash": ""
   },
   "docs/README.md": {
-    "mtime": 1788512088.2968361,
-    "ast_hash": "35cb978e2422d6fbc497ec93361a15a5",
+    "mtime": 1787996432.084267,
+    "ast_hash": "81c9b0eeb4db4e58e852c02875745402",
     "semantic_hash": ""
   },
   "docs/TODO.md": {
@@ -3155,8 +3155,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1789033090.1996768,
-    "ast_hash": "090db803246c9cf5364f4c782d38dd3e",
+    "mtime": 1783083062.9173357,
+    "ast_hash": "dbe6a232a3b86e47763d9b385c22ce1f",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789033048.8323736,
-    "ast_hash": "03b4730a69a6bea6dc28d7792892ff67",
+    "mtime": 1788094280.2313018,
+    "ast_hash": "6c32a4547a64a2e5fb6dccfb6a9fd074",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3210,8 +3210,8 @@
     "semantic_hash": ""
   },
   "docs/integrations/lead-ingestion.md": {
-    "mtime": 1788180378.0194576,
-    "ast_hash": "ea27cba7ee9a7a58bc98bbb5bc2761b0",
+    "mtime": 1782976011.7453282,
+    "ast_hash": "9e84840a204d582142b72488066474ba",
     "semantic_hash": ""
   },
   "docs/integrations/trigger-dev.md": {
@@ -3235,8 +3235,8 @@
     "semantic_hash": ""
   },
   "docs/modules/elaya.md": {
-    "mtime": 1788459492.864599,
-    "ast_hash": "939eb0c19bb98df681b7f7e8e72d933b",
+    "mtime": 1782975845.5214837,
+    "ast_hash": "8e9fc5e4a77ac2de7b16a14b59f544f7",
     "semantic_hash": ""
   },
   "docs/modules/gia.md": {
@@ -3250,8 +3250,8 @@
     "semantic_hash": ""
   },
   "docs/modules/sia.md": {
-    "mtime": 1788519751.9135122,
-    "ast_hash": "3a196499e7bb6dde343a39abfd456e4e",
+    "mtime": 1782976893.202194,
+    "ast_hash": "10d58cb57d9fcb7117a4fdc39c3e3efc",
     "semantic_hash": ""
   },
   "docs/modules/voice-dictation.md": {
@@ -3265,8 +3265,8 @@
     "semantic_hash": ""
   },
   "docs/operations/deployment.md": {
-    "mtime": 1788240303.982658,
-    "ast_hash": "5b307b480f69a4ee4510cca17a1ee6f2",
+    "mtime": 1782975882.1453545,
+    "ast_hash": "0793fc775a6a939bbb2af7de2f390e29",
     "semantic_hash": ""
   },
   "docs/operations/engine-health-check.md": {
@@ -3310,8 +3310,8 @@
     "semantic_hash": ""
   },
   "docs/pages/deals.md": {
-    "mtime": 1789033048.8164866,
-    "ast_hash": "2f815b0fc70da265a4274d788de4994d",
+    "mtime": 1782976449.7311242,
+    "ast_hash": "ecb176da5fb81eb43ef4902432ba85e2",
     "semantic_hash": ""
   },
   "docs/pages/elaya.md": {
@@ -3440,8 +3440,8 @@
     "semantic_hash": ""
   },
   "src/app/CLAUDE.md": {
-    "mtime": 1788459453.8800986,
-    "ast_hash": "0ec2eb81a54e9e86261e0b377a9af7a4",
+    "mtime": 1782971991.5867243,
+    "ast_hash": "92580020affaa228efa975e90b8d1bbe",
     "semantic_hash": ""
   },
   "src/app/api/webhooks/CLAUDE.md": {
@@ -3485,8 +3485,8 @@
     "semantic_hash": ""
   },
   "src/lib/CLAUDE.md": {
-    "mtime": 1788459445.3796353,
-    "ast_hash": "8c2c97b1fb90cdd197107812f9351247",
+    "mtime": 1783286283.4806447,
+    "ast_hash": "84ff96cad8ce00b247c3b62d28da49f2",
     "semantic_hash": ""
   },
   "src/lib/actions/CLAUDE.md": {
@@ -3495,8 +3495,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/CLAUDE.md": {
-    "mtime": 1788459438.7427375,
-    "ast_hash": "eaacc2138ee6a1d0b031dccc2718f9a3",
+    "mtime": 1782975866.2034578,
+    "ast_hash": "6eb6af4b431515652da5bcb87e1120ec",
     "semantic_hash": ""
   },
   "src/lib/services/CLAUDE.md": {
@@ -3505,8 +3505,8 @@
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {
-    "mtime": 1789033048.8146415,
-    "ast_hash": "aec6738eaac4b066ae7fd1f1d18d579e",
+    "mtime": 1787377810.4277284,
+    "ast_hash": "722636f9d4ea2a64b127462bdea1d65b",
     "semantic_hash": ""
   },
   "imgs/DB-Schema-img-2.png": {
@@ -4515,8 +4515,8 @@
     "semantic_hash": ""
   },
   "src/components/elaya/elaya-stream.ts": {
-    "mtime": 1788177103.874207,
-    "ast_hash": "af958bc0d8b18d52ffff9fba46f13044",
+    "mtime": 1783285657.858578,
+    "ast_hash": "b110e81db3b6835f0df36399d1a9d375",
     "semantic_hash": ""
   },
   "src/components/mobile/DomainSwiper.tsx": {
@@ -5035,8 +5035,8 @@
     "semantic_hash": ""
   },
   "evals/results/report.html": {
-    "mtime": 1788461571.436297,
-    "ast_hash": "8ce1ab5079f6d65cdc2006fe49658ac2",
+    "mtime": 1788094254.6702993,
+    "ast_hash": "a18f637786134ddd39fb59b7522a561c",
     "semantic_hash": ""
   },
   "backend/app/__init__.py": {
@@ -6460,8 +6460,8 @@
     "semantic_hash": ""
   },
   "backend/app/api/chat.py": {
-    "mtime": 1788459185.9486198,
-    "ast_hash": "3894ad2ff696bbe9aeb3de883b09df6c",
+    "mtime": 1788093509.693603,
+    "ast_hash": "363c03cb08f70505e7635a2ddb19adc7",
     "semantic_hash": ""
   },
   "backend/app/brain/__init__.py": {
@@ -6475,8 +6475,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/loop.py": {
-    "mtime": 1788240176.7319055,
-    "ast_hash": "6790f76b0029cd8580c5447bcc618d8b",
+    "mtime": 1788093509.669487,
+    "ast_hash": "bb3a461b94af66699200750e56c967f4",
     "semantic_hash": ""
   },
   "backend/app/brain/pii.py": {
@@ -6605,8 +6605,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/persona.py": {
-    "mtime": 1788240170.2971523,
-    "ast_hash": "41bffc069d09b5d104ec8ee0cd3c5873",
+    "mtime": 1788093494.1951802,
+    "ast_hash": "fd0442d68098f04c8519e81d9c409e5b",
     "semantic_hash": ""
   },
   "backend/app/core/periods.py": {
@@ -6690,8 +6690,8 @@
     "semantic_hash": ""
   },
   "docs/operations/maintenance.md": {
-    "mtime": 1788240303.9822102,
-    "ast_hash": "077fb88ee1cf2402b443311038415d4d",
+    "mtime": 1787996423.695991,
+    "ast_hash": "5dcaf6cc91e5e124508034fed54c6da4",
     "semantic_hash": ""
   },
   "backend/app/brain/resolver.py": {
@@ -6700,8 +6700,8 @@
     "semantic_hash": ""
   },
   "backend/app/core/elaya_store.py": {
-    "mtime": 1788240917.1950731,
-    "ast_hash": "840d9d2b62ba50907b46a48f8020f488",
+    "mtime": 1788092500.8782983,
+    "ast_hash": "ef8f83267d637b90ac3062c6d3fb6e0f",
     "semantic_hash": ""
   },
   "backend/app/tools/write_bridge.py": {
@@ -6752,146 +6752,6 @@
   ".impeccable/critique/2026-08-29T10-37-31Z__src-components-layout.md": {
     "mtime": 1787999851.1139302,
     "ast_hash": "a8583843bcace21cab15e004981e9cdb",
-    "semantic_hash": ""
-  },
-  "evals/results/20260831-115907.json": {
-    "mtime": 1788177547.9912846,
-    "ast_hash": "f11ba9f5f7e1ed76c90a5ce5db7863dc",
-    "semantic_hash": ""
-  },
-  "evals/results/20260831-115921.json": {
-    "mtime": 1788177561.011657,
-    "ast_hash": "5e4506ce299a82a748b191dab5c8cc45",
-    "semantic_hash": ""
-  },
-  "evals/results/20260831-115934.json": {
-    "mtime": 1788177574.4626336,
-    "ast_hash": "edbfe3a04d49ab74d989fa3a41ec35b5",
-    "semantic_hash": ""
-  },
-  "src/components/leads/ProductEnquiryCard.tsx": {
-    "mtime": 1788180236.0887969,
-    "ast_hash": "1d3323ea89f11cb9b46d2418375dbb31",
-    "semantic_hash": ""
-  },
-  "src/components/leads/ProductEnquiryCardAsync.tsx": {
-    "mtime": 1788180112.3667266,
-    "ast_hash": "994991733dee12928e67784e44415212",
-    "semantic_hash": ""
-  },
-  "src/lib/elaya/python-brain.ts": {
-    "mtime": 1788459131.8303034,
-    "ast_hash": "4637a87c4e5c5d904fa0831bc53b3603",
-    "semantic_hash": ""
-  },
-  "src/lib/elaya/sse.ts": {
-    "mtime": 1788177095.168462,
-    "ast_hash": "652959b60a366fb6f3cca95682ca7d67",
-    "semantic_hash": ""
-  },
-  "src/lib/services/lead-enquiries-service.ts": {
-    "mtime": 1788179748.6067042,
-    "ast_hash": "143493d8defbe129721458b0f0106d5d",
-    "semantic_hash": ""
-  },
-  "supabase/migrations/20260831000179_elaya_brain_channel_switch.sql": {
-    "mtime": 1788177139.994281,
-    "ast_hash": "1efa15dcbf520059f963f6556190c44b",
-    "semantic_hash": ""
-  },
-  "supabase/migrations/20260831000180_shop_lead_product_enquiries.sql": {
-    "mtime": 1788193093.4468884,
-    "ast_hash": "4815abf45f562d49f1fea887e8b6d7b3",
-    "semantic_hash": ""
-  },
-  "ok.md": {
-    "mtime": 1788178245.7062125,
-    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
-    "semantic_hash": ""
-  },
-  "evals/results/20260903-182109.json": {
-    "mtime": 1788459669.7813435,
-    "ast_hash": "649370d752a94b2a7e372e5cbf7e5f7f",
-    "semantic_hash": ""
-  },
-  "evals/results/20260903-183059.json": {
-    "mtime": 1788460259.8037734,
-    "ast_hash": "be1a949dd255c0dfa96abfd9ed6f910f",
-    "semantic_hash": ""
-  },
-  "evals/results/20260903-183248.json": {
-    "mtime": 1788460368.4840982,
-    "ast_hash": "04bfd0866cd55c14a723f81dd41aaacf",
-    "semantic_hash": ""
-  },
-  "evals/results/20260903-184311.json": {
-    "mtime": 1788460991.3486953,
-    "ast_hash": "1acd75e04792bee2db58aea0199e7cc7",
-    "semantic_hash": ""
-  },
-  "evals/results/20260903-184348.json": {
-    "mtime": 1788461028.1314352,
-    "ast_hash": "a72d08eae73030edd715bdbbd07c4209",
-    "semantic_hash": ""
-  },
-  "evals/results/20260903-184424.json": {
-    "mtime": 1788461064.4912426,
-    "ast_hash": "4eb92dc3332feb75e8d6eb125ff07892",
-    "semantic_hash": ""
-  },
-  "evals/results/20260903-184520.json": {
-    "mtime": 1788461120.9553244,
-    "ast_hash": "0f9a086f9ae45ae9bae7114b2215f553",
-    "semantic_hash": ""
-  },
-  "evals/results/20260903-184600.json": {
-    "mtime": 1788461160.2348967,
-    "ast_hash": "662fbd473e2fdf24d9060e77d38d1911",
-    "semantic_hash": ""
-  },
-  "evals/results/20260903-184615.json": {
-    "mtime": 1788461175.9962075,
-    "ast_hash": "61869400724b49797a5e89c3fc17a73b",
-    "semantic_hash": ""
-  },
-  "evals/results/20260903-185224.json": {
-    "mtime": 1788461544.0661218,
-    "ast_hash": "7a93dd6e074c56312f11c4c64819e40a",
-    "semantic_hash": ""
-  },
-  "evals/results/20260903-185251.json": {
-    "mtime": 1788461571.3517716,
-    "ast_hash": "5c65a5c1888ba3b919afbbd45ac50a92",
-    "semantic_hash": ""
-  },
-  "scripts/import-clients-and-map-groups.py": {
-    "mtime": 1788522086.9718955,
-    "ast_hash": "42548468e125899125e3e8aa9c4d4f58",
-    "semantic_hash": ""
-  },
-  "supabase/migrations/20260904000181_clients_identity_spine.sql": {
-    "mtime": 1788461942.4135723,
-    "ast_hash": "04f206fac887a009e0f94ba13a36bd86",
-    "semantic_hash": ""
-  },
-  "docs/modules/vendors.md": {
-    "mtime": 1788512096.6606045,
-    "ast_hash": "212589ca055d6256f24aef30075c3929",
-    "semantic_hash": ""
-  },
-  "scripts/sia-lid-backfill.py": {
-    "mtime": 1788521882.671297,
-    "ast_hash": "6b6ed8d916debac409f7162ae0f8374e",
-    "semantic_hash": ""
-  },
-  "plan-sia-intelligence.md": {
-    "mtime": 1788522097.6252062,
-    "ast_hash": "304e8170522b9be1f34f2ada93188ee4",
-    "semantic_hash": ""
-  },
-  "supabase/migrations/20260910000182_lead_source_self.sql": {
-    "mtime": 1789033048.8117085,
-    "ast_hash": "87b41b0c074acdff94e731902807468a",
     "semantic_hash": ""
   }
 }

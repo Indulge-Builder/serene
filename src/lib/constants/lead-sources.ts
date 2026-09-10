@@ -15,6 +15,10 @@ const LEAD_SOURCE_DEF = defineEnum([
   // Adding a value here REQUIRES extending the deals.source CHECK in the same
   // change (migration 0180 did so for this one).
   { id: "shop_app", label: "Shop App" },
+  // Self-sourced: a lead the team member brought in themselves (own network,
+  // outreach) — not attributable to any channel above. Migration 0182 extended
+  // the deals.source CHECK for it.
+  { id: "self",     label: "Self"     },
 ]);
 
 export const LEAD_SOURCES = LEAD_SOURCE_DEF.values;
