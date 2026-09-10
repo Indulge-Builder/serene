@@ -18,7 +18,8 @@ type UseUrlFiltersOptions = {
  *
  * - `searchInput` controlled state, seeded from the `search` URL param
  * - debounced (350ms via useDebounce) search → one `router.push`
- * - re-sync of the search input on browser back/forward (`params` change)
+ * - re-sync of the search input on browser back/forward only — never on the
+ *   echo of its own push (in-flight ledger) or on an unrelated filter commit
  * - `push(updates)` — buildFilterParams + startTransition router.push
  * - `pushDebounced(updates)` — merges rapid updates (multi-select toggle
  *   bursts) into one accumulator and flushes them as ONE router.push
@@ -57,9 +58,31 @@ export function useUrlFilters(options: UseUrlFiltersOptions = {}) {
   const [searchInput, setSearchInput] = useState(() => params.get('search') ?? '');
   const debouncedSearch = useDebounce(searchInput, searchDelay);
 
-  // Sync search input when the URL changes (browser back/forward, clearAll).
+  // Search values this hook has pushed that have not echoed back in the URL
+  // yet (oldest first). Several can be in flight on a slow list page: the
+  // debounce fires every 350ms while an RSC navigation takes longer.
+  const inFlightSearchRef = useRef<string[]>([]);
+  // The `search` param as of the last URL commit we processed.
+  const urlSearchRef = useRef(params.get('search') ?? '');
+
+  // Re-sync the input ONLY on an external search change (browser
+  // back/forward, a link with ?search=). Bug fix 2026-09-10: this used to run
+  // on every params change, so the echo of our own debounced push overwrote
+  // whatever the user had typed since (characters vanished, trailing space
+  // trimmed mid-word), and an unrelated filter commit wiped a pending search.
   useEffect(() => {
-    setSearchInput(params.get('search') ?? '');
+    const urlSearch = params.get('search') ?? '';
+    if (urlSearch === urlSearchRef.current) return;   // search param unchanged
+    urlSearchRef.current = urlSearch;
+
+    const idx = inFlightSearchRef.current.indexOf(urlSearch);
+    if (idx !== -1) {
+      // Our own echo — drop it and anything older it superseded; keep typing.
+      inFlightSearchRef.current.splice(0, idx + 1);
+      return;
+    }
+    inFlightSearchRef.current = [];
+    setSearchInput(urlSearch);
   }, [params]);
 
   /** Cancel the flush timer and hand back whatever was accumulated. */
@@ -72,9 +95,15 @@ export function useUrlFilters(options: UseUrlFiltersOptions = {}) {
   }
 
   function push(updates: Record<string, string | null>) {
+    // Carry the newest in-flight search along: paramsRef lags a pending
+    // search navigation, so a filter commit landing after it must not build
+    // on a URL that predates the search and silently drop it.
+    const inFlight = inFlightSearchRef.current.at(-1);
+    const carried: Record<string, string | null> =
+      inFlight !== undefined && !('search' in updates) ? { search: inFlight || null } : {};
     const next = buildFilterParams(
       paramsRef.current,
-      { ...drainPending(), ...updates },
+      { ...carried, ...drainPending(), ...updates },
       { resetKeys },
     );
     startTransition(() => {
@@ -89,9 +118,13 @@ export function useUrlFilters(options: UseUrlFiltersOptions = {}) {
   }
 
   // Push debounced search to URL (skips on mount and no-op after clearAll).
+  // Compares against the newest in-flight push, not the committed URL, so
+  // "type, then delete back" while a navigation is pending still corrects it.
   useEffect(() => {
-    const trimmed = debouncedSearch.trim();
-    if (trimmed === (paramsRef.current.get('search') ?? '')) return;
+    const trimmed   = debouncedSearch.trim();
+    const committed = inFlightSearchRef.current.at(-1) ?? urlSearchRef.current;
+    if (trimmed === committed) return;
+    inFlightSearchRef.current.push(trimmed);
     push({ search: trimmed || null });
     // deps: debouncedSearch only — params/router/pathname are stable refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,6 +133,7 @@ export function useUrlFilters(options: UseUrlFiltersOptions = {}) {
   function clearAll() {
     drainPending();
     setSearchInput('');
+    inFlightSearchRef.current.push('');
     startTransition(() => {
       router.push(pathname);
     });
