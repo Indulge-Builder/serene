@@ -3455,12 +3455,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
-      get_vendor_categories: {
-        Args: never
-        Returns: {
-          category: string
-        }[]
-      }
+      get_vendor_categories: { Args: never; Returns: string[] }
       get_vendor_category_usage: {
         Args: { p_vendor_id: string }
         Returns: {
@@ -3468,12 +3463,7 @@ export type Database = {
           count: number
         }[]
       }
-      get_vendor_cities: {
-        Args: never
-        Returns: {
-          city: string
-        }[]
-      }
+      get_vendor_cities: { Args: never; Returns: string[] }
       get_vendor_score_inputs: {
         Args: {
           p_category?: string

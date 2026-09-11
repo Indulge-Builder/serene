@@ -14,7 +14,7 @@
 // database.ts does not include these tables yet — rows are narrowed once per
 // query to the hand-declared types in types/vendor.ts (the subscription.ts posture).
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callAdminRpc } from "@/lib/services/rpc-helpers";
+import { callAdminRpc, callAdminRpcAll } from "@/lib/services/rpc-helpers";
 import { mapRows } from "@/lib/utils/rows";
 import { computeVendorScore, vendorFlags } from "@/lib/utils/vendor-score";
 import { readVendorRequest, type VendorSearchIntent } from "@/lib/services/vendor-search-intent";
@@ -136,18 +136,27 @@ export async function getVendorScoreInputs(
 ): Promise<Map<string, VendorScoreInputs>> {
   const map = new Map<string, VendorScoreInputs>();
   if (vendorIds.length === 0) return map;
-  const rows = await callAdminRpc<ScoreInputsRpcRow, VendorScoreInputs>(
-    "get_vendor_score_inputs",
-    {
-      p_vendor_ids: vendorIds,
-      p_since: scoreWindowStart(opts.now).toISOString(),
-      p_category: opts.category ?? null,
-      p_city: opts.city ?? null,
-    },
-    mapScoreInputs,
-    LOG,
-  );
-  for (const r of rows) map.set(r.vendorId, r);
+  // At most 500 ids per call (0192): the rollup returns one row per id, and a
+  // single RPC response is cut at PostgREST's 1,000 rows — the fallback path's
+  // 5,957 dining candidates would have come back as 1,000 rows and 4,957
+  // vendors scored as if they had no history. The chunks run in parallel.
+  const CHUNK = 500;
+  const chunks: string[][] = [];
+  for (let i = 0; i < vendorIds.length; i += CHUNK) chunks.push(vendorIds.slice(i, i + CHUNK));
+  const pages = await Promise.all(chunks.map((ids) =>
+    callAdminRpc<ScoreInputsRpcRow, VendorScoreInputs>(
+      "get_vendor_score_inputs",
+      {
+        p_vendor_ids: ids,
+        p_since: scoreWindowStart(opts.now).toISOString(),
+        p_category: opts.category ?? null,
+        p_city: opts.city ?? null,
+      },
+      mapScoreInputs,
+      LOG,
+    ),
+  ));
+  for (const rows of pages) for (const r of rows) map.set(r.vendorId, r);
   return map;
 }
 
@@ -301,7 +310,9 @@ export async function getVendorCategories(): Promise<string[]> {
   // column off every vendor row and de-duplicate here — PostgREST caps a select
   // at 1,000 rows and says nothing, so the filter list was whatever sorted into
   // the first thousand of 21,000.
-  return callAdminRpc<{ category: string }, string>("get_vendor_categories", {}, (r) => r.category, LOG);
+  // 0192: ONE text[] in one row — a row-per-category result was itself subject
+  // to PostgREST's 1,000-row response cap. Eleven today; the shape is the point.
+  return callAdminRpc<string, string>("get_vendor_categories", {}, (r) => r, LOG);
 }
 
 /** Every city a capability covers, plus the cities vendors are based in — the
@@ -312,7 +323,9 @@ export async function getVendorCities(): Promise<string[]> {
   // The Node union read all 25,000 capability rows to get at their city arrays
   // — capped at 1,000, so a city served only by a vendor outside that window did
   // not exist as far as the find-a-vendor parser was concerned.
-  return callAdminRpc<{ city: string }, string>("get_vendor_cities", {}, (r) => r.city, LOG);
+  // 0192: ONE text[] in one row. The row-per-city version returned exactly
+  // 1,000 of 2,071 on production — the cap was waiting at the RPC layer too.
+  return callAdminRpc<string, string>("get_vendor_cities", {}, (r) => r, LOG);
 }
 
 // ── Vendor-page reads ─────────────────────────────────────────────────────────────────
@@ -645,7 +658,10 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
     vendors = await getVendorsByIds([...historyById.keys()]);
   } else {
     if (!useCategory && !useService) return [];   // nothing left to match on
-    vendors = await callAdminRpc<VendorRow, VendorRow>(
+    // Paged (0192): a broad category is thousands of candidates — dining is
+    // 5,957, special-request 7,982 — and a single RPC response is cut at 1,000
+    // without a word. The function ORDERs BY id for exactly this.
+    vendors = await callAdminRpcAll<VendorRow, VendorRow>(
       "get_vendor_candidates",
       { p_category: useCategory, p_service: useService, p_city: useCity },
       (r) => r,

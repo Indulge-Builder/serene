@@ -107,6 +107,26 @@ hands it to `BackButton`, whose `preferHistory` prop and referrer trick are dele
 back to Find a vendor re-runs the search that led there — it rides along as `?q=` — rather than
 showing an empty box.
 
+**Applied to production 2026-09-11, after review approval.** `supabase db push --include-all` (the ten
+files — `--include-all` because `0000` is dated May and a plain push skips anything older than the last
+applied), then the loader (**57** jobs matched to real production profiles — the number a table copy
+would have got wrong), then the three cleanup steps in order. Production holds the identical dataset:
+**21,580 vendors · 25,596 capabilities · 46,574 jobs**, zero junk-labelled rows, the LLP carrying both
+"Gain access" spellings as aliases. Invoices uploaded separately (below).
+
+**And one more instance of the cap, found in that production verification — 0192.** `get_vendor_cities`
+returned **exactly 1,000** of 2,071. The SQL was right; PostgREST caps every *response* at
+`db-max-rows`, RPC results included, without an error — 0187/0188 had escaped the cap at the table layer
+and it was still waiting at the RPC layer. Measured the same way: `get_vendor_candidates` hands back
+1,000 of **5,957** for dining, 5,584 for travel, **7,982** for special-request, and the score rollup fed
+by them would be cut identically — 4,957 vendors scored as if they had no history. Fixed by shape: the
+two vocabularies return ONE `text[]` (a single row, which no row cap touches); the candidate set gains
+`ORDER BY v.id` so `callAdminRpcAll` can page it with Range headers (the order is the contract — an
+OFFSET page over an unordered result is exactly the loader's bug from earlier today); the rollup is
+asked for ≤500 ids per call, in parallel. A new file because 0187/0188 were on production by then (A-14).
+`get_vendor_agent_usage` (limit 3), `get_vendor_category_usage` (one row per category),
+`find_vendors_by_history` (≤20) and `search_vendors` (page of 30) sit under the cap by construction.
+
 **Verified from scratch**: `db reset` applies every migration (196 in the ledger, main's 0182 and our
 0183–0191 among them); `database.ts` regenerated and committed; loader → merges → purges → **loader
 again** (only the label-purged rows re-inserted, 0 merged vendors resurrected) → cleanup → identical
