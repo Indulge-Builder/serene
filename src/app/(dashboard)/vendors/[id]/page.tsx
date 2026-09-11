@@ -8,12 +8,24 @@ import { VendorInvoicesCard } from '@/components/vendors/VendorInvoicesCard';
 import { VendorNotesCard } from '@/components/vendors/VendorNotesCard';
 import { VENDORS_PATH } from '@/lib/constants/vendors';
 
-export default async function VendorPage({ params }: { params: Promise<{ id: string }> }) {
+type Props = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string }>;
+};
+
+export default async function VendorPage({ params, searchParams }: Props) {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
   if (profile.role !== 'admin' && profile.role !== 'founder') redirect('/dashboard');
 
-  const { id } = await params;
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
+  // Where Back goes. A vendor is reached from the list AND from Find a vendor,
+  // and each passes its own URL (filters, or the search) through ?from= — the
+  // leads pattern. Validated against our own prefix so the param can never
+  // send anyone off the app; anything else falls back to the list.
+  const rawFrom = sp.from ? decodeURIComponent(sp.from) : null;
+  const backHref = rawFrom?.startsWith(VENDORS_PATH) ? rawFrom : VENDORS_PATH;
+
   // One read for the whole page — every card is a slice of the same shape, so a
   // per-card Suspense boundary would only fan the same query out.
   const [detail, invoices, categoriesInUse] = await Promise.all([
@@ -33,9 +45,7 @@ export default async function VendorPage({ params }: { params: Promise<{ id: str
           marginBottom: 'var(--space-8)',
         }}
       >
-        {/* preferHistory: a vendor is reached from the list AND from Find a
-            vendor, so a fixed href would discard the search someone just ran. */}
-        <BackButton href={VENDORS_PATH} label="Back" preferHistory />
+        <BackButton href={backHref} label="Back" />
         <h1 className="type-page-title m-0">
           {detail.vendor.name}
           <span className="page-title-dot">.</span>
@@ -60,6 +70,9 @@ export default async function VendorPage({ params }: { params: Promise<{ id: str
           timesUsed={detail.timesUsed}
           ratings={detail.ratings}
           reviewerCount={detail.reviewerCount}
+          preferences={detail.preferences}
+          vendorId={detail.vendor.id}
+          currentUserId={profile.id}
         />
       </div>
 

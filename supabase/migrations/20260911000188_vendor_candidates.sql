@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0187 — Vendors: pick the ranker's candidates in SQL.
+-- 0188 — Vendors: pick the ranker's candidates in SQL.
 --
 -- `rankVendorsForRequest` selected candidates in Node: read every capability
 -- row for the category, decide offers/declines in TypeScript, then fetch those

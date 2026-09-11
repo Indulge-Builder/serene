@@ -1,5 +1,5 @@
 // Vendors row types — hand-declared until `supabase gen types typescript` is
-// re-run after migrations 0182–0184 are applied (the subscription.ts posture).
+// re-run after migrations 0183–0185 are applied (the subscription.ts posture).
 // Shapes mirror the migrations EXACTLY. Types only — no runtime values.
 // The vocabulary (statuses, stances, outcomes, services, dimensions, weights)
 // lives in constants/vendors.ts.
@@ -10,6 +10,7 @@ import type {
   VendorIdentityStatus,
   VendorSource,
   CapabilityStance,
+  PreferenceStance,
   EngagementOutcome,
   ScoreComponent,
 } from "@/lib/constants/vendors";
@@ -21,7 +22,7 @@ export type VendorContact = {
   emails: string[];
 };
 
-/** public.vendors row (migration 0182). */
+/** public.vendors row (migration 0183). */
 export type VendorRow = {
   id: string;
   name: string;
@@ -43,7 +44,7 @@ export type VendorRow = {
   updated_at: string;
 };
 
-/** public.vendor_capabilities row (migration 0182). Editable config. */
+/** public.vendor_capabilities row (migration 0183). Editable config. */
 export type VendorCapabilityRow = {
   id: string;
   vendor_id: string;
@@ -57,7 +58,7 @@ export type VendorCapabilityRow = {
   updated_at: string;
 };
 
-/** public.vendor_engagements row (migration 0184). Append-only. */
+/** public.vendor_engagements row (migration 0185). Append-only. */
 export type VendorEngagementRow = {
   id: string;
   vendor_id: string;
@@ -66,7 +67,7 @@ export type VendorEngagementRow = {
   agent_id: string | null;
   agent_name_raw: string | null;
   /**
-   * The ticket subject — the sentence someone actually typed. Added to 0184
+   * The ticket subject — the sentence someone actually typed. Added to 0185
    * after the type was written, which is why it was missing here: it is THE
    * discriminator inside a flat category (a florist and a nightclub can both
    * sit under Special Request) and what find_vendors_by_history searches.
@@ -87,7 +88,7 @@ export type VendorEngagementRow = {
   created_at: string;
 };
 
-/** public.vendor_reviews row (migration 0184). Append-only. */
+/** public.vendor_reviews row (migration 0185). Append-only. */
 export type VendorReviewRow = {
   id: string;
   vendor_id: string;
@@ -101,7 +102,7 @@ export type VendorReviewRow = {
   created_at: string;
 };
 
-/** public.vendor_notes row (migration 0185). Append-only, newest first. */
+/** public.vendor_notes row (migration 0186). Append-only, newest first. */
 export type VendorNoteRow = {
   id: string;
   vendor_id: string;
@@ -112,6 +113,23 @@ export type VendorNoteRow = {
 
 /** A note with its author's name resolved (the WithAuthor shape). */
 export type VendorNoteWithAuthor = VendorNoteRow & { author: { full_name: string } | null };
+
+/**
+ * public.vendor_agent_preferences row (migration 0191). EDITABLE — one stance
+ * per (vendor, agent); the note is the sticky note.
+ */
+export type VendorAgentPreferenceRow = {
+  id: string;
+  vendor_id: string;
+  agent_id: string;
+  stance: PreferenceStance;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** A preference with its teammate's name resolved. */
+export type VendorAgentPreferenceWithAgent = VendorAgentPreferenceRow & { agent_name: string | null };
 
 /** How often a category / a teammate appears in this vendor s history. */
 export type VendorCategoryUsage = { category: string; count: number };
@@ -135,7 +153,7 @@ export type VendorInvoice = {
   amountInr: number | null;
 };
 
-/** One row of get_vendor_score_inputs (migration 0184), camel-cased at the Q-18 boundary. */
+/** One row of get_vendor_score_inputs (migration 0185), camel-cased at the Q-18 boundary. */
 export type VendorScoreInputs = {
   vendorId: string;
   /** All-time engagement count, unwindowed — the "times used" the UI shows. */
@@ -152,6 +170,9 @@ export type VendorScoreInputs = {
   avgQuality: number | null;
   avgPricing: number | null;
   avgReliability: number | null;
+  /** Teammates who marked `preferred` / `avoid` (0191) — the sentiment component. */
+  preferredCount: number;
+  avoidCount: number;
 };
 
 /** The computed score — 0–10 plus the reasons a human can read back. */
@@ -159,10 +180,11 @@ export type VendorScore = {
   /**
    * The 0–10 verdict, or NULL when nobody has judged this vendor yet.
    *
-   * Usage alone is NOT a score. Until a review, a decided job outcome or a
-   * preferred/avoid mark exists, the only signals are volume and recency —
+   * Usage alone is NOT a score. Until a review or a decided job outcome
+   * exists, the only quality signals are volume and recency —
    * "we call them a lot" is not "they are good", and showing 9.9 for a vendor
    * no one has ever rated invents a quality verdict out of call frequency.
+   * A preferred / avoid mark shapes the RANKING and the reasons, not the verdict.
    * Times-used is displayed beside the ring and says the usage part honestly.
    */
   score: number | null;                           // 0–10, one decimal
@@ -203,6 +225,8 @@ export type VendorDetail = {
   engagements: VendorEngagementRow[];             // newest first, bounded
   reviews: (VendorReviewRow & { reviewer_name: string | null })[];
   notes: VendorNoteWithAuthor[];
+  /** Every teammate's stance on this vendor, newest first (0191). */
+  preferences: VendorAgentPreferenceWithAgent[];
   invoices: VendorInvoice[];
   topAgents: VendorAgentUsage[];
   /** Ticket categories this vendor has actually been used for, with counts. */

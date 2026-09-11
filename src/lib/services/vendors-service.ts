@@ -1,4 +1,4 @@
-// vendors-service.ts — read-only vendor queries + THE ranker (migrations 0182–0184).
+// vendors-service.ts — read-only vendor queries + THE ranker (migrations 0183–0185).
 //
 // SERVER ONLY. ADMIN client throughout (the revival-service / elaya-actions-service
 // posture), NOT session+RLS like subscriptions-service: rankVendorsForRequest is
@@ -6,7 +6,7 @@
 // WhatsApp webhook (auth.uid() is NULL there — a session client would return []).
 // So the CALLER is the trust boundary (Q-13): every entry here sits behind a
 // requireProfile(['admin','founder'])-gated action (actions/vendors.ts) or the
-// Elaya principal gate. The 0182–0184 SELECT policies (admin/founder) are the
+// Elaya principal gate. The 0183–0185 SELECT policies (admin/founder) are the
 // defence-in-depth mirror of that gate, not the gate itself.
 //
 // No Redis — internal-scale data (tens of thousands of vendors, a few thousand
@@ -31,8 +31,11 @@ import {
   VENDOR_SEARCH_MAX_LIMIT,
   type VendorStatus,
   type ReviewDimension,
+  PREFERRED_BOOST,
 } from "@/lib/constants/vendors";
 import type {
+  VendorAgentPreferenceRow,
+  VendorAgentPreferenceWithAgent,
   VendorRow,
   VendorCapabilityRow,
   VendorEngagementRow,
@@ -49,7 +52,7 @@ import type {
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
-// Interim until database.ts is regenerated after 0182–0184 land (the
+// Interim until database.ts is regenerated after 0183–0185 land (the
 // revival/suggestions posture) — the ONE cast in this file.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const from = (admin: AdminClient, table: string) => (admin as any).from(table);
@@ -81,6 +84,8 @@ type ScoreInputsRpcRow = {
   avg_quality: number | string | null;
   avg_pricing: number | string | null;
   avg_reliability: number | string | null;
+  preferred_count: number;                 // 0191
+  avoid_count: number;
 };
 
 const num = (v: number | string | null): number | null => (v == null ? null : Number(v));
@@ -101,6 +106,8 @@ function mapScoreInputs(r: ScoreInputsRpcRow): VendorScoreInputs {
     avgQuality: num(r.avg_quality),
     avgPricing: num(r.avg_pricing),
     avgReliability: num(r.avg_reliability),
+    preferredCount: Number(r.preferred_count),
+    avoidCount: Number(r.avoid_count),
   };
 }
 
@@ -113,11 +120,12 @@ function emptyScoreInputs(vendorId: string): VendorScoreInputs {
     completedCount: 0, failedCount: 0, cancelledCount: 0,
     lastStartedAt: null,
     reviewCount: 0, avgSpeed: null, avgQuality: null, avgPricing: null, avgReliability: null,
+    preferredCount: 0, avoidCount: 0,
   };
 }
 
 /**
- * THE score-inputs read — one `get_vendor_score_inputs` call (0184, Q-13 revoked
+ * THE score-inputs read — one `get_vendor_score_inputs` call (0185, Q-13 revoked
  * tier → admin client via callAdminRpc) for a set of vendors. Returns a Map so a
  * vendor missing from the answer (impossible — the RPC zero-fills — but cheap to
  * guard) falls back to emptyScoreInputs.
@@ -152,9 +160,9 @@ export type VendorSearchFilters = {
   limit?: number;
 };
 
-/** Name ILIKE (trigram-indexed, 0182) or an exact alias hit; optional category / status. */
+/** Name ILIKE (trigram-indexed, 0183) or an exact alias hit; optional category / status. */
 export async function searchVendors(filters: VendorSearchFilters = {}): Promise<VendorRow[]> {
-  // search_vendors (0186) rather than a PostgREST ILIKE: it matches every typed
+  // search_vendors (0187) rather than a PostgREST ILIKE: it matches every typed
   // word in any order, ignores spacing ("lux drovia" = "LuxDrovia"), tolerates a
   // typo, and searches aliases/subcategory/city/phone as well as the name.
   return callAdminRpc<VendorRow, VendorRow>(
@@ -250,7 +258,7 @@ export async function listVendors(
   const search = filters.search?.trim() || null;
   const category = filters.category ?? null;
 
-  // The page and its total come from the SAME predicate (0186): count_vendors
+  // The page and its total come from the SAME predicate (0187): count_vendors
   // delegates to search_vendors, so the pager can never disagree with the rows.
   const [rows, totalCount] = await Promise.all([
     callAdminRpc<VendorRow, VendorRow>(
@@ -289,47 +297,27 @@ export async function listVendors(
 
 /** Every category in use — the list page's Category filter options. */
 export async function getVendorCategories(): Promise<string[]> {
-  const admin = createAdminClient();
-  const { data, error } = await from(admin, "vendors")
-    .select("category")
-    .not("category", "is", null)
-    .order("category", { ascending: true });
-  if (error) {
-    console.error(`${LOG} getVendorCategories failed:`, error);
-    return [];
-  }
-  const seen = new Set<string>();
-  type Row = { category: string | null };
-  for (const r of mapRows<Row, Row>(data, (r) => r)) {
-    if (r.category) seen.add(r.category);
-  }
-  return [...seen];
+  // get_vendor_categories (0187): a DISTINCT in SQL. This used to select the
+  // column off every vendor row and de-duplicate here — PostgREST caps a select
+  // at 1,000 rows and says nothing, so the filter list was whatever sorted into
+  // the first thousand of 21,000.
+  return callAdminRpc<{ category: string }, string>("get_vendor_categories", {}, (r) => r.category, LOG);
 }
 
 /** Every city a capability covers, plus the cities vendors are based in — the
  *  find-a-vendor parser matches against these, so a city only exists once we
  *  actually serve it. */
 export async function getVendorCities(): Promise<string[]> {
-  const admin = createAdminClient();
-  const [caps, homes] = await Promise.all([
-    from(admin, "vendor_capabilities").select("cities"),
-    from(admin, "vendors").select("home_city").not("home_city", "is", null),
-  ]);
-  if (caps.error) console.error(`${LOG} getVendorCities capabilities failed:`, caps.error);
-  if (homes.error) console.error(`${LOG} getVendorCities homes failed:`, homes.error);
-  const seen = new Set<string>();
-  for (const r of mapRows<{ cities: string[] }, { cities: string[] }>(caps.data, (x) => x)) {
-    for (const c of r.cities) seen.add(c.toLowerCase());
-  }
-  for (const r of mapRows<{ home_city: string | null }, { home_city: string | null }>(homes.data, (x) => x)) {
-    if (r.home_city) seen.add(r.home_city.toLowerCase());
-  }
-  return [...seen].sort();
+  // get_vendor_cities (0187): served cities ∪ home cities, distinct, in SQL.
+  // The Node union read all 25,000 capability rows to get at their city arrays
+  // — capped at 1,000, so a city served only by a vendor outside that window did
+  // not exist as far as the find-a-vendor parser was concerned.
+  return callAdminRpc<{ city: string }, string>("get_vendor_cities", {}, (r) => r.city, LOG);
 }
 
 // ── Vendor-page reads ─────────────────────────────────────────────────────────────────
 
-/** Notes on a vendor, newest first, with the author's name (migration 0185). */
+/** Notes on a vendor, newest first, with the author's name (migration 0186). */
 export async function getVendorNotes(vendorId: string): Promise<VendorNoteWithAuthor[]> {
   const admin = createAdminClient();
   const { data, error } = await from(admin, "vendor_notes")
@@ -351,47 +339,31 @@ export async function getVendorNotes(vendorId: string): Promise<VendorNoteWithAu
 export async function getVendorUsage(
   vendorId: string,
 ): Promise<{ topAgents: VendorAgentUsage[]; categories: VendorCategoryUsage[] }> {
-  const admin = createAdminClient();
-  const { data, error } = await from(admin, "vendor_engagements")
-    // vendor_engagements has two FKs to profiles (agent_id, created_by) — name
-    // the constraint or PostgREST cannot pick one (PGRST201).
-    .select("agent_id, agent_name_raw, category, agent:profiles!vendor_engagements_agent_id_fkey(full_name)")
-    .eq("vendor_id", vendorId)
-    .limit(2000);
-  if (error) {
-    console.error(`${LOG} getVendorUsage failed:`, error);
-    return { topAgents: [], categories: [] };
-  }
-  type Row = {
-    agent_id: string | null;
-    agent_name_raw: string | null;
-    category: string;
-    agent: { full_name: string | null } | null;
-  };
-  const tally = new Map<string, VendorAgentUsage>();
-  const byCategory = new Map<string, number>();
-  for (const r of mapRows<Row, Row>(data, (row) => row)) {
-    byCategory.set(r.category, (byCategory.get(r.category) ?? 0) + 1);
-    const name = r.agent?.full_name ?? r.agent_name_raw;
-    if (!name) continue;                       // unattributed job — not a person
-    const key = r.agent_id ?? `raw:${name}`;
-    const existing = tally.get(key);
-    if (existing) existing.count += 1;
-    else tally.set(key, { agentId: r.agent_id ?? key, name, count: 1 });
-  }
-  return {
-    topAgents: [...tally.values()]
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-      .slice(0, VENDOR_TOP_AGENTS),
-    categories: [...byCategory.entries()]
-      .map(([category, count]) => ({ category, count }))
-      .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category)),
-  };
+  // Two GROUP BYs in SQL (0185). This used to pull the vendor's entire ledger
+  // through PostgREST and tally it here — silently capped at 1,000 rows, so the
+  // busiest vendors, the ones this panel is opened for, showed a partial count.
+  // Ex-staff keep their raw name: the SQL falls back to agent_name_raw when the
+  // profile is gone, so the tally is of people, not surviving accounts.
+  const [topAgents, categories] = await Promise.all([
+    callAdminRpc<{ agent_id: string | null; name: string; count: number }, VendorAgentUsage>(
+      "get_vendor_agent_usage",
+      { p_vendor_id: vendorId, p_limit: VENDOR_TOP_AGENTS },
+      (r) => ({ agentId: r.agent_id ?? `raw:${r.name}`, name: r.name, count: Number(r.count) }),
+      LOG,
+    ),
+    callAdminRpc<{ category: string; count: number }, VendorCategoryUsage>(
+      "get_vendor_category_usage",
+      { p_vendor_id: vendorId },
+      (r) => ({ category: r.category, count: Number(r.count) }),
+      LOG,
+    ),
+  ]);
+  return { topAgents, categories };
 }
 
 /**
  * The vendor's invoices, newest first — flattened out of the jobs they were
- * filed against (an invoice IS a path on its engagement, 0183/0184), so each
+ * filed against (an invoice IS a path on its engagement, 0184/0185), so each
  * one keeps its date, what it was for, and what we paid.
  */
 export async function getVendorInvoices(
@@ -432,6 +404,7 @@ export async function getVendorInvoices(
 // ── The dossier ────────────────────────────────────────────────────────────────
 
 type ReviewJoinRow = VendorReviewRow & { reviewer: { full_name: string | null } | null };
+type PreferenceJoinRow = VendorAgentPreferenceRow & { agent: { full_name: string | null } | null };
 
 /** Everything about one vendor: spine + capabilities + recent ledger + reviews + score. */
 export async function getVendorDetail(id: string, now = new Date()): Promise<VendorDetail | null> {
@@ -439,7 +412,7 @@ export async function getVendorDetail(id: string, now = new Date()): Promise<Ven
   if (!vendor) return null;
 
   const admin = createAdminClient();
-  const [caps, engagements, reviews, inputs, notes, usage, invoices] = await Promise.all([
+  const [caps, engagements, reviews, inputs, notes, usage, invoices, prefs] = await Promise.all([
     from(admin, "vendor_capabilities").select("*").eq("vendor_id", id)
       .order("category", { ascending: true }).order("service", { ascending: true, nullsFirst: true }),
     from(admin, "vendor_engagements").select("*").eq("vendor_id", id)
@@ -453,8 +426,10 @@ export async function getVendorDetail(id: string, now = new Date()): Promise<Ven
     getVendorNotes(id),
     getVendorUsage(id),
     getVendorInvoices(id),
+    from(admin, "vendor_agent_preferences").select("*, agent:profiles(full_name)").eq("vendor_id", id)
+      .order("updated_at", { ascending: false }),
   ]);
-  for (const [label, res] of [["capabilities", caps], ["engagements", engagements], ["reviews", reviews]] as const) {
+  for (const [label, res] of [["capabilities", caps], ["engagements", engagements], ["reviews", reviews], ["preferences", prefs]] as const) {
     if (res.error) console.error(`${LOG} getVendorDetail ${label} failed:`, res.error);
   }
 
@@ -484,6 +459,10 @@ export async function getVendorDetail(id: string, now = new Date()): Promise<Ven
     engagements: mapRows<VendorEngagementRow, VendorEngagementRow>(engagements.data, (r) => r),
     reviews: reviewRows,
     notes,
+    preferences: mapRows<PreferenceJoinRow, VendorAgentPreferenceWithAgent>(prefs.data, ({ agent, ...r }) => ({
+      ...r,
+      agent_name: agent?.full_name ?? null,
+    })),
     invoices: invoices.invoices,
     topAgents: usage.topAgents,
     categoriesUsed: usage.categories,
@@ -509,6 +488,13 @@ export type RankVendorsRequest = {
   service?: string | null;
   city?: string | null;           // lower-cased
   clientId?: string | null;
+  /**
+   * Whose sticky notes shape the answer (0191): their own `avoid` removes a
+   * vendor, their own `preferred` lifts it. The action passes the caller;
+   * Elaya passes the staff principal. Teammates' marks reach the answer
+   * through the rollup regardless.
+   */
+  agentId?: string | null;
   limit?: number;
   now?: Date;
 };
@@ -563,7 +549,7 @@ export type VendorHistoryMatch = {
 
 /**
  * Vendors who have DONE this kind of job, found by searching the ticket titles
- * of the 47,441 past engagements (0188) rather than a keyword vocabulary.
+ * of the 47,441 past engagements (0189) rather than a keyword vocabulary.
  *
  * The vocabulary approach could only ever recognise words someone had thought
  * to type into the code — "order for black forest cake" and "need a
@@ -573,7 +559,7 @@ export type VendorHistoryMatch = {
 export async function findVendorsByHistory(
   phrase: string,
   opts: {
-    /** Ordered most-important-first, from the model that read the request (0189). */
+    /** Ordered most-important-first, from the model that read the request (0190). */
     terms?: string[] | null;
     category?: string | null; service?: string | null; city?: string | null; limit?: number;
   } = {},
@@ -604,7 +590,7 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
   const limit = req.limit ?? RANK_DEFAULT_LIMIT;
   const admin = createAdminClient();
 
-  // 1. Candidates, chosen in SQL (0187).
+  // 1. Candidates, chosen in SQL (0188).
   //
   // This used to happen in Node: read the category's capability rows, decide
   // offers/declines here, then `.in("id", candidateIds)`. Every part of it
@@ -669,24 +655,47 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
   if (vendors.length === 0) return [];
   const activeIds = vendors.map((v) => v.id);
 
-  // 2–3. Signals: the rollup, and this client's own history with each vendor.
-  const [inputs, clientHistory] = await Promise.all([
+  // 2–3. Signals: the rollup, this client's own history, and the asking
+  // agent's own marks. The two side reads are keyed on the PERSON, never on
+  // the candidate list: a `.in("vendor_id", activeIds)` puts every candidate id
+  // in the request URI, and the capability fallback can return thousands — the
+  // same "URI too long" that broke the old Node ranker. One client's jobs and
+  // one agent's marks are each a short list; the candidate filter is in memory.
+  const candidateIds = new Set(activeIds);
+  const [inputs, clientHistory, agentMarks] = await Promise.all([
     getVendorScoreInputs(activeIds, { now, category: useCategory, city: useCity }),
     req.clientId
-      ? from(admin, "vendor_engagements").select("vendor_id")
-          .eq("client_id", req.clientId).in("vendor_id", activeIds)
+      ? from(admin, "vendor_engagements").select("vendor_id").eq("client_id", req.clientId)
+      : Promise.resolve({ data: [], error: null }),
+    req.agentId
+      ? from(admin, "vendor_agent_preferences").select("vendor_id, stance, note").eq("agent_id", req.agentId)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (clientHistory.error) console.error(`${LOG} rankVendorsForRequest client history failed:`, clientHistory.error);
+  if (agentMarks.error)    console.error(`${LOG} rankVendorsForRequest agent preferences failed:`, agentMarks.error);
 
   const clientJobsByVendor = new Map<string, number>();
   for (const e of mapRows<Pick<VendorEngagementRow, "vendor_id">, Pick<VendorEngagementRow, "vendor_id">>(clientHistory.data, (r) => r)) {
+    if (!candidateIds.has(e.vendor_id)) continue;
     clientJobsByVendor.set(e.vendor_id, (clientJobsByVendor.get(e.vendor_id) ?? 0) + 1);
+  }
+  type MarkRow = Pick<VendorAgentPreferenceRow, "vendor_id" | "stance" | "note">;
+  const myMarkByVendor = new Map<string, MarkRow>();
+  for (const m of mapRows<MarkRow, MarkRow>(agentMarks.data, (r) => r)) {
+    if (candidateIds.has(m.vendor_id)) myMarkByVendor.set(m.vendor_id, m);
   }
 
   // `ranking` rides along only to order the list; it is stripped on return.
   const ranked: (RankedVendor & { ranking: number })[] = [];
   for (const vendor of vendors) {
+    // The agent layer (0191). The asking agent's own `avoid` is an exclusion —
+    // not a caution, not a lower score: they said they do not want this vendor,
+    // and the answer is theirs. Teammates' marks reach the answer through the
+    // rollup instead (sentiment in the score, "N teammates avoid" in the flags)
+    // — a caution to the rest of the floor, never a verdict for them.
+    const mine = myMarkByVendor.get(vendor.id);
+    if (mine?.stance === "avoid") continue;
+
     const row = inputs.get(vendor.id) ?? emptyScoreInputs(vendor.id);
     const scored = computeVendorScore(row, { now, category: useCategory, city: useCity });
     // `score` is the displayed verdict (null until judged); `ranking` always
@@ -695,8 +704,15 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
     const match = historyById.get(vendor.id);
     // A title match outranks usage: 37 cake jobs beats 600 unrelated ones. The
     // raw score still orders vendors WITHIN the same match count.
-    const ranking = match ? 1000 + match.matchCount * 10 + scored.ranking : scored.ranking;
+    let ranking = match ? 1000 + match.matchCount * 10 + scored.ranking : scored.ranking;
     const reasons = [...scored.reasons];
+    // Their own `preferred` lifts the vendor by a fixed step, inside whatever
+    // match tier it already sits in, and says so — with the sticky note if
+    // they left one.
+    if (mine?.stance === "preferred") {
+      ranking += PREFERRED_BOOST;
+      reasons.push(mine.note ? `You prefer this vendor — "${mine.note}"` : "You prefer this vendor");
+    }
     if (match) {
       // The evidence goes FIRST and quotes the real ticket, so the answer can
       // be judged rather than trusted.

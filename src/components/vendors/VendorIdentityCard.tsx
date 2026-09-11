@@ -28,7 +28,7 @@ function titleCase(s: string): string {
 }
 
 /** The first named contact is the point of contact; unnamed entries are the
- *  vendor's general lines (the 0182 `contacts` contract). */
+ *  vendor's general lines (the 0183 `contacts` contract). */
 function resolvePoc(contacts: VendorContact[]): VendorContact | null {
   return contacts.find((c) => c.name) ?? null;
 }

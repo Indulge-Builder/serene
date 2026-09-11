@@ -16,7 +16,10 @@
  * moves to the row that should have had it all along.
  *
  * SAFETY
- *   - Local database only. No override flag.
+ *   - A remote target needs --yes-write-to-production, and says so loudly.
+ *     Step 3 of the deploy runbook runs this against production (replay the
+ *     merge list, purge junk, purge clients) — the same flag and posture as
+ *     the loader, so it can never happen by accident.
  *   - --dry-run prints the exact plan and writes nothing.
  *   - The report NEVER merges. Merging only ever happens from decisions a
  *     person made: a reviewed CSV, or names given on the command line.
@@ -51,6 +54,7 @@
  *   npx tsx --env-file=.env.local scripts/vendors/dedupe-vendors.ts --purge-junk
  *
  * Options: --dry-run · --out <path> · --min-parent-jobs <n> · --max-child-jobs <n>
+ *          --yes-write-to-production (required to target anything but localhost)
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -95,13 +99,26 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
 const host = (() => {
   try { return new URL(SUPABASE_URL).hostname; } catch { return ""; }
 })();
-if (!["localhost", "127.0.0.1", "0.0.0.0"].includes(host)) {
+const IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0"].includes(host);
+// Production IS a target — step 3 of the deploy runbook runs this script there.
+// It just may never happen by accident: a remote host needs the flag, and the
+// run says where it is writing before it writes. Same flag as the loader.
+const ALLOW_REMOTE = argv.includes("--yes-write-to-production");
+if (!IS_LOCAL && !ALLOW_REMOTE) {
   console.error(
     `REFUSING TO RUN.\n` +
       `  NEXT_PUBLIC_SUPABASE_URL points at "${host}", which is not a local database.\n` +
-      `  Merging vendors REMOVES rows. That is never a script run against production.`,
+      `  Merging and purging vendors REMOVES rows. If this is the deploy step,\n` +
+      `  re-run with --yes-write-to-production. Nothing was changed.`,
   );
   process.exit(1);
+}
+if (!IS_LOCAL) {
+  console.log(
+    `\n*** WRITING TO A REMOTE DATABASE: ${host} ***\n` +
+      `    Every deletion is backed up first to vendor-removed-<date>.json (vendor\n` +
+      `    rows AND their job rows). --dry-run prints the plan and writes nothing.\n`,
+  );
 }
 const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
@@ -429,7 +446,7 @@ async function mergeOne(keep: VendorRow, absorb: VendorRow, jobs: number): Promi
   if (capMove.length) await db.from("vendor_capabilities").update({ vendor_id: keep.id }).in("id", capMove);
 
   // 4. The survivor inherits the absorbed IDENTITY: its name and aliases become
-  //    aliases, so every old spelling still finds the vendor (0186 searches
+  //    aliases, so every old spelling still finds the vendor (0187 searches
   //    aliases), and its contacts / phone / city fill any gap.
   const aliases = [...new Set([
     ...(keep.aliases ?? []),
@@ -446,6 +463,12 @@ async function mergeOne(keep: VendorRow, absorb: VendorRow, jobs: number): Promi
     ...(keep.import_raw ?? {}),
     merged_vendors: [
       ...(((keep.import_raw?.merged_vendors as unknown[]) ?? [])),
+      // Everything the absorbed row had ITSELF absorbed comes along, so the
+      // record is transitive: "Gain Acceess" → "Gain access" → the LLP leaves
+      // the LLP knowing all three spellings. The loader maps every name in
+      // this list to the survivor on a rerun; without the carry-over an
+      // intermediate spelling had no survivor to map to and was re-inserted.
+      ...(((absorb.import_raw?.merged_vendors as unknown[]) ?? [])),
       {
         name: absorb.name,
         id: absorb.id,

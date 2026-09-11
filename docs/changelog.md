@@ -12,6 +12,145 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-11 — Vendors: review round one — nine fixes, migrations renumbered 0183–0191
+
+The reviewer's pass on PR #3: the model, the RPC tier, the SQL search and the intent reader all
+stood. Nine things did not, and each is fixed below in the order they were raised.
+
+**1. Numbering.** Main took a `0182` on 2026-09-10 (`lead_source_self`, already on production) while
+this branch's files were dated 09-05 to 09-08 with the same logical numbers, so `db push` would have
+refused them. Every vendor migration is renumbered and re-dated: **0183** vendors · **0184** bucket ·
+**0185** ledger · **0186** notes · **0187** search · **0188** candidates · **0189** history search ·
+**0190** ranked terms · **0191** preferences (new, below). `git mv`, so history follows each file;
+234 references across code, docs and comments shifted with them; `0000` base enums unchanged (it
+must sort before 0001). Rebased on main.
+
+**2. The cleanup could not run on production.** `dedupe-vendors.ts` — step 3 of the runbook —
+refused any non-local host with no override, so the merge replay and the two purges had no path to
+the database they exist for. It now takes the same `--yes-write-to-production` flag as the loader and
+prints where it is writing before it writes. Rehearsed: refuses a remote host without the flag,
+proceeds with it.
+
+**3. The loader was not safe to rerun.** It UPSERTED the whole vendor row on `name_key`, so a second
+run reset `status` and `identity_status`, overwrote contacts a person had corrected, and re-created
+every vendor the dedupe had merged away (their `name_key` no longer existed, so the upsert minted them
+again). Engagements were upserted the same way, which would have reset `closed_at` / `outcome` /
+`amount` on every rerun — the columns `closeEngagementCore` writes once and the score reads.
+**Insert-only after the first load**: rows that exist are left exactly as they are; merged-away
+spellings are mapped to their survivor (read off `import_raw.merged_vendors`) so a new ticket for an
+old spelling lands on the right vendor; only genuinely new names and tickets are written; a true
+rebuild is `--wipe`. Rehearsed on the cleaned dataset: a second run maps **154** merged-away
+spellings to their survivors and re-inserts only the **226** rows the cleanup had removed by label
+(215 junk, 10 clients, and `Organisor`, whose survivor is itself junk); the cleanup that always
+follows removes them again and the counts return to exactly **21,580 · 25,596 · 46,574**. A
+merged-away vendor is never re-created. Two more bugs fell out of that rehearsal, both fixed:
+**(a)** the merge record was not transitive — a spelling absorbed by a vendor that was later itself
+absorbed ("Gain Acceess" → "Gain access" → the LLP) was not on the final survivor's record, so the
+loader could not map it and re-inserted it; `mergeOne` now carries the absorbed row's own record up.
+**(b)** the existing-set read used OFFSET paging with no `ORDER BY`, which is whatever order Postgres
+scanned in *that* statement — 22 full pages returned **13,766 distinct rows of 21,580**, the loader
+decided 7,965 vendors were missing, and the insert hit the unique key (loudly, no partial write). It
+is keyset paging on the primary key now, and returns all 21,580 every time.
+
+**`client_id` stays NULL, and the claim is withdrawn.** The PR text said the loader resolves
+clients against 0181; it never did, and it cannot. The archive carries no requester identity — the
+only client signal in the extraction is a model-guessed `client_name` on some tickets, and a name is
+not a join key (two Rahuls). `clients.primary_phone` is the identity and no ticket export has it. The
+column exists so in-app tickets fill it from day one; the loader's header and the PR say so plainly.
+
+**4. Preferred / avoid is back (0191).** `vendor_agent_preferences` — one teammate's stance on one
+vendor plus a note, the sticky note from the original brief ("Anisha is comfortable with this
+vendor"). It was removed on 2026-09-07 on a misreading: the founder had not asked for it, but the
+brief had. One mark feeds three things: the **sentiment** component of the score (`preferred − avoid`
+over those who spoke; `SCORE_WEIGHTS` back to reviews 2.5 · sentiment 1.0), the ranker's **agent
+layer** (the asking teammate's own `avoid` removes the vendor from their answer, their own `preferred`
+adds `PREFERRED_BOOST` and a reason; teammates' marks reach the answer only as sentiment and a
+"N teammates avoid" flag — a caution to the floor, never a verdict for them), and **Elaya's
+`find_vendors`**, which passes the staff principal as the agent so a genie's sticky notes shape the
+suggestion exactly as the page does. A mark shapes the ranking and the reasons but does not on its
+own unlock the displayed score: one sticky note and no rating would otherwise show **9.9**, four-fifths
+of it call frequency — the invented verdict the "—" exists to prevent. The rollup gains
+`preferred_count` / `avoid_count` — re-declared
+in 0191 because a SQL body is validated at CREATE and has to come after the table. On the vendor
+page: a "Your take" row in the score card (Preferred / Avoid chips, a one-line why, the team's takes
+beneath) — optimistic with revert, errors to the toast. `setAgentPreferenceAction` /
+`removeAgentPreferenceAction` over `setAgentPreferenceCore` / `removeAgentPreferenceCore`; the rank
+action passes the caller's own id, never a client-supplied one.
+
+**5. Declines were ignored on the phrase path.** `find_vendors_by_history` checked `status` but never
+capabilities, so a vendor who had said "we no longer do X" was still suggested for X whenever an old
+title matched. It now excludes a hit exactly as `get_vendor_candidates` does — against the request's
+category when a chip was given, else the matched job's own category, service-specific declines only
+for that service, city-scoped declines only for that city.
+
+**6. Three reads hit the 1,000-row cap.** `getVendorCategories` and `getVendorCities` selected a
+column off every row (21,000 vendors; 25,000 capability rows) and de-duplicated in Node — the
+category filter was whatever sorted into the first thousand, and a city served only by a vendor
+outside that window did not exist for the parser. `getVendorUsage` pulled a vendor's whole ledger to
+tally agents and categories — a silent undercount for exactly the vendors the panel is opened for.
+All three are SQL now: `get_vendor_categories` / `get_vendor_cities` (0187, DISTINCT) and
+`get_vendor_agent_usage` / `get_vendor_category_usage` (0185, GROUP BY, ex-staff keep their raw
+name). Q-13 revoked tier like every other vendor read. While there: the ranker's client-history read
+and the new agent-marks read are keyed on the PERSON (`.eq(client_id)` / `.eq(agent_id)`) and
+filtered to the candidates in memory — a `.in("vendor_id", candidates)` would put every candidate id
+in the URI, and the capability fallback can return thousands.
+
+**UI.** *Paging dropped the filters* — the list's pager was a bare `?page=N` link. It is now
+`<Pagination>` in `components/ui`, which is `LeadsPagination` generalised (rewrite only `page`, keep
+every other param, drop it on page 1); `LeadsPagination` is a one-line wrapper over it so its three
+call sites did not change — a consolidation, not a fork (R-01 / R-04). *The category picker's error
+pill never closed* — it cleared `onAnimationEnd` with no animation on it; save errors go to the app
+toast now, which has its own timer. *Back used `document.referrer`* — empty on client-side
+navigation, so it did nothing in exactly the case it was for. The list rows and the Find-a-vendor
+results now carry `?from=` (the leads pattern); the vendor page validates it against `/vendors` and
+hands it to `BackButton`, whose `preferHistory` prop and referrer trick are deleted (R-04). Coming
+back to Find a vendor re-runs the search that led there — it rides along as `?q=` — rather than
+showing an empty box.
+
+**Verified from scratch**: `db reset` applies every migration (196 in the ledger, main's 0182 and our
+0183–0191 among them); `database.ts` regenerated and committed; loader → merges → purges → **loader
+again** (only the label-purged rows re-inserted, 0 merged vendors resurrected) → cleanup → identical
+counts; the agent layer driven through the real ranker and cores on real rows; the remote guard on
+both scripts both ways; `tsc`, `eslint`, `next build` clean.
+
+## 2026-09-10 — New lead source: Self
+
+Why: the team needed a way to mark leads a member brought in themselves (own network,
+outreach) that belong to no channel.
+
+What changed: one `{ id: "self", label: "Self" }` line in `lib/constants/lead-sources.ts`.
+The filter dropdown, Add Lead form, dossier source picker, Zod enum and labels all derive
+from that constant. Migration 0182 extends `deals_source_check` with `self` (the CHECK is
+coupled to `LEAD_SOURCES`, as 0180 established). **Applied to prod 2026-09-10 via
+`supabase db push`** (the founder ran it; only 0182 was pending).
+
+---
+
+## 2026-09-10 — Leads search box: typed letters vanished mid-word
+
+Why: on `/leads` the search field ate characters while typing. Type "john d", and the box
+snapped back to "jo" or "johnd" with the cursor jumping.
+
+Cause: `useUrlFilters` re-synced the search input from the URL on **every** `params` change,
+including the echo of its own debounced push. The leads navigation is slow (server-side table
+fetch), so by the time `?search=jo` landed the user had typed more, and the effect overwrote
+the box with the older, trimmed value. An unrelated filter commit (a Status toggle) wiped a
+pending search the same way. Every filter bar on the hook (leads, deals, campaigns,
+performance, subscriptions) had the bug; leads showed it most because its page is slowest.
+
+What changed (`src/hooks/useUrlFilters.ts` only, no consumer edits):
+
+- An in-flight ledger of search values the hook has pushed but not yet seen echoed in the
+  URL. The re-sync effect now runs only when the `search` param actually changed AND the new
+  value is not one of ours. Back/forward and `?search=` links still re-sync; our own echo and
+  unrelated filter commits never touch the input. Trailing spaces survive while typing.
+- The debounce compares against the newest in-flight push, not the committed URL, so
+  "type then delete back to empty" while a navigation is pending still pushes the correction.
+- `push()` carries the newest in-flight search along, so a filter commit that lands after a
+  pending search navigation cannot drop the search param from the URL.
+
+---
+
 ## 2026-09-09 - "Gain access" is Gainaccess Sports & Entertainment LLP
 
 Two rows, one company: `Gain access` (17 jobs, Mumbai, **Unclassified / Needs Review**) and
@@ -130,7 +269,7 @@ see the entry below.
 orders and de-duplicates on. **No collisions.** Four *logical* numbers repeat — 0058, 0066, 0141,
 0161 — but each pair carries a distinct timestamp, all four predate this branch, and all four are
 already applied in production, so A-14 puts them out of reach anyway. They are history, not a
-defect. Nine migrations on this branch are new and unmerged (`0000` base enums, `0182`–`0189`); the
+defect. Nine migrations on this branch are new and unmerged (`0000` base enums, `0183`–`0190`); the
 highest on `main` is `0181`. A full `supabase db reset` applied all 190 files from scratch and the
 ledger recorded 194 rows including every one of ours. RLS is on with a policy on all five vendor
 tables (Rule 07); all five new functions are revoked from `anon`/`authenticated` and granted only
@@ -208,12 +347,12 @@ Both wrap the SAME functions `/vendors` calls (`elayaData.rankVendors` / `.getVe
 explicit that Elaya's tool, the Sia ticket screen and the Chrome extension all call one ranking and
 none of them re-rank; a second ordering here would drift from the page within a week.
 
-**Gated FOUNDER_UP, not the spec's "concierge + shop staff"** — the 0182/0184 tables are admin/founder
+**Gated FOUNDER_UP, not the spec's "concierge + shop staff"** — the 0183/0185 tables are admin/founder
 SELECT only, so a manager carrying the tool would call it and be refused by the database. The toolset
 widens the day the RLS does, in one line. A `null` score means nobody has rated the vendor; the
 description tells the model to say so rather than imply a low score.
 
-**Bug found doing it:** `VendorEngagementRow` had no `title` field. The column was added to 0184 after
+**Bug found doing it:** `VendorEngagementRow` had no `title` field. The column was added to 0185 after
 that type was written, so the ledger's most important column — the ticket subject, which the whole
 history search runs on — was invisible to TypeScript.
 
@@ -254,7 +393,7 @@ local database, so the search fix and the reveal trail are verified by types and
 
 ---
 
-## 2026-09-08 — Find a vendor reads the request (Claude/Haiku) — migrations 0188–0189
+## 2026-09-08 — Find a vendor reads the request (Claude/Haiku) — migrations 0189–0190
 
 **Why:** the panel matched requests against ~80 keywords typed into the code. Three real searches, all
 returning nothing or nonsense: `order for black forest cake` (no "cake" in the list), `pickup cash
@@ -290,7 +429,7 @@ open**: no key, a timeout, a torn reply → `null`, and the keyword parse runs i
   empties the search: "Sweet Delivery" was read as `gifting`, which then excluded Bombay Sweet Shop,
   whose tickets are filed under `dining`. They are DISPLAY ONLY. The city is the exception — a place
   name is a fact in the sentence, not an interpretation.
-- **Rarity cannot rank meaning (0189).** 0188 weighted words by IDF; once the model expanded
+- **Rarity cannot rank meaning (0190).** 0189 weighted words by IDF; once the model expanded
   requests, `black` proved rarer than `cake` and "black forest cake" returned black socks. Terms now
   arrive ORDERED and are weighted by **rarity × position** (subject 3×). An earlier attempt that
   DROPPED common words was worse — it dropped `cake` (765 titles) and `flowers` (710), the subjects.
@@ -373,7 +512,7 @@ only intercepts when `document.referrer` is same-origin.
 
 ---
 
-## 2026-09-08 — Find a vendor searches what the team actually wrote (migration 0188)
+## 2026-09-08 — Find a vendor searches what the team actually wrote (migration 0189)
 
 **Why:** the panel matched a request against ~80 keywords I had typed into the code. That list can
 never be finished. `order for black forest cake`, `flowers for my father-in-law` and `need a
@@ -385,7 +524,7 @@ someone actually typed — and 765 of them mention a cake, 710 a flower. So the 
 against **47,441 real sentences** instead of a vocabulary, and the vendors who served the matching
 tickets ARE the answer.
 
-`find_vendors_by_history(p_query, p_category, p_service, p_city, p_limit)` (0188) returns each
+`find_vendors_by_history(p_query, p_category, p_service, p_city, p_limit)` (0189) returns each
 vendor with a match count, a rank, and **the matching ticket titles as evidence** — so the answer
 can be judged rather than trusted:
 
@@ -449,7 +588,7 @@ searches capabilities, not the vendor row, so a vendor with none never appears i
 **Categories are no longer a closed list.** Both the create form's select and the dossier's
 `VendorCategoryPicker` end in **+ Add a category** — type one, it is slugified through the same
 `toVocabularyKey` the loader and the Zod schema use, and saved. No migration is needed because
-`vendors.category` has no SQL CHECK; it is free text by design (0182), and `getVendorCategoryLabel`
+`vendors.category` has no SQL CHECK; it is free text by design (0183), and `getVendorCategoryLabel`
 already title-cases anything it does not recognise. New helper `vendorCategoryOptions(inUse)` merges
 the 11 built-ins (authored order preserved) with every category already in the database, so one
 added by hand is offered for the NEXT vendor rather than being a one-off nobody can pick again;
@@ -479,7 +618,7 @@ behind a flag.
 `VendorDetail.preferences`; the ranker's whole per-agent layer (`avoid` veto, `preferred` boost,
 and the now-pointless `agentId` argument on `RankVendorsRequest`); the "N teammates marked avoid"
 vendor flag; the demo seed's preference rows; and the preference re-point in the merge tool.
-Migration **0184 was edited rather than a drop-migration written** — it has never run in
+Migration **0185 was edited rather than a drop-migration written** — it has never run in
 production, so production will never see the table at all (A-14 protects production-applied
 migrations only). The local database had the table dropped and the RPC recreated from the edited
 file, verified returning 14 columns.
@@ -491,7 +630,7 @@ review IS the opinion. Volume 2.5 · recency 1.5 · reliability 2.5 · reviews 3
 **Confirmed and documented — how reviews will work** (from the founder, for the ticketing build):
 Google-style. Many agents each rate the same vendor across the four dimensions and the score uses
 the average across all of them; an agent who rates again after a LATER job adds another review
-rather than replacing their first. **The 0184 schema already does exactly this** — the rollup takes
+rather than replacing their first. **The 0185 schema already does exactly this** — the rollup takes
 `DISTINCT ON (vendor_id, reviewer_id, COALESCE(engagement_id, …))` and then averages, so one review
 per agent per job, a re-rating of the same job supersedes, and every distinct job counts. No schema
 change needed; the ticket-close rating form is the only missing piece, and it is deliberately NOT
@@ -540,7 +679,7 @@ duplicates are an unfinished human step, not a failed pipeline.
 
 **Merging is not deleting.** Every engagement, capability, review, note and preference is
 re-pointed at the survivor FIRST; the absorbed name and its aliases are appended to the survivor's
-`aliases` so the old spelling still finds the vendor (0186 searches aliases); contacts, and a
+`aliases` so the old spelling still finds the vendor (0187 searches aliases); contacts, and a
 missing phone / city / subcategory, are folded in; and `import_raw.merged_vendors` records the
 absorbed row's identity fields **plus the exact engagement ids that moved**, so a wrong merge can be
 undone. Only then is the now-empty duplicate deleted. A ticket already on the survivor collides
@@ -584,7 +723,7 @@ merges. `tsc --noEmit` and `pnpm lint` clean. Nothing applied to production.
 
 ---
 
-## 2026-09-07 — Vendors: the list search rebuilt (migration 0186)
+## 2026-09-07 — Vendors: the list search rebuilt (migration 0187)
 
 **Why:** typing `lux drovia` returned nothing while `luxdrovia` found the vendor. The search was
 `name ILIKE '%<term>%'` plus an exact `aliases.cs.{}` containment test, which meant a single
@@ -650,10 +789,10 @@ a teammate's preference IS a judgement. Deliberately an em dash, not `0.0`: a ze
 the dash reads as "not rated".
 
 **`scripts/vendors/upload-vendor-invoices.ts` (new).** `load-vendors.ts` writes 4,987 invoice PATHS
-onto the ledger but no files, so the 0183 bucket was empty and every "Open" signed a url for a key
+onto the ledger but no files, so the 0184 bucket was empty and every "Open" signed a url for a key
 that did not exist. The uploader maps the extraction's
 `raw/attachments/{ticket_id}/{attachment_id}__{original_name}` layout onto the FLAT
-`{attachment_id}.pdf` bucket key (the 0183 contract — the original names are truncated and
+`{attachment_id}.pdf` bucket key (the 0184 contract — the original names are truncated and
 occasionally 90 characters of base64, so they could never be object keys). Verified by magic bytes:
 4,982 of the 4,987 are genuine PDFs and the remainder are PDFs with a stray leading byte or saved
 HTML receipts, so `application/pdf` is right for all. Same local-only guard as the loader, no
@@ -722,12 +861,12 @@ every real value**. Replaced with the measured list + `SERVICES_BY_REQUEST_CATEG
 whole-word matcher now splits on `-` too, since the vocabularies are slugs.
 
 **`VENDOR_CATEGORY_SOURCES` was missing 2 of its 5 values** — `unresolved` (3,833 vendors) and
-`client-excluded` (10). The 0182 CHECK had been widened for the real extraction; the constant had
+`client-excluded` (10). The 0183 CHECK had been widened for the real extraction; the constant had
 not, so the Zod schema would have rejected an edit to 3,843 of our own vendors.
 
 **One shared key rule, not two.** `toVocabularyKey()` ("Travel & Transport" → `travel-transport`)
 is exported from `constants/vendors.ts` and used by BOTH the loader and `vendor-schema.ts` (R-01).
-Both category columns are free text by design (0182), so the same label arriving by two routes must
+Both category columns are free text by design (0183), so the same label arriving by two routes must
 produce the same key — lower-casing alone left a retyped "Travel & Transport" forking a second
 category that dropped the vendor out of its own filter. Cities are deliberately NOT slugified: they
 are displayed as words, and only lower-cased.
@@ -736,7 +875,7 @@ are displayed as words, and only lower-cased.
 
 - **`phones` / `emails` are `{value, count}[]`, not `string[]`.** Typed as strings, the loader fed
   objects to `normalizeToE164` (the crash above) and wrote raw `{"email":…,"count":…}` objects into
-  the `contacts` jsonb, breaking the 0182 `{name, phones[], emails[]}` contract for 1,851 vendors.
+  the `contacts` jsonb, breaking the 0183 `{name, phones[], emails[]}` contract for 1,851 vendors.
   Counts are now summed per NORMALISED value, so `primary_phone` is the line the archive genuinely
   saw most rather than whichever spelling sorted first.
 - **`--wipe` never deleted anything.** It selected the imported ids (silently capped at PostgREST's
@@ -791,12 +930,12 @@ all**, since all four dimensions are manually entered — half the card would be
 no service errors in the dev log. **Nothing pushed, committed, or applied to production.**
 
 ---
-## 2026-09-05 — Vendors UI: the list, the vendor page, and the find-a-vendor bench (+ migration 0185)
+## 2026-09-05 — Vendors UI: the list, the vendor page, and the find-a-vendor bench (+ migration 0186)
 
 **Why:** the founder signed off the design, so the module gets its screens. Built against the
 local database with the seeded demo data — **nothing applied to production, nothing pushed.**
 
-**Migration 0185 — `vendor_notes`.** The design review turned up a real gap: the spine (0182) has a
+**Migration 0186 — `vendor_notes`.** The design review turned up a real gap: the spine (0183) has a
 single `notes` text column, which holds one anonymous blob. What the floor needs is several notes
 per vendor, each keeping who wrote it and when. New append-only table (A-11, the `lead_notes`
 shape): `vendor_id` FK **CASCADE** (a note is commentary, not history — unlike the ledger's
@@ -805,9 +944,9 @@ RESTRICT), `author_id` FK **RESTRICT** (a note must always be able to name its a
 **`vendors.notes` is deliberately kept** — it holds the Freshdesk import's free-text, and swapping
 a populated column for an empty table would lose data.
 
-**The 0184 rollup gained `total_used`** (all-time engagement count, unwindowed) so "times used" in
+**The 0185 rollup gained `total_used`** (all-time engagement count, unwindowed) so "times used" in
 the list and in the vendor header comes from the SAME rollup as the score and cannot drift from it;
-the windowed aggregates moved from the WHERE clause into per-aggregate FILTERs. Editing 0184 is
+the windowed aggregates moved from the WHERE clause into per-aggregate FILTERs. Editing 0185 is
 legal because it has never run on production (A-14 protects production-applied migrations only) —
 re-verified by a full local `supabase db reset` of all **190** migrations.
 
@@ -931,7 +1070,7 @@ sourcing specialist. `capabilityApplies` is replaced by two asymmetric predicate
 
 ---
 
-## 2026-09-05 — Vendors module: the ledger model built (0182–0184 + the lib layer), verified locally, NOT applied
+## 2026-09-05 — Vendors module: the ledger model built (0183–0185 + the lib layer), verified locally, NOT applied
 
 **Why:** the founder's build call on `docs/modules/vendors.md` — "facts are rows, scores are computed."
 PR #3's table baked per-category counts and per-vendor "last 5 invoices" onto the vendor row, so it
@@ -944,7 +1083,7 @@ entered** per review — none exist in Freshdesk, so nothing is faked from the a
 **Migrations (rewritten / new — all three verified on a clean Postgres 17.6 container with a
 Supabase-shaped scaffold; NOT applied to prod, run through the normal deployment process):**
 
-- **0182 `vendors` + `vendor_capabilities`** — the identity SPINE, the 0181 clients pattern: `id uuid`,
+- **0183 `vendors` + `vendor_capabilities`** — the identity SPINE, the 0181 clients pattern: `id uuid`,
   `name` + GENERATED `name_key = lower(btrim(name))` UNIQUE (the subscription_tools dedup identity —
   rerunning a loader upserts, never duplicates), `aliases`, `category`/`subcategory`/`category_source`,
   `status` (`active`/`paused`/`blacklisted`), `contacts` jsonb (`[{name|null, phones[] E.164, emails[]}]`
@@ -954,10 +1093,10 @@ Supabase-shaped scaffold; NOT applied to prod, run through the normal deployment
   `vendor_capabilities` = what a vendor offers / **declines** per `(category, service, cities[])`,
   UNIQUE on `(vendor_id, category, COALESCE(service,''))`. Wires the Sia 0169 `vendor_id` hooks
   (ON DELETE SET NULL). Trigram name index schema-qualified (`extensions.gin_trgm_ops`).
-- **0183 `vendor-invoices` bucket** — unchanged in shape; the one SELECT policy **narrowed to
+- **0184 `vendor-invoices` bucket** — unchanged in shape; the one SELECT policy **narrowed to
   admin/founder** to match the tables. Paths now live on `vendor_engagements.invoice_paths[]`, so
   every archive invoice is referenced (not "newest 5 per vendor").
-- **0184 the ledger** — `vendor_engagements` (**append-only**: one row per ticket/job; `client_id` →
+- **0185 the ledger** — `vendor_engagements` (**append-only**: one row per ticket/job; `client_id` →
   `clients` / `lead_id` → `leads` / `agent_id` → `profiles` hooks + `agent_name_raw` for ex-staff;
   UNIQUE `(source, source_ref)` idempotency; `outcome`; `amount_inr` INR-only; `invoice_paths`;
   `created_by`; `vendor_id` FK **RESTRICT** — a vendor with history is blacklisted, never deleted;
@@ -1029,14 +1168,14 @@ policy; Sia orphan rejected + ON DELETE SET NULL keeps the group; all three `upd
 conflicts), the loader rewrite (`scripts/vendors/`), `database.ts` regen (interim types + one
 `as any` cast per service file). **Nothing pushed, committed, or applied** — local branch only.
 
-Docs: ledger rows rewritten (`supabase/migrations/CLAUDE.md` 0182/0183 + new 0184), index rows
-(`docs/architecture/migrations.md` 0181–0184), registries (`src/lib/CLAUDE.md` constants /
+Docs: ledger rows rewritten (`supabase/migrations/CLAUDE.md` 0183/0184 + new 0185), index rows
+(`docs/architecture/migrations.md` 0181–0185), registries (`src/lib/CLAUDE.md` constants /
 services / actions / types / validations / `_auth`), root `CLAUDE.md` File Locations,
 `docs/modules/vendors.md` reconciled to what was built (**Built:** markers + the decisions).
 
 ---
 
-## 2026-09-05 — Vendors: PR #3 fixes (renumbered 0182/0183, uuid PK, Sia FKs)
+## 2026-09-05 — Vendors: PR #3 fixes (renumbered 0183/0184, uuid PK, Sia FKs)
 
 **Why:** two blocking review findings on `vendor-master-table`.
 
@@ -1044,13 +1183,13 @@ services / actions / types / validations / `_auth`), root `CLAUDE.md` File Locat
 but main carries the Elaya brain switch and the shop product enquiries at exactly those versions,
 both applied on prod (0181 is the clients spine). The Supabase CLI matches on the version number, so
 `db push` would have treated these as already applied and **skipped them silently** — no table, no
-bucket, and no error to notice. Renumbered to **0182** (spine) and **0183** (bucket), and rebased
+bucket, and no error to notice. Renumbered to **0183** (spine) and **0184** (bucket), and rebased
 onto main; the branch also conflicted on this changelog and the migration inventory.
 
 **2. Primary key was the wrong type.** Sia 0169 already reserved `vendor_id uuid` on `sia.wag_groups`
 and `sia.wag_contacts` for this table ("future vendor-profile table, soft until it exists"). A
 `bigint` key meant those hooks could never be wired. The PK is now **`id uuid default
-gen_random_uuid()`** — matching 43 of the 46 tables here — and 0182 wires both foreign keys
+gen_random_uuid()`** — matching 43 of the 46 tables here — and 0183 wires both foreign keys
 `ON DELETE SET NULL`, exactly as 0181 did for clients: losing a vendor row must never delete the
 WhatsApp group or contact pointing at it.
 
@@ -1060,46 +1199,8 @@ deleting a vendor nulls the hook and keeps the group; RLS still gives `anon` 0 r
 `authenticated` all; 6 indexes build; the bucket is `public=false`.
 
 **Still not applied.** Both run through the normal deployment process. Note that the wider redesign
-in `docs/modules/vendors.md` (engagement ledger, computed scores, 0182/0183/0184) supersedes this
+in `docs/modules/vendors.md` (engagement ledger, computed scores, 0183/0184/0185) supersedes this
 table’s shape — these are the two blocking fixes, not that rebuild.
-## 2026-09-10 — New lead source: Self
-
-Why: the team needed a way to mark leads a member brought in themselves (own network,
-outreach) that belong to no channel.
-
-What changed: one `{ id: "self", label: "Self" }` line in `lib/constants/lead-sources.ts`.
-The filter dropdown, Add Lead form, dossier source picker, Zod enum and labels all derive
-from that constant. Migration 0182 extends `deals_source_check` with `self` (the CHECK is
-coupled to `LEAD_SOURCES`, as 0180 established). **Applied to prod 2026-09-10 via
-`supabase db push`** (the founder ran it; only 0182 was pending).
-
----
-
-## 2026-09-10 — Leads search box: typed letters vanished mid-word
-
-Why: on `/leads` the search field ate characters while typing. Type "john d", and the box
-snapped back to "jo" or "johnd" with the cursor jumping.
-
-Cause: `useUrlFilters` re-synced the search input from the URL on **every** `params` change,
-including the echo of its own debounced push. The leads navigation is slow (server-side table
-fetch), so by the time `?search=jo` landed the user had typed more, and the effect overwrote
-the box with the older, trimmed value. An unrelated filter commit (a Status toggle) wiped a
-pending search the same way. Every filter bar on the hook (leads, deals, campaigns,
-performance, subscriptions) had the bug; leads showed it most because its page is slowest.
-
-What changed (`src/hooks/useUrlFilters.ts` only, no consumer edits):
-
-- An in-flight ledger of search values the hook has pushed but not yet seen echoed in the
-  URL. The re-sync effect now runs only when the `search` param actually changed AND the new
-  value is not one of ours. Back/forward and `?search=` links still re-sync; our own echo and
-  unrelated filter commits never touch the input. Trailing spaces survive while typing.
-- The debounce compares against the newest in-flight push, not the committed URL, so
-  "type then delete back to empty" while a navigation is pending still pushes the correction.
-- `push()` carries the newest in-flight search along, so a filter commit that lands after a
-  pending search navigation cannot drop the search param from the URL.
-
----
-
 ## 2026-09-04 — Sia intelligence plan (the W5 / Phase 3c spec)
 
 Why: both plans promised a detailed spec before building the intelligence layer; the Python

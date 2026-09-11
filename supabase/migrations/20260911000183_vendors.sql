@@ -1,23 +1,23 @@
--- Migration 0182: public.vendors — the vendor identity SPINE + vendor_capabilities.
+-- Migration 0183: public.vendors — the vendor identity SPINE + vendor_capabilities.
 --
 -- The one row per vendor (a supplier the concierge / shop floor books work with)
 -- that every other vendor table and the Sia WhatsApp hooks finally point at:
 -- sia.wag_groups.vendor_id / sia.wag_contacts.vendor_id (the 0169 soft hooks,
--- wired here), and the ledger layer (0184: engagements / reviews / preferences)
+-- wired here), and the ledger layer (0185: engagements / reviews / preferences)
 -- which hangs OFF this table — never lives in it.
 --
 -- Built the 0181 clients way: a thin identity spine + `import_raw` provenance.
 -- PR #3's computed Freshdesk row (ticket_categories / service_cities / agents /
 -- invoices / times_used / first_used / last_used / invoice_count) lands in
 -- `import_raw` UNTOUCHED as the audit trail of the import; nothing ranks on it
--- once vendor_engagements (0184) are loaded. Anything that does not parse
+-- once vendor_engagements (0185) are loaded. Anything that does not parse
 -- cleanly stays NULL in a typed column and survives inside import_raw.
 --
 -- Speed / quality / pricing / reliability are NOT columns here: they are
--- manually entered per review (vendor_reviews, 0184) and the score is COMPUTED
+-- manually entered per review (vendor_reviews, 0185) and the score is COMPUTED
 -- per read (the subscriptions status pattern) — never stored on the spine.
 --
--- Numbered 0182: 0179 (Elaya brain switch) / 0180 (shop product enquiries) /
+-- Numbered 0183: 0179 (Elaya brain switch) / 0180 (shop product enquiries) /
 -- 0181 (clients spine) are taken and applied on prod. The Supabase CLI matches
 -- on the version number, so a file reusing a taken number is SILENTLY SKIPPED.
 --
@@ -61,7 +61,7 @@ CREATE TABLE public.vendors (
 
   -- paused = do not suggest for now; blacklisted = never suggest (the ranker
   -- hard-excludes both and the details read says why). Vendors are never
-  -- hard-deleted once they carry history — 0184's ledger FKs RESTRICT it.
+  -- hard-deleted once they carry history — 0185's ledger FKs RESTRICT it.
   status            text        NOT NULL DEFAULT 'active'
     CHECK (status IN ('active', 'paused', 'blacklisted')),
 
@@ -125,7 +125,7 @@ CREATE TRIGGER vendors_updated_at
 COMMENT ON TABLE public.vendors IS
   'The vendor identity spine (one row per supplier). Identity + contacts + status only — '
   'what it offers lives in vendor_capabilities, every job in vendor_engagements, ratings in '
-  'vendor_reviews (0184); raw import rows in import_raw. Scores are computed per read, never '
+  'vendor_reviews (0185); raw import rows in import_raw. Scores are computed per read, never '
   'stored here. Reads admin/founder; writes service-role only (actions/vendors.ts is the gate).';
 COMMENT ON COLUMN public.vendors.contacts IS
   'Per-person contacts [{name|null, phones[] (E.164), emails[]}]; a null name holds the vendor general lines.';

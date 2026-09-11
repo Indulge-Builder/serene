@@ -61,7 +61,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA sia TO service_role
 -- a follow-up UPDATE.
 --
 -- FOUNDER because that is the role with the widest surface (/vendors is
--- admin/founder only, per the 0182-0185 RLS) — a reset database should be able
+-- admin/founder only, per the 0183-0186 RLS) — a reset database should be able
 -- to reach every page without a second account being made by hand.
 --
 -- Local only, by construction: this file is run by `supabase start` /

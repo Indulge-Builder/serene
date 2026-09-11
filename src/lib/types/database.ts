@@ -2220,6 +2220,51 @@ export type Database = {
           },
         ]
       }
+      vendor_agent_preferences: {
+        Row: {
+          agent_id: string
+          created_at: string
+          id: string
+          note: string | null
+          stance: string
+          updated_at: string
+          vendor_id: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          stance: string
+          updated_at?: string
+          vendor_id: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          stance?: string
+          updated_at?: string
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_agent_preferences_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_agent_preferences_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vendor_capabilities: {
         Row: {
           category: string
@@ -3371,6 +3416,14 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      get_vendor_agent_usage: {
+        Args: { p_limit?: number; p_vendor_id: string }
+        Returns: {
+          agent_id: string
+          count: number
+          name: string
+        }[]
+      }
       get_vendor_candidates: {
         Args: { p_category?: string; p_city?: string; p_service?: string }
         Returns: {
@@ -3402,6 +3455,25 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_vendor_categories: {
+        Args: never
+        Returns: {
+          category: string
+        }[]
+      }
+      get_vendor_category_usage: {
+        Args: { p_vendor_id: string }
+        Returns: {
+          category: string
+          count: number
+        }[]
+      }
+      get_vendor_cities: {
+        Args: never
+        Returns: {
+          city: string
+        }[]
+      }
       get_vendor_score_inputs: {
         Args: {
           p_category?: string
@@ -3414,6 +3486,7 @@ export type Database = {
           avg_quality: number
           avg_reliability: number
           avg_speed: number
+          avoid_count: number
           cancelled_count: number
           category_count: number
           city_count: number
@@ -3421,6 +3494,7 @@ export type Database = {
           engagement_count: number
           failed_count: number
           last_started_at: string
+          preferred_count: number
           review_count: number
           total_used: number
           vendor_id: string

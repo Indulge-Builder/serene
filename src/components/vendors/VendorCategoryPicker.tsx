@@ -20,11 +20,11 @@
 // that never changed.
 
 import { useState, useTransition } from 'react';
-import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Loader2, Plus } from 'lucide-react';
 import { m as motion } from 'framer-motion';
 import { usePortalAnchor } from '@/hooks/usePortalAnchor';
 import { FloatingPanel } from '@/components/ui/FloatingPanel';
+import { toast } from '@/lib/toast';
 import { updateVendorAction } from '@/lib/actions/vendors';
 import { vendorCategoryOptions, getVendorCategoryLabel, toVocabularyKey } from '@/lib/constants/vendors';
 import { FAST_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
@@ -40,7 +40,6 @@ export function VendorCategoryPicker({
   categoriesInUse?: string[];
 }) {
   const [value, setValue] = useState(category);
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   // A category added here has to appear in THIS list immediately — the page
   // will not have re-rendered by the time the panel reopens.
@@ -66,12 +65,14 @@ export function VendorCategoryPicker({
     if (next === value) return;
     const previous = value;
     setValue(next);            // optimistic
-    setError(null);
     startTransition(async () => {
       const res = await updateVendorAction({ id: vendorId, category: next });
       if (res.error) {
         setValue(previous);    // never leave a lie on screen
-        setError(res.error ?? 'Could not save the category.');
+        // The app toast: it has its own timer and dismiss. The first version
+        // rendered a pill here that closed onAnimationEnd — with no animation
+        // on it, it never closed.
+        toast.danger(res.error ?? 'Could not save the category.');
       }
     });
   }
@@ -109,29 +110,6 @@ export function VendorCategoryPicker({
         )}
       </button>
 
-      {error && typeof document !== 'undefined' && createPortal(
-        <div
-          role="alert"
-          style={{
-            position: 'fixed',
-            bottom: 'var(--space-6)',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 'var(--z-toast)',
-            padding: 'var(--space-3) var(--space-5)',
-            borderRadius: 'var(--neu-radius-chip)',
-            background: 'var(--color-danger-light)',
-            color: 'var(--color-danger-text)',
-            fontSize: 'var(--text-sm)',
-            boxShadow: 'var(--shadow-2)',
-          }}
-          onAnimationEnd={() => setError(null)}
-        >
-          {error}
-        </div>,
-        document.body,
-      )}
-
       <FloatingPanel {...anchor.panelProps} panelKey={`vendor-category-${vendorId}`}>
         <div style={{ padding: 'var(--space-2)', minWidth: 200, maxHeight: 320, overflowY: 'auto' }}>
           {options.map((opt) => {
@@ -167,7 +145,7 @@ export function VendorCategoryPicker({
           })}
 
           {/* vendors.category has no SQL CHECK — it is free text by design
-              (0182) — so a category typed here is as real as a built-in one and
+              (0183) — so a category typed here is as real as a built-in one and
               needs no migration. It is slugified through the SAME
               toVocabularyKey the loader and the Zod schema use, so "Private
               Aviation" lands on the one key all three agree on. */}

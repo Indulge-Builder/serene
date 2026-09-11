@@ -1,7 +1,7 @@
 import { defineEnum } from "./define-enum";
 
 // ─────────────────────────────────────────────
-// Vendors — vocabulary (migrations 0182–0184).
+// Vendors — vocabulary (migrations 0183–0185).
 // Every SQL CHECK in those migrations mirrors an id list here — extending one
 // = a new migration that DROPs + re-ADDs the named constraint (the
 // subscriptions 0163 rule). VENDOR_SERVICES is the ONE deliberate exception:
@@ -22,7 +22,7 @@ export const VENDOR_STATUS_OPTIONS = VENDOR_STATUS_DEF.options;
 export const VENDOR_STATUS_ENUM    = VENDOR_STATUS_DEF.zodEnum;
 
 // vendors.category_source — how the category on the spine was decided.
-// All five values the Freshdesk extraction actually emits (the 0182 CHECK
+// All five values the Freshdesk extraction actually emits (the 0183 CHECK
 // mirrors this list). `unresolved` is the honest 3,833-vendor "we could not
 // tell"; `client-excluded` marks the handful of rows that turned out to be a
 // CLIENT, not a supplier — kept, never suggested.
@@ -74,6 +74,19 @@ export type CapabilityStance = (typeof CAPABILITY_STANCES)[number];
 export const CAPABILITY_STANCE_LABELS = CAPABILITY_STANCE_DEF.labels;
 export const CAPABILITY_STANCE_ENUM   = CAPABILITY_STANCE_DEF.zodEnum;
 
+// vendor_agent_preferences.stance (0191) — one teammate's sticky note on a
+// vendor. `preferred` lifts the vendor in THAT teammate's ranking and counts
+// toward team sentiment; `avoid` removes it from their ranking and counts
+// against. Distinct from CAPABILITY_STANCES, which is what the VENDOR does.
+const PREFERENCE_STANCE_DEF = defineEnum([
+  { id: "preferred", label: "Preferred" },
+  { id: "avoid",     label: "Avoid" },
+]);
+export const PREFERENCE_STANCES = PREFERENCE_STANCE_DEF.values;
+export type PreferenceStance = (typeof PREFERENCE_STANCES)[number];
+export const PREFERENCE_STANCE_LABELS = PREFERENCE_STANCE_DEF.labels;
+export const PREFERENCE_STANCE_ENUM   = PREFERENCE_STANCE_DEF.zodEnum;
+
 // vendor_engagements.outcome — feeds the reliability signal. `unknown` is the
 // default for an open job and for archive rows whose outcome never parsed.
 const ENGAGEMENT_OUTCOME_DEF = defineEnum([
@@ -104,7 +117,7 @@ export const ENGAGEMENT_OUTCOME_ENUM    = ENGAGEMENT_OUTCOME_DEF.zodEnum;
 // first question; the RANKER asks the second, because a request arrives as a
 // ticket. Never filter one with the other's values.
 //
-// Both columns are free text by design (0182) — the loader slugifies whatever
+// Both columns are free text by design (0183) — the loader slugifies whatever
 // the extraction emitted, and the label helpers below fall back gracefully so
 // a value that is not in these lists still renders as words, never as a raw
 // slug and never as a crash.
@@ -151,7 +164,7 @@ export const REQUEST_CATEGORY_OPTIONS = REQUEST_CATEGORY_DEF.options;
  * THE category / service key normaliser — "Travel & Transport" →
  * "travel-transport", "Hotel Booking" → "hotel-booking".
  *
- * Both category columns are free text (0182), so the SAME label reaching the DB
+ * Both category columns are free text (0183), so the SAME label reaching the DB
  * by two routes must produce the SAME key: the loader slugifies the extraction,
  * and vendor-schema.ts slugifies what a human types. Without one shared rule an
  * edit that retypes "Travel & Transport" silently forks a second category and
@@ -185,7 +198,7 @@ export function getVendorCategoryLabel(category: string | null | undefined): str
  * The category list a picker offers: the 11 built-ins PLUS anything already in
  * use in the database.
  *
- * `vendors.category` has no SQL CHECK — it is free text by design (0182) — so a
+ * `vendors.category` has no SQL CHECK — it is free text by design (0183) — so a
  * category someone adds by hand is as real as a built-in one and has to appear
  * in the list for the NEXT vendor. Passing the in-use values in (from
  * `getVendorCategories()`) is what makes an added category stick rather than
@@ -281,7 +294,8 @@ export const SCORE_WEIGHTS = {
   volume:      2.5, // how often we have used them (in the category / city when asked)
   recency:     1.5, // still an active relationship
   reliability: 2.5, // completed over completed + failed + cancelled
-  reviews:     3.5, // avg of the four manual dimensions, across every reviewer
+  reviews:     2.5, // avg of the four manual dimensions, across every reviewer
+  sentiment:   1.0, // preferred minus avoid, over the teammates who spoke (0191)
 } as const;
 export type ScoreComponent = keyof typeof SCORE_WEIGHTS;
 
@@ -290,6 +304,13 @@ export const SCORE_WINDOW_MONTHS = 12;
 /** Volume saturates here — the 21st job no longer moves the score. */
 export const VOLUME_SATURATION = 20;
 export const SCORE_MAX = 10;
+/**
+ * Added to the asking teammate's OWN ranking value for a vendor they marked
+ * `preferred` (0191). On the 0–10 scale: enough to lift a preferred vendor over
+ * an otherwise-equal one, not enough to put an unused vendor above a proven
+ * one. An `avoid` needs no number — it removes the vendor from that answer.
+ */
+export const PREFERRED_BOOST = 1;
 
 export const RANK_DEFAULT_LIMIT = 5;
 export const RANK_MAX_LIMIT = 20;
@@ -313,7 +334,7 @@ export const VENDOR_MAX_CONTACT_EMAILS = 10;
 export const CAPABILITY_MAX_CITIES = 30;
 export const ENGAGEMENT_MAX_INVOICES = 20;
 
-/** The private bucket (0183); rows store PATHS, reads mint signed urls. */
+/** The private bucket (0184); rows store PATHS, reads mint signed urls. */
 export const VENDOR_INVOICE_BUCKET = "vendor-invoices";
 export const VENDOR_INVOICE_SIGNED_URL_TTL = 60 * 60; // 1 hour
 

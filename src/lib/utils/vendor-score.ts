@@ -2,7 +2,7 @@
 // subscription-status.ts posture): no DB, safe on client and server.
 //
 // A vendor's score is COMPUTED per read from the raw signals the
-// get_vendor_score_inputs rollup returns (migration 0184) — never stored on
+// get_vendor_score_inputs rollup returns (migration 0185) — never stored on
 // the vendors row — so a new review or a failed job moves the ranking
 // immediately. Each component maps to a 0–1 signal; a component with NO data
 // is dropped and the remaining SCORE_WEIGHTS renormalise, so a brand-new vendor
@@ -80,6 +80,7 @@ export function computeVendorScore(inputs: VendorScoreInputs, ctx: ScoreContext)
     recency: null,
     reliability: null,
     reviews: null,
+    sentiment: null,
   };
 
   // Volume — always present (0 is a real answer: "never used").
@@ -120,6 +121,16 @@ export function computeVendorScore(inputs: VendorScoreInputs, ctx: ScoreContext)
     reasons.push(`Rated ${avg.toFixed(1)}/5 across ${plural(inputs.reviewCount, "review")} (${parts})`);
   }
 
+  // Team sentiment — preferred minus avoid, over the teammates who spoke (0191).
+  // Maps -1..1 onto 0..1: everyone prefers = 1, everyone avoids = 0, an even
+  // split = 0.5. Silence is not a signal: no marks, no component.
+  const voices = inputs.preferredCount + inputs.avoidCount;
+  if (voices > 0) {
+    breakdown.sentiment = clamp01((inputs.preferredCount - inputs.avoidCount) / voices / 2 + 0.5);
+    if (inputs.preferredCount > 0) reasons.push(`Preferred by ${plural(inputs.preferredCount, "teammate")}`);
+    if (inputs.avoidCount > 0)     reasons.push(`${plural(inputs.avoidCount, "teammate")} avoid${inputs.avoidCount === 1 ? "s" : ""} this vendor`);
+  }
+
   // Weighted mean over the components that had data.
   let weighted = 0;
   let weightSum = 0;
@@ -138,6 +149,10 @@ export function computeVendorScore(inputs: VendorScoreInputs, ctx: ScoreContext)
   // reached a decided outcome. Until one of those exists the ring shows an em
   // dash and "times used" carries the usage story on its own. `ranking` still
   // orders the ranker.
+  // A teammate's preferred / avoid mark shapes the RANKING and the reasons
+  // (sentiment, above) but does not on its own unlock the displayed verdict:
+  // with one mark and no rating, four-fifths of the number would still be
+  // call frequency — the 9.9-for-an-unrated-vendor this gate exists to stop.
   const hasJudgement = breakdown.reliability != null || breakdown.reviews != null;
 
   return { score: hasJudgement ? ranking : null, ranking, reasons, breakdown };
@@ -147,6 +162,9 @@ export function computeVendorScore(inputs: VendorScoreInputs, ctx: ScoreContext)
 export function vendorFlags(inputs: VendorScoreInputs, identityVerified: boolean): string[] {
   const flags: string[] = [];
   if (inputs.failedCount > 0) flags.push(`${plural(inputs.failedCount, "failed job")} in the last ${SCORE_WINDOW_MONTHS} months`);
+  // A teammate's avoid is a caution to everyone else, never their exclusion —
+  // the asking agent's OWN avoid is handled by the ranker, which removes the row.
+  if (inputs.avoidCount > 0)  flags.push(`${plural(inputs.avoidCount, "teammate")} marked avoid`);
   if (!identityVerified)      flags.push("Identity not yet verified");
   return flags;
 }

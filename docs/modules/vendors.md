@@ -6,7 +6,7 @@
 > **Audience:** engineers (Ethan first, this is the build contract for the vendor PR).
 > **Source-of-truth scope:** the vendor data model, the scoring model, and how Elaya reads it.
 > **Status:** spec, written 2026-09-04; **built 2026-09-05** on `vendor-master-table` (migrations
-> 0182–0184 + the `lib/` layer, all verified locally on a clean Postgres 17.6 container — NOT yet
+> 0183–0185 + the `lib/` layer, all verified locally on a clean Postgres 17.6 container — NOT yet
 > applied to prod, no UI yet). Supersedes the shape in PR #3. Where this doc and the code differ,
 > the code + `docs/changelog.md` 2026-09-05 win; the deltas are marked **Built:** below.
 
@@ -51,11 +51,11 @@ rank   = capabilities filter → score → top N with reasons
 
 ## Data model
 
-Migration numbers: 0182, 0183, 0184 with today's date prefix. **0179 and 0180 are taken and
+Migration numbers: 0183, 0184, 0185 with today's date prefix. **0179 and 0180 are taken and
 applied on prod** (the Elaya brain switch and the shop product enquiries); 0181 is the clients
 spine. The Supabase CLI matches on the version number, so a file reusing 0179 is silently skipped.
 
-### `vendors` (0182): the spine
+### `vendors` (0183): the spine
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -88,7 +88,7 @@ alter table sia.wag_contacts add constraint wag_contacts_vendor_fk
   foreign key (vendor_id) references public.vendors(id) on delete set null;
 ```
 
-### `vendor_capabilities` (0182): what it does and refuses
+### `vendor_capabilities` (0183): what it does and refuses
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -105,7 +105,7 @@ alter table sia.wag_contacts add constraint wag_contacts_vendor_fk
 Unique on `(vendor_id, category, coalesce(service, ''))`. Seeded from PR #3's per-category counts
 as `offers` rows. `declines` rows only ever come from a human.
 
-### `vendor_engagements` (0184): the ledger, append-only
+### `vendor_engagements` (0185): the ledger, append-only
 
 One row per ticket or job we did with a vendor. This is the table every score reads.
 
@@ -138,11 +138,11 @@ Indexes: `(vendor_id, started_at desc)`, `(client_id) where client_id is not nul
 `(agent_id) where agent_id is not null`, `(category, city)`.
 
 **Append-only (Rule 08, A-11).** No user UPDATE or DELETE policy. One carve-out, logged in the
-Decision Log when 0184 ships: a service-role UPDATE that **closes** an open engagement (`closed_at`,
+Decision Log when 0185 ships: a service-role UPDATE that **closes** an open engagement (`closed_at`,
 `outcome`, `amount_inr`, `invoice_paths`, `note`), the resolve-once posture of
 `revival_candidates` — `closeEngagementCore`, `WHERE closed_at IS NULL`, exactly once. Rows from the Freshdesk archive arrive already closed and are never touched.
 
-### `vendor_reviews` (0184): append-only
+### `vendor_reviews` (0185): append-only
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -159,7 +159,18 @@ engagement (`DISTINCT ON` inside `get_vendor_score_inputs`). `reviewer_id` FK is
 `vendor_id` FK is `on delete restrict` (ledger). A review on an engagement takes `vendor_id` FROM
 the engagement (`addReviewCore`) so the two can never disagree.
 
-### `vendor-invoices` bucket (0183)
+### `vendor_agent_preferences` (0191): the sticky note
+
+One teammate's stance on one vendor — `preferred` or `avoid` — with an optional note. One row per
+(vendor, agent), **editable** (an opinion about now, not a record of what happened; a changed mind is
+an update). CASCADE on both parents. It feeds three things at once: the `sentiment` score component
+(every mark), the ranker's agent layer (the asking teammate's OWN avoid removes the vendor from their
+answer, their own preferred adds `PREFERRED_BOOST`; teammates' marks reach the answer only as a score
+signal and a "N teammates avoid" flag — a caution to the floor, never a verdict for them), and
+Elaya's `find_vendors` (the staff principal is the agent). Reads admin/founder; writes service-role
+via `setAgentPreferenceCore`. On the vendor page: "Your take" in the score card.
+
+### `vendor-invoices` bucket (0184)
 
 Keep PR #3's migration nearly as is: private bucket, provisioned in SQL, flat paths keyed on the
 Freshdesk `attachment_id`, no write policy (service-role only), reads via admin-client signed
@@ -205,7 +216,7 @@ Inputs, all derived, over a rolling 12 months unless stated:
 **Built:** `SCORE_WEIGHTS` = volume 2.5 · recency 1.5 · reliability 2.5 · reviews 2.5 ·
 sentiment 1.0 (sum 10). A component with NO data (no decided outcomes, no reviews, no
 preferences) is dropped and the rest renormalise — never a fake neutral. The one SQL rollup is
-`get_vendor_score_inputs` (0184, Q-13 revoked tier); the weighting is `computeVendorScore` in
+`get_vendor_score_inputs` (0185, Q-13 revoked tier); the weighting is `computeVendorScore` in
 `lib/utils/vendor-score.ts`, so tuning a weight is never a migration.
 
 Output: a 0 to 10 score plus a **reasons list**, the same shape the Concierge vision shows in the
@@ -270,12 +281,35 @@ same function in `lib/services/vendor-mutations.ts`.
 4. **Manual.** `logVendorEngagement`, `reviewVendor`, `setVendorPreference`,
    `setVendorCapability` actions, and the Elaya writes, for everything in between.
 
-## File map (built 2026-09-05; `scripts/vendors/` and the Elaya tools are still to come)
+## Deploying: migrations → data → merge (never the other order)
+
+Data never travels in a PR. The loader runs **against the target database** — it resolves
+`agent_name_raw` against the profiles that exist THERE, so a table copy from a laptop would carry
+46,000 null agent links into production. Both scripts refuse a remote host without
+`--yes-write-to-production`.
+
+```bash
+supabase db push                                                                # 1. the tables + bucket
+npx tsx scripts/vendors/load-vendors.ts --yes-write-to-production              # 2. the data (insert-only on rerun)
+npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --replay scripts/vendors/vendor-merges.csv
+npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --purge-junk        # 3. IN THIS ORDER —
+npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --purge-clients     #    merges before purges
+npx tsx scripts/vendors/upload-vendor-invoices.ts --yes-write-to-production --skip-existing   # 4. the PDFs
+```
+
+Merges before purges: two rows the merge list names as survivors are themselves junk-labelled; purge
+first and those merges find no survivor. The loader is insert-only after the first load (existing
+rows untouched, merged-away spellings mapped to their survivor), so rerunning it is safe; a rerun
+re-inserts only the rows the cleanup removed by label, and the cleanup removes them again — run the
+three cleanup commands after every load. A true rebuild is `--wipe`. `client_id` is NULL on every imported row — the archive never carried the
+requester's identity.
+
+## File map (built 2026-09-05 → 2026-09-11)
 
 ```text
-supabase/migrations/20260905000182_vendors.sql                 vendors + vendor_capabilities + Sia FKs
-supabase/migrations/20260905000183_vendor_invoices_bucket.sql  PR #3's bucket, renumbered, read narrowed to admin/founder
-supabase/migrations/20260905000184_vendor_ledger.sql           engagements + reviews + get_vendor_score_inputs RPC
+supabase/migrations/20260911000183_vendors.sql                 vendors + vendor_capabilities + Sia FKs
+supabase/migrations/20260911000184_vendor_invoices_bucket.sql  PR #3's bucket, renumbered, read narrowed to admin/founder
+supabase/migrations/20260911000185_vendor_ledger.sql           engagements + reviews + get_vendor_score_inputs RPC
 src/lib/utils/vendor-score.ts       computeVendorScore + vendorFlags — the pure score math (no DB)
 src/lib/constants/vendors.ts        VENDOR_STATUS, CAPABILITY_STANCE, ENGAGEMENT_SOURCE/OUTCOME,
                                     REVIEW_DIMENSIONS, VENDOR_SERVICES, SCORE_WEIGHTS

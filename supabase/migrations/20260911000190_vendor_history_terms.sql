@@ -1,7 +1,7 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0189 — The search terms arrive ranked, and the ranking is honoured.
+-- 0190 — The search terms arrive ranked, and the ranking is honoured.
 --
--- 0188 scored a title by the summed rarity (IDF) of the query words it matched.
+-- 0189 scored a title by the summed rarity (IDF) of the query words it matched.
 -- Rarity is a decent proxy for importance and a bad substitute for it. Once the
 -- model began expanding requests, the proxy broke outright:
 --
@@ -108,6 +108,22 @@ BEGIN
     WHERE v.status = 'active'
       AND (p_category IS NULL OR e.category = p_category)
       AND (p_service  IS NULL OR e.service  = p_service)
+      -- A `declines` capability excludes the vendor here exactly as it does in
+      -- get_vendor_candidates (0188). This path used to check status alone, so a
+      -- vendor who had told us they no longer take a kind of work was still
+      -- suggested for it whenever an old ticket title matched. The request's
+      -- category is the chip when one was given, else the matched job's own
+      -- category — the closest thing to "what kind of work is this" that a
+      -- title match carries. A whole-category decline (NULL service) always
+      -- bites; a service-specific one bites only for that service.
+      AND NOT EXISTS (
+        SELECT 1 FROM public.vendor_capabilities c
+        WHERE c.vendor_id = e.vendor_id
+          AND c.stance = 'declines'
+          AND c.category = COALESCE(p_category, e.category)
+          AND (c.service IS NULL OR c.service = COALESCE(p_service, e.service))
+          AND (p_city IS NULL OR cardinality(c.cities) = 0 OR c.cities @> ARRAY[p_city])
+      )
       -- City narrows on the vendor's SERVICE AREA, not the job: only 1,802 of
       -- 46,572 jobs recorded a location.
       AND (
@@ -142,7 +158,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.find_vendors_by_history(text, text[], text, text, text, integer) IS
-  'Find vendors by searching past TICKET TITLES. `p_terms` arrives ordered by importance from the model that read the request and is weighted by rarity x position — rarity alone ranked "black" above "cake" and returned black socks for a cake request. `p_query` is the no-model fallback. Q-13 revoked tier: service_role only.';
+  'Find vendors by searching past TICKET TITLES. `p_terms` arrives ordered by importance from the model that read the request and is weighted by rarity x position — rarity alone ranked "black" above "cake" and returned black socks for a cake request. `p_query` is the no-model fallback. A `declines` capability excludes a vendor here as in get_vendor_candidates (request category, else the matched job''s). Q-13 revoked tier: service_role only.';
 
 REVOKE EXECUTE ON FUNCTION public.find_vendors_by_history(text, text[], text, text, text, integer) FROM PUBLIC, anon, authenticated;
 GRANT  EXECUTE ON FUNCTION public.find_vendors_by_history(text, text[], text, text, text, integer) TO service_role;

@@ -322,7 +322,7 @@ export function getBudget(period: OversightPeriod): Promise<BudgetCampaignRow[]>
 export type { ElayaChannel };
 
 // ─────────────────────────────────────────────
-// Vendors (0182–0189)
+// Vendors (0183–0190)
 //
 // Both wrap the SAME functions the /vendors UI calls — the spec is explicit
 // that Elaya's tool, the future Sia ticket screen and the Chrome extension all

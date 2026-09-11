@@ -11,14 +11,15 @@
 // future ticket screen and Elaya's tool will call. Nothing here re-ranks.
 //
 // The SENTENCE is the search. It goes to the ranker whole and is matched
-// against the ticket titles of 47,441 past jobs (0188), so "order for black
+// against the ticket titles of 47,441 past jobs (0189), so "order for black
 // forest cake" finds the cake suppliers without "cake" being in any vocabulary.
 // The keyword parse still runs, but only to show CHIPS — what it recognised —
 // which narrow the search and can be cleared. Nothing here is required, and
 // nothing here re-ranks.
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Search, X } from 'lucide-react';
 import { m as motion } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
@@ -197,7 +198,13 @@ function Chip({
 }
 
 export function FindVendorPanel({ cities }: { cities: string[] }) {
-  const [text, setText] = useState('');
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Coming BACK from a vendor page, the search that led there is in ?q= (put
+  // there by the result link's ?from=), so the box is pre-filled and the
+  // search re-run once — not an empty box and a lost query.
+  const initialQ = searchParams.get('q') ?? '';
+  const [text, setText] = useState(initialQ);
   const [cleared, setCleared] = useState<Partial<Parsed>>({});
   const [results, setResults] = useState<RankedVendor[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -215,13 +222,25 @@ export function FindVendorPanel({ cities }: { cities: string[] }) {
   // The ranker filters on a capability row, so a category is the one thing it
   // cannot infer — without it there is nothing to rank against.
   // A service alone is a valid request — "flights to Dubai" names no
-  // category, and the ranker handles that since 0187. Requiring a category
+  // category, and the ranker handles that since 0188. Requiring a category
   // here is what greyed the button out on every service-only phrase.
   // Anything typed is searchable. The chips NARROW the answer; they are not
   // the answer. Requiring one is what greyed the button out on every request
   // whose words happened not to be in the vocabulary — "order for black forest
   // cake", "need a cardiologist".
   const canSearch = text.trim().length > 1 && !isPending;
+  // Where a result link sends you back to: this page with the search in the
+  // URL, so it can be re-run rather than lost (the leads ?from= pattern).
+  const fromUrl = text.trim() ? `${pathname}?q=${encodeURIComponent(text.trim())}` : pathname;
+
+  const ranOnce = useRef(false);
+  useEffect(() => {
+    if (ranOnce.current || initialQ.trim().length <= 1) return;
+    ranOnce.current = true;
+    run();
+    // Mount-only by design: `run` reads the current text, which IS initialQ here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function run() {
     if (!canSearch) return;
@@ -345,7 +364,7 @@ export function FindVendorPanel({ cities }: { cities: string[] }) {
               transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO, delay: Math.min(i * 0.04, 0.16) }}
             >
               <Link
-                href={`${VENDORS_PATH}/${r.vendor.id}`}
+                href={`${VENDORS_PATH}/${r.vendor.id}?from=${encodeURIComponent(fromUrl)}`}
                 style={{
                   display: 'flex',
                   alignItems: 'center',

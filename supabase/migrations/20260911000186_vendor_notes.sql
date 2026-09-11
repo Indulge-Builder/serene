@@ -1,6 +1,6 @@
--- Migration 0185: public.vendor_notes — many timestamped notes per vendor.
+-- Migration 0186: public.vendor_notes — many timestamped notes per vendor.
 --
--- The vendor spine (0182) carries a single `notes` text column, which can hold
+-- The vendor spine (0183) carries a single `notes` text column, which can hold
 -- one anonymous blob. What the floor actually needs is the `lead_notes` shape:
 -- several notes per vendor, each keeping WHO wrote it and WHEN, newest first
 -- ("Prefers WhatsApp over email — Ria, 1 Sep"). That is this table.
@@ -37,7 +37,7 @@ COMMENT ON TABLE public.vendor_notes IS
   'Reads admin/founder; writes service-role only (addVendorNoteCore is the one write path). '
   'Distinct from vendors.notes, which holds the import free-text.';
 
--- RLS mirrors the rest of the vendor module (0182/0184): admin/founder SELECT,
+-- RLS mirrors the rest of the vendor module (0183/0185): admin/founder SELECT,
 -- no user write policy — every insert is service-role via actions/vendors.ts
 -- behind requireProfile(). InitPlan-hoisted `(SELECT get_user_role())` per 0088.
 ALTER TABLE public.vendor_notes ENABLE ROW LEVEL SECURITY;

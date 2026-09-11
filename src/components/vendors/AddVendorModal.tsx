@@ -97,7 +97,7 @@ export function AddVendorModal({
     if (!canSubmit) return;
     setError(null);
     startTransition(async () => {
-      // One contact entry holds whatever reach details were given — the 0182
+      // One contact entry holds whatever reach details were given — the 0183
       // contract's unnamed "general lines" row.
       const contacts =
         phone.trim() || email.trim()

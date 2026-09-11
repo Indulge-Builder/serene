@@ -64,7 +64,7 @@ export type ElayaReadToolName =
   | 'get_domain_health'
   | 'get_campaigns'
   | 'get_budget'
-  // Vendors (0182–0189) — admin/founder, mirroring the tables' RLS
+  // Vendors (0183–0190) — admin/founder, mirroring the tables' RLS
   | 'find_vendors'
   | 'get_vendor_details';
 
@@ -735,7 +735,7 @@ const getBudget: ElayaTool = {
 // ─────────────────────────────────────────────
 // Vendors
 //
-// FOUNDER_UP, not the spec's "concierge + shop staff": the 0182/0184 tables are
+// FOUNDER_UP, not the spec's "concierge + shop staff": the 0183/0185 tables are
 // admin/founder SELECT only, so a manager holding the tool would call it and be
 // refused by the database. The toolset widens the day the RLS does, in one line.
 //
@@ -770,12 +770,15 @@ const findVendors: ElayaTool = {
     required: ['request'],
     additionalProperties: false,
   },
-  run: async (_principal, input) => {
+  run: async (principal, input) => {
     const { request, city, limit } = input as { request: string; city?: string; limit?: number };
     const ranked = await elayaData.rankVendors({
       phrase: request,
       city: city?.trim().toLowerCase() || null,
       limit: limit ?? 5,
+      // The genie's own sticky notes shape the suggestion exactly as the page
+      // does (0191): their avoid is left out, their preferred is lifted.
+      agentId: principal.kind === 'staff' ? principal.userId : null,
     });
     if (ranked.length === 0) {
       return {
@@ -851,6 +854,9 @@ const getVendorDetails: ElayaTool = {
       })),
       ratings: d.ratings,
       reviewerCount: d.reviewerCount,
+      // Who on the team prefers or avoids them, with their note — the sticky
+      // notes (0191). Staff names, never a customer's.
+      teamTakes: d.preferences.map((p) => ({ who: p.agent_name, stance: p.stance, note: p.note })),
     };
   },
 };

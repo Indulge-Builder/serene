@@ -3,7 +3,7 @@
  *
  * `load-vendors.ts` writes the invoice PATHS onto the engagement ledger but
  * never the files — the rows point at `{attachment_id}.pdf` inside the bucket
- * provisioned by migration 0183. Until those objects exist, "Open" on the
+ * provisioned by migration 0184. Until those objects exist, "Open" on the
  * vendor page mints a signed url for a key that isn't there and nothing opens.
  * This script closes that gap.
  *
@@ -11,7 +11,7 @@
  * ticket:
  *   E:/Vendor/raw/attachments/{ticket_id}/{attachment_id}__{original_name}
  * The bucket key stays FLAT and keyed on the globally-unique attachment id
- * (the 0183 contract), so the original filename — often truncated, occasionally
+ * (the 0184 contract), so the original filename — often truncated, occasionally
  * 90 characters of base64 — never has to be a valid object key. Verified by
  * magic bytes: 4,982 of the 4,987 referenced attachments are genuine PDFs and
  * the rest are PDFs with a stray leading byte or saved HTML receipts, so
@@ -66,7 +66,7 @@ const host = (() => {
 })();
 const IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0"].includes(host);
 // Production IS a supported target — it is the only way the files get there.
-// The bucket (migration 0183) is private, so nothing here is ever a public URL;
+// The bucket (migration 0184) is private, so nothing here is ever a public URL;
 // the vendor page mints a signed url per click. The PATHS are already written
 // onto the engagement ledger by the loader, so until these objects exist on the
 // target, every "Open" on a production vendor page signs a key that isn't there.
@@ -89,7 +89,7 @@ if (!IS_LOCAL) {
       `    ~1.8 GB across 4,977 objects into the private ${VENDOR_INVOICE_BUCKET} bucket.\n` +
       `    Objects are upserted on their key, so this is safe to re-run and safe to\n` +
       `    interrupt — resume with --skip-existing and it re-sends only what is\n` +
-      `    missing. Run it AFTER the migrations (0183 creates the bucket) and AFTER\n` +
+      `    missing. Run it AFTER the migrations (0184 creates the bucket) and AFTER\n` +
       `    the loader (it writes the paths these objects have to match).\n`,
   );
 }

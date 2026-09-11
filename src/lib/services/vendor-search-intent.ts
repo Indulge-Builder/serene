@@ -9,7 +9,7 @@
 // So the sentence is read once by the routing-tier model, which returns the
 // structured request underneath it — category, service, city, and the SEARCH
 // TERMS to look for in past ticket titles. Everything after that is unchanged:
-// the terms go to `find_vendors_by_history` (0188) and the vendors come back
+// the terms go to `find_vendors_by_history` (0189) and the vendors come back
 // from real rows.
 //
 // THE MODEL NEVER NAMES A VENDOR. It only interprets the sentence. Every vendor

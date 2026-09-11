@@ -2,7 +2,7 @@
 
 // VendorNotesCard — the vendor's notes, newest first, plus the composer.
 //
-// Many notes per vendor, each keeping who wrote it and when (migration 0185) —
+// Many notes per vendor, each keeping who wrote it and when (migration 0186) —
 // the lead-notes shape. Append-only: a correction is a new note, never an edit.
 // The composer posts optimistically and reconciles from the action's returned
 // row, so a slow round trip never leaves the note looking lost.

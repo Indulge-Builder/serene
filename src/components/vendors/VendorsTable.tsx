@@ -12,7 +12,7 @@
 // boundary in components/CLAUDE.md).
 
 import { memo, useCallback, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Building2 } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -98,9 +98,14 @@ export function VendorsTable({ vendors }: { vendors: VendorListItem[] }) {
 
 const VendorRow = memo(function VendorRow({ item }: { item: VendorListItem }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [hovered, setHovered] = useState(false);
   const { vendor, timesUsed, score } = item;
-  const href = `${VENDORS_PATH}/${vendor.id}`;
+  // The list's own URL (search, category, page) rides along as ?from=, so Back
+  // on the vendor page returns to THIS view — the LeadRow pattern.
+  const fromUrl = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
+  const href = `${VENDORS_PATH}/${vendor.id}?from=${encodeURIComponent(fromUrl)}`;
 
   const go = useCallback(() => router.push(href), [router, href]);
   // Prefetch on hover — the LeadsTable convention; Next dedupes repeats.

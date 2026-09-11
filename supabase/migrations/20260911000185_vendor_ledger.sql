@@ -1,8 +1,8 @@
--- Migration 0184: the vendor LEDGER layer — vendor_engagements (append-only),
+-- Migration 0185: the vendor LEDGER layer — vendor_engagements (append-only),
 -- vendor_reviews (append-only) + the one
 -- score-inputs rollup RPC every vendor score reads.
 --
--- These hang OFF the 0182 spine and are the tables that CHANGE as agents work
+-- These hang OFF the 0183 spine and are the tables that CHANGE as agents work
 -- with vendors day to day: every job we do with a vendor is one engagement row,
 -- every opinion is one review row. Nothing here is ever summarised back onto
 -- vendors —
@@ -13,7 +13,7 @@
 -- (none of it exists in Freshdesk). The ledger contributes what it can honestly
 -- know: volume, recency, and the completed / failed / cancelled outcome mix.
 --
--- Numbered 0184, after the 0182 spine + 0183 bucket (0179–0181 are taken and
+-- Numbered 0185, after the 0183 spine + 0184 bucket (0179–0181 are taken and
 -- applied on prod; a file reusing a taken version number is silently skipped).
 --
 -- NOT APPLIED. Runs through the normal deployment process, never directly
@@ -70,7 +70,7 @@ CREATE TABLE public.vendor_engagements (
     CHECK (outcome IN ('completed', 'cancelled', 'failed', 'unknown')),
   -- What we paid. INR only, never auto-converted (the subscriptions currency rule).
   amount_inr      numeric(12, 2) CHECK (amount_inr IS NULL OR amount_inr >= 0),
-  -- Paths in the vendor-invoices bucket (0183), never urls — signed on read.
+  -- Paths in the vendor-invoices bucket (0184), never urls — signed on read.
   invoice_paths   text[]      NOT NULL DEFAULT '{}',
   note            text,
 
@@ -154,7 +154,7 @@ COMMENT ON TABLE public.vendor_reviews IS
   'row; the score uses the latest per (reviewer, engagement). Reads admin/founder; writes service-role.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- RLS — admin/founder SELECT only on all three (the 0182 posture). The two
+-- RLS — admin/founder SELECT only on all three (the 0183 posture). The two
 -- ledgers get NO write policy ever (A-11) — every write is service-role via
 -- actions/vendors.ts behind requireProfile().
 -- InitPlan-hoisted `(SELECT get_user_role())` per 0088.
@@ -282,3 +282,57 @@ COMMENT ON FUNCTION public.get_vendor_score_inputs(uuid[], timestamptz, text, te
   'One zero-filled row per requested vendor: all-time total_used + windowed engagement volume / category / city / outcome '
   'counts + recency, latest-per-(reviewer, engagement) review averages. '
   'Weighting lives in the service (SCORE_WEIGHTS). Q-13 revoked tier — service_role only.';
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- get_vendor_agent_usage / get_vendor_category_usage — "used most by" and
+-- "used for" on the vendor page, aggregated IN SQL.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The service used to select the vendor's whole ledger (agent_id, category,
+-- profile name) and tally it in Node. PostgREST caps a select at 1,000 rows and
+-- says nothing, so for any vendor with more history than that — exactly the
+-- vendors these panels matter for — the counts were a silent undercount. A
+-- GROUP BY returns a handful of rows however long the ledger is.
+--
+-- Ex-staff keep their name: an engagement whose agent_id no longer resolves to
+-- a profile falls back to agent_name_raw (the 0185 contract), so the tally is
+-- of PEOPLE, not of surviving accounts. Unattributed rows are skipped — they
+-- are not a person.
+-- Q-13 revoked tier, like every other vendor read.
+CREATE OR REPLACE FUNCTION public.get_vendor_agent_usage(p_vendor_id uuid, p_limit integer DEFAULT 3)
+RETURNS TABLE (agent_id uuid, name text, count integer)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public AS $$
+  SELECT
+    e.agent_id,
+    COALESCE(p.full_name, e.agent_name_raw)    AS name,
+    count(*)::int                              AS count
+  FROM public.vendor_engagements e
+  LEFT JOIN public.profiles p ON p.id = e.agent_id
+  WHERE e.vendor_id = p_vendor_id
+    AND COALESCE(p.full_name, e.agent_name_raw) IS NOT NULL
+  GROUP BY e.agent_id, COALESCE(p.full_name, e.agent_name_raw)
+  ORDER BY count(*) DESC, COALESCE(p.full_name, e.agent_name_raw) ASC
+  LIMIT greatest(1, coalesce(p_limit, 3));
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_vendor_category_usage(p_vendor_id uuid)
+RETURNS TABLE (category text, count integer)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public AS $$
+  SELECT e.category, count(*)::int AS count
+  FROM public.vendor_engagements e
+  WHERE e.vendor_id = p_vendor_id
+  GROUP BY e.category
+  ORDER BY count(*) DESC, e.category ASC;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_vendor_agent_usage(uuid, integer)  FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION public.get_vendor_agent_usage(uuid, integer)  TO service_role;
+REVOKE EXECUTE ON FUNCTION public.get_vendor_category_usage(uuid)        FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION public.get_vendor_category_usage(uuid)        TO service_role;
+
+COMMENT ON FUNCTION public.get_vendor_agent_usage(uuid, integer) IS
+  'Top teammates by job count for one vendor, aggregated in SQL (the Node tally was capped at PostgREST''s 1,000 rows). Ex-staff keep their raw name. Q-13 revoked tier.';
+COMMENT ON FUNCTION public.get_vendor_category_usage(uuid) IS
+  'Job count per ticket category for one vendor, aggregated in SQL. Q-13 revoked tier.';

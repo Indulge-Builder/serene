@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0188 — Find a vendor by what your team has actually written.
+-- 0189 — Find a vendor by what your team has actually written.
 --
 -- The panel matched a request against a hand-written list of ~80 keywords. That
 -- list can never be finished: "order for black forest cake" and "flowers for my
@@ -27,7 +27,7 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- No new index: the FTS index on titles and `(vendor_id, started_at DESC)` both
--- already exist from 0184. An earlier draft re-created the latter and a fresh
+-- already exist from 0185. An earlier draft re-created the latter and a fresh
 -- `db reset` printed "already exists, skipping" for it — harmless, but a second
 -- declaration of one index is exactly the drift this file should not add.
 

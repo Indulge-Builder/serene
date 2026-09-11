@@ -1,12 +1,12 @@
 "use server";
 
-// actions/vendors.ts — the Vendors module's server actions (migrations 0182–0184).
+// actions/vendors.ts — the Vendors module's server actions (migrations 0183–0185).
 //
 // Every write: Zod (parseActionInput) → requireProfile(VENDOR_ROLES) →
 // actorFromProfile → the shared core in services/vendor-mutations.ts →
 // revalidatePath(VENDORS_PATH) → { data, error } (Rule 10). Every read: Zod →
 // requireProfile(VENDOR_ROLES) → vendors-service. VENDOR_ROLES mirrors the
-// 0182–0184 SELECT policies + the 0183 bucket policy (admin/founder for now —
+// 0183–0185 SELECT policies + the 0184 bucket policy (admin/founder for now —
 // the concierge / shop floor widens this with the Sia UI, as its own
 // migration + a one-line change here). The action IS the trust boundary: the
 // tables carry no user write policies and the service reads on the admin client.
@@ -31,6 +31,8 @@ import {
   closeEngagementCore,
   addReviewCore,
   addVendorNoteCore,
+  setAgentPreferenceCore,
+  removeAgentPreferenceCore,
   type VendorMutationError,
 } from "@/lib/services/vendor-mutations";
 import {
@@ -47,6 +49,8 @@ import {
   RankVendorsSchema,
   SignVendorInvoiceSchema,
   AddVendorNoteSchema,
+  SetAgentPreferenceSchema,
+  RemoveAgentPreferenceSchema,
 } from "@/lib/validations/vendor-schema";
 import {
   VENDORS_PATH,
@@ -61,10 +65,11 @@ import type {
   VendorReviewRow,
   VendorDetail,
   VendorNoteRow,
+  VendorAgentPreferenceRow,
   RankedVendor,
 } from "@/lib/types/vendor";
 
-/** Who may read or write vendors — the SQL mirror is the 0182–0184 SELECT policies. */
+/** Who may read or write vendors — the SQL mirror is the 0183–0185 SELECT policies. */
 const VENDOR_ROLES: readonly UserRole[] = ["admin", "founder"];
 
 /** Core refusal → user copy. */
@@ -207,6 +212,35 @@ export async function addVendorNoteAction(input: unknown): Promise<ActionResult<
   return { data: result.row, error: null };
 }
 
+/** The caller's sticky note on a vendor — preferred / avoid + why (0191). */
+export async function setAgentPreferenceAction(input: unknown): Promise<ActionResult<VendorAgentPreferenceRow>> {
+  const parsed = parseActionInput(SetAgentPreferenceSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const auth = await requireProfile(VENDOR_ROLES);
+  if (!auth.ok) return auth.result;
+
+  const result = await setAgentPreferenceCore(actorFromProfile(auth.profile), parsed.data);
+  if (!result.ok) return { data: null, error: mutationError(result.error) };
+  revalidatePath(`${VENDORS_PATH}/${parsed.data.vendor_id}`);
+  return { data: result.row, error: null };
+}
+
+export async function removeAgentPreferenceAction(
+  input: unknown,
+): Promise<ActionResult<{ vendor_id: string; agent_id: string }>> {
+  const parsed = parseActionInput(RemoveAgentPreferenceSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const auth = await requireProfile(VENDOR_ROLES);
+  if (!auth.ok) return auth.result;
+
+  const result = await removeAgentPreferenceCore(
+    actorFromProfile(auth.profile), parsed.data.vendor_id, parsed.data.agent_id,
+  );
+  if (!result.ok) return { data: null, error: mutationError(result.error) };
+  revalidatePath(`${VENDORS_PATH}/${parsed.data.vendor_id}`);
+  return { data: result.row, error: null };
+}
+
 // ── Reads ──────────────────────────────────────────────────────────────────────
 
 export async function searchVendorsAction(input: unknown): Promise<ActionResult<VendorRow[]>> {
@@ -248,6 +282,9 @@ export async function rankVendorsAction(input: unknown): Promise<ActionResult<Ra
     service: parsed.data.service,
     city: parsed.data.city,
     clientId: parsed.data.client_id,
+    // The caller's own sticky notes shape their answer (0191) — never a
+    // client-supplied id, so nobody can ask "what would Anisha see".
+    agentId: auth.profile.id,
     limit: parsed.data.limit,
   });
   return { data: ranked, error: null };

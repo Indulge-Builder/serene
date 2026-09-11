@@ -7,12 +7,15 @@
 // instead of the same number repeated four times) and stays available on hover
 // — at this column width it cost more space than it carried.
 //
-// Display-only (A-06), server-component-safe.
+// Display-only (A-06), server-component-safe, with ONE client island: the
+// sticky-note control (0191), the way the identity card hosts the category
+// picker.
 
 import { TrendingUp } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { StarRating } from './StarRating';
 import { VendorScoreRing } from './VendorScoreRing';
+import { VendorPreferenceControl } from './VendorPreferenceControl';
 import { formatCount } from '@/lib/utils/numbers';
 import { REVIEW_DIMENSION_LABELS } from '@/lib/constants/vendors';
 import type { VendorDetail } from '@/lib/types/vendor';
@@ -22,7 +25,13 @@ export function VendorScoreCard({
   timesUsed,
   ratings,
   reviewerCount,
-}: Pick<VendorDetail, 'score' | 'timesUsed' | 'ratings' | 'reviewerCount'>) {
+  preferences,
+  vendorId,
+  currentUserId,
+}: Pick<VendorDetail, 'score' | 'timesUsed' | 'ratings' | 'reviewerCount' | 'preferences'> & {
+  vendorId: string;
+  currentUserId: string;
+}) {
   // computeVendorScore already returns null until someone has actually judged
   // this vendor; the ring renders that as an em dash, never a 0 (which would
   // read as "bad" rather than "not rated").
@@ -171,8 +180,14 @@ export function VendorScoreCard({
               </div>
             ))}
           </div>
-
         </div>
+
+        {/* The sticky note (0191): your take, and the team's. */}
+        <VendorPreferenceControl
+          vendorId={vendorId}
+          preferences={preferences}
+          currentUserId={currentUserId}
+        />
       </div>
     </div>
   );

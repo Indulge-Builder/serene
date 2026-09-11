@@ -1,7 +1,7 @@
 /**
  * Seed DEMO vendor data — local development only.
  *
- * Fills the five vendor tables (migrations 0182–0184) with made-up but
+ * Fills the five vendor tables (migrations 0183–0185) with made-up but
  * realistic data so the vendor reads, the score and the ranker can be exercised
  * before the real Freshdesk loader exists. This is NOT the loader; it invents
  * every row. Delete the data with --force when the real import lands.

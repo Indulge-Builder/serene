@@ -5,7 +5,7 @@
 // Elaya write tool (admin client, no session) call the SAME core, so a
 // tool-driven write is byte-identical to a form-driven one (R-01). Each core
 // takes an explicit MutationActor (principal-derived identity, never a session)
-// and writes on the admin client — the 0182–0184 tables have NO user write
+// and writes on the admin client — the 0183–0185 tables have NO user write
 // policies by design (the deals posture). The CALLER gates (requireProfile /
 // the Elaya principal); the cores stay ungated (Q-13). revalidatePath is
 // request-context-only and stays in the caller. No Redis (internal scale).
@@ -14,7 +14,7 @@
 //   • vendor_engagements is append-only. closeEngagementCore is the ONE
 //     sanctioned write on an existing row — closed_at / outcome / amount_inr /
 //     invoice_paths / note, on an OPEN row, exactly once (the resolve-once
-//     posture of revival_candidates; documented in the 0184 COMMENT).
+//     posture of revival_candidates; documented in the 0185 COMMENT).
 //   • vendor_reviews is append-only. A changed mind is a new row.
 //   • A review on an engagement takes vendor_id FROM the engagement — the two
 //     can never disagree.
@@ -30,6 +30,7 @@ import type {
   CloseEngagementInput,
   AddReviewInput,
   AddVendorNoteInput,
+  SetAgentPreferenceInput,
 } from "@/lib/validations/vendor-schema";
 import type { VendorStatus } from "@/lib/constants/vendors";
 import type {
@@ -38,11 +39,12 @@ import type {
   VendorEngagementRow,
   VendorReviewRow,
   VendorNoteRow,
+  VendorAgentPreferenceRow,
 } from "@/lib/types/vendor";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
-// Interim until database.ts is regenerated after 0182–0184 land — the ONE cast here.
+// Interim until database.ts is regenerated after 0183–0185 land — the ONE cast here.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const from = (admin: AdminClient, table: string) => (admin as any).from(table);
 
@@ -326,7 +328,7 @@ export async function addReviewCore(
   return { ok: true, row: data as VendorReviewRow };
 }
 
-// ── Notes (migration 0185, append-only) ───────────────────────────────────────
+// ── Notes (migration 0186, append-only) ───────────────────────────────────────
 
 /** One note on a vendor, authored by the actor. A correction is a new note. */
 export async function addVendorNoteCore(
@@ -347,4 +349,58 @@ export async function addVendorNoteCore(
     return { ok: false, error: classify(error) };
   }
   return { ok: true, row: data as VendorNoteRow };
+}
+
+// ── Preferences — the sticky note (0191) ───────────────────────────────────────
+
+/**
+ * Set a teammate's stance on a vendor — preferred / avoid, with an optional
+ * note. An UPSERT on (vendor, agent): unlike the ledger this is an opinion
+ * about now, so a changed mind replaces rather than appends. `agent_id`
+ * defaults to the actor; an admin may set it for someone else.
+ */
+export async function setAgentPreferenceCore(
+  actor: MutationActor,
+  input: SetAgentPreferenceInput,
+): Promise<VendorMutationResult<VendorAgentPreferenceRow>> {
+  const admin = createAdminClient();
+  const { data, error } = await from(admin, "vendor_agent_preferences")
+    .upsert(
+      {
+        vendor_id: input.vendor_id,
+        agent_id: input.agent_id ?? actor.userId,
+        stance: input.stance,
+        note: input.note,
+      },
+      { onConflict: "vendor_id,agent_id" },
+    )
+    .select("*")
+    .single();
+  if (error || !data) {
+    console.error(`${LOG} setAgentPreferenceCore failed:`, error);
+    return { ok: false, error: classify(error) };
+  }
+  return { ok: true, row: data as VendorAgentPreferenceRow };
+}
+
+/** Clear a teammate's stance. `not_found` when there was nothing to clear. */
+export async function removeAgentPreferenceCore(
+  actor: MutationActor,
+  vendorId: string,
+  agentId: string | null,
+): Promise<VendorMutationResult<{ vendor_id: string; agent_id: string }>> {
+  const agent = agentId ?? actor.userId;
+  const admin = createAdminClient();
+  const { data, error } = await from(admin, "vendor_agent_preferences")
+    .delete()
+    .eq("vendor_id", vendorId)
+    .eq("agent_id", agent)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error(`${LOG} removeAgentPreferenceCore failed:`, error);
+    return { ok: false, error: "db" };
+  }
+  if (!data) return { ok: false, error: "not_found" };
+  return { ok: true, row: { vendor_id: vendorId, agent_id: agent } };
 }

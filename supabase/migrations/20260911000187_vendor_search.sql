@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0186 — Vendors: a search surface that survives how people actually type.
+-- 0187 — Vendors: a search surface that survives how people actually type.
 --
 -- The list search was `name ILIKE '%<term>%'` plus an EXACT array-containment
 -- test on aliases. Three things it could not do:
@@ -221,8 +221,55 @@ COMMENT ON FUNCTION public.count_vendors(text, text, text) IS
 
 -- Q-13 / the 0102 posture: these take caller-supplied scope params and return
 -- whatever slice they are asked for, so they are admin-client only. `vendors`
--- itself is admin/founder SELECT (0182) and the ACTION is the trust boundary.
+-- itself is admin/founder SELECT (0183) and the ACTION is the trust boundary.
 REVOKE EXECUTE ON FUNCTION public.search_vendors(text, text, text, integer, integer) FROM PUBLIC, anon, authenticated;
 GRANT  EXECUTE ON FUNCTION public.search_vendors(text, text, text, integer, integer) TO service_role;
 REVOKE EXECUTE ON FUNCTION public.count_vendors(text, text, text) FROM PUBLIC, anon, authenticated;
 GRANT  EXECUTE ON FUNCTION public.count_vendors(text, text, text) TO service_role;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- get_vendor_categories / get_vendor_cities — the search VOCABULARY.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The filter bar's category list and the find-a-vendor city parser both need
+-- "every value in use". The service read them by selecting the COLUMN off every
+-- row and de-duplicating in Node — `vendors.category` across 21,000 rows and
+-- `vendor_capabilities.cities` across 25,000 — which PostgREST silently caps at
+-- 1,000 rows. The category list was whatever happened to sort into the first
+-- thousand; a city only served by a vendor outside that window did not exist
+-- as far as the parser was concerned. A DISTINCT returns the vocabulary itself:
+-- a few dozen rows, complete, whatever the table size.
+CREATE OR REPLACE FUNCTION public.get_vendor_categories()
+RETURNS TABLE (category text)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public AS $$
+  SELECT DISTINCT v.category
+  FROM public.vendors v
+  WHERE v.category IS NOT NULL
+  ORDER BY v.category;
+$$;
+
+-- Cities SERVED (capability rows) plus cities vendors are BASED in, lower-cased
+-- — the same union the service assembled, now in one pass.
+CREATE OR REPLACE FUNCTION public.get_vendor_cities()
+RETURNS TABLE (city text)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public AS $$
+  SELECT DISTINCT u.city FROM (
+    SELECT lower(unnest(c.cities)) AS city FROM public.vendor_capabilities c
+    UNION ALL
+    SELECT lower(v.home_city)        FROM public.vendors v WHERE v.home_city IS NOT NULL
+  ) u
+  WHERE u.city IS NOT NULL AND u.city <> ''
+  ORDER BY u.city;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_vendor_categories() FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION public.get_vendor_categories() TO service_role;
+REVOKE EXECUTE ON FUNCTION public.get_vendor_cities()     FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION public.get_vendor_cities()     TO service_role;
+
+COMMENT ON FUNCTION public.get_vendor_categories() IS
+  'Every vendors.category in use, distinct, in SQL — the Node de-dup read the column off every row and was capped at 1,000. Q-13 revoked tier.';
+COMMENT ON FUNCTION public.get_vendor_cities() IS
+  'Every city served (capability cities) or based in (home_city), lower-cased, distinct, in SQL. Q-13 revoked tier.';

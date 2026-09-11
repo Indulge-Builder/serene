@@ -23,10 +23,11 @@ import {
   ENGAGEMENT_MAX_INVOICES,
   VENDOR_NOTE_MAX_LENGTH,
   toVocabularyKey,
+  PREFERENCE_STANCE_ENUM,
 } from "@/lib/constants/vendors";
 
 // ─────────────────────────────────────────────
-// Vendors — Zod schemas (migrations 0182–0184). Every server action in
+// Vendors — Zod schemas (migrations 0183–0185). Every server action in
 // actions/vendors.ts parses one of these FIRST (Rule 02). Human messages only
 // (Q-04). Text is sanitized here (Rule 06); phones normalised to E.164 here
 // (the lead-schema pattern — phone fields stay per-schema, fields.ts).
@@ -178,7 +179,7 @@ export const LogEngagementSchema = z
   });
 export type LogEngagementInput = z.infer<typeof LogEngagementSchema>;
 
-/** The one sanctioned write on an open ledger row (resolve-once, see 0184). */
+/** The one sanctioned write on an open ledger row (resolve-once, see 0185). */
 export const CloseEngagementSchema = z.object({
   id: uuidField(formErrors.vendorEngagementNotFound),
   closed_at: ISO_DATETIME,
@@ -221,7 +222,7 @@ export type SearchVendorsInput = z.infer<typeof SearchVendorsSchema>;
 export const RankVendorsSchema = z.object({
   /**
    * The request in the requester's own words — searched against past ticket
-   * titles (0188). With this present nothing else is required: "order for
+   * titles (0189). With this present nothing else is required: "order for
    * black forest cake" names no category, service or city and must still work.
    */
   phrase: z.string().trim().max(300, "Keep the request under 300 characters.")
@@ -235,7 +236,7 @@ export const RankVendorsSchema = z.object({
 });
 export type RankVendorsInput = z.infer<typeof RankVendorsSchema>;
 
-// ── Notes (migration 0185) ─────────────────────────────────────────────────────
+// ── Notes (migration 0186) ─────────────────────────────────────────────────────
 export const AddVendorNoteSchema = z.object({
   vendor_id: uuidField(formErrors.vendorNotFound),
   content: z
@@ -248,6 +249,22 @@ export const AddVendorNoteSchema = z.object({
     .pipe(z.string().min(1, formErrors.vendorNoteRequired)),
 });
 export type AddVendorNoteInput = z.infer<typeof AddVendorNoteSchema>;
+
+/** A teammate's sticky note on a vendor (0191): preferred / avoid + why. */
+export const SetAgentPreferenceSchema = z.object({
+  vendor_id: uuidField(formErrors.vendorNotFound),
+  // Whose stance — defaults to the caller in the action.
+  agent_id: uuidField("Please pick a valid teammate.").nullish().transform((v) => v ?? null),
+  stance: z.enum(PREFERENCE_STANCE_ENUM, { message: formErrors.vendorPreferenceInvalid }),
+  note: optionalText(500),
+});
+export type SetAgentPreferenceInput = z.infer<typeof SetAgentPreferenceSchema>;
+
+export const RemoveAgentPreferenceSchema = z.object({
+  vendor_id: uuidField(formErrors.vendorNotFound),
+  agent_id: uuidField("Please pick a valid teammate.").nullish().transform((v) => v ?? null),
+});
+export type RemoveAgentPreferenceInput = z.infer<typeof RemoveAgentPreferenceSchema>;
 
 /** Mirrors subscriptions' SignInvoiceSchema — a bucket path, never a url. */
 export const SignVendorInvoiceSchema = z.object({

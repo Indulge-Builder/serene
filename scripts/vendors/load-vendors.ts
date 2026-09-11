@@ -1,5 +1,5 @@
 /**
- * THE vendor loader — E:\Vendor\data\vendors.json → the 0182/0184 tables.
+ * THE vendor loader — E:\Vendor\data\vendors.json → the 0183/0185 tables.
  *
  * Reads the finished Freshdesk extraction (22,021 vendors, 47,480 ticket links,
  * 4,987 invoices) and writes the spine, the capabilities and the engagement
@@ -14,11 +14,25 @@
  *   a copy would carry 46,000 null agent links to a production holding the real
  *   roster. The flag exists so it can never happen by accident.
  *
- * IDEMPOTENT. Vendors upsert on `name_key` (the generated lower(btrim(name))
- * identity) and engagements on `(vendor_id, source, source_ref)` — one row per
- * vendor per ticket, because a ticket routinely involves several suppliers.
- * Re-running after a dedup pass, a category re-label, or a schema change updates
- * in place and never duplicates. That is the whole reason those keys exist.
+ * SAFE TO RERUN — because it is INSERT-ONLY after the first load. Vendors are
+ * keyed on `name_key` (the generated lower(btrim(name))) and engagements on
+ * `(vendor_id, source, source_ref)` — one row per vendor per ticket, because a
+ * ticket routinely involves several suppliers. A row that already exists is
+ * left exactly as it is: the first version UPSERTED the whole vendor row, which
+ * made a rerun destructive — it reset status and identity_status, overwrote
+ * contacts a person had corrected, and re-created every vendor the dedupe had
+ * merged away. Now a merged-away spelling is mapped to its survivor (from the
+ * survivor's import_raw.merged_vendors), so a new ticket for the old spelling
+ * lands on the right vendor, and only genuinely new names and new tickets are
+ * written. Rows the cleanup removed by LABEL (the 215 junk, the 10 clients) are
+ * re-inserted by a rerun and removed again by the cleanup that always follows;
+ * a merged-away vendor is never re-created. A true rebuild is --wipe.
+ *
+ * client_id stays NULL, honestly: the archive never carried the requester's
+ * identity. The only client signal in the extraction is a model-guessed
+ * `client_name` on some tickets, and a name is not a join key — two Rahuls.
+ * clients.primary_phone (0181) is the identity, and no ticket export has it.
+ * The column exists so in-app tickets can fill it from day one.
  *
  * Run (after `supabase start`):
  *   npx tsx --env-file=.env.local scripts/vendors/load-vendors.ts [options]
@@ -63,7 +77,8 @@ const IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0"].includes(host);
 // resolves `agent_name_raw` against the profiles that exist in the TARGET
 // database, and a local copy cannot do that: this machine has one profile, so a
 // table copy would carry 46,000 null agent links to a production that has the
-// real roster. Same for client_id against 0181.
+// real roster. (client_id is NOT resolved — see the header: the archive has no
+// requester identity to resolve from.)
 //
 // It just may never happen by accident. The flag names the target out loud, and
 // the run then prints what it is about to do against a database that is not
@@ -82,8 +97,11 @@ if (!IS_LOCAL && !ALLOW_REMOTE) {
 if (!IS_LOCAL) {
   console.log(
     `\n*** WRITING TO A REMOTE DATABASE: ${host} ***\n` +
-      `    Idempotent on name_key and (vendor_id, source, source_ref), so a second\n` +
-      `    run updates in place. It does NOT reproduce the cleanup. Run\n` +
+      `    INSERT-ONLY after the first load: vendors and jobs that exist are left\n` +
+      `    exactly as they are, merged-away spellings map to their survivor, only\n` +
+      `    new rows are written. Rows the cleanup removed by LABEL (junk, clients)\n` +
+      `    DO come back on a rerun until the cleanup runs again — which is why it\n` +
+      `    always follows. This script does NOT reproduce the cleanup. Run\n` +
       `    dedupe-vendors.ts, IN THIS ORDER (the order is not cosmetic):\n` +
       `\n` +
       `      1. dedupe-vendors.ts --replay scripts/vendors/vendor-merges.csv\n` +
@@ -288,7 +306,6 @@ async function main() {
     console.log("\n--wipe: removing previously imported rows…");
     // FK-safe order. Only ever the imported rows — a hand-entered vendor
     // (source 'manual') and anything a human wrote is untouched.
-    await db.from("vendor_engagements").delete().eq("source", "freshdesk");
     // Two statements, no id list. The previous version selected every imported
     // id and passed them to .in() — which capped the select at 1,000 rows AND
     // built a request URI Kong rejects ("URI too long"). Neither failure was
@@ -341,7 +358,7 @@ async function main() {
       emails: [] as string[],
     }));
     // Numbers and addresses tied to no person are the vendor's general lines —
-    // the 0182 contract's null-name entry, not a lost contact.
+    // the 0183 contract's null-name entry, not a lost contact.
     const claimed = new Set(contacts.flatMap((c) => c.phones));
     const general = rankedPhones.filter((p) => !claimed.has(p));
     if (general.length || rankedEmails.length) {
@@ -390,22 +407,73 @@ async function main() {
     };
   });
 
-  console.log(`\n1. vendors — ${vendorRows.length.toLocaleString()} rows`);
+  console.log(`\n1. vendors — ${vendorRows.length.toLocaleString()} rows in the extraction`);
   const idByName = new Map<string, string>();
   if (!DRY_RUN) {
-    for (let i = 0; i < vendorRows.length; i += BATCH) {
-      const slice = vendorRows.slice(i, i + BATCH);
+    // INSERT-ONLY after the first load (see the header). The existing set is
+    // read in pages of 1,000 — PostgREST caps a select there and says nothing,
+    // and there are 21,000 vendors. KEYSET paging on the primary key, never
+    // OFFSET: an OFFSET page with no ORDER BY is whatever order Postgres felt
+    // like scanning in THAT statement, and a parallel scan changes its mind
+    // between pages — the first version read 13,995 of 21,580 rows that way,
+    // decided 7,965 vendors were missing, and hit the unique key on insert.
+    // `id > last ORDER BY id` is the same rows in the same order every time.
+    // Each survivor's import_raw.merged_vendors names the spellings the dedupe
+    // folded into it; those map to the survivor so a rerun neither re-creates
+    // them nor loses their new tickets.
+    const absorbedByKey = new Map<string, string>();     // absorbed name_key → survivor id
+    for (let lastId = ""; ; ) {
+      let page = db
+        .from("vendors")
+        .select("id, name_key, import_raw")
+        .order("id", { ascending: true })
+        .limit(1000);
+      if (lastId) page = page.gt("id", lastId);
+      const { data, error } = await page;
+      if (error) { console.error(`   FAILED reading existing vendors: ${error.message}`); process.exit(1); }
+      const rows = (data as { id: string; name_key: string; import_raw: Record<string, unknown> | null }[]) ?? [];
+      for (const r of rows) {
+        idByName.set(r.name_key, r.id);
+        const merged = (r.import_raw?.merged_vendors as { name?: string }[] | undefined) ?? [];
+        for (const m of merged) {
+          const key = m.name?.trim().toLowerCase();
+          if (key) absorbedByKey.set(key, r.id);
+        }
+      }
+      if (rows.length < 1000) break;
+      lastId = rows[rows.length - 1].id;
+    }
+    let mapped = 0;
+    for (const [key, survivor] of absorbedByKey) {
+      if (!idByName.has(key)) { idByName.set(key, survivor); mapped++; }
+    }
+
+    // Only names the database has never seen, each once.
+    const seen = new Set<string>();
+    const fresh = vendorRows.filter((v) => {
+      const key = v.name.trim().toLowerCase();
+      if (idByName.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    console.log(
+      `   already present: ${(vendorRows.length - fresh.length).toLocaleString()}` +
+      (mapped ? ` (${mapped.toLocaleString()} merged-away spellings mapped to their survivor)` : "") +
+      ` · to insert: ${fresh.length.toLocaleString()}`,
+    );
+    for (let i = 0; i < fresh.length; i += BATCH) {
+      const slice = fresh.slice(i, i + BATCH);
       const { data, error } = await db
         .from("vendors")
-        .upsert(slice, { onConflict: "name_key" })
+        .insert(slice)
         .select("id, name");
       if (error) { console.error(`   FAILED at ${i}: ${error.message}`); process.exit(1); }
       for (const r of (data as { id: string; name: string }[]) ?? []) {
         idByName.set(r.name.trim().toLowerCase(), r.id);
       }
-      process.stdout.write(`\r   ${Math.min(i + BATCH, vendorRows.length).toLocaleString()} / ${vendorRows.length.toLocaleString()}`);
+      process.stdout.write(`\r   ${Math.min(i + BATCH, fresh.length).toLocaleString()} / ${fresh.length.toLocaleString()}`);
     }
-    console.log("");
+    if (fresh.length) console.log("");
   }
 
   // ─── 2. Capabilities — derived from what the vendor has actually served ────
@@ -481,7 +549,7 @@ async function main() {
     const invoicesByTicket = new Map<number, string[]>();
     for (const inv of v.invoices ?? []) {
       const list = invoicesByTicket.get(inv.ticket_id) ?? [];
-      // The bucket path is keyed on the globally-unique attachment id (0183).
+      // The bucket path is keyed on the globally-unique attachment id (0184).
       list.push(`${inv.attachment_id}.pdf`);
       invoicesByTicket.set(inv.ticket_id, list);
     }
@@ -493,7 +561,8 @@ async function main() {
       if (!started) continue;                       // started_at is NOT NULL
       engRows.push({
         vendor_id: id,
-        client_id: null,                            // mapped later against clients (0181)
+        // NULL, honestly — the archive carries no requester identity (header).
+        client_id: null,
         lead_id: null,
         agent_id: null,                             // resolved below against profiles
         agent_name_raw: t?.agent?.trim() || null,
@@ -535,9 +604,16 @@ async function main() {
   if (missingTicket) console.log(`   ticket ids not in the index: ${missingTicket.toLocaleString()}`);
   if (!DRY_RUN) {
     for (let i = 0; i < engRows.length; i += BATCH) {
+      // ignoreDuplicates = ON CONFLICT DO NOTHING: a ticket already on the
+      // ledger is never rewritten. The plain upsert this replaced would have
+      // reset closed_at / outcome / amount / note on every rerun — the exact
+      // columns closeEngagementCore writes once and the score reads.
       const { error } = await db
         .from("vendor_engagements")
-        .upsert(engRows.slice(i, i + BATCH), { onConflict: "vendor_id,source,source_ref" });
+        .upsert(engRows.slice(i, i + BATCH), {
+          onConflict: "vendor_id,source,source_ref",
+          ignoreDuplicates: true,
+        });
       if (error) { console.error(`   FAILED at ${i}: ${error.message}`); process.exit(1); }
       process.stdout.write(`\r   ${Math.min(i + BATCH, engRows.length).toLocaleString()} / ${engRows.length.toLocaleString()}`);
     }

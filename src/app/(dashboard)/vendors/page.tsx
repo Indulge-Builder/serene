@@ -9,12 +9,12 @@ import { VendorsFilters } from '@/components/vendors/VendorsFilters';
 import { AddVendorButton } from '@/components/vendors/AddVendorButton';
 import { VendorsTable } from '@/components/vendors/VendorsTable';
 import { VendorsTableSkeleton } from '@/components/vendors/VendorsTableSkeleton';
-import { formatCount } from '@/lib/utils/numbers';
+import { Pagination } from '@/components/ui/Pagination';
 import { VENDOR_LIST_PAGE_SIZE, VENDORS_PATH } from '@/lib/constants/vendors';
 import type { VendorListFilters } from '@/lib/services/vendors-service';
 
 // The vendor module is admin/founder for now — the same audience as the
-// 0182–0185 SELECT policies. This redirect is the page-level mirror of the
+// 0183–0186 SELECT policies. This redirect is the page-level mirror of the
 // action-level requireProfile gate, exactly like /oversight and /budget.
 function canSeeVendors(role: string): boolean {
   return role === 'admin' || role === 'founder';
@@ -37,54 +37,21 @@ function parseFilters(searchParams: Awaited<SearchParams>): VendorListFilters {
  *  re-renders the table alone and the filter bar stays put. */
 async function VendorsTableAsync({ filters }: { filters: VendorListFilters }) {
   const { vendors, totalCount } = await listVendors(filters);
-  const page = filters.page ?? 1;
-  const shown = vendors.length;
-  const from = totalCount === 0 ? 0 : (page - 1) * VENDOR_LIST_PAGE_SIZE + 1;
-
   return (
     <>
       <VendorsTable vendors={vendors} />
+      {/* The shared pager rewrites ONLY `page` on the URL, so the search and the
+          category filter survive the click. The first pager here was a bare
+          `?page=N` link and dropped both on the way to page two. */}
       {totalCount > VENDOR_LIST_PAGE_SIZE && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-4)',
-            marginTop: 'var(--space-4)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--theme-text-tertiary)',
-          }}
-        >
-          <span>
-            Showing {formatCount(from)}–{formatCount(from + shown - 1)} of {formatCount(totalCount)}
-          </span>
-          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            {page > 1 && <PageLink page={page - 1} label="Previous" />}
-            {from + shown - 1 < totalCount && <PageLink page={page + 1} label="Next" />}
-          </div>
-        </div>
+        <Pagination
+          page={filters.page ?? 1}
+          pageSize={VENDOR_LIST_PAGE_SIZE}
+          totalCount={totalCount}
+          noun="vendor"
+        />
       )}
     </>
-  );
-}
-
-function PageLink({ page, label }: { page: number; label: string }) {
-  return (
-    <Link
-      href={`${VENDORS_PATH}?page=${page}`}
-      style={{
-        padding: 'var(--space-2) var(--space-4)',
-        borderRadius: 'var(--radius-full)',
-        border: '1px solid var(--theme-paper-border)',
-        background: 'var(--theme-paper)',
-        boxShadow: 'var(--shadow-1)',
-        color: 'var(--theme-text-primary)',
-        fontWeight: 'var(--weight-medium)',
-      }}
-    >
-      {label}
-    </Link>
   );
 }
 
