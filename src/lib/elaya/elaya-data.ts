@@ -50,6 +50,8 @@ import {
 } from '@/lib/services/profiles-service';
 import { getCampaignMetrics } from '@/lib/services/leads-service';
 import { getBudgetSummary, type BudgetCampaignRow } from '@/lib/services/ad-spend-service';
+import { rankVendorsForRequest, getVendorDetail } from '@/lib/services/vendors-service';
+import type { RankVendorsRequest } from '@/lib/services/vendors-service';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
 import {
   getGiaTasksForUser,
@@ -318,3 +320,20 @@ export function getBudget(period: OversightPeriod): Promise<BudgetCampaignRow[]>
 // Re-export the channel type for tools that still want to branch copy by channel
 // (e.g. "see more in the app" phrasing) — data parity no longer depends on it.
 export type { ElayaChannel };
+
+// ─────────────────────────────────────────────
+// Vendors (0183–0190)
+//
+// Both wrap the SAME functions the /vendors UI calls — the spec is explicit
+// that Elaya's tool, the future Sia ticket screen and the Chrome extension all
+// call one ranking, and none of them re-rank. A second ordering here would
+// drift from the page within a week.
+// ─────────────────────────────────────────────
+
+export function rankVendors(req: RankVendorsRequest) {
+  return rankVendorsForRequest(req);
+}
+
+export function getVendor(id: string) {
+  return getVendorDetail(id);
+}

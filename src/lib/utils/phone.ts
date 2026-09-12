@@ -1,10 +1,30 @@
-import { parsePhoneNumber, isValidPhoneNumber, type CountryCode } from "libphonenumber-js";
+// The library ships as two pieces: the logic, and a metadata file holding every
+// country's numbering rules. The convenience entry point `libphonenumber-js`
+// pairs them itself — but it does so with `require('./metadata.min.json')`, and
+// a bare JSON require does NOT survive every runtime. Under `tsx` (how every
+// script in scripts/ runs) it hands back the module wrapper instead of the JSON,
+// so the logic finds no countries and throws
+// `Cannot read properties of undefined (reading 'hasOwnProperty')` on EVERY
+// number. That looked exactly like "this number is invalid" to callers: the
+// vendor loader silently dropped all 10,683 phone numbers in the Freshdesk
+// archive and reported success (2026-09-07).
+//
+// So the two pieces are paired here instead. `/core` is the same logic, and
+// `/metadata.min` is the same `metadata.min.json` the convenience entry point
+// bundles — it just resolves to a real ES module (`metadata.min.json.js`) that
+// every runtime loads correctly. Verified identical over all 10,683 real
+// spellings in the archive: 10,683 same, 0 different.
+//
+// Keep the `/core` + explicit-metadata pairing. Reverting to the bare
+// `from "libphonenumber-js"` import re-breaks every script that touches a phone.
+import { parsePhoneNumber, isValidPhoneNumber, type CountryCode } from "libphonenumber-js/core";
+import metadata from "libphonenumber-js/metadata.min";
 
 export function normalizeToE164(phone: string, defaultCountry: CountryCode = "IN"): string {
-  if (!isValidPhoneNumber(phone, defaultCountry)) {
+  if (!isValidPhoneNumber(phone, defaultCountry, metadata)) {
     throw new Error(`Invalid phone number: ${phone}`);
   }
-  return parsePhoneNumber(phone, defaultCountry).format("E.164");
+  return parsePhoneNumber(phone, defaultCountry, metadata).format("E.164");
 }
 
 /**

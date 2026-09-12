@@ -26,6 +26,7 @@ import {
   Telescope,
   GraduationCap,
   NotebookPen,
+  Building2,
   Receipt,
   MessagesSquare,
 } from "lucide-react";
@@ -57,6 +58,7 @@ const MAIN_NAV: NavItem[] = [
   { href: "/leads",     label: "Leads",     icon: UserRound       },
   { href: "/deals",     label: "Deals",     icon: Trophy          },
   { href: "/tasks",     label: "Tasks",     icon: CheckSquare     },
+  { href: "/vendors",   label: "Vendors",   icon: Building2       },
   { href: "/subscriptions", label: "Subscriptions", icon: Receipt },
   { href: "/whatsapp",  label: "WhatsApp",  icon: MessageCircle   },
   { href: "/helpdesk",  label: "Helpdesk",  icon: BookOpen        },

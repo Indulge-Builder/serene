@@ -85,3 +85,13 @@ elaya-model/
 Subscription Manager*.csv
 mapping-review*.csv
 *leads.csv
+
+# Vendor cleanup audit dumps — written by scripts/vendors/dedupe-vendors.ts
+# before it deletes anything. They carry real vendor and CLIENT rows, phone
+# numbers included, so they are a local safety net and never a repo artifact.
+vendor-junk-purged-*.json
+vendor-removed-*.json
+
+# Supabase CLI local state (per-machine: linked project, branch, schema cache)
+supabase/.branches/
+supabase/.temp/

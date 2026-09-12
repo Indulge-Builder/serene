@@ -7,36 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.17"
-  }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       activity_events: {
@@ -259,6 +229,66 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      clients: {
+        Row: {
+          alt_phones: string[]
+          created_at: string
+          freshdesk_contact_id: string | null
+          full_name: string
+          id: string
+          identity_status: string
+          import_raw: Json
+          membership_amount_inr: number | null
+          membership_end: string | null
+          membership_start: string | null
+          membership_status: string | null
+          membership_type: string | null
+          primary_phone: string | null
+          sources: string[]
+          updated_at: string
+          wa_invite_link: string | null
+          zoho_customer_id: string | null
+        }
+        Insert: {
+          alt_phones?: string[]
+          created_at?: string
+          freshdesk_contact_id?: string | null
+          full_name: string
+          id?: string
+          identity_status?: string
+          import_raw?: Json
+          membership_amount_inr?: number | null
+          membership_end?: string | null
+          membership_start?: string | null
+          membership_status?: string | null
+          membership_type?: string | null
+          primary_phone?: string | null
+          sources?: string[]
+          updated_at?: string
+          wa_invite_link?: string | null
+          zoho_customer_id?: string | null
+        }
+        Update: {
+          alt_phones?: string[]
+          created_at?: string
+          freshdesk_contact_id?: string | null
+          full_name?: string
+          id?: string
+          identity_status?: string
+          import_raw?: Json
+          membership_amount_inr?: number | null
+          membership_end?: string | null
+          membership_start?: string | null
+          membership_status?: string | null
+          membership_type?: string | null
+          primary_phone?: string | null
+          sources?: string[]
+          updated_at?: string
+          wa_invite_link?: string | null
+          zoho_customer_id?: string | null
+        }
+        Relationships: []
       }
       conversation_hooks: {
         Row: {
@@ -751,9 +781,6 @@ export type Database = {
           },
         ]
       }
-      // Hand-extended (migration 0180); regen after apply.
-      // Append-only ledger — no UPDATE/DELETE policy exists, so Update is Row-shaped
-      // for type compatibility only and must never be used.
       lead_product_enquiries: {
         Row: {
           admin_member_url: string | null
@@ -800,7 +827,26 @@ export type Database = {
           source?: string
         }
         Update: {
+          admin_member_url?: string | null
+          brand?: string | null
+          created_at?: string
+          currency?: string | null
+          enquired_at?: string
+          enquiry_type?: string
+          external_lead_id?: string
           id?: string
+          lead_id?: string
+          member_role?: string | null
+          note?: string | null
+          price?: number | null
+          price_on_request?: boolean | null
+          price_region?: string | null
+          product_id?: string | null
+          product_image_url?: string | null
+          product_name?: string
+          product_url?: string | null
+          sold_out?: boolean | null
+          source?: string
         }
         Relationships: [
           {
@@ -2174,6 +2220,379 @@ export type Database = {
           },
         ]
       }
+      vendor_agent_preferences: {
+        Row: {
+          agent_id: string
+          created_at: string
+          id: string
+          note: string | null
+          stance: string
+          updated_at: string
+          vendor_id: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          stance: string
+          updated_at?: string
+          vendor_id: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          stance?: string
+          updated_at?: string
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_agent_preferences_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_agent_preferences_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_capabilities: {
+        Row: {
+          category: string
+          cities: string[]
+          created_at: string
+          id: string
+          note: string | null
+          service: string | null
+          set_by: string | null
+          stance: string
+          updated_at: string
+          vendor_id: string
+        }
+        Insert: {
+          category: string
+          cities?: string[]
+          created_at?: string
+          id?: string
+          note?: string | null
+          service?: string | null
+          set_by?: string | null
+          stance: string
+          updated_at?: string
+          vendor_id: string
+        }
+        Update: {
+          category?: string
+          cities?: string[]
+          created_at?: string
+          id?: string
+          note?: string | null
+          service?: string | null
+          set_by?: string | null
+          stance?: string
+          updated_at?: string
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_capabilities_set_by_fkey"
+            columns: ["set_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_capabilities_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_engagements: {
+        Row: {
+          agent_id: string | null
+          agent_name_raw: string | null
+          amount_inr: number | null
+          category: string
+          city: string | null
+          client_id: string | null
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          invoice_paths: string[]
+          lead_id: string | null
+          note: string | null
+          outcome: string
+          service: string | null
+          source: string
+          source_ref: string
+          started_at: string
+          title: string | null
+          vendor_id: string
+        }
+        Insert: {
+          agent_id?: string | null
+          agent_name_raw?: string | null
+          amount_inr?: number | null
+          category: string
+          city?: string | null
+          client_id?: string | null
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_paths?: string[]
+          lead_id?: string | null
+          note?: string | null
+          outcome?: string
+          service?: string | null
+          source: string
+          source_ref: string
+          started_at: string
+          title?: string | null
+          vendor_id: string
+        }
+        Update: {
+          agent_id?: string | null
+          agent_name_raw?: string | null
+          amount_inr?: number | null
+          category?: string
+          city?: string | null
+          client_id?: string | null
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_paths?: string[]
+          lead_id?: string | null
+          note?: string | null
+          outcome?: string
+          service?: string | null
+          source?: string
+          source_ref?: string
+          started_at?: string
+          title?: string | null
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_engagements_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_engagements_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_engagements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_engagements_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_engagements_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_notes: {
+        Row: {
+          author_id: string
+          content: string
+          created_at: string
+          id: string
+          vendor_id: string
+        }
+        Insert: {
+          author_id: string
+          content: string
+          created_at?: string
+          id?: string
+          vendor_id: string
+        }
+        Update: {
+          author_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_notes_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_reviews: {
+        Row: {
+          comment: string | null
+          created_at: string
+          engagement_id: string | null
+          id: string
+          pricing: number | null
+          quality: number | null
+          reliability: number | null
+          reviewer_id: string
+          speed: number | null
+          vendor_id: string
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          engagement_id?: string | null
+          id?: string
+          pricing?: number | null
+          quality?: number | null
+          reliability?: number | null
+          reviewer_id: string
+          speed?: number | null
+          vendor_id: string
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          engagement_id?: string | null
+          id?: string
+          pricing?: number | null
+          quality?: number | null
+          reliability?: number | null
+          reviewer_id?: string
+          speed?: number | null
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_reviews_engagement_id_fkey"
+            columns: ["engagement_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_engagements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_reviews_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_reviews_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendors: {
+        Row: {
+          aliases: string[]
+          category: string | null
+          category_source: string | null
+          contacts: Json
+          created_at: string
+          freshdesk_ref: string | null
+          home_city: string | null
+          id: string
+          identity_status: string
+          import_raw: Json
+          name: string
+          name_key: string | null
+          notes: string | null
+          primary_phone: string | null
+          search_key: string | null
+          search_text: string | null
+          sources: string[]
+          status: string
+          subcategory: string | null
+          updated_at: string
+        }
+        Insert: {
+          aliases?: string[]
+          category?: string | null
+          category_source?: string | null
+          contacts?: Json
+          created_at?: string
+          freshdesk_ref?: string | null
+          home_city?: string | null
+          id?: string
+          identity_status?: string
+          import_raw?: Json
+          name: string
+          name_key?: string | null
+          notes?: string | null
+          primary_phone?: string | null
+          search_key?: string | null
+          search_text?: string | null
+          sources?: string[]
+          status?: string
+          subcategory?: string | null
+          updated_at?: string
+        }
+        Update: {
+          aliases?: string[]
+          category?: string | null
+          category_source?: string | null
+          contacts?: Json
+          created_at?: string
+          freshdesk_ref?: string | null
+          home_city?: string | null
+          id?: string
+          identity_status?: string
+          import_raw?: Json
+          name?: string
+          name_key?: string | null
+          notes?: string | null
+          primary_phone?: string | null
+          search_key?: string | null
+          search_text?: string | null
+          sources?: string[]
+          status?: string
+          subcategory?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_conversation_reads: {
         Row: {
           agent_id: string
@@ -2468,6 +2887,10 @@ export type Database = {
         Returns: boolean
       }
       cold_lead_cutoff: { Args: never; Returns: string }
+      count_vendors: {
+        Args: { p_category?: string; p_query?: string; p_status?: string }
+        Returns: number
+      }
       create_lead_gia_task: {
         Args: {
           p_assigned_to: string
@@ -2513,6 +2936,23 @@ export type Database = {
       encrypt_subscription_password: {
         Args: { p_plaintext: string }
         Returns: string
+      }
+      find_vendors_by_history: {
+        Args: {
+          p_category?: string
+          p_city?: string
+          p_limit?: number
+          p_query?: string
+          p_service?: string
+          p_terms?: string[]
+        }
+        Returns: {
+          last_matched: string
+          match_count: number
+          match_score: number
+          sample_titles: string[]
+          vendor_id: string
+        }[]
       }
       generate_lead_slug: {
         Args: { p_first_name: string; p_last_name: string; p_phone: string }
@@ -2976,8 +3416,119 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      get_vendor_agent_usage: {
+        Args: { p_limit?: number; p_vendor_id: string }
+        Returns: {
+          agent_id: string
+          count: number
+          name: string
+        }[]
+      }
+      get_vendor_candidates: {
+        Args: { p_category?: string; p_city?: string; p_service?: string }
+        Returns: {
+          aliases: string[]
+          category: string | null
+          category_source: string | null
+          contacts: Json
+          created_at: string
+          freshdesk_ref: string | null
+          home_city: string | null
+          id: string
+          identity_status: string
+          import_raw: Json
+          name: string
+          name_key: string | null
+          notes: string | null
+          primary_phone: string | null
+          search_key: string | null
+          search_text: string | null
+          sources: string[]
+          status: string
+          subcategory: string | null
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "vendors"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      get_vendor_categories: { Args: never; Returns: string[] }
+      get_vendor_category_usage: {
+        Args: { p_vendor_id: string }
+        Returns: {
+          category: string
+          count: number
+        }[]
+      }
+      get_vendor_cities: { Args: never; Returns: string[] }
+      get_vendor_score_inputs: {
+        Args: {
+          p_category?: string
+          p_city?: string
+          p_since: string
+          p_vendor_ids: string[]
+        }
+        Returns: {
+          avg_pricing: number
+          avg_quality: number
+          avg_reliability: number
+          avg_speed: number
+          avoid_count: number
+          cancelled_count: number
+          category_count: number
+          city_count: number
+          completed_count: number
+          engagement_count: number
+          failed_count: number
+          last_started_at: string
+          preferred_count: number
+          review_count: number
+          total_used: number
+          vendor_id: string
+        }[]
+      }
       get_wa_unread_count: { Args: never; Returns: number }
       lead_phone_key: { Args: { p_phone: string }; Returns: string }
+      search_vendors: {
+        Args: {
+          p_category?: string
+          p_limit?: number
+          p_offset?: number
+          p_query?: string
+          p_status?: string
+        }
+        Returns: {
+          aliases: string[]
+          category: string | null
+          category_source: string | null
+          contacts: Json
+          created_at: string
+          freshdesk_ref: string | null
+          home_city: string | null
+          id: string
+          identity_status: string
+          import_raw: Json
+          name: string
+          name_key: string | null
+          notes: string | null
+          primary_phone: string | null
+          search_key: string | null
+          search_text: string | null
+          sources: string[]
+          status: string
+          subcategory: string | null
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "vendors"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       update_lead_status: {
         Args: {
           p_actor_id: string
@@ -3166,6 +3717,7 @@ export type Database = {
           storage_path: string | null
           thumbnail_path: string | null
           wa_message_id: string
+          wa_timestamp: string | null
         }
         Insert: {
           attempts?: number
@@ -3182,6 +3734,7 @@ export type Database = {
           storage_path?: string | null
           thumbnail_path?: string | null
           wa_message_id: string
+          wa_timestamp?: string | null
         }
         Update: {
           attempts?: number
@@ -3198,6 +3751,7 @@ export type Database = {
           storage_path?: string | null
           thumbnail_path?: string | null
           wa_message_id?: string
+          wa_timestamp?: string | null
         }
         Relationships: []
       }
@@ -4125,6 +4679,9 @@ export type Database = {
           beat_at: string
           connected: boolean
           id: number
+          qr: string | null
+          qr_at: string | null
+          restart_requested_at: string | null
           state: string
           state_since: string
         }
@@ -4133,6 +4690,9 @@ export type Database = {
           beat_at?: string
           connected?: boolean
           id?: number
+          qr?: string | null
+          qr_at?: string | null
+          restart_requested_at?: string | null
           state?: string
           state_since?: string
         }
@@ -4141,6 +4701,9 @@ export type Database = {
           beat_at?: string
           connected?: boolean
           id?: number
+          qr?: string | null
+          qr_at?: string | null
+          restart_requested_at?: string | null
           state?: string
           state_since?: string
         }
@@ -4296,9 +4859,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       app_domain: [
@@ -4328,16 +4888,12 @@ export const Constants = {
   },
 } as const
 
-// =============================================================================
-// Derived type aliases
-// Appended after Supabase CLI regen — do not delete this section.
-// Generated content above must remain intact.
-// =============================================================================
+// ─────────────────────────────────────────────────────────────────────────────
+// HAND-WRITTEN below this line. Everything above is generated by
+//   npx supabase gen types typescript --local --schema public --schema sia
+// Re-generating replaces ONLY the block above; this tail must be carried over.
+// ─────────────────────────────────────────────────────────────────────────────
 
-// JsonValue — a permissive alias used by Insert/action types that accept JSONB columns.
-// The generated Json type uses a strict recursive union that rejects Record<string,unknown>.
-// Callers that build JSONB objects (form_data, personal_details, attachments) use this type.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type JsonValue = any
 
 // ─────────────────────────────────────────────

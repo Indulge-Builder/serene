@@ -6,7 +6,16 @@ import { m as motion } from "framer-motion";
 import { FAST_DURATION, SLOW_DURATION, EASE_OUT_EXPO, EASE_OUT_SOFT } from "@/lib/constants/motion";
 
 export interface BackButtonProps {
-  /** Destination href — must be a relative route. */
+  /**
+   * Destination href — must be a relative route.
+   *
+   * A page reached from more than one place (a lead from the list or a
+   * campaign; a vendor from the list or Find a vendor) carries the caller's own
+   * URL through `?from=`, validates it against its own prefix, and passes the
+   * result here. The button never reads history itself: a `document.referrer`
+   * shortcut used to live here, and referrer is EMPTY on client-side
+   * navigation — so it silently did nothing in exactly the case it was for.
+   */
   href:    string;
   /** Accessible label describing the destination, e.g. "Back to Team". */
   label:   string;

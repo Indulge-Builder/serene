@@ -21,6 +21,7 @@ import type {
 } from "@/lib/types/subscription";
 import { computeSubscriptionStatus, istTodayISO } from "@/lib/utils/subscription-status";
 import { toIst } from "@/lib/utils/ist";
+import { mapRows } from "@/lib/utils/rows";
 
 export type SubscriptionFilters = {
   archived?: boolean; // false (default) = active tab; true = archived tab
@@ -55,7 +56,24 @@ export async function getSubscriptions(
     query = query.in("type", filters.types);
   }
   if (filters.search && filters.search.trim()) {
-    query = query.ilike("name", `%${filters.search.trim()}%`);
+    // Match the TOOL name as well as the subscription's own name. One tool holds
+    // several subscriptions (the Claude case: 3 accounts, 2 tech + 1 concierge),
+    // and people search for the tool — "wifi" has to find the row whose name is
+    // an account label. A PostgREST `.or()` cannot reach through an embed, so
+    // the matching tool ids are resolved first and OR-ed in by id.
+    const term = filters.search.trim();
+    // `,` and `)` would break the .or() filter string; `%`/`*` are wildcards.
+    const safe = term.replace(/[,()*%]/g, " ").trim();
+    if (safe) {
+      const { data: toolRows } = await supabase
+        .from("subscription_tools")
+        .select("id")
+        .ilike("name", `%${safe}%`);
+      const toolIds = ((toolRows as { id: string }[] | null) ?? []).map((t) => t.id);
+      query = toolIds.length
+        ? query.or(`name.ilike.%${safe}%,tool_id.in.(${toolIds.join(",")})`)
+        : query.ilike("name", `%${safe}%`);
+    }
   }
 
   const { data, error } = await query;
@@ -140,12 +158,50 @@ export async function getSubscriptions(
  * is NEVER returned here (encrypted at rest, 0166) — `hasPassword` tells the UI
  * whether to offer a reveal; the plaintext comes only from revealSubscriptionPasswordAction.
  */
+export type PasswordReveal = {
+  revealed_at: string;
+  revealed_by_name: string | null;
+};
+
+/**
+ * Who has looked at this subscription's password.
+ *
+ * The ledger has been written since migration 0167 — every reveal inserts a row
+ * BEFORE the plaintext leaves the server, and fails closed. It had no reader,
+ * which makes an audit trail only half an audit: nobody could see it without
+ * opening the database. This is that reader.
+ *
+ * Session client on purpose: the 0167 RLS is admin/founder SELECT only, so a
+ * manager who can use the tracker still cannot see who read a credential.
+ * Append-only — there is no writer here and never should be.
+ */
+export async function getPasswordReveals(subscriptionId: string): Promise<PasswordReveal[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("subscription_password_reveals")
+    .select("revealed_at, profile:profiles!subscription_password_reveals_revealed_by_fkey(full_name)")
+    .eq("subscription_id", subscriptionId)
+    .order("revealed_at", { ascending: false })
+    .limit(20);
+  if (error) {
+    // Not fatal: a manager reading the tracker is DENIED this by RLS, and the
+    // credential panel must still render for them.
+    return [];
+  }
+  return mapRows<
+    { revealed_at: string; profile: { full_name: string | null } | null },
+    PasswordReveal
+  >(data, (r) => ({ revealed_at: r.revealed_at, revealed_by_name: r.profile?.full_name ?? null }));
+}
+
 export async function getSubscriptionDetail(id: string): Promise<{
   subscription: SubscriptionRow;
   toolName: string | null;
   hasPassword: boolean;
   payments: SubscriptionPaymentRow[];
   topups: SubscriptionTopupRow[];
+  /** Who has revealed this password (admin/founder only — [] for everyone else). */
+  reveals: PasswordReveal[];
 } | null> {
   const supabase = await createClient();
   const [subRes, paymentsRes, topupsRes] = await Promise.all([
@@ -171,6 +227,7 @@ export async function getSubscriptionDetail(id: string): Promise<{
     hasPassword: raw.password != null,
     payments: (paymentsRes.data ?? []) as unknown as SubscriptionPaymentRow[],
     topups: (topupsRes.data ?? []) as unknown as SubscriptionTopupRow[],
+    reveals: await getPasswordReveals(id),
   };
 }
 
