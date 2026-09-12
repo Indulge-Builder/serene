@@ -151,6 +151,25 @@ again** (only the label-purged rows re-inserted, 0 merged vendors resurrected) �
 counts; the agent layer driven through the real ranker and cores on real rows; the remote guard on
 both scripts both ways; `tsc`, `eslint`, `next build` clean.
 
+---
+
+## 2026-09-10 — Elaya floating button no longer covers table controls
+
+Why: the bottom-right Elaya button sat over the leads pagination Next button (and the
+right-most cells of any table) at the end of every scroll.
+
+What changed (`globals.css` + one className on the shared `Pagination`, which `LeadsPagination` wraps):
+
+- FAB geometry is now three tokens on `:root` (`--elaya-fab-size`, `--elaya-fab-inset`,
+  and the derived `--elaya-fab-clearance`), with the mobile size override done on the tokens.
+- Scrolling mains inside the paper reserve `--elaya-fab-clearance` as bottom padding, so the
+  last content on every list page always ends above the button (the Material FAB rule).
+  Full-bleed shells like `/whatsapp` (`overflow-hidden`) are excluded on purpose.
+- `.serene-fab-clear-x` (md+) gives right-anchored controls a right inset the width of the
+  FAB zone; the shared `Pagination` carries it so Prev/Next never pass under the button mid-scroll.
+
+---
+
 ## 2026-09-10 — New lead source: Self
 
 Why: the team needed a way to mark leads a member brought in themselves (own network,

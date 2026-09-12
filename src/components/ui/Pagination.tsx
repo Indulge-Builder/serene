@@ -75,6 +75,8 @@ export function Pagination({ page, pageSize, totalCount, noun = 'result' }: Pagi
 
   return (
     <div
+      // Right inset so Prev/Next never scroll under the floating Elaya button.
+      className="serene-fab-clear-x"
       style={{
         display:        'flex',
         alignItems:     'center',

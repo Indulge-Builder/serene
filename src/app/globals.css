@@ -358,16 +358,32 @@ body {
    hamburger's accent-washed paper bubble aesthetic, sized up for a primary
    presence affordance. Below the modal/overlay/toast scale so the chat covers
    it when open; above sticky page chrome so it always floats over the paper. */
+/* FAB geometry lives in ONE place so the content clearance below can never
+   drift from the button. The Material FAB rule (2026-09-10): content must never
+   end up UNDER the button — scrolling mains reserve --elaya-fab-clearance at
+   their foot, and right-anchored controls that pass through the FAB zone
+   (LeadsPagination) reserve --elaya-fab-clearance-x on their right. */
+:root {
+  --elaya-fab-size:  56px;
+  --elaya-fab-inset: var(--space-6);
+  /* button + corner inset + a breathing gap; replaces the page ladder's
+     bottom padding on scrolling mains */
+  --elaya-fab-clearance: calc(var(--elaya-fab-size) + var(--elaya-fab-inset) + var(--space-4));
+  /* right inset for controls at the paper's right edge: the FAB's left edge
+     sits size+inset (80px) from the viewport; the paper's content edge sits
+     gutter 12 + edge 1 + main p-8 32 = 45px in → 35px overlap + 8px gap ≈ 48 */
+  --elaya-fab-clearance-x: var(--space-12);
+}
 .serene-elaya-fab {
   position: fixed;
-  right: calc(var(--space-6) + env(safe-area-inset-right, 0px));
-  bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  right: calc(var(--elaya-fab-inset) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--elaya-fab-inset) + env(safe-area-inset-bottom, 0px));
   z-index: var(--z-sticky);
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  width: var(--elaya-fab-size);
+  height: var(--elaya-fab-size);
   border: 1px solid var(--neu-edge);
   border-radius: var(--radius-full);
   color: var(--neu-accent-deep);
@@ -394,10 +410,24 @@ body {
    bottom — keep the FAB clear of the toasts by lifting it above the mobile
    bottom strip the toast provider uses (80px + safe area). */
 @media (max-width: 767.98px) { /* < --bp-md */
-  .serene-elaya-fab {
-    width: 48px;
-    height: 48px;
-    bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
+  :root {
+    --elaya-fab-size:  48px;
+    --elaya-fab-inset: var(--space-5);
+  }
+}
+
+/* Content clearance for the FAB. Scoped to SCROLLING mains — full-bleed app
+   shells (/whatsapp: flex-1 overflow-hidden, own inner scroll) are untouched,
+   a foot inset there would only shrink the conversation pane. The paper is
+   the scroll container, so this padding is the last thing before its end. */
+.serene-shell-paper > main:not(.overflow-hidden) {
+  padding-bottom: calc(var(--elaya-fab-clearance) + env(safe-area-inset-bottom, 0px));
+}
+/* Right-anchored controls that scroll through the FAB zone (md+ only — below
+   md the FAB sits on its own row of breathing room, and the row is narrow). */
+@media (min-width: 768px) { /* ≥ --bp-md */
+  .serene-fab-clear-x {
+    padding-right: var(--elaya-fab-clearance-x);
   }
 }
 
