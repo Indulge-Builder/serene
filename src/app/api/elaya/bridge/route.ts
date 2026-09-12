@@ -1,4 +1,5 @@
-// POST /api/elaya/bridge — the Python brain's WRITE bridge (service-to-service).
+// POST /api/elaya/bridge — the Python brain's WRITE bridge (service-to-service),
+// plus the two vendor READ tools it runs here rather than porting (2026-09-12).
 //
 // Sanctioned P-02 exception (Decision Log 2026-08-30): the Python brain (Step 3)
 // must never re-implement a mutation core ("NEVER re-implement a lead mutation
@@ -13,13 +14,17 @@
 // role/identity claims beyond the id itself).
 //
 // Ops:
-//   definitions       → the write-tool definitions for this principal's role
-//                       (Node stays the single source of the model-facing schema
-//                       — the Python brain fetches, never duplicates)
-//   execute_tool      → run ONE write tool through the shared dispatch (inline
-//                       tools mutate + ledger `executed`; state-changing tools
-//                       only record a proposal — enforced by the registry, not
-//                       by this route)
+//   definitions       → the write-tool definitions for this principal's role,
+//                       plus the bridged READ tools (BRIDGED_READ_TOOL_NAMES —
+//                       the vendor pair, whose ranker is the one ranking in the
+//                       codebase and is never re-implemented). Node stays the
+//                       single source of the model-facing schema — the Python
+//                       brain fetches, never duplicates.
+//   execute_tool      → run ONE write tool or bridged read tool through the
+//                       shared dispatch (inline tools mutate + ledger
+//                       `executed`; state-changing tools only record a proposal
+//                       — enforced by the registry, not by this route; reads are
+//                       PII-masked by the same seam)
 //   execute_proposed  → run the resolver executor on a still-live proposal the
 //                       Python brain has already verdict-checked (its resolver
 //                       owns TTL/affirmation/H3b; execution stays here)
@@ -28,7 +33,11 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { resolveStaffPrincipal } from '@/lib/elaya/principal';
 import type { Profile } from '@/lib/types';
-import { executeTool, getToolDefinitionsForPrincipal } from '@/lib/elaya/tools/registry';
+import {
+  BRIDGED_READ_TOOL_NAMES,
+  executeTool,
+  getToolDefinitionsForPrincipal,
+} from '@/lib/elaya/tools/registry';
 import { WRITE_TOOL_REGISTRY, executeProposedAction } from '@/lib/elaya/tools/write-registry';
 import { getPiiMaskingDepth } from '@/lib/services/llm-providers-service';
 import { readJsonBody, safeSecretCompare } from '@/lib/utils/webhook';
@@ -85,16 +94,21 @@ export async function POST(request: Request) {
 
   try {
     if (body.op === 'definitions') {
-      // Only the write subset — the Python brain owns its read tools locally.
-      const defs = getToolDefinitionsForPrincipal(principal).filter((d) =>
-        WRITE_TOOL_REGISTRY.has(d.name),
+      // The write subset + the bridged reads — the Python brain owns every
+      // other read tool locally.
+      const defs = getToolDefinitionsForPrincipal(principal).filter(
+        (d) => WRITE_TOOL_REGISTRY.has(d.name) || BRIDGED_READ_TOOL_NAMES.has(d.name),
       );
       return NextResponse.json({ definitions: defs });
     }
 
     if (body.op === 'execute_tool') {
-      if (!body.toolName || !WRITE_TOOL_REGISTRY.has(body.toolName)) {
-        return NextResponse.json({ error: 'not a write tool' }, { status: 400 });
+      const toolName = body.toolName;
+      if (
+        !toolName ||
+        !(WRITE_TOOL_REGISTRY.has(toolName) || BRIDGED_READ_TOOL_NAMES.has(toolName))
+      ) {
+        return NextResponse.json({ error: 'not a bridged tool' }, { status: 400 });
       }
       if (!body.conversationId || !UUID_RE.test(body.conversationId)) {
         return NextResponse.json({ error: 'bad conversationId' }, { status: 400 });
@@ -102,7 +116,7 @@ export async function POST(request: Request) {
       const maskingDepth = await getPiiMaskingDepth();
       const execution = await executeTool(
         principal,
-        body.toolName,
+        toolName,
         body.input ?? {},
         maskingDepth,
         { conversationId: body.conversationId, channel: body.channel ?? 'in_app' },

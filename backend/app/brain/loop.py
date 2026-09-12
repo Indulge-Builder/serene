@@ -34,7 +34,12 @@ from app.core import elaya_store, supa
 from app.llm import registry
 from app.llm.provider import ChatMessage, CompleteRequest, ToolDefinition
 from app.tools import write_bridge
-from app.tools.registry import WRITE_TOOL_NAMES, definitions_for, execute_tool
+from app.tools.registry import (
+    BRIDGED_READ_TOOL_NAMES,
+    WRITE_TOOL_NAMES,
+    definitions_for,
+    execute_tool,
+)
 
 # Raised 6 → 10 with the write tranche (parity with brain.ts): a multi-person
 # group task is create_group_task + a find_teammate + a create_subtask PER
@@ -82,19 +87,25 @@ async def run_turn(
 
     # The specialist's toolset ∩ the principal's role gate — both cuts apply.
     tool_names = [n for n in specialist.toolset if n in principal.toolset]
-    read_names = [n for n in tool_names if n not in WRITE_TOOL_NAMES]
     write_names = [n for n in tool_names if n in WRITE_TOOL_NAMES]
+    # The vendor pair runs in Node (the one ranker); its schema comes from the
+    # bridge with the writes, and it executes there too (run_read below).
+    bridged_read_names = [n for n in tool_names if n in BRIDGED_READ_TOOL_NAMES]
+    read_names = [
+        n for n in tool_names if n not in WRITE_TOOL_NAMES and n not in BRIDGED_READ_TOOL_NAMES
+    ]
     tools = [ToolDefinition(**d) for d in definitions_for(read_names)]
 
-    # Write-tool definitions come from the Node bridge — the single source of
-    # the model-facing schema (zero drift by construction). A bridge outage
-    # degrades this turn to read-only rather than failing it.
-    if write_names:
+    # Bridged-tool definitions (writes + the vendor reads) come from the Node
+    # bridge — the single source of the model-facing schema (zero drift by
+    # construction). A bridge outage degrades this turn to local reads only
+    # rather than failing it.
+    if write_names or bridged_read_names:
         try:
             bridge_defs = await write_bridge.fetch_write_definitions(
                 principal.user_id, principal.role
             )
-            wanted = set(write_names)
+            wanted = set(write_names) | set(bridged_read_names)
             tools += [
                 ToolDefinition(
                     name=d["name"],
@@ -106,7 +117,23 @@ async def run_turn(
                 if d.get("name") in wanted
             ]
         except Exception as e:
-            print(f"[loop] write definitions unavailable (read-only turn): {e}")
+            print(f"[loop] bridge definitions unavailable (local reads only this turn): {e}")
+
+    async def run_read(call: Any) -> str:
+        """One READ → its serialized, masked tool-result string. The vendor
+        pair runs in Node through the bridge and arrives already masked +
+        serialized by the executeTool seam; every local read is masked here
+        (THE gateway — nothing skips it). The toolset check mirrors
+        execute_tool's: a bridged name outside the principal's toolset is a calm
+        refusal, never a bridge call."""
+        if call.name in BRIDGED_READ_TOOL_NAMES:
+            if call.name not in principal.toolset:
+                return json.dumps({"error": f"Tool '{call.name}' is not available to this user."})
+            return await write_bridge.execute_bridged_read_tool(
+                principal.user_id, conversation_id, channel, call.name, call.input
+            )
+        raw = await execute_tool(principal, call.name, call.input)
+        return json.dumps(mask_pii(raw, depth), ensure_ascii=False, default=str)
 
     # The FULL persona (ported from persona.ts) is the frozen cached prefix;
     # the volatile time anchor rides as the uncached system tail — the Node
@@ -171,8 +198,7 @@ async def run_turn(
                         principal.user_id, conversation_id, channel, call.name, call.input
                     )
                 else:
-                    raw = await execute_tool(principal, call.name, call.input)
-                    serialized = json.dumps(mask_pii(raw, depth), ensure_ascii=False, default=str)
+                    serialized = await run_read(call)
                 if len(serialized) > TOOL_RESULT_MAX_CHARS:
                     serialized = serialized[:TOOL_RESULT_MAX_CHARS] + "…(truncated)"
                 messages.append(
@@ -181,12 +207,10 @@ async def run_turn(
         else:
             # Pure-read batches stay CONCURRENT (a real latency win); results
             # are appended in call order so the transcript stays deterministic.
-            raws = await asyncio.gather(
-                *(execute_tool(principal, c.name, c.input) for c in result.tool_calls)
+            serialized_results = await asyncio.gather(
+                *(run_read(c) for c in result.tool_calls)
             )
-            for call, raw in zip(result.tool_calls, raws):
-                masked = mask_pii(raw, depth)  # THE gateway — nothing skips it
-                serialized = json.dumps(masked, ensure_ascii=False, default=str)
+            for call, serialized in zip(result.tool_calls, serialized_results):
                 if len(serialized) > TOOL_RESULT_MAX_CHARS:
                     serialized = serialized[:TOOL_RESULT_MAX_CHARS] + "…(truncated)"
                 messages.append(

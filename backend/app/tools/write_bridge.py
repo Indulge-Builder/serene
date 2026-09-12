@@ -38,8 +38,10 @@ def _bridge() -> httpx.AsyncClient:
 
 
 async def fetch_write_definitions(user_id: str, role: str) -> list[dict[str, Any]]:
-    """The write-tool definitions for this principal's role. Cached per ROLE —
-    the role fully determines the write surface (writeToolsForRole)."""
+    """The bridged-tool definitions for this principal's role: every write tool
+    plus the bridged READ tools (the vendor pair, 2026-09-12). Cached per ROLE —
+    the role fully determines the bridged surface (writeToolsForRole + the
+    admin/founder gate on the vendor tools)."""
     now = time.monotonic()
     hit = _defs_cache.get(role)
     if hit and now - hit[0] < _DEFS_TTL_S:
@@ -76,6 +78,33 @@ async def execute_write_tool(
     if r.status_code != 200:
         # An honest tool-level failure the model can relay — never a crash.
         return '{"error": "that action could not be completed right now"}'
+    return r.json().get("content", "{}")
+
+
+async def execute_bridged_read_tool(
+    user_id: str,
+    conversation_id: str,
+    channel: str,
+    tool_name: str,
+    tool_input: dict[str, Any],
+) -> str:
+    """Run ONE bridged READ tool (BRIDGED_READ_TOOL_NAMES — the vendor pair) in
+    Node, where the one ranker lives. Same op and same masking seam as a write;
+    only the failure copy differs — a lookup that failed must not read like an
+    action that was refused."""
+    r = await _bridge().post(
+        "/api/elaya/bridge",
+        json={
+            "op": "execute_tool",
+            "userId": user_id,
+            "conversationId": conversation_id,
+            "channel": channel,
+            "toolName": tool_name,
+            "input": tool_input,
+        },
+    )
+    if r.status_code != 200:
+        return '{"error": "that lookup could not be completed right now"}'
     return r.json().get("content", "{}")
 
 

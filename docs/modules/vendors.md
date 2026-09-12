@@ -327,7 +327,7 @@ src/lib/services/vendors-service.ts        reads: list, search, details, rankVen
 src/lib/services/vendor-search-intent.ts   readVendorRequest — the request reader (Haiku via the Elaya provider, fails open)
 src/lib/services/vendor-mutations.ts       cores: create/update/status, capability, log + close engagement, review, note, preference
 src/lib/actions/vendors.ts                 Zod → requireProfile(['admin','founder']) → actorFromProfile → core → { data, error }
-src/lib/elaya/tools/registry.ts            find_vendors, get_vendor_details (Node brain only — the Python brain's twin is a follow-up)
+src/lib/elaya/tools/registry.ts            find_vendors, get_vendor_details (both brains: the Python brain runs them through the bridge)
 src/components/vendors/                    the /vendors list, the vendor page, Find a vendor, the preference control
 scripts/vendors/                           loader, dedupe (merge list checked in), invoice uploader
 ```
@@ -351,9 +351,9 @@ scripts/vendors/                           loader, dedupe (merge list checked in
 6. **Per-agent preferred / avoid.** Kept. It was in the founder's first brief, was dropped on
    2026-09-07 on a misreading, and came back as migration 0191.
 
-**Shipped, not deferred:** the Elaya read tools (Node registry only; the WhatsApp channel runs the
-Python brain, whose twin tools are a follow-up), the `/vendors` UI, and the loader all landed in
-PR #3. The migrations ledger rows are marked applied.
+**Shipped, not deferred:** the Elaya read tools (on both brains since 2026-09-12: the Python
+brain runs them through the bridge, so WhatsApp answers vendor questions too), the `/vendors` UI,
+and the loader all landed in PR #3. The migrations ledger rows are marked applied.
 
 ## What we keep from PR #3, unchanged in spirit
 

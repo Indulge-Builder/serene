@@ -105,6 +105,21 @@ SPECIALISTS: dict[str, Specialist] = {
         ],
         job="heavy",  # the Opus tier — deep reasoning turns (DB-switchable)
     ),
+    "vendors": Specialist(
+        id="vendors",
+        description=(
+            "suppliers and vendors: who do we use for something (a cake, a florist, a car, a "
+            "visa, a hotel), the best vendor or supplier for a client request, a vendor's "
+            "details, contacts, past jobs, score or rating, what a vendor offers or refuses"
+        ),
+        focus=("Focus for this conversation: VENDORS — who the team has used for a kind of "
+               "request, the best supplier for a job, and one vendor's record. Every suggestion "
+               "comes from find_vendors; quote the matching past job as evidence and never "
+               "invent a supplier. A null score means unrated, not bad."),
+        # Both vendor tools run in Node through the bridge (the one ranker);
+        # admin/founder only — the role gate cuts them for everyone else.
+        toolset=["find_vendors", "get_vendor_details", "find_teammate"],
+    ),
     "general": Specialist(
         id="general",
         description="greetings, small talk, questions about Elaya/Serene itself, anything that fits nowhere else",
@@ -129,6 +144,8 @@ SPECIALISTS: dict[str, Specialist] = {
             "update_task_status",
             "update_task",
             "delete_task",
+            "find_vendors",
+            "get_vendor_details",
         ],
     ),
 }

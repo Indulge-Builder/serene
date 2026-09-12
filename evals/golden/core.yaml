@@ -360,3 +360,16 @@
     - send: "ho kara"
       expect:
         action_row: { status: executed }
+
+- id: read-vendors-cakes
+  source: synthetic
+  tags: [needs-founder]
+  # find_vendors / get_vendor_details are admin/founder only (the vendor tables'
+  # SELECT policies); the default eval identity is a manager, so this case only
+  # runs with an admin/founder EVAL_USER. On the Python brain the tool executes
+  # in Node through the bridge (the one ranker) — the tool name is the check.
+  steps:
+    - send: "Who do we use for cakes?"
+      expect:
+        tools: [find_vendors]
+        tools_none: [search_leads, get_helpdesk_content]

@@ -234,6 +234,26 @@ For evals only, non-production builds honour `ELAYA_BRAIN_OVERRIDE_IN_APP` /
 without touching the shared config rows; production ignores the override by construction.
 Rollback: `UPDATE elaya_settings SET value = '"node"' WHERE key = 'brain_in_app';`.
 
+### Two brains, one ranker — bridged reads (2026-09-12)
+
+The Python brain owns its read tools locally, with one exception: the vendor pair
+(`find_vendors`, `get_vendor_details`). The vendor ranker is the one ranking in the codebase
+(`docs/modules/vendors.md`: Elaya's tool, the Sia ticket screen and the extension all call it and
+none re-rank), it spends a model call reading the request, and its score math lives in one TS
+file. A Python twin would be a second ranker that drifts, so these two run THROUGH the bridge:
+
+```text
+Python loop → bridge op=definitions   → write tools + BRIDGED_READ_TOOL_NAMES (role-gated in Node)
+            → bridge op=execute_tool  → the same executeTool dispatch, the same PII seam,
+                                        rankVendorsForRequest / getVendorDetail in Node
+```
+
+`BRIDGED_READ_TOOL_NAMES` is declared once in Node (`lib/elaya/tools/registry.ts`) and mirrored
+as names only in the Python registry (`backend/app/tools/registry.py`), the same way the write
+names are. The Python router has a `vendors` specialist for supplier questions, and `general`
+carries both tools as its safety net; both are cut by the admin/founder role gate. A bridge
+outage degrades the turn to local reads, never to a dead turn.
+
 ## Routing provider in production (Lead Revival)
 
 The `routing` (Haiku) provider — seeded in 0116 and long described as "reserved" — is **live in

@@ -1069,11 +1069,32 @@ def write_tools_for_role(role: str) -> frozenset[str]:
     return WRITE_TOOL_NAMES - {"reassign_lead"}
 
 
+# ── Bridged READ tools (2026-09-12) ──────────────────────────────────────
+# NAMES ONLY, exactly like the writes: the two vendor tools run through the
+# Node bridge (op=execute_tool) instead of being ported. The vendor ranker is
+# THE one ranking in the codebase (vendors spec: Elaya's tool, the Sia ticket
+# screen and the extension all call it, none re-rank); it already spends a
+# model call reading the request and its score math lives in one TS file. A
+# Python twin would be a second ranker that drifts within a week. Node keeps
+# the schema (op=definitions) and the PII seam; this brain only decides WHEN
+# to call. Gated admin/founder to mirror the vendor tables' SELECT policies.
+
+BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({"find_vendors", "get_vendor_details"})
+
+
+def bridged_read_tools_for_role(role: str) -> frozenset[str]:
+    return BRIDGED_READ_TOOL_NAMES if role in _FOUNDER_UP else frozenset()
+
+
+def _toolset(role: str) -> frozenset[str]:
+    return _tools_for_role(role) | write_tools_for_role(role) | bridged_read_tools_for_role(role)
+
+
 TOOLSET_BY_ROLE: dict[str, frozenset[str]] = {
-    "agent": _tools_for_role("agent") | write_tools_for_role("agent"),
-    "manager": _tools_for_role("manager") | write_tools_for_role("manager"),
-    "admin": _tools_for_role("admin") | write_tools_for_role("admin"),
-    "founder": _tools_for_role("founder") | write_tools_for_role("founder"),
+    "agent": _toolset("agent"),
+    "manager": _toolset("manager"),
+    "admin": _toolset("admin"),
+    "founder": _toolset("founder"),
     "guest": frozenset(),  # guests converse but get zero data access
 }
 

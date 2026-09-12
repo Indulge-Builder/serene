@@ -12,6 +12,33 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-12 — Elaya answers vendor questions on both brains (bridged reads)
+
+Why: `find_vendors` / `get_vendor_details` lived only in the Node tool registry, and both Elaya
+channels run on the Python brain — "who do we use for cakes" on WhatsApp found no tool. Porting
+the ranker to Python would fork the one ranking (R-01; vendors spec: none re-rank), so the two
+tools now run THROUGH the write bridge instead.
+
+What changed:
+
+- Node: `BRIDGED_READ_TOOL_NAMES` in `lib/elaya/tools/registry.ts`; `/api/elaya/bridge`
+  `op=definitions` returns them with the writes and `op=execute_tool` accepts them (same
+  `executeTool` dispatch, same PII seam, same role gate). Decision Log row added.
+- Python brain: the names mirrored in `app/tools/registry.py` (admin/founder only, in
+  `TOOLSET_BY_ROLE`); `loop.py` fetches their schema with the write definitions and runs them
+  via `write_bridge.execute_bridged_read_tool` (local reads still masked locally); a new
+  `vendors` specialist routes supplier questions, and `general` carries both tools as the
+  safety net.
+- Golden set: `read-vendors-cakes` (tagged `needs-founder` — the default eval identity is a
+  manager, and the tools are admin/founder).
+- Docs: `modules/elaya.md` "Two brains, one ranker"; `modules/vendors.md` file map + decisions.
+
+Deploy order: Vercel (the bridge op) is live on merge; the brain needs
+`copilot svc deploy --name api --env prod` from `backend/`. A brain deployed first degrades the
+tool to an honest "could not be completed" until the bridge follows.
+
+---
+
 ## 2026-09-12 — Vendors module merged to main (PR #3)
 
 Why: review round two passed. Every round-one blocker was verified in the diff and on the live

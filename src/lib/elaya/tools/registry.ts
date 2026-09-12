@@ -861,6 +861,19 @@ const getVendorDetails: ElayaTool = {
   },
 };
 
+/**
+ * Read tools the Python brain runs THROUGH the bridge instead of porting.
+ * The vendor ranker is the one ranking in the codebase (R-01; the vendors spec:
+ * Elaya's tool, the Sia ticket screen and the extension all call it and none
+ * re-rank), and it already spends a model call reading the request. A Python
+ * twin would be a second ranker that drifts. The bridge runs these through this
+ * same registry, so both brains answer a vendor question identically.
+ */
+export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'find_vendors',
+  'get_vendor_details',
+]);
+
 const ALL_TOOLS = [
   searchLeads,
   getColdLeads,
