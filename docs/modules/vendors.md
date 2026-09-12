@@ -5,10 +5,11 @@
 > vendor for a request.
 > **Audience:** engineers (Ethan first, this is the build contract for the vendor PR).
 > **Source-of-truth scope:** the vendor data model, the scoring model, and how Elaya reads it.
-> **Status:** spec, written 2026-09-04; **built 2026-09-05** on `vendor-master-table` (migrations
-> 0183–0185 + the `lib/` layer, all verified locally on a clean Postgres 17.6 container — NOT yet
-> applied to prod, no UI yet). Supersedes the shape in PR #3. Where this doc and the code differ,
-> the code + `docs/changelog.md` 2026-09-05 win; the deltas are marked **Built:** below.
+> **Status:** spec written 2026-09-04; **built and live.** Migrations 0000 + 0183–0192 and the
+> full Freshdesk dataset (21,580 vendors, 46,574 jobs, 4,977 invoices) have been on prod since
+> 2026-09-11; the `/vendors` UI, the Elaya read tools and the loader scripts merged to main on
+> 2026-09-12 (PR #3). Supersedes the first shape of PR #3. Where this doc and the code differ, the
+> code + `docs/changelog.md` win; the deltas are marked **Built:** below.
 
 ## Why this doc exists
 
@@ -51,9 +52,8 @@ rank   = capabilities filter → score → top N with reasons
 
 ## Data model
 
-Migration numbers: 0183, 0184, 0185 with today's date prefix. **0179 and 0180 are taken and
-applied on prod** (the Elaya brain switch and the shop product enquiries); 0181 is the clients
-spine. The Supabase CLI matches on the version number, so a file reusing 0179 is silently skipped.
+Migrations 0183–0192, all dated 2026-09-11 and all applied to prod. (0182 was taken by the
+`self` lead source the day before; the vendor files were renumbered past it.)
 
 ### `vendors` (0183): the spine
 
@@ -304,39 +304,56 @@ re-inserts only the rows the cleanup removed by label, and the cleanup removes t
 three cleanup commands after every load. A true rebuild is `--wipe`. `client_id` is NULL on every imported row — the archive never carried the
 requester's identity.
 
-## File map (built 2026-09-05 → 2026-09-11)
+## File map (built 2026-09-05 → 2026-09-11, live on prod 2026-09-11, on main 2026-09-12)
 
 ```text
 supabase/migrations/20260911000183_vendors.sql                 vendors + vendor_capabilities + Sia FKs
-supabase/migrations/20260911000184_vendor_invoices_bucket.sql  PR #3's bucket, renumbered, read narrowed to admin/founder
-supabase/migrations/20260911000185_vendor_ledger.sql           engagements + reviews + get_vendor_score_inputs RPC
+supabase/migrations/20260911000184_vendor_invoices_bucket.sql  private bucket, read narrowed to admin/founder
+supabase/migrations/20260911000185_vendor_ledger.sql           engagements + reviews + get_vendor_score_inputs + usage RPCs
+supabase/migrations/20260911000186_vendor_notes.sql            vendor_notes
+supabase/migrations/20260911000187_vendor_search.sql           search_vendors / count_vendors + category and city vocabularies
+supabase/migrations/20260911000188_vendor_candidates.sql       get_vendor_candidates (the ranker's candidate set, in SQL)
+supabase/migrations/20260911000189_vendor_history_search.sql   find_vendors_by_history (past ticket titles)
+supabase/migrations/20260911000190_vendor_history_terms.sql    ranked terms; declines honoured on the phrase path
+supabase/migrations/20260911000191_vendor_agent_preferences.sql the sticky note + rollup with preferred / avoid counts
+supabase/migrations/20260911000192_vendor_rpc_row_cap.sql      RPC results shaped past PostgREST's 1,000-row cap
 src/lib/utils/vendor-score.ts       computeVendorScore + vendorFlags — the pure score math (no DB)
-src/lib/constants/vendors.ts        VENDOR_STATUS, CAPABILITY_STANCE, ENGAGEMENT_SOURCE/OUTCOME,
-                                    REVIEW_DIMENSIONS, VENDOR_SERVICES, SCORE_WEIGHTS
+src/lib/constants/vendors.ts        VENDOR_STATUS, CAPABILITY_STANCE, PREFERENCE_STANCE, ENGAGEMENT_SOURCE/OUTCOME,
+                                    REVIEW_DIMENSIONS, VENDOR_SERVICES, SCORE_WEIGHTS, PREFERRED_BOOST
                                     (all via defineEnum where they are simple id/label lists)
 src/lib/validations/vendor-schema.ts
 src/lib/types/vendor.ts
-src/lib/services/vendors-service.ts        reads: search, details, rankVendorsForRequest, score rollup
-src/lib/services/vendor-mutations.ts       cores: create/update/status, capability, log + close engagement, review, preference
+src/lib/services/vendors-service.ts        reads: list, search, details, rankVendorsForRequest, score rollup
+src/lib/services/vendor-search-intent.ts   readVendorRequest — the request reader (Haiku via the Elaya provider, fails open)
+src/lib/services/vendor-mutations.ts       cores: create/update/status, capability, log + close engagement, review, note, preference
 src/lib/actions/vendors.ts                 Zod → requireProfile(['admin','founder']) → actorFromProfile → core → { data, error }
-src/lib/elaya/tools/registry.ts            find_vendors, get_vendor_details          ← NOT YET (deferred with the parity/Python conflicts)
-scripts/vendors/                           Ethan's loader + bucket upload, checked in ← NOT YET
+src/lib/elaya/tools/registry.ts            find_vendors, get_vendor_details (Node brain only — the Python brain's twin is a follow-up)
+src/components/vendors/                    the /vendors list, the vendor page, Find a vendor, the preference control
+scripts/vendors/                           loader, dedupe (merge list checked in), invoice uploader
 ```
 
-## Decisions (founder, 2026-09-05)
+## Decisions (agreed with the founder, confirmed 2026-09-12)
 
-1. **Read audience.** Admin/founder only for now; widens with the Sia UI.
-2. **Review dimensions.** `speed`, `quality`, `pricing`, `reliability` — four, all manually
-   entered (none exist in Freshdesk). `communication` dropped.
-3. **Score weights.** `SCORE_WEIGHTS` in `lib/constants/vendors.ts` (volume 2.5 · recency 1.5 ·
-   reliability 2.5 · reviews 2.5 · sentiment 1.0). Tune there; a config table later if needed.
-4. **Category mapping.** Still Ethan's — the loader's job (`scripts/vendors/`, not built yet).
-   `VENDOR_SERVICES` starts with a modest list and has no SQL CHECK so it grows without a migration.
-5. **Blacklist authority.** Admin/founder only — the same `VENDOR_ROLES` gate as every other write.
+1. **Read audience.** Admin/founder for now. The Sia agents get access later, as one migration on
+   the SELECT policies plus the `VENDOR_ROLES` line in `actions/vendors.ts`.
+2. **Review dimensions.** Four: `speed`, `quality`, `pricing`, `reliability`, all entered by hand
+   (none exist in Freshdesk). `communication` is left out for now. If agents keep writing "hard to
+   reach" in the comment box, it comes back as one nullable column and one star row.
+3. **Score weights.** Ethan's proposal accepted as the starting point: volume 2.5 · recency 1.5 ·
+   reliability 2.5 · reviews 2.5 · sentiment 1.0. Tune in `SCORE_WEIGHTS`; a config table only if
+   someone needs to tune without a deploy.
+4. **Category vocabulary.** Vendors speak the Freshdesk ticket vocabulary (`REQUEST_CATEGORIES`)
+   for what they are used for and `VENDOR_CATEGORIES` for what they are. Vendors serve Sia
+   (tickets), not Gia (leads), so no bridge to `SERVICE_CATEGORY` / `leads.service_interests` is
+   planned. The loader owns the Freshdesk label mapping.
+5. **Blacklist authority.** Admin/founder for now, through the same `VENDOR_ROLES` gate as every
+   write. Other roles get it later, not now.
+6. **Per-agent preferred / avoid.** Kept. It was in the founder's first brief, was dropped on
+   2026-09-07 on a misreading, and came back as migration 0191.
 
-**Deferred, by the founder's call:** the Elaya tools (the `elaya-data.ts` parity rule + the
-Python-brain double-implementation conflicts), the `/vendors` UI (the founder supplies it), the
-loader rewrite, and the stale “NOT yet applied” markers in the migrations ledger.
+**Shipped, not deferred:** the Elaya read tools (Node registry only; the WhatsApp channel runs the
+Python brain, whose twin tools are a follow-up), the `/vendors` UI, and the loader all landed in
+PR #3. The migrations ledger rows are marked applied.
 
 ## What we keep from PR #3, unchanged in spirit
 

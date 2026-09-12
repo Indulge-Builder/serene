@@ -12,6 +12,24 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-12 — Vendors module merged to main (PR #3)
+
+Why: review round two passed. Every round-one blocker was verified in the diff and on the live
+database (migrations 0000 + 0183–0192 in the ledger, 21,580 vendors / 25,596 capabilities /
+46,574 jobs / 4,977 invoice objects, RLS on all six tables, every vendor RPC service-role only);
+tsc, eslint and `next build` clean on the merge head.
+
+What changed:
+
+- PR #3 merged (merge commit). `/vendors`, the vendor page, Find a vendor, the Elaya read tools
+  and `scripts/vendors/` are on main; the data was already live.
+- `docs/modules/vendors.md` brought in line with what shipped: status, migration range, file map,
+  and the decisions section now records what was agreed with the founder (six items, including
+  keeping per-agent preferred / avoid and NOT bridging vendor categories to lead interests —
+  vendors serve Sia tickets, not Gia leads).
+
+---
+
 ## 2026-09-11 — Vendors: review round one — nine fixes, migrations renumbered 0183–0191
 
 The reviewer's pass on PR #3: the model, the RPC tier, the SQL search and the intent reader all
