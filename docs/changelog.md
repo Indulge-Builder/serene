@@ -27,6 +27,9 @@ What changed:
   and the decisions section now records what was agreed with the founder (six items, including
   keeping per-agent preferred / avoid and NOT bridging vendor categories to lead interests —
   vendors serve Sia tickets, not Gia leads).
+- `docs/architecture/migrations.md` + `supabase/migrations/CLAUDE.md`: the ledger key is
+  `(vendor_id, source, source_ref)`, one engagement per vendor per ticket — both rows said
+  `(source, source_ref)`, the shape from the spec that the migration deliberately widened.
 
 ---
 
