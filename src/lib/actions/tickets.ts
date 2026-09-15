@@ -1,0 +1,187 @@
+"use server";
+// actions/tickets.ts — the Sia ticketing server actions (migration 0195).
+//
+// Every write: Zod (parseActionInput) → requireProfile() → the caller's access to the
+// ticket's client (canAccessClient) → the shared core in services/ticket-mutations.ts →
+// revalidatePath → { data, error } (Rule 10). Creation from selected messages goes through
+// draftTicketAction (the ticket creator, reasoning tier, masked) and then createTicketAction.
+
+import { revalidatePath } from "next/cache";
+import { requireProfile, actorFromProfile } from "@/lib/actions/_auth";
+import { parseActionInput } from "@/lib/actions/_validation";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { formErrors } from "@/lib/validations/form-errors";
+import { canAccessClient } from "@/lib/elaya/access";
+import { TICKETS_PATH } from "@/lib/constants/tickets";
+import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
+import { draftTicketFromMessages } from "@/lib/services/ticket-creator";
+import { getTicketHelp, listQueendomStaff } from "@/lib/services/tickets-service";
+import {
+  addTicketNoteCore, assignTicketCore, createTicketCore, linkTicketMessagesCore, moveTicketStatusCore,
+  setTicketPriorityCore, tickChecklistCore, updateTicketBriefCore, updateTicketMoneyCore,
+} from "@/lib/services/ticket-mutations";
+import {
+  AddTicketNoteSchema, AssignTicketSchema, CreateTicketSchema, DraftTicketSchema, LinkTicketMessagesSchema,
+  MoveTicketStatusSchema, SetTicketPrioritySchema, TickChecklistSchema, UpdateTicketBriefSchema, UpdateTicketMoneySchema,
+} from "@/lib/validations/ticket-schema";
+import type { ActionResult } from "@/lib/types";
+import type { StaffOption, TicketDraft, TicketHelp, TicketRow } from "@/lib/types/ticket";
+
+async function clientQueendom(clientId: string): Promise<{ exists: boolean; queendom_id: string | null }> {
+  const { data } = await createAdminClient().from("clients").select("queendom_id").eq("id", clientId).maybeSingle();
+  return data ? { exists: true, queendom_id: (data as { queendom_id: string | null }).queendom_id } : { exists: false, queendom_id: null };
+}
+async function ticketQueendom(ticketId: string): Promise<{ exists: boolean; queendom_id: string | null; client_id: string | null }> {
+  const { data } = await createAdminClient().schema("sia").from("tickets" as never).select("queendom_id, client_id").eq("id", ticketId).maybeSingle();
+  const row = data as unknown as { queendom_id: string | null; client_id: string } | null;
+  return row ? { exists: true, queendom_id: row.queendom_id, client_id: row.client_id } : { exists: false, queendom_id: null, client_id: null };
+}
+
+async function gateTicket(ticketId: string) {
+  const auth = await requireProfile();
+  if (!auth.ok) return { ok: false as const, result: auth.result };
+  const t = await ticketQueendom(ticketId);
+  if (!t.exists || !canAccessClient(auth.profile, t.queendom_id)) return { ok: false as const, result: { data: null, error: formErrors.unauthorized } };
+  return { ok: true as const, profile: auth.profile, client_id: t.client_id! };
+}
+
+function revalidateTicket(ticketId: string, clientId?: string | null) {
+  revalidatePath(TICKETS_PATH);
+  revalidatePath(`${TICKETS_PATH}/${ticketId}`);
+  if (clientId) revalidatePath(`${CLIENTS_PATH}/${clientId}`);
+}
+
+export async function draftTicketAction(input: unknown): Promise<ActionResult<TicketDraft>> {
+  const parsed = parseActionInput(DraftTicketSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const q = await clientQueendom(parsed.data.client_id);
+  if (!q.exists || !canAccessClient(auth.profile, q.queendom_id)) return { data: null, error: formErrors.unauthorized };
+  const draft = await draftTicketFromMessages(parsed.data);
+  if (!draft) return { data: null, error: "Elaya could not read those messages. Fill the ticket by hand." };
+  return { data: draft, error: null };
+}
+
+export async function createTicketAction(input: unknown): Promise<ActionResult<TicketRow>> {
+  const parsed = parseActionInput(CreateTicketSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const q = await clientQueendom(parsed.data.client_id);
+  if (!q.exists || !canAccessClient(auth.profile, q.queendom_id)) return { data: null, error: formErrors.unauthorized };
+  const res = await createTicketCore(parsed.data, actorFromProfile(auth.profile));
+  if (res.error !== null || !res.data) return { data: null, error: res.error ?? formErrors.generic };
+  revalidateTicket(res.data.id, res.data.client_id);
+  return { data: res.data, error: null };
+}
+
+export async function moveTicketStatusAction(input: unknown): Promise<ActionResult<TicketRow>> {
+  const parsed = parseActionInput(MoveTicketStatusSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const res = await moveTicketStatusCore(parsed.data.ticket_id, parsed.data.status, actorFromProfile(g.profile), { resolution: parsed.data.resolution, note: parsed.data.note });
+  if (res.error) return { data: null, error: res.error };
+  revalidateTicket(parsed.data.ticket_id, g.client_id);
+  return { data: res.data, error: null };
+}
+
+export async function assignTicketAction(input: unknown): Promise<ActionResult<TicketRow>> {
+  const parsed = parseActionInput(AssignTicketSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const res = await assignTicketCore(parsed.data.ticket_id, parsed.data.assignee_id, actorFromProfile(g.profile), { reason: parsed.data.reason, note: parsed.data.note });
+  if (res.error) return { data: null, error: res.error };
+  revalidateTicket(parsed.data.ticket_id, g.client_id);
+  return { data: res.data, error: null };
+}
+
+export async function setTicketPriorityAction(input: unknown): Promise<ActionResult<TicketRow>> {
+  const parsed = parseActionInput(SetTicketPrioritySchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const res = await setTicketPriorityCore(parsed.data.ticket_id, parsed.data.priority, actorFromProfile(g.profile), parsed.data.approve);
+  if (res.error) return { data: null, error: res.error };
+  revalidateTicket(parsed.data.ticket_id, g.client_id);
+  return { data: res.data, error: null };
+}
+
+export async function updateTicketBriefAction(input: unknown): Promise<ActionResult<TicketRow>> {
+  const parsed = parseActionInput(UpdateTicketBriefSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const { ticket_id, ...patch } = parsed.data;
+  const res = await updateTicketBriefCore(ticket_id, patch, actorFromProfile(g.profile));
+  if (res.error) return { data: null, error: res.error };
+  revalidateTicket(ticket_id, g.client_id);
+  return { data: res.data, error: null };
+}
+
+export async function tickChecklistAction(input: unknown): Promise<ActionResult<TicketRow>> {
+  const parsed = parseActionInput(TickChecklistSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const res = await tickChecklistCore(parsed.data.ticket_id, parsed.data.index, parsed.data.done, actorFromProfile(g.profile));
+  if (res.error) return { data: null, error: res.error };
+  revalidateTicket(parsed.data.ticket_id);
+  return { data: res.data, error: null };
+}
+
+export async function addTicketNoteAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  const parsed = parseActionInput(AddTicketNoteSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const res = await addTicketNoteCore(parsed.data.ticket_id, parsed.data.body, actorFromProfile(g.profile));
+  if (res.error) return { data: null, error: res.error };
+  revalidateTicket(parsed.data.ticket_id);
+  return { data: res.data, error: null };
+}
+
+export async function linkTicketMessagesAction(input: unknown): Promise<ActionResult<{ linked: number }>> {
+  const parsed = parseActionInput(LinkTicketMessagesSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const res = await linkTicketMessagesCore(parsed.data.ticket_id, parsed.data.messages, actorFromProfile(g.profile));
+  if (res.error) return { data: null, error: res.error };
+  revalidateTicket(parsed.data.ticket_id);
+  return { data: res.data, error: null };
+}
+
+export async function updateTicketMoneyAction(input: unknown): Promise<ActionResult<TicketRow>> {
+  const parsed = parseActionInput(UpdateTicketMoneySchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const { ticket_id, ...money } = parsed.data;
+  const res = await updateTicketMoneyCore(ticket_id, Object.fromEntries(Object.entries(money).filter(([, v]) => v !== undefined)), actorFromProfile(g.profile));
+  if (res.error) return { data: null, error: res.error };
+  revalidateTicket(ticket_id);
+  return { data: res.data, error: null };
+}
+
+/** The help window's data, refreshed on demand (the page also seeds it server-side). */
+export async function getTicketHelpAction(input: { client_id: string; category: string; ticket_id?: string }): Promise<ActionResult<TicketHelp>> {
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  if (typeof input?.client_id !== "string") return { data: null, error: formErrors.generic };
+  const q = await clientQueendom(input.client_id);
+  if (!q.exists || !canAccessClient(auth.profile, q.queendom_id)) return { data: null, error: formErrors.unauthorized };
+  const help = await getTicketHelp(input.client_id, String(input.category ?? ""), input.ticket_id);
+  return help ? { data: help, error: null } : { data: null, error: formErrors.generic };
+}
+
+/** The assignee picker for a client's queendom (RLS-scoped profiles read). */
+export async function listQueendomStaffAction(input: { queendom_id: string | null }): Promise<ActionResult<StaffOption[]>> {
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const qid = typeof input?.queendom_id === "string" ? input.queendom_id : null;
+  if (!canAccessClient(auth.profile, qid)) return { data: null, error: formErrors.unauthorized };
+  return { data: await listQueendomStaff(qid), error: null };
+}

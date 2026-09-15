@@ -12,6 +12,372 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-15 — Zoho Books connected: /books for the organisation, the live ledger on every client's finance page
+
+Why: Zoho Books is the company's ledger and Serene had only a customer id per client. The
+founder asked for the whole picture (2026-09-15): a Books page with every organisation-wide
+number, and each client's own invoices, payments and balances on their finance page, read by
+the Zoho customer id the spine already carries.
+
+What Zoho looks like (read live 2026-09-15): the organisation is PRICETIME TECHNOLOGIES
+PRIVATE LIMITED, INR, financial year from April, India data centre (`accounts.zoho.in` →
+`https://www.zohoapis.in`), Books API v3, OAuth 2 refresh-token flow with hour-long access
+tokens, 10,000 calls a day for the organisation (`x-rate-limit-limit`). The downloaded specs
+(`zoho books-api/`, 44 modules) do not list the reports, but `/reports/profitandloss`,
+`aragingsummary`, `balancesheet`, `cashflow` and `salesbycustomer` all answer. Contacts and
+invoices carry a `cf_queendon` custom field. Full contract: `docs/integrations/zoho-books.md`.
+
+What changed:
+
+- `lib/services/zoho-api.ts` — THE Zoho client (server-only, read only): the token kept in
+  Redis and a module memo with ONE in-flight refresh (a page fires a dozen reads at once and
+  Zoho throttles token calls), a 401 refreshes once, a 429 waits and retries; every call runs
+  against a `ZbBudget` (25 per read, never below 500 of the day); typed reads for invoices,
+  payments, credit notes, bills, bank accounts, contacts, the invoice dashboard, AR aging and
+  the P&L; `zbAmount()` for Zoho's "26,17,885.15" strings, `reportTotal()` for a labelled
+  total in a report tree.
+- `lib/services/zoho-service.ts` — `getBooksOverview()` (~13 calls, Redis five minutes) and
+  `getClientFinance(zohoCustomerId)` (4 calls, Redis one minute) with their invalidations.
+  Nothing from Zoho lands in Postgres.
+- `/books` (admin/founder): money owed to us (receivable, overdue, due today, due in 30 days,
+  days to get paid, the aging strip), this month and the year (invoiced, received, spent,
+  income, net profit), money we owe and cash (open and overdue bills, banks, cards, clearing),
+  the overdue invoices oldest first, the latest invoices and payments, every account. Rows
+  link to Zoho Books. Refresh (`actions/books.ts`) drops the cache. Sidebar: Books under Admin.
+- `/clients/[id]/finance` — after the membership tiles, the live part streams in
+  (`ClientZohoCards`): outstanding, invoiced, paid, unused credits; the Zoho customer record;
+  the invoices, payments and credit notes; its own Refresh.
+- `lib/constants/zoho.ts` (paths, budget, TTLs, status tones, web links), `lib/types/zoho.ts`,
+  `components/books/*` (`BooksOverview`, `ZohoTables`, `ZohoStatusPill`, `RefreshBooksButton`),
+  `.env.example` gains the four `ZOHO_*` keys. `clientQueendom()` moved from the client
+  actions into `clients-service.ts` so the Books action can use the same access check.
+
+Verified live: overview 13 calls / 1.6 s cold, 100 ms cached; one client 4 calls / 0.4 s.
+
+---
+
+## 2026-09-15 — Client page: one Observation box files the facts for you
+
+Why: the Essentials and Preferences cards asked the person to pick a drawer, name the key,
+pick likes or avoids, then type the value. Four decisions to record one thing; nobody would.
+The founder asked for one box: write in free form, the backend fixes the spelling, structures
+it and updates the profile (2026-09-15).
+
+What changed:
+
+- `lib/services/client-observation-reader.ts` — THE reader: one routing-tier call through the
+  Elaya provider (masked to the configured depth) returns the sentence with spelling fixed and
+  the facts inside it as cards (facet, key, value, likes/avoids) plus the brands, people,
+  places and interests it names. Anything outside our vocabulary is discarded. Fails closed
+  for facts and open for the note: on any failure the sentence is saved as written.
+- `client-mutations.ts` `addObservationCore` — every call is a `sia.extraction_runs` row
+  (`kind: observation`); the note is saved first (the person's exact words in evidence, the
+  corrected text as the value); then the cards the twin does not already hold word for word
+  (source `agent_note`, confidence 0.9, `run_id`, each pointing at the note); then the
+  relations (a repeat bumps the evidence count and strength). `addClientObservationAction`
+  + `AddClientObservationSchema` (3 to 2,000 characters).
+- `components/clients/ClientObservationCard.tsx` — the box ("Write your observation on the
+  client in free form"), dictation via the shared `DictationButton`, ⌘↵ to save, then the
+  "Understood and filed" chips for a moment so a wrong reading is caught, and the past
+  observations beneath. `ClientNotesCard` is deleted (its list lives here); the facts cards
+  lose their Add button and keep "correct".
+
+Verified live (after the Anthropic account was topped up the same day): "he likes smart
+bands, uses whoop, his wife priya is vegeterian and they stay in bandra west" → the corrected
+sentence, five cards (interest/tech, preference/brand, family/spouse, address/home …) and two
+relations in 3.5 s. Prompt v2 keeps a family member's own details inside the family fact.
+
+---
+
+## 2026-09-15 — Client page: the other systems become links, not ids; a finance page per client
+
+Why: on a client's page the Freshdesk row read "1070062123210" and the Zoho row read a
+nineteen-digit number. Nobody wants the number; they want the tickets and the money behind it
+(founder, 2026-09-15). And a client's money had no page of its own.
+
+What changed:
+
+- `components/ui/RevealId.tsx` — THE hidden-identifier affordance: a small # icon; hover shows
+  the id in the tooltip, click shows it inline in mono with a copy button, click again hides it.
+  Any id from another system on a card uses this.
+- `components/clients/ClientIdentityCard.tsx` — the Freshdesk row now reads "See tickets" and
+  opens `/freshdesk?client=<id>`; the Zoho row reads "See finance" and opens the client's
+  finance page; the App member row reads "Linked". Each keeps its id behind `RevealId`. The
+  Money card's Zoho row does the same.
+- `/freshdesk?client=<uuid>` — a new list scope (exact `client_id`, indexed): the strip, the
+  table and the by-status pills all honour it (`applyTicketFilters` + the 0196 RPC's new
+  `p_client`, edited in place because 0196 is not applied yet). A "Tickets for <name> · Show
+  all" line sits above the table; the filter bar's Clear drops the scope too.
+- `/clients/[id]/finance` (`ClientFinanceView`) — the membership money as tiles (amount, plan,
+  status, start, end with days left), the Zoho link, and the money movements the twin has
+  recorded (payments, invoices, renewals from store 4). Says plainly that the live Zoho
+  wallet and invoices arrive with M2. Every open is logged to `client_access_log` as
+  `finance_page`. Gate: whoever can see the client (RLS) AND `canSeeClientFinance()` in
+  `lib/elaya/access.ts`, the ONE place to narrow it to a role later without touching the
+  page or the links.
+- `lib/constants/sia-roles.ts` — `clientFinancePath(id)`.
+
+Not live yet: the live Zoho Books read (wallet, invoices, payments) needs the Zoho Books
+credentials from the app server's setup (client id, secret, refresh token, organisation id) in
+Serene's env; that is M2.
+
+---
+
+## 2026-09-15 — Freshdesk: the overview strip follows the filters; the mirror catches up from a laptop
+
+Why: two things the founder noticed on `/freshdesk`. The five numbers above the table (open,
+created today, resolved today, escalated, mirrored) never changed when a filter was picked
+below them, because they were thirteen separate unfiltered HEAD counts. And the mirror was a
+snapshot: the history came from the account export (watermark 2026-09-14 20:21 UTC), and
+nothing was reading Freshdesk since, because the minute task and the webhook are written but
+not deployed (the founder deferred the Vercel and Trigger.dev deploys).
+
+What changed:
+
+- Migration `20260915000196_freshdesk_ticket_overview.sql` — `freshdesk.ticket_overview(...)`:
+  ONE scan of `freshdesk.tickets` answers the whole strip (`count(*) FILTER` per status, summed
+  outside), taking the same filters the list takes (group, agent, category, priority, created
+  range, search, and the status picks). The status filter applies to the five tiles but not to
+  the by-status pills, so the pills always show the mix a status pick would narrow to. Service
+  role only, like the schema. Plus a partial index on the live rows (`deleted = false AND
+  spam = false`) by status. The `get_leads_status_counts` shape, on the mirror.
+- `lib/services/freshdesk-service.ts` — `applyTicketFilters()` is now THE one place the list
+  filters become a predicate; `listFreshdeskTickets` and the overview's fallback both use it.
+  `getFreshdeskOverview(filters)` calls the RPC and, until 0196 is applied, falls back to the
+  old parallel HEAD counts through the same predicate (right numbers, slower). `hasFreshdeskFilters()`
+  replaces the page's inline check. `FdOverview.filtered` drives the copy.
+- `app/(dashboard)/freshdesk/page.tsx` — the strip receives the filters and its Suspense is
+  keyed on every filter except the page number (paging must not re-count).
+  `components/freshdesk/FreshdeskOverview.tsx` — the last tile reads "Matching" when a filter is
+  active, every tile carries "in this filter", and `FreshdeskOverviewSkeleton` holds the height.
+- `scripts/freshdesk/backfill.ts --poll` — the minute task from a laptop: one `runSyncCycle`
+  a minute (the same core `src/trigger/freshdesk-sync.ts` runs) until the time limit. Started
+  2026-09-15 with a 24-hour limit; the first cycle pulled the 201 tickets changed since the
+  export and moved the watermark to now. This is the bridge until `pnpm trigger:deploy`.
+- `lib/types/database.ts` regenerated (`gen types --schema public,sia,freshdesk`): the
+  `freshdesk` schema and the sia ticket tables and RPCs are now typed. The 0196 function is
+  declared by hand in `lib/types/freshdesk.ts` until the next regen.
+
+Not live yet (founder-owned): apply 0196; `pnpm trigger:deploy` so the poll runs in the cloud
+instead of a laptop; the Vercel deploy + `register-webhooks.ts --apply` for the seconds path.
+
+---
+
+## 2026-09-15 — Tickets T1: Sia's own ticketing (tables, cores, the creator, the pages)
+
+Why: the big part of the client-ticket plan. Freshdesk stays the team's tool while the tech
+team works this for a month (founder, 2026-09-15); from today Serene has the whole structure
+the plan describes, ready to be used and corrected: a client's WhatsApp messages become a
+ticket, it moves through the same stages Freshdesk has, a genie works it with the client twin
+beside it, and every step is a row in a diary.
+
+What changed:
+
+- Migration `20260915000195_sia_tickets.sql` — in the `sia` schema: `tickets` (current state,
+  `ticket_no` T-000001 from a sequence, the typed `brief`, the per-category `checklist`, priority
+  with the bishop's `priority_approved_at`, the SLA due stamps, the sentinel's alarm clock),
+  `ticket_events` (append only, partitioned monthly 2026-09 → 2027-12), `ticket_message_links`
+  (append only; soft triples; also links mirrored tickets), `ticket_sla_policies` (seeded with
+  Freshdesk's numbers per priority, 48 h for watches and bags), `genie_roster`,
+  `public.task_ticket_meta`. SELECT for the whole queendom (`can_access_client_queendom`), no
+  user writes: every change goes through **`sia.create_ticket` / `sia.apply_ticket_change`**
+  (service_role only), which write the ticket and its event in one transaction. Six new
+  notification types and five preference keys (the 0133 / 0162 pattern).
+- `lib/constants/tickets.ts` — THE vocabulary: the ten statuses mapped one-to-one onto
+  Freshdesk's nine plus `proposed`, the transitions table the core enforces, the SLA-stopped set
+  (Freshdesk's own `stop_sla_timer` flags), the real category tree, brief fields per category,
+  checklist templates per category, origins, resolutions, event and actor kinds.
+- `lib/services/ticket-mutations.ts` — THE cores: create (SLA stamps from the resolved policy;
+  a human's own ticket approves its priority in the same breath, a proposal waits), move status
+  (refuses illegal moves; reopen; resolution), assign / reassign with a reason (`shift_end` …),
+  set priority with approval (the SLA starts here), brief, checklist, notes (the first human
+  note stamps `first_responded_at`), message links, money; `ticket_assigned` notification.
+- `lib/services/ticket-creator.ts` — THE ticket creator: selected messages + the client twin →
+  category, title, typed brief, priority with reason, needed-by, an acknowledgement the genie
+  may send by hand, vendor terms, confidence. Reasoning tier through the Elaya provider, masked
+  via `maskPii`, every call a `sia.extraction_runs` row, fails closed to the empty form.
+- `lib/services/tickets-service.ts` (session-client reads: the list, the dossier with events,
+  linked messages resolved from the archive, staff, tasks, the resolved SLA policy; the help
+  window's data from the twin and the mirror), `lib/actions/tickets.ts`, `lib/validations/
+  ticket-schema.ts`, `lib/types/ticket.ts` (hand-declared until `gen types`).
+- `/tickets` (list with status, queendom, genie, category, Mine), `/tickets/new` (the creator
+  pre-fills from Sia; by hand otherwise), `/tickets/[id]` (the help window on the LEFT: the
+  client's dislikes, addresses, facts, health, past requests like this one, open tickets, coming
+  up; then the controls strip, the brief, checklist, money, the client's linked words, the
+  timeline with notes, sub-work). Sia chat: a selection mode (the clipboard button), tap the
+  messages, Create ticket. `serene-dossier-grid--aside-left` added for the left sidebar.
+- `/tickets` reachable by the concierge domain; sidebar entry under Clients; the group row
+  carries `client_id` so the chat knows whom the ticket is for.
+
+Not built in T1 (next): Realtime on the board, the sentinel (T2), the automatic intake (T3),
+the settings page for SLA policies and statuses, task creation from a ticket, the Elaya tools.
+Verified: tsc, eslint and the token check clean; `next build` clean. Migration 0195 not yet
+applied (the founder pushes it; then `gen types` retires the hand-declared ticket types).
+
+---
+
+## 2026-09-15 — Clients M1: the `/clients` page and the client dossier
+
+Why: the first surface of the client twin (client-ticket-plan.md 5.9), built before the
+ticketing because the ticket creator, the help window and the board all open onto it. The
+founder's answers of the same evening fixed the shape: one record per membership (a couple is
+one page), the word Clients everywhere, the whole queendom sees and edits, money and app data
+shown to all, a manual New client form, group linking from the client page and from Sia.
+
+What changed:
+
+- `lib/services/clients-service.ts` — ALL /clients reads on the SESSION client (RLS
+  `client_visible` is the boundary): `listClients` (search, queendom, tier, status, health band,
+  "not linked"; open-ticket counts and last contact from the mirror, health scores computed from
+  the ledger), `getClientDetail` (spine, queendom, team, people, current facts with author names,
+  health, mirrored tickets, the Sia group, events, relations, snapshot, anticipations),
+  `searchClientsForPicker`, `getQueendoms`.
+- `lib/services/client-mutations.ts` — THE context-free client write cores (create, update,
+  add fact with optional supersede, people add/update/delete, link/unlink group, manual health
+  adjustment, the access log). `lib/actions/clients.ts` wraps them: Zod → `requireProfile()` →
+  `canAccessClient` (new in `lib/elaya/access.ts`, the SQL twin of `client_visible`) → core →
+  `revalidatePath`. `lib/validations/client-schema.ts`, `lib/types/client.ts`.
+- `/clients`: the standard list contract (FilterBar, dense table with the health pill and the
+  four link dots, Pagination, New client). `/clients/[id]`: the dossier — identity and
+  membership with Edit, health with a manual adjust, Essentials and Preferences (facts grouped
+  by facet with source, date and "correct"), Requests (mirrored Freshdesk tickets, open first),
+  WhatsApp (the linked group, link/unlink for admin and founder), Notes (facts of facet `note`),
+  Activity, People, App, Money, Relationships, Coming up, In a few words. Every card open writes
+  `client_access_log`.
+- Sia: `updateSiaGroupMapping` accepts `client_id` (link sets `group_kind = client`, unlink →
+  `unmapped`); `getSiaGroupInfo` returns the linked client; the group panel gains a "Linked
+  client" search-and-pick. `getSiaGroupForClient`, `getFreshdeskTicketsForClient` added in
+  their own homes. `/clients` reachable by the concierge domain; sidebar entry under Elaya.
+
+Verified: tsc, eslint and the token check clean. Not yet driven in a browser (no local dev
+server in this session); the first walk-through happens on the next deploy.
+
+---
+
+## 2026-09-15 — Client twin M0: queendoms, Sia roles, the seven client stores, the member sheets
+
+Why: the client-ticket plan (`client-ticket-plan.md`, decided with the founder through the day)
+starts at M0: the org unit and the stores every later piece hangs off. The spine (0181) held
+identity only; the profile, timeline, relationships, search, snapshot, health and audit had no
+home, and the concierge org (queendoms, roles) had no table.
+
+What changed:
+
+- Migration `20260915000194_client_twin_and_queendoms.sql` — `sia.queendoms` (three rows seeded
+  with their Freshdesk group ids; readable by signed-in users, the first `sia` table that is),
+  `profiles.queendom_id` + `profiles.sia_role` (queen | bishop | genie | joker),
+  `clients.queendom_id` / `tier` / `app_member_id` / `consent`, and the access predicate
+  `client_visible(client_id)` = admin/founder OR the caller's queendom (`get_user_queendom()`),
+  which now gates the spine (SELECT, INSERT, UPDATE for the whole queendom, decided 2026-09-15)
+  and every store: `client_people`, `client_facts` (append only; humans insert `agent_note`
+  facts at 1.0, the service role supersedes), `client_relations`, `client_events` (partitioned
+  monthly 2024-01 → 2027-03 + DEFAULT), `client_documents` + `client_chunks` (`vector(1024)`,
+  HNSW, zero user policies), `client_snapshot`, `client_health_policy` (15 signals seeded with
+  delta + half-life), `client_health_events` (append only), `client_anticipations`,
+  `client_access_log` (append only, the DPDP trail), `sia.extraction_runs`.
+- `lib/constants/client-facets.ts` (facets, sources, polarity, event and relation kinds,
+  anticipation kinds, tiers, `computeHealthScore`) and `lib/constants/sia-roles.ts` (the four
+  roles, their platform-role mapping, the queendom slugs, `CLIENTS_PATH`).
+- `scripts/import-clients-and-map-groups.py` extended: the two 2026-09-15 sheets
+  (`export-1.csv`, `export-2.csv`, git-ignored) are read alongside the old exports with column
+  aliases; records gain `queendom_id` (resolved from `sia.queendoms`), `tier`, `app_member_id`;
+  city and company ride in `import_raw` and become facts. Dry run: 612 records, 602 phoned.
+- `scripts/clients/seed-client-facts.py` (new): STORE 2 seeded from the Atlas profile and
+  Typeform CSVs, the 543 linked Freshdesk contacts' preference fields, and the sheets' city and
+  company, each fact with source, confidence 0.9, evidence and the source's timestamp;
+  idempotent. Dry run: about 3,600 facts over 565 matched Atlas clients.
+- `sia-agents-roster.md` (git-ignored): the 30 concierge staff by queendom with Freshdesk ids and
+  emails matched; WhatsApp numbers, jokers and two emails still owed by the founder.
+- `tsconfig.json` / eslint ignore `cleint-data/` (the founder's data folder holds a copy of the
+  Atlas and app codebases).
+
+Applied and loaded the same evening: 0194 pushed by the founder; the importer wrote 614 clients
+(438 with a queendom: Anishqa 208, Ananyshree 204, Sanika 27; 438 with a tier, 382 with an app
+member id, 359 Zoho, 356 Freshdesk; 350 active, 208 expired; 173 rows from the older exports have
+no queendom yet) and re-confirmed the 207 group mappings; the seeder wrote 6,757 facts over 493
+clients (identity 2,683, preference 2,184, dietary 831, travel 616, interest 379, notes 37,
+family 27; sources: Atlas 3,225, Typeform 1,963, Freshdesk contacts 759, the sheets 810).
+Next: regenerate `database.ts`, then M1 (the `/clients` page).
+
+---
+
+## 2026-09-15 — Freshdesk connected: the `freshdesk` mirror schema, the minute sync and the /freshdesk page
+
+Why: Freshdesk is the concierge team's ticket system and stays so until Serene's own ticketing
+(the Sia module, `client-ticket-plan.md`) replaces it. Until then Serene has to learn from it:
+how a ticket moves, how long each stage takes, which WhatsApp message became which ticket.
+None of that was reachable — no key, no service, no route existed here (only static exports had
+ever been loaded). The founder supplied the API key on 2026-09-15.
+
+What the account looks like (read live, 2026-09-15): tickets #415 (Jan 2024) to #55054, about
+55k in all, roughly 150 a day since September; 12 groups of which three are queendoms
+(Anishqa's, Ananyshree's, Sanika's); 78 agents; 9 statuses (2 Open, 3 Pending, 4 Resolved,
+5 Closed, 6 Nudge Client, 7 Nudge Vendor, 8 Ongoing Delivery, 9 Invoice Due, 9000 Assigned to
+AI Agent); a required nested "Category of Request" (Travel > Flight > Tickets …); 14 ticket types
+the SLA policies key on ("Travel - Flight" … "Retail - Bags"); 9 SLA policies (15 min respond,
+8 business hours resolve for most; 48 hours for watches and bags); 51 contact fields, 40 of them
+preferences (seat, stays, cuisine, allergies …). **The plan allows 50 API calls a minute**
+for the whole account, and the list endpoint returns only the last 30 days unless
+`updated_since` is given. Both facts shaped the sync.
+
+What changed:
+
+- Migration `20260915000193_freshdesk_mirror.sql` — a new `freshdesk` schema (the 0172 `sia`
+  pattern: same database, service_role-only grants, exposed on the REST path). Tables:
+  `tickets` (current state + every `cf_*` field + `raw`, soft `client_id` link to the spine),
+  `conversations`, `contacts` (with the preference fields whole), `agents` (soft `profile_id`),
+  `groups`, `ticket_fields` (choice trees, the status vocabulary), `sla_policies`,
+  **`ticket_changes`** (append-only: every field flip the sync observes — the movement history
+  the Sia ticketing design learns from), `webhook_events` (append-only inbox), `sync_state`
+  (cursors) and `sync_runs` (every step's call count and rate allowance). RLS on, zero user
+  policies. No CHECK on any Freshdesk value (Freshdesk adds statuses without telling us).
+- `lib/services/freshdesk-api.ts` — THE Freshdesk REST client: Basic auth, a per-run
+  `FdBudget` (stops at `FD_RUN_MAX_CALLS`, never below `FD_RATE_RESERVE` remaining, one short
+  wait on 429), paged lists, the automations endpoints.
+- `lib/services/freshdesk-sync.ts` — THE mirror core: `upsertTickets` (diff → `ticket_changes`,
+  client link by `freshdesk_contact_id` then E.164 phone), `syncThread`, the steps (`poll` by
+  `updated_since` watermark with a 3-minute overlap, `threads` newest-first, `backfill`
+  oldest-first and resumable across the 300-page cap, `contacts`, `reference`,
+  `field_choices`), `processWebhookEvent` (re-reads the ticket; a 404 flips `deleted`), and
+  `runSyncCycle` (the order that keeps the mirror freshest inside one budget).
+- `src/trigger/freshdesk-sync.ts` — the minute `schedules.task`; a change in Freshdesk lands in
+  the mirror within ~60 s from the poll alone. `api/webhooks/freshdesk` — the seconds path:
+  secret header, rate limit, `readJsonBody`, the event stored, then `after()` re-reads the
+  ticket. `scripts/freshdesk/register-webhooks.ts` creates the two automation rules through
+  the API (the shape copied from the member app's rules). `scripts/freshdesk/backfill.ts`
+  runs the same core in a loop from a laptop to pull the 55k history faster than the cron
+  alone (about six hours for tickets at 42 calls a minute; threads follow, newest first).
+- `/freshdesk` (admin/founder): overview strip (open now, created and resolved today, escalated,
+  mirrored; the status mix; the sync health line), the shared FilterBar (search, status multi,
+  queendom, agent, category, priority, created range), a dense table, `Pagination`, "Sync now"
+  (`actions/freshdesk.ts` → `runSyncCycle` with a 20-call budget). `/freshdesk/[id]`: the
+  thread (notes vs replies, authors resolved), the movement timeline, and the summary card with
+  every filled custom field and a link to the client record when linked.
+- `lib/constants/freshdesk.ts` (status/priority/source maps, the tracked fields, the budget
+  numbers), `lib/types/freshdesk.ts` (hand-declared rows until `gen types` covers the schema).
+  Sidebar: Freshdesk under the admin group. Env: `FRESHDESK_DOMAIN`, `FRESHDESK_API_KEY`,
+  `FRESHDESK_WEBHOOK_SECRET` (also on the Trigger.dev worker).
+- Docs: `docs/integrations/freshdesk.md` (new), `client-ticket-plan.md` rewritten against the
+  live account (section 2.2 is no longer "not connected").
+
+Addendum, later the same day: migration 0193 applied to production by the founder (after one
+fix: `gin_trgm_ops` must be written `extensions.gin_trgm_ops`, the 0187 pattern). The founder
+also supplied Freshdesk's full account export (176 XML files in `cleint-data/`), so the history
+was loaded from disk by the new `scripts/freshdesk/load-export.py` instead of a day of API
+calls: 50,312 tickets, 209,153 notes, 1,577 contacts, 81 agents, 12 groups, with the poll
+watermark set to the export's last update. The sync budget rose to 42 calls a minute (reserve
+6) on the founder's word that the mirror is the priority consumer. Vercel and Trigger.dev
+deploys are deliberately deferred by the founder until the ticketing and client systems exist.
+
+Go-live order: apply 0193 (`supabase db push --include-all`), set the three env vars on Vercel
+and the Trigger.dev worker, `pnpm trigger:deploy`, run the backfill script, then register the
+webhooks with `--apply` once the Vercel deploy is live. Verified here: tsc, eslint and the token
+check clean; every API endpoint used was exercised against the live account with the key.
+The migration could not be applied from this machine (no database URL locally; the installed
+CLI cannot parse the repo's `config.toml`), so it is unapplied until the founder pushes it.
+
+---
+
 ## 2026-09-12 — Elaya answers vendor questions on both brains (bridged reads)
 
 Why: `find_vendors` / `get_vendor_details` lived only in the Node tool registry, and both Elaya

@@ -10,6 +10,9 @@ import { GIA_DOMAINS } from '@/lib/constants/domains';
 // Feature 3): a personal surface scoped to the owner by RLS, like /profile. Notes are
 // CONTEXT Elaya reads, never permission — so being able to reach the page grants nothing.
 export const ALWAYS_ALLOWED_PREFIXES: string[] = ['/dashboard', '/profile', '/helpdesk', '/elaya', '/notes'];
+// /clients (the Sia client twin, 0194): the whole queendom sees its clients — the concierge
+// domain reaches it here; admin/founder bypass this map; the rows are RLS-scoped (client_visible).
+
 
 /**
  * Domain → permitted route prefixes.
@@ -42,7 +45,7 @@ export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   // ── Non-Gia domains ───────────────────────────────────────────────────────
   // /subscriptions is the Subscriptions & Bills Tracker — Finance + Tech own it
   // (admin/founder reach it by bypassing this map in canAccessRoute).
-  concierge: ['/tasks', '/whatsapp', '/settings'],
+  concierge: ['/tasks', '/whatsapp', '/settings', '/clients', '/tickets'],
   finance:   ['/tasks', '/subscriptions', '/settings'],
   marketing: ['/tasks', '/campaigns', '/settings'],
   tech:      ['/tasks', '/subscriptions', '/settings'],

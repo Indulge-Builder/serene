@@ -1,0 +1,151 @@
+import { z } from "zod";
+import { sanitizeText } from "@/lib/utils/sanitize";
+import { formErrors } from "./form-errors";
+import { uuidField } from "./fields";
+import {
+  TICKET_CATEGORIES, TICKET_ORIGINS, TICKET_PRIORITIES, TICKET_RESOLUTIONS, TICKET_STATUSES,
+  TICKET_REASSIGN_REASONS, TICKET_LINK_KINDS,
+} from "@/lib/constants/tickets";
+
+// ─────────────────────────────────────────────
+// Tickets — Zod schemas (migration 0195). Every action in actions/tickets.ts parses one
+// of these FIRST (Rule 02). Human messages only (Q-04). Text sanitized here (Rule 06).
+// ─────────────────────────────────────────────
+
+const shortText = (max: number) =>
+  z.string().trim().max(max, `Must be ${max} characters or fewer.`).transform((v) => sanitizeText(v));
+const optionalText = (max: number) =>
+  shortText(max).transform((v) => (v.length ? v : null)).nullish().transform((v) => v ?? null);
+const isoDateTime = z.string().trim().refine((v) => !Number.isNaN(Date.parse(v)), "Please enter a valid date.").nullish().transform((v) => v || null);
+
+/** The typed brief. Every field optional; unknown keys dropped; the UI shows the ones that fit the category. */
+export const TicketBriefSchema = z.object({
+  pax: z.coerce.number().int().min(1).max(500).nullish(),
+  date: isoDateTime,
+  time: optionalText(40),
+  date_to: isoDateTime,
+  from_location: optionalText(160),
+  to_location: optionalText(160),
+  budget_inr: z.coerce.number().min(0).nullish(),
+  budget_note: optionalText(200),
+  product_details: optionalText(500),
+  quantity: z.coerce.number().int().min(1).max(10000).nullish(),
+  delivery_address: optionalText(400),
+  delivery_contact: optionalText(160),
+  preferred_vendor: optionalText(160),
+  event_name: optionalText(160),
+  duration: optionalText(80),
+  luggage: optionalText(120),
+  airport: optionalText(120),
+  early_check_in: z.boolean().nullish(),
+  assistance_required: optionalText(200),
+  gift_specifications: optionalText(400),
+  notes: optionalText(2000),
+}).strip();
+export type TicketBrief = z.infer<typeof TicketBriefSchema>;
+
+export const MessageTripleSchema = z.object({
+  chat_jid: z.string().trim().regex(/@g\.us$/, formErrors.generic),
+  wa_message_id: z.string().trim().min(1),
+  sender_jid: z.string().trim().min(1),
+  link_kind: z.enum(TICKET_LINK_KINDS).default("origin"),
+});
+
+export const CreateTicketSchema = z.object({
+  client_id: uuidField(formErrors.generic),
+  category: z.enum(TICKET_CATEGORIES.zodEnum),
+  sub_category: optionalText(60),
+  title: shortText(160).pipe(z.string().min(1, "Give the request a title.")),
+  brief: TicketBriefSchema.optional().transform((v) => v ?? {}),
+  priority: z.enum(TICKET_PRIORITIES.zodEnum).default("medium"),
+  requested_for: isoDateTime,
+  origin: z.enum(TICKET_ORIGINS.zodEnum).default("manual"),
+  group_jid: z.string().trim().regex(/@g\.us$/).nullish().transform((v) => v ?? null),
+  assignee_id: uuidField(formErrors.generic).nullish().transform((v) => v ?? null),
+  message_links: z.array(MessageTripleSchema).max(60).default([]),
+  proposed_by_run_id: uuidField(formErrors.generic).nullish().transform((v) => v ?? null),
+  /** A note written at creation (the "why" or the client's words). */
+  note: optionalText(2000),
+});
+export type CreateTicketInput = z.infer<typeof CreateTicketSchema>;
+
+export const TicketIdSchema = z.object({ ticket_id: uuidField(formErrors.generic) });
+
+export const MoveTicketStatusSchema = z.object({
+  ticket_id: uuidField(formErrors.generic),
+  status: z.enum(TICKET_STATUSES.zodEnum),
+  resolution: z.enum(TICKET_RESOLUTIONS.zodEnum).nullish().transform((v) => v ?? null),
+  note: optionalText(2000),
+});
+
+export const AssignTicketSchema = z.object({
+  ticket_id: uuidField(formErrors.generic),
+  assignee_id: uuidField(formErrors.generic).nullable(),
+  reason: z.enum(TICKET_REASSIGN_REASONS.zodEnum).nullish().transform((v) => v ?? null),
+  note: optionalText(500),
+});
+
+export const SetTicketPrioritySchema = z.object({
+  ticket_id: uuidField(formErrors.generic),
+  priority: z.enum(TICKET_PRIORITIES.zodEnum),
+  approve: z.boolean().default(true),
+});
+
+export const UpdateTicketBriefSchema = z.object({
+  ticket_id: uuidField(formErrors.generic),
+  title: shortText(160).pipe(z.string().min(1)).optional(),
+  category: z.enum(TICKET_CATEGORIES.zodEnum).optional(),
+  sub_category: optionalText(60).optional(),
+  brief: TicketBriefSchema.optional(),
+  requested_for: isoDateTime.optional(),
+});
+
+export const TickChecklistSchema = z.object({
+  ticket_id: uuidField(formErrors.generic),
+  index: z.coerce.number().int().min(0).max(99),
+  done: z.boolean(),
+});
+
+export const AddTicketNoteSchema = z.object({
+  ticket_id: uuidField(formErrors.generic),
+  body: shortText(4000).pipe(z.string().min(1, formErrors.required)),
+});
+
+export const LinkTicketMessagesSchema = z.object({
+  ticket_id: uuidField(formErrors.generic),
+  messages: z.array(MessageTripleSchema).min(1).max(60),
+});
+
+export const UpdateTicketMoneySchema = z.object({
+  ticket_id: uuidField(formErrors.generic),
+  quote_inr: z.coerce.number().min(0).nullish(),
+  cost_inr: z.coerce.number().min(0).nullish(),
+  price_inr: z.coerce.number().min(0).nullish(),
+  payment_status: z.enum(["not_started", "requested", "paid", "waived"]).nullish(),
+  invoice_no: optionalText(60),
+});
+
+/** The ticket creator: selected messages → a drafted ticket (the reasoning tier, masked). */
+export const DraftTicketSchema = z.object({
+  client_id: uuidField(formErrors.generic),
+  group_jid: z.string().trim().regex(/@g\.us$/).nullish().transform((v) => v ?? null),
+  messages: z.array(z.object({
+    chat_jid: z.string().trim().min(1),
+    wa_message_id: z.string().trim().min(1),
+    sender_jid: z.string().trim().min(1),
+    sender_name: z.string().trim().max(120).nullish(),
+    from_client: z.boolean().default(true),
+    at: z.string().trim(),
+    text: z.string().trim().max(4000),
+  })).min(1).max(60),
+});
+export type DraftTicketInput = z.infer<typeof DraftTicketSchema>;
+
+export const ListTicketsSchema = z.object({
+  status: z.array(z.enum(TICKET_STATUSES.zodEnum)).default([]),
+  queendom_id: uuidField(formErrors.generic).nullish(),
+  assignee_id: uuidField(formErrors.generic).nullish(),
+  category: z.enum(TICKET_CATEGORIES.zodEnum).nullish(),
+  search: optionalText(80),
+  page: z.coerce.number().int().min(1).default(1),
+});

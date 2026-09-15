@@ -1,0 +1,221 @@
+// ticket-mutations.ts — THE context-free ticket write cores (migration 0195).
+//
+// actions/tickets.ts AND the future Elaya write tools / the sentinel call the SAME cores
+// (R-01). Every state change goes through the two RPCs (sia.create_ticket /
+// sia.apply_ticket_change) on the admin client, so the ticket row and its event are one
+// transaction and the state machine (constants/tickets.ts) is enforced here, once. The caller
+// checks access (canAccessClient) before a core runs.
+
+import { createNotification } from "@/lib/services/notifications-service";
+import { ticketsAdminDb, resolveSlaPolicy } from "@/lib/services/tickets-service";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  canTransition, checklistForCategory, TICKET_SLA_STOPPED_STATUSES, TICKETS_PATH, type TicketPriority, type TicketStatus,
+} from "@/lib/constants/tickets";
+import type { MutationActor } from "@/lib/services/lead-mutations";
+import type { TicketRow, TicketSlaPolicyRow, TicketMessageLinkRow } from "@/lib/types/ticket";
+import type { CreateTicketInput } from "@/lib/validations/ticket-schema";
+
+export type TicketMutationResult<T> = { data: T; error: null } | { data: null; error: string };
+const fail = <T,>(msg: string, e?: { message: string } | null): TicketMutationResult<T> => {
+  if (e) console.error(`[ticket-mutations] ${msg}:`, e.message);
+  return { data: null, error: msg };
+};
+
+function humanEvent(actor: MutationActor, event_type: string, body: string | null, meta: Record<string, unknown> = {}) {
+  return { actor_kind: "human", actor_id: actor.userId, event_type, body, meta };
+}
+
+/** SLA due stamps from the policy: first response, next update, resolve. Plain minutes (business hours in T2). */
+function dueStamps(policy: TicketSlaPolicyRow | null, from: Date, status: TicketStatus): { first_response_due_at: string | null; next_update_due_at: string | null; resolve_due_at: string | null } {
+  if (!policy) return { first_response_due_at: null, next_update_due_at: null, resolve_due_at: null };
+  const add = (min: number) => new Date(from.getTime() + min * 60_000).toISOString();
+  const stopped = TICKET_SLA_STOPPED_STATUSES.includes(status);
+  return {
+    first_response_due_at: add(policy.first_response_min),
+    next_update_due_at: stopped ? null : add(policy.update_cadence_min),
+    resolve_due_at: add(policy.resolve_target_min),
+  };
+}
+
+// ─── Create ──────────────────────────────────────────────────────────────────
+
+export async function createTicketCore(input: CreateTicketInput, actor: MutationActor, opts: { proposed?: boolean; actorKind?: "human" | "elaya" | "intake" } = {}): Promise<TicketMutationResult<TicketRow>> {
+  const admin = createAdminClient();
+  const { data: client } = await admin.from("clients").select("id, queendom_id, tier").eq("id", input.client_id).maybeSingle();
+  if (!client) return fail("That client does not exist.");
+  const queendomId = (client as { queendom_id: string | null }).queendom_id;
+  const status: TicketStatus = opts.proposed ? "proposed" : "open";
+  const policy = await resolveSlaPolicy({ queendom_id: queendomId, category: input.category, sub_category: input.sub_category, priority: input.priority });
+  const now = new Date();
+  const stamps = opts.proposed ? { first_response_due_at: null, next_update_due_at: null, resolve_due_at: null } : dueStamps(policy, now, status);
+
+  const db = ticketsAdminDb();
+  const { data, error } = await db.rpc("create_ticket", {
+    p_ticket: {
+      client_id: input.client_id, queendom_id: queendomId, origin: input.origin, origin_ref: input.message_links[0] ?? {},
+      group_jid: input.group_jid, category: input.category, sub_category: input.sub_category, title: input.title,
+      brief: input.brief, checklist: checklistForCategory(input.category), priority: input.priority,
+      // A human creating by hand approves the priority in the same breath; a proposal waits for the bishop.
+      priority_approved_at: opts.proposed ? null : now.toISOString(), priority_approved_by: opts.proposed ? null : actor.userId,
+      status, requested_for: input.requested_for, ...stamps,
+      assignee_id: input.assignee_id, created_by: actor.userId, created_by_kind: opts.actorKind ?? "human",
+      proposed_by_run_id: input.proposed_by_run_id,
+      next_wake_at: now.toISOString(), wake_reason: "created",
+    },
+    p_event: { actor_kind: opts.actorKind ?? "human", actor_id: actor.userId, event_type: opts.proposed ? "proposed" : "created", body: input.note, meta: { origin: input.origin, message_count: input.message_links.length } },
+  });
+  if (error || !data) return fail("Could not create the ticket.", error);
+  const ticket = data as TicketRow;
+
+  if (input.message_links.length) {
+    const { error: linkErr } = await db.from("ticket_message_links").insert(
+      input.message_links.map((m) => ({ ticket_id: ticket.id, freshdesk_id: null, chat_jid: m.chat_jid, wa_message_id: m.wa_message_id, sender_jid: m.sender_jid, link_kind: m.link_kind, confidence: 1, created_by: actor.userId })),
+    );
+    if (linkErr) console.warn("[ticket-mutations] message links failed", linkErr.message);
+  }
+  if (ticket.assignee_id && ticket.assignee_id !== actor.userId) await notifyAssigned(ticket, actor);
+  return { data: ticket, error: null };
+}
+
+// ─── Status ──────────────────────────────────────────────────────────────────
+
+export async function moveTicketStatusCore(ticketId: string, to: TicketStatus, actor: MutationActor, opts: { resolution?: string | null; note?: string | null } = {}): Promise<TicketMutationResult<TicketRow>> {
+  const db = ticketsAdminDb();
+  const { data: cur } = await db.from("tickets").select("*").eq("id", ticketId).maybeSingle();
+  if (!cur) return fail("Ticket not found.");
+  const t = cur as TicketRow;
+  if (!canTransition(t.status, to)) return fail(`A ticket cannot go from ${t.status} to ${to}.`);
+  const policy = await resolveSlaPolicy(t);
+  const now = new Date();
+  const patch: Record<string, unknown> = { status: to, next_wake_at: now.toISOString(), wake_reason: `status:${to}` };
+  if (to === "resolved" || to === "closed" || to === "dropped") {
+    patch.closed_at = now.toISOString();
+    patch.resolution = opts.resolution ?? (to === "dropped" ? "not_a_request" : "delivered");
+    patch.next_update_due_at = "";
+  } else {
+    if (t.status === "proposed" && to === "open") Object.assign(patch, dueStamps(policy, now, to));
+    else patch.next_update_due_at = TICKET_SLA_STOPPED_STATUSES.includes(to) || !policy ? "" : new Date(now.getTime() + policy.update_cadence_min * 60_000).toISOString();
+    if (t.closed_at) { patch.closed_at = ""; patch.resolution = ""; }
+  }
+  const { data, error } = await db.rpc("apply_ticket_change", {
+    p_ticket_id: ticketId, p_patch: patch,
+    p_event: humanEvent(actor, t.status === "proposed" && to === "open" ? "approved" : (t.closed_at && to === "open" ? "reopened" : "status_changed"), opts.note ?? null, { from: t.status, to, resolution: patch.resolution ?? null }),
+  });
+  if (error || !data) return fail("Could not move the ticket.", error);
+  return { data: data as TicketRow, error: null };
+}
+
+// ─── Assignment ──────────────────────────────────────────────────────────────
+
+export async function assignTicketCore(ticketId: string, assigneeId: string | null, actor: MutationActor, opts: { reason?: string | null; note?: string | null } = {}): Promise<TicketMutationResult<TicketRow>> {
+  const db = ticketsAdminDb();
+  const { data: cur } = await db.from("tickets").select("*").eq("id", ticketId).maybeSingle();
+  if (!cur) return fail("Ticket not found.");
+  const t = cur as TicketRow;
+  const { data, error } = await db.rpc("apply_ticket_change", {
+    p_ticket_id: ticketId,
+    p_patch: { assignee_id: assigneeId ?? "", next_wake_at: new Date().toISOString(), wake_reason: "assigned" },
+    p_event: humanEvent(actor, t.assignee_id ? "reassigned" : "assigned", opts.note ?? null, { from: t.assignee_id, to: assigneeId, reason: opts.reason ?? null }),
+  });
+  if (error || !data) return fail("Could not assign the ticket.", error);
+  const ticket = data as TicketRow;
+  if (assigneeId && assigneeId !== actor.userId) await notifyAssigned(ticket, actor);
+  return { data: ticket, error: null };
+}
+
+// ─── Priority (suggested by the creator, approved by the bishop; the SLA starts here) ──
+
+export async function setTicketPriorityCore(ticketId: string, priority: TicketPriority, actor: MutationActor, approve: boolean): Promise<TicketMutationResult<TicketRow>> {
+  const db = ticketsAdminDb();
+  const { data: cur } = await db.from("tickets").select("*").eq("id", ticketId).maybeSingle();
+  if (!cur) return fail("Ticket not found.");
+  const t = cur as TicketRow;
+  const policy = await resolveSlaPolicy({ ...t, priority });
+  const now = new Date();
+  const patch: Record<string, unknown> = { priority, next_wake_at: now.toISOString(), wake_reason: "priority" };
+  if (approve) Object.assign(patch, { priority_approved_at: now.toISOString(), priority_approved_by: actor.userId }, dueStamps(policy, t.priority_approved_at ? new Date(t.created_at) : now, t.status));
+  const { data, error } = await db.rpc("apply_ticket_change", {
+    p_ticket_id: ticketId, p_patch: patch,
+    p_event: humanEvent(actor, "priority_changed", null, { from: t.priority, to: priority, approved: approve }),
+  });
+  if (error || !data) return fail("Could not change the priority.", error);
+  return { data: data as TicketRow, error: null };
+}
+
+// ─── Brief, checklist, notes, links, money ───────────────────────────────────
+
+export async function updateTicketBriefCore(ticketId: string, patch: { title?: string; category?: string; sub_category?: string | null; brief?: Record<string, unknown>; requested_for?: string | null }, actor: MutationActor): Promise<TicketMutationResult<TicketRow>> {
+  const db = ticketsAdminDb();
+  const p: Record<string, unknown> = {};
+  if (patch.title !== undefined) p.title = patch.title;
+  if (patch.category !== undefined) p.category = patch.category;
+  if (patch.sub_category !== undefined) p.sub_category = patch.sub_category ?? "";
+  if (patch.brief !== undefined) p.brief = patch.brief;
+  if (patch.requested_for !== undefined) p.requested_for = patch.requested_for ?? "";
+  if (Object.keys(p).length === 0) return fail("Nothing to change.");
+  p.next_wake_at = new Date().toISOString(); p.wake_reason = "brief";
+  const { data, error } = await db.rpc("apply_ticket_change", { p_ticket_id: ticketId, p_patch: p, p_event: humanEvent(actor, "brief_updated", null, { fields: Object.keys(patch) }) });
+  if (error || !data) return fail("Could not save the brief.", error);
+  return { data: data as TicketRow, error: null };
+}
+
+export async function tickChecklistCore(ticketId: string, index: number, done: boolean, actor: MutationActor): Promise<TicketMutationResult<TicketRow>> {
+  const db = ticketsAdminDb();
+  const { data: cur } = await db.from("tickets").select("checklist").eq("id", ticketId).maybeSingle();
+  if (!cur) return fail("Ticket not found.");
+  const list = [...((cur as { checklist: TicketRow["checklist"] }).checklist ?? [])];
+  if (!list[index]) return fail("No such item.");
+  list[index] = { ...list[index], done_at: done ? new Date().toISOString() : null, done_by: done ? actor.userId : null };
+  const { data, error } = await db.rpc("apply_ticket_change", { p_ticket_id: ticketId, p_patch: { checklist: list }, p_event: humanEvent(actor, "checklist_ticked", list[index].label, { index, done }) });
+  if (error || !data) return fail("Could not update the checklist.", error);
+  return { data: data as TicketRow, error: null };
+}
+
+export async function addTicketNoteCore(ticketId: string, body: string, actor: MutationActor): Promise<TicketMutationResult<{ id: string }>> {
+  const db = ticketsAdminDb();
+  const { data: cur } = await db.from("tickets").select("id, client_id, queendom_id, first_responded_at").eq("id", ticketId).maybeSingle();
+  if (!cur) return fail("Ticket not found.");
+  const t = cur as Pick<TicketRow, "id" | "client_id" | "queendom_id" | "first_responded_at">;
+  const { data, error } = await db.from("ticket_events").insert({ ticket_id: t.id, client_id: t.client_id, queendom_id: t.queendom_id, actor_kind: "human", actor_id: actor.userId, event_type: "note", body, meta: {}, run_id: null }).select("id").single();
+  if (error || !data) return fail("Could not add the note.", error);
+  // The first note from a human counts as the first response (the sentinel refines this in T2).
+  if (!t.first_responded_at) {
+    await db.rpc("apply_ticket_change", { p_ticket_id: ticketId, p_patch: { first_responded_at: new Date().toISOString(), next_wake_at: new Date().toISOString(), wake_reason: "note" }, p_event: { actor_kind: "system", event_type: "observation", body: "First response recorded from a note.", meta: {} } });
+  }
+  return { data: { id: (data as { id: string }).id }, error: null };
+}
+
+export async function linkTicketMessagesCore(ticketId: string, messages: { chat_jid: string; wa_message_id: string; sender_jid: string; link_kind: TicketMessageLinkRow["link_kind"] }[], actor: MutationActor): Promise<TicketMutationResult<{ linked: number }>> {
+  const db = ticketsAdminDb();
+  const { data: cur } = await db.from("tickets").select("id, client_id, queendom_id").eq("id", ticketId).maybeSingle();
+  if (!cur) return fail("Ticket not found.");
+  const t = cur as Pick<TicketRow, "id" | "client_id" | "queendom_id">;
+  const { error } = await db.from("ticket_message_links").insert(messages.map((m) => ({ ticket_id: t.id, freshdesk_id: null, ...m, confidence: 1, created_by: actor.userId })));
+  if (error) return fail("Could not link those messages.", error);
+  await db.from("ticket_events").insert({ ticket_id: t.id, client_id: t.client_id, queendom_id: t.queendom_id, actor_kind: "human", actor_id: actor.userId, event_type: "client_message_linked", body: null, meta: { count: messages.length }, run_id: null });
+  return { data: { linked: messages.length }, error: null };
+}
+
+export async function updateTicketMoneyCore(ticketId: string, money: Record<string, unknown>, actor: MutationActor): Promise<TicketMutationResult<TicketRow>> {
+  const db = ticketsAdminDb();
+  const { data: cur } = await db.from("tickets").select("money").eq("id", ticketId).maybeSingle();
+  if (!cur) return fail("Ticket not found.");
+  const merged = { ...((cur as { money: Record<string, unknown> }).money ?? {}), ...money };
+  const { data, error } = await db.rpc("apply_ticket_change", { p_ticket_id: ticketId, p_patch: { money: merged }, p_event: humanEvent(actor, "quote_added", null, money) });
+  if (error || !data) return fail("Could not save the money fields.", error);
+  return { data: data as TicketRow, error: null };
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+async function notifyAssigned(ticket: TicketRow, actor: MutationActor): Promise<void> {
+  if (!ticket.assignee_id) return;
+  await createNotification({
+    recipient_id: ticket.assignee_id,
+    type: "ticket_assigned",
+    title: `${ticket.ticket_no} assigned to you`,
+    body: `${ticket.title} · ${actor.fullName}`,
+    action_url: `${TICKETS_PATH}/${ticket.id}`,
+  });
+}

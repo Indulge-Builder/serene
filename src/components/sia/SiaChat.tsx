@@ -13,7 +13,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m as motion } from "framer-motion";
-import { ArrowDown, ArrowLeft, Search, Users, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ClipboardPlus, Search, Users, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "@/lib/toast";
+import { TICKETS_PATH } from "@/lib/constants/tickets";
+import { TICKET_SELECTION_KEY, type TicketSelection } from "@/components/tickets/NewTicketForm";
 import { Avatar } from "@/components/ui/Avatar";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -48,6 +52,25 @@ export function SiaChat({
   onPatchGroup: (jid: string, patch: Partial<SiaGroupRow>) => void;
 }) {
   const [messages, setMessages] = useState<SiaMessageRow[]>([]);
+  // Ticket creation from selected messages (client-ticket-plan.md 7.8, phase 1): a selection
+  // mode over the stream; the chosen messages go to /tickets/new through sessionStorage.
+  const router = useRouter();
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  }, []);
+  const startTicket = useCallback(() => {
+    if (!group.client_id) { toast.warning("Link this group to a client first (Group info → Linked client)."); return; }
+    const chosen = messages.filter((m) => selectedIds.has(m.id)).sort((a, b) => a.wa_timestamp.localeCompare(b.wa_timestamp));
+    if (chosen.length === 0) return;
+    const payload: TicketSelection = {
+      client_id: group.client_id, client_name: groupTitle(group), queendom_id: null, group_jid: group.group_jid,
+      messages: chosen.map((m) => ({ chat_jid: group.group_jid, wa_message_id: m.wa_message_id, sender_jid: m.sender_jid, sender_name: m.sender_name, from_client: !m.from_me, at: m.wa_timestamp, text: m.text ?? (m.media ? `[${m.type}]` : "") })),
+    };
+    try { sessionStorage.setItem(TICKET_SELECTION_KEY, JSON.stringify(payload)); } catch { /* storage unavailable: the form falls back to manual */ }
+    router.push(`${TICKETS_PATH}/new?client=${group.client_id}&from=sia`);
+  }, [group, messages, selectedIds, router]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -287,6 +310,21 @@ export function SiaChat({
           </button>
           <button
             type="button"
+            onClick={() => { setSelecting((v) => !v); setSelectedIds(new Set()); }}
+            aria-label={selecting ? "Cancel selection" : "Create a ticket from messages"}
+            title={selecting ? "Cancel selection" : "Create a ticket from messages"}
+            className="serene-pressable shrink-0 w-8 h-8 rounded-full border flex items-center justify-center"
+            style={{
+              cursor: "pointer",
+              borderColor: selecting ? "var(--theme-accent)" : "var(--theme-paper-border)",
+              background: selecting ? "var(--theme-accent-surface)" : "var(--theme-paper)",
+              color: selecting ? "var(--neu-accent-deep)" : "var(--theme-text-secondary)",
+            }}
+          >
+            <ClipboardPlus className="w-4 h-4" strokeWidth={1.5} />
+          </button>
+          <button
+            type="button"
             onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
             aria-label={searchOpen ? "Close search" : "Search this conversation"}
             title={searchOpen ? "Close search" : "Search this conversation"}
@@ -354,7 +392,13 @@ export function SiaChat({
                 </div>
               )}
               {messages.map((m, i) => (
-                <div key={m.id} data-wa-id={m.wa_message_id}>
+                <div
+                  key={m.id}
+                  data-wa-id={m.wa_message_id}
+                  onClick={selecting ? () => toggleSelected(m.id) : undefined}
+                  style={selecting ? { cursor: "pointer", borderRadius: "var(--radius-md)", outline: selectedIds.has(m.id) ? "2px solid var(--theme-accent)" : "2px solid transparent", outlineOffset: 2, transition: "outline-color var(--duration-fast) var(--ease-in-out)" } : undefined}
+                  aria-selected={selecting ? selectedIds.has(m.id) : undefined}
+                >
                   {(!messages[i - 1] ||
                     new Date(messages[i - 1].wa_timestamp).toDateString() !==
                       new Date(m.wa_timestamp).toDateString()) && <SiaDaySeparator ts={m.wa_timestamp} />}
@@ -371,6 +415,26 @@ export function SiaChat({
             </>
           )}
         </div>
+
+        {/* ── Selection bar: N messages chosen → the new-ticket page pre-filled by the creator ── */}
+        <AnimatePresence>
+          {selecting && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: FAST_DURATION, ease: EASE_IN_OUT }}
+              className="absolute left-1/2 -translate-x-1/2 bottom-4 flex items-center gap-3 rounded-full px-4 py-2"
+              style={{ background: "var(--theme-paper)", border: "1px solid var(--theme-paper-border)", boxShadow: "var(--shadow-3)", zIndex: "var(--z-raised)" }}
+            >
+              <span className="type-caption" style={{ color: "var(--theme-text-secondary)" }}>{selectedIds.size} selected</span>
+              <button type="button" onClick={startTicket} disabled={selectedIds.size === 0} className="serene-btn-primary serene-pressable type-caption rounded-full px-3 py-1" style={{ cursor: selectedIds.size ? "pointer" : "default", opacity: selectedIds.size ? 1 : 0.5 }}>
+                Create ticket
+              </button>
+              <button type="button" onClick={() => { setSelecting(false); setSelectedIds(new Set()); }} className="type-caption" style={{ background: "none", border: 0, cursor: "pointer", color: "var(--theme-text-tertiary)" }}>Cancel</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ── Stale-build pill: the poll failed repeatedly (a deploy outdated
             this tab) — live messages are flowing, this tab just can't hear

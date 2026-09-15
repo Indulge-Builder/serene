@@ -1,0 +1,196 @@
+// tickets-service.ts — ALL Sia ticket reads (migration 0195, client-ticket-plan.md 7).
+//
+// Session client on the `sia` schema (RLS: the whole queendom, admin, founder). The help
+// window's slices come from the client twin (clients-service) and the mirror
+// (freshdesk-service) through their own homes. Types are hand-declared (types/ticket.ts)
+// until `gen types` runs after 0195.
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { mapRows } from "@/lib/utils/rows";
+import { TICKETS_LIST_PAGE_SIZE, TICKET_ACTIVE_STATUSES, type TicketStatus } from "@/lib/constants/tickets";
+import { getClientDetail } from "@/lib/services/clients-service";
+import { freshdeskDb } from "@/lib/services/freshdesk-sync";
+import type {
+  StaffOption, TicketDetail, TicketEventRow, TicketHelp, TicketListFilters, TicketListItem, TicketMessageLinkRow, TicketRow,
+  TicketSlaPolicyRow, TicketingDatabase, LinkedMessage,
+} from "@/lib/types/ticket";
+
+export async function ticketsDb() {
+  const supabase = (await createClient()) as unknown as SupabaseClient<TicketingDatabase, "sia">;
+  return supabase.schema("sia");
+}
+export function ticketsAdminDb() {
+  return (createAdminClient() as unknown as SupabaseClient<TicketingDatabase, "sia">).schema("sia");
+}
+
+async function nameMaps(clientIds: string[], profileIds: string[]): Promise<{ clients: Map<string, string>; profiles: Map<string, string>; queendoms: Map<string, string> }> {
+  const supabase = await createClient();
+  const [c, p, q] = await Promise.all([
+    clientIds.length ? supabase.from("clients").select("id, full_name").in("id", clientIds) : Promise.resolve({ data: [] }),
+    profileIds.length ? supabase.from("profiles").select("id, full_name").in("id", profileIds) : Promise.resolve({ data: [] }),
+    supabase.schema("sia").from("queendoms").select("id, name"),
+  ]);
+  const clients = new Map<string, string>(); const profiles = new Map<string, string>(); const queendoms = new Map<string, string>();
+  mapRows<{ id: string; full_name: string }, void>(c.data, (r) => { clients.set(r.id, r.full_name); });
+  mapRows<{ id: string; full_name: string }, void>(p.data, (r) => { profiles.set(r.id, r.full_name); });
+  mapRows<{ id: string; name: string }, void>(q.data, (r) => { queendoms.set(r.id, r.name); });
+  return { clients, profiles, queendoms };
+}
+
+function searchToken(q: string): string {
+  return q.replace(/[,()"'\\%]/g, " ").trim();
+}
+
+// ─── The list / board ────────────────────────────────────────────────────────
+
+export async function listTickets(filters: TicketListFilters, callerId: string): Promise<{ tickets: TicketListItem[]; totalCount: number }> {
+  const db = await ticketsDb();
+  const page = Math.max(1, filters.page);
+  const from = (page - 1) * TICKETS_LIST_PAGE_SIZE;
+  let q = db.from("tickets").select("*", { count: "exact" });
+  q = filters.status.length ? q.in("status", filters.status) : q.in("status", [...TICKET_ACTIVE_STATUSES, "proposed"]);
+  if (filters.queendom) q = q.eq("queendom_id", filters.queendom);
+  if (filters.assignee) q = q.eq("assignee_id", filters.assignee);
+  if (filters.mine) q = q.eq("assignee_id", callerId);
+  if (filters.category) q = q.eq("category", filters.category);
+  if (filters.search) {
+    const t = searchToken(filters.search);
+    if (t) q = q.or(`title.ilike.%${t}%,ticket_no.ilike.%${t}%`);
+  }
+  q = q.order("updated_at", { ascending: false }).range(from, from + TICKETS_LIST_PAGE_SIZE - 1);
+  const { data, error, count } = await q;
+  if (error) {
+    console.error("[tickets-service] list failed", error.message);
+    return { tickets: [], totalCount: 0 };
+  }
+  const rows = mapRows<TicketRow, TicketRow>(data, (r) => r);
+  const names = await nameMaps(rows.map((r) => r.client_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)));
+  return {
+    tickets: rows.map((r) => ({
+      ...r,
+      client_name: names.clients.get(r.client_id) ?? "Client",
+      assignee_name: r.assignee_id ? (names.profiles.get(r.assignee_id) ?? null) : null,
+      queendom_name: r.queendom_id ? (names.queendoms.get(r.queendom_id) ?? null) : null,
+    })),
+    totalCount: Number(count ?? 0),
+  };
+}
+
+/** Everyone who can carry a ticket in a queendom (the assignee picker). */
+export async function listQueendomStaff(queendomId: string | null): Promise<StaffOption[]> {
+  const supabase = await createClient();
+  let q = supabase.from("profiles").select("id, full_name, sia_role").eq("is_active", true).order("full_name");
+  q = queendomId ? q.eq("queendom_id", queendomId) : q.not("sia_role", "is", null);
+  const { data } = await q;
+  return mapRows<StaffOption, StaffOption>(data, (r) => r);
+}
+
+// ─── The dossier ─────────────────────────────────────────────────────────────
+
+export async function getTicketDetail(ticketId: string): Promise<TicketDetail | null> {
+  const db = await ticketsDb();
+  const supabase = await createClient();
+  const { data: t, error } = await db.from("tickets").select("*").eq("id", ticketId).maybeSingle();
+  if (error) { console.error("[tickets-service] ticket read failed", error.message); return null; }
+  if (!t) return null;
+  const ticket = t as TicketRow;
+
+  const [client, events, links, staff, tasks, policy] = await Promise.all([
+    supabase.from("clients").select("id, full_name, primary_phone, queendom_id").eq("id", ticket.client_id).maybeSingle(),
+    db.from("ticket_events").select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true }).limit(500),
+    db.from("ticket_message_links").select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true }).limit(200),
+    listQueendomStaff(ticket.queendom_id),
+    (supabase as unknown as SupabaseClient<TicketingDatabase, "public">).from("task_ticket_meta").select("task_id").eq("ticket_id", ticketId).limit(50),
+    resolveSlaPolicy(ticket),
+  ]);
+
+  const eventRows = mapRows<TicketEventRow, TicketEventRow>(events.data, (r) => r);
+  const actorIds = Array.from(new Set(eventRows.map((e) => e.actor_id).filter((x): x is string => Boolean(x))));
+  const names = actorIds.length ? await nameMaps([], actorIds) : null;
+
+  // The linked messages' text comes from the archive (service role; the caller passed RLS for the ticket).
+  const linkRows = mapRows<TicketMessageLinkRow, TicketMessageLinkRow>(links.data, (r) => r);
+  const linked: LinkedMessage[] = [];
+  if (linkRows.length) {
+    const sia = createAdminClient().schema("sia");
+    const ids = linkRows.map((l) => l.wa_message_id);
+    const [{ data: msgs }, { data: contacts }] = await Promise.all([
+      sia.from("wag_messages").select("chat_jid, wa_message_id, sender_jid, text, wa_timestamp, from_me").in("wa_message_id", ids).limit(200),
+      sia.from("wag_contacts").select("jid, push_name").in("jid", Array.from(new Set(linkRows.map((l) => l.sender_jid)))),
+    ]);
+    const byId = new Map<string, { text: string | null; wa_timestamp: string; from_me: boolean }>();
+    mapRows<{ chat_jid: string; wa_message_id: string; text: string | null; wa_timestamp: string; from_me: boolean }, void>(msgs, (m) => { byId.set(`${m.chat_jid}|${m.wa_message_id}`, m); });
+    const nameByJid = new Map<string, string | null>();
+    mapRows<{ jid: string; push_name: string | null }, void>(contacts, (c) => { nameByJid.set(c.jid, c.push_name); });
+    for (const l of linkRows) {
+      const m = byId.get(`${l.chat_jid}|${l.wa_message_id}`);
+      linked.push({ ...l, text: m?.text ?? null, wa_timestamp: m?.wa_timestamp ?? null, from_me: m?.from_me ?? false, sender_name: nameByJid.get(l.sender_jid) ?? null });
+    }
+    linked.sort((a, b) => (a.wa_timestamp ?? "").localeCompare(b.wa_timestamp ?? ""));
+  }
+
+  const staffById = new Map(staff.map((s) => [s.id, s]));
+  const taskIds = mapRows<{ task_id: string }, string>(tasks.data, (r) => r.task_id);
+  const taskRows = taskIds.length
+    ? mapRows<TicketDetail["tasks"][number], TicketDetail["tasks"][number]>((await supabase.from("tasks").select("id, title, status, due_at, assigned_to").in("id", taskIds)).data, (r) => r)
+    : [];
+  return {
+    ticket,
+    client: (client.data as TicketDetail["client"] | null) ?? { id: ticket.client_id, full_name: "Client", primary_phone: null, queendom_id: ticket.queendom_id },
+    events: eventRows.map((e) => ({ ...e, actor_name: e.actor_id ? (names?.profiles.get(e.actor_id) ?? null) : null })),
+    links: linked,
+    assignee: ticket.assignee_id ? (staffById.get(ticket.assignee_id) ?? null) : null,
+    bishop: ticket.bishop_id ? (staffById.get(ticket.bishop_id) ?? null) : null,
+    staff,
+    tasks: taskRows,
+    policy,
+  };
+}
+
+/** The most specific active SLA policy for a ticket (queendom > category+sub > category > priority > default). */
+export async function resolveSlaPolicy(ticket: Pick<TicketRow, "queendom_id" | "category" | "sub_category" | "priority">): Promise<TicketSlaPolicyRow | null> {
+  const db = ticketsAdminDb();
+  const { data } = await db.from("ticket_sla_policies").select("*").eq("is_active", true);
+  const rows = mapRows<TicketSlaPolicyRow, TicketSlaPolicyRow>(data, (r) => r);
+  const score = (p: TicketSlaPolicyRow): number => {
+    if (p.queendom_id && p.queendom_id !== ticket.queendom_id) return -1;
+    if (p.category && p.category !== ticket.category) return -1;
+    if (p.sub_category && p.sub_category !== ticket.sub_category) return -1;
+    if (p.priority && p.priority !== ticket.priority) return -1;
+    return (p.queendom_id ? 8 : 0) + (p.sub_category ? 4 : 0) + (p.category ? 2 : 0) + (p.priority ? 1 : 0);
+  };
+  return rows.map((p) => ({ p, s: score(p) })).filter((x) => x.s >= 0).sort((a, b) => b.s - a.s)[0]?.p ?? null;
+}
+
+// ─── The help window ─────────────────────────────────────────────────────────
+
+export async function getTicketHelp(clientId: string, category: string, excludeTicketId?: string): Promise<TicketHelp | null> {
+  const detail = await getClientDetail(clientId);
+  if (!detail) return null;
+  const db = await ticketsDb();
+  const fd = freshdeskDb();
+  const fdCategory = Object.entries({ Travel: "travel", Dining: "dining", Retail: "retail", Events: "events", "Special Request": "special_request", Itinerary: "itinerary", "Indulge Recommendations": "recommendations", "Staff Hiring": "staff_hiring" }).find(([, v]) => v === category)?.[0];
+  const [similar, open] = await Promise.all([
+    fd.from("tickets").select("id, subject, status_label, responder_id, fd_created_at, resolved_at").eq("client_id", clientId).eq("deleted", false)
+      .eq("category", fdCategory ?? category).order("fd_created_at", { ascending: false }).limit(6),
+    db.from("tickets").select("id, ticket_no, title, status").eq("client_id", clientId).in("status", [...TICKET_ACTIVE_STATUSES]).limit(10),
+  ]);
+  const agentIds = Array.from(new Set(mapRows<{ responder_id: number | null }, number | null>(similar.data, (r) => r.responder_id).filter((x): x is number => x != null)));
+  const agents = new Map<number, string>();
+  if (agentIds.length) {
+    const { data: a } = await fd.from("agents").select("id, name").in("id", agentIds);
+    mapRows<{ id: number; name: string }, void>(a, (r) => { agents.set(r.id, r.name); });
+  }
+  return {
+    facts: detail.facts.filter((f) => f.facet !== "address").map((f) => ({ facet: f.facet, key: f.key, value: f.value, polarity: f.polarity })).slice(0, 40),
+    addresses: detail.facts.filter((f) => f.facet === "address").map((f) => ({ key: f.key, value: f.value })),
+    dislikes: detail.facts.filter((f) => f.polarity === "dislikes").map((f) => f.value),
+    health: detail.health.events.length ? detail.health.score : null,
+    similarTickets: mapRows<{ id: number; subject: string; status_label: string | null; responder_id: number | null; fd_created_at: string; resolved_at: string | null }, TicketHelp["similarTickets"][number]>(
+      similar.data, (r) => ({ id: r.id, subject: r.subject, status_label: r.status_label, agent_name: r.responder_id != null ? (agents.get(r.responder_id) ?? null) : null, fd_created_at: r.fd_created_at, resolved_at: r.resolved_at })),
+    anticipations: detail.anticipations.map((a) => ({ title: a.title, due_at: a.due_at })),
+    openTickets: mapRows<{ id: string; ticket_no: string; title: string; status: TicketStatus }, TicketHelp["openTickets"][number]>(open.data, (r) => r).filter((t) => t.id !== excludeTicketId),
+  };
+}

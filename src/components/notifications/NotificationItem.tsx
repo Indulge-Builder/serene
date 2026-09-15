@@ -24,6 +24,9 @@ function getTypeIconColor(type: NotificationType): string {
     case "sla_breach_manager":   return "var(--color-danger-text)";
     case "sla_breach_founder":   return "var(--color-danger-text)";
     case "task_overdue_manager": return "var(--color-danger-text)";
+    case "ticket_sla_breach":     return "var(--color-danger-text)";
+    case "ticket_client_unhappy": return "var(--color-danger-text)";
+    case "ticket_sla_warning":    return "var(--color-warning-text)";
     default:                     return "var(--theme-accent)";
   }
 }
@@ -43,6 +46,13 @@ function getTypeIcon(type: NotificationType): React.ElementType {
     case "sla_breach_founder":   return AlertTriangle;
     case "task_overdue_manager": return AlertTriangle;
     case "suggestion_resolved":  return MessageSquarePlus;
+    // Sia tickets (migration 0195)
+    case "ticket_assigned":       return CheckSquare;
+    case "ticket_proposed":       return Info;
+    case "ticket_sla_warning":    return Clock;
+    case "ticket_sla_breach":     return AlertTriangle;
+    case "ticket_client_replied": return AtSign;
+    case "ticket_client_unhappy": return AlertTriangle;
   }
   return assertNever(type);
 }

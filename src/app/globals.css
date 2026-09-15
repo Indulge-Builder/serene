@@ -461,6 +461,14 @@ body {
   .serene-dossier-grid--340 {
     grid-template-columns: minmax(0, 1fr) 340px;
   }
+  /* --aside-left: the sidebar column on the LEFT (the ticket page's help window, decided
+     2026-09-15: "a help window on the left"). Same widths, mirrored; combine with --340. */
+  .serene-dossier-grid--aside-left {
+    grid-template-columns: 320px minmax(0, 1fr);
+  }
+  .serene-dossier-grid--aside-left.serene-dossier-grid--340 {
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
   /* Identity sidebar sticks only when it IS a sidebar column (lg+).
      Below lg the grid is single-column and the aside is order-1 (above the
      form); a sticky there pins it to the top and the form scrolls beneath it

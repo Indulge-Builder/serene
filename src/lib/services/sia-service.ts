@@ -27,6 +27,8 @@ export type SiaGroupRow = {
   group_jid: string;
   subject: string | null;
   group_kind: SiaGroupKind;
+  /** The linked client (0194); the chat's "Create ticket" needs it. */
+  client_id: string | null;
   is_active: boolean;
   member_count: number | null;
   last_message_at: string | null;
@@ -132,7 +134,7 @@ export async function getSiaGroups(): Promise<SiaGroupRow[]> {
   const db = siaDb();
 
   const [{ data: groups, error: gErr }, { data: agg, error: aErr }] = await Promise.all([
-    db.from("wag_groups").select("group_jid, subject, group_kind, is_active, member_count"),
+    db.from("wag_groups").select("group_jid, subject, group_kind, is_active, member_count, client_id"),
     // One grouped pass over messages: count + last-activity + last-message preview
     // for ALL groups (migration 0173). If this table grows to millions, denormalise
     // a per-group counter; the seam is this one function.
@@ -162,7 +164,7 @@ export async function getSiaGroups(): Promise<SiaGroupRow[]> {
   }
 
   const rows: SiaGroupRow[] = (
-    groups as Pick<SiaGroupRow, "group_jid" | "subject" | "group_kind" | "is_active" | "member_count">[]
+    groups as Pick<SiaGroupRow, "group_jid" | "subject" | "group_kind" | "is_active" | "member_count" | "client_id">[]
   ).map((g) => {
     const a = activity.get(g.group_jid);
     return {
@@ -298,6 +300,8 @@ export type SiaMemberRow = {
 };
 
 export type SiaGroupInfo = {
+  /** The client this group is mapped to (0194: linked from this panel or the client page). */
+  client: { id: string; full_name: string } | null;
   description: string | null;
   watcher_joined_at: string | null;
   created_at: string;
@@ -316,7 +320,7 @@ export async function getSiaGroupInfo(groupJid: string): Promise<SiaGroupInfo | 
   const [groupRes, membersRes, formerRes, formerCountRes] = await Promise.all([
     db
       .from("wag_groups")
-      .select("description, owner_jid, watcher_joined_at, created_at")
+      .select("description, owner_jid, watcher_joined_at, created_at, client_id")
       .eq("group_jid", groupJid)
       .limit(1),
     db
@@ -426,6 +430,12 @@ export async function getSiaGroupInfo(groupJid: string): Promise<SiaGroupInfo | 
   });
 
   const ownerContact = group.owner_jid ? contactFor.get(group.owner_jid) : undefined;
+  const groupClientId = (groupRes.data?.[0] as { client_id?: string | null } | undefined)?.client_id ?? null;
+  let client: SiaGroupInfo["client"] = null;
+  if (groupClientId) {
+    const { data: c } = await createAdminClient().from("clients").select("id, full_name").eq("id", groupClientId).maybeSingle();
+    if (c) client = { id: (c as { id: string }).id, full_name: (c as { full_name: string }).full_name };
+  }
   return {
     description: group.description,
     watcher_joined_at: group.watcher_joined_at,
@@ -434,6 +444,7 @@ export async function getSiaGroupInfo(groupJid: string): Promise<SiaGroupInfo | 
       ? { name: ownerContact?.push_name ?? null, phone: phoneByJid.get(group.owner_jid) ?? null }
       : null,
     members,
+    client,
     formerMembers: former.map(toRow),
     formerCount: Number(formerCountRes.count ?? 0),
     staffCount: members.filter((m) => m.staff_name).length,
@@ -699,7 +710,10 @@ export async function getSiaHealth(): Promise<SiaHealth> {
 
 export async function updateSiaGroupMapping(
   groupJid: string,
-  patch: { group_kind?: SiaGroupKind; is_active?: boolean },
+  // client_id (0194): link a group to a client (the Sia panel picker and the client page
+  // both call this); null unlinks. A link also sets group_kind = 'client', an unlink flips
+  // it to 'unmapped' so the profiler's "blocked stays blocked" rule holds.
+  patch: { group_kind?: SiaGroupKind; is_active?: boolean; client_id?: string | null },
 ): Promise<boolean> {
   const db = siaDb();
   const { error } = await db.from("wag_groups").update(patch).eq("group_jid", groupJid);
@@ -834,4 +848,31 @@ async function attachSenderNames<T extends { sender_jid: string }>(
 ): Promise<(T & { sender_name: string | null })[]> {
   const nameByJid = await fetchContactNames(db, [...new Set(rows.map((m) => m.sender_jid))]);
   return rows.map((m) => ({ ...m, sender_name: nameByJid.get(m.sender_jid) ?? null }));
+}
+
+/** The client's WhatsApp group (0194): at most one mapped group per client today. */
+export async function getSiaGroupForClient(clientId: string): Promise<{
+  group_jid: string; subject: string | null; member_count: number | null; last_message_at: string | null; message_count: number;
+} | null> {
+  const db = siaDb();
+  const { data, error } = await db
+    .from("wag_groups")
+    .select("group_jid, subject, member_count, is_active")
+    .eq("client_id", clientId)
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const { count, data: last } = await db
+    .from("wag_messages")
+    .select("wa_timestamp", { count: "exact" })
+    .eq("chat_jid", data.group_jid)
+    .order("wa_timestamp", { ascending: false })
+    .limit(1);
+  return {
+    group_jid: data.group_jid,
+    subject: data.subject,
+    member_count: data.member_count,
+    last_message_at: (last?.[0] as { wa_timestamp?: string } | undefined)?.wa_timestamp ?? null,
+    message_count: Number(count ?? 0),
+  };
 }

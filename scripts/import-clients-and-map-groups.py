@@ -37,6 +37,11 @@ KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 SUB_CSV = "Subscription Manager Client Export.csv"
 APP_CSV = "app-client-export.csv"
+# The 2026-09-15 sheets (the founder's member list of record; client-ticket-plan.md 5.6/5.9):
+# export-1.csv = the subscription sheet (queendom, tier, dates, amount, status);
+# export-2.csv = the app member list (Zoho / Freshdesk / WhatsApp ids, app member id, tier, city).
+SHEET_SUB_CSV = "export-1.csv"
+SHEET_APP_CSV = "export-2.csv"
 REVIEW_CSV = "mapping-review.csv"
 
 
@@ -128,6 +133,36 @@ def parse_date(raw: str):
     return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else None
 
 
+def col(row: dict, *names: str) -> str:
+    """First non-empty value among alias column names (the sheets rename columns freely)."""
+    for n in names:
+        v = row.get(n)
+        if v is not None and str(v).strip():
+            return str(v).strip()
+    return ""
+
+
+def parse_any_date(raw: str):
+    """dd/mm/yyyy (the sheets) or yyyy-mm-dd (the app list) → ISO date, else None."""
+    raw = (raw or "").strip()
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", raw)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", raw)
+    return m.group(0) if m else None
+
+
+def tier_slug(label: str):
+    key = (label or "").strip().lower().replace(" ", "_")
+    return key if key in {"premium", "celebrity", "genie", "standard", "monthly_trial"} else None
+
+
+def queendom_slug(label: str):
+    """'Sanika Queendom' / 'Sanika' → sanika; unknown → None (never guess a queendom)."""
+    key = (label or "").strip().lower().split()[0] if (label or "").strip() else ""
+    return key if key in {"anishqa", "ananyshree", "sanika"} else None
+
+
 def parse_ext_id(raw: str):
     """Freshdesk/Zoho ids are long digit strings. The sub export sometimes holds
     the literal 'Yes' in the FD column (used as a boolean) — anything non-numeric
@@ -160,6 +195,7 @@ def build_client_records():
                 "freshdesk_contact_id": fd or None, "zoho_customer_id": None,
                 "wa_invite_link": None, "membership_type": None, "membership_status": None,
                 "membership_amount_inr": None, "membership_start": None, "membership_end": None,
+                "queendom_slug": None, "tier": None, "app_member_id": None, "city": None, "company": None,
                 "sources": [], "import_raw": {},
             }
         rec["import_raw"].setdefault("subscription_export", []).append(row)
@@ -188,6 +224,7 @@ def build_client_records():
                 "freshdesk_contact_id": None, "zoho_customer_id": None,
                 "wa_invite_link": None, "membership_type": None, "membership_status": None,
                 "membership_amount_inr": None, "membership_start": None, "membership_end": None,
+                "queendom_slug": None, "tier": None, "app_member_id": None, "city": None, "company": None,
                 "sources": [], "import_raw": {},
             }
         rec["import_raw"].setdefault("app_export", []).append(row)
@@ -199,6 +236,67 @@ def build_client_records():
             rec["zoho_customer_id"] = parse_ext_id(row.get("Zoho Customer ID", ""))
         if not rec["wa_invite_link"]:
             rec["wa_invite_link"] = (row.get("WhatsApp Group Link") or "").strip() or None
+
+    # The 2026-09-15 sheets — THE member list of record. Same key rule, same strictness.
+    if os.path.exists(SHEET_SUB_CSV):
+        for row in load_csv(SHEET_SUB_CSV):
+            phone, alts = parse_phone(col(row, "Phone Number", "Phone"))
+            name = col(row, "Client Name", "Name")
+            k = key_for(phone, name, "")
+            rec = records.get(k)
+            if rec is None:
+                rec = records[k] = {
+                    "full_name": name, "primary_phone": phone, "alt_phones": list(alts),
+                    "freshdesk_contact_id": None, "zoho_customer_id": None,
+                    "wa_invite_link": None, "membership_type": None, "membership_status": None,
+                    "membership_amount_inr": None, "membership_start": None, "membership_end": None,
+                    "queendom_slug": None, "tier": None, "app_member_id": None, "city": None, "company": None,
+                    "sources": [], "import_raw": {},
+                }
+            rec["import_raw"].setdefault("sheet_subscription", []).append(row)
+            if "sheet_subscription" not in rec["sources"]:
+                rec["sources"].append("sheet_subscription")
+            status = col(row, "Status")
+            if rec["membership_status"] != "Active" or status == "Active":
+                rec.update({
+                    "membership_type": col(row, "Membership Type") or rec["membership_type"],
+                    "membership_status": status or rec["membership_status"],
+                    "membership_amount_inr": parse_amount(col(row, "Amount (INR)")) or rec["membership_amount_inr"],
+                    "membership_start": parse_any_date(col(row, "Start Date")) or rec["membership_start"],
+                    "membership_end": parse_any_date(col(row, "End Date")) or rec["membership_end"],
+                })
+                rec["tier"] = tier_slug(col(row, "Membership Type")) or rec["tier"]
+                rec["queendom_slug"] = queendom_slug(col(row, "Group", "Queendom")) or rec["queendom_slug"]
+            rec["city"] = rec["city"] or col(row, "Location", "City") or None
+            rec["company"] = rec["company"] or col(row, "Company (from Zoho)", "Company") or None
+
+    if os.path.exists(SHEET_APP_CSV):
+        for row in load_csv(SHEET_APP_CSV):
+            phone, _ = parse_phone(col(row, "Phone", "Phone Number").strip('="'))
+            name = col(row, "Name", "Client Name")
+            fd = parse_ext_id(col(row, "Freshdesk contact id", "Freshdesk Contact ID").strip('="')) or ""
+            k = key_for(phone, name, fd)
+            rec = records.get(k)
+            if rec is None:
+                rec = records[k] = {
+                    "full_name": name, "primary_phone": phone, "alt_phones": [],
+                    "freshdesk_contact_id": None, "zoho_customer_id": None,
+                    "wa_invite_link": None, "membership_type": None, "membership_status": None,
+                    "membership_amount_inr": None, "membership_start": None, "membership_end": None,
+                    "queendom_slug": None, "tier": None, "app_member_id": None, "city": None, "company": None,
+                    "sources": [], "import_raw": {},
+                }
+            rec["import_raw"].setdefault("sheet_app", []).append(row)
+            if "sheet_app" not in rec["sources"]:
+                rec["sources"].append("sheet_app")
+            rec["freshdesk_contact_id"] = rec["freshdesk_contact_id"] or (fd or None)
+            rec["zoho_customer_id"] = rec["zoho_customer_id"] or parse_ext_id(col(row, "Zoho customer id", "Zoho Customer ID").strip('="'))
+            rec["wa_invite_link"] = rec["wa_invite_link"] or (col(row, "WhatsApp group link", "WhatsApp Group Link") or None)
+            rec["app_member_id"] = rec["app_member_id"] or (col(row, "Member id") or None)
+            rec["tier"] = rec["tier"] or tier_slug(col(row, "Plan") if col(row, "Plan") in ("Premium", "Celebrity", "Genie", "Standard") else "")
+            rec["membership_end"] = rec["membership_end"] or parse_any_date(col(row, "Expires (IST)"))
+            rec["membership_start"] = rec["membership_start"] or parse_any_date(col(row, "Current term started (IST)", "Joined (IST)"))
+            rec["city"] = rec["city"] or col(row, "City") or None
 
     # Merge same-person country-code variants: two records that agree on the last
     # ten digits AND share a name token are one human whose number was written
@@ -231,7 +329,8 @@ def build_client_records():
                     keeper["sources"].append(s)
             for field in ("freshdesk_contact_id", "zoho_customer_id", "wa_invite_link",
                           "membership_type", "membership_status", "membership_amount_inr",
-                          "membership_start", "membership_end"):
+                          "membership_start", "membership_end", "queendom_slug", "tier",
+                          "app_member_id", "city", "company"):
                 if not keeper[field]:
                     keeper[field] = other[field]
             merged_away.add(id(other))
@@ -260,7 +359,8 @@ def build_client_records():
                     keeper["sources"].append(s2)
             for field in ("zoho_customer_id", "wa_invite_link", "membership_type",
                           "membership_status", "membership_amount_inr",
-                          "membership_start", "membership_end"):
+                          "membership_start", "membership_end", "queendom_slug", "tier",
+                          "app_member_id", "city", "company"):
                 if not keeper[field]:
                     keeper[field] = other[field]
             fd_merged.add(id(other))
@@ -290,7 +390,8 @@ def build_client_records():
                 keeper["sources"].append(s)
         for field in ("freshdesk_contact_id", "zoho_customer_id", "wa_invite_link",
                       "membership_type", "membership_status", "membership_amount_inr",
-                      "membership_start", "membership_end"):
+                      "membership_start", "membership_end", "queendom_slug", "tier",
+                      "app_member_id", "city", "company"):
             if not keeper[field]:
                 keeper[field] = shell[field]
         folded.add(id(shell))
@@ -310,7 +411,21 @@ def main() -> int:
         return 1
 
     records = build_client_records()
+    # queendom_slug → sia.queendoms.id (0194). Unknown slugs stay NULL (admin/founder-only rows).
+    try:
+        qd = {q["slug"]: q["id"] for q in (rest("GET", "queendoms?select=id,slug", schema="sia") or [])}
+    except Exception as e:  # before migration 0194 is applied the table does not exist yet
+        print(f"  ! sia.queendoms not readable ({str(e)[:80]}); queendom_id stays NULL this run")
+        qd = {}
+    for r in records:
+        r["queendom_id"] = qd.get(r.pop("queendom_slug") or "", None)
+        # city / company are FACTS (client-ticket-plan 5.2), seeded by scripts/clients/seed-client-facts.py
+        # from the same sheets; they ride along in import_raw only.
+        r.pop("city", None)
+        r.pop("company", None)
     with_phone = [r for r in records if r["primary_phone"]]
+    print(f"queendoms: " + ", ".join(f"{k}={sum(1 for r in records if r['queendom_id'] == v)}" for k, v in qd.items())
+          + f", unassigned={sum(1 for r in records if not r['queendom_id'])}")
     print(f"client records: {len(records)} ({len(with_phone)} with a parsed phone, "
           f"{len(records) - len(with_phone)} phone-less)")
 

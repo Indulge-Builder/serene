@@ -19,6 +19,7 @@ import {
   Film,
   Wallet,
   BookOpen,
+  Landmark,
   AlertTriangle,
   Sparkles,
   Activity,
@@ -29,6 +30,9 @@ import {
   Building2,
   Receipt,
   MessagesSquare,
+  Ticket,
+  ClipboardList,
+  Users,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { useSuggestionFeedback } from "@/components/suggestions/SuggestionFeedbackProvider";
@@ -55,6 +59,8 @@ type NavItem = {
 const MAIN_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/elaya",     label: "Elaya",     icon: Sparkles        },
+  { href: "/clients",   label: "Clients",   icon: Users           },
+  { href: "/tickets",   label: "Tickets",   icon: ClipboardList   },
   { href: "/leads",     label: "Leads",     icon: UserRound       },
   { href: "/deals",     label: "Deals",     icon: Trophy          },
   { href: "/tasks",     label: "Tasks",     icon: CheckSquare     },
@@ -102,6 +108,8 @@ function getConfigurationNav(isPrivileged: boolean): NavItem[] {
 
 const ADMIN_NAV: NavItem[] = [
   { href: "/sia", label: "Sia", icon: MessagesSquare },
+  { href: "/freshdesk", label: "Freshdesk", icon: Ticket },
+  { href: "/books", label: "Books", icon: Landmark },
   { href: "/admin/users", label: "User Management", icon: Shield },
   { href: "/admin/usage", label: "Usage", icon: Activity },
   { href: "/admin/suggestions", label: "Suggestions", icon: MessageSquarePlus },
@@ -117,6 +125,8 @@ const MOBILE_TRIGGER_PATHS = new Set<string>([
   "/admin/elaya-training",
   "/settings",
   "/sia",
+  "/freshdesk",
+  "/books",
   "/admin/users",
   "/admin/usage",
   "/admin/suggestions",

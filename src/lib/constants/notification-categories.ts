@@ -109,6 +109,43 @@ export const NOTIFICATION_CATEGORIES = [
     channels:    ['in_app', 'whatsapp'],
     roles:       ['manager', 'admin', 'founder'],
   },
+  // ── Tickets (Sia, migration 0195) ──────────────────────────────────────────
+  // ticket_assigned and ticket_client_replied are TRANSACTIONAL: deliberately absent here.
+  {
+    key:         'ticket_proposed_for_approval',
+    label:       'A ticket waits for my approval',
+    description: 'When Elaya or a genie proposes a ticket or a priority for you to approve.',
+    channels:    ['in_app', 'whatsapp'],
+    roles:       ['manager', 'admin', 'founder'],
+  },
+  {
+    key:         'ticket_sla_warning',
+    label:       'One of my tickets is about to breach',
+    description: 'Five minutes before a first response or a resolution target on your ticket.',
+    channels:    ['in_app'],
+    roles:       ['agent', 'manager'],
+  },
+  {
+    key:         'ticket_sla_breach_manager',
+    label:       'A ticket in my queendom breached',
+    description: 'When a ticket in your queendom misses its response or resolution target.',
+    channels:    ['in_app', 'whatsapp'],
+    roles:       ['manager', 'admin', 'founder'],
+  },
+  {
+    key:         'ticket_client_unhappy',
+    label:       'A client sounds unhappy',
+    description: 'When a client message on a ticket reads as frustrated or angry.',
+    channels:    ['in_app', 'whatsapp'],
+    roles:       ['manager', 'admin', 'founder'],
+  },
+  {
+    key:         'ticket_daily_digest_founder',
+    label:       'Daily ticket digest',
+    description: 'A 07:30 IST briefing across queendoms: what came in, what breached, who is unhappy.',
+    channels:    ['whatsapp', 'in_app'],
+    roles:       ['founder'],
+  },
 ] as const satisfies readonly NotificationCategory[];
 
 export type NotificationCategoryKey = (typeof NOTIFICATION_CATEGORIES)[number]['key'];

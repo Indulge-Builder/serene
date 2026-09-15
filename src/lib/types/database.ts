@@ -7,6 +7,593 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
+  freshdesk: {
+    Tables: {
+      agents: {
+        Row: {
+          active: boolean
+          agent_type: string | null
+          available: boolean
+          deactivated: boolean
+          email: string | null
+          fd_created_at: string | null
+          fd_updated_at: string | null
+          id: number
+          job_title: string | null
+          last_active_at: string | null
+          name: string
+          profile_id: string | null
+          raw: Json
+          synced_at: string
+        }
+        Insert: {
+          active?: boolean
+          agent_type?: string | null
+          available?: boolean
+          deactivated?: boolean
+          email?: string | null
+          fd_created_at?: string | null
+          fd_updated_at?: string | null
+          id: number
+          job_title?: string | null
+          last_active_at?: string | null
+          name: string
+          profile_id?: string | null
+          raw?: Json
+          synced_at?: string
+        }
+        Update: {
+          active?: boolean
+          agent_type?: string | null
+          available?: boolean
+          deactivated?: boolean
+          email?: string | null
+          fd_created_at?: string | null
+          fd_updated_at?: string | null
+          id?: number
+          job_title?: string | null
+          last_active_at?: string | null
+          name?: string
+          profile_id?: string | null
+          raw?: Json
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      contacts: {
+        Row: {
+          active: boolean
+          category: string | null
+          client_id: string | null
+          company_id: number | null
+          custom_fields: Json
+          description: string | null
+          email: string | null
+          fd_created_at: string | null
+          fd_updated_at: string | null
+          id: number
+          mobile: string | null
+          name: string
+          phone: string | null
+          phone_e164: string | null
+          raw: Json
+          synced_at: string
+          tags: string[]
+        }
+        Insert: {
+          active?: boolean
+          category?: string | null
+          client_id?: string | null
+          company_id?: number | null
+          custom_fields?: Json
+          description?: string | null
+          email?: string | null
+          fd_created_at?: string | null
+          fd_updated_at?: string | null
+          id: number
+          mobile?: string | null
+          name: string
+          phone?: string | null
+          phone_e164?: string | null
+          raw?: Json
+          synced_at?: string
+          tags?: string[]
+        }
+        Update: {
+          active?: boolean
+          category?: string | null
+          client_id?: string | null
+          company_id?: number | null
+          custom_fields?: Json
+          description?: string | null
+          email?: string | null
+          fd_created_at?: string | null
+          fd_updated_at?: string | null
+          id?: number
+          mobile?: string | null
+          name?: string
+          phone?: string | null
+          phone_e164?: string | null
+          raw?: Json
+          synced_at?: string
+          tags?: string[]
+        }
+        Relationships: []
+      }
+      conversations: {
+        Row: {
+          attachments: Json
+          body_html: string | null
+          body_text: string | null
+          category: number | null
+          fd_created_at: string
+          fd_updated_at: string | null
+          from_email: string | null
+          id: number
+          incoming: boolean
+          private: boolean
+          raw: Json
+          source: number | null
+          synced_at: string
+          ticket_id: number
+          to_emails: Json
+          user_id: number | null
+        }
+        Insert: {
+          attachments?: Json
+          body_html?: string | null
+          body_text?: string | null
+          category?: number | null
+          fd_created_at: string
+          fd_updated_at?: string | null
+          from_email?: string | null
+          id: number
+          incoming?: boolean
+          private?: boolean
+          raw?: Json
+          source?: number | null
+          synced_at?: string
+          ticket_id: number
+          to_emails?: Json
+          user_id?: number | null
+        }
+        Update: {
+          attachments?: Json
+          body_html?: string | null
+          body_text?: string | null
+          category?: number | null
+          fd_created_at?: string
+          fd_updated_at?: string | null
+          from_email?: string | null
+          id?: number
+          incoming?: boolean
+          private?: boolean
+          raw?: Json
+          source?: number | null
+          synced_at?: string
+          ticket_id?: number
+          to_emails?: Json
+          user_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      groups: {
+        Row: {
+          business_hour_id: number | null
+          description: string | null
+          fd_created_at: string | null
+          fd_updated_at: string | null
+          group_type: string | null
+          id: number
+          name: string
+          raw: Json
+          synced_at: string
+        }
+        Insert: {
+          business_hour_id?: number | null
+          description?: string | null
+          fd_created_at?: string | null
+          fd_updated_at?: string | null
+          group_type?: string | null
+          id: number
+          name: string
+          raw?: Json
+          synced_at?: string
+        }
+        Update: {
+          business_hour_id?: number | null
+          description?: string | null
+          fd_created_at?: string | null
+          fd_updated_at?: string | null
+          group_type?: string | null
+          id?: number
+          name?: string
+          raw?: Json
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      sla_policies: {
+        Row: {
+          active: boolean
+          applicable_to: Json
+          escalation: Json
+          fd_created_at: string | null
+          fd_updated_at: string | null
+          id: number
+          is_default: boolean
+          name: string
+          position: number | null
+          raw: Json
+          sla_target: Json
+          synced_at: string
+        }
+        Insert: {
+          active?: boolean
+          applicable_to?: Json
+          escalation?: Json
+          fd_created_at?: string | null
+          fd_updated_at?: string | null
+          id: number
+          is_default?: boolean
+          name: string
+          position?: number | null
+          raw?: Json
+          sla_target?: Json
+          synced_at?: string
+        }
+        Update: {
+          active?: boolean
+          applicable_to?: Json
+          escalation?: Json
+          fd_created_at?: string | null
+          fd_updated_at?: string | null
+          id?: number
+          is_default?: boolean
+          name?: string
+          position?: number | null
+          raw?: Json
+          sla_target?: Json
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      sync_runs: {
+        Row: {
+          api_calls: number
+          changes_written: number
+          conversations_written: number
+          detail: Json
+          error: string | null
+          finished_at: string | null
+          id: number
+          kind: string
+          ok: boolean | null
+          rate_remaining: number | null
+          started_at: string
+          tickets_seen: number
+          tickets_written: number
+        }
+        Insert: {
+          api_calls?: number
+          changes_written?: number
+          conversations_written?: number
+          detail?: Json
+          error?: string | null
+          finished_at?: string | null
+          id?: number
+          kind: string
+          ok?: boolean | null
+          rate_remaining?: number | null
+          started_at?: string
+          tickets_seen?: number
+          tickets_written?: number
+        }
+        Update: {
+          api_calls?: number
+          changes_written?: number
+          conversations_written?: number
+          detail?: Json
+          error?: string | null
+          finished_at?: string | null
+          id?: number
+          kind?: string
+          ok?: boolean | null
+          rate_remaining?: number | null
+          started_at?: string
+          tickets_seen?: number
+          tickets_written?: number
+        }
+        Relationships: []
+      }
+      sync_state: {
+        Row: {
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
+      ticket_changes: {
+        Row: {
+          fd_updated_at: string | null
+          field: string
+          id: number
+          new_value: string | null
+          observed_at: string
+          old_value: string | null
+          source: string
+          ticket_id: number
+        }
+        Insert: {
+          fd_updated_at?: string | null
+          field: string
+          id?: number
+          new_value?: string | null
+          observed_at?: string
+          old_value?: string | null
+          source?: string
+          ticket_id: number
+        }
+        Update: {
+          fd_updated_at?: string | null
+          field?: string
+          id?: number
+          new_value?: string | null
+          observed_at?: string
+          old_value?: string | null
+          source?: string
+          ticket_id?: number
+        }
+        Relationships: []
+      }
+      ticket_fields: {
+        Row: {
+          choices: Json | null
+          dependent_fields: Json | null
+          field_type: string
+          id: number
+          is_default: boolean
+          label: string
+          name: string
+          raw: Json
+          required_for_agents: boolean
+          synced_at: string
+        }
+        Insert: {
+          choices?: Json | null
+          dependent_fields?: Json | null
+          field_type: string
+          id: number
+          is_default?: boolean
+          label: string
+          name: string
+          raw?: Json
+          required_for_agents?: boolean
+          synced_at?: string
+        }
+        Update: {
+          choices?: Json | null
+          dependent_fields?: Json | null
+          field_type?: string
+          id?: number
+          is_default?: boolean
+          label?: string
+          name?: string
+          raw?: Json
+          required_for_agents?: boolean
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      tickets: {
+        Row: {
+          agent_responded_at: string | null
+          category: string | null
+          classification: string | null
+          client_id: string | null
+          closed_at: string | null
+          company_id: number | null
+          conversation_count: number
+          conversations_synced_at: string | null
+          custom_fields: Json
+          deleted: boolean
+          description_text: string | null
+          due_by: string | null
+          fd_created_at: string
+          fd_updated_at: string
+          first_responded_at: string | null
+          first_synced_at: string
+          fr_due_by: string | null
+          fr_escalated: boolean
+          group_id: number | null
+          id: number
+          internal_agent_id: number | null
+          internal_group_id: number | null
+          is_escalated: boolean
+          pending_since: string | null
+          priority: number
+          product_id: number | null
+          raw: Json
+          reopened_at: string | null
+          requester_id: number
+          requester_name: string | null
+          requester_phone_e164: string | null
+          requester_responded_at: string | null
+          resolved_at: string | null
+          responder_id: number | null
+          source: number | null
+          spam: boolean
+          status: number
+          status_label: string | null
+          status_updated_at: string | null
+          sub_category: string | null
+          subject: string
+          synced_at: string
+          tags: string[]
+          ticket_type: string | null
+        }
+        Insert: {
+          agent_responded_at?: string | null
+          category?: string | null
+          classification?: string | null
+          client_id?: string | null
+          closed_at?: string | null
+          company_id?: number | null
+          conversation_count?: number
+          conversations_synced_at?: string | null
+          custom_fields?: Json
+          deleted?: boolean
+          description_text?: string | null
+          due_by?: string | null
+          fd_created_at: string
+          fd_updated_at: string
+          first_responded_at?: string | null
+          first_synced_at?: string
+          fr_due_by?: string | null
+          fr_escalated?: boolean
+          group_id?: number | null
+          id: number
+          internal_agent_id?: number | null
+          internal_group_id?: number | null
+          is_escalated?: boolean
+          pending_since?: string | null
+          priority: number
+          product_id?: number | null
+          raw?: Json
+          reopened_at?: string | null
+          requester_id: number
+          requester_name?: string | null
+          requester_phone_e164?: string | null
+          requester_responded_at?: string | null
+          resolved_at?: string | null
+          responder_id?: number | null
+          source?: number | null
+          spam?: boolean
+          status: number
+          status_label?: string | null
+          status_updated_at?: string | null
+          sub_category?: string | null
+          subject?: string
+          synced_at?: string
+          tags?: string[]
+          ticket_type?: string | null
+        }
+        Update: {
+          agent_responded_at?: string | null
+          category?: string | null
+          classification?: string | null
+          client_id?: string | null
+          closed_at?: string | null
+          company_id?: number | null
+          conversation_count?: number
+          conversations_synced_at?: string | null
+          custom_fields?: Json
+          deleted?: boolean
+          description_text?: string | null
+          due_by?: string | null
+          fd_created_at?: string
+          fd_updated_at?: string
+          first_responded_at?: string | null
+          first_synced_at?: string
+          fr_due_by?: string | null
+          fr_escalated?: boolean
+          group_id?: number | null
+          id?: number
+          internal_agent_id?: number | null
+          internal_group_id?: number | null
+          is_escalated?: boolean
+          pending_since?: string | null
+          priority?: number
+          product_id?: number | null
+          raw?: Json
+          reopened_at?: string | null
+          requester_id?: number
+          requester_name?: string | null
+          requester_phone_e164?: string | null
+          requester_responded_at?: string | null
+          resolved_at?: string | null
+          responder_id?: number | null
+          source?: number | null
+          spam?: boolean
+          status?: number
+          status_label?: string | null
+          status_updated_at?: string | null
+          sub_category?: string | null
+          subject?: string
+          synced_at?: string
+          tags?: string[]
+          ticket_type?: string | null
+        }
+        Relationships: []
+      }
+      webhook_events: {
+        Row: {
+          error: string | null
+          event: string
+          id: number
+          payload: Json
+          processed_at: string | null
+          received_at: string
+          ticket_id: number | null
+        }
+        Insert: {
+          error?: string | null
+          event: string
+          id?: number
+          payload: Json
+          processed_at?: string | null
+          received_at?: string
+          ticket_id?: number | null
+        }
+        Update: {
+          error?: string | null
+          event?: string
+          id?: number
+          payload?: Json
+          processed_at?: string | null
+          received_at?: string
+          ticket_id?: number | null
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       activity_events: {
@@ -230,9 +817,2370 @@ export type Database = {
           },
         ]
       }
+      client_access_log: {
+        Row: {
+          actor_id: string
+          client_id: string
+          created_at: string
+          id: number
+          surface: string
+        }
+        Insert: {
+          actor_id: string
+          client_id: string
+          created_at?: string
+          id?: number
+          surface: string
+        }
+        Update: {
+          actor_id?: string
+          client_id?: string
+          created_at?: string
+          id?: number
+          surface?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_access_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_anticipations: {
+        Row: {
+          client_id: string
+          created_at: string
+          due_at: string
+          evidence: Json
+          id: string
+          kind: string
+          resolved_at: string | null
+          resolved_by: string | null
+          run_id: string | null
+          status: string
+          suggested_action: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          due_at: string
+          evidence?: Json
+          id?: string
+          kind: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          run_id?: string | null
+          status?: string
+          suggested_action?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          due_at?: string
+          evidence?: Json
+          id?: string
+          kind?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          run_id?: string | null
+          status?: string
+          suggested_action?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_anticipations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_anticipations_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_chunks: {
+        Row: {
+          chunk_index: number
+          client_id: string
+          created_at: string
+          document_id: string
+          embedded_at: string | null
+          embedding: string | null
+          id: string
+          kind: string
+          masked_text: string
+          model_version: string | null
+          observed_at: string | null
+          tsv: unknown
+        }
+        Insert: {
+          chunk_index?: number
+          client_id: string
+          created_at?: string
+          document_id: string
+          embedded_at?: string | null
+          embedding?: string | null
+          id?: string
+          kind: string
+          masked_text: string
+          model_version?: string | null
+          observed_at?: string | null
+          tsv?: unknown
+        }
+        Update: {
+          chunk_index?: number
+          client_id?: string
+          created_at?: string
+          document_id?: string
+          embedded_at?: string | null
+          embedding?: string | null
+          id?: string
+          kind?: string
+          masked_text?: string
+          model_version?: string | null
+          observed_at?: string | null
+          tsv?: unknown
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_chunks_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_chunks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "client_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_documents: {
+        Row: {
+          client_id: string
+          created_at: string
+          from_at: string | null
+          id: string
+          kind: string
+          run_id: string | null
+          source: string
+          source_ref: Json
+          text: string
+          title: string | null
+          to_at: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          from_at?: string | null
+          id?: string
+          kind: string
+          run_id?: string | null
+          source: string
+          source_ref?: Json
+          text: string
+          title?: string | null
+          to_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          from_at?: string | null
+          id?: string
+          kind?: string
+          run_id?: string | null
+          source?: string
+          source_ref?: Json
+          text?: string
+          title?: string | null
+          to_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_events: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_01: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_02: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_03: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_04: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_05: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_06: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_07: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_08: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_09: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_10: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_11: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2024_12: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_01: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_02: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_03: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_04: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_05: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_06: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_07: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_08: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_09: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_10: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_11: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2025_12: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_01: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_02: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_03: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_04: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_05: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_06: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_07: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_08: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_09: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_10: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_11: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2026_12: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2027_01: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2027_02: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_2027_03: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_events_default: {
+        Row: {
+          actor: string | null
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      client_facts: {
+        Row: {
+          client_id: string
+          confidence: number
+          created_at: string
+          created_by: string | null
+          evidence: Json
+          facet: string
+          id: string
+          key: string
+          observed_at: string
+          polarity: string
+          run_id: string | null
+          source: string
+          superseded_by: string | null
+          valid_until: string | null
+          value: string
+          value_json: Json | null
+        }
+        Insert: {
+          client_id: string
+          confidence?: number
+          created_at?: string
+          created_by?: string | null
+          evidence?: Json
+          facet: string
+          id?: string
+          key?: string
+          observed_at?: string
+          polarity?: string
+          run_id?: string | null
+          source: string
+          superseded_by?: string | null
+          valid_until?: string | null
+          value: string
+          value_json?: Json | null
+        }
+        Update: {
+          client_id?: string
+          confidence?: number
+          created_at?: string
+          created_by?: string | null
+          evidence?: Json
+          facet?: string
+          id?: string
+          key?: string
+          observed_at?: string
+          polarity?: string
+          run_id?: string | null
+          source?: string
+          superseded_by?: string | null
+          valid_until?: string | null
+          value?: string
+          value_json?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_facts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_facts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_facts_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "client_facts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_health_events: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          delta: number
+          evidence: Json
+          id: string
+          note: string | null
+          observed_at: string
+          run_id: string | null
+          signal: string
+          ticket_ref: Json | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          delta: number
+          evidence?: Json
+          id?: string
+          note?: string | null
+          observed_at?: string
+          run_id?: string | null
+          signal: string
+          ticket_ref?: Json | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          delta?: number
+          evidence?: Json
+          id?: string
+          note?: string | null
+          observed_at?: string
+          run_id?: string | null
+          signal?: string
+          ticket_ref?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_health_events_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_health_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_health_events_signal_fkey"
+            columns: ["signal"]
+            isOneToOne: false
+            referencedRelation: "client_health_policy"
+            referencedColumns: ["signal"]
+          },
+        ]
+      }
+      client_health_policy: {
+        Row: {
+          delta: number
+          half_life_days: number
+          label: string
+          signal: string
+          updated_at: string
+        }
+        Insert: {
+          delta: number
+          half_life_days: number
+          label: string
+          signal: string
+          updated_at?: string
+        }
+        Update: {
+          delta?: number
+          half_life_days?: number
+          label?: string
+          signal?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      client_people: {
+        Row: {
+          can_request: boolean
+          client_id: string
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          name: string
+          note: string | null
+          phone_e164: string | null
+          relation: string
+          updated_at: string
+        }
+        Insert: {
+          can_request?: boolean
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          note?: string | null
+          phone_e164?: string | null
+          relation: string
+          updated_at?: string
+        }
+        Update: {
+          can_request?: boolean
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          note?: string | null
+          phone_e164?: string | null
+          relation?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_people_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_people_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_relations: {
+        Row: {
+          client_id: string
+          entity_id: string
+          entity_kind: string
+          entity_label: string
+          evidence: Json
+          evidence_count: number
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          relation: string
+          strength: number
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          entity_id: string
+          entity_kind: string
+          entity_label: string
+          evidence?: Json
+          evidence_count?: number
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          relation: string
+          strength?: number
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          entity_id?: string
+          entity_kind?: string
+          entity_label?: string
+          evidence?: Json
+          evidence_count?: number
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          relation?: string
+          strength?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_relations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_snapshot: {
+        Row: {
+          built_at: string
+          client_id: string
+          data: Json
+          run_id: string | null
+          version: number
+        }
+        Insert: {
+          built_at?: string
+          client_id: string
+          data?: Json
+          run_id?: string | null
+          version?: number
+        }
+        Update: {
+          built_at?: string
+          client_id?: string
+          data?: Json
+          run_id?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_snapshot_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           alt_phones: string[]
+          app_member_id: string | null
+          consent: Json
           created_at: string
           freshdesk_contact_id: string | null
           full_name: string
@@ -245,13 +3193,17 @@ export type Database = {
           membership_status: string | null
           membership_type: string | null
           primary_phone: string | null
+          queendom_id: string | null
           sources: string[]
+          tier: string | null
           updated_at: string
           wa_invite_link: string | null
           zoho_customer_id: string | null
         }
         Insert: {
           alt_phones?: string[]
+          app_member_id?: string | null
+          consent?: Json
           created_at?: string
           freshdesk_contact_id?: string | null
           full_name: string
@@ -264,13 +3216,17 @@ export type Database = {
           membership_status?: string | null
           membership_type?: string | null
           primary_phone?: string | null
+          queendom_id?: string | null
           sources?: string[]
+          tier?: string | null
           updated_at?: string
           wa_invite_link?: string | null
           zoho_customer_id?: string | null
         }
         Update: {
           alt_phones?: string[]
+          app_member_id?: string | null
+          consent?: Json
           created_at?: string
           freshdesk_contact_id?: string | null
           full_name?: string
@@ -283,7 +3239,9 @@ export type Database = {
           membership_status?: string | null
           membership_type?: string | null
           primary_phone?: string | null
+          queendom_id?: string | null
           sources?: string[]
+          tier?: string | null
           updated_at?: string
           wa_invite_link?: string | null
           zoho_customer_id?: string | null
@@ -1210,8 +4168,10 @@ export type Database = {
           job_title: string | null
           last_seen_at: string | null
           phone: string | null
+          queendom_id: string | null
           reports_to: string | null
           role: Database["public"]["Enums"]["user_role"]
+          sia_role: string | null
           theme: string
           timezone: string
           updated_at: string
@@ -1231,8 +4191,10 @@ export type Database = {
           job_title?: string | null
           last_seen_at?: string | null
           phone?: string | null
+          queendom_id?: string | null
           reports_to?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          sia_role?: string | null
           theme?: string
           timezone?: string
           updated_at?: string
@@ -1252,8 +4214,10 @@ export type Database = {
           job_title?: string | null
           last_seen_at?: string | null
           phone?: string | null
+          queendom_id?: string | null
           reports_to?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          sia_role?: string | null
           theme?: string
           timezone?: string
           updated_at?: string
@@ -2043,6 +5007,29 @@ export type Database = {
             foreignKeyName: "task_remarks_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_ticket_meta: {
+        Row: {
+          task_id: string
+          ticket_id: string
+        }
+        Insert: {
+          task_id: string
+          ticket_id: string
+        }
+        Update: {
+          task_id?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_ticket_meta_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: true
             referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
@@ -2882,10 +5869,15 @@ export type Database = {
         Args: { p_from: string; p_to: string }
         Returns: number
       }
+      can_access_client_queendom: {
+        Args: { p_queendom: string }
+        Returns: boolean
+      }
       can_access_wa_conversation: {
         Args: { p_lead_id: string }
         Returns: boolean
       }
+      client_visible: { Args: { p_client_id: string }; Returns: boolean }
       cold_lead_cutoff: { Args: never; Returns: string }
       count_vendors: {
         Args: { p_category?: string; p_query?: string; p_status?: string }
@@ -3412,6 +6404,7 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["app_domain"]
       }
+      get_user_queendom: { Args: never; Returns: string }
       get_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
@@ -3566,6 +6559,1151 @@ export type Database = {
   }
   sia: {
     Tables: {
+      extraction_runs: {
+        Row: {
+          client_id: string | null
+          cost_usd: number | null
+          error: string | null
+          finished_at: string | null
+          id: string
+          input_ref: Json
+          kind: string
+          model: string | null
+          ok: boolean | null
+          output: Json
+          prompt_version: string | null
+          started_at: string
+          tokens_in: number | null
+          tokens_out: number | null
+        }
+        Insert: {
+          client_id?: string | null
+          cost_usd?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          input_ref?: Json
+          kind: string
+          model?: string | null
+          ok?: boolean | null
+          output?: Json
+          prompt_version?: string | null
+          started_at?: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+        }
+        Update: {
+          client_id?: string | null
+          cost_usd?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          input_ref?: Json
+          kind?: string
+          model?: string | null
+          ok?: boolean | null
+          output?: Json
+          prompt_version?: string | null
+          started_at?: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+        }
+        Relationships: []
+      }
+      genie_roster: {
+        Row: {
+          capacity: number
+          is_on_leave: boolean
+          languages: string[]
+          leave_until: string | null
+          profile_id: string
+          queendom_id: string | null
+          shifts: Json
+          specialities: Json
+          updated_at: string
+        }
+        Insert: {
+          capacity?: number
+          is_on_leave?: boolean
+          languages?: string[]
+          leave_until?: string | null
+          profile_id: string
+          queendom_id?: string | null
+          shifts?: Json
+          specialities?: Json
+          updated_at?: string
+        }
+        Update: {
+          capacity?: number
+          is_on_leave?: boolean
+          languages?: string[]
+          leave_until?: string | null
+          profile_id?: string
+          queendom_id?: string | null
+          shifts?: Json
+          specialities?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "genie_roster_queendom_id_fkey"
+            columns: ["queendom_id"]
+            isOneToOne: false
+            referencedRelation: "queendoms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      queendoms: {
+        Row: {
+          bishop_id: string | null
+          created_at: string
+          freshdesk_group_id: number | null
+          id: string
+          is_active: boolean
+          joker_id: string | null
+          name: string
+          queen_id: string | null
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          bishop_id?: string | null
+          created_at?: string
+          freshdesk_group_id?: number | null
+          id?: string
+          is_active?: boolean
+          joker_id?: string | null
+          name: string
+          queen_id?: string | null
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          bishop_id?: string | null
+          created_at?: string
+          freshdesk_group_id?: number | null
+          id?: string
+          is_active?: boolean
+          joker_id?: string | null
+          name?: string
+          queen_id?: string | null
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ticket_events: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2026_09: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2026_10: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2026_11: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2026_12: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_01: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_02: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_03: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_04: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_05: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_06: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_07: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_08: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_09: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_10: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_11: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_2027_12: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_events_default: {
+        Row: {
+          actor_id: string | null
+          actor_kind: string
+          body: string | null
+          client_id: string
+          created_at: string
+          event_type: string
+          id: string
+          meta: Json
+          queendom_id: string | null
+          run_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_kind: string
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_kind?: string
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta?: Json
+          queendom_id?: string | null
+          run_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: []
+      }
+      ticket_message_links: {
+        Row: {
+          chat_jid: string
+          confidence: number
+          created_at: string
+          created_by: string | null
+          freshdesk_id: number | null
+          id: string
+          link_kind: string
+          run_id: string | null
+          sender_jid: string
+          ticket_id: string | null
+          wa_message_id: string
+        }
+        Insert: {
+          chat_jid: string
+          confidence?: number
+          created_at?: string
+          created_by?: string | null
+          freshdesk_id?: number | null
+          id?: string
+          link_kind: string
+          run_id?: string | null
+          sender_jid: string
+          ticket_id?: string | null
+          wa_message_id: string
+        }
+        Update: {
+          chat_jid?: string
+          confidence?: number
+          created_at?: string
+          created_by?: string | null
+          freshdesk_id?: number | null
+          id?: string
+          link_kind?: string
+          run_id?: string | null
+          sender_jid?: string
+          ticket_id?: string | null
+          wa_message_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_message_links_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_sla_policies: {
+        Row: {
+          business_hours: boolean
+          category: string | null
+          client_silence_min: number
+          created_at: string
+          escalation: Json
+          first_response_min: number
+          id: string
+          is_active: boolean
+          priority: string | null
+          queendom_id: string | null
+          resolve_target_min: number
+          sub_category: string | null
+          tier: string | null
+          update_cadence_min: number
+          updated_at: string
+          vendor_silence_min: number
+        }
+        Insert: {
+          business_hours?: boolean
+          category?: string | null
+          client_silence_min: number
+          created_at?: string
+          escalation?: Json
+          first_response_min: number
+          id?: string
+          is_active?: boolean
+          priority?: string | null
+          queendom_id?: string | null
+          resolve_target_min: number
+          sub_category?: string | null
+          tier?: string | null
+          update_cadence_min: number
+          updated_at?: string
+          vendor_silence_min: number
+        }
+        Update: {
+          business_hours?: boolean
+          category?: string | null
+          client_silence_min?: number
+          created_at?: string
+          escalation?: Json
+          first_response_min?: number
+          id?: string
+          is_active?: boolean
+          priority?: string | null
+          queendom_id?: string | null
+          resolve_target_min?: number
+          sub_category?: string | null
+          tier?: string | null
+          update_cadence_min?: number
+          updated_at?: string
+          vendor_silence_min?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_sla_policies_queendom_id_fkey"
+            columns: ["queendom_id"]
+            isOneToOne: false
+            referencedRelation: "queendoms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tickets: {
+        Row: {
+          assignee_id: string | null
+          bishop_id: string | null
+          brief: Json
+          category: string
+          checklist: Json
+          client_id: string
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          created_by_kind: string
+          first_responded_at: string | null
+          first_response_due_at: string | null
+          freshdesk_id: number | null
+          group_jid: string | null
+          handoff_department: string | null
+          id: string
+          item: string | null
+          last_client_update_at: string | null
+          money: Json
+          next_update_due_at: string | null
+          next_wake_at: string | null
+          origin: string
+          origin_ref: Json
+          priority: string
+          priority_approved_at: string | null
+          priority_approved_by: string | null
+          proposed_by_run_id: string | null
+          queendom_id: string | null
+          requested_for: string | null
+          resolution: string | null
+          resolve_due_at: string | null
+          satisfaction: number | null
+          sentinel_state: Json
+          status: string
+          sub_category: string | null
+          summary: string | null
+          ticket_no: string
+          title: string
+          updated_at: string
+          vendor_id: string | null
+          wake_reason: string | null
+        }
+        Insert: {
+          assignee_id?: string | null
+          bishop_id?: string | null
+          brief?: Json
+          category: string
+          checklist?: Json
+          client_id: string
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_kind?: string
+          first_responded_at?: string | null
+          first_response_due_at?: string | null
+          freshdesk_id?: number | null
+          group_jid?: string | null
+          handoff_department?: string | null
+          id?: string
+          item?: string | null
+          last_client_update_at?: string | null
+          money?: Json
+          next_update_due_at?: string | null
+          next_wake_at?: string | null
+          origin: string
+          origin_ref?: Json
+          priority?: string
+          priority_approved_at?: string | null
+          priority_approved_by?: string | null
+          proposed_by_run_id?: string | null
+          queendom_id?: string | null
+          requested_for?: string | null
+          resolution?: string | null
+          resolve_due_at?: string | null
+          satisfaction?: number | null
+          sentinel_state?: Json
+          status?: string
+          sub_category?: string | null
+          summary?: string | null
+          ticket_no?: string
+          title: string
+          updated_at?: string
+          vendor_id?: string | null
+          wake_reason?: string | null
+        }
+        Update: {
+          assignee_id?: string | null
+          bishop_id?: string | null
+          brief?: Json
+          category?: string
+          checklist?: Json
+          client_id?: string
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_kind?: string
+          first_responded_at?: string | null
+          first_response_due_at?: string | null
+          freshdesk_id?: number | null
+          group_jid?: string | null
+          handoff_department?: string | null
+          id?: string
+          item?: string | null
+          last_client_update_at?: string | null
+          money?: Json
+          next_update_due_at?: string | null
+          next_wake_at?: string | null
+          origin?: string
+          origin_ref?: Json
+          priority?: string
+          priority_approved_at?: string | null
+          priority_approved_by?: string | null
+          proposed_by_run_id?: string | null
+          queendom_id?: string | null
+          requested_for?: string | null
+          resolution?: string | null
+          resolve_due_at?: string | null
+          satisfaction?: number | null
+          sentinel_state?: Json
+          status?: string
+          sub_category?: string | null
+          summary?: string | null
+          ticket_no?: string
+          title?: string
+          updated_at?: string
+          vendor_id?: string | null
+          wake_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tickets_queendom_id_fkey"
+            columns: ["queendom_id"]
+            isOneToOne: false
+            referencedRelation: "queendoms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wag_auth_state: {
         Row: {
           key: string
@@ -4714,6 +8852,110 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_ticket_change: {
+        Args: { p_event: Json; p_patch: Json; p_ticket_id: string }
+        Returns: {
+          assignee_id: string | null
+          bishop_id: string | null
+          brief: Json
+          category: string
+          checklist: Json
+          client_id: string
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          created_by_kind: string
+          first_responded_at: string | null
+          first_response_due_at: string | null
+          freshdesk_id: number | null
+          group_jid: string | null
+          handoff_department: string | null
+          id: string
+          item: string | null
+          last_client_update_at: string | null
+          money: Json
+          next_update_due_at: string | null
+          next_wake_at: string | null
+          origin: string
+          origin_ref: Json
+          priority: string
+          priority_approved_at: string | null
+          priority_approved_by: string | null
+          proposed_by_run_id: string | null
+          queendom_id: string | null
+          requested_for: string | null
+          resolution: string | null
+          resolve_due_at: string | null
+          satisfaction: number | null
+          sentinel_state: Json
+          status: string
+          sub_category: string | null
+          summary: string | null
+          ticket_no: string
+          title: string
+          updated_at: string
+          vendor_id: string | null
+          wake_reason: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tickets"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_ticket: {
+        Args: { p_event: Json; p_ticket: Json }
+        Returns: {
+          assignee_id: string | null
+          bishop_id: string | null
+          brief: Json
+          category: string
+          checklist: Json
+          client_id: string
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          created_by_kind: string
+          first_responded_at: string | null
+          first_response_due_at: string | null
+          freshdesk_id: number | null
+          group_jid: string | null
+          handoff_department: string | null
+          id: string
+          item: string | null
+          last_client_update_at: string | null
+          money: Json
+          next_update_due_at: string | null
+          next_wake_at: string | null
+          origin: string
+          origin_ref: Json
+          priority: string
+          priority_approved_at: string | null
+          priority_approved_by: string | null
+          proposed_by_run_id: string | null
+          queendom_id: string | null
+          requested_for: string | null
+          resolution: string | null
+          resolve_due_at: string | null
+          satisfaction: number | null
+          sentinel_state: Json
+          status: string
+          sub_category: string | null
+          summary: string | null
+          ticket_no: string
+          title: string
+          updated_at: string
+          vendor_id: string | null
+          wake_reason: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tickets"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       wag_add_month_partition: {
         Args: { p_month: string; p_parent: string }
         Returns: undefined
@@ -4749,12 +8991,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4778,11 +9020,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4803,11 +9045,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4828,11 +9070,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4845,11 +9087,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4859,6 +9101,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  freshdesk: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_domain: [
@@ -4944,6 +9189,7 @@ export type NotificationType =
   | 'sla_breach_founder'
   | 'task_overdue_manager'
   | 'suggestion_resolved' // hand-extended (migration 0136); regen after apply
+  | 'ticket_assigned' | 'ticket_proposed' | 'ticket_sla_warning' | 'ticket_sla_breach' | 'ticket_client_replied' | 'ticket_client_unhappy' // hand-extended (migration 0195)
 
 // sla_policies CHECK-constraint unions (migration 0111)
 export type SlaTriggerKind   = 'status' | 'outcome' | 'task_due'

@@ -207,13 +207,18 @@ export async function requestSiaRepairAction(): Promise<ActionResult<{ requested
 // ── updateSiaGroupMappingAction — classify a group + hide/show it ──
 export async function updateSiaGroupMappingAction(
   groupJid: string,
-  patch: { group_kind?: SiaGroupKind; is_active?: boolean },
+  patch: { group_kind?: SiaGroupKind; is_active?: boolean; client_id?: string | null },
 ): Promise<ActionResult<{ saved: true }>> {
   const auth = await requireProfile(SIA_ROLES);
   if (!auth.ok) return auth.result;
   if (!isGroupJid(groupJid)) return { data: null, error: formErrors.generic };
 
-  const clean: { group_kind?: SiaGroupKind; is_active?: boolean } = {};
+  const clean: { group_kind?: SiaGroupKind; is_active?: boolean; client_id?: string | null } = {};
+  if (patch.client_id !== undefined) {
+    if (patch.client_id !== null && !/^[0-9a-f-]{36}$/i.test(patch.client_id)) return { data: null, error: formErrors.generic };
+    clean.client_id = patch.client_id;
+    clean.group_kind = patch.client_id ? "client" : "unmapped";
+  }
   if (patch.group_kind !== undefined) {
     if (!GROUP_KINDS.includes(patch.group_kind)) return { data: null, error: formErrors.generic };
     clean.group_kind = patch.group_kind;

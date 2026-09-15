@@ -29,3 +29,27 @@ export function leadDisplayName(lead: { first_name: string | null; last_name: st
 export function statusLabel(status: string): string {
   return LEAD_STATUS_LABELS[status as LeadStatus] ?? status;
 }
+
+// ─── Clients (migration 0194) ─────────────────────────────────────────────────
+
+/**
+ * THE client access predicate for server code and tools: admin and founder see every client;
+ * everyone else sees the clients of their own queendom. The SQL twin is client_visible()
+ * (RLS). Pure; safe in 'use client' modules and the Python bridge alike.
+ */
+/**
+ * Who may open a client's finance page. Decided 2026-09-15: money shows to everyone who
+ * can see the client. This is the ONE place to narrow it later (a role list, a sia_role
+ * check) without touching the page or the links that point at it.
+ */
+export function canSeeClientFinance(principal: { role: string; sia_role?: string | null }): boolean {
+  return principal.role !== "guest";
+}
+
+export function canAccessClient(
+  principal: { role: string; queendom_id?: string | null },
+  clientQueendomId: string | null | undefined,
+): boolean {
+  if (principal.role === "admin" || principal.role === "founder") return true;
+  return Boolean(principal.queendom_id) && principal.queendom_id === clientQueendomId;
+}

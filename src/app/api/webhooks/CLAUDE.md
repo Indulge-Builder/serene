@@ -18,6 +18,12 @@
   `export const maxDuration = 60` and run the work inside `after()` with the sends
   `await`-ed — see the root CLAUDE.md `after()` Pattern Note (2026-06-08 outage).
 - A future webhook (call-intelligence) composes all four rules from day one.
+- **`freshdesk/route.ts` (2026-09-15)** composes all four: `x-freshdesk-webhook-secret` via
+  `safeSecretCompare` against `FRESHDESK_WEBHOOK_SECRET`, 120/60s rate limit, `readJsonBody`,
+  the raw event stored in `freshdesk.webhook_events`, then `after()` → `processWebhookEvent`
+  (re-reads the ticket from the Freshdesk API — the payload is a notification, never data).
+  Rules are registered by `scripts/freshdesk/register-webhooks.ts`; the minute poll repairs
+  anything a webhook missed. Contract: `docs/integrations/freshdesk.md`.
 
 ## Active BSP: Gupshup v1
 

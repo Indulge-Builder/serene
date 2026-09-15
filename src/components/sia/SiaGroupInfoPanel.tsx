@@ -22,7 +22,11 @@ import { LogoSpinner } from "@/components/ui/LogoSpinner";
 import { CollapseReveal } from "@/components/ui/CollapseReveal";
 import { formatDate, formatRelativeTime } from "@/lib/utils/dates";
 import { SPRING_CONFIG, FAST_DURATION, EASE_IN_OUT } from "@/lib/constants/motion";
+import Link from "next/link";
 import { getSiaGroupInfoAction, updateSiaGroupMappingAction } from "@/lib/actions/sia";
+import { searchClientsAction } from "@/lib/actions/clients";
+import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
+import type { ClientPickerHit } from "@/lib/types/client";
 import { groupTitle, KIND_LABEL, KindPillRow } from "./sia-shared";
 import type { SiaGroupInfo, SiaGroupKind, SiaGroupRow, SiaMemberRow } from "@/lib/services/sia-service";
 
@@ -96,6 +100,35 @@ export function SiaGroupInfoPanel({
     [group.group_jid, onPatchGroup],
   );
 
+  // The client link (0194): search the spine, pick, and the group becomes that client's.
+  const [clientQuery, setClientQuery] = useState("");
+  const [clientHits, setClientHits] = useState<ClientPickerHit[]>([]);
+  useEffect(() => {
+    const q = clientQuery.trim();
+    if (q.length < 2) { setClientHits([]); return; }
+    let alive = true;
+    const t = setTimeout(async () => {
+      const res = await searchClientsAction({ q, limit: 8 });
+      if (alive && res.data) setClientHits(res.data);
+    }, 250);
+    return () => { alive = false; clearTimeout(t); };
+  }, [clientQuery]);
+
+  const setClient = useCallback(
+    async (client: { id: string; full_name: string } | null) => {
+      setSaving(true);
+      const res = await updateSiaGroupMappingAction(group.group_jid, { client_id: client?.id ?? null });
+      if (res.data) {
+        onPatchGroup(group.group_jid, { group_kind: client ? "client" : "unmapped" });
+        setInfo((prev) => (prev ? { ...prev, client } : prev));
+        setClientQuery("");
+        setClientHits([]);
+      }
+      setSaving(false);
+    },
+    [group.group_jid, onPatchGroup],
+  );
+
   const filteredMembers = useMemo(() => {
     if (!info) return [];
     const q = memberSearch.trim().toLowerCase();
@@ -152,6 +185,50 @@ export function SiaGroupInfoPanel({
           <div className="flex items-center justify-between">
             <span className="type-caption text-(--theme-text-secondary)">Visible in the rail</span>
             <Toggle checked={group.is_active} onChange={setVisible} size="sm" disabled={saving} />
+          </div>
+          {/* The client link: who this group belongs to (the same link the client page sets). */}
+          <div className="flex flex-col gap-2">
+            <span className="label-micro" style={{ color: "var(--theme-text-tertiary)" }}>Linked client</span>
+            {info?.client ? (
+              <div className="flex items-center justify-between gap-2">
+                <Link href={`${CLIENTS_PATH}/${info.client.id}`} className="type-body-sm" style={{ color: "var(--neu-accent-deep)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {info.client.full_name}
+                </Link>
+                <button type="button" onClick={() => setClient(null)} disabled={saving} className="type-caption serene-pressable" style={{ background: "none", border: 0, cursor: "pointer", color: "var(--theme-text-tertiary)" }}>
+                  Unlink
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  className="serene-input neu-input"
+                  value={clientQuery}
+                  onChange={(e) => setClientQuery(e.target.value)}
+                  placeholder="Search a client to link"
+                  disabled={saving || !info}
+                />
+                {clientHits.length > 0 && (
+                  <ul className="m-0 p-0 flex flex-col gap-1" style={{ listStyle: "none" }}>
+                    {clientHits.map((c) => (
+                      <li key={c.id}>
+                        <button
+                          type="button"
+                          onClick={() => setClient({ id: c.id, full_name: c.full_name })}
+                          disabled={saving}
+                          className="serene-pressable type-body-sm w-full text-left"
+                          style={{ background: "none", border: "1px solid var(--theme-paper-border)", borderRadius: "var(--radius-sm)", padding: "var(--space-2) var(--space-3)", cursor: "pointer", color: "var(--theme-text-primary)" }}
+                        >
+                          {c.full_name}
+                          <span className="type-caption" style={{ color: "var(--theme-text-tertiary)", marginLeft: "var(--space-2)" }}>
+                            {c.primary_phone ?? ""}{c.queendom_name ? ` · ${c.queendom_name}` : ""}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
           </div>
         </div>
 

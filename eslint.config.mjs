@@ -45,6 +45,7 @@ const eslintConfig = [
       'node_modules/**',
       'public/**',            // sw.js is hand-written vanilla JS for the SW runtime
       'graphify-out/**',
+      'cleint-data/**',       // the founder's data folder: Atlas + app codebase copies, PII exports
       'docs/**',
       'supabase/**',
       'scripts/**',           // one-off import/test scripts, run manually via tsx

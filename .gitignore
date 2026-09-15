@@ -95,3 +95,15 @@ vendor-removed-*.json
 # Supabase CLI local state (per-machine: linked project, branch, schema cache)
 supabase/.branches/
 supabase/.temp/
+
+# Member PII sheets and the concierge roster (2026-09-15) — never commit
+cleint-data/
+export-*.csv
+sia-agents-roster.md
+
+# Zoho Books OpenAPI specs and the download archive (reference only, 2.9 MB)
+zoho books-api/
+openapi-all.zip
+# local scratch
+.impeccable/
+ok.md
