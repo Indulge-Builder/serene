@@ -47,6 +47,8 @@ export type TicketRow = {
   handoff_department: string | null;
   vendor_id: string | null;
   money: TicketMoney;
+  /** 0200 */
+  tags: string[];
   summary: string | null;
   created_by: string | null;
   created_by_kind: "human" | "elaya" | "intake" | "import";
@@ -60,6 +62,25 @@ export type TicketRow = {
   freshdesk_id: number | null;
   created_at: string;
   updated_at: string;
+};
+
+/** The sentinel's memory (sia.tickets.sentinel_state); see services/ticket-sentinel.ts. */
+export type SentinelState = {
+  version: 1;
+  wakes: number;
+  last_wake_at?: string;
+  /** The newest non-sentinel event it has read, and the newest linked message. */
+  last_event_at?: string;
+  last_link_at?: string;
+  /** Rule key → when it fired. A rule fires once per key; the key carries what changed. */
+  fired: Record<string, string>;
+  reads: number;
+  tokens_in: number;
+  tokens_out: number;
+  last_read_at?: string;
+  last_tone?: "praise" | "neutral" | "frustrated" | "angry";
+  /** Brief changes the reader proposed and nobody has applied yet. */
+  proposed_brief?: Record<string, unknown>;
 };
 
 export type TicketEventRow = {
@@ -137,7 +158,8 @@ export type TicketingDatabase = {
       tickets: Table<TicketRow>;
       ticket_events: Table<TicketEventRow, Omit<TicketEventRow, "id" | "created_at"> & { created_at?: string }>;
       ticket_message_links: Table<TicketMessageLinkRow, Omit<TicketMessageLinkRow, "id" | "created_at" | "confidence" | "run_id" | "created_by"> & { confidence?: number; run_id?: string | null; created_by?: string | null }>;
-      ticket_sla_policies: Table<TicketSlaPolicyRow>;
+      ticket_sla_policies: Table<TicketSlaPolicyRow, Omit<TicketSlaPolicyRow, "id" | "created_at" | "updated_at"> & { id?: string }>;
+      ticket_settings: Table<TicketSettingsRow, Omit<TicketSettingsRow, "updated_at"> & { updated_at?: string }>;
       genie_roster: Table<GenieRosterRow>;
       queendoms: Table<{ id: string; name: string; slug: string; freshdesk_group_id: number | null; queen_id: string | null; bishop_id: string | null; joker_id: string | null; is_active: boolean; created_at: string; updated_at: string }>;
     };
@@ -145,6 +167,10 @@ export type TicketingDatabase = {
     Functions: {
       create_ticket: { Args: { p_ticket: Record<string, unknown>; p_event: Record<string, unknown> }; Returns: TicketRow };
       apply_ticket_change: { Args: { p_ticket_id: string; p_patch: Record<string, unknown>; p_event: Record<string, unknown> }; Returns: TicketRow };
+      /** 0199 — due tickets, leased to this worker. */
+      claim_sentinel_wakes: { Args: { p_limit?: number; p_lease_min?: number }; Returns: TicketRow[] };
+      /** 0199 — write the state and the next alarm, no event. */
+      sentinel_sleep: { Args: { p_ticket_id: string; p_state: Record<string, unknown>; p_next_wake_at: string | null; p_wake_reason: string | null }; Returns: null };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
@@ -164,10 +190,21 @@ export type TicketListFilters = {
   queendom: string | null;
   assignee: string | null;
   category: TicketCategory | null;
+  tag: string | null;
   search: string | null;
   mine: boolean;
   page: number;
 };
+
+/** sia.ticket_settings, resolved: the labels the app shows and the tag vocabulary. */
+export type TicketSettings = {
+  statusLabels: Record<TicketStatus, string>;
+  /** Raw overrides as stored (only the statuses the founder renamed). */
+  statusOverrides: Record<string, string>;
+  tags: string[];
+};
+
+export type TicketSettingsRow = { key: string; value: Record<string, unknown> | unknown[]; updated_by: string | null; updated_at: string };
 
 export type StaffOption = { id: string; full_name: string; sia_role: string | null };
 

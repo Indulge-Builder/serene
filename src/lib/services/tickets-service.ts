@@ -9,13 +9,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapRows } from "@/lib/utils/rows";
-import { TICKETS_LIST_PAGE_SIZE, TICKET_ACTIVE_STATUSES, type TicketStatus } from "@/lib/constants/tickets";
-import { getClientDetail } from "@/lib/services/clients-service";
+import { cache } from "react";
+import { TICKETS_LIST_PAGE_SIZE, TICKET_ACTIVE_STATUSES, type TicketStatus, TICKET_BOARD_STATUSES, TICKET_BOARD_COLUMN_CAP, TICKET_SETTING_KEYS, resolveTicketStatusLabels } from "@/lib/constants/tickets";
 import { freshdeskDb } from "@/lib/services/freshdesk-sync";
-import type {
-  StaffOption, TicketDetail, TicketEventRow, TicketHelp, TicketListFilters, TicketListItem, TicketMessageLinkRow, TicketRow,
-  TicketSlaPolicyRow, TicketingDatabase, LinkedMessage,
-} from "@/lib/types/ticket";
+import type { StaffOption, TicketDetail, TicketEventRow, TicketHelp, TicketListFilters, TicketListItem, TicketMessageLinkRow, TicketRow, TicketSlaPolicyRow, TicketingDatabase, LinkedMessage, TicketSettings } from "@/lib/types/ticket";
 
 export async function ticketsDb() {
   const supabase = (await createClient()) as unknown as SupabaseClient<TicketingDatabase, "sia">;
@@ -55,6 +52,7 @@ export async function listTickets(filters: TicketListFilters, callerId: string):
   if (filters.assignee) q = q.eq("assignee_id", filters.assignee);
   if (filters.mine) q = q.eq("assignee_id", callerId);
   if (filters.category) q = q.eq("category", filters.category);
+  if (filters.tag) q = q.contains("tags", [filters.tag]);
   if (filters.search) {
     const t = searchToken(filters.search);
     if (t) q = q.or(`title.ilike.%${t}%,ticket_no.ilike.%${t}%`);
@@ -76,6 +74,52 @@ export async function listTickets(filters: TicketListFilters, callerId: string):
     })),
     totalCount: Number(count ?? 0),
   };
+}
+
+/**
+ * The board's read: every ticket in the board's columns (live work + proposed + resolved),
+ * one queendom or all, capped per column. Session client, so RLS scopes it.
+ */
+export async function listBoardTickets(queendomId: string | null): Promise<TicketListItem[]> {
+  const db = await ticketsDb();
+  const perStatus = await Promise.all(TICKET_BOARD_STATUSES.map(async (status) => {
+    let q = db.from("tickets").select("*").eq("status", status).order("updated_at", { ascending: false }).limit(TICKET_BOARD_COLUMN_CAP);
+    if (queendomId) q = q.eq("queendom_id", queendomId);
+    const { data, error } = await q;
+    if (error) console.error("[tickets-service] board read failed", status, error.message);
+    return mapRows<TicketRow, TicketRow>(data, (r) => r);
+  }));
+  const rows = perStatus.flat();
+  const names = await nameMaps(rows.map((r) => r.client_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)));
+  return rows.map((r) => ({
+    ...r,
+    client_name: names.clients.get(r.client_id) ?? "Client",
+    assignee_name: r.assignee_id ? (names.profiles.get(r.assignee_id) ?? null) : null,
+    queendom_name: r.queendom_id ? (names.queendoms.get(r.queendom_id) ?? null) : null,
+  }));
+}
+
+/** sia.ticket_settings resolved: the labels the app shows and the tag vocabulary. Read per request. */
+export const getTicketSettings = cache(async (): Promise<TicketSettings> => {
+  const db = ticketsAdminDb();
+  const { data } = await db.from("ticket_settings").select("key, value");
+  const byKey = new Map<string, unknown>();
+  mapRows<{ key: string; value: unknown }, void>(data, (r) => { byKey.set(r.key, r.value); });
+  const raw = byKey.get(TICKET_SETTING_KEYS.statusLabels);
+  const statusOverrides: Record<string, string> = {};
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === "string" && v.trim()) statusOverrides[k] = v.trim();
+  }
+  const tagsRaw = byKey.get(TICKET_SETTING_KEYS.tags);
+  const tags = Array.isArray(tagsRaw) ? tagsRaw.filter((t): t is string => typeof t === "string") : [];
+  return { statusLabels: resolveTicketStatusLabels(statusOverrides), statusOverrides, tags };
+});
+
+/** Every SLA policy row, active or not, most specific first (the settings page). */
+export async function listTicketSlaPolicies(): Promise<TicketSlaPolicyRow[]> {
+  const db = ticketsAdminDb();
+  const { data } = await db.from("ticket_sla_policies").select("*").order("created_at", { ascending: true });
+  return mapRows<TicketSlaPolicyRow, TicketSlaPolicyRow>(data, (r) => r);
 }
 
 /** Everyone who can carry a ticket in a queendom (the assignee picker). */
@@ -167,6 +211,9 @@ export async function resolveSlaPolicy(ticket: Pick<TicketRow, "queendom_id" | "
 // ─── The help window ─────────────────────────────────────────────────────────
 
 export async function getTicketHelp(clientId: string, category: string, excludeTicketId?: string): Promise<TicketHelp | null> {
+  // Dynamic: clients-service pulls sia-service (a `server-only` module) into the static graph,
+  // and the sentinel's laptop loop (scripts/tickets/sentinel.ts) imports this file under tsx.
+  const { getClientDetail } = await import("@/lib/services/clients-service");
   const detail = await getClientDetail(clientId);
   if (!detail) return null;
   const db = await ticketsDb();
@@ -193,4 +240,44 @@ export async function getTicketHelp(clientId: string, category: string, excludeT
     anticipations: detail.anticipations.map((a) => ({ title: a.title, due_at: a.due_at })),
     openTickets: mapRows<{ id: string; ticket_no: string; title: string; status: TicketStatus }, TicketHelp["openTickets"][number]>(open.data, (r) => r).filter((t) => t.id !== excludeTicketId),
   };
+}
+
+// ─── Elaya's reads (admin client, explicit scope — the elaya-data parity rule) ──
+
+export type ElayaTicketSummary = Pick<TicketRow, "id" | "ticket_no" | "title" | "status" | "priority" | "category" | "sub_category" | "requested_for" | "resolve_due_at" | "first_response_due_at" | "first_responded_at" | "updated_at" | "created_at" | "tags"> & { client_name: string; assignee_name: string | null; queendom_name: string | null };
+
+export async function listTicketsForElaya(scope: { queendomId: string | null; assigneeId: string | null; statuses: TicketStatus[]; search: string | null; limit: number }): Promise<ElayaTicketSummary[]> {
+  const db = ticketsAdminDb();
+  let q = db.from("tickets").select("*");
+  q = scope.statuses.length ? q.in("status", scope.statuses) : q.in("status", [...TICKET_ACTIVE_STATUSES, "proposed"]);
+  if (scope.queendomId) q = q.eq("queendom_id", scope.queendomId);
+  if (scope.assigneeId) q = q.eq("assignee_id", scope.assigneeId);
+  if (scope.search) { const t = searchToken(scope.search); if (t) q = q.or(`title.ilike.%${t}%,ticket_no.ilike.%${t}%`); }
+  const { data } = await q.order("updated_at", { ascending: false }).limit(Math.min(scope.limit, 50));
+  const rows = mapRows<TicketRow, TicketRow>(data, (r) => r);
+  const names = await nameMaps(rows.map((r) => r.client_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)));
+  return rows.map((r) => ({
+    id: r.id, ticket_no: r.ticket_no, title: r.title, status: r.status, priority: r.priority, category: r.category, sub_category: r.sub_category,
+    requested_for: r.requested_for, resolve_due_at: r.resolve_due_at, first_response_due_at: r.first_response_due_at, first_responded_at: r.first_responded_at,
+    updated_at: r.updated_at, created_at: r.created_at, tags: r.tags ?? [],
+    client_name: names.clients.get(r.client_id) ?? "Client",
+    assignee_name: r.assignee_id ? (names.profiles.get(r.assignee_id) ?? null) : null,
+    queendom_name: r.queendom_id ? (names.queendoms.get(r.queendom_id) ?? null) : null,
+  }));
+}
+
+/** One ticket by number (T-000042) or id, with its client, its last events and its policy. Admin client; the caller gates. */
+export async function getTicketByRefForElaya(ref: string): Promise<{ ticket: TicketRow; client_name: string; assignee_name: string | null; events: TicketEventRow[]; policy: TicketSlaPolicyRow | null } | null> {
+  const db = ticketsAdminDb();
+  const clean = ref.trim().toUpperCase();
+  const q = /^[0-9A-F-]{36}$/i.test(clean) ? db.from("tickets").select("*").eq("id", clean.toLowerCase()) : db.from("tickets").select("*").eq("ticket_no", /^T-\d+$/.test(clean) ? clean : `T-${clean.replace(/^T-?/, "").padStart(6, "0")}`);
+  const { data } = await q.maybeSingle();
+  if (!data) return null;
+  const t = data as TicketRow;
+  const [{ data: ev }, names, policy] = await Promise.all([
+    db.from("ticket_events").select("*").eq("ticket_id", t.id).order("created_at", { ascending: false }).limit(12),
+    nameMaps([t.client_id], t.assignee_id ? [t.assignee_id] : []),
+    resolveSlaPolicy(t),
+  ]);
+  return { ticket: t, client_name: names.clients.get(t.client_id) ?? "Client", assignee_name: t.assignee_id ? (names.profiles.get(t.assignee_id) ?? null) : null, events: mapRows<TicketEventRow, TicketEventRow>(ev, (r) => r).reverse(), policy };
 }

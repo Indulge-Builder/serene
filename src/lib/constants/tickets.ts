@@ -209,3 +209,46 @@ export function checklistForCategory(category: TicketCategory): TicketChecklistI
 export function ticketStatusLabel(s: string): string {
   return TICKET_STATUSES.labels[s as TicketStatus] ?? s;
 }
+
+// ─── The sentinel (0199, client-ticket-plan.md 7.6) ──────────────────────────
+
+/** Minutes before a deadline the warning fires. */
+export const SENTINEL_WARN_BEFORE_MIN = { first_response: 5, resolve: 60 } as const;
+/** A resolved ticket closes on its own after this long with no client reply. */
+export const SENTINEL_CLOSE_AFTER_MIN = 2880;
+/** A proposal the bishop has not looked at gets one nudge after this long. */
+export const SENTINEL_PROPOSAL_NUDGE_MIN = 60;
+/** Tickets claimed per sweep, and the lease a claim holds (a crashed worker's tickets return after it). */
+export const SENTINEL_BATCH = 20;
+export const SENTINEL_LEASE_MIN = 5;
+/** A ticket with no deadline in sight is still looked at this often. */
+export const SENTINEL_MAX_SLEEP_MIN = 720;
+/** The per-ticket model budget (input + output tokens); past it the sentinel runs rules only. */
+export const SENTINEL_TOKEN_BUDGET = 60_000;
+/** How much new text a single reading takes (characters); older text is already in the summary. */
+export const SENTINEL_READ_MAX_CHARS = 6_000;
+export const SENTINEL_PROMPT_VERSION = "sentinel-read-v1";
+
+// ─── The board, settings and tags (0200) ─────────────────────────────────────
+
+export const TICKETS_BOARD_PATH = `${TICKETS_PATH}/board`;
+export const TICKET_SETTINGS_PATH = "/settings/tickets";
+/** The board's columns, left to right: the live work plus what waits for approval and what is done today. */
+export const TICKET_BOARD_STATUSES: readonly TicketStatus[] = ["proposed", "open", "sourcing", "awaiting_client", "awaiting_vendor", "in_delivery", "payment_due", "resolved"];
+/** How many tickets the board reads per column at most (the rest are on the list). */
+export const TICKET_BOARD_COLUMN_CAP = 60;
+/** sia.ticket_settings keys. */
+export const TICKET_SETTING_KEYS = { statusLabels: "status_labels", tags: "tags" } as const;
+export const TICKET_TAG_MAX = 12;
+export const TICKET_TAG_RE = /^[a-z0-9][a-z0-9-]{0,29}$/;
+
+export type TicketStatusLabels = Record<TicketStatus, string>;
+/** The labels the app shows: the founder's overrides (settings) over the built-in names. */
+export function resolveTicketStatusLabels(overrides: Record<string, unknown> | null | undefined): TicketStatusLabels {
+  const out = { ...TICKET_STATUSES.labels } as TicketStatusLabels;
+  for (const s of TICKET_STATUSES.values) {
+    const v = overrides?.[s];
+    if (typeof v === "string" && v.trim()) out[s] = v.trim().slice(0, 30);
+  }
+  return out;
+}

@@ -38,6 +38,7 @@ import { LEAD_STATUSES } from '@/lib/constants/lead-statuses';
 import { COLD_LEAD_THRESHOLD_DAYS } from '@/lib/constants/leads';
 import { DEAL_TYPE_ENUM, DEAL_CATEGORY_ENUM } from '@/lib/constants/deal-types';
 import { DEFAULT_GIA_DOMAIN, isGiaDomain } from '@/lib/constants/domains';
+import { TICKET_STATUSES, TICKET_TRANSITIONS, type TicketStatus } from '@/lib/constants/tickets';
 import type { UserRole } from '@/lib/types';
 import type { LeadStatus } from '@/lib/types/database';
 import type { ElayaChannel } from '@/lib/types/elaya';
@@ -65,6 +66,8 @@ export type ElayaReadToolName =
   | 'get_campaigns'
   | 'get_budget'
   // Vendors (0183–0190) — admin/founder, mirroring the tables' RLS
+  | 'list_tickets'
+  | 'get_ticket'
   | 'find_vendors'
   | 'get_vendor_details';
 
@@ -872,7 +875,106 @@ const getVendorDetails: ElayaTool = {
 export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   'find_vendors',
   'get_vendor_details',
+  // Tickets: the sentinel's ledger lives in Node with its cores; the Python brain reads it here.
+  'list_tickets',
+  'get_ticket',
 ]);
+
+// ── Tickets (Sia, 0195/0199/0200) — the genie's queue and one ticket's whole story ──
+// Scope is the principal's queendom (admin/founder: every queendom), read through
+// elaya-data so WhatsApp turns see what the app sees. Ticket numbers (T-000042) are the
+// handle the write tools take; ids are surfaced too for the resolver.
+
+const listTickets: ElayaTool = {
+  name: 'list_tickets',
+  description:
+    'Sia tickets: the live client requests in the user’s queendom (admin/founder: every queendom). ' +
+    'Call when the user asks what is open, what is on their plate, what is late, what a client is waiting on, ' +
+    'or to find a ticket by words in its title. Returns ticket numbers (T-000042) to use with get_ticket, ' +
+    'add_ticket_note and move_ticket_status.',
+  schema: z.object({
+    mine: z.boolean().optional(),
+    status: z.array(z.enum(TICKET_STATUSES.zodEnum)).max(10).optional(),
+    search: z.string().trim().max(80).optional(),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      mine: { type: 'boolean', description: 'Only tickets assigned to the user' },
+      status: { type: 'array', items: { type: 'string', enum: [...TICKET_STATUSES.values] }, description: 'Only these statuses (default: everything live)' },
+      search: { type: 'string', description: 'Words from the title or a ticket number' },
+    },
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { mine, status, search } = input as { mine?: boolean; status?: TicketStatus[]; search?: string };
+    const rows = await elayaData.listTicketsFor(principal, { mine, status, search: search ?? null, limit: 25 });
+    const now = Date.now();
+    return {
+      count: rows.length,
+      tickets: rows.map((t) => ({
+        ticketNo: t.ticket_no,
+        ticketId: t.id,
+        title: t.title,
+        client: t.client_name,
+        status: t.status,
+        priority: t.priority,
+        category: t.sub_category ? `${t.category} / ${t.sub_category}` : t.category,
+        assignee: t.assignee_name ?? 'unassigned',
+        queendom: t.queendom_name,
+        late: Boolean((t.first_response_due_at && !t.first_responded_at && new Date(t.first_response_due_at).getTime() < now) || (t.resolve_due_at && new Date(t.resolve_due_at).getTime() < now)),
+        resolveBy: t.resolve_due_at,
+        requestedFor: t.requested_for,
+        tags: t.tags,
+        updatedAt: t.updated_at,
+      })),
+      note: rows.length === 25 ? 'Showing the 25 most recently updated; narrow with status, mine or search.' : undefined,
+    };
+  },
+};
+
+const getTicket: ElayaTool = {
+  name: 'get_ticket',
+  description:
+    'One Sia ticket in full: the brief, the checklist, the money, the sentinel’s summary, the SLA clocks and ' +
+    'the last twelve diary events. Takes the ticket number (T-000042) or id from list_tickets. Call before ' +
+    'summarising a ticket, answering "where does this stand", or proposing a move.',
+  schema: z.object({ ticket: z.string().trim().min(1).max(60) }),
+  jsonSchema: {
+    type: 'object',
+    properties: { ticket: { type: 'string', description: 'The ticket number (T-000042) or id' } },
+    required: ['ticket'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { ticket } = input as { ticket: string };
+    const d = await elayaData.getTicketFor(principal, ticket);
+    if (!d) return { error: "I couldn't find that ticket among the ones you can see." };
+    const t = d.ticket;
+    return {
+      ticketNo: t.ticket_no,
+      ticketId: t.id,
+      title: t.title,
+      client: d.client_name,
+      status: t.status,
+      allowedMoves: TICKET_TRANSITIONS[t.status],
+      priority: t.priority,
+      priorityApproved: Boolean(t.priority_approved_at),
+      category: t.sub_category ? `${t.category} / ${t.sub_category}` : t.category,
+      assignee: d.assignee_name ?? 'unassigned',
+      brief: t.brief,
+      checklist: t.checklist.map((c, i) => ({ index: i, label: c.label, done: Boolean(c.done_at) })),
+      money: t.money,
+      tags: t.tags,
+      summary: t.summary,
+      requestedFor: t.requested_for,
+      clocks: { firstResponseDue: t.first_response_due_at, firstRespondedAt: t.first_responded_at, nextUpdateDue: t.next_update_due_at, resolveBy: t.resolve_due_at },
+      policy: d.policy ? { firstResponseMin: d.policy.first_response_min, resolveTargetMin: d.policy.resolve_target_min, businessHours: d.policy.business_hours } : null,
+      recentEvents: d.events.map((e) => ({ at: e.created_at, by: e.actor_kind, type: e.event_type, body: e.body })),
+      createdAt: t.created_at,
+    };
+  },
+};
 
 const ALL_TOOLS = [
   searchLeads,
@@ -889,6 +991,8 @@ const ALL_TOOLS = [
   getBudget,
   findVendors,
   getVendorDetails,
+  listTickets,
+  getTicket,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));

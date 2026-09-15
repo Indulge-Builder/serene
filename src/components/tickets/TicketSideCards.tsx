@@ -2,7 +2,9 @@
 // and the help window (what the twin and the mirror know that matters to this ticket).
 
 import Link from 'next/link';
-import { MessageCircle, ListTodo, Compass, MapPin, Ban, HeartPulse, Ticket as TicketIcon, CalendarClock } from 'lucide-react';
+import { MessageCircle, Compass, MapPin, Ban, HeartPulse, Ticket as TicketIcon, CalendarClock, Eye } from 'lucide-react';
+import { SENTINEL_TOKEN_BUDGET } from '@/lib/constants/tickets';
+import type { SentinelState } from '@/lib/types/ticket';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { HealthPill } from '@/components/clients/HealthPill';
@@ -28,18 +30,6 @@ export function TicketLinkedMessagesCard({ links }: { links: TicketDetail['links
               <span style={{ fontSize: 'var(--text-sm)', whiteSpace: 'pre-wrap' }}>{l.text ?? '(media or empty)'}</span>
             </div>
           ))}
-      </div>
-    </div>
-  );
-}
-
-export function TicketTasksCard({ tasks }: { tasks: TicketDetail['tasks'] }) {
-  return (
-    <div style={SHELL}>
-      <CardHeader icon={ListTodo} label="Sub-work" />
-      <div style={BODY}>
-        {tasks.length === 0 ? <EmptyState variant="inline" title="No tasks yet." description="Tasks linked to this ticket appear here (the task engine, T1 follow-up)." /> :
-          tasks.map((t) => <div key={t.id} style={{ fontSize: 'var(--text-sm)' }}><Link href={`/tasks/${t.id}`} style={{ color: 'var(--neu-accent-deep)' }}>{t.title}</Link><span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', marginLeft: 'var(--space-2)' }}>{t.status}{t.due_at ? ` · due ${formatRelativeTime(t.due_at)}` : ''}</span></div>)}
       </div>
     </div>
   );
@@ -97,6 +87,41 @@ export function TicketHelpPanel({ help, clientId, clientName }: { help: TicketHe
       {help && help.health == null && (
         <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><HeartPulse style={{ width: 12, height: 12 }} /> No health signals yet.</span>
       )}
+    </div>
+  );
+}
+
+/** The sentinel's own card: its summary of the ticket, when it last looked, when it looks next, what it has fired. */
+export function TicketSentinelCard({ ticket }: { ticket: TicketDetail['ticket'] }) {
+  const st = (ticket.sentinel_state ?? {}) as Partial<SentinelState>;
+  const fired = Object.entries(st.fired ?? {}).sort(([, a], [, b]) => b.localeCompare(a));
+  const live = !['closed', 'dropped'].includes(ticket.status);
+  const spent = Number(st.tokens_in ?? 0) + Number(st.tokens_out ?? 0);
+  const tone = st.last_tone && st.last_tone !== 'neutral' ? st.last_tone : null;
+  return (
+    <div style={{ background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', overflow: 'hidden' }}>
+      <CardHeader icon={Eye} label="Sentinel" right={live && ticket.next_wake_at ? <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--neu-header-ink)' }}>next look {formatRelativeTime(ticket.next_wake_at)}</span> : undefined} />
+      <div style={{ padding: 'var(--space-4) var(--space-6) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', fontSize: 'var(--text-sm)' }}>
+        {ticket.summary ? (
+          <p style={{ margin: 0, lineHeight: 1.6 }}>{ticket.summary}</p>
+        ) : (
+          <EmptyState variant="inline" title={live ? 'Watching. Nothing to say yet.' : 'Retired with the ticket.'} description={live ? 'A summary appears after the first note or client message.' : undefined} />
+        )}
+        {tone && <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: tone === 'praise' ? 'var(--color-success-text)' : 'var(--color-danger-text)' }}>The client last sounded {tone}.</p>}
+        {fired.length > 0 && (
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 2, fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>
+            {fired.slice(0, 6).map(([k, at]) => (
+              <li key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+                <span>{k.replace(/_/g, ' ').replace(/:.*$/, '')}</span>
+                <span style={{ color: 'var(--theme-text-tertiary)', flexShrink: 0 }}>{formatRelativeTime(at)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p style={{ margin: 0, fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)' }}>
+          {Number(st.wakes ?? 0)} looks · {Number(st.reads ?? 0)} readings · {spent > 0 ? `${Math.round((spent / SENTINEL_TOKEN_BUDGET) * 100)}% of its budget` : 'no model spend'}{st.last_wake_at ? ` · last ${formatRelativeTime(st.last_wake_at)}` : ''}
+        </p>
+      </div>
     </div>
   );
 }

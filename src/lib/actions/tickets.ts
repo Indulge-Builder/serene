@@ -15,17 +15,19 @@ import { canAccessClient } from "@/lib/elaya/access";
 import { TICKETS_PATH } from "@/lib/constants/tickets";
 import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
 import { draftTicketFromMessages } from "@/lib/services/ticket-creator";
-import { getTicketHelp, listQueendomStaff } from "@/lib/services/tickets-service";
+import { getTicketHelp, listQueendomStaff, listBoardTickets } from "@/lib/services/tickets-service";
 import {
   addTicketNoteCore, assignTicketCore, createTicketCore, linkTicketMessagesCore, moveTicketStatusCore,
   setTicketPriorityCore, tickChecklistCore, updateTicketBriefCore, updateTicketMoneyCore,
+  updateTicketTagsCore, createTicketTaskCore,
 } from "@/lib/services/ticket-mutations";
 import {
   AddTicketNoteSchema, AssignTicketSchema, CreateTicketSchema, DraftTicketSchema, LinkTicketMessagesSchema,
   MoveTicketStatusSchema, SetTicketPrioritySchema, TickChecklistSchema, UpdateTicketBriefSchema, UpdateTicketMoneySchema,
+  UpdateTicketTagsSchema, CreateTicketTaskSchema,
 } from "@/lib/validations/ticket-schema";
 import type { ActionResult } from "@/lib/types";
-import type { StaffOption, TicketDraft, TicketHelp, TicketRow } from "@/lib/types/ticket";
+import type { StaffOption, TicketDraft, TicketHelp, TicketListItem, TicketRow } from "@/lib/types/ticket";
 
 async function clientQueendom(clientId: string): Promise<{ exists: boolean; queendom_id: string | null }> {
   const { data } = await createAdminClient().from("clients").select("queendom_id").eq("id", clientId).maybeSingle();
@@ -184,4 +186,39 @@ export async function listQueendomStaffAction(input: { queendom_id: string | nul
   const qid = typeof input?.queendom_id === "string" ? input.queendom_id : null;
   if (!canAccessClient(auth.profile, qid)) return { data: null, error: formErrors.unauthorized };
   return { data: await listQueendomStaff(qid), error: null };
+}
+
+// ─── Tags, sub-work, the board (0200) ────────────────────────────────────────
+
+export async function updateTicketTagsAction(input: unknown): Promise<ActionResult<TicketRow>> {
+  const parsed = parseActionInput(UpdateTicketTagsSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const res = await updateTicketTagsCore(parsed.data.ticket_id, parsed.data.tags, actorFromProfile(g.profile));
+  if (res.error) return { data: null, error: res.error };
+  revalidateTicket(parsed.data.ticket_id, g.client_id);
+  return { data: res.data, error: null };
+}
+
+export async function createTicketTaskAction(input: unknown): Promise<ActionResult<{ taskId: string }>> {
+  const parsed = parseActionInput(CreateTicketTaskSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const res = await createTicketTaskCore(parsed.data, actorFromProfile(g.profile));
+  if (res.error) return { data: null, error: res.error };
+  revalidateTicket(parsed.data.ticket_id, g.client_id);
+  revalidatePath("/tasks");
+  return { data: res.data, error: null };
+}
+
+/** The board's live re-read (the Realtime subscription calls this; RLS scopes the rows). */
+export async function listBoardTicketsAction(input: { queendom_id: string | null }): Promise<ActionResult<TicketListItem[]>> {
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const q = typeof input?.queendom_id === "string" && /^[0-9a-f-]{36}$/i.test(input.queendom_id) ? input.queendom_id : null;
+  const privileged = auth.profile.role === "admin" || auth.profile.role === "founder";
+  const scope = privileged ? q : (auth.profile.queendom_id ?? null);
+  return { data: await listBoardTickets(scope), error: null };
 }

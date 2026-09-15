@@ -59,7 +59,9 @@ import {
 } from "@/lib/services/task-mutations";
 // The group access gate for create_subtask — admin-twin read (channel-safe), reusing
 // the principal's visible-group set (the access check IS membership in that set).
-import { getVisibleGroupById } from "@/lib/elaya/elaya-data";
+import { getVisibleGroupById, getTicketFor } from "@/lib/elaya/elaya-data";
+import { addTicketNoteCore, moveTicketStatusCore } from "@/lib/services/ticket-mutations";
+import { canTransition, TICKET_STATUSES, TICKET_TRANSITIONS, type TicketStatus } from "@/lib/constants/tickets";
 import {
   insertExecutedAction,
   insertProposedAction,
@@ -106,7 +108,10 @@ export type ElayaWriteToolName =
   | "create_subtask"
   | "update_task_status"
   | "update_task"
-  | "delete_task";
+  | "delete_task"
+  // Ticket writes (Sia, 0200): a note executes inline; a move is a proposal.
+  | "add_ticket_note"
+  | "move_ticket_status";
 
 // THE STATE-CHANGING (propose-only) TIER — update_lead_status, reassign_lead,
 // log_deal, delete_task. The tier is enforced STRUCTURALLY, not by a lookup:
@@ -1204,6 +1209,104 @@ const deleteTask: ElayaWriteTool = {
 // Registry + per-role toolset
 // ─────────────────────────────────────────────
 
+// ─────────────────────────────────────────────
+// TICKET TOOLS (Sia). The ticket is looked up through elaya-data (principal-scoped: the
+// queendom, or every queendom for admin/founder) and written through the SAME cores the
+// ticket page uses, so an Elaya note or move is indistinguishable from one made in the app
+// — the diary shows who, the sentinel wakes on it, the board re-reads.
+// ─────────────────────────────────────────────
+
+const REFUSE_TICKET = "I couldn't find that ticket among the ones you can act on. Check the number with list_tickets first.";
+
+const addTicketNote: ElayaWriteTool = {
+  name: "add_ticket_note",
+  roles: STAFF_ALL,
+  description:
+    "Add an internal note to a Sia ticket's diary (what happened, what the vendor said, a cost). " +
+    "Takes the ticket number (T-000042) from list_tickets. Happens immediately; the sentinel reads " +
+    "the note and updates the ticket's summary, checklist and money from it.",
+  schema: z.object({ ticket: z.string().trim().min(1).max(60), note: z.string().trim().min(1).max(2000) }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      ticket: { type: "string", description: "The ticket number (T-000042) or id" },
+      note: { type: "string", description: "The note text" },
+    },
+    required: ["ticket", "note"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { ticket, note } = input as { ticket: string; note: string };
+    const d = await getTicketFor(principal, ticket);
+    if (!d) return { error: REFUSE_TICKET };
+    const clean = sanitizeText(note);
+    if (!clean) return { error: "The note was empty after cleaning — nothing to save." };
+    const core = await addTicketNoteCore(d.ticket.id, clean, actorFromPrincipal(principal));
+    if (core.error || !core.data) return { error: "I couldn't save that note just now." };
+    await insertExecutedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "add_ticket_note",
+      payload: { target: { ticketId: d.ticket.id, ticketNo: d.ticket.ticket_no }, args: { note: clean }, channel: ctx.channel, before: null, after: { created: { eventId: core.data.id } } },
+    });
+    return { done: true, summary: `Note added to ${d.ticket.ticket_no} (${d.ticket.title}).`, eventId: core.data.id };
+  },
+};
+
+const moveTicketStatus: ElayaWriteTool = {
+  name: "move_ticket_status",
+  roles: STAFF_ALL,
+  description:
+    "Propose moving a Sia ticket to another status (sourcing, awaiting_client, awaiting_vendor, in_delivery, " +
+    "payment_due, resolved, dropped, or open to reopen). Takes the ticket number (T-000042). This records a " +
+    "proposal and WAITS — it does NOT move the ticket yet. Tell the user what you are about to do and ask them " +
+    "to confirm with a yes. Only the moves get_ticket lists under allowedMoves are possible.",
+  schema: z.object({
+    ticket: z.string().trim().min(1).max(60),
+    status: z.enum(TICKET_STATUSES.zodEnum),
+    note: z.string().trim().max(500).optional(),
+  }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      ticket: { type: "string", description: "The ticket number (T-000042) or id" },
+      status: { type: "string", enum: [...TICKET_STATUSES.values], description: "The target status" },
+      note: { type: "string", description: "Optional line for the diary (why)" },
+    },
+    required: ["ticket", "status"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { ticket, status, note } = input as { ticket: string; status: TicketStatus; note?: string };
+    const d = await getTicketFor(principal, ticket);
+    if (!d) return { error: REFUSE_TICKET };
+    if (!canTransition(d.ticket.status, status)) {
+      return { error: `A ticket cannot go from ${TICKET_STATUSES.labels[d.ticket.status]} to ${TICKET_STATUSES.labels[status]}. Allowed: ${TICKET_TRANSITIONS[d.ticket.status].join(", ")}.` };
+    }
+    await supersedePriorProposals(ctx.conversationId, principal.userId, principal.userId);
+    const proposal = await insertProposedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "move_ticket_status",
+      payload: {
+        target: { ticketId: d.ticket.id, ticketNo: d.ticket.ticket_no },
+        args: { status, note: note ? sanitizeText(note) : null, title: d.ticket.title },
+        channel: ctx.channel,
+        before: { status: d.ticket.status },
+        after: null,
+      },
+    });
+    if (!proposal) return { error: "I couldn't set that up just now." };
+    return {
+      proposalRecorded: true,
+      message:
+        `Proposal recorded (NOT yet done): move ${d.ticket.ticket_no} (${d.ticket.title}) from ` +
+        `${TICKET_STATUSES.labels[d.ticket.status]} to ${TICKET_STATUSES.labels[status]}. Ask the user to confirm with a yes ` +
+        `before it executes. Do not state it as done.`,
+    };
+  },
+};
+
 const ALL_WRITE_TOOLS = [
   logCall,
   // Lead writes (E3)
@@ -1219,6 +1322,9 @@ const ALL_WRITE_TOOLS = [
   updateTaskStatus,
   updateTask,
   deleteTask,
+  // Ticket writes (Sia)
+  addTicketNote,
+  moveTicketStatus,
 ] as const;
 
 export const WRITE_TOOL_REGISTRY = new Map<string, ElayaWriteTool>(
@@ -1251,6 +1357,9 @@ export async function executeProposedAction(
   // and its own resolver path (re-fetch by taskId, re-gate, fail-closed if already gone).
   if (action.action_type === "delete_task") {
     return executeProposedTaskDelete(principal, action);
+  }
+  if (action.action_type === "move_ticket_status") {
+    return executeProposedTicketMove(principal, action);
   }
 
   const payload = action.payload as {
@@ -1455,6 +1564,54 @@ export async function executeProposedAction(
 // running the core. The label in the returned line is code-derived from the stored
 // payload (never model/lead text).
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// Executor for a CONFIRMED move_ticket_status proposal — re-resolves the ticket, re-gates
+// with the principal, checks the status is still what it was at propose time (optimistic
+// concurrency), then runs the SAME moveTicketStatusCore the ticket page uses.
+// ─────────────────────────────────────────────
+async function executeProposedTicketMove(
+  principal: StaffPrincipal,
+  action: ElayaActionRow,
+): Promise<ProposalExecution> {
+  const payload = action.payload as {
+    target?: { ticketId?: string; ticketNo?: string };
+    args?: { status?: TicketStatus; note?: string | null; title?: string };
+    before?: { status?: string } | null;
+  };
+  const ticketId = payload.target?.ticketId;
+  const target = payload.args?.status;
+  const label = payload.target?.ticketNo ?? "that ticket";
+  if (!ticketId || !target) {
+    await markActionResolved(action.id, "failed", principal.userId);
+    return { status: "failed", line: "I couldn't complete that — the proposal was incomplete." };
+  }
+  try {
+    const d = await getTicketFor(principal, ticketId);
+    if (!d) {
+      await markActionResolved(action.id, "failed", principal.userId);
+      return { status: "failed", line: `I couldn't complete that — I can no longer act on ${label}.` };
+    }
+    if (payload.before?.status && d.ticket.status !== payload.before.status) {
+      await markActionResolved(action.id, "failed", principal.userId);
+      return { status: "failed", line: `${label} moved since I asked (now ${TICKET_STATUSES.labels[d.ticket.status]}). Tell me again what you'd like.` };
+    }
+    const core = await moveTicketStatusCore(d.ticket.id, target, actorFromPrincipal(principal), {
+      note: payload.args?.note ?? null,
+      resolution: target === "resolved" ? "delivered" : target === "dropped" ? "not_a_request" : null,
+    });
+    if (core.error) {
+      await markActionResolved(action.id, "failed", principal.userId);
+      return { status: "failed", line: `I couldn't move ${label}: ${core.error}` };
+    }
+    await markActionResolved(action.id, "executed", principal.userId, { ...action.payload, after: { status: target } });
+    return { status: "executed", line: `Done — ${label} is now ${TICKET_STATUSES.labels[target]}.` };
+  } catch (e) {
+    console.error("[elaya-write] ticket move threw:", e instanceof Error ? e.message : e);
+    await markActionResolved(action.id, "failed", principal.userId);
+    return { status: "failed", line: "Something went wrong completing that — try again." };
+  }
+}
+
 async function executeProposedTaskDelete(
   principal: StaffPrincipal,
   action: ElayaActionRow,

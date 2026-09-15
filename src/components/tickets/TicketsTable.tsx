@@ -21,7 +21,7 @@ function dueCell(t: TicketListItem): { text: string; color: string } {
   return { text: past ? `overdue ${formatRelativeTime(due)}` : formatDate(due, 'd MMM, h:mm a'), color: past ? 'var(--color-danger-text)' : 'var(--theme-text-tertiary)' };
 }
 
-export function TicketsTable({ tickets, hasFilters }: { tickets: TicketListItem[]; hasFilters: boolean }) {
+export function TicketsTable({ tickets, hasFilters, labels }: { tickets: TicketListItem[]; hasFilters: boolean; labels?: Record<string, string> }) {
   if (tickets.length === 0) {
     return (
       <div style={{ background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', padding: 'var(--space-12) var(--space-6)' }}>
@@ -42,14 +42,14 @@ export function TicketsTable({ tickets, hasFilters }: { tickets: TicketListItem[
             <th className="label-micro" style={HEAD}>Due</th>
             <th className="label-micro" style={HEAD}>Updated</th>
           </tr></thead>
-          <tbody>{tickets.map((t) => <Row key={t.id} t={t} />)}</tbody>
+          <tbody>{tickets.map((t) => <Row key={t.id} t={t} label={labels?.[t.status]} />)}</tbody>
         </table>
       </div>
     </div>
   );
 }
 
-const Row = memo(function Row({ t }: { t: TicketListItem }) {
+const Row = memo(function Row({ t, label }: { t: TicketListItem; label?: string }) {
   const router = useRouter(); const pathname = usePathname(); const sp = useSearchParams();
   const [hovered, setHovered] = useState(false);
   const fromUrl = sp.toString() ? `${pathname}?${sp.toString()}` : pathname;
@@ -65,7 +65,7 @@ const Row = memo(function Row({ t }: { t: TicketListItem }) {
         <span style={{ display: 'block', fontWeight: 'var(--weight-medium)', color: 'var(--theme-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>{t.title}</span>
         <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>{t.client_name} · {TICKET_CATEGORIES.labels[t.category] ?? t.category}{t.queendom_name ? ` · ${t.queendom_name.replace(' Queendom', '')}` : ''}</span>
       </td>
-      <td style={{ ...CELL, ...rc }}><TicketStatusPill status={t.status} /></td>
+      <td style={{ ...CELL, ...rc }}><TicketStatusPill status={t.status} label={label} /></td>
       <td style={{ ...CELL, ...rc }}><PriorityDot priority={t.priority} approved={Boolean(t.priority_approved_at)} /></td>
       <td style={{ ...CELL, ...rc, color: t.assignee_name ? 'var(--theme-text-secondary)' : 'var(--color-warning-text)', whiteSpace: 'nowrap' }}>{t.assignee_name ?? 'unassigned'}</td>
       <td style={{ ...CELL, ...rc, color: due.color, whiteSpace: 'nowrap', fontSize: 'var(--text-xs)' }}>{due.text}</td>

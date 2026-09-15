@@ -2,10 +2,7 @@ import { z } from "zod";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { formErrors } from "./form-errors";
 import { uuidField } from "./fields";
-import {
-  TICKET_CATEGORIES, TICKET_ORIGINS, TICKET_PRIORITIES, TICKET_RESOLUTIONS, TICKET_STATUSES,
-  TICKET_REASSIGN_REASONS, TICKET_LINK_KINDS,
-} from "@/lib/constants/tickets";
+import { TICKET_CATEGORIES, TICKET_ORIGINS, TICKET_PRIORITIES, TICKET_RESOLUTIONS, TICKET_STATUSES, TICKET_REASSIGN_REASONS, TICKET_LINK_KINDS, TICKET_TAG_RE, TICKET_TAG_MAX } from "@/lib/constants/tickets";
 
 // ─────────────────────────────────────────────
 // Tickets — Zod schemas (migration 0195). Every action in actions/tickets.ts parses one
@@ -149,3 +146,46 @@ export const ListTicketsSchema = z.object({
   search: optionalText(80),
   page: z.coerce.number().int().min(1).default(1),
 });
+
+// ─── Tags, sub-work and settings (0200) ──────────────────────────────────────
+
+const tagField = z.string().trim().toLowerCase().transform((v) => v.replace(/\s+/g, "-")).pipe(z.string().regex(TICKET_TAG_RE, "A tag is letters, digits and dashes, up to 30 characters."));
+
+export const UpdateTicketTagsSchema = z.object({
+  ticket_id: uuidField(formErrors.generic),
+  tags: z.array(tagField).max(TICKET_TAG_MAX, `Up to ${TICKET_TAG_MAX} tags.`).transform((xs) => [...new Set(xs)]),
+});
+
+export const CreateTicketTaskSchema = z.object({
+  ticket_id: uuidField(formErrors.generic),
+  title: z.string().trim().min(1, formErrors.required).max(255).transform((v) => sanitizeText(v)),
+  assigned_to: uuidField(formErrors.generic).nullish().transform((v) => v ?? null),
+  priority: z.enum(["urgent", "high", "normal"]).default("normal"),
+  due_at: z.string().datetime({ offset: true }).nullish().transform((v) => v ?? null),
+});
+
+const minutes = (max: number) => z.coerce.number().int().min(0).max(max);
+export const UpsertTicketSlaPolicySchema = z.object({
+  id: uuidField(formErrors.generic).nullish().transform((v) => v ?? null),
+  queendom_id: uuidField(formErrors.generic).nullish().transform((v) => v ?? null),
+  category: z.string().trim().max(40).nullish().transform((v) => (v ? v : null)),
+  sub_category: z.string().trim().max(40).nullish().transform((v) => (v ? v : null)),
+  priority: z.enum(TICKET_PRIORITIES.zodEnum).nullish().transform((v) => v ?? null),
+  first_response_min: minutes(10_080),
+  update_cadence_min: minutes(20_160),
+  vendor_silence_min: minutes(20_160),
+  client_silence_min: minutes(20_160),
+  resolve_target_min: minutes(43_200),
+  business_hours: z.boolean().default(true),
+  escalation: z.array(z.object({ after_min: minutes(20_160), to: z.enum(["bishop", "queen", "founder"]) })).max(5).default([]),
+  is_active: z.boolean().default(true),
+});
+export type UpsertTicketSlaPolicyInput = z.infer<typeof UpsertTicketSlaPolicySchema>;
+
+export const DeleteTicketSlaPolicySchema = z.object({ id: uuidField(formErrors.generic) });
+
+export const UpdateTicketSettingsSchema = z.object({
+  status_labels: z.record(z.enum(TICKET_STATUSES.zodEnum), z.string().trim().max(30)).optional(),
+  tags: z.array(tagField).max(60).transform((xs) => [...new Set(xs)]).optional(),
+}).refine((v) => v.status_labels !== undefined || v.tags !== undefined, { message: formErrors.generic });
+export type UpdateTicketSettingsInput = z.infer<typeof UpdateTicketSettingsSchema>;

@@ -12,6 +12,109 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-15 — Tickets: the live board, the settings page, tasks off a ticket, Elaya's ticket tools
+
+Why: the four follow-ups the founder asked for after T2 (2026-09-15): a board the queendom
+works from, the page where SLAs, status names and tags are edited without asking for a
+deploy, sub-work spun off a ticket, and Elaya reading and moving tickets in chat and on
+WhatsApp.
+
+What changed:
+
+- Migration `20260915000200_ticket_board_settings_tags.sql` — `sia.tickets.tags text[]`
+  (+ GIN) settable through `apply_ticket_change` (so a tag change is a diary event);
+  `sia.ticket_settings` (key → jsonb: `status_labels`, `tags`; SELECT for every signed-in
+  user, writes service-role only; seeded with seven tags); `sia.tickets` joins the Realtime
+  publication. **Not yet applied.**
+- **The board** `/tickets/board` (`components/tickets/TicketBoard.tsx`): eight status columns
+  as a horizontal rail (`.serene-board--wide`), a card per ticket (number, title, client,
+  category, tags, genie, the nearest deadline or the last update), the same filter bar as the
+  list. Drag a card to a column: the state machine refuses an illegal move with a toast,
+  a legal one is optimistic and runs `moveTicketStatusAction`. Live: a Realtime subscription
+  on `sia.tickets` (RLS-scoped, one queendom or all) re-reads through `listBoardTicketsAction`,
+  debounced. `listBoardTickets()` reads per column, capped at 60.
+- **The settings page** `/settings/tickets` (admin/founder; a link card on `/settings`):
+  `TicketSlaPoliciesPanel` — every `ticket_sla_policies` row as a card: scope (queendom,
+  category, sub-category, priority; blank = every), the five clocks in minutes, business
+  hours, the escalation ladder as a sentence, active, delete (never the last active one),
+  New policy. The sentinel reads policies per wake, so an edit applies on the next look.
+  `TicketLabelsPanel` — rename any status for the team (the machine and the CHECK never
+  change; `resolveTicketStatusLabels` applies the rename on the list, the board, the pill,
+  the header controls and the filter) and the tag vocabulary. `actions/ticket-settings.ts`
+  (Zod → `requireProfile(['admin','founder'])` → the cores).
+- **Tags on a ticket**: `TicketTagsCard` on the ticket page (the vocabulary as toggles + a
+  free one), a Tag filter on the list, tags on the board cards. `updateTicketTagsCore`.
+- **Sub-work**: `TicketTasksCard` gains the form (title, who, priority, due with the shared
+  `DueDateField`); `createTicketTaskCore` runs the SAME `createPersonalTaskCore` every task
+  uses (reminder, notification, cache dels), links it through `task_ticket_meta`, and writes
+  a `subtask_created` event. The task lands in My Tasks like any other.
+- **Elaya's ticket tools** (both brains): reads `list_tickets` (the queendom's live tickets,
+  mine, by status, by words; admin/founder every queendom) and `get_ticket` (the brief,
+  checklist, money, the sentinel's summary, the clocks, allowed moves, the last twelve
+  events) through `elaya-data` (`principalQueendom` from the profile, never model-supplied);
+  writes `add_ticket_note` (inline, `addTicketNoteCore`, an `executed` ledger row) and
+  `move_ticket_status` (propose-only: the state machine is checked at propose time, the
+  resolver re-gates, checks the status is still what it was, then runs `moveTicketStatusCore`).
+  Both bridged for the Python brain (`BRIDGED_READ_TOOL_NAMES`, `WRITE_TOOL_NAMES`) with a new
+  `tickets` specialist; `ElayaTicketTarget` on the ledger. The Python side needs its usual
+  Fargate deploy.
+
+Verified: typecheck and lint clean; the Python edits parse. Live checks wait on 0199/0200.
+
+---
+
+## 2026-09-15 — Tickets T2: the sentinel, one small watcher per ticket
+
+Why: a ticket nobody is reminded about is a list, not a system (client-ticket-plan.md 7.6).
+The team starts testing tickets in the coming weeks; the first thing they would notice is that
+nothing nudges anyone. This is the plan's sentinel: an actor per ticket, not a process per
+ticket, born with the ticket and retired with it.
+
+What changed:
+
+- Migration `20260915000199_ticket_sentinel.sql` — the MAILBOX (a trigger on `ticket_events`
+  by anyone but the sentinel, and on `ticket_message_links`, sets `next_wake_at = now()` on the
+  ticket), the POOL (`claim_sentinel_wakes(p_limit, p_lease_min)`: due tickets under
+  `FOR UPDATE SKIP LOCKED`, leased five minutes so a crashed worker's tickets come back on their
+  own and several workers are safe) and SLEEP (`sentinel_sleep`: state + next alarm, no event).
+  Service role only. Every live ticket gets its first alarm on apply. **Not yet applied.**
+- `lib/services/ticket-sentinel.ts` — THE sentinel. `planWake()` is the rule pass, pure code
+  over the ticket, its policy row, its memory and the clock: first response due (warn 5 min
+  before, breach, then the policy's escalation ladder bishop → queen → founder), update cadence
+  due, vendor silent, client silent, the requested time passed, resolution due (warn 60 min
+  before, breach, ladder), a proposal nobody approved in an hour, and resolved-and-quiet-for-48h
+  → closed. Each rule fires ONCE per key (`state.fired`); a fire is a ticket event with the
+  state written in the same `apply_ticket_change` transaction BEFORE any notification leaves,
+  so a duplicate is impossible by construction. Business-hours policies count business minutes.
+  The reading pass (routing tier via the Elaya provider, PII masked, `sia.extraction_runs` row
+  `kind: sentinel`) runs only when a human note or a client message is new and the ticket's
+  token budget allows: a refreshed summary, checklist items the note completed (ticked), money
+  figures read from the notes, a changed request (PROPOSED in the diary, never applied), the
+  client's tone (frustrated or angry → the bishop, `ticket_client_unhappy`), "the client asks
+  for an update", "the client says delivered" (proposed). Fails closed to rules only. Sleep is
+  the earliest deadline ahead, at most 12 hours. `runSentinelSweep()` = claim and wake, in a
+  loop while time remains.
+- Notifications through the catalog: `ticket_sla_warning` (assignee; bishop when unassigned),
+  `ticket_sla_breach` (assignee, transactional) and `ticket_sla_breach_manager` (the ladder),
+  `ticket_client_replied` (transactional), `ticket_client_unhappy`, `ticket_proposed_for_approval`.
+- `ticket-mutations.ts` — `moveTicketStatusCore` takes an actor kind (the sentinel's close is a
+  `closed` event by the sentinel), `SENTINEL_ACTOR`, `ticketDeadline()` (business hours when the
+  policy says so; the creation stamps and the cadence now use it).
+- `src/trigger/ticket-sentinel.ts` — the minute task (with the deploy). Until then
+  `scripts/tickets/sentinel.ts --loop` is the pool from the laptop, the Freshdesk loop's twin.
+- The ticket page: a Sentinel card (its summary, next look, what it fired, its spend) above the
+  help window; the timeline names its events (deadline near, deadline missed, reminder,
+  escalated, proposal, closed).
+
+Verified: the pure rule pass walked a synthetic high-priority dining ticket through its life on
+the clock (warn → breach → bishop → queen → first response → update reminder → resolve warn →
+breach → requested time → close at 48 h) with no rule firing twice. Live sweep waits on 0199.
+
+Not in this cut (next): the judgement pass (drafting the client update, the close pass that
+writes facts and the vendor engagement), health events from tone, and the ticket board.
+
+---
+
 ## 2026-09-15 — Attachment backlog: the flag query starts from the backlog, a hiccup is retried
 
 Why: an hour into the copy, `flag_threads_for_media` timed out once (it walked every ticket

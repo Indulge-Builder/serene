@@ -51,6 +51,9 @@ import {
 import { getCampaignMetrics } from '@/lib/services/leads-service';
 import { getBudgetSummary, type BudgetCampaignRow } from '@/lib/services/ad-spend-service';
 import { rankVendorsForRequest, getVendorDetail } from '@/lib/services/vendors-service';
+import { listTicketsForElaya, getTicketByRefForElaya } from '@/lib/services/tickets-service';
+import { canAccessClient } from '@/lib/elaya/access';
+import type { TicketStatus } from '@/lib/constants/tickets';
 import type { RankVendorsRequest } from '@/lib/services/vendors-service';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
 import {
@@ -336,4 +339,40 @@ export function rankVendors(req: RankVendorsRequest) {
 
 export function getVendor(id: string) {
   return getVendorDetail(id);
+}
+
+// ─────────────────────────────────────────────
+// Tickets (0195, 0199, 0200)
+//
+// The sentinel's ledger and the genie's queue, read through the same admin-client
+// seam as everything else so WhatsApp turns see what the app sees. Scope is the
+// PRINCIPAL's queendom (read from the profile, never model-supplied); admin and
+// founder see every queendom. The write tools go through the ticket cores.
+// ─────────────────────────────────────────────
+
+/** The queendom the principal belongs to, from the profile (the sia_role / queendom_id columns of 0194). */
+export async function principalQueendom(principal: StaffPrincipal): Promise<{ queendom_id: string | null; sia_role: string | null }> {
+  const { data } = await createAdminClient().from('profiles').select('queendom_id, sia_role').eq('id', principal.userId).maybeSingle();
+  const row = data as { queendom_id: string | null; sia_role: string | null } | null;
+  return { queendom_id: row?.queendom_id ?? null, sia_role: row?.sia_role ?? null };
+}
+
+export async function listTicketsFor(principal: StaffPrincipal, opts: { mine?: boolean; status?: TicketStatus[]; search?: string | null; limit?: number }) {
+  const { queendom_id } = await principalQueendom(principal);
+  const privileged = principal.role === 'admin' || principal.role === 'founder';
+  if (!privileged && !queendom_id) return [];
+  return listTicketsForElaya({
+    queendomId: privileged ? null : queendom_id,
+    assigneeId: opts.mine ? principal.userId : null,
+    statuses: opts.status ?? [],
+    search: opts.search ?? null,
+    limit: opts.limit ?? 25,
+  });
+}
+
+export async function getTicketFor(principal: StaffPrincipal, ref: string) {
+  const t = await getTicketByRefForElaya(ref);
+  if (!t) return null;
+  const { queendom_id } = await principalQueendom(principal);
+  return canAccessClient({ role: principal.role, queendom_id }, t.ticket.queendom_id) ? t : null;
 }

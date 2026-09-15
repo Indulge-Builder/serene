@@ -120,6 +120,19 @@ SPECIALISTS: dict[str, Specialist] = {
         # admin/founder only — the role gate cuts them for everyone else.
         toolset=["find_vendors", "get_vendor_details", "find_teammate"],
     ),
+    "tickets": Specialist(
+        id="tickets",
+        description=(
+            "Sia tickets and client requests: what is open, what is late, where a ticket stands, "
+            "a ticket number like T-000042, adding a note to a ticket, moving a ticket to another "
+            "status (sourcing, awaiting client, awaiting vendor, in delivery, resolved), what the "
+            "sentinel said, a client's pending requests"
+        ),
+        focus=("Focus for this conversation: TICKETS — the genie's queue and one ticket's story. "
+               "Read with list_tickets / get_ticket before answering; a status move is a proposal "
+               "the user confirms with a yes, never a done deed until the system says so."),
+        toolset=["list_tickets", "get_ticket", "add_ticket_note", "move_ticket_status", "find_teammate"],
+    ),
     "general": Specialist(
         id="general",
         description="greetings, small talk, questions about Elaya/Serene itself, anything that fits nowhere else",
@@ -146,6 +159,10 @@ SPECIALISTS: dict[str, Specialist] = {
             "delete_task",
             "find_vendors",
             "get_vendor_details",
+            "list_tickets",
+            "get_ticket",
+            "add_ticket_note",
+            "move_ticket_status",
         ],
     ),
 }

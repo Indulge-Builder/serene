@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect, notFound } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { getTicketDetail, getTicketHelp } from '@/lib/services/tickets-service';
+import { getTicketDetail, getTicketHelp, getTicketSettings } from '@/lib/services/tickets-service';
 import { logClientAccess } from '@/lib/services/client-mutations';
 import { canAccessRoute } from '@/lib/utils/route-access';
 import { BackButton } from '@/components/ui/BackButton';
@@ -10,7 +10,9 @@ import { TicketBriefCard } from '@/components/tickets/TicketBriefCard';
 import { TicketChecklistCard } from '@/components/tickets/TicketChecklistCard';
 import { TicketTimeline } from '@/components/tickets/TicketTimeline';
 import { TicketMoneyCard } from '@/components/tickets/TicketMoneyCard';
-import { TicketLinkedMessagesCard, TicketTasksCard, TicketHelpPanel } from '@/components/tickets/TicketSideCards';
+import { TicketLinkedMessagesCard, TicketHelpPanel, TicketSentinelCard } from '@/components/tickets/TicketSideCards';
+import { TicketTasksCard } from '@/components/tickets/TicketTasksCard';
+import { TicketTagsCard } from '@/components/tickets/TicketTagsCard';
 import { TICKETS_PATH } from '@/lib/constants/tickets';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 import { formatDate, formatRelativeTime } from '@/lib/utils/dates';
@@ -27,7 +29,7 @@ export default async function TicketPage({ params, searchParams }: Props) {
 
   const detail = await getTicketDetail(id);
   if (!detail) notFound();
-  const help = await getTicketHelp(detail.client.id, detail.ticket.category, detail.ticket.id);
+  const [help, settings] = await Promise.all([getTicketHelp(detail.client.id, detail.ticket.category, detail.ticket.id), getTicketSettings()]);
   await logClientAccess(detail.client.id, profile.id, 'ticket_help');
   const canApprove = profile.role !== 'agent';
   const t = detail.ticket;
@@ -51,11 +53,15 @@ export default async function TicketPage({ params, searchParams }: Props) {
       </div>
 
       <div style={{ marginBottom: 'var(--space-6)', padding: 'var(--space-4) var(--space-5)', background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)' }}>
-        <TicketHeaderControls ticket={t} staff={detail.staff} canApprove={canApprove} />
+        <TicketHeaderControls ticket={t} staff={detail.staff} canApprove={canApprove} labels={settings.statusLabels} />
       </div>
 
       <div className="serene-dossier-grid serene-dossier-grid--340 serene-dossier-grid--aside-left" style={{ alignItems: 'start' }}>
-        <TicketHelpPanel help={help} clientId={detail.client.id} clientName={detail.client.full_name} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: 0 }}>
+          <TicketSentinelCard ticket={t} />
+          <TicketTagsCard ticketId={t.id} tags={t.tags ?? []} vocabulary={settings.tags} />
+          <TicketHelpPanel help={help} clientId={detail.client.id} clientName={detail.client.full_name} />
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: 0 }}>
           <TicketBriefCard ticket={t} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-6)' }}>
@@ -64,7 +70,7 @@ export default async function TicketPage({ params, searchParams }: Props) {
           </div>
           <TicketLinkedMessagesCard links={detail.links} />
           <TicketTimeline ticketId={t.id} events={detail.events} />
-          <TicketTasksCard tasks={detail.tasks} />
+          <TicketTasksCard ticketId={t.id} tasks={detail.tasks} staff={detail.staff} defaultAssignee={t.assignee_id} />
         </div>
       </div>
     </main>

@@ -1380,8 +1380,8 @@
     "semantic_hash": ""
   },
   "src/components/ui/StatTile.tsx": {
-    "mtime": 1783294977.560581,
-    "ast_hash": "e16957c2d09eafb20c95b0952dac2cba",
+    "mtime": 1789466136.161245,
+    "ast_hash": "63687a782bb7a713729d2b272011307f",
     "semantic_hash": ""
   },
   "src/components/ui/TabSelector.tsx": {
@@ -2180,8 +2180,8 @@
     "semantic_hash": ""
   },
   "src/lib/utils/numbers.ts": {
-    "mtime": 1787377810.4231071,
-    "ast_hash": "8462b1811ffc15aef3c55e8f08a469e7",
+    "mtime": 1789464331.1479995,
+    "ast_hash": "1241afa4d1c1672fa6b4871e3960d18c",
     "semantic_hash": ""
   },
   "src/lib/utils/performance-roster-display.ts": {
@@ -3085,8 +3085,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1789459853.0605059,
-    "ast_hash": "55932c08d2ce2a0a39ebcd6a68a6d90c",
+    "mtime": 1789471795.4763803,
+    "ast_hash": "46c8bf21217e786cb73709083b3172b1",
     "semantic_hash": ""
   },
   "README.md": {
@@ -3155,8 +3155,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1789456094.3866022,
-    "ast_hash": "691c6fc3c2041e019ae4ebd786e6851e",
+    "mtime": 1789471795.4757164,
+    "ast_hash": "142c85be40ad247ebcb887e590f68334",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789459853.0595407,
-    "ast_hash": "4f853ca910c93d312da971b5fa29b399",
+    "mtime": 1789471795.474821,
+    "ast_hash": "29630bcb4672c6d26f1690931ffc986f",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -7130,8 +7130,8 @@
     "semantic_hash": ""
   },
   "scripts/freshdesk/backfill.ts": {
-    "mtime": 1789453795.2096481,
-    "ast_hash": "e582f20b7d13d346f9cc71ad18d7d7eb",
+    "mtime": 1789464320.3316905,
+    "ast_hash": "270a867e19936da2b6303f2d00270ded",
     "semantic_hash": ""
   },
   "scripts/freshdesk/register-webhooks.ts": {
@@ -7150,8 +7150,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/freshdesk/page.tsx": {
-    "mtime": 1789456015.6781006,
-    "ast_hash": "3fb8fbe06d0fe305b34e67117d9666ca",
+    "mtime": 1789466338.2538848,
+    "ast_hash": "debe11707e5fd9bd213bd52b97cf0611",
     "semantic_hash": ""
   },
   "src/app/api/webhooks/freshdesk/route.ts": {
@@ -7195,13 +7195,13 @@
     "semantic_hash": ""
   },
   "src/components/freshdesk/TicketSummaryCard.tsx": {
-    "mtime": 1789413731.8083637,
-    "ast_hash": "6b88bb961c4475c5ac3555867eb66e07",
+    "mtime": 1789464320.3311055,
+    "ast_hash": "90d20527cc4f499d5b16f467b24aea95",
     "semantic_hash": ""
   },
   "src/components/freshdesk/TicketThread.tsx": {
-    "mtime": 1789413731.8114235,
-    "ast_hash": "927859bd6bf5406a5829fa757999ba52",
+    "mtime": 1789464320.3306627,
+    "ast_hash": "dadc2b2a7bb9bed0b06192b5f856084b",
     "semantic_hash": ""
   },
   "src/lib/actions/freshdesk.ts": {
@@ -7210,28 +7210,28 @@
     "semantic_hash": ""
   },
   "src/lib/constants/freshdesk.ts": {
-    "mtime": 1789415771.013792,
-    "ast_hash": "7ded8eef46fa35502fff1790870afd17",
+    "mtime": 1789464271.5717888,
+    "ast_hash": "70542ad3108cd18352e46917191f1d51",
     "semantic_hash": ""
   },
   "src/lib/services/freshdesk-api.ts": {
-    "mtime": 1789413413.3823225,
-    "ast_hash": "1d53192bbb3b65cb9a9bc296c1d81f3e",
+    "mtime": 1789470744.3359015,
+    "ast_hash": "1531d5304d1f84eb1b8a0e4ea979e143",
     "semantic_hash": ""
   },
   "src/lib/services/freshdesk-service.ts": {
-    "mtime": 1789455962.0214505,
-    "ast_hash": "866e92c43ea5980caed62d5bec1646b4",
+    "mtime": 1789464320.3301258,
+    "ast_hash": "5ee26eb0f589d1a704726ce850d92233",
     "semantic_hash": ""
   },
   "src/lib/services/freshdesk-sync.ts": {
-    "mtime": 1789414623.753902,
-    "ast_hash": "8b75481c05516eb703dfecbc79fedef7",
+    "mtime": 1789470744.33662,
+    "ast_hash": "dfa30258cbce22222523ef2b7fd0751d",
     "semantic_hash": ""
   },
   "src/lib/types/freshdesk.ts": {
-    "mtime": 1789455962.0209477,
-    "ast_hash": "f9caa5307fc778f8121f09f4e8af3abe",
+    "mtime": 1789464173.1287847,
+    "ast_hash": "96c559f83ccfa55172cc3ad100a3934a",
     "semantic_hash": ""
   },
   "src/trigger/freshdesk-sync.ts": {
@@ -7250,8 +7250,8 @@
     "semantic_hash": ""
   },
   "docs/integrations/freshdesk.md": {
-    "mtime": 1789456094.3903584,
-    "ast_hash": "67fefa55147ae094c0a04d6fca6e8dcd",
+    "mtime": 1789464408.6223238,
+    "ast_hash": "6c404d01288b030c469a69fa0e119367",
     "semantic_hash": ""
   },
   "scripts/clients/seed-client-facts.py": {
@@ -7290,8 +7290,8 @@
     "semantic_hash": ""
   },
   "src/components/clients/ClientFactsCard.tsx": {
-    "mtime": 1789459706.6695502,
-    "ast_hash": "d877b93ccf1f9aafaab74240beb0f4d0",
+    "mtime": 1789463578.503712,
+    "ast_hash": "cf1bea6c89440bc21aaf2fc4491ce485",
     "semantic_hash": ""
   },
   "src/components/clients/ClientFormModal.tsx": {
@@ -7365,18 +7365,18 @@
     "semantic_hash": ""
   },
   "src/lib/services/client-mutations.ts": {
-    "mtime": 1789459652.4042437,
-    "ast_hash": "bdc0dc52c1ae9aa0b56b25af54e283c6",
+    "mtime": 1789463578.5030534,
+    "ast_hash": "595cb6eef5da9043710fc187cc5bac59",
     "semantic_hash": ""
   },
   "src/lib/services/clients-service.ts": {
-    "mtime": 1789459469.9828932,
-    "ast_hash": "752d35c12fe68728740ea343fa3aae65",
+    "mtime": 1789463578.502501,
+    "ast_hash": "da594090f1f80c5e5159a69a4be06739",
     "semantic_hash": ""
   },
   "src/lib/types/client.ts": {
-    "mtime": 1789459652.4035583,
-    "ast_hash": "f8eb613e12054d0395199ae26663b385",
+    "mtime": 1789463578.5021014,
+    "ast_hash": "3bcef78ed704e35b05c293c8cafb0daf",
     "semantic_hash": ""
   },
   "src/lib/validations/client-schema.ts": {
@@ -7390,8 +7390,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/tickets/[id]/page.tsx": {
-    "mtime": 1789427983.5777855,
-    "ast_hash": "2606634b2325349b4497ec7025ac9483",
+    "mtime": 1789471724.311686,
+    "ast_hash": "a5735f0d1eb6f858922bcb1e6db88159",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/tickets/loading.tsx": {
@@ -7435,8 +7435,8 @@
     "semantic_hash": ""
   },
   "src/components/tickets/TicketSideCards.tsx": {
-    "mtime": 1789427873.4329774,
-    "ast_hash": "ec9c754d52242d5eae1c7ae655d5a6ef",
+    "mtime": 1789471724.311287,
+    "ast_hash": "8d8dedcefae3be88cca5e169928f440a",
     "semantic_hash": ""
   },
   "src/components/tickets/TicketStatusPill.tsx": {
@@ -7445,8 +7445,8 @@
     "semantic_hash": ""
   },
   "src/components/tickets/TicketTimeline.tsx": {
-    "mtime": 1789427873.430022,
-    "ast_hash": "999dc18dcf1a1b5765e7ddc364374d66",
+    "mtime": 1789471724.310938,
+    "ast_hash": "bcc03dd84001a2c24bee457d38717f07",
     "semantic_hash": ""
   },
   "src/components/tickets/TicketsFilters.tsx": {
@@ -7470,8 +7470,8 @@
     "semantic_hash": ""
   },
   "src/lib/constants/tickets.ts": {
-    "mtime": 1789427078.8023787,
-    "ast_hash": "b35773935451e2ac55ed6a6eb6595c67",
+    "mtime": 1789471457.185301,
+    "ast_hash": "87d8d172c9e1e9a950fae2735c99c66a",
     "semantic_hash": ""
   },
   "src/lib/services/ticket-creator.ts": {
@@ -7480,8 +7480,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/ticket-mutations.ts": {
-    "mtime": 1789427441.2900903,
-    "ast_hash": "1aa80a9882c9f93db77f8d3929ce7e6a",
+    "mtime": 1789471476.7088263,
+    "ast_hash": "cba857ad04e82735608a9a2db4ba6532",
     "semantic_hash": ""
   },
   "src/lib/services/tickets-service.ts": {
@@ -7490,8 +7490,8 @@
     "semantic_hash": ""
   },
   "src/lib/types/ticket.ts": {
-    "mtime": 1789427561.5300071,
-    "ast_hash": "f86f1cb88377d300dad8761259d5beba",
+    "mtime": 1789471457.1861901,
+    "ast_hash": "bb16199123993d13129e16134d615459",
     "semantic_hash": ""
   },
   "src/lib/validations/ticket-schema.ts": {
@@ -7515,8 +7515,8 @@
     "semantic_hash": ""
   },
   "src/components/clients/ClientFinanceView.tsx": {
-    "mtime": 1789459557.0031734,
-    "ast_hash": "47690f23db72be0824d8e9c4a3b1764e",
+    "mtime": 1789466136.1627536,
+    "ast_hash": "14f7e4b7b955b4f80446695cf6fc1371",
     "semantic_hash": ""
   },
   "src/components/ui/RevealId.tsx": {
@@ -7530,13 +7530,13 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/books/page.tsx": {
-    "mtime": 1789459523.0337422,
-    "ast_hash": "1fc39855a891f12ec9f7a179a2d65ba3",
+    "mtime": 1789463379.6068044,
+    "ast_hash": "4d05005b291d0e41a21a8d6d5a059755",
     "semantic_hash": ""
   },
   "src/components/books/BooksOverview.tsx": {
-    "mtime": 1789459450.8692243,
-    "ast_hash": "d65dc43e36857f78197cf5564d76022f",
+    "mtime": 1789466136.1618695,
+    "ast_hash": "23f10f5a119ab60f3e61b290ed202be6",
     "semantic_hash": ""
   },
   "src/components/books/RefreshBooksButton.tsx": {
@@ -7550,8 +7550,8 @@
     "semantic_hash": ""
   },
   "src/components/books/ZohoTables.tsx": {
-    "mtime": 1789459450.9213793,
-    "ast_hash": "fadf098d6b297dbacd545d4322d89320",
+    "mtime": 1789463251.60741,
+    "ast_hash": "d6f538a7df4495cb525bc0e85baa366f",
     "semantic_hash": ""
   },
   "src/components/clients/ClientObservationCard.tsx": {
@@ -7560,8 +7560,8 @@
     "semantic_hash": ""
   },
   "src/components/clients/ClientZohoCards.tsx": {
-    "mtime": 1789459523.0397227,
-    "ast_hash": "54f38ee9fbce01fb36dfc6a9f84aa6a5",
+    "mtime": 1789466136.1623778,
+    "ast_hash": "702c8f209b25897523ffcd6b25b9610d",
     "semantic_hash": ""
   },
   "src/components/clients/ClientZohoSkeleton.tsx": {
@@ -7585,8 +7585,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/client-observation-reader.ts": {
-    "mtime": 1789459652.3720798,
-    "ast_hash": "f24cbe9b6fbb8ee776bd20327b76bbb7",
+    "mtime": 1789462403.527364,
+    "ast_hash": "dc97792555762b32a5a76d45f13808f6",
     "semantic_hash": ""
   },
   "src/lib/services/zoho-api.ts": {
@@ -7827,6 +7827,46 @@
   "zoho books-api/vendor-payments.yml": {
     "mtime": 1788996562.0,
     "ast_hash": "20aaabd60f9c23c69772db0add284915",
+    "semantic_hash": ""
+  },
+  "src/components/freshdesk/FreshdeskAttachments.tsx": {
+    "mtime": 1789464286.618432,
+    "ast_hash": "ffb680c478b2cb3ea91c787cad406a82",
+    "semantic_hash": ""
+  },
+  "src/lib/services/freshdesk-media.ts": {
+    "mtime": 1789471023.7693756,
+    "ast_hash": "a5fb80d011b7a0313097dab3da2e368d",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260915000197_freshdesk_attachments.sql": {
+    "mtime": 1789464173.096123,
+    "ast_hash": "89440c64e21aefd0878a956282037c56",
+    "semantic_hash": ""
+  },
+  "scripts/tickets/sentinel.ts": {
+    "mtime": 1789471701.1845634,
+    "ast_hash": "3850415b0c4223346c8e119ea9f8e2c3",
+    "semantic_hash": ""
+  },
+  "src/lib/services/ticket-sentinel.ts": {
+    "mtime": 1789471652.6935248,
+    "ast_hash": "06a74b3fffde304a79bf94a5eab2e782",
+    "semantic_hash": ""
+  },
+  "src/trigger/ticket-sentinel.ts": {
+    "mtime": 1789471701.1779485,
+    "ast_hash": "1c98c0deaa587beb810c8baebc4a9443",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260915000198_freshdesk_media_flag_index_path.sql": {
+    "mtime": 1789471023.736393,
+    "ast_hash": "4c4b09e1d922bd31c7a79263ab23eef1",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260915000199_ticket_sentinel.sql": {
+    "mtime": 1789471457.1448977,
+    "ast_hash": "287ee5e6d152363035302e7fefab268c",
     "semantic_hash": ""
   }
 }

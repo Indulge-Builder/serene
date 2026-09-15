@@ -57,6 +57,13 @@ export default async function SettingsPage() {
                 index={0}
               />
               <SettingsLinkCard
+                href="/settings/tickets"
+                icon="ticket"
+                title="Tickets"
+                description="Sia's SLA targets and escalation ladders, the status names the team sees, and the tag list."
+                index={2}
+              />
+              <SettingsLinkCard
                 href="/settings/lead-revival"
                 icon="sparkles"
                 title="Lead Revival"

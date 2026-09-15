@@ -29,8 +29,14 @@ function describe(e: TicketDetail['events'][number]): string {
     case 'brief_updated': return 'Brief updated';
     case 'checklist_ticked': return `${m.done ? 'Ticked' : 'Unticked'}: ${e.body ?? ''}`;
     case 'client_message_linked': return `${m.count ?? 1} message(s) linked`;
-    case 'quote_added': return 'Money updated';
+    case 'quote_added': return e.actor_kind === 'sentinel' && e.body ? `Money read from the notes: ${e.body}` : 'Money updated';
     case 'note': return 'Note';
+    case 'sla_warning': return 'Deadline near';
+    case 'sla_breached': return 'Deadline missed';
+    case 'reminder_sent': return 'Reminder';
+    case 'escalated': return `Escalated to the ${String(m.to ?? 'bishop')}`;
+    case 'observation': return m.proposal === 'resolved' ? 'Proposal: resolved' : m.proposed_brief ? 'Proposal: the request changed' : 'Observation';
+    case 'closed': return 'Closed';
     default: return e.event_type.replace(/_/g, ' ');
   }
 }
@@ -56,7 +62,7 @@ export function TicketTimeline({ ticketId, events }: { ticketId: string; events:
       <CardHeader icon={History} label="Timeline" right={<span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--neu-header-ink)' }}>{events.length}</span>} />
       <ol style={{ margin: 0, padding: 'var(--space-2) var(--space-6)', listStyle: 'none', display: 'flex', flexDirection: 'column' }}>
         {events.map((e) => {
-          const who = e.actor_kind === 'human' ? (e.actor_name ?? 'Team') : e.actor_kind;
+          const who = e.actor_kind === 'human' ? (e.actor_name ?? 'Team') : e.actor_kind === 'sentinel' ? 'Sentinel' : e.actor_kind;
           const isNote = e.event_type === 'note';
           return (
             <li key={e.id} style={{ display: 'flex', gap: 'var(--space-3)', padding: 'var(--space-3) 0', borderBottom: '1px solid var(--theme-paper-border)' }}>

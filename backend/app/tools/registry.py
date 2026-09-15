@@ -1057,6 +1057,10 @@ WRITE_TOOL_NAMES: frozenset[str] = frozenset(
         "update_task_status",
         "update_task",
         "delete_task",
+        # Ticket writes (Sia, 2026-09-15): a note executes inline, a move is a proposal —
+        # both run through the Node bridge, exactly like the lead and task writes.
+        "add_ticket_note",
+        "move_ticket_status",
     }
 )
 
@@ -1079,11 +1083,21 @@ def write_tools_for_role(role: str) -> frozenset[str]:
 # the schema (op=definitions) and the PII seam; this brain only decides WHEN
 # to call. Gated admin/founder to mirror the vendor tables' SELECT policies.
 
-BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({"find_vendors", "get_vendor_details"})
+BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({"find_vendors", "get_vendor_details", "list_tickets", "get_ticket"})
+
+# The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
+# ticket cores live in Node; every staff role may read tickets (the DATABASE scopes rows to
+# the reader's queendom), the vendor pair stays admin/founder.
+_BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
+    "find_vendors": _FOUNDER_UP,
+    "get_vendor_details": _FOUNDER_UP,
+    "list_tickets": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_ticket": frozenset({"agent", "manager", "admin", "founder"}),
+}
 
 
 def bridged_read_tools_for_role(role: str) -> frozenset[str]:
-    return BRIDGED_READ_TOOL_NAMES if role in _FOUNDER_UP else frozenset()
+    return frozenset(name for name, roles in _BRIDGED_READ_ROLES.items() if role in roles)
 
 
 def _toolset(role: str) -> frozenset[str]:

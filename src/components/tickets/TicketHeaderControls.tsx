@@ -15,7 +15,8 @@ import type { StaffOption, TicketRow } from '@/lib/types/ticket';
 
 const SELECT: React.CSSProperties = { padding: '6px var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper)', color: 'var(--theme-text-primary)', fontSize: 'var(--text-sm)', fontFamily: 'inherit' };
 
-export function TicketHeaderControls({ ticket, staff, canApprove }: { ticket: TicketRow; staff: StaffOption[]; canApprove: boolean }) {
+export function TicketHeaderControls({ ticket, staff, canApprove, labels }: { ticket: TicketRow; staff: StaffOption[]; canApprove: boolean; labels?: Record<string, string> }) {
+  const lab = (s: TicketStatus) => labels?.[s] ?? TICKET_STATUSES.labels[s];
   const router = useRouter();
   const [pending, start] = useTransition();
   const [closing, setClosing] = useState<TicketStatus | null>(null);
@@ -53,14 +54,14 @@ export function TicketHeaderControls({ ticket, staff, canApprove }: { ticket: Ti
         if (to === 'resolved' || to === 'closed' || to === 'dropped') setClosing(to); else move(to);
       }}>
         <option value="">Move to…</option>
-        {moves.map((m) => <option key={m} value={m}>{TICKET_STATUSES.labels[m]}</option>)}
+        {moves.map((m) => <option key={m} value={m}>{lab(m)}</option>)}
       </select>
       {closing && (
         <span style={{ display: 'inline-flex', gap: 'var(--space-2)', alignItems: 'center' }}>
           <select style={SELECT} value={resolution} onChange={(e) => setResolution(e.target.value)}>
             {TICKET_RESOLUTIONS.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </select>
-          <Button size="xs" onClick={() => move(closing, resolution)} loading={pending}>{TICKET_STATUSES.labels[closing]}</Button>
+          <Button size="xs" onClick={() => move(closing, resolution)} loading={pending}>{lab(closing)}</Button>
           <Button size="xs" variant="ghost" onClick={() => setClosing(null)}>Cancel</Button>
         </span>
       )}

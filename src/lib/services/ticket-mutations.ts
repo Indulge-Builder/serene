@@ -10,11 +10,13 @@ import { createNotification } from "@/lib/services/notifications-service";
 import { ticketsAdminDb, resolveSlaPolicy } from "@/lib/services/tickets-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  canTransition, checklistForCategory, TICKET_SLA_STOPPED_STATUSES, TICKETS_PATH, type TicketPriority, type TicketStatus,
+  canTransition, checklistForCategory, TICKET_SLA_STOPPED_STATUSES, TICKETS_PATH, type TicketPriority, type TicketStatus, TICKET_SETTING_KEYS, TICKET_STATUSES,
 } from "@/lib/constants/tickets";
 import type { MutationActor } from "@/lib/services/lead-mutations";
 import type { TicketRow, TicketSlaPolicyRow, TicketMessageLinkRow } from "@/lib/types/ticket";
-import type { CreateTicketInput } from "@/lib/validations/ticket-schema";
+import type { CreateTicketInput, UpsertTicketSlaPolicyInput, UpdateTicketSettingsInput } from "@/lib/validations/ticket-schema";
+import { createPersonalTaskCore } from "@/lib/services/task-mutations";
+import { nextBusinessDeadline } from "@/lib/utils/sla";
 
 export type TicketMutationResult<T> = { data: T; error: null } | { data: null; error: string };
 const fail = <T,>(msg: string, e?: { message: string } | null): TicketMutationResult<T> => {
@@ -22,14 +24,22 @@ const fail = <T,>(msg: string, e?: { message: string } | null): TicketMutationRe
   return { data: null, error: msg };
 };
 
-function humanEvent(actor: MutationActor, event_type: string, body: string | null, meta: Record<string, unknown> = {}) {
-  return { actor_kind: "human", actor_id: actor.userId, event_type, body, meta };
+/** The sentinel acts on tickets with no person behind it; its events carry actor_kind 'sentinel' and no actor_id. */
+export const SENTINEL_ACTOR: MutationActor = { userId: "", role: "founder", domain: "concierge", fullName: "Sentinel" };
+
+function humanEvent(actor: MutationActor, event_type: string, body: string | null, meta: Record<string, unknown> = {}, actorKind: "human" | "sentinel" | "system" = "human") {
+  return { actor_kind: actorKind, actor_id: actorKind === "human" ? actor.userId : "", event_type, body, meta };
 }
 
-/** SLA due stamps from the policy: first response, next update, resolve. Plain minutes (business hours in T2). */
+/** A deadline `min` minutes out: on the clock, or in business hours when the policy says so. */
+export function ticketDeadline(from: Date, min: number, businessHours: boolean): string {
+  return businessHours ? nextBusinessDeadline(from, min).toISOString() : new Date(from.getTime() + min * 60_000).toISOString();
+}
+
+/** SLA due stamps from the policy: first response, next update, resolve. */
 function dueStamps(policy: TicketSlaPolicyRow | null, from: Date, status: TicketStatus): { first_response_due_at: string | null; next_update_due_at: string | null; resolve_due_at: string | null } {
   if (!policy) return { first_response_due_at: null, next_update_due_at: null, resolve_due_at: null };
-  const add = (min: number) => new Date(from.getTime() + min * 60_000).toISOString();
+  const add = (min: number) => ticketDeadline(from, min, policy.business_hours);
   const stopped = TICKET_SLA_STOPPED_STATUSES.includes(status);
   return {
     first_response_due_at: add(policy.first_response_min),
@@ -80,7 +90,7 @@ export async function createTicketCore(input: CreateTicketInput, actor: Mutation
 
 // ─── Status ──────────────────────────────────────────────────────────────────
 
-export async function moveTicketStatusCore(ticketId: string, to: TicketStatus, actor: MutationActor, opts: { resolution?: string | null; note?: string | null } = {}): Promise<TicketMutationResult<TicketRow>> {
+export async function moveTicketStatusCore(ticketId: string, to: TicketStatus, actor: MutationActor, opts: { resolution?: string | null; note?: string | null; actorKind?: "human" | "sentinel" | "system" } = {}): Promise<TicketMutationResult<TicketRow>> {
   const db = ticketsAdminDb();
   const { data: cur } = await db.from("tickets").select("*").eq("id", ticketId).maybeSingle();
   if (!cur) return fail("Ticket not found.");
@@ -95,12 +105,13 @@ export async function moveTicketStatusCore(ticketId: string, to: TicketStatus, a
     patch.next_update_due_at = "";
   } else {
     if (t.status === "proposed" && to === "open") Object.assign(patch, dueStamps(policy, now, to));
-    else patch.next_update_due_at = TICKET_SLA_STOPPED_STATUSES.includes(to) || !policy ? "" : new Date(now.getTime() + policy.update_cadence_min * 60_000).toISOString();
+    else patch.next_update_due_at = TICKET_SLA_STOPPED_STATUSES.includes(to) || !policy ? "" : ticketDeadline(now, policy.update_cadence_min, policy.business_hours);
     if (t.closed_at) { patch.closed_at = ""; patch.resolution = ""; }
   }
+  const eventType = t.status === "proposed" && to === "open" ? "approved" : t.closed_at && to === "open" ? "reopened" : to === "closed" ? "closed" : "status_changed";
   const { data, error } = await db.rpc("apply_ticket_change", {
     p_ticket_id: ticketId, p_patch: patch,
-    p_event: humanEvent(actor, t.status === "proposed" && to === "open" ? "approved" : (t.closed_at && to === "open" ? "reopened" : "status_changed"), opts.note ?? null, { from: t.status, to, resolution: patch.resolution ?? null }),
+    p_event: humanEvent(actor, eventType, opts.note ?? null, { from: t.status, to, resolution: patch.resolution ?? null }, opts.actorKind ?? "human"),
   });
   if (error || !data) return fail("Could not move the ticket.", error);
   return { data: data as TicketRow, error: null };
@@ -218,4 +229,88 @@ async function notifyAssigned(ticket: TicketRow, actor: MutationActor): Promise<
     body: `${ticket.title} · ${actor.fullName}`,
     action_url: `${TICKETS_PATH}/${ticket.id}`,
   });
+}
+
+// ─── Tags (0200) ─────────────────────────────────────────────────────────────
+
+export async function updateTicketTagsCore(ticketId: string, tags: string[], actor: MutationActor): Promise<TicketMutationResult<TicketRow>> {
+  const db = ticketsAdminDb();
+  const { data: cur } = await db.from("tickets").select("tags").eq("id", ticketId).maybeSingle();
+  if (!cur) return fail("Ticket not found.");
+  const before = ((cur as { tags: string[] | null }).tags ?? []);
+  const { data, error } = await db.rpc("apply_ticket_change", {
+    p_ticket_id: ticketId, p_patch: { tags },
+    p_event: humanEvent(actor, "observation", `Tags: ${tags.join(", ") || "none"}`, { tags, before }),
+  });
+  if (error || !data) return fail("Could not save the tags.", error);
+  return { data: data as TicketRow, error: null };
+}
+
+// ─── Sub-work: a task off a ticket (0200) ────────────────────────────────────
+
+/**
+ * A personal task created from a ticket: the SAME createPersonalTaskCore every task uses
+ * (reminder, notification, cache dels), plus the task_ticket_meta link and a
+ * `subtask_created` event in the diary. The assignee defaults to the actor.
+ */
+export async function createTicketTaskCore(
+  input: { ticket_id: string; title: string; assigned_to: string | null; priority: "urgent" | "high" | "normal"; due_at: string | null },
+  actor: MutationActor,
+): Promise<TicketMutationResult<{ taskId: string }>> {
+  const db = ticketsAdminDb();
+  const { data: cur } = await db.from("tickets").select("id, ticket_no, client_id, queendom_id, title").eq("id", input.ticket_id).maybeSingle();
+  if (!cur) return fail("Ticket not found.");
+  const t = cur as Pick<TicketRow, "id" | "ticket_no" | "client_id" | "queendom_id" | "title">;
+  const core = await createPersonalTaskCore(actor, {
+    title: input.title, description: `${t.ticket_no} · ${t.title}`, priority: input.priority, dueAt: input.due_at, assignedTo: input.assigned_to, tags: ["ticket"],
+  });
+  if (!core.ok) return fail("Could not create the task.");
+  const admin = createAdminClient();
+  const { error: metaErr } = await admin.from("task_ticket_meta").insert({ task_id: core.taskId, ticket_id: t.id });
+  if (metaErr) console.warn("[ticket-mutations] task_ticket_meta insert failed", metaErr.message);
+  await db.from("ticket_events").insert({
+    ticket_id: t.id, client_id: t.client_id, queendom_id: t.queendom_id, actor_kind: "human", actor_id: actor.userId,
+    event_type: "subtask_created", body: input.title, meta: { task_id: core.taskId, assigned_to: core.assignedTo, due_at: input.due_at }, run_id: null,
+  });
+  return { data: { taskId: core.taskId }, error: null };
+}
+
+// ─── Settings and SLA policies (0200; admin/founder actions only) ────────────
+
+export async function upsertTicketSlaPolicyCore(input: UpsertTicketSlaPolicyInput): Promise<TicketMutationResult<TicketSlaPolicyRow>> {
+  const db = ticketsAdminDb();
+  const { id, ...fields } = input;
+  const row = { ...fields, tier: null };
+  const q = id
+    ? db.from("ticket_sla_policies").update(row).eq("id", id).select("*").single()
+    : db.from("ticket_sla_policies").insert(row).select("*").single();
+  const { data, error } = await q;
+  if (error || !data) return fail("Could not save that policy.", error);
+  return { data: data as TicketSlaPolicyRow, error: null };
+}
+
+export async function deleteTicketSlaPolicyCore(id: string): Promise<TicketMutationResult<{ id: string }>> {
+  const db = ticketsAdminDb();
+  const { count } = await db.from("ticket_sla_policies").select("id", { count: "exact", head: true }).eq("is_active", true).neq("id", id);
+  if (Number(count ?? 0) === 0) return fail("Keep at least one active policy.");
+  const { error } = await db.from("ticket_sla_policies").delete().eq("id", id);
+  if (error) return fail("Could not delete that policy.", error);
+  return { data: { id }, error: null };
+}
+
+export async function updateTicketSettingsCore(input: UpdateTicketSettingsInput, actor: MutationActor): Promise<TicketMutationResult<{ keys: string[] }>> {
+  const db = ticketsAdminDb();
+  const writes: { key: string; value: Record<string, unknown> | unknown[] }[] = [];
+  if (input.status_labels) {
+    // Only real renames are stored; an empty value means "use the built-in name".
+    const clean: Record<string, string> = {};
+    for (const [k, v] of Object.entries(input.status_labels)) if (v && v !== TICKET_STATUSES.labels[k as TicketStatus]) clean[k] = v;
+    writes.push({ key: TICKET_SETTING_KEYS.statusLabels, value: clean });
+  }
+  if (input.tags) writes.push({ key: TICKET_SETTING_KEYS.tags, value: input.tags });
+  for (const w of writes) {
+    const { error } = await db.from("ticket_settings").upsert({ key: w.key, value: w.value, updated_by: actor.userId, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    if (error) return fail("Could not save the settings.", error);
+  }
+  return { data: { keys: writes.map((w) => w.key) }, error: null };
 }

@@ -203,3 +203,14 @@ Never remove the UUID guard without moving id surfacing off the string-mask path
 6. Add the `action_type` to `ElayaActionType` and (if a new target shape) widen
    `ElayaActionPayload.target`.
 7. Log it in `docs/changelog.md` + update `docs/modules/elaya.md`.
+
+## Ticket tools (Sia, 2026-09-15)
+
+| Tool | Tier | Roles | What it wraps |
+| --- | --- | --- | --- |
+| `list_tickets` | read (bridged) | all staff | `elayaData.listTicketsFor` → `listTicketsForElaya` (admin client; scope = the principal's queendom from the profile, admin/founder every queendom; never model-supplied) |
+| `get_ticket` | read (bridged) | all staff | `elayaData.getTicketFor` → `getTicketByRefForElaya` + `canAccessClient` on the ticket's queendom; returns `allowedMoves` from the state machine |
+| `add_ticket_note` | write, inline | all staff | `addTicketNoteCore`; an `executed` ledger row with an `ElayaTicketTarget` |
+| `move_ticket_status` | write, propose-only | all staff | checks `canTransition` at propose time; the resolver (`executeProposedTicketMove`) re-gates, checks the status is unchanged, runs `moveTicketStatusCore` |
+
+Both brains: the Python registry carries the names (`BRIDGED_READ_TOOL_NAMES`, `WRITE_TOOL_NAMES`) and a `tickets` specialist; the definitions come from the bridge.

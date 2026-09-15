@@ -39,7 +39,11 @@ export type ElayaActionType =
   | "create_subtask"
   | "update_task_status"
   | "update_task"
-  | "delete_task";
+  | "delete_task"
+  // Ticket writes (Sia, 0200) — ticket-shaped target {ticketId, ticketNo}. add_ticket_note
+  // executes inline; move_ticket_status is state-changing (propose → confirm → execute).
+  | "add_ticket_note"
+  | "move_ticket_status";
 
 /**
  * A write targets either a LEAD (slug + id) or a TASK/GROUP.
@@ -49,7 +53,9 @@ export type ElayaActionType =
  */
 export type ElayaLeadTarget = { slug: string | null; leadId: string };
 export type ElayaTaskTarget = { taskId?: string; groupId?: string | null };
-export type ElayaActionTarget = ElayaLeadTarget | ElayaTaskTarget;
+/** A ticket-shaped target (Sia, 0200): the id never drifts; the number is for the line the user reads. */
+export type ElayaTicketTarget = { ticketId: string; ticketNo: string };
+export type ElayaActionTarget = ElayaLeadTarget | ElayaTaskTarget | ElayaTicketTarget;
 
 /** Audit payload shape — targeted before/after snapshots (see migration 0118).
  * The jsonb column is unchanged — this is a TS-only contract widening (no migration). */

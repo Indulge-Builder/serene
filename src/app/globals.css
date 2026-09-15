@@ -550,6 +550,18 @@ body {
   }
 }
 
+/* Ticket board (0200): eight status columns — always a horizontal rail, at every width,
+   so eight columns never squeeze into unreadable slivers. */
+.serene-board--wide,
+.serene-board--wide.serene-board {
+  grid-auto-flow: column;
+  grid-auto-columns: min(78vw, 250px);
+  grid-template-columns: none;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding-bottom: var(--space-2);
+}
+
 /* Touch-target extension (DNA §9.3 R-03) — compact 36px toolbar controls
    grow to ≥40px on coarse-pointer devices without changing desktop chrome. */
 @media (pointer: coarse) {

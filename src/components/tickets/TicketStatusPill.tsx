@@ -9,11 +9,12 @@ const TONE: Record<TicketStatusTone, { bg: string; fg: string }> = {
   neutral: { bg: 'var(--color-neutral-light)', fg: 'var(--theme-text-secondary)' },
 };
 
-export function TicketStatusPill({ status }: { status: TicketStatus }) {
+/** `label` = the founder's renamed status from settings (resolveTicketStatusLabels); the built-in name otherwise. */
+export function TicketStatusPill({ status, label }: { status: TicketStatus; label?: string }) {
   const t = TONE[TICKET_STATUS_TONE[status] ?? 'neutral'];
   return (
     <span style={{ display: 'inline-flex', padding: '3px var(--space-3)', borderRadius: 'var(--radius-full)', background: t.bg, color: t.fg, fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)', whiteSpace: 'nowrap' }}>
-      {TICKET_STATUSES.labels[status] ?? status}
+      {label ?? TICKET_STATUSES.labels[status] ?? status}
     </span>
   );
 }
