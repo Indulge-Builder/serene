@@ -97,6 +97,19 @@ and leave the terminal open (the laptop must stay awake and online). Each line p
 minute did and the new watermark. Stopping it is safe: the next start resumes from the watermark
 in `freshdesk.sync_state`.
 
+## Attachments (0197)
+
+Freshdesk keeps files on its own storage and gives the API a link that expires in hours; the
+export carried names only. So every thread pull copies the files and the pasted images its
+fresh links point at into the PRIVATE `freshdesk-attachments` bucket (`freshdesk-media.ts`),
+at most 40 per pull, keeping paths already copied across a re-pull. The ticket page signs a
+one-hour link per file and shows images as thumbnails, video and audio playable, the rest as
+chips. A file that could not be copied keeps its name with the reason on hover.
+
+The history (about 63,000 files, roughly 13 GB) is a backlog: `backfill.ts --poll --media`
+re-queues old threads for the catch-up whenever the queue of changed tickets is short, and
+prints the backlog every ten minutes. Downloads are not API calls; only the thread pull is.
+
 ## The page
 
 `/freshdesk` (admin and founder): the overview strip, the shared filter bar, the dense table,

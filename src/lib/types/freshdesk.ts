@@ -52,6 +52,8 @@ export type FdTicketRow = {
   synced_at: string;
   conversations_synced_at: string | null;
   conversation_count: number;
+  /** 0197: ticket-level files + the description's inline images. */
+  attachments: FdAttachment[];
 };
 
 export type FdConversationRow = {
@@ -71,6 +73,8 @@ export type FdConversationRow = {
   fd_created_at: string;
   fd_updated_at: string | null;
   synced_at: string;
+  /** 0197: when the note's files were copied; NULL = the backlog. */
+  media_synced_at: string | null;
 };
 
 export type FdContactRow = {
@@ -208,8 +212,8 @@ type Table<Row, Insert = Partial<Row>> = {
 export type FreshdeskDatabase = {
   freshdesk: {
     Tables: {
-      tickets: Table<FdTicketRow, Omit<FdTicketRow, "first_synced_at" | "synced_at"> & { synced_at?: string }>;
-      conversations: Table<FdConversationRow>;
+      tickets: Table<FdTicketRow, Omit<FdTicketRow, "first_synced_at" | "synced_at" | "attachments"> & { synced_at?: string; attachments?: FdAttachment[] }>;
+      conversations: Table<FdConversationRow, Omit<FdConversationRow, "media_synced_at"> & { media_synced_at?: string | null }>;
       contacts: Table<FdContactRow>;
       agents: Table<FdAgentRow>;
       groups: Table<FdGroupRow>;
@@ -238,6 +242,10 @@ export type FreshdeskDatabase = {
         };
         Returns: FdOverviewRpcResult;
       };
+      /** 0197 — the attachment backlog (distinct tickets, notes). */
+      media_backlog: { Args: Record<string, never>; Returns: { tickets: number; conversations: number } };
+      /** 0197 — queue up to p_limit backlog tickets for the thread catch-up; returns how many. */
+      flag_threads_for_media: { Args: { p_limit?: number }; Returns: number };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
@@ -251,9 +259,19 @@ export type FdAttachment = {
   name?: string;
   content_type?: string;
   size?: number;
+  /** Freshdesk's own link — expires in hours; never shown, only copied from. */
   attachment_url?: string;
   thumb_url?: string | null;
   created_at?: string;
+  /** 0197: the path in the freshdesk-attachments bucket once copied. */
+  storage_path?: string | null;
+  /** True for an image pasted into the note body (not a file attachment). */
+  inline?: boolean;
+  stored_at?: string;
+  /** Why the copy failed (kept so the note can still show the name). */
+  store_error?: string;
+  /** Filled by the read path: a one-hour signed link, never persisted. */
+  signed_url?: string | null;
 };
 
 export type FdApiTicket = {

@@ -204,6 +204,31 @@ async function getTeam(queendomId: string | null): Promise<ClientTeam> {
   return team;
 }
 
+/**
+ * Two sources saying the same thing (the Atlas profile and the onboarding form both say
+ * "Badminton") are one fact with two witnesses, not two facts. Group current rows by
+ * facet + key + value (case-insensitive) + polarity; keep the most confident (then newest)
+ * as the row, list every source, and remember the other ids so a correction retires them all.
+ */
+function collapseAgreeingFacts(facts: ClientFactView[]): ClientFactView[] {
+  const groups = new Map<string, ClientFactView[]>();
+  for (const f of facts) {
+    const k = `${f.facet}|${f.key}|${f.value.trim().toLowerCase()}|${f.polarity}`;
+    groups.set(k, [...(groups.get(k) ?? []), f]);
+  }
+  const out: ClientFactView[] = [];
+  for (const g of groups.values()) {
+    const sorted = [...g].sort((a, b) => b.confidence - a.confidence || b.observed_at.localeCompare(a.observed_at));
+    const [head, ...rest] = sorted;
+    out.push({
+      ...head,
+      sources: [...new Set(sorted.map((x) => x.source))],
+      duplicate_ids: rest.map((x) => x.id),
+    });
+  }
+  return out.sort((a, b) => b.observed_at.localeCompare(a.observed_at));
+}
+
 /** The client's queendom, for the access check in every client action. Null when the client does not exist. */
 export async function clientQueendom(clientId: string): Promise<{ exists: boolean; queendom_id: string | null }> {
   const { data } = await createAdminClient().from("clients").select("queendom_id").eq("id", clientId).maybeSingle();
@@ -248,9 +273,11 @@ export async function getClientDetail(clientId: string): Promise<ClientDetail | 
     observed_at: f.observed_at,
     created_by_name: f.created_by_profile?.full_name ?? null,
     superseded: false,
+    sources: [f.source as ClientFactView["source"]],
+    duplicate_ids: [],
   }));
   const validFacets = new Set<string>(CLIENT_FACETS.values);
-  const facts = allFacts.filter((f) => f.facet !== "note" && validFacets.has(f.facet));
+  const facts = collapseAgreeingFacts(allFacts.filter((f) => f.facet !== "note" && validFacets.has(f.facet)));
   const notes = allFacts.filter((f) => f.facet === "note");
 
   return {

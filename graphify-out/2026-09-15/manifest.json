@@ -800,8 +800,8 @@
     "semantic_hash": ""
   },
   "src/components/layout/Sidebar.tsx": {
-    "mtime": 1789427745.5702748,
-    "ast_hash": "464424762120866a49b117ebb2511c96",
+    "mtime": 1789459469.984193,
+    "ast_hash": "47351ec5bd2d2aba0d6400037c70ff8e",
     "semantic_hash": ""
   },
   "src/components/layout/ThemeInitializer.tsx": {
@@ -3085,8 +3085,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1789456094.3874323,
-    "ast_hash": "81f3af88a02b4f1948fbbd8d53296e58",
+    "mtime": 1789459853.0605059,
+    "ast_hash": "55932c08d2ce2a0a39ebcd6a68a6d90c",
     "semantic_hash": ""
   },
   "README.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789456094.3856547,
-    "ast_hash": "dea4f906cf9f2a5db53927987ccd2b40",
+    "mtime": 1789459853.0595407,
+    "ast_hash": "4f853ca910c93d312da971b5fa29b399",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3440,8 +3440,8 @@
     "semantic_hash": ""
   },
   "src/app/CLAUDE.md": {
-    "mtime": 1789456094.3897433,
-    "ast_hash": "59eda9628aa59f5ec0bbf5ef31e06e7b",
+    "mtime": 1789459853.0615737,
+    "ast_hash": "ee5df06dc7ad2494ae34a7d6b7d8e1ea",
     "semantic_hash": ""
   },
   "src/app/api/webhooks/CLAUDE.md": {
@@ -7265,8 +7265,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/clients/[id]/page.tsx": {
-    "mtime": 1789424728.7096632,
-    "ast_hash": "a53d94c41eae4aaa3ad4c3610aaff0f3",
+    "mtime": 1789459706.6690264,
+    "ast_hash": "30ada684dc89f0bb4846084abd8001e7",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/clients/loading.tsx": {
@@ -7290,8 +7290,8 @@
     "semantic_hash": ""
   },
   "src/components/clients/ClientFactsCard.tsx": {
-    "mtime": 1789424728.7095056,
-    "ast_hash": "326668590756905ecc0803b3d62dc4db",
+    "mtime": 1789459706.6695502,
+    "ast_hash": "d877b93ccf1f9aafaab74240beb0f4d0",
     "semantic_hash": ""
   },
   "src/components/clients/ClientFormModal.tsx": {
@@ -7307,11 +7307,6 @@
   "src/components/clients/ClientIdentityCard.tsx": {
     "mtime": 1789455962.019897,
     "ast_hash": "760616713e6c8d19e604975e95724b04",
-    "semantic_hash": ""
-  },
-  "src/components/clients/ClientNotesCard.tsx": {
-    "mtime": 1789424612.5797765,
-    "ast_hash": "5d89199af730b550d62fc1fad0b3ffb6",
     "semantic_hash": ""
   },
   "src/components/clients/ClientPeopleCard.tsx": {
@@ -7355,8 +7350,8 @@
     "semantic_hash": ""
   },
   "src/lib/actions/clients.ts": {
-    "mtime": 1789424263.4327912,
-    "ast_hash": "5f3783d57163dd125314998651c6aae5",
+    "mtime": 1789459787.721959,
+    "ast_hash": "f1ad13697b55a7aee3ddddeedcecfbe4",
     "semantic_hash": ""
   },
   "src/lib/constants/client-facets.ts": {
@@ -7370,23 +7365,23 @@
     "semantic_hash": ""
   },
   "src/lib/services/client-mutations.ts": {
-    "mtime": 1789424285.8316848,
-    "ast_hash": "bb631c3deff5b03518cf7cbed6c0436a",
+    "mtime": 1789459652.4042437,
+    "ast_hash": "bdc0dc52c1ae9aa0b56b25af54e283c6",
     "semantic_hash": ""
   },
   "src/lib/services/clients-service.ts": {
-    "mtime": 1789424195.2323856,
-    "ast_hash": "6a9191afd43330820aab1f06da30028f",
+    "mtime": 1789459469.9828932,
+    "ast_hash": "752d35c12fe68728740ea343fa3aae65",
     "semantic_hash": ""
   },
   "src/lib/types/client.ts": {
-    "mtime": 1789424143.9066494,
-    "ast_hash": "7a9e1104d3687270f690708ec39f1a5e",
+    "mtime": 1789459652.4035583,
+    "ast_hash": "f8eb613e12054d0395199ae26663b385",
     "semantic_hash": ""
   },
   "src/lib/validations/client-schema.ts": {
-    "mtime": 1789424143.9088604,
-    "ast_hash": "43d648c89e42a638c41e768adff6b84f",
+    "mtime": 1789459652.4029672,
+    "ast_hash": "ba4ac804f35af0b41fccf00540b9b841",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915000194_client_twin_and_queendoms.sql": {
@@ -7515,18 +7510,323 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/clients/[id]/finance/page.tsx": {
-    "mtime": 1789456015.6896074,
-    "ast_hash": "cab11df1f91cf5034d21ca0d7514b156",
+    "mtime": 1789459557.0025227,
+    "ast_hash": "cf98d5bdcc12b26b54cceb27a9c52b9b",
     "semantic_hash": ""
   },
   "src/components/clients/ClientFinanceView.tsx": {
-    "mtime": 1789456015.6927407,
-    "ast_hash": "63f9858d4bd653e0dec2a3765d1dc2ea",
+    "mtime": 1789459557.0031734,
+    "ast_hash": "47690f23db72be0824d8e9c4a3b1764e",
     "semantic_hash": ""
   },
   "src/components/ui/RevealId.tsx": {
     "mtime": 1789455920.5449388,
     "ast_hash": "4ae349eaad49cee09a97821da9010f15",
+    "semantic_hash": ""
+  },
+  "src/app/(dashboard)/books/loading.tsx": {
+    "mtime": 1789459523.0366302,
+    "ast_hash": "5842926f857d522f6a4324d895012d25",
+    "semantic_hash": ""
+  },
+  "src/app/(dashboard)/books/page.tsx": {
+    "mtime": 1789459523.0337422,
+    "ast_hash": "1fc39855a891f12ec9f7a179a2d65ba3",
+    "semantic_hash": ""
+  },
+  "src/components/books/BooksOverview.tsx": {
+    "mtime": 1789459450.8692243,
+    "ast_hash": "d65dc43e36857f78197cf5564d76022f",
+    "semantic_hash": ""
+  },
+  "src/components/books/RefreshBooksButton.tsx": {
+    "mtime": 1789459450.8559148,
+    "ast_hash": "325570e0e7a3d2f40fef7b39b66da07b",
+    "semantic_hash": ""
+  },
+  "src/components/books/ZohoStatusPill.tsx": {
+    "mtime": 1789459450.8274167,
+    "ast_hash": "81463dd499d9b0e9cd377a82ba2b7207",
+    "semantic_hash": ""
+  },
+  "src/components/books/ZohoTables.tsx": {
+    "mtime": 1789459450.9213793,
+    "ast_hash": "fadf098d6b297dbacd545d4322d89320",
+    "semantic_hash": ""
+  },
+  "src/components/clients/ClientObservationCard.tsx": {
+    "mtime": 1789459706.6390212,
+    "ast_hash": "b4f510aee3af137aaf69a1cee8d71216",
+    "semantic_hash": ""
+  },
+  "src/components/clients/ClientZohoCards.tsx": {
+    "mtime": 1789459523.0397227,
+    "ast_hash": "54f38ee9fbce01fb36dfc6a9f84aa6a5",
+    "semantic_hash": ""
+  },
+  "src/components/clients/ClientZohoSkeleton.tsx": {
+    "mtime": 1789459557.010091,
+    "ast_hash": "5d735169b5192edce842ddc31eb293c8",
+    "semantic_hash": ""
+  },
+  "src/components/clients/RefreshClientFinanceButton.tsx": {
+    "mtime": 1789459523.0427337,
+    "ast_hash": "68d93d592f4563e9bb985e49640f5236",
+    "semantic_hash": ""
+  },
+  "src/lib/actions/books.ts": {
+    "mtime": 1789459382.5434976,
+    "ast_hash": "f5b28de299f8903f01719b2956205f27",
+    "semantic_hash": ""
+  },
+  "src/lib/constants/zoho.ts": {
+    "mtime": 1789459277.4016173,
+    "ast_hash": "3a1ae4348d65bb4d8b0c6880c6c13f35",
+    "semantic_hash": ""
+  },
+  "src/lib/services/client-observation-reader.ts": {
+    "mtime": 1789459652.3720798,
+    "ast_hash": "f24cbe9b6fbb8ee776bd20327b76bbb7",
+    "semantic_hash": ""
+  },
+  "src/lib/services/zoho-api.ts": {
+    "mtime": 1789459787.7214196,
+    "ast_hash": "6cfd267b11fa62331abc47ef30e3aaa4",
+    "semantic_hash": ""
+  },
+  "src/lib/services/zoho-service.ts": {
+    "mtime": 1789459382.5404615,
+    "ast_hash": "9b3ee38c02d1c5e245183f746fef4375",
+    "semantic_hash": ""
+  },
+  "src/lib/types/zoho.ts": {
+    "mtime": 1789459277.405035,
+    "ast_hash": "184c08a3c9f1c1b070bae825314922e2",
+    "semantic_hash": ""
+  },
+  "docs/integrations/zoho-books.md": {
+    "mtime": 1789459769.0707922,
+    "ast_hash": "cfbf150896904a02d63a0de89c14ea2e",
+    "semantic_hash": ""
+  },
+  "zoho books-api/bank-accounts.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "c213300e729cebbc7fa9960999e38cf6",
+    "semantic_hash": ""
+  },
+  "zoho books-api/bank-rules.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "088222dea20c5ade8a2cc97fd34975ed",
+    "semantic_hash": ""
+  },
+  "zoho books-api/bank-transactions.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "d16116e3d1f643fb023fc8137a72a03c",
+    "semantic_hash": ""
+  },
+  "zoho books-api/base-currency-adjustment.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "d539c4ca83e70a831a99626d7c8c28b3",
+    "semantic_hash": ""
+  },
+  "zoho books-api/bills.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "b8edb3966c26c5e0b62bb667cdb7d69f",
+    "semantic_hash": ""
+  },
+  "zoho books-api/categories.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "0531b252575297763a2e0ce5cd211f4b",
+    "semantic_hash": ""
+  },
+  "zoho books-api/chart-of-accounts.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "363b434d91bffdf105a098f6c44705e8",
+    "semantic_hash": ""
+  },
+  "zoho books-api/contact-persons.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "47476183021afd8ef12300210ef9f868",
+    "semantic_hash": ""
+  },
+  "zoho books-api/contacts.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "085af2f5b14e1e95e42a6807e775becc",
+    "semantic_hash": ""
+  },
+  "zoho books-api/credit-notes.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "4b80d74b1dcd45cda15771bd69b603c7",
+    "semantic_hash": ""
+  },
+  "zoho books-api/currency.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "8167a2ef4ffbdd42bbf7c9fcd6535092",
+    "semantic_hash": ""
+  },
+  "zoho books-api/custom-modules.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "5cb6c1503bff6df4b618e47e4830d506",
+    "semantic_hash": ""
+  },
+  "zoho books-api/customer-debit-notes.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "068934fd0bc7fa72876a6bb7d4817aa1",
+    "semantic_hash": ""
+  },
+  "zoho books-api/customer-payments.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "d3b2d4824f8664f6460d62550b85abba",
+    "semantic_hash": ""
+  },
+  "zoho books-api/delivery-challans.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "9e48212646abe38ee463841e380c5950",
+    "semantic_hash": ""
+  },
+  "zoho books-api/estimates.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "865bebd8cf5407cfb27bccab16df4172",
+    "semantic_hash": ""
+  },
+  "zoho books-api/expenses.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "1bc1d88304fe3fd585b3993a5d7a930c",
+    "semantic_hash": ""
+  },
+  "zoho books-api/fixed-assets.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "60b91bcfb1b398243502c2b4422d7b62",
+    "semantic_hash": ""
+  },
+  "zoho books-api/integration.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "413b3b60a84fe17aa674bc2bcb932f37",
+    "semantic_hash": ""
+  },
+  "zoho books-api/invoices.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "c436f34b7a2fb9c57a322747a9d2afd0",
+    "semantic_hash": ""
+  },
+  "zoho books-api/items.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "579ab8f95022f2b32c5eaff6f5d070a8",
+    "semantic_hash": ""
+  },
+  "zoho books-api/journals.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "795eae5520b6be954a1bb5a9f4d34555",
+    "semantic_hash": ""
+  },
+  "zoho books-api/locations.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "faf42396795bba6d80a25a63b1fd771f",
+    "semantic_hash": ""
+  },
+  "zoho books-api/opening-balance.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "f13c75ccfaa04987771cf33faeaa9fa1",
+    "semantic_hash": ""
+  },
+  "zoho books-api/organizations.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "d5f8671adf3df2ceeb065a669172dfc9",
+    "semantic_hash": ""
+  },
+  "zoho books-api/pricelists.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "e0d091eaa649f31f8adff1809cdc6b47",
+    "semantic_hash": ""
+  },
+  "zoho books-api/projects.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "1430862288c9c868f95673e7745094f7",
+    "semantic_hash": ""
+  },
+  "zoho books-api/purchase-order.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "892d043cafff4121460d1f9214f1bc8b",
+    "semantic_hash": ""
+  },
+  "zoho books-api/purchase-returns.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "f9bf844f2116f7990d6ad3e15c28397f",
+    "semantic_hash": ""
+  },
+  "zoho books-api/recurring-bills.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "c0819d95f1c85cac6b7b1de4b7f4d6fc",
+    "semantic_hash": ""
+  },
+  "zoho books-api/recurring-expenses.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "bfd9db7483d4cd731f84cff963fd7a0a",
+    "semantic_hash": ""
+  },
+  "zoho books-api/recurring-invoices.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "1dca7690b39726c323fb2e551da26e86",
+    "semantic_hash": ""
+  },
+  "zoho books-api/registers.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "822187f016ca76b8181592ce5199835a",
+    "semantic_hash": ""
+  },
+  "zoho books-api/reporting-tags.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "5eb6b6821366bc8f847e056d9584d00c",
+    "semantic_hash": ""
+  },
+  "zoho books-api/retainer-invoices.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "db9debb645a229c8e4765c01fef47d8d",
+    "semantic_hash": ""
+  },
+  "zoho books-api/sales-order.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "277765e1aba31ffe79a6fe707fe97c64",
+    "semantic_hash": ""
+  },
+  "zoho books-api/sales-receipt.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "806b071ca996e3f72e3dac84e7920e9c",
+    "semantic_hash": ""
+  },
+  "zoho books-api/tasks.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "57b39b1914b2b90f85c2093307197a48",
+    "semantic_hash": ""
+  },
+  "zoho books-api/taxes.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "33fc0214243d7ceba17c0948c000425b",
+    "semantic_hash": ""
+  },
+  "zoho books-api/time-entries.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "32f9552533fb3daddafdc5bd54722840",
+    "semantic_hash": ""
+  },
+  "zoho books-api/transaction-locking.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "25d90c06fafb80aa85689d0c2362e66f",
+    "semantic_hash": ""
+  },
+  "zoho books-api/users.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "9fc6af7a1e85bd7aa90a7db12bd520a5",
+    "semantic_hash": ""
+  },
+  "zoho books-api/vendor-credits.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "64183e37caaa9acc94adafb076d2b5ec",
+    "semantic_hash": ""
+  },
+  "zoho books-api/vendor-payments.yml": {
+    "mtime": 1788996562.0,
+    "ast_hash": "20aaabd60f9c23c69772db0add284915",
     "semantic_hash": ""
   }
 }

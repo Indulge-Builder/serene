@@ -9,6 +9,7 @@ import { mapRows } from "@/lib/utils/rows";
 import { toISTMidnight } from "@/lib/utils/ist";
 import { FD_STATUS_LABELS, FRESHDESK_LIST_PAGE_SIZE, FD_SYNC_KEYS, fdStatusLabel } from "@/lib/constants/freshdesk";
 import { freshdeskDb } from "@/lib/services/freshdesk-sync";
+import { signFreshdeskAttachments } from "@/lib/services/freshdesk-media";
 import type {
   FdAgentRow,
   FdContactRow,
@@ -181,7 +182,11 @@ export async function getFreshdeskTicketDetail(id: number): Promise<FdTicketDeta
     t.group_id != null ? db.from("groups").select("*").eq("id", t.group_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
 
-  const conversations = mapRows<FdConversationRow, FdConversationRow>(convs.data, (r) => r);
+  // 0197: every stored file gets a one-hour signed link; the rows carry it as signed_url.
+  const conversations = await signFreshdeskAttachments(
+    mapRows<FdConversationRow, FdConversationRow>(convs.data, (r) => ({ ...r, attachments: Array.isArray(r.attachments) ? r.attachments : [] })),
+  );
+  const [signedTicket] = await signFreshdeskAttachments([{ ...t, attachments: Array.isArray(t.attachments) ? t.attachments : [] }]);
   const userIds = Array.from(new Set(conversations.map((c) => c.user_id).filter((u): u is number => u != null)));
   const agentNames: Record<number, string> = {};
   if (userIds.length) {
@@ -196,7 +201,7 @@ export async function getFreshdeskTicketDetail(id: number): Promise<FdTicketDeta
   }
 
   return {
-    ticket: t,
+    ticket: signedTicket,
     conversations,
     changes: mapRows<FdTicketChangeRow, FdTicketChangeRow>(changes.data, (r) => r),
     contact: (contact.data as unknown as FdContactRow | null) ?? null,

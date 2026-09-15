@@ -164,7 +164,10 @@ export async function listTicketsUpdatedSince(
 
 /** One ticket, or null when Freshdesk no longer returns it (deleted / spam-purged). */
 export async function getTicket(id: number, budget: FdBudget): Promise<FdApiTicket | null> {
-  const res = await fdFetch<FdApiTicket | null>(`/tickets/${id}?include=${FD_TICKET_INCLUDE}`, budget);
+  // The single-ticket endpoint always returns the description and rejects `include=description`
+  // (only the list endpoint takes it); it accepts stats, requester, company, conversations, sla_policy.
+  const include = FD_TICKET_INCLUDE.split(",").filter((k) => k !== "description").join(",");
+  const res = await fdFetch<FdApiTicket | null>(`/tickets/${id}?include=${include}`, budget);
   return res.status === 404 ? null : res.data;
 }
 

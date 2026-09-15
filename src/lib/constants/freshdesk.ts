@@ -128,3 +128,40 @@ export function fdSourceLabel(source: number | null): string {
   if (source == null) return "—";
   return FD_SOURCE_LABELS[source] ?? `Source ${source}`;
 }
+
+// ─── Attachments (0197) ───────────────────────────────────────────────────────
+/** The PRIVATE bucket every Freshdesk file and inline image is copied into. */
+export const FRESHDESK_ATTACHMENT_BUCKET = "freshdesk-attachments";
+/** Larger files are left as a name only (Freshdesk allows 20 MB per file; some legacy notes carry more). */
+export const FD_ATTACHMENT_MAX_BYTES = 30 * 1024 * 1024;
+/** A signed link lives an hour, like whatsapp-media. */
+export const FD_ATTACHMENT_SIGNED_TTL_SECONDS = 3600;
+/** Files copied per thread pull; a bigger thread finishes on its next pull (the backlog flag re-queues it). */
+export const FD_MEDIA_PER_THREAD_MAX = 40;
+/** How many backlog tickets the laptop loop queues per minute when run with --media. */
+export const FD_MEDIA_FLAG_BATCH = 150;
+
+const FD_EXT_BY_MIME: Record<string, string> = {
+  "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/heic": "heic", "image/svg+xml": "svg",
+  "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm", "audio/mpeg": "mp3", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/wav": "wav",
+  "application/pdf": "pdf", "text/plain": "txt", "text/csv": "csv",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/msword": "doc", "application/vnd.ms-excel": "xls", "application/zip": "zip",
+};
+
+/** The file extension for a Freshdesk attachment: from its name, else its type, else bin. */
+export function fdAttachmentExt(name: string | undefined, contentType: string | undefined): string {
+  const fromName = (name ?? "").match(/\.([a-z0-9]{1,5})$/i)?.[1]?.toLowerCase();
+  return fromName ?? FD_EXT_BY_MIME[(contentType ?? "").toLowerCase()] ?? "bin";
+}
+
+/** What the page renders an attachment as. */
+export function fdAttachmentKind(a: { name?: string; content_type?: string }): "image" | "video" | "audio" | "file" {
+  const t = (a.content_type ?? "").toLowerCase();
+  const ext = fdAttachmentExt(a.name, t);
+  if (t.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp", "heic"].includes(ext)) return "image";
+  if (t.startsWith("video/") || ["mp4", "mov", "webm"].includes(ext)) return "video";
+  if (t.startsWith("audio/") || ["mp3", "ogg", "m4a", "wav", "opus"].includes(ext)) return "audio";
+  return "file";
+}

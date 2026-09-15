@@ -1,7 +1,8 @@
-import { AnimatedNumber } from './AnimatedNumber';
-
-// StatTile — THE labelled stat tile (dry-audit L-8). Server-component-safe
-// (AnimatedNumber is a client leaf — fine to render from a server tree).
+// StatTile — THE labelled stat tile (dry-audit L-8). Server-component-safe; the value
+// renders as plain text (the count-up animation was removed 2026-09-15: on money tiles
+// the digits rolling in read as noise, and a number should be readable the instant it
+// paints). Big money goes through formatCurrencyCompact (₹28.1L, ₹1.2Cr), never the
+// long form — the long form belongs in tables.
 //
 // Two variants cover the two existing anatomies:
 //   'card' — paper card chrome, micro label on top, 2xl semibold mono value,
@@ -56,7 +57,7 @@ export function StatTile({
             whiteSpace:         'nowrap',
           }}
         >
-          <AnimatedNumber value={value} />
+          {value}
         </span>
         <span
           className="label-micro"
@@ -99,7 +100,7 @@ export function StatTile({
           lineHeight:  'var(--leading-none)',
         }}
       >
-        <AnimatedNumber value={value} />
+        {value}
       </p>
 
       {sub && (

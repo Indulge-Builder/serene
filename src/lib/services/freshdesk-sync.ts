@@ -12,9 +12,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeToE164 } from "@/lib/utils/phone";
+import { copyMedia } from "@/lib/services/freshdesk-media";
 import {
   FD_BACKFILL_EPOCH,
   FD_MAX_PAGES,
+  FD_MEDIA_PER_THREAD_MAX,
   FD_PAGE_SIZE,
   FD_POLL_OVERLAP_MS,
   FD_REFERENCE_TTL_MS,
@@ -38,6 +40,7 @@ import {
   type FdBudget,
 } from "@/lib/services/freshdesk-api";
 import type {
+  FdAttachment,
   FdApiAgent,
   FdApiContact,
   FdApiConversation,
@@ -385,15 +388,49 @@ function normalizeConversation(c: FdApiConversation, ticketId: number) {
   };
 }
 
-/** Pull one ticket's thread and mark the ticket as thread-synced. One or two API calls. */
+/**
+ * Pull one ticket's thread and mark the ticket as thread-synced. One or two API calls, plus
+ * (0197) the copy of every file and pasted image the fresh links point at — this pull is the
+ * only moment those links are alive. Paths already copied survive a re-pull.
+ */
 export async function syncThread(ticketId: number, budget: FdBudget, stats: FdRunStats): Promise<void> {
   const db = freshdeskDb();
   const convs = await listConversations(ticketId, budget);
+  const [{ data: priorRows }, { data: ticketRow }] = await Promise.all([
+    db.from("conversations").select("id, attachments").eq("ticket_id", ticketId),
+    db.from("tickets").select("raw, attachments").eq("id", ticketId).maybeSingle(),
+  ]);
+  const prior = new Map<number, FdAttachment[]>();
+  for (const r of (priorRows ?? []) as { id: number; attachments: FdAttachment[] }[]) prior.set(r.id, Array.isArray(r.attachments) ? r.attachments : []);
+
+  let cap = FD_MEDIA_PER_THREAD_MAX;
+  let copied = 0;
   if (convs.length) {
-    const { error } = await db.from("conversations").upsert(convs.map((c) => normalizeConversation(c, ticketId)), { onConflict: "id" });
+    const rows = [];
+    for (const c of convs) {
+      const row = normalizeConversation(c, ticketId);
+      const media = await copyMedia(`${ticketId}/${c.id}`, row.attachments, row.body_html, prior.get(c.id) ?? [], cap);
+      cap -= media.copied;
+      copied += media.copied;
+      rows.push({ ...row, attachments: media.attachments, media_synced_at: media.remaining === 0 ? new Date().toISOString() : null });
+    }
+    const { error } = await db.from("conversations").upsert(rows, { onConflict: "id" });
     if (error) throw new Error(`[freshdesk-sync] conversations upsert failed: ${error.message}`);
     stats.conversationsWritten += convs.length;
   }
+  // The ticket's own files and the description's pasted images.
+  const t = ticketRow as { raw: Record<string, unknown>; attachments: FdAttachment[] | null } | null;
+  if (t) {
+    const rawAtt = Array.isArray(t.raw?.attachments) ? (t.raw.attachments as FdAttachment[]) : [];
+    const desc = typeof t.raw?.description === "string" ? t.raw.description : null;
+    if (rawAtt.length || (desc && desc.includes("<img"))) {
+      const media = await copyMedia(`${ticketId}/ticket`, rawAtt, desc, Array.isArray(t.attachments) ? t.attachments : [], cap);
+      copied += media.copied;
+      const { error: aErr } = await db.from("tickets").update({ attachments: media.attachments }).eq("id", ticketId);
+      if (aErr) console.warn("[freshdesk-sync] ticket attachments update failed", aErr.message);
+    }
+  }
+  if (copied) stats.detail.media_copied = Number(stats.detail.media_copied ?? 0) + copied;
   const { error: tErr } = await db
     .from("tickets")
     .update({ conversations_synced_at: new Date().toISOString(), conversation_count: convs.length })
@@ -781,9 +818,12 @@ export type FdCycleSummary = {
  * → the incremental poll → deferred threads → contacts (when due) → the backfill with
  * whatever budget is left → field choices. Each step stops cleanly when the budget ends.
  */
-export async function runSyncCycle(budget: FdBudget = createFdBudget()): Promise<FdCycleSummary> {
+export async function runSyncCycle(budget: FdBudget = createFdBudget(), opts: { flagMedia?: number } = {}): Promise<FdCycleSummary> {
   const reference = await runReferenceStep(budget);
   const poll = await runPollStep(budget);
+  // 0197: work the attachment backlog by re-queuing old threads, but only while the queue of
+  // genuinely changed tickets is short, so a fresh update is never behind old files.
+  if (opts.flagMedia && (await threadQueueLength()) < opts.flagMedia) await flagThreadsForMedia(opts.flagMedia);
   const threads = budgetHasRoom(budget) ? await runThreadCatchupStep(budget) : null;
   const contactsState = await getSyncState<ContactsState>(FD_SYNC_KEYS.contacts);
   const contactsDue =
@@ -792,4 +832,30 @@ export async function runSyncCycle(budget: FdBudget = createFdBudget()): Promise
   const backfill = budgetHasRoom(budget) ? await runBackfillStep(budget) : null;
   const fieldChoices = budgetHasRoom(budget) ? await runFieldChoicesStep(budget) : null;
   return { poll, threads, backfill, reference, contacts, fieldChoices, apiCalls: budget.calls, rateRemaining: budget.remaining };
+}
+
+// ─── Attachment backlog (0197) ───────────────────────────────────────────────
+
+/** Tickets waiting for a thread pull (changed tickets + re-queued backlog). */
+export async function threadQueueLength(): Promise<number> {
+  const { count } = await freshdeskDb().from("tickets").select("id", { count: "exact", head: true }).is("conversations_synced_at", null).eq("deleted", false);
+  return Number(count ?? 0);
+}
+
+/** Notes whose files or pasted images are not copied yet, as distinct tickets and notes. */
+export async function getMediaBacklog(): Promise<{ tickets: number; conversations: number }> {
+  const { data, error } = await freshdeskDb().rpc("media_backlog");
+  if (error) throw new Error(`[freshdesk-sync] media_backlog failed: ${error.message}`);
+  const d = (data ?? {}) as { tickets?: number; conversations?: number };
+  return { tickets: Number(d.tickets ?? 0), conversations: Number(d.conversations ?? 0) };
+}
+
+/** Queue up to `limit` backlog tickets for the next thread catch-up. Returns how many. */
+export async function flagThreadsForMedia(limit: number): Promise<number> {
+  const { data, error } = await freshdeskDb().rpc("flag_threads_for_media", { p_limit: limit });
+  if (error) {
+    console.warn("[freshdesk-sync] flag_threads_for_media failed (0197 applied?)", error.message);
+    return 0;
+  }
+  return Number(data ?? 0);
 }

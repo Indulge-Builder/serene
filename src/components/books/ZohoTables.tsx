@@ -1,6 +1,10 @@
+'use client';
+
 // ZohoTables — the read-only grids over Zoho rows (Table<T>, the secondary-table primitive):
-// invoices and payments. Each row links out to Zoho Books; nothing is edited here. Shared
-// by /books and the client finance page.
+// invoices, payments and credit notes. Each row links out to Zoho Books; nothing is edited
+// here. Shared by /books and the client finance page. A client component because Table<T>
+// takes render functions (rowKey, cell), which a server component cannot hand across the
+// boundary; the rows themselves arrive as plain data from the server page.
 
 import { ExternalLink } from 'lucide-react';
 import { Table } from '@/components/ui/Table';

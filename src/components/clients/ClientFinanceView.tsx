@@ -9,7 +9,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { InfoRow } from '@/components/ui/InfoRow';
 import { StatTile } from '@/components/ui/StatTile';
 import { formatDate } from '@/lib/utils/dates';
-import { formatCount, formatCurrency } from '@/lib/utils/numbers';
+import { formatCount, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 import type { ClientDetail } from '@/lib/types/client';
 
@@ -32,7 +32,7 @@ export function ClientFinanceView({ detail }: { detail: ClientDetail }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-4)' }}>
-        <StatTile label="Membership" value={c.membership_amount_inr != null ? formatCurrency(Number(c.membership_amount_inr)) : '—'} sub={c.membership_type ? { text: c.membership_type, color: 'var(--theme-text-tertiary)' } : undefined} />
+        <StatTile label="Membership" value={c.membership_amount_inr != null ? formatCurrencyCompact(Number(c.membership_amount_inr)) : '—'} sub={c.membership_type ? { text: c.membership_type, color: 'var(--theme-text-tertiary)' } : undefined} />
         <StatTile label="Status" value={c.membership_status ?? '—'} sub={{ text: expired ? 'renewal due' : 'active plan', color: expired ? 'var(--color-warning-text)' : 'var(--theme-text-tertiary)' }} />
         <StatTile label="Started" value={c.membership_start ? formatDate(c.membership_start, 'd MMM yyyy') : '—'} />
         <StatTile label="Ends" value={c.membership_end ? formatDate(c.membership_end, 'd MMM yyyy') : '—'} sub={left != null ? { text: left >= 0 ? `${formatCount(left)} days left` : `${formatCount(-left)} days ago`, color: left != null && left < 30 ? 'var(--color-warning-text)' : 'var(--theme-text-tertiary)' } : undefined} />

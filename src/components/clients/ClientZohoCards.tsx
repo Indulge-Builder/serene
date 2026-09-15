@@ -2,7 +2,7 @@
 // the customer's balances, their invoices, payments and credit notes, straight from Zoho
 // Books by the customer id on the spine (one-minute Redis copy; Refresh asks again).
 
-import { FileText, Landmark, ReceiptIndianRupee, StickyNote } from 'lucide-react';
+import { FileText, Landmark, ReceiptIndianRupee } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { InfoRow } from '@/components/ui/InfoRow';
 import { RevealId } from '@/components/ui/RevealId';
@@ -10,7 +10,7 @@ import { StatTile } from '@/components/ui/StatTile';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ZohoInvoicesTable, ZohoPaymentsTable, ZohoCreditNotesTable } from '@/components/books/ZohoTables';
 import { RefreshClientFinanceButton } from './RefreshClientFinanceButton';
-import { formatCount, formatCurrency } from '@/lib/utils/numbers';
+import { formatCount, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { formatDate, formatRelativeTime } from '@/lib/utils/dates';
 import { zohoBooksWebUrl } from '@/lib/constants/zoho';
 import type { ClientFinance } from '@/lib/types/zoho';
@@ -39,10 +39,10 @@ export function ClientZohoCards({ clientId, zohoCustomerId, orgId, finance, fail
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-4)' }}>
-        <StatTile label="Outstanding" value={formatCurrency(t.outstanding)} sub={t.outstanding > 0 ? { text: 'owed to us', color: 'var(--color-warning-text)' } : { text: 'nothing due', color: tertiary }} />
-        <StatTile label="Invoiced" value={formatCurrency(t.invoiced)} sub={{ text: `${formatCount(t.invoiceCount)} invoices, all time`, color: tertiary }} />
-        <StatTile label="Paid" value={formatCurrency(t.paid)} sub={{ text: `${formatCount(finance.payments.length)} payments`, color: tertiary }} />
-        <StatTile label="Unused credits" value={formatCurrency(t.credits)} sub={{ text: 'advances and credit notes', color: tertiary }} />
+        <StatTile label="Outstanding" value={formatCurrencyCompact(t.outstanding)} sub={t.outstanding > 0 ? { text: 'owed to us', color: 'var(--color-warning-text)' } : { text: 'nothing due', color: tertiary }} />
+        <StatTile label="Invoiced" value={formatCurrencyCompact(t.invoiced)} sub={{ text: `${formatCount(t.invoiceCount)} invoices, all time`, color: tertiary }} />
+        <StatTile label="Paid" value={formatCurrencyCompact(t.paid)} sub={{ text: `${formatCount(finance.payments.length)} payments`, color: tertiary }} />
+        <StatTile label="Unused credits" value={formatCurrencyCompact(t.credits)} sub={{ text: 'advances and credit notes', color: tertiary }} />
       </div>
 
       <div style={SHELL}>
@@ -61,7 +61,7 @@ export function ClientZohoCards({ clientId, zohoCustomerId, orgId, finance, fail
           {c?.payment_terms_label && <InfoRow label="Payment terms" value={c.payment_terms_label} />}
           {c?.cf_queendon && <InfoRow label="Queendom (Zoho)" value={c.cf_queendon} />}
           {c?.created_time && <InfoRow label="Customer since" value={formatDate(c.created_time, 'd MMM yyyy')} />}
-          {c?.notes && <InfoRow icon={StickyNote} label="Zoho notes" value={c.notes} />}
+          {c?.notes && <InfoRow label="Zoho notes" value={c.notes} />}
         </div>
       </div>
 

@@ -62,6 +62,10 @@ export type ClientFactView = {
   observed_at: string;
   created_by_name: string | null;
   superseded: boolean;
+  /** Every source that says the same thing (the shown row's first); one line on the card, all of them in the tooltip. */
+  sources: FactSource[];
+  /** The other current rows saying the same thing; "correct" supersedes them too. */
+  duplicate_ids: string[];
 };
 
 /** What the Observation box gets back: the note as saved and the cards the twin filed. */

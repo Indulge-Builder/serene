@@ -23,6 +23,7 @@
  * Usage:
  *   npx tsx --env-file=.env.local scripts/freshdesk/backfill.ts [--minutes N] [--calls N] [--threads-only]
  *   npx tsx --env-file=.env.local scripts/freshdesk/backfill.ts --poll [--minutes N] [--calls N]
+ *   npx tsx --env-file=.env.local scripts/freshdesk/backfill.ts --poll --media   (also copy the attachment backlog, 0197)
  */
 import {
   createFdBudget,
@@ -36,8 +37,9 @@ import {
   runContactsStep,
   runSyncCycle,
   getSyncState,
+  getMediaBacklog,
 } from "../../src/lib/services/freshdesk-sync";
-import { FD_RATE_RESERVE, FD_SYNC_KEYS } from "../../src/lib/constants/freshdesk";
+import { FD_MEDIA_FLAG_BATCH, FD_RATE_RESERVE, FD_SYNC_KEYS } from "../../src/lib/constants/freshdesk";
 
 function arg(name: string, fallback: number): number {
   const i = process.argv.indexOf(name);
@@ -49,6 +51,8 @@ const MINUTES = arg("--minutes", 24 * 60);
 const CALLS = arg("--calls", 42);
 const THREADS_ONLY = process.argv.includes("--threads-only");
 const POLL = process.argv.includes("--poll");
+/** With --poll: also work the attachment backlog (0197), re-queuing old threads while the queue is short. */
+const MEDIA = process.argv.includes("--media");
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -58,17 +62,23 @@ function sleep(ms: number) {
 async function pollLoop() {
   const startedAt = Date.now();
   let minute = 0;
-  console.log(`[poll] starting: ${CALLS} calls a minute for ${MINUTES} minutes; Ctrl-C to stop`);
+  console.log(`[poll] starting: ${CALLS} calls a minute for ${MINUTES} minutes${MEDIA ? ", copying the attachment backlog too" : ""}; Ctrl-C to stop`);
   while (Date.now() - startedAt < MINUTES * 60_000) {
     minute += 1;
     const budget = createFdBudget(CALLS, FD_RATE_RESERVE);
     const t0 = Date.now();
     let line = `[poll ${new Date().toISOString().slice(11, 19)}Z #${minute}]`;
     try {
-      const c = await runSyncCycle(budget);
+      const c = await runSyncCycle(budget, MEDIA ? { flagMedia: FD_MEDIA_FLAG_BATCH } : {});
       const p = c.poll;
       line += ` tickets seen=${p.ticketsSeen} written=${p.ticketsWritten}`;
       line += ` threads=${Number(p.detail.threads_synced ?? 0) + Number(c.threads?.conversationsWritten ?? 0)}`;
+      const files = Number(p.detail.media_copied ?? 0) + Number(c.threads?.detail.media_copied ?? 0);
+      if (files) line += ` files=${files}`;
+      if (MEDIA && minute % 10 === 1) {
+        const b = await getMediaBacklog();
+        line += ` backlog=${b.tickets} tickets/${b.conversations} notes`;
+      }
       if (Number(p.detail.threads_deferred ?? 0) > 0) line += ` deferred=${p.detail.threads_deferred}`;
       if (p.error && !p.error.includes("budget")) line += ` error=${p.error}`;
       const state = await getSyncState<{ watermark?: string }>(FD_SYNC_KEYS.poll);

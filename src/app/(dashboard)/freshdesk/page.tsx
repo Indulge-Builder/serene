@@ -83,7 +83,7 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
     filters.client ? getFreshdeskClientScope(filters.client) : Promise.resolve(null),
   ]);
   // The strip depends on every filter except the page number: paging must not re-count.
-  const overviewKey = JSON.stringify({ ...filters, page: 1 });
+  const overviewKey = `overview:${JSON.stringify({ ...filters, page: 1 })}`;
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
@@ -111,7 +111,7 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
         </p>
       )}
 
-      <Suspense key={JSON.stringify(filters)} fallback={<FreshdeskTableSkeleton />}>
+      <Suspense key={`tickets:${JSON.stringify(filters)}`} fallback={<FreshdeskTableSkeleton />}>
         <TicketsAsync filters={filters} />
       </Suspense>
     </main>

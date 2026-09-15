@@ -1,7 +1,8 @@
 // TicketThread — the ticket's conversation as Freshdesk holds it: internal notes and
 // public replies, oldest first, with who wrote them. Server component, display-only.
 
-import { Lock, MessageSquare, Paperclip } from 'lucide-react';
+import { Lock, MessageSquare } from 'lucide-react';
+import { FreshdeskAttachments } from './FreshdeskAttachments';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDate } from '@/lib/utils/dates';
@@ -60,31 +61,10 @@ export function TicketThread({
                   <p style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 'var(--text-sm)', lineHeight: 1.6, color: 'var(--theme-text-primary)' }}>{text}</p>
                 ) : (
                   <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--theme-text-tertiary)', fontStyle: 'italic' }}>
-                    {attachments.length ? 'Attachment only' : 'No text (an inline image or an empty note)'}
+                    {attachments.length ? 'Attachment only' : 'No text (an empty note)'}
                   </p>
                 )}
-                {attachments.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
-                    {attachments.map((a, i) => (
-                      <span
-                        key={a.id ?? i}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 'var(--space-1)',
-                          fontSize: 'var(--text-xs)',
-                          color: 'var(--theme-text-secondary)',
-                          padding: '2px var(--space-2)',
-                          borderRadius: 'var(--radius-full)',
-                          border: '1px solid var(--theme-paper-border)',
-                        }}
-                      >
-                        <Paperclip style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5 }} />
-                        {a.name ?? 'attachment'}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <FreshdeskAttachments attachments={attachments} />
               </li>
             );
           })}

@@ -110,8 +110,18 @@ export async function addFactCore(input: AddClientFactInput, actor: MutationActo
   const row = data as ClientFactRow;
   if (input.supersedes_id) {
     // The old row stays; it just stops being current. Only the service role may do this.
-    const { error: supErr } = await admin.from("client_facts").update({ superseded_by: row.id })
-      .eq("id", input.supersedes_id).eq("client_id", input.client_id).is("superseded_by", null);
+    // Every other current row saying the same thing (a second source agreeing) retires with
+    // it, or the corrected value would come straight back from the duplicate.
+    const { data: old } = await admin.from("client_facts").select("facet, key, value")
+      .eq("id", input.supersedes_id).eq("client_id", input.client_id).maybeSingle();
+    let q = admin.from("client_facts").update({ superseded_by: row.id }).eq("client_id", input.client_id).is("superseded_by", null).neq("id", row.id);
+    if (old) {
+      const o = old as { facet: string; key: string; value: string };
+      q = q.eq("facet", o.facet).eq("key", o.key).ilike("value", o.value.trim());
+    } else {
+      q = q.eq("id", input.supersedes_id);
+    }
+    const { error: supErr } = await q;
     if (supErr) console.warn("[client-mutations] supersede failed", supErr.message);
   }
   return { data: row, error: null };

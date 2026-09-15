@@ -12,6 +12,93 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-15 — Freshdesk webhook: the single-ticket re-read no longer asks for `description`
+
+Why: the two "Serene mirror" automation rules went live in Freshdesk (ids 1070001082825 /
+1070001082826) and every push arrived, but the re-read failed: `GET /tickets/{id}` rejects
+`include=description` (the list endpoint takes it; the single endpoint always returns the
+description and allows only stats, requester, company, conversations, sla_policy). The
+minute poll had hidden it, since it never reads one ticket.
+
+What changed: `getTicket` in `freshdesk-api.ts` drops `description` from the include list.
+The failed events were re-processed by hand and the pushes now land in seconds.
+
+---
+
+## 2026-09-15 — Stat tiles: no count-up, money in lakhs and crores
+
+Why: the tiles above the Books and finance pages rolled their digits in on every load and
+showed "₹2,80,54,17.15"-length strings; neither read well (founder, 2026-09-15).
+
+What changed: `StatTile` renders its value as plain text (the `AnimatedNumber` leaf stays
+for the dashboard widgets that still use it). Every money tile on `/books`, the client
+finance page and the Zoho cards uses `formatCurrencyCompact` (₹28.1L, ₹1.2Cr); the tables
+and the account list keep the long form, where the exact figure matters.
+
+---
+
+## 2026-09-15 — Freshdesk attachments: a durable copy of every file and pasted image
+
+Why: on a mirrored ticket the notes showed file names and nothing else. Freshdesk keeps
+files on its own storage and gives the API a link that dies in hours; the account export
+carried names only. 26,814 notes have files, 36,458 have images pasted into the body, 85
+ticket descriptions too. None were openable from Serene (founder, 2026-09-15).
+
+What changed:
+
+- Migration `20260915000197_freshdesk_attachments.sql` — the PRIVATE `freshdesk-attachments`
+  bucket (the whatsapp-media 0141 posture: admin/founder SELECT for defence in depth, no user
+  writes, the app signs one-hour links on the admin client), `tickets.attachments` (the
+  ticket's own files + the description's pasted images), `conversations.media_synced_at`
+  (NULL = not copied yet, the backlog) with its partial index, and two service-role functions:
+  `media_backlog()` and `flag_threads_for_media(p_limit)` (re-queues backlog tickets for the
+  thread catch-up, newest first). **Not yet applied.**
+- `lib/services/freshdesk-media.ts` — THE copy: `extractInlineImages()` (Freshdesk-hosted
+  `<img>` only; a web image pasted from elsewhere stays a link), `storeFreshdeskFile()`
+  (download → upload under `{ticket}/{note}/{id}-{name}`, 30 MB cap, never throws),
+  `copyMedia()` (files + inline images, keeps paths already copied across a re-pull, drops
+  the expiring link once copied, records `store_error` so the name still shows), and
+  `signFreshdeskAttachments()` (one `createSignedUrls` call per page).
+- `freshdesk-sync.ts` `syncThread` — every thread pull now copies what its fresh links point
+  at (at most 40 files per pull; a bigger thread finishes next time), for the notes and for
+  the ticket itself; `runSyncCycle(budget, { flagMedia })` re-queues the backlog only while
+  the queue of genuinely changed tickets is short, so a live update is never behind old files.
+  `backfill.ts --poll --media` turns that on from the laptop and prints the backlog every ten
+  minutes. `constants/freshdesk.ts`: bucket, caps, `fdAttachmentKind()` / `fdAttachmentExt()`.
+- The ticket page: `FreshdeskAttachments` renders images as thumbnails, video and audio
+  playable, other files as chips that open, and a file not copied yet as a grey chip with the
+  reason on hover. The thread and the description both use it. `formatBytes()` joins
+  `utils/numbers.ts`.
+
+Live check: a fresh file link and a fresh inline-image link both download with no auth
+header (the copy needs no API key and no API call). The history is about 63,000 files, ~13 GB
+at the sample's average of 358 KB; the laptop loop with `--media` copies it in the spare
+budget over a day or two. Running it is the founder's call (storage cost).
+
+---
+
+## 2026-09-15 — Client facts: two sources agreeing are one line, not two
+
+Why: the Preferences card showed "Badminton · Badminton", "Hermes · Hermes". The seeder wrote
+one row per source, and 1,864 facts across the clients had a second witness (2,062 extra rows,
+almost all Atlas + the Freshdesk contact, or Atlas + the onboarding form). Two sources agreeing
+is good data; two lines is noise.
+
+What changed:
+
+- `clients-service.ts` `collapseAgreeingFacts()` — current rows grouped by facet + key +
+  value (case-insensitive) + polarity; the most confident (then newest) is the row, every
+  source is listed (`ClientFactView.sources`), the other ids kept (`duplicate_ids`). The card
+  shows "· 2 sources" and names them in the tooltip.
+- `client-mutations.ts` `addFactCore` — a correction now retires every current row that says
+  the same thing, not only the one clicked, or the old value came straight back from the
+  duplicate. Rows are never deleted; they stop being current.
+- Same day, two server-to-client boundary fixes on the Zoho surfaces: `ZohoTables` is a client
+  component (Table takes render functions), the account icons render inside the row value, and
+  the Books page's empty state is the inline variant.
+
+---
+
 ## 2026-09-15 — Zoho Books connected: /books for the organisation, the live ledger on every client's finance page
 
 Why: Zoho Books is the company's ledger and Serene had only a customer id per client. The

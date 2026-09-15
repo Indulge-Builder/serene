@@ -8,6 +8,7 @@ import { InfoRow } from '@/components/ui/InfoRow';
 import { formatDate } from '@/lib/utils/dates';
 import { fdPriorityLabel, fdSourceLabel } from '@/lib/constants/freshdesk';
 import { FreshdeskStatusPill } from './FreshdeskStatusPill';
+import { FreshdeskAttachments } from './FreshdeskAttachments';
 import type { FdTicketDetail } from '@/lib/types/freshdesk';
 
 function stamp(v: string | null | undefined): string {
@@ -86,14 +87,17 @@ export function TicketSummaryCard({ detail, ticketUrl }: { detail: FdTicketDetai
         {custom.map((c) => (
           <InfoRow key={c.key} label={c.key} value={c.value} />
         ))}
-        {t.description_text && (
+        {(t.description_text || (t.attachments?.length ?? 0) > 0) && (
           <div style={{ marginTop: 'var(--space-2)' }}>
             <div className="label-micro" style={{ color: 'var(--theme-text-tertiary)', marginBottom: 'var(--space-2)' }}>
               Description
             </div>
-            <p style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)', lineHeight: 1.6 }}>
-              {t.description_text}
-            </p>
+            {t.description_text && (
+              <p style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)', lineHeight: 1.6 }}>
+                {t.description_text}
+              </p>
+            )}
+            <FreshdeskAttachments attachments={t.attachments ?? []} />
           </div>
         )}
         {client && (

@@ -2180,8 +2180,8 @@
     "semantic_hash": ""
   },
   "src/lib/utils/numbers.ts": {
-    "mtime": 1787377810.4231071,
-    "ast_hash": "8462b1811ffc15aef3c55e8f08a469e7",
+    "mtime": 1789464331.1479995,
+    "ast_hash": "1241afa4d1c1672fa6b4871e3960d18c",
     "semantic_hash": ""
   },
   "src/lib/utils/performance-roster-display.ts": {
@@ -3085,8 +3085,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1789459853.0605059,
-    "ast_hash": "55932c08d2ce2a0a39ebcd6a68a6d90c",
+    "mtime": 1789464408.6205137,
+    "ast_hash": "d7530f20ca02aee98a72c8b8bd172267",
     "semantic_hash": ""
   },
   "README.md": {
@@ -3155,8 +3155,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1789456094.3866022,
-    "ast_hash": "691c6fc3c2041e019ae4ebd786e6851e",
+    "mtime": 1789464408.6198585,
+    "ast_hash": "9291c895109c6132c8596e1770007b80",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789459853.0595407,
-    "ast_hash": "4f853ca910c93d312da971b5fa29b399",
+    "mtime": 1789464408.6189227,
+    "ast_hash": "49b9a29cbdabdf600c3f8d749525af95",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -7130,8 +7130,8 @@
     "semantic_hash": ""
   },
   "scripts/freshdesk/backfill.ts": {
-    "mtime": 1789453795.2096481,
-    "ast_hash": "e582f20b7d13d346f9cc71ad18d7d7eb",
+    "mtime": 1789464320.3316905,
+    "ast_hash": "270a867e19936da2b6303f2d00270ded",
     "semantic_hash": ""
   },
   "scripts/freshdesk/register-webhooks.ts": {
@@ -7195,13 +7195,13 @@
     "semantic_hash": ""
   },
   "src/components/freshdesk/TicketSummaryCard.tsx": {
-    "mtime": 1789413731.8083637,
-    "ast_hash": "6b88bb961c4475c5ac3555867eb66e07",
+    "mtime": 1789464320.3311055,
+    "ast_hash": "90d20527cc4f499d5b16f467b24aea95",
     "semantic_hash": ""
   },
   "src/components/freshdesk/TicketThread.tsx": {
-    "mtime": 1789413731.8114235,
-    "ast_hash": "927859bd6bf5406a5829fa757999ba52",
+    "mtime": 1789464320.3306627,
+    "ast_hash": "dadc2b2a7bb9bed0b06192b5f856084b",
     "semantic_hash": ""
   },
   "src/lib/actions/freshdesk.ts": {
@@ -7210,8 +7210,8 @@
     "semantic_hash": ""
   },
   "src/lib/constants/freshdesk.ts": {
-    "mtime": 1789415771.013792,
-    "ast_hash": "7ded8eef46fa35502fff1790870afd17",
+    "mtime": 1789464271.5717888,
+    "ast_hash": "70542ad3108cd18352e46917191f1d51",
     "semantic_hash": ""
   },
   "src/lib/services/freshdesk-api.ts": {
@@ -7220,18 +7220,18 @@
     "semantic_hash": ""
   },
   "src/lib/services/freshdesk-service.ts": {
-    "mtime": 1789455962.0214505,
-    "ast_hash": "866e92c43ea5980caed62d5bec1646b4",
+    "mtime": 1789464320.3301258,
+    "ast_hash": "5ee26eb0f589d1a704726ce850d92233",
     "semantic_hash": ""
   },
   "src/lib/services/freshdesk-sync.ts": {
-    "mtime": 1789414623.753902,
-    "ast_hash": "8b75481c05516eb703dfecbc79fedef7",
+    "mtime": 1789464331.1473153,
+    "ast_hash": "5cfe289eb3a9d2467ccd17ccb1aac054",
     "semantic_hash": ""
   },
   "src/lib/types/freshdesk.ts": {
-    "mtime": 1789455962.0209477,
-    "ast_hash": "f9caa5307fc778f8121f09f4e8af3abe",
+    "mtime": 1789464173.1287847,
+    "ast_hash": "96c559f83ccfa55172cc3ad100a3934a",
     "semantic_hash": ""
   },
   "src/trigger/freshdesk-sync.ts": {
@@ -7250,8 +7250,8 @@
     "semantic_hash": ""
   },
   "docs/integrations/freshdesk.md": {
-    "mtime": 1789456094.3903584,
-    "ast_hash": "67fefa55147ae094c0a04d6fca6e8dcd",
+    "mtime": 1789464408.6223238,
+    "ast_hash": "6c404d01288b030c469a69fa0e119367",
     "semantic_hash": ""
   },
   "scripts/clients/seed-client-facts.py": {
@@ -7290,8 +7290,8 @@
     "semantic_hash": ""
   },
   "src/components/clients/ClientFactsCard.tsx": {
-    "mtime": 1789459706.6695502,
-    "ast_hash": "d877b93ccf1f9aafaab74240beb0f4d0",
+    "mtime": 1789463578.503712,
+    "ast_hash": "cf1bea6c89440bc21aaf2fc4491ce485",
     "semantic_hash": ""
   },
   "src/components/clients/ClientFormModal.tsx": {
@@ -7365,18 +7365,18 @@
     "semantic_hash": ""
   },
   "src/lib/services/client-mutations.ts": {
-    "mtime": 1789459652.4042437,
-    "ast_hash": "bdc0dc52c1ae9aa0b56b25af54e283c6",
+    "mtime": 1789463578.5030534,
+    "ast_hash": "595cb6eef5da9043710fc187cc5bac59",
     "semantic_hash": ""
   },
   "src/lib/services/clients-service.ts": {
-    "mtime": 1789459469.9828932,
-    "ast_hash": "752d35c12fe68728740ea343fa3aae65",
+    "mtime": 1789463578.502501,
+    "ast_hash": "da594090f1f80c5e5159a69a4be06739",
     "semantic_hash": ""
   },
   "src/lib/types/client.ts": {
-    "mtime": 1789459652.4035583,
-    "ast_hash": "f8eb613e12054d0395199ae26663b385",
+    "mtime": 1789463578.5021014,
+    "ast_hash": "3bcef78ed704e35b05c293c8cafb0daf",
     "semantic_hash": ""
   },
   "src/lib/validations/client-schema.ts": {
@@ -7530,13 +7530,13 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/books/page.tsx": {
-    "mtime": 1789459523.0337422,
-    "ast_hash": "1fc39855a891f12ec9f7a179a2d65ba3",
+    "mtime": 1789463379.6068044,
+    "ast_hash": "4d05005b291d0e41a21a8d6d5a059755",
     "semantic_hash": ""
   },
   "src/components/books/BooksOverview.tsx": {
-    "mtime": 1789459450.8692243,
-    "ast_hash": "d65dc43e36857f78197cf5564d76022f",
+    "mtime": 1789463346.6952753,
+    "ast_hash": "53ea81af39617ffcda67f414624181b5",
     "semantic_hash": ""
   },
   "src/components/books/RefreshBooksButton.tsx": {
@@ -7550,8 +7550,8 @@
     "semantic_hash": ""
   },
   "src/components/books/ZohoTables.tsx": {
-    "mtime": 1789459450.9213793,
-    "ast_hash": "fadf098d6b297dbacd545d4322d89320",
+    "mtime": 1789463251.60741,
+    "ast_hash": "d6f538a7df4495cb525bc0e85baa366f",
     "semantic_hash": ""
   },
   "src/components/clients/ClientObservationCard.tsx": {
@@ -7560,8 +7560,8 @@
     "semantic_hash": ""
   },
   "src/components/clients/ClientZohoCards.tsx": {
-    "mtime": 1789459523.0397227,
-    "ast_hash": "54f38ee9fbce01fb36dfc6a9f84aa6a5",
+    "mtime": 1789463346.695824,
+    "ast_hash": "c79b83b62244c8563d1f8a885d677e67",
     "semantic_hash": ""
   },
   "src/components/clients/ClientZohoSkeleton.tsx": {
@@ -7585,8 +7585,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/client-observation-reader.ts": {
-    "mtime": 1789459652.3720798,
-    "ast_hash": "f24cbe9b6fbb8ee776bd20327b76bbb7",
+    "mtime": 1789462403.527364,
+    "ast_hash": "dc97792555762b32a5a76d45f13808f6",
     "semantic_hash": ""
   },
   "src/lib/services/zoho-api.ts": {
@@ -7827,6 +7827,21 @@
   "zoho books-api/vendor-payments.yml": {
     "mtime": 1788996562.0,
     "ast_hash": "20aaabd60f9c23c69772db0add284915",
+    "semantic_hash": ""
+  },
+  "src/components/freshdesk/FreshdeskAttachments.tsx": {
+    "mtime": 1789464286.618432,
+    "ast_hash": "ffb680c478b2cb3ea91c787cad406a82",
+    "semantic_hash": ""
+  },
+  "src/lib/services/freshdesk-media.ts": {
+    "mtime": 1789464271.5721633,
+    "ast_hash": "a3fb1ae8b1cd273664872dadecbf31f0",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260915000197_freshdesk_attachments.sql": {
+    "mtime": 1789464173.096123,
+    "ast_hash": "89440c64e21aefd0878a956282037c56",
     "semantic_hash": ""
   }
 }

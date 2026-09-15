@@ -67,10 +67,10 @@ export function ClientFactsCard({ clientId, facts, facets, title, icon }: { clie
                   {list.map((f) => (
                     <li key={f.id} style={{ fontSize: 'var(--text-sm)', color: f.polarity === 'dislikes' ? 'var(--color-danger-text)' : 'var(--theme-text-primary)', display: 'flex', alignItems: 'baseline', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                       <span>{f.polarity === 'dislikes' ? 'Avoids ' : ''}{f.value}</span>
-                      <span title={`${FACT_SOURCES.labels[f.source] ?? f.source}, ${formatDate(f.observed_at, 'd MMM yyyy')}${f.created_by_name ? `, by ${f.created_by_name}` : ''}, confidence ${Math.round(f.confidence * 100)}%`}
+                      <span title={`${f.sources.map((src) => FACT_SOURCES.labels[src] ?? src).join(' and ')}, ${formatDate(f.observed_at, 'd MMM yyyy')}${f.created_by_name ? `, by ${f.created_by_name}` : ''}, confidence ${Math.round(f.confidence * 100)}%`}
                         style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                         {f.source === 'agent_note' ? <ShieldCheck style={{ width: 10, height: 10 }} /> : <Sparkles style={{ width: 10, height: 10 }} />}
-                        {formatDate(f.observed_at, 'MMM yy')}
+                        {formatDate(f.observed_at, 'MMM yy')}{f.sources.length > 1 ? ` · ${f.sources.length} sources` : ''}
                       </span>
                       <button type="button" onClick={() => setComposing({ facet: f.facet, key: f.key, polarity: f.polarity, value: f.value, supersedes: f.id })}
                         style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 'var(--text-2xs)', color: 'var(--neu-accent-deep)' }}>
