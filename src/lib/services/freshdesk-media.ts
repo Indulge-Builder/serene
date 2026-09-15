@@ -108,7 +108,12 @@ export async function copyMedia(
     const { attachment_url: _drop, ...rest } = a;
     void _drop;
     out.push(stored.storage_path ? { ...rest, ...stored, stored_at: new Date().toISOString() } : { ...rest, store_error: stored.store_error });
-    if (stored.store_error) console.warn(`${LOG} ${prefix}/${file}: ${stored.store_error}`);
+    if (stored.store_error) {
+      console.warn(`${LOG} ${prefix}/${file}: ${stored.store_error}`);
+      // A network hiccup or a 5xx is worth another go on the next pull; a file that is too
+      // large, empty or gone (403/404) is not — its name stays with the reason.
+      if (/fetch failed|upload|download 5\d\d|download 429|timeout|ECONN|<none>/i.test(stored.store_error ?? "")) remaining += 1;
+    }
   }
   return { attachments: out, copied, remaining };
 }

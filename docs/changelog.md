@@ -12,6 +12,18 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-15 — Attachment backlog: the flag query starts from the backlog, a hiccup is retried
+
+Why: an hour into the copy, `flag_threads_for_media` timed out once (it walked every ticket
+with an EXISTS), and a file whose download failed on a network blip was never tried again.
+
+What changed: migration 0198 rewrites the function to start from the backlog index and join
+tickets (milliseconds, same result). `copyMedia` counts a transient failure (fetch failed,
+upload error, 5xx, 429, timeout) as still-remaining so the note is re-queued; a file that is
+too large, empty or gone keeps its name and the reason and is not retried.
+
+---
+
 ## 2026-09-15 — Freshdesk webhook waits out a rate limit instead of giving up
 
 Why: with the laptop loop copying the attachment backlog at ~42 calls a minute, a push that
