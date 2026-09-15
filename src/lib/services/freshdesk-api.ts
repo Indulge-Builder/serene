@@ -37,7 +37,8 @@ export function freshdeskTicketUrl(ticketId: number): string {
 // ─── Budget ──────────────────────────────────────────────────────────────────
 
 export class FdBudgetExhausted extends Error {
-  constructor(message = "Freshdesk call budget exhausted for this run") {
+  /** Seconds Freshdesk asked us to wait when this was a 429; undefined when it was our own cap. */
+  constructor(message = "Freshdesk call budget exhausted for this run", public readonly retryAfter?: number) {
     super(message);
     this.name = "FdBudgetExhausted";
   }
@@ -117,7 +118,7 @@ async function fdFetch<T>(
         await sleep(retryAfter * 1000 + 250);
         continue;
       }
-      throw new FdBudgetExhausted(`Freshdesk rate limited (retry after ${retryAfter}s)`);
+      throw new FdBudgetExhausted(`Freshdesk rate limited (retry after ${retryAfter}s)`, Number.isFinite(retryAfter) ? retryAfter : undefined);
     }
 
     if (res.status === 404) {

@@ -12,6 +12,20 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-15 — Freshdesk webhook waits out a rate limit instead of giving up
+
+Why: with the laptop loop copying the attachment backlog at ~42 calls a minute, a push that
+lands in a busy second gets a 429 from Freshdesk and the seconds path handed the ticket to
+the next poll, which defeats it (three of the first eight pushes, 2026-09-15 11:10 UTC).
+
+What changed: `FdBudgetExhausted` carries Freshdesk's `retryAfter`; `processWebhookEvent`
+waits it out once (up to 45 s, inside the route's 60 s) and re-reads. A wait it cannot afford
+is recorded as "the minute poll will carry this ticket" rather than as a bare error. While
+the backlog copies, run the laptop loop with `--calls 30` so the webhook and the member app
+keep room.
+
+---
+
 ## 2026-09-15 — Freshdesk webhook: the single-ticket re-read no longer asks for `description`
 
 Why: the two "Serene mirror" automation rules went live in Freshdesk (ids 1070001082825 /

@@ -767,13 +767,28 @@ export async function runFieldChoicesStep(budget: FdBudget, maxFields = 6): Prom
  * for content, so we re-read the ticket from the API (1 call) and run the normal upsert +
  * thread pull. A 404 means deleted: flip `deleted`, write the change row.
  */
+/** The webhook route allows 60 s; a rate-limit wait up to this long still fits with the work. */
+const WEBHOOK_RATE_WAIT_MAX_S = 45;
+
 export async function processWebhookEvent(eventId: number, ticketId: number, event: string): Promise<void> {
   const db = freshdeskDb();
-  const budget = createFdBudget(6);
+  let budget = createFdBudget(6);
   const stats = await startRun("webhook");
   let ok = true;
   try {
-    const ticket = await getTicket(ticketId, budget);
+    // The minute loop and the member app share the 50 calls a minute; a push that lands in a
+    // busy second gets a 429 with a wait. Wait it out once (the route has the time) rather than
+    // hand the ticket to the next poll, which is what the seconds path exists to avoid.
+    let ticket: Awaited<ReturnType<typeof getTicket>>;
+    try {
+      ticket = await getTicket(ticketId, budget);
+    } catch (e) {
+      if (!(e instanceof FdBudgetExhausted) || e.retryAfter == null || e.retryAfter > WEBHOOK_RATE_WAIT_MAX_S) throw e;
+      await new Promise((r) => setTimeout(r, e.retryAfter! * 1000 + 500));
+      budget = createFdBudget(6);
+      stats.detail.waited_s = e.retryAfter;
+      ticket = await getTicket(ticketId, budget);
+    }
     if (ticket) {
       const { threadIds } = await upsertTickets([ticket], "webhook", stats);
       if (threadIds.length) await syncThreadsWhileBudget(threadIds, budget, stats);
@@ -793,7 +808,9 @@ export async function processWebhookEvent(eventId: number, ticketId: number, eve
     await db.from("webhook_events").update({ processed_at: new Date().toISOString(), error: null }).eq("id", eventId);
   } catch (e) {
     ok = false;
-    stats.error = e instanceof Error ? e.message : String(e);
+    stats.error = e instanceof FdBudgetExhausted
+      ? `${e.message}; the minute poll will carry this ticket`
+      : e instanceof Error ? e.message : String(e);
     console.error("[freshdesk-sync] webhook processing failed", ticketId, stats.error);
     await db.from("webhook_events").update({ processed_at: new Date().toISOString(), error: stats.error }).eq("id", eventId);
   }
