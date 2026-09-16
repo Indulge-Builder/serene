@@ -12,6 +12,17 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-16 — Build fix: the Next app no longer type-checks the Baileys connector
+
+Why: `tsconfig.json` included every `.ts` under the repo, so `pnpm build` on Vercel type-checked
+`connector/src` (the Sia watcher, its own package with its own dependencies) and failed on
+"Cannot find module 'baileys'". Locally it passed only because `connector/node_modules` exists.
+The CLI upload also carried 19,072 files, over Vercel's 15,000 limit.
+
+What changed: `tsconfig.json` excludes `connector`, `backend`, `evals` and `graphify-out`;
+a `.vercelignore` keeps the same folders (plus data folders and CSVs) out of the upload.
+No runtime code changed.
+
 ## 2026-09-16 — Fix: the ticket "Wake now" button never reached production (migration 0203)
 
 Why: the "wake one ticket" change (`claim_sentinel_wakes` gaining `p_ticket_id`) had been

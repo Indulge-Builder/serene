@@ -1,0 +1,11 @@
+# Not part of the Next.js app: separate deployables and local tooling.
+# Keeps the CLI upload under Vercel's 15,000-file limit and out of the type check.
+connector
+backend
+evals
+graphify-out
+scripts/freshdesk
+scripts/clients
+cleint-data
+upload
+*.csv
