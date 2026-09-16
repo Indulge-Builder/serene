@@ -6541,7 +6541,7 @@ export type Database = {
         | "marketing"
         | "tech"
         | "shop"
-        | "b2b"
+        | "business"
         | "house"
         | "legacy"
       task_event_type:
@@ -6656,38 +6656,29 @@ export type Database = {
       }
       queendoms: {
         Row: {
-          bishop_id: string | null
           created_at: string
           freshdesk_group_id: number | null
           id: string
           is_active: boolean
-          joker_id: string | null
           name: string
-          queen_id: string | null
           slug: string
           updated_at: string
         }
         Insert: {
-          bishop_id?: string | null
           created_at?: string
           freshdesk_group_id?: number | null
           id?: string
           is_active?: boolean
-          joker_id?: string | null
           name: string
-          queen_id?: string | null
           slug: string
           updated_at?: string
         }
         Update: {
-          bishop_id?: string | null
           created_at?: string
           freshdesk_group_id?: number | null
           id?: string
           is_active?: boolean
-          joker_id?: string | null
           name?: string
-          queen_id?: string | null
           slug?: string
           updated_at?: string
         }
@@ -9113,7 +9104,7 @@ export const Constants = {
         "marketing",
         "tech",
         "shop",
-        "b2b",
+        "business",
         "house",
         "legacy",
       ],

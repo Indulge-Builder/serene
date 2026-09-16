@@ -3,6 +3,7 @@
 
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { hasElevatedPageAccess } from "@/lib/utils/route-access";
 import { getQueendoms } from "@/lib/services/clients-service";
 import { getTicketSettings, listTicketSlaPolicies } from "@/lib/services/tickets-service";
 import { BackButton } from "@/components/ui/BackButton";
@@ -14,7 +15,7 @@ export const metadata = { title: "Ticket settings — Serene" };
 export default async function TicketSettingsPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
-  if (profile.role !== "admin" && profile.role !== "founder") redirect("/settings");
+  if (!hasElevatedPageAccess(profile)) redirect("/settings");
 
   const [policies, settings, queendoms] = await Promise.all([listTicketSlaPolicies(), getTicketSettings(), getQueendoms()]);
 

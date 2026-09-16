@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Plus } from "lucide-react";
-import { getCurrentProfile, getAllProfiles } from "@/lib/services/profiles-service";
+import { getCurrentProfile, getAllProfiles, getQueendomRoster } from "@/lib/services/profiles-service";
+import { hasElevatedPageAccess } from "@/lib/utils/route-access";
+import { QueendomRosterCard } from "@/components/admin/QueendomRosterCard";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
 import { UsersTable } from "@/components/admin/UsersTable";
@@ -9,11 +11,11 @@ import { UsersTable } from "@/components/admin/UsersTable";
 export default async function AdminUsersPage() {
   const profile = await getCurrentProfile();
 
-  if (!profile || !["admin", "founder"].includes(profile.role)) {
+  if (!profile || !hasElevatedPageAccess(profile)) {
     redirect("/dashboard");
   }
 
-  const users = await getAllProfiles();
+  const [users, roster] = await Promise.all([getAllProfiles(), getQueendomRoster()]);
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
@@ -51,6 +53,10 @@ export default async function AdminUsersPage() {
             />
           )}
         </div>
+      </div>
+
+      <div style={{ marginBottom: "var(--space-5)" }}>
+        <QueendomRosterCard roster={roster} />
       </div>
 
       <UsersTable users={users} />

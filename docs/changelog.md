@@ -12,6 +12,315 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-16 — Fix: the ticket "Wake now" button never reached production (migration 0203)
+
+Why: the "wake one ticket" change (`claim_sentinel_wakes` gaining `p_ticket_id`) had been
+written into migration 0199 after 0199 had already run on production, so the file said one
+thing and the database another: production still held only the two-argument function and the
+Wake now button failed with "function not found" (verified with a probe, PGRST202). A run
+migration is never edited (A-14).
+
+What changed: 0199 is restored to exactly what ran; new migration 0203 drops the two-argument
+overload and recreates the function with `p_ticket_id uuid DEFAULT NULL` (dropping first, so the
+minute sweep's two-argument named call cannot become ambiguous; it keeps working through the
+default). Applied to production 2026-09-16.
+
+## 2026-09-16 — Decision: the Node thinking loop is frozen, retirement targeted 2026-10-16
+
+Why: both channels think in the Python brain; the Node loop is only the one-row rollback. Two
+loops drift, so the founder asked whether it can go. It can, in part, and on a date, not by drift.
+
+What changed: a Decision Log row (`docs/rules/The_Rules.md`, R-04) names exactly what the
+retirement PR deletes (the loop, the Node staff persona, the channel branches, the switch rows)
+and what stays because the Python brain depends on it (the tool registry, the PII gateway, the
+mutation cores, the bridges, the provider layer, and every Node feature with its own model call).
+Gate: thirty clean days on Python with the switch unused and the exam steady. No code changed.
+
+## 2026-09-16 — Elaya reads a client's WhatsApp history (raw, grounded, both brains)
+
+Why: 338 concierge groups are now mapped to their client, but Elaya had no tool that could see
+them. The founder's call: no profile layer first, give Elaya the real chat and let the model
+reason, with zero tolerance for invented facts.
+
+What changed:
+
+- Three read tools in `src/lib/elaya/tools/registry.ts`, all staff, bridged so both brains run
+  them in Node: `get_client_overview` (name or id; several matches come back as candidates and
+  the model must ask, none means "not found" and the model may not describe anyone),
+  `get_client_recent_messages` (one 60-message page of the client's mapped group, oldest to
+  newest, each row dated and labelled client / staff / other, text capped, `before` pages back)
+  and `search_client_history` (the existing full-text index, scoped to the group, newest first).
+  Every description binds the model to answer only from the returned rows and cite dates; an
+  empty result is answered as "nothing on record".
+- The reads live in `src/lib/elaya/elaya-data.ts` (admin client, the parity rule) and compose
+  `getSiaGroupForClient`, `getSiaMessages`, `searchSiaMessages` plus one new helper in
+  `sia-service.ts`, `getSiaSenderRoles` (who a sender is, from the mapping). Access is the
+  queendom rule through `canAccessClient`: admin and founder see every client, everyone else
+  the clients of their own queendom; a reader outside any queendom sees nothing.
+- The Python brain gains a `clients` specialist (routing description + a focus block that
+  restates the grounding rule) and the three names in its bridged set and role map; the
+  `general` safety-net specialist carries them too.
+- Four exam cases (`client-*` in `evals/golden/core.yaml`): recent chat, topic search, a topic
+  that does not exist (must answer "nothing"), and a client that does not exist (must answer
+  "not found" and never call the message tools). 4 of 4 pass through the real route, and the
+  full suite with the new `clients` specialist routing is 32 of 32 (no case lost to the new
+The four cases are tagged `needs-concierge`: the client tools scope rows to the reader's queendom, a queendom is a concierge-only field (0201), and the standing eval identity is an onboarding manager, so they run under a concierge eval login (they passed 4 of 4 that way today) and skip by default; the README says how.
+
+Nothing new below the tool layer: no table, no migration, no model call in the retrieval path.
+The profile and facts layer (`client-ticket-plan.md`) comes later, on top of these reads.
+
+## 2026-09-16 — Navigation speed: the auth floor, the dashboard shell, the leads header
+
+Why: after the boot-screen and skeleton work (the entry below), three structural costs
+remained on page changes. Every navigation paid a live auth-server round trip before any
+page work started. The dashboard page awaited seven data calls before returning a single
+element, so its header sat behind the slowest widget query. The leads page awaited the
+filter option lists and the assignee list before its title and Add Lead button could
+render. All three are fixed without changing what any query returns or who may see it.
+
+What changed:
+
+- **Identity check is local now.** `getCurrentProfile()` in
+  `lib/services/profiles-service.ts` calls `auth.getClaims()` (the token's ES256 signature
+  verified against the process-cached JWKS, the same call the proxy already makes) instead
+  of `auth.getUser()` (a round trip to the auth server, about 80 to 100 ms, on every
+  navigation). The `profiles` SELECT that follows is unchanged: role, domain and
+  `is_active` still come only from the row (Rule 09 / A-01), never from the token, and a
+  deactivated profile is still redirected on its very next request. Decision Log row
+  2026-09-16 and the A-01 wording in `docs/rules/The_Rules.md` say the same; the
+  `src/app/CLAUDE.md` proxy note is updated.
+- **Deactivation now also bans at the auth layer.** `setProfileActive` flips the row as
+  before, then calls `auth.admin.updateUserById(id, { ban_duration })` through the admin
+  client (a 100-year ban on deactivate, `'none'` on reactivate). A deactivated user's
+  session can no longer refresh and a fresh login is refused. The ban call is best-effort
+  and logged on failure; the row flip is the guarantee. One setting is still yours to make
+  in the Supabase dashboard: shorten the access-token lifetime from 60 minutes to about 15,
+  which bounds the only remaining window (a user deleted at the auth layer, which Serene
+  never does, holding a live token).
+- **Dashboard paints its shell first.** `dashboard/page.tsx` no longer awaits the widget
+  seed. The same seven-call `Promise.all` starts and is handed to `DashboardCanvas` as
+  `initialDataPromise`, with the same empty-summary fallback on failure moved into a
+  `.catch`. Inside the canvas the grid sits behind its own `Suspense` and resolves the
+  promise through the new `ui/Await.tsx` (React 19 `use()` as a render prop), so the
+  greeting, date filter, controls and edit-layout button render as soon as the profile
+  resolves and the widgets stream in together. The bento skeleton moved out of
+  `dashboard/loading.tsx` into `components/dashboard/DashboardGridSkeleton.tsx` so the
+  route cover and the in-canvas fallback are one implementation (R-01). On a date or scope
+  change React keeps the current grid visible through the transition (no `key`), matching
+  the previous behaviour.
+- **Leads header no longer waits.** The filter option lists moved into
+  `components/leads/LeadsFiltersAsync.tsx` (the `LeadsTableAsync` pattern: a server
+  component that fetches and renders `LeadsFilters` inside the Row 2 paper strip) behind
+  a `Suspense` whose fallback is the same `FilterBarSkeleton` the route cover uses. The
+  page-level `getAssignableUsers` call is gone: `AddLeadButton.initialAgents` is optional
+  (default empty) and `AddLeadModal` fetches the list with `getAssignableUsersAction` on
+  first open when it has no seed, keeping the caller as the default assignee for the
+  initial domain and only resetting the assignee on a real domain switch. The re-open
+  reset keeps the fetched list when there is no seed. The modal mounts on first open, so
+  the fetch happens at open, not at page load.
+
+New registry rows in `CLAUDE.md`: `ui/Await.tsx` and `dashboard/DashboardGridSkeleton.tsx`.
+
+---
+
+## 2026-09-16 — Navigation feel: boot screen once per session, skeletons on the last six bare routes
+
+Why: the app felt slow on page changes. A full trace found the platform healthy (Vercel,
+Supabase and Upstash all in Mumbai; every dashboard and leads RPC under 250 ms; the
+unauthenticated response about 135 ms) but two things made waiting visible. The boot cover
+played its full 3.4 second draw on every hard load, so every reload, deploy refresh and
+PWA re-open started with a locked screen. And six routes had no `loading.tsx`, so a click
+on Profile, Sia, Error Log or any Oversight tier showed nothing at all until the server
+finished. The remaining findings (the sequential auth floor on every navigation, the
+dashboard page awaiting every fetch before rendering, the leads header waiting on two
+extra queries) are planned, not in this entry. The leads row stagger was checked and
+left alone: it already animates only the first 8 rows (`LeadsTable.tsx`), a 210 ms cap.
+
+What changed:
+
+- `components/layout/AppBootScreen.tsx` — the draw sequence now plays once per browser
+  session. The first hard load of a tab or PWA launch sets `serene:boot-seen` in
+  sessionStorage; every later hard load in that session skips the cover on the first
+  effect tick (the cover still SSRs, so the true cold start stays zero-flash). Storage
+  reads and writes are wrapped, so a private window or blocked storage falls back to the
+  old play-every-time behaviour. The `(dashboard)/layout.tsx` comment says the same.
+- Six new `loading.tsx` files, each composing the shared `PageSkeletons` blocks (R-01) and
+  the route's existing content skeleton where one exists, so the click-to-skeleton and the
+  skeleton-to-content hand-offs look the same: `profile` (header + the 340 px dossier grid
+  with three section cards and the identity card), `sia` (title row + gear, the 340 px
+  group list and the message stream), `error-log` (icon-tile header, the three stat tiles,
+  `ErrorLogTableSkeleton`), and one each for `oversight`, `oversight/[domain]` and
+  `oversight/[domain]/[agentId]` (header + `OversightSkeleton`). The three oversight tiers
+  need their own files: Next re-shows only the nearest loading boundary above the segment
+  that changed, so a single parent file would not cover a Tier 1 to Tier 2 move.
+
+Also found during the trace, outside the code: the development Mac had 123 MB free of
+460 GB. Turbopack's `.next/dev` cache alone was 3.9 GB. A full disk makes every local
+compile crawl and is the first thing to fix before judging local speed.
+
+---
+
+## 2026-09-16 — Freshdesk files: the copy runs in parallel
+
+Why: the attachment backlog (0197) cleared about eight tickets a minute against a
+50-calls-a-minute allowance. The loop was serial at every level — one file, then the next;
+one note, then the next; one ticket, then the next — and each cycle took at most 20 tickets
+whatever the budget. Cycles ran over their minute waiting on downloads, not on Freshdesk.
+
+What changed: `lib/utils/concurrency.ts` — `mapWithConcurrency(items, limit, fn)`, THE
+bounded-parallel map (order kept, no dependency). `copyMedia` decides in order (kept /
+no link / over the cap, exactly as before) then downloads the chosen files
+`FD_MEDIA_COPY_CONCURRENCY` (6) at a time; `syncThreadsWhileBudget` runs
+`FD_THREAD_CONCURRENCY` (4) threads at once — safe because `fdFetch` charges the budget
+synchronously before any await, so parallel callers cannot overshoot it; a cycle takes up to
+`FD_THREADS_PER_CYCLE` (60) threads instead of 20, so the Freshdesk budget is the only cap.
+Same rows, same paths, same retry rules; a ticket is still marked done only when every file
+landed. Restart the laptop loop to pick it up.
+
+## 2026-09-16 — Team: the Concierge roster (position + queendom on the account forms)
+
+Why: migration 0194 gave every profile a queendom and a Sia role, and every client and
+ticket read already scopes by them, but no form could set them. Zero profiles carried a
+position and the three queendoms had nobody in their seats. Decided with the founder today:
+the position and the queendom are a nullable layer on top of the platform role (Tech,
+Finance, Onboarding and Shop leave them blank), the form derives the platform role from the
+position so a genie is never a manager by accident, and the profile row is the one record of
+who holds a seat.
+
+What changed:
+
+- Migration `20260916000201_queendom_seats.sql` — drops the never-written `queen_id` /
+  `bishop_id` / `joker_id` columns from `sia.queendoms` (a seat holder is derived from
+  `profiles`); two CHECKs on `profiles` (the Sia fields only in the concierge domain; a
+  position always names its queendom); one active holder per queen / bishop / joker seat per
+  queendom (partial unique indexes, genies unlimited); `handle_new_user()` copies `sia_role`
+  + `queendom_id` from the signup metadata so an invite lands with its seat in one transaction.
+- `lib/constants/sia-roles.ts` — `DOMAIN_POSITIONS` (which domains carry positions: today
+  `concierge` → the four Sia roles) + `positionsForDomain()` + `isSiaRole()` +
+  `SIA_SINGLE_SEATS` + `QUEENDOM_DOMAIN`. Adding Shop positions later is one entry here and one
+  CHECK migration.
+- `lib/validations/profile-schema.ts` — `sia_role` + `queendom_id` on the create, invite and
+  authorization schemas with one shared rule set (`checkPosition`): only in a domain with
+  positions, queendom required with a position, platform role must equal the one the position
+  maps to. New copy in `form-errors.ts` (`siaRoleInvalid`, `siaRoleDomain`,
+  `queendomRequired`, `siaRolePlatformMismatch`, `seatTaken`).
+- `services/profiles-service.ts` — `updateAuthorization()` writes the position with role +
+  domain (leaving Concierge clears it); `getQueendomRoster()` — every queendom with its seat
+  holders and genies, derived from profiles. `actions/profiles.ts` — create / invite pass the
+  two fields in the signup metadata, authorization passes them to the writer; a 23505 from the
+  seat indexes maps to "that seat is already held".
+- `components/admin/RoleDomainFields.tsx` — THE domain → role / position → queendom field
+  group all three account forms compose: domain first; a domain with positions lists them
+  (plus "access only" platform roles for founders and admins who sit in Concierge without a
+  seat) and locks the derived access level; a queendom select appears with a position.
+  `CreateUserForm` and `EditAuthorizationForm` compose it (their private select chrome is
+  gone). `QueendomRosterCard` on `/admin/users` names each seat and its holder, or "Empty
+  seat". Seat pills on the team table and the member page.
+- Not yet applied: 0201 (with 0199 and 0200) waits for the next `db push`; the forms render
+  today, the write lands once the CHECKs and the trigger are in. The 176 clients without a
+  queendom and the Concierge accounts themselves are the next data step.
+
+## 2026-09-16 — Schema restructure planned: `public` → `gia` + `client`
+
+Why: `public` holds 108 tables, 53 of them the client twin and 22 of them Gia. The founder wants
+each business in its own folder now, while the move is cheap, rather than a year from now.
+Leads data is live for the Legacy and Shop teams, so the rule is rehearse first, then one evening.
+
+What changed: the plan only, `docs/architecture/schema-restructure-plan.md`. Target layout,
+the 22 Gia tables and the 12 client tables (prefix dropped, spine proposed as `client.members`),
+what `SET SCHEMA` carries for free, the one real break (153 `SECURITY DEFINER` functions pinned
+to `search_path = public` with bare table names, fixed by widening the path in one loop so the
+58 RPCs stay in `public` and no `.rpc()` call changes), the grants, the PostgREST exposure,
+the Realtime channels, the code inventory, a mandatory rehearsal on a full local copy with
+row-count diffs, the production runbook with rollback, and four decisions for the founder.
+Nothing applied, nothing moved.
+
+## 2026-09-16 — The `b2b` key becomes `business` (the rename, all the way down)
+
+Why: after the labels went to one word each, eight of nine keys already matched their label
+(`shop` → Shop, `concierge` → Concierge, …). `b2b` was the one that did not, so the founder
+asked for the key to follow — one word in code, in SQL and on screen.
+
+What changed:
+
+- Migration `20260916000202_rename_b2b_to_business.sql` — `ALTER TYPE app_domain RENAME VALUE
+  'b2b' TO 'business'` (guarded, idempotent). All 13 columns typed `app_domain` read the new
+  spelling at once; rows are not rewritten, so the append-only `task_events` /
+  `activity_events` stay untouched. `subscriptions.departments` (a text[] with its own CHECK)
+  gets `array_replace` + the constraint re-added with `business`. Live footprint when written:
+  1 profile (an agent), 1 task_event, 1 activity_event, zero everywhere else. No function,
+  policy or RPC held the literal.
+- App: the key in `APP_DOMAINS` / `DOMAIN_LABELS` / `DOMAIN_ROUTE_MAP` / `DOMAIN_LINE_COLORS` /
+  `DOMAIN_ICONS`, the campaign map entry (`TG_B2B → 'business'`; the `TG_B2B` prefix is Meta's
+  campaign naming and stays), the colour token `--domain-b2b` → `--domain-business` (+ the one
+  component that named it, `AgentDistributionBar`), the generated enum type, comments, and the
+  subscriptions demo seed.
+- Python brain: the `persona.py` label map key. Needs the Fargate task redeployed with the
+  migration.
+- Docs: the enum line in `database.md` / `user-management.md` / the schema mirror, the
+  migrations index, and every page that spelled the key out (auth-and-rbac, lead-ingestion,
+  leads, campaigns, tasks, DESIGN-DNA, the claude-project summaries).
+
+Rollout: run 0202, then deploy the app and the brain straight after. In between, the only
+affected write is saving a user with the Business domain (the picker would still send `b2b`).
+
+## 2026-09-16 — Domain names: one word each
+
+Why: the domain pickers and chips mixed "Indulge Concierge", "Technology", "B2B" and plain
+"Finance" — uneven widths that read as distorted. The founder asked for Concierge, Onboarding,
+Finance, Marketing, Tech, Shop, Business, House, Legacy.
+
+What changed: `DOMAIN_LABELS` in `src/lib/constants/domains.ts` (the only place a domain is
+named for a human — every picker, chip, Elaya prompt and mobile tile reads it) and its mirror
+in the Python brain, `backend/app/brain/persona.py`. Three doc sentences that spelled the old
+names out were updated. The internal keys did not change: `b2b` stays `b2b` in the enum, the
+CHECK constraints, the campaign map (`TG_B2B`), the colour tokens and every URL — only its
+label is now "Business". Brand mentions such as "the Indulge Shop app" and historical campaign
+names are product names, not domain labels, and were left alone.
+
+## 2026-09-16 — Who sees which pages: the founder's sidebar, the tech workbench
+
+Why: the founder asked for a shorter sidebar (the pages they actually open), admins keep
+everything, and the tech team needs to reach every page except Books while they build the
+platform — whatever their role (the tech domain has an admin, a manager and agents).
+
+What changed:
+
+- `route-permissions.ts` — `FOUNDER_NAV_PREFIXES` (Dashboard, Elaya, Clients, Leads, Tasks,
+  Vendors, Subscriptions, Notes, Performance, Oversight, Sia, Freshdesk, Books, Suggestions);
+  visibility only, the founder still bypasses every route check so deep links keep working.
+  `WORKBENCH_DOMAINS = ['tech']` + `WORKBENCH_BLOCKED_PREFIXES = ['/books']` — temporary;
+  remove `'tech'` to end it.
+- `route-access.ts` — `canAccessRoute` admits a workbench member everywhere but the blocked
+  prefixes. New helpers: `hasElevatedPageAccess` (THE admin/founder page gate, now also the
+  workbench), `hasManagerPageAccess` (manager+), `isNavVisible` (reachable + the founder's
+  list). Pure and client-safe like `canAccessRoute`.
+- 24 page gates rewritten onto the two helpers (`/sia`, `/freshdesk`, `/vendors` ×3,
+  `/admin/*`, `/settings` + 3 sub-pages, `/oversight` ×3, `/campaigns` ×2, `/budget`,
+  `/error-log`); the local `canSee` copies in vendors/freshdesk are gone. `/books` keeps its
+  literal admin/founder check.
+- Sidebar: every section lists through `isNavVisible`; a section with nothing left is not
+  rendered (no orphan "Configuration" header for the founder). Command palette Go-to pages
+  follow the same rule.
+
+Not changed, on purpose: server actions keep `requireProfile(roles)` and RLS keeps scoping
+rows. A tech agent can open `/vendors` or `/admin/users`; a write from there still returns
+"unauthorized", and lists behind session-client RLS (clients, tickets) show what RLS allows.
+Widening the writes for tech is a separate decision.
+
+## 2026-09-16 — 134 more WhatsApp groups mapped to their clients (the by-name batch)
+
+Why: the busy concierge groups hide member phone numbers behind WhatsApp privacy ids, so the
+phone rule could not see the client. The by-name rule uses three signals that must all agree:
+the group subject, a member's own WhatsApp display name, and exactly one client in the spine.
+
+What changed: the founder reviewed `mapping-review-by-name.csv` and approved the 134 AUTO rows;
+applied with `scripts/import-clients-and-map-groups.py --review mapping-review-by-name.csv
+--skip-import --apply` after re-validating every row against the live tables (all client ids
+still present, no name drift, 3 groups already mapped to the same client). Coverage: 207 to 338
+mapped client groups; 151 remain unmapped (49 subject-only SUGGEST rows for a human click, the
+rest need the staff roster or are internal/vendor groups).
+
 ## 2026-09-15 — Tickets: the live board, the settings page, tasks off a ticket, Elaya's ticket tools
 
 Why: the four follow-ups the founder asked for after T2 (2026-09-15): a board the queendom
@@ -102,6 +411,11 @@ What changed:
   policy says so; the creation stamps and the cadence now use it).
 - `src/trigger/ticket-sentinel.ts` — the minute task (with the deploy). Until then
   `scripts/tickets/sentinel.ts --loop` is the pool from the laptop, the Freshdesk loop's twin.
+- **Reactive, not only scheduled** (founder, same day: "why wait for the porter"): every ticket
+  write — the page actions, Elaya's note and move — calls `wakeTicketNow(ticketId)` inside
+  `after()` (a plain await on the WhatsApp path), which claims THAT ticket through
+  `claim_sentinel_wakes(p_ticket_id)` and wakes it in the same request. The minute sweep stays
+  for the clock-driven fires (a deadline nobody touched) and as the safety net.
 - The ticket page: a Sentinel card (its summary, next look, what it fired, its spend) above the
   help window; the timeline names its events (deadline near, deadline missed, reminder,
   escalated, proposal, closed).

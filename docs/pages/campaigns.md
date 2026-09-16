@@ -451,7 +451,7 @@ const [metrics, distribution, spendRows] = await Promise.all([
   animating `scaleX 0 → 1` once on mount (`transition={{ duration: PAGE_DURATION, ease: EASE_OUT_EXPO }}`
   — `PAGE_DURATION = 0.5`). No per-segment `layoutId`, no `width` animation, no `i * 0.05` stagger.
 - **Palette:** `SEGMENT_COLORS` is the non-semantic `--domain-*` cycle — `concierge`, `finance`,
-  `marketing`, `tech`, `b2b` (5 entries, indexed `i % 5`). Agents are categorical data; the bar
+  `marketing`, `tech`, `business` (5 entries, indexed `i % 5`). Agents are categorical data; the bar
   deliberately never rotates the semantic success/warning/danger tokens positionally (agent #5 reading
   as "danger red" would be a false signal — V-01/V-03).
 - **Legend:** an 8px colour dot from the same `SEGMENT_COLORS` cycle + `full_name` + `formatCompact(lead_count)`.

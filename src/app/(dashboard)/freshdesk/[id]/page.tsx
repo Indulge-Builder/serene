@@ -1,5 +1,6 @@
 import { redirect, notFound } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { hasElevatedPageAccess } from '@/lib/utils/route-access';
 import { getFreshdeskTicketDetail } from '@/lib/services/freshdesk-service';
 import { freshdeskTicketUrl } from '@/lib/services/freshdesk-api';
 import { freshdeskDb } from '@/lib/services/freshdesk-sync';
@@ -18,7 +19,7 @@ type Props = {
 export default async function FreshdeskTicketPage({ params, searchParams }: Props) {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
-  if (profile.role !== 'admin' && profile.role !== 'founder') redirect('/dashboard');
+  if (!hasElevatedPageAccess(profile)) redirect('/dashboard');
 
   const [{ id: rawId }, sp] = await Promise.all([params, searchParams]);
   const id = Number(rawId);

@@ -373,3 +373,50 @@
       expect:
         tools: [find_vendors]
         tools_none: [search_leads, get_helpdesk_content]
+
+# ─────────────────────────────────────────────
+# Clients (2026-09-16) — a member's WhatsApp history, read raw. The client tools scope every
+# row to the reader's QUEENDOM, and a queendom is a concierge-only field (0201), while the
+# eval identity is an onboarding manager (its seeded lead lives there). So these cases are
+# tagged needs-concierge: run them with a concierge identity that sits in Anishqa Queendom
+# (--include-tags needs-concierge). "Naina" is the busiest mapped concierge group.
+# The two "nothing" cases are the anti-hallucination contract: an empty tool result
+# must become "nothing on record", never a confident story.
+# ─────────────────────────────────────────────
+
+- id: client-recent-chat
+  source: synthetic
+  tags: [needs-concierge]
+  steps:
+    - send: "what has Naina been asking for lately?"
+      expect:
+        tools: [get_client_overview]
+        tools_any_of: [get_client_recent_messages]
+
+- id: client-search-topic
+  source: synthetic
+  tags: [needs-concierge]
+  steps:
+    - send: "did Naina ever mention Goa in her group?"
+      expect:
+        tools: [get_client_overview]
+        tools_any_of: [search_client_history]
+
+- id: client-search-nothing-found
+  source: synthetic
+  tags: [needs-concierge]
+  steps:
+    - send: "did Naina ever ask us to rent a submarine?"
+      expect:
+        tools_any_of: [search_client_history]
+        reply_any: ["nothing", "no mention", "not find", "couldn't find", "could not find", "no record", "didn't find", "did not find", "no message", "nahi"]
+
+- id: client-unknown-name
+  source: synthetic
+  tags: [needs-concierge]
+  steps:
+    - send: "tell me about our client Zorblax Quux and what he likes"
+      expect:
+        tools: [get_client_overview]
+        tools_none: [get_client_recent_messages, search_client_history]
+        reply_any: ["no client", "not find", "couldn't find", "could not find", "don't have", "do not have", "no record", "no match", "nahi"]

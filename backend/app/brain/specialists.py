@@ -133,6 +133,23 @@ SPECIALISTS: dict[str, Specialist] = {
                "the user confirms with a yes, never a done deed until the system says so."),
         toolset=["list_tickets", "get_ticket", "add_ticket_note", "move_ticket_status", "find_teammate"],
     ),
+    "clients": Specialist(
+        id="clients",
+        description=(
+            "a member client and their WhatsApp group chat: what a client asked for lately, what is "
+            "going on with a client, summarise a client's chat, did a client ever mention something, "
+            "when did a client talk about a topic, a client's tier or membership, which group a client is in"
+        ),
+        focus=("Focus for this conversation: CLIENTS — one member's story, read from their real "
+               "WhatsApp group messages. Always call get_client_overview first to find the client and "
+               "their client_id, then get_client_recent_messages or search_client_history. Every "
+               "statement about the client must come from a returned message and carry its date; if a "
+               "tool returns nothing, say that nothing is on record — never fill the gap from memory, "
+               "and never describe a client the tool did not return. Several matching clients means "
+               "ask which one."),
+        # All three run in Node through the bridge; Node scopes rows to the reader's queendom.
+        toolset=["get_client_overview", "get_client_recent_messages", "search_client_history", "find_teammate"],
+    ),
     "general": Specialist(
         id="general",
         description="greetings, small talk, questions about Elaya/Serene itself, anything that fits nowhere else",
@@ -145,6 +162,9 @@ SPECIALISTS: dict[str, Specialist] = {
             "find_teammate",
             "get_helpdesk_content",
             "search_leads",
+            "get_client_overview",
+            "get_client_recent_messages",
+            "search_client_history",
             "add_lead_note",
             "log_call",
             "create_lead_task",

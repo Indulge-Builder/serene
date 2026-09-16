@@ -9,15 +9,15 @@ export const CAMPAIGN_DOMAIN_MAP: Record<string, AppDomain> = {
   TG_Shop:   'shop',
   TG_Legacy: 'legacy',
   TG_House:  'house',
-  // TG_B2B → 'b2b': 'b2b' is a valid app_domain (user mgmt) but is NOT yet a Gia
+  // TG_B2B → 'business': 'business' is a valid app_domain (user mgmt) but is NOT yet a Gia
   // sales domain (not in GIA_DOMAINS / DOMAIN_DEAL_CONFIG / DOMAIN_INTERESTS) —
   // we don't run B2B lead campaigns today. The ingestion pipeline coerces any
   // non-Gia resolved domain to DEFAULT_GIA_DOMAIN (lead-ingestion.ts, audit
   // #3/#12), so a stray TG_B2B lead lands in 'onboarding' rather than an
-  // unhandled domain. When B2B leads start flowing, promote 'b2b' to a real Gia
+  // unhandled domain. When B2B leads start flowing, promote 'business' to a real Gia
   // domain (add to GIA_DOMAINS + DOMAIN_DEAL_CONFIG + DOMAIN_INTERESTS + a CHECK
   // migration, together) and this mapping starts taking effect.
-  TG_B2B:    'b2b',
+  TG_B2B:    'business',
 };
 
 // Safe default when no prefix matches — logged to Sentry as a warning

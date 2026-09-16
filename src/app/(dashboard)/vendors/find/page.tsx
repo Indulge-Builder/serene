@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { hasElevatedPageAccess } from '@/lib/utils/route-access';
 import { getVendorCities } from '@/lib/services/vendors-service';
 import { BackButton } from '@/components/ui/BackButton';
 import { FindVendorPanel } from '@/components/vendors/FindVendorPanel';
@@ -8,7 +9,7 @@ import { VENDORS_PATH } from '@/lib/constants/vendors';
 export default async function FindVendorPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
-  if (profile.role !== 'admin' && profile.role !== 'founder') redirect('/dashboard');
+  if (!hasElevatedPageAccess(profile)) redirect('/dashboard');
 
   // The parser matches against the cities we actually have, not a hardcoded
   // list — so a city only "exists" once a vendor serves it.

@@ -46,7 +46,7 @@ export function getServiceCategoryLabel(category: string): string {
 
 /**
  * Valid leads.service_interests values per lead domain.
- * Domains not listed here (finance, marketing, tech, b2b, concierge-adjacent
+ * Domains not listed here (finance, marketing, tech, business, concierge-adjacent
  * future domains) fall back to the concierge vocabulary at the call site.
  */
 export const DOMAIN_INTERESTS = {

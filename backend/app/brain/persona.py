@@ -40,16 +40,17 @@ ROLE_LABELS = {
     "agent": "Agent",
     "guest": "Guest",
 }
+# Mirror of src/lib/constants/domains.ts DOMAIN_LABELS — change both together.
 DOMAIN_LABELS = {
-    "concierge": "Indulge Concierge",
+    "concierge": "Concierge",
     "onboarding": "Onboarding",
     "finance": "Finance",
     "marketing": "Marketing",
-    "tech": "Technology",
-    "shop": "Indulge Shop",
-    "b2b": "B2B",
-    "house": "Indulge House",
-    "legacy": "Indulge Legacy",
+    "tech": "Tech",
+    "shop": "Shop",
+    "business": "Business",
+    "house": "House",
+    "legacy": "Legacy",
 }
 
 _IST_WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]

@@ -1,6 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 import { getCurrentProfile, getProfileById } from "@/lib/services/profiles-service";
+import { hasManagerPageAccess } from "@/lib/utils/route-access";
 import { getAgentRoutingConfig } from "@/lib/services/agent-routing-service";
+import { getQueendoms } from "@/lib/services/clients-service";
+import { SIA_ROLES, isSiaRole } from "@/lib/constants/sia-roles";
 import { EditProfileForm } from "@/components/admin/EditProfileForm";
 import { EditAuthorizationForm } from "@/components/admin/EditAuthorizationForm";
 import { UserStatusControls } from "@/components/admin/UserStatusControls";
@@ -22,7 +25,7 @@ export default async function UserDetailPage({ params }: Props) {
     getProfileById(id),
   ]);
 
-  if (!caller || !["admin", "founder", "manager"].includes(caller.role)) {
+  if (!caller || !hasManagerPageAccess(caller)) {
     redirect("/dashboard");
   }
 
@@ -31,9 +34,12 @@ export default async function UserDetailPage({ params }: Props) {
   const isPrivileged     = ["admin", "founder"].includes(caller.role);
   const canToggleRouting = ["manager", "admin", "founder"].includes(caller.role);
 
-  const routingConfig = user.role === "agent" && canToggleRouting
-    ? await getAgentRoutingConfig(user.id)
-    : null;
+  const [routingConfig, queendoms] = await Promise.all([
+    user.role === "agent" && canToggleRouting ? getAgentRoutingConfig(user.id) : Promise.resolve(null),
+    isPrivileged ? getQueendoms() : Promise.resolve([]),
+  ]);
+  const seat = isSiaRole(user.sia_role) ? SIA_ROLES.labels[user.sia_role] : null;
+  const queendomName = queendoms.find((q) => q.id === user.queendom_id)?.name ?? null;
 
   return (
     <main
@@ -73,9 +79,9 @@ export default async function UserDetailPage({ params }: Props) {
           {isPrivileged && (
             <SectionCard
               title="Authorization"
-              description="Role and domain assignment. Changes are audited."
+              description="Domain, role and Concierge seat. Changes are audited."
             >
-              <EditAuthorizationForm user={user} />
+              <EditAuthorizationForm user={user} queendoms={queendoms} />
             </SectionCard>
           )}
         </div>
@@ -157,6 +163,9 @@ export default async function UserDetailPage({ params }: Props) {
               >
                 <span className="status-pill status-pill--neutral">{ROLE_LABELS[user.role]}</span>
                 <span className="status-pill status-pill--neutral">{DOMAIN_LABELS[user.domain]}</span>
+                {seat && (
+                  <span className="status-pill status-pill--accent">{seat}{queendomName ? ` · ${queendomName}` : ""}</span>
+                )}
               </div>
             </div>
 

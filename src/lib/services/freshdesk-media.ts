@@ -9,7 +9,8 @@
 // (scripts/freshdesk/backfill.ts) runs this outside Next.
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { FD_ATTACHMENT_MAX_BYTES, FD_ATTACHMENT_SIGNED_TTL_SECONDS, FRESHDESK_ATTACHMENT_BUCKET, fdAttachmentExt } from "@/lib/constants/freshdesk";
+import { mapWithConcurrency } from "@/lib/utils/concurrency";
+import { FD_ATTACHMENT_MAX_BYTES, FD_ATTACHMENT_SIGNED_TTL_SECONDS, FRESHDESK_ATTACHMENT_BUCKET, fdAttachmentExt, FD_MEDIA_COPY_CONCURRENCY } from "@/lib/constants/freshdesk";
 import type { FdAttachment } from "@/lib/types/freshdesk";
 
 const LOG = "[freshdesk-media]";
@@ -81,40 +82,50 @@ export async function copyMedia(
   const wanted: FdAttachment[] = attachments.map((a) => ({ ...a, inline: false }));
   extractInlineImages(bodyHtml).forEach((src, i) => wanted.push({ name: `inline-${i + 1}`, attachment_url: src, inline: true }));
 
-  const out: FdAttachment[] = [];
-  let copied = 0;
+  // Decide first (sync, in order), then copy the chosen ones together. The cap picks the
+  // FIRST `cap` uncopied files exactly as the serial loop did; the rest wait for the next pull.
+  type Plan = { keep: FdAttachment } | { copy: FdAttachment; file: string } | { skip: FdAttachment };
+  const plan: Plan[] = [];
+  let chosen = 0;
   let remaining = 0;
   for (const a of wanted) {
     const key = a.inline ? `inline:${a.attachment_url ?? a.name}` : `file:${a.id ?? a.name}`;
     const kept = priorById.get(key);
     if (kept?.storage_path) {
-      out.push({ ...a, storage_path: kept.storage_path, content_type: kept.content_type ?? a.content_type, size: kept.size ?? a.size, stored_at: kept.stored_at });
+      plan.push({ keep: { ...a, storage_path: kept.storage_path, content_type: kept.content_type ?? a.content_type, size: kept.size ?? a.size, stored_at: kept.stored_at } });
       continue;
     }
     if (!a.attachment_url) {
-      out.push({ ...a, store_error: a.store_error ?? "no link (export era)" });
+      plan.push({ keep: { ...a, store_error: a.store_error ?? "no link (export era)" } });
       continue;
     }
-    if (copied >= cap) {
+    if (chosen >= cap) {
       remaining += 1;
-      out.push(a);
+      plan.push({ skip: a });
       continue;
     }
     const ext = fdAttachmentExt(a.name, a.content_type);
-    const file = a.inline ? `${a.name}.${ext === "bin" ? "png" : ext}` : `${a.id ?? copied}-${safeName(a.name, `file.${ext}`)}`;
-    const stored = await storeFreshdeskFile(a.attachment_url, `${prefix}/${file}`, { name: a.name, content_type: a.content_type });
-    copied += 1;
+    plan.push({ copy: a, file: a.inline ? `${a.name}.${ext === "bin" ? "png" : ext}` : `${a.id ?? chosen}-${safeName(a.name, `file.${ext}`)}` });
+    chosen += 1;
+  }
+
+  const out = await mapWithConcurrency(plan, FD_MEDIA_COPY_CONCURRENCY, async (p): Promise<FdAttachment> => {
+    if ("keep" in p) return p.keep;
+    if ("skip" in p) return p.skip;
+    const stored = await storeFreshdeskFile(p.copy.attachment_url as string, `${prefix}/${p.file}`, { name: p.copy.name, content_type: p.copy.content_type });
     // The expiring link is dropped once copied (or once it failed): it is useless in hours anyway.
-    const { attachment_url: _drop, ...rest } = a;
+    const { attachment_url: _drop, ...rest } = p.copy;
     void _drop;
-    out.push(stored.storage_path ? { ...rest, ...stored, stored_at: new Date().toISOString() } : { ...rest, store_error: stored.store_error });
     if (stored.store_error) {
-      console.warn(`${LOG} ${prefix}/${file}: ${stored.store_error}`);
+      console.warn(`${LOG} ${prefix}/${p.file}: ${stored.store_error}`);
       // A network hiccup or a 5xx is worth another go on the next pull; a file that is too
       // large, empty or gone (403/404) is not — its name stays with the reason.
       if (/fetch failed|upload|download 5\d\d|download 429|timeout|ECONN|<none>/i.test(stored.store_error ?? "")) remaining += 1;
+      return { ...rest, store_error: stored.store_error };
     }
-  }
+    return { ...rest, ...stored, stored_at: new Date().toISOString() };
+  });
+  const copied = chosen;
   return { attachments: out, copied, remaining };
 }
 

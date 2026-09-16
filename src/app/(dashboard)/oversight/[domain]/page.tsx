@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect, notFound } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { hasManagerPageAccess } from "@/lib/utils/route-access";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
 import { BackButton } from "@/components/ui/BackButton";
@@ -51,7 +52,7 @@ export default async function OversightTeamPage({
 }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
-  if (profile.role === "agent" || profile.role === "guest") redirect("/dashboard");
+  if (!hasManagerPageAccess(profile)) redirect("/dashboard");
 
   // decodeURIComponent can throw on a malformed param (Q-10) → 404, not 500.
   let raw: string;

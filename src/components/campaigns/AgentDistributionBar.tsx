@@ -14,7 +14,7 @@ const SEGMENT_COLORS = [
   'var(--domain-finance)',    /* jade green  */
   'var(--domain-marketing)',  /* orchid      */
   'var(--domain-tech)',       /* terracotta  */
-  'var(--domain-b2b)',        /* soft violet */
+  'var(--domain-business)',        /* soft violet */
 ];
 
 type AgentDistributionBarProps = {

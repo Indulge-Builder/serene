@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { hasElevatedPageAccess } from "@/lib/utils/route-access";
 import { getAllAdCreatives } from "@/lib/services/ad-creatives-service";
 import { getCampaignMetrics } from "@/lib/services/leads-service";
 import { AdCreativesManager } from "@/components/admin/AdCreativesManager";
@@ -16,7 +17,7 @@ export default async function AdCreativesPage() {
   const profile = await getCurrentProfile();
 
   if (!profile) redirect("/login");
-  if (!["admin", "founder"].includes(profile.role)) redirect("/dashboard");
+  if (!hasElevatedPageAccess(profile)) redirect("/dashboard");
 
   const [creatives, campaigns] = await Promise.all([
     getAllAdCreatives(),

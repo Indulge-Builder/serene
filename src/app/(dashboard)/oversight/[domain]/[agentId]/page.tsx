@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect, notFound } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { hasManagerPageAccess } from "@/lib/utils/route-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
@@ -57,7 +58,7 @@ export default async function OversightAgentPage({
 }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
-  if (profile.role === "agent" || profile.role === "guest") redirect("/dashboard");
+  if (!hasManagerPageAccess(profile)) redirect("/dashboard");
 
   let domainRaw: string;
   let agentId: string;

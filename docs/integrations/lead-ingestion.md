@@ -86,10 +86,10 @@ dossier card, and both `new URL()` and Zod's `.url()` accept `javascript:` witho
    `ingestion_error` on failure.
 2. **Domain resolution** — priority: explicit `domain` field → campaign-prefix map → default.
    `CAMPAIGN_DOMAIN_MAP` (prefix → domain): `TG_Global→onboarding`, `TG_Shop→shop`,
-   `TG_Legacy→legacy`, `TG_House→house`, `TG_B2B→b2b`. Then a **Gia-only coercion**: any
-   resolved domain that fails `isGiaDomain()` (including `b2b` from the map, and any free-form
+   `TG_Legacy→legacy`, `TG_House→house`, `TG_B2B→business`. Then a **Gia-only coercion**: any
+   resolved domain that fails `isGiaDomain()` (including `business` from the map, and any free-form
    payload domain) is coerced to `DEFAULT_GIA_DOMAIN` (`'onboarding'`) with a console warn.
-   A `TG_B2B` lead therefore lands in `onboarding`, not `b2b`.
+   A `TG_B2B` lead therefore lands in `onboarding`, not `business`.
    *(No Sentry call exists — an unmatched prefix falls through with a console warn at most;
    the old "logged to Sentry" claim was drift.)*
 3. **Phone canonicalization:** `canonicalizePhone(data.phone)` (`lib/utils/phone.ts`, the

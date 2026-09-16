@@ -6371,7 +6371,7 @@ Nine tokens, defined in `src/styles/design-tokens.css` under `:root`:
 --domain-marketing:   #c45cb4;   /* orchid       */
 --domain-tech:        #e07840;   /* terracotta   */
 --domain-shop:        #5cb8c4;   /* sea glass    */
---domain-b2b:         #8868c8;   /* soft violet  */
+--domain-business:         #8868c8;   /* soft violet  */
 --domain-house:       #c48840;   /* warm ochre   */
 --domain-legacy:      #6a8c6a;   /* muted sage   */
 ```

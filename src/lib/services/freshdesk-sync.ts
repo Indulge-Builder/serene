@@ -11,12 +11,15 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { mapWithConcurrency } from "@/lib/utils/concurrency";
 import { normalizeToE164 } from "@/lib/utils/phone";
 import { copyMedia } from "@/lib/services/freshdesk-media";
 import {
   FD_BACKFILL_EPOCH,
   FD_MAX_PAGES,
   FD_MEDIA_PER_THREAD_MAX,
+  FD_THREAD_CONCURRENCY,
+  FD_THREADS_PER_CYCLE,
   FD_PAGE_SIZE,
   FD_POLL_OVERLAP_MS,
   FD_REFERENCE_TTL_MS,
@@ -439,17 +442,21 @@ export async function syncThread(ticketId: number, budget: FdBudget, stats: FdRu
 }
 
 async function syncThreadsWhileBudget(ids: number[], budget: FdBudget, stats: FdRunStats): Promise<number> {
+  // FD_THREAD_CONCURRENCY threads at once: the budget is charged synchronously inside fdFetch
+  // before any await, so parallel callers can never overshoot it; a thread that finds the
+  // budget gone simply stops and the next cycle takes the rest.
   let done = 0;
-  for (const id of ids) {
-    if (!budgetHasRoom(budget)) break;
+  let exhausted = false;
+  await mapWithConcurrency(ids, FD_THREAD_CONCURRENCY, async (id) => {
+    if (exhausted || !budgetHasRoom(budget)) return;
     try {
       await syncThread(id, budget, stats);
       done += 1;
     } catch (e) {
-      if (e instanceof FdBudgetExhausted) break;
+      if (e instanceof FdBudgetExhausted) { exhausted = true; return; }
       console.warn("[freshdesk-sync] thread failed", id, e instanceof Error ? e.message : e);
     }
-  }
+  });
   return done;
 }
 
@@ -841,7 +848,7 @@ export async function runSyncCycle(budget: FdBudget = createFdBudget(), opts: { 
   // 0197: work the attachment backlog by re-queuing old threads, but only while the queue of
   // genuinely changed tickets is short, so a fresh update is never behind old files.
   if (opts.flagMedia && (await threadQueueLength()) < opts.flagMedia) await flagThreadsForMedia(opts.flagMedia);
-  const threads = budgetHasRoom(budget) ? await runThreadCatchupStep(budget) : null;
+  const threads = budgetHasRoom(budget) ? await runThreadCatchupStep(budget, FD_THREADS_PER_CYCLE) : null;
   const contactsState = await getSyncState<ContactsState>(FD_SYNC_KEYS.contacts);
   const contactsDue =
     !contactsState?.last_run_at || Date.now() - new Date(contactsState.last_run_at).getTime() > 15 * 60_000;

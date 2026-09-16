@@ -210,6 +210,9 @@ Never remove the UUID guard without moving id surfacing off the string-mask path
 | --- | --- | --- | --- |
 | `list_tickets` | read (bridged) | all staff | `elayaData.listTicketsFor` → `listTicketsForElaya` (admin client; scope = the principal's queendom from the profile, admin/founder every queendom; never model-supplied) |
 | `get_ticket` | read (bridged) | all staff | `elayaData.getTicketFor` → `getTicketByRefForElaya` + `canAccessClient` on the ticket's queendom; returns `allowedMoves` from the state machine |
+| `get_client_overview` | read (bridged) | all staff | `elayaData.findClientsFor` / `getClientBriefFor` (admin client on `clients` + `getSiaGroupForClient`; every row filtered by `canAccessClient` with the principal's queendom). Name or id in; several matches → `candidates` (the model asks, never picks); none → "not found" (never describe a client not returned). Hands back the `client_id` the two tools below need |
+| `get_client_recent_messages` | read (bridged) | all staff | `elayaData.getClientMessagesFor` → `getSiaMessages` on the client's mapped group (one 60-message page, oldest→newest, text capped 500 chars, `before` pages back); each row labelled client / staff / other via `getSiaSenderRoles`. RAW data, no profile layer: the description binds the model to answer only from these rows and cite dates; empty → "no messages on record" |
+| `search_client_history` | read (bridged) | all staff | `elayaData.searchClientHistoryFor` → `searchSiaMessages` (the `simple` FTS index) scoped to the client's group, newest first, capped 30. Empty → "nothing on record about that", never a guess |
 | `add_ticket_note` | write, inline | all staff | `addTicketNoteCore`; an `executed` ledger row with an `ElayaTicketTarget` |
 | `move_ticket_status` | write, propose-only | all staff | checks `canTransition` at propose time; the resolver (`executeProposedTicketMove`) re-gates, checks the status is unchanged, runs `moveTicketStatusCore` |
 

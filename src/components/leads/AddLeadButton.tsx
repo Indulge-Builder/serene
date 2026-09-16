@@ -25,10 +25,12 @@ type Agent = { id: string; full_name: string };
 
 type Props = {
   callerProfile: CallerProfile;
-  initialAgents: Agent[];
+  /** Optional assignee seed. Omit (the /leads page does, 2026-09-16) and the
+   *  modal fetches the list itself on first open — no page-level query. */
+  initialAgents?: Agent[];
 };
 
-export function AddLeadButton({ callerProfile, initialAgents }: Props) {
+export function AddLeadButton({ callerProfile, initialAgents = [] }: Props) {
   const [open, setOpen] = useState(false);
   const mountModal = useMountOnFirstOpen(open);
 

@@ -460,7 +460,7 @@ def main() -> int:
             f"&freshdesk_contact_id=eq.{urllib.parse.quote(fd)}" if fd else "&primary_phone=is.null")
         if not rest("GET", q + "&select=id"):
             rest("POST", "clients", [r], prefer="return=minimal")
-    print(f"✓ clients upserted ({len(records)})")
+    print("- client import skipped (--skip-import)" if args.skip_import else f"✓ clients upserted ({len(records)})")
 
     # 2. AUTO mappings. Already-mapped groups are skipped up front so re-runs
     # only touch what is missing.

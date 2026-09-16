@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { hasElevatedPageAccess } from "@/lib/utils/route-access";
 import { getAgentUsage } from "@/lib/services/usage-service";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
@@ -20,7 +21,7 @@ import { UsageDashboard } from "@/components/admin/usage/UsageDashboard";
 export default async function AdminUsagePage() {
   const profile = await getCurrentProfile();
 
-  if (!profile || !["admin", "founder"].includes(profile.role)) {
+  if (!profile || !hasElevatedPageAccess(profile)) {
     redirect("/dashboard");
   }
 

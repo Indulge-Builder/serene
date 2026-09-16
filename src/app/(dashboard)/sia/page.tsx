@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { hasElevatedPageAccess } from "@/lib/utils/route-access";
 import { getSiaGroups } from "@/lib/services/sia-service";
 import { SiaWorkspace } from "@/components/sia/SiaWorkspace";
 
@@ -14,7 +15,7 @@ import { SiaWorkspace } from "@/components/sia/SiaWorkspace";
 export default async function SiaPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
-  if (profile.role !== "admin" && profile.role !== "founder") redirect("/dashboard");
+  if (!hasElevatedPageAccess(profile)) redirect("/dashboard");
 
   const groups = await getSiaGroups();
 

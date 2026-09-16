@@ -1,5 +1,6 @@
 import { redirect }                   from "next/navigation";
 import { getCurrentProfile }          from "@/lib/services/profiles-service";
+import { hasManagerPageAccess } from "@/lib/utils/route-access";
 import { TOP_BAR_ENABLED }            from "@/lib/constants/feature-flags";
 import { PageControls }               from "@/components/layout/PageControls";
 import { getAgentRosterByDomain }     from "@/lib/services/agent-routing-service";
@@ -11,7 +12,7 @@ export const metadata = { title: "Settings — Serene" };
 export default async function SettingsPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
-  if (profile.role === "agent" || profile.role === "guest") redirect("/dashboard");
+  if (!hasManagerPageAccess(profile)) redirect("/dashboard");
 
   const isPrivileged = profile.role === "admin" || profile.role === "founder";
   const rosterDomain = isPrivileged ? "*" : profile.domain;

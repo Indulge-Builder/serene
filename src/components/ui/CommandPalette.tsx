@@ -24,7 +24,7 @@ import {
 } from '@/lib/constants/motion';
 import { useDebounce } from '@/hooks/useDebounce';
 import { lockBodyScroll } from '@/lib/utils/scroll';
-import { canAccessRoute } from '@/lib/utils/route-access';
+import { canAccessRoute, isNavVisible, isWorkbenchProfile } from '@/lib/utils/route-access';
 import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
 import { TASK_STATUS } from '@/lib/constants/task-constants';
 import { formatCurrency } from '@/lib/utils/numbers';
@@ -254,10 +254,12 @@ export function CommandPalette({ open, onClose, profile }: CommandPaletteProps) 
       href: '/tasks?tab=personal',
     }));
 
+    // Same listing rule as the Sidebar: reachable AND on the founder's curated list;
+    // a workbench-domain member (tech) passes the per-entry role hint like admin does.
     const goto: PaletteItem[] = GOTO_PAGES.filter(
       (p) =>
-        (!p.roles || p.roles.includes(profile.role)) &&
-        canAccessRoute(profile, p.href),
+        (!p.roles || p.roles.includes(profile.role) || isWorkbenchProfile(profile)) &&
+        isNavVisible(profile, p.href),
     ).map((p) => ({
       key: `goto-${p.href}`,
       icon: ArrowRight,

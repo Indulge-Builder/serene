@@ -1,19 +1,18 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { updateUserAuthorization } from "@/lib/actions/profiles";
 import { Button, type ButtonStatus } from "@/components/ui/Button";
-import { USER_ROLES, ROLE_LABELS } from "@/lib/constants/roles";
-import { APP_DOMAINS, DOMAIN_LABELS } from "@/lib/constants/domains";
+import { RoleDomainFields } from "@/components/admin/RoleDomainFields";
 import type { Profile } from "@/lib/types/database";
+import type { QueendomSummary } from "@/lib/types/client";
 import type { ActionResult } from "@/lib/types";
 
-type Props = { user: Profile };
+type Props = { user: Profile; queendoms: QueendomSummary[] };
 
 const initialState: ActionResult<Profile> = { data: null, error: null };
 
-export function EditAuthorizationForm({ user }: Props) {
+export function EditAuthorizationForm({ user, queendoms }: Props) {
   const [state, formAction, isPending] = useActionState(updateUserAuthorization, initialState);
 
   const succeeded = state.data !== null;
@@ -38,54 +37,14 @@ export function EditAuthorizationForm({ user }: Props) {
       <input type="hidden" name="id" value={user.id} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
-        {/* Role + Domain */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-            <label
-              htmlFor="edit_role"
-              style={labelStyle}
-            >
-              Role <span style={{ color: "var(--color-danger)", lineHeight: 1 }}>*</span>
-            </label>
-            <div style={{ position: "relative" }}>
-              <select
-                id="edit_role"
-                name="role"
-                defaultValue={user.role}
-                required
-                style={selectStyle}
-              >
-                {USER_ROLES.map((r) => (
-                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-                ))}
-              </select>
-              <ChevronDown style={chevronStyle} />
-            </div>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-            <label
-              htmlFor="edit_domain"
-              style={labelStyle}
-            >
-              Domain <span style={{ color: "var(--color-danger)", lineHeight: 1 }}>*</span>
-            </label>
-            <div style={{ position: "relative" }}>
-              <select
-                id="edit_domain"
-                name="domain"
-                defaultValue={user.domain}
-                required
-                style={selectStyle}
-              >
-                {APP_DOMAINS.map((d) => (
-                  <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>
-                ))}
-              </select>
-              <ChevronDown style={chevronStyle} />
-            </div>
-          </div>
-        </div>
+        {/* Domain → role / position → queendom: the one shared field group (RoleDomainFields).
+            Keyed on the saved row so a successful save re-seeds the defaults. */}
+        <RoleDomainFields
+          key={state.data?.updated_at ?? user.updated_at}
+          queendoms={queendoms}
+          defaults={{ role: (state.data ?? user).role, domain: (state.data ?? user).domain, sia_role: (state.data ?? user).sia_role, queendom_id: (state.data ?? user).queendom_id }}
+          idPrefix="edit_"
+        />
 
         {/* Warning note */}
         <p
@@ -100,7 +59,7 @@ export function EditAuthorizationForm({ user }: Props) {
             margin:     0,
           }}
         >
-          Changing role or domain immediately affects what this person can see and do. All changes are audited.
+          Changing domain, role or seat immediately affects what this person can see and do. All changes are audited.
         </p>
 
         {/* Feedback */}
@@ -160,42 +119,5 @@ export function EditAuthorizationForm({ user }: Props) {
   );
 }
 
-const labelStyle: React.CSSProperties = {
-  fontFamily:    "var(--font-sans)",
-  fontSize:      "var(--text-2xs)",
-  fontWeight:    "var(--weight-semibold)",
-  color:         "var(--theme-text-tertiary)",
-  letterSpacing: "var(--tracking-widest)",
-  textTransform: "uppercase",
-  display:       "flex",
-  gap:           "var(--space-1)",
-};
 
-const selectStyle: React.CSSProperties = {
-  width:            "100%",
-  padding:          "var(--space-2) var(--space-3)",
-  paddingRight:     "var(--space-8)",
-  background:       "var(--theme-paper-subtle)",
-  border:           "1px solid var(--theme-paper-border)",
-  borderRadius:     "var(--radius-sm)",
-  fontFamily:       "var(--font-sans)",
-  fontSize:         "var(--text-sm)",
-  color:            "var(--theme-text-primary)",
-  cursor:           "pointer",
-  outline:          "none",
-  appearance:       "none",
-  WebkitAppearance: "none",
-  boxSizing:        "border-box",
-};
 
-const chevronStyle: React.CSSProperties = {
-  position:      "absolute",
-  right:         "var(--space-3)",
-  top:           "50%",
-  transform:     "translateY(-50%)",
-  width:         "12px",
-  height:        "12px",
-  strokeWidth:   1.5,
-  color:         "var(--theme-text-tertiary)",
-  pointerEvents: "none",
-};

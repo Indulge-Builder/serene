@@ -69,7 +69,11 @@ export type ElayaReadToolName =
   | 'list_tickets'
   | 'get_ticket'
   | 'find_vendors'
-  | 'get_vendor_details';
+  | 'get_vendor_details'
+  // Clients (0181/0194) — a member's WhatsApp history, raw, queendom-scoped in code
+  | 'get_client_overview'
+  | 'get_client_recent_messages'
+  | 'search_client_history';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
@@ -864,6 +868,138 @@ const getVendorDetails: ElayaTool = {
   },
 };
 
+// ── Clients (2026-09-16) — a member's WhatsApp group, read raw for Elaya ──
+// No profile layer in between: the tools hand the model REAL message rows (date,
+// who, text) and the descriptions bind it to answer only from them. All staff may
+// carry the tools; the CODE gate is the queendom (canAccessClient inside
+// elaya-data) — admin/founder see every client, everyone else their queendom's.
+// Both brains run these here (bridged), so WhatsApp and in-app answer alike.
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const getClientOverview: ElayaTool = {
+  name: 'get_client_overview',
+  description:
+    'Find a member client and their WhatsApp concierge group. Pass `client` as the name the user ' +
+    'said (or a client id). Returns tier, membership status, queendom and the group with its message ' +
+    'count and last activity, plus the client_id the other client tools need — call this FIRST. If ' +
+    'several clients match you get a `candidates` list: ask the user which one, never pick. If none ' +
+    'match, say you could not find that client; never describe a client you did not get back.',
+  schema: z.object({ client: z.string().trim().min(2).max(120) }),
+  jsonSchema: {
+    type: 'object',
+    properties: { client: { type: 'string', description: "The client's name as the user said it, or a client id" } },
+    required: ['client'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { client } = input as { client: string };
+    let match: Awaited<ReturnType<typeof elayaData.getClientBriefFor>> = null;
+    if (UUID_RE.test(client)) {
+      match = await elayaData.getClientBriefFor(principal, client);
+      if (!match) return { found: false, note: 'No client with that id that you can see.' };
+    } else {
+      const hits = await elayaData.findClientsFor(principal, client);
+      if (hits.length === 0) {
+        return { found: false, note: `No client matching "${client}". Say so; do not describe anyone.` };
+      }
+      if (hits.length > 1) {
+        return {
+          found: false,
+          candidates: hits.map((c) => ({ client_id: c.id, name: c.full_name, tier: c.tier, status: c.membership_status })),
+          note: 'Several clients match. Ask the user which one they mean.',
+        };
+      }
+      match = await elayaData.getClientBriefFor(principal, hits[0].id);
+      if (!match) return { found: false, note: 'That client is outside what you can see.' };
+    }
+    const { client: c, group } = match;
+    return {
+      found: true,
+      client_id: c.id,
+      name: c.full_name,
+      tier: c.tier,
+      membership: { type: c.membership_type, status: c.membership_status, ends: c.membership_end },
+      whatsapp_group: group
+        ? { subject: group.subject, members: group.member_count, messages: group.message_count, last_message_at: group.last_message_at }
+        : null,
+      note: group ? undefined : 'No WhatsApp group is mapped to this client yet, so there is no chat history to read.',
+    };
+  },
+};
+
+const getClientRecentMessages: ElayaTool = {
+  name: 'get_client_recent_messages',
+  description:
+    "The latest messages from the client's WhatsApp concierge group, oldest to newest, each with " +
+    'its date, who sent it (client / staff) and the text. Use for "what has X asked for lately", ' +
+    '"what is going on with X", "summarise X\'s chat". Answer ONLY from these messages and mention ' +
+    'the dates you rely on; if the list is empty say there are no messages, never fill the gap. ' +
+    'Pass `before` (the `oldest_at` you were given) to read the page before it. Needs client_id ' +
+    'from get_client_overview.',
+  schema: z.object({ client_id: z.string().uuid(), before: z.string().datetime({ offset: true }).optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      client_id: { type: 'string', description: 'The client_id from get_client_overview' },
+      before: { type: 'string', description: 'Optional ISO timestamp: return the page of messages before this moment' },
+    },
+    required: ['client_id'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { client_id, before } = input as { client_id: string; before?: string };
+    const page = await elayaData.getClientMessagesFor(principal, client_id, { before });
+    if (!page) return { error: 'No such client, or outside what you can see.' };
+    return {
+      client: page.client.full_name,
+      group: page.group_subject,
+      messages: page.messages,
+      has_more: page.has_more,
+      oldest_at: page.oldest_at,
+      note:
+        page.messages.length === 0
+          ? 'No messages on record for this client. Say exactly that.'
+          : 'Ground every statement in these messages and cite the date. Nothing here means nothing is known.',
+    };
+  },
+};
+
+const searchClientHistory: ElayaTool = {
+  name: 'search_client_history',
+  description:
+    "Search a client's whole WhatsApp history for a word or topic (villa, goa, birthday, refund). " +
+    'Exact word matching over the real messages: returns the matching messages with dates and ' +
+    'senders, newest first. Use for "did X ever mention…", "when did X ask about…", "find the time ' +
+    'X talked about…". If it returns no hits, say nothing was found about that; never guess or ' +
+    'infer. Needs client_id from get_client_overview.',
+  schema: z.object({ client_id: z.string().uuid(), query: z.string().trim().min(2).max(120) }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      client_id: { type: 'string', description: 'The client_id from get_client_overview' },
+      query: { type: 'string', description: 'The word or short phrase to look for, e.g. goa, birthday, villa' },
+    },
+    required: ['client_id', 'query'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { client_id, query } = input as { client_id: string; query: string };
+    const res = await elayaData.searchClientHistoryFor(principal, client_id, query);
+    if (!res) return { error: 'No such client, or outside what you can see.' };
+    return {
+      client: res.client.full_name,
+      group: res.group_subject,
+      query,
+      hits: res.hits,
+      note:
+        res.hits.length === 0
+          ? `Nothing in this client's chat matches "${query}". Say so plainly.`
+          : 'Quote the matching message and its date; do not extend beyond what these hits say.',
+    };
+  },
+};
+
 /**
  * Read tools the Python brain runs THROUGH the bridge instead of porting.
  * The vendor ranker is the one ranking in the codebase (R-01; the vendors spec:
@@ -878,6 +1014,10 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   // Tickets: the sentinel's ledger lives in Node with its cores; the Python brain reads it here.
   'list_tickets',
   'get_ticket',
+  // Clients: the member's WhatsApp history lives in the sia schema Node already reads.
+  'get_client_overview',
+  'get_client_recent_messages',
+  'search_client_history',
 ]);
 
 // ── Tickets (Sia, 0195/0199/0200) — the genie's queue and one ticket's whole story ──
@@ -993,6 +1133,9 @@ const ALL_TOOLS = [
   getVendorDetails,
   listTickets,
   getTicket,
+  getClientOverview,
+  getClientRecentMessages,
+  searchClientHistory,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));

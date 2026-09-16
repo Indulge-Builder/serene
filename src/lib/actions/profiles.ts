@@ -25,6 +25,7 @@ import { sanitizeText } from "@/lib/utils/sanitize";
 import { normalizeToE164 } from "@/lib/utils/phone";
 import type { ActionResult, Profile, AppDomain, AssignableUser } from "@/lib/types";
 import { ROLES_CAN_CREATE_USER, LEAD_ASSIGNABLE_ROLES } from "@/lib/constants/roles";
+import type { SiaRole } from "@/lib/constants/sia-roles";
 
 // ─────────────────────────────────────────────────────────
 // createUser
@@ -44,6 +45,8 @@ export async function createUser(
     domain:    formData.get("domain"),
     job_title: formData.get("job_title"),
     phone:     formData.get("phone"),
+    sia_role:    formData.get("sia_role"),
+    queendom_id: formData.get("queendom_id"),
   });
 
   if (!parsed.success) {
@@ -55,7 +58,7 @@ export async function createUser(
   const auth = await requireProfile(ROLES_CAN_CREATE_USER);
   if (!auth.ok) return auth.result;
 
-  const { full_name, email, password, role, domain, job_title, phone } = parsed.data;
+  const { full_name, email, password, role, domain, job_title, phone, sia_role, queendom_id } = parsed.data;
 
   // Rule 06 — sanitize text before DB write.
   const sanitizedName     = sanitizeText(full_name);
@@ -81,6 +84,9 @@ export async function createUser(
       domain,
       job_title:  sanitizedJobTitle,
       phone:      normalizedPhone,
+      // The signup trigger (0201) copies these two into the profile in the same transaction.
+      sia_role,
+      queendom_id,
     },
   });
 
@@ -88,6 +94,7 @@ export async function createUser(
     if (authError.message.toLowerCase().includes("already registered")) {
       return { data: null, error: formErrors.emailUnavailable };
     }
+    if (isSeatTaken(authError.message)) return { data: null, error: formErrors.seatTaken };
     return { data: null, error: formErrors.generic };
   }
 
@@ -194,9 +201,11 @@ export async function updateUserAuthorization(
   formData: FormData,
 ): Promise<ActionResult<Profile>> {
   const parsed = updateAuthorizationSchema.safeParse({
-    id:     formData.get("id"),
-    role:   formData.get("role"),
-    domain: formData.get("domain"),
+    id:          formData.get("id"),
+    role:        formData.get("role"),
+    domain:      formData.get("domain"),
+    sia_role:    formData.get("sia_role"),
+    queendom_id: formData.get("queendom_id"),
   });
 
   if (!parsed.success) {
@@ -211,9 +220,13 @@ export async function updateUserAuthorization(
     parsed.data.id,
     parsed.data.role as Parameters<typeof updateAuthorization>[1],
     parsed.data.domain as Parameters<typeof updateAuthorization>[2],
+    { sia_role: parsed.data.sia_role as SiaRole | null, queendom_id: parsed.data.queendom_id },
   );
 
-  if (result.error) return { data: null, error: formErrors.generic };
+  if (result.error) {
+    // 23505 = a partial unique index (0201): that seat already has an active holder.
+    return { data: null, error: result.code === "23505" ? formErrors.seatTaken : formErrors.generic };
+  }
 
   revalidatePath("/admin/users");
   revalidatePath(`/admin/users/${parsed.data.id}`);
@@ -263,6 +276,8 @@ export async function inviteUser(
     role:      formData.get("role"),
     domain:    formData.get("domain"),
     job_title: formData.get("job_title"),
+    sia_role:    formData.get("sia_role"),
+    queendom_id: formData.get("queendom_id"),
   });
 
   if (!parsed.success) {
@@ -273,7 +288,7 @@ export async function inviteUser(
   const auth = await requireProfile(ROLES_CAN_CREATE_USER);
   if (!auth.ok) return auth.result;
 
-  const { full_name, email, role, domain, job_title } = parsed.data;
+  const { full_name, email, role, domain, job_title, sia_role, queendom_id } = parsed.data;
 
   const sanitizedName     = sanitizeText(full_name);
   const sanitizedJobTitle = job_title ? sanitizeText(job_title) : null;
@@ -287,6 +302,8 @@ export async function inviteUser(
         role,
         domain,
         job_title:  sanitizedJobTitle,
+        sia_role,
+        queendom_id,
       },
       // The invite magic link must return to OUR app, not the Supabase Site URL
       // root (which dead-ends at /login asking for a password the invitee never
@@ -301,6 +318,7 @@ export async function inviteUser(
     if (inviteError.message.toLowerCase().includes("already registered")) {
       return { data: null, error: formErrors.emailUnavailable };
     }
+    if (isSeatTaken(inviteError.message)) return { data: null, error: formErrors.seatTaken };
     return { data: null, error: formErrors.generic };
   }
 
@@ -395,10 +413,25 @@ function mapProfileError(code: string | undefined): string {
     case "password_too_long":      return formErrors.passwordTooLong;
     case "role_invalid":           return formErrors.roleInvalid;
     case "domain_invalid":         return formErrors.domainInvalid;
+    case "sia_role_invalid":       return formErrors.siaRoleInvalid;
+    case "sia_role_domain":        return formErrors.siaRoleDomain;
+    case "queendom_required":      return formErrors.queendomRequired;
+    case "queendom_invalid":       return formErrors.queendomRequired;
+    case "sia_role_platform_mismatch": return formErrors.siaRolePlatformMismatch;
     case "job_title_too_long":     return formErrors.jobTitleTooLong;
     case "username_too_short":     return formErrors.usernameTooShort;
     case "username_too_long":      return formErrors.usernameTooLong;
     case "username_invalid_chars": return formErrors.usernameInvalidChars;
     default:                       return formErrors.generic;
   }
+}
+
+/**
+ * The Auth admin API surfaces a failed signup trigger as "Database error creating new user"
+ * with the Postgres text folded in; the 0201 one-holder-per-seat indexes are the only unique
+ * violations that path can raise for us.
+ */
+function isSeatTaken(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes("idx_profiles_one_") || (m.includes("database error") && m.includes("duplicate"));
 }

@@ -61,6 +61,7 @@ import {
 // the principal's visible-group set (the access check IS membership in that set).
 import { getVisibleGroupById, getTicketFor } from "@/lib/elaya/elaya-data";
 import { addTicketNoteCore, moveTicketStatusCore } from "@/lib/services/ticket-mutations";
+import { wakeTicketNow } from "@/lib/services/ticket-sentinel";
 import { canTransition, TICKET_STATUSES, TICKET_TRANSITIONS, type TicketStatus } from "@/lib/constants/tickets";
 import {
   insertExecutedAction,
@@ -1243,6 +1244,8 @@ const addTicketNote: ElayaWriteTool = {
     if (!clean) return { error: "The note was empty after cleaning — nothing to save." };
     const core = await addTicketNoteCore(d.ticket.id, clean, actorFromPrincipal(principal));
     if (core.error || !core.data) return { error: "I couldn't save that note just now." };
+    // The sentinel reads the note now (the WhatsApp path already runs inside after(); a plain await is right here).
+    await wakeTicketNow(d.ticket.id);
     await insertExecutedAction({
       conversationId: ctx.conversationId,
       userId: principal.userId,
@@ -1604,6 +1607,7 @@ async function executeProposedTicketMove(
       return { status: "failed", line: `I couldn't move ${label}: ${core.error}` };
     }
     await markActionResolved(action.id, "executed", principal.userId, { ...action.payload, after: { status: target } });
+    await wakeTicketNow(d.ticket.id);
     return { status: "executed", line: `Done — ${label} is now ${TICKET_STATUSES.labels[target]}.` };
   } catch (e) {
     console.error("[elaya-write] ticket move threw:", e instanceof Error ? e.message : e);

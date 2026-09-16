@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import type { AppDomain } from "@/lib/types/database";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { hasManagerPageAccess } from "@/lib/utils/route-access";
 import { resolvePerformanceDateParams } from "@/lib/services/performance-service";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
@@ -34,9 +35,7 @@ export default async function BudgetPage({
 }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
-  if (!["manager", "admin", "founder"].includes(profile.role)) {
-    redirect("/dashboard");
-  }
+  if (!hasManagerPageAccess(profile)) redirect("/dashboard");
 
   const params = await searchParams;
   // Shared date_from/date_to → ISO range (default This Month), the same

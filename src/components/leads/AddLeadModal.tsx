@@ -192,7 +192,12 @@ export function AddLeadModal({
     const kept = current.filter((i) => vocab.includes(i));
     if (kept.length !== current.length) setValue('service_interests', kept);
 
-    if (watchedDomain === initialDomain) {
+    // Seeded initial domain → use the seed. Otherwise fetch: a switched domain,
+    // OR the initial domain with no seed (the /leads page stopped seeding on
+    // 2026-09-16 so its header never waits on this list; the modal mounts on
+    // first open, so this runs once, at open, not at page load).
+    const isInitialDomain = watchedDomain === initialDomain;
+    if (isInitialDomain && initialAgents.length > 0) {
       setAgents(initialAgents);
       return;
     }
@@ -203,9 +208,9 @@ export function AddLeadModal({
       if (cancelled) return;
       const list = result.data ?? [];
       setAgents(list);
-      // Reset assigned_to to the first agent in the new domain (or empty)
-      const first = list[0]?.id ?? '';
-      setValue('assigned_to', first);
+      // A switched domain resets assigned_to to its first agent (or empty).
+      // The initial domain keeps the caller as the default assignee.
+      if (!isInitialDomain) setValue('assigned_to', list[0]?.id ?? '');
     });
 
     return () => { cancelled = true; };
@@ -227,7 +232,9 @@ export function AddLeadModal({
       });
       setServerError(null);
       setDuplicateLeadId(null);
-      setAgents(initialAgents);
+      // Unseeded: keep the list fetched on first open (the domain reset above
+      // re-runs the fetch effect only if the domain actually changed).
+      if (initialAgents.length > 0) setAgents(initialAgents);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);

@@ -1,6 +1,7 @@
-// Skeleton — bento grid outline matching the dashboard canvas layout.
-// Two col-span-1 widgets (half-width) + one col-span-2 widget (full-width).
-// Mirrors GRID_CSS in DashboardCanvas: 12-column grid, gap --space-4.
+// Skeleton — the route-level dashboard cover: header (greeting + date filter)
+// plus the bento grid. The grid block is the shared DashboardGridSkeleton, the
+// same one DashboardCanvas shows while its widget seed streams in.
+import { DashboardGridSkeleton } from '@/components/dashboard/DashboardGridSkeleton';
 
 export default function DashboardLoading() {
   return (
@@ -30,63 +31,7 @@ export default function DashboardLoading() {
         />
       </div>
 
-      {/* Bento grid — matches DashboardCanvas GRID_CSS */}
-      <style>{`
-        .serene-loading-bento {
-          display: grid;
-          grid-template-columns: repeat(12, 1fr);
-          gap: var(--space-4);
-          width: 100%;
-          align-items: start;
-        }
-        .serene-loading-cell-1 { grid-column: span 6; }
-        .serene-loading-cell-2 { grid-column: span 12; }
-        @media (max-width: 767.98px) { /* < --bp-md — mirrors DashboardCanvas GRID_CSS */
-          .serene-loading-cell-1,
-          .serene-loading-cell-2 { grid-column: span 12; }
-        }
-      `}</style>
-
-      <div className="serene-loading-bento">
-        {/* Widget 1 — half-width (md size) */}
-        <div
-          className="skeleton serene-loading-cell-1"
-          style={{
-            height:       '220px',
-            borderRadius: 'var(--radius-lg)',
-          }}
-        />
-
-        {/* Widget 2 — half-width (md size) */}
-        <div
-          className="skeleton serene-loading-cell-1"
-          style={{
-            height:         '220px',
-            borderRadius:   'var(--radius-lg)',
-            animationDelay: '80ms',
-          }}
-        />
-
-        {/* Widget 3 — full-width (lg size) */}
-        <div
-          className="skeleton serene-loading-cell-2"
-          style={{
-            height:         '280px',
-            borderRadius:   'var(--radius-lg)',
-            animationDelay: '160ms',
-          }}
-        />
-
-        {/* Widget 4 — full-width (xl size — campaign chart) */}
-        <div
-          className="skeleton serene-loading-cell-2"
-          style={{
-            height:         '320px',
-            borderRadius:   'var(--radius-lg)',
-            animationDelay: '240ms',
-          }}
-        />
-      </div>
+      <DashboardGridSkeleton />
     </main>
   );
 }

@@ -5,13 +5,14 @@ import { KeyRound, Mail, ShieldCheck } from "lucide-react";
 import { TabSelector, type TabItem } from "@/components/ui/TabSelector";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { CreateUserForm, type CreateUserMode } from "./CreateUserForm";
+import type { QueendomSummary } from "@/lib/types/client";
 
 const MODE_TABS: TabItem[] = [
   { id: "password", label: "Set password"     },
   { id: "invite",   label: "Send invite link" },
 ];
 
-export function NewUserClient() {
+export function NewUserClient({ queendoms }: { queendoms: QueendomSummary[] }) {
   const [mode, setMode] = useState<CreateUserMode>("password");
 
   return (
@@ -21,7 +22,7 @@ export function NewUserClient() {
     >
       {/* Left column — form */}
       <SectionCard title="Member Details">
-        <CreateUserForm mode={mode} />
+        <CreateUserForm mode={mode} queendoms={queendoms} />
       </SectionCard>
 
       {/* Right column — onboarding mode + tips */}
@@ -65,7 +66,7 @@ export function NewUserClient() {
                 <ReferenceItem
                   icon={<ShieldCheck style={iconStyle} />}
                   title="Role & domain"
-                  description="Role controls permissions. Domain controls which leads and reports they can see. Both are audited."
+                  description="Domain controls what they can see. A Concierge position (Queen, Bishop, Genie, Joker) sets the access level itself and needs a queendom. Both are audited."
                 />
               </>
             ) : (
@@ -78,7 +79,7 @@ export function NewUserClient() {
                 <ReferenceItem
                   icon={<ShieldCheck style={iconStyle} />}
                   title="Role & domain"
-                  description="Role controls permissions. Domain controls which leads and reports they can see. Both are audited."
+                  description="Domain controls what they can see. A Concierge position (Queen, Bishop, Genie, Joker) sets the access level itself and needs a queendom. Both are audited."
                 />
               </>
             )}

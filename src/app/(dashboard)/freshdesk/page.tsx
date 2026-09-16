@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { hasElevatedPageAccess } from '@/lib/utils/route-access';
 import {
   getFreshdeskClientScope,
   getFreshdeskFilterVocab,
@@ -21,12 +22,6 @@ import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 import { dateFromUrlParam } from '@/lib/utils/filter-params';
 import { toISTMidnight, toISTEndOfDay } from '@/lib/utils/ist';
 import type { FdTicketListFilters } from '@/lib/types/freshdesk';
-
-// The Freshdesk mirror is admin/founder for now — the same audience as the 0193 posture
-// (service_role tables, the page gate is the trust boundary), exactly like /vendors.
-function canSee(role: string): boolean {
-  return role === 'admin' || role === 'founder';
-}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -74,7 +69,9 @@ async function OverviewAsync({ filters }: { filters: FdTicketListFilters }) {
 export default async function FreshdeskPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
-  if (!canSee(profile.role)) redirect('/dashboard');
+  // Admin/founder (+ the tech workbench, 2026-09-16) — the page gate is the trust boundary
+  // (service_role tables, 0193), exactly like /vendors.
+  if (!hasElevatedPageAccess(profile)) redirect('/dashboard');
 
   const resolved = await searchParams;
   const filters = parseFilters(resolved);

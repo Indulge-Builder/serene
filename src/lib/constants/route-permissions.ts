@@ -10,6 +10,41 @@ import { GIA_DOMAINS } from '@/lib/constants/domains';
 // Feature 3): a personal surface scoped to the owner by RLS, like /profile. Notes are
 // CONTEXT Elaya reads, never permission — so being able to reach the page grants nothing.
 export const ALWAYS_ALLOWED_PREFIXES: string[] = ['/dashboard', '/profile', '/helpdesk', '/elaya', '/notes'];
+
+/**
+ * The founder's sidebar (2026-09-16). VISIBILITY ONLY — the founder still bypasses
+ * every route check (canAccessRoute → true), so a deep link from a lead to its deal,
+ * or to /whatsapp, keeps working; the nav and the command palette simply do not list
+ * those pages. Admins see everything. Edit this list to change what the founder sees.
+ */
+export const FOUNDER_NAV_PREFIXES: string[] = [
+  '/dashboard',
+  '/elaya',
+  '/clients',
+  '/leads',
+  '/tasks',
+  '/vendors',
+  '/subscriptions',
+  '/notes',
+  '/performance',
+  '/oversight',
+  '/sia',
+  '/freshdesk',
+  '/books',
+  '/admin/suggestions',
+];
+
+/**
+ * Workbench domains (2026-09-16, TEMPORARY while the tech team builds the platform):
+ * every member of these domains — whatever their role — reaches and sees every page
+ * except WORKBENCH_BLOCKED_PREFIXES. This widens PAGE access only: server actions keep
+ * their requireProfile role gates and RLS keeps scoping rows, so a tech agent can open
+ * /vendors but a write from that page still returns "unauthorized". Remove 'tech' here
+ * to end the arrangement — nothing else needs to change.
+ */
+export const WORKBENCH_DOMAINS: AppDomain[] = ['tech'];
+/** Pages a workbench member still does not reach. /books is the organisation's money. */
+export const WORKBENCH_BLOCKED_PREFIXES: string[] = ['/books'];
 // /clients (the Sia client twin, 0194): the whole queendom sees its clients — the concierge
 // domain reaches it here; admin/founder bypass this map; the rows are RLS-scoped (client_visible).
 
@@ -18,7 +53,7 @@ export const ALWAYS_ALLOWED_PREFIXES: string[] = ['/dashboard', '/profile', '/he
  * Domain → permitted route prefixes.
  *
  * GIA domains (onboarding, house, shop, legacy) share the Gia feature set.
- * Non-Gia domains (concierge, finance, marketing, tech, b2b) get a narrower slice.
+ * Non-Gia domains (concierge, finance, marketing, tech, business) get a narrower slice.
  */
 export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   // ── Gia sales domains (all four share the same feature set) ──────────────
@@ -49,5 +84,5 @@ export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   finance:   ['/tasks', '/subscriptions', '/settings'],
   marketing: ['/tasks', '/campaigns', '/settings'],
   tech:      ['/tasks', '/subscriptions', '/settings'],
-  b2b:       ['/tasks', '/leads', '/deals', '/campaigns', '/settings'],
+  business:  ['/tasks', '/leads', '/deals', '/campaigns', '/settings'],
 } as Record<AppDomain, string[]>;

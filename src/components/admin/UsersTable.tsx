@@ -6,6 +6,7 @@ import { m as motion } from "framer-motion";
 import { Pencil, ChevronDown } from "lucide-react";
 import type { Profile } from "@/lib/types/database";
 import { ROLE_LABELS, USER_ROLES } from "@/lib/constants/roles";
+import { SIA_ROLES, isSiaRole } from "@/lib/constants/sia-roles";
 import { DOMAIN_LABELS, APP_DOMAINS } from "@/lib/constants/domains";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { Avatar } from "@/components/ui/Avatar";
@@ -224,6 +225,11 @@ function UserCard({ user, index }: { user: Profile; index: number }) {
         }}>
           {ROLE_LABELS[user.role]}
         </span>
+        {isSiaRole(user.sia_role) && (
+          <span className="status-pill status-pill--accent" style={{ marginLeft: "var(--space-2)" }}>
+            {SIA_ROLES.labels[user.sia_role]}
+          </span>
+        )}
       </div>
 
       {/* Domain */}

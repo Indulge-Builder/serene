@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { Search } from 'lucide-react';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { hasElevatedPageAccess } from '@/lib/utils/route-access';
 import { listVendors, getVendorCategories } from '@/lib/services/vendors-service';
 import { VendorsFilters } from '@/components/vendors/VendorsFilters';
 import { AddVendorButton } from '@/components/vendors/AddVendorButton';
@@ -12,13 +13,6 @@ import { VendorsTableSkeleton } from '@/components/vendors/VendorsTableSkeleton'
 import { Pagination } from '@/components/ui/Pagination';
 import { VENDOR_LIST_PAGE_SIZE, VENDORS_PATH } from '@/lib/constants/vendors';
 import type { VendorListFilters } from '@/lib/services/vendors-service';
-
-// The vendor module is admin/founder for now — the same audience as the
-// 0183–0186 SELECT policies. This redirect is the page-level mirror of the
-// action-level requireProfile gate, exactly like /oversight and /budget.
-function canSeeVendors(role: string): boolean {
-  return role === 'admin' || role === 'founder';
-}
 
 function parseFilters(searchParams: Awaited<SearchParams>): VendorListFilters {
   function getString(key: string): string | null {
@@ -62,7 +56,9 @@ export default async function VendorsPage({
 }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
-  if (!canSeeVendors(profile.role)) redirect('/dashboard');
+  // Admin/founder (+ the tech workbench, 2026-09-16 — page access only; the actions'
+  // requireProfile gate and the 0183–0186 policies stay admin/founder).
+  if (!hasElevatedPageAccess(profile)) redirect('/dashboard');
 
   const resolved = await searchParams;
   const filters = parseFilters(resolved);

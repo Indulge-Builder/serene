@@ -46,8 +46,9 @@ export default async function DashboardLayout({
       {/* Same corrective sync for the app-icon cookie → next-request manifest link. */}
       <IconInitializer icon={safeIcon} />
       {/* Boot sequence (logo-motion handoff) — SSRs with the shell, plays once
-          per app (hard) load, then fades itself out. The layout persists across
-          client navigations, so soft navs never replay it. */}
+          per BROWSER SESSION (the first hard load; later reloads skip it via
+          sessionStorage, 2026-09-16), then fades itself out. The layout
+          persists across client navigations, so soft navs never replay it. */}
       <AppBootScreen />
       {/* Route transitions rely on each route's loading.tsx skeleton — the
           full-page RouteVeil (spinning-mark cover on every nav) was removed

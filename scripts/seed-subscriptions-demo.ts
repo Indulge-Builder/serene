@@ -79,7 +79,7 @@ const DATA: {
   {
     tool: "Zoom",
     subs: [
-      { name: "Business Plan", departments: ["concierge", "b2b"], type: "yearly", currency: "USD", amount: 2199, dueDate: "2026-11-30" },
+      { name: "Business Plan", departments: ["concierge", "business"], type: "yearly", currency: "USD", amount: 2199, dueDate: "2026-11-30" },
     ],
   },
   {

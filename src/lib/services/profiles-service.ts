@@ -7,6 +7,10 @@ import { canonicalizePhone } from "@/lib/utils/phone";
 import { nameMatchesFuzzy } from "@/lib/utils/fuzzy";
 import type { Database, Profile, UserRole, AppDomain } from "@/lib/types/database";
 import type { AssignableUser } from "@/lib/types";
+import { mapRows } from "@/lib/utils/rows";
+import { getQueendoms } from "@/lib/services/clients-service";
+import type { QueendomSummary } from "@/lib/types/client";
+import { isSiaRole, SIA_SINGLE_SEATS, type SiaRole } from "@/lib/constants/sia-roles";
 
 /**
  * Resolve an ACTIVE staff profile by phone — THE WhatsApp staff-identity lookup
@@ -207,14 +211,25 @@ export async function isUsernameTaken(
 /**
  * Fetch the current user's profile.
  * Memoised with React cache() — within one RSC render pass the layout, page,
- * and every Async child share a single auth.getUser() round trip + profile
- * SELECT. Server actions are separate requests and always re-verify fresh.
+ * and every Async child share ONE identity check + ONE profile SELECT.
+ * Server actions are separate requests and always re-verify fresh.
+ *
+ * Identity = `auth.getClaims()` (2026-09-16, perf: the auth floor). The access
+ * token's ES256 signature is verified locally against the process-cached JWKS
+ * — the same check the proxy already runs — instead of `getUser()`'s
+ * ~80–100 ms auth-server round trip on every navigation. Nothing about
+ * AUTHORIZATION changed: role / domain / is_active still come from the
+ * profiles row below (Rule 09 — the token's claims are never trusted for
+ * them), and a deactivated profile is cut off on the very next request. The
+ * auth-side revoke lives in setProfileActive (ban on deactivate) so a
+ * deactivated user's session cannot refresh either.
  */
 export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  return getProfileById(user.id);
+  const { data, error } = await supabase.auth.getClaims();
+  const userId = data?.claims.sub;
+  if (error || !userId) return null;
+  return getProfileById(userId);
 });
 
 /**
@@ -259,22 +274,80 @@ export async function updateAuthorization(
   id: string,
   role: UserRole,
   domain: AppDomain,
-): Promise<{ data: Profile | null; error: string | null }> {
+  position: { sia_role: SiaRole | null; queendom_id: string | null } = { sia_role: null, queendom_id: null },
+): Promise<{ data: Profile | null; error: string | null; code?: string }> {
   const supabase = await createClient();
+  // The position layer is written WITH role + domain, always: leaving Concierge clears it
+  // (the caller passes nulls), and the 0201 CHECKs refuse any other combination.
   const { data, error } = await supabase
     .from("profiles")
-    .update({ role, domain })
+    .update({ role, domain, sia_role: position.sia_role, queendom_id: position.queendom_id })
     .eq("id", id)
     .select()
     .single();
 
-  if (error) return { data: null, error: error.message };
+  if (error) return { data: null, error: error.message, code: error.code };
   return { data: data as Profile, error: null };
 }
+
+// ─── The queendom roster (0194 / 0201) ────────────────────────────────────────
+
+export type QueendomRosterMember = Pick<Profile, "id" | "full_name" | "avatar_url" | "is_active" | "is_on_leave"> & { sia_role: SiaRole };
+export type QueendomRoster = {
+  queendom: QueendomSummary;
+  seats: Record<(typeof SIA_SINGLE_SEATS)[number], QueendomRosterMember | null>;
+  genies: QueendomRosterMember[];
+};
+
+/**
+ * Every queendom with who holds each seat — derived from profiles (the ONE record of a seat
+ * since 0201 dropped the seat columns). Session client: profiles are readable by every
+ * signed-in user, queendoms too; the admin page gate decides who sees the card.
+ */
+export const getQueendomRoster = cache(async (): Promise<QueendomRoster[]> => {
+  const supabase = await createClient();
+  const [queendoms, { data, error }] = await Promise.all([
+    getQueendoms(),
+    supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url, is_active, is_on_leave, sia_role, queendom_id")
+      .not("queendom_id", "is", null)
+      .not("sia_role", "is", null)
+      .order("full_name"),
+  ]);
+  if (error) {
+    console.error("[profiles-service] roster read failed", error.message);
+    return [];
+  }
+  type Row = Pick<Profile, "id" | "full_name" | "avatar_url" | "is_active" | "is_on_leave" | "sia_role" | "queendom_id">;
+  const rows = mapRows<Row, Row>(data, (r) => r).filter((r) => isSiaRole(r.sia_role));
+  return queendoms.map((queendom) => {
+    const mine = rows.filter((r) => r.queendom_id === queendom.id) as (Row & { sia_role: SiaRole })[];
+    const seat = (role: SiaRole) => mine.find((r) => r.sia_role === role && r.is_active) ?? mine.find((r) => r.sia_role === role) ?? null;
+    return {
+      queendom,
+      seats: { queen: seat("queen"), bishop: seat("bishop"), joker: seat("joker") },
+      genies: mine.filter((r) => r.sia_role === "genie"),
+    };
+  });
+});
+
+/** Auth-side ban length on deactivation — effectively permanent (100 years);
+ *  `'none'` lifts it on reactivation. The Supabase-documented revoke idiom. */
+const DEACTIVATED_BAN_DURATION = "876600h";
 
 /**
  * Toggle is_active on a profile.
  * Deactivating removes the user from all assignment pools immediately.
+ *
+ * Two layers (2026-09-16): the profiles row is THE kill switch — every
+ * request re-reads it in getCurrentProfile, so a deactivated user is redirected
+ * on their next navigation whatever their token says. The auth-side ban
+ * (admin client, `ban_duration`) is the second layer: it stops the session
+ * from REFRESHING, so a deactivated user's token dies at its expiry instead
+ * of renewing forever, and blocks a fresh login. Reactivation lifts the ban.
+ * The ban call is best-effort — the row flip already cut access; a failure
+ * is logged, never surfaced as a failed toggle.
  */
 export async function setProfileActive(
   id: string,
@@ -289,6 +362,17 @@ export async function setProfileActive(
     .single();
 
   if (error) return { data: null, error: error.message };
+
+  const { error: banError } = await createAdminClient().auth.admin.updateUserById(id, {
+    ban_duration: is_active ? "none" : DEACTIVATED_BAN_DURATION,
+  });
+  if (banError) {
+    console.warn(
+      `[profiles-service] auth ${is_active ? "unban" : "ban"} failed for ${id} (profile row already updated):`,
+      banError.message,
+    );
+  }
+
   return { data: data as Profile, error: null };
 }
 

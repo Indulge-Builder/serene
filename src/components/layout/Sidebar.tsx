@@ -38,7 +38,7 @@ import { signOutUser } from "@/lib/actions/profiles";
 import { useSuggestionFeedback } from "@/components/suggestions/SuggestionFeedbackProvider";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
-import { canAccessRoute } from "@/lib/utils/route-access";
+import { hasElevatedPageAccess, hasManagerPageAccess, isNavVisible } from "@/lib/utils/route-access";
 import { Avatar } from "@/components/ui/Avatar";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
@@ -271,8 +271,28 @@ type SidebarProps = {
 export function Sidebar({ profile }: SidebarProps) {
   const pathname = usePathname();
   const { openComposer } = useSuggestionFeedback();
-  const isPrivileged = profile.role === "admin" || profile.role === "founder";
-  const isManager = profile.role === "manager" || isPrivileged;
+  // Page-access flags (route-access.ts): admin/founder — plus every member of a
+  // workbench domain (tech, 2026-09-16) while the team builds the platform.
+  const isPrivileged = hasElevatedPageAccess(profile);
+  const isManager = hasManagerPageAccess(profile);
+  // What each section LISTS. isNavVisible = canAccessRoute (reachability) + the
+  // founder's curated FOUNDER_NAV_PREFIXES (visibility). A section with nothing
+  // left to list is not rendered at all — no orphan header.
+  const mainNav = MAIN_NAV.filter((item) => isNavVisible(profile, item.href));
+  const analyticsNav =
+    profile.role === "guest"
+      ? []
+      : ANALYTICS_NAV.filter(
+          // Performance + Escalations are all-roles (agents get a self-scoped
+          // view); isNavVisible still keeps Escalations Gia-domain-only.
+          (item) =>
+            (isManager || item.href === "/performance" || item.href === "/escalations") &&
+            isNavVisible(profile, item.href),
+        );
+  const configurationNav = isManager
+    ? getConfigurationNav(isPrivileged).filter((item) => isNavVisible(profile, item.href))
+    : [];
+  const adminNav = isPrivileged ? ADMIN_NAV.filter((item) => isNavVisible(profile, item.href)) : [];
   const isOnProfile = pathname === "/profile";
 
   // Mobile drawer (< md). On md+ the CSS ignores data-open entirely —
@@ -423,7 +443,7 @@ export function Sidebar({ profile }: SidebarProps) {
           overflowY: "auto",
         }}
       >
-        {MAIN_NAV.filter((item) => canAccessRoute(profile, item.href)).map(({ href, label, icon }) => (
+        {mainNav.map(({ href, label, icon }) => (
           <NavLink
             key={href}
             href={href}
@@ -433,16 +453,10 @@ export function Sidebar({ profile }: SidebarProps) {
           />
         ))}
 
-        {profile.role !== "guest" && (
+        {analyticsNav.length > 0 && (
           <>
             <NavSection label="Analytics" />
-            {ANALYTICS_NAV.filter(
-              // Performance + Escalations are all-roles (agents get a self-scoped
-              // view); canAccessRoute still keeps Escalations Gia-domain-only.
-              (item) =>
-                (isManager || item.href === "/performance" || item.href === "/escalations") &&
-                canAccessRoute(profile, item.href),
-            ).map(({ href, label, icon }) => (
+            {analyticsNav.map(({ href, label, icon }) => (
               <NavLink
                 key={href}
                 href={href}
@@ -454,10 +468,10 @@ export function Sidebar({ profile }: SidebarProps) {
           </>
         )}
 
-        {isManager && (
+        {configurationNav.length > 0 && (
           <>
             <NavSection label="Configuration" />
-            {getConfigurationNav(isPrivileged).filter((item) => canAccessRoute(profile, item.href)).map(({ href, label, icon }) => (
+            {configurationNav.map(({ href, label, icon }) => (
               <NavLink
                 key={href}
                 href={href}
@@ -469,10 +483,10 @@ export function Sidebar({ profile }: SidebarProps) {
           </>
         )}
 
-        {isPrivileged && (
+        {adminNav.length > 0 && (
           <>
             <NavSection label="Admin" />
-            {ADMIN_NAV.map(({ href, label, icon }) => (
+            {adminNav.map(({ href, label, icon }) => (
               <NavLink
                 key={href}
                 href={href}

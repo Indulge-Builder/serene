@@ -64,7 +64,7 @@ building.
    supported too), and the gold petal celebration fires once on `/deals`. Nurturing → auto
    follow-up task. Lost/junk → reason required.
 9. Everyone sees role-correct data live: agent own pipeline, manager their domain, founders
-   everything across the four sales domains (Onboarding, Indulge House, Indulge Shop, Legacy).
+   everything across the four sales domains (Onboarding, House, Shop, Legacy).
 
 ## The surfaces (sidebar pages)
 

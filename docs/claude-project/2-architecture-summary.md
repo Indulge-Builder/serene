@@ -84,7 +84,7 @@ a fifth, `serene-force-desktop`, opts an admin/founder phone out of the `/m` aut
   sensitive action), `manager` (own domain), `agent` (own assigned leads), `guest` (reserved). One
   domain per user; no grants table.
 - **Two domain registries — never mix:** `APP_DOMAINS` (9: concierge, onboarding, finance, marketing,
-  tech, shop, b2b, house, legacy — the platform enum) vs `GIA_DOMAINS` (4: onboarding, house, shop,
+  tech, shop, business, house, legacy — the platform enum) vs `GIA_DOMAINS` (4: onboarding, house, shop,
   legacy — Gia pickers). Labels from `DOMAIN_LABELS` only (Q-17).
 - **Two-layer security:** RLS at the DB **and** `requireProfile(roles?)` at the start of every
   session-based Server Action (A-18); neither layer trusts the other. RLS policies call only

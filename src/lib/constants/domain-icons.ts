@@ -23,7 +23,7 @@ export const DOMAIN_ICONS: Record<AppDomain, LucideIcon> = {
   marketing:  Megaphone,
   tech:       Cpu,
   shop:       ShoppingBag,
-  b2b:        Briefcase,
+  business:   Briefcase,
   house:      Home,
   legacy:     Crown,
 };

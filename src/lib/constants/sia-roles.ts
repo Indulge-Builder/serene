@@ -6,6 +6,7 @@
 // Decided with the founder 2026-09-15 (client-ticket-plan.md 7.0).
 
 import { defineEnum } from "@/lib/constants/define-enum";
+import type { AppDomain } from "@/lib/types/database";
 
 export const SIA_ROLES = defineEnum([
   { id: "queen",  label: "Queen" },
@@ -22,6 +23,29 @@ export const SIA_ROLE_PLATFORM_ROLE: Record<SiaRole, "manager" | "agent"> = {
   genie:  "agent",
   joker:  "agent",
 };
+
+/** The single seats of a queendom: exactly one active holder each (0201 partial unique indexes). Genies are many. */
+export const SIA_SINGLE_SEATS = ["queen", "bishop", "joker"] as const satisfies readonly SiaRole[];
+
+/**
+ * DOMAIN_POSITIONS — which domains carry a "position" layer on top of the platform role
+ * (the DOMAIN_DEAL_CONFIG / DOMAIN_INTERESTS pattern). Today only Concierge does. The user
+ * forms read this: pick a domain → if it has positions, the Role select lists THEM and the
+ * platform role is derived through SIA_ROLE_PLATFORM_ROLE (never picked by hand); no entry →
+ * the plain platform-role select. Adding Shop positions later = one entry here + a CHECK
+ * migration on profiles.sia_role. Never re-hardcode "concierge" in a form.
+ */
+export const DOMAIN_POSITIONS: Partial<Record<AppDomain, readonly SiaRole[]>> = {
+  concierge: SIA_ROLES.values,
+};
+export function positionsForDomain(domain: string | null | undefined): readonly SiaRole[] {
+  return (domain && DOMAIN_POSITIONS[domain as AppDomain]) || [];
+}
+export function isSiaRole(v: unknown): v is SiaRole {
+  return typeof v === "string" && (SIA_ROLES.values as readonly string[]).includes(v);
+}
+/** The one domain whose positions live in a queendom today (the 0201 CHECK mirrors this). */
+export const QUEENDOM_DOMAIN: AppDomain = "concierge";
 
 /** The three queendoms seeded by 0194; slugs are the join key the import scripts use. */
 export const QUEENDOM_SLUGS = ["anishqa", "ananyshree", "sanika"] as const;

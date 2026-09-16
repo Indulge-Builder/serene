@@ -1,6 +1,9 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { Suspense, useState, useCallback, useMemo } from 'react';
+import { Await } from '@/components/ui/Await';
+import { DashboardGridSkeleton } from './DashboardGridSkeleton';
+import type { DashboardSummary } from '@/lib/types';
 import { Responsive, WidthProvider, type Layout } from 'react-grid-layout';
 import { GripVertical, LayoutDashboard, RotateCcw } from 'lucide-react';
 import { useDashboardLayout, type WidgetPlacement } from '@/hooks/useDashboardLayout';
@@ -29,7 +32,13 @@ const ResponsiveGridLayout = WidthProvider(Responsive);
 const RGL_BREAKPOINTS = { lg: GRID_MOBILE_BREAKPOINT, xs: 0 } as const;
 const RGL_COLS = { lg: GRID_COLS, xs: 1 } as const;
 
-type DashboardCanvasProps = WidgetProps & {
+type DashboardCanvasProps = Omit<WidgetProps, 'initialData'> & {
+  /** The widget seed as a PROMISE (2026-09-16, perf: the dashboard no longer
+   *  blocks on its fetches). The RSC starts the seven-call Promise.all and
+   *  hands it over un-awaited; the header (greeting, date filter, controls)
+   *  paints immediately and the grid resolves it behind its own Suspense via
+   *  <Await>. Never rejects — the page catches to an empty summary. */
+  initialDataPromise: Promise<DashboardSummary>;
   greeting:     string;
   firstName:    string;
   activePreset: DatePreset;
@@ -44,7 +53,7 @@ export function DashboardCanvas({
   role,
   domain,
   scopeDomain,
-  initialData,
+  initialDataPromise,
   greeting,
   firstName,
   activePreset,
@@ -225,6 +234,13 @@ export function DashboardCanvas({
           Read-only until edit mode (no accidental drags); only the grip handle
           drags so clicking widget content still works. All chrome is token-styled
           in globals.css (.serene-dashboard-grid …). */}
+      {/* The grid waits for the widget seed; the header above never does. On a
+          date/scope change the RSC hands over a NEW promise — React keeps the
+          current grid visible through the transition (the widgets' own
+          deps-driven refetch shows per-widget pending state), so no `key`. */}
+      <Suspense fallback={<DashboardGridSkeleton />}>
+      <Await promise={initialDataPromise}>
+      {(initialData) => (
       <div className={editMode ? 'serene-dashboard-grid is-editing' : 'serene-dashboard-grid'}>
         <ResponsiveGridLayout
           layouts={{ lg: rglLayout, xs: xsLayout }}
@@ -291,6 +307,9 @@ export function DashboardCanvas({
           ))}
         </ResponsiveGridLayout>
       </div>
+      )}
+      </Await>
+      </Suspense>
     </div>
   );
 }

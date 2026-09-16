@@ -1,5 +1,6 @@
 import { redirect }              from "next/navigation";
 import { getCurrentProfile }     from "@/lib/services/profiles-service";
+import { hasElevatedPageAccess } from "@/lib/utils/route-access";
 import { getAllRevivalPolicies } from "@/lib/services/revival-service";
 import { RevivalPoliciesPanel }  from "@/components/settings/RevivalPoliciesPanel";
 import { BackButton }            from "@/components/ui/BackButton";
@@ -11,7 +12,7 @@ export default async function LeadRevivalPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
   // Revival editor is admin/founder only (RLS mirrors this).
-  if (profile.role !== "admin" && profile.role !== "founder") redirect("/settings");
+  if (!hasElevatedPageAccess(profile)) redirect("/settings");
 
   const revivalPolicies = await getAllRevivalPolicies();
 

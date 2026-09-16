@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { hasManagerPageAccess } from '@/lib/utils/route-access';
 import {
   getLeadsByRoleCached,
   getCampaignDetailMetrics,
@@ -120,7 +121,7 @@ export default async function CampaignDetailPage({
   const profile = await getCurrentProfile();
 
   if (!profile) redirect('/login');
-  if (profile.role === 'agent' || profile.role === 'guest') redirect('/dashboard');
+  if (!hasManagerPageAccess(profile)) redirect('/dashboard');
 
   const { id } = await params;
 

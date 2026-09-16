@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { cookies } from 'next/headers';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { hasManagerPageAccess } from '@/lib/utils/route-access';
 import { resolveDomainParam } from '@/lib/utils/domain-scope';
 import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import { PageControls } from '@/components/layout/PageControls';
@@ -54,7 +55,7 @@ export default async function CampaignsPage({
   const profile = await getCurrentProfile();
 
   if (!profile) redirect('/login');
-  if (profile.role === 'agent' || profile.role === 'guest') redirect('/dashboard');
+  if (!hasManagerPageAccess(profile)) redirect('/dashboard');
 
   const [resolvedParams, cookieStore] = await Promise.all([searchParams, cookies()]);
   const showDomainFilter = profile.role === 'admin' || profile.role === 'founder';

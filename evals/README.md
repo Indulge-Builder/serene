@@ -32,6 +32,10 @@ run.py
 2. Create a dedicated eval user in Serene: role **manager**, any Gia domain,
    with a password login. Never use a real person's account (eval runs burn the
    user's 200/day Elaya cap and, with `--allow-writes`, create real tasks).
+   The `client-*` cases need a **concierge** identity with a queendom (0201 makes
+   queendom + Sia role concierge-only, and the client tools scope rows to the
+   reader's queendom): tag `needs-concierge`, run with a second eval login that is
+   a concierge manager in Anishqa Queendom, or skip them by default.
 3. Create `evals/.env.eval` (gitignored):
 
    ```text

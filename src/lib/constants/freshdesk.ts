@@ -140,6 +140,15 @@ export const FD_ATTACHMENT_SIGNED_TTL_SECONDS = 3600;
 export const FD_MEDIA_PER_THREAD_MAX = 40;
 /** How many backlog tickets the laptop loop queues per minute when run with --media. */
 export const FD_MEDIA_FLAG_BATCH = 150;
+/**
+ * Parallelism of the copy (2026-09-16). The loop was serial at every level and ran ~8 backlog
+ * tickets a minute against a 50-calls-a-minute allowance: the minute went to waiting on
+ * downloads, not to Freshdesk. Files within a note download together, threads sync together,
+ * and a cycle takes as many threads as the budget allows instead of a fixed 20.
+ */
+export const FD_MEDIA_COPY_CONCURRENCY = 6;
+export const FD_THREAD_CONCURRENCY = 4;
+export const FD_THREADS_PER_CYCLE = 60;
 
 const FD_EXT_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/heic": "heic", "image/svg+xml": "svg",

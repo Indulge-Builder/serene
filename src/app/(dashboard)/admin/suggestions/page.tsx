@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { hasElevatedPageAccess } from "@/lib/utils/route-access";
 import { getSuggestionsForInbox } from "@/lib/services/suggestions-service";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
@@ -17,7 +18,7 @@ import { SuggestionInboxClient } from "@/components/suggestions/SuggestionInboxC
 export default async function AdminSuggestionsPage() {
   const profile = await getCurrentProfile();
 
-  if (!profile || !["admin", "founder"].includes(profile.role)) {
+  if (!profile || !hasElevatedPageAccess(profile)) {
     redirect("/dashboard");
   }
 

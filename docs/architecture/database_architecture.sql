@@ -325,7 +325,7 @@ CREATE TYPE public.app_domain AS ENUM (
     'marketing',
     'tech',
     'shop',
-    'b2b',
+    'business',
     'house',
     'legacy'
 );

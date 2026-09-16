@@ -228,7 +228,7 @@ hover-pause and no X, and the timeout runs the deferred commit.
   sanctioned V-01 exception.
 - **Domain line colours** (`--domain-*`, viz-only, theme-invariant): concierge `#4a8fc9` ·
   onboarding `#d4a017` · finance `#3dab7a` · marketing `#c45cb4` · tech `#e07840` · shop `#5cb8c4` ·
-  b2b `#8868c8` · house `#c48840` · legacy `#6a8c6a`. Canonical record `DOMAIN_LINE_COLORS`.
+  business `#8868c8` · house `#c48840` · legacy `#6a8c6a`. Canonical record `DOMAIN_LINE_COLORS`.
 - **Charts are code-split.** There is no chart in the mobile chunk by decision — the `/m` rooms use
   the neu `ProgressCard` instead of a Recharts meter.
 

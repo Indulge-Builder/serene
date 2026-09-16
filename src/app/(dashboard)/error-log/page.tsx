@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { AlertTriangle } from 'lucide-react';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { hasElevatedPageAccess } from '@/lib/utils/route-access';
 import { getErroredPayloads } from '@/lib/services/leads-service';
 import { ErrorLogTable } from '@/components/error-log/ErrorLogTable';
 import { ErrorLogTableSkeleton } from '@/components/error-log/ErrorLogTableSkeleton';
@@ -12,9 +13,7 @@ export default async function ErrorLogPage() {
   if (!profile) redirect('/login');
 
   // Only admin and founder may view raw payload error logs (mirrors RLS policy)
-  if (profile.role !== 'admin' && profile.role !== 'founder') {
-    redirect('/dashboard');
-  }
+  if (!hasElevatedPageAccess(profile)) redirect('/dashboard');
 
   const rows = await getErroredPayloads();
 

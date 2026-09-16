@@ -168,7 +168,7 @@ export type TicketingDatabase = {
       create_ticket: { Args: { p_ticket: Record<string, unknown>; p_event: Record<string, unknown> }; Returns: TicketRow };
       apply_ticket_change: { Args: { p_ticket_id: string; p_patch: Record<string, unknown>; p_event: Record<string, unknown> }; Returns: TicketRow };
       /** 0199 — due tickets, leased to this worker. */
-      claim_sentinel_wakes: { Args: { p_limit?: number; p_lease_min?: number }; Returns: TicketRow[] };
+      claim_sentinel_wakes: { Args: { p_limit?: number; p_lease_min?: number; p_ticket_id?: string | null }; Returns: TicketRow[] };
       /** 0199 — write the state and the next alarm, no event. */
       sentinel_sleep: { Args: { p_ticket_id: string; p_state: Record<string, unknown>; p_next_wake_at: string | null; p_wake_reason: string | null }; Returns: null };
     };

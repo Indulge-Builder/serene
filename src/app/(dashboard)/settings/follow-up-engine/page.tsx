@@ -1,5 +1,6 @@
 import { redirect }            from "next/navigation";
 import { getCurrentProfile }   from "@/lib/services/profiles-service";
+import { hasElevatedPageAccess } from "@/lib/utils/route-access";
 import { getAllSlaPolicies }   from "@/lib/services/sla-service";
 import { SlaPoliciesPanel }    from "@/components/settings/SlaPoliciesPanel";
 import { BackButton }          from "@/components/ui/BackButton";
@@ -11,7 +12,7 @@ export default async function FollowUpEnginePage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
   // Follow-up engine editor is admin/founder only (RLS mirrors this).
-  if (profile.role !== "admin" && profile.role !== "founder") redirect("/settings");
+  if (!hasElevatedPageAccess(profile)) redirect("/settings");
 
   const slaPolicies = await getAllSlaPolicies();
 

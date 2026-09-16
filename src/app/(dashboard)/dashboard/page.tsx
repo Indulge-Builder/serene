@@ -96,7 +96,23 @@ export default async function DashboardPage({
   // ── Seed initial data via single RPC ──────────────────────────────────────
   // perf-01: do NOT split into N per-widget calls on initial paint.
   // getDashboardSummary returns all summary data in one RPC call.
-  let initialData: DashboardSummary;
+  //
+  // NOT awaited here (2026-09-16, perf: the dashboard no longer blocks on its
+  // fetches). The Promise.all below starts now and is handed to DashboardCanvas
+  // as `initialDataPromise`; the page returns immediately, the header paints,
+  // and the grid resolves the seed behind its own Suspense (<Await>). Same
+  // seven calls, same single Promise.all, same empty-summary fallback on
+  // failure — only the await moved from the page to the grid boundary.
+  const EMPTY_SUMMARY: DashboardSummary = {
+    agent_tasks:    [],
+    agent_activity: [],
+    lead_status:    { totals: [], byAgent: [] },
+    campaigns:      [],
+    lead_volume:       null,
+    lead_volume_multi: null,
+    budget_summary:    null,
+    budget_gauge:      null,
+  };
 
   const isManagerPlus = role === "manager" || role === "admin" || role === "founder";
   // Budget widget is manager+ (mirrors the /budget page + the budget widget's
@@ -116,8 +132,7 @@ export default async function DashboardPage({
   const adminFounderSingleVolume = isManagerPlus && !isManager && scopeDomain;
   const adminFounderMultiVolume  = isManagerPlus && !isManager && !scopeDomain;
 
-  try {
-    const [rpcData, recentLeads, managerVolume, adminSingleVolume, adminMultiVolume, budgetRows, budgetRecharges] = await Promise.all([
+  const initialDataPromise: Promise<DashboardSummary> = Promise.all([
       getDashboardSummary(
         role,
         domain,
@@ -155,12 +170,12 @@ export default async function DashboardPage({
       isAdminFounder
         ? getAccountRecharges(dateRange.from, dateRange.to)
         : Promise.resolve(null),
-    ]);
+  ]).then(([rpcData, recentLeads, managerVolume, adminSingleVolume, adminMultiVolume, budgetRows, budgetRecharges]): DashboardSummary => {
     // Budget pre-filter for the LEGACY per-domain budget_summary campaign seed
     // (admin/founder only — the scoped domain, or null for all-domains full rows).
     // Managers never seed budget_summary (they have no org-wide budget consumer).
     const budgetFilterDomain: AppDomain | null = scopeDomain ?? null;
-    initialData = {
+    return {
       ...rpcData,
       agent_tasks:       rpcData.agent_tasks    ?? [],
       // Recent-leads rollup (migration 0132 — lead cards, not the RPC's old
@@ -186,23 +201,14 @@ export default async function DashboardPage({
           ? buildDomainSpendGaugeSummary(filterBudgetRowsByDomain(budgetRows, domain))
           : buildBudgetGaugeSummary(budgetRows, budgetRecharges ?? []),
     };
-  } catch (e) {
+  }).catch((e: unknown): DashboardSummary => {
     console.error(
       "[dashboard/page] RPC failed, rendering with empty initial data:",
       e instanceof Error ? e.message : JSON.stringify(e),
       e,
     );
-    initialData = {
-      agent_tasks:    [],
-      agent_activity: [],
-      lead_status:    { totals: [], byAgent: [] },
-      campaigns:      [],
-      lead_volume:       null,
-      lead_volume_multi: null,
-      budget_summary:    null,
-      budget_gauge:      null,
-    };
-  }
+    return EMPTY_SUMMARY;
+  });
 
   const greeting   = pickDashboardGreeting();
   const firstName  = profile.full_name.split(" ")[0];
@@ -216,7 +222,7 @@ export default async function DashboardPage({
         role={profile.role}
         domain={profile.domain}
         scopeDomain={scopeDomain}
-        initialData={initialData}
+        initialDataPromise={initialDataPromise}
         activePreset={activePreset}
         fromParam={fromParam}
         toParam={toParam}

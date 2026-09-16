@@ -3,11 +3,10 @@
 import { useActionState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown } from "lucide-react";
 import { createUser, inviteUser } from "@/lib/actions/profiles";
 import { Button } from "@/components/ui/Button";
-import { USER_ROLES, ROLE_LABELS } from "@/lib/constants/roles";
-import { APP_DOMAINS, DOMAIN_LABELS } from "@/lib/constants/domains";
+import { RoleDomainFields } from "@/components/admin/RoleDomainFields";
+import type { QueendomSummary } from "@/lib/types/client";
 import type { ActionResult } from "@/lib/types";
 
 export type CreateUserMode = "password" | "invite";
@@ -15,10 +14,11 @@ export type CreateUserMode = "password" | "invite";
 const initialState: ActionResult<{ id: string }> = { data: null, error: null };
 
 type CreateUserFormProps = {
-  mode: CreateUserMode;
+  mode:      CreateUserMode;
+  queendoms: QueendomSummary[];
 };
 
-export function CreateUserForm({ mode }: CreateUserFormProps) {
+export function CreateUserForm({ mode, queendoms }: CreateUserFormProps) {
   const router = useRouter();
 
   const [createState, createAction, createPending] = useActionState(createUser,  initialState);
@@ -37,12 +37,12 @@ export function CreateUserForm({ mode }: CreateUserFormProps) {
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
       {mode === "password" ? (
         <form action={createAction} style={formStyle}>
-          <PasswordFields />
+          <PasswordFields queendoms={queendoms} />
           <FormFooter state={state} isPending={isPending} />
         </form>
       ) : (
         <form action={inviteAction} style={formStyle}>
-          <InviteFields />
+          <InviteFields queendoms={queendoms} />
           <FormFooter
             state={state}
             isPending={isPending}
@@ -57,7 +57,9 @@ export function CreateUserForm({ mode }: CreateUserFormProps) {
 
 // ─── Shared field sets ─────────────────────────────────────
 
-function CommonFields() {
+type FieldsProps = { queendoms: QueendomSummary[] };
+
+function CommonFields({ queendoms }: FieldsProps) {
   return (
     <>
       <Field label="Full Name" htmlFor="full_name" required>
@@ -84,29 +86,8 @@ function CommonFields() {
         />
       </Field>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
-        <Field label="Role" htmlFor="role" required>
-          <div style={{ position: "relative" }}>
-            <select id="role" name="role" required style={selectStyle} defaultValue="agent">
-              {USER_ROLES.map((r) => (
-                <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-              ))}
-            </select>
-            <ChevronDown style={chevronStyle} />
-          </div>
-        </Field>
-
-        <Field label="Domain" htmlFor="domain" required>
-          <div style={{ position: "relative" }}>
-            <select id="domain" name="domain" required style={selectStyle} defaultValue="concierge">
-              {APP_DOMAINS.map((d) => (
-                <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>
-              ))}
-            </select>
-            <ChevronDown style={chevronStyle} />
-          </div>
-        </Field>
-      </div>
+      {/* Domain → role / position → queendom: the one shared field group (RoleDomainFields). */}
+      <RoleDomainFields queendoms={queendoms} defaults={{ role: "agent", domain: "concierge" }} idPrefix="new_" />
 
       <Field label="Job Title" htmlFor="job_title">
         <input
@@ -121,10 +102,10 @@ function CommonFields() {
   );
 }
 
-function PasswordFields() {
+function PasswordFields({ queendoms }: FieldsProps) {
   return (
     <>
-      <CommonFields />
+      <CommonFields queendoms={queendoms} />
       <Field
         label="Temporary Password"
         htmlFor="password"
@@ -158,8 +139,8 @@ function PasswordFields() {
   );
 }
 
-function InviteFields() {
-  return <CommonFields />;
+function InviteFields({ queendoms }: FieldsProps) {
+  return <CommonFields queendoms={queendoms} />;
 }
 
 // ─── Footer with error/submit ──────────────────────────────
@@ -283,22 +264,4 @@ const inputStyle: React.CSSProperties = {
   boxSizing:    "border-box",
 };
 
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  cursor:           "pointer",
-  appearance:       "none",
-  WebkitAppearance: "none",
-  paddingRight:     "var(--space-8)",
-};
 
-const chevronStyle: React.CSSProperties = {
-  position:      "absolute",
-  right:         "var(--space-3)",
-  top:           "50%",
-  transform:     "translateY(-50%)",
-  width:         "12px",
-  height:        "12px",
-  strokeWidth:   1.5,
-  color:         "var(--theme-text-tertiary)",
-  pointerEvents: "none",
-};

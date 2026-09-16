@@ -7,6 +7,7 @@
 // draftTicketAction (the ticket creator, reasoning tier, masked) and then createTicketAction.
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { requireProfile, actorFromProfile } from "@/lib/actions/_auth";
 import { parseActionInput } from "@/lib/actions/_validation";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -27,6 +28,7 @@ import {
   UpdateTicketTagsSchema, CreateTicketTaskSchema,
 } from "@/lib/validations/ticket-schema";
 import type { ActionResult } from "@/lib/types";
+import { wakeTicketNow } from "@/lib/services/ticket-sentinel";
 import type { StaffOption, TicketDraft, TicketHelp, TicketListItem, TicketRow } from "@/lib/types/ticket";
 
 async function clientQueendom(clientId: string): Promise<{ exists: boolean; queendom_id: string | null }> {
@@ -51,6 +53,8 @@ function revalidateTicket(ticketId: string, clientId?: string | null) {
   revalidatePath(TICKETS_PATH);
   revalidatePath(`${TICKETS_PATH}/${ticketId}`);
   if (clientId) revalidatePath(`${CLIENTS_PATH}/${clientId}`);
+  // The sentinel reads what just happened now, not at the next sweep (A-16: awaited inside after()).
+  after(wakeTicketNow(ticketId).catch((e) => console.error("[tickets-action] sentinel wake failed (non-fatal):", e)));
 }
 
 export async function draftTicketAction(input: unknown): Promise<ActionResult<TicketDraft>> {

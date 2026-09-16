@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { hasManagerPageAccess } from "@/lib/utils/route-access";
 import { getAllTrainingAssets } from "@/lib/services/elaya-training-service";
 import { ElayaTrainingManager } from "@/components/admin/ElayaTrainingManager";
 
@@ -12,7 +13,7 @@ export default async function ElayaTrainingPage() {
   const profile = await getCurrentProfile();
 
   if (!profile) redirect("/login");
-  if (!["manager", "admin", "founder"].includes(profile.role)) redirect("/dashboard");
+  if (!hasManagerPageAccess(profile)) redirect("/dashboard");
 
   const assets = await getAllTrainingAssets();
 

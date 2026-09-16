@@ -16,12 +16,33 @@ import { SeedMandala } from '@/components/ui/SeedMandala';
 
 const SEQUENCE_MS = 3400;
 const REDUCED_MS = 500;
+// Once per browser session (2026-09-16): the draw sequence is a cold-start
+// moment, not a reload tax. The first hard load of a tab/PWA session plays it;
+// every later reload, deploy refresh, or back/forward restore in that session
+// skips straight to the app. sessionStorage (not localStorage) so a fresh
+// launch tomorrow still gets the mark. Wrapped in try/catch: private windows
+// and blocked storage fall back to "play" (the old behaviour), never a crash.
+const BOOT_SEEN_KEY = 'serene:boot-seen';
+
+function hasBootPlayedThisSession(): boolean {
+  try {
+    if (sessionStorage.getItem(BOOT_SEEN_KEY) === '1') return true;
+    sessionStorage.setItem(BOOT_SEEN_KEY, '1');
+  } catch {}
+  return false;
+}
 
 export function AppBootScreen() {
   const [leaving, setLeaving] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    // SSR always renders the cover (zero-flash on the true cold start); the
+    // repeat-load skip resolves here, one frame in, on the same canvas colour.
+    if (hasBootPlayedThisSession()) {
+      setDone(true);
+      return;
+    }
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const timer = setTimeout(() => setLeaving(true), reduced ? REDUCED_MS : SEQUENCE_MS);
     return () => clearTimeout(timer);

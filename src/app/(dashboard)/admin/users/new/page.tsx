@@ -1,14 +1,17 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { hasElevatedPageAccess } from "@/lib/utils/route-access";
+import { getQueendoms } from "@/lib/services/clients-service";
 import { NewUserClient } from "@/components/admin/NewUserClient";
 import { BackButton } from "@/components/ui/BackButton";
 
 export default async function NewUserPage() {
   const profile = await getCurrentProfile();
 
-  if (!profile || !["admin", "founder"].includes(profile.role)) {
+  if (!profile || !hasElevatedPageAccess(profile)) {
     redirect("/dashboard");
   }
+  const queendoms = await getQueendoms();
 
   return (
     <main
@@ -30,7 +33,7 @@ export default async function NewUserPage() {
         </h1>
       </div>
 
-      <NewUserClient />
+      <NewUserClient queendoms={queendoms} />
     </main>
   );
 }

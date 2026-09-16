@@ -10,7 +10,7 @@
 
 ```sql
 CREATE TYPE user_role  AS ENUM ('founder','admin','manager','agent','guest');
-CREATE TYPE app_domain AS ENUM ('concierge','onboarding','finance','marketing','tech','shop','b2b','house','legacy');
+CREATE TYPE app_domain AS ENUM ('concierge','onboarding','finance','marketing','tech','shop','business','house','legacy');
 ```
 
 Other "enums" (`leads.status`, `tasks.status`, deal types, notification types, …) are `text` +

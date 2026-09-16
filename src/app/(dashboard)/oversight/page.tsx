@@ -1,10 +1,11 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
+import { hasManagerPageAccess } from "@/lib/utils/route-access";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
 import { getTeamTaskOverview } from "@/lib/services/oversight-service";
-import type { AppDomain } from "@/lib/types/database";
+import type { AppDomain, UserRole } from "@/lib/types/database";
 import { OversightSkeleton } from "./OversightSkeleton";
 import { TeamOverviewGrid } from "@/components/oversight/TeamOverviewGrid";
 
@@ -19,7 +20,7 @@ async function TeamOverviewAsync({
   role,
   domain,
 }: {
-  role: "admin" | "founder";
+  role: UserRole;
   domain: AppDomain;
 }) {
   // ONE aggregation query (get_team_task_overview) — admin/founder see every
@@ -36,7 +37,7 @@ export default async function OversightPage() {
   if (!profile) redirect("/login");
 
   // Agents + guests have no oversight surface.
-  if (profile.role === "agent" || profile.role === "guest") redirect("/dashboard");
+  if (!hasManagerPageAccess(profile)) redirect("/dashboard");
 
   // A manager owns exactly one team — send them straight to their team detail
   // (Tier 2), pinned to their own domain. They never see the all-teams Tier 1.

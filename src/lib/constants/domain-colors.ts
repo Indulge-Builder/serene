@@ -17,7 +17,7 @@ export const DOMAIN_LINE_COLORS: Record<AppDomain, string> = {
   marketing:   'var(--domain-marketing)',
   tech:        'var(--domain-tech)',
   shop:        'var(--domain-shop)',
-  b2b:         'var(--domain-b2b)',
+  business:    'var(--domain-business)',
   house:       'var(--domain-house)',
   legacy:      'var(--domain-legacy)',
 };

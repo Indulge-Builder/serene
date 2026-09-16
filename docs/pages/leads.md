@@ -724,7 +724,7 @@ Leads) — the same daily worklist an agent gets — not the whole domain. Full 
 | `TG_Shop` | `shop` |
 | `TG_Legacy` | `legacy` |
 | `TG_House` | `house` |
-| `TG_B2B` | `b2b` |
+| `TG_B2B` | `business` |
 
 #### `DEFAULT_LEAD_DOMAIN`
 
@@ -732,7 +732,7 @@ Leads) — the same daily worklist an agent gets — not the whole domain. Full 
 
 #### `GIA_DOMAINS` (`lib/constants/domains.ts`)
 
-`onboarding`, `house`, `shop`, `legacy` — used for Zod enums and domain filter dropdown. (`b2b` is in `CAMPAIGN_DOMAIN_MAP` and `APP_DOMAINS` but not in the `GIA_DOMAINS` const array.)
+`onboarding`, `house`, `shop`, `legacy` — used for Zod enums and domain filter dropdown. (`business` is in `CAMPAIGN_DOMAIN_MAP` and `APP_DOMAINS` but not in the `GIA_DOMAINS` const array.)
 
 #### `LEAD_SOURCES` + labels
 

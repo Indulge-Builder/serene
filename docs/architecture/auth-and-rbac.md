@@ -65,15 +65,17 @@ Two registries in `src/lib/constants/domains.ts`. **Never mix them.**
 
 | Registry | Members | Used for |
 | -------- | ------- | -------- |
-| `APP_DOMAINS` (9) | `concierge`, `onboarding`, `finance`, `marketing`, `tech`, `shop`, `b2b`, `house`, `legacy` | User management, profiles, authorization — the full platform enum |
+| `APP_DOMAINS` (9) | `concierge`, `onboarding`, `finance`, `marketing`, `tech`, `shop`, `business`, `house`, `legacy` | User management, profiles, authorization — the full platform enum |
 | `GIA_DOMAINS` (4) | `onboarding`, `house`, `shop`, `legacy` | Gia module pickers — leads, campaigns, performance, dashboard Gia widgets |
 
-Display names come from `DOMAIN_LABELS` only (Onboarding, Indulge House, Indulge Shop,
-Indulge Legacy, …). `DEFAULT_GIA_DOMAIN = 'onboarding'`. To add a Gia domain: append to
+Display names come from `DOMAIN_LABELS` only (Concierge, Onboarding, Finance, Marketing, Tech,
+Shop, Business, House, Legacy — one word each since 2026-09-16, and every key is the lowercase of
+its label: `b2b` became `business` that day, migration 0202; the Python brain's `persona.py`
+mirrors the map). `DEFAULT_GIA_DOMAIN = 'onboarding'`. To add a Gia domain: append to
 `GIA_DOMAINS` + `DOMAIN_LABELS` in that one file.
 
 > **Corrected 2026-06-11:** the retired `master.md` (§3/§5) described GIA_DOMAINS as six
-> domains including `concierge` and `b2b`. The code has been four since the 2026-05-31 Q-17
+> domains including `concierge` and `business`. The code has been four since the 2026-05-31 Q-17
 > split — four is canonical.
 
 **One domain per user.** There is no grants table and no multi-domain assignment (the root
@@ -146,7 +148,13 @@ owner-scoped by RLS like `/profile`) are universally accessible to every role an
 Elaya can *access* is enforced per-principal in the tool layer, not by route gating; `/helpdesk` is
 read-only with RLS-gated writes. The Gia-domain `DOMAIN_ROUTE_MAP` rows also carry `/oversight`,
 `/escalations`, and `/admin/elaya-training` (reachability only; the page role gates stay the
-authorization boundary). Admin/founder bypass all domain checks. The layout
+authorization boundary). Admin/founder bypass all domain checks. **Workbench domains**
+(`WORKBENCH_DOMAINS = ['tech']`, 2026-09-16, temporary while the tech team builds the platform):
+every member, whatever their role, reaches every page except `WORKBENCH_BLOCKED_PREFIXES`
+(`/books`), and the page-level gates `hasElevatedPageAccess` / `hasManagerPageAccess`
+(`route-access.ts`) admit them alongside admin/founder. Page access only — server actions keep
+`requireProfile(roles)` and RLS keeps scoping rows. The founder's sidebar is the curated
+`FOUNDER_NAV_PREFIXES` (visibility, not authorization — `isNavVisible`). The layout
 guard and the Sidebar filter are independent — neither trusts the other (defense-in-depth,
 Decision Log 2026-06-03). Page-level privilege checks remain in each page; `canAccessRoute` is
 additive, not a replacement.

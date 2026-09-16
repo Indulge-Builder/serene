@@ -771,7 +771,7 @@ Detail pages use back + title; **no** page-title-dot on detail titles in admin u
 
 ```sql
 CREATE TYPE user_role  AS ENUM ('founder','admin','manager','agent','guest');
-CREATE TYPE app_domain AS ENUM ('concierge','onboarding','finance','marketing','tech','shop','b2b','house','legacy');
+CREATE TYPE app_domain AS ENUM ('concierge','onboarding','finance','marketing','tech','shop','business','house','legacy');
 ```
 
 TypeScript: `UserRole`, `AppDomain` from `src/lib/types/database.ts`; `Profile` extends row with narrowed `theme` union; `ActionResult<T>` from `src/lib/types/index.ts`.

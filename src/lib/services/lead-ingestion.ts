@@ -175,7 +175,7 @@ export async function ingestLead(
 
   // 3. Domain: explicit payload value takes precedence over campaign mapping.
   //    data.domain is untrusted free-form text (raw form field) and the campaign
-  //    map can resolve to a non-Gia domain (e.g. b2b) the leads pipeline does not
+  //    map can resolve to a non-Gia domain (e.g. business) the leads pipeline does not
   //    handle. Coerce any non-Gia result to DEFAULT_GIA_DOMAIN so both ingestion
   //    paths agree on the Gia-only valid-domain set (audit #12/#13 — manual
   //    creation already enforces GIA_DOMAIN_ENUM). The leads.domain app_domain

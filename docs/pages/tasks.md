@@ -1112,7 +1112,7 @@ Exports used by tasks UI: `TASK_PRIORITY`, `TASK_STATUS` (incl. `pillBg`/`pillTe
 
 **`GIA_DOMAINS`:** `onboarding`, `house`, `shop`, `legacy`
 
-**`DOMAIN_LABELS`:** full platform map including Gia domains (e.g. `onboarding` → "Onboarding", `house` → "Indulge House", …).
+**`DOMAIN_LABELS`:** full platform map including Gia domains (e.g. `onboarding` → "Onboarding", `house` → "House", `business` → "Business", …).
 
 ---
 

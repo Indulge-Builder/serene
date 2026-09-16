@@ -60,28 +60,43 @@ iOS install nudge** live in the profile "Notifications" SectionCard
 ### Check order inside `canAccessRoute`
 
 1. `admin` / `founder` → `true` immediately (full cross-domain access).
-2. `ALWAYS_ALLOWED_PREFIXES` (`/dashboard`, `/profile`) → `true` for every authenticated user.
-3. `DOMAIN_ROUTE_MAP[profile.domain]` prefix match → `true` when the pathname starts with an allowed prefix.
-4. `false`.
+2. Workbench-domain member (`WORKBENCH_DOMAINS`, tech for now — every role) → `true` unless the path is in `WORKBENCH_BLOCKED_PREFIXES` (`/books`).
+3. `ALWAYS_ALLOWED_PREFIXES` (`/dashboard`, `/profile`, …) → `true` for every authenticated user.
+4. `DOMAIN_ROUTE_MAP[profile.domain]` prefix match → `true` when the pathname starts with an allowed prefix.
+5. `false`.
+
+### The other helpers in `route-access.ts` (2026-09-16)
+
+| Helper | What it answers | Who calls it |
+| --- | --- | --- |
+| `hasElevatedPageAccess(profile)` | THE page-level "admin/founder only" gate. Admin, founder, or a workbench-domain member of any role. | Every admin/founder page redirect (`/sia`, `/freshdesk`, `/vendors`, `/admin/*`, `/settings/*`, `/error-log`). `/books` keeps a literal admin/founder check on purpose. |
+| `hasManagerPageAccess(profile)` | THE page-level "manager and above" gate: manager, or anyone the elevated gate admits. | `/oversight`, `/campaigns`, `/budget`, `/settings`, `/admin/elaya-training`, `/admin/users/[id]`. |
+| `isNavVisible(profile, href)` | Whether a nav entry is LISTED: `canAccessRoute` AND, for the founder, membership of `FOUNDER_NAV_PREFIXES`. Never an authorization check. | Sidebar (all four sections) and the command palette's Go-to pages. |
+
+Server actions do NOT use these — they keep `requireProfile(roles)`. Widening page access for
+the workbench never widens a write: a tech agent opens `/vendors`, and a save from it still
+returns "unauthorized" until the action's role list says otherwise.
 
 ### Sidebar usage
 
-`Sidebar.tsx` applies `canAccessRoute` as an additional filter on top of existing role guards:
+`Sidebar.tsx` computes each section's list once with `isNavVisible`, on top of the role flags
+(`isPrivileged = hasElevatedPageAccess`, `isManager = hasManagerPageAccess`), and renders a
+section only when its list is non-empty (the founder's curated nav leaves Configuration empty —
+no orphan header):
 
 ```tsx
-// MAIN_NAV — domain filter only
-MAIN_NAV.filter((item) => canAccessRoute(profile, item.href))
-
-// ANALYTICS_NAV — role guard preserved; domain filter added as &&
-ANALYTICS_NAV.filter(
-  (item) => (isManager || item.href === "/performance") && canAccessRoute(profile, item.href),
-)
-
-// Configuration nav — isManager gate already present; domain filter added
-getConfigurationNav(isPrivileged).filter((item) => canAccessRoute(profile, item.href))
-
-// ADMIN_NAV — isPrivileged gate is sufficient; admin/founder always bypass domain check
+const mainNav = MAIN_NAV.filter((item) => isNavVisible(profile, item.href));
+const analyticsNav = profile.role === "guest" ? [] : ANALYTICS_NAV.filter(
+  (item) => (isManager || item.href === "/performance" || item.href === "/escalations") && isNavVisible(profile, item.href),
+);
+const configurationNav = isManager ? getConfigurationNav(isPrivileged).filter((item) => isNavVisible(profile, item.href)) : [];
+const adminNav = isPrivileged ? ADMIN_NAV.filter((item) => isNavVisible(profile, item.href)) : [];
 ```
+
+**The founder's sidebar** is `FOUNDER_NAV_PREFIXES` in `route-permissions.ts` (Dashboard, Elaya,
+Clients, Leads, Tasks, Vendors, Subscriptions, Notes, Performance, Oversight, Sia, Freshdesk,
+Books, Suggestions). It is visibility only — the founder still reaches every route, so deep links
+(a lead's deal, `/whatsapp`) keep working. Admins see everything.
 
 **Rule:** `canAccessRoute` is a pure util — zero imports from `lib/services/`, `next/headers`, or `next/server`. It is safe to call inside `'use client'` components.
 
@@ -100,7 +115,7 @@ if (!canAccessRoute(profile, pathname)) redirect('/dashboard');
 
 ### Adding a new route to a domain
 
-Edit `DOMAIN_ROUTE_MAP` in `src/lib/constants/route-permissions.ts`. No other file changes needed — the layout guard and Sidebar filtering both read from that map.
+Edit `DOMAIN_ROUTE_MAP` in `src/lib/constants/route-permissions.ts`. No other file changes needed — the layout guard and Sidebar filtering both read from that map. To change what the founder sees, edit `FOUNDER_NAV_PREFIXES`; to end the tech workbench arrangement, remove `'tech'` from `WORKBENCH_DOMAINS`.
 
 ### Adding a new domain
 

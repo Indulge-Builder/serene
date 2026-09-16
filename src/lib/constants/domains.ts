@@ -13,7 +13,7 @@ export const APP_DOMAINS: AppDomain[] = [
   'marketing',
   'tech',
   'shop',
-  'b2b',
+  'business',
   'house',
   'legacy',
 ];
@@ -26,12 +26,12 @@ export type GiaDomain = Extract<
 /**
  * Gia module — the four active sales domains. Add new Gia domains here only.
  *
- * NOTE: 'b2b' is a valid app_domain (user mgmt / profiles) but is deliberately
+ * NOTE: 'business' is a valid app_domain (user mgmt / profiles) but is deliberately
  * NOT a Gia domain yet — we don't run B2B lead campaigns today, so the leads
  * pipeline (deals via DOMAIN_DEAL_CONFIG, interests via DOMAIN_INTERESTS, Gia
- * domain filters) does not handle it. The campaign map's TG_B2B → 'b2b' entry is
+ * domain filters) does not handle it. The campaign map's TG_B2B → 'business' entry is
  * neutralised at ingestion (non-Gia → DEFAULT_GIA_DOMAIN). When B2B leads start
- * flowing, add 'b2b' to GIA_DOMAINS + DOMAIN_DEAL_CONFIG + DOMAIN_INTERESTS +
+ * flowing, add 'business' to GIA_DOMAINS + DOMAIN_DEAL_CONFIG + DOMAIN_INTERESTS +
  * a CHECK migration together (audit #3).
  */
 export const GIA_DOMAINS = [
@@ -49,17 +49,24 @@ export const GIA_DOMAIN_ENUM = [...GIA_DOMAINS] as [GiaDomain, ...GiaDomain[]];
 /** Zod tuple for full app_domain fields (profiles, admin) */
 export const APP_DOMAIN_ENUM = APP_DOMAINS as [AppDomain, ...AppDomain[]];
 
-/** Canonical display labels for every app_domain value */
+/**
+ * Canonical display labels for every app_domain value — THE only place a domain is
+ * named for a human (every picker, chip, prompt and the mobile tiles read this map;
+ * backend/app/brain/persona.py mirrors it for the Python brain — change both).
+ * One word each since 2026-09-16 (the "Indulge …" prefixes, "Technology" and "B2B"
+ * sat at uneven widths in the pickers), and every key is the lowercase of its label —
+ * `b2b` became `business` the same day (migration 0202) so code, SQL and screen agree.
+ */
 export const DOMAIN_LABELS: Record<AppDomain, string> = {
-  concierge:  'Indulge Concierge',
+  concierge:  'Concierge',
   onboarding: 'Onboarding',
   finance:    'Finance',
   marketing:  'Marketing',
-  tech:       'Technology',
-  shop:       'Indulge Shop',
-  b2b:        'B2B',
-  house:      'Indulge House',
-  legacy:     'Indulge Legacy',
+  tech:       'Tech',
+  shop:       'Shop',
+  business:   'Business',
+  house:      'House',
+  legacy:     'Legacy',
 };
 
 /**

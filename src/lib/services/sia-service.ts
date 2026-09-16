@@ -850,6 +850,24 @@ async function attachSenderNames<T extends { sender_jid: string }>(
   return rows.map((m) => ({ ...m, sender_name: nameByJid.get(m.sender_jid) ?? null }));
 }
 
+/** Who a sender IS for Indulge, by jid — the mapping tool's answer (participant_role + the
+ *  staff link). Elaya's client-history tools label each message client / staff / other with it. */
+export async function getSiaSenderRoles(
+  jids: string[],
+): Promise<Map<string, { role: string; is_staff: boolean }>> {
+  const out = new Map<string, { role: string; is_staff: boolean }>();
+  const unique = [...new Set(jids)];
+  if (unique.length === 0) return out;
+  const { data } = await siaDb()
+    .from("wag_contacts")
+    .select("jid, participant_role, staff_profile_id")
+    .in("jid", unique);
+  for (const c of (data ?? []) as { jid: string; participant_role: string; staff_profile_id: string | null }[]) {
+    out.set(c.jid, { role: c.participant_role, is_staff: Boolean(c.staff_profile_id) });
+  }
+  return out;
+}
+
 /** The client's WhatsApp group (0194): at most one mapped group per client today. */
 export async function getSiaGroupForClient(clientId: string): Promise<{
   group_jid: string; subject: string | null; member_count: number | null; last_message_at: string | null; message_count: number;

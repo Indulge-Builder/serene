@@ -2,16 +2,15 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { cookies } from 'next/headers';
-import { getCurrentProfile, getAssignableUsers } from '@/lib/services/profiles-service';
+import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { isGiaDomain, parseGiaDomainParam } from '@/lib/constants/domains';
-import { LEAD_ASSIGNABLE_ROLES } from '@/lib/constants/roles';
 import { resolveDomainParam } from '@/lib/utils/domain-scope';
-import { getLeadFilterOptions } from '@/lib/services/leads-service';
 import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import { PageControls } from '@/components/layout/PageControls';
 import { CondensingPageHeader } from '@/components/layout/CondensingPageHeader';
 import type { LeadFilters, LeadStatus, CallOutcome } from '@/lib/types/database';
-import { LeadsFilters } from '@/components/leads/LeadsFilters';
+import { FilterBarSkeleton } from '@/components/ui/PageSkeletons';
+import { LeadsFiltersAsync } from '@/components/leads/LeadsFiltersAsync';
 import { LeadsTableAsync } from '@/components/leads/LeadsTableAsync';
 import { LeadsTableSkeleton } from '@/components/leads/LeadsTableSkeleton';
 import { AddLeadButton } from '@/components/leads/AddLeadButton';
@@ -96,22 +95,13 @@ export default async function LeadsPage({
     filters.view = 'mine';
   }
 
-  const [filterOptions, initialAgents] = await Promise.all([
-    getLeadFilterOptions(
-      profile.role,
-      profile.domain,
-      filters.domain && isGiaDomain(filters.domain) ? filters.domain : null,
-    ),
-    // Admin/founder: all active users in their domain; everyone else: the
-    // lead-carrying roles (agents + managers, LEAD_ASSIGNABLE_ROLES).
-    getAssignableUsers({
-      domain: profile.domain,
-      roles:
-        profile.role === 'admin' || profile.role === 'founder'
-          ? undefined
-          : LEAD_ASSIGNABLE_ROLES,
-    }),
-  ]);
+  // Nothing else is awaited before the header (2026-09-16, perf): the filter
+  // option lists stream in behind <LeadsFiltersAsync> below, and the Add Lead
+  // modal fetches its assignee list on first open (getAssignableUsersAction —
+  // admin/founder: every active user in the domain; everyone else: the
+  // lead-carrying roles). The header paints as soon as the profile resolves.
+  const optionsScopeDomain =
+    filters.domain && isGiaDomain(filters.domain) ? filters.domain : null;
 
   // Agent filter: never for agents (they only see their own). For a manager it
   // is meaningful only in the "All Leads" view — in My Leads the list is already
@@ -135,7 +125,6 @@ export default async function LeadsPage({
               domain:    profile.domain,
               full_name: profile.full_name,
             }}
-            initialAgents={initialAgents}
           />
           {TOP_BAR_ENABLED && (
             <PageControls
@@ -144,14 +133,18 @@ export default async function LeadsPage({
           )}
         </CondensingPageHeader>
 
-        <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-          <LeadsFilters
+        {/* Filter strip streams in behind its own boundary; the skeleton is the
+            same Row 2 paper strip the route loading.tsx shows. No key: a scope
+            change keeps the current strip through the transition. */}
+        <Suspense fallback={<FilterBarSkeleton chips={[80, 96, 88, 100]} />}>
+          <LeadsFiltersAsync
             role={profile.role}
-            options={filterOptions}
+            domain={profile.domain}
+            scopeDomain={optionsScopeDomain}
             showAgentFilter={showAgentFilter}
             showDomainFilter={showDomainFilter}
           />
-        </div>
+        </Suspense>
 
         {/* key: any filter/search/page/sort change remounts the boundary so the
             skeleton re-shows while the new rows fetch — without it the transition

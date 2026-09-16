@@ -514,6 +514,25 @@ export async function wakeTicket(t: TicketRow): Promise<WakeOutcome> {
   }
 }
 
+// ─── Wake one ticket now ─────────────────────────────────────────────────────
+
+/**
+ * The reactive path: the action that just wrote a note, a move or a link calls this inside
+ * after(), so the sentinel reads it in the same request rather than at the next sweep.
+ * Claims THIS ticket (leased like any other), wakes it, never throws.
+ */
+export async function wakeTicketNow(ticketId: string): Promise<WakeOutcome | null> {
+  try {
+    const { data, error } = await ticketsAdminDb().rpc("claim_sentinel_wakes", { p_limit: 1, p_lease_min: SENTINEL_LEASE_MIN, p_ticket_id: ticketId });
+    if (error) { console.warn(`${LOG} wakeTicketNow claim failed (0199 applied?)`, error.message); return null; }
+    const t = mapRows<TicketRow, TicketRow>(data, (r) => r)[0];
+    return t ? await wakeTicket(t) : null;
+  } catch (e) {
+    console.error(`${LOG} wakeTicketNow threw`, e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 // ─── The pool ────────────────────────────────────────────────────────────────
 
 export type SweepSummary = { claimed: number; woken: WakeOutcome[]; fires: number; reads: number; closed: number; errors: number };

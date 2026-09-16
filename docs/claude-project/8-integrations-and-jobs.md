@@ -45,7 +45,7 @@ Source adapters (`src/lib/leads/adapters.ts`): `adaptMeta` (native `field_data` 
 every field; phone normalisation is try/caught (a lead is never rejected for an unparseable phone).
 
 Inside `ingestLead()`: Zod validate → **domain resolution** (explicit `domain` field → campaign-prefix
-map `TG_Global→onboarding`, `TG_Shop→shop`, `TG_Legacy→legacy`, `TG_House→house`, `TG_B2B→b2b` →
+map `TG_Global→onboarding`, `TG_Shop→shop`, `TG_Legacy→legacy`, `TG_House→house`, `TG_B2B→business` →
 default `onboarding`) → **phone dedup** (`get_active_lead_by_phone`: active lead → log a
 `duplicate_submission` activity, no new row; terminal lead → new lead with `previous_lead_id`) →
 **round-robin** (`get_next_round_robin_agent`, SELECT FOR UPDATE SKIP LOCKED; empty pool → unassigned,

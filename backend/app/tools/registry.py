@@ -1083,7 +1083,12 @@ def write_tools_for_role(role: str) -> frozenset[str]:
 # the schema (op=definitions) and the PII seam; this brain only decides WHEN
 # to call. Gated admin/founder to mirror the vendor tables' SELECT policies.
 
-BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({"find_vendors", "get_vendor_details", "list_tickets", "get_ticket"})
+BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
+    "find_vendors", "get_vendor_details", "list_tickets", "get_ticket",
+    # Clients (2026-09-16): a member's WhatsApp history, raw. The sia archive and the
+    # queendom gate (canAccessClient) live in Node; this brain decides WHEN to read.
+    "get_client_overview", "get_client_recent_messages", "search_client_history",
+})
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
 # ticket cores live in Node; every staff role may read tickets (the DATABASE scopes rows to
@@ -1093,6 +1098,10 @@ _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
     "get_vendor_details": _FOUNDER_UP,
     "list_tickets": frozenset({"agent", "manager", "admin", "founder"}),
     "get_ticket": frozenset({"agent", "manager", "admin", "founder"}),
+    # Every staff role may carry the client tools; Node scopes rows to the reader's queendom.
+    "get_client_overview": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_client_recent_messages": frozenset({"agent", "manager", "admin", "founder"}),
+    "search_client_history": frozenset({"agent", "manager", "admin", "founder"}),
 }
 
 
