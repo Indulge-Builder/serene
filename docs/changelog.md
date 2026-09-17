@@ -211,6 +211,17 @@ compile crawl and is the first thing to fix before judging local speed.
 
 ---
 
+## 2026-09-17 — Freshdesk: the attachment backlog moves to the cloud
+
+Why: Trigger.dev was deployed today, so the minute poll runs in the cloud and takes 42 of
+the 50 Freshdesk calls a minute. A laptop loop beside it would only fight for the rest.
+
+What changed: `src/trigger/freshdesk-sync.ts` passes `flagMedia: FD_MEDIA_FLAG_BATCH` to
+`runSyncCycle`, exactly what `backfill.ts --media` did, so the cloud cycle re-queues old
+threads and copies their files; `maxDuration` 60 → 120 (a cycle that copies files can
+outlive its minute) and `queue.concurrencyLimit: 1` (two cycles must never pull the same
+threads). The laptop loop is now optional; if used beside the task, `--calls 8`.
+
 ## 2026-09-17 — Members: the customer is a member (the clients → members rename)
 
 Why: Indulge sells memberships, so the person is a member. "Client" also meant two other
@@ -307,7 +318,7 @@ What changed:
   today, the write lands once the CHECKs and the trigger are in. The 176 clients without a
   queendom and the Concierge accounts themselves are the next data step.
 
-## 2026-09-17 — Schema restructure, gia half built (not applied)
+## 2026-09-17 — Schema restructure: the gia half (built in this session, applied the same afternoon)
 
 Why: the plan of 2026-09-16, executed for the half whose decisions are all taken. The member
 half waits for the spine name from the members session.
@@ -331,7 +342,12 @@ What changed:
 - Lint: `no-restricted-syntax` refuses an unscoped `.from()` on a moved table in `src/`.
 - `scripts/db/row-counts.ts` — the before/after proof (`--compare`, `--rename old=new`).
 
-Not applied anywhere. Next: the rehearsal on a local copy of production (plan §5).
+Applied to production at ~13:40 IST by the members session together with 0202 (ahead of the
+19:00 window, before a rehearsal), commit `b52d78c`, Vercel Ready at 13:43. Verified after the
+fact on a container copy of the live schema and read-only against production: 22 tables in gia,
+none left in public, paths widened with extras kept, 54 policies + 10 triggers + 18
+cross-schema FKs intact, Realtime membership present, all 70 routines callable, and the row
+counts of all 22 moved tables identical to the pre-push counts. Details: plan §10.
 
 ## 2026-09-16 — Schema restructure planned: `public` → `gia` + `client`
 
