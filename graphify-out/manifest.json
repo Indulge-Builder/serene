@@ -2095,8 +2095,8 @@
     "semantic_hash": ""
   },
   "src/lib/types/database.ts": {
-    "mtime": 1789626383.6743007,
-    "ast_hash": "e922e9fd6baf6ae64fa6d4bf0cf39a1a",
+    "mtime": 1789632683.0261724,
+    "ast_hash": "2d55491d75246e43782c3efb315e2961",
     "semantic_hash": ""
   },
   "src/lib/types/elaya.ts": {
@@ -3155,8 +3155,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1789626546.5124896,
-    "ast_hash": "c3518a897450b67d2f1d282937b6b052",
+    "mtime": 1789633533.880436,
+    "ast_hash": "a4ea1b8580fa3f680de62ef7ecfe4683",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789626550.6388578,
-    "ast_hash": "190c1e3db57afe6d86b4fc20670fcdae",
+    "mtime": 1789633460.6332452,
+    "ast_hash": "2d9d2180768ae3460c24c58d35409bff",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -5140,8 +5140,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/sia-service.ts": {
-    "mtime": 1789626341.1972187,
-    "ast_hash": "4b605709a2043074ebbef717e96c2b70",
+    "mtime": 1789626758.4932497,
+    "ast_hash": "7739ecc46ce56dd805c3cda89734f26f",
     "semantic_hash": ""
   },
   "supabase/migrations/20260827000169_sia_wag_foundation.sql": {
@@ -7820,8 +7820,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/schema-restructure-plan.md": {
-    "mtime": 1789626550.6292074,
-    "ast_hash": "e5142be9c462ad8c52f97efa074b8d9b",
+    "mtime": 1789633460.620685,
+    "ast_hash": "65955933c6d147f043175d913b4dcf41",
     "semantic_hash": ""
   },
   "evals/results/20260916-095313.json": {
@@ -8025,8 +8025,8 @@
     "semantic_hash": ""
   },
   "supabase/migrations/20260917000204_wag_contacts_joker_role.sql": {
-    "mtime": 1789626374.0523102,
-    "ast_hash": "486aceaf0781b79dd33860576a7d6181",
+    "mtime": 1789630658.8125038,
+    "ast_hash": "0dfc9562d6e01cc77eeb4b02dc2255bc",
     "semantic_hash": ""
   },
   "supabase/migrations/20260917000210_gia_schema.sql": {
