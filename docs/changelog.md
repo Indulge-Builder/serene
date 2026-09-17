@@ -12,6 +12,18 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-17 — Decision: the profiling gate is the group link, not the members
+
+Why: the plan said a group with an unknown member is never profiled. That was written before
+memberships were understood: a membership covers the member's family, so a spouse or assistant
+in the group is normal, and 506 such household members sit across the 338 mapped client groups.
+The rule would have blocked every group for the wrong reason.
+
+What changed (docs only): `plan-sia-intelligence.md` rule 4 and decision 8, and an amendment
+under plan-whatsapp §8. A group is read only when linked to a member, a vendor or an internal
+team; inside a linked group, roles label attribution (client side / staff) and never block. Guard:
+"at Indulge" names and people present in many client groups count as staff without a roster tag.
+
 ## 2026-09-17 — The concierge roster tagged in the WhatsApp contacts
 
 Why: the meaning layer blocks profiling while a group has unknown members, and most members

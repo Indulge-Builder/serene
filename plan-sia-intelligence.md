@@ -173,8 +173,9 @@ wag_messages  --cursor-->  window builder  -->  masker  -->  extractor  -->  wri
 - **Windows** are per group, split on time gaps (a new session after 6 quiet hours) and capped
   by token size. A window carries the group's last digest as context so extraction sees the
   thread, not just the slice.
-- **Blocked groups** stay blocked: a group with `group_kind = 'unmapped'` or any `unknown`
-  member never reaches the extractor (plan section 8, the meaning layer). This is why S0 exists.
+- **Unlinked groups** never reach the extractor (`group_kind = 'unmapped'`). Member roles do
+  not gate — see rule 4; the old "any unknown member blocks" reading was dropped on 2026-09-17
+  because memberships cover family, so a member's household is a normal, expected presence.
 - **Tiers:** message classification (is this a request, a delivery, a complaint) on `routing`;
   window extraction on `reasoning`; the weekly client digest and conflict resolution on `heavy`.
   All three are `llm_providers` rows; a model change is an UPDATE.
@@ -288,8 +289,13 @@ its current score, and a tool result never carries an unmasked phone or email.
    from truth at any time. Nobody edits them by hand.
 3. **Nothing leaves unmasked.** Every model call and every embedding call goes through the vault.
    Zone 1 keeps full fidelity; Zone 2 sees codes.
-4. **Blocked stays blocked.** Unmapped groups and groups with unknown members are never
-   profiled. Coverage is earned in the mapping tool, not assumed.
+4. **Linked or not read (decided 2026-09-17).** A group is processed only when it is linked to
+   an entity: a member (`wag_groups.client_id`), a vendor, or an internal team. Unlinked groups
+   are never read. Inside a linked group, member roles never block: tagged staff are staff, and
+   everyone else is the member's side (the member or their household — a membership covers
+   family). Roles decide attribution ("the client asked" / "the genie replied"), not access.
+   Guard: a person with "at Indulge" in their WhatsApp name, or present in many client groups,
+   counts as staff even without a roster tag, so a non-roster colleague is never read as family.
 5. **Every extraction is a run.** Model, prompt version, tokens, span. A fact without a run is
    a bug.
 6. **The exam gates every prompt.** Same law as the brain: score up, ship; score down, fix.
@@ -310,6 +316,7 @@ its current score, and a tool result never carries an unmasked phone or email.
 | 4 | Backlog spend | Not needed for S0/S1 (no model). At S2: read 20 groups first (about ten dollars), the founder checks quality, then the full run is approved or not. |
 | 5 | Aging alerts | **Parked** with the request threads. |
 | 6 | Embedding model | Decide at S4. |
+| 8 | The profiling gate | **Linked or not read.** The group must be linked to a member, vendor or internal team; inside it, roles label attribution and never block (family members are part of a membership). Replaces plan-whatsapp §8's "unknown member blocks profiling" reading, decided 2026-09-17. |
 | 7 | Freshdesk | No API key or code exists in the repo today. Once a key is provided (`FRESHDESK_API_KEY` + `FRESHDESK_DOMAIN` in the env), Freshdesk ingestion moves up to sit beside S2 as the ticket fact source. |
 
 Consequences for the tranches: S2 ships facts and the client card only (no `sia.requests`); S3
