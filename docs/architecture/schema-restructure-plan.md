@@ -1,6 +1,6 @@
 # Schema restructure plan: `public` → `gia` + `member` (with `sia` and `freshdesk` as they are)
 
-Written 2026-09-16. Status: **gia half LIVE (2026-09-17 13:41 IST). Member half BUILT + REHEARSED (migration 0211 + code), awaiting the push — §11.** Decided with the founder the same day: do the
+Written 2026-09-16. Status: **COMPLETE. gia LIVE 2026-09-17 13:41 IST, member LIVE 2026-09-17 ~15:55 IST — §10, §11.** Decided with the founder the same day: do the
 whole restructure at once, rehearse it first, and treat the leads data as untouchable. The Legacy
 and Shop teams work in Gia every day.
 
@@ -266,4 +266,24 @@ which already places the member tables in schema `member`. Run the plain (after)
 the migration is pushed and every member table reports `ERR 406 — schema not exposed`, which
 looks like data loss and is not. The script now says so in as many words. Baseline before the
 push = `--profile member=public`; plain form only after.
+
+### 11.1 Applied (2026-09-17 ~15:55 IST)
+
+Migration 0211 was pushed while this session was mid-sentence about the deploy order, so the
+code went out after it rather than with it. For roughly ten minutes the deployed build
+(`6b1c2c2`) asked for `public.members`, which no longer existed, and every Sia surface —
+members, tickets, the Freshdesk pages, the Elaya member tools — returned an error. Commit
+`ed3b444` was pushed at 16:02, Vercel was Ready at ~16:04, and the surfaces came back.
+
+Verified afterwards: `members` answers on the `member` profile and 404s on `public`; the
+12 member tables match the pre-push baseline exactly (members 614, member_facts 6757,
+member_access_log 234, member_health_policy 15, the rest empty); the only tables that moved
+are the live-traffic ones (Freshdesk sync, the WhatsApp watcher, usage, one Elaya
+conversation). `database.ts` regenerated from production across all five schemas, typecheck
+and lint clean. Baseline and result: `~/Desktop/serene-backups/rowcounts-{before,after}-0211.txt`.
+
+**The lesson, twice over.** Both halves of this restructure were pushed before their code was
+deployed, and both caused a short outage. The database and the build are one release. Whoever
+holds the keys should push the migration only once the commit is ready to go out behind it,
+or build the deployment first and promote it the moment the migration lands.
 

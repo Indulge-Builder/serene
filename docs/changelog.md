@@ -318,7 +318,7 @@ What changed:
   today, the write lands once the CHECKs and the trigger are in. The 176 clients without a
   queendom and the Concierge accounts themselves are the next data step.
 
-## 2026-09-17 — Schema restructure: the member half built and rehearsed (not applied)
+## 2026-09-17 — Schema restructure: the member half (built, rehearsed, applied the same afternoon)
 
 Why: the second half of the plan, now that the twin is `members`. Same technique as 0210,
 this time rehearsed before anyone pushes.
@@ -332,6 +332,12 @@ the lint rule now refuses an unscoped `.from()` on a member table too; the four 
 send the member profile; `database.ts` carries a `member` block (regenerate after the push);
 `scripts/db/row-counts.ts --profile typed=actual` for the pre-push baseline. Rehearsal, with
 rollback: plan §11. Registry: `schemas.ts` + `row-counts.ts` added to CLAUDE.md.
+
+Applied ~15:55 IST; the code went out at 16:04 (`ed3b444`), so the Sia surfaces errored for
+about ten minutes in between — the same ordering mistake as the gia half that morning, and
+the reason plan §11.1 now says the migration and the build are one release. Verified after:
+the 12 member tables match the pre-push baseline exactly, only live-traffic tables moved,
+`database.ts` regenerated from production across all five schemas.
 
 ## 2026-09-17 — Schema restructure: the gia half (built in this session, applied the same afternoon)
 
