@@ -7,6 +7,7 @@
 // checks access (canAccessMember) before a core runs.
 
 import { createNotification } from "@/lib/services/notifications-service";
+import { memberDb } from "@/lib/supabase/schemas";
 import { ticketsAdminDb, resolveSlaPolicy } from "@/lib/services/tickets-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -52,7 +53,7 @@ function dueStamps(policy: TicketSlaPolicyRow | null, from: Date, status: Ticket
 
 export async function createTicketCore(input: CreateTicketInput, actor: MutationActor, opts: { proposed?: boolean; actorKind?: "human" | "elaya" | "intake" } = {}): Promise<TicketMutationResult<TicketRow>> {
   const admin = createAdminClient();
-  const { data: member } = await admin.from("members").select("id, queendom_id, tier").eq("id", input.member_id).maybeSingle();
+  const { data: member } = await memberDb(admin).from("members").select("id, queendom_id, tier").eq("id", input.member_id).maybeSingle();
   if (!member) return fail("That member does not exist.");
   const queendomId = (member as { queendom_id: string | null }).queendom_id;
   const status: TicketStatus = opts.proposed ? "proposed" : "open";

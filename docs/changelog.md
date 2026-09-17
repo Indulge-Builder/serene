@@ -318,6 +318,21 @@ What changed:
   today, the write lands once the CHECKs and the trigger are in. The 176 clients without a
   queendom and the Concierge accounts themselves are the next data step.
 
+## 2026-09-17 — Schema restructure: the member half built and rehearsed (not applied)
+
+Why: the second half of the plan, now that the twin is `members`. Same technique as 0210,
+this time rehearsed before anyone pushes.
+
+What changed: migration `20260917000211_member_schema.sql` (52 relations → schema `member`,
+names kept, gate functions stay in public, search paths appended, REST exposure);
+`memberDb()` + `MEMBER_TABLES` in `src/lib/supabase/schemas.ts`; 45 call sites in 12 files
+(members-service, member-mutations, tickets-service, ticket-mutations, freshdesk-service /
+-sync, sia-service, elaya-data, actions/tickets, the new-ticket page, the vendors demo seed);
+the lint rule now refuses an unscoped `.from()` on a member table too; the four Python scripts
+send the member profile; `database.ts` carries a `member` block (regenerate after the push);
+`scripts/db/row-counts.ts --profile typed=actual` for the pre-push baseline. Rehearsal, with
+rollback: plan §11. Registry: `schemas.ts` + `row-counts.ts` added to CLAUDE.md.
+
 ## 2026-09-17 — Schema restructure: the gia half (built in this session, applied the same afternoon)
 
 Why: the plan of 2026-09-16, executed for the half whose decisions are all taken. The member

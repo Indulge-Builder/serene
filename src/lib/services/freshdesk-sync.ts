@@ -10,6 +10,7 @@
 // table is why the mirror exists (member-ticket-plan.md section 2.2).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { memberDb } from "@/lib/supabase/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapWithConcurrency } from "@/lib/utils/concurrency";
 import { normalizeToE164 } from "@/lib/utils/phone";
@@ -242,17 +243,17 @@ async function resolveMemberLinks(
   const phoneList = Array.from(new Set(phones));
 
   if (idStrs.length) {
-    const { data } = await admin.from("members").select("id, freshdesk_contact_id").in("freshdesk_contact_id", idStrs);
+    const { data } = await memberDb(admin).from("members").select("id, freshdesk_contact_id").in("freshdesk_contact_id", idStrs);
     for (const r of (data ?? []) as { id: string; freshdesk_contact_id: string | null }[]) {
       if (r.freshdesk_contact_id) byContact.set(Number(r.freshdesk_contact_id), r.id);
     }
   }
   if (phoneList.length) {
-    const { data: prim } = await admin.from("members").select("id, primary_phone").in("primary_phone", phoneList);
+    const { data: prim } = await memberDb(admin).from("members").select("id, primary_phone").in("primary_phone", phoneList);
     for (const r of (prim ?? []) as { id: string; primary_phone: string | null }[]) {
       if (r.primary_phone) byPhone.set(r.primary_phone, r.id);
     }
-    const { data: alt } = await admin.from("members").select("id, alt_phones").overlaps("alt_phones", phoneList);
+    const { data: alt } = await memberDb(admin).from("members").select("id, alt_phones").overlaps("alt_phones", phoneList);
     for (const r of (alt ?? []) as { id: string; alt_phones: string[] }[]) {
       for (const p of r.alt_phones ?? []) if (phoneList.includes(p) && !byPhone.has(p)) byPhone.set(p, r.id);
     }

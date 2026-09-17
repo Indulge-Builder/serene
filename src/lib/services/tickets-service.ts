@@ -6,6 +6,7 @@
 // until `gen types` runs after 0195.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { memberDb } from "@/lib/supabase/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapRows } from "@/lib/utils/rows";
@@ -25,7 +26,7 @@ export function ticketsAdminDb() {
 async function nameMaps(memberIds: string[], profileIds: string[]): Promise<{ members: Map<string, string>; profiles: Map<string, string>; queendoms: Map<string, string> }> {
   const supabase = await createClient();
   const [c, p, q] = await Promise.all([
-    memberIds.length ? supabase.from("members").select("id, full_name").in("id", memberIds) : Promise.resolve({ data: [] }),
+    memberIds.length ? memberDb(supabase).from("members").select("id, full_name").in("id", memberIds) : Promise.resolve({ data: [] }),
     profileIds.length ? supabase.from("profiles").select("id, full_name").in("id", profileIds) : Promise.resolve({ data: [] }),
     supabase.schema("sia").from("queendoms").select("id, name"),
   ]);
@@ -142,7 +143,7 @@ export async function getTicketDetail(ticketId: string): Promise<TicketDetail | 
   const ticket = t as TicketRow;
 
   const [member, events, links, staff, tasks, policy] = await Promise.all([
-    supabase.from("members").select("id, full_name, primary_phone, queendom_id").eq("id", ticket.member_id).maybeSingle(),
+    memberDb(supabase).from("members").select("id, full_name, primary_phone, queendom_id").eq("id", ticket.member_id).maybeSingle(),
     db.from("ticket_events").select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true }).limit(500),
     db.from("ticket_message_links").select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true }).limit(200),
     listQueendomStaff(ticket.queendom_id),

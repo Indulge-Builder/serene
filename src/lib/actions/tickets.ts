@@ -7,6 +7,7 @@
 // draftTicketAction (the ticket creator, reasoning tier, masked) and then createTicketAction.
 
 import { revalidatePath } from "next/cache";
+import { memberDb } from "@/lib/supabase/schemas";
 import { after } from "next/server";
 import { requireProfile, actorFromProfile } from "@/lib/actions/_auth";
 import { parseActionInput } from "@/lib/actions/_validation";
@@ -32,7 +33,7 @@ import { wakeTicketNow } from "@/lib/services/ticket-sentinel";
 import type { StaffOption, TicketDraft, TicketHelp, TicketListItem, TicketRow } from "@/lib/types/ticket";
 
 async function memberQueendom(clientId: string): Promise<{ exists: boolean; queendom_id: string | null }> {
-  const { data } = await createAdminClient().from("members").select("queendom_id").eq("id", clientId).maybeSingle();
+  const { data } = await memberDb(createAdminClient()).from("members").select("queendom_id").eq("id", clientId).maybeSingle();
   return data ? { exists: true, queendom_id: (data as { queendom_id: string | null }).queendom_id } : { exists: false, queendom_id: null };
 }
 async function ticketQueendom(ticketId: string): Promise<{ exists: boolean; queendom_id: string | null; member_id: string | null }> {

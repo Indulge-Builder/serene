@@ -7,6 +7,7 @@
 // the RLS gate for.
 
 import { cache } from "react";
+import { memberDb } from "@/lib/supabase/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapRows } from "@/lib/utils/rows";
@@ -46,7 +47,7 @@ export const getQueendoms = cache(async (): Promise<QueendomSummary[]> => {
 
 const getHealthPolicy = cache(async (): Promise<Map<string, MemberHealthPolicyRow>> => {
   const supabase = await createClient();
-  const { data } = await supabase.from("member_health_policy").select("*");
+  const { data } = await memberDb(supabase).from("member_health_policy").select("*");
   const m = new Map<string, MemberHealthPolicyRow>();
   mapRows<MemberHealthPolicyRow, void>(data, (r) => { m.set(r.signal, r); });
   return m;
@@ -70,7 +71,7 @@ async function healthScoresFor(memberIds: string[]): Promise<Map<string, number>
   if (memberIds.length === 0) return out;
   const supabase = await createClient();
   const [{ data }, policy] = await Promise.all([
-    supabase.from("member_health_events").select("member_id, signal, delta, observed_at").in("member_id", memberIds).limit(5000),
+    memberDb(supabase).from("member_health_events").select("member_id, signal, delta, observed_at").in("member_id", memberIds).limit(5000),
     getHealthPolicy(),
   ]);
   const byMember = new Map<string, { delta: number; observed_at: string; half_life_days: number }[]>();
@@ -100,7 +101,7 @@ export async function listMembers(filters: MemberListFilters): Promise<{ members
   const from = (page - 1) * CLIENTS_LIST_PAGE_SIZE;
   const to = from + CLIENTS_LIST_PAGE_SIZE - 1;
 
-  let q = supabase.from("members").select(LIST_COLUMNS, { count: "exact" });
+  let q = memberDb(supabase).from("members").select(LIST_COLUMNS, { count: "exact" });
   if (filters.queendom) q = q.eq("queendom_id", filters.queendom);
   if (filters.tier) q = q.eq("tier", filters.tier);
   if (filters.status) q = q.eq("membership_status", filters.status);
@@ -175,7 +176,7 @@ export async function searchMembersForPicker(q: string, limit = 8): Promise<Memb
   if (!token) return [];
   const supabase = await createClient();
   const [{ data }, queendoms] = await Promise.all([
-    supabase.from("members").select("id, full_name, primary_phone, queendom_id")
+    memberDb(supabase).from("members").select("id, full_name, primary_phone, queendom_id")
       .or(`full_name.ilike.%${token}%,primary_phone.ilike.%${token.replace(/\s+/g, "")}%`)
       .order("full_name").limit(limit),
     getQueendoms(),
@@ -231,13 +232,13 @@ function collapseAgreeingFacts(facts: MemberFactView[]): MemberFactView[] {
 
 /** The member's queendom, for the access check in every member action. Null when the member does not exist. */
 export async function memberQueendom(clientId: string): Promise<{ exists: boolean; queendom_id: string | null }> {
-  const { data } = await createAdminClient().from("members").select("queendom_id").eq("id", clientId).maybeSingle();
+  const { data } = await memberDb(createAdminClient()).from("members").select("queendom_id").eq("id", clientId).maybeSingle();
   return data ? { exists: true, queendom_id: (data as { queendom_id: string | null }).queendom_id } : { exists: false, queendom_id: null };
 }
 
 export async function getMemberDetail(clientId: string): Promise<MemberDetail | null> {
   const supabase = await createClient();
-  const { data: member, error } = await supabase.from("members").select("*").eq("id", clientId).maybeSingle();
+  const { data: member, error } = await memberDb(supabase).from("members").select("*").eq("id", clientId).maybeSingle();
   if (error) {
     console.error("[members-service] member read failed", error.message);
     return null;
@@ -248,16 +249,16 @@ export async function getMemberDetail(clientId: string): Promise<MemberDetail | 
   const [queendoms, team, people, factsRes, healthRes, policy, tickets, group, events, relations, snapshot, anticipations] = await Promise.all([
     getQueendoms(),
     getTeam(c.queendom_id),
-    supabase.from("member_people").select("*").eq("member_id", clientId).order("relation").order("name"),
-    supabase.from("member_facts").select("*, created_by_profile:profiles!member_facts_created_by_fkey(full_name)").eq("member_id", clientId).is("superseded_by", null).order("observed_at", { ascending: false }).limit(1000),
-    supabase.from("member_health_events").select("*").eq("member_id", clientId).order("observed_at", { ascending: false }).limit(500),
+    memberDb(supabase).from("member_people").select("*").eq("member_id", clientId).order("relation").order("name"),
+    memberDb(supabase).from("member_facts").select("*, created_by_profile:profiles!member_facts_created_by_fkey(full_name)").eq("member_id", clientId).is("superseded_by", null).order("observed_at", { ascending: false }).limit(1000),
+    memberDb(supabase).from("member_health_events").select("*").eq("member_id", clientId).order("observed_at", { ascending: false }).limit(500),
     getHealthPolicy(),
     getFreshdeskTicketsForMember(clientId),
     getSiaGroupForMember(clientId),
-    supabase.from("member_events").select("*").eq("member_id", clientId).order("occurred_at", { ascending: false }).limit(100),
-    supabase.from("member_relations").select("*").eq("member_id", clientId).order("strength", { ascending: false }).limit(100),
-    supabase.from("member_snapshot").select("*").eq("member_id", clientId).maybeSingle(),
-    supabase.from("member_anticipations").select("*").eq("member_id", clientId).in("status", ["pending", "surfaced"]).order("due_at").limit(20),
+    memberDb(supabase).from("member_events").select("*").eq("member_id", clientId).order("occurred_at", { ascending: false }).limit(100),
+    memberDb(supabase).from("member_relations").select("*").eq("member_id", clientId).order("strength", { ascending: false }).limit(100),
+    memberDb(supabase).from("member_snapshot").select("*").eq("member_id", clientId).maybeSingle(),
+    memberDb(supabase).from("member_anticipations").select("*").eq("member_id", clientId).in("status", ["pending", "surfaced"]).order("due_at").limit(20),
   ]);
 
   type FactJoined = MemberFactRow & { created_by_profile: { full_name: string } | null };

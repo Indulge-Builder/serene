@@ -151,7 +151,7 @@ const eslintConfig = [
   // Schema restructure (2026-09-17, docs/architecture/schema-restructure-plan.md): a table
   // that moved out of `public` must be read through its schema helper (giaDb) — an
   // unscoped `.from('leads')` would hit public.leads, which no longer exists, at runtime.
-  // The table list mirrors GIA_TABLES in src/lib/supabase/schemas.ts. Receivers that pass:
+  // The table list mirrors GIA_TABLES + MEMBER_TABLES in src/lib/supabase/schemas.ts. Receivers that pass:
   // giaDb(...), freshdeskDb(...), anything.schema(...).
   {
     files: ['src/**/*.{ts,tsx}'],
@@ -163,9 +163,9 @@ const eslintConfig = [
         'error',
         {
           selector:
-            "CallExpression[callee.property.name='from'][arguments.0.value=/^(leads|lead_activities|lead_notes|lead_raw_payloads|lead_sla_timers|lead_product_enquiries|deals|sla_policies|agent_routing_config|revival_candidates|revival_policies|domain_targets|ad_creatives|ad_spend_daily|ad_account_recharges|task_gia_meta|whatsapp_conversations|whatsapp_messages|whatsapp_conversation_reads|whatsapp_notification_logs|service_cases|conversation_hooks)$/]:not([callee.object.callee.name=/^(giaDb|freshdeskDb)$/]):not([callee.object.callee.property.name='schema'])",
+            "CallExpression[callee.property.name='from'][arguments.0.value=/^(members|member_access_log|member_anticipations|member_chunks|member_documents|member_events|member_facts|member_health_events|member_health_policy|member_people|member_relations|member_snapshot|leads|lead_activities|lead_notes|lead_raw_payloads|lead_sla_timers|lead_product_enquiries|deals|sla_policies|agent_routing_config|revival_candidates|revival_policies|domain_targets|ad_creatives|ad_spend_daily|ad_account_recharges|task_gia_meta|whatsapp_conversations|whatsapp_messages|whatsapp_conversation_reads|whatsapp_notification_logs|service_cases|conversation_hooks)$/]:not([callee.object.callee.name=/^(giaDb|memberDb|freshdeskDb)$/]):not([callee.object.callee.property.name='schema'])",
           message:
-            'This table lives in the gia schema — query it through giaDb(client).from(…) (src/lib/supabase/schemas.ts), never an unscoped .from().',
+            'This table lives in the gia or member schema — query it through giaDb(client) / memberDb(client).from(…) (src/lib/supabase/schemas.ts), never an unscoped .from().',
         },
       ],
     },

@@ -451,7 +451,7 @@ def main() -> int:
     # 1. Upsert members (idempotent on primary_phone; phone-less: match by name+fd first).
     for r in ([] if args.skip_import else with_phone):
         rest("POST", "members?on_conflict=primary_phone", [r],
-             prefer="resolution=merge-duplicates,return=minimal")
+             schema="member", prefer="resolution=merge-duplicates,return=minimal")
     for r in ([] if args.skip_import else records):
         if r["primary_phone"]:
             continue
@@ -459,7 +459,7 @@ def main() -> int:
         q = f"members?full_name=eq.{urllib.parse.quote(r['full_name'])}" + (
             f"&freshdesk_contact_id=eq.{urllib.parse.quote(fd)}" if fd else "&primary_phone=is.null")
         if not rest("GET", q + "&select=id"):
-            rest("POST", "members", [r], prefer="return=minimal")
+            rest("POST", "members", [r], schema="member", prefer="return=minimal")
     print("- member import skipped (--skip-import)" if args.skip_import else f"✓ members upserted ({len(records)})")
 
     # 2. AUTO mappings. Already-mapped groups are skipped up front so re-runs
@@ -488,23 +488,23 @@ def main() -> int:
                     else f"jid=eq.{urllib.parse.quote(row['member_jid'])}"
                 rest("PATCH", f"wag_contacts?{target}",
                      {"member_id": cid, "participant_role": "member"}, schema="sia", prefer="return=minimal")
-            rest("PATCH", f"members?id=eq.{cid}", {"identity_status": "verified"}, prefer="return=minimal")
+            rest("PATCH", f"members?id=eq.{cid}", {"identity_status": "verified"}, schema="member", prefer="return=minimal")
             mapped += 1
             continue
         phone10 = row["member_phone"][-10:]
-        cl = rest("GET", f"members?primary_phone=like.*{phone10}&select=id")
+        cl = rest("GET", f"members?primary_phone=like.*{phone10}&select=id", schema="member")
         if len(cl) != 1:
             # Recovery for export-mangled numbers: the group member's phone comes
             # from the WhatsApp JID itself (the highest-trust source). Adopt it
             # onto the phone-less member whose name-token set EXACTLY matches the
             # review row — deterministic, or nothing.
             wa_phone = next((c["phone"] for c in by_last10.get(phone10, []) if c["phone"]), None)
-            noph = rest("GET", "members?primary_phone=is.null&select=id,full_name")
+            noph = rest("GET", "members?primary_phone=is.null&select=id,full_name", schema="member")
             cands = [c for c in noph if tokset(c["full_name"]) == tokset(row["member_name"])]
             if wa_phone and len(cands) == 1:
                 e164 = "+" + DIGITS.sub("", wa_phone)
                 rest("PATCH", f"members?id=eq.{cands[0]['id']}", {"primary_phone": e164},
-                     prefer="return=minimal")
+                     schema="member", prefer="return=minimal")
                 print(f"  ~ recovered {row['member_name']!r}: adopted WhatsApp-verified {e164[:6]}…")
                 cl = [{"id": cands[0]["id"]}]
             else:
@@ -519,7 +519,7 @@ def main() -> int:
                  {"member_id": cid, "participant_role": "member"}, schema="sia",
                  prefer="return=minimal")
         rest("PATCH", f"members?id=eq.{cid}", {"identity_status": "verified"},
-             prefer="return=minimal")
+             schema="member", prefer="return=minimal")
         mapped += 1
     print(f"✓ groups mapped: {mapped} (skipped {skipped})")
 

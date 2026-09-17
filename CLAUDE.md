@@ -49,6 +49,8 @@ They are different tokens for different surfaces.
 src/lib/supabase/client.ts          ← browser Supabase client (only place)
 src/lib/supabase/server.ts          ← server Supabase client (only place)
 src/lib/supabase/middleware.ts      ← session refresh helper (only place)
+src/lib/supabase/schemas.ts         ← GIA_SCHEMA/GIA_TABLES + giaDb(client), MEMBER_SCHEMA/MEMBER_TABLES + memberDb(client) — THE schema-scoped query helpers (restructure 2026-09-17, migrations 0210/0211): a table outside `public` is read through its helper, never an inline .schema('…') string (freshdeskDb() in freshdesk-sync.ts is the same idea for the mirror). eslint refuses an unscoped .from('<moved table>') in src/. Full map + runbook: docs/architecture/schema-restructure-plan.md
+scripts/db/row-counts.ts            ← THE before/after row-count proof for a schema move (reads the table list from database.ts; --compare, --rename old=new, --profile typed=actual)
 src/proxy.ts                        ← Next.js 16 proxy (replaces middleware.ts)
 src/lib/actions/                    ← ALL server actions live here
 src/lib/actions/_auth.ts            ← requireProfile(roles?) — THE session/role guard every session-based action starts with (Rule 09 / A-18); never hand-roll getCurrentProfile()+role checks. Exceptions table: src/lib/actions/CLAUDE.md (sla.ts, loginAction, 4 parallel-fetch tasks actions)

@@ -170,7 +170,7 @@ def custom_fields(e: ET.Element, strip_cf: bool = False) -> dict:
 
 def load_member_index() -> tuple[dict[str, str], dict[str, str]]:
     by_contact, by_phone = {}, {}
-    rows = rest("GET", "members?select=id,primary_phone,alt_phones,freshdesk_contact_id&limit=5000", schema="public") or []
+    rows = rest("GET", "members?select=id,primary_phone,alt_phones,freshdesk_contact_id&limit=5000", schema="member") or []
     for r in rows:
         if r.get("freshdesk_contact_id"):
             by_contact[str(r["freshdesk_contact_id"]).strip()] = r["id"]

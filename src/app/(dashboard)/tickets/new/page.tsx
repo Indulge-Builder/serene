@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { memberDb } from '@/lib/supabase/schemas';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { createClient } from '@/lib/supabase/server';
 import { BackButton } from '@/components/ui/BackButton';
@@ -14,7 +15,7 @@ export default async function NewTicketPage({ searchParams }: { searchParams: Pr
   let initialMember: { id: string; full_name: string; queendom_id: string | null } | null = null;
   if (member && /^[0-9a-f-]{36}$/i.test(member)) {
     const supabase = await createClient();
-    const { data } = await supabase.from('members').select('id, full_name, queendom_id').eq('id', member).maybeSingle();
+    const { data } = await memberDb(supabase).from('members').select('id, full_name, queendom_id').eq('id', member).maybeSingle();
     if (data) initialMember = data as { id: string; full_name: string; queendom_id: string | null };
   }
   return (

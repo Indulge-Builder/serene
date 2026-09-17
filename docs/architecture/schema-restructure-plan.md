@@ -1,6 +1,6 @@
 # Schema restructure plan: `public` → `gia` + `member` (with `sia` and `freshdesk` as they are)
 
-Written 2026-09-16. Status: **gia half BUILT (migration 0210 + code), not applied; the member half waits for the spine name.** Decided with the founder the same day: do the
+Written 2026-09-16. Status: **gia half LIVE (2026-09-17 13:41 IST). Member half BUILT + REHEARSED (migration 0211 + code), awaiting the push — §11.** Decided with the founder the same day: do the
 whole restructure at once, rehearse it first, and treat the leads data as untouchable. The Legacy
 and Shop teams work in Gia every day.
 
@@ -197,3 +197,73 @@ No views in `public`; ten `updated_at`/slug triggers ride along with their table
    the leads pages error for a few minutes between the migration and the new build going live.
    **Decided 2026-09-17: 19:00 IST**, on the first weekday after the rehearsal passes; the
    date is confirmed in the team WhatsApp that morning.
+
+## 10. What actually happened (2026-09-17)
+
+The members session pushed 0202 and 0210 together at ~13:40 IST, ahead of the 19:00 window
+and before 0210 had been rehearsed; the same commit (`b52d78c`) carried the gia code, the
+members code and the regenerated `database.ts`, and Vercel built it at 13:43 IST. The
+rehearsal was therefore run right after, on a copy of the LIVE post-push schema in a
+`supabase/postgres:17.6.1.127` container (the production version), and production itself
+was checked read-only:
+
+- gia holds exactly the 22 tables; nothing left behind in public (86 tables remain there).
+- Function paths: 62 routines on `public, gia`; the 6 with `extensions` / `vault` kept them.
+- 54 policies and 10 triggers travelled with the tables; 18 foreign keys cross schemas and
+  hold; `gia.whatsapp_conversations` / `gia.whatsapp_messages` are in the Realtime
+  publication; `authenticated` can enter the schema and read `gia.leads` (RLS still decides).
+- Every routine in public/sia/freshdesk (70) was called with NULL arguments on the copy:
+  none fails with an undefined table, function or column — the three errors a schema move
+  can cause.
+- Production row counts for all 22 moved tables match the pre-push counts line for line
+  (`scripts/db/row-counts.ts` against the members session's `rowcounts-before.txt`).
+- The REST path answers `leads` only on the `gia` profile (404 on `public`), as designed.
+
+Lesson for the next move: the rehearsal must come BEFORE the push, whoever holds the keys.
+
+Confirmed by the members session the same afternoon: Fargate brain on task definition 11
+(rollout COMPLETED), 47,793 Freshdesk tickets still linked to their member, `/clients` → 308
+→ `/members`. Backup of the pre-push state: `~/Desktop/serene-backups/` (schema, 850 MB data
+dump, row-count printouts).
+
+**Still open after the push**
+
+1. **Trigger.dev tasks on the new build** — the `trigger:deploy` script in package.json was
+   in neither session's checklist and cannot be verified from the dev key in `.env.local`.
+   Until it runs, the tasks that read lead tables (`fire-lead-sla`, `sweep-revival-candidates`,
+   the task reminders through `task_gia_meta`) execute the old build against `public.leads`,
+   which no longer exists. `freshdesk-sync` and `ticket-sentinel` are unaffected.
+2. **The member schema** (§2.2). The rename landed the twin as `public.members` + `member_*`;
+   moving those 53 tables into their own schema is the remaining half of this plan, with the
+   same technique as 0210 (`memberDb()` helper, `MEMBER_TABLES` in the lint rule, the three
+   gate functions re-pointed in the `sia.tickets` policies). Rehearse BEFORE pushing.
+
+## 11. The member half: built and rehearsed (2026-09-17 afternoon)
+
+Migration `20260917000211_member_schema.sql` moves the 52 member relations (`members`, the 11
+satellites, the 39 monthly slices of `member_events` and its default) into schema `member`,
+by the 0210 technique. Two deviations from §2.2, both for consistency with what gia shipped:
+table names are KEPT (`member.member_facts`, as `gia.lead_notes` kept its prefix), and the
+three gate functions stay in `public` so the `sia.tickets` policies and the RPC surface do
+not change — their bodies resolve `members` through the widened search path.
+
+Code: `memberDb(client)` + `MEMBER_TABLES` in `schemas.ts`; 45 call sites in 12 files; the
+lint rule covers both schemas; the four Python scripts that touch member tables send
+`Accept-Profile` / `Content-Profile: member`; the 52 table types moved into a `member` block
+of `database.ts` (regenerate after the push); typecheck and lint clean.
+
+Rehearsal on a container copy of the live post-0210 schema: 52 relations moved, `public`
+down to 34 tables, search paths now `public, gia, member` (extras kept), 19 policies and 4
+triggers travelled, 13 cross-schema foreign keys hold, no Realtime membership to carry,
+`authenticated` can enter and read `member.members` under RLS, all 70 routines callable,
+rollback (`SET SCHEMA public` loop + paths stripped + schema dropped) and re-apply both clean.
+
+Push sequence (the runbook §6.3, this time in order): `row-counts.ts --profile member=public`
+before, push 0211, deploy Vercel + the Trigger.dev tasks, `row-counts.ts` after, compare.
+
+The order matters and it bit us once: `row-counts.ts` reads the table list from `database.ts`,
+which already places the member tables in schema `member`. Run the plain (after) form BEFORE
+the migration is pushed and every member table reports `ERR 406 — schema not exposed`, which
+looks like data loss and is not. The script now says so in as many words. Baseline before the
+push = `--profile member=public`; plain form only after.
+

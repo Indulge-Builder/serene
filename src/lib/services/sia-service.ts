@@ -1,5 +1,6 @@
 import "server-only";
 import { readFile, stat } from "node:fs/promises";
+import { memberDb } from "@/lib/supabase/schemas";
 import path from "node:path";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -433,7 +434,7 @@ export async function getSiaGroupInfo(groupJid: string): Promise<SiaGroupInfo | 
   const groupMemberId = (groupRes.data?.[0] as { member_id?: string | null } | undefined)?.member_id ?? null;
   let member: SiaGroupInfo["member"] = null;
   if (groupMemberId) {
-    const { data: c } = await createAdminClient().from("members").select("id, full_name").eq("id", groupMemberId).maybeSingle();
+    const { data: c } = await memberDb(createAdminClient()).from("members").select("id, full_name").eq("id", groupMemberId).maybeSingle();
     if (c) member = { id: (c as { id: string }).id, full_name: (c as { full_name: string }).full_name };
   }
   return {

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/members/seed-member-facts.py — seed STORE 2 (public.member_facts, migration 0194) from
+scripts/members/seed-member-facts.py — seed STORE 2 (member.member_facts, migrations 0194 / 0211) from
 what Atlas, the onboarding forms, the Freshdesk contacts and the member sheets already know.
 
 Sources → facts (member-ticket-plan.md 5.6), each row carrying source, confidence, evidence,
@@ -168,7 +168,7 @@ def main():
     if not BASE or not KEY:
         sys.exit("source .env.local first")
 
-    members = get_all("members?select=id,primary_phone,alt_phones,freshdesk_contact_id,full_name")
+    members = get_all("members?select=id,primary_phone,alt_phones,freshdesk_contact_id,full_name", schema="member")
     by_phone: dict[str, str] = {}
     by_fd: dict[str, str] = {}
     for c in members:
@@ -261,7 +261,7 @@ def main():
         deduped.append(f)
     existing = set()
     try:
-        for row in get_all("member_facts?select=member_id,facet,key,value,source"):
+        for row in get_all("member_facts?select=member_id,facet,key,value,source", schema="member"):
             existing.add((row["member_id"], row["facet"], row["key"], (row["value"] or "").lower(), row["source"]))
     except Exception as e:  # before migration 0194 the table does not exist
         print(f"  ! member_facts not readable yet ({str(e)[:60]}); nothing is 'already present'")
@@ -276,7 +276,7 @@ def main():
         print("\nDRY RUN — nothing written. Re-run with --apply.")
         return
     for i in range(0, len(todo), 500):
-        rest("POST", "member_facts", todo[i:i + 500], prefer="return=minimal")
+        rest("POST", "member_facts", todo[i:i + 500], schema="member", prefer="return=minimal")
     print(f"✓ wrote {len(todo)} facts")
 
 

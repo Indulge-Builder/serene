@@ -15,7 +15,7 @@ import type { Database } from "@/lib/types/database";
 
 export const GIA_SCHEMA = "gia" as const;
 
-/** Every table that moved `public` → `gia` (migration 0203). The lint rule reads this list. */
+/** Every table that moved `public` → `gia` (migration 0210). The lint rule reads this list. */
 export const GIA_TABLES = [
   "leads",
   "lead_activities",
@@ -45,3 +45,27 @@ export const GIA_TABLES = [
 export function giaDb(client: SupabaseClient<Database>) {
   return client.schema(GIA_SCHEMA);
 }
+
+export const MEMBER_SCHEMA = "member" as const;
+
+/** Every table that moved `public` → `member` (migration 0211). The lint rule reads this list. */
+export const MEMBER_TABLES = [
+  "members",
+  "member_access_log",
+  "member_anticipations",
+  "member_chunks",
+  "member_documents",
+  "member_events",
+  "member_facts",
+  "member_health_events",
+  "member_health_policy",
+  "member_people",
+  "member_relations",
+  "member_snapshot",
+] as const;
+
+/** The member schema view of a client. Works for the session client and the admin client. */
+export function memberDb(client: SupabaseClient<Database>) {
+  return client.schema(MEMBER_SCHEMA);
+}
+

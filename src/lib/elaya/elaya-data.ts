@@ -24,6 +24,7 @@
 // shaped result. The tool calls it. Never let a tool reach past this module.
 
 import type { StaffPrincipal } from '@/lib/elaya/principal';
+import { memberDb } from '@/lib/supabase/schemas';
 import type { ElayaChannel } from '@/lib/types/elaya';
 import type { LeadStatus, AppDomain, CampaignMetrics } from '@/lib/types/database';
 
@@ -435,7 +436,7 @@ export async function findMembersFor(principal: StaffPrincipal, query: string, l
   const digits = token.replace(/\D/g, '');
   const ors = [`full_name.ilike.%${token}%`];
   if (digits.length >= 6) ors.push(`primary_phone.ilike.%${digits}%`);
-  const { data } = await createAdminClient()
+  const { data } = await memberDb(createAdminClient())
     .from('members')
     .select(CLIENT_BRIEF_SELECT)
     .or(ors.join(','))
@@ -451,7 +452,7 @@ export async function getMemberBriefFor(
   principal: StaffPrincipal,
   clientId: string,
 ): Promise<{ member: MemberBrief; group: Awaited<ReturnType<typeof getSiaGroupForMember>> } | null> {
-  const { data } = await createAdminClient().from('members').select(CLIENT_BRIEF_SELECT).eq('id', clientId).maybeSingle();
+  const { data } = await memberDb(createAdminClient()).from('members').select(CLIENT_BRIEF_SELECT).eq('id', clientId).maybeSingle();
   const member = data as MemberBrief | null;
   if (!member) return null;
   const { queendom_id } = await principalQueendom(principal);

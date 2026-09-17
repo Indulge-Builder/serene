@@ -153,7 +153,7 @@ async function main() {
   console.log(`Using ${staff.length} profile(s) as staff: ${staff.map((s) => s.full_name).join(", ")}\n`);
 
   // Clients are optional — used for the "worked with this client before" reason.
-  const { data: memberRows } = await db.from("members").select("id").limit(5);
+  const { data: memberRows } = await db.schema('member').from("members").select("id").limit(5);
   const clients = (memberRows as { id: string }[] | null) ?? [];
 
   // ─── Guard 2/3: existing demo rows ────────────────────────────────────────

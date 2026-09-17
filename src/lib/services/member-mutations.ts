@@ -9,14 +9,15 @@
 // superseded_by on the old one; nothing else is ever updated on member_facts.
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { memberDb } from "@/lib/supabase/schemas";
 import { updateSiaGroupMapping } from "@/lib/services/sia-service";
 import type { MutationActor } from "@/lib/services/lead-mutations";
 import { readMemberObservation, OBSERVATION_PROMPT_VERSION } from "@/lib/services/member-observation-reader";
 import type { MemberFactRow, MemberObservationResult, MemberPersonRow, MemberRow } from "@/lib/types/member";
 import type { Database } from "@/lib/types/database";
 
-type MemberUpdate = Database["public"]["Tables"]["members"]["Update"];
-type PersonUpdate = Database["public"]["Tables"]["member_people"]["Update"];
+type MemberUpdate = Database["member"]["Tables"]["members"]["Update"];
+type PersonUpdate = Database["member"]["Tables"]["member_people"]["Update"];
 import type {
   AddMemberFactInput,
   AddMemberObservationInput,
@@ -38,10 +39,10 @@ const fail = <T,>(msg: string, e?: { message: string } | null): MemberMutationRe
 export async function createMemberCore(input: CreateMemberInput, actor: MutationActor): Promise<MemberMutationResult<MemberRow>> {
   const admin = createAdminClient();
   if (input.primary_phone) {
-    const { data: dup } = await admin.from("members").select("id, full_name").eq("primary_phone", input.primary_phone).maybeSingle();
+    const { data: dup } = await memberDb(admin).from("members").select("id, full_name").eq("primary_phone", input.primary_phone).maybeSingle();
     if (dup) return { data: null, error: `That number already belongs to ${(dup as { full_name: string }).full_name}.` };
   }
-  const { data, error } = await admin
+  const { data, error } = await memberDb(admin)
     .from("members")
     .insert({
       full_name: input.full_name,
@@ -76,11 +77,11 @@ export async function updateMemberCore(input: UpdateMemberInput, actor: Mutation
   if (typeof patch.tier === "string" || patch.tier === null) patch.membership_type = patch.tier as string | null;
   if (Object.keys(patch).length === 0) return fail("Nothing to change.");
   if (typeof patch.primary_phone === "string") {
-    const { data: dup } = await admin.from("members").select("id").eq("primary_phone", patch.primary_phone).neq("id", member_id).maybeSingle();
+    const { data: dup } = await memberDb(admin).from("members").select("id").eq("primary_phone", patch.primary_phone).neq("id", member_id).maybeSingle();
     if (dup) return { data: null, error: "That number already belongs to another member." };
   }
   patch.updated_at = new Date().toISOString();
-  const { data, error } = await admin.from("members").update(patch as MemberUpdate).eq("id", member_id).select("*").single();
+  const { data, error } = await memberDb(admin).from("members").update(patch as MemberUpdate).eq("id", member_id).select("*").single();
   if (error || !data) return fail("Could not save the member.", error);
   void actor;
   return { data: data as MemberRow, error: null };
@@ -90,7 +91,7 @@ export async function updateMemberCore(input: UpdateMemberInput, actor: Mutation
 
 export async function addFactCore(input: AddMemberFactInput, actor: MutationActor): Promise<MemberMutationResult<MemberFactRow>> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await memberDb(admin)
     .from("member_facts")
     .insert({
       member_id: input.member_id,
@@ -112,9 +113,9 @@ export async function addFactCore(input: AddMemberFactInput, actor: MutationActo
     // The old row stays; it just stops being current. Only the service role may do this.
     // Every other current row saying the same thing (a second source agreeing) retires with
     // it, or the corrected value would come straight back from the duplicate.
-    const { data: old } = await admin.from("member_facts").select("facet, key, value")
+    const { data: old } = await memberDb(admin).from("member_facts").select("facet, key, value")
       .eq("id", input.supersedes_id).eq("member_id", input.member_id).maybeSingle();
-    let q = admin.from("member_facts").update({ superseded_by: row.id }).eq("member_id", input.member_id).is("superseded_by", null).neq("id", row.id);
+    let q = memberDb(admin).from("member_facts").update({ superseded_by: row.id }).eq("member_id", input.member_id).is("superseded_by", null).neq("id", row.id);
     if (old) {
       const o = old as { facet: string; key: string; value: string };
       q = q.eq("facet", o.facet).eq("key", o.key).ilike("value", o.value.trim());
@@ -155,7 +156,7 @@ export async function addObservationCore(input: AddMemberObservationInput, actor
 
   // 1. The note itself, always. The person's exact words stay in evidence.
   const noteValue = reading?.text ?? input.text;
-  const { data: noteData, error: noteErr } = await admin.from("member_facts").insert({
+  const { data: noteData, error: noteErr } = await memberDb(admin).from("member_facts").insert({
     member_id: input.member_id, facet: "note", key: "", value: noteValue, polarity: "neutral",
     source: "agent_note", confidence: 1,
     evidence: { by: actor.userId, name: actor.fullName, raw: input.text, run_id: runId, kind: "observation" },
@@ -166,7 +167,7 @@ export async function addObservationCore(input: AddMemberObservationInput, actor
   if (!reading) return { data: { note, facts: [], relations: [], read: false, corrected: false }, error: null };
 
   // 2. The cards, skipping any the twin already holds word for word.
-  const { data: existing } = await admin.from("member_facts").select("facet, key, value").eq("member_id", input.member_id).is("superseded_by", null).limit(2000);
+  const { data: existing } = await memberDb(admin).from("member_facts").select("facet, key, value").eq("member_id", input.member_id).is("superseded_by", null).limit(2000);
   const have = new Set(((existing ?? []) as { facet: string; key: string; value: string }[]).map((f) => `${f.facet}|${f.key}|${f.value.trim().toLowerCase()}`));
   const rows = reading.facts
     .filter((f) => !have.has(`${f.facet}|${f.key}|${f.value.toLowerCase()}`))
@@ -178,7 +179,7 @@ export async function addObservationCore(input: AddMemberObservationInput, actor
     }));
   let facts: MemberFactRow[] = [];
   if (rows.length) {
-    const { data: factData, error: factErr } = await admin.from("member_facts").insert(rows).select("*");
+    const { data: factData, error: factErr } = await memberDb(admin).from("member_facts").insert(rows).select("*");
     if (factErr) console.warn("[member-mutations] observation facts insert failed", factErr.message);
     facts = (factData ?? []) as MemberFactRow[];
   }
@@ -186,13 +187,13 @@ export async function addObservationCore(input: AddMemberObservationInput, actor
   // 3. Relations: one row per (kind, label, relation); a repeat bumps the evidence count.
   for (const r of reading.relations) {
     const entityId = `${r.kind}:${r.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
-    const { data: cur } = await admin.from("member_relations").select("id, evidence_count, strength")
+    const { data: cur } = await memberDb(admin).from("member_relations").select("id, evidence_count, strength")
       .eq("member_id", input.member_id).eq("entity_kind", r.kind).eq("entity_id", entityId).eq("relation", r.relation).maybeSingle();
     if (cur) {
       const c = cur as { id: string; evidence_count: number; strength: number };
-      await admin.from("member_relations").update({ evidence_count: c.evidence_count + 1, strength: Math.min(1, Number(c.strength) + 0.1), last_seen_at: startedAt }).eq("id", c.id);
+      await memberDb(admin).from("member_relations").update({ evidence_count: c.evidence_count + 1, strength: Math.min(1, Number(c.strength) + 0.1), last_seen_at: startedAt }).eq("id", c.id);
     } else {
-      await admin.from("member_relations").insert({
+      await memberDb(admin).from("member_relations").insert({
         member_id: input.member_id, entity_kind: r.kind, entity_id: entityId, entity_label: r.label, relation: r.relation,
         strength: 0.6, evidence: [{ note_id: note.id, by: actor.userId }],
       });
@@ -206,7 +207,7 @@ export async function addObservationCore(input: AddMemberObservationInput, actor
 
 export async function addPersonCore(input: AddMemberPersonInput, actor: MutationActor): Promise<MemberMutationResult<MemberPersonRow>> {
   const admin = createAdminClient();
-  const { data, error } = await admin.from("member_people").insert({
+  const { data, error } = await memberDb(admin).from("member_people").insert({
     member_id: input.member_id, name: input.name, relation: input.relation, phone_e164: input.phone_e164,
     email: input.email, can_request: input.can_request, note: input.note, created_by: actor.userId,
   }).select("*").single();
@@ -219,14 +220,14 @@ export async function updatePersonCore(input: UpdateMemberPersonInput): Promise<
   const { person_id, member_id, ...rest } = input;
   const patch: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rest)) if (v !== undefined) patch[k] = v;
-  const { data, error } = await admin.from("member_people").update(patch as PersonUpdate).eq("id", person_id).eq("member_id", member_id).select("*").single();
+  const { data, error } = await memberDb(admin).from("member_people").update(patch as PersonUpdate).eq("id", person_id).eq("member_id", member_id).select("*").single();
   if (error || !data) return fail("Could not save that person.", error);
   return { data: data as MemberPersonRow, error: null };
 }
 
 export async function deletePersonCore(personId: string, clientId: string): Promise<MemberMutationResult<{ deleted: true }>> {
   const admin = createAdminClient();
-  const { error } = await admin.from("member_people").delete().eq("id", personId).eq("member_id", clientId);
+  const { error } = await memberDb(admin).from("member_people").delete().eq("id", personId).eq("member_id", clientId);
   if (error) return fail("Could not remove that person.", error);
   return { data: { deleted: true }, error: null };
 }
@@ -245,7 +246,7 @@ export async function linkGroupCore(groupJid: string, clientId: string | null): 
 
 export async function addHealthAdjustCore(clientId: string, delta: number, note: string, actor: MutationActor): Promise<MemberMutationResult<{ id: string }>> {
   const admin = createAdminClient();
-  const { data, error } = await admin.from("member_health_events").insert({
+  const { data, error } = await memberDb(admin).from("member_health_events").insert({
     member_id: clientId, signal: "manual_adjust", delta, note, evidence: { by: actor.userId }, created_by: actor.userId,
   }).select("id").single();
   if (error || !data) return fail("Could not record that.", error);
@@ -257,6 +258,6 @@ export async function addHealthAdjustCore(clientId: string, delta: number, note:
 /** Best-effort, never throws: a card open is recorded, a failure is logged. */
 export async function logMemberAccess(clientId: string, actorId: string, surface: string): Promise<void> {
   const admin = createAdminClient();
-  const { error } = await admin.from("member_access_log").insert({ member_id: clientId, actor_id: actorId, surface });
+  const { error } = await memberDb(admin).from("member_access_log").insert({ member_id: clientId, actor_id: actorId, surface });
   if (error) console.warn("[member-mutations] access log failed", error.message);
 }

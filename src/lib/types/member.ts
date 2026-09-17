@@ -5,15 +5,15 @@ import type { Database } from "@/lib/types/database";
 import type { MemberFacet, FactPolarity, FactSource, MemberTier } from "@/lib/constants/member-facets";
 import type { SiaRole } from "@/lib/constants/sia-roles";
 
-export type MemberRow = Database["public"]["Tables"]["members"]["Row"];
-export type MemberPersonRow = Database["public"]["Tables"]["member_people"]["Row"];
-export type MemberFactRow = Database["public"]["Tables"]["member_facts"]["Row"];
-export type MemberRelationRow = Database["public"]["Tables"]["member_relations"]["Row"];
-export type MemberEventRow = Database["public"]["Tables"]["member_events"]["Row"];
-export type MemberSnapshotRow = Database["public"]["Tables"]["member_snapshot"]["Row"];
-export type MemberHealthEventRow = Database["public"]["Tables"]["member_health_events"]["Row"];
-export type MemberHealthPolicyRow = Database["public"]["Tables"]["member_health_policy"]["Row"];
-export type MemberAnticipationRow = Database["public"]["Tables"]["member_anticipations"]["Row"];
+export type MemberRow = Database["member"]["Tables"]["members"]["Row"];
+export type MemberPersonRow = Database["member"]["Tables"]["member_people"]["Row"];
+export type MemberFactRow = Database["member"]["Tables"]["member_facts"]["Row"];
+export type MemberRelationRow = Database["member"]["Tables"]["member_relations"]["Row"];
+export type MemberEventRow = Database["member"]["Tables"]["member_events"]["Row"];
+export type MemberSnapshotRow = Database["member"]["Tables"]["member_snapshot"]["Row"];
+export type MemberHealthEventRow = Database["member"]["Tables"]["member_health_events"]["Row"];
+export type MemberHealthPolicyRow = Database["member"]["Tables"]["member_health_policy"]["Row"];
+export type MemberAnticipationRow = Database["member"]["Tables"]["member_anticipations"]["Row"];
 export type QueendomRow = Database["sia"]["Tables"]["queendoms"]["Row"];
 
 export type QueendomSummary = { id: string; name: string; slug: string };

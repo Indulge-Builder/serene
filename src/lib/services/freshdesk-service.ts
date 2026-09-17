@@ -5,6 +5,7 @@
 // overview strip. Writes never happen here — the sync core owns every write.
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { memberDb } from "@/lib/supabase/schemas";
 import { mapRows } from "@/lib/utils/rows";
 import { toISTMidnight } from "@/lib/utils/ist";
 import { FD_STATUS_LABELS, FRESHDESK_LIST_PAGE_SIZE, FD_SYNC_KEYS, fdStatusLabel } from "@/lib/constants/freshdesk";
@@ -158,7 +159,7 @@ export async function listFreshdeskTickets(
 
 /** The member a `?member=` scope points at, for the "Tickets for …" line; null when unknown. */
 export async function getFreshdeskMemberScope(clientId: string): Promise<{ id: string; full_name: string } | null> {
-  const { data } = await createAdminClient().from("members").select("id, full_name").eq("id", clientId).maybeSingle();
+  const { data } = await memberDb(createAdminClient()).from("members").select("id, full_name").eq("id", clientId).maybeSingle();
   return data ? { id: (data as { id: string }).id, full_name: (data as { full_name: string }).full_name } : null;
 }
 
@@ -196,7 +197,7 @@ export async function getFreshdeskTicketDetail(id: number): Promise<FdTicketDeta
 
   let member: { id: string; full_name: string } | null = null;
   if (t.member_id) {
-    const { data: c } = await createAdminClient().from("members").select("id, full_name").eq("id", t.member_id).maybeSingle();
+    const { data: c } = await memberDb(createAdminClient()).from("members").select("id, full_name").eq("id", t.member_id).maybeSingle();
     if (c) member = { id: (c as { id: string }).id, full_name: (c as { full_name: string }).full_name };
   }
 
