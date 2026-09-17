@@ -6,7 +6,8 @@ principal (the parity rule, plan-elaya law 4): a turn may run sessionless
 the Node side's admin-client convention (Q-13) exactly.
 
 Deliberately httpx over a heavy SDK: the brain needs GET/POST/PATCH with
-headers — nothing more. `schema` switches Accept-Profile for sia.* tables.
+headers — nothing more. `schema` switches Accept-Profile; a table that moved out
+of `public` (gia, member) is routed by _MOVED_TABLES below, so callers need not know.
 """
 
 from __future__ import annotations
@@ -18,6 +19,67 @@ import httpx
 from app.config import settings
 
 _client: httpx.AsyncClient | None = None
+
+
+# ── Where a table lives (schema restructure, 2026-09-17) ──────────────────
+# `leads` and its family moved public → gia (migration 0210) and the member twin
+# moved public → member (0211). A table's schema is a property of the TABLE, not of
+# the call site, so it is resolved here, once: a caller that writes
+# select("leads", …) cannot forget the schema and get a 404 back. An explicit
+# schema= argument (sia, freshdesk) always wins. RPCs are unaffected — the functions
+# stayed in public and their search_path was widened.
+# Mirrors GIA_TABLES / MEMBER_TABLES in src/lib/supabase/schemas.ts.
+_MOVED_TABLES: dict[str, str] = {
+    **{
+        t: "gia"
+        for t in (
+            "leads",
+            "lead_activities",
+            "lead_notes",
+            "lead_raw_payloads",
+            "lead_sla_timers",
+            "lead_product_enquiries",
+            "deals",
+            "sla_policies",
+            "agent_routing_config",
+            "revival_candidates",
+            "revival_policies",
+            "domain_targets",
+            "ad_creatives",
+            "ad_spend_daily",
+            "ad_account_recharges",
+            "task_gia_meta",
+            "whatsapp_conversations",
+            "whatsapp_messages",
+            "whatsapp_conversation_reads",
+            "whatsapp_notification_logs",
+            "service_cases",
+            "conversation_hooks",
+        )
+    },
+    **{
+        t: "member"
+        for t in (
+            "members",
+            "member_access_log",
+            "member_anticipations",
+            "member_chunks",
+            "member_documents",
+            "member_events",
+            "member_facts",
+            "member_health_events",
+            "member_health_policy",
+            "member_people",
+            "member_relations",
+            "member_snapshot",
+        )
+    },
+}
+
+
+def _resolve_schema(table: str, schema: str) -> str:
+    """The caller's schema wins when it named one; otherwise the table's own home."""
+    return _MOVED_TABLES.get(table, schema) if schema == "public" else schema
 
 
 def _base_headers(schema: str) -> dict[str, str]:
@@ -46,7 +108,9 @@ async def select(
     schema: str = "public",
 ) -> list[dict[str, Any]]:
     """GET rows. `params` are raw PostgREST query params (select, filters, order, limit)."""
-    r = await client().get(f"/{table}", params=params, headers=_base_headers(schema))
+    r = await client().get(
+        f"/{table}", params=params, headers=_base_headers(_resolve_schema(table, schema))
+    )
     r.raise_for_status()
     return r.json()
 
@@ -58,7 +122,7 @@ async def select_count(
     schema: str = "public",
 ) -> tuple[list[dict[str, Any]], int]:
     """GET rows + the exact total count (Prefer: count=exact / Content-Range)."""
-    headers = {**_base_headers(schema), "Prefer": "count=exact"}
+    headers = {**_base_headers(_resolve_schema(table, schema)), "Prefer": "count=exact"}
     r = await client().get(f"/{table}", params=params, headers=headers)
     r.raise_for_status()
     total = 0
@@ -78,7 +142,7 @@ async def insert(
 ) -> dict[str, Any] | None:
     """POST one row. Returns the created row (Prefer: return=representation)
     unless returning=False. Raises on any error — callers decide fatality."""
-    headers = _base_headers(schema)
+    headers = _base_headers(_resolve_schema(table, schema))
     headers["Prefer"] = "return=representation" if returning else "return=minimal"
     r = await client().post(f"/{table}", json=row, headers=headers)
     r.raise_for_status()
@@ -96,7 +160,7 @@ async def update(
     schema: str = "public",
 ) -> None:
     """PATCH rows matching raw PostgREST filters. Raises on error."""
-    headers = _base_headers(schema)
+    headers = _base_headers(_resolve_schema(table, schema))
     headers["Prefer"] = "return=minimal"
     r = await client().patch(f"/{table}", json=patch, params=filters, headers=headers)
     r.raise_for_status()

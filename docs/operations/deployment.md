@@ -41,9 +41,15 @@ repo. Record them here once confirmed.
   `after()` sends), and `api/elaya/chat` at **180** (the long-running SSE streaming lambda).
   Any new route that carries outward sends in `after()` must export it too (A-16).
 - **Trigger.dev `maxDuration: 300`** (trigger.config.ts) bounds job runtime.
-- **Migrations before code** when a deploy includes both (the 0098–0101 pattern: new SQL
+- **Migrations before code** when a migration is ADDITIVE (the 0098–0101 pattern: new SQL
   signatures are defaults-supersets so old code keeps working against the new DB; the reverse
   degrades).
+- **A migration that MOVES or RENAMES is the opposite case: the migration and the build are ONE
+  release.** Old code cannot survive it — the table it asks for is gone the instant the SQL
+  commits. Both halves of the 2026-09-17 schema restructure were pushed ahead of their build and
+  each took the affected pages down for minutes (0210, then 0211; schema-restructure-plan.md
+  §10–§11.1). Either push the migration only when the commit is ready to go out behind it, or
+  build the deployment first and promote it the moment the migration lands.
 - **Webhook routes bypass the session proxy** (matcher exclusion + early return) — external
   POSTs must never trigger Supabase session refresh.
 
@@ -54,7 +60,16 @@ repo. Record them here once confirmed.
 3. Apply pending migrations (`supabase/migrations/`) — never edit applied ones (A-14).
 4. Verify env registry parity (`environments.md`) in the Vercel project.
 5. `pnpm trigger:deploy` if `src/trigger/` or `trigger.config.ts` changed.
-6. `docs/changelog.md` entry exists for the change (Q-06a).
+6. `copilot svc deploy --name api --env prod` if `backend/` changed — **and always after a
+   schema move**: the Python brain reads tables over PostgREST too (`backend/app/core/supa.py`,
+   `_MOVED_TABLES`), so it goes stale exactly like the app does. Both brains serve Elaya
+   (`elaya_settings.brain_whatsapp` / `brain_in_app`), so a stale brain means Elaya answers
+   nothing about leads.
+7. `docs/changelog.md` entry exists for the change (Q-06a).
+
+**Everything that reads the database, for a schema move:** the Next app (Vercel), the
+Trigger.dev tasks, the Python brain (Fargate), and the one-off scripts. The Sia watcher
+(`connector/`) touches only `sia.wag_*` and is unaffected.
 
 ## Python brain (Fargate `api` service)
 

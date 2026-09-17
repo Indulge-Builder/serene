@@ -7820,8 +7820,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/schema-restructure-plan.md": {
-    "mtime": 1789636188.6560123,
-    "ast_hash": "c553389d0edf7d2840a8a285e4c7b984",
+    "mtime": 1789640641.3964283,
+    "ast_hash": "f2d9f59d5980fb29aa8fde14071fba5a",
     "semantic_hash": ""
   },
   "evals/results/20260916-095313.json": {
@@ -7840,13 +7840,13 @@
     "semantic_hash": ""
   },
   "scripts/db/row-counts.ts": {
-    "mtime": 1789636130.0002673,
-    "ast_hash": "d2964b29c46e155e8fd9b30019d3089e",
+    "mtime": 1789640641.3954735,
+    "ast_hash": "aecdc2eb26a496d39ea20bc77e680431",
     "semantic_hash": ""
   },
   "scripts/import-members-and-map-groups.py": {
-    "mtime": 1789636163.6518865,
-    "ast_hash": "e412222e1246b2e8e6267947a05c7546",
+    "mtime": 1789636289.663829,
+    "ast_hash": "10b9c7b2777e07a03760d008a57ccd55",
     "semantic_hash": ""
   },
   "scripts/members/seed-member-facts.py": {

@@ -318,6 +318,27 @@ What changed:
   today, the write lands once the CHECKs and the trigger are in. The 176 clients without a
   queendom and the Concierge accounts themselves are the next data step.
 
+## 2026-09-17 — The Python brain follows the schema move (it had been 404ing since 13:41)
+
+Why: `backend/app/core/supa.py` is the brain's own PostgREST client, and `tools/registry.py`
+asks it for `leads`, `deals`, `lead_notes`, `lead_sla_timers`, `sla_policies`, `service_cases`
+and `conversation_hooks` with no schema. Those tables moved to `gia` at 13:41, so every
+Elaya answer about a lead, a deal, an SLA or a helpdesk case returned nothing — on BOTH
+channels, since `brain_whatsapp` and `brain_in_app` are both set to python. Missed in the
+0210 push and found while checking what was left.
+
+What changed: `_MOVED_TABLES` in `supa.py` maps every relocated table to its schema, and
+`select` / `select_count` / `insert` / `update` resolve through it. The schema is a property
+of the table, not of the call site, so a future caller cannot forget it — the Python side has
+no lint rule to catch a miss, unlike the Node side. An explicit `schema=` (sia, freshdesk)
+still wins, and RPCs are untouched because the functions stayed in `public` with widened
+search paths. Verified against production through the brain's own module: 6,858 leads, 35
+deals, and the member tables all answer.
+
+Also: `docs/operations/deployment.md` now separates an additive migration (migrations first)
+from a move or rename (migration and build are one release), and the checklist names the
+Fargate deploy as a required step after any schema move.
+
 ## 2026-09-17 — Schema restructure: the member half (built, rehearsed, applied the same afternoon)
 
 Why: the second half of the plan, now that the twin is `members`. Same technique as 0210,

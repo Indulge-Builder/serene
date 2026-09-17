@@ -2095,8 +2095,8 @@
     "semantic_hash": ""
   },
   "src/lib/types/database.ts": {
-    "mtime": 1789636036.2385468,
-    "ast_hash": "857765747cecea2c8128106ff12e5550",
+    "mtime": 1789642046.6260374,
+    "ast_hash": "13b648b6d0e0b7f505f17379ca9e5a40",
     "semantic_hash": ""
   },
   "src/lib/types/elaya.ts": {
@@ -3155,8 +3155,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1789636188.6567454,
-    "ast_hash": "4a9edfcd348ec867ca54a367f6126755",
+    "mtime": 1789642120.4319544,
+    "ast_hash": "5e7a0a710726fb13b0ca32c4d0cc7118",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789636188.6634922,
-    "ast_hash": "46d6663f85f2df74026e6e891fdc105b",
+    "mtime": 1789642120.4403353,
+    "ast_hash": "dc8880aff71df6a985c5b0f532c734e7",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -7820,8 +7820,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/schema-restructure-plan.md": {
-    "mtime": 1789640641.3964283,
-    "ast_hash": "f2d9f59d5980fb29aa8fde14071fba5a",
+    "mtime": 1789642120.4312716,
+    "ast_hash": "7e5ae1ae1bf1bdee2875878f899df20d",
     "semantic_hash": ""
   },
   "evals/results/20260916-095313.json": {
